@@ -69,7 +69,7 @@ enum APIError: Error, Equatable, Sendable {
 /// Supabase access token as the bearer: capture, and the item writes (tick,
 /// braindump row to an hour, skip, move, pause, and the item sheet's title,
 /// notes, priority, times a day, reminder, time, repeat and project, Delete,
-/// Add a subtask and Reset streak).
+/// Add a subtask, Reset streak and its routine and season toggles).
 ///
 /// Writes are intents, never arrays: a tick or a skip sends the date and the
 /// end state, never `completedDates` or `skippedDates`, because the phone reads
@@ -164,6 +164,17 @@ final class APIClient {
     /// nothing written.
     func resetStreak(id: UUID) async throws {
         _ = try await send("POST", Self.itemPath(id), body: try Self.encode(ItemWriteBody.resetStreak))
+    }
+
+    /// POST /api/app/items/:id `collect`: one membership row, the item added
+    /// to one routine or season (last in a routine's order) or taken out of
+    /// it, by the container's id. Never a list, so a toggle from another
+    /// device in between is kept. Already so is answered 200 with nothing
+    /// written; a routine or season gone or in the Trash is 409
+    /// `container_gone`.
+    func collect(id: UUID, kind: ContainerKind, containerId: String, member: Bool) async throws {
+        let body = ItemWriteBody.collect(kind: kind, containerId: containerId, member: member)
+        _ = try await send("POST", Self.itemPath(id), body: try Self.encode(body))
     }
 
     /// POST /api/app/items: a capture, under the phone's own id, so a retry

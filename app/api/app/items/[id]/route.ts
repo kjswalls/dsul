@@ -25,6 +25,7 @@ import { postItemWrite } from '@/lib/app-api';
  *                                                         left untrue is demoted
  *   { action: 'project', projectId }                      the project, by id; null for none. A task
  *                                                         parked in its old project's block leaves it
+ *   { action: 'collect', kind, containerId, member }      join or leave one routine or season
  * The handler is in lib/app-api.ts.
  */
 export async function POST(

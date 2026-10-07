@@ -5,7 +5,8 @@ import DsulCore
 // ItemWriteBody.swift: the wire JSON of the item sheet's edits (the fields and
 // the chips, the time chip's keys only when they changed, the repeat chip's
 // days and day only beside their frequency, the project chip's id or null),
-// its Delete, Add a subtask and Reset streak.
+// its Delete, Add a subtask and Reset streak, and its routine and season
+// toggles (one membership: the kind, the container's id, and a boolean).
 // Each case in tests/fixtures/day/edit-writes.json records the exact body the
 // web's gesture means (keys absent or null exactly as sent), and lib/app-api.ts
 // parses every one of them through `ItemWriteSchema`; the phone's body for the
@@ -24,6 +25,11 @@ private let eggs = UUID(uuidString: "22222222-2222-4222-8222-22222222222A")!
 
 /// Work's id in edit-writes.json's `projects` (the generator's `uid(1310)`).
 private let work = "00000000-0000-4000-8000-00000000051e"
+
+/// The collect cases' routine and season (the generator's `uid(1340)` and
+/// `uid(1341)`).
+private let morning = "00000000-0000-4000-8000-00000000053c"
+private let autumn = "00000000-0000-4000-8000-00000000053d"
 
 @Suite struct ItemWriteBodyTests {
     @Test func eachBodyIsTheWireJSON() throws {
@@ -65,6 +71,23 @@ private let work = "00000000-0000-4000-8000-00000000051e"
         for (edit, wire) in projects {
             #expect(try json(ItemWriteBody.edit(edit)) == wire, "\(edit)")
             #expect(phoneBody(wire) == .edit(edit), "\(edit): read back")
+        }
+        // A routine joined and a season left, as the chips' toggles send them.
+        let toggles: [(ItemWriteBody, JSONValue)] = [
+            (.collect(kind: .routine, containerId: morning, member: true),
+             .object([
+                "action": .string("collect"), "containerId": .string(morning), "kind": .string("routine"),
+                "member": .bool(true),
+             ])),
+            (.collect(kind: .season, containerId: autumn, member: false),
+             .object([
+                "action": .string("collect"), "containerId": .string(autumn), "kind": .string("season"),
+                "member": .bool(false),
+             ])),
+        ]
+        for (body, wire) in toggles {
+            #expect(try json(body) == wire, "\(body)")
+            #expect(phoneBody(wire) == body, "\(body): read back")
         }
     }
 
@@ -171,6 +194,19 @@ private let work = "00000000-0000-4000-8000-00000000051e"
         #expect(upper == JSONValue.object(["action": .string("project"), "projectId": .string(work)]))
         let unfiled = try json(ItemWriteBody.edit(ItemEdit.project(id: nil, name: nil)))
         #expect(unfiled == JSONValue.object(["action": .string("project"), "projectId": .null]))
+
+        // A toggle: the kind, the container's id lowercase however it is
+        // held, and the boolean, all three always; never a list.
+        let left = try json(ItemWriteBody.collect(kind: .season, containerId: autumn.uppercased(), member: false))
+        #expect(left == JSONValue.object([
+            "action": .string("collect"), "containerId": .string(autumn), "kind": .string("season"),
+            "member": .bool(false),
+        ]))
+        let joined = try json(ItemWriteBody.collect(kind: .routine, containerId: morning, member: true))
+        #expect(joined == JSONValue.object([
+            "action": .string("collect"), "containerId": .string(morning), "kind": .string("routine"),
+            "member": .bool(true),
+        ]))
     }
 
     /// APIClient encodes with sorted keys; this is the request it sends.
@@ -223,6 +259,17 @@ private let work = "00000000-0000-4000-8000-00000000051e"
             let bytes = try encoder.encode(ItemWriteBody.edit(edit))
             #expect(String(decoding: bytes, as: UTF8.self) == wire, "\(edit)")
         }
+
+        let toggles: [(ItemWriteBody, String)] = [
+            (.collect(kind: .season, containerId: autumn.uppercased(), member: false),
+             #"{"action":"collect","containerId":"\#(autumn)","kind":"season","member":false}"#),
+            (.collect(kind: .routine, containerId: morning, member: true),
+             #"{"action":"collect","containerId":"\#(morning)","kind":"routine","member":true}"#),
+        ]
+        for (body, wire) in toggles {
+            let bytes = try encoder.encode(body)
+            #expect(String(decoding: bytes, as: UTF8.self) == wire, "\(body)")
+        }
     }
 
     /// The action is the name `writes` lists, so the app can ask `canWrite`
@@ -247,6 +294,8 @@ private let work = "00000000-0000-4000-8000-00000000051e"
         #expect(ItemEdit.repeats(frequency: "custom", days: [1], monthDay: nil).action == "repeat")
         #expect(ItemWriteBody.edit(ItemEdit.project(id: work, name: "Work")).action == "project")
         #expect(ItemEdit.project(id: nil, name: nil).action == "project")
+        #expect(ItemWriteBody.collect(kind: .routine, containerId: morning, member: true).action == "collect")
+        #expect(ItemWriteBody.collect(kind: .season, containerId: autumn, member: false).action == "collect")
     }
 
     /// A time edit's key that didn't change is absent, never null: absent
@@ -298,6 +347,49 @@ private let work = "00000000-0000-4000-8000-00000000051e"
         }
         #expect(phoneBody(.object(["action": .string("timesPerDay"), "timesPerDay": .number(1)]))
             == .edit(.timesPerDay(1)))
+    }
+
+    /// A toggle's `member` is a JSON boolean, the route's `z.boolean()`, never
+    /// a number or a string, which the route refuses. `JSONValue` tries `Bool`
+    /// first, so this also pins that neither decoder reads 1 or 0 as one, and
+    /// that a body with a number or a string there is one the phone never
+    /// builds.
+    @Test func aMemberIsABoolean() throws {
+        for member in [true, false] {
+            let body = try json(ItemWriteBody.collect(kind: .routine, containerId: morning, member: member))
+            guard case .object(let fields) = body else {
+                Issue.record("not an object")
+                return
+            }
+            #expect(fields["member"] == JSONValue.bool(member), "\(member)")
+        }
+        let yes = try JSONDecoder().decode(JSONValue.self, from: Data(#"{"member":true}"#.utf8))
+        #expect(yes == JSONValue.object(["member": .bool(true)]))
+        let no = try JSONDecoder().decode(JSONValue.self, from: Data(#"{"member":false}"#.utf8))
+        #expect(no == JSONValue.object(["member": .bool(false)]))
+        let one = try JSONDecoder().decode(JSONValue.self, from: Data(#"{"member":1}"#.utf8))
+        #expect(one == JSONValue.object(["member": .number(1)]))
+
+        func wire(_ member: JSONValue) -> JSONValue {
+            return .object([
+                "action": .string("collect"), "containerId": .string(morning), "kind": .string("routine"),
+                "member": member,
+            ])
+        }
+        #expect(phoneBody(wire(.bool(true))) == .collect(kind: .routine, containerId: morning, member: true))
+        for member in [JSONValue.number(1), .number(0), .string("true"), .null] {
+            #expect(phoneBody(wire(member)) == nil, "\(member)")
+        }
+
+        let members = try loadEditWrites().cases.compactMap { c -> JSONValue? in
+            guard case .object(let fields) = c.edit, fields["action"] == .string("collect") else { return nil }
+            return fields["member"]
+        }
+        #expect(members.contains(.bool(true)) && members.contains(.bool(false)), "the fixture's adds and removes")
+        for member in members {
+            if case .bool = member { continue }
+            Issue.record("a member that isn't a boolean: \(member)")
+        }
     }
 
     /// Custom days' days are a JSON array of numbers, Sunday's 0 included,

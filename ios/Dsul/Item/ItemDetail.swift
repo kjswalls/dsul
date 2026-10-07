@@ -25,7 +25,10 @@ import SwiftUI
 ///   the Repeat sheet (`RepeatSheet`), and a one-off task's Add property
 ///   holds Repeat ▸. From 2f the project chip is a menu of the user's
 ///   projects, checked by folded name, whose pick files the item at once,
-///   and an item with no project gets Project ▸ while the user has one;
+///   and an item with no project gets Project ▸ while the user has one. From
+///   2f-b the routine and season chips are menus of toggles, each joining or
+///   leaving one at once, and an item in no routine (or season) gets
+///   Routine ▸ (Season ▸) while the user has one;
 /// - the subtasks, each ticked in place, its title opening its own page, and
 ///   Delete in its context menu; then, where one may be added, "Add a
 ///   subtask", which swaps in a field (`SubtaskField`).
@@ -434,6 +437,11 @@ struct ItemDetail: View {
         let dates = ItemSheetModel.dateOptions(today: planner.today, nextWeekStart: planner.nextWeekStart)
         // Repeat ▸'s rows: the type's frequencies but No repeat.
         let repeats = ItemSheetModel.repeatSeedChoices(allowed: planner.caps(for: item).allowedFrequencies)
+        // Every routine and season, and whether the item is in it, for their
+        // chips' menus and for Routine ▸ and Season ▸; worked out again each
+        // time the page draws, so a toggle's check follows the write.
+        let routines = ItemSheetModel.routineChoices(planner.routines, item: item.id)
+        let seasons = ItemSheetModel.seasonChoices(planner.seasons, item: item.id)
         if showsStreak || !chips.isEmpty || !unset.isEmpty {
             let flow = ChipFlow()
             flow {
@@ -441,7 +449,8 @@ struct ItemDetail: View {
                     streakChip(item, ctx, offered: offered)
                 }
                 ForEach(chips) { chip in
-                    chipControl(chip, item, offered: offered, dates: dates, projects: projects, canEdit: canEdit)
+                    chipControl(chip, item, offered: offered, dates: dates, projects: projects,
+                                routines: routines, seasons: seasons, canEdit: canEdit)
                 }
                 if !unset.isEmpty {
                     AddPropertyMenu(kinds: unset,
@@ -449,6 +458,8 @@ struct ItemDetail: View {
                                     dates: dates,
                                     repeats: repeats,
                                     projects: projects,
+                                    routines: routines,
+                                    seasons: seasons,
                                     projectColor: { ProjectPalette.color(for: $0, in: planner.projects) },
                                     onPriority: { pick(.priority($0), settling: .priority) },
                                     onDate: { setDate($0) },
@@ -456,7 +467,8 @@ struct ItemDetail: View {
                                     onTimes: { pick(.timesPerDay($0), settling: .timesPerDay) },
                                     onRepeat: { setRepeat($0) },
                                     onRemind: { editor = .reminder(item.id) },
-                                    onProject: { pick(ItemSheetModel.projectEdit($0), settling: .project) })
+                                    onProject: { pick(ItemSheetModel.projectEdit($0), settling: .project) },
+                                    onJoin: { setMembership($0, member: true, closes: true) })
                         .accessibilityFocused($chipVoiceOver, equals: .seed)
                 }
             }
@@ -473,18 +485,20 @@ struct ItemDetail: View {
     }
 
     /// One property chip. Where it edits (`ItemSheetModel.chipEditor`), a
-    /// menu (priority, the date, times per day, the repeat, the project) or
-    /// a button that opens its sheet (the time, the reminder), labelled on the
-    /// control itself, as the streak chip and the bar's Reschedule menu are,
-    /// with the button trait and a hint, and with VoiceOver's focus bound to
-    /// it so it can land there after a change. Otherwise part 1's read-only
-    /// chip, in its slot.
+    /// menu (priority, the date, times per day, the repeat, the project, the
+    /// routines, the seasons) or a button that opens its sheet (the time, the
+    /// reminder), labelled on the control itself, as the streak chip and the
+    /// bar's Reschedule menu are, with the button trait and a hint, and with
+    /// VoiceOver's focus bound to it so it can land there after a change.
+    /// Otherwise part 1's read-only chip, in its slot.
     /// `offered` is the page's `offeredVerbs`, whose Reschedule gates the
     /// date; `dates` the Date menu's entries; `projects` the project menu's
-    /// rows (`ItemSheetModel.projectChoices`).
+    /// rows (`ItemSheetModel.projectChoices`); `routines` and `seasons` the
+    /// membership menus' rows (`routineChoices`, `seasonChoices`).
     @ViewBuilder
     private func chipControl(_ chip: SheetChip, _ item: SampleItem, offered: [VerbID], dates: [DateOption],
-                             projects: [ProjectChoice], canEdit: (String) -> Bool) -> some View {
+                             projects: [ProjectChoice], routines: [MembershipChoice], seasons: [MembershipChoice],
+                             canEdit: (String) -> Bool) -> some View {
         switch ItemSheetModel.chipEditor(chip.kind, item, offered: offered, canEdit: canEdit) {
         case .menu?:
             if chip.kind == .priority {
@@ -508,6 +522,11 @@ struct ItemDetail: View {
                                 color: { ProjectPalette.color(for: $0, in: planner.projects) },
                                 onPick: { pick(ItemSheetModel.projectEdit($0), settling: .project) })
                     .accessibilityFocused($chipVoiceOver, equals: .chip(.project))
+            } else if let kind = ItemSheetModel.containerKind(chip.kind) {
+                MembershipChipMenu(chip: chip, choices: kind == .routine ? routines : seasons,
+                                   onToggle: { toggleMembership($0) },
+                                   onRemove: { setMembership($0, member: false, closes: true) })
+                    .accessibilityFocused($chipVoiceOver, equals: .chip(chip.kind))
             } else {
                 readOnlyChip(chip)
             }
@@ -581,6 +600,37 @@ struct ItemDetail: View {
         settleVoiceOver(on: kind)
     }
 
+    /// A toggle in a routine or season chip's menu: the membership read now,
+    /// from the planner (`ItemSheetModel.liveMember`), and its opposite sent,
+    /// as the web's toggle reads live store state (item-dialog.tsx
+    /// `toggleRoutine`). Never the row's own `member`, which is what the menu
+    /// showed when it was built: if iOS doesn't redraw an open menu, a second
+    /// tap on the same row would send that stale value again, and the planner
+    /// would drop it as unmoved. A container gone since the menu was built
+    /// sends nothing.
+    private func toggleMembership(_ choice: MembershipChoice) {
+        guard let now = ItemSheetModel.liveMember(choice, routines: planner.routines,
+                                                   seasons: planner.seasons, item: id) else { return }
+        setMembership(choice, member: !now, closes: false)
+    }
+
+    /// A routine or season toggle, a Remove from row, or Add property's
+    /// Routine ▸ or Season ▸: written at once, through the planner's
+    /// `collect`, which asks its gate again. A row that closes the menu
+    /// (`closes`: Remove from and the seed's) and a toggle that took the chip
+    /// away (the last membership off, whose row closes the menu too:
+    /// `toggleKeepsMenuOpen`) send VoiceOver to the chip or to Add property,
+    /// as `pick` does. Any other toggle moves nothing: its menu is still open,
+    /// and VoiceOver is in it.
+    private func setMembership(_ choice: MembershipChoice, member: Bool, closes: Bool) {
+        let chip: SheetChip.Kind = choice.kind == .routine ? .routine : .season
+        withAnimation(.snappy) {
+            planner.collect(id, kind: choice.kind, containerId: choice.id, member: member)
+        }
+        let gone = planner.item(id).map { now in !shownChips(now).contains { $0.kind == chip } } ?? false
+        if closes || gone { settleVoiceOver(on: chip) }
+    }
+
     /// A pick in the Date menu, the chip's or Add property's Date ▸: Today,
     /// Tomorrow or Next week moves the item at once, through the planner's
     /// `move` (the bar's Reschedule, which asks its gate again), on days read
@@ -614,12 +664,13 @@ struct ItemDetail: View {
     /// `announceSettled` waits: by then the menu or the sheet has closed, the
     /// target is drawn, and iOS has handed focus back to their source, which
     /// a pick may have taken away (a seed pick that set the last unset
-    /// property; None, 1× a day, No reminder, Anytime or No project taking
-    /// its chip). Never in the same transaction as the edit. A gone item
-    /// moves nothing. When nothing is left to offer, no seed is drawn (No
-    /// project on a text-only name, for a user with no projects and every
-    /// other property set): `.seed` then binds to no view, and VoiceOver
-    /// stays where iOS puts it, as after a gone item.
+    /// property; None, 1× a day, No reminder, Anytime, No project or the last
+    /// routine or season toggled off taking its chip). Never in the same
+    /// transaction as the edit. A gone item moves nothing. When nothing is
+    /// left to offer, no seed is drawn (No project on a text-only name, for a
+    /// user with no projects and every other property set): `.seed` then
+    /// binds to no view, and VoiceOver stays where iOS puts it, as after a
+    /// gone item.
     private func settleVoiceOver(on kind: SheetChip.Kind) {
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(600))

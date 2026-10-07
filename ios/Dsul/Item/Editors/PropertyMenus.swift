@@ -3,14 +3,14 @@ import SwiftUI
 import UIKit
 
 // The item sheet's chips that edit by menu, and the "+ Add property" seed at
-// the end of the chip row: the web panel's priority, date, times, repeat and
-// project chips and its clearing-field seed
+// the end of the chip row: the web panel's priority, date, times, repeat,
+// project, routine and season chips and its clearing-field seed
 // (components/planner/item-dialog.tsx), whose picks write at once (the
 // repeat's Monthly… and Custom days… open the Repeat sheet instead). Which
 // chips edit, what the seed holds and every word here are ItemSheetModel's
 // (`chipEditor`, `unsetProperties`, `priorityChoices`, `timesChoices`,
-// `dateOptions`, `repeatChoices`, `projectChoices`), so the hosted tests pin
-// them; these only draw them.
+// `dateOptions`, `repeatChoices`, `projectChoices`, `routineChoices`,
+// `seasonChoices`), so the hosted tests pin them; these only draw them.
 //
 // Each is the editable-chip style: the chip in its 44pt hit frame
 // (`chipHit()`) as the menu's label, scaling when pressed (`PressScaleStyle`)
@@ -252,6 +252,67 @@ struct ProjectChipMenu: View {
     }
 }
 
+/// A routine or season chip as a menu: one toggle per routine (or season),
+/// in the planner's order, checked while the item is in it, which keeps the
+/// menu open so several can change in one visit; then, under a line, one
+/// Remove from row per membership, which writes and closes (the web's
+/// `RemoveRows`, item-dialog.tsx). The toggle that would take the last
+/// membership off closes the menu first, as Remove from does, and the chip
+/// goes with it (`ItemSheetModel.toggleKeepsMenuOpen`). Each write is one
+/// membership, sent at once through the planner's `collect`. Never on a
+/// subtask (the page asks `chipEditor`).
+///
+/// A toggle's setter ignores the value it is handed. That value is the flip
+/// of what the getter showed, and the getter's `member` is from when the menu
+/// was built; if iOS doesn't redraw an open menu, a second tap on the same
+/// row would send it again. So the page reads the membership at tap time
+/// (`onToggle`, `ItemSheetModel.liveMember`) and sends its opposite. README
+/// "Editing an item", check 13, confirms the menu stays open across toggles
+/// and names the fallback if it doesn't: no dismiss behaviour, one toggle a
+/// visit.
+struct MembershipChipMenu: View {
+    let chip: SheetChip
+    /// `ItemSheetModel.routineChoices` or `seasonChoices`, worked out by the
+    /// page as it draws.
+    let choices: [MembershipChoice]
+    /// A toggle: the page reads the membership live and sends its opposite.
+    let onToggle: (MembershipChoice) -> Void
+    /// A Remove from row: the page takes the item out.
+    let onRemove: (MembershipChoice) -> Void
+
+    var body: some View {
+        let members = choices.filter(\.member)
+        Menu {
+            ForEach(choices) { choice in
+                // `.enabled`, not `.automatic`, on the one that closes: it
+                // must close whatever iOS does with a toggle by default.
+                Toggle(choice.name, isOn: Binding(get: { choice.member }, set: { _ in onToggle(choice) }))
+                    .menuActionDismissBehavior(
+                        ItemSheetModel.toggleKeepsMenuOpen(choice, members: members.count) ? .disabled : .enabled)
+            }
+            // As the web's RemoveRows: the line and its rows only while the
+            // item is in one.
+            if !members.isEmpty {
+                Divider()
+                ForEach(members) { choice in
+                    Button(ItemSheetModel.removeFromWord(choice.name), systemImage: "xmark") {
+                        onRemove(choice)
+                    }
+                }
+            }
+        } label: {
+            ChipView(chip: chip, editable: true)
+                .chipHit()
+        }
+        .menuOrder(.fixed)
+        .menuStyle(.button)
+        .buttonStyle(PressScaleStyle())
+        .tint(Color.primary)
+        .accessibilityLabel(Text(chip.spoken))
+        .accessibilityHint(Text(ItemSheetModel.chipHint(chip.kind) ?? ""))
+    }
+}
+
 /// A project's dot in a menu row, in its own colour. A menu draws a row's
 /// image as a template in the label colour, which would grey the dot, so the
 /// image is drawn as is (`.alwaysOriginal`; README "Editing an item", check
@@ -270,11 +331,12 @@ private func projectDot(_ color: Color) -> Image {
 /// High; Date ▸ Today, Tomorrow, Next week, or Pick a date…, which opens the
 /// day picker; Times per day ▸ 2× to 5× a day; Repeat ▸ Daily, Weekdays,
 /// Weekends, or Monthly… and Custom days…, which open the Repeat sheet;
-/// Project ▸ the user's projects, each with its dot), Time… opens the Time
-/// sheet (`onTime`), and Remind… opens the Remind sheet with its wheel already
-/// on a time (`onRemind`). Its plus carries "Add property" while the row has
-/// nothing else (`label`), and is bare after the chips; VoiceOver always hears
-/// "Add property". No chevron: the plus already says what it does.
+/// Project ▸ the user's projects, each with its dot; Routine ▸ and Season ▸
+/// the user's routines and seasons), Time… opens the Time sheet (`onTime`),
+/// and Remind… opens the Remind sheet with its wheel already on a time
+/// (`onRemind`). Its plus carries "Add property" while the row has nothing
+/// else (`label`), and is bare after the chips; VoiceOver always hears "Add
+/// property". No chevron: the plus already says what it does.
 struct AddPropertyMenu: View {
     let kinds: [SheetChip.Kind]
     /// `ItemSheetModel.seedLabel`: the words beside the plus, or nil.
@@ -285,6 +347,10 @@ struct AddPropertyMenu: View {
     let repeats: [RepeatChoice]
     /// `ItemSheetModel.projectChoices`, for Project ▸.
     let projects: [ProjectChoice]
+    /// `ItemSheetModel.routineChoices` and `seasonChoices`, for Routine ▸ and
+    /// Season ▸.
+    let routines: [MembershipChoice]
+    let seasons: [MembershipChoice]
     /// A project's dot colour, by name (`ProjectPalette`).
     let projectColor: (String) -> Color
     let onPriority: (String?) -> Void
@@ -296,6 +362,8 @@ struct AddPropertyMenu: View {
     let onRepeat: (String) -> Void
     let onRemind: () -> Void
     let onProject: (ProjectChoice) -> Void
+    /// A Routine ▸ or Season ▸ pick: the page adds the item to it.
+    let onJoin: (MembershipChoice) -> Void
 
     var body: some View {
         Menu {
@@ -332,7 +400,9 @@ struct AddPropertyMenu: View {
     /// time and the reminder, each of which opens its sheet. Repeat ▸ has no
     /// checkmark, since nothing repeats yet, and Project ▸ neither, nor a No
     /// project, since nothing is filed yet: one pick files the item and
-    /// closes. The seed holds no routine or season until their PR (2f-b).
+    /// closes. Routine ▸ and Season ▸ likewise, since the item is in none
+    /// yet: one pick adds it and closes, and the chip it leaves is where more
+    /// can change.
     @ViewBuilder
     private func entry(_ kind: SheetChip.Kind) -> some View {
         switch kind {
@@ -386,7 +456,11 @@ struct AddPropertyMenu: View {
                 }
             }
         case .routine, .season:
-            EmptyView()
+            Menu(ItemSheetModel.seedEntry(kind), systemImage: ItemSheetModel.seedSymbol(kind)) {
+                ForEach(kind == .routine ? routines : seasons) { choice in
+                    Button(choice.name) { onJoin(choice) }
+                }
+            }
         }
     }
 }

@@ -7,9 +7,11 @@ import DsulCore
 // time chip's with the time-to-bucket rules under it, from DayBuckets.swift,
 // and the lengths' words, from EditCopy.swift; the repeat chip's, with the
 // Repeat sheet's two sentences; the project chip's, with its folded name test
-// and the container nouns), a new subtask and a streak reset, and where a
-// failed delete puts things back. The web's own answers for
-// the same functions are in EditWritesFixtureTests; these restate them.
+// and the container nouns; the routine and season toggles' gate, and the
+// container's list after one, from Membership.swift), a new subtask and a
+// streak reset, and where a failed delete puts things back. The web's own
+// answers for the same functions are in EditWritesFixtureTests; these restate
+// them.
 
 /// 00000000-0000-4000-8000-000000000012 for 12.
 private func uuid(_ n: Int) -> UUID {
@@ -1402,6 +1404,81 @@ private func task(_ n: Int, _ title: String, parent: Int? = nil) -> Item {
                 #expect(next.timeBucket == item.timeBucket, "\(item.title): \(edit)")
             }
         }
+    }
+}
+
+/// The routine and season chips' gate: lib/app-api.ts `collect`'s first
+/// refusal, lib/item-registry.ts `isCollectible` (`not_collectible`), asked by
+/// name, since a toggle is no `ItemEdit`.
+@Suite struct CollectAllowedTests {
+    private let roadmap = task(1, "Draft Q4 roadmap")
+    private let numbers = task(2, "Pull the numbers", parent: 1)
+    private let meds = Item(id: uuid(3), type: "habit", title: "Meds", repeatFrequency: "daily")
+    private let errand = Item(id: uuid(4), type: "custom", customType: "errand", title: "Post office")
+
+    private func allowed(_ item: Item, caps: ItemCaps? = nil) -> Bool {
+        return editAllowed(action: "collect", on: item, caps: caps ?? DsulCore.caps(item.typeName))
+    }
+
+    /// Every shipped type's, never a subtask's, and never a type that isn't
+    /// collectible.
+    @Test func aToggleIsAnyTypesButASubtasks() {
+        #expect(allowed(roadmap))
+        #expect(allowed(meds))
+        #expect(allowed(errand))
+        #expect(!allowed(numbers), "a subtask")
+        var blank = roadmap
+        blank.parentItemId = ""
+        #expect(allowed(blank), "an empty parent is none")
+        var loose = ItemCaps.task
+        loose.collectible = false
+        #expect(!allowed(roadmap, caps: loose), "not_collectible")
+    }
+
+    /// The gate is `isCollectible`, the web's own question.
+    @Test func theGateIsIsCollectible() {
+        for item in [roadmap, numbers, meds, errand] {
+            #expect(allowed(item) == isCollectible(item), "\(item.title)")
+        }
+    }
+}
+
+/// Membership.swift `settingMembership`: lib/planner-store.ts
+/// `setItemsCollected`'s list for one item, and the revert's put-back.
+@Suite struct SettingMembershipTests {
+    private let a = uuid(1)
+    private let b = uuid(2)
+    private let c = uuid(3)
+
+    /// An add appends, as the store and the server's add put it; a remove
+    /// filters.
+    @Test func anAddAppendsAndARemoveFilters() {
+        #expect(settingMembership([a, b], item: c, member: true) == [a, b, c])
+        #expect(settingMembership([], item: a, member: true) == [a])
+        #expect(settingMembership([a, b, c], item: b, member: false) == [a, c])
+        #expect(settingMembership([a], item: a, member: false) == [])
+    }
+
+    /// Already so is the list unchanged, which is what keeps the phone from
+    /// sending.
+    @Test func alreadySoChangesNothing() {
+        #expect(settingMembership([a, b], item: a, member: true) == [a, b])
+        #expect(settingMembership([a, b], item: b, member: true) == [a, b])
+        #expect(settingMembership([a], item: c, member: false) == [a])
+        #expect(settingMembership([], item: c, member: false) == [])
+    }
+
+    /// A revert puts the item back at its old place, clamped, and moves it
+    /// there when a later toggle had put it at the end.
+    @Test func aRevertPutsItBackAtItsPlace() {
+        #expect(settingMembership([b, c], item: a, member: true, at: 0) == [a, b, c])
+        #expect(settingMembership([b, c], item: a, member: true, at: 1) == [b, a, c])
+        #expect(settingMembership([b, c], item: a, member: true, at: 9) == [b, c, a])
+        #expect(settingMembership([b, c], item: a, member: true, at: -1) == [a, b, c])
+        #expect(settingMembership([a, b, c], item: c, member: true, at: 0) == [c, a, b])
+        #expect(settingMembership([a, b, c], item: a, member: true, at: 0) == [a, b, c])
+        // A remove is a remove, whatever the index says.
+        #expect(settingMembership([a, b, c], item: b, member: false, at: 0) == [a, c])
     }
 }
 

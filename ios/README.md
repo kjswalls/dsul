@@ -5,7 +5,8 @@ and shows your own day from do.dsul.app; a tick, a drop on an hour, a capture,
 the item sheet's Skip, move (Tomorrow, Reschedule) and Pause, an item's title
 and notes, Delete, a new subtask, a streak reset, an item's priority, times
 per day and reminder, and an item's date, part of day, time and length, how
-it repeats, and its project, are saved to the server.
+it repeats, its project, and the routines and seasons it is in, are saved to
+the server.
 "Try with sample data" on the sign-in screen opens a made-up day instead,
 which needs no account and whose changes last until the app quits.
 
@@ -21,11 +22,10 @@ result) to open its sheet: what it is (its notes, its streak, its chips), its
 verbs in a bar along the bottom (tick, Skip, Tomorrow, Reschedule, Pause,
 Pause until, Resume, whichever apply), and Delete behind ⋯. Tap the title or
 the notes to edit them in place. Tap the priority, date, time, times per day,
-repeat, reminder or project chip to change it, and Add property (a plus once
-there are chips) to add one; the other chips are read-only for now, and the
-streak chip opens this week and Reset streak. Add a subtask from the Subtasks
-section, one at a time or by pasting a list. A tap on a row's circle still
-just ticks it.
+repeat, reminder, project, routine or season chip to change it, and Add
+property (a plus once there are chips) to add one. The streak chip opens this
+week and Reset streak. Add a subtask from the Subtasks section, one at a time
+or by pasting a list. A tap on a row's circle still just ticks it.
 
 - `Dsul/` is the app. `DsulTests/` tests it in the simulator.
   - `App/`: the app, `AppGate` (sign-in screen, sample or your planner) and
@@ -164,8 +164,10 @@ sample's habits are Meds and Stretch 10 min (daily, already done today),
 Journal (daily, not done today), Plan tomorrow (weekdays) and Water the
 plants (Sundays and Wednesdays), and its tasks are all one-offs but Pay
 rent, last in the braindump, which repeats monthly on the 1st and has no day.
-Draft Q4 roadmap has two subtasks (Pull the September numbers, done, and
-Write the three bets), and no sample note runs past four lines.
+Its routines are Morning routine (Meds, Stretch 10 min and Journal) and Wind
+down, which is empty, and its one season, Autumn, holds Journal. Draft Q4
+roadmap has two subtasks (Pull the September numbers, done, and Write the
+three bets), and no sample note runs past four lines.
 
 1. **Opening.** A row on List and on Buckets, a block on Schedule, a braindump
    row (the item's sheet stacks on the braindump sheet) and a Search result
@@ -235,12 +237,12 @@ Write the three bets), and no sample note runs past four lines.
 The hosted tests pin what each field sends and what Delete says, but not how
 typing feels. Check on the iPhone, on the sample or signed in once the
 server's `title`, `notes`, `delete`, `addSubtask`, `resetStreak`, `priority`,
-`timesPerDay`, `reminder`, `time`, `repeat` and `project` writes are deployed
-(against an older server the title and notes stay text, ⋯ has no Delete,
-there is no Add a subtask row, the streak popover has no Reset, and the chips
-stay read-only, with no chevrons, but for the date chip, which moves the item
-as Reschedule does; Add property then holds Date alone, on an undated task);
-a check that needs one or the other says so.
+`timesPerDay`, `reminder`, `time`, `repeat`, `project` and `collect` writes
+are deployed (against an older server the title and notes stay text, ⋯ has
+no Delete, there is no Add a subtask row, the streak popover has no Reset,
+and the chips stay read-only, with no chevrons, but for the date chip, which
+moves the item as Reschedule does; Add property then holds Date alone, on an
+undated task); a check that needs one or the other says so.
 The sample comes back whole each time the app starts, so relaunch it to undo
 a delete, a reset or a chip.
 
@@ -317,14 +319,15 @@ a delete, a reset or a chip.
    - On Call the bank in the braindump (no date, priority or reminder), the
      only chip reads "Add property". On Groceries it is a plus after the
      project chip. VoiceOver reads both as "Add property".
-   - Tap it on Groceries: Priority, Time…, Repeat and Remind…, and no Times
-     per day (a task has none) or Project (it has one). On Call the bank:
-     Priority, Date, Repeat, Remind… and Project, and no Time… (it has no day
-     yet). On Journal: Times per day, Remind… and Project, and no Repeat (a
-     habit always shows its repeat chip). On Meds: Times per day and
-     Project. On Draft Q4 roadmap's subtask Pull the September numbers (its
-     own page): Priority alone, with no Date, Time…, Repeat, Remind… or
-     Project.
+   - Tap it on Groceries: Priority, Time…, Repeat, Remind…, Routine and
+     Season, and no Times per day (a task has none) or Project (it has one).
+     On Call the bank: Priority, Date, Repeat, Remind…, Project, Routine and
+     Season, and no Time… (it has no day yet). On Journal: Times per day,
+     Remind… and Project, and no Repeat (a habit always shows its repeat
+     chip), Routine or Season (it is in Morning routine and Autumn). On Meds:
+     Times per day, Project and Season. On Draft Q4 roadmap's subtask Pull
+     the September numbers (its own page): Priority alone, with no Date,
+     Time…, Repeat, Remind…, Project, Routine or Season.
    - Priority ▸ Low on Groceries: one pick, a "Low" chip with a chevron
      appears, and Priority is gone from Add property.
    - Remind… opens the Remind sheet at once, with the wheel already up.
@@ -338,6 +341,9 @@ a delete, a reset or a chip.
    - Project ▸ on Call the bank: Work, Home, Writing, dsul and Health, each
      with its dot, and no No project. Pick Writing: a "Writing" chip with a
      chevron and its dot appears, and Project leaves Add property.
+   - Routine ▸ on Groceries: Morning routine and Wind down. Pick Wind down:
+     a "Wind down" chip with a chevron appears, and Routine leaves Add
+     property. Season ▸ on Groceries: Autumn.
    - Once everything it offers is set, there is no Add property.
 8. **The chips.**
    - Priority: on Draft Q4 roadmap, tap "High": None, Low, Medium and High,
@@ -527,9 +533,30 @@ a delete, a reset or a chip.
      app left in the foreground so no fetch lands, then pick that project
      here for a task: the chip turns back, with the banner, and once the
      refresh lands the project is gone from the menu.
-
-Check 8's other chips (routines and seasons) come with the PR that makes them
-editable.
+   - Routines: on Meds, tap "Morning routine": Morning routine checked and
+     Wind down not, then, under a line, Remove from Morning routine. Tap
+     Wind down: it checks, the menu stays open, and the chip reads "Morning
+     routine +1". Tap Morning routine: it unchecks, and the menu is still
+     open. Tap outside: the chip reads "Wind down", and List shows Meds under
+     Wind down.
+   - Open the menu again and tap Remove from Wind down: the menu closes, the
+     chip goes, and Routine is back in Add property.
+   - Seasons: on Journal, tap "Autumn": Autumn checked, and Remove from
+     Autumn. Tap Autumn: the menu closes, the chip goes, and Season is back
+     in Add property.
+   - Write the three bets (a subtask) has no Routine or Season in Add
+     property.
+   - Signed in, with the web open on your planner and not reloaded since:
+     add a task of yours to a routine here. Then, on the web, without
+     reloading, add another task to the same routine from its item panel's
+     routine chip. Reload the web: both are in the routine. Then take one
+     out here, and on the web, without reloading again, add a third to the
+     same routine. Reload: the one taken out stays out, and the third is
+     in.
+   - Signed in, put a routine of yours in the Trash on a computer, with the
+     app left in the foreground so no fetch lands, then toggle it here: it
+     turns back, with the banner, and once the refresh lands the routine is
+     gone from the menu.
 
 9. **Offline** (signed in only: the sample sends nothing, so nothing fails).
    With Airplane Mode and Wi-Fi off:
@@ -548,7 +575,9 @@ editable.
      the banner;
    - pick a date, and change a time: each turns back, with the banner;
    - change a repeat: it turns back, with the banner;
-   - change a project: it turns back, with the banner.
+   - change a project: it turns back, with the banner;
+   - toggle a routine on, and another off: each turns back, with the banner,
+     and the one taken out comes back at its place in the routine.
 10. **VoiceOver.**
     - The title reads as "Title", a text field and a heading; the notes, and
       "Notes" where there are none, as a button with the hint "Edits the
@@ -568,7 +597,8 @@ editable.
     - An editable chip reads its words, "button" and a hint: "High priority,
       button, Changes the priority"; "3 times a day, button, Changes how many
       times a day"; "Reminder: After I pour my coffee, 8:00 am, button,
-      Changes the reminder". A read-only chip (a routine) has no hint.
+      Changes the reminder". A read-only chip (the date chip on a finished
+      task, below) has no hint.
     - "Add property" is a button. Pick None on a priority chip: VoiceOver
       moves to Add property.
     - On Pull the September numbers' page, Add property ▸ Priority ▸ Low: Add
@@ -581,12 +611,21 @@ editable.
       from Add property, it is on the new reminder chip.
     - In the times menus, the choices read "3 times a day".
     - Relaunch the sample first: check 8 moved the roadmap and Meds,
-      unfiled Groceries and relinked Standup.
+      unfiled Groceries, relinked Standup, took Meds out of its routines and
+      Journal out of Autumn, and check 7 put Groceries in Wind down.
     - The project chip on Groceries reads "Project: Home, button, Changes
       the project". In its menu Home is read as selected, and no dot is
       read.
     - Pick No project: VoiceOver is on Add property. Add property ▸ Project
       ▸ Home: VoiceOver lands on the new chip.
+    - Meds' routine chip reads "Routine: Morning routine, button, Changes
+      the routines". In its menu Morning routine is read as selected. Toggle
+      Wind down: VoiceOver stays in the menu, and Wind down is now read as
+      selected. Remove from Wind down: VoiceOver is on the routine chip.
+    - Open it again and toggle Morning routine off: the menu closes, the
+      chip goes, and VoiceOver is on Add property.
+    - On Groceries, Add property ▸ Routine ▸ Wind down: VoiceOver lands on
+      the new chip, "Routine: Wind down".
     - The date chip reads "Date: Today, button, Changes the date"; the time
       chip "Time: 9:00 to 11:00 am, button, Changes the time". Tick Groceries
       done: its date chip has no hint and is not a button. Tap Not done.
@@ -630,10 +669,11 @@ editable.
     line under them, the wheel and No specific time on the way. The Custom
     days sheet shows seven rows with the full day names and a check, and the
     Monthly sheet a list from Day 1 to Day 31; each scrolls to its footer.
-    The project menu and Add property's Project ▸ open, and the names wrap
-    rather than truncate. On Pay rent, pick Day 31 in Monthly… and tap Done,
-    then open Monthly… again: it opens with Day 31 checked and in view.
-    (Check 10 relaunched the sample, so Pay rent is back on the 1st.)
+    The project, routine and season menus, and Add property's Project ▸,
+    Routine ▸ and Season ▸, open, and the names wrap rather than truncate. On
+    Pay rent, pick Day 31 in Monthly… and tap Done, then open Monthly…
+    again: it opens with Day 31 checked and in view. (Check 10 relaunched the
+    sample, so Pay rent is back on the 1st.)
     - At xxxLarge, the largest size below the accessibility sizes (Larger
       Text with Larger Accessibility Sizes off, the slider at its end): the
       Custom days keys are seven rows with the full names; the Monthly sheet
@@ -674,6 +714,9 @@ editable.
     - The project chip's words and chevron are the label colour or gray, not
       lime, at rest and while pressed, and its dot is its colour. The
       project menu's checks aren't lime.
+    - The routine and season chips' words, symbols and chevrons are the label
+      colour or gray, not lime, at rest and while pressed, and their menus'
+      checks aren't lime.
 13. **What the code assumes of iOS.**
     - Return in the title (a vertical field with a Done key) ends the edit.
     - Return in the subtask field (a vertical field with a Next key) adds
@@ -744,6 +787,15 @@ editable.
       every tap): on Standup, filed "work" with no link, the menu checks
       Work; pick Work and the chip reads "Work". On Draft Q4 roadmap,
       picking its checked Work closes the menu and changes nothing.
+    - The routine and season menus stay open while you toggle
+      (`.menuActionDismissBehavior(.disabled)`), the checks, the Remove from
+      rows and the chip's +1 following each toggle. If a toggle closes the
+      menu, or the checks or the Remove from rows don't follow it, the
+      toggles drop that modifier, one per visit, and this line says so.
+    - The toggle that would take the last routine off closes the menu
+      first (`.enabled` on that row), then the chip goes. If the menu
+      stays open over a chip that has gone, the toggles drop the modifier
+      as above, and this line says so.
 
 ## Rules
 
