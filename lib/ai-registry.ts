@@ -41,6 +41,14 @@ export interface AICapabilities {
   canPropose: boolean;
   /** "Give to OpenClaw": an agent key exists, independent of who answers chat. */
   canDelegate: boolean;
+  /**
+   * "Write with AI" in Settings → Make (memory/plans/mods.md, decision 6): the
+   * person's own connected model answers here (`target === 'model'`). Never
+   * OpenClaw, so never canChat: an OpenClaw-only account has chat and no Make.
+   * A device that chose OpenClaw for chat sends nothing to the model either
+   * (D14: never send to a model the person did not pick).
+   */
+  canMake: boolean;
   proposeTarget: 'model' | 'openclaw' | null;
   openclawTransport: 'gateway' | 'plugin' | null;
   answererName: 'AI' | 'OpenClaw' | null;
@@ -71,6 +79,7 @@ export const NO_AI: AICapabilities = Object.freeze({
   canChat: false,
   canPropose: false,
   canDelegate: false,
+  canMake: false,
   proposeTarget: null,
   openclawTransport: null,
   answererName: null,
@@ -144,6 +153,7 @@ export function resolveAICapabilities(i: AIInputs): AICapabilities {
     canChat: target !== 'none',
     canPropose: proposeTarget !== null,
     canDelegate: i.openclaw.agent,
+    canMake: target === 'model',
     proposeTarget,
     openclawTransport,
     answererName: target === 'model' ? 'AI' : target === 'openclaw' ? 'OpenClaw' : null,

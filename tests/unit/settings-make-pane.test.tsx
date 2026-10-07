@@ -330,3 +330,30 @@ describe('MakePane: Looks', () => {
     expect(screen.queryByText('On. Apply it in Look, under Yours.')).toBeNull();
   });
 });
+
+describe('Write with AI in Make', () => {
+  it('is there only while the gate says canMake: hidden while unknown and for OpenClaw alone', async () => {
+    const { seedAI, CONNECTED_MODEL, OPENCLAW_PLUGIN } = await import('./helpers/ai-fixtures');
+    seed({});
+    render(<MakePane ctx={ctx} />);
+    expect(screen.queryByTestId('make-write')).toBeNull();
+    cleanup();
+
+    let unseed = seedAI(OPENCLAW_PLUGIN);
+    render(<MakePane ctx={ctx} />);
+    expect(screen.queryByTestId('make-write')).toBeNull();
+    cleanup();
+    unseed();
+
+    unseed = seedAI(CONNECTED_MODEL);
+    try {
+      render(<MakePane ctx={ctx} />);
+      const write = screen.getByTestId('make-write');
+      // Above the New buttons.
+      expect(write.compareDocumentPosition(screen.getByTestId('make-new-recipe')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect((screen.getByTestId('make-write-kind') as HTMLSelectElement).value).toBe('recipe');
+    } finally {
+      unseed();
+    }
+  });
+});

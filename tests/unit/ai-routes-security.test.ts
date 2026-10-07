@@ -4,6 +4,7 @@ import * as connection from '@/app/api/ai/connection/route';
 import * as models from '@/app/api/ai/connection/models/route';
 import * as chat from '@/app/api/chat/route';
 import * as propose from '@/app/api/ai/propose/route';
+import * as make from '@/app/api/ai/make/route';
 import * as start from '@/app/api/ai/openrouter/start/route';
 import * as callback from '@/app/api/ai/openrouter/callback/[state]/route';
 import * as conversations from '@/app/api/ai/conversations/route';
@@ -165,6 +166,7 @@ const HANDLERS: Array<[string, (headers?: Record<string, string>) => Promise<Res
   ['models GET', (hd) => models.GET(req('GET', '/api/ai/connection/models', undefined, hd)), 'json'],
   ['chat POST', (hd) => chat.POST(req('POST', '/api/chat', { messages: [{ role: 'user', content: 'hi' }] }, hd)), 'json'],
   ['propose POST', (hd) => propose.POST(req('POST', '/api/ai/propose', { prompt: 'plan' }, hd)), 'json'],
+  ['make POST', (hd) => make.POST(req('POST', '/api/ai/make', { kind: 'recipe', ask: 'when I tick Run' }, hd)), 'json'],
   ['openrouter start', (hd) => start.GET(req('GET', '/api/ai/openrouter/start', undefined, hd)), 'redirect'],
   [
     'openrouter callback',
@@ -217,6 +219,7 @@ const STATE_CHANGING = HANDLERS.filter(([name]) =>
     'connection DELETE',
     'chat POST',
     'propose POST',
+    'make POST',
     // The conversation routes with an origin check. Never 'conversation GET':
     // a read has none, so here it would reach the auth-only mock's .from().
     'conversations search POST',
@@ -303,7 +306,9 @@ describe('no session', () => {
     if (kind === 'json') {
       expect(res.status).toBe(401);
       expect((await res.json()) as object).toMatchObject(
-        _name === 'chat POST' || _name === 'propose POST' ? { code: 'unauthorized' } : { error: 'unauthorized' }
+        _name === 'chat POST' || _name === 'propose POST' || _name === 'make POST'
+          ? { code: 'unauthorized' }
+          : { error: 'unauthorized' }
       );
     } else {
       expect(res.status).toBe(303);
@@ -453,6 +458,7 @@ describe('the key never comes back out (real secret-box)', () => {
       await run('models', models.GET(req('GET', '/api/ai/connection/models')));
       await run('chat', chat.POST(req('POST', '/api/chat', { messages: [{ role: 'user', content: 'hi' }] })));
       await run('propose', propose.POST(req('POST', '/api/ai/propose', { prompt: 'plan' })));
+      await run('make', make.POST(req('POST', '/api/ai/make', { kind: 'theme', ask: 'moss' })));
       // A replace whose verify fails with the key in the upstream error.
       adapter.verify.mockRejectedValueOnce(leaky());
       await run('PUT failing', connection.PUT(req('PUT', '/api/ai/connection', { provider: 'openai', apiKey: SENTINEL_KEY })));
@@ -508,12 +514,13 @@ describe('the key never comes back out (real secret-box)', () => {
 });
 
 describe('no app key', () => {
-  it('OPENAI_API_KEY in the environment with no connection: chat and propose are not_connected, nothing fetched', async () => {
+  it('OPENAI_API_KEY in the environment with no connection: chat, propose and make are not_connected, nothing fetched', async () => {
     process.env.OPENAI_API_KEY = 'sk-env-SENTINEL';
     vi.mocked(conn.openModelConnection).mockResolvedValue({ ok: false, reason: 'none' });
     const c = await chat.POST(req('POST', '/api/chat', { provider: 'openai', messages: [{ role: 'user', content: 'hi' }] }));
     const p = await propose.POST(req('POST', '/api/ai/propose', { provider: 'openai', prompt: 'plan' }));
-    for (const res of [c, p]) {
+    const m = await make.POST(req('POST', '/api/ai/make', { provider: 'openai', kind: 'recipe', ask: 'x' }));
+    for (const res of [c, p, m]) {
       expect(res.status).toBe(409);
       expectNoStore(res);
       const text = await res.text();

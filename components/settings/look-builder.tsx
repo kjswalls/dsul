@@ -59,17 +59,22 @@ interface FormState {
 const selectClass =
   "field dark:bg-input/30 h-9 w-full min-w-0 border bg-transparent px-2 py-1 text-sm outline-none";
 
-/** A saved Look back into the form; one that no longer parses keeps its name only. */
-function formFromRow(row: UserMod): FormState {
-  const parsed = LookManifestSchema.safeParse(row.manifest);
+/** A manifest back into the form; one that does not parse keeps its name only. */
+function formFromManifest(name: string, manifest: unknown): FormState {
+  const parsed = LookManifestSchema.safeParse(manifest);
   if (!parsed.success)
     return {
-      name: row.name,
+      name,
       layout: "classic",
       light: DEFAULT_LIGHT_LOOK,
       dark: DEFAULT_DARK_LOOK,
     };
-  return { name: row.name, ...parsed.data };
+  return { name, ...parsed.data };
+}
+
+/** A saved Look back into the form. */
+function formFromRow(row: UserMod): FormState {
+  return formFromManifest(row.name, row.manifest);
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
@@ -131,19 +136,24 @@ function ThemeSelect({
 export function LookBuilder({
   userId,
   editing,
+  initial,
   onDone,
   onCancel,
 }: {
   userId: string;
   /** The Look being edited, or null for a new one. */
   editing: UserMod | null;
+  /** A new Look's starting point (a "Write with AI" draft's Edit). Read only when `editing` is null. */
+  initial?: { name: string; manifest: unknown };
   onDone: (message: string) => void;
   onCancel: () => void;
 }) {
   const [form, setForm] = useState<FormState>(() =>
     editing
       ? formFromRow(editing)
-      : {
+      : initial
+        ? formFromManifest(initial.name, initial.manifest)
+        : {
           name: "",
           layout: useLookStore.getState().layout,
           light: DEFAULT_LIGHT_LOOK,

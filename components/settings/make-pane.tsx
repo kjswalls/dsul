@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
@@ -14,6 +15,8 @@ import { RecipeBuilder } from './recipe-builder';
 import { RecipeRuns } from './recipe-runs';
 import { ThemeBuilder } from './theme-builder';
 import { LookBuilder } from './look-builder';
+import { MakeWrite } from './make-write';
+import { isMakeKind } from '@/lib/ai-limits';
 import { releaseUserTheme } from '@/lib/user-themes/release';
 
 /**
@@ -32,11 +35,20 @@ import { releaseUserTheme } from '@/lib/user-themes/release';
  * any route where the planner has loaded, since that is where recipes run.
  * The pane's one record ("Turn all mods off", make.allOff) is drawn below this
  * by the shell's flat rows, which is also what makes the pane searchable.
+ *
+ * "Write with AI" (./make-write.tsx) sits above the New buttons and gates
+ * itself on the AI gate's `canMake`. Its Edit opens the builder for a new row,
+ * prefilled with the draft (`initial`); the Write box stays mounted, hidden,
+ * so Cancel returns to the same card, and saving from the builder clears it. `?write=recipe|theme|look` picks the
+ * kind and puts the caret in its box (⌘K's "Write a recipe with AI"); the ask
+ * is never read from the URL, and nothing is sent until Write is pressed.
  */
 
 interface Editing {
   kind: 'recipe' | 'theme' | 'look';
   id: 'new' | string;
+  /** A new row's starting point: a "Write with AI" draft opened in Edit. */
+  initial?: { name: string; manifest: unknown };
 }
 
 const SECTION: Record<ModKind, string> = {
@@ -55,9 +67,13 @@ export function MakePane({ ctx, isMobile = false }: { ctx: SettingCtx; isMobile?
   /** null: the list. Otherwise the recipe, theme or Look form in its place, for a new one or a row. */
   const [editing, setEditing] = useState<null | Editing>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  /** Bumped when a Write draft opened in Edit is saved there, so its card goes (./make-write.tsx). */
+  const [draftSettled, setDraftSettled] = useState(0);
   const editingRow =
     editing && editing.id !== 'new' ? (rows.find((r) => r.id === editing.id && r.kind === editing.kind) ?? null) : null;
   const paneRef = useRef<HTMLDivElement>(null);
+  const writeParam = useSearchParams()?.get('write') ?? null;
+  const writeKind = isMakeKind(writeParam) ? writeParam : null;
   /** What opened the form, so closing it puts focus back there and not on <body>. */
   const opener = useRef<null | Editing>(null);
 
@@ -68,6 +84,7 @@ export function MakePane({ ctx, isMobile = false }: { ctx: SettingCtx; isMobile?
     const pane = paneRef.current;
     const back =
       (from.id !== 'new' && pane?.querySelector<HTMLElement>(`[data-make-row="${from.id}"] [data-make-edit]`)) ||
+      (from.initial && pane?.querySelector<HTMLElement>('[data-testid="make-draft-edit"]')) ||
       pane?.querySelector<HTMLElement>(`[data-testid="make-new-${from.kind}"]`);
     back?.focus();
   }, [editing]);
@@ -78,6 +95,7 @@ export function MakePane({ ctx, isMobile = false }: { ctx: SettingCtx; isMobile?
     setEditing(next);
   };
   const done = (message: string) => {
+    if (editing?.initial) setDraftSettled((n) => n + 1);
     setEditing(null);
     setNotice(message);
   };
@@ -121,6 +139,7 @@ export function MakePane({ ctx, isMobile = false }: { ctx: SettingCtx; isMobile?
             key={editing.id}
             userId={ctx.userId}
             editing={editingRow}
+            initial={editing.initial}
             onCancel={() => setEditing(null)}
             onDone={done}
           />
@@ -129,6 +148,7 @@ export function MakePane({ ctx, isMobile = false }: { ctx: SettingCtx; isMobile?
             key={editing.id}
             userId={ctx.userId}
             editing={editingRow}
+            initial={editing.initial}
             onCancel={() => setEditing(null)}
             onDone={done}
           />
@@ -137,6 +157,7 @@ export function MakePane({ ctx, isMobile = false }: { ctx: SettingCtx; isMobile?
             key={editing.id}
             userId={ctx.userId}
             editing={editingRow}
+            initial={editing.initial}
             onCancel={() => setEditing(null)}
             onDone={done}
           />
@@ -178,6 +199,18 @@ export function MakePane({ ctx, isMobile = false }: { ctx: SettingCtx; isMobile?
             </section>
           );
         })
+      )}
+
+      {/* Kept mounted (hidden) while a builder is open, so Cancel from a draft's Edit returns to it. */}
+      {available && loaded && !failed && ctx.userId && (
+        <MakeWrite
+          userId={ctx.userId}
+          initialKind={writeKind ?? 'recipe'}
+          focus={writeKind !== null}
+          hidden={editing !== null}
+          settled={draftSettled}
+          onEdit={(r) => open({ kind: r.kind, id: 'new', initial: r.initial })}
+        />
       )}
 
       {available && loaded && !failed && !editing && ctx.userId && (

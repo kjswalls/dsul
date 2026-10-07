@@ -75,21 +75,25 @@ const PHONE_NOTE_LEAD: Record<(typeof ITEM_TRIGGERS)[number], string> = {
 export function RecipeBuilder({
   userId,
   editing,
+  initial,
   onDone,
   onCancel,
 }: {
   userId: string;
   /** The recipe being edited, or null for a new one. */
   editing: UserMod | null;
+  /** A new recipe's starting point (a "Write with AI" draft's Edit). Read only when `editing` is null. */
+  initial?: { name: string; manifest: unknown };
   onDone: (message: string) => void;
   onCancel: () => void;
 }) {
   const [draft, setDraft] = useState<RecipeDraft>(() => {
-    if (!editing) return blankDraft();
+    const from = editing ?? initial;
+    if (!from) return blankDraft();
     // From the shape alone: a recipe the run rules refuse today still opens,
     // so it can be fixed.
-    const parsed = RecipeManifestSchema.safeParse(editing.manifest);
-    return parsed.success ? manifestToDraft(editing.name, parsed.data) : { ...blankDraft(), name: editing.name };
+    const parsed = RecipeManifestSchema.safeParse(from.manifest);
+    return parsed.success ? manifestToDraft(from.name, parsed.data) : { ...blankDraft(), name: from.name };
   });
   const [problems, setProblems] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
