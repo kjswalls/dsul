@@ -52,12 +52,13 @@ import {
   deleteItemType as dbDeleteItemType,
   createItem as dbCreateItem,
   createItems as dbCreateItems,
-  updateItem as dbUpdateItem,
-  deleteItem as dbDeleteItem,
-  changeItemType as dbChangeItemType,
-  restoreItem as dbRestoreItem,
-  setItemCompletion as dbSetItemCompletion,
-  setItemSkip as dbSetItemSkip,
+  updateItem as rawUpdateItem,
+  deleteItem as rawDeleteItem,
+  changeItemType as rawChangeItemType,
+  restoreItem as rawRestoreItem,
+  setItemCompletion as rawSetItemCompletion,
+  setItemSkip as rawSetItemSkip,
+  fetchItemsAnyState,
   createProject as dbCreateProject,
   updateProject as dbUpdateProject,
   deleteProject as dbDeleteProject,
@@ -315,13 +316,30 @@ interface PlannerStore {
    * File again rows first filed before their account's data landed, whose
    * writes may never have committed (lib/held-captures.ts): each as the person
    * last left it, under its own id, so an insert that did commit fails on the
-   * primary key instead of making a second row. One set() and one history
-   * entry per group, labelled as its add was. Task rows take orders after the
-   * landed ones, in the order they last had across every group. A row `saved`
-   * holds (the database's live copy) is not inserted again: only where the
-   * person's version differs from it is the difference written.
+   * primary key instead of making a second row, and is then settled as a row
+   * the database holds. One set() and one history entry per group, labelled as
+   * its add was; with `quiet` (the person has acted since the landing) no
+   * entry, the rows folded into every snapshot instead. Task rows take orders
+   * after the landed ones, in the order they last had across every group, and
+   * a group's task rows go back as one insert. A row `saved` holds (the
+   * database's live copy) is not inserted again: what the person changed
+   * since `filed` (the row as first filed) is laid over it and written.
    */
-  refileItems: (groups: Item[][], saved?: ReadonlyMap<string, Item>) => void;
+  refileItems: (
+    groups: Item[][],
+    opts?: { saved?: ReadonlyMap<string, Item>; filed?: ReadonlyMap<string, Item>; quiet?: boolean },
+  ) => void;
+  /**
+   * Rows first filed before their account's data landed that the landing
+   * brought back (lib/held-captures.ts), `row` as the person last left it and
+   * `filed` as first filed. One the person removed before the landing
+   * (`gone`) is removed again, its subtasks with it. Over any other, what the
+   * person changed since filing is laid over the landed copy and written, so
+   * an edit whose UPDATE failed with the load is kept and an edit made on
+   * another device to a field they never touched is not undone. No history
+   * entry: it is what the person had before the landing.
+   */
+  settleLandedRows: (rows: readonly { row: Item; filed: Item; gone: boolean }[]) => void;
   /**
    * `opts.label` names the history entry instead of "Edit task: <title>",
    * which is also what decides whether the undo strip offers ⌘Z
@@ -802,7 +820,9 @@ export interface Memberships {
  *
  * A subtask's own insert waits the same way for its parent's, when that is
  * still in flight (items_parent_item_id_fkey; held-captures files a parent
- * and its subtasks again in one pass). Nothing in flight, it leaves at once.
+ * and its subtasks again in one pass), and every later write to the subtask
+ * waits behind its insert (insertWaitsFor, the item doors). Nothing in
+ * flight, it leaves at once.
  */
 function persistNewItem(
   userId: string,
@@ -810,17 +830,8 @@ function persistNewItem(
   memberships: Memberships | undefined,
   get: () => PlannerStore,
 ) {
-  const parentId = 'parentItemId' in row ? row.parentItemId : undefined;
-  const created = afterItemCreates(parentId ? [parentId] : [], () => dbCreateItem(userId, row));
+  const created = sendItemCreate([row.id], insertWaitsFor([row], get().items), () => dbCreateItem(userId, row));
   created.catch(console.error);
-  const settled = created.then(
-    () => undefined,
-    () => undefined
-  );
-  pendingItemCreates.set(row.id, settled);
-  void settled.then(() => {
-    if (pendingItemCreates.get(row.id) === settled) pendingItemCreates.delete(row.id);
-  });
 
   const routineIds = memberships?.routineIds ?? [];
   const seasonIds = memberships?.seasonIds ?? [];
@@ -1450,6 +1461,17 @@ const undoFailedContainerCreate = (
  */
 const pendingItemCreates = new Map<string, Promise<void>>();
 
+/**
+ * The item creates in `pendingItemCreates` that WAITED before leaving: a
+ * subtask's insert held behind its parent's, a row of a custom-type list behind
+ * the row before it. Every later write to such an item waits behind its insert
+ * (the item doors below): sent first, a tick, an edit or a delete matches zero
+ * rows and is lost, and the insert then writes the row as it was. An insert
+ * that left at once opens no window, so an ordinary add keeps the timing it
+ * always had.
+ */
+const heldItemCreates = new Map<string, Promise<void>>();
+
 export function awaitItemCreates(ids: readonly string[]): Promise<void> {
   const waits = ids.map((id) => pendingItemCreates.get(id)).filter((p): p is Promise<void> => !!p);
   return waits.length ? Promise.all(waits).then(() => undefined) : Promise.resolve();
@@ -1462,6 +1484,105 @@ export function awaitItemCreates(ids: readonly string[]): Promise<void> {
  */
 function afterItemCreates<T>(ids: readonly string[], write: () => Promise<T>): Promise<T> {
   return ids.some((id) => pendingItemCreates.has(id)) ? awaitItemCreates(ids).then(write) : write();
+}
+
+/**
+ * Send the insert that creates `ids` once everything in `waitOn` has landed
+ * (at once when none of it is in flight), and track each id as in flight
+ * until it settles: held as well when it had to wait.
+ */
+function sendItemCreate<T>(ids: readonly string[], waitOn: readonly string[], insert: () => Promise<T>): Promise<T> {
+  const held = waitOn.some((id) => pendingItemCreates.has(id));
+  const created = afterItemCreates(waitOn, insert);
+  const settled = created.then(
+    () => undefined,
+    () => undefined
+  );
+  for (const id of ids) {
+    pendingItemCreates.set(id, settled);
+    if (held) heldItemCreates.set(id, settled);
+  }
+  void settled.then(() => {
+    for (const id of ids) {
+      if (pendingItemCreates.get(id) === settled) pendingItemCreates.delete(id);
+      if (heldItemCreates.get(id) === settled) heldItemCreates.delete(id);
+    }
+  });
+  return created;
+}
+
+/**
+ * What a new row's insert must wait for: the insert of its parent when that is
+ * still in flight (items_parent_item_id_fkey), and then the inserts of its
+ * siblings still in flight, so subtasks added while their parent is held leave
+ * in the order they were added (they share an `order`, and created_at sorts
+ * them). Empty, so the insert leaves at once, when no parent is in flight.
+ */
+function insertWaitsFor(rows: readonly Item[], items: readonly Item[]): string[] {
+  const parents = new Set(
+    rows.flatMap((r) => {
+      const p = parentIdOf(r);
+      return p && pendingItemCreates.has(p) ? [p] : [];
+    })
+  );
+  if (parents.size === 0) return [];
+  const own = new Set(rows.map((r) => r.id));
+  const siblings = items.filter((i) => {
+    const p = parentIdOf(i);
+    return !!p && parents.has(p) && !own.has(i.id) && pendingItemCreates.has(i.id);
+  });
+  return [...parents, ...siblings.map((i) => i.id)];
+}
+
+/**
+ * Insert rows already on the store, each tracked as in flight. Task rows go as
+ * ONE statement (their explicit orders carry the order; all-or-nothing on the
+ * wire), every other row one at a time in order, each after the last has
+ * settled (a custom type sorts by created_at, which one statement stamps once).
+ * A single row is a single insert. `onError` gets each failed insert's rows.
+ */
+function insertNewRows(
+  userId: string,
+  rows: readonly Item[],
+  items: readonly Item[],
+  onError: (error: unknown, rows: Item[]) => void,
+): void {
+  if (rows.length === 0) return;
+  const waitOn = insertWaitsFor(rows, items);
+  const tasks = rows.filter((r) => r.type === 'task');
+  const together = tasks.length > 1 ? tasks : [];
+  if (together.length > 0) {
+    sendItemCreate(together.map((r) => r.id), waitOn, () => dbCreateItems(userId, together)).catch((err) =>
+      onError(err, together)
+    );
+  }
+  const sent = new Set(together.map((r) => r.id));
+  let prev: readonly string[] = waitOn;
+  for (const row of rows) {
+    if (sent.has(row.id)) continue;
+    sendItemCreate([row.id], prev, () => dbCreateItem(userId, row)).catch((err) => onError(err, [row]));
+    prev = [row.id];
+  }
+}
+
+// The store's only doors to these six item writes: each waits behind the
+// item's insert when that insert was held (above), and leaves at once otherwise.
+const dbUpdateItem: typeof rawUpdateItem = (id, ...rest) =>
+  afterHeldItemCreate(id, () => rawUpdateItem(id, ...rest));
+const dbDeleteItem: typeof rawDeleteItem = (id, ...rest) =>
+  afterHeldItemCreate(id, () => rawDeleteItem(id, ...rest));
+const dbRestoreItem: typeof rawRestoreItem = (id, ...rest) =>
+  afterHeldItemCreate(id, () => rawRestoreItem(id, ...rest));
+const dbChangeItemType: typeof rawChangeItemType = (id, ...rest) =>
+  afterHeldItemCreate(id, () => rawChangeItemType(id, ...rest));
+const dbSetItemCompletion: typeof rawSetItemCompletion = (id, ...rest) =>
+  afterHeldItemCreate(id, () => rawSetItemCompletion(id, ...rest));
+const dbSetItemSkip: typeof rawSetItemSkip = (id, ...rest) =>
+  afterHeldItemCreate(id, () => rawSetItemSkip(id, ...rest));
+
+function afterHeldItemCreate<T>(id: string, write: () => Promise<T>): Promise<T> {
+  const held = heldItemCreates.get(id);
+  return held ? held.then(write) : write();
 }
 
 /**
@@ -1599,6 +1720,89 @@ const diffItem = (from: Item, to: Item): Record<string, unknown> => {
   }
   return patch;
 };
+
+const parentIdOf = (item: Item): string | undefined =>
+  'parentItemId' in item ? item.parentItemId : undefined;
+
+/** The per-date lists, which the completion and skip RPCs own. */
+const DATE_LISTS = ['completedDates', 'skippedDates'] as const;
+type DateList = (typeof DATE_LISTS)[number];
+const datesOf = (item: Item, key: DateList): string[] =>
+  ((item as Record<string, unknown>)[key] as string[] | undefined) ?? [];
+/** A list the row never had reads back empty: the same dates. */
+const sameDates = (a: Item, b: Item, key: DateList) =>
+  [...datesOf(a, key)].sort().join() === [...datesOf(b, key)].sort().join();
+
+/**
+ * `saved`, a row as the database holds it, with what the person changed since
+ * the row was first filed (`filed` to `mine`) laid over it: lib/held-captures.ts
+ * settles a row filed before a landing this way. A field they never touched
+ * keeps the database's value, which may be newer (an edit made on another
+ * device). A date list takes their added and removed dates. With no `filed`,
+ * all of `mine` wins. A type switch is the whole row: theirs when they switched
+ * it, the database's when it was switched elsewhere. The project id follows
+ * the project, resolved against `projects` only when they moved it (a name the
+ * store cannot resolve keeps the id the database resolved for it). `order` is
+ * the caller's.
+ */
+function layOver(saved: Item, mine: Item, filed: Item | undefined, projects: Project[], order?: number): Item {
+  const field = (item: Item, key: string) => (item as Record<string, unknown>)[key];
+  const touched = (key: string) => !filed || JSON.stringify(field(filed, key)) !== JSON.stringify(field(mine, key));
+  const withOrder = (item: Item): Item => (order === undefined ? item : ({ ...item, order } as Item));
+  const resolve = (name: string | undefined) =>
+    projectIdFor(name, projects) ?? (saved.project === name ? saved.projectId : undefined);
+  if (itemDbType(saved) !== itemDbType(mine)) {
+    if (filed && itemDbType(filed) === itemDbType(mine)) return saved;
+    return withOrder({ ...mine, projectId: resolve(mine.project) } as Item);
+  }
+  const merged: Record<string, unknown> = { ...saved };
+  const own: readonly string[] = ['order', 'projectId', ...DATE_LISTS];
+  for (const key of getItemTypeConfig(itemTypeName(mine)).fields) {
+    if (!own.includes(key) && touched(key)) merged[key] = field(mine, key);
+  }
+  for (const key of DATE_LISTS) {
+    if (!filed) {
+      if (!sameDates(saved, mine, key)) merged[key] = datesOf(mine, key);
+      continue;
+    }
+    if (sameDates(filed, mine, key)) continue;
+    const before = new Set(datesOf(filed, key));
+    const after = new Set(datesOf(mine, key));
+    const kept = datesOf(saved, key).filter((d) => !before.has(d) || after.has(d));
+    merged[key] = [...kept, ...datesOf(mine, key).filter((d) => !before.has(d) && !kept.includes(d))];
+  }
+  merged.projectId = touched('project') ? resolve(mine.project) : saved.projectId;
+  return withOrder(merged as Item);
+}
+
+/**
+ * Write `merged` over `saved`, the database's copy of the same row: a type
+ * switch when the type differs, its date lists replayed once it lands (the
+ * switch leaves them out, as applyHistoryState's does), else one UPDATE of what
+ * differs. updateItem applies a date list as per-date intents.
+ */
+function writeOver(userId: string, saved: Item, merged: Item): void {
+  const send = (patch: Record<string, unknown>) => {
+    if (Object.keys(patch).length > 0) {
+      dbUpdateItem(merged.id, itemDbType(merged), patch).catch(console.error);
+    }
+  };
+  const datePatch = () => {
+    const patch: Record<string, unknown> = {};
+    for (const key of DATE_LISTS) if (!sameDates(saved, merged, key)) patch[key] = datesOf(merged, key);
+    return patch;
+  };
+  if (itemDbType(saved) !== itemDbType(merged)) {
+    queueTypeSwitch(merged.id, () => dbChangeItemType(merged.id, itemDbType(saved), merged, userId)).then(
+      () => send(datePatch()),
+      () => {}
+    );
+    return;
+  }
+  const patch = diffItem(saved, merged);
+  for (const key of DATE_LISTS) delete patch[key];
+  send({ ...patch, ...datePatch() });
+}
 
 /**
  * The `planner-storage` slice, at its defaults — every field the persist
@@ -3098,22 +3302,21 @@ export const usePlannerStore = create<PlannerStore>()(
         // stamps every row with the statement's created_at — the paste order
         // would scramble on reload. A sequential chain gives each row its own
         // timestamp; custom bulk adds are rare enough to pay the round trips.
+        //
+        // Either way a subtask paste waits for its parent's insert when that is
+        // in flight (the one statement fails items_parent_item_id_fkey whole),
+        // and each row is tracked as in flight, so an undo of the paste, and
+        // any write to a row whose insert waited, goes out after it.
         const userId = get().userId;
         if (userId) {
-          if (isCustom) {
-            void (async () => {
-              for (const row of rows) {
-                await dbCreateItem(userId, row).catch(console.error);
-              }
-            })();
-          } else {
-            dbCreateItems(userId, rows).catch(console.error);
-          }
+          insertNewRows(userId, rows, get().items, (err) => console.error(err));
           reportBulkFiled(userId, rows);
         }
       },
 
-      refileItems: (groups, saved) => {
+      refileItems: (groups, opts) => {
+        const saved = opts?.saved;
+        const filed = opts?.filed;
         const present = new Set(get().items.map((i) => i.id));
         const back = groups
           .map((group) => group.filter((item) => !present.has(item.id)))
@@ -3130,51 +3333,84 @@ export const usePlannerStore = create<PlannerStore>()(
             .sort((a, b) => a.order - b.order)
             .map((item) => [item.id, next++])
         );
-        const userId = get().userId;
-        for (const group of back) {
-          const { projects } = get();
-          const rows = group.map((item): Item => {
+        const { projects } = get();
+        const refiled = back.map((group) =>
+          group.map((item): Item => {
+            const order = orderOf.get(item.id);
             const live = saved?.get(item.id);
+            // The database holds it (its insert committed after the landing's
+            // read began): what the person changed since filing goes over it.
+            if (live) return layOver(live, item, filed?.get(item.id), projects, order);
             return {
               ...item,
-              ...(orderOf.has(item.id) ? { order: orderOf.get(item.id)! } : {}),
-              // A name the landed store cannot resolve keeps the id the insert
-              // resolved for it, as an insert sent now would resolve one.
-              projectId:
-                projectIdFor(item.project, projects) ??
-                (live && live.project === item.project ? live.projectId : undefined),
+              ...(order !== undefined ? { order } : {}),
+              projectId: projectIdFor(item.project, projects),
             };
+          })
+        );
+        if (opts?.quiet) {
+          // The person has acted since the landing: an entry pushed now would
+          // sit on top of theirs and take the next ⌘Z. Folded into every
+          // snapshot instead, the rows are simply there, as they were before.
+          const all = refiled.flat();
+          foldIntoHistory((items) => {
+            const has = new Set(items.map((i) => i.id));
+            return [...items, ...all.filter((row) => !has.has(row.id))];
           });
-          const noun = getItemTypeConfig(itemTypeName(rows[0])).label.toLowerCase();
-          setNextActionLabel(
-            rows.length === 1 ? `Add ${noun}: ${rows[0].title}` : `Bulk add: ${rows.length} items`
-          );
-          set((s) => projectItems([...s.items, ...rows]));
-          if (!userId) continue;
-          for (const row of rows) {
-            const live = saved?.get(row.id);
-            if (!live) {
-              persistNewItem(userId, row, undefined, get);
-            } else if (dbTypeOf(live) !== dbTypeOf(row)) {
-              // Its type switch went out before the insert committed and found nothing.
-              void queueTypeSwitch(row.id, () => dbChangeItemType(row.id, dbTypeOf(live), row, userId));
-            } else {
-              // The database holds the row as first inserted. An edit whose
-              // UPDATE raced that insert (or failed with the load) is only here.
-              // Sent at once: the read that found the row saw its insert commit.
-              const patch = diffItem(live, row);
-              // A date list the row never had reads back empty: the same dates.
-              // Any other difference updateItem applies as per-date intents.
-              for (const key of ['completedDates', 'skippedDates'] as const) {
-                const dates = (i: Item) => [...(i[key] ?? [])].sort().join();
-                if (dates(live) === dates(row)) delete patch[key];
-              }
-              if (Object.keys(patch).length > 0) {
-                dbUpdateItem(row.id, dbTypeOf(row), patch).catch(console.error);
-              }
-            }
+        } else {
+          for (const rows of refiled) {
+            const noun = getItemTypeConfig(itemTypeName(rows[0])).label.toLowerCase();
+            setNextActionLabel(
+              rows.length === 1 ? `Add ${noun}: ${rows[0].title}` : `Bulk add: ${rows.length} items`
+            );
+            set((s) => projectItems([...s.items, ...rows]));
           }
         }
+        const userId = get().userId;
+        if (!userId) return;
+        for (const rows of refiled) {
+          // Sent at once: the read that found the row saw its insert commit.
+          for (const row of rows) {
+            const live = saved?.get(row.id);
+            if (live) writeOver(userId, live, row);
+          }
+          // A group's task rows as the one insert its add was. One that fails on
+          // the primary key was saved after all, and is settled as saved.
+          const missing = rows.filter((row) => !saved?.has(row.id));
+          insertNewRows(userId, missing, get().items, (err, failed) => {
+            if (isUniqueViolation(err)) void settleAlreadySaved(userId, failed, filed);
+            else console.error(err);
+          });
+        }
+      },
+
+      settleLandedRows: (entries) => {
+        const s = get();
+        const byId = new Map(s.items.map((i) => [i.id, i]));
+        const removed = new Set<string>();
+        const swap = new Map<string, { from: Item; to: Item }>();
+        for (const { row, filed, gone } of entries) {
+          const landed = byId.get(row.id);
+          if (!landed) continue;
+          if (gone) {
+            removed.add(row.id);
+            continue;
+          }
+          // The landing placed it, so its order stays the database's.
+          const merged = layOver(landed, row, filed, s.projects);
+          if (JSON.stringify(merged) !== JSON.stringify(landed)) swap.set(row.id, { from: landed, to: merged });
+        }
+        // Its subtasks go with it, as deleteTask takes them.
+        for (const item of s.items) {
+          const parent = parentIdOf(item);
+          if (parent && removed.has(parent)) removed.add(item.id);
+        }
+        if (removed.size === 0 && swap.size === 0) return;
+        foldIntoHistory(removeAndSwap(removed, swap));
+        const userId = s.userId;
+        if (!userId) return;
+        for (const { from, to } of swap.values()) writeOver(userId, from, to);
+        for (const id of removed) dbDeleteItem(id, dbTypeOf(byId.get(id)!)).catch(console.error);
       },
 
       updateTask: (id, updates, opts) => {
@@ -5646,6 +5882,95 @@ export function mergeAgentStates(rows: readonly AgentStateRow[]): number {
     isUpdatingUndoRedo = wasSuppressed;
   }
   return changes.size;
+}
+
+/**
+ * Change the store's items and every history snapshot's the same way, with no
+ * entry of its own and no write: what it changes is what the person had
+ * before a landing (rows they filed while the account's data had not landed),
+ * so undo must neither take it away nor bring back what it removed.
+ * Suppressed the save-and-restore way, as mergeAgentStates is.
+ */
+function foldIntoHistory(fold: (items: Item[]) => Item[]): void {
+  const wasSuppressed = isUpdatingUndoRedo;
+  isUpdatingUndoRedo = true;
+  try {
+    usePlannerStore.setState((s) => projectItems(fold(s.items)));
+    historyStack = historyStack.map((snapshot) => ({ ...snapshot, items: fold(snapshot.items) }));
+    updatePrevStateBaseline(historySlice(usePlannerStore.getState()));
+  } finally {
+    isUpdatingUndoRedo = wasSuppressed;
+  }
+}
+
+/** A fold that drops `remove`, and swaps in `to` wherever a row still reads exactly as `from`. */
+function removeAndSwap(
+  remove: ReadonlySet<string>,
+  swap: ReadonlyMap<string, { from: Item; to: Item }>,
+): (items: Item[]) => Item[] {
+  const was = new Map([...swap].map(([id, { from }]) => [id, JSON.stringify(from)]));
+  return (items) =>
+    items.flatMap((item) => {
+      if (remove.has(item.id)) return [];
+      const change = swap.get(item.id);
+      return change && JSON.stringify(item) === was.get(item.id) ? [change.to] : [item];
+    });
+}
+
+/**
+ * Rows filed again whose insert failed on the primary key: the database had
+ * them after all (the question about them failed or ran out of time, or a
+ * first insert committed in between). Each is read and settled as the question
+ * would have settled it. Live, what the person changed since filing is laid
+ * over it and written, and the store shows the result where it still shows
+ * the row as filed. In the bin (deleted on another device), it leaves the
+ * store and every snapshot, and a subtask of it is deleted too. With no row,
+ * it is inserted once more: a statement that failed on another row's id
+ * inserted none of its rows.
+ */
+async function settleAlreadySaved(
+  userId: string,
+  rows: readonly Item[],
+  filed: ReadonlyMap<string, Item> | undefined,
+): Promise<void> {
+  let found: { item: Item; deleted: boolean }[];
+  try {
+    found = await fetchItemsAnyState(userId, rows.map((row) => row.id));
+  } catch (err) {
+    console.error('[planner] could not read rows already saved', err);
+    return;
+  }
+  const s = usePlannerStore.getState();
+  if (s.userId !== userId) return;
+  const saved = new Map(found.map((f) => [f.item.id, f]));
+  const current = new Map(s.items.map((item) => [item.id, item]));
+  const binned = new Set(rows.filter((row) => saved.get(row.id)?.deleted).map((row) => row.id));
+  const removed = new Set(binned);
+  for (const item of s.items) {
+    const parent = parentIdOf(item);
+    if (parent && binned.has(parent)) removed.add(item.id);
+  }
+  const swap = new Map<string, { from: Item; to: Item }>();
+  const missing: Item[] = [];
+  for (const row of rows) {
+    const mine = current.get(row.id);
+    // Removed since, by the person (its delete found the row) or above.
+    if (!mine || removed.has(row.id)) continue;
+    const db = saved.get(row.id);
+    if (!db) {
+      missing.push(mine);
+      continue;
+    }
+    const merged = layOver(db.item, mine, filed?.get(row.id), s.projects, 'order' in mine ? mine.order : undefined);
+    writeOver(userId, db.item, merged);
+    if (JSON.stringify(merged) !== JSON.stringify(mine)) swap.set(row.id, { from: mine, to: merged });
+  }
+  insertNewRows(userId, missing, s.items, (err) => console.error(err));
+  if (removed.size > 0 || swap.size > 0) foldIntoHistory(removeAndSwap(removed, swap));
+  for (const id of removed) {
+    const item = current.get(id);
+    if (item && !binned.has(id)) dbDeleteItem(id, itemDbType(item)).catch(console.error);
+  }
 }
 
 /* ── batches ───────────────────────────────────────────────────────────── */

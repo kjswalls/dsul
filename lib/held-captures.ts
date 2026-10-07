@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { usePlannerStore } from './planner-store';
+import { awaitItemCreates, getHistoryInfo, usePlannerStore } from './planner-store';
 import { selectPlannerLoaded, selectPlannerSettled } from './planner-ready';
 import { fetchItemsAnyState } from './db';
 import { setBulkFiledListener } from './filed-rows';
@@ -33,22 +33,33 @@ import type { Item } from './planner-types';
  * it, and it still counts toward "Adds once synced" until then. That is over a
  * failed load, and while a load is in flight: a Retry leaves the failed load's
  * rows on screen to edit and add to, and a list (unlike a capture) is filed
- * there at once. A landing settles each one:
- *   - a row the landing brought back is confirmed;
+ * there at once. The entry also keeps the row as first filed, so a landing can
+ * tell what the person changed since: their change is laid over the
+ * database's copy, and a field they never touched keeps the database's value
+ * (an edit made on another device). A landing settles each one:
  *   - one the person removed before it (a delete, an undone add) is theirs to
- *     remove and is not filed again. Its entry is marked, never dropped, while
- *     the row is off the store, so a restore (the undo strip, ⌘Z, a redo of the
- *     add) puts it back in line: the restore's own write is an UPDATE that
- *     finds nothing when the insert never committed;
- *   - for any other, the database is asked first, for a few seconds at most.
- *     With no row at all it is filed again, whole, under the SAME id, so an
- *     insert that commits late fails on the primary key instead of making a
- *     second row. A row in the bin was deleted on another device and stays
- *     there. A live row the landing missed (its insert committed after the
- *     Retry's read began) is not inserted again, but what the person changed
- *     since is written over it: an UPDATE sent while that insert was in flight
- *     found nothing. When the question fails or goes unanswered, every one is
- *     filed again: the id still guards against a duplicate.
+ *     remove. Its entry is marked, never dropped, while the row is off the
+ *     store, so a restore (the undo strip, ⌘Z, a redo of the add) puts it back
+ *     in line: the restore's own write is an UPDATE that finds nothing when the
+ *     insert never committed. Not filed again; brought back by the landing (its
+ *     delete failed), it is deleted again;
+ *   - a row the landing brought back takes what the person changed since
+ *     filing, written over it: an edit whose UPDATE failed with the load is
+ *     only here;
+ *   - for any other, the database is asked first, once this tab's own first
+ *     insert of it has settled, for a few seconds at most. With no row at all
+ *     it is filed again, whole, under the SAME id, so an insert that commits
+ *     late fails on the primary key instead of making a second row, and is
+ *     then settled as a row the database holds. A row in the bin was deleted on
+ *     another device and stays there, its subtasks with it. A live row the
+ *     landing missed (its insert committed after the Retry's read began) is not
+ *     inserted again, but what the person changed since is written over it,
+ *     dates included after a type switch: an UPDATE sent while that insert was
+ *     in flight found nothing. When the question fails or goes unanswered,
+ *     every one is filed again: the id still guards against a duplicate.
+ * None of this adds an undo entry, except the re-file of a row the landing
+ * missed, as the add it was, and only if the person has not acted since the
+ * landing: on top of their action it would take their next ⌘Z.
  *
  * Held per ACCOUNT. An entry is bound to the userId it was typed under and is
  * dropped the moment the store answers for anyone else, sign-out (null)
@@ -72,6 +83,8 @@ type HeldCapture = {
    * until a landing settles it.
    */
   item?: Item;
+  /** Set with `item`: the row as first filed, so a landing can tell what the person changed since. */
+  filed?: Item;
   /** Filed by one add with the entries sharing it (a pasted list), and filed again as one. */
   batch?: number;
   /** Its row is off the failed load's store. Recomputed on every pass, so a restore clears it. */
@@ -80,9 +93,9 @@ type HeldCapture = {
   asking?: boolean;
 };
 
-type FiledCapture = HeldCapture & { item: Item };
+type FiledCapture = HeldCapture & { item: Item; filed: Item };
 
-const isFiled = (e: HeldCapture): e is FiledCapture => !!e.item;
+const isFiled = (e: HeldCapture): e is FiledCapture => !!e.item && !!e.filed;
 
 export const useHeldCaptures = create<{ held: HeldCapture[] }>(() => ({ held: [] }));
 
@@ -173,7 +186,7 @@ function keepUntilLanded(userId: string, rows: readonly Item[], asOne = false): 
   if (rows.length === 0) return;
   const batch = asOne && rows.length > 1 ? ++batches : undefined;
   for (const row of rows) noteFiledBeforeLanding(userId, row.id);
-  const entries: HeldCapture[] = rows.map((item) => ({ userId, title: item.title, item, batch }));
+  const entries: HeldCapture[] = rows.map((item) => ({ userId, title: item.title, item, filed: item, batch }));
   useHeldCaptures.setState(({ held }) => ({ held: [...held, ...entries] }));
   ensureReleaser();
 }
@@ -263,14 +276,15 @@ function release(): void {
   const typed = mine.filter((e) => !isFiled(e));
   let kept: HeldCapture[];
   let ask: FiledCapture[] = [];
+  let back: FiledCapture[] = [];
   if (landed) {
-    // A filed row the landing brought back is confirmed, and one removed
-    // before it is not filed again. The rest wait on the database.
+    // A filed row the landing brought back is settled against the landed
+    // copy, and one removed before the landing is not filed again. The rest
+    // wait on the database.
     const onStore = new Set(s.items.map((i) => i.id));
-    ask = mine
-      .filter(isFiled)
-      .filter((e) => !e.gone && !e.asking && !onStore.has(e.item.id))
-      .map((e) => ({ ...e, asking: true }));
+    const filed = mine.filter(isFiled).filter((e) => !e.asking);
+    back = filed.filter((e) => onStore.has(e.item.id));
+    ask = filed.filter((e) => !e.gone && !onStore.has(e.item.id)).map((e) => ({ ...e, asking: true }));
     kept = [...mine.filter((e) => e.asking), ...ask];
   } else {
     // Over a failed load the rows already filed stay to be confirmed.
@@ -278,6 +292,15 @@ function release(): void {
   }
   useHeldCaptures.setState({ held: kept });
   if (kept.length === 0) stopReleaser();
+  // Before the captures below add entries of their own: what this settles is
+  // what the person had before the landing, folded into the history as such.
+  if (back.length > 0) {
+    try {
+      s.settleLandedRows(back.map((e) => ({ row: e.item, filed: e.filed, gone: !!e.gone })));
+    } catch (err) {
+      console.error('[held-captures] rows the landing brought back failed to settle', err);
+    }
+  }
   // In the order typed, one undo entry each: exactly as if each Enter had landed.
   const filed: string[] = [];
   for (const e of typed) {
@@ -303,14 +326,21 @@ const ASK_TIMEOUT_MS = 4000;
 /**
  * The filed rows a landing did not bring back, filed again once the database
  * has said which of them it holds (see the header). Each pasted list is filed
- * again as the one undo entry it was, and each capture as its own.
+ * again as the one undo entry it was, and each capture as its own, unless the
+ * person has acted since the landing: then the rows are folded in with no entry,
+ * so the next undo is still theirs.
  */
 async function refileAfterAsking(userId: string, asked: FiledCapture[]): Promise<void> {
+  const ids = asked.map((e) => e.item.id);
+  const mark = historyMark();
   let saved: Map<string, { item: Item; deleted: boolean }> | null = null;
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const found = await Promise.race([
-      fetchItemsAnyState(userId, asked.map((e) => e.item.id)),
+      // This tab's own first inserts of these rows settle first: asked while
+      // one is still in flight, the answer is "no row", and the insert sent
+      // again races it on the primary key.
+      awaitItemCreates(ids).then(() => fetchItemsAnyState(userId, ids)),
       new Promise<never>((_, reject) => {
         timer = setTimeout(() => reject(new Error(`no answer in ${ASK_TIMEOUT_MS}ms`)), ASK_TIMEOUT_MS);
       }),
@@ -334,14 +364,38 @@ async function refileAfterAsking(userId: string, asked: FiledCapture[]): Promise
   if (rest.length === 0) stopReleaser();
   const live = new Map<string, Item>();
   for (const [id, row] of saved ?? []) if (!row.deleted) live.set(id, row.item);
-  const groups = byBatch(still).map((group) =>
-    group.flatMap(({ item }) => (saved?.get(item.id)?.deleted ? [] : [item]))
-  );
+  // A row in the bin was deleted elsewhere and stays there. So does a subtask
+  // whose parent will not exist: not on the planner, not filed again here,
+  // and not live (in the bin, its delete would have taken the subtask with
+  // it; with no row at all, the insert would fail on its parent).
+  const filing = new Set(still.filter((e) => !saved?.get(e.item.id)?.deleted).map((e) => e.item.id));
+  if (saved) {
+    const onStore = new Set(s.items.map((i) => i.id));
+    for (let dropped = true; dropped; ) {
+      dropped = false;
+      for (const { item } of still) {
+        const parent = parentOf(item);
+        if (!filing.has(item.id) || !parent || onStore.has(parent) || filing.has(parent) || live.has(parent)) continue;
+        filing.delete(item.id);
+        dropped = true;
+      }
+    }
+  }
+  const groups = byBatch(still).map((group) => group.flatMap(({ item }) => (filing.has(item.id) ? [item] : [])));
+  const filed = new Map(still.map((e) => [e.item.id, e.filed]));
   try {
-    s.refileItems(groups, live);
+    s.refileItems(groups, { saved: live, filed, quiet: historyMark() !== mark });
   } catch (err) {
     console.error('[held-captures] rows failed to file again', err);
   }
+}
+
+const parentOf = (item: Item): string | undefined => ('parentItemId' in item ? item.parentItemId : undefined);
+
+/** Where the undo history stands: changed by any entry pushed, undone or redone. */
+function historyMark(): string {
+  const { currentIndex, actionLog } = getHistoryInfo();
+  return `${currentIndex}:${actionLog[0]?.id ?? ''}`;
 }
 
 /** Runs of entries one add filed together, as groups; every other entry alone. */
