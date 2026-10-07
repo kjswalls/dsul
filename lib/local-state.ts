@@ -7,6 +7,7 @@ import { useEODStore } from './eod-store';
 import { useKeyboardShortcutsStore } from './keyboard-shortcuts-store';
 import { useMorningStore } from './morning-store';
 import { usePlannerStore } from './planner-store';
+import { releaseThisBrowserPush } from './push-release';
 import { useSidebarStore } from './sidebar-store';
 import { clearReleased } from './sweep-grace';
 import { useViewStore } from './view-store';
@@ -351,6 +352,8 @@ function clearStores(ctx: ClearContext): void {
 export function clearUserScopedLocalState(): void {
   clearStores({ scope: 'all', incomingUserId: null });
   setLocalStateOwner(null);
+  // The one per-user artefact that is not in localStorage (#254). Not awaited.
+  void releaseThisBrowserPush();
 }
 
 /**
@@ -375,6 +378,12 @@ export function adoptLocalState(userId: string): boolean {
   // anyone. A stamp naming a different account is a known user change.
   clearStores({ scope: owner === null ? 'disclosive' : 'all', incomingUserId: userId });
   setLocalStateOwner(userId);
+  // A stamp naming someone else is a KNOWN user change, so the push
+  // subscription goes too (#254), before the new account can subscribe. Not on
+  // an unstamped browser: that is also every load in a browser that cannot
+  // write the stamp (private mode), where releasing would switch the owner's
+  // own reminders off on every visit.
+  if (owner !== null) void releaseThisBrowserPush();
   return true;
 }
 
@@ -399,5 +408,7 @@ if (typeof window !== 'undefined') {
   window.addEventListener('storage', (event) => {
     if (event.key !== LOCAL_STATE_OWNER_KEY) return;
     clearStores({ scope: 'all', incomingUserId: event.newValue });
+    // The writing tab released already; a repeat finds nothing and returns.
+    void releaseThisBrowserPush();
   });
 }

@@ -11,7 +11,8 @@ import { ItemDialog, type ItemDialogState } from '@/components/planner/item-dial
 import { registerItemPanelClose, useUIStore } from '@/lib/ui-store';
 import { useSelectionStore } from '@/lib/selection-store';
 import { subscribeClickAway } from '@/lib/click-away';
-import { useCanvasWide } from '@/lib/view-store';
+import { useCanvasWide, useViewStore } from '@/lib/view-store';
+import { SectionBoundary } from '@/components/primitives/section-boundary';
 import { useMediaQuery } from '@/hooks/use-media-query';
 import { useFocusOnlyScroll } from '@/hooks/use-focus-only-scroll';
 import { useLayoutDef } from '@/lib/look-store';
@@ -151,7 +152,15 @@ export const DesktopShell = memo(function DesktopShell() {
   // the one-row selection rule above holds there too.
   useEffect(() => registerItemPanelClose(() => handlePanelOpenChange(false)), [handlePanelOpenChange]);
 
-  const sidebarLeft = slots.sidebar === 'left' && <Sidebar />;
+  // Each region fails on its own (#74, components/primitives/section-boundary.tsx):
+  // a throw in the grid no longer takes the braindump and the rail with it.
+  // Moving to another view clears the canvas's caught error.
+  const viewKey = useViewStore((s) => `${s.scope}:${s.layout}`);
+  const sidebarLeft = slots.sidebar === 'left' && (
+    <SectionBoundary label="braindump" className="w-[280px] flex-none">
+      <Sidebar />
+    </SectionBoundary>
+  );
   const pages = (
     <>
       {sidebarLeft}
@@ -280,7 +289,9 @@ export const DesktopShell = memo(function DesktopShell() {
             automatic minimum size of a flex item: this column is what
             use-fit-hour-px measures into. */}
         <div data-tour="timeline" className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <ViewRouter />
+          <SectionBoundary label="view" resetKey={viewKey}>
+            <ViewRouter />
+          </SectionBoundary>
         </div>
 
         {/* The "?" help hub, in the canvas's own corner (help-menu.tsx has why
@@ -618,7 +629,11 @@ export const RailColumn = memo(function RailColumn({
         railChrome={railChrome}
         conversation={canChat ? 'pinned' : 'none'}
       />
-      {askMounted && <RightRail visible={mode === 'ask'} leaving={leaving} overlays={overlays} />}
+      {askMounted && (
+        <SectionBoundary label="Ask panel" className="w-[360px] flex-none">
+          <RightRail visible={mode === 'ask'} leaving={leaving} overlays={overlays} />
+        </SectionBoundary>
+      )}
     </div>
   );
 });
