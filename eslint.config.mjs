@@ -14,6 +14,7 @@ export default defineConfig([
     'playwright-report/**',
     'test-results/**',
     'push-test.js',
+    'lib/mods/sandbox/generated/**',
   ]),
   coreWebVitals,
   typescript,
