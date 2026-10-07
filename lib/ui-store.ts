@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Task, HabitItem, Item, KnownItemType, TimeBucket } from './planner-types';
 import { isPlannerPreviewing } from './planner-ready';
+import { usePlannerStore } from './planner-store';
 
 /**
  * Ephemeral UI state for the desktop shell: which dialog is open, the shared
@@ -127,11 +128,25 @@ interface UIStore {
    * look-only preview. Held here instead of opened, last request wins, and
    * opened by useDeferredDialogPromotion (hooks/use-deferred-dialog.ts) once
    * fresh data lands. Never rendered from.
+   *
+   * A pasted list (`isWaitingPaste`) is the exception. The paste was consumed
+   * by the field, so its text exists nowhere else: only another bulk-add
+   * replaces it here (a later item or organizer request is refused), and it
+   * can outlive the landing, waiting for the slot to free instead of being
+   * dropped (the hook opens it then).
    */
   deferredDialog: ActiveDialog | null;
   /**
-   * While previewing, a data slot is deferred rather than opened. Any other
-   * slot opens as usual; a data slot opened on real data drops the deferral.
+   * The account `deferredDialog` was asked for under, stamped with it. The
+   * promotion opens it only for that account, including when it opens after
+   * the edge (a promoter mounted late, a pasted list waiting for the slot).
+   */
+  deferredFor: string | null;
+  /**
+   * While previewing, a data slot is deferred rather than opened (refused
+   * while a pasted list waits, unless it is a bulk-add). Any other slot opens
+   * as usual; a data slot opened on real data drops the deferral, except a
+   * waiting pasted list, which only a newer bulk-add replaces.
    */
   openDialog: (dialog: ActiveDialog) => void;
   /** Leaves `deferredDialog` alone: the launcher closes itself right after running "Open Organize". */
@@ -215,6 +230,14 @@ export const isDataDialog = (dialog: ActiveDialog | null | undefined): boolean =
   !!dialog && PREVIEW_DEFERRED_SLOTS.has(dialog.type);
 
 /**
+ * A bulk-add carrying pasted text. The paste was `preventDefault`ed, so the
+ * dialog is the only place the text exists: a deferral of one is never dropped
+ * for a busy slot, and waits for it to free.
+ */
+export const isWaitingPaste = (dialog: ActiveDialog | null | undefined): boolean =>
+  dialog?.type === 'bulk-add' && !!dialog.text;
+
+/**
  * A data slot is open or waiting to open. The preview is not offered then:
  * /settings arms Organize and pushes '/', and that console must open on fresh
  * data, as it does today.
@@ -240,13 +263,22 @@ function isNewSurfaceSwap(prev: ActiveDialog | null, next: ActiveDialog): boolea
 export const useUIStore = create<UIStore>()((set, get) => ({
   activeDialog: null,
   deferredDialog: null,
+  deferredFor: null,
   openDialog: (dialog) => {
     const data = isDataDialog(dialog);
     if (data && isPlannerPreviewing()) {
-      set({ deferredDialog: dialog });
+      // A waiting paste is typed text with no other copy; losing a deferred
+      // click instead costs far less. Only another list replaces it, as below.
+      if (isWaitingPaste(get().deferredDialog) && dialog.type !== 'bulk-add') return;
+      // Optional-called, as planner-ready's readers: some unit-test mocks of
+      // planner-store have no getState.
+      set({ deferredDialog: dialog, deferredFor: usePlannerStore.getState?.()?.userId ?? null });
       return;
     }
-    const { activeDialog: prev, displacedItemId } = get();
+    const { activeDialog: prev, displacedItemId, deferredDialog } = get();
+    // A data slot opened on real data supersedes whatever was waiting, but a
+    // pasted list only gives way to another list: it opens once this one closes.
+    const supersede = data && (dialog.type === 'bulk-add' || !isWaitingPaste(deferredDialog));
     let displaced: string | null = null;
     if (dialog.type === 'launcher') {
       // A launcher re-opened over itself (⌘K pressed inside it) is still the
@@ -258,8 +290,7 @@ export const useUIStore = create<UIStore>()((set, get) => ({
       activeDialog: dialog,
       displacedItemId: displaced,
       dialogHandoff: isNewSurfaceSwap(prev, dialog),
-      // A data slot opened on real data supersedes whatever was waiting.
-      ...(data ? { deferredDialog: null } : {}),
+      ...(supersede ? { deferredDialog: null, deferredFor: null } : {}),
     });
   },
   closeDialog: () => set({ activeDialog: null, displacedItemId: null, dialogHandoff: false }),

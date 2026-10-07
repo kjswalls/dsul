@@ -9,6 +9,7 @@ import {
   EASE_SET_DOWN,
   EASE_SETTLE,
   EASE_TYPE,
+  LIFT_SHADOW,
   SETTLE,
   SETTLE_LIMITS,
   createKeyDeduper,
@@ -47,7 +48,10 @@ import { prefersReducedMotion } from '@/lib/zen-transition';
  *     A move's fill is never `forwards`, so nothing outlives the run — no
  *     resting transform for dnd-kit, Zen's trace or hover-expand to trip over.
  *     (The one `forwards` is a lift's set-down, which holds a box-shadow at
- *     `none` until its release cancels it; see "Stacking".)
+ *     `none` until its release cancels it; see "Stacking".) Every end the run
+ *     times (a release, a set-down, the finish) follows when the engine
+ *     actually started each animation, not the call that played it
+ *     (followStarts): the compositor starts a glide frames later under load.
  *
  * A mutation counts as a commit only when it moved something: most records in
  * a scope move nothing (a hover writing a row's --title-mask, the ScrollArea
@@ -65,10 +69,10 @@ import { prefersReducedMotion } from '@/lib/zen-transition';
  * z-index (and `position: relative` where none applies) on the outermost box
  * a row glides in from outside of and on a row that crosses its neighbours,
  * plus that row's ground (a background-color over its whole box), a
- * translucent fill made solid (background-image layers) and a soft shadow
- * (box-shadow, the app's lightest elevation token), set down as the row lands
- * — each value put back exactly as found, at its release or by finishSettle,
- * whatever ends the run.
+ * translucent fill made solid (background-image layers) and a shadow
+ * (box-shadow, LIFT_SHADOW: the elevation the app's floating surfaces draw),
+ * set down as the row lands — each value put back exactly as found, at its
+ * release or by finishSettle, whatever ends the run.
  *
  * THE LANDING SHIELD. A landing that changed what is on screen with nothing
  * holding the old geometry (reduced motion, `static` mode, a veto at play, a
@@ -81,8 +85,12 @@ import { prefersReducedMotion } from '@/lib/zen-transition';
  * Keyboard is untouched (a click with no pointer count is Enter or Space),
  * and so are text fields, which tick nothing and must take focus.
  *
- * `<html data-planner-settling>` is up from the landing until the run and any
- * shield are over; e2e's waitForAppReady waits it out.
+ * `<html data-planner-settling>` is up while something animates or a shield
+ * runs: raised by a hold that has animations to hold (a landing's, or a
+ * follow-up's re-hold) or by a shield starting, and dropped once the run and
+ * every shield are over. A landing that changed nothing raises nothing while
+ * it watches its follow-ups (two frames at least); a follow-up that moves
+ * something raises it then. e2e's waitForAppReady waits it out.
  *
  * Participants are declarative (`data-settle-scope`, `data-settle-key`,
  * `data-settle-role="frame"`), tracked by KEY, never by element: a skipped
@@ -204,18 +212,26 @@ interface Bounds {
   bottom: number;
 }
 
-type AnimKind = 'translate' | 'clip';
+/**
+ * A move's glide, the translate an appear or a rise comes in on (its lift), or
+ * a clip. A retarget recreates the glides from where they are drawn; the lifts
+ * and the clips keep running, so an appear's lift stays paired with its type-in.
+ */
+type AnimKind = 'glide' | 'lift' | 'clip';
 
 interface Live {
   anim: Animation;
-  /** Retarget recreates the translates from where they are drawn; the clips keep running. */
   kind: AnimKind;
   box: HTMLElement;
   /** A translate's first keyframe, which it runs down to zero. */
   from: Vec | null;
   /** delay + duration, should the effect not report its own end. */
   span: number;
-  /** performance.now() at which it ends; set when it starts playing. */
+  /**
+   * performance.now() at which it ends: 0 while held, then timed from the call
+   * that played it, then from its own start once the engine reports one
+   * (followStarts).
+   */
   end: number;
 }
 
@@ -245,7 +261,10 @@ interface Run {
   animate: boolean;
   phase: 'hold' | 'play';
   landedAt: number;
+  /** When the glides began: play()'s clock, then the engine's own start for them once it reports one. */
   playedAt: number;
+  /** A retime is queued for the end of this microtask checkpoint (followStarts). */
+  retime: boolean;
   frames: number;
   quiet: number;
   /** A scope committed since the last frame. */
@@ -355,10 +374,11 @@ export function onLandingCommitted(): void {
 }
 
 /**
- * Ends any settle at once: every animation cancelled (fill is never
- * `forwards`, so each element rests at its natural layout), observers,
- * listeners and timers dropped. The attribute stays only for a live shield.
- * Safe to call at any time, from anywhere — a store listener included.
+ * Ends any settle at once: every animation cancelled, a set-down's `forwards`
+ * fill included (unstackScope), so each element rests at its natural layout;
+ * observers, listeners and timers dropped. The attribute stays only for a
+ * live shield. Safe to call at any time, from anywhere — a store listener
+ * included.
  */
 export function finishSettle(): void {
   const r = run;
@@ -881,7 +901,10 @@ function describeAnimations(
     });
 
   for (const m of plan.moves) {
-    // `add`: on top of the box's own transform (the gutter live-time's -translate-y-1/2).
+    // Described as `add`; realize() makes it a `replace` (which the compositor
+    // can run) unless the box has a transform of its own to add to, or another
+    // translate to sum with. Tailwind's translate utilities (the gutter
+    // live-time's -translate-y-1/2) set `translate`, not `transform`: see replaces().
     if (Math.abs(m.dx) >= PX || Math.abs(m.dy) >= PX) {
       const keyframes = [{ transform: translate(m.dx, m.dy) }, { transform: translate(0, 0) }];
       add({ key: m.key, from: { x: m.dx, y: m.dy }, keyframes, duration: moveMs, delay: 0, composite: 'add' }, EASE_MOVE, true);
@@ -955,15 +978,20 @@ function typeInFrames(start: string, text: number | undefined): { keyframes: Key
   };
 }
 
-/** The described animations, created on their boxes (running: the caller pauses or schedules them). */
-function realize(specs: AnimSpec[], boxes: Map<string, HTMLElement>): Live[] {
+/**
+ * The described animations, created on their boxes (running: the caller
+ * pauses or schedules them). `kept` is what a retarget leaves running: a
+ * translate among it is one more to sum with on its box.
+ */
+function realize(specs: AnimSpec[], boxes: Map<string, HTMLElement>, kept: Live[] = []): Live[] {
   const out: Live[] = [];
   const translates = new Map<HTMLElement, number>();
+  for (const l of kept) if (l.from) translates.set(l.box, (translates.get(l.box) ?? 0) + 1);
   for (const sp of specs) {
     const box = sp.from ? boxes.get(sp.key) : undefined;
     if (box) translates.set(box, (translates.get(box) ?? 0) + 1);
   }
-  for (const { key, from, keyframes, duration, delay, easing, composite } of specs) {
+  for (const { key, from, glide, keyframes, duration, delay, easing, composite } of specs) {
     const box = boxes.get(key);
     if (!box || typeof box.animate !== 'function') continue;
     // `backwards` only: a delayed reveal shows its first frame through the
@@ -975,7 +1003,8 @@ function realize(specs: AnimSpec[], boxes: Map<string, HTMLElement>): Live[] {
       fill: 'backwards',
       composite: from && composite === 'add' && replaces(box, translates) ? 'replace' : composite,
     });
-    out.push({ anim, kind: from ? 'translate' : 'clip', box, from, span: delay + duration, end: 0 });
+    const kind: AnimKind = from ? (glide ? 'glide' : 'lift') : 'clip';
+    out.push({ anim, kind, box, from, span: delay + duration, end: 0 });
   }
   return out;
 }
@@ -984,11 +1013,11 @@ function realize(specs: AnimSpec[], boxes: Map<string, HTMLElement>): Live[] {
  * Whether a translate may `replace` rather than `add`: the box has no
  * transform of its own to add to (Tailwind's translate utilities set the
  * separate `translate` property, which a transform animation leaves alone),
- * and no other translate of this pass to sum with. The two then draw the
- * same, and only a replace can run on the compositor: Chromium animates any
- * other composite mode on the main thread, where the landing's own work
- * (follow-up commits, the fresh rows' effects) stalled the glide's first
- * frames and then jumped it.
+ * and no other translate to sum with, of this pass or one a retarget keeps
+ * running (an appear's lift). The two then draw the same, and only a replace
+ * can run on the compositor: Chromium animates any other composite mode on the
+ * main thread, where the landing's own work (follow-up commits, the fresh
+ * rows' effects) stalled the glide's first frames and then jumped it.
  */
 function replaces(box: HTMLElement, translates: Map<HTMLElement, number>): boolean {
   if ((translates.get(box) ?? 0) > 1) return false;
@@ -1026,8 +1055,9 @@ function replaces(box: HTMLElement, translates: Map<HTMLElement, number>): boole
 //    stands; a translucent one (a skipped row's, a selected row's wash) is made
 //    SOLID, see below. A block that draws its surface on a child (a schedule
 //    block's pane, `data-settle-plate`) takes no ground: its plates are made
-//    solid instead. The lifted box casts a soft shadow (LIFT_SHADOW) when the
-//    row has a surface and no shadow of its own; a plate casts it, when it has
+//    solid instead. The lifted box casts LIFT_SHADOW (the elevation the app's
+//    floating surfaces draw, so the edge it crosses on is seen) when the row
+//    has a surface and no shadow of its own; a plate casts it, when it has
 //    none.
 //  - SOLID. A raised or lifted box whose own fill is translucent would show
 //    whatever it crosses through it. Its fill is redrawn as it reads at rest,
@@ -1048,14 +1078,13 @@ function replaces(box: HTMLElement, translates: Map<HTMLElement, number>): boole
 // z-index wherever they sit in the DOM, and a tie would fall to tree order.
 //
 // None of it touches opacity, filter, transform or any custom property, none of
-// it is written where it would start a CSS transition, and nothing is written
-// where nothing animates (vetoes, static mode). The set-down is the run's only
-// animation of anything but transform and clip-path.
+// it is written where it would start a CSS transition (a ground, a solid fill
+// and a shadow are each skipped where the element transitions that property),
+// and nothing is written where nothing animates (vetoes, static mode). The
+// set-down is the run's only animation of anything but transform and clip-path.
 
 type StackProp = 'z-index' | 'position' | 'background-color' | 'background-clip' | 'background-image' | 'box-shadow';
 
-/** The lightest elevation the app draws (app/globals.css, re-tuned per theme), read, never written. */
-const LIFT_SHADOW = 'var(--shadow-soft-sm)';
 /** A block's own surface, drawn on a child of the row: a schedule block's pane. */
 const PLATE_SELECTOR = '[data-settle-plate]';
 /**
@@ -1226,9 +1255,14 @@ function platesOf(row: HTMLElement): HTMLElement[] {
   return [...row.querySelectorAll<HTMLElement>(PLATE_SELECTOR)].filter((p) => p.closest(KEY_SELECTOR) === row);
 }
 
-/** The ground a lifted row crosses on: none when it has its own, else the nearest painted one within the scope. */
+/**
+ * The ground a lifted row crosses on: none when it has its own, else the
+ * nearest painted one within the scope. None either where the row transitions
+ * its background-color: the write would fade the ground in under the glide.
+ */
 function groundOf(row: Element, root: Element, styleOf: StyleOf): string | null {
-  if (painted(styleOf(row).backgroundColor)) return null;
+  const cs = styleOf(row);
+  if (painted(cs.backgroundColor) || transitions(cs, 'background-color')) return null;
   for (let el = row.parentElement; el; el = el.parentElement) {
     const bg = styleOf(el).backgroundColor;
     if (painted(bg)) return bg;
@@ -1343,7 +1377,7 @@ function raiser(
 /**
  * What one pass of a scope wants stacked, read from layout before any of its
  * animations exist: `boxes` and `m` are the pass's LAST, `kept` the clip
- * reveals a retarget leaves running.
+ * reveals and lifts a retarget leaves running.
  */
 function stackingWants(root: Element, specs: AnimSpec[], m: Measured, kept: Live[], styleOf: StyleOf): Map<HTMLElement, Want> {
   const wants = new Map<HTMLElement, Want>();
@@ -1352,8 +1386,8 @@ function stackingWants(root: Element, specs: AnimSpec[], m: Measured, kept: Live
     const was = wants.get(el);
     wants.set(el, was ? mergeWant(was, full) : full);
   };
-  // What each box's own animations add at the first frame, and which boxes animate at all.
-  const offsets = new Map<Element, Vec>();
+  // What each box's animations add at the first frame (a kept lift, what it adds now), and which boxes animate at all.
+  const offsets = runningOffsets(kept);
   const animated = new Set<Element>(kept.map((l) => l.box));
   for (const sp of specs) {
     const box = m.boxes.get(sp.key);
@@ -1513,11 +1547,7 @@ function stackScope(s: ScopeRun, specs: AnimSpec[], m: Measured, kept: Live[], m
 function unstack(st: Stacked): void {
   restoreStacked(st);
   if (!st.fade) return;
-  try {
-    st.fade.cancel();
-  } catch {
-    /* already gone with its element */
-  }
+  cancelAnimation(st.fade);
   st.fade = null;
 }
 
@@ -1547,12 +1577,15 @@ function drawnShadow(st: Stacked): string | null {
  * passed); an element with a mover that runs no move and was never due is
  * held to the run's end. A set-down a retarget interrupted goes on from the
  * shadow as it was drawn, at once, so it never shows full again. Called once
- * the moves have their ends: at play, and after a retarget re-aims them.
- * Anything already due comes off here, before the next frame.
+ * the moves have their ends: at play, after a retarget re-aims them, and
+ * again when the engine reports when it actually started them (retime), which
+ * moves a set-down that has not begun to the corrected end and leaves one
+ * already under way as it is. Anything already due comes off here, before the
+ * next frame.
  */
 function timeReleases(s: ScopeRun): void {
   const ends = new Map<Element, number>();
-  for (const l of s.live) if (l.kind === 'translate' && l.end > 0) ends.set(l.box, Math.max(ends.get(l.box) ?? 0, l.end));
+  for (const l of s.live) if (l.kind !== 'clip' && l.end > 0) ends.set(l.box, Math.max(ends.get(l.box) ?? 0, l.end));
   const now = performance.now();
   for (const st of s.stacked.values()) {
     let due = st.movers.length > 0 ? 0 : -1;
@@ -1565,9 +1598,29 @@ function timeReleases(s: ScopeRun): void {
       due = Math.max(due, end);
     }
     st.due = Math.max(0, due);
+    if (st.fade && (st.due === 0 || !setDownHolds(st.fade, st.due))) {
+      cancelAnimation(st.fade);
+      st.fade = null;
+    }
     if (st.due > 0 && st.shadow && !st.fade) st.fade = setDown(st.el, st.due - now, st.drawn);
   }
   releaseDue(s);
+}
+
+/**
+ * Whether a set-down already made still suits a release at `due`: under way
+ * (it goes on as it is: the row is all but landed), not yet started by the
+ * engine (nothing to time it from that a new one would not share), or ending
+ * within a millisecond of it.
+ */
+function setDownHolds(fade: Animation, due: number): boolean {
+  const timing = fade.effect?.getComputedTiming?.();
+  const p = timing?.progress;
+  if (typeof p === 'number' && p > 0) return true;
+  const start = startOf(fade);
+  const end = timing?.endTime;
+  if (start === null || typeof end !== 'number' || !Number.isFinite(end)) return true;
+  return Math.abs(start + end - due) < 1;
 }
 
 /**
@@ -1624,19 +1677,94 @@ function releaseDue(s: ScopeRun): void {
   }
 }
 
-function cancelLive(live: Live[]): void {
-  for (const l of live) {
-    try {
-      l.anim.cancel();
-    } catch {
-      /* already gone with its element */
-    }
+function cancelAnimation(anim: Animation): void {
+  try {
+    anim.cancel();
+  } catch {
+    /* already gone with its element */
   }
+}
+
+function cancelLive(live: Live[]): void {
+  for (const l of live) cancelAnimation(l.anim);
 }
 
 function endTimeOf(l: Live): number {
   const end = l.anim.effect?.getComputedTiming?.().endTime;
   return typeof end === 'number' && Number.isFinite(end) ? end : l.span;
+}
+
+/**
+ * The time an animation started at, once the engine has started it: on the
+ * document timeline, whose origin is performance.now()'s. Null before then, or
+ * from an engine that does not report it.
+ */
+function startOf(anim: Animation): number | null {
+  try {
+    const t = (anim as Partial<Animation>).startTime;
+    return typeof t === 'number' && Number.isFinite(t) ? t : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Re-reads each of `lives`' ends from when the engine actually started it.
+ * play() and a retarget time everything from performance.now() at the call,
+ * but a composited glide starts when the compositor starts it, 8 to 108ms
+ * later under load (and Chromium starts what was played with it at that same
+ * moment). Timed from the call, a lifted row lost its lift and its set-down
+ * before it landed, and past ~50ms of lag the finish cut the type-ins short.
+ * Once an animation is ready its startTime is set; its end is that plus its
+ * effect's end, and the releases and the finish follow (retime). `glides`:
+ * these are play()'s, so their start is when the glide began (r.playedAt,
+ * which a retarget measures what is left of a move from). An engine that
+ * reports no `ready` or `startTime` keeps the call's clock, and anything the
+ * run has dropped by then is let be.
+ */
+function followStarts(r: Run, s: ScopeRun, lives: Live[], glides: boolean): void {
+  for (const l of lives) {
+    let ready: Promise<unknown> | undefined;
+    try {
+      ready = (l.anim as Partial<Animation>).ready;
+    } catch {
+      continue;
+    }
+    if (!ready || typeof ready.then !== 'function') continue;
+    ready.then(
+      () => onStarted(r, s, l, glides),
+      () => {
+        /* cancelled before it started: nothing left to time */
+      }
+    );
+  }
+}
+
+function onStarted(r: Run, s: ScopeRun, l: Live, glides: boolean): void {
+  if (run !== r || r.phase !== 'play' || s.done || !s.live.includes(l)) return;
+  const start = startOf(l.anim);
+  if (start === null) return;
+  if (glides && l.kind === 'glide') r.playedAt = Math.max(r.playedAt, start);
+  const end = start + endTimeOf(l);
+  if (Math.abs(end - l.end) < 1) return;
+  l.end = end;
+  if (r.retime) return;
+  // Once for everything that started together: Chromium resolves them in one go.
+  r.retime = true;
+  queueMicrotask(() => retime(r));
+}
+
+/** The releases and the finish again, from the ends the engine's starts corrected. */
+function retime(r: Run): void {
+  r.retime = false;
+  if (run !== r || r.phase !== 'play') return;
+  try {
+    for (const s of r.scopes) if (!s.done) timeReleases(s);
+    scheduleFinish(r);
+  } catch (err) {
+    console.warn('[settle] retime abandoned', err);
+    finishSettle();
+  }
 }
 
 /**
@@ -1670,6 +1798,35 @@ const RESOLVE_ATTRS = new Set([
 const recasts = (m: MutationRecord) =>
   m.type === 'childList' || (m.type === 'attributes' && RESOLVE_ATTRS.has(m.attributeName ?? ''));
 
+/** What `own` (each box's running translates) adds to an element as drawn: its own box's and every box's above it, up to the scope root. */
+function offsetFrom(root: Element, own: Map<Element, Vec>): (el: Element | null) => Vec {
+  const memo = new Map<Element, Vec>();
+  const at = (el: Element | null): Vec => {
+    if (!el || el === root || own.size === 0) return { x: 0, y: 0 };
+    const known = memo.get(el);
+    if (known) return known;
+    const above = at(el.parentElement);
+    const mine = own.get(el);
+    const total = mine ? { x: above.x + mine.x, y: above.y + mine.y } : above;
+    memo.set(el, total);
+    return total;
+  };
+  return at;
+}
+
+/** Whether a record's node is one of the scope's participants, or inside one. */
+function insideParticipant(node: Node, root: Element): boolean {
+  const el = node instanceof Element ? node : node.parentElement;
+  const host = el?.closest(KEY_SELECTOR);
+  return !!host && root.contains(host) && host.closest(SCOPE_SELECTOR) === root;
+}
+
+const shifted = (side: SettleSide, d: Vec): SettleSide => ({
+  nodes: new Map(
+    [...side.nodes].map(([key, n]) => [key, { ...n, rect: { ...n.rect, left: n.rect.left + d.x, top: n.rect.top + d.y } }])
+  ),
+});
+
 /**
  * Whether a scope's mutation left everything a settle follows where the last
  * pass found it: the same participants, each laid out within a pixel once the
@@ -1677,6 +1834,20 @@ const recasts = (m: MutationRecord) =>
  * since are taken off — and, mid-hold, saying the same thing. A commit moves
  * something; a hover's --title-mask, a scrollbar mounting or the thumb
  * restyling on a wheel frame moves nothing.
+ *
+ * Nor does a layout change OUTSIDE the scope, which the scope's observer never
+ * hears (the docked Ask rail recentring the canvas, the header row growing):
+ * it moves every participant alike, and the animations, relative to their
+ * boxes, ride along. Once painted, the next record inside the scope found
+ * everything off by that shift, and the re-aim (or re-hold) that followed put
+ * every box back where it was before it, then glided it again. So where every
+ * participant is off by the same amount at the same size, and every record is
+ * inside a participant (so none of them can have moved them all: a band
+ * growing above the rows is a record outside every participant, and still
+ * re-aims), the shift came from outside: the last pass's LAST and FIRST are
+ * carried by it, and nothing moved. A real commit that follows a painted
+ * outside shift is still judged from before it; only sampling every frame
+ * would see the shift alone.
  */
 function unmoved(s: ScopeRun, records: MutationRecord[], sigs: boolean): boolean {
   const last = s.last;
@@ -1690,33 +1861,28 @@ function unmoved(s: ScopeRun, records: MutationRecord[], sigs: boolean): boolean
     parts = now;
   }
   const moved = scrolledSince(last.scroll);
-  const own = runningOffsets(s.live);
-  const memo = new Map<Element, Vec>();
-  const drawnBy = (el: Element | null): Vec => {
-    if (!el || el === s.root || own.size === 0) return { x: 0, y: 0 };
-    const known = memo.get(el);
-    if (known) return known;
-    const above = drawnBy(el.parentElement);
-    const mine = own.get(el);
-    const total = mine ? { x: above.x + mine.x, y: above.y + mine.y } : above;
-    memo.set(el, total);
-    return total;
-  };
+  const drawnBy = offsetFrom(s.root, runningOffsets(s.live));
+  let within: boolean | undefined;
+  const inside = () => (within ??= records.every((m) => insideParticipant(m.target, s.root)));
+  let still = true;
+  /** The first participant's displacement: every other one must share it for a shift from outside. */
+  let shared: Vec | null = null;
   for (const p of parts) {
     const was = last.side.nodes.get(p.key);
     if (!was || !p.box.isConnected) return false;
     const r = p.box.getBoundingClientRect();
+    if (Math.abs(r.width - was.rect.width) >= PX || Math.abs(r.height - was.rect.height) >= PX) return false;
     const off = drawnBy(p.box);
     const shift = scrollShift(last.scroll.links.get(p.key), moved);
-    if (
-      Math.abs(r.left - off.x - (was.rect.left + shift.x)) >= PX ||
-      Math.abs(r.top - off.y - (was.rect.top + shift.y)) >= PX ||
-      Math.abs(r.width - was.rect.width) >= PX ||
-      Math.abs(r.height - was.rect.height) >= PX
-    ) {
-      return false;
-    }
+    const d = { x: r.left - off.x - (was.rect.left + shift.x), y: r.top - off.y - (was.rect.top + shift.y) };
+    still &&= Math.abs(d.x) < PX && Math.abs(d.y) < PX;
+    shared ??= d;
+    if (!still && !(Math.abs(d.x - shared.x) < PX && Math.abs(d.y - shared.y) < PX && inside())) return false;
     if (sigs && was.sig !== undefined && signature(p.el) !== was.sig) return false;
+  }
+  if (!still && shared) {
+    s.last = { ...last, side: shifted(last.side, shared) };
+    s.first = shifted(s.first, shared);
   }
   return true;
 }
@@ -1733,6 +1899,7 @@ function startRun(scopes: ScopeRun[], animate: boolean): void {
     phase: 'hold',
     landedAt: performance.now(),
     playedAt: 0,
+    retime: false,
     frames: 0,
     quiet: 0,
     mutated: false,
@@ -1925,6 +2092,8 @@ function play(r: Run): void {
     timeReleases(s);
   }
   scheduleFinish(r);
+  // Timed from this call until the engine says when it really started them.
+  for (const s of r.scopes) followStarts(r, s, s.live, true);
 }
 
 /** The finish lands after the last animation, never past runTimeoutMs from the landing. */
@@ -1940,7 +2109,9 @@ function scheduleFinish(r: Run): void {
  * A commit landed mid-glide: re-aim this scope from where its boxes are
  * DRAWN. A box the commit moved was painted last frame at its old layout plus
  * its running offset, so it glides on from there instead of jumping by the
- * commit's delta. Reveals (clip-path) keep running; translates are recreated.
+ * commit's delta. Glides are recreated; reveals (clip-path) and the lifts an
+ * appear or a rise comes in on keep running, so a new row's lift stays paired
+ * with its type-in, and a glide the commit gives that row sums with its lift.
  * At most maxRetargets per scope — past that, the scope snaps and is shielded.
  */
 function retarget(r: Run, s: ScopeRun): void {
@@ -1960,30 +2131,34 @@ function retarget(r: Run, s: ScopeRun): void {
   for (const p of parts) drawn.set(p.key, p.box.getBoundingClientRect());
   const kept: Live[] = [];
   for (const l of s.live) {
-    if (l.kind === 'translate') cancelLive([l]);
+    if (l.kind === 'glide') cancelLive([l]);
     else kept.push(l);
   }
-  // LAYOUT: where the commit put them.
-  const now = measureParticipants(s.root, parts);
+  // Where the commit put them, still carrying the kept lifts (`raw`), and their LAYOUT, without (`now`).
+  const raw = measureParticipants(s.root, parts);
+  const now = withoutOffsets(raw, offsetFrom(s.root, runningOffsets(kept)));
   // Where the last pass found each box, carried by any scrolling since: what the user saw scrolls too.
   const prev = asScrolled(s.last.side, s.last.scroll).nodes;
   const elapsed = performance.now() - r.playedAt;
   const moveMs = Math.max(SETTLE.retargetMinMs, SETTLE.moveMs - elapsed);
 
-  // total(k) = painted − layout; a box new to the scope rides its parent.
+  // total(k) = painted − layout: painted is its old layout plus what the
+  // cancelled glides added (drawn − raw); a kept lift goes on adding its own.
+  // A box new to the scope rides its parent.
   const totals = new Map<string, { dx: number; dy: number }>();
   const totalOf = (key: string | undefined): { dx: number; dy: number } => {
     if (key === undefined) return { dx: 0, dy: 0 };
     const known = totals.get(key);
     if (known) return known;
     const node = now.side.nodes.get(key)!;
+    const at = raw.side.nodes.get(key)!;
     const was = prev.get(key);
     const vis = drawn.get(key);
     let t: { dx: number; dy: number };
     if (was && vis) {
       t = {
-        dx: was.rect.left + (vis.left - node.rect.left) - node.rect.left,
-        dy: was.rect.top + (vis.top - node.rect.top) - node.rect.top,
+        dx: was.rect.left + (vis.left - at.rect.left) - node.rect.left,
+        dy: was.rect.top + (vis.top - at.rect.top) - node.rect.top,
       };
     } else {
       t = totalOf(node.parent);
@@ -2015,16 +2190,30 @@ function retarget(r: Run, s: ScopeRun): void {
     return;
   }
 
-  // No translate of this scope runs now (the clips it kept move no rect): a new row's text measures at layout.
-  const specs = describeAnimations(plan, { moveMs, immediate: true, typeIn: typeInsets(plan, now) });
+  // Only the kept lifts translate now, and only up or down: a type-in's insets, all horizontal, read as at layout.
+  const specs = describeAnimations(plan, { moveMs, immediate: true, typeIn: typeInsets(plan, raw) });
   stackScope(s, specs, now, kept, true);
-  const fresh = realize(specs, now.boxes);
+  const fresh = realize(specs, now.boxes, kept);
   const t0 = performance.now();
   for (const l of fresh) l.end = t0 + endTimeOf(l);
   s.live = [...kept, ...fresh];
   s.last = now;
   timeReleases(s);
   scheduleFinish(r);
+  followStarts(r, s, fresh, false);
+}
+
+/** A measure with what `by` adds to each box taken off its rect: the layout under the translates still running. */
+function withoutOffsets(m: Measured, by: (el: Element) => Vec): Measured {
+  let nodes: Map<string, SettleNode> | null = null;
+  for (const [key, node] of m.side.nodes) {
+    const box = m.boxes.get(key);
+    const o = box ? by(box) : null;
+    if (!o || (o.x === 0 && o.y === 0)) continue;
+    nodes ??= new Map(m.side.nodes);
+    nodes.set(key, { ...node, rect: { ...node.rect, left: node.rect.left - o.x, top: node.rect.top - o.y } });
+  }
+  return nodes ? { ...m, side: { nodes } } : m;
 }
 
 /** Still held (no end yet) or still playing: snapping it moves something under the pointer. */

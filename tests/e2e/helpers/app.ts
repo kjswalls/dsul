@@ -98,8 +98,12 @@ export async function waitForAppReady(page: Page): Promise<void> {
    * never ticks the fresh row now under the cursor. Either way the click is
    * lost, and the test fails on whatever it asserted next.
    *
-   * `<html data-planner-settling>` is up for exactly the run plus any shield.
-   * A first visit (no snapshot) never sets it, so this passes at once there.
+   * `<html data-planner-settling>` is up while the settle has something to
+   * animate or a shield is running, and comes down once both are over. A
+   * landing that changed nothing raises nothing: it still watches a couple of
+   * frames for follow-up commits, and raises it only if one of them moves
+   * something. A first visit (no snapshot) never sets it, so this passes at
+   * once there.
    */
   await expect(
     page.locator('html'),

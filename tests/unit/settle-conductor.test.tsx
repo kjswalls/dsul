@@ -21,7 +21,10 @@ import { create } from 'zustand';
  *    adds every running fake animation's translate (so "where it is DRAWN"
  *    can be measured mid-glide);
  *  - a fake Animation with pause/play/cancel/currentTime and
- *    effect.getComputedTiming, on the fake clock;
+ *    effect.getComputedTiming, on the fake clock, which reports `ready` and
+ *    `startTime` and waits `startLag` once played before it starts (as a
+ *    compositor does), and whose box-shadow fade getComputedStyle reads as
+ *    drawn mid-fade;
  *  - requestAnimationFrame under the test's hand: frame() is one frame.
  */
 
@@ -55,7 +58,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import type { Item } from '@/lib/planner-types';
 import { SETTLING_ATTR } from '@/lib/settle';
 import { settleEpoch } from '@/lib/settle-epoch';
-import { EASE_MOVE, EASE_SET_DOWN, EASE_SETTLE, EASE_TYPE, SETTLE } from '@/lib/settle-plan';
+import { EASE_MOVE, EASE_SET_DOWN, EASE_SETTLE, EASE_TYPE, LIFT_SHADOW, SETTLE } from '@/lib/settle-plan';
 import { useViewStore } from '@/lib/view-store';
 
 // ── Fake WAAPI ──────────────────────────────────────────────────────────
@@ -74,10 +77,24 @@ function parseTranslate(v: unknown): Vec {
 /** When set, every effect claims to end this late (the runTimeoutMs cap). */
 let endTimeOverride: number | null = null;
 
+/**
+ * How long a played animation waits for the engine to start it: `composited`
+ * for a transform that replaces (what Chromium hands the compositor), `main`
+ * for the rest. Chromium starts what was played together at one moment, the
+ * compositor's, which a test says by giving both the same lag.
+ */
+let startLag = { composited: 0, main: 0 };
+/** False: an engine that reports neither `ready` nor `startTime`. */
+let reportsStart = true;
+
 class FakeAnimation {
   playState: 'running' | 'paused' | 'idle' = 'running';
-  private startedAt = performance.now();
+  /** Its start on the timeline; null while paused, or played and still waiting to start. */
+  private started: number | null = null;
   private held = 0;
+  private waiting: ReturnType<typeof setTimeout> | null = null;
+  private readyNow!: Promise<FakeAnimation>;
+  private settle: { resolve: () => void; reject: () => void } | null = null;
   readonly effect: { target: Element; getComputedTiming: () => { endTime: number; progress: number | null } };
 
   constructor(
@@ -89,6 +106,7 @@ class FakeAnimation {
       target,
       getComputedTiming: () => ({ endTime: endTimeOverride ?? this.delay + this.duration, progress: this.progress() }),
     };
+    this.play();
   }
 
   get delay(): number {
@@ -97,33 +115,84 @@ class FakeAnimation {
   get duration(): number {
     return Number(this.options.duration);
   }
+  get lag(): number {
+    const composited = 'transform' in this.from && (this.options.composite ?? 'replace') === 'replace';
+    return composited ? startLag.composited : startLag.main;
+  }
   get currentTime(): number {
-    return this.playState === 'running' ? performance.now() - this.startedAt : this.held;
+    return this.playState === 'running' && this.started !== null ? performance.now() - this.started : this.held;
   }
   get cancelled(): boolean {
     return this.playState === 'idle';
   }
+  get ready(): Promise<FakeAnimation> | undefined {
+    return reportsStart ? this.readyNow : undefined;
+  }
+  get startTime(): number | null | undefined {
+    return reportsStart ? this.started : undefined;
+  }
+  /** A pending ready, kept until the engine starts it (or it is cancelled first). */
+  private pend() {
+    if (this.settle) return;
+    let settle: { resolve: () => void; reject: () => void } | null = null;
+    this.readyNow = new Promise<FakeAnimation>((resolve, reject) => {
+      settle = { resolve: () => resolve(this), reject: () => reject(new DOMException('cancelled', 'AbortError')) };
+    });
+    this.readyNow.catch(() => {}); // handled, as an engine's is
+    this.settle = settle;
+  }
+  private begin() {
+    this.waiting = null;
+    this.started = performance.now() - this.held;
+    this.settle?.resolve();
+    this.settle = null;
+  }
   pause() {
     this.held = this.currentTime;
+    this.started = null;
+    if (this.waiting !== null) clearTimeout(this.waiting);
+    this.waiting = null;
     this.playState = 'paused';
   }
   play() {
-    this.startedAt = performance.now() - this.held;
+    if (this.playState === 'running' && (this.started !== null || this.waiting !== null)) return;
     this.playState = 'running';
+    this.pend();
+    if (this.lag > 0) this.waiting = setTimeout(() => this.begin(), this.lag);
+    else this.begin();
   }
   cancel() {
+    if (this.waiting !== null) clearTimeout(this.waiting);
+    this.waiting = null;
+    this.started = null;
     this.playState = 'idle';
+    this.settle?.reject();
+    this.settle = null;
   }
   get from(): Keyframe {
     return this.keyframes[0];
   }
-  /** Linear here, eased in a browser: 0 through the delay (fill backwards), null once over or cancelled. */
+  /**
+   * Linear here, eased in a browser. Before its delay, 0 where it fills
+   * backwards, else null; after its end, 1 where it fills forwards, else
+   * null; null once cancelled.
+   */
   progress(): number | null {
     if (this.cancelled) return null;
     const t = this.currentTime;
-    if (t < this.delay) return 0;
-    if (t >= this.delay + this.duration) return null;
+    const fill = this.options.fill ?? 'none';
+    if (t < this.delay) return fill === 'backwards' || fill === 'both' ? 0 : null;
+    if (t >= this.delay + this.duration) return fill === 'forwards' || fill === 'both' ? 1 : null;
     return (t - this.delay) / this.duration;
+  }
+  /** A box-shadow fade's value as drawn now: its keyframes at the ends, tagged with its progress between them. */
+  shadow(): string | null {
+    const p = this.progress();
+    if (p === null || !('boxShadow' in this.from)) return null;
+    const to = this.keyframes[this.keyframes.length - 1].boxShadow;
+    if (p <= 0) return String(this.from.boxShadow);
+    if (p >= 1) return String(to);
+    return `${String(this.from.boxShadow)} @ ${p.toFixed(3)}`;
   }
   /** The translate this animation adds right now: fill backwards through the delay, nothing after the end. */
   offset(): Vec {
@@ -138,6 +207,18 @@ class FakeAnimation {
 let animations: FakeAnimation[] = [];
 const animsOn = new Map<Element, FakeAnimation[]>();
 
+/** A computed style whose box-shadow reads `value`: what a running fade draws. */
+function withShadow(cs: CSSStyleDeclaration, value: string): CSSStyleDeclaration {
+  return new Proxy(cs, {
+    get(target, prop) {
+      if (prop === 'boxShadow') return value;
+      if (prop === 'getPropertyValue') return (name: string) => (name === 'box-shadow' ? value : target.getPropertyValue(name));
+      const v: unknown = Reflect.get(target, prop, target);
+      return typeof v === 'function' ? v.bind(target) : v;
+    },
+  });
+}
+
 function fakeAnimate(this: HTMLElement, keyframes: Keyframe[], options: KeyframeAnimationOptions) {
   const anim = new FakeAnimation(this, keyframes, options);
   animations.push(anim);
@@ -148,7 +229,9 @@ function fakeAnimate(this: HTMLElement, keyframes: Keyframe[], options: Keyframe
 const live = () => animations.filter((a) => !a.cancelled);
 const keyOf = (a: FakeAnimation) => a.target.getAttribute('data-settle-key');
 const on = (key: string, list = live()) => list.filter((a) => keyOf(a) === key);
-const kind = (a: FakeAnimation) => ('transform' in a.from ? 'translate' : 'clip');
+/** A move's glide is `translate(x, y)`; the lift an appear or a rise comes in on is `translateY(…)`. */
+const kind = (a: FakeAnimation) =>
+  'transform' in a.from ? (String(a.from.transform).startsWith('translateY') ? 'lift' : 'glide') : 'clip';
 /** What a keyframe animates: its offset and easing say when and how, not what. */
 const animated = (kf: Keyframe) => Object.keys(kf).filter((k) => k !== 'offset' && k !== 'easing');
 
@@ -317,8 +400,11 @@ function ownStyle(o: { bg?: string; image?: string; shadow?: string; fades?: str
 const item = (id: string, title = id, extra: Partial<Row> = {}): Row =>
   ({ type: 'task', id, title, status: 'pending', isScheduled: false, order: 0, completedDates: [], ...extra }) as Row;
 
-/** Harness-only state: a non-participant band above the groups, and a key that remounts the braindump. */
-const useHarness = create<{ band: number; tab: string }>(() => ({ band: 0, tab: 'a' }));
+/**
+ * Harness-only state: a non-participant band above the groups, a key that
+ * remounts the braindump, and a band above the planner outside every scope.
+ */
+const useHarness = create<{ band: number; tab: string; above: number }>(() => ({ band: 0, tab: 'a', above: 0 }));
 
 const onRowClick = vi.fn();
 const onRowMouseDown = vi.fn();
@@ -510,6 +596,17 @@ function Zen() {
   );
 }
 
+/** Above the planner and outside every scope: the header row growing, the docked Ask rail recentring the canvas. */
+function Above({ children }: { children: ReactNode }) {
+  const above = useHarness((s) => s.above);
+  return (
+    <>
+      <div data-testid="above" data-h={above} />
+      {children}
+    </>
+  );
+}
+
 function Host({ children }: { children: ReactNode }) {
   return (
     <>
@@ -572,6 +669,8 @@ beforeEach(() => {
   animations = [];
   animsOn.clear();
   endTimeOverride = null;
+  startLag = { composited: 0, main: 0 };
+  reportsStart = true;
   rectCalls = [];
   throwNextRect = false;
   frames = new Map();
@@ -585,11 +684,22 @@ beforeEach(() => {
   });
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(fakeRect);
   (HTMLElement.prototype as unknown as { animate: unknown }).animate = fakeAnimate;
+  // A box-shadow fade under way is drawn part-way down, and getComputedStyle says how far, as a browser's would.
+  const computed = window.getComputedStyle;
+  vi.spyOn(window, 'getComputedStyle').mockImplementation((el, pseudo) => {
+    const cs = computed(el, pseudo);
+    const fades = animsOn.get(el) ?? [];
+    for (let i = fades.length - 1; i >= 0; i -= 1) {
+      const drawn = fades[i].shadow();
+      if (drawn !== null) return withShadow(cs, drawn);
+    }
+    return cs;
+  });
   consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {});
   onRowClick.mockClear();
   onRowMouseDown.mockClear();
   onOutsideClick.mockClear();
-  useHarness.setState({ band: 0, tab: 'a' });
+  useHarness.setState({ band: 0, tab: 'a', above: 0 });
   useDragStore.setState({ activeId: null, input: null });
   useViewStore.setState({ zenOpen: false, zenMoving: false });
   usePlannerStore.setState({ ...READY, isLoading: false, isPreview: false, items: [] });
@@ -635,7 +745,7 @@ describe('animation shape', () => {
     const appear = on(`${DAY}|e`);
     expect(appear).toHaveLength(2);
     const clip = appear.find((a) => kind(a) === 'clip')!;
-    const lift = appear.find((a) => kind(a) === 'translate')!;
+    const lift = appear.find((a) => kind(a) === 'lift')!;
     expect(clip.keyframes).toEqual([{ clipPath: 'inset(-8px 100% -8px -8px)' }, { clipPath: 'inset(-8px)' }]);
     expect(clip.options).toMatchObject({ duration: 380, delay: 100, composite: 'replace' });
     expect(lift.keyframes).toEqual([{ transform: 'translateY(4px)' }, { transform: 'translateY(0px)' }]);
@@ -789,22 +899,25 @@ describe('hold, play, retarget', () => {
     expect(onRowClick).not.toHaveBeenCalled();
   });
 
-  it('retargets a mid-glide commit from where boxes are DRAWN: translates recreated, clip reveals kept', async () => {
+  it('retargets a mid-glide commit from where boxes are DRAWN: glides recreated, clip reveals and lifts kept', async () => {
     startPreview(<Canvas />, CACHED());
     land(FRESH());
     frame();
     frame(); // playing
     const first = live();
     const clips = first.filter((a) => kind(a) === 'clip');
-    const translates = first.filter((a) => kind(a) === 'translate');
+    const glides = first.filter((a) => kind(a) === 'glide');
+    const lifts = first.filter((a) => kind(a) === 'lift');
+    expect(lifts.map(keyOf)).toEqual([`${DAY}|e`]);
     advance(100);
 
     // a is drawn 40·(1 − 100/420) above its layout box right now.
     const aDrawn = row('a').getBoundingClientRect().top;
     await commit(() => useHarness.setState({ band: 50 }));
 
-    expect(translates.every((a) => a.cancelled)).toBe(true);
+    expect(glides.every((a) => a.cancelled)).toBe(true);
     expect(clips.every((a) => !a.cancelled)).toBe(true);
+    expect(lifts.every((a) => !a.cancelled)).toBe(true); // e's lift stays paired with its type-in
     // The group was painted 50px higher than its new layout: it glides down for what is left of a move.
     const [group] = on('group:inbox');
     expect(group.keyframes[0]).toEqual({ transform: 'translate(0px, -50px)' });
@@ -830,7 +943,7 @@ describe('hold, play, retarget', () => {
     await commit(() => usePlannerStore.setState({ items: [...FRESH(), item('late')] })); // retarget 2
     const late = on(`${DAY}|late`);
     expect(late.map((a) => a.options.delay)).toEqual([0, 0]);
-    expect(late.map(kind).sort()).toEqual(['clip', 'translate']);
+    expect(late.map(kind).sort()).toEqual(['clip', 'lift']);
 
     await commit(() => useHarness.setState({ band: 40 })); // past maxRetargets: the scope snaps
     expect(live()).toEqual([]);
@@ -1172,7 +1285,7 @@ describe('scale', () => {
     const index = [...animated].map((el) => [...scroller.children].indexOf(el)).sort((x, y) => x - y);
     expect(index).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     expect(on('|r0')[0].keyframes[0]).toEqual({ transform: 'translate(0px, -30px)' });
-    expect(on('|new').map(kind).sort()).toEqual(['clip', 'translate']);
+    expect(on('|new').map(kind).sort()).toEqual(['clip', 'lift']);
   });
 });
 
@@ -1183,7 +1296,7 @@ describe('frames that move with their rows', () => {
     const quickadd = live().filter((a) => a.target.getAttribute('data-testid') === 'quickadd');
     expect(quickadd).toHaveLength(1);
     expect(quickadd[0].keyframes).toEqual([{ transform: 'translate(0px, -30px)' }, { transform: 'translate(0px, 0px)' }]);
-    expect(on('|d').map(kind).sort()).toEqual(['clip', 'translate']);
+    expect(on('|d').map(kind).sort()).toEqual(['clip', 'lift']);
   });
 
   it('zen: a ledger row removed elsewhere re-centres the hero with a glide, and its title rides along', () => {
@@ -1296,7 +1409,7 @@ describe('scrolling while it settles', () => {
 
     await commit(() => usePlannerStore.setState({ items: [item('z'), item('b'), item('a'), item('c')] }));
     for (const id of ['a', 'b', 'c']) expect(row(id).getBoundingClientRect().top, id).toBeCloseTo(drawn[id], 5);
-    expect(on('|z').map(kind).sort()).toEqual(['clip', 'translate']);
+    expect(on('|z').map(kind).sort()).toEqual(['clip', 'lift']);
   });
 
   it('a sticky head holds its axis: what is pinned is neither taken to have moved nor re-aimed', async () => {
@@ -1464,7 +1577,7 @@ describe('a landing that changed nothing still watches its follow-ups', () => {
     expect(settling()).toBeNull();
     // held-captures releases its addTask in a microtask after the landing's commit.
     await commit(() => usePlannerStore.setState({ items: [...CACHED(), item('late')] }));
-    expect(on(`${DAY}|late`).map(kind).sort()).toEqual(['clip', 'translate']);
+    expect(on(`${DAY}|late`).map(kind).sort()).toEqual(['clip', 'lift']);
     expect(live().every((a) => a.playState === 'paused')).toBe(true);
     expect(settling()).toBe('true');
     frame();
@@ -1556,7 +1669,7 @@ describe('moves run on EASE_MOVE; appears, retypes and rises on EASE_SETTLE', ()
     land([item('a', 'a', { h: 80 }), item('n'), item('w1', 'w1', { project: 'work' })]);
     expect(on(`${DAY}|a`).map((a) => [kind(a), a.options.easing])).toEqual([['clip', 'linear']]);
     expect(on('group:inbox').map((a) => [kind(a), a.options.easing])).toEqual([['clip', 'linear']]);
-    expect(on('group:work').map((a) => [kind(a), a.options.easing])).toEqual([['translate', 'linear']]);
+    expect(on('group:work').map((a) => [kind(a), a.options.easing])).toEqual([['glide', 'linear']]);
   });
 
   it('a retarget re-aims on EASE_MOVE too', async () => {
@@ -1779,7 +1892,7 @@ describe('a row that crosses its neighbours is lifted', () => {
     expect(m3.style.position).toBe('relative'); // it was static: z-index needs a position
     expect(m3.style.backgroundColor).toBe(PAINTED); // the card body's, the nearest painted ancestor
     expect(m3.style.backgroundClip).toBe('border-box'); // the whole box its shadow outlines: no see-through ring inside it
-    expect(m3.style.boxShadow).toBe('var(--shadow-soft-sm)'); // lifted: the lightest elevation, read from its token
+    expect(m3.style.boxShadow).toBe('var(--shadow-elev-sm)'); // lifted: the floating surfaces' elevation, read from its token
     expect(m3.style.backgroundImage).toBe(''); // no fill of its own to make solid
     expect(row('m1').hasAttribute('style')).toBe(false);
     expect(row('m2').hasAttribute('style')).toBe(false);
@@ -2018,7 +2131,7 @@ describe('a raise between cousins: each card the only thing in its own wrapper',
 // ── Retypes ─────────────────────────────────────────────────────────────
 
 describe('a type-in starts where the text changed, and paces the text', () => {
-  let reads: { live: number; translating: number }[] = [];
+  let reads: { live: number; glides: number; lifts: number }[] = [];
   let ranges = 0;
   const proto = Range.prototype as unknown as { getBoundingClientRect?: () => DOMRect };
 
@@ -2030,7 +2143,8 @@ describe('a type-in starts where the text changed, and paces the text', () => {
       const el = this.startContainer.parentElement!;
       const scope = el.closest('[data-settle-scope]');
       const running = animations.filter((a) => !a.cancelled && scope?.contains(a.target));
-      reads.push({ live: running.length, translating: running.filter((a) => kind(a) === 'translate').length });
+      const count = (k: string) => running.filter((a) => kind(a) === k).length;
+      reads.push({ live: running.length, glides: count('glide'), lifts: count('lift') });
       const box = layoutOf(el);
       if (box.width === 0 && box.height === 0) return box;
       return rect(box.left + this.startOffset * CH, box.top, (this.endOffset - this.startOffset) * CH, 16);
@@ -2116,7 +2230,7 @@ describe('a type-in starts where the text changed, and paces the text', () => {
     land([item('a'), item('e', 'Email the landlord'), item('d')]);
     expect(clipOf('e')).toEqual(pacedFrom(TYPE_IN, TITLE_X + 18 * CH));
     expect(clips('e')[0].options).toMatchObject({ duration: SETTLE.appearMs, delay: SETTLE.appearLead, easing: 'linear' });
-    const lift = on(`${DAY}|e`).find((a) => kind(a) === 'translate')!;
+    const lift = on(`${DAY}|e`).find((a) => kind(a) === 'lift')!;
     expect(lift.keyframes).toEqual([{ transform: 'translateY(4px)' }, { transform: 'translateY(0px)' }]);
     expect(lift.options.easing).toBe(EASE_SETTLE);
     expect(ranges).toBe(1);
@@ -2133,7 +2247,7 @@ describe('a type-in starts where the text changed, and paces the text', () => {
     expect(ranges).toBe(0);
   });
 
-  it('a row new since the landing types in at a pace too, measured at the retarget with nothing in the scope translating', async () => {
+  it('a row new since the landing types in at a pace too, measured at the retarget with no glide in the scope running', async () => {
     startPreview(<Canvas />, CACHED());
     land(FRESH());
     frame();
@@ -2144,8 +2258,10 @@ describe('a type-in starts where the text changed, and paces the text', () => {
     expect(clipOf('late')).toEqual(pacedFrom(TYPE_IN, TITLE_X + 12 * CH));
     expect(clips('late')[0].options).toMatchObject({ delay: 0, easing: 'linear' });
     expect(reads.length).toBeGreaterThan(0);
-    // The clip reveals it keeps run on (a clip moves no rect); its translates are cancelled before it reads.
-    expect(reads.every((r) => r.translating === 0 && r.live > 0)).toBe(true);
+    // The clip reveals it keeps run on (a clip moves no rect), and so does e's lift, which only moves up or
+    // down (a type-in's insets are all horizontal); its glides are cancelled before it reads.
+    expect(reads.every((r) => r.glides === 0 && r.live > 0)).toBe(true);
+    expect(reads.some((r) => r.lifts > 0)).toBe(true);
   });
 
   it('types the whole row in when only an attribute changed (a tick), or with no Range geometry at all', () => {
@@ -2194,10 +2310,10 @@ describe('a lifted row’s ground covers the box its shadow outlines', () => {
   });
 });
 
-// ── A lifted or raised box is solid, and a lifted one casts a soft shadow ──
+// ── A lifted or raised box is solid, and a lifted one casts a shadow ─────
 
-describe('a lifted or raised box is solid, and a lifted one casts a soft shadow', () => {
-  const SHADOW = 'var(--shadow-soft-sm)';
+describe('a lifted or raised box is solid, and a lifted one casts the elevation shadow', () => {
+  const SHADOW = 'var(--shadow-elev-sm)';
   const solid = (...colors: string[]) => colors.map((c) => `linear-gradient(${c}, ${c})`).join(', ');
   /** m3 crosses m1 and m2 (80px > 40px): lifted. */
   const lift = (m3: Partial<Row>) => {
@@ -2260,6 +2376,20 @@ describe('a lifted or raised box is solid, and a lifted one casts a soft shadow'
     cleanup();
     const before = lift({ bg: 'rgba(10, 20, 30, 0.5)', fades: 'all' });
     expect([...changedProps(before)].sort()).toEqual(['position', 'z-index']);
+  });
+
+  it('a row with no fill of its own that transitions background-color takes no ground: it would fade in under the glide', () => {
+    for (const fades of ['background-color', 'all']) {
+      const before = lift({ fades });
+      const m3 = row('m3');
+      expect(m3.style.zIndex, fades).toBe('1'); // still stacked
+      expect(m3.style.backgroundColor, fades).toBe('');
+      // No ground, so no clip for it, and no surface for a shadow to outline.
+      expect([...changedProps(before)].sort(), fades).toEqual(['position', 'z-index']);
+      act(() => fireEvent.keyDown(document.body, { key: 'j' }));
+      expect(inlineStyles(), fades).toEqual(before);
+      cleanup();
+    }
   });
 
   it('a block that draws its surface on a plate: no ground on the band, the plate solid and lit, put back exactly', () => {
@@ -2341,7 +2471,7 @@ describe('a lifted or raised box is solid, and a lifted one casts a soft shadow'
 // ── A lifted row comes off as it lands ──────────────────────────────────
 
 describe('a lifted row comes off as its own move lands, while the rest play on', () => {
-  const SHADOW = 'var(--shadow-soft-sm)';
+  const SHADOW = 'var(--shadow-elev-sm)';
   /** The set-down: the one animation of anything but transform and clip-path. */
   const fadeOf = (el: Element) => (animsOn.get(el) ?? []).find((a) => 'boxShadow' in a.from && !a.cancelled);
   /** Every row that was there before the landing is as it was: m4 and the band are new. */
@@ -2428,11 +2558,15 @@ describe('a lifted row comes off as its own move lands, while the rest play on',
     frame();
     advance(SETTLE.moveMs - SETTLE.liftSetDownMs + 30); // 30ms into the set-down
     const first = fadeOf(m3)!;
+    // Part-way down, as drawn: not the full lift shadow still standing inline under the fade.
     const drawn = getComputedStyle(m3).boxShadow;
+    expect(drawn).toBe(`${SHADOW} @ ${(30 / SETTLE.liftSetDownMs).toFixed(3)}`);
+    expect(m3.style.boxShadow).toBe(SHADOW);
     await commit(() => useHarness.setState({ band: 30 })); // re-aims m3: retargetMinMs from here
     expect(first.cancelled).toBe(true);
     const again = fadeOf(m3)!;
     expect(again.keyframes).toEqual([{ boxShadow: drawn }, { boxShadow: 'none' }]);
+    expect(again.keyframes[0].boxShadow).not.toBe(SHADOW);
     expect(again.options).toMatchObject({ duration: SETTLE.retargetMinMs, delay: 0, fill: 'forwards' });
     advance(SETTLE.retargetMinMs + 1);
     expect(m3.hasAttribute('style')).toBe(false);
@@ -2451,7 +2585,7 @@ describe('a lifted row comes off as its own move lands, while the rest play on',
     await commit(() =>
       usePlannerStore.setState({ items: [item('m3'), item('m1'), item('m2', 'm2', { h: 50 }), item('m4')] })
     );
-    expect(on(`${DAY}|m3`).filter((a) => kind(a) === 'translate')).toEqual([]);
+    expect(on(`${DAY}|m3`).filter((a) => kind(a) === 'glide')).toEqual([]);
     expect(first.cancelled).toBe(true);
     const again = fadeOf(m3)!;
     expect(again.options).toMatchObject({ delay: 0, duration: 4, fill: 'forwards' }); // on from where it was, never full
@@ -2473,5 +2607,251 @@ describe('a lifted row comes off as its own move lands, while the rest play on',
     expect(row('a2').hasAttribute('style')).toBe(false);
     advance(SETTLE.runTimeoutMs);
     expect(inlineStyles()).toEqual(before);
+  });
+});
+
+// ── Timed from when the engine starts each animation ────────────────────
+
+describe('every end is timed from when the engine starts the animation, not from the call', () => {
+  const LAG = 60;
+  const fadeOf = (el: Element) => (animsOn.get(el) ?? []).find((a) => 'boxShadow' in a.from && !a.cancelled);
+  /** m3 crosses m1 and m2 (80px > 40px): lifted. m4 appears, and its type-in and lift outlast every move. */
+  const liftAndAppear = () => {
+    startPreview(<Buckets />, [item('m1'), item('m2'), item('m3')]);
+    const before = inlineStyles();
+    land([item('m3'), item('m1'), item('m2'), item('m4')]);
+    return before;
+  };
+  /** The latest end of m4's appear, from its start: what the finish waits for. */
+  const APPEAR_END = SETTLE.appearLead + SETTLE.appearMs;
+  /** Every row that was there before the landing is as it was: m4 is new. */
+  const asBefore = (before: Record<string, string | null>) => {
+    const now = inlineStyles();
+    for (const id of Object.keys(before)) expect([id, now[id]]).toEqual([id, before[id]]);
+  };
+
+  it('a 60ms start lag moves the release and the finish 60ms later, and nothing is cut short', async () => {
+    startLag = { composited: LAG, main: LAG }; // Chromium starts what was played together, at the compositor's moment
+    const before = liftAndAppear();
+    const m3 = row('m3');
+    frame();
+    frame(); // played at P; nothing has started yet
+    const played = live().filter((a) => !('boxShadow' in a.from)); // the glides, the appear's clip and lift
+    const fade = fadeOf(m3)!;
+    advance(LAG);
+    await microtasks(); // started at P + LAG, and the engine has said so
+    advance(SETTLE.moveMs - 1); // P + LAG + moveMs − 1: the glide is all but landed
+    expect(m3.style.zIndex).toBe('1');
+    expect(m3.style.boxShadow).toBe(LIFT_SHADOW);
+    expect(fadeOf(m3)).toBe(fade); // it started with the glide, so it already ends with it
+    expect(fade.progress()).toBeGreaterThan(0.99);
+    advance(2);
+    expect(m3.hasAttribute('style')).toBe(false);
+    expect(fade.cancelled).toBe(true);
+    // The finish waits for m4's appear, which ends LAG + APPEAR_END after play.
+    advance(APPEAR_END - SETTLE.moveMs - 1 + 50 - 1);
+    expect(settling()).toBe('true');
+    expect(played.every((a) => !a.cancelled && a.progress() === null)).toBe(true); // every one ran to its end
+    advance(1);
+    expect(settling()).toBeNull();
+    expect(live()).toEqual([]);
+    asBefore(before);
+  });
+
+  it('a set-down that began before the glides did is made again, to end as the row lands', async () => {
+    startLag = { composited: LAG, main: 0 }; // the shadow fade starts at once, the glides LAG later
+    liftAndAppear();
+    const m3 = row('m3');
+    frame();
+    frame();
+    const early = fadeOf(m3)!;
+    advance(LAG);
+    await microtasks();
+    expect(early.cancelled).toBe(true);
+    const fade = fadeOf(m3)!;
+    // Made LAG into the run, with all of the glide still to go: its delay is the corrected one.
+    expect(fade.options).toMatchObject({
+      duration: SETTLE.liftSetDownMs,
+      delay: SETTLE.moveMs - SETTLE.liftSetDownMs,
+      fill: 'forwards',
+    });
+    advance(SETTLE.moveMs - 1);
+    expect(m3.style.zIndex).toBe('1');
+    expect(fade.progress()).toBeGreaterThan(0.99);
+    advance(2);
+    expect(m3.hasAttribute('style')).toBe(false);
+  });
+
+  it('a set-down already under way when the engine reports is left as it is; the lift still comes off as the row lands', async () => {
+    const late = SETTLE.moveMs - SETTLE.liftSetDownMs + 60; // the glides start 60ms into the set-down
+    startLag = { composited: late, main: 0 };
+    liftAndAppear();
+    const m3 = row('m3');
+    frame();
+    frame();
+    const fade = fadeOf(m3)!;
+    advance(late);
+    await microtasks();
+    expect(fadeOf(m3)).toBe(fade);
+    expect(fade.cancelled).toBe(false);
+    advance(SETTLE.moveMs - 1);
+    expect(m3.style.zIndex).toBe('1'); // held to the glide's real end, the shadow set down by then
+    expect(fade.progress()).toBe(1);
+    advance(2);
+    expect(m3.hasAttribute('style')).toBe(false);
+  });
+
+  it('a retarget measures what is left of the move from its real start, and its own glides are timed from theirs', async () => {
+    startLag = { composited: LAG, main: LAG };
+    liftAndAppear();
+    const m3 = row('m3');
+    frame();
+    frame();
+    advance(LAG);
+    await microtasks();
+    advance(100); // 100ms into the glide, LAG + 100 after play
+    await commit(() => useHarness.setState({ band: 30 })); // re-aims every move
+    const [glide] = on(`${DAY}|m3`).filter((a) => kind(a) === 'glide');
+    expect(glide.options.duration).toBe(SETTLE.moveMs - 100);
+    advance(LAG);
+    await microtasks(); // the re-aimed glides start now
+    advance(SETTLE.moveMs - 100 - 1);
+    expect(m3.style.zIndex).toBe('1');
+    expect(fadeOf(m3)!.progress()).toBeGreaterThan(0.99);
+    advance(2);
+    expect(m3.hasAttribute('style')).toBe(false);
+  });
+
+  it('an engine that reports no start keeps the call’s clock', async () => {
+    startLag = { composited: LAG, main: LAG };
+    reportsStart = false;
+    liftAndAppear();
+    const m3 = row('m3');
+    frame();
+    frame();
+    advance(LAG);
+    await microtasks();
+    advance(SETTLE.moveMs - LAG - 1);
+    expect(m3.style.zIndex).toBe('1');
+    advance(2); // moveMs after the call
+    expect(m3.hasAttribute('style')).toBe(false);
+    advance(APPEAR_END - SETTLE.moveMs + 50 - 2);
+    expect(settling()).toBe('true');
+    advance(1);
+    expect(settling()).toBeNull();
+  });
+
+  it('a run that ended before the engine started anything stays ended', async () => {
+    startLag = { composited: LAG, main: LAG };
+    const before = liftAndAppear();
+    frame();
+    frame();
+    advance(LAG / 2);
+    act(() => fireEvent.keyDown(document.body, { key: 'j' })); // an interrupt, mid-lag
+    expect(live()).toEqual([]);
+    advance(LAG);
+    await microtasks();
+    advance(SETTLE.runTimeoutMs);
+    expect(live()).toEqual([]);
+    expect(settling()).toBeNull();
+    asBefore(before);
+    expect(consoleWarn).not.toHaveBeenCalled();
+  });
+});
+
+// ── A layout change outside the scope ───────────────────────────────────
+
+describe('a layout change outside the scope moves every row alike, and is carried rather than re-aimed back', () => {
+  const ROWS = ['b', 'a', 'e', 'd'];
+  const tops = () => Object.fromEntries(ROWS.map((id) => [id, row(id).getBoundingClientRect().top]));
+  const expectTops = (want: Record<string, number>) => {
+    for (const id of ROWS) expect([id, row(id).getBoundingClientRect().top]).toEqual([id, expect.closeTo(want[id], 5)]);
+  };
+
+  it('a hover after a painted outside shift leaves every row where it is drawn, and spends no retarget', async () => {
+    startPreview(
+      <Above>
+        <Canvas />
+      </Above>,
+      CACHED()
+    );
+    land(FRESH());
+    frame();
+    frame();
+    const running = live();
+    advance(100);
+    // The header row above the planner grows: nothing in the scope records it, and the next frame paints it.
+    await commit(() => useHarness.setState({ above: 50 }));
+    frame();
+    const drawn = tops();
+    const created = animations.length;
+    await commit(() => row('a').style.setProperty('--title-mask', 'none')); // a record inside a row that moves nothing
+    expect(animations).toHaveLength(created);
+    expect(running.every((a) => !a.cancelled)).toBe(true);
+    expectTops(drawn);
+
+    // A real commit still re-aims from where the rows are drawn now, and two of them still fit the budget.
+    const now = tops();
+    await commit(() => useHarness.setState({ band: 20 }));
+    expectTops(now);
+    await commit(() => useHarness.setState({ band: 40 }));
+    expect(on('group:inbox')).toHaveLength(1); // re-aimed, not snapped
+    expect(on('group:inbox')[0].keyframes[0]).toEqual({ transform: 'translate(0px, -40px)' });
+  });
+
+  it('mid-hold, FIRST is carried too: a later re-hold keeps the rows where they are drawn', async () => {
+    startPreview(
+      <Above>
+        <Canvas />
+      </Above>,
+      CACHED()
+    );
+    land(FRESH());
+    const held = live();
+    await commit(() => useHarness.setState({ above: 50 }));
+    const drawn = tops();
+    await commit(() => row('a').style.setProperty('--title-mask', 'none'));
+    expect(held.every((a) => !a.cancelled && a.playState === 'paused')).toBe(true); // not re-held
+    await commit(() => useHarness.setState({ band: 30 })); // a real follow-up re-holds against FIRST, as shifted
+    expect(held.every((a) => a.cancelled)).toBe(true);
+    expectTops(drawn);
+  });
+});
+
+// ── An appear's lift through a retarget ─────────────────────────────────
+
+describe('a retarget leaves an appear’s lift running beside its type-in', () => {
+  it('neither is re-issued, and a lift is never taken for a glide: nothing is raised for it', async () => {
+    startPreview(<Buckets />, [item('m1'), item('m2')]);
+    const before = inlineStyles();
+    land([item('m1'), item('m2'), item('e')]); // e appears last in Morning
+    frame();
+    frame();
+    const [clip, lift] = [...on(`${DAY}|e`)].sort((x, y) => kind(x).localeCompare(kind(y)));
+    expect([kind(clip), kind(lift)]).toEqual(['clip', 'lift']);
+    advance(30);
+    await commit(() => useHarness.setState({ band: 20 })); // every card glides down 20; e rides its card
+    expect(on('bucket:morning').filter((a) => kind(a) === 'glide')).toHaveLength(1);
+    expect(on(`${DAY}|e`)).toEqual([clip, lift]); // the same two, still paired
+    expect([clip.options.delay, lift.options.delay]).toEqual([SETTLE.appearLead, SETTLE.appearLead]);
+    expect(bucket('morning').getAttribute('style')).toBe(before['bucket-morning']);
+    expect(row('e').hasAttribute('style')).toBe(false);
+  });
+
+  it('a glide the retarget gives an appearing row adds to its lift, from where it is drawn', async () => {
+    startPreview(<Canvas />, CACHED());
+    land(FRESH());
+    frame();
+    frame();
+    advance(30);
+    const lift = on(`${DAY}|e`).find((a) => kind(a) === 'lift')!;
+    const drawn = row('e').getBoundingClientRect().top;
+    await commit(() => usePlannerStore.setState({ items: [item('x'), ...FRESH()] })); // e is pushed 40 down its group
+    expect(lift.cancelled).toBe(false);
+    const glides = on(`${DAY}|e`).filter((a) => kind(a) === 'glide');
+    expect(glides.map((a) => a.keyframes[0])).toEqual([{ transform: 'translate(0px, -40px)' }]);
+    // Summed with the lift, never in place of it: a replace would drop the lift while both run.
+    expect(glides[0].options.composite).toBe('add');
+    expect(row('e').getBoundingClientRect().top).toBeCloseTo(drawn, 5);
   });
 });

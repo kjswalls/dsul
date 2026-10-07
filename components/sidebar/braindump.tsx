@@ -64,9 +64,10 @@ import { cn } from '@/lib/utils';
  * braindump), clears, and holds focus — type, Enter, type, Enter. The plus
  * commits the same way, or focuses the field when it's empty.
  *
- * Before the planner has loaded (a cold load, the look-only preview, a failed
- * load) Enter still clears: the capture is HELD (lib/held-captures.ts) and
- * lands with the fresh data, and the row says so until it has.
+ * While the planner's load is in flight (a cold load, the look-only preview)
+ * Enter still clears: the capture is HELD (lib/held-captures.ts) and lands when
+ * the load finishes, and the row says so until it has. Over a failed load it is
+ * added at once, and the row keeps saying so until a landing confirms it.
  */
 function QuickAddRow({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement | null> }) {
   const heldCount = useHeldCount();

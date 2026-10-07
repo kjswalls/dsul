@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useId, useMemo } from 'react';
 import { Loader2, Check, RotateCcw } from 'lucide-react';
 import { AskMark } from '@/components/ai/ask-mark';
 import { Button } from '@/components/ui/button';
 import { useProposalStore, type ProposalSurface } from '@/lib/proposal-store';
 import { usePlannerStore } from '@/lib/planner-store';
+import { selectPlannerLoaded, selectPlannerSettled } from '@/lib/planner-ready';
 import { useAICapabilities } from '@/lib/ai-connection-store';
 import { describeOperation } from '@/lib/proposal';
 import { cn } from '@/lib/utils';
@@ -59,6 +60,20 @@ export function ProposalCard({
 
   const items = usePlannerStore((s) => s.items);
   const itemTypes = usePlannerStore((s) => s.itemTypes);
+  /**
+   * Accept writes to the planner, so it waits for the planner's load: the
+   * store's accept refuses before then and keeps the card (lib/proposal-store.ts),
+   * which on its own read as a button that does nothing. So the button says why
+   * it is waiting. "Syncing…" only while a load is in flight (the look-only
+   * preview included); after a FAILED load nothing is syncing, and the reason
+   * points at the Retry instead. With no account at all there is no load to wait
+   * for, and the store's own guard is the whole story.
+   */
+  const acceptBlocked = usePlannerStore((s): 'syncing' | 'failed' | null =>
+    selectPlannerLoaded(s) ? null : selectPlannerSettled(s) ? 'failed' : s.userId ? 'syncing' : null
+  );
+  // Per mount: a second mount may hold the same card hidden.
+  const reasonId = useId();
 
   /**
    * Lines the user has ticked off, by index, tagged with the proposal they
@@ -293,12 +308,22 @@ export function ProposalCard({
         <Button
           size="sm"
           className="h-7 px-3 text-xs"
-          disabled={keeping.length === 0}
+          disabled={keeping.length === 0 || acceptBlocked !== null}
           onClick={() => accept(keeping)}
+          aria-describedby={acceptBlocked ? reasonId : undefined}
           data-testid="proposal-accept"
         >
           {acceptLabel}
         </Button>
+        {acceptBlocked && (
+          <span
+            id={reasonId}
+            className="text-2xs text-muted-foreground"
+            data-testid="proposal-accept-reason"
+          >
+            {acceptBlocked === 'syncing' ? 'Syncing…' : 'Can’t apply until your data loads'}
+          </span>
+        )}
         {canRetry && (
           <Button
             variant="ghost"

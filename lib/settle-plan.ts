@@ -126,6 +126,17 @@ export const EASE_TYPE = 'cubic-bezier(0.3, 0.4, 0.5, 1)';
  */
 export const EASE_SET_DOWN = 'cubic-bezier(0.42, 0, 0.58, 1)';
 
+/**
+ * The shadow a lifted row casts while it crosses its neighbours (lib/settle.ts,
+ * Stacking): `--shadow-elev-sm`, the elevation the app's floating surfaces draw.
+ * app/globals.css re-tunes it per theme (a crisp drop in light, a light-catch
+ * over a deeper drop in dark, a hairline ring in the themes that draw no
+ * shadows), and the conductor only ever reads it. `--shadow-soft-sm`, the
+ * lightest token, came out 2 to 4 grey levels under the row: a row passing over
+ * another read as text cut by an edge nobody could see. A test pins the token.
+ */
+export const LIFT_SHADOW = 'var(--shadow-elev-sm)';
+
 export type SettleRole = 'row' | 'frame';
 
 export interface Rect {

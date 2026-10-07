@@ -332,6 +332,10 @@ describe('the Zen room', () => {
 
     it('keys the hero and the rows for the settle', () => {
       const { container } = render(<ZenRoom />);
+      // Its rows glide unlifted: they sit on the frost and under the folded
+      // ledger's veil, neither an ancestor, so a lift's ground would knock the
+      // frost out of a moving row and its z-index carry it over the veil.
+      expect(container.querySelector('.zen-room')).toHaveAttribute('data-settle-lift', 'off');
       expect(screen.getByRole('heading', { level: 1 })).toHaveAttribute(
         'data-settle-key',
         'zen:hero:h-pages'

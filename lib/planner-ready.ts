@@ -38,7 +38,10 @@ import { usePlannerStore } from '@/lib/planner-store';
  *     views mount on it; nothing may write on it.
  *   - loaded: fresh data actually landed for this account. Every surface that
  *     ACTS on the planner gates here, not on settled, because settled counts a
- *     failed load's empty store.
+ *     failed load's empty store. Two exceptions act on settled, a failed load
+ *     included, because what they carry is typed text with no other copy:
+ *     quick capture (lib/held-captures.ts) and a waiting pasted list's
+ *     promotion (hooks/use-deferred-dialog.ts).
  *
  * The state type is structural because `PlannerStore` is not exported; any
  * snapshot carrying `userId` and `isLoading` can be asked. The other fields are
@@ -60,9 +63,9 @@ export const selectPlannerVisible = (s: Readiness): boolean => selectPlannerSett
 
 /**
  * Fresh data actually landed for this account (not a failed load's empty store). The gate for
- * every surface that ACTS: held captures, notice actions, proposal accept, deferred-dialog
- * promotion. `error` is written only by the load and cleared by its opening set(), so nothing
- * else can trip this.
+ * every surface that ACTS: notice actions, proposal accept, deferred-dialog promotion. Not quick
+ * capture or a waiting pasted list, which act on settled (above). `error` is written only by the
+ * load and cleared by its opening set(), so nothing else can trip this.
  */
 export const selectPlannerLoaded = (s: Readiness): boolean =>
   selectPlannerSettled(s) && !s.error && s.loadFailedUserId !== s.userId;

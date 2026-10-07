@@ -6,6 +6,7 @@ import {
   EASE_SETTLE,
   EASE_SET_DOWN,
   EASE_TYPE,
+  LIFT_SHADOW,
   SETTLE,
   SETTLE_LIMITS,
   createKeyDeduper,
@@ -120,6 +121,13 @@ describe('SETTLE constants', () => {
     expect(EASE_SET_DOWN).toBe('cubic-bezier(0.42, 0, 0.58, 1)');
     expect(SETTLE.liftSetDownMs).toBeLessThan(SETTLE.retargetMinMs);
     expect(SETTLE.liftSetDownMs).toBeLessThan(SETTLE.moveMs / 2);
+  });
+
+  it('LIFT_SHADOW is the floating surfaces’ elevation, defined in light and re-tuned in dark', () => {
+    expect(LIFT_SHADOW).toBe('var(--shadow-elev-sm)');
+    const css = readFileSync(join(process.cwd(), 'app', 'globals.css'), 'utf8');
+    expect(css).toMatch(/:root\s*\{[^}]*--shadow-elev-sm:/);
+    expect(css).toMatch(/\.dark\s*\{[^}]*--shadow-elev-sm:/);
   });
 
   it('EASE_SETTLE is --ease-out-soft from app/globals.css, read as text', () => {

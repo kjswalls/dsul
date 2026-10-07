@@ -3,7 +3,7 @@
 import { Component, type ReactNode } from 'react';
 
 import { usePlannerStore } from '@/lib/planner-store';
-import { clearPlannerSnapshot } from '@/lib/planner-snapshot';
+import { clearPlannerSnapshot, notePreviewThrew } from '@/lib/planner-snapshot';
 
 interface CrashState {
   /** A flag, not `error !== null`: `throw null` (or 0, or '') must still count as a throw. */
@@ -34,7 +34,10 @@ const CLEAR: CrashState = { failed: false, error: null, rethrow: false };
  * second throw finds nothing to drop and is rethrown.
  *
  * What it cannot catch — a consumer above AppShell, a hang — is the per-tab
- * crash marker's job (markPreviewPending, consumed on the next read).
+ * crash marker's job (markPreviewPending, consumed on the next read). Every
+ * catch is also reported to it (notePreviewThrew): a page that has seen a
+ * render throw never counts a preview as left cleanly, so its marker is never
+ * removed on the way out.
  */
 export class PreviewCrashBoundary extends Component<{ children: ReactNode }, CrashState> {
   state: CrashState = CLEAR;
@@ -44,6 +47,7 @@ export class PreviewCrashBoundary extends Component<{ children: ReactNode }, Cra
   }
 
   componentDidCatch(error: unknown) {
+    notePreviewThrew();
     let dropped = false;
     try {
       dropped = usePlannerStore.getState().dropPreview();

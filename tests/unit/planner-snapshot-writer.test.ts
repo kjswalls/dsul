@@ -56,6 +56,7 @@ vi.mock('@/lib/planner-snapshot', async () => {
     snapshotSupported: vi.fn(() => true),
     readPlannerSnapshot: vi.fn(async () => null),
     markPreviewPending: vi.fn(),
+    previewRenderedCleanly: vi.fn(() => false),
     writePlannerSnapshot: vi.fn(async () => true),
     purgePlannerSnapshotDb: vi.fn(),
   };
@@ -65,6 +66,7 @@ import {
   clearPlannerSnapshot,
   getSnapshotEpoch,
   markPreviewPending,
+  previewRenderedCleanly,
   purgePlannerSnapshotDb,
   readPlannerSnapshot,
   snapshotSupported,
@@ -125,6 +127,7 @@ const FRESH_IDS = ids(FRESH().items);
 
 const write = vi.mocked(writePlannerSnapshot);
 const marker = vi.mocked(markPreviewPending);
+const cleanly = vi.mocked(previewRenderedCleanly);
 const purge = vi.mocked(purgePlannerSnapshotDb);
 const supported = vi.mocked(snapshotSupported);
 const read = vi.mocked(readPlannerSnapshot);
@@ -156,6 +159,11 @@ const hide = () => {
   document.dispatchEvent(new Event('visibilitychange'));
 };
 const pagehide = () => window.dispatchEvent(new Event('pagehide'));
+const show = () => {
+  setVisibility('visible');
+  document.dispatchEvent(new Event('visibilitychange'));
+};
+const pageshow = () => window.dispatchEvent(new Event('pageshow'));
 
 const landFresh = async (loading: Promise<void>) => {
   pendingLoads.shift()!.resolve(FRESH());
@@ -201,6 +209,7 @@ beforeEach(() => {
   read.mockImplementation(async () => null);
   write.mockImplementation(async () => true);
   marker.mockImplementation(() => {});
+  cleanly.mockImplementation(() => false);
   setOwner(A);
   useExtensionsStore.setState({
     hydratedUserId: A,
@@ -495,6 +504,114 @@ describe('the crash marker', () => {
   it('is left alone by a load that never previewed', async () => {
     start();
     await land(A);
+    expect(marker).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Leaving the page mid-preview. The marker exists for a preview that hung or
+ * crashed the page; a reload, a navigation or a tab put away while the load is
+ * still out is neither, and must not cost the next page its preview. Whether
+ * the preview got onto the screen cleanly is lib/planner-snapshot.ts's answer
+ * (its own suite); here it is a spy, and every assertion is the writer's use of it.
+ */
+describe('the crash marker on the way out', () => {
+  it.each([
+    ['pagehide (a reload, a navigation, pull-to-refresh)', pagehide],
+    ['the tab going hidden (the last event a discarded tab gets)', hide],
+  ])('is removed on %s while a cleanly rendered preview is up', async (_, leave) => {
+    start();
+    await previewA();
+    cleanly.mockImplementation(() => true);
+    marker.mockClear();
+
+    leave();
+    expect(marker).toHaveBeenCalledTimes(1);
+    expect(marker).toHaveBeenCalledWith(false);
+    expect(store().isPreview).toBe(true); // leaving ends nothing: the load is still out
+  });
+
+  it('is kept when the preview did not render cleanly (a throw unmounted it, or it never committed)', async () => {
+    start();
+    await previewA();
+    marker.mockClear();
+
+    pagehide();
+    hide();
+    expect(cleanly).toHaveBeenCalled();
+    expect(marker).not.toHaveBeenCalled();
+  });
+
+  it('is not touched on the way out when no preview is up', async () => {
+    start();
+    await land(A);
+    cleanly.mockImplementation(() => true);
+
+    pagehide();
+    hide();
+    expect(marker).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['shown again', show],
+    ['restored from the back/forward cache', pageshow],
+  ])('is armed again when the page is %s with the preview still up', async (_, back) => {
+    start();
+    await previewA();
+    cleanly.mockImplementation(() => true);
+    hide();
+    marker.mockClear();
+
+    back();
+    expect(marker).toHaveBeenCalledTimes(1);
+    expect(marker).toHaveBeenCalledWith(true);
+  });
+
+  it('is not armed again by a return after the preview ended', async () => {
+    start();
+    const { loading } = await previewA();
+    hide();
+    await landFresh(loading);
+    marker.mockClear();
+
+    show();
+    pageshow();
+    expect(marker).not.toHaveBeenCalled();
+  });
+
+  it('a marker that cannot be written escapes neither the way out nor the way back', async () => {
+    start();
+    await previewA();
+    cleanly.mockImplementation(() => true);
+    marker.mockClear();
+    marker.mockImplementation(() => {
+      throw new Error('sessionStorage went away');
+    });
+    // A listener's throw never reaches dispatchEvent's caller; it is reported as an error event.
+    const reported = vi.fn();
+    window.addEventListener('error', reported);
+    try {
+      pagehide();
+      show();
+      pageshow();
+    } finally {
+      window.removeEventListener('error', reported);
+    }
+    expect(marker).toHaveBeenCalledTimes(3);
+    expect(reported).not.toHaveBeenCalled();
+    expect(consoleWarn).toHaveBeenCalledWith(expect.stringContaining('[preview]'), expect.any(Error));
+  });
+
+  it('stop() lets go of the way back too', async () => {
+    start();
+    await previewA();
+    cleanly.mockImplementation(() => true);
+    stop();
+    marker.mockClear();
+
+    pagehide();
+    show();
+    pageshow();
     expect(marker).not.toHaveBeenCalled();
   });
 });

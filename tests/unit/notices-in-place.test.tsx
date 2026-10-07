@@ -678,9 +678,11 @@ describe('the mobile dock', () => {
 /**
  * A notice's verb acts on the planner, so it waits until the planner has
  * LOADED — not merely settled, because a failed load is settled with an empty
- * store. The line itself stays mounted (nothing inserted mid-landing) and reads
- * "Syncing…" with no onSelect, which both renderers draw inert. ✕ stays live:
- * dropping a line is the user's own call either way.
+ * store. The line itself stays mounted (nothing inserted mid-landing). While a
+ * load is in flight it reads "Syncing…" with no onSelect, which both renderers
+ * draw inert. After a FAILED load nothing is syncing, so it says nothing of the
+ * kind: the verb is left off, and the Retry notice is the way on. ✕ stays live
+ * throughout: dropping a line is the user's own call either way.
  *
  * Put back is the one that bites: restoreScheduling finds no rows to restore
  * before landing, and the receipt was then cleared regardless — the only way
@@ -725,18 +727,22 @@ describe('the notice verbs wait for the planner to load', () => {
       expect(receipt()).toBeDefined();
     });
 
-    it('reads Syncing… on the dock after a failed load, and pressing it spends nothing', () => {
+    it('offers no verb on the dock after a failed load (nothing is syncing), and pressing it spends nothing', () => {
       usePlannerStore.setState(failed);
       render(<DockNotices />);
       // "Couldn't load your data" holds the one row; the receipt is behind the fold.
       fireEvent.click(screen.getByTestId('dock-notice-overflow'));
 
       const row = document.querySelector('[data-notice-id="auto-age-receipt"]') as HTMLElement;
-      expect(row).toHaveTextContent('Syncing…');
-      fireEvent.click(screen.getByText('Syncing…'));
+      expect(row).toHaveTextContent('put aside this morning');
+      expect(row).not.toHaveTextContent('Syncing…');
+      expect(row).not.toHaveTextContent('Put back');
+      fireEvent.click(within(row).getByText('put aside this morning', { exact: false }));
 
       expect(restoreScheduling).not.toHaveBeenCalled();
       expect(receipt()).toBeDefined();
+      // The way on is the Retry beside it.
+      expect(document.querySelector('[data-notice-id="sync-error"]')).toHaveTextContent('Retry');
     });
 
     it('keeps its ✕ live while syncing', () => {
@@ -781,15 +787,30 @@ describe('the notice verbs wait for the planner to load', () => {
       expect(useEODStore.getState().isOpen).toBe(false);
     });
 
-    it('reads Syncing… on the dock after a failed load, and pressing it opens nothing', () => {
+    it('offers no verb on the dock after a failed load (nothing is syncing), and pressing it opens nothing', () => {
       usePlannerStore.setState(failed);
       useViewStore.setState({ scope: 'week' }); // no day-header anchor: the dock takes it
       render(<DockNotices />);
       fireEvent.click(screen.getByTestId('dock-notice-overflow'));
 
       const row = document.querySelector('[data-notice-id="eod-review"]') as HTMLElement;
-      expect(row).toHaveTextContent('Syncing…');
-      fireEvent.click(within(row).getByText('Syncing…'));
+      expect(row).toHaveTextContent('Today’s review is waiting');
+      expect(row).not.toHaveTextContent('Syncing…');
+      expect(row).not.toHaveTextContent('Start');
+      fireEvent.click(within(row).getByText('Today’s review is waiting'));
+      expect(useEODStore.getState().isOpen).toBe(false);
+      // ✕ ("Not tonight") is still there to wave it away.
+      expect(within(row).queryByRole('button', { name: 'Not tonight' })).not.toBeNull();
+    });
+
+    it('offers no verb in place after a failed load either', () => {
+      usePlannerStore.setState(failed);
+      render(<DayHeaderNotice />);
+
+      const row = screen.getByTestId('in-place-notice');
+      expect(row).not.toHaveTextContent('Syncing…');
+      expect(row).not.toHaveTextContent('Start');
+      fireEvent.click(within(row).getByText('Today’s review is waiting'));
       expect(useEODStore.getState().isOpen).toBe(false);
     });
 

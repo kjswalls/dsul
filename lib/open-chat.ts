@@ -16,7 +16,7 @@ import {
 } from './rail-store';
 import { closeItemPanel, openEditFor, useUIStore } from './ui-store';
 import { usePlannerStore } from './planner-store';
-import { selectPlannerSettled } from './planner-ready';
+import { isPlannerPreviewing, selectPlannerSettled } from './planner-ready';
 import { useViewStore } from './view-store';
 import { chatPlaceholder, itemChatPlaceholder } from './chat-utils';
 import type { Item, Task } from './planner-types';
@@ -247,6 +247,35 @@ export function openItemFromAsk(item: Item): void {
 }
 
 /**
+ * Ask the item's conversation to reveal itself (rail-store `pendingReveal`)
+ * for the desktop open just asked for, once that open is real. Called right
+ * after the open: nothing renders in between, so the conversation still
+ * finds the request when it mounts.
+ *
+ * Over the look-only preview the open is HELD (lib/ui-store.ts defers it), and
+ * the landing may drop it (a busy slot, a failed load, the row gone). A reveal
+ * armed for a dropped open would wait for the item's NEXT open and scroll that
+ * one, unasked. So a held open arms its reveal only when that very request is
+ * the one promoted (hooks/use-deferred-dialog.ts opens it before clearing it),
+ * and lets go the moment it is dropped or replaced. An open the preview
+ * refused outright (a pasted list is waiting, lib/ui-store.ts) arms nothing.
+ */
+function revealWhenOpened(itemId: string): void {
+  if (!isPlannerPreviewing()) {
+    useRailStore.getState().setPendingReveal(itemId);
+    return;
+  }
+  const held = useUIStore.getState().deferredDialog;
+  if (held?.type !== 'edit-item' || held.item.id !== itemId) return;
+  const unsubscribe = useUIStore.subscribe((s) => {
+    if (s.deferredDialog === held) return;
+    unsubscribe();
+    const open = s.activeDialog;
+    if (open?.type === 'edit-item' && open.item.id === itemId) useRailStore.getState().setPendingReveal(itemId);
+  });
+}
+
+/**
  * Show Ask from a command (the palette), with whatever was on top of it closed
  * through the one flushing close, so the view about to be pushed is the one on
  * screen. False when nothing can answer.
@@ -320,7 +349,8 @@ export function openHistory(
  * and resolves both ways there (components/mobile/ask-tab.tsx PhoneItemView).
  * On desktop the item goes through openEditFor, which ui-store defers while
  * previewing and promotion re-resolves against fresh rows, so the cached row
- * is only an address.
+ * is only an address; its reveal is armed only if that held open is the one
+ * promoted (revealWhenOpened).
  */
 export function openConversation(id: string, isMobile: boolean, o: { returnFocus?: string } = {}): void {
   if (!getAICapabilities().canChat) return;
@@ -348,8 +378,8 @@ export function openConversation(id: string, isMobile: boolean, o: { returnFocus
 
   if (item) {
     leaveZen();
-    useRailStore.getState().setPendingReveal(item.id);
     openItemFromAsk(item);
+    revealWhenOpened(item.id);
     return;
   }
 
@@ -504,8 +534,8 @@ function showItemForAsk(item: Item, isMobile: boolean, o: { reveal: boolean }): 
   // Already the open item: opening it again would only re-seed the panel.
   const open = useUIStore.getState().activeDialog;
   if (open?.type !== 'edit-item' || open.item.id !== item.id) {
-    if (o.reveal) rail.setPendingReveal(item.id);
     openItemFromAsk(item);
+    if (o.reveal) revealWhenOpened(item.id);
   }
   return 'desktop';
 }

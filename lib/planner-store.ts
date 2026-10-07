@@ -291,10 +291,16 @@ interface PlannerStore {
     item: Omit<Task, 'id' | 'order' | 'status' | 'isScheduled'>,
     memberships?: Memberships,
   ) => void;
-  /** Returns the new item's id. */
+  /**
+   * Returns the new item's id. `opts.id` files the row under an id it already
+   * had (lib/held-captures.ts re-files a capture whose first write may not
+   * have landed): an insert that did commit then fails on the primary key
+   * instead of making a second row.
+   */
   addTask: (
     task: Omit<Task, 'id' | 'order' | 'status' | 'isScheduled'>,
     memberships?: Memberships,
+    opts?: { id?: string },
   ) => string;
   /**
    * Bulk create — the paste-a-list path (bulk-add dialog). One set(), one
@@ -2985,14 +2991,14 @@ export const usePlannerStore = create<PlannerStore>()(
         if (userId) persistNewItem(userId, item, memberships, get);
       },
 
-      addTask: (taskData, memberships) => {
+      addTask: (taskData, memberships, opts) => {
         const timeBucket = autoCorrectBucket(taskData.startTime, taskData.timeBucket);
 
         const task: TaskItem = {
           ...taskData,
           type: 'task',
           timeBucket,
-          id: crypto.randomUUID(),
+          id: opts?.id ?? crypto.randomUUID(),
           status: 'pending',
           isScheduled: !!timeBucket,
           order: get().tasks.length,

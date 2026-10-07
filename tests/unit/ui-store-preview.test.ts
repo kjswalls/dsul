@@ -5,6 +5,8 @@ import {
   PREVIEW_DEFERRED_SLOTS,
   isDataDialog,
   isDataDialogArmed,
+  isWaitingPaste,
+  openBulkAdd,
   openEditFor,
   setEditItemInterceptor,
   useUIStore,
@@ -130,10 +132,17 @@ describe('openDialog while previewing', () => {
 
   it('defers each data slot instead of opening it', () => {
     for (const dialog of DATA_SLOTS) {
+      // Each on its own: a waiting pasted list would refuse the ones after it.
+      useUIStore.setState({ deferredDialog: null, deferredFor: null });
       ui().openDialog(dialog);
       expect(ui().activeDialog, dialog.type).toBeNull();
       expect(ui().deferredDialog, dialog.type).toBe(dialog);
     }
+  });
+
+  it('stamps the request with the account it was asked under', () => {
+    ui().openDialog({ type: 'organize' });
+    expect(ui().deferredFor).toBe(A);
   });
 
   it('keeps only the last request', () => {
@@ -420,5 +429,237 @@ describe('useDeferredDialogPromotion', () => {
     hook.unmount();
     await Promise.resolve();
     expect(ui().deferredDialog).toBeNull();
+  });
+});
+
+/**
+ * A request deferred while NO promoter was mounted, whose preview ended
+ * before one mounted: a door off `/` (the /settings arm-then-push) whose
+ * landing beat AppShell's mount. The edge never comes twice, so the promoter
+ * decides it as it mounts, by the same rules.
+ */
+describe('useDeferredDialogPromotion at mount', () => {
+  const mount = () => renderHook(() => useDeferredDialogPromotion());
+
+  it('opens a request the landing stranded before the promoter mounted', () => {
+    ui().openDialog({ type: 'organize', section: 'trash' });
+    landFresh();
+    expect(ui().activeDialog).toBeNull();
+    expect(ui().deferredDialog).toEqual({ type: 'organize', section: 'trash' });
+
+    mount();
+    expect(ui().activeDialog).toEqual({ type: 'organize', section: 'trash' });
+    expect(ui().deferredDialog).toBeNull();
+  });
+
+  it('opens it once under StrictMode, and the re-mount finds nothing left', async () => {
+    ui().openDialog({ type: 'organize', section: 'goals' });
+    landFresh();
+    renderHook(() => useDeferredDialogPromotion(), { wrapper: StrictMode });
+    await Promise.resolve();
+    expect(ui().activeDialog).toEqual({ type: 'organize', section: 'goals' });
+    expect(ui().deferredDialog).toBeNull();
+  });
+
+  it('re-resolves a stranded edit-item against the fresh rows', () => {
+    openEditFor(task('t-kept', 'Cached title') as unknown as Task, 'task');
+    landFresh();
+    mount();
+    expect(ui().activeDialog).toMatchObject({ type: 'edit-item', item: { id: 't-kept', title: 'Fresh title' } });
+  });
+
+  it('drops it if the load that stranded it failed', () => {
+    ui().openDialog({ type: 'organize' });
+    usePlannerStore.setState({ isLoading: false, isPreview: false, error: 'offline', loadFailedUserId: A, items: [] } as never);
+    mount();
+    expect(ui().activeDialog).toBeNull();
+    expect(ui().deferredDialog).toBeNull();
+  });
+
+  it('drops it if another account has loaded since', () => {
+    ui().openDialog({ type: 'organize' });
+    landFresh(B);
+    mount();
+    expect(ui().activeDialog).toBeNull();
+    expect(ui().deferredDialog).toBeNull();
+  });
+
+  it('drops it if the planner is still loading without a preview (a crash drop, or the next account)', () => {
+    ui().openDialog({ type: 'organize' });
+    usePlannerStore.setState({ isPreview: false, items: [], tasks: [] as never } as never);
+    mount();
+    expect(ui().deferredDialog).toBeNull();
+    landFresh();
+    expect(ui().activeDialog).toBeNull();
+  });
+
+  it('drops it if the slot was taken meanwhile', () => {
+    ui().openDialog({ type: 'organize' });
+    ui().openDialog({ type: 'launcher' });
+    landFresh();
+    mount();
+    expect(ui().activeDialog).toEqual({ type: 'launcher' });
+    expect(ui().deferredDialog).toBeNull();
+  });
+
+  it('never opens a request with no account stamped on it', () => {
+    useUIStore.setState({ deferredDialog: { type: 'organize' }, deferredFor: null });
+    landFresh();
+    mount();
+    expect(ui().activeDialog).toBeNull();
+    expect(ui().deferredDialog).toBeNull();
+  });
+
+  it('leaves a request alone while the preview is still up: the edge decides', () => {
+    ui().openDialog({ type: 'organize' });
+    mount();
+    expect(ui().deferredDialog).toEqual({ type: 'organize' });
+    landFresh();
+    expect(ui().activeDialog).toEqual({ type: 'organize' });
+  });
+});
+
+/**
+ * A pasted list deferred over the preview. The paste was consumed by the field
+ * (`preventDefault`), so the request is the only place its text exists: it is
+ * never dropped for a busy slot or a failed load, only for another account.
+ */
+describe('a pasted list waits for the slot instead of being dropped', () => {
+  const LIST = 'Milk\nEggs\nBread';
+  const mount = () => renderHook(() => useDeferredDialogPromotion());
+  const pasted = { type: 'bulk-add', text: LIST };
+
+  it('names what waits: a bulk-add carrying text, nothing else', () => {
+    expect(isWaitingPaste({ type: 'bulk-add', text: LIST })).toBe(true);
+    expect(isWaitingPaste({ type: 'bulk-add' })).toBe(false);
+    expect(isWaitingPaste({ type: 'bulk-add', text: '' })).toBe(false);
+    expect(isWaitingPaste({ type: 'organize' })).toBe(false);
+    expect(isWaitingPaste(null)).toBe(false);
+  });
+
+  it('keeps it when the slot is taken at landing, and opens it once the slot frees', () => {
+    mount();
+    openBulkAdd({ text: LIST });
+    ui().openDialog({ type: 'launcher' });
+    landFresh();
+    expect(ui().activeDialog).toEqual({ type: 'launcher' });
+    expect(ui().deferredDialog).toEqual(pasted);
+
+    ui().closeDialog();
+    expect(ui().activeDialog).toEqual(pasted);
+    expect(ui().deferredDialog).toBeNull();
+  });
+
+  it('waits out a confirm too', () => {
+    mount();
+    openBulkAdd({ text: LIST });
+    useUIStore.setState({ confirmRequest: CONFIRM });
+    landFresh();
+    expect(ui().deferredDialog).toEqual(pasted);
+
+    ui().resolveConfirm(false);
+    expect(ui().activeDialog).toEqual(pasted);
+  });
+
+  it('is not superseded by another data dialog opened meanwhile, and opens when that one closes', () => {
+    mount();
+    openBulkAdd({ text: LIST });
+    ui().openDialog({ type: 'launcher' });
+    landFresh();
+    // From the launcher, on real data: the item opens over it.
+    openEditFor(task('t-kept', 'Fresh title') as unknown as Task, 'task');
+    expect(ui().activeDialog?.type).toBe('edit-item');
+    expect(ui().deferredDialog).toEqual(pasted);
+
+    ui().closeDialog();
+    expect(ui().activeDialog).toEqual(pasted);
+  });
+
+  it('gives way to a newer pasted list', () => {
+    mount();
+    openBulkAdd({ text: LIST });
+    ui().openDialog({ type: 'launcher' });
+    landFresh();
+    openBulkAdd({ text: 'Newer\nList' });
+    expect(ui().activeDialog).toEqual({ type: 'bulk-add', text: 'Newer\nList' });
+    expect(ui().deferredDialog).toBeNull();
+    ui().closeDialog();
+    expect(ui().activeDialog).toBeNull();
+  });
+
+  it('opens over a FAILED load, as a paste made after the failure would', () => {
+    mount();
+    openBulkAdd({ text: LIST });
+    usePlannerStore.setState({ isLoading: false, isPreview: false, error: 'offline', loadFailedUserId: A, items: [] } as never);
+    expect(ui().activeDialog).toEqual(pasted);
+    expect(ui().deferredDialog).toBeNull();
+  });
+
+  it('waits out a crash drop and opens when the load lands', () => {
+    mount();
+    openBulkAdd({ text: LIST });
+    usePlannerStore.setState({ isPreview: false, items: [], tasks: [] as never } as never);
+    expect(ui().deferredDialog).toEqual(pasted);
+    expect(ui().activeDialog).toBeNull();
+
+    landFresh();
+    expect(ui().activeDialog).toEqual(pasted);
+  });
+
+  it('is dropped, never opened, for another account', () => {
+    mount();
+    openBulkAdd({ text: LIST });
+    ui().openDialog({ type: 'launcher' });
+    landFresh();
+    expect(ui().deferredDialog).toEqual(pasted);
+
+    // Signed out and in as somebody else while the launcher was up.
+    landFresh(B);
+    ui().closeDialog();
+    expect(ui().activeDialog).toBeNull();
+    expect(ui().deferredDialog).toBeNull();
+  });
+
+  it('is dropped on an account change at the edge, as any request', () => {
+    mount();
+    openBulkAdd({ text: LIST });
+    landFresh(B);
+    expect(ui().activeDialog).toBeNull();
+    expect(ui().deferredDialog).toBeNull();
+  });
+
+  it('is kept over an item or organizer asked for later in the preview, and opens at landing', () => {
+    mount();
+    openBulkAdd({ text: LIST });
+    // A ⌘K search result, an item opened from Ask, an Organize door.
+    openEditFor(task('t-kept', 'Cached title') as unknown as Task, 'task');
+    ui().openDialog({ type: 'organize', section: 'projects' });
+    ui().openDialog({ type: 'add', tab: 'task' });
+    expect(ui().activeDialog).toBeNull();
+    expect(ui().deferredDialog).toEqual(pasted);
+    expect(ui().deferredFor).toBe(A);
+
+    landFresh();
+    expect(ui().activeDialog).toEqual(pasted);
+    expect(ui().deferredDialog).toBeNull();
+  });
+
+  it('gives way to a newer pasted list during the preview too', () => {
+    mount();
+    openBulkAdd({ text: LIST });
+    openBulkAdd({ text: 'Newer\nList' });
+    expect(ui().deferredDialog).toEqual({ type: 'bulk-add', text: 'Newer\nList' });
+    landFresh();
+    expect(ui().activeDialog).toEqual({ type: 'bulk-add', text: 'Newer\nList' });
+  });
+
+  it('a list-less bulk-add is dropped for a busy slot like any other request', () => {
+    mount();
+    openBulkAdd();
+    ui().openDialog({ type: 'launcher' });
+    landFresh();
+    expect(ui().deferredDialog).toBeNull();
+    ui().closeDialog();
+    expect(ui().activeDialog).toBeNull();
   });
 });

@@ -5,6 +5,7 @@ import {
   PREVIEW_MODE,
   getSnapshotEpoch,
   markPreviewPending,
+  previewRenderedCleanly,
   purgePlannerSnapshotDb,
   snapshotSupported,
   writePlannerSnapshot,
@@ -31,6 +32,12 @@ import { usePlannerStore } from './planner-store';
  * it, the TTL is measured from it, and the store refuses a write whose base is
  * older than the one on disk — a days-old tab (Electron hides to tray) must not
  * overwrite a fresher tab's copy with its own.
+ *
+ * It also keeps the crash marker honest (lib/planner-snapshot.ts). The marker
+ * goes when the preview ends, and when the page is left or hidden with a
+ * preview it rendered cleanly: a reload, a navigation, pull-to-refresh or a tab
+ * put away mid-preview is not a crash. It comes back if the page is shown again
+ * with the preview still up.
  */
 
 export const SNAPSHOT_WRITE_DEBOUNCE_MS = 2000;
@@ -190,17 +197,48 @@ export function startPlannerSnapshotWriter(): () => void {
     cancel();
     write();
   };
+
+  // The marker is for a preview that hung or crashed the page. Leaving or
+  // hiding the page while a preview it rendered cleanly is still up is neither,
+  // so the marker goes and the next page previews again. A hung page runs none
+  // of this, and a throw unmounts SettleHost's hold, so both keep it. Hidden
+  // counts as leaving: it is the last event a page killed in the background
+  // (a discarded tab, a phone reclaiming memory) is sure to get.
+  const standDown = () => {
+    try {
+      if (usePlannerStore.getState().isPreview && previewRenderedCleanly()) markPreviewPending(false);
+    } catch (err) {
+      console.warn('[preview] crash marker left as it was', err);
+    }
+  };
+  // Shown again, or back from the back/forward cache, with the preview still
+  // up: armed again, as offerPreview armed it.
+  const rearm = () => {
+    try {
+      if (usePlannerStore.getState().isPreview) markPreviewPending(true);
+    } catch (err) {
+      console.warn('[preview] crash marker left as it was', err);
+    }
+  };
+
+  const onPageHide = () => {
+    flush();
+    standDown();
+  };
   const onVisibility = () => {
-    if (document.visibilityState === 'hidden') flush();
+    if (document.visibilityState === 'hidden') onPageHide();
+    else rearm();
   };
   document.addEventListener('visibilitychange', onVisibility);
-  window.addEventListener('pagehide', flush);
+  window.addEventListener('pagehide', onPageHide);
+  window.addEventListener('pageshow', rearm);
 
   return () => {
     stopPlanner();
     stopExtensions();
     document.removeEventListener('visibilitychange', onVisibility);
-    window.removeEventListener('pagehide', flush);
+    window.removeEventListener('pagehide', onPageHide);
+    window.removeEventListener('pageshow', rearm);
     cancel();
   };
 }

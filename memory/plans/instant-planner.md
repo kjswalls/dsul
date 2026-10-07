@@ -28,8 +28,8 @@ the settle conductor animates the difference.
 It is not:
 
 - **Something you can act on.** Every store write refuses, and nothing on the cached rows
-  takes a pointer, focus, drag or hover. Quick capture is held until the load lands; the
-  exits and chrome that touches no row stay live.
+  takes a pointer, focus, drag or hover. Quick capture is held while the load is in flight;
+  the exits and chrome that touches no row stay live.
 - **Offline mode.** A failed load drops the preview to today's failure state with Retry.
   Cached rows never survive a failure.
 - **On every route.** Only `/`, only on the page's first load attempt, never on Retry.
@@ -58,12 +58,16 @@ It is not:
    the apply-time predicate must pass (`pathname === '/'` and no data dialog armed). It
    hydrates the cached custom types, seeds the display-only extension map, sets the crash
    marker, and calls `set({ ...cached, isPreview: true })` under the history suppressor.
-   The routers mount the real views, inert. Two frames later SettleHost notes the preview
-   as painted. The sync line fades in at 300ms if the preview is still up.
+   The routers mount the real views, inert. When the preview commits, SettleHost takes a
+   hold (`notePreviewRendered`), released when the preview ends or SettleHost unmounts,
+   which tells the crash marker the preview rendered cleanly. Two frames later SettleHost
+   notes the preview as painted, which is the settle's concern only. The sync line fades
+   in at 300ms if the preview is still up.
 5. **Fresh landing.** `set({ ...fresh, isLoading: false, isPreview: false })`. Inside that
    `set()`, before React commits: the conductor bumps the settle epoch and captures FIRST
    from the preview DOM; the writer removes the crash marker and stamps `base`; the
-   deferred-dialog hook promotes; held captures queue their release in a microtask.
+   deferred-dialog hook promotes; held captures queue their release in a microtask (a
+   failed load releases them too).
 6. **Commit.** `inert` lifts and `data-loaded="true"` appears. SettleHost's layout effect
    calls `onLandingCommitted()`: measure LAST, plan, then hold, shield or do nothing. The
    sync line sweeps "done" and unmounts.
@@ -72,7 +76,10 @@ It is not:
 **Failure:** the catch empties the data slices in the same `set()` as `error`
 (`emptyPlannerData()`, after `hydrateCustomTypes([])`). The empty store is then the undo
 baseline, so ⌘Z can never replay cached rows against the server. No capture, no settle,
-no shield; the sync line vanishes; held captures wait for a successful Retry.
+no shield; the sync line vanishes. Held captures are filed the moment the load fails
+(`addTask` over the empty store, written at once, as before this queue), and a capture
+typed after the failure is added at once. Each is kept, by id, until a landing confirms
+it or files it again (see Held captures).
 
 **Crash:** a render that throws while previewing is caught by `PreviewCrashBoundary`,
 which calls `dropPreview()` (data empty, `isLoading` still true, so the skeleton shows) and
@@ -98,7 +105,11 @@ which calls `dropPreview()` (data empty, `isLoading` still true, so the skeleton
 |---|---|---|
 | settled | the load has finished, success or failure | what it gated before |
 | visible | settled, or previewing | mounting views. Display only, never a write gate |
-| loaded | settled, no `error`, and `loadFailedUserId !== userId` | every surface that ACTS: captures, notice actions, proposal accept, dialog promotion, the morning check |
+| loaded | settled, no `error`, and `loadFailedUserId !== userId` | every surface that ACTS: notice actions, proposal accept, the Paused scopes rows, dialog promotion, the morning check |
+
+Two act on settled instead, because a failed load has finished too: quick capture holds
+only while a load is in flight (the preview included), and a pasted list's promotion
+waits for settled, not loaded.
 
 Each has a hook (`usePlannerSettled`, `usePlannerVisible`, `usePlannerLoaded`,
 `usePlannerPreviewing`), and two have non-reactive reads (`isPlannerPreviewing`,
@@ -164,20 +175,33 @@ silent no-op, and that nothing decided on cached rows runs after the landing.
 - **ui-store** ([lib/ui-store.ts](../../lib/ui-store.ts)). While previewing, `openDialog`
   on one of the five data slots (`PREVIEW_DEFERRED_SLOTS`: `add`, `edit-item`,
   `new-container`, `bulk-add`, `organize`) stores the request in `deferredDialog`
-  instead; the last request wins. `closeDialog` leaves the deferral alone, because the
-  launcher closes itself right after running "Open Organize". `confirm` refuses while
-  previewing on `/`, where confirms guard data actions, unless the request declares
-  `touchesPlanner: false`: its `onConfirm` reads and writes no planner row. Two do today,
-  deleting a conversation (the Ask title menu) and disconnecting the model. Absent means
-  it may touch rows, so a new confirm is refused there until someone has checked; every
-  other confirm (Organize, the bulk bar, the row and sheet deletes, the item verbs) acts
-  on rows and stays unmarked.
+  instead, stamped with the account it was made under (`deferredFor`); the last request
+  wins, except over a waiting pasted list (`isWaitingPaste`: a `bulk-add` carrying text),
+  which only a newer `bulk-add` replaces: an item or organizer asked for after it is
+  refused, since losing a deferred click costs far less than losing typed text. A data
+  slot opened on real data clears a waiting deferral, except that same pasted list. `closeDialog` leaves the deferral alone, because the launcher closes itself
+  right after running "Open Organize". `confirm` refuses while previewing on `/`, where
+  confirms guard data actions, unless the request declares `touchesPlanner: false`: its
+  `onConfirm` reads and writes no planner row. Two do today, deleting a conversation (the
+  Ask title menu) and disconnecting the model. Absent means it may touch rows, so a new
+  confirm is refused there until someone has checked; every other confirm (Organize, the
+  bulk bar, the row and sheet deletes, the item verbs) acts on rows and stays unmarked.
 - **Promotion** ([hooks/use-deferred-dialog.ts](../../hooks/use-deferred-dialog.ts)),
   mounted once in AppShell. On the preview's end it opens the request only after a
   successful landing for the same account, into a free slot with no confirm up. An
   `edit-item` is re-resolved to the fresh row (dropped if the row is gone, keeping the
   payload's type stamp); a `new-container` keeps only the `itemIds` that still exist. A
-  failure, a crash drop, an account change and leaving `/` all drop it.
+  failure, a crash drop, an account change and leaving `/` all drop it. It opens the
+  dialog before it clears the request, and a data slot opened on real data clears it in
+  the same `set()`, so a subscriber watching the request sees it become the open dialog.
+  - **At mount** too, by the same rules, for a request whose preview ended before
+    AppShell mounted (the `/settings` arm-then-push whose landing came first). The account
+    is checked by the stamp, and off the edge a request with no stamp never opens.
+  - **A pasted list** is never dropped for a busy slot or a confirm: the field consumed
+    the paste, so the request is the only place its text exists. It opens once both are
+    free, opens over a failed load (as a paste made after the failure would), and waits
+    out a crash drop until the load finishes. Only another account, sign-out or leaving
+    `/` drops it.
 - **The phone's Ask tab.** While it is mounted, `openEditFor` hands an item to rail-store's
   interceptor, which pushes it over Ask as an autosaving inline ItemDialog instead of
   opening the drawer. While previewing, `openStampedEdit` (ui-store) skips the
@@ -195,7 +219,10 @@ silent no-op, and that nothing decided on cached rows runs after the landing.
   found and later deleted, the view pops. Settled rather than loaded, so a failed load's
   empty store shows the conversation instead of loading for ever. The conversation view
   says its item is gone only on loaded rows. On desktop the item goes through
-  `openEditFor`, deferred and re-resolved like any edit.
+  `openEditFor`, deferred and re-resolved like any edit, and its reveal (rail-store's
+  `pendingReveal`, which scrolls to the conversation) is armed only when that held open
+  is the one promoted (`revealWhenOpened`): a dropped or replaced open leaves nothing
+  armed to scroll the item's next open unasked. `askAboutItem` does the same.
 - **Commands** ([lib/commands/types.ts](../../lib/commands/types.ts)). While previewing,
   `isAvailable` is false for every command in the `create`, `items`, `rituals` and
   `history` groups, plus `workspace.selectAll` and `goto.overdue`. It is a group rule
@@ -208,14 +235,19 @@ silent no-op, and that nothing decided on cached rows runs after the landing.
 
 ### Surfaces that act, gated on loaded
 
-- **Quick capture** (the braindump's QuickAddRow Enter, the omnibar's `+`) goes through
-  `captureTask()`. See "Held captures".
+- **Quick capture** (the braindump's QuickAddRow Enter, the omnibar's `+`) is the
+  exception: it goes through `captureTask()`, which holds only while a load is in flight
+  and adds at once over a failed load. See "Held captures".
 - **The braindump's ＋**, with text typed and the planner not loaded, keeps the text and
   focuses the field rather than open a dialog that would be deferred or dropped.
 - **The sweep receipt and the EOD notice** stay mounted, so nothing is inserted
-  mid-settle, but their actions read "Syncing…" with no `onSelect`. Dismiss stays live.
-  This also closes a cold-load hole: "Put back" over an empty store spent the only receipt
-  on nothing.
+  mid-settle. While a load is in flight their verbs read "Syncing…" with no `onSelect`;
+  after a failed load they show no verb and no `onSelect`, and the Retry notice is the way
+  on. ✕ stays live. This also closes a cold-load hole: "Put back" over an empty store
+  spent the only receipt on nothing.
+- **The Display menu's Paused scopes rows** turn a routine or season back on, a planner
+  write. While a load is in flight each row is disabled with "Syncing…" on its rail; after
+  a failed load the section is not drawn.
 - **The morning check** stays hidden until loaded.
 - **Ask home's Needs you** stays hidden until loaded. Answering records a reply on the
   item's trail and then re-queues it through `updateTask`, which the barrier refuses while
@@ -223,7 +255,10 @@ silent no-op, and that nothing decided on cached rows runs after the landing.
   can never land without its re-queue. The rest of Ask home (the load line, With AI
   activity, the chips) only displays or opens, and paints from the preview.
 - **Proposal accept** returns 0 before `claim()`, so the card stays and can be accepted
-  after the landing.
+  after the landing. The ProposalCard disables accept and says why beside it
+  (`proposal-accept-reason`, linked by `aria-describedby`): "Syncing…" while a load is in
+  flight, "Can’t apply until your data loads" after a failed load. With no account at all
+  it stays enabled and the store's guard is the whole story.
 - **The deep-link pages** (`/item/[id]`, `/goal/[id]`, the container pages) look up their
   entity only once settled. The inline editor autosaves and the container toggles write
   at once.
@@ -240,16 +275,30 @@ preview).
 
 [lib/held-captures.ts](../../lib/held-captures.ts). Quick capture is the one write made
 without looking at a row first, so it is the one most likely to be typed during a load.
-`captureTask(title)` adds at once when loaded. Otherwise it queues `{ userId, title }` and
+`captureTask(title)` adds at once when the load has finished, landed or failed. It holds
+only while a load is in flight (the preview included): it queues `{ userId, title }` and
 returns `'held'` (or `'dropped'` when there is no user). The field clears, and "Adds once
 synced" (`data-testid="quick-add-held"`) shows while the current account has captures
-waiting.
+waiting. Holding past a failure kept the text in this module and nowhere else, so a
+reload, a closed tab or a sign-out lost it. Over a failed load's empty store a capture is
+added and its write attempted, as before this queue.
+
+- **Kept until confirmed.** The write over a failed load is attempted, not guaranteed: an
+  outage fails the insert too (`persistNewItem` only logs it), and the Retry's landing
+  replaces the store, row and all. So each capture filed over a failed load stays in the
+  queue as `{ userId, title, id }`, and "Adds once synced" keeps counting it. The next
+  landing for that account settles it: a row the landing brought back is confirmed, and
+  one it did not is filed again under the SAME id (`addTask`'s `opts.id`), so an insert
+  that committed after the Retry read fails on the primary key instead of making a second
+  row. Over the failed load a filed row is the person's: deleted or undone, it is not
+  filed again; renamed, it is filed again under the new title. A Retry that fails too
+  keeps them waiting.
 
 - **A module queue**, so it outlives the field: the launcher closes on Enter, and the phone
   remounts the dock per tab.
 - **Bound to the account.** Entries for any other `userId`, sign-out included, are dropped
   on the next store change.
-- **Released in a microtask** after the next successful landing, so it runs after
+- **Released in a microtask** once the load finishes, success or failure, so it runs after
   `initializeStore` releases the history suppressor: each capture gets its own undo entry,
   in the order typed. The settle hold absorbs those commits, so the rows type in with the
   landing. The subscription is made on the first hold and dropped when the queue drains.
@@ -263,7 +312,9 @@ Two consequences live outside the module:
 - The first-run seed decides on the account's items **without** the captures the release
   filed (`withoutReleasedCaptures`, applied in the provider's seed snapshot). Otherwise a
   capture typed into a brand-new account reads as existing data, and the account latches
-  with no starter set.
+  with no starter set. A capture filed over a failed load is recorded the same way
+  (`noteFiledBeforeLanding`), so when a Retry brings its row back the seed still does not
+  count it.
 - `seedStarterContainers` patches **every** history snapshot with the seeded projects, not
   only the current one, so undoing a held capture can never soft-delete the starter set.
 
@@ -364,8 +415,11 @@ overtaken.
 With no connection open in this page, `clearPlannerSnapshot` **deletes the database**
 rather than open it to clear it. An open would create the database in every browser that
 never signed in. IndexedDB runs opens and deletes in request order, so a later read still
-finds nothing. With a connection open it clears the store instead. Each connection closes
-itself on `versionchange`, so another tab's delete is never blocked.
+finds nothing. With a connection open it clears the store instead. A clear chained onto an
+open that resolves null (failed, blocked, or the 3s timeout), or whose transaction throws
+or aborts, deletes the database instead: the epoch keeps the record off the page, and only
+the delete removes it from disk. Each connection closes itself on `versionchange`, so
+another tab's delete is never blocked.
 
 ### Crash recovery
 
@@ -376,10 +430,36 @@ Two layers, because a cached planner must never be able to break the app.
   wraps AppShell in `app/page.tsx`. A throw while previewing drops the preview and the
   snapshot and renders again; the retry has no preview left to drop, so a second throw is
   rethrown. Any other throw is rethrown to the next boundary up, exactly as before.
-- **The marker.** sessionStorage `dsul-preview-pending` (tab-scoped, holds `'1'`) is set
-  just before the preview `set()` and removed by the writer on every `isPreview` true to
-  false edge. If it is still there at the next warm or read, the last preview never ended
-  (a throw above AppShell, a hang): the snapshot is purged and the preview skipped once.
+- **The marker.** sessionStorage `dsul-preview-pending` (tab-scoped) is absent or `'1'`.
+  - **Armed** by `offerPreview` just before the preview `set()`, and again by the writer
+    on `visibilitychange` to visible and on `pageshow` while `isPreview`.
+  - **Removed** by the writer on every `isPreview` true to false edge; by `offerPreview`'s
+    rollback when the preview `set()` threw and the preview never took; by the writer on
+    `pagehide` and on `visibilitychange` to hidden, when `isPreview` and
+    `previewRenderedCleanly()`; and by consuming it.
+  - **`previewRenderedCleanly()`** is true while SettleHost holds at least one hold
+    (`notePreviewRendered`, from the preview's commit until it ends or SettleHost
+    unmounts) and `notePreviewThrew()` has not been called. `PreviewCrashBoundary` calls
+    that on every catch, and the flag lasts for the life of the page. Off `/` it is also
+    true for a page whose preview committed once: a client navigation unmounts AppShell,
+    and the hold with it, while the preview stays up, and nothing off `/` renders it. On
+    `/` a released hold under a live preview can only be a throw, so it never counts
+    there; a throw above AppShell unmounts the provider too, and so the writer.
+  - **Consumed** when `warmPlannerSnapshot` or `readPlannerSnapshot` finds it: removed,
+    `clearPlannerSnapshot()` (a fresh page deletes the database), and the preview skipped
+    once.
+  - **What each exit does.** A reload, navigation, ⌘R, pull-to-refresh, tab close or
+    bfcache entry with a clean preview removes it, and the next page previews again,
+    including from a route the person navigated to mid-preview (`/settings`). A tab
+    hidden and then discarded or killed lost it at hidden, so the restored page previews
+    again. A hung page runs no handlers, so `'1'` survives and the next page purges. A throw
+    above AppShell means the hold was never taken or was released by the unmount, so
+    `'1'` survives `pagehide` and the next page purges. A throw the boundary catches drops
+    the preview and the snapshot at once; one it cannot drop is rethrown, `'1'` survives,
+    and the next page purges.
+  - Hidden counts as leaving because it is the last event a page killed in the background
+    is sure to get. The commit, not the painted moment, takes the hold: rAF does not run in
+    a background tab, and the commit is the evidence that the render did not throw.
 
 ## The extensions preview map
 
@@ -407,9 +487,10 @@ same task as the inline shadow it covers comes off.
 
 SettleHost is mounted once at AppShell's top level, outside the desktop, mobile and Zen
 swap. It registers the conductor's store subscription (live only while a host is mounted,
-and counted, so StrictMode cannot strand it), notes the preview as painted two frames
-after it commits, calls `onLandingCommitted()` from a layout effect on the true to false
-edge, and holds the one `role="status"` ("Showing your last session. Syncing…").
+and counted, so StrictMode cannot strand it), holds `notePreviewRendered()` from the
+preview's commit for the crash marker (see Crash recovery), notes the preview as painted
+two frames after it commits, calls `onLandingCommitted()` from a layout effect on the true
+to false edge, and holds the one `role="status"` ("Showing your last session. Syncing…").
 
 ### Participants
 
@@ -475,8 +556,8 @@ opacity.
   frames of every glide for 70 to 130ms, then jumping it. Tailwind's translate utilities
   (the gutter live-time's `-translate-y-1/2`) set the separate `translate` property, which
   a transform animation leaves alone, so a box whose computed `transform` is `none`, with
-  no second translate in the same pass, takes `replace` and draws exactly the same. A box
-  with a transform of its own keeps `add`.
+  no second translate in the same pass or a lift a retarget keeps, takes `replace` and
+  draws exactly the same. A box with a transform of its own keeps `add`.
 - **A retype starts where the text changed.** Capture keeps each visible row's raw
   `textContent` beside its signature, and the plan carries the first index at which FIRST
   and LAST differ (`SettleRetype.at`). At the hold, with nothing in the scope animating,
@@ -499,8 +580,9 @@ opacity.
   (`cubic-bezier(0.3, 0.4, 0.5, 1)`, close to an even pace, easing into the last
   character), then the rest of the row (the empty space, a right-aligned chip) on
   `EASE_SETTLE`. Appearing rows are paced too, including one new since the landing at a
-  retarget (its translates are cancelled before it reads; the clips it keeps move no
-  rect). Where the text does not run on past where the clip starts (a change in a
+  retarget (its glides are cancelled before it reads; the clips it keeps move no rect, and
+  the lifts it keeps move rows only up or down, while a type-in's insets are all
+  horizontal). Where the text does not run on past where the clip starts (a change in a
   right-hand duration, a title cut short), or nothing could be measured, it opens in one
   stroke as before. Frames still unfold in one stroke.
 - A row whose key changed is still a move when its item id is unmatched exactly once on
@@ -570,7 +652,9 @@ forward on top of its own.
   showed sliced in the ring. The ground goes on the row itself and the z-index on its box,
   which differ on a phone (the SwipeRow). Where nothing inside the scope is painted, as on
   the plain canvas (its ground is `<main>`, outside view-root), it is stacked and given no
-  ground.
+  ground. Nor is a row that transitions its `background-color` (named, or `all`): the
+  write would fade the ground in under the glide. It is still stacked, with no
+  `background-clip` and, unless it has a fill of its own, no shadow.
 - **Solid.** A raised or lifted box whose OWN fill is translucent (a skipped row's
   `bg-surface-3/60`, a selected row's wash, a raised card's) showed what it crossed
   through it. Its fill is redrawn for the run as it reads at rest: `background-image`
@@ -587,10 +671,15 @@ forward on top of its own.
   instead, and casts the lift's shadow if it has none of its own (the live pane has
   `--sched-shadow`, so in practice only the skipped strip takes one). A plate inside a
   nested row belongs to that row.
-- **Shadow.** A lifted box casts `var(--shadow-soft-sm)`, the lightest elevation token
-  (re-tuned per theme in `globals.css`, read and never written), when the row has a
-  surface (its own fill or the ground) and the box casts no shadow of its own, which is
-  kept. A row with no surface gets none: it would outline nothing.
+- **Shadow.** A lifted box casts `var(--shadow-elev-sm)` (`LIFT_SHADOW`, exported from
+  `lib/settle-plan.ts`), when the row has a surface (its own fill or the ground) and the
+  box casts no shadow of its own, which is kept. A row with no surface gets none: it would
+  outline nothing. It is the floating surfaces' elevation, re-tuned per theme in
+  `globals.css` and read, never written: a crisp drop in light, an inset light-catch over
+  a deeper drop in dark, a 1px hairline ring in Studio and Terminal. It was
+  `--shadow-soft-sm`, the lightest token, until a recording measured it 2 to 4 grey levels
+  under the row, so a crossed row read as text cut by an edge nobody could see.
+  `settle-plan.test.ts` pins the token and its `:root` and `.dark` definitions.
 - **Release.** Each raised or lifted element comes off when the last move that asked for
   it lands (its "movers"), not when the run ends, which can be 250ms later while new rows
   type in: a row that has landed rests exactly as it will. Where the nearest painted
@@ -610,16 +699,17 @@ forward on top of its own.
   shadow as it is drawn at that moment, at once, over whatever time is left, so the
   shadow never shows full again. An element with a mover that never ran a move is held to
   the run's end, as before.
-- **No lift in Zen** (`data-settle-lift="off"` on its scope root). Zen's rows sit on the
-  fixed frost layer and under the folded ledger's veil, neither of them an ancestor, so a
-  ground read from the ancestors (the room's `bg-surface-0`) knocked the frost out of the
-  row while it moved, and its z-index carried a row over the veil until it landed, where
-  it dimmed all at once. A Zen row glides unlifted, as every row did before the lift.
+- **No lift in Zen** (`data-settle-lift="off"` on its scope root, pinned by
+  `zen-room.test.tsx`). Zen's rows sit on the fixed frost layer and under the folded
+  ledger's veil, neither of them an ancestor, so a ground read from the ancestors (the
+  room's `bg-surface-0`) knocked the frost out of the row while it moved, and its z-index
+  carried a row over the veil until it landed, where it dimmed all at once. A Zen row
+  glides unlifted, as every row did before the lift.
 
 None of it touches opacity, filter, transform or a custom property; nothing is written
 that would start a CSS transition (a property named in the element's own
-`transition-property`, or `all`, with a duration); and nothing is written where nothing
-animates.
+`transition-property`, or `all`, with a duration; the ground included, see Lift); and
+nothing is written where nothing animates.
 
 ### Hold, play, retarget
 
@@ -635,16 +725,34 @@ animates.
    frames pass quietly, after 2 to 8 frames. If rAF starves for 400ms the run ends and the
    changed scopes are shielded.
 4. **Play**, and **retarget** a scope whose DOM changes mid-glide: measure where its boxes
-   are drawn, cancel that scope's translates (its clip reveals keep running), and glide on
-   from there over at least 220ms. Twice per scope at most. Past that, or past 300
-   animations, the scope snaps (shielded if it was still moving) and the others play on.
+   are drawn, cancel that scope's glides only, and glide on from there over at least
+   220ms. Its clip reveals, and the lifts that appears and rises come in on, keep running,
+   so an appear's lift stays paired with its type-in. Layout is measured net of the kept
+   lifts, and stacking counts their offsets. A glide given to a row with a kept lift sums
+   with it (`add`, since `replaces()` counts kept translates), and a lift is never fed to
+   stacking as a glide, so it pulls in no raise. Twice per scope at most. Past that, or
+   past 300 animations, the scope snaps (shielded if it was still moving) and the others
+   play on.
 5. **Finish** at the last animation's end plus 50ms, and never later than 1400ms after the
    landing: every animation cancelled, observers and listeners dropped, and the attribute
    removed unless a shield is still up.
 
+**Ends follow the engine's start** (`followStarts`). Play and a retarget time each
+animation from the call, then, once its `ready` resolves, re-read its end as `startTime`
+plus its effect's `endTime` (the document timeline shares `performance.now()`'s origin).
+The releases and the finish are re-timed in one microtask for everything that started
+together: the finish is the last real end plus 50ms, still capped at 1400ms from the
+landing. A set-down not yet begun whose end no longer matches its release is remade with
+the corrected delay; one under way, or not yet started by the engine, is left. `r.playedAt`
+becomes the glides' real start, so a retarget's `moveMs − elapsed` is measured from it.
+With no `ready` or `startTime`, or once the run, the scope or the animation is gone, the
+call's clock is kept. A recording measured 8 to 108ms of start lag with screen capture
+attached (23 to 26ms without): timed from the call, a lifted row lost its lift and its
+set-down before it landed, and past about 50ms of lag the finish cut the type-ins short.
+
 **A landing that changed nothing still runs.** Its follow-up commits are the only change,
 so it watches the hold window and settles them, or shields them under a veto. It raises no
-attribute unless something animates.
+attribute unless something animates or a shield starts.
 
 **What counts as a commit.** One MutationObserver per scope stays connected through the
 run, but most records move nothing: a hover writing `--title-mask`, the ScrollArea mounting
@@ -653,6 +761,15 @@ if something moved. Participants are re-resolved only for child-list changes and
 attributes a participant is resolved from; positions are compared net of the run's own
 translates and of scrolling since the last pass; signatures are compared during the hold
 only.
+
+A layout change OUTSIDE the scope (the docked Ask rail recentring the canvas, the header
+row growing) moves every participant alike, with no record in the scope. When every
+record is inside a participant, and every participant is off by the same displacement at
+the same size, the last pass's LAST and FIRST are carried by that displacement and
+nothing re-aims or re-holds. A record outside every participant (a band growing above the
+rows) still re-aims. Not covered: a real commit after a painted outside shift is still
+judged from before it (only sampling every frame would see the shift alone), and a scope
+with a `display: none` participant never qualifies.
 
 **Scroll is never an interrupt.** Every animation is relative to its own box. Each pass
 records which scrollers carry each box (a sticky box holds its pinned axis, like the week's
@@ -870,9 +987,11 @@ chose differently, each for a reason found while building or testing it.
   selection that outlived the landing. A key whose command would be unavailable anyway
   (⌘Z with no history) is still handed back. `n` opens nothing, not even a deferred add:
   the command gate comes before ui-store.
-- The omnibar's empty-title add from the launcher closes the launcher explicitly. While
-  previewing, the add is deferred and the launcher stays in the one slot, and promotion
-  waits for a free slot.
+- The omnibar's empty-title add, search-result pick and multi-line paste from the
+  launcher each close the launcher explicitly (`closeLauncher()`). While previewing, the
+  dialog is deferred and the launcher stays in the one slot, and promotion waits for a
+  free slot. Outside the preview the call does nothing: the dialog has already replaced
+  the launcher.
 
 **E2E**
 
@@ -906,6 +1025,15 @@ chose differently, each for a reason found while building or testing it.
   snapshot,** opens nothing: the item's deferred edit is dropped at promotion, and the
   conversation is not shown in its place (the phone shows it). Data-safe; a second click
   after the landing opens the conversation.
+- **A pasted list during the preview** is kept over a later deferred item or organizer
+  request, which is refused (only another `bulk-add` replaces it), and is still dropped by
+  leaving `/` before the landing. A waiting paste may open later than the landing, when a
+  docked item panel or another dialog closes.
+- **The crash marker's edges.** Chrome's Duplicate Tab copies sessionStorage, so a tab
+  duplicated mid-preview inherits `'1'` from a page that is still alive and purges the
+  snapshot for every tab. A preview that commits in a tab hidden from the start, then is
+  discarded without ever being shown, keeps `'1'`, and the restored page comes up cold
+  once. A browser crash or force-quit mid-preview also purges once.
 
 ## Tests that pin it
 
@@ -915,7 +1043,9 @@ chose differently, each for a reason found while building or testing it.
   every other suite keeps the no-IndexedDB path), `planner-snapshot-no-idb.test.ts`,
   `planner-snapshot-writer.test.ts`, the ledger in `planner-bundle.test.ts`, the audits in
   `local-state.test.ts`. The provider's offer, warm and purges:
-  `planner-load-by-route.test.tsx`.
+  `planner-load-by-route.test.tsx`. The marker across a reload, end to end (the real
+  snapshot module, writer, store, SettleHost and boundary over `fake-indexeddb`, each page
+  a fresh set of modules): `planner-snapshot-reload.test.tsx`.
 - The guards: `ui-store-preview` (including the `touchesPlanner: false` opt-out, and a
   row-acting verb's confirm still refused), `commands-preview` (a frozen classification
   of every static command), `held-captures`, `omnibar-capture`, `deep-link-preview`,
@@ -923,14 +1053,22 @@ chose differently, each for a reason found while building or testing it.
   notice, braindump, Zen, Organize and view-store tests. An item's conversation over the
   preview: `open-chat` (what the phone pushes), `ask-tab` (loading, the fresh editor from
   both a history row and an AI activity row, the fallback conversation, a delete, a
-  failed load) and `ask-views` (a conversation deleted over the preview).
+  failed load) and `ask-views` (a conversation deleted over the preview). A held open's
+  reveal: `open-chat-preview-reveal`. The failed-load and waiting-paste rules: additions to
+  `ui-store-preview` (the stamp, promotion at mount, the waiting paste), `omnibar-capture`
+  (a launcher pick or paste over the preview), `display-menu`, `proposal-card` and
+  `held-captures`.
 - Rendering: `planner-skeleton.test.tsx` (the amended contract: skeleton iff not visible,
   `data-loaded` fresh only), `preview-crash-boundary`, `planner-sync-line`,
   `planner-preview-css`, and `week-column-hover` (no ancestor of a lime mark carries
   opacity in the preview).
 - The settle: `settle-plan` (every constant, `EASE_TYPE`, the 624ms worst case),
   `settle-conductor` (the paced type-ins; the stacking writes, pinned as a list, with
-  solid fills, plates and the shadow, each put back exactly on every exit),
+  solid fills, plates and the shadow, each put back exactly on every exit; ends from the
+  engine's start, the outside shift, a lift kept through a retarget), whose fake engine
+  reports `ready` and `startTime`, a start lag that differs for composited and
+  main-thread animations, progress that respects the fill mode, and a running fade's
+  computed box-shadow part-way down,
   `settle-participants` (a row's first text is its title; one plate per schedule block),
   `use-sink-hold`.
 - E2E: `tests/e2e/instant-planner.spec.ts` with `tests/e2e/helpers/preview.ts` (the

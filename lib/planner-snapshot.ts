@@ -299,9 +299,12 @@ function deleteRecord(userId: string): void {
 }
 
 /**
- * The crash marker is set before a preview is applied and removed when it ends.
- * Still present at the next read means the last preview never ended — the page
- * died or hung on it — so purge the snapshot and skip the preview once.
+ * The crash marker is set before a preview is applied and removed when it ends,
+ * or when the page is left or hidden with a preview it rendered cleanly (the
+ * writer asks `previewRenderedCleanly`). Still present at the next read means
+ * the last preview neither ended nor was left cleanly: the page hung on it (a
+ * hung page runs no pagehide) or a throw unmounted it. So purge the snapshot
+ * and skip the preview once.
  */
 function consumeCrashMarker(): boolean {
   if (typeof window === 'undefined') return false;
@@ -323,6 +326,54 @@ export function markPreviewPending(on: boolean): void {
   } catch {
     /* no sessionStorage: no backstop, the error boundary still stands */
   }
+}
+
+/**
+ * Page-lifetime: SettleHost's holds on a committed preview, whether one was
+ * ever taken, and whether the crash boundary ever caught a throw.
+ */
+let previewHolds = 0;
+let previewCommitted = false;
+let previewThrew = false;
+
+/**
+ * SettleHost, in an effect while previewing: the real views committed the
+ * cached rows without throwing. Returns the release for the effect's cleanup,
+ * which also runs when a throw above AppShell unmounts the tree, so a preview
+ * that crashed the page is never held at its pagehide.
+ */
+export function notePreviewRendered(): () => void {
+  previewHolds += 1;
+  previewCommitted = true;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    previewHolds = Math.max(0, previewHolds - 1);
+  };
+}
+
+/** PreviewCrashBoundary caught a render throw. For the rest of this page, no preview counts as clean. */
+export function notePreviewThrew(): void {
+  previewThrew = true;
+}
+
+/**
+ * Whether the preview on screen got there cleanly: committed, still mounted,
+ * and no throw caught on this page. A page left or hidden in that state is a
+ * reload, a navigation, pull-to-refresh or a tab put away, not a crash, so the
+ * writer removes the marker and the next page previews again.
+ *
+ * Off `/` the hold is gone with AppShell (a client navigation unmounts it while
+ * the preview stays up), so there a preview that committed once counts. Nothing
+ * off `/` renders it, and a throw above AppShell unmounts the provider too,
+ * which stops the writer that would ask. On `/` a released hold under a live
+ * preview can only be a throw, so it never counts there.
+ */
+export function previewRenderedCleanly(): boolean {
+  if (previewThrew) return false;
+  if (previewHolds > 0) return true;
+  return previewCommitted && typeof window !== 'undefined' && window.location.pathname !== '/';
 }
 
 /**
@@ -456,6 +507,12 @@ export function writePlannerSnapshot(
  * every browser that has never signed in. Deleting a missing database is a
  * no-op, and IDB queues opens and deletes in request order, so a read asked
  * for after this still finds nothing.
+ *
+ * A clear that waited on an open must erase even when that connection never
+ * comes up (the open failed, was blocked or timed out) or is gone by the time
+ * it runs (the transaction throws or aborts): each of those DELETES the
+ * database too. The epoch already keeps the record off this page; only the
+ * delete gets the previous owner's planner off the disk.
  */
 export function clearPlannerSnapshot(): void {
   epoch++;
@@ -467,11 +524,17 @@ export function clearPlannerSnapshot(): void {
   try {
     void dbPromise
       .then((db) => {
-        db?.transaction(SNAPSHOT_STORE, 'readwrite').objectStore(SNAPSHOT_STORE).clear();
+        if (!db) {
+          purgePlannerSnapshotDb();
+          return;
+        }
+        const tx = db.transaction(SNAPSHOT_STORE, 'readwrite');
+        tx.onabort = () => purgePlannerSnapshotDb();
+        tx.objectStore(SNAPSHOT_STORE).clear();
       })
-      .catch(() => {});
+      .catch(() => purgePlannerSnapshotDb());
   } catch {
-    /* fire-and-forget */
+    purgePlannerSnapshotDb();
   }
 }
 

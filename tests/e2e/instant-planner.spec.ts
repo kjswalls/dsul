@@ -301,7 +301,8 @@ test.describe('instant planner: the look-only preview and its settle', () => {
 
       // A sweep receipt, seeded in this context's own localStorage so its
       // action is PRESENT to assert on: "Put back" restores from loaded rows,
-      // so it must read "Syncing…" until a load has actually succeeded.
+      // so it reads "Syncing…" only while a load is in flight, has no verb
+      // after a failure, and comes back once a load has actually succeeded.
       await page.evaluate(
         ({ userId, today, item }) => {
           const key = 'dsul-morning-store';
@@ -348,7 +349,9 @@ test.describe('instant planner: the look-only preview and its settle', () => {
       await expect(page.getByTestId('planner-sync-line')).toHaveCount(0);
       const syncError = page.locator('[data-notice-id="sync-error"]');
       await expect(syncError).toBeVisible();
-      await expect(receipt).toContainText('Syncing…');
+      // Nothing is syncing after a failure, so no verb at all: the Retry beside it is the way on.
+      await expect(receipt).toContainText('put aside this morning');
+      await expect(receipt).not.toContainText('Syncing…');
       await expect(receipt).not.toContainText('Put back');
 
       await load.unroute();

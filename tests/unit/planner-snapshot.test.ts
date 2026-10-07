@@ -251,6 +251,106 @@ describe('a clear', () => {
     expect(await other.readPlannerSnapshot(U)).toBeNull();
     expect(await rawKeys()).toEqual([]);
   });
+
+  it('with a connection that comes up, clears the store and deletes nothing', async () => {
+    await write(U, data());
+    const del = vi.spyOn(indexedDB, 'deleteDatabase');
+    snap.clearPlannerSnapshot();
+    await vi.waitFor(async () => expect(await rawKeys()).toEqual([]));
+    expect(del).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * A clear asked for while this page's first open is still out: the warm-up
+ * opened for the on-disk owner A, then the session came back as B and the
+ * adoption cleared. Whatever becomes of that open, A's planner must not stay
+ * on disk under B's stamp.
+ */
+describe('a clear asked for while the first open is still pending', () => {
+  /** A's record, written by an earlier page; this test's `snap` is the next page. */
+  async function previousPageWroteA() {
+    const earlier = await freshModule();
+    expect(await earlier.writePlannerSnapshot(U, data(), Date.now(), earlier.getSnapshotEpoch())).toBe(true);
+    snap = await freshModule();
+    expect(await rawKeys()).toEqual([U, `${U}#base`]);
+  }
+
+  /** The next open this page asks for gets `request` instead of a real one. */
+  const stubNextOpen = (request: () => IDBOpenDBRequest) =>
+    vi.spyOn(indexedDB, 'open').mockImplementationOnce(request);
+
+  it('deletes the database when that open fails', async () => {
+    await previousPageWroteA();
+    stubNextOpen(() => {
+      const req = {} as IDBOpenDBRequest;
+      setTimeout(() => req.onerror?.(new Event('error')), 5);
+      return req;
+    });
+    const del = vi.spyOn(indexedDB, 'deleteDatabase');
+
+    snap.warmPlannerSnapshot(U);
+    snap.clearPlannerSnapshot();
+    await vi.waitFor(() => expect(del).toHaveBeenCalledWith(snap.SNAPSHOT_DB));
+    expect(await rawKeys()).toEqual([]);
+    expect(await snap.readPlannerSnapshot(V)).toBeNull();
+  });
+
+  it('deletes the database when that open times out', async () => {
+    await previousPageWroteA();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    stubNextOpen(() => ({}) as IDBOpenDBRequest); // a stalled open: never a single event
+    const del = vi.spyOn(indexedDB, 'deleteDatabase');
+
+    snap.warmPlannerSnapshot(U);
+    snap.clearPlannerSnapshot();
+    await vi.advanceTimersByTimeAsync(2999);
+    expect(del).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    vi.useRealTimers();
+    await vi.waitFor(() => expect(del).toHaveBeenCalledWith(snap.SNAPSHOT_DB));
+    expect(await rawKeys()).toEqual([]);
+  });
+
+  it('deletes the database when the connection is gone by the time the clear runs', async () => {
+    await previousPageWroteA();
+    // The open succeeds, then refuses the clear's transaction (the warm-up's
+    // readonly get goes first and is left alone): a connection closed under it.
+    const real = IDBDatabase.prototype.transaction;
+    let refused = false;
+    vi.spyOn(IDBDatabase.prototype, 'transaction').mockImplementation(function (
+      this: IDBDatabase,
+      ...args: Parameters<IDBDatabase['transaction']>
+    ) {
+      if (args[1] === 'readwrite' && !refused) {
+        refused = true;
+        throw new DOMException('The database connection is closing.', 'InvalidStateError');
+      }
+      return real.apply(this, args);
+    });
+    const del = vi.spyOn(indexedDB, 'deleteDatabase');
+
+    snap.warmPlannerSnapshot(U);
+    snap.clearPlannerSnapshot();
+    await vi.waitFor(() => expect(del).toHaveBeenCalledWith(snap.SNAPSHOT_DB));
+    expect(refused).toBe(true);
+    // This page's own connection closes on the delete's versionchange, so it goes through.
+    await vi.waitFor(async () => expect(await rawKeys()).toEqual([]));
+  });
+
+  it('deletes the database when the clear transaction aborts', async () => {
+    await write(U, data());
+    const clear = vi.spyOn(IDBObjectStore.prototype, 'clear').mockImplementationOnce(function (this: IDBObjectStore) {
+      this.transaction.abort();
+      return {} as IDBRequest<undefined>;
+    });
+    const del = vi.spyOn(indexedDB, 'deleteDatabase');
+
+    snap.clearPlannerSnapshot();
+    await vi.waitFor(() => expect(del).toHaveBeenCalledWith(snap.SNAPSHOT_DB));
+    expect(clear).toHaveBeenCalledTimes(1);
+    await vi.waitFor(async () => expect(await rawKeys()).toEqual([]));
+  });
 });
 
 describe('a write with a stale epoch', () => {
@@ -359,6 +459,49 @@ describe('the crash marker', () => {
     expect(await snap.readPlannerSnapshot(U)).toBeNull();
     await write(U, data());
     expect(await snap.readPlannerSnapshot(U)).not.toBeNull();
+  });
+});
+
+/**
+ * What the writer asks before it removes the marker from a page being left
+ * mid-preview: did the preview get onto the screen cleanly? SettleHost holds
+ * while the preview is committed; the crash boundary reports every catch.
+ */
+describe('previewRenderedCleanly', () => {
+  it('is false until SettleHost holds a committed preview, and false again once it lets go', () => {
+    expect(snap.previewRenderedCleanly()).toBe(false);
+    const release = snap.notePreviewRendered();
+    expect(snap.previewRenderedCleanly()).toBe(true);
+    release();
+    expect(snap.previewRenderedCleanly()).toBe(false);
+  });
+
+  it('counts holds, and a release is spent once (a second call cannot drop another hold)', () => {
+    const one = snap.notePreviewRendered();
+    const two = snap.notePreviewRendered();
+    one();
+    one();
+    expect(snap.previewRenderedCleanly()).toBe(true);
+    two();
+    expect(snap.previewRenderedCleanly()).toBe(false);
+  });
+
+  it('is false for the rest of the page once the crash boundary caught a throw, held or not', () => {
+    const release = snap.notePreviewRendered();
+    snap.notePreviewThrew();
+    expect(snap.previewRenderedCleanly()).toBe(false);
+    release();
+    snap.notePreviewRendered();
+    expect(snap.previewRenderedCleanly()).toBe(false);
+  });
+
+  it('is page state: a new page starts with neither', async () => {
+    snap.notePreviewRendered();
+    snap.notePreviewThrew();
+    const next = await freshModule();
+    expect(next.previewRenderedCleanly()).toBe(false);
+    next.notePreviewRendered();
+    expect(next.previewRenderedCleanly()).toBe(true);
   });
 });
 

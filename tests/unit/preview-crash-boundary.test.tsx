@@ -14,10 +14,11 @@ import { render, screen, cleanup, act } from '@testing-library/react';
  * boundary weren't there — and nothing loops.
  */
 
-const snapshot = vi.hoisted(() => ({ clearPlannerSnapshot: vi.fn() }));
+const snapshot = vi.hoisted(() => ({ clearPlannerSnapshot: vi.fn(), notePreviewThrew: vi.fn() }));
 vi.mock('@/lib/planner-snapshot', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/planner-snapshot')>()),
   clearPlannerSnapshot: snapshot.clearPlannerSnapshot,
+  notePreviewThrew: snapshot.notePreviewThrew,
 }));
 
 import { PreviewCrashBoundary } from '@/components/shell/preview-crash-boundary';
@@ -110,6 +111,7 @@ const tree = (child: ReactNode) => (
 beforeEach(() => {
   rendered.mockClear();
   snapshot.clearPlannerSnapshot.mockClear();
+  snapshot.notePreviewThrew.mockClear();
   // React reports every caught render error to console.error; the boundary warns.
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -191,6 +193,34 @@ describe('PreviewCrashBoundary', () => {
     // React may retry a throwing render once per attempt; two attempts, bounded.
     expect(renders()).toBeGreaterThanOrEqual(2);
     expect(renders()).toBeLessThanOrEqual(4);
+  });
+
+  /**
+   * The crash marker removes itself when a page is left with a preview it
+   * rendered cleanly (lib/planner-snapshot-writer.ts). A page whose boundary
+   * caught a throw has not, whatever happened after, so every catch says so:
+   * the one that drops the preview and the one that hands the throw on.
+   */
+  it('reports every catch to the crash marker, and nothing when nothing throws', () => {
+    const items = [task('t-ok', 'Cached title')];
+    previewing();
+    usePlannerStore.setState({ items, tasks: items as never } as never);
+    const quiet = render(tree(<Planner />));
+    expect(snapshot.notePreviewThrew).not.toHaveBeenCalled();
+    quiet.unmount();
+
+    previewing();
+    render(tree(<Planner />));
+    expect(snapshot.clearPlannerSnapshot).toHaveBeenCalledTimes(1);
+    expect(snapshot.notePreviewThrew).toHaveBeenCalledTimes(1);
+    cleanup();
+
+    snapshot.notePreviewThrew.mockClear();
+    landFresh();
+    usePlannerStore.setState({ userId: U, error: null, loadFailedUserId: null });
+    render(tree(<AlwaysThrows />));
+    expect(screen.getByTestId('parent-fallback')).toBeInTheDocument();
+    expect(snapshot.notePreviewThrew).toHaveBeenCalled();
   });
 
   it('counts a falsy throw as a throw (no render-the-children-again loop on `throw null`)', () => {

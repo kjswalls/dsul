@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { CloudOff, MoonStar, Sunset } from 'lucide-react';
 
 import { usePlannerStore } from '@/lib/planner-store';
-import { usePlannerLoaded } from '@/lib/planner-ready';
+import { selectPlannerLoaded, selectPlannerSettled } from '@/lib/planner-ready';
 import { useMorningStore } from '@/lib/morning-store';
 import { useEODStore } from '@/lib/eod-store';
 import { minutesOfDay, nowMinutesIn, shouldShowEodNotice } from '@/lib/eod';
@@ -23,6 +23,35 @@ import { NOTICE_RANK, type DockNotice } from '@/lib/dock-notices';
  * The waiting notice stays in components/ai/morning-check.tsx: it is dock-only,
  * for the reasons in memory/plans/notices-in-place.md.
  */
+
+/**
+ * Where the planner's load is, for a verb that acts on it.
+ *
+ *  - loaded: fresh data landed for this account. The verb is live.
+ *  - syncing: a load is in flight (the look-only preview included), or has
+ *    not started. The verb reads "Syncing…" with no onSelect.
+ *  - failed: the load finished and failed. Nothing is syncing, so the verb is
+ *    left off and the line keeps only its label and ✕: the "Couldn't load your
+ *    data" Retry beside it is the way on.
+ */
+type LoadPhase = 'loaded' | 'syncing' | 'failed';
+
+function useLoadPhase(): LoadPhase {
+  return usePlannerStore((s) =>
+    selectPlannerLoaded(s) ? 'loaded' : selectPlannerSettled(s) ? 'failed' : 'syncing'
+  );
+}
+
+/** The verb as `phase` allows it: live once loaded, "Syncing…" while loading, none after a failure. */
+function gatedVerb(
+  phase: LoadPhase,
+  label: string,
+  onSelect: () => void
+): Pick<DockNotice, 'actionLabel' | 'onSelect'> {
+  if (phase === 'loaded') return { actionLabel: label, onSelect };
+  // Undefined onSelect is inert in both renderers (the dock's NoticeRow, InPlaceNotice).
+  return { actionLabel: phase === 'syncing' ? 'Syncing…' : undefined, onSelect: undefined };
+}
 
 /** Today, in the user's SAVED timezone — the app-wide `toDateStr` convention. */
 function useToday(): { todayStr: string; tz: string } {
@@ -102,8 +131,8 @@ export function useSweepNotice(): DockNotice | null {
   // Put back restores from the LOADED rows and then clears the receipt either
   // way, so pressed over an empty store (a cold load, the preview, a failed
   // load) it would spend the only receipt on nothing. The line stays mounted —
-  // nothing inserted mid-landing — and only its verb waits.
-  const loaded = usePlannerLoaded();
+  // nothing inserted mid-landing — and only its verb waits (useLoadPhase).
+  const phase = useLoadPhase();
   const receiptsByUser = useMorningStore((s) => s.morningAutoAgeReceiptByUser);
   const clearAutoAgeReceipt = useMorningStore((s) => s.clearAutoAgeReceipt);
   const { todayStr } = useToday();
@@ -131,14 +160,10 @@ export function useSweepNotice(): DockNotice | null {
         morning
       </>
     ),
-    actionLabel: loaded ? 'Put back' : 'Syncing…',
-    // Undefined is inert in both renderers (the dock's NoticeRow, InPlaceNotice).
-    onSelect: loaded
-      ? () => {
-          restoreScheduling(receipt.items);
-          clearAutoAgeReceipt(userId);
-        }
-      : undefined,
+    ...gatedVerb(phase, 'Put back', () => {
+      restoreScheduling(receipt.items);
+      clearAutoAgeReceipt(userId);
+    }),
     // Waving it away is not the same as putting them back — it drops the
     // receipt only. The items stay where the sweep left them, in the braindump,
     // which is where the setting the user turned on says they belong. Live
@@ -180,7 +205,7 @@ export function useEodNotice(): DockNotice | null {
   const deferToday = useEODStore((s) => s.deferToday);
   // The review freezes its pending list the moment it opens: opened before the
   // planner has loaded, it would review an empty or cached day. Start waits.
-  const loaded = usePlannerLoaded();
+  const phase = useLoadPhase();
   const { todayStr, tz } = useToday();
 
   const nowMinutes = nowMinutesIn(new Date(), tz);
@@ -229,8 +254,7 @@ export function useEodNotice(): DockNotice | null {
     icon: Sunset,
     iconClassName: 'text-sunrise-glyph',
     label: <span className="font-semibold">Today’s review is waiting</span>,
-    actionLabel: loaded ? 'Start' : 'Syncing…',
-    onSelect: loaded ? open : undefined,
+    ...gatedVerb(phase, 'Start', open),
     onDismiss: () => deferToday(todayStr),
     dismissLabel: 'Not tonight',
   };

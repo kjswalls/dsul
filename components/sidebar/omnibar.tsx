@@ -578,8 +578,8 @@ export function Omnibar({
       closeLauncher();
       return;
     }
-    // Held until the planner has loaded (lib/held-captures.ts), so the text is
-    // never lost to a cold load or the preview; everything below runs as for an add.
+    // Held while the planner's load is in flight (lib/held-captures.ts), so the text
+    // is never lost to a cold load or the preview; everything below runs as for an add.
     captureTask(addTitle);
     // The launcher is a one-shot command surface: close after the add. The dock
     // stays open and refocuses for rapid successive capture. Nothing to strike
@@ -1016,6 +1016,11 @@ export function Omnibar({
                             onSelect={() => {
                               openEditFor(item, item.type === 'habit' ? 'habit' : 'task');
                               closeAndClear();
+                              // A no-op once the item has replaced the launcher
+                              // slot; over the look-only preview the open is
+                              // deferred instead, and its promotion at landing
+                              // needs the slot free (as quickAdd's empty add).
+                              closeLauncher();
                             }}
                           >
                             <Icon
@@ -1464,6 +1469,9 @@ export function Omnibar({
                   openBulkAdd({ text: pasted });
                   setOpen(false);
                   inputRef.current?.blur();
+                  // As for a picked result: the dialog replaced the launcher,
+                  // or (over the preview) was deferred and needs the slot.
+                  closeLauncher();
                 }
               }}
               placeholder={

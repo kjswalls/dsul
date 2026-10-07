@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 
 import { usePlannerPreviewing } from '@/lib/planner-ready';
+import { notePreviewRendered } from '@/lib/planner-snapshot';
 import { notePreviewPainted, onLandingCommitted, registerSettleHost } from '@/lib/settle';
 
 /** What a screen reader hears while the cached planner is up. The rows themselves are inert, so hidden from it. */
@@ -23,6 +24,10 @@ export const PREVIEW_STATUS_TEXT = 'Showing your last session. Syncing…';
  *  - "Painted": two frames after the preview commits, the cached planner has
  *    reached the screen. A landing before that has nothing visible to settle
  *    from.
+ *  - "Rendered": from the commit until the preview ends or this unmounts, a
+ *    hold that tells the crash marker the preview did not crash the page
+ *    (lib/planner-snapshot.ts). A throw above AppShell unmounts this, which
+ *    releases it, so that page's marker survives its pagehide.
  *  - The landing: a LAYOUT effect on the preview → not-preview edge, so the
  *    conductor measures the fresh DOM after React's mutations and before the
  *    browser paints it — and holds the preview geometry for that first paint.
@@ -38,11 +43,13 @@ export function SettleHost() {
 
   useEffect(() => {
     if (!previewing) return;
+    const release = notePreviewRendered();
     let second = 0;
     const first = requestAnimationFrame(() => {
       second = requestAnimationFrame(() => notePreviewPainted());
     });
     return () => {
+      release();
       cancelAnimationFrame(first);
       cancelAnimationFrame(second);
     };
