@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { STATIC_COMMANDS, type Command, type CommandContext } from '@/lib/commands';
 import { useUIStore } from '@/lib/ui-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
+import { CONNECTED_MODEL, KEY_TURNED_DOWN, NOTHING_CONNECTED, seedAI } from './helpers/ai-fixtures';
 
 /**
  * The three workspace bindings that drive the two omnibar shells. Their run()
@@ -72,5 +73,48 @@ describe('omnibar shell bindings', () => {
     cmd('workspace.focusCapture').run(mobile);
     expect(useMobileNavStore.getState().activeTab).toBe('today');
     expect(useUIStore.getState().omnibarFocusToken).toBe(before + 1);
+  });
+});
+
+/**
+ * The phone's `chat` tab is Ask while something answers, and the setup page
+ * (or the fix home) while the gate offers one instead. Ask's composer takes
+ * the dock's omnibar away, so the three runs above leave the tab to reach it;
+ * the setup page keeps the omnibar (F17), so from there they stay put and
+ * only focus it. The unseeded cases above are the gate unknown, which offers
+ * no setup page, so they still land on Today.
+ */
+describe('the phone runs on the setup page', () => {
+  let unseed: () => void = () => {};
+  afterEach(() => {
+    unseed();
+    unseed = () => {};
+  });
+
+  const RUNS = ['workspace.focusOmnibar', 'workspace.openCommandLauncher', 'workspace.focusCapture'];
+
+  it.each([
+    ['nothing connected (the setup page)', NOTHING_CONNECTED],
+    ['a key turned down (the fix home)', KEY_TURNED_DOWN],
+  ])('stay on the chat tab with %s, and focus the omnibar', (_label, seed) => {
+    unseed = seedAI(seed);
+    for (const id of RUNS) {
+      useMobileNavStore.setState({ activeTab: 'chat' });
+      const before = useUIStore.getState().omnibarFocusToken;
+      cmd(id).run(mobile);
+      expect(useMobileNavStore.getState().activeTab, id).toBe('chat');
+      expect(useUIStore.getState().omnibarFocusToken, id).toBe(before + 1);
+    }
+  });
+
+  it('leave Ask for Today when something answers, since its composer replaces the omnibar', () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    for (const id of RUNS) {
+      useMobileNavStore.setState({ activeTab: 'chat' });
+      const before = useUIStore.getState().omnibarFocusToken;
+      cmd(id).run(mobile);
+      expect(useMobileNavStore.getState().activeTab, id).toBe('today');
+      expect(useUIStore.getState().omnibarFocusToken, id).toBe(before + 1);
+    }
   });
 });

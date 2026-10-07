@@ -130,6 +130,7 @@ describe('the AI server boundary', () => {
     'lib/ai-model-names.ts',
     'lib/connect-flow.ts',
     'lib/connect-return.ts',
+    'lib/ask-pending.ts',
     'lib/format-chat-timestamp.ts',
   ])('%s is client-safe: no Node builtin, no server module', (rel) => {
     const file = FILES.find((f) => f.rel === rel);

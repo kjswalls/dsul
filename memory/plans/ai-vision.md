@@ -64,6 +64,27 @@ permanent `beacon` id), and an OpenRouter sign-in returns to the pane or home (`
 in the PKCE cookie). Open: a model that refuses only streamed requests (an unverified
 OpenAI org) still passes the check; the rate limit is still per-instance memory.
 
+**Note 2026-10-07: the doors into setup and the kept question (AI setup PR 5).** While
+nothing answers and the gate offers setup, three doors open it besides the unlit key and
+Ctrl+J: `?` in the dock or the launcher, whose one row "Set up AI to ask this" keeps the
+question typed after it; Ctrl+K's "Set up AI" or "Fix AI" (`ai.setup`, `ai.fix`, no
+shortcut), first in the launcher's Actions; and on the phone, the Ask tab itself. The kept
+question (`lib/ask-pending.ts`) lives in the tab's sessionStorage, never a URL, cookie or
+persisted store, shows in the setup home as YOUR QUESTION with Clear, and is asked at most
+once: the watcher claims its id on a short localStorage list before it sends, so a reload,
+a status flap or a duplicated tab finds nothing to send. It is sent only to the company the
+consent line named ("Connecting sends your question … to Google."), pressed within the
+hour: with a question kept a paste only fills the box, and Connect and ask, Check again or
+the OpenRouter sign-in stamps the consent. Any other road to a working AI (Settings → AI,
+another device, OpenClaw, another company, a stale press) leaves the question unsent in Ask
+home's box, so it is never lost and never goes somewhere the person did not see named. On
+the phone the third surface is offered while AI can be set up or fixed: the switcher reads
+"Set up AI" (Optional) or "Fix AI" (Needs attention) with the unlit mark, the tab holds a
+setup page built from the column's pieces (`components/mobile/setup-tab.tsx`) with the
+dock's omnibar kept under it, and a key that works turns it into Ask in place. Leaving the
+phone's Ask tab spends "It works.". Open: a question kept over an open item is sent without
+the item, and the one-time "Connected to …" notice belongs to no PR yet.
+
 **Status (2026-10-01): step 1, "Honest setup", SHIPPED (#355).** dsul ships no AI of
 its own any more: `process.env.OPENAI_API_KEY` is never read. Each user connects their own
 model in Settings → AI: OpenAI, Anthropic, Google Gemini, OpenRouter (sign-in or key) or any

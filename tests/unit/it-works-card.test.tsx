@@ -12,7 +12,8 @@ import path from 'node:path';
  * model is the one just connected), what it calls the model (a name, never a
  * raw id where one is known), that OpenRouter's free plan is claimed only on
  * the connect answer's word, and that it is said ONCE: the first send, New
- * chat, a conversation opened and Ask closing each spend it. Over the real
+ * chat, a conversation opened and Ask closing (on the phone, leaving its Ask
+ * tab) each spend it. Over the real
  * stores, with the db layer and the conversation API faked, as
  * ask-home-view.test.tsx renders Ask home.
  */
@@ -51,6 +52,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useSessionUserStore } from '@/lib/session-user-store';
 import { useEODStore } from '@/lib/eod-store';
 import { useRailStore } from '@/lib/rail-store';
+import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { useUIStore } from '@/lib/ui-store';
 import { useProposalStore } from '@/lib/proposal-store';
 import { useAIConnectionStore, type JustConnected } from '@/lib/ai-connection-store';
@@ -356,6 +358,35 @@ describe('said once', () => {
     act(() => useRailStore.getState().summon({ persist: false }));
     act(() => useRailStore.getState().park());
     expect(said()).toBeNull();
+  });
+
+  // The phone's Ask closes by being left: the sheet, a swipe, a command, the
+  // shell moving off a tab no longer offered. One subscription sees every
+  // one of them, a setter's write or a bare setState alike.
+  describe('on the phone', () => {
+    afterEach(() => useMobileNavStore.setState({ activeTab: 'today' }));
+
+    it.each<[string, () => void]>([
+      ['by the sheet or a swipe', () => useMobileNavStore.getState().setActiveTab('today')],
+      ['by any write to the tab', () => useMobileNavStore.setState({ activeTab: 'braindump' })],
+    ])('its Ask tab left, %s', (_, leave) => {
+      act(() => useMobileNavStore.setState({ activeTab: 'chat' }));
+      useAIConnectionStore.getState().setJustConnected(just());
+      render(<AskHome variant="mobile" />);
+      expect(card()).toBeInTheDocument();
+
+      act(leave);
+      expect(said()).toBeNull();
+      expect(card()).toBeNull();
+    });
+
+    it('and only left: arriving, or moving between the other tabs, spends nothing', () => {
+      act(() => useMobileNavStore.setState({ activeTab: 'today' }));
+      useAIConnectionStore.getState().setJustConnected(just());
+      act(() => useMobileNavStore.getState().setActiveTab('braindump'));
+      act(() => useMobileNavStore.getState().setActiveTab('chat'));
+      expect(said()).not.toBeNull();
+    });
   });
 
   it('a sign-out', () => {

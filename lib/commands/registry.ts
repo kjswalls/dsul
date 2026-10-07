@@ -58,7 +58,7 @@ import {
 } from 'lucide-react';
 import { addDays, subDays } from 'date-fns';
 
-import { AskMarkIcon } from '@/components/ai/ask-mark';
+import { AskMarkIcon, AskMarkUnlitIcon } from '@/components/ai/ask-mark';
 import { usePlannerStore } from '../planner-store';
 import { useViewStore } from '../view-store';
 import { EMPTY_VIEW_FILTERS, isEmptyFilters } from '../filters';
@@ -74,12 +74,12 @@ import {
 import { useSidebarStore } from '../sidebar-store';
 import { revealDock } from '../look-store';
 import { useSelectionStore, selectableIdsInDom } from '../selection-store';
-import { useMobileNavStore } from '../mobile-nav-store';
+import { setupPageShown, useMobileNavStore } from '../mobile-nav-store';
 import { useMorningStore } from '../morning-store';
 import { useEODStore } from '../eod-store';
 import { useProposalStore } from '../proposal-store';
 import { getAICapabilities } from '../ai-connection-store';
-import { askNew, newChat, openHistory, revealChat, toggleRail } from '../open-chat';
+import { askNew, newChat, openHistory, openSetup, revealChat, toggleRail } from '../open-chat';
 import { useConversationsStore } from '../conversations-store';
 import { useModsStore } from '../mods-store';
 import { modLabel, type UserMod } from '../mods/schema';
@@ -153,6 +153,18 @@ const view = () => useViewStore.getState();
  * same fact in words, for the shortcuts table — see CommandShortcutSpec.context.
  */
 const WEEK_COLUMNS_CONTEXT = 'Only in a week view with columns.';
+
+/**
+ * The phone's palette and capture keys focus the dock's omnibar, which Ask's
+ * composer replaces on the `chat` tab, so they move to Today first. Not from
+ * the setup page or the fix home (lib/mobile-nav-store.ts setupPageShown):
+ * that page keeps the omnibar, and moving would only take the person off the
+ * page they were on.
+ */
+function leaveAskForOmnibar(): void {
+  const nav = useMobileNavStore.getState();
+  if (nav.activeTab === 'chat' && !setupPageShown(getAICapabilities())) nav.setActiveTab('today');
+}
 
 /**
  * "Set priority" and "Move to bucket" want TWO values — an item and a level.
@@ -853,6 +865,44 @@ export const STATIC_COMMANDS: Command[] = [
     availableWhen: () => getAICapabilities().canChat,
     run: (ctx) => ctx.openChat(),
   },
+  // Ask AI's place while nothing answers (the AI setup spec's "Doors"): "Set
+  // up AI" while the gate invites, "Fix AI" while a saved key needs
+  // attention. Palette only (no shortcut id: the frozen list in
+  // commands.test.ts stays as it is, and Ctrl+J already opens the same
+  // column). Hidden as well as unavailable outside its own state, so No AI,
+  // an unknown gate and a working connection never see a greyed row. Open
+  // only, never a toggle (lib/open-chat.ts openSetup): on desktop the setup
+  // column, on the phone the Ask tab, which holds the setup page then. The
+  // launcher draws whichever is offered inline, first in Actions
+  // (components/sidebar/omnibar.tsx), so these two are only ever reached as
+  // ordinary rows in the dock and in `/`.
+  {
+    id: 'ai.setup',
+    label: 'Set up AI',
+    group: 'rituals',
+    icon: AskMarkUnlitIcon,
+    keywords: 'ai ask chat assistant connect key gemini openrouter model',
+    aliases: ['setup', 'connect'],
+    verb: 'open',
+    hidden: () => !getAICapabilities().askInvite,
+    availableWhen: () => getAICapabilities().askInvite,
+    run: (ctx) => {
+      openSetup(ctx.isMobile);
+    },
+  },
+  {
+    id: 'ai.fix',
+    label: 'Fix AI',
+    group: 'rituals',
+    icon: AskMarkUnlitIcon,
+    keywords: 'ai ask chat assistant key repair reconnect gemini model',
+    verb: 'open',
+    hidden: () => !getAICapabilities().askFix,
+    availableWhen: () => getAICapabilities().askFix,
+    run: (ctx) => {
+      openSetup(ctx.isMobile);
+    },
+  },
   {
     id: 'rituals.catchUp',
     label: 'Pick things back up',
@@ -1045,12 +1095,12 @@ export const STATIC_COMMANDS: Command[] = [
     //
     // Mobile has no launcher (no keyboard): keep the old behaviour of focusing
     // the docked omnibar, switching off the Chat tab first since the mobile
-    // dock unmounts the omnibar there — focusing a zero-width clipped input
-    // otherwise takes n / e / Backspace / ⌘Z down with it until you blur.
+    // dock unmounts the omnibar under Ask: focusing a zero-width clipped input
+    // otherwise takes n / e / Backspace / ⌘Z down with it until you blur. The
+    // setup page keeps the omnibar, so there it stays (leaveAskForOmnibar).
     run: (ctx) => {
       if (ctx.isMobile) {
-        const nav = useMobileNavStore.getState();
-        if (nav.activeTab === 'chat') nav.setActiveTab('today');
+        leaveAskForOmnibar();
         useUIStore.getState().focusOmnibar();
         return;
       }
@@ -1073,8 +1123,7 @@ export const STATIC_COMMANDS: Command[] = [
     // '/' reaches the same palette.
     run: (ctx) => {
       if (ctx.isMobile) {
-        const nav = useMobileNavStore.getState();
-        if (nav.activeTab === 'chat') nav.setActiveTab('today');
+        leaveAskForOmnibar();
         useUIStore.getState().focusOmnibar();
         return;
       }
@@ -1093,11 +1142,11 @@ export const STATIC_COMMANDS: Command[] = [
     // The reveal+focus path ⌘K used before the launcher took ⌘K over. Reveal the
     // sidebar BEFORE focusing: focusing a clipped zero-width input in a collapsed
     // sidebar swallows every binding without allowInInput (n / e / Backspace / ⌘Z)
-    // until you blur. Mobile switches off the Chat tab, which unmounts the omnibar.
+    // until you blur. Mobile switches off the Chat tab where Ask unmounts the
+    // omnibar, and stays on the setup page, which keeps it (leaveAskForOmnibar).
     run: (ctx) => {
       if (ctx.isMobile) {
-        const nav = useMobileNavStore.getState();
-        if (nav.activeTab === 'chat') nav.setActiveTab('today');
+        leaveAskForOmnibar();
       } else {
         revealDock();
       }

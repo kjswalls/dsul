@@ -1,6 +1,7 @@
 import { toast } from 'sonner';
 
 import { useAIConnectionStore } from './ai-connection-store';
+import { restoreKept, takeKept, type KeptQuestion } from './ask-pending';
 import { usePlannerStore } from './planner-store';
 import { revealDock } from './look-store';
 import { RAIL_HANDBACK_WAIT_MS, useRailStore } from './rail-store';
@@ -19,8 +20,13 @@ import { useUndoStripStore } from './undo-strip-store';
  *
  * The column goes first (`park`, so `summoned` is gone and Undo cannot spring
  * it back open), and the dock is shown, since the strip lives in it and a
- * collapsed braindump would hide it. Focus lands on Undo: the button pressed
- * went away with the column it sat in.
+ * collapsed braindump would hide it (the desktop's braindump: the phone's
+ * setup page passes `phone`, and its strip already sits in the dock). Focus
+ * lands on Undo: the button pressed went away with the column it sat in.
+ *
+ * A question kept from `?` (lib/ask-pending.ts) goes with the invitation it
+ * was kept for: taken now and held by the row, so Undo puts it back with
+ * YOUR QUESTION, and once the row has gone nothing brings it back.
  *
  * A write that fails is settled by what the server says, not by the failure:
  * a dropped connection can lose the answer to a write that landed. So the
@@ -45,7 +51,7 @@ let intent = 0;
  * user did: a planner edit after it takes the strip and Ctrl+Z, so the row
  * goes then, and Ctrl+Z undoes the edit rather than turning AI back on.
  */
-function showOffRow(label: string, focusUndo: boolean): string {
+function showOffRow(label: string, focusUndo: boolean, kept: KeptQuestion | null): string {
   const id = `ai-off-${++seq}`;
   useUndoStripStore.getState().show({
     id,
@@ -53,7 +59,7 @@ function showOffRow(label: string, focusUndo: boolean): string {
     durationMs: AI_OFF_STRIP_MS,
     face: 'ui',
     focusUndo,
-    onUndo: () => void undoNoAI(),
+    onUndo: () => void undoNoAI(kept),
   });
   const mark = usePlannerStore.getState().historyIndex;
   const leave = () => useUndoStripStore.getState().dismiss(id);
@@ -83,36 +89,42 @@ export async function serverSaysHidden(): Promise<boolean> {
   return useAIConnectionStore.getState().aiHidden === true;
 }
 
-export async function chooseNoAI(): Promise<void> {
+export async function chooseNoAI(o: { phone?: boolean } = {}): Promise<void> {
   const mine = ++intent;
+  const kept = takeKept();
   useRailStore.getState().park();
-  revealDock();
-  const id = showOffRow(AI_OFF_LABEL, true);
+  if (!o.phone) revealDock();
+  const id = showOffRow(AI_OFF_LABEL, true, kept);
   const result = await useAIConnectionStore.getState().setAIHidden(true);
   if (result.ok || (await serverSaysHidden())) return;
   useUndoStripStore.getState().dismiss(id);
   // Taken back meanwhile (Undo, Ctrl+Z): AI being on is what the user said last.
   if (mine !== intent) return;
+  // The choice didn't take, so the invitation is back, and the question with it.
+  if (kept) restoreKept(kept);
   focusKeyWhenDrawn();
   toast.error(AI_OFF_FAILED);
 }
 
 /**
  * Undo: the account's answer back to false, so the key returns (unlit, as it
- * was). Focus, left on the strip that just went, follows it to the key once
- * it is drawn, if nothing else took it meanwhile. A write that fails with the
- * server still saying off brings the row back, its Undo now a retry; it takes
- * focus only if focus is still nowhere the user put it, since it arrives a
- * round trip after the press.
+ * was), and the question the row held with it. Focus, left on the strip that
+ * just went, follows it to the key once it is drawn, if nothing else took it
+ * meanwhile. A write that fails with the server still saying off brings the
+ * row back, its Undo now a retry; it takes focus only if focus is still
+ * nowhere the user put it, since it arrives a round trip after the press.
  */
-async function undoNoAI(): Promise<void> {
+async function undoNoAI(kept: KeptQuestion | null): Promise<void> {
   const mine = ++intent;
   const write = useAIConnectionStore.getState().setAIHidden(false);
+  // Back with the invitation, which the write applies at once.
+  if (kept) restoreKept(kept);
   focusKeyWhenDrawn();
   const result = await write;
   if (result.ok || !(await serverSaysHidden()) || mine !== intent) return;
   const inStrip = typeof document !== 'undefined' && !!document.activeElement?.closest('[data-undo-id]');
-  showOffRow(AI_STILL_OFF_LABEL, focusUnplaced() || inStrip);
+  // Still off: the question goes back to the row whose Undo is now a retry.
+  showOffRow(AI_STILL_OFF_LABEL, focusUnplaced() || inStrip, takeKept());
 }
 
 /** Focus on <body>, or on the dock a strip row hands it to as it goes: nowhere the user put it. */

@@ -38,6 +38,8 @@ import { useProposalStore } from '@/lib/proposal-store';
 import { useUIStore } from '@/lib/ui-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useViewStore } from '@/lib/view-store';
+import { useMobileNavStore } from '@/lib/mobile-nav-store';
+import { useAIConnectionStore } from '@/lib/ai-connection-store';
 import { AI_HIDDEN, CONNECTED_MODEL, KEY_TURNED_DOWN, NOTHING_CONNECTED, seedAI } from './helpers/ai-fixtures';
 
 const rail = () => useRailStore.getState();
@@ -221,6 +223,64 @@ describe('carryDraftHome', () => {
     const before = rail().drafts;
     rail().carryDraftHome('c3');
     expect(rail().drafts).toBe(before);
+  });
+});
+
+describe('appendDraftHome', () => {
+  it("leaves text in Ask home's box, after anything already typed there, and touches no other draft", () => {
+    rail().setDraft('conv:c1', 'a reply');
+    rail().appendDraftHome('what should I do first');
+    expect(rail().drafts).toEqual({ 'conv:c1': 'a reply', home: 'what should I do first' });
+    rail().appendDraftHome('and then?');
+    expect(rail().drafts.home).toBe('what should I do first\nand then?');
+    const before = rail().drafts;
+    rail().appendDraftHome('');
+    expect(rail().drafts).toBe(before);
+  });
+});
+
+// The phone's close: leaving its Ask tab, by any road, says "It works." once.
+describe('leaving the phone’s Ask tab', () => {
+  const said = () => {
+    useAIConnectionStore.getState().setJustConnected({ provider: 'gemini', model: 'gemini-flash-latest', freeTier: true, at: 1 });
+    useAIConnectionStore.getState().setFlowResult('saved');
+  };
+
+  afterEach(() => {
+    useMobileNavStore.setState({ activeTab: 'today' });
+    useAIConnectionStore.getState().reset();
+  });
+
+  it('spends It works. and the note in its place, by the setter or a bare setState, and keeps the stack and every draft', () => {
+    for (const leave of [
+      () => useMobileNavStore.getState().setActiveTab('today'),
+      () => useMobileNavStore.setState({ activeTab: 'braindump' }),
+    ]) {
+      useMobileNavStore.setState({ activeTab: 'chat' });
+      rail().push('phone', conv('c1'));
+      rail().setDraft('conv:c1', 'half a reply');
+      rail().setDraft('home', 'half a question');
+      said();
+      leave();
+      expect(useAIConnectionStore.getState().justConnected).toBeNull();
+      expect(useAIConnectionStore.getState().flowResult).toBeNull();
+      expect(rail().stacks.phone).toEqual([conv('c1')]);
+      expect(rail().drafts).toEqual({ 'conv:c1': 'half a reply', home: 'half a question' });
+      rail().reset();
+    }
+  });
+
+  it('spends nothing arriving on it, or moving between the other two', () => {
+    said();
+    useMobileNavStore.getState().setActiveTab('chat');
+    expect(useAIConnectionStore.getState().justConnected).not.toBeNull();
+    useMobileNavStore.getState().setActiveTab('chat');
+    expect(useAIConnectionStore.getState().justConnected).not.toBeNull();
+    useMobileNavStore.setState({ activeTab: 'today' });
+    said();
+    useMobileNavStore.getState().setActiveTab('braindump');
+    expect(useAIConnectionStore.getState().justConnected).not.toBeNull();
+    expect(useAIConnectionStore.getState().flowResult).toBe('saved');
   });
 });
 

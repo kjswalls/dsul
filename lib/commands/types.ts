@@ -227,6 +227,12 @@ export interface Command {
   aliases?: string[];
   argument?: CommandArgument;
   shortcut?: CommandShortcutSpec;
+  /**
+   * What Enter does to the row, as the launcher's pill says it ("↵ open").
+   * Absent is 'run'. A command that only takes you somewhere and changes
+   * nothing on the way (the doors into setup) says so instead.
+   */
+  verb?: 'open';
   /** Greys the row and blocks execution when false. */
   availableWhen?: (ctx: CommandContext) => boolean;
   /**
