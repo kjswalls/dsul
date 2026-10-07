@@ -16,6 +16,7 @@ import { RELAY } from '@/lib/relay-config';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { RelayField } from '@/components/primitives/relay-field';
+import { DEFAULT_LOGIN_HEADLINE, pickLoginHeadline } from '@/lib/login-headlines';
 
 const BROWSER_UNOPENED = 'Couldn’t open your browser to sign in. Try again.';
 
@@ -23,6 +24,12 @@ type OAuthProvider = 'google' | 'apple';
 const PROVIDER_NAME: Record<OAuthProvider, string> = { google: 'Google', apple: 'Apple' };
 
 const noopSubscribe = () => () => {};
+// Picked once per page load, in the reader's own time zone, so it is read on
+// the client only: the server renders the default, hidden, and hydration
+// swaps in the pick before the heading fades in.
+let pickedHeadline: string | null = null;
+const clientHeadline = () => (pickedHeadline ??= pickLoginHeadline(new Date()));
+const serverHeadline = () => null;
 const isDesktopApp = () => getDesktopBridge() !== null;
 // A desktop shell opens only the providers its main process allows
 // (electron/lib/policy.cjs), and a shell built before Apple doesn't list
@@ -117,6 +124,7 @@ function LoginPageInner({ apple }: { apple: boolean }) {
   // snapshot is a browser's answer; an older shell drops the button once the
   // page hydrates.
   const appleHere = useSyncExternalStore(noopSubscribe, canOpenApple, () => true);
+  const headline = useSyncExternalStore(noopSubscribe, clientHeadline, serverHeadline);
   const showApple = apple && appleHere;
   // Desktop only. The authorize URL the system browser was sent to, and whose
   // it is, kept so "Open again" can send it there a second time with the same
@@ -425,8 +433,10 @@ function LoginPageInner({ apple }: { apple: boolean }) {
               <div className="space-y-3 delay-100 duration-700 animate-in fade-in slide-in-from-bottom-2 fill-mode-both motion-reduce:animate-none">
                 {/* Negative tracking is doing real work here — Inter sets loose
                     at display sizes and the two lines won't lock up without it. */}
-                <h1 className="text-[27px] font-semibold leading-[1.12] tracking-[-0.032em] text-balance">
-                  what stuff should we do today?
+                <h1
+                  className={`text-[27px] font-semibold leading-[1.12] tracking-[-0.032em] text-balance${headline ? '' : ' invisible'}`}
+                >
+                  {headline ?? DEFAULT_LOGIN_HEADLINE}
                 </h1>
               </div>
 
