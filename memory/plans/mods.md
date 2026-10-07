@@ -9,8 +9,8 @@ The research behind it (subsystem maps with file:line, a critique, three drafts,
 three adversarial reviews) is in Kirby's project files, not the repo
 (`/mnt/project-files/mods/`); everything a build needs is in this file.
 
-**Built so far:** build order 2 (raise sites), 3 (storage, Make, safe mode) and
-4 (browser recipes, `lib/recipes/`). Where PR 4's code departs from the body:
+**Built so far:** build order 2 (raise sites), 3 (storage, Make, safe mode),
+4 (browser recipes, `lib/recipes/`) and 5a (user themes, below). Where PR 4's code departs from the body:
 a clock run writes TWO `mod_runs` rows, the claim `<key>` and its result
 `<key>:done`, because 061 grants no UPDATE; an event or ⌘K run writes one,
 `run:<uuid>`, and the run log reads only `summary.kind === 'run'`. The ⌘K
@@ -37,6 +37,39 @@ an edit that changes a switched-on recipe's manifest switches it off; a rename a
 does not. Write steps run before UI steps whatever their order in the list, and the
 builder says so. Theme and Look steps import the settings manifest lazily, so
 `<RecipeHost>` in the root layout does not pull it into every route.
+
+**Build order 5a, user themes, is built.** Where it departs from the body: the
+grammar (`lib/mods/theme-grammar.ts`) also allows bounded alpha (4% to 40%) on the
+three hairlines (`border`, `input`, `sidebarBorder`), because every dark built-in
+draws them in alpha; the other bounds are accent 2-20%, rowSelected 4-30%, scrim
+12-60%. Those three are washes over content and must carry alpha (an opaque scrim
+would black out the page under every dialog); the hairlines may be opaque, as the
+light built-ins draw them. A base theme's token the CSS writes as a `var()` or `color-mix()` chain
+(Paper's `--primary-foreground: var(--lime-ink)`) is left unprinted when unset, so
+the shipped chain resolves through the theme's own values; an Ask ink that is its
+partner (`same` in `lib/mods/theme-bases.ts`) follows the theme's partner. The root
+rule repeats its attribute (`:root[data-look-light='u-x'][data-look-light='u-x']`,
+(0,4,0)) so a tint left stamped never shows through whatever order the sheets land
+in; the Ask partner rule is the one that wins by order, wrapped in `:where()` so
+Notepad Retro's partner still beats it. Terminal's mono face for code
+(`--font-mono` and its `:is(.font-mono, code, pre, kbd, samp)` rule) is not a
+token, so a theme built on Terminal gets the UI face only. A theme keeps its switch
+when edited (it is values, not code that runs), unlike a recipe. The CSS slug is
+`u-` and the first 8 hex of the row id, never the owner-writable `slug` column (new
+theme rows store the same value there); two rows sharing a prefix keep the older.
+The store keeps a saved `u-` pick even while the theme is missing, off or held back
+by safe mode, and `<html>` shows `resolveLightPick(pick)`; once switching off or
+deleting a theme in Make has landed, the default pick is written
+(`lib/user-themes/release.ts`; a failed write keeps the pick). A saved theme keeps its
+mode: the editor locks Light/Dark when editing and `saveTheme` refuses a switch, since
+it could be someone's pick of that mode. The editor's draft is a preview twin only and
+never bumps the registry's `rev`.
+`<ThemeInjector>` mounts in `app/layout.tsx` and loads the theme rows itself
+whenever a pick names one, since /settings never loads the planner. The pre-paint
+script is `lib/user-themes/prepaint.ts`, imported by the layout, after the look
+stamp. The cache (`dsul-user-themes`) is cleared on account switch (RAW_CLEARERS),
+and so is a device pick naming one of the last account's themes
+(`lib/user-themes/forget-picks.ts`), which goes back to the default.
 
 **This amends [plugins-themes-store.md](plugins-themes-store.md)** in two places,
 both in its Project B item 6 ("Skip indefinitely"): the tier (c) sandboxed

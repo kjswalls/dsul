@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, cleanup, waitFor } from '@testing-library/react';
+import { act, render, cleanup, waitFor } from '@testing-library/react';
 
 /**
  * The one line lib/settings/hydration.ts stakes the whole gate on:
@@ -89,6 +89,7 @@ import { useExtensionsStore } from '@/lib/extensions-store';
 import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
 import { useAIConnectionStore } from '@/lib/ai-connection-store';
 import { useLookStore } from '@/lib/look-store';
+import { useUserThemes } from '@/lib/user-themes/store';
 
 /** The four loads that are not under test, stubbed at the store boundary. */
 const original = {
@@ -301,5 +302,73 @@ describe('hydrateSettings and the app icon', () => {
     loadSettings.mockImplementation(async () => ({ ...SERVER, app_icon: 'lime' }));
     await mount();
     expect(useLookStore.getState().appIcon).toBe('lime');
+  });
+});
+
+/**
+ * Your own theme as a saved pick (lib/user-themes/). The server's `u-` slug is
+ * kept even before the theme's row has loaded, and what <html> shows resolves
+ * separately: the default while the theme is missing, the theme once it is in
+ * the registry. The localStorage mirror keeps the pick either way.
+ */
+describe('hydrateSettings and a user theme pick', () => {
+  const SLUG = 'u-abcdef01';
+  const mount = async () => {
+    render(
+      <SupabaseProvider>
+        <div />
+      </SupabaseProvider>
+    );
+    await waitFor(() => expect(useMorningStore.getState().settingsHydratedUserId).toBe(USER));
+  };
+
+  beforeEach(() => {
+    loadSettings.mockClear();
+    usePlannerStore.setState({ initializeStore: async () => {} });
+    useExtensionsStore.setState({ hydrate: async () => {} });
+    useChannelSecretsStore.setState({ hydrate: async () => {} });
+    useAIConnectionStore.setState({ hydrate: async () => {} });
+    useMorningStore.setState({ settingsHydratedUserId: null });
+    useLookStore.setState({ light: 'paper', dark: 'night' });
+    useUserThemes.setState({ themes: {}, draft: null, rev: 0, source: 'none' });
+  });
+
+  afterEach(() => {
+    cleanup();
+    usePlannerStore.setState({ initializeStore: original.initializeStore });
+    useExtensionsStore.setState({ hydrate: original.extensions });
+    useChannelSecretsStore.setState({ hydrate: original.secrets });
+    useAIConnectionStore.setState({ hydrate: original.ai });
+    useMorningStore.setState({ settingsHydratedUserId: null });
+    useLookStore.setState({ light: 'paper', dark: 'night' });
+    useUserThemes.setState({ themes: {}, draft: null, rev: 0, source: 'none' });
+    window.localStorage.removeItem('dsul-look-light');
+    document.documentElement.removeAttribute('data-look-light');
+  });
+
+  it('keeps the pick, and shows the default while the theme is missing', async () => {
+    loadSettings.mockImplementation(async () => ({ ...SERVER, theme_light: SLUG }));
+    await mount();
+    expect(useLookStore.getState().light).toBe(SLUG);
+    await waitFor(() => expect(window.localStorage.getItem('dsul-look-light')).toBe(SLUG));
+    expect(document.documentElement.hasAttribute('data-look-light')).toBe(false);
+  });
+
+  it('stamps the theme once the registry has it', async () => {
+    loadSettings.mockImplementation(async () => ({ ...SERVER, theme_light: SLUG }));
+    await mount();
+    act(() =>
+      useUserThemes.setState((s) => ({
+        themes: { [SLUG]: { slug: SLUG, mode: 'light', label: 'Moss', themeColor: '#fafafa', decls: [] } },
+        rev: s.rev + 1,
+      }))
+    );
+    await waitFor(() => expect(document.documentElement.getAttribute('data-look-light')).toBe(SLUG));
+  });
+
+  it('ignores a value that is neither a built-in nor shaped like a slug', async () => {
+    loadSettings.mockImplementation(async () => ({ ...SERVER, theme_light: 'u-NOTHEX' }));
+    await mount();
+    expect(useLookStore.getState().light).toBe('paper');
   });
 });

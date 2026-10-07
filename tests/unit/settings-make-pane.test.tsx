@@ -35,6 +35,8 @@ import { useModsStore } from '@/lib/mods-store';
 import { useUIStore } from '@/lib/ui-store';
 import type { UserMod } from '@/lib/mods/schema';
 import type { SettingCtx } from '@/lib/settings/manifest';
+import { useLookStore } from '@/lib/look-store';
+import { saveSettings } from '@/lib/settings-service';
 
 const USER = 'test-user';
 const ctx: SettingCtx = { theme: 'system', setTheme: () => {}, userId: USER };
@@ -100,13 +102,13 @@ describe('MakePane', () => {
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual(['Recipes', 'Themes']);
     expect(screen.queryByTestId('make-empty')).toBeNull();
     expect(screen.getByText('Switched off: It ran too often.')).toBeTruthy();
-    expect(screen.getByText('On')).toBeTruthy();
+    expect(screen.getByText('On. Pick it in Look, under Yours.')).toBeTruthy();
   });
 
   it('the switch calls setEnabled', () => {
     const r = mod({ name: 'After run' });
     seed({ rows: [r] });
-    const setEnabled = vi.fn(async () => {});
+    const setEnabled = vi.fn(async () => true);
     useModsStore.setState({ setEnabled });
     render(<MakePane ctx={ctx} />);
     fireEvent.click(screen.getByRole('switch', { name: 'After run' }));
@@ -116,7 +118,7 @@ describe('MakePane', () => {
   it('Delete asks first, and only the confirm removes', () => {
     const r = mod({ name: 'After run' });
     seed({ rows: [r] });
-    const remove = vi.fn(async () => {});
+    const remove = vi.fn(async () => true);
     useModsStore.setState({ remove });
     render(<MakePane ctx={ctx} />);
     fireEvent.click(screen.getByRole('button', { name: 'Delete After run' }));
@@ -206,5 +208,84 @@ describe('the settings route re-reads Make when the store latches', () => {
     expect(src).toContain('const modsTick = useModsStore((s) => s.available);');
     const deps = src.slice(src.indexOf('const ctx = useMemo<SettingCtx>'));
     expect(deps.slice(0, deps.indexOf(']\n  );'))).toContain('modsTick,');
+  });
+});
+
+describe('MakePane: themes', () => {
+  const THEME_ID = 'abcdef01-2345-4678-9abc-def012345678';
+  const theme = (over: Partial<UserMod> = {}) =>
+    mod({
+      id: THEME_ID,
+      kind: 'theme',
+      slug: 'u-abcdef01',
+      name: 'Moss',
+      enabled: true,
+      manifest: { version: 1, mode: 'light', base: 'paper', tokens: { paper0: '#fafafa' } },
+      ...over,
+    });
+
+  afterEach(() => {
+    useLookStore.setState({ light: 'paper', dark: 'night' });
+    vi.mocked(saveSettings).mockClear();
+  });
+
+  it('New theme opens the theme form, and Cancel puts focus back on it', () => {
+    seed({});
+    render(<MakePane ctx={ctx} />);
+    fireEvent.click(screen.getByTestId('make-new-theme'));
+    expect(screen.getByTestId('theme-builder').textContent).toContain('New theme');
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByTestId('theme-builder')).toBeNull();
+    expect(document.activeElement).toBe(screen.getByTestId('make-new-theme'));
+  });
+
+  it('a theme row has Edit, which opens it in the theme form', () => {
+    seed({ rows: [theme()] });
+    render(<MakePane ctx={ctx} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Moss' }));
+    expect(screen.getByTestId('theme-builder').textContent).toContain('Edit theme');
+    expect((screen.getByTestId('theme-name') as HTMLInputElement).value).toBe('Moss');
+  });
+
+  it('deleting the theme in use writes the default pick once the delete lands', async () => {
+    seed({ rows: [theme()] });
+    useLookStore.setState({ light: 'u-abcdef01' });
+    const remove = vi.fn(async () => true);
+    useModsStore.setState({ remove });
+    render(<MakePane ctx={ctx} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Moss' }));
+    useUIStore.getState().confirmRequest!.onConfirm();
+    expect(remove).toHaveBeenCalledWith(THEME_ID);
+    await waitFor(() => expect(useLookStore.getState().light).toBe('paper'));
+    expect(saveSettings).toHaveBeenCalledWith(USER, { theme_light: 'paper' });
+  });
+
+  it('switching off the theme in use writes the default; one not in use is left alone', async () => {
+    seed({ rows: [theme()] });
+    const setEnabled = vi.fn(async () => true);
+    useModsStore.setState({ setEnabled });
+    useLookStore.setState({ dark: 'u-abcdef01' });
+    render(<MakePane ctx={ctx} />);
+    fireEvent.click(screen.getByRole('switch', { name: 'Moss' }));
+    expect(setEnabled).toHaveBeenCalledWith(THEME_ID, false);
+    await waitFor(() => expect(useLookStore.getState().dark).toBe('night'));
+    expect(saveSettings).toHaveBeenCalledWith(USER, { theme_dark: 'night' });
+    expect(useLookStore.getState().light).toBe('paper');
+  });
+
+  it('a switch-off or delete that fails keeps the pick', async () => {
+    seed({ rows: [theme()] });
+    const setEnabled = vi.fn(async () => false);
+    const remove = vi.fn(async () => false);
+    useModsStore.setState({ setEnabled, remove });
+    useLookStore.setState({ dark: 'u-abcdef01' });
+    render(<MakePane ctx={ctx} />);
+    fireEvent.click(screen.getByRole('switch', { name: 'Moss' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Moss' }));
+    useUIStore.getState().confirmRequest!.onConfirm();
+    await waitFor(() => expect(remove).toHaveBeenCalled());
+    await Promise.resolve();
+    expect(useLookStore.getState().dark).toBe('u-abcdef01');
+    expect(saveSettings).not.toHaveBeenCalledWith(USER, { theme_dark: 'night' });
   });
 });

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { TimeBucketSchema } from '@dsul/types';
 import type { ModEvent } from '@/lib/mod-events';
 import type { VerbId } from '@/lib/item-verbs';
+import { ThemeManifestSchema, type ThemeManifest } from './theme-grammar';
 
 /**
  * The shapes of what a person makes in Settings → Make (memory/plans/mods.md).
@@ -249,8 +250,8 @@ export type RecipeTrigger = z.infer<typeof RecipeTriggerSchema>;
 // PLACEHOLDER: the mod manifest (uses, commands, panels, settings) lands with the
 // mod runtime, build order 8. Until then a mod row's manifest is unread.
 export const ModManifestSchema = z.unknown();
-// PLACEHOLDER: the theme token grammar lands with user themes, build order 5.
-export const ThemeManifestSchema = z.unknown();
+// A theme's token grammar: ./theme-grammar.ts (build order 5).
+export { ThemeManifestSchema, type ThemeManifest };
 // PLACEHOLDER: a Look's {label, layout, light, dark} lands with user Looks, build order 5.
 export const LookManifestSchema = z.unknown();
 

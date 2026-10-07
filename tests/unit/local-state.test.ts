@@ -20,6 +20,8 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useSidebarStore, SIDEBAR_DEFAULT_WIDTH } from '@/lib/sidebar-store';
 import { recordReleased, releasedOn } from '@/lib/sweep-grace';
 import { useViewStore } from '@/lib/view-store';
+import { useLookStore } from '@/lib/look-store';
+import { DEFAULT_LIGHT_LOOK, LOOK_STORAGE_KEYS } from '@/lib/theme-looks';
 import { seededLocalStorage } from '../e2e/helpers/session';
 
 /**
@@ -249,6 +251,21 @@ describe('the sweep grace map', () => {
     clearUserScopedLocalState();
 
     expect(releasedOn('item-of-user-a')).toBeUndefined();
+  });
+});
+
+describe("the last account's user themes", () => {
+  it('drop a device pick naming one, and keep a built-in pick', () => {
+    useLookStore.setState({ light: 'u-aaaaaaaa', dark: 'terminal' });
+    localStorage.setItem(LOOK_STORAGE_KEYS.light, 'u-aaaaaaaa');
+    localStorage.setItem(LOOK_STORAGE_KEYS.dark, 'terminal');
+
+    clearUserScopedLocalState();
+
+    expect(useLookStore.getState().light).toBe(DEFAULT_LIGHT_LOOK);
+    expect(localStorage.getItem(LOOK_STORAGE_KEYS.light)).toBeNull();
+    expect(useLookStore.getState().dark).toBe('terminal');
+    expect(localStorage.getItem(LOOK_STORAGE_KEYS.dark)).toBe('terminal');
   });
 });
 
@@ -675,7 +692,7 @@ describe('nothing persists per-user state outside the registry', () => {
     // aliased handle (`const store = window.localStorage; store.setItem(…)`)
     // and sessionStorage, which the narrower pattern walked straight past.
     //
-    // A ninth entry here means per-user state with nothing clearing it.
+    // A tenth entry here means per-user state with nothing clearing it.
     expect(filesMatching(/\bsetItem\(/)).toEqual([
       // The ownership stamp itself.
       'lib/local-state.ts',
@@ -707,6 +724,9 @@ describe('nothing persists per-user state outside the registry', () => {
       // that did it. The loop guard's whole state; it dies with the tab and is
       // written only when nobody is signed in, so there is no one to clear it for.
       'lib/signed-out-redirect.ts',
+      // `dsul-user-themes`: the account's own themes, printed, for the pre-paint
+      // script. Per user, so clearUserThemeCache is in RAW_CLEARERS.
+      'lib/user-themes/store.ts',
     ].sort());
   });
 });

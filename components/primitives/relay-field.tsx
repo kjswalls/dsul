@@ -653,10 +653,12 @@ export function RelayField({
     if (pointerBurst) window.addEventListener('pointerdown', onPointerDown, { passive: true });
 
     // Re-bake sprites/palette when the theme toggles (class or inline style on <html>).
+    // data-user-themes-rev: the user-theme sheet changed (components/providers/
+    // theme-injector.tsx), e.g. the relay colours of the theme you are on.
     const themeObserver = new MutationObserver(rebuildForTheme);
     themeObserver.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ['class', 'style', 'data-theme', 'data-look-light', 'data-look-dark'],
+      attributeFilter: ['class', 'style', 'data-theme', 'data-look-light', 'data-look-dark', 'data-user-themes-rev'],
     });
 
     return () => {

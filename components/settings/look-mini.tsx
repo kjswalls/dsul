@@ -8,8 +8,8 @@ import { layoutAttributes, type LayoutDef } from '@/lib/layout-themes';
 import {
   DEFAULT_DARK_LOOK,
   DEFAULT_LIGHT_LOOK,
-  type DarkLook,
-  type LightLook,
+  type DarkPick,
+  type LightPick,
   type LookMode,
 } from '@/lib/theme-looks';
 import { DEFAULT_PALETTE, type ThemePalette } from '@/lib/theme-palettes';
@@ -59,7 +59,7 @@ export const MINI_H = 380;
  */
 export function themeScope(
   mode: LookMode,
-  picks: { light: LightLook; dark: DarkLook; tint: ThemePalette }
+  picks: { light: LightPick; dark: DarkPick; tint: ThemePalette }
 ): Record<string, string | undefined> {
   const theme = mode === 'light' ? picks.light : picks.dark;
   const plain = mode === 'light' ? theme === DEFAULT_LIGHT_LOOK : theme === DEFAULT_DARK_LOOK;
@@ -86,8 +86,8 @@ const SERIF_VARS: CSSProperties = {
 export interface LookMiniProps {
   def: LayoutDef;
   mode: LookMode;
-  light: LightLook;
-  dark: DarkLook;
+  light: LightPick;
+  dark: DarkPick;
   tint: ThemePalette;
   bucketStyle: BucketStyle;
   typeMode: TypeMode;
