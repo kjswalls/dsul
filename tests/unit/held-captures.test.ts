@@ -67,7 +67,7 @@ import {
   withoutReleasedCaptures,
   __resetHeldCapturesForTests,
 } from '@/lib/held-captures';
-import type { Item } from '@/lib/planner-types';
+import type { Item, Project } from '@/lib/planner-types';
 
 const A = 'user-a';
 const B = 'user-b';
@@ -109,7 +109,7 @@ const held = () => useHeldCaptures.getState().held;
 
 /** Let resolved promises (and queued microtasks) run their continuations. */
 const flush = async () => {
-  for (let i = 0; i < 5; i++) await Promise.resolve();
+  for (let i = 0; i < 10; i++) await Promise.resolve();
 };
 
 /** Stamp the account and start its first load; the load stays open. */
@@ -142,6 +142,9 @@ beforeEach(() => {
   __resetHeldCapturesForTests();
   pendingLoads.length = 0;
   vi.mocked(db.createItem).mockClear();
+  vi.mocked(db.createItems).mockClear();
+  vi.mocked(db.fetchItemsAnyState).mockClear();
+  dbHolds([]);
   vi.mocked(readPlannerSnapshot).mockImplementation(async () => null);
   consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
   consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -234,8 +237,8 @@ describe('captureTask', () => {
     expect(titles()).toEqual(['One', 'Two']);
     expect(written()).toEqual(['One', 'Two']);
     expect(store().actionLog.map((e) => e.label).slice(0, 2)).toEqual(['Add task: Two', 'Add task: One']);
-    // Kept, by id, until a landing confirms them: the writes may have failed with the load.
-    expect(held()).toEqual(store().items.map((i) => ({ userId: A, title: i.title, id: i.id })));
+    // Kept, as rows, until a landing confirms them: the writes may have failed with the load.
+    expect(held()).toEqual(store().items.map((i) => ({ userId: A, title: i.title, item: i })));
   });
 
   it('adds at once over a failed load, and keeps it until a landing confirms it', async () => {
@@ -245,7 +248,7 @@ describe('captureTask', () => {
     // Synchronously, as on main: the row is there and written at once.
     expect(titles()).toEqual(['After the failure']);
     expect(written()).toEqual(['After the failure']);
-    expect(held()).toEqual([{ userId: A, title: 'After the failure', id: store().items[0].id }]);
+    expect(held()).toEqual([{ userId: A, title: 'After the failure', item: store().items[0] }]);
   });
 
   it('still holds while a Retry is in flight, and files on its landing', async () => {
@@ -307,22 +310,26 @@ describe('captureTask', () => {
  * a failed insert. The Retry's landing replaces the failed load's store, so a
  * row filed over the failure survives only if this module files it again.
  */
-describe('a row filed over a failed load, until a landing settles it', () => {
-  const writesFail = () =>
-    vi.mocked(db.createItem).mockImplementation(async () => {
-      throw { message: 'network' };
-    });
-  const writesWork = () => vi.mocked(db.createItem).mockImplementation(async () => undefined);
-  /** The ids written to the database, in the order written. */
-  const writtenIds = () =>
-    vi.mocked(db.createItem).mock.calls.map((call) => (call as unknown as [string, { id: string }])[1].id);
-  const retryLanding = async (items: Item[]) => {
-    const retry = store().initializeStore(A);
-    pendingLoads.shift()!.resolve({ ...FRESH(), items });
-    await retry;
-    await flush();
-  };
+const writesFail = () =>
+  vi.mocked(db.createItem).mockImplementation(async () => {
+    throw { message: 'network' };
+  });
+const writesWork = () => vi.mocked(db.createItem).mockImplementation(async () => undefined);
+/** The ids written to the database, in the order written. */
+const writtenIds = () =>
+  vi.mocked(db.createItem).mock.calls.map((call) => (call as unknown as [string, { id: string }])[1].id);
+/** A Retry for A that lands with `items` (and `projects`). */
+const retryLanding = async (items: Item[], projects: Project[] = []) => {
+  const retry = store().initializeStore(A);
+  pendingLoads.shift()!.resolve({ ...FRESH(), items, projects });
+  await retry;
+  await flush();
+};
+/** What the database says it holds under the ids it is asked about. */
+const dbHolds = (rows: { item: Item; deleted: boolean }[]) =>
+  vi.mocked(db.fetchItemsAnyState).mockImplementation(async () => rows);
 
+describe('a row filed over a failed load, until a landing settles it', () => {
   afterEach(() => writesWork());
 
   it('files a held capture again, under the same id, when the Retry lands without it', async () => {
@@ -368,6 +375,8 @@ describe('a row filed over a failed load, until a landing settles it', () => {
     expect(titles()).toEqual(['Already there', 'Saved after all']);
     expect(writtenIds()).toEqual([id]);
     expect(held()).toEqual([]);
+    // Nothing to ask about.
+    expect(db.fetchItemsAnyState).not.toHaveBeenCalled();
   });
 
   it('waits out a Retry that fails too, then files on the one that lands', async () => {
@@ -379,7 +388,7 @@ describe('a row filed over a failed load, until a landing settles it', () => {
     expect(captureTask('During the retry')).toBe('held');
     await failLoad(retry);
     expect(titles()).toEqual(['Still down', 'During the retry']);
-    expect(held().map((e) => [e.title, !!e.id])).toEqual([
+    expect(held().map((e) => [e.title, !!e.item])).toEqual([
       ['Still down', true],
       ['During the retry', true],
     ]);
@@ -396,7 +405,11 @@ describe('a row filed over a failed load, until a landing settles it', () => {
     captureTask('Never mind');
     captureTask('Keep this');
     store().deleteTask(store().items[0].id);
-    expect(held().map((e) => e.title)).toEqual(['Keep this']);
+    // Marked, not dropped: a restore would put it back in line.
+    expect(held().map((e) => [e.title, !!e.gone])).toEqual([
+      ['Never mind', true],
+      ['Keep this', false],
+    ]);
 
     writesWork();
     await retryLanding([task('t-fresh', 'Already there')]);
@@ -414,6 +427,121 @@ describe('a row filed over a failed load, until a landing settles it', () => {
     expect(titles()).toEqual(['Already there', 'Call dentist']);
   });
 
+  // The undo strip and ⌘Z both run undo(). Its restore is an UPDATE of
+  // deleted_at, which finds nothing when the insert never committed.
+  it('files again a row deleted and then put back by undo over the failed load', async () => {
+    writesFail();
+    await failLoad(startLoad(A));
+    captureTask('Keep me');
+    const id = store().items[0].id;
+    store().deleteTask(id);
+    expect(held()).toMatchObject([{ title: 'Keep me', gone: true }]);
+
+    store().undo();
+    expect(titles()).toEqual(['Keep me']);
+    expect(held()).toMatchObject([{ title: 'Keep me', gone: false }]);
+
+    writesWork();
+    await retryLanding([task('t-fresh', 'Already there')]);
+    // Before: ['Already there'], the row erased for good.
+    expect(titles()).toEqual(['Already there', 'Keep me']);
+    expect(store().items[1].id).toBe(id);
+    expect(writtenIds()).toEqual([id, id]);
+    expect(held()).toEqual([]);
+  });
+
+  it('files again a capture whose add was undone and then redone over the failed load', async () => {
+    writesFail();
+    await failLoad(startLoad(A));
+    captureTask('Redo me');
+    const id = store().items[0].id;
+    store().undo();
+    expect(titles()).toEqual([]);
+    expect(held()).toMatchObject([{ gone: true }]);
+    store().redo();
+    expect(held()).toMatchObject([{ title: 'Redo me', gone: false }]);
+
+    writesWork();
+    await retryLanding([task('t-fresh', 'Already there')]);
+    // Before: ['Already there'].
+    expect(titles()).toEqual(['Already there', 'Redo me']);
+    expect(store().items[1].id).toBe(id);
+  });
+
+  it('files again the whole row as the person left it, not just its title', async () => {
+    writesFail();
+    await failLoad(startLoad(A));
+    captureTask('Call mom');
+    const id = store().items[0].id;
+    store().updateTask(id, {
+      notes: 'ask about the flight on the 14th',
+      startDate: '2026-10-08',
+      timeBucket: 'morning',
+      priority: 'high',
+      project: 'Family',
+    });
+
+    writesWork();
+    await retryLanding([task('t-fresh', 'Already there')], [{ id: 'p-family', name: 'Family' } as Project]);
+    const kept = {
+      id,
+      title: 'Call mom',
+      notes: 'ask about the flight on the 14th',
+      startDate: '2026-10-08',
+      timeBucket: 'morning',
+      priority: 'high',
+      project: 'Family',
+    };
+    // Before: notes and startDate undefined, the row filed again from its title.
+    // Its order and project id are stamped again against the landed store.
+    expect(store().items.find((i) => i.id === id)).toMatchObject({ ...kept, order: 1, projectId: 'p-family' });
+    // And written so: the second insert carries the whole row.
+    expect(vi.mocked(db.createItem).mock.calls.at(-1)![1]).toMatchObject(kept);
+    expect(store().actionLog.map((e) => e.label)).toEqual(['Add task: Call mom', 'Session start']);
+  });
+
+  it('files rows again in the order the person left them', async () => {
+    writesFail();
+    await failLoad(startLoad(A));
+    captureTask('Milk');
+    captureTask('Eggs');
+    const [milk, eggs] = store().items.map((i) => i.id);
+    store().reorderTasks([eggs, milk]);
+
+    writesWork();
+    await retryLanding([task('t-fresh', 'Already there')]);
+    // Before: Milk back above Eggs, each filed again in the order it was captured.
+    const byOrder = [...store().tasks].sort((a, b) => a.order - b.order).map((t) => `${t.title}:${t.order}`);
+    expect(byOrder).toEqual(['Already there:0', 'Eggs:1', 'Milk:2']);
+  });
+
+  it('sends a subtask filed again only once its parent\'s insert has settled', async () => {
+    writesFail();
+    await failLoad(startLoad(A));
+    captureTask('Plan trip');
+    const parentId = store().items[0].id;
+    store().addTasksBulk('task', [
+      { title: 'Book hotel', parentItemId: parentId },
+      { title: 'Book train', parentItemId: parentId },
+    ]);
+
+    // items_parent_item_id_fkey: a subtask that reaches the table before its
+    // parent commits fails with 23503.
+    const parentInsert = deferred<void>();
+    vi.mocked(db.createItem).mockImplementation((_userId, item) =>
+      item.id === parentId ? parentInsert.promise : Promise.resolve()
+    );
+    vi.mocked(db.createItem).mockClear();
+    await retryLanding([task('t-fresh', 'Already there')]);
+    expect(titles()).toEqual(['Already there', 'Plan trip', 'Book hotel', 'Book train']);
+    // Before: all three left in the same tick.
+    expect(written()).toEqual(['Plan trip']);
+
+    parentInsert.resolve();
+    await flush();
+    expect(written()).toEqual(['Plan trip', 'Book hotel', 'Book train']);
+  });
+
   it('never files it into another account', async () => {
     writesFail();
     await failLoad(startLoad(A));
@@ -424,6 +552,349 @@ describe('a row filed over a failed load, until a landing settles it', () => {
     writesWork();
     await landFresh(store().initializeStore(B));
     expect(titles()).toEqual(['Already there']);
+  });
+});
+
+/**
+ * A landing that did not bring a filed row back asks the database about it
+ * first: the row may have been saved and deleted elsewhere since, or saved
+ * after the landing's read began.
+ */
+describe('before filing a row again, the database is asked', () => {
+  afterEach(() => writesWork());
+
+  it('leaves in the bin a row deleted on another device, and does not file it again', async () => {
+    // The insert committed; only the read failed.
+    await failLoad(startLoad(A));
+    captureTask('Captured during a read outage');
+    const id = store().items[0].id;
+    // Deleted on the phone since: the Retry's read leaves it out, the bin keeps it.
+    dbHolds([{ item: task(id, 'Captured during a read outage'), deleted: true }]);
+
+    await retryLanding([task('t-fresh', 'Already there')]);
+    expect(db.fetchItemsAnyState).toHaveBeenCalledWith(A, [id]);
+    // Before: shown again under the same id, its second insert failing on the
+    // primary key while the store kept a row the database had trashed.
+    expect(titles()).toEqual(['Already there']);
+    expect(writtenIds()).toEqual([id]);
+    expect(held()).toEqual([]);
+  });
+
+  it('shows a live row the landing missed without inserting it again', async () => {
+    await failLoad(startLoad(A));
+    captureTask('Slow insert');
+    const id = store().items[0].id;
+    // Its insert committed after the Retry's read began.
+    dbHolds([{ item: task(id, 'Slow insert'), deleted: false }]);
+    vi.mocked(db.updateItem).mockClear();
+
+    await retryLanding([task('t-fresh', 'Already there')]);
+    expect(titles()).toEqual(['Already there', 'Slow insert']);
+    expect(store().items[1]).toMatchObject({ id, order: 1 });
+    expect(writtenIds()).toEqual([id]);
+    // Only its order moved, to after the landed rows. A date list it never had
+    // reads back empty, and that is not a difference.
+    expect(vi.mocked(db.updateItem).mock.calls).toEqual([[id, 'task', { order: 1 }]]);
+    expect(store().actionLog.map((e) => e.label)).toEqual(['Add task: Slow insert', 'Session start']);
+    expect(held()).toEqual([]);
+  });
+
+  it('writes over a live row the landing missed what the person changed since its insert', async () => {
+    // The insert is slow: the UPDATE for the notes leaves while it is in
+    // flight and finds nothing, and it commits after the Retry's read began.
+    vi.mocked(db.createItem).mockImplementation(() => new Promise(() => {}));
+    await failLoad(startLoad(A));
+    captureTask('Slow insert');
+    const id = store().items[0].id;
+    store().updateTask(id, { notes: 'typed over the failed load' });
+    dbHolds([{ item: task(id, 'Slow insert'), deleted: false }]);
+    vi.mocked(db.updateItem).mockClear();
+
+    await retryLanding([task('t-fresh', 'Already there')]);
+    // Before: the database's copy was shown, the notes gone from the store and the table.
+    expect(store().items[1]).toMatchObject({ id, notes: 'typed over the failed load' });
+    expect(writtenIds()).toEqual([id]);
+    expect(vi.mocked(db.updateItem).mock.calls).toEqual([
+      [id, 'task', { notes: 'typed over the failed load', order: 1 }],
+    ]);
+  });
+
+  it('keeps the container id the insert resolved for a live row, when the landing cannot resolve its name', async () => {
+    await failLoad(startLoad(A));
+    captureTask('Call mom');
+    const id = store().items[0].id;
+    store().updateTask(id, { project: 'Family' });
+    expect(store().items[0].projectId).toBeUndefined();
+    // The insert resolved the name; the landing's read began before the project existed.
+    dbHolds([{ item: { ...task(id, 'Call mom'), project: 'Family', projectId: 'p-family' }, deleted: false }]);
+    vi.mocked(db.updateItem).mockClear();
+
+    await retryLanding([task('t-fresh', 'Already there')]);
+    expect(store().items[1]).toMatchObject({ id, project: 'Family', projectId: 'p-family' });
+    // Never an UPDATE that unlinks it.
+    expect(vi.mocked(db.updateItem).mock.calls).toEqual([[id, 'task', { order: 1 }]]);
+  });
+
+  it('switches the type of a live row the landing missed when the person switched it', async () => {
+    vi.mocked(db.createItem).mockImplementation(() => new Promise(() => {}));
+    await failLoad(startLoad(A));
+    captureTask('Stretch');
+    const id = store().items[0].id;
+    store().changeItemType(id, 'habit');
+    expect(store().items[0].type).toBe('habit');
+    await flush();
+    dbHolds([{ item: task(id, 'Stretch'), deleted: false }]);
+    vi.mocked(db.changeItemType).mockClear();
+    vi.mocked(db.updateItem).mockClear();
+
+    await retryLanding([task('t-fresh', 'Already there')]);
+    expect(store().items[1]).toMatchObject({ id, type: 'habit' });
+    expect(vi.mocked(db.changeItemType).mock.calls).toEqual([[id, 'task', store().items[1], A]]);
+    expect(db.updateItem).not.toHaveBeenCalled();
+  });
+
+  it('files every row again when the question goes unanswered, and ignores a late answer', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      writesFail();
+      await failLoad(startLoad(A));
+      captureTask('Waiting on a read');
+      const id = store().items[0].id;
+      let answer!: (rows: { item: Item; deleted: boolean }[]) => void;
+      vi.mocked(db.fetchItemsAnyState).mockImplementation(
+        () => new Promise((resolve) => (answer = resolve))
+      );
+
+      writesWork();
+      await retryLanding([task('t-fresh', 'Already there')]);
+      expect(titles()).toEqual(['Already there']);
+      expect(held()).toMatchObject([{ title: 'Waiting on a read', asking: true }]);
+
+      // Before: off the planner, and in memory only, for as long as the read hung.
+      await vi.advanceTimersByTimeAsync(4000);
+      expect(titles()).toEqual(['Already there', 'Waiting on a read']);
+      expect(writtenIds()).toEqual([id, id]);
+      expect(held()).toEqual([]);
+
+      answer([{ item: task(id, 'Waiting on a read'), deleted: true }]);
+      await flush();
+      expect(titles()).toEqual(['Already there', 'Waiting on a read']);
+      expect(writtenIds()).toEqual([id, id]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('files every row again when the question fails, under its own id', async () => {
+    writesFail();
+    await failLoad(startLoad(A));
+    captureTask('Unasked');
+    const id = store().items[0].id;
+    vi.mocked(db.fetchItemsAnyState).mockImplementation(async () => {
+      throw { message: 'network' };
+    });
+
+    writesWork();
+    await retryLanding([task('t-fresh', 'Already there')]);
+    expect(titles()).toEqual(['Already there', 'Unasked']);
+    expect(writtenIds()).toEqual([id, id]);
+    expect(held()).toEqual([]);
+  });
+
+  it('still counts the row while it asks, and never files it into the next account', async () => {
+    writesFail();
+    await failLoad(startLoad(A));
+    captureTask('Only for A');
+    let answer!: (rows: { item: Item; deleted: boolean }[]) => void;
+    vi.mocked(db.fetchItemsAnyState).mockImplementation(
+      () => new Promise((resolve) => (answer = resolve))
+    );
+    writesWork();
+    await retryLanding([task('t-fresh', 'Already there')]);
+    expect(held()).toMatchObject([{ userId: A, title: 'Only for A', asking: true }]);
+    const { result } = renderHook(() => useHeldCount());
+    expect(result.current).toBe(1);
+
+    vi.mocked(db.createItem).mockClear();
+    act(() => store().identifyUser(B));
+    expect(held()).toEqual([]);
+    const loadingB = store().initializeStore(B);
+    answer([]);
+    await flush();
+    await landFresh(loadingB);
+    expect(store().userId).toBe(B);
+    expect(titles()).toEqual(['Already there']);
+    expect(db.createItem).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * A list pasted (or typed into "Add many items…") over a failed load is the
+ * same typed text as a capture, so addTasksBulk's rows are kept the same way
+ * (lib/filed-rows.ts reports them).
+ */
+describe('a list filed over a failed load', () => {
+  afterEach(() => writesWork());
+
+  it('is kept as rows, and filed again as the one undo entry it was', async () => {
+    writesFail();
+    await failLoad(startLoad(A));
+    store().addTasksBulk('task', [{ title: 'Milk' }, { title: 'Eggs', notes: 'a dozen' }]);
+    const ids = store().items.map((i) => i.id);
+    expect(held().map((e) => [e.title, e.item?.id])).toEqual([
+      ['Milk', ids[0]],
+      ['Eggs', ids[1]],
+    ]);
+    expect(held()[0].batch).toBeDefined();
+    expect(held()[1].batch).toBe(held()[0].batch);
+
+    vi.mocked(db.createItems).mockImplementation(async () => {
+      throw { message: 'network' };
+    });
+    writesWork();
+    await retryLanding([task('t-fresh', 'Already there')]);
+    // Before: ['Already there'], the list lost with its failed insert.
+    expect(titles()).toEqual(['Already there', 'Milk', 'Eggs']);
+    expect(store().items.slice(1).map((i) => i.id)).toEqual(ids);
+    expect(store().items[2]).toMatchObject({ notes: 'a dozen' });
+    expect(writtenIds()).toEqual(ids);
+    expect(store().actionLog.map((e) => e.label)).toEqual(['Bulk add: 2 items', 'Session start']);
+    expect(held()).toEqual([]);
+    expect(withoutReleasedCaptures(A, store().items).map((i) => i.title)).toEqual(['Already there']);
+  });
+
+  it('files again only the lines left after a removal', async () => {
+    writesFail();
+    await failLoad(startLoad(A));
+    store().addTasksBulk('task', [{ title: 'Milk' }, { title: 'Eggs' }, { title: 'Bread' }]);
+    store().deleteTask(store().items[0].id);
+
+    writesWork();
+    await retryLanding([task('t-fresh', 'Already there')]);
+    expect(titles()).toEqual(['Already there', 'Eggs', 'Bread']);
+    expect(store().actionLog.map((e) => e.label)).toEqual(['Bulk add: 2 items', 'Session start']);
+  });
+
+  it('keeps a one-line list as a capture', async () => {
+    writesFail();
+    await failLoad(startLoad(A));
+    store().addTasksBulk('task', [{ title: 'Just one' }]);
+    expect(held()).toMatchObject([{ userId: A, title: 'Just one', batch: undefined }]);
+
+    writesWork();
+    await retryLanding([task('t-fresh', 'Already there')]);
+    expect(titles()).toEqual(['Already there', 'Just one']);
+    expect(store().actionLog.map((e) => e.label)).toEqual(['Add task: Just one', 'Session start']);
+  });
+
+  it('keeps nothing for a list filed on a landed planner', async () => {
+    await landFresh(startLoad(A));
+    store().addTasksBulk('task', [{ title: 'Milk' }, { title: 'Eggs' }]);
+    expect(held()).toEqual([]);
+  });
+
+  it('never files it into another account', async () => {
+    writesFail();
+    await failLoad(startLoad(A));
+    store().addTasksBulk('task', [{ title: 'Milk' }, { title: 'Eggs' }]);
+
+    store().identifyUser(B);
+    expect(held()).toEqual([]);
+    writesWork();
+    await landFresh(store().initializeStore(B));
+    expect(titles()).toEqual(['Already there']);
+    expect(db.createItem).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * A Retry leaves the failed load's rows on the store until it lands (no
+ * preview is offered on a retry), and neither the item panel nor the bulk-add
+ * dialog waits on it. So what the person does to those rows in that window
+ * counts, and a list filed in it is kept like one filed over the failure.
+ */
+describe('while a Retry is in flight', () => {
+  afterEach(() => writesWork());
+
+  it('files again the edit made during the Retry', async () => {
+    writesFail();
+    await failLoad(startLoad(A));
+    captureTask('Call mom');
+    const id = store().items[0].id;
+
+    const retry = store().initializeStore(A);
+    store().updateTask(id, { notes: 'ask about the flight on the 14th' });
+    writesWork();
+    await landFresh(retry);
+    // Before: the row as it was when the Retry began, the notes gone.
+    expect(store().items.find((i) => i.id === id)).toMatchObject({ notes: 'ask about the flight on the 14th' });
+    expect(vi.mocked(db.createItem).mock.calls.at(-1)![1]).toMatchObject({
+      id,
+      notes: 'ask about the flight on the 14th',
+    });
+  });
+
+  it('does not file again a row deleted during the Retry', async () => {
+    writesFail();
+    await failLoad(startLoad(A));
+    captureTask('Never mind');
+    captureTask('Keep me');
+
+    const retry = store().initializeStore(A);
+    store().deleteTask(store().items[0].id);
+    writesWork();
+    await landFresh(retry);
+    // Before: ['Already there', 'Never mind', 'Keep me'], the delete undone.
+    expect(titles()).toEqual(['Already there', 'Keep me']);
+  });
+
+  it('keeps a list filed during the Retry, and files it again when the Retry lands without it', async () => {
+    writesFail();
+    await failLoad(startLoad(A));
+
+    const retry = store().initializeStore(A);
+    store().addTasksBulk('task', [{ title: 'Milk' }, { title: 'Eggs' }]);
+    const ids = store().items.map((i) => i.id);
+    expect(held().map((e) => e.title)).toEqual(['Milk', 'Eggs']);
+    writesWork();
+    await landFresh(retry);
+    // Before: ['Already there'], the list erased by the landing.
+    expect(titles()).toEqual(['Already there', 'Milk', 'Eggs']);
+    expect(store().items.slice(1).map((i) => i.id)).toEqual(ids);
+    expect(store().actionLog.map((e) => e.label)).toEqual(['Bulk add: 2 items', 'Session start']);
+    expect(held()).toEqual([]);
+  });
+
+  it('keeps a list filed during a Retry that fails too, for the landing after it', async () => {
+    writesFail();
+    await failLoad(startLoad(A));
+
+    const retry = store().initializeStore(A);
+    store().addTasksBulk('task', [{ title: 'Milk' }, { title: 'Eggs' }]);
+    expect(captureTask('Captured in the same window')).toBe('held');
+    await failLoad(retry);
+    expect(titles()).toEqual(['Milk', 'Eggs', 'Captured in the same window']);
+    // Before: only the capture was kept, the list on screen and tracked nowhere.
+    expect(held().map((e) => e.title)).toEqual(['Milk', 'Eggs', 'Captured in the same window']);
+
+    writesWork();
+    await retryLanding([task('t-fresh', 'Already there')]);
+    expect(titles()).toEqual(['Already there', 'Milk', 'Eggs', 'Captured in the same window']);
+    expect(held()).toEqual([]);
+  });
+
+  it('keeps a list filed while the first load is in flight, too', async () => {
+    const loading = startLoad(A);
+    store().addTasksBulk('task', [{ title: 'Milk' }, { title: 'Eggs' }]);
+    expect(held().map((e) => e.title)).toEqual(['Milk', 'Eggs']);
+    // Their insert committed after the load's read began.
+    dbHolds(store().items.map((item) => ({ item, deleted: false })));
+
+    await landFresh(loading);
+    // Before: ['Already there'] until a reload.
+    expect(titles()).toEqual(['Already there', 'Milk', 'Eggs']);
+    expect(db.createItem).not.toHaveBeenCalled();
+    expect(withoutReleasedCaptures(A, store().items).map((i) => i.title)).toEqual(['Already there']);
   });
 });
 
@@ -484,6 +955,21 @@ describe('useHeldCount', () => {
       await landFresh(loading);
     });
     expect(result.current).toBe(0);
+  });
+
+  it('does not count a row removed over the failed load, and counts it again once restored', async () => {
+    await failLoad(startLoad(A));
+    const { result } = renderHook(() => useHeldCount());
+    act(() => {
+      captureTask('Over the failure');
+    });
+    expect(result.current).toBe(1);
+
+    act(() => store().undo());
+    expect(titles()).toEqual([]);
+    expect(result.current).toBe(0);
+    act(() => store().redo());
+    expect(result.current).toBe(1);
   });
 
   it('counts a row filed over a failed load until a landing settles it', async () => {

@@ -831,6 +831,39 @@ function itemsFromRows(rows: ItemRow[]): Item[] {
   return rows.map(itemFromRow);
 }
 
+/**
+ * The rows under `ids`, the trashed ones too, each with whether it is in the
+ * bin. No deleted_at filter, on purpose: the own-rows policy lets an owner
+ * read their trashed rows, and the bin is the question. One reader,
+ * lib/held-captures.ts, before it files again a row first filed over a failed
+ * load: an id with no row is filed, a trashed one was deleted elsewhere and
+ * stays in the bin, and a live one is shown as saved.
+ *
+ * Reads `items`, not items_windowed: a row filed this session has no history
+ * to window. Throws the client's error, as fetchItems does.
+ */
+export async function fetchItemsAnyState(
+  userId: string,
+  ids: readonly string[],
+  client?: DbClient,
+): Promise<{ item: Item; deleted: boolean }[]> {
+  const supabase = client ?? createClient();
+  const found: { item: Item; deleted: boolean }[] = [];
+  // Chunked so a long pasted list cannot outgrow the request URL an `in` list lives in.
+  for (let i = 0; i < ids.length; i += 100) {
+    const { data, error } = await supabase
+      .from('items')
+      .select('*')
+      .eq('user_id', userId)
+      .in('id', ids.slice(i, i + 100));
+    if (error) throw error;
+    for (const row of (data ?? []) as (ItemRow & { deleted_at?: string | null })[]) {
+      found.push({ item: itemFromRow(row), deleted: !!row.deleted_at });
+    }
+  }
+  return found;
+}
+
 /** One item's agent columns, as `fetchAgentStates` reads them. */
 export interface AgentStateRow {
   id: string;

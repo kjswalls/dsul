@@ -104,6 +104,7 @@ import {
 import { seasonStateForSwitch } from './scope-rail';
 import { conversionBlock, convertItem, type ConvertRepeat } from './item-convert';
 import { recordReleased } from './sweep-grace';
+import { reportBulkFiled } from './filed-rows';
 // Type-only, so it is erased at compile time and lib/local-state.ts importing
 // this store back does not make a runtime cycle.
 import type { ClearScope } from './local-state';
@@ -291,16 +292,10 @@ interface PlannerStore {
     item: Omit<Task, 'id' | 'order' | 'status' | 'isScheduled'>,
     memberships?: Memberships,
   ) => void;
-  /**
-   * Returns the new item's id. `opts.id` files the row under an id it already
-   * had (lib/held-captures.ts re-files a capture whose first write may not
-   * have landed): an insert that did commit then fails on the primary key
-   * instead of making a second row.
-   */
+  /** Returns the new item's id. */
   addTask: (
     task: Omit<Task, 'id' | 'order' | 'status' | 'isScheduled'>,
     memberships?: Memberships,
-    opts?: { id?: string },
   ) => string;
   /**
    * Bulk create — the paste-a-list path (bulk-add dialog). One set(), one
@@ -308,12 +303,25 @@ interface PlannerStore {
    * contract above. `type` is 'task' or a hydrated custom slug and applies to
    * every row; habits are excluded (their config doesn't fit one-per-line).
    * A single-element array delegates to addTask/addItem so its history label
-   * stays the natural "Add task: …" form.
+   * stays the natural "Add task: …" form. Either way the rows it filed are
+   * reported through lib/filed-rows.ts, so held-captures can keep a list
+   * filed before the account's data landed as it keeps a capture.
    */
   addTasksBulk: (
     type: string,
     items: Array<Omit<Task, 'id' | 'order' | 'status' | 'isScheduled'>>,
   ) => void;
+  /**
+   * File again rows first filed before their account's data landed, whose
+   * writes may never have committed (lib/held-captures.ts): each as the person
+   * last left it, under its own id, so an insert that did commit fails on the
+   * primary key instead of making a second row. One set() and one history
+   * entry per group, labelled as its add was. Task rows take orders after the
+   * landed ones, in the order they last had across every group. A row `saved`
+   * holds (the database's live copy) is not inserted again: only where the
+   * person's version differs from it is the difference written.
+   */
+  refileItems: (groups: Item[][], saved?: ReadonlyMap<string, Item>) => void;
   /**
    * `opts.label` names the history entry instead of "Edit task: <title>",
    * which is also what decides whether the undo strip offers ⌘Z
@@ -791,6 +799,10 @@ export interface Memberships {
  * and the membership is silently lost — the store would show it, and a reload
  * would not. Chaining off the create is the whole point of this helper existing
  * rather than two call sites firing side by side.
+ *
+ * A subtask's own insert waits the same way for its parent's, when that is
+ * still in flight (items_parent_item_id_fkey; held-captures files a parent
+ * and its subtasks again in one pass). Nothing in flight, it leaves at once.
  */
 function persistNewItem(
   userId: string,
@@ -798,7 +810,8 @@ function persistNewItem(
   memberships: Memberships | undefined,
   get: () => PlannerStore,
 ) {
-  const created = dbCreateItem(userId, row);
+  const parentId = 'parentItemId' in row ? row.parentItemId : undefined;
+  const created = afterItemCreates(parentId ? [parentId] : [], () => dbCreateItem(userId, row));
   created.catch(console.error);
   const settled = created.then(
     () => undefined,
@@ -2991,14 +3004,14 @@ export const usePlannerStore = create<PlannerStore>()(
         if (userId) persistNewItem(userId, item, memberships, get);
       },
 
-      addTask: (taskData, memberships, opts) => {
+      addTask: (taskData, memberships) => {
         const timeBucket = autoCorrectBucket(taskData.startTime, taskData.timeBucket);
 
         const task: TaskItem = {
           ...taskData,
           type: 'task',
           timeBucket,
-          id: opts?.id ?? crypto.randomUUID(),
+          id: crypto.randomUUID(),
           status: 'pending',
           isScheduled: !!timeBucket,
           order: get().tasks.length,
@@ -3031,8 +3044,12 @@ export const usePlannerStore = create<PlannerStore>()(
         // One row is a normal add wearing a bulk sleeve — delegate so the
         // history label keeps its natural single-item form.
         if (itemsData.length === 1) {
+          const before = get().items.length;
           if (type === 'task') get().addTask(itemsData[0]);
           else get().addItem(type, itemsData[0]);
+          // Both append; a refused slug appended nothing.
+          const filedBy = get().userId;
+          if (filedBy) reportBulkFiled(filedBy, get().items.slice(before));
           return;
         }
         // Same slug guard as addItem, with 'task' additionally allowed:
@@ -3091,6 +3108,71 @@ export const usePlannerStore = create<PlannerStore>()(
             })();
           } else {
             dbCreateItems(userId, rows).catch(console.error);
+          }
+          reportBulkFiled(userId, rows);
+        }
+      },
+
+      refileItems: (groups, saved) => {
+        const present = new Set(get().items.map((i) => i.id));
+        const back = groups
+          .map((group) => group.filter((item) => !present.has(item.id)))
+          .filter((group) => group.length > 0);
+        if (back.length === 0) return;
+        // Orders and project ids were stamped against the store the landing
+        // replaced. Task rows go after the landed ones, in the order the person
+        // last left them (a drag over the failed load included), across groups.
+        let next = get().tasks.length;
+        const orderOf = new Map(
+          back
+            .flat()
+            .filter((item): item is TaskItem => item.type === 'task')
+            .sort((a, b) => a.order - b.order)
+            .map((item) => [item.id, next++])
+        );
+        const userId = get().userId;
+        for (const group of back) {
+          const { projects } = get();
+          const rows = group.map((item): Item => {
+            const live = saved?.get(item.id);
+            return {
+              ...item,
+              ...(orderOf.has(item.id) ? { order: orderOf.get(item.id)! } : {}),
+              // A name the landed store cannot resolve keeps the id the insert
+              // resolved for it, as an insert sent now would resolve one.
+              projectId:
+                projectIdFor(item.project, projects) ??
+                (live && live.project === item.project ? live.projectId : undefined),
+            };
+          });
+          const noun = getItemTypeConfig(itemTypeName(rows[0])).label.toLowerCase();
+          setNextActionLabel(
+            rows.length === 1 ? `Add ${noun}: ${rows[0].title}` : `Bulk add: ${rows.length} items`
+          );
+          set((s) => projectItems([...s.items, ...rows]));
+          if (!userId) continue;
+          for (const row of rows) {
+            const live = saved?.get(row.id);
+            if (!live) {
+              persistNewItem(userId, row, undefined, get);
+            } else if (dbTypeOf(live) !== dbTypeOf(row)) {
+              // Its type switch went out before the insert committed and found nothing.
+              void queueTypeSwitch(row.id, () => dbChangeItemType(row.id, dbTypeOf(live), row, userId));
+            } else {
+              // The database holds the row as first inserted. An edit whose
+              // UPDATE raced that insert (or failed with the load) is only here.
+              // Sent at once: the read that found the row saw its insert commit.
+              const patch = diffItem(live, row);
+              // A date list the row never had reads back empty: the same dates.
+              // Any other difference updateItem applies as per-date intents.
+              for (const key of ['completedDates', 'skippedDates'] as const) {
+                const dates = (i: Item) => [...(i[key] ?? [])].sort().join();
+                if (dates(live) === dates(row)) delete patch[key];
+              }
+              if (Object.keys(patch).length > 0) {
+                dbUpdateItem(row.id, dbTypeOf(row), patch).catch(console.error);
+              }
+            }
           }
         }
       },

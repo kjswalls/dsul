@@ -38,9 +38,11 @@ let hosts = 0;
  * was consumed by the field, so the request is the only place its text
  * exists. It waits for the slot and the confirm to free, then opens; and it
  * opens over a FAILED load as well, as a paste made after the failure would
- * (lib/held-captures.ts files a capture then for the same reason). It waits
- * out a crash drop's skeleton for the load to finish. Only another account
- * (or none) drops it.
+ * (lib/held-captures.ts files a capture then for the same reason). The rows
+ * it files there are kept by held-captures until a landing confirms them, as
+ * a capture's are (addTasksBulk reports them through lib/filed-rows.ts). It
+ * waits out a crash drop's skeleton for the load to finish. Only another
+ * account (or none) drops it.
  *
  * Mounted once in AppShell, so leaving `/` unmounts it and drops a pending
  * request, the way ConsoleSlotGuard drops a stranded slot.
@@ -120,7 +122,8 @@ function settle(edgeFromUserId?: string | null): void {
   if (!ownedBy(s.userId, ui.deferredFor ?? null, edgeFromUserId)) return drop();
   const paste = isWaitingPaste(deferred);
   if (paste) {
-    // Landed or failed, either way finished; still loading, it waits.
+    // Landed or failed, either way finished; still loading, it waits. Over a
+    // failed load its rows are kept until a landing confirms them (see above).
     if (!selectPlannerSettled(s)) return;
   } else if (!selectPlannerLoaded(s)) {
     return drop();

@@ -130,10 +130,10 @@ interface UIStore {
    * fresh data lands. Never rendered from.
    *
    * A pasted list (`isWaitingPaste`) is the exception. The paste was consumed
-   * by the field, so its text exists nowhere else: only another bulk-add
-   * replaces it here (a later item or organizer request is refused), and it
-   * can outlive the landing, waiting for the slot to free instead of being
-   * dropped (the hook opens it then).
+   * by the field, so its text exists nowhere else: only another pasted list
+   * replaces it here (any other data request, an empty bulk-add included, is
+   * refused), and it can outlive the landing, waiting for the slot to free
+   * instead of being dropped (the hook opens it then).
    */
   deferredDialog: ActiveDialog | null;
   /**
@@ -144,9 +144,9 @@ interface UIStore {
   deferredFor: string | null;
   /**
    * While previewing, a data slot is deferred rather than opened (refused
-   * while a pasted list waits, unless it is a bulk-add). Any other slot opens
-   * as usual; a data slot opened on real data drops the deferral, except a
-   * waiting pasted list, which only a newer bulk-add replaces.
+   * while a pasted list waits, unless it is another pasted list). Any other
+   * slot opens as usual; a data slot opened on real data drops the deferral,
+   * except a waiting pasted list, which only a newer pasted list replaces.
    */
   openDialog: (dialog: ActiveDialog) => void;
   /** Leaves `deferredDialog` alone: the launcher closes itself right after running "Open Organize". */
@@ -268,8 +268,9 @@ export const useUIStore = create<UIStore>()((set, get) => ({
     const data = isDataDialog(dialog);
     if (data && isPlannerPreviewing()) {
       // A waiting paste is typed text with no other copy; losing a deferred
-      // click instead costs far less. Only another list replaces it, as below.
-      if (isWaitingPaste(get().deferredDialog) && dialog.type !== 'bulk-add') return;
+      // click instead costs far less. Only another pasted list replaces it, as
+      // below: an empty bulk-add ("Add many items…") carries nothing to keep.
+      if (isWaitingPaste(get().deferredDialog) && !isWaitingPaste(dialog)) return;
       // Optional-called, as planner-ready's readers: some unit-test mocks of
       // planner-store have no getState.
       set({ deferredDialog: dialog, deferredFor: usePlannerStore.getState?.()?.userId ?? null });
@@ -277,8 +278,9 @@ export const useUIStore = create<UIStore>()((set, get) => ({
     }
     const { activeDialog: prev, displacedItemId, deferredDialog } = get();
     // A data slot opened on real data supersedes whatever was waiting, but a
-    // pasted list only gives way to another list: it opens once this one closes.
-    const supersede = data && (dialog.type === 'bulk-add' || !isWaitingPaste(deferredDialog));
+    // pasted list only gives way to another pasted list: it opens once this
+    // one closes.
+    const supersede = data && (isWaitingPaste(dialog) || !isWaitingPaste(deferredDialog));
     let displaced: string | null = null;
     if (dialog.type === 'launcher') {
       // A launcher re-opened over itself (⌘K pressed inside it) is still the

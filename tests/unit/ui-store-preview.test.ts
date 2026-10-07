@@ -653,6 +653,32 @@ describe('a pasted list waits for the slot instead of being dropped', () => {
     expect(ui().activeDialog).toEqual({ type: 'bulk-add', text: 'Newer\nList' });
   });
 
+  // The palette's "Add many items…" opens a bulk-add with no text: nothing to keep.
+  it('is kept over an empty bulk-add asked for later in the preview', () => {
+    mount();
+    openBulkAdd({ text: LIST });
+    openBulkAdd();
+    // Before: { type: 'bulk-add' }, the pasted text gone.
+    expect(ui().deferredDialog).toEqual(pasted);
+    landFresh();
+    expect(ui().activeDialog).toEqual(pasted);
+  });
+
+  it('is not superseded by an empty bulk-add opened on real data, and opens when that one closes', () => {
+    mount();
+    openBulkAdd({ text: LIST });
+    ui().openDialog({ type: 'launcher' });
+    landFresh();
+    openBulkAdd();
+    expect(ui().activeDialog).toEqual({ type: 'bulk-add' });
+    // Before: null.
+    expect(ui().deferredDialog).toEqual(pasted);
+
+    ui().closeDialog();
+    expect(ui().activeDialog).toEqual(pasted);
+    expect(ui().deferredDialog).toBeNull();
+  });
+
   it('a list-less bulk-add is dropped for a busy slot like any other request', () => {
     mount();
     openBulkAdd();
