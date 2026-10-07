@@ -5,6 +5,7 @@ import {
   Command,
   Zap,
   Blocks,
+  Hammer,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -20,6 +21,7 @@ import { getAICapabilities, useAIConnectionStore } from '@/lib/ai-connection-sto
 import { chooseChatTarget } from '@/lib/chat-target';
 import { PROVIDER_META, type ChatTarget } from '@/lib/ai-types';
 import { useExtensionsStore } from '@/lib/extensions-store';
+import { useModsStore } from '@/lib/mods-store';
 import {
   EXT_COMPLETION_CONFETTI,
   EXT_GOALS,
@@ -94,7 +96,7 @@ import type { TimeBucket } from '@/lib/planner-types';
  * back once the feature behind them exists.
  *
  * PANES ARE TWO LEVELS, and only under Extensions. The rail is the map and it
- * stays at seven entries; an extension gets a pane of its OWN below it, at
+ * stays at eight entries; an extension gets a pane of its OWN below it, at
  * `extensions/<slug>`. Every one of those is generated from the catalog in
  * lib/extension-registry.ts — there is no hand-written pane per extension and
  * there must never be one, because the whole promise of the extension surface
@@ -109,6 +111,7 @@ export type RootPaneId =
   | 'beacon'
   | 'keyboard'
   | 'extensions'
+  | 'make'
   | 'dsul';
 
 /**
@@ -194,6 +197,14 @@ export const PANES: SettingsPane[] = [
     // stopped being the place the switches are and became the place they are
     // listed from.
     blurb: 'Optional pieces of dsul, on when you want them. Open one to set it up.',
+  },
+  {
+    // Your own recipes, mods, themes and Looks (memory/plans/mods.md). Never
+    // in OFFICIAL_EXTENSIONS: nothing here is listed, shared or reviewed.
+    id: 'make',
+    name: 'Make',
+    icon: Hammer,
+    blurb: 'Your own recipes, mods, themes and Looks.',
   },
   {
     id: 'dsul',
@@ -395,6 +406,7 @@ const reminders = () => useReminderStore.getState();
 const ai = () => useAISettingsStore.getState();
 const aiConn = () => useAIConnectionStore.getState();
 const ext = () => useExtensionsStore.getState();
+const mods = () => useModsStore.getState();
 const channelSecrets = () => useChannelSecretsStore.getState();
 const gateway = () => useGatewayStore.getState();
 const palette = () => usePaletteStore.getState();
@@ -1473,6 +1485,38 @@ export const SETTINGS: SettingRecord[] = [
      which meant the bindings themselves were unsearchable, undeep-linkable and
      visible only from inside a dialog. */
   ...SHORTCUT_RECORDS,
+
+  /* ── Make ───────────────────────────────────────────────────────────────
+     The pane's list is MakePane (components/settings/make-pane.tsx), drawn
+     above this one row. The row is what search finds the pane by. */
+  {
+    id: 'make.allOff',
+    pane: 'make',
+    label: 'Turn all mods off',
+    description: 'Switches off every recipe and mod you made, on every device.',
+    control: 'action',
+    keywords: [
+      'mods',
+      'mod',
+      'recipes',
+      'recipe',
+      'make',
+      'automation',
+      'workflow',
+      'script',
+      'plugin',
+      'disable',
+      'off',
+      'safe mode',
+      'custom',
+    ],
+    unavailable: () => (mods().available ? null : 'Needs a database update that has not landed here yet.'),
+    read: () => 'Turn off',
+    write: (_v, ctx) => {
+      if (ctx.userId) void mods().turnAllOff(ctx.userId);
+    },
+    defaultValue: 'Turn off',
+  },
 
   /* ── dsul ───────────────────────────────────────────────────────────── */
   {

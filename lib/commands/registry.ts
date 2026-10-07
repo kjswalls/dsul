@@ -26,6 +26,7 @@ import {
   Moon,
   PanelLeft,
   Palette,
+  PowerOff,
   Plus,
   Redo2,
   Rows3,
@@ -79,6 +80,7 @@ import { useProposalStore } from '../proposal-store';
 import { getAICapabilities } from '../ai-connection-store';
 import { askNew, newChat, openHistory, revealChat, toggleRail } from '../open-chat';
 import { useConversationsStore } from '../conversations-store';
+import { useModsStore } from '../mods-store';
 import { railModeNow, useRailStore } from '../rail-store';
 import { goToDate, stepScope } from '../nav-commands';
 import { resolveCategoryIcon } from '../category-icons';
@@ -1211,6 +1213,20 @@ export const STATIC_COMMANDS: Command[] = [
     run: () => {
       const store = useEODStore.getState();
       store.setEodReviewEnabled(!store.eodReviewEnabled);
+    },
+  },
+  {
+    // mods.md, "Faults": the off switch for everything a person made that runs.
+    // Same write as Settings → Make's make.allOff. No shortcut: ids are frozen.
+    id: 'settings.modsOff',
+    label: 'Turn all mods off',
+    description: 'Switches off every recipe and mod you made.',
+    group: 'settings',
+    icon: PowerOff,
+    keywords: 'mods recipes make disable off safe',
+    availableWhen: () => useModsStore.getState().available,
+    run: (ctx) => {
+      if (ctx.userId) void useModsStore.getState().turnAllOff(ctx.userId);
     },
   },
 
