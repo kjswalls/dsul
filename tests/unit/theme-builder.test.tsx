@@ -142,3 +142,31 @@ describe('ThemeBuilder', () => {
     expect(useModsStore.getState().rows[0]).toMatchObject({ name: 'Amber 2', enabled: true, manifest });
   });
 });
+
+describe('ThemeBuilder prefilled (a "Write with AI" draft opened in Edit)', () => {
+  it('starts from the draft, as a new theme', () => {
+    render(
+      <ThemeBuilder
+        userId={USER}
+        editing={null}
+        initial={{
+          name: 'Ember',
+          manifest: { version: 1, mode: 'dark', base: 'dusk', tokens: { paper0: '#101010', radius: 6, font: 'serif' } },
+        }}
+        onDone={() => {}}
+        onCancel={() => {}}
+      />
+    );
+    expect(screen.getByText('New theme')).toBeTruthy();
+    expect((screen.getByTestId('theme-name') as HTMLInputElement).value).toBe('Ember');
+    expect((screen.getByTestId('theme-mode') as HTMLSelectElement).value).toBe('dark');
+    expect((screen.getByTestId('theme-field-paper0') as HTMLInputElement).value).toBe('#101010');
+    expect(useUserThemes.getState().draft).toMatchObject({ slug: DRAFT_SLUG, mode: 'dark' });
+  });
+
+  it('a draft that does not parse keeps its name only', () => {
+    render(<ThemeBuilder userId={USER} editing={null} initial={{ name: 'Odd', manifest: { nope: 1 } }} onDone={() => {}} onCancel={() => {}} />);
+    expect((screen.getByTestId('theme-name') as HTMLInputElement).value).toBe('Odd');
+    expect((screen.getByTestId('theme-mode') as HTMLSelectElement).value).toBe('light');
+  });
+});

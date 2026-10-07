@@ -5,6 +5,7 @@ import { setItemCompletion, updateItem } from '@/lib/db';
 import { reportLiveCompletion } from '@/lib/stakes/live';
 import { getItemTypeConfig } from '@/lib/item-registry';
 import { ACTION_DONE, ACTION_SNOOZE, SNOOZE_MINUTES } from '@/lib/reminders/channels/push';
+import { afterItemWrite } from '@/lib/recipes/server';
 
 /**
  * POST /api/reminders/act
@@ -21,6 +22,11 @@ import { ACTION_DONE, ACTION_SNOOZE, SNOOZE_MINUTES } from '@/lib/reminders/chan
  * finds nothing rather than being trusted because the caller knew the id.
  *
  * Body: { action: 'done' | 'snooze', itemId: string, dateStr: 'yyyy-MM-dd' }
+ *
+ * A Done that ticked an item not already done starts the user's "I tick an
+ * item" recipes on the server once the response is out (lib/recipes/server/),
+ * isolated: a recipe never fails the tick. A Done on a day already done raises
+ * nothing, as the web raises only on a real transition.
  */
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -48,7 +54,7 @@ export async function POST(req: NextRequest) {
 
   const { data: row, error } = await supabase
     .from('items')
-    .select('id, type, repeat_frequency')
+    .select('id, type, repeat_frequency, status, start_date')
     .eq('id', itemId)
     .is('deleted_at', null)
     .maybeSingle();
@@ -88,6 +94,23 @@ export async function POST(req: NextRequest) {
   // in completedDates, always). itemFromRow applies the same fallback.
   const frequency = (row.repeat_frequency as string | null) ?? getItemTypeConfig(type).defaultFrequency;
   const recurring = Boolean(frequency) && frequency !== 'none';
+
+  // Whether the day was already done, read before the write, so only a real
+  // transition starts a recipe. A failed read is "done": no recipe, the tick
+  // itself goes ahead.
+  let wasDone = true;
+  if (recurring) {
+    const { data: done, error: doneError } = await supabase
+      .from('items')
+      .select('id')
+      .eq('id', itemId)
+      .eq('user_id', user.id)
+      .contains('completed_dates', [dateStr])
+      .maybeSingle();
+    wasDone = !!doneError || !!done;
+  } else {
+    wasDone = row.status === getItemTypeConfig(type).doneStatus;
+  }
 
   try {
     if (recurring) {
@@ -129,6 +152,17 @@ export async function POST(req: NextRequest) {
     completed: true,
   });
   if (!stake.ok) console.error('[reminders/act] stake report failed:', stake.detail);
+
+  if (!wasDone) {
+    afterItemWrite({
+      kind: 'item.completed',
+      userId: user.id,
+      itemId,
+      type,
+      // A one-off has one occurrence: its start date, or the day acted on.
+      date: recurring ? (dateStr as string) : ((row.start_date as string | null) ?? (dateStr as string)),
+    });
+  }
 
   return NextResponse.json({ ok: true });
 }

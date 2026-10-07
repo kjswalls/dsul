@@ -14,7 +14,7 @@ vi.mock('@/lib/supabase', () => ({
   createClient: () => ({
     from: (table: string) => {
       const b: Record<string, unknown> = {};
-      for (const op of ['select', 'eq', 'is', 'order', 'limit']) b[op] = () => b;
+      for (const op of ['select', 'eq', 'is', 'order', 'limit', 'like']) b[op] = () => b;
       const data =
         table === 'mod_runs' ? runs.data : table === 'items' ? runs.items : table === 'projects' ? runs.projects : [];
       b.then = (resolve: (r: unknown) => unknown, reject?: (e: unknown) => unknown) =>
@@ -23,6 +23,8 @@ vi.mock('@/lib/supabase', () => ({
     },
   }),
 }));
+const revert = vi.hoisted(() => ({ fn: vi.fn() }));
+vi.mock('@/lib/recipes/revert', () => ({ revertServerRun: revert.fn }));
 vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}), flushSettings: vi.fn(async () => {}) }));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), prefetch: vi.fn() }),
@@ -30,6 +32,7 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
+import { usePlannerStore } from '@/lib/planner-store';
 import { MakePane } from '@/components/settings/make-pane';
 import { useModsStore } from '@/lib/mods-store';
 import { setUserThemesFromRows, useUserThemes } from '@/lib/user-themes/store';
@@ -228,10 +231,70 @@ describe('Edit', () => {
     expect(screen.getByLabelText('Which item, step 1')).toBeTruthy();
   });
 
-  it('a timed recipe says it waits', () => {
-    seed([recipeRow({ manifest: { version: 1, trigger: { on: 'time', at: '07:00' }, filters: {}, steps: [{ do: 'toast', text: 'x' }] } })]);
+  it('a timed recipe says when it runs, even with dsul closed, on the user’s own clock', () => {
+    seed([
+      recipeRow({
+        manifest: { version: 1, trigger: { on: 'time', at: '19:00' }, filters: {}, steps: [{ do: 'create', type: 'task', title: 'x' }] },
+      }),
+    ]);
+    const was = usePlannerStore.getState().timeFormat;
+    usePlannerStore.setState({ timeFormat: '12h' });
+    const { unmount } = render(<MakePane ctx={ctx} />);
+    expect(screen.getByTestId('recipe-timed-hint').textContent).toBe('Runs at 7:00 pm, even with dsul closed');
+    unmount();
+    usePlannerStore.setState({ timeFormat: '24h' });
     render(<MakePane ctx={ctx} />);
-    expect(screen.getByText('Runs at a set time. Not available yet.')).toBeTruthy();
+    expect(screen.getByTestId('recipe-timed-hint').textContent).toBe('Runs at 19:00, even with dsul closed');
+    usePlannerStore.setState({ timeFormat: was });
+  });
+});
+
+describe('At a time of day', () => {
+  it('asks for the time, says it runs on the server, and offers only the steps it can run', () => {
+    seed();
+    render(<MakePane ctx={ctx} />);
+    fireEvent.click(screen.getByTestId('make-new-recipe'));
+    expect(screen.queryByTestId('recipe-at')).toBeNull();
+    change(screen.getByTestId('recipe-trigger'), 'time');
+    expect(screen.getByTestId('recipe-at')).toBeTruthy();
+    expect(screen.getByTestId('recipe-time-note').textContent).toContain('even with dsul closed');
+    expect(screen.queryByTestId('recipe-phone-note')).toBeNull();
+    const kinds = [...(screen.getByTestId('recipe-step-kind') as HTMLSelectElement).options].map((o) => o.value);
+    // The step already there keeps its kind; the rest are the server's four.
+    expect(kinds.sort()).toEqual(['complete', 'create', 'reschedule', 'skip', 'toast']);
+  });
+
+  it('refuses a screen step on save, in plain words', async () => {
+    seed();
+    render(<MakePane ctx={ctx} />);
+    fireEvent.click(screen.getByTestId('make-new-recipe'));
+    change(screen.getByTestId('recipe-name'), 'Morning');
+    change(screen.getByTestId('recipe-trigger'), 'time');
+    change(screen.getByTestId('recipe-at'), '07:30');
+    change(screen.getByTestId('recipe-step-text'), 'Hello');
+    fireEvent.click(screen.getByTestId('recipe-save'));
+    expect((await screen.findByTestId('recipe-problems')).textContent).toContain(
+      "A recipe at a set time runs on dsul's server"
+    );
+  });
+
+  it('item triggers say what a phone or reminder tick runs, worded per trigger', () => {
+    seed();
+    render(<MakePane ctx={ctx} />);
+    fireEvent.click(screen.getByTestId('make-new-recipe'));
+    expect(screen.getByTestId('recipe-phone-note').textContent).toBe(
+      'When you tick from the iPhone app or a reminder, only add, complete, skip and reschedule steps run.'
+    );
+    change(screen.getByTestId('recipe-trigger'), 'item.created');
+    expect(screen.getByTestId('recipe-phone-note').textContent).toBe(
+      'When you add from the iPhone app, only add, complete, skip and reschedule steps run.'
+    );
+    change(screen.getByTestId('recipe-trigger'), 'item.skipped');
+    expect(screen.getByTestId('recipe-phone-note').textContent).toBe(
+      'When you skip from the iPhone app, only add, complete, skip and reschedule steps run.'
+    );
+    change(screen.getByTestId('recipe-trigger'), 'day.opened');
+    expect(screen.queryByTestId('recipe-phone-note')).toBeNull();
   });
 });
 
@@ -252,6 +315,112 @@ describe('Recent runs', () => {
     const lines = within(list).getAllByRole('listitem').map((li) => li.textContent);
     expect(lines[0]).toMatch(/^Did 3 of 3 · /);
     expect(lines[1]).toMatch(/^Did 1 of 2, skipped 1 · /);
+  });
+
+  it('shows a server run, what it could not do, and offers Revert', async () => {
+    const at = new Date().toISOString();
+    const serverRun = {
+      kind: 'run', server: true, day: '2026-10-07', trigger: 'time', did: 1, of: 1, skipped: 0, refused: 0, stopped: 0, ui: 2,
+      steps: ['done'], undo: [['delete', '00000000-0000-4000-8000-000000000009']],
+    };
+    runs.data = [
+      { claim_key: 'time:2026-10-07:07:30:done', summary: serverRun, at },
+      { claim_key: 'item:item.completed:x:2026-10-06:done', summary: { ...serverRun, trigger: 'item.completed' }, at },
+      { claim_key: 'revert:item:item.completed:x:2026-10-06:done', summary: { kind: 'claim' }, at },
+      {
+        claim_key: 'revert:item:item.completed:x:2026-10-06:done:done',
+        summary: { kind: 'revert', of: 'item:item.completed:x:2026-10-06:done', did: 1, skipped: 0 },
+        at,
+      },
+    ];
+    revert.fn.mockResolvedValue('done');
+    seed([recipeRow()]);
+    render(<MakePane ctx={ctx} />);
+    fireEvent.click(screen.getByText('Recent runs'));
+    const list = await screen.findByTestId('recipe-runs-list');
+    await waitFor(() => expect(within(list).getAllByTestId('recipe-run')).toHaveLength(2));
+    const [first, second] = within(list).getAllByTestId('recipe-run');
+    expect(first.textContent).toContain('on the server, 2 screen steps skipped (dsul was closed)');
+    // The second was already reverted: no button, and it says so.
+    expect(within(second).queryByTestId('recipe-run-revert')).toBeNull();
+    expect(second.textContent).toContain('Reverted');
+
+    fireEvent.click(within(first).getByTestId('recipe-run-revert'));
+    await waitFor(() => expect(first.textContent).toContain('Reverted'));
+    expect(revert.fn).toHaveBeenCalledWith(
+      expect.any(String),
+      'After run',
+      expect.objectContaining({ claimKey: 'time:2026-10-07:07:30:done' })
+    );
+    expect(within(first).queryByTestId('recipe-run-revert')).toBeNull();
+  });
+
+  it('says what to do when the planner is not loaded to revert into', async () => {
+    runs.data = [
+      {
+        claim_key: 'time:2026-10-07:07:30:done',
+        summary: { kind: 'run', server: true, trigger: 'time', did: 1, of: 1, skipped: 0, refused: 0, stopped: 0, steps: ['done'], undo: [['delete', '00000000-0000-4000-8000-000000000009']] },
+        at: new Date().toISOString(),
+      },
+    ];
+    revert.fn.mockResolvedValue('unavailable');
+    seed([recipeRow()]);
+    render(<MakePane ctx={ctx} />);
+    fireEvent.click(screen.getByText('Recent runs'));
+    fireEvent.click(await screen.findByTestId('recipe-run-revert'));
+    expect(await screen.findByText(/Open your planner first/)).toBeTruthy();
+  });
+
+  it('marks a run Reverted only by the Revert’s own result row, never the bare claim', async () => {
+    const at = new Date().toISOString();
+    const serverRun = {
+      kind: 'run', server: true, trigger: 'time', did: 1, of: 1, skipped: 0, refused: 0, stopped: 0,
+      steps: ['done'], undo: [['delete', '00000000-0000-4000-8000-000000000009']],
+    };
+    runs.data = [
+      { claim_key: 'time:a:done', summary: serverRun, at },
+      { claim_key: 'time:b:done', summary: serverRun, at },
+      { claim_key: 'time:c:done', summary: { ...serverRun, undo: undefined, revertable: false }, at },
+      { claim_key: 'revert:time:a:done', summary: { kind: 'claim' }, at },
+      { claim_key: 'revert:time:b:done', summary: { kind: 'claim' }, at },
+      {
+        claim_key: 'revert:time:b:done:done',
+        summary: { kind: 'revert', of: 'time:b:done', did: 0, skipped: 1, failed: 'planner-not-ready' },
+        at,
+      },
+    ];
+    seed([recipeRow()]);
+    render(<MakePane ctx={ctx} />);
+    fireEvent.click(screen.getByText('Recent runs'));
+    const list = await screen.findByTestId('recipe-runs-list');
+    await waitFor(() => expect(within(list).getAllByTestId('recipe-run')).toHaveLength(3));
+    const [a, b, c] = within(list).getAllByTestId('recipe-run');
+    expect(a.textContent).toContain('Revert started on another tab or device.');
+    expect(a.textContent).not.toContain('Reverted');
+    expect(b.textContent).toContain('Revert failed');
+    expect(c.textContent).toContain('too large to revert');
+    expect(within(list).queryByTestId('recipe-run-revert')).toBeNull();
+  });
+
+  it.each([
+    ['failed', 'Couldn’t revert this run.'],
+    ['nothing', 'Nothing left to put back.'],
+  ] as const)('words a %s Revert apart from a planner not loaded', async (out, copy) => {
+    runs.data = [
+      {
+        claim_key: 'time:2026-10-07:07:30:done',
+        summary: { kind: 'run', server: true, trigger: 'time', did: 1, of: 1, skipped: 0, refused: 0, stopped: 0, steps: ['done'], undo: [['delete', '00000000-0000-4000-8000-000000000009']] },
+        at: new Date().toISOString(),
+      },
+    ];
+    revert.fn.mockResolvedValue(out);
+    seed([recipeRow()]);
+    render(<MakePane ctx={ctx} />);
+    fireEvent.click(screen.getByText('Recent runs'));
+    fireEvent.click(await screen.findByTestId('recipe-run-revert'));
+    expect(await screen.findByText(new RegExp(copy))).toBeTruthy();
+    expect(screen.queryByText(/Open your planner first/)).toBeNull();
+    expect(screen.queryByText(/Reverted/)).toBeNull();
   });
 
   it('says when there are none', async () => {
@@ -365,5 +534,37 @@ describe('the Look step and your Looks', () => {
       name: 'After run',
       manifest: expect.objectContaining({ steps: [{ do: 'applyLook', look: 'u-bbbbbbbb' }] }),
     });
+  });
+});
+
+describe('prefilled (a "Write with AI" draft opened in Edit)', () => {
+  it('opens a new recipe with the draft\'s name, trigger and steps, and saves through createRecipe', async () => {
+    const { RecipeBuilder } = await import('@/components/settings/recipe-builder');
+    seed();
+    const onDone = vi.fn();
+    render(
+      <RecipeBuilder
+        userId={USER}
+        editing={null}
+        initial={{
+          name: 'After a run, stretch',
+          manifest: {
+            version: 1,
+            trigger: { on: 'item.skipped' },
+            filters: {},
+            steps: [{ do: 'create', type: 'task', title: 'Stretch 10 min' }],
+          },
+        }}
+        onDone={onDone}
+        onCancel={() => {}}
+      />
+    );
+    expect(screen.getByText('New recipe')).toBeTruthy();
+    expect((screen.getByTestId('recipe-name') as HTMLInputElement).value).toBe('After a run, stretch');
+    expect((screen.getByTestId('recipe-trigger') as HTMLSelectElement).value).toBe('item.skipped');
+    expect(screen.getByDisplayValue('Stretch 10 min')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('recipe-save'));
+    await waitFor(() => expect(createRecipe).toHaveBeenCalledTimes(1));
+    expect(saveRecipe).not.toHaveBeenCalled();
   });
 });

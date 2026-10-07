@@ -924,6 +924,23 @@ export const STATIC_COMMANDS: Command[] = [
     availableWhen: () => getAICapabilities().canChat && useConversationsStore.getState().saving !== 'off',
     run: (ctx) => openHistory(ctx.isMobile, { reveal: true, focusSearch: true }),
   },
+  // ⌘K hands off to Make (memory/plans/mods.md, "AI writes it"): Write with
+  // AI lives in Settings → Make, gated on canMake (a connected model, never
+  // OpenClaw alone). This only opens it with the Recipe box focused; nothing
+  // is sent until Write is pressed there. Palette only, so no shortcut id.
+  {
+    id: 'make.write',
+    label: 'Write a recipe with AI',
+    group: 'mods',
+    icon: AskMarkIcon,
+    keywords: 'ai make recipe theme look write automate when',
+    hidden: () => !getAICapabilities().canMake,
+    availableWhen: () => getAICapabilities().canMake,
+    run: (ctx) => {
+      if (ctx.navigate) ctx.navigate('/settings/make?write=recipe');
+      else if (typeof window !== 'undefined') window.location.assign('/settings/make?write=recipe');
+    },
+  },
   {
     id: 'rituals.eod',
     label: 'Start end-of-day review',

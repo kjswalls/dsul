@@ -157,6 +157,9 @@ inside dsul (tool loop, task queue, background workers). **Do not branch on prov
 strings in the UI.** The house pattern is already established: do what
 [lib/item-registry.ts](../../lib/item-registry.ts) does and ask a capability question
 (`canDelegate()`, `canPropose()`, …). Adding the hosted tier must be config, not code paths.
+`canMake` (2026-10-07, mods.md "AI writes it") is Settings → Make's "Write with AI": true only
+for `target === 'model'`, so an OpenClaw-only account, or a device that chose OpenClaw, gets no
+Write, and "No AI, thanks" hides it with everything else.
 
 ## Trust model
 
@@ -969,7 +972,10 @@ conversation is saved to the account.
   - your custom instructions;
   - proposal cards;
   - error text (only a short error code);
-  - your model key (which never leaves the server's sealed store, as before).
+  - your model key (which never leaves the server's sealed store, as before);
+  - "Write with AI" in Settings → Make (mods build order 7): neither the ask nor the reply. Only what
+    you install is saved, switched off, as anything made in Make is. The model is sent the ask and
+    the names of your projects, types, themes and Looks, never your items, notes or conversations.
 - *Who can read it:*
   - you, on any device you sign in on;
   - the database's operators.

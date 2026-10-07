@@ -5441,6 +5441,92 @@ const sameAgentFields = (a: AgentFields, b: AgentFields) =>
   (a.aiResult ?? null) === (b.aiResult ?? null) &&
   (a.aiStatusAt ?? null) === (b.aiStatusAt ?? null);
 
+/** The fields a server run (lib/recipes/server/) writes on an existing item. */
+const SERVER_RUN_FIELDS = [
+  'status',
+  'completedDates',
+  'skippedDates',
+  'dailyCounts',
+  'currentDayCount',
+  'streak',
+  'startDate',
+  'timeBucket',
+  'isScheduled',
+] as const;
+
+const serverRunFieldsOf = (item: Item): string =>
+  JSON.stringify(SERVER_RUN_FIELDS.map((k) => (item as unknown as Record<string, unknown>)[k] ?? null));
+
+/**
+ * Fold items a server run wrote (a timed or phone-started recipe,
+ * lib/recipes/server/) into the store, so Revert in Make (lib/recipes/revert.ts)
+ * asks the rows as they are, not as this tab loaded them. Only the fields a
+ * server run writes are taken for an item the store has (a local edit to
+ * anything else is never overwritten); an item it lacks (one the run added)
+ * comes in whole.
+ *
+ * The server's news, not a user action, so it is folded the way
+ * mergeAgentStates folds agent state: one set(), no undo entry, no write-back,
+ * every snapshot that still held the store's pre-merge fields rewritten to the
+ * merged ones (and an added item added to each), as if the server's value had
+ * been there all along, so an undo of an unrelated edit never writes the stale
+ * value back. Skipped while a load is in flight, which brings fresh rows of
+ * its own. Returns how many items changed.
+ */
+export function mergeServerItems(rows: readonly Item[]): number {
+  const state = usePlannerStore.getState();
+  if (state.isLoading || rows.length === 0) return 0;
+  const byId = new Map(state.items.map((item) => [item.id, item]));
+  const changes = new Map<string, { before: string | null; row: Item }>();
+  for (const row of rows) {
+    const item = byId.get(row.id);
+    if (!item) {
+      // An item the tab once held and no longer does was deleted here; a
+      // server read that still finds it is behind that delete, not ahead.
+      if (!historyStack.some((snap) => snap.items.some((i) => i.id === row.id))) {
+        changes.set(row.id, { before: null, row });
+      }
+    }
+    else if (item.type === row.type && serverRunFieldsOf(item) !== serverRunFieldsOf(row)) {
+      changes.set(row.id, { before: serverRunFieldsOf(item), row });
+    }
+  }
+  if (changes.size === 0) return 0;
+
+  const overlay = (item: Item, row: Item): Item => {
+    const next = { ...item } as unknown as Record<string, unknown>;
+    for (const k of SERVER_RUN_FIELDS) {
+      const v = (row as unknown as Record<string, unknown>)[k];
+      if (v === undefined) delete next[k];
+      else next[k] = v;
+    }
+    return next as unknown as Item;
+  };
+  const fold = (items: Item[]): Item[] => {
+    const seen = new Set<string>();
+    const out = items.map((item) => {
+      const change = changes.get(item.id);
+      if (!change) return item;
+      seen.add(item.id);
+      if (change.before === null || serverRunFieldsOf(item) !== change.before) return item;
+      return overlay(item, change.row);
+    });
+    for (const [id, change] of changes) if (change.before === null && !seen.has(id)) out.push(change.row);
+    return out;
+  };
+
+  const wasSuppressed = isUpdatingUndoRedo;
+  isUpdatingUndoRedo = true;
+  try {
+    usePlannerStore.setState((s) => projectItems(fold(s.items)));
+    historyStack = historyStack.map((snapshot) => ({ ...snapshot, items: fold(snapshot.items) }));
+    updatePrevStateBaseline(historySlice(usePlannerStore.getState()));
+  } finally {
+    isUpdatingUndoRedo = wasSuppressed;
+  }
+  return changes.size;
+}
+
 /**
  * Fold the agent columns read back from the server (lib/db.ts
  * `fetchAgentStates`, on Ask home's throttled refetch) into the store. An agent

@@ -21,8 +21,10 @@
  * conv_write: a turn save, rename, star, tally or delete, 600/h;
  * conv_read: History pages, an item's lookup, a thread, 1,200/h;
  * conv_search: 300/h.
+ * make: "Write with AI" in Settings → Make (/api/ai/make), 30/h. One press is
+ * one call on the person's own key; this bounds a runaway client, not them.
  */
-export type Bucket = 'connect' | 'check' | 'conv_write' | 'conv_read' | 'conv_search';
+export type Bucket = 'connect' | 'check' | 'conv_write' | 'conv_read' | 'conv_search' | 'make';
 
 const LIMITS: Record<Bucket, number> = {
   connect: 20,
@@ -30,6 +32,7 @@ const LIMITS: Record<Bucket, number> = {
   conv_write: 600,
   conv_read: 1_200,
   conv_search: 300,
+  make: 30,
 };
 const WINDOW_MS = 60 * 60 * 1000;
 const MAX_KEYS = 5_000;

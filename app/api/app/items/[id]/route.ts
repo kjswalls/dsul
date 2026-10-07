@@ -1,4 +1,5 @@
 import { postItemWrite } from '@/lib/app-api';
+import { afterItemWrite } from '@/lib/recipes/server';
 
 /**
  * POST /api/app/items/:id — one verb from the iPhone app on one item:
@@ -26,12 +27,14 @@ import { postItemWrite } from '@/lib/app-api';
  *   { action: 'project', projectId }                      the project, by id; null for none. A task
  *                                                         parked in its old project's block leaves it
  *   { action: 'collect', kind, containerId, member }      join or leave one routine or season
- * The handler is in lib/app-api.ts.
+ * The handler is in lib/app-api.ts. A tick, skip or untick that changed the
+ * day starts the user's matching recipes on the server once it has committed
+ * (lib/recipes/server/, isolated: a recipe never fails the write).
  */
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<Response> {
   const { id } = await params;
-  return postItemWrite(req, id);
+  return postItemWrite(req, id, { onCommitted: afterItemWrite });
 }

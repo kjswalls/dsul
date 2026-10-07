@@ -1,22 +1,14 @@
 import { useExtensionsStore } from '@/lib/extensions-store';
-import { EXT_BEEMINDER, OFFICIAL_EXTENSIONS } from '@/lib/extension-registry';
-import { stakeEligible } from '@/lib/stakes/day';
-import { goalForTitle } from '@/lib/stakes/goal-map';
+import { EXT_BEEMINDER } from '@/lib/extension-registry';
 import type { Item } from '@/lib/planner-types';
-import { isVerbStep, type RecipeWriteStep } from './validate';
+import { STAKE_EXTENSION_SLUGS, stakeRefusalWith } from './stake-rule';
+import type { RecipeWriteStep } from './validate';
 
 /**
- * The stake lock (memory/plans/mods.md, "Stakes"): while any stake adapter is
- * on, a recipe runs no verb on a stake-eligible item and creates nothing titled
- * after a Beeminder goal. A recipe that ticks the habit a pledge rides on would
- * be a way to pay nothing for a day not done.
- *
- * The slugs come from the extension manifest, not STAKE_ADAPTERS, because
- * lib/stakes/settle.ts pulls the server adapters in. A test holds the two equal.
+ * The stake lock in the browser, read from the extensions store. The rule is
+ * ./stake-rule.ts, shared with the server runner.
  */
-export const STAKE_EXTENSION_SLUGS: readonly string[] = OFFICIAL_EXTENSIONS.filter(
-  (e) => e.shelf === 'stakes'
-).map((e) => e.slug);
+export { STAKE_EXTENSION_SLUGS } from './stake-rule';
 
 /**
  * Whether the lock is on. Ignores the stakes master switch on purpose: an
@@ -33,10 +25,11 @@ export function stakeLockOn(): boolean {
 
 /** 'stake' when the lock refuses this step, else null. */
 export function stakeRefusal(step: RecipeWriteStep, item?: Item): 'stake' | null {
-  if (!stakeLockOn()) return null;
-  if (isVerbStep(step)) return item && stakeEligible(item) ? 'stake' : null;
   const ext = useExtensionsStore.getState();
-  // Without the configs the goal map is unknown, so no create gets through.
-  if (!ext.configsLoaded) return 'stake';
-  return goalForTitle(ext.configs[EXT_BEEMINDER] ?? {}, step.title) ? 'stake' : null;
+  return stakeRefusalWith(step, item, {
+    lockOn: stakeLockOn(),
+    // Without the configs the goal map is unknown, so no create gets through.
+    configsKnown: ext.configsLoaded,
+    beeminder: ext.configs[EXT_BEEMINDER] ?? {},
+  });
 }
