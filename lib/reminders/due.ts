@@ -57,14 +57,18 @@ export function minutesOfDay(hhmm: string | undefined | null): number | null {
  * Is `nowMinutes` inside [target, target + grace) on the SAME local day?
  *
  * The window is clamped to midnight rather than wrapped, which is the one place
- * this deliberately diverges from the eod-notify cron it is modelled on. That
- * route wraps (`windowEnd >= 1440 ? now >= start || now < end - 1440`), and a
+ * this deliberately diverged from the eod-notify cron it was modelled on. That
+ * route wrapped (`windowEnd >= 1440 ? now >= start || now < end - 1440`), and a
  * wrap plus a same-day dedupe stamp is a double-send: a 23:50 cue fires and
  * stamps day N, then at 00:05 the window is still open, the local date has
  * rolled to N+1, the stamp no longer matches, and the same reminder goes out
- * again — at ten past midnight, for yesterday's habit.
+ * again — at ten past midnight, for yesterday's habit. The EOD review now runs
+ * through this window too, as a tier of the scan, so the double-send is gone
+ * from the review by construction rather than by a fix to that route.
  *
- * Clamping costs a late-evening reminder some of its grace and nothing else.
+ * Clamping costs a late-evening reminder some of its grace and nothing else,
+ * as long as the window still holds a tick: one that opens after a coarse
+ * clock's last tick of the day holds none (ScanClock.latestOpening).
  */
 export function isWithinWindow(
   targetMinutes: number,
@@ -170,6 +174,18 @@ export interface ScanClock {
    */
   nowMs: number
   graceMinutes?: number
+  /**
+   * The latest minute a cue's window may open at, for a clock that does not
+   * tick every minute.
+   *
+   * The server scan runs every five minutes, so its last tick of the day is
+   * 23:55, and a cue at 23:58 has a clamped window, [23:58, 24:00), with no
+   * tick in it: never sent, and nothing says so. The scan passes its last tick
+   * here (lib/reminders/scan.ts, windowOpensAt) and the cue goes at 23:55. A
+   * clock that ticks every minute leaves it out: it has a tick inside every
+   * window already, and should not ring three minutes early.
+   */
+  latestOpening?: number
 }
 
 /**
@@ -254,7 +270,8 @@ export function dueReminders(
 
     if (target === null) continue
     if (sentKey === sentKeyFor(clock.dateStr, at as string)) continue
-    if (!isWithinWindow(target, clock.nowMinutes, clock.graceMinutes)) continue
+    const opens = Math.min(target, clock.latestOpening ?? target)
+    if (!isWithinWindow(opens, clock.nowMinutes, clock.graceMinutes)) continue
     if (!wantsDoingOn(item, clock.dateStr, ctx)) continue
     out.push({
       item,

@@ -18,6 +18,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { milestoneItemIds } from '@/lib/goals';
 import { useStreaksEnabled } from '@/lib/extension-gates';
 import { useEODStore } from '@/lib/eod-store';
+import { nowMinutesIn, reviewedDay, type ReviewOpening } from '@/lib/eod';
 import { anchoredSeriesOn, shouldShowOnDate, isCompletedOnDate, isSkippedOnDate, isRecurring } from '@/lib/recurrence';
 import { ITEM_TYPES, isSkippable } from '@/lib/item-registry';
 import { isOpenLoopSuppressedOn } from '@/lib/active';
@@ -36,6 +37,12 @@ const asItem = (task: Task): Item => task as unknown as Item;
 function todayStr(tz?: string | null) {
   const resolvedTz = tz || Intl.DateTimeFormat().resolvedOptions().timeZone;
   return new Date().toLocaleDateString('en-CA', { timeZone: resolvedTz });
+}
+
+/** Today, and the minute of it, in the user's saved timezone: when a review opened. */
+function openingNow(tz?: string | null): ReviewOpening {
+  const resolvedTz = tz || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return { day: todayStr(resolvedTz), minutes: nowMinutesIn(new Date(), resolvedTz) };
 }
 
 function tomorrowStr(tz?: string | null) {
@@ -107,7 +114,7 @@ type TaskAction =
 export function EODReview() {
   const { tasks, habits, updateTask, unscheduleTask, toggleHabitStatus, toggleTaskStatus, setItemSkipped } =
     usePlannerStore();
-  const { isOpen, close, saveLastReviewDate } = useEODStore();
+  const { isOpen, close, saveLastReviewDate, invitedFor } = useEODStore();
   const userId = usePlannerStore((s) => s.userId);
   const userTimezone = usePlannerStore((s) => s.userTimezone);
   const routines = usePlannerStore((s) => s.routines);
@@ -161,9 +168,18 @@ export function EODReview() {
   // Snapshot pendingTasks at dialog open time so tasks marked done during
   // the session don't disappear from the list (circle stays visible for undo).
   const [pendingTasksSnapshot, setPendingTasksSnapshot] = useState<typeof livePendingTasks>(livePendingTasks);
+  // When the review opened, held for the same reason: `today` is worked out at
+  // every render, so a review opened at 23:55 and finished at 00:05 would
+  // otherwise be recorded as the new day's, and that evening's push and dock
+  // line would treat it as already done. Taken HERE, on the isOpen transition,
+  // never at mount: AppShell mounts this once for the life of the tab, and a
+  // desktop window or an installed PWA keeps that tab for days, so a mount-time
+  // day is a day long gone by the time anyone opens the review. See handleDone.
+  const [opened, setOpened] = useState<ReviewOpening>(() => openingNow(userTimezone));
   useEffect(() => {
     if (isOpen) {
       setPendingTasksSnapshot(livePendingTasks);
+      setOpened(openingNow(userTimezone));
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
@@ -395,8 +411,18 @@ export function EODReview() {
     pendingTasks.filter(isCarryable).forEach((t) => handleMoveTo(t.id, tomorrow));
   };
 
+  // Recorded against the day this review is FOR, never the day Done is
+  // pressed: the day the push invited, when it was opened from tonight's or,
+  // in the small hours, from last night's; else the day it opened on
+  // (lib/eod.ts's reviewedDay). The scan asks isEodOwed of this stamp before it
+  // invites tonight's review, so a 23:30 push tapped at 00:15 and stamped with
+  // the new day would cancel that evening's push, and yesterday's push tapped
+  // at 20:30 and stamped with yesterday would invite at 21:00 the review just
+  // finished. The settings are read at Done, the stamp already held included,
+  // so the day is never moved back behind one already recorded.
   const handleDone = async () => {
-    await saveLastReviewDate(userId, today);
+    const { eodReviewTime, lastEodReviewDate } = useEODStore.getState();
+    await saveLastReviewDate(userId, reviewedDay(invitedFor, opened, { eodReviewTime, lastEodReviewDate }));
   };
 
   // How many rows the bulk verb would actually carry — the same predicate

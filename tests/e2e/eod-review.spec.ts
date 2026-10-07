@@ -338,6 +338,17 @@ test.describe('End of day (EOD) review modal', () => {
     }
   });
 
+  // The link the review's push opens names the day it invites a review of
+  // (lib/reminders/scan.ts), and lib/eod-link.ts opens the review carrying
+  // it. tests/unit/eod-link.test.ts pins what the store is handed; this pins
+  // that the app still reaches it from the address bar.
+  test('deep link ?eod=<day> opens EOD modal', async ({ page }) => {
+    await page.goto(`/?eod=${getTodayStr()}`);
+    await expect(page.getByRole('dialog', { name: 'End of day' })).toBeVisible({ timeout: 8_000 });
+  });
+
+  // Pushes sent before 2026-10-06 said ?eod=1, and one can still be waiting in
+  // a notification shade.
   test('deep link ?eod=1 opens EOD modal', async ({ page }) => {
     // Navigate directly to /?eod=1 after login — the deep link handler should open the modal
     await page.goto('/?eod=1');
@@ -361,8 +372,9 @@ test.describe('End of day (EOD) review modal', () => {
       });
 
       try {
-        // Mobile has no DEV trigger button; open EOD via the ?eod=1 deep link
-        // that app-shell handles (the same path a push notification uses).
+        // Mobile has no DEV trigger button; open EOD via the bare ?eod=1 deep
+        // link (lib/eod-link.ts). A push today opens ?eod=<day>, which takes
+        // the same path and names its day as well.
         await page.goto('/?eod=1');
         await page.waitForLoadState('networkidle');
 

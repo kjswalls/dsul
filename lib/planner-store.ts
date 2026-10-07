@@ -288,7 +288,13 @@ interface PlannerStore {
     type: string,
     items: Array<Omit<Task, 'id' | 'order' | 'status' | 'isScheduled'>>,
   ) => void;
-  updateTask: (id: string, updates: Partial<Task>) => void;
+  /**
+   * `opts.label` names the history entry instead of "Edit task: <title>",
+   * which is also what decides whether the undo strip offers ⌘Z
+   * (hooks/use-undo-toast.ts matches on prefix): the hand-off verbs
+   * (lib/agent-handoff.ts) pass theirs.
+   */
+  updateTask: (id: string, updates: Partial<Task>, opts?: { label?: string }) => void;
   /**
    * Switch an item to another type (lib/item-convert.ts). A no-op when the
    * switch is refused — callers show the reason from `conversionBlock`.
@@ -2950,7 +2956,7 @@ export const usePlannerStore = create<PlannerStore>()(
         }
       },
 
-      updateTask: (id, updates) => {
+      updateTask: (id, updates, opts) => {
         const task = findTaskLike(id);
         // A date change through the generic edit action IS a move verb, and two
         // of the surfaces decision 11 names by name arrive here rather than at
@@ -2959,7 +2965,7 @@ export const usePlannerStore = create<PlannerStore>()(
         // and the item dialog's date chip. Attaching the receipt to the update
         // itself is what stops the next such surface from being missed too.
         setNextActionLabel(
-          `Edit task: ${task?.title || 'Unknown'}`,
+          opts?.label ?? `Edit task: ${task?.title || 'Unknown'}`,
           'startDate' in updates ? landingReceipt(get(), [id], updates.startDate) : undefined
         );
 

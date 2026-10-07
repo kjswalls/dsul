@@ -450,6 +450,129 @@ export function askNew(text: string, o: { title: string; isMobile: boolean }): v
   void sendFrom({ kind: 'draft', id }, text, { surface });
 }
 
+// ── Asked from an item's own menu ────────────────────────────────────────────
+//
+// The item's right-click menu ("Ask AI", lib/item-asks.ts) lands in three
+// places, each where the answer is seen: the item's one conversation, the
+// item's "Break it down" card, or a plan card on Ask home.
+//
+// `page`: the caller is taking the user to the item's own page (/item/[id]),
+// because the surface it was asked from cannot host the item panel (the
+// Organize console, a container's page; the menu's "Open item" goes there
+// too). The item is then not opened here: arming the slot on a route with no
+// panel would spring it open, unasked, on the next trip home. The page shows
+// the item's conversation and its Subtasks card itself.
+
+/**
+ * Open an item where its conversation shows: desktop, the item in the slot
+ * (on top of Ask, out of Zen, as openConversation does); the phone, pushed
+ * over the Ask tab. `reveal` scrolls to its conversation once there is one to
+ * show, and is asked only when this call opens the item: the item's
+ * conversation takes the request as it mounts, and one asked of an item
+ * already showing would wait for its NEXT open and scroll that, unasked.
+ */
+function showItemForAsk(item: Item, isMobile: boolean, o: { reveal: boolean }): AskSurface {
+  const rail = useRailStore.getState();
+  if (isMobile) {
+    showAskTab();
+    const top = rail.stacks.phone.at(-1);
+    if (top?.kind !== 'item' || top.itemId !== item.id) {
+      if (o.reveal) rail.setPendingReveal(item.id);
+      rail.push('phone', { kind: 'item', itemId: item.id });
+    }
+    return 'phone';
+  }
+  leaveZen();
+  // Already the open item: opening it again would only re-seed the panel.
+  const open = useUIStore.getState().activeDialog;
+  if (open?.type !== 'edit-item' || open.item.id !== item.id) {
+    if (o.reveal) rail.setPendingReveal(item.id);
+    openItemFromAsk(item);
+  }
+  return 'desktop';
+}
+
+/**
+ * The item's conversation is still answering, or a send to it is still
+ * finding its conversation: sendFrom would refuse a second one.
+ */
+function itemThreadBusy(itemId: string): boolean {
+  const c = useConversationsStore.getState();
+  if (c.sending[bindingKey({ kind: 'item', itemId })]) return true;
+  const known = c.itemIndex[itemId];
+  if (typeof known === 'string') return !!c.threads[resolveConversationId(known)]?.streaming;
+  return Object.values(c.threads).some((t) => t.itemId === itemId && t.streaming);
+}
+
+/**
+ * Ask about an item in its one conversation. With no `text`, open it with its
+ * box focused and send nothing ("Ask about this…", "Continue conversation");
+ * with `text`, send that into it ("Help me start"). Through sendFrom like every
+ * send, so the conversation is found (or started) whatever its id turns out to
+ * be. Nothing when nothing can answer.
+ *
+ * While that conversation is still answering, the text waits in the item's box
+ * instead, under anything already typed there, as the command bar's `?` does:
+ * the menu has closed, so a send refused now would be lost.
+ *
+ * The conversation is revealed on open unless the item is KNOWN to have none
+ * (`itemIndex` null): the index is filled from History's first page, which a
+ * session that has not opened Ask may not have read. A send needs no reveal:
+ * its own first turn scrolls into view.
+ */
+export function askAboutItem(item: Item, o: { isMobile: boolean; text?: string; page?: boolean }): void {
+  if (!getAICapabilities().canChat) return;
+  const text = o.text?.trim() ? o.text : null;
+  const binding: ComposerBinding = { kind: 'item', itemId: item.id };
+  let surface: AskSurface = o.isMobile ? 'phone' : 'desktop';
+  if (!o.page) {
+    const known = useConversationsStore.getState().itemIndex[item.id];
+    surface = showItemForAsk(item, o.isMobile, { reveal: !text && known !== null });
+    // The phone's one box is the dock's, which follows the pushed item.
+    useRailStore.getState().focusComposer(o.isMobile ? undefined : binding);
+  }
+  if (!text) return;
+  if (itemThreadBusy(item.id)) {
+    const rail = useRailStore.getState();
+    const key = bindingKey(binding);
+    const typed = rail.drafts[key];
+    rail.setDraft(key, typed ? `${typed}\n${text}` : text);
+    return;
+  }
+  void sendFrom(binding, text, { surface });
+}
+
+/**
+ * "Break it down" from outside the item: open it, then ask for the card that
+ * answers inside it (proposal-store, `item:<id>`), exactly as the panel's own
+ * button does. Nothing when nothing can propose.
+ */
+export function breakDownItem(item: Item, o: { isMobile: boolean; page?: boolean }): void {
+  if (!getAICapabilities().canPropose) return;
+  if (!o.page) showItemForAsk(item, o.isMobile, { reveal: false });
+  void useProposalStore.getState().request('breakdown', undefined, item.id);
+}
+
+/**
+ * A plan card asked from an item ("Find a time for this"): the catch-up
+ * command's route (lib/commands/registry.ts), since a plan card's home is Ask
+ * home. An item on top is closed through the one flushing close first, so the
+ * card is seen and a title typed a moment ago is already in the plan's
+ * context; the stack is popped to home so the card is what Ask shows. Never
+ * asked with `page`: a surface that sends the item to its page has no Ask.
+ */
+export function proposeForItem(prompt: string, isMobile: boolean): void {
+  const { canChat, canPropose } = getAICapabilities();
+  if (!canChat || !canPropose) return;
+  closeItemPanel();
+  // Home first: revealChat asks for the field of whatever is on top, and a
+  // request for History's search, popped from under it, would wait for the
+  // next History and take the caret there unasked.
+  useRailStore.getState().popToHome(isMobile ? 'phone' : 'desktop');
+  if (!revealChat(isMobile, { boxOnPhone: false })) return;
+  void useProposalStore.getState().request('ask', prompt);
+}
+
 /**
  * "?" in the command bar: the docked omnibar, the Ctrl+K launcher, Console's
  * prompt and Notepad's caret alike (and Ctrl+Enter there). An empty ask only

@@ -4,7 +4,7 @@ import { ArrowLeft, ExternalLink } from 'lucide-react';
 import { CopyableCommand } from '@/components/docs/copyable-command';
 
 export const metadata: Metadata = {
-  title: 'Connect OpenClaw | dsul',
+  title: 'Connect OpenClaw - dsul',
   description:
     'How to connect your own OpenClaw instance to dsul so your agent knows what is on your plate.',
 };

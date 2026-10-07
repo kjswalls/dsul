@@ -33,7 +33,6 @@ import {
   Settings,
   Store,
   SlashSquare,
-  Sparkles,
   Sun,
   Sunrise,
   Sunset,
@@ -57,6 +56,7 @@ import {
 } from 'lucide-react';
 import { addDays, subDays } from 'date-fns';
 
+import { AskMarkIcon } from '@/components/ai/ask-mark';
 import { usePlannerStore } from '../planner-store';
 import { useViewStore } from '../view-store';
 import { EMPTY_VIEW_FILTERS, isEmptyFilters } from '../filters';
@@ -834,7 +834,7 @@ export const STATIC_COMMANDS: Command[] = [
     id: 'rituals.chat',
     label: 'Ask AI',
     group: 'rituals',
-    icon: Sparkles,
+    icon: AskMarkIcon,
     keywords: 'chat ai assistant ask question',
     // 'beacon' stays as an alias: it is how the row was reached before the AI
     // lost its name, and only the first alias (`/chat`) is ever shown.

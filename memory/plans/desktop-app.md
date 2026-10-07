@@ -247,13 +247,13 @@ Three things below narrow that gap: the short pending windows, the code-navigati
   - There is no native dialog, and no text from the server is shown anywhere.
 - **Pending windows.**
   - They are kept in memory and in `userData/auth-pending.json`, so a cold start still honours them. Each write is followed by `flushStore()`.
-  - Google: 10 minutes, since its code dies at 300s.
+  - Google or Apple (kind `oauth`): 10 minutes, since its code dies at 300s.
   - Email: 60 minutes **[unverified: magic-link expiry]**.
 - **`openAuthUrl(url)` is checked in main, by `checkAuthorizeUrl`.** The URL must have:
   - protocol `https:`;
   - host === `SUPABASE_HOST`, which is `ctcspcferkdlzdcqlozq.supabase.co` per tests/unit/e2e-local-target.test.ts:17. Comment it as mirroring `NEXT_PUBLIC_SUPABASE_URL`;
   - path `/auth/v1/authorize`;
-  - `provider=google`;
+  - `provider=google` or `provider=apple` (`policy.OAUTH_PROVIDERS`, which the preload advertises to the page as `authProviders`; a shell without that list gets no Apple button);
   - `redirect_to === APP_ORIGIN + '/auth/desktop'`;
   - `code_challenge_method=s256`, with a challenge present.
 
@@ -281,6 +281,7 @@ Three things below narrow that gap: the short pending windows, the code-navigati
 - **Reminders keep reaching other devices.** The server sends to every `push_subscriptions` row (lib/push-send.ts:94-112).
   - Kirby shouldn't turn phone push off thinking the desktop app covers it. The channel reports `ok` even when it reached zero devices (lib/reminders/channels/push.ts:61), so reminders would vanish without an error.
 - **Native reminders are Later.** They need an outbox table plus Realtime, and a main-process `Notification` that posts to `/api/reminders/act`, which authenticates with the cookie session (app/api/reminders/act/route.ts:25-28). They also need a signed macOS build. Call `app.setAppUserModelId(appId)` in v1 anyway; it costs nothing.
+- **The cross-platform plan replaces that "Later".** [reminders-platforms.md](reminders-platforms.md) §2.2 and its Phase 1 make the loaded page the desktop's clock: it runs the real `lib/reminders/due.ts`, claims a cue through `POST /api/reminders/claim` only after a boot-time notification probe succeeds, and main posts the banner over new preload methods. The outbox + Realtime shape above was not chosen (Realtime is at most a later withdraw/wake channel). A signed build is still the precondition for anything visible on macOS.
 - **Kirby's call, separately: reload on reconnect.** Serwist's default `reloadOnOnline` is not overridden (next.config.mjs:43-47). So a tray app fully reloads on every wake from sleep and loses any unsaved draft. Turning it off changes browser behaviour too.
 - **Deploy skew is real.** `skipWaiting`/`clientsClaim` (app/sw.ts:16-17) plus a window that stays open for days means old JavaScript can request chunks a new deploy no longer serves. The stale-window reload fix is Later.
 

@@ -38,9 +38,10 @@ DSUL_URL=http://localhost:3000 npm start   # loads a local `pnpm dev` instead
   cookies, its saved window place (`window-state.json`) or the single-instance lock.
 - `DSUL_URL` is honoured only by a dev run. A local `pnpm dev` talks to PRODUCTION Supabase until
   `./scripts/local-setup.sh dev` has run (see the root CLAUDE.md).
-- With a local Supabase stack, the desktop Google sign-in also accepts that stack's authorize URL:
-  `http://127.0.0.1:54321` by default, or `DSUL_SUPABASE_URL`. The stack's redirect list needs
-  `http://localhost:3000/auth/desktop` added (`additional_redirect_urls` in its config.toml).
+- With a local Supabase stack, the desktop Google and Apple sign-ins also accept that stack's
+  authorize URL: `http://127.0.0.1:54321` by default, or `DSUL_SUPABASE_URL`. The stack's redirect
+  list needs `http://localhost:3000/auth/desktop` added (`additional_redirect_urls` in its
+  config.toml).
 - `DSUL_DEV_PROTOCOL=1 npm start` registers `dsul://` to this checkout so a sign-in link comes
   back here. That overwrites the installed app's registration, so relaunch the installed app
   afterwards to take it back. Test deep links on packaged builds; dev registration is for poking
