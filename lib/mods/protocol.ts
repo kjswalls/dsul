@@ -134,7 +134,9 @@ export type BootMessage = z.infer<typeof BootMessageSchema>;
 
 export const HostMessageSchema = z.union([
   z.object({ t: z.literal('load'), modId: Uuid, gen: Gen, source: Source }).strict(),
-  z.object({ t: z.literal('unload'), modId: Uuid }).strict(),
+  // With `gen`, only that generation goes, so a hot reload can retire the old
+  // worker without touching the new one; without it, every worker of the mod.
+  z.object({ t: z.literal('unload'), modId: Uuid, gen: Gen.optional() }).strict(),
   z.object({ t: z.literal('hook'), modId: Uuid, gen: Gen, hookId: Uuid, event: HookEventSchema }).strict(),
   z
     .object({

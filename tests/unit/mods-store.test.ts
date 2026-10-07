@@ -22,7 +22,7 @@ vi.mock('@/lib/supabase', () => ({
       const result = db.results.shift() ?? { data: [], error: null };
       const gate = db.gate;
       const builder: Record<string, unknown> = {};
-      for (const op of ['select', 'eq', 'in', 'order', 'update', 'delete', 'insert']) {
+      for (const op of ['select', 'eq', 'in', 'order', 'update', 'delete', 'insert', 'maybeSingle']) {
         builder[op] = (...args: unknown[]) => {
           call.ops.push([op, args]);
           return builder;
@@ -448,5 +448,78 @@ describe('recipes', () => {
     await useModsStore.getState().disable(existing.id, 'x'.repeat(300));
     expect(opsOf(1)[0]).toEqual(['update', [{ enabled: false, disabled_reason: 'x'.repeat(200) }]]);
     expect(useModsStore.getState().rows[0]).toMatchObject({ enabled: false, disabledReason: 'x'.repeat(200) });
+  });
+});
+
+describe('refresh', () => {
+  it('reads the list again past hydrate’s guard, and takes what changed', async () => {
+    const r = row({ kind: 'mod', slug: 'water', name: 'Water', enabled: true });
+    await hydrateWith([r]);
+    db.results.push({ data: [{ ...r, enabled: false, disabled_reason: 'off elsewhere' }], error: null });
+    await useModsStore.getState().refresh(USER);
+    expect(useModsStore.getState().rows[0]).toMatchObject({ enabled: false, disabledReason: 'off elsewhere' });
+  });
+
+  it('keeps the same rows when nothing changed', async () => {
+    const r = row({ kind: 'mod', slug: 'water', name: 'Water' });
+    await hydrateWith([r]);
+    const before = useModsStore.getState().rows;
+    db.results.push({ data: [r], error: null });
+    await useModsStore.getState().refresh(USER);
+    expect(useModsStore.getState().rows).toBe(before);
+  });
+
+  it('drops an answer when a local write started after the select went out', async () => {
+    const r = row({ kind: 'mod', slug: 'water', name: 'Water', enabled: false });
+    await hydrateWith([r]);
+    let release!: () => void;
+    db.gate = new Promise<void>((resolve) => (release = resolve));
+    db.results.push({ data: [{ ...r, name: 'Stale' }], error: null });
+    const refreshing = useModsStore.getState().refresh(USER);
+    db.gate = null;
+    await useModsStore.getState().setEnabled(r.id, true);
+    release();
+    await refreshing;
+    expect(useModsStore.getState().rows[0]).toMatchObject({ name: 'Water', enabled: true });
+  });
+
+  it('does nothing for another account, or before the list loaded', async () => {
+    await useModsStore.getState().refresh(USER);
+    expect(db.calls).toEqual([]);
+    await hydrateWith([]);
+    await useModsStore.getState().refresh(OTHER);
+    expect(db.calls).toHaveLength(1);
+  });
+});
+
+describe('loadModCode', () => {
+  it('selects one mod’s source, store, manifest and updated_at, as its owner', async () => {
+    const r = row({ kind: 'mod', slug: 'water', name: 'Water' });
+    await hydrateWith([r]);
+    db.results.push({
+      data: { source: 'export function register() {}', store: { n: 1 }, manifest: { version: 1, uses: [] }, updated_at: 'u' },
+      error: null,
+    });
+    expect(await useModsStore.getState().loadModCode(r.id)).toEqual({
+      source: 'export function register() {}',
+      store: { n: 1 },
+      manifest: { version: 1, uses: [] },
+      updatedAt: 'u',
+    });
+    expect(opsOf(1)).toEqual([
+      ['select', ['source,store,manifest,updated_at']],
+      ['eq', ['id', r.id]],
+      ['eq', ['user_id', USER]],
+      ['eq', ['kind', 'mod']],
+      ['maybeSingle', []],
+    ]);
+  });
+
+  it('is null for a row with no source, or a failed read', async () => {
+    await hydrateWith([]);
+    db.results.push({ data: { source: null, store: {}, manifest: {}, updated_at: 'u' }, error: null });
+    expect(await useModsStore.getState().loadModCode(USER)).toBeNull();
+    db.results.push({ data: null, error: { code: 'XX000' } });
+    expect(await useModsStore.getState().loadModCode(USER)).toBeNull();
   });
 });

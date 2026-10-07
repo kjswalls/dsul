@@ -47,3 +47,23 @@ export function stakeRefusalWith(step: RecipeWriteStep, item: Item | undefined, 
   return goalForTitle(facts.beeminder, step.title) ? 'stake' : null;
 }
 
+
+/**
+ * The same lock for a mod's `$.items.edit` (build order 8), pure: while it
+ * holds, a mod may not change a stake-eligible item's title or project, nor
+ * give any item a title in the Beeminder goal map. Unknown configs refuse a
+ * title, as stakeRefusalWith refuses a create. 'stake' when refused, else null.
+ */
+export function stakeEditRefusalWith(
+  item: Item,
+  edit: { title?: string; project?: string | null },
+  facts: StakeFacts
+): 'stake' | null {
+  if (!facts.lockOn) return null;
+  const titleChanges = edit.title !== undefined && edit.title !== item.title;
+  const projectChanges = edit.project !== undefined && (edit.project ?? null) !== (item.project ?? null);
+  if ((titleChanges || projectChanges) && stakeEligible(item)) return 'stake';
+  if (edit.title === undefined) return null;
+  if (!facts.configsKnown) return 'stake';
+  return goalForTitle(facts.beeminder, edit.title) ? 'stake' : null;
+}

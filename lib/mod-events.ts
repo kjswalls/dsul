@@ -127,10 +127,74 @@ function flush(): void {
   }
 }
 
-/** Test-only: drop listeners, queue and depth. */
+/* ── events only mods hear ─────────────────────────────────────────────── */
+
+/**
+ * An item ⌘Z took the completion off (memory/plans/mods.md, "Events"; build
+ * order 8). Its own type and its own bus, never a ModEvent, so a recipe can
+ * never hear it (RECIPE_EVENT_TRIGGERS satisfies ModEvent['kind'][]). Raised
+ * once per item and day by planner-store's undo(), never by redo, through
+ * the same suppression check and the same task-queued flush as ModEvents.
+ * `undoneLabel` is the label of the history entry ⌘Z took back, so a mod is
+ * never woken by the undo of its own run.
+ */
+export type ModOnlyEvent = {
+  kind: 'item.uncompleted';
+  origin: 'undo';
+  itemId: string;
+  date: string;
+  type: string;
+  undoneLabel: string;
+};
+
+export type ModOnlyEventListener = (e: ModOnlyEvent) => unknown;
+
+const onlyListeners = new Set<ModOnlyEventListener>();
+let onlyQueue: ModOnlyEvent[] = [];
+let onlyScheduled = false;
+
+export function subscribeModOnlyEvents(fn: ModOnlyEventListener): () => void {
+  onlyListeners.add(fn);
+  return () => {
+    onlyListeners.delete(fn);
+  };
+}
+
+export function raiseModOnlyEvents(events: readonly ModOnlyEvent[]): void {
+  if (suppressDepth > 0 || events.length === 0) return;
+  onlyQueue.push(...events);
+  if (!onlyScheduled) {
+    onlyScheduled = true;
+    setTimeout(flushOnly, 0);
+  }
+}
+
+function flushOnly(): void {
+  const events = onlyQueue;
+  onlyQueue = [];
+  onlyScheduled = false;
+  for (const e of events) {
+    for (const listener of [...onlyListeners]) {
+      if (!onlyListeners.has(listener)) continue;
+      try {
+        const r = withSuppressed(() => listener(e));
+        if (r && typeof (r as PromiseLike<unknown>).then === 'function') {
+          (r as PromiseLike<unknown>).then(undefined, (err: unknown) => console.error('[mod-events]', err));
+        }
+      } catch (err) {
+        console.error('[mod-events]', err);
+      }
+    }
+  }
+}
+
+/** Test-only: drop listeners, queues and depth. */
 export function __resetModEventsForTests(): void {
   listeners.clear();
   queue = [];
   scheduled = false;
+  onlyListeners.clear();
+  onlyQueue = [];
+  onlyScheduled = false;
   suppressDepth = 0;
 }

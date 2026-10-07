@@ -278,3 +278,17 @@ describe('frame limits', () => {
     expect(value('TEXT_MAX')).toBe(MOD_FAULT_MESSAGE_MAX);
   });
 });
+
+describe('frame unload', () => {
+  it('an unload with a gen retires only that generation, so a hot reload keeps the new one', async () => {
+    const f = await withMod();
+    f.host({ t: 'load', modId: MOD, gen: 2, source: 'y' });
+    const next = FakeWorker.all.at(-1)!;
+    next.say({ t: 'loaded', modId: MOD, gen: 2, ok: true, hooks: ['command'], manifestJson: '{}' });
+    f.host({ t: 'unload', modId: MOD, gen: 1 });
+    expect(f.w.terminated).toBe(true);
+    expect(next.terminated).toBe(false);
+    f.host({ t: 'unload', modId: MOD });
+    expect(next.terminated).toBe(true);
+  });
+});

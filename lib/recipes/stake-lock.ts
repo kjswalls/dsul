@@ -1,7 +1,7 @@
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { EXT_BEEMINDER } from '@/lib/extension-registry';
 import type { Item } from '@/lib/planner-types';
-import { STAKE_EXTENSION_SLUGS, stakeRefusalWith } from './stake-rule';
+import { STAKE_EXTENSION_SLUGS, stakeEditRefusalWith, stakeRefusalWith, type StakeFacts } from './stake-rule';
 import type { RecipeWriteStep } from './validate';
 
 /**
@@ -23,13 +23,23 @@ export function stakeLockOn(): boolean {
   return STAKE_EXTENSION_SLUGS.some((slug) => ext.isEnabled(slug));
 }
 
-/** 'stake' when the lock refuses this step, else null. */
-export function stakeRefusal(step: RecipeWriteStep, item?: Item): 'stake' | null {
+/** The lock's facts as the extensions store holds them now. */
+export function stakeFactsNow(): StakeFacts {
   const ext = useExtensionsStore.getState();
-  return stakeRefusalWith(step, item, {
+  return {
     lockOn: stakeLockOn(),
     // Without the configs the goal map is unknown, so no create gets through.
     configsKnown: ext.configsLoaded,
     beeminder: ext.configs[EXT_BEEMINDER] ?? {},
-  });
+  };
+}
+
+/** 'stake' when the lock refuses this step, else null. */
+export function stakeRefusal(step: RecipeWriteStep, item?: Item): 'stake' | null {
+  return stakeRefusalWith(step, item, stakeFactsNow());
+}
+
+/** 'stake' when the lock refuses a mod's edit of this item, else null. */
+export function stakeEditRefusal(item: Item, edit: { title?: string; project?: string | null }): 'stake' | null {
+  return stakeEditRefusalWith(item, edit, stakeFactsNow());
 }

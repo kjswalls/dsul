@@ -64,3 +64,34 @@ describe('the sandbox holds no model key', () => {
     expect(readFileSync(path, 'utf8')).not.toContain(KEY);
   });
 });
+
+describe('the broker reaches only what a mod may', () => {
+  // The broker and the code around it, not the runtime: these run in the page,
+  // with the planner and the session client in reach (mods.md, "Never reachable").
+  const scanned = [
+    'lib/mods/broker-core.ts',
+    'lib/mods/broker.ts',
+    'lib/mods/runtime-manager.ts',
+    'lib/mods/sandbox-host.ts',
+  ].map((p) => join(ROOT, p));
+  const NEVER = [
+    'conversations',
+    'model_connections',
+    'user_secrets',
+    'stake_events',
+    'ai-server',
+    'fetch(',
+    'completedDates',
+    'streak',
+    '.auth.getUser(',
+  ];
+
+  it('scans files that exist', () => {
+    for (const path of scanned) expect(existsSync(path), rel(path)).toBe(true);
+  });
+
+  it.each(scanned.map((p) => [rel(p), p]))('%s names none of them', (_, path) => {
+    const src = readFileSync(path, 'utf8');
+    for (const word of NEVER) expect(src.includes(word), `${rel(path)}: ${word}`).toBe(false);
+  });
+});

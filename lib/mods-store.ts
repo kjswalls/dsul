@@ -1,6 +1,7 @@
 'use client';
 
 import { create } from 'zustand';
+import { z } from 'zod';
 import { createClient } from '@/lib/supabase';
 import { DRAFT_SLUG, themeSlugForId } from '@/lib/user-themes/css';
 import {
@@ -84,6 +85,20 @@ export function uniqueSlug(base: string, taken: ReadonlySet<string>): string {
 
 const DISABLED_REASON_MAX = 200;
 
+function parseRows(data: unknown[] | null): UserMod[] {
+  const rows: UserMod[] = [];
+  for (const raw of data ?? []) {
+    // Owner-asserted rows (061, OWNER-ASSERTED FIELDS): one that fails the
+    // shape is left out of the list, never drawn half-parsed. The read
+    // schema takes every name 061 takes, so a row the database holds is
+    // never one Make cannot reach.
+    const parsed = UserModRowSchema.safeParse(raw);
+    if (parsed.success) rows.push(userModFromRow(parsed.data));
+    else console.warn('[mods] dropped a malformed user_mods row:', parsed.error.issues);
+  }
+  return sortMods(rows);
+}
+
 function sortMods(rows: UserMod[]): UserMod[] {
   return [...rows].sort(
     (a, b) => MOD_KINDS.indexOf(a.kind) - MOD_KINDS.indexOf(b.kind) || a.name.localeCompare(b.name)
@@ -153,9 +168,42 @@ interface ModsStore {
   disable: (id: string, reason: string) => Promise<void>;
   /** "Turn all mods off": every recipe and mod, on every device. */
   turnAllOff: (userId: string) => Promise<void>;
+  /**
+   * Make's list read again for the signed-in account, past hydrate's
+   * once-per-account guard: how a switch-off on another device reaches this
+   * tab (ModHost asks on focus). Dropped if any local write started after the
+   * select went out, and `rows` is replaced only when something changed.
+   */
+  refresh: (userId: string) => Promise<void>;
+  /**
+   * One mod's code, store and manifest, which the list never selects. Read
+   * by the mod runtime when it loads the mod. Null when it cannot be read.
+   */
+  loadModCode: (id: string) => Promise<ModCode | null>;
   /** Back to the start for the next account, keeping `safeMode`. */
   reset: () => void;
 }
+
+export interface ModCode {
+  source: string;
+  store: Record<string, unknown>;
+  manifest: unknown;
+  updatedAt: string;
+}
+
+/**
+ * Bumped by every write before it goes out, so a refresh whose select was
+ * already in flight knows its answer may predate the write and drops it.
+ */
+let writeSeq = 0;
+const startWrite = () => {
+  writeSeq++;
+};
+
+const ModCodeRowSchema = UserModRowSchema.pick({ manifest: true, updated_at: true }).extend({
+  source: UserModRowSchema.shape.source.unwrap().unwrap(),
+  store: z.record(z.unknown()),
+});
 
 /**
  * Same JSON value, key order aside: a manifest read back from jsonb has its
@@ -207,6 +255,7 @@ export const useModsStore = create<ModsStore>((set, get) => {
    * error so the caller can retry a 23505 its own way.
    */
   const insertRow = async (row: UserMod): Promise<{ code?: string; message?: string } | null> => {
+    startWrite();
     set((s) => ({ rows: sortMods([...s.rows.filter((r) => r.id !== row.id), row]) }));
     const { error } = await createClient().from('user_mods').insert({
       id: row.id,
@@ -271,6 +320,7 @@ export const useModsStore = create<ModsStore>((set, get) => {
     keep?: (before: UserMod) => boolean
   ): Promise<boolean> => {
     const { available, hydratedUserId: userId, rows } = get();
+    startWrite();
     const before = rows.find((r) => r.id === id && r.kind === kind);
     const trimmed = name.trim();
     if (!available || !userId || !before) return false;
@@ -328,20 +378,11 @@ export const useModsStore = create<ModsStore>((set, get) => {
         return;
       }
 
-      const rows: UserMod[] = [];
-      for (const raw of data ?? []) {
-        // Owner-asserted rows (061, OWNER-ASSERTED FIELDS): one that fails the
-        // shape is left out of the list, never drawn half-parsed. The read
-        // schema takes every name 061 takes, so a row the database holds is
-        // never one Make cannot reach.
-        const parsed = UserModRowSchema.safeParse(raw);
-        if (parsed.success) rows.push(userModFromRow(parsed.data));
-        else console.warn('[mods] dropped a malformed user_mods row:', parsed.error.issues);
-      }
-      set({ rows: sortMods(rows), available: true, loaded: true });
+      set({ rows: parseRows(data), available: true, loaded: true });
     },
 
     setEnabled: async (id, enabled) => {
+      startWrite();
       const { available, hydratedUserId: userId, rows } = get();
       const before = rows.find((r) => r.id === id);
       if (!available || !userId || !before) return false;
@@ -365,6 +406,7 @@ export const useModsStore = create<ModsStore>((set, get) => {
     },
 
     rename: async (id, name) => {
+      startWrite();
       const { available, hydratedUserId: userId, rows } = get();
       const before = rows.find((r) => r.id === id);
       const trimmed = name.trim();
@@ -387,6 +429,7 @@ export const useModsStore = create<ModsStore>((set, get) => {
     },
 
     remove: async (id) => {
+      startWrite();
       const { available, hydratedUserId: userId, rows } = get();
       const at = rows.findIndex((r) => r.id === id);
       if (!available || !userId || at < 0) return false;
@@ -438,6 +481,7 @@ export const useModsStore = create<ModsStore>((set, get) => {
     },
 
     saveRecipe: async (id, { name, manifest }) => {
+      startWrite();
       const { available, hydratedUserId: userId, rows } = get();
       const before = rows.find((r) => r.id === id && r.kind === 'recipe');
       const trimmed = name.trim();
@@ -485,6 +529,7 @@ export const useModsStore = create<ModsStore>((set, get) => {
     saveLook: (id, input) => saveValues('look', LookManifestSchema, id, input),
 
     disable: async (id, reason) => {
+      startWrite();
       const { available, hydratedUserId: userId, rows } = get();
       const before = rows.find((r) => r.id === id);
       if (!available || !userId || !before) return;
@@ -503,6 +548,7 @@ export const useModsStore = create<ModsStore>((set, get) => {
     },
 
     turnAllOff: async (userId) => {
+      startWrite();
       if (!get().available) return;
       // Recipes and mods only. Themes and Looks are values, not code that runs,
       // and switching off someone's theme as a safety step would only repaint.
@@ -526,6 +572,53 @@ export const useModsStore = create<ModsStore>((set, get) => {
           set((s) => ({ rows: s.rows.map((r) => (flipped.has(r.id) ? { ...r, enabled: true } : r)) }));
         }
         writeFailed('turnAllOff', error);
+      }
+    },
+
+    refresh: async (userId) => {
+      const { available, hydratedUserId, loaded } = get();
+      if (!available || hydratedUserId !== userId || !loaded) return;
+      const seq = writeSeq;
+      let result: { data: unknown[] | null; error: { code?: string; message?: string } | null };
+      try {
+        result = await createClient().from('user_mods').select(LIST_COLUMNS).eq('user_id', userId);
+      } catch (error) {
+        console.warn('[mods] refresh failed:', error);
+        return;
+      }
+      // Another account, or a local write that started meanwhile: this answer may predate it.
+      if (get().hydratedUserId !== userId || writeSeq !== seq) return;
+      if (result.error) {
+        if (missingTable(result.error)) set({ available: false, rows: [], loaded: false, failed: false });
+        else console.warn('[mods] refresh failed:', result.error);
+        return;
+      }
+      const rows = parseRows(result.data);
+      if (JSON.stringify(rows) !== JSON.stringify(get().rows)) set({ rows });
+    },
+
+    loadModCode: async (id) => {
+      const { available, hydratedUserId: userId } = get();
+      if (!available || !userId) return null;
+      try {
+        const { data, error } = await createClient()
+          .from('user_mods')
+          .select('source,store,manifest,updated_at')
+          .eq('id', id)
+          .eq('user_id', userId)
+          .eq('kind', 'mod')
+          .maybeSingle();
+        if (error || !data) {
+          if (error) console.warn('[mods] could not read a mod:', error);
+          return null;
+        }
+        const parsed = ModCodeRowSchema.safeParse(data);
+        if (!parsed.success) return null;
+        const { source, store, manifest, updated_at } = parsed.data;
+        return { source, store, manifest, updatedAt: updated_at };
+      } catch (error) {
+        console.warn('[mods] could not read a mod:', error);
+        return null;
       }
     },
 

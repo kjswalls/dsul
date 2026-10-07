@@ -134,6 +134,8 @@ export async function fetchRecentRuns(modId: string, limit = 10): Promise<RunRow
       .from('mod_runs')
       .select('claim_key,summary,at')
       .eq('mod_id', modId)
+      // A mod's faults are Problems' (lib/mods/faults-log.ts), never runs.
+      .not('claim_key', 'like', 'fault:%')
       .order('at', { ascending: false })
       // Claims ride along with clock and server runs, so read twice the rows to show `limit`.
       .limit(limit * 2),

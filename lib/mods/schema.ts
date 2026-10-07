@@ -5,6 +5,26 @@ import type { VerbId } from '@/lib/verb-gates';
 import { isLayoutTheme, type LayoutTheme } from '@/lib/layout-themes';
 import { DRAFT_SLUG, USER_THEME_SLUG_RE } from '@/lib/user-themes/css';
 import { DARK_BASES, LIGHT_BASES, ThemeManifestSchema, type ThemeManifest } from './theme-grammar';
+import { MOD_COMMANDS_MAX } from './limits';
+import { MOD_NAME_MAX, isModLabel, isModName, isPlainModText, normalizeModText, passesLabelRule, URL_RE } from './labels';
+
+export {
+  BARE_DOMAIN_RE,
+  CONTROL_RE,
+  KEY_SHAPED_RE,
+  MOD_LABEL_FORBIDDEN_RE,
+  MOD_NAME_MAX,
+  URL_RE,
+  isMixedScript,
+  isModLabel,
+  isModName,
+  isPlainModText,
+  modDisplayLabel,
+  normalizeModText,
+  passesLabelRule,
+} from './labels';
+/** The events a mod hears: lib/mods/protocol.ts, self-contained for the worker bundle. */
+export { MOD_EVENT_KINDS, type ModEventKind } from './protocol';
 
 /**
  * The shapes of what a person makes in Settings → Make (memory/plans/mods.md).
@@ -28,8 +48,6 @@ export const ModKindSchema = z.enum(MOD_KINDS);
 
 /** 061's slug CHECK, verbatim. */
 export const MOD_SLUG_RE = /^[a-z][a-z0-9-]{0,29}$/;
-/** 061's name CHECK: char_length, which counts code points. */
-export const MOD_NAME_MAX = 60;
 /** 061's octet_length caps on source and store. */
 export const MOD_SOURCE_MAX_BYTES = 65536;
 export const MOD_STORE_MAX_BYTES = 65536;
@@ -37,14 +55,6 @@ export const MOD_STORE_MAX_BYTES = 65536;
 export const RECIPE_MAX_STEPS = 25;
 
 export const ModSlugSchema = z.string().regex(MOD_SLUG_RE);
-
-/** Control characters, C0, DEL and C1: a little stricter than SQL's [[:cntrl:]], never looser. */
-const CONTROL_RE = /[\u0000-\u001f\u007f-\u009f]/;
-
-export function isModName(s: string): boolean {
-  const length = Array.from(s).length;
-  return length >= 1 && length <= MOD_NAME_MAX && s.trim() !== '' && !CONTROL_RE.test(s);
-}
 
 export function isModSlug(s: string): boolean {
   return MOD_SLUG_RE.test(s);
@@ -160,9 +170,7 @@ const PLAIN_RECIPE_VERBS = [
 
 const TIME_OF_DAY_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 /** A built-in or user theme or Look id. Resolved against the registries at run time (PR 4/5). */
-const LOOK_REF_RE = /^[a-z][a-z0-9-]{0,31}$/;
-/** Titles a recipe writes carry no links (mods.md, "Never reachable"). */
-const URL_RE = /https?:\/\/|www\./i;
+export const LOOK_REF_RE = /^[a-z][a-z0-9-]{0,31}$/;
 
 const ProjectNameSchema = z.string().min(1).max(60);
 
@@ -199,11 +207,25 @@ const StepItemSchema = z.union([
   z.object({ id: z.string().uuid() }).strict(),
 ]);
 
-const StepTitleSchema = z
+export const StepTitleSchema = z
   .string()
   .min(1)
   .max(120)
   .refine((s) => !URL_RE.test(s), { message: 'No links in a title.' });
+
+// Closed enums, so no recipe (or mod, lib/mods/broker-core.ts) argument ever
+// reaches setLayout unparsed.
+export const GotoStepSchema = z
+  .object({
+    do: z.literal('goto'),
+    scope: z.enum(['day', 'week']),
+    layout: z.enum(['buckets', 'schedule', 'list']),
+  })
+  .strict();
+export const SetThemeStepSchema = z
+  .object({ do: z.literal('setTheme'), mode: z.enum(['light', 'dark']), theme: z.string().regex(LOOK_REF_RE) })
+  .strict();
+export const ApplyLookStepSchema = z.object({ do: z.literal('applyLook'), look: z.string().regex(LOOK_REF_RE) }).strict();
 
 export const RecipeStepSchema = z.discriminatedUnion('do', [
   z.object({ do: z.enum(PLAIN_RECIPE_VERBS), item: StepItemSchema }).strict(),
@@ -220,19 +242,10 @@ export const RecipeStepSchema = z.discriminatedUnion('do', [
     })
     .strict(),
   z.object({ do: z.literal('toast'), text: z.string().min(1).max(140) }).strict(),
-  // Closed enums, so no recipe argument ever reaches setLayout unparsed.
-  z
-    .object({
-      do: z.literal('goto'),
-      scope: z.enum(['day', 'week']),
-      layout: z.enum(['buckets', 'schedule', 'list']),
-    })
-    .strict(),
+  GotoStepSchema,
   z.object({ do: z.literal('organize') }).strict(),
-  z
-    .object({ do: z.literal('setTheme'), mode: z.enum(['light', 'dark']), theme: z.string().regex(LOOK_REF_RE) })
-    .strict(),
-  z.object({ do: z.literal('applyLook'), look: z.string().regex(LOOK_REF_RE) }).strict(),
+  SetThemeStepSchema,
+  ApplyLookStepSchema,
 ]);
 
 export const RecipeManifestSchema = z
@@ -249,9 +262,98 @@ export type RecipeTrigger = z.infer<typeof RecipeTriggerSchema>;
 
 /* ── Mods, themes, Looks ──────────────────────────────────────────────────── */
 
-// PLACEHOLDER: the mod manifest (uses, commands, panels, settings) lands with the
-// mod runtime, build order 8. Until then a mod row's manifest is unread.
-export const ModManifestSchema = z.unknown();
+/** What a mod may ask `$` for. Anything else it is refused at the call. */
+export const MOD_USES = ['items:read', 'items:write', 'ui', 'storage', 'look'] as const;
+export type ModUse = (typeof MOD_USES)[number];
+
+/**
+ * A title a mod writes: a recipe's title rule (120, no link), trimmed and
+ * NFKC-normalised, with no format or control character, no bare domain and
+ * nothing shaped like a key (./labels.ts).
+ */
+export const ModTitleSchema = z
+  .string()
+  .transform((s) => normalizeModText(s.trim()))
+  .pipe(StepTitleSchema.refine(isPlainModText, { message: 'Plain text only.' }));
+
+/** A toast a mod shows: a title, under the label rule too, since it sits under host chrome. */
+export const ModToastTextSchema = ModTitleSchema.pipe(
+  z.string().refine(passesLabelRule, { message: 'That text cannot be shown.' })
+);
+
+const unique = (xs: readonly string[]) => new Set(xs).size === xs.length;
+
+export const ModCommandSchema = z
+  .object({
+    // `run` is a recipe's own command id (`mod.<slug>.run`), and slugs are unique across kinds.
+    id: z
+      .string()
+      .regex(/^[a-z][a-z0-9-]{0,29}$/)
+      .refine((id) => id !== 'run', { message: 'Pick another id.' }),
+    label: z.string().refine(isModLabel, { message: 'That label cannot be shown.' }),
+    keywords: z.array(z.string().max(30).refine(isModLabel)).max(5).optional(),
+  })
+  .strict();
+export type ModCommand = z.infer<typeof ModCommandSchema>;
+
+/**
+ * A mod's manifest, declared in its source (`export const manifest = {...}`)
+ * and stored in user_mods.manifest at save (build order 8). No slug or name:
+ * those are the row's, as a Look's are. `panels` and `settings` wait for
+ * build order 9, and the schema is strict, so a manifest with either fails.
+ */
+export const ModManifestSchema = z
+  .object({
+    version: z.literal(1),
+    uses: z
+      .array(z.enum(MOD_USES))
+      .max(MOD_USES.length)
+      .refine(unique, { message: 'Each use once.' }),
+    commands: z
+      .array(ModCommandSchema)
+      .max(MOD_COMMANDS_MAX)
+      .refine((cs) => unique(cs.map((c) => c.id)), { message: 'Each command id once.' })
+      .default([]),
+  })
+  .strict();
+export type ModManifest = z.infer<typeof ModManifestSchema>;
+
+/** A mod row's stored manifest, parsed, or null. Never trusted because the app wrote it. */
+export function parseModManifest(row: { kind: ModKind; manifest: unknown }): ModManifest | null {
+  if (row.kind !== 'mod') return null;
+  const parsed = ModManifestSchema.safeParse(row.manifest);
+  return parsed.success ? parsed.data : null;
+}
+
+/** True when the new manifest asks for a use the old one did not: a save that does is saved switched off. */
+export function usesWidened(before: Pick<ModManifest, 'uses'> | null, after: Pick<ModManifest, 'uses'>): boolean {
+  const had = new Set(before?.uses ?? []);
+  return after.uses.some((u) => !had.has(u));
+}
+
+/** Keys sorted at every depth, so jsonb's key order and the code's compare equal. */
+function canonicalJson(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(canonicalJson).join(',')}]`;
+  if (v && typeof v === 'object') {
+    const o = v as Record<string, unknown>;
+    const keys = Object.keys(o)
+      .filter((k) => o[k] !== undefined)
+      .sort();
+    return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalJson(o[k])}`).join(',')}}`;
+  }
+  return JSON.stringify(v ?? null);
+}
+
+/**
+ * The stored manifest against the one the loaded code declares, both parsed
+ * first (so a missing `commands` and `[]` agree). Unequal, or either invalid,
+ * is false: the stored copy is what ⌘K and the broker trust.
+ */
+export function manifestsEqual(a: unknown, b: unknown): boolean {
+  const pa = ModManifestSchema.safeParse(a);
+  const pb = ModManifestSchema.safeParse(b);
+  return pa.success && pb.success && canonicalJson(pa.data) === canonicalJson(pb.data);
+}
 // A theme's token grammar: ./theme-grammar.ts (build order 5).
 export { ThemeManifestSchema, type ThemeManifest };
 
