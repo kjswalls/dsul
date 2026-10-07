@@ -56,6 +56,8 @@ Undo (`applyHistoryState`) and agent merges (`mergeAgentStates`, via
 Inside a quiet `batchHistory` the events queue and flush with
 `flushBatchEffects`. Dispatch runs in a task queued after the user's action
 returns, with `quietDepth === 0`, so a recipe never joins the user's own entry.
+A quiet batch that throws still delivers the events of the writes it applied
+(they are in its entry and on the wire); only the cosmetic effects drop.
 
 **Triggers.**
 
@@ -71,6 +73,8 @@ Ticks made by a recipe, a mod or the AI trigger nothing. Recipe and mod steps
 call the same store actions the raise sites live in, so the dispatcher sets a
 module-level suppress depth around every recipe run, mod hook and AI apply, and
 the raise site checks it. A test proves a recipe's own tick raises nothing.
+The depth is synchronous and never held across an await, so an async step
+re-enters `withSuppressed` for every write after one.
 `addTasksBulk` delegates to `addTask`/`addItem` for a single item, so it raises
 only on its multi-item path.
 

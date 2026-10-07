@@ -87,6 +87,7 @@ import {
   type AgentStateRow,
 } from './db';
 import { celebrateCompletion } from './completion-confetti';
+import { raiseModEvent, raiseModEvents, isModEventsSuppressed, type ModEvent } from './mod-events';
 import type { CommitResult, SeedPlan } from './seed-containers';
 import { ITEM_TYPES, getItemTypeConfig, itemTypeName, isSkippable, isPausable, isCollectible, hydrateCustomTypes } from './item-registry';
 import {
@@ -1021,10 +1022,12 @@ let quietDepth = 0;
 let batchCompleted = false;
 let deferredAchievementIds: string[] = [];
 let deferredCheckins: { item: Item; dateStr: string }[] = [];
+let deferredModEvents: ModEvent[] = [];
 type BatchEffects = {
   completed: boolean;
   achievementIds: string[];
   checkins: { item: Item; dateStr: string }[];
+  modEvents: ModEvent[];
 };
 // Assigned inside the store creator, where the offer helpers live.
 let flushBatchEffects: (e: BatchEffects) => void = () => {};
@@ -2010,7 +2013,15 @@ export const usePlannerStore = create<PlannerStore>()(
         if (quietDepth > 0) deferredAchievementIds.push(itemId);
         else offerAchievementFor(itemId);
       };
-      flushBatchEffects = ({ completed, achievementIds, checkins }) => {
+      // The user's own transitions, for recipes and mods (lib/mod-events.ts).
+      // Checked for suppression HERE, at the raise: a recipe's quiet batch
+      // must not queue anything for the flush to send later.
+      const emit = (e: ModEvent) => {
+        if (isModEventsSuppressed()) return;
+        if (quietDepth > 0) deferredModEvents.push(e);
+        else raiseModEvent(e);
+      };
+      flushBatchEffects = ({ completed, achievementIds, checkins, modEvents }) => {
         // Fired after the batch's history entry exists, so the confetti aims at
         // the undo strip that entry raises (except when a quiet batch nests in a
         // loud one: see batchHistory).
@@ -2018,6 +2029,7 @@ export const usePlannerStore = create<PlannerStore>()(
         const offered = new Set<string>();
         for (const id of new Set(achievementIds)) offerAchievementFor(id, offered);
         if (checkins.length) offerCheckinSummary(checkins);
+        raiseModEvents(modEvents);
       };
 
       const updateItemAction = (id: string, type: ItemType, updates: Partial<Task> | Partial<HabitItem>) => {
@@ -2847,6 +2859,7 @@ export const usePlannerStore = create<PlannerStore>()(
           goals: withGoalMembership(state.goals, item.id, memberships?.goalIds, memberships?.goalRole),
           seasons: withMembership(state.seasons, item.id, memberships?.seasonIds),
         }));
+        emit({ kind: 'item.created', itemId: item.id, type: customType, date: item.startDate });
 
         const userId = get().userId;
         if (userId) persistNewItem(userId, item, memberships, get);
@@ -2881,6 +2894,7 @@ export const usePlannerStore = create<PlannerStore>()(
           goals: withGoalMembership(state.goals, task.id, memberships?.goalIds, memberships?.goalRole),
           seasons: withMembership(state.seasons, task.id, memberships?.seasonIds),
         }));
+        emit({ kind: 'item.created', itemId: task.id, type: 'task', date: task.startDate });
 
         const userId = get().userId;
         if (userId) persistNewItem(userId, task, memberships, get);
@@ -2931,6 +2945,10 @@ export const usePlannerStore = create<PlannerStore>()(
 
         // ONE set() for the whole paste: one history entry, one ⌘Z.
         set((state) => projectItems([...state.items, ...rows]));
+        // Multi-row path only: the one-row path above delegates, and raises there.
+        rows.forEach((row, i) =>
+          emit({ kind: 'item.created', itemId: row.id, type: itemTypeName(row), date: itemsData[i].startDate }),
+        );
 
         // Tasks: one INSERT statement, not N createItem calls — all-or-nothing
         // on the wire, and the undo-races-insert window stays as narrow as a
@@ -3079,6 +3097,12 @@ export const usePlannerStore = create<PlannerStore>()(
           set((state) => projectItems(
             state.items.map(i => i.id === id && i.type === found.type ? { ...i, completedDates: newCompletedDates } : i),
           ));
+          emit({
+            kind: alreadyDone ? 'item.uncompleted' : 'item.completed',
+            itemId: id,
+            date: dateStr,
+            type: itemTypeName(task),
+          });
           dbSetItemCompletion(id, dbTypeOf(found), dateStr, !alreadyDone).catch(console.error);
           if (!alreadyDone) {
             celebrate();
@@ -3094,6 +3118,17 @@ export const usePlannerStore = create<PlannerStore>()(
           if (newStatus === 'completed' && task.status !== 'completed') {
             celebrate();
             offerAchievement(id);
+          }
+          // A one-off keeps no per-date record. Its one occurrence is its
+          // startDate (callers pass no date for a one-off, so selectedDate
+          // would be the week's anchor, not the column ticked); the day acted
+          // on only when it has none.
+          const kind = newStatus === 'completed' && task.status !== 'completed' ? 'item.completed'
+            : task.status === 'completed' && newStatus !== 'completed' ? 'item.uncompleted'
+            : null;
+          if (kind) {
+            const on = date ? resolveDateStr(date) : (task.startDate ?? resolveDateStr());
+            emit({ kind, itemId: id, date: on, type: itemTypeName(task) });
           }
         }
       },
@@ -3674,6 +3709,16 @@ export const usePlannerStore = create<PlannerStore>()(
             })
           )
         );
+        // patchById holds only the items that changed.
+        for (const item of targets) {
+          if (!patchById.has(item.id)) continue;
+          emit({
+            kind: completed ? 'item.completed' : 'item.uncompleted',
+            itemId: item.id,
+            date: dateStr,
+            type: itemTypeName(item),
+          });
+        }
 
         dbWrites.forEach((w) => w());
       },
@@ -4098,6 +4143,10 @@ export const usePlannerStore = create<PlannerStore>()(
         set((state) => projectItems(
           state.items.map((i) => (i.id === id && i.type === item.type ? { ...i, ...optimistic } as Item : i)),
         ));
+        // The habit path above raises in toggleHabitStatus; the non-habit
+        // unskip raises nothing. A skip that cleared the day's completion is
+        // only a skip (see ModEvent).
+        if (skipped) emit({ kind: 'item.skipped', itemId: id, date: dateStr, type: itemTypeName(item) });
 
         if (clearCompletion) {
           dbSetItemCompletion(id, dbTypeOf(item), dateStr, false).catch(console.error);
@@ -4186,6 +4235,8 @@ export const usePlannerStore = create<PlannerStore>()(
           goals: withGoalMembership(state.goals, habit.id, memberships?.goalIds, memberships?.goalRole),
           seasons: withMembership(state.seasons, habit.id, memberships?.seasonIds),
         }));
+        // No date: habits are date-blind.
+        emit({ kind: 'item.created', itemId: habit.id, type: 'habit' });
 
         const userId = get().userId;
         if (userId) persistNewItem(userId, habit, memberships, get);
@@ -4271,6 +4322,13 @@ export const usePlannerStore = create<PlannerStore>()(
         set((state) => projectItems(
           state.items.map((i) => (i.id === id && i.type === 'habit' ? { ...i, ...optimistic } as Item : i)),
         ));
+        // At most one event: a count-only update, a repeat done or an unskip
+        // raises nothing, and done → skipped is only a skip.
+        const habitEvent = status === 'done' && !wasCompleted ? 'item.completed'
+          : status === 'skipped' && !wasSkipped ? 'item.skipped'
+          : status === 'pending' && wasCompleted ? 'item.uncompleted'
+          : null;
+        if (habitEvent) emit({ kind: habitEvent, itemId: id, date: dateStr, type: 'habit' });
 
         dbSetItemCompletion(id, 'habit', dateStr, status === 'done').catch(console.error);
         // skippedDates joins completedDates and streak in the exclusion list:
@@ -5457,6 +5515,7 @@ export function batchHistory(
     batchCompleted = false;
     deferredAchievementIds = [];
     deferredCheckins = [];
+    deferredModEvents = [];
   }
 
   const recordsHistory = !(isUndoRedoAction || isUpdatingUndoRedo);
@@ -5489,11 +5548,16 @@ export function batchHistory(
         completed: batchCompleted,
         achievementIds: deferredAchievementIds,
         checkins: deferredCheckins,
+        modEvents: deferredModEvents,
       };
       batchCompleted = false;
       deferredAchievementIds = [];
       deferredCheckins = [];
+      deferredModEvents = [];
       if (!failed) flushBatchEffects(effects);
+      // The writes a failed batch applied are in its entry and on the wire,
+      // so recipes still hear of them; only the cosmetic effects drop.
+      else raiseModEvents(effects.modEvents);
     }
   }
 }
