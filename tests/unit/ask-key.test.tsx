@@ -32,10 +32,11 @@ vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}), 
 vi.mock('@/components/primitives/relay-field', () => ({ RelayField: () => null }));
 
 import { AskOpener } from '@/components/ai/rail/ask-opener';
+import { AskSetup } from '@/components/ai/rail/ask-setup';
 import { RailHeader } from '@/components/ai/rail/rail-header';
 import { AskMark, AskMarkIcon, ASK_MARK_LIGHT, type AskMarkTone } from '@/components/ai/ask-mark';
 import { useLookStore } from '@/lib/look-store';
-import { seedAI, CONNECTED_MODEL } from './helpers/ai-fixtures';
+import { seedAI, CONNECTED_MODEL, KEY_TURNED_DOWN, NOTHING_CONNECTED } from './helpers/ai-fixtures';
 
 const ROOT = process.cwd();
 const read = (rel: string) => readFileSync(join(ROOT, rel), 'utf8');
@@ -224,6 +225,30 @@ describe('the mark', () => {
     expect(header.querySelector('[data-ask-heading]')).toHaveTextContent(/^Ask$/);
   });
 
+  // Unlit: nothing answers yet ("Set up AI", "Fix AI"). The key and the setup
+  // column's header still draw the one mark, the same unlit mark in both.
+  it.each([
+    ['Set up AI', NOTHING_CONNECTED],
+    ['Fix AI', KEY_TURNED_DOWN],
+  ])('is drawn unlit in the "%s" key and in the column it opens, the same mark in both', (word, seed) => {
+    unseed();
+    unseed = seedAI(seed);
+    const { container: keyRow } = render(
+      <div className="flex gap-3">
+        <AskOpener className="ml-auto" />
+      </div>
+    );
+    const { container: column } = render(<AskSetup visible />);
+    const inKey = keyRow.querySelector('[data-ask-opener] [data-ask-key] [data-ask-mark]');
+    const inHeader = column.querySelector('[data-ask-heading] [data-ask-mark]');
+    expect(inKey).toHaveAttribute('data-lit', 'false');
+    expect(inHeader?.outerHTML).toBe(inKey?.outerHTML);
+    expect(column.querySelector('[data-ask-heading]')).toHaveTextContent(new RegExp(`^${word}$`));
+    // Lit is not unlit: the two marks differ only by what they paint.
+    const { container: lit } = render(<AskMark />);
+    expect(lit.querySelector('[data-ask-mark]')?.outerHTML).not.toBe(inKey?.outerHTML);
+  });
+
   it("leads Ask home's heading only, not every view's", () => {
     const { container } = render(<RailHeader title="History" onClose={() => {}} />);
     expect(container.querySelector('[data-ask-mark]')).toBeNull();
@@ -336,11 +361,13 @@ describe('the mark', () => {
    * lit, how it moves): drawn by the slot's rules, so a swap is a change to
    * that file alone.
    */
-  describe("keeps the slot's contract, whatever it draws, in either tone", () => {
-    const TONES: AskMarkTone[] = ['aurora', 'ink'];
-    /** Every element of the mark in `tone`, the svg first. */
-    const parts = (tone: AskMarkTone = 'aurora') => {
-      const { container } = render(<AskMark tone={tone} />);
+  describe("keeps the slot's contract, whatever it draws, in either tone, lit or not", () => {
+    /** Each paint the mark wears: its two tones, and the aurora mark unlit. */
+    type Look = { tone: AskMarkTone; lit?: boolean };
+    const TONES: Look[] = [{ tone: 'aurora' }, { tone: 'ink' }, { tone: 'aurora', lit: false }];
+    /** Every element of the mark in `look`, the svg first. */
+    const parts = ({ tone, lit }: Look = { tone: 'aurora' }) => {
+      const { container } = render(<AskMark tone={tone} lit={lit} />);
       const svg = container.querySelector('svg[data-ask-mark]') as SVGSVGElement;
       expect(svg).not.toBeNull();
       return [svg, ...Array.from(svg.querySelectorAll('*'))];
@@ -370,7 +397,16 @@ describe('the mark', () => {
           parts.push(cur);
           return { raw, variants: parts.slice(0, -1), utility: parts.at(-1)!.replace(/^!/, '') };
         });
-    const SLOT = new Set(['--ask-icon-ink', '--ask-icon-lit', '--ask-icon-accent', '--ask-icon-pair', '--ask-icon-pair-ink', '--ask-icon-key']);
+    const SLOT = new Set([
+      '--ask-icon-ink',
+      '--ask-icon-lit',
+      '--ask-icon-accent',
+      '--ask-icon-pair',
+      '--ask-icon-pair-ink',
+      '--ask-icon-key',
+      '--ask-icon-unlit',
+      '--ask-icon-unlit-mid',
+    ]);
 
     /** Why `el` would fade what it paints (opacity, alpha, filter, mask, blend), or null. */
     function fades(el: Element): string | null {
@@ -387,6 +423,31 @@ describe('the mark', () => {
       }
       return null;
     }
+
+    // Unlit means no light anywhere: the plate has none to catch (globals.css
+    // `[data-lit='false']`), and the mark paints none at rest or engaged.
+    it('paints no accent and no lit honey unlit, at rest or engaged, and only in slot tokens', () => {
+      const unlit = parts({ tone: 'aurora', lit: false });
+      expect(unlit[0]).toHaveAttribute('data-lit', 'false');
+      for (const el of unlit) {
+        const paint = paintOf(el);
+        expect(paint, el.tagName).not.toMatch(ACCENT);
+        expect(paint, el.tagName).not.toMatch(/--ask-icon-(?:lit|pair|pair-ink|ink)\b|--ai\b|--lime/);
+        // What fills or strokes a part is a slot token.
+        for (const { utility } of utilities(el)) {
+          if (!/^(?:fill|stroke)-\[/.test(utility)) continue;
+          for (const [, token] of utility.matchAll(/var\((--[\w-]+)/g)) expect(SLOT, token).toContain(token);
+        }
+        // Engaged, nothing changes colour: a state may move a part, never repaint it.
+        for (const { raw, variants, utility } of utilities(el)) {
+          if (variants.length) expect(utility, raw).not.toMatch(/^(?:fill|stroke|text|bg)-/);
+        }
+      }
+      // The lit mark is untouched: unstamped, and its accent still there.
+      const lit = parts({ tone: 'aurora' });
+      expect(lit[0]).not.toHaveAttribute('data-lit');
+      expect(lit.some((el) => ACCENT.test(paintOf(el)))).toBe(true);
+    });
 
     it('is decorative and drawn for the 16px slot', () => {
       for (const tone of TONES) {
@@ -773,6 +834,28 @@ describe("the key's paint (app/globals.css)", () => {
     }
     // Nothing that is not a colour sneaks in: no layout, transform or opacity.
     for (const p of [...key, ...plate]) expect(p).toMatch(/^(--ask-key-(fill|accent|pair|rim)|background-color|border-color|color|fill|stroke|text-decoration-color|box-shadow)$/);
+  });
+
+  // Unlit ("Set up AI", "Fix AI"): the rim's accent and partner both take the
+  // hairline, so the gradient is one flat colour, at rest and engaged. On the
+  // plate, so the key alone's focus (which re-points all three on the key)
+  // still wins and focus stays visible: the ring is focus, not light.
+  it('lights nothing on the unlit plate: the accent and partner are the hairline, and focus still shows', () => {
+    const all = rules(stripComments(askBlock()));
+    const unlit = all.filter((r) => r.selectors.some((x) => x.includes('data-lit')));
+    expect(unlit.map((r) => r.selectors)).toEqual([["[data-ask-opener][data-lit='false']"]]);
+    const body = unlit[0].body;
+    expect(values(body, '--ask-key-accent')).toEqual(['var(--ask-key-rim)']);
+    expect(values(body, '--ask-key-pair')).toEqual(['var(--ask-key-rim)']);
+    // It sets nothing else: the rim, the fill and the well are the lit key's.
+    expect(Array.from(body.matchAll(/(--[\w-]+|[a-z-]+)\s*:/g), (m) => m[1]).sort()).toEqual([
+      '--ask-key-accent',
+      '--ask-key-pair',
+    ]);
+    // The unlit mark's inks are the look's own text inks, not a colour of their own.
+    const slot = all.find((r) => r.selectors.includes(':is([data-ask-opener], [data-ask-mark])'));
+    expect(values(slot!.body, '--ask-icon-unlit')).toEqual(['var(--ink-1)']);
+    expect(values(slot!.body, '--ask-icon-unlit-mid')).toEqual(['var(--ink-2)']);
   });
 
   it("focuses with the app's 2px full-strength ring, on the plate or, alone, on the key", () => {

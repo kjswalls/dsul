@@ -1,5 +1,6 @@
 'use client';
 
+import { useId, useLayoutEffect, useRef } from 'react';
 import { Undo2, X } from 'lucide-react';
 
 import { TypewriterText } from '@/components/primitives/typewriter-text';
@@ -46,8 +47,18 @@ import { cn } from '@/lib/utils';
 export function UndoStrip({ className }: { className?: string }) {
   const entry = useUndoStripStore((s) => s.entry);
   const dismiss = useUndoStripStore((s) => s.dismiss);
+  const undoRef = useRef<HTMLButtonElement>(null);
+  const sayId = useId();
+  const focusId = entry?.focusUndo ? entry.id : null;
+  // A layout effect, so focus is on Undo in the commit that draws it, before
+  // anything deferred (a column's focus hand-back) looks for lost focus.
+  useLayoutEffect(() => {
+    if (focusId) undoRef.current?.focus({ preventScroll: true });
+  }, [focusId]);
 
   if (!entry) return null;
+  // Prose in the UI face; the action log's receipts keep the numeric face.
+  const face = entry.face === 'ui' ? 'text-xs' : 'font-num text-xs tracking-[0.04em]';
 
   return (
     <div
@@ -59,17 +70,33 @@ export function UndoStrip({ className }: { className?: string }) {
         <Undo2 className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
         <TypewriterText
           revealKey={entry.id}
-          className="min-w-0 flex-1 font-num text-xs tracking-[0.04em] text-foreground"
+          className={cn('min-w-0 flex-1 text-foreground', face)}
         >
           {entry.label}
           {entry.receipt && (
             <span className="text-muted-foreground"> · {entry.receipt}</span>
           )}
         </TypewriterText>
+        {/* Focus moved here programmatically lands on a bare "Undo": the
+            sentence, whole (the line above is still typing), is what it takes
+            back. */}
+        {entry.focusUndo && (
+          <span id={sayId} className="sr-only">
+            {entry.label}
+          </span>
+        )}
       </div>
       <button
         type="button"
+        ref={undoRef}
+        aria-describedby={entry.focusUndo ? sayId : undefined}
         onClick={() => {
+          // A row with its own take-back never touches the planner's history.
+          if (entry.onUndo) {
+            dismiss(entry.id);
+            entry.onUndo();
+            return;
+          }
           // Read fresh at click time: between the row appearing and the press,
           // the stack can have moved under it.
           const state = usePlannerStore.getState();
@@ -80,7 +107,7 @@ export function UndoStrip({ className }: { className?: string }) {
            history control as getByTitle('Undo'), and Playwright matches a title
            by substring — a tooltip on this button would put a second, transient
            match in front of it. The visible word is the accessible name. */
-        className="hover-wash flex h-[26px] flex-shrink-0 items-center rounded-[6px] px-2 font-num text-xs tracking-[0.04em] text-foreground"
+        className={cn('hover-wash flex h-[26px] flex-shrink-0 items-center rounded-[6px] px-2 text-foreground', face)}
       >
         Undo
       </button>

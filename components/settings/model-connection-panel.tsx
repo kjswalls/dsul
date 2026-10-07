@@ -13,6 +13,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { ArrowUpRight } from 'lucide-react';
+import { toast } from 'sonner';
 
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,6 +21,7 @@ import { ModelPicker } from './model-picker';
 import { useAIConnectionStore, useAICapabilities } from '@/lib/ai-connection-store';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { revealChat } from '@/lib/open-chat';
+import { serverSaysHidden } from '@/lib/no-ai';
 import { chordLabel, isApplePlatform } from '@/lib/commands/keys';
 import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
 import { getDesktopBridge } from '@/lib/desktop';
@@ -269,6 +271,7 @@ export function ModelConnectionPanel({
   const phase = useAIConnectionStore((s) => s.phase);
   const available = useAIConnectionStore((s) => s.available);
   const model = useAIConnectionStore((s) => s.model);
+  const aiHidden = useAIConnectionStore((s) => s.aiHidden);
 
   // Read ONCE: the URL is cleaned right after, and the notice has to outlive that.
   const [flow, setFlow] = useState<FlowResult | null>(() => readFlow(searchParams?.get('connect')));
@@ -312,6 +315,7 @@ export function ModelConnectionPanel({
   }, [flow, router]);
 
   const unavailableHere = phase === 'ready' && !available;
+  const aiOff = phase === 'ready' && available && aiHidden === true;
   // The `!available` body already says this, in the same words.
   const showFlow = flow !== null && !(flow === 'unavailable' && unavailableHere);
 
@@ -350,7 +354,7 @@ export function ModelConnectionPanel({
     <section
       data-testid="model-connection-panel"
       aria-labelledby="mcp-title"
-      className="mt-2 mb-4 flex flex-col gap-3"
+      className="mt-2 mb-4 flex flex-col gap-3 focus:outline-none"
     >
       <h3 id="mcp-title" className="text-foreground text-sm font-medium">
         Connect a model
@@ -368,10 +372,51 @@ export function ModelConnectionPanel({
           {FLOW_COPY[flow]}
         </p>
       )}
+      {aiOff && <AIOffCard />}
       {body}
     </section>
   );
 }
+
+/**
+ * "No AI, thanks" said for the account (`user_settings.ai_hidden`, lib/no-ai.ts).
+ * The way back until this pane's own "Use AI in dsul" switch arrives (AI
+ * setup PR 7): the undo strip's Undo lasts five seconds, and nothing else
+ * turns AI back on. What sits below stays as it is, since a key connected
+ * while AI is off is kept and answers once it is back on, so the card is
+ * also what says why nothing lights up meanwhile.
+ */
+function AIOffCard() {
+  const ref = useRef<HTMLDivElement>(null);
+  const turnOn = async () => {
+    // Applied at once, so the card goes with focus on its button: hand focus
+    // to the panel first, rather than to <body>.
+    const panel = ref.current?.closest<HTMLElement>('[data-testid="model-connection-panel"]');
+    if (panel) {
+      panel.tabIndex = -1;
+      panel.focus({ preventScroll: true });
+    }
+    const result = await useAIConnectionStore.getState().setAIHidden(false);
+    // Settled by what the server says, not the failure: a dropped connection
+    // can lose the answer to a write that landed (lib/no-ai.ts).
+    if (!result.ok && (await serverSaysHidden())) toast.error(AI_BACK_ON_FAILED);
+  };
+  return (
+    <div ref={ref} data-testid="mcp-ai-off" className="border-border flex flex-col gap-3 rounded-[8px] border p-4">
+      <div className="flex flex-col gap-1">
+        <p className="text-foreground text-sm font-medium">AI is off</p>
+        <p className="text-muted-foreground text-xs">
+          dsul won’t show AI or bring it up again until you turn it back on here. Your planner works exactly the same.
+        </p>
+      </div>
+      <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => void turnOn()}>
+        Turn AI back on
+      </Button>
+    </div>
+  );
+}
+
+export const AI_BACK_ON_FAILED = 'Couldn’t turn AI back on just now. Try again in a moment.';
 
 function Card({ children, className }: { children: React.ReactNode; className?: string }) {
   return (

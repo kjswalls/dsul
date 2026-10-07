@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { useLayoutEffect } from 'react';
 import { CloudOff, Sun } from 'lucide-react';
 
@@ -453,6 +453,56 @@ describe('the undo strip', () => {
 
     expect(undo).toHaveBeenCalledTimes(1);
     expect(useUndoStripStore.getState().entry).toBeNull();
+  });
+
+  // A row that is not the planner's ("AI is off" after No AI, thanks) brings
+  // its own take-back, and the planner's history is never touched by it.
+  it("runs a row's own Undo instead of the planner's", () => {
+    const plannerUndo = vi.fn();
+    const own = vi.fn();
+    usePlannerStore.setState({ canUndo: true, undo: plannerUndo });
+    useUndoStripStore.getState().show({ id: 'ai-off-1', label: 'AI is off.', durationMs: 5000, onUndo: own });
+    render(<UndoStrip />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+
+    expect(own).toHaveBeenCalledTimes(1);
+    expect(plannerUndo).not.toHaveBeenCalled();
+    expect(useUndoStripStore.getState().entry).toBeNull();
+  });
+
+  it('sets prose in the UI face, and keeps the numeric face for the action log', () => {
+    useUndoStripStore.getState().show({ id: 'a1', label: 'Delete task: Swim', durationMs: 5000 });
+    const { rerender } = render(<UndoStrip />);
+    const faces = () =>
+      [
+        screen.getByTestId('undo-strip').querySelector('span.inline-block') as HTMLElement,
+        screen.getByRole('button', { name: 'Undo' }),
+      ].map((el) => el.className.includes('font-num'));
+    expect(faces()).toEqual([true, true]);
+
+    act(() => useUndoStripStore.getState().show({ id: 'b1', label: 'AI is off.', durationMs: 5000, face: 'ui' }));
+    rerender(<UndoStrip />);
+    expect(faces()).toEqual([false, false]);
+    expect(screen.getByRole('button', { name: 'Undo' }).className).not.toMatch(/tracking-/);
+  });
+
+  it('takes focus onto Undo only for a row that asks, as it appears', () => {
+    const elsewhere = document.createElement('button');
+    document.body.appendChild(elsewhere);
+    elsewhere.focus();
+    try {
+      useUndoStripStore.getState().show({ id: 'a1', label: 'Delete task: Swim', durationMs: 5000 });
+      render(<UndoStrip />);
+      // An action-log row never takes focus: the user is mid-edit.
+      expect(document.activeElement).toBe(elsewhere);
+      act(() =>
+        useUndoStripStore.getState().show({ id: 'b1', label: 'AI is off.', durationMs: 5000, face: 'ui', focusUndo: true })
+      );
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Undo' }));
+    } finally {
+      elsewhere.remove();
+    }
   });
 
   it('will not let a stale timer clear the row that replaced it', () => {

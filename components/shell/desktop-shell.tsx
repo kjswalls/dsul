@@ -25,6 +25,7 @@ import { DayTabs } from '@/components/shell/day-tabs';
 import { PageCount, StatusBar } from '@/components/shell/status-bar';
 import { HelpMenu } from '@/components/shell/help-menu';
 import { RightRail } from '@/components/ai/rail/right-rail';
+import { AskSetup } from '@/components/ai/rail/ask-setup';
 import { AskOpener } from '@/components/ai/rail/ask-opener';
 import { useBackLabel } from '@/components/ai/rail/rail-header';
 import {
@@ -409,11 +410,15 @@ type RailColumnProps = {
  * So the Ask subscriptions (`askOpen`, `summoned`, the stack's top, the gate)
  * live here, and a push, a Back or a rename re-renders only this column.
  *
- * WITH NO AI (no model, the gate unknown, or "Who answers: Off") it is only
- * the item host: no Ask, no rail header, no box, and the item is today's
- * panel, Done included. With AI the item wears the rail's header ("‹ Ask",
- * ✕) and its conversation's box is pinned at the bottom, and Ask stays
- * mounted underneath it, `hidden` and `inert` (right-rail.tsx has why).
+ * WITH NO AI (nothing answers: no model, the gate unknown, AI hidden, or
+ * "Who answers: Off") it is the item host: no Ask, no rail header, no box, and
+ * the item is today's panel, Done included. The one other thing it shows
+ * then is the setup column (components/ai/rail/ask-setup.tsx), when the gate
+ * offers to set AI up or fix it and the unlit key or Ctrl+J summoned it; it
+ * is never kept open, and it is never under an item. With AI the item wears
+ * the rail's header ("‹ Ask", ✕) and its conversation's box is pinned at the
+ * bottom, and Ask stays mounted underneath it, `hidden` and `inert`
+ * (right-rail.tsx has why).
  *
  * The width lives out here rather than in ItemDialog so the column can animate
  * both ways while its contents mount and unmount — the item surface itself
@@ -441,8 +446,15 @@ export const RailColumn = memo(function RailColumn({
   const askOpen = useSidebarStore(askOpenOf);
   const summoned = useRailStore((s) => s.summoned);
   const askTop = useRailStore((s) => s.stacks.desktop.at(-1));
-  const { canChat } = useAICapabilities();
-  const mode = railMode({ itemOpen: !!panelState, askOpen, canChat, overlays, summoned });
+  const { canChat, askInvite, askFix } = useAICapabilities();
+  const mode = railMode({
+    itemOpen: !!panelState,
+    askOpen,
+    canChat,
+    overlays,
+    summoned,
+    invite: askInvite || askFix,
+  });
   const shown = mode !== 'hidden';
 
   // Ask LEAVING a docked column: Ctrl+J or ✕ at Ask. It stays painted (and
@@ -456,22 +468,32 @@ export const RailColumn = memo(function RailColumn({
   // content leaves at once as it always has (item-dialog.tsx), and Ask was
   // hidden under it. Derived in render, from the mode it is leaving, so the
   // view is never unmounted for even one commit.
+  // The setup column leaves the same way (Ctrl+J, ✕, Escape, No AI, thanks).
   const [shownMode, setShownMode] = useState(mode);
   const [leaving, setLeaving] = useState(false);
+  const [setupLeaving, setSetupLeaving] = useState(false);
   if (shownMode !== mode) {
     setShownMode(mode);
-    setLeaving(shownMode === 'ask' && mode === 'hidden' && !overlays && !prefersReducedMotion());
+    const eases = mode === 'hidden' && !overlays && !prefersReducedMotion();
+    setLeaving(shownMode === 'ask' && eases);
+    setSetupLeaving(shownMode === 'setup' && eases);
   }
   // The fallback for an ease that never reports its end (a tab in the
   // background, a width interrupted at the same value).
   useEffect(() => {
-    if (!leaving) return;
-    const timer = setTimeout(() => setLeaving(false), LEAVE_FALLBACK_MS);
+    if (!leaving && !setupLeaving) return;
+    const timer = setTimeout(() => {
+      setLeaving(false);
+      setSetupLeaving(false);
+    }, LEAVE_FALLBACK_MS);
     return () => clearTimeout(timer);
-  }, [leaving]);
+  }, [leaving, setupLeaving]);
 
   // Ask stays mounted under an item, so Back finds it as it was.
   const askMounted = canChat && (askOpen || summoned || leaving);
+  // The setup column does not: it is only ever summoned, and an item closing
+  // over it shows it afresh.
+  const setupMounted = mode === 'setup' || setupLeaving;
   // The item goes back to whatever Ask has on top (the item is ui-store's
   // slot, not a stack entry), by its live name.
   const itemBack = useBackLabel(null, askTop);
@@ -515,7 +537,7 @@ export const RailColumn = memo(function RailColumn({
   // not with `shown`: Ask leaving is still painted for the whole ease, and
   // undressed it sat bare on the desk, the grey chrome or the backdrop for
   // 300ms. The width eases on `shown`, so the close still starts at once.
-  const dressed = shown || leaving;
+  const dressed = shown || leaving || setupLeaving;
 
   // The rail's focus record (lib/rail-store.ts) is per showing: a close takes
   // it, and the column hiding any other way (the item's Done or Escape with
@@ -569,7 +591,9 @@ export const RailColumn = memo(function RailColumn({
       onFocus={(e) => noteRailEntry(e.relatedTarget)}
       // The ease shut has ended: Ask, kept painted for it, can go.
       onTransitionEnd={(e) => {
-        if (leaving && e.target === e.currentTarget && e.propertyName === 'width') setLeaving(false);
+        if (e.target !== e.currentTarget || e.propertyName !== 'width') return;
+        if (leaving) setLeaving(false);
+        if (setupLeaving) setSetupLeaving(false);
       }}
       className={cn(
         // titlebar-hole: the item panel scrolls (surface.tsx), and so does Ask,
@@ -632,6 +656,11 @@ export const RailColumn = memo(function RailColumn({
       {askMounted && (
         <SectionBoundary label="Ask panel" className="w-[360px] flex-none">
           <RightRail visible={mode === 'ask'} leaving={leaving} overlays={overlays} />
+        </SectionBoundary>
+      )}
+      {setupMounted && (
+        <SectionBoundary label="AI setup" className="w-[360px] flex-none">
+          <AskSetup visible={mode === 'setup'} leaving={setupLeaving} />
         </SectionBoundary>
       )}
     </div>

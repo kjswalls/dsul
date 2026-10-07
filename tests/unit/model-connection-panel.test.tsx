@@ -26,6 +26,8 @@ const nav = vi.hoisted(() => ({
   params: new URLSearchParams(),
 }));
 
+const toastMock = vi.hoisted(() => Object.assign(vi.fn(), { error: vi.fn(), success: vi.fn(), message: vi.fn() }));
+vi.mock('sonner', () => ({ toast: toastMock }));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: nav.push, replace: nav.replace, refresh: vi.fn(), prefetch: vi.fn() }),
   usePathname: () => '/settings/beacon',
@@ -58,6 +60,7 @@ import type {
 } from '@/lib/ai-types';
 import {
   seedAI,
+  AI_HIDDEN,
   CONNECTED_MODEL,
   NOTHING_CONNECTED,
   type SeedAI,
@@ -206,6 +209,75 @@ describe('mounting', () => {
     const section = screen.getByTestId('model-connection-panel');
     expect(section.tagName).toBe('SECTION');
     expect(within(section).getByRole('heading', { name: 'Connect a model' })).toBeInTheDocument();
+  });
+});
+
+/* ── AI is off ──────────────────────────────────────────────────────────── */
+
+// "No AI, thanks" for the account (lib/no-ai.ts). Until the pane's own switch
+// (AI setup PR 7), this card is the way back once the strip's Undo is gone.
+describe('AI is off', () => {
+  beforeEach(() => toastMock.error.mockClear());
+
+  it('says so above the connection, and turns AI back on, focus kept in the panel', async () => {
+    given(AI_HIDDEN);
+    server.patch = (body) => {
+      if ((body as { hidden?: boolean }).hidden !== false) return json({ error: 'server' }, 503);
+      server.status = { ...(server.status as AIConnectionResponse), aiHidden: false };
+      return json({ aiHidden: false });
+    };
+    renderPanel();
+    const card = screen.getByTestId('mcp-ai-off');
+    expect(card).toHaveTextContent('AI is off');
+    expect(card).toHaveTextContent(
+      'dsul won’t show AI or bring it up again until you turn it back on here. Your planner works exactly the same.'
+    );
+    // Above the connection form, which stays as it is.
+    expect(screen.getByTestId('mcp-key')).toBeInTheDocument();
+    expect(card.compareDocumentPosition(screen.getByTestId('mcp-key')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    const button = within(card).getByRole('button', { name: 'Turn AI back on' });
+    button.focus();
+    await act(async () => {
+      fireEvent.click(button);
+    });
+    expect(calls.filter((c) => c.method === 'PATCH').map((c) => c.body)).toEqual([{ hidden: false }]);
+    expect(useAIConnectionStore.getState().aiHidden).toBe(false);
+    expect(screen.queryByTestId('mcp-ai-off')).toBeNull();
+    expect(document.activeElement).toBe(screen.getByTestId('model-connection-panel'));
+    expect(toastMock.error).not.toHaveBeenCalled();
+  });
+
+  it('a write the server refused leaves AI off, the card back, and says so', async () => {
+    given(AI_HIDDEN);
+    renderPanel();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Turn AI back on' }));
+    });
+    await waitFor(() => expect(useAIConnectionStore.getState().aiHidden).toBe(true));
+    expect(screen.getByTestId('mcp-ai-off')).toBeInTheDocument();
+    expect(toastMock.error).toHaveBeenCalledWith('Couldn’t turn AI back on just now. Try again in a moment.');
+  });
+
+  it('a write that landed but whose answer was lost turns AI on, and says nothing failed', async () => {
+    given(AI_HIDDEN);
+    server.patch = () => {
+      server.status = { ...(server.status as AIConnectionResponse), aiHidden: false };
+      throw new TypeError('Failed to fetch');
+    };
+    renderPanel();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Turn AI back on' }));
+    });
+    await waitFor(() => expect(useAIConnectionStore.getState().aiHidden).toBe(false));
+    expect(screen.queryByTestId('mcp-ai-off')).toBeNull();
+    expect(toastMock.error).not.toHaveBeenCalled();
+  });
+
+  it('is not there while AI is on', () => {
+    given(NOTHING_CONNECTED);
+    renderPanel();
+    expect(screen.queryByTestId('mcp-ai-off')).toBeNull();
   });
 });
 

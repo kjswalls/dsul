@@ -47,6 +47,25 @@ const HEAD = cn(
 );
 /** The one-ink mark: every tile in the text colour round it, and still. */
 const INK = 'fill-current';
+/*
+ * Unlit: the aurora mark with nothing answering yet (the "Set up AI" and
+ * "Fix AI" key, and the setup column's header). The same three tiles in two
+ * neutral inks from the slot contract, no accent anywhere, so there is no
+ * lime to dim and no light for the key's rim to catch:
+ *   --ask-icon-unlit      the foot and the head (the look's secondary ink)
+ *   --ask-icon-unlit-mid  the middle tile, a step lighter in light mode
+ * The middle tile never takes the accent when the key engages; the head still
+ * grows, which is motion, not light.
+ */
+const UNLIT_FOOT = 'fill-[var(--ask-icon-unlit)]';
+const UNLIT_MID = 'fill-[var(--ask-icon-unlit-mid)]';
+const UNLIT_HEAD = cn(
+  'origin-top-right fill-[var(--ask-icon-unlit)] [transform-box:fill-box]',
+  'transition-[scale] duration-[160ms] ease-[var(--ease-out-soft)] motion-reduce:transition-none',
+  'group-hover/ask-key:scale-125 group-hover/ask-key:delay-[60ms]',
+  'group-focus-visible/ask-key:scale-125 group-focus-visible/ask-key:delay-[60ms]',
+  'group-active/ask-key:scale-125 group-active/ask-key:delay-[60ms]'
+);
 
 /**
  * Which paint the mark wears:
@@ -63,25 +82,31 @@ type DataAttributes = { [key: `data-${string}`]: string | undefined };
 
 function Mark({
   tone,
+  lit = true,
   className,
   data,
   ref,
   sized,
 }: {
   tone: AskMarkTone;
+  /** False: nothing answers yet, and the aurora mark wears neutral ink (UNLIT_*). */
+  lit?: boolean;
   className?: string;
   data?: DataAttributes;
   ref?: Ref<SVGSVGElement>;
   /** Width and height attributes, Lucide's way, for a slot that sizes by class. */
   sized?: boolean;
 }) {
-  const [foot, mid, head] = tone === 'ink' ? [INK, INK, INK] : [FOOT, MID, HEAD];
+  const [foot, mid, head] =
+    tone === 'ink' ? [INK, INK, INK] : lit ? [FOOT, MID, HEAD] : [UNLIT_FOOT, UNLIT_MID, UNLIT_HEAD];
   return (
     <svg
       ref={ref}
       {...data}
       data-ask-mark="aurora-step"
       data-tone={tone}
+      // Only when unlit, so the lit mark's markup is exactly what it was.
+      data-lit={lit ? undefined : 'false'}
       aria-hidden="true"
       focusable="false"
       viewBox="0 0 16 16"
@@ -123,13 +148,18 @@ function Mark({
  * Where the sparkle was the AI's honey, the mark wears its own colours
  * ('aurora', the default); where it took the ink of the row it sat in, the
  * mark does too ('ink'), so a muted list stays one ink and a failure stays red.
+ *
+ * `lit={false}` is the aurora mark before anything answers (the AI gate's
+ * `askInvite` or `askFix`): the "Set up AI" or "Fix AI" key and the setup
+ * column's header draw it in neutral ink, and it lights only with `canChat`.
  */
 export function AskMark({
   className,
   tone = 'aurora',
+  lit = true,
   ...data
-}: { className?: string; tone?: AskMarkTone } & DataAttributes) {
-  return <Mark tone={tone} data={data} className={cn('size-4', className)} />;
+}: { className?: string; tone?: AskMarkTone; lit?: boolean } & DataAttributes) {
+  return <Mark tone={tone} lit={lit} data={data} className={cn('size-4', className)} />;
 }
 
 /**

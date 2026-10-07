@@ -19,8 +19,9 @@ import { registerItemPanelFlush, useUIStore } from '@/lib/ui-store';
 import { useRailStore } from '@/lib/rail-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useProposalStore } from '@/lib/proposal-store';
+import { useUndoStripStore } from '@/lib/undo-strip-store';
 import type { Item, ItemTypeDef } from '@/lib/planner-types';
-import { CONNECTED_MODEL, NOTHING_CONNECTED, seedAI } from './helpers/ai-fixtures';
+import { AI_HIDDEN, CONNECTED_MODEL, KEY_TURNED_DOWN, NOTHING_CONNECTED, seedAI } from './helpers/ai-fixtures';
 
 /**
  * The palette's load-bearing invariants: every rendered row has a unique cmdk
@@ -792,11 +793,40 @@ describe('the right rail', () => {
       expect(useRailStore.getState().summoned).toBe(false);
     });
 
-    it('is unavailable, and hidden, with nothing to answer', () => {
+    // With nothing to answer but setup or a fix offered, the chord opens the
+    // setup column (lib/open-chat.ts toggleRail); the palette row stays out of
+    // sight, since it is not Ask it opens.
+    it('is available, and hidden from the palette, while the gate offers setup or a fix', () => {
+      for (const offered of [NOTHING_CONNECTED, KEY_TURNED_DOWN]) {
+        unseed();
+        unseed = seedAI(offered);
+        expect(toggle().availableWhen!(ctx)).toBe(true);
+        expect((toggle().hidden as (c: CommandContext) => boolean)(ctx)).toBe(true);
+      }
+    });
+
+    // The setup column is the desktop rail's. On the phone shell the chord
+    // would only arm a summon nothing draws, which springs the column open
+    // unasked once the window widens; so there it is consumed and inert.
+    it('offers setup or a fix only on the desktop shell', () => {
+      const phone = { ...ctx, isMobile: true };
+      for (const offered of [NOTHING_CONNECTED, KEY_TURNED_DOWN]) {
+        unseed();
+        unseed = seedAI(offered);
+        expect(toggle().availableWhen!(phone)).toBe(false);
+      }
       unseed();
-      unseed = seedAI(NOTHING_CONNECTED);
-      expect(toggle().availableWhen!(ctx)).toBe(false);
-      expect((toggle().hidden as (c: CommandContext) => boolean)(ctx)).toBe(true);
+      unseed = seedAI(CONNECTED_MODEL);
+      expect(toggle().availableWhen!(phone)).toBe(true);
+    });
+
+    it('is unavailable, and hidden, with nothing offered', () => {
+      for (const nothing of [AI_HIDDEN, { ...KEY_TURNED_DOWN, aiHidden: true }, { phase: 'error' as const }, undefined]) {
+        unseed();
+        unseed = seedAI(nothing);
+        expect(toggle().availableWhen!(ctx)).toBe(false);
+        expect((toggle().hidden as (c: CommandContext) => boolean)(ctx)).toBe(true);
+      }
     });
   });
 
@@ -873,5 +903,50 @@ describe('the right rail', () => {
       expect(useSidebarStore.getState().askOpen).toBe(false);
       expect(useProposalStore.getState().lastRequest).toMatchObject({ intent: 'catch-up' });
     });
+  });
+});
+
+/* ── Ctrl+Z and the undo strip ──────────────────────────────────────────── */
+
+// The strip's row and Ctrl+Z are one offer. A row with its own take-back
+// ("AI is off" · Undo, lib/no-ai.ts) is what Ctrl+Z takes back while it shows.
+describe('Ctrl+Z (history.undo) and the strip', () => {
+  const real = usePlannerStore.getState();
+  const plannerUndo = vi.fn();
+  const undo = () => commandById('history.undo');
+
+  beforeEach(() => {
+    plannerUndo.mockReset();
+    usePlannerStore.setState({ canUndo: true, undo: plannerUndo } as never);
+    useUndoStripStore.setState({ entry: null });
+  });
+  afterEach(() => {
+    usePlannerStore.setState({ canUndo: real.canUndo, undo: real.undo } as never);
+    useUndoStripStore.setState({ entry: null });
+  });
+
+  it("takes back the row's own Undo, never the planner action from before it", () => {
+    const own = vi.fn();
+    useUndoStripStore.getState().show({ id: 'ai-off-1', label: 'AI is off.', durationMs: 5000, onUndo: own });
+    undo().run(ctx);
+    expect(own).toHaveBeenCalledTimes(1);
+    expect(plannerUndo).not.toHaveBeenCalled();
+    expect(useUndoStripStore.getState().entry).toBeNull();
+    // The row gone, Ctrl+Z is the planner's again.
+    undo().run(ctx);
+    expect(plannerUndo).toHaveBeenCalledTimes(1);
+  });
+
+  it('is available for such a row with nothing in the planner to undo, and not without one', () => {
+    usePlannerStore.setState({ canUndo: false } as never);
+    expect(undo().availableWhen!(ctx)).toBe(false);
+    useUndoStripStore.getState().show({ id: 'ai-off-2', label: 'AI is off.', durationMs: 5000, onUndo: vi.fn() });
+    expect(undo().availableWhen!(ctx)).toBe(true);
+  });
+
+  it("leaves an action-log row's Ctrl+Z to the planner, as before", () => {
+    useUndoStripStore.getState().show({ id: 'log-1', label: 'Delete task: Swim', durationMs: 5000 });
+    undo().run(ctx);
+    expect(plannerUndo).toHaveBeenCalledTimes(1);
   });
 });

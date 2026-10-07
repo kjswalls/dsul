@@ -855,6 +855,25 @@ describe('"No AI, thanks" (aiHidden)', () => {
     expect(getAICapabilities().askInvite).toBe(false);
   });
 
+  // The read a failure asks for can answer at once (a cached response, a
+  // fast server): the tap must have stopped standing by then, or that read is
+  // covered by the very value that just failed, and AI stays hidden.
+  it('a write the server did not keep is not stood over by its own read, however fast that read answers', async () => {
+    await hydrated(A, NOTHING);
+    const p = store().setAIHidden(true);
+    await tick();
+    fetchMock.mockImplementationOnce((url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      return Promise.resolve(respond({ ...NOTHING, aiHidden: false }));
+    });
+    await answerFor('PATCH', STATUS, { error: 'unavailable' }, 503);
+    await expect(p).resolves.toEqual({ ok: false, code: 'unavailable' });
+    await tick();
+    expect(gets()).toHaveLength(2);
+    expect(store().aiHidden).toBe(false);
+    expect(getAICapabilities().askInvite).toBe(true);
+  });
+
   it.each([
     ['already out at the tap', true],
     ['begun after the tap', false],

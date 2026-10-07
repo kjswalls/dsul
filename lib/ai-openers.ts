@@ -236,3 +236,67 @@ export function buildChatOpeners(ctx: OpenerContext, o: OpenerOptions): ChatOpen
   const taken = openers.slice(0, Math.max(0, o.max))
   return o.includeStart ? [...taken, START] : taken
 }
+
+/**
+ * An opener as a preview: what the setup column (components/ai/rail/
+ * ask-setup.tsx) shows someone with nothing connected, so they see what they
+ * could ask before connecting anything. The chip's own words, quoted, and one
+ * line on what it would do, built from the same planner and hour as Ask's
+ * chips, so the preview is what the chip will be once AI answers.
+ */
+export interface OpenerPreview {
+  id: string
+  label: string
+  description: string
+}
+
+/** A title quoted in a description: whole when short, else cut at a word. */
+export const PREVIEW_TITLE_MAX = 40
+
+function quoteTitle(title: string): string {
+  const t = title.replace(/\s+/g, ' ').trim()
+  if (t.length <= PREVIEW_TITLE_MAX) return t
+  const cut = t.slice(0, PREVIEW_TITLE_MAX)
+  const atWord = cut.lastIndexOf(' ')
+  return `${(atWord > PREVIEW_TITLE_MAX / 2 ? cut.slice(0, atWord) : cut).trimEnd()}…`
+}
+
+/**
+ * Each opener's line, under the COPY CONTRACT above: what it does, never what
+ * went undone. `let-go` names one real thing that has been sitting (the first
+ * `selectOverdue` returns), so the offer is about the user's own list.
+ */
+function describe(id: string, sitting: string | null): string {
+  switch (id) {
+    case 'plan':
+      return "Drafts today from what's on it and your braindump. You keep, move or drop each line."
+    case 'triage':
+      return 'Sorts today into what matters now and what can move to another day.'
+    case 'plan-tomorrow':
+      return "Drafts tomorrow from what's on it and your braindump. You keep, move or drop each line."
+    case 'let-go':
+      return sitting
+        ? `Goes through things that have waited a while, like “${sitting}”, and helps you keep them or let them go.`
+        : 'Goes through things that have waited a while, and helps you keep them or let them go.'
+    case 'review':
+      return "Looks back at today with you: what got done, and what you'd carry into tomorrow."
+    case 'reflect':
+      return "An honest read on how your week is going, from what you've done and what's still open."
+    default:
+      return ''
+  }
+}
+
+/**
+ * The previews for `buildChatOpeners(ctx, o)`, in its order. Never "Help me
+ * start…" (`includeStart`): a sentence only the user can finish has nothing
+ * to preview.
+ */
+export function buildOpenerPreviews(ctx: OpenerContext, o: Omit<OpenerOptions, 'includeStart'>): OpenerPreview[] {
+  const openers = buildChatOpeners(ctx, { max: o.max, minutesNow: o.minutesNow })
+  const first = openers.some((x) => x.id === 'let-go')
+    ? selectOverdue(ctx.items, ctx.todayStr, ctx.inactiveIds ?? EMPTY_IDS)[0]
+    : undefined
+  const sitting = first?.title?.trim() ? quoteTitle(first.title) : null
+  return openers.map((x) => ({ id: x.id, label: x.label, description: describe(x.id, sitting) }))
+}
