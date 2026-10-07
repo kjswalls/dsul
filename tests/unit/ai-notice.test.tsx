@@ -257,3 +257,23 @@ describe('the legacy notice', () => {
     expect(disk.state?.legacyNotice).toBe(false);
   });
 });
+
+describe('"No AI, thanks"', () => {
+  it('silences both lines, though the key is still failing', () => {
+    for (const s of [
+      { ...FAILING, aiHidden: true },
+      { ...NOTHING_CONNECTED, legacyNotice: true, aiHidden: true },
+    ]) {
+      seed(s);
+      const { result, unmount } = renderHook(() => useAINotice());
+      expect(result.current).toBeNull();
+      unmount();
+    }
+  });
+
+  it('hides nothing while the account cannot say (060 not applied)', () => {
+    seed({ ...FAILING, aiHidden: null });
+    const { result } = renderHook(() => useAINotice());
+    expect(result.current?.id).toBe('ai-failing');
+  });
+});

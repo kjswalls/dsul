@@ -27,6 +27,8 @@ export interface SeedAI {
   model?: Partial<ModelConnectionView> | null;
   openclaw?: Partial<OpenClawView>;
   choice?: ChatTarget;
+  /** "No AI, thanks" on the account. Defaults to false: the answer said nothing was hidden. */
+  aiHidden?: boolean | null;
   legacyNotice?: boolean;
 }
 
@@ -56,6 +58,7 @@ interface ResolvedSeed {
   model: ModelConnectionView | null;
   openclaw: OpenClawView;
   choice: ChatTarget;
+  aiHidden: boolean | null;
   legacyNotice: boolean;
 }
 
@@ -66,6 +69,7 @@ function resolveSeed(o: SeedAI = {}): ResolvedSeed {
     model: o.model ? { ...MODEL_DEFAULTS, ...o.model } : null,
     openclaw: { ...OPENCLAW_DEFAULTS, ...o.openclaw },
     choice: o.choice ?? 'model',
+    aiHidden: o.aiHidden === undefined ? false : o.aiHidden,
     legacyNotice: o.legacyNotice ?? false,
   };
 }
@@ -111,6 +115,7 @@ export function capsFor(o?: SeedAI): AICapabilities {
     model: s.model,
     openclaw: s.openclaw,
     choice: s.choice,
+    aiHidden: s.aiHidden,
   });
 }
 
@@ -140,6 +145,7 @@ export function seedAI(o?: SeedAI): () => void {
     available: s.available,
     model: s.model,
     openclaw: s.openclaw,
+    aiHidden: s.aiHidden,
     models: null,
     modelsListed: false,
     modelsStatus: 'idle',

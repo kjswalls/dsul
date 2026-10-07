@@ -55,7 +55,7 @@ export type RowRead =
  * error, its `.details`, `.message` or `.hint`.
  */
 export class AiDbError extends Error {
-  readonly op: 'read' | 'save' | 'model' | 'status' | 'delete' | 'openclaw';
+  readonly op: 'read' | 'save' | 'model' | 'status' | 'delete' | 'openclaw' | 'hidden';
   /** e.g. '23514', 'PGRST301'; 'unknown' when absent. */
   readonly code: string;
 
@@ -395,4 +395,39 @@ export async function readOpenClawStatus(userId: string): Promise<OpenClawView> 
     agent: apiKey,
     agentId: present(s?.openclaw_agent_id) ? (s?.openclaw_agent_id as string) : null,
   };
+}
+
+/**
+ * user_settings.ai_hidden (060): the account said "No AI, thanks". `null` when
+ * the column is not there yet: an unknown answer, which the gate reads as
+ * "invite nobody" (lib/ai-registry.ts). No row yet is a new account that has
+ * said nothing: false. Other errors THROW.
+ */
+export async function readAIHidden(userId: string): Promise<boolean | null> {
+  const { data, error } = await service('hidden')
+    .from('user_settings')
+    .select('ai_hidden')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (error) {
+    if (isNoSchema(error)) return null;
+    throw new AiDbError('hidden', codeOf(error));
+  }
+  return (data as Record<string, unknown> | null)?.ai_hidden === true;
+}
+
+/**
+ * Writes user_settings.ai_hidden, creating the row for an account that has
+ * none. Answers false when the column is not there yet (nothing written), so
+ * the route can say so instead of pretending the choice was kept.
+ */
+export async function writeAIHidden(userId: string, hidden: boolean): Promise<boolean> {
+  const { error } = await service('hidden')
+    .from('user_settings')
+    .upsert({ user_id: userId, ai_hidden: hidden }, { onConflict: 'user_id' });
+  if (error) {
+    if (isNoSchema(error)) return false;
+    throw new AiDbError('hidden', codeOf(error));
+  }
+  return true;
 }

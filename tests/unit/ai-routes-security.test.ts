@@ -76,6 +76,8 @@ vi.mock('@/lib/ai-server/connections', async (importOriginal) => {
     setConnectionStatus: vi.fn(actual.setConnectionStatus),
     deleteModelConnection: vi.fn(actual.deleteModelConnection),
     readOpenClawStatus: vi.fn(async () => ({ gateway: false, pluginChat: false, agent: false, agentId: null })),
+    readAIHidden: vi.fn(async () => false),
+    writeAIHidden: vi.fn(async () => true),
   };
 });
 
@@ -158,6 +160,7 @@ const HANDLERS: Array<[string, (headers?: Record<string, string>) => Promise<Res
   ['connection PUT', (hd) => connection.PUT(req('PUT', '/api/ai/connection', { provider: 'openai', apiKey: SENTINEL_KEY }, hd)), 'json'],
   ['connection PATCH model', (hd) => connection.PATCH(req('PATCH', '/api/ai/connection', { provider: 'openai', model: 'gpt-4o' }, hd)), 'json'],
   ['connection PATCH recheck', (hd) => connection.PATCH(req('PATCH', '/api/ai/connection', { recheck: true }, hd)), 'json'],
+  ['connection PATCH hidden', (hd) => connection.PATCH(req('PATCH', '/api/ai/connection', { hidden: true }, hd)), 'json'],
   ['connection DELETE', (hd) => connection.DELETE(req('DELETE', '/api/ai/connection', undefined, hd)), 'json'],
   ['models GET', (hd) => models.GET(req('GET', '/api/ai/connection/models', undefined, hd)), 'json'],
   ['chat POST', (hd) => chat.POST(req('POST', '/api/chat', { messages: [{ role: 'user', content: 'hi' }] }, hd)), 'json'],
@@ -210,6 +213,7 @@ const STATE_CHANGING = HANDLERS.filter(([name]) =>
     'connection PUT',
     'connection PATCH model',
     'connection PATCH recheck',
+    'connection PATCH hidden',
     'connection DELETE',
     'chat POST',
     'propose POST',
@@ -225,10 +229,27 @@ const STATE_CHANGING = HANDLERS.filter(([name]) =>
 let fetchSpy: ReturnType<typeof vi.spyOn>;
 let logs: unknown[][];
 
+/**
+ * Everything that writes the account's AI rows. The stand-ins for the
+ * hidden flag never reach createServiceClient, so "no service call" alone
+ * would not see a write of it; these are checked by name.
+ */
+const WRITES = [
+  conn.saveModelConnection,
+  conn.setConnectionModel,
+  conn.setConnectionStatus,
+  conn.deleteModelConnection,
+  conn.writeAIHidden,
+];
+const expectNothingWritten = () => {
+  for (const f of WRITES) expect(f).not.toHaveBeenCalled();
+};
+
 beforeEach(() => {
   h.user = { id: 'user-1' };
   process.env.MODEL_KEYS_ENCRYPTION_KEY = ENV_KEY;
   vi.mocked(createServiceClient).mockClear();
+  for (const f of [...WRITES, conn.readAIHidden]) vi.mocked(f).mockClear();
   fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('no network in unit tests'));
   logs = [];
   for (const level of ['log', 'info', 'warn', 'error', 'debug'] as const) {
@@ -290,6 +311,8 @@ describe('no session', () => {
     }
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(createServiceClient).not.toHaveBeenCalled();
+    expectNothingWritten();
+    expect(conn.readAIHidden).not.toHaveBeenCalled();
     expect(adapter.verify).not.toHaveBeenCalled();
   });
 });
@@ -308,6 +331,7 @@ describe('cross-site requests', () => {
     }
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(createServiceClient).not.toHaveBeenCalled();
+    expectNothingWritten();
   });
 });
 
@@ -425,6 +449,7 @@ describe('the key never comes back out (real secret-box)', () => {
       await run('GET', connection.GET());
       await run('PATCH model', connection.PATCH(req('PATCH', '/api/ai/connection', { provider: 'openai', model: 'gpt-4o' })));
       await run('PATCH recheck', connection.PATCH(req('PATCH', '/api/ai/connection', { recheck: true })));
+      await run('PATCH hidden', connection.PATCH(req('PATCH', '/api/ai/connection', { hidden: true })));
       await run('models', models.GET(req('GET', '/api/ai/connection/models')));
       await run('chat', chat.POST(req('POST', '/api/chat', { messages: [{ role: 'user', content: 'hi' }] })));
       await run('propose', propose.POST(req('POST', '/api/ai/propose', { prompt: 'plan' })));
@@ -518,6 +543,7 @@ describe('a missing or invalid encryption key (real secret-box + connections)', 
       available: false,
       model: null,
       openclaw: { gateway: false, pluginChat: false, agent: false, agentId: null },
+      aiHidden: false,
     });
 
     const put = await connection.PUT(req('PUT', '/api/ai/connection', { provider: 'openai', apiKey: SENTINEL_KEY }));

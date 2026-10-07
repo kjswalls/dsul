@@ -51,6 +51,8 @@ vi.mock('@/lib/ai-server/connections', async (importOriginal) => {
       }
     }),
     readOpenClawStatus: vi.fn(),
+    readAIHidden: vi.fn(async () => false),
+    writeAIHidden: vi.fn(async () => true),
     isReadable: vi.fn(() => true),
     toConnectionView: vi.fn(
       (row: ModelConnectionRow, readable: boolean): ModelConnectionView => ({
@@ -199,6 +201,10 @@ beforeEach(() => {
   vi.mocked(conn.readModelConnection).mockResolvedValue({ kind: 'row', row: rowOf() });
   vi.mocked(conn.readOpenClawStatus).mockReset();
   vi.mocked(conn.readOpenClawStatus).mockResolvedValue(OPENCLAW);
+  vi.mocked(conn.readAIHidden).mockReset();
+  vi.mocked(conn.readAIHidden).mockResolvedValue(false);
+  vi.mocked(conn.writeAIHidden).mockReset();
+  vi.mocked(conn.writeAIHidden).mockResolvedValue(true);
   vi.mocked(conn.isReadable).mockReset();
   vi.mocked(conn.isReadable).mockReturnValue(true);
   vi.mocked(conn.saveModelConnection).mockReset();
@@ -251,26 +257,27 @@ describe('GET /api/ai/connection', () => {
         checkedAt: '2026-10-01T00:00:00.000Z',
       },
       openclaw: OPENCLAW,
+      aiHidden: false,
     });
     expect(conn.isReadable).toHaveBeenCalledWith(rowOf(), 'user-1');
   });
 
   it('nothing connected answers available with model null', async () => {
     vi.mocked(conn.readModelConnection).mockResolvedValue({ kind: 'none' });
-    expect(await json(await route.GET())).toEqual({ available: true, model: null, openclaw: OPENCLAW });
+    expect(await json(await route.GET())).toEqual({ available: true, model: null, openclaw: OPENCLAW, aiHidden: false });
   });
 
   it('no encryption key: available:false, OpenClaw still answered, the table never read', async () => {
     vi.mocked(loadEncryptionKey).mockReturnValue({ ok: false, reason: 'missing' });
     const res = await route.GET();
     expect(res.status).toBe(200);
-    expect(await json(res)).toEqual({ available: false, model: null, openclaw: OPENCLAW });
+    expect(await json(res)).toEqual({ available: false, model: null, openclaw: OPENCLAW, aiHidden: false });
     expect(conn.readModelConnection).not.toHaveBeenCalled();
   });
 
   it('no table yet: available:false', async () => {
     vi.mocked(conn.readModelConnection).mockResolvedValue({ kind: 'unavailable', reason: 'no_table' });
-    expect(await json(await route.GET())).toEqual({ available: false, model: null, openclaw: OPENCLAW });
+    expect(await json(await route.GET())).toEqual({ available: false, model: null, openclaw: OPENCLAW, aiHidden: false });
   });
 
   it('an unreadable key shows failing/key_unreadable from memory and writes nothing', async () => {
@@ -302,6 +309,70 @@ describe('GET /api/ai/connection', () => {
     await route.GET();
     expect(takeToken).not.toHaveBeenCalled();
     expect(adapter.verify).not.toHaveBeenCalled();
+  });
+
+  it('answers "No AI, thanks" beside the connection, which it leaves as it is', async () => {
+    vi.mocked(conn.readAIHidden).mockResolvedValue(true);
+    const body = await json(await route.GET());
+    expect(body.aiHidden).toBe(true);
+    expect(body.model).toMatchObject({ provider: 'openai', status: 'ok' });
+    expect(body.openclaw).toEqual(OPENCLAW);
+    expect(conn.readAIHidden).toHaveBeenCalledWith('user-1');
+  });
+
+  it('answers null when the database cannot say (060 not applied)', async () => {
+    vi.mocked(conn.readAIHidden).mockResolvedValue(null);
+    expect((await json(await route.GET())).aiHidden).toBeNull();
+  });
+
+  it('a failed read of it fails the whole answer, as the OpenClaw read does', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.mocked(conn.readAIHidden).mockRejectedValue(new conn.AiDbError('hidden', 'PGRST301'));
+    const res = await route.GET();
+    expect(res.status).toBe(503);
+    expect(await json(res)).toEqual({ error: 'server' });
+  });
+});
+
+// ── PATCH {hidden} ───────────────────────────────────────────────────────────
+
+describe('PATCH /api/ai/connection {hidden}', () => {
+  it.each([true, false])('writes %s for the session user and answers it, touching nothing else', async (hidden) => {
+    const res = await patch({ hidden });
+    expect(res.status).toBe(200);
+    expect(await json(res)).toEqual({ aiHidden: hidden });
+    expect(conn.writeAIHidden).toHaveBeenCalledWith('user-1', hidden);
+    expect(conn.deleteModelConnection).not.toHaveBeenCalled();
+    expect(conn.setConnectionStatus).not.toHaveBeenCalled();
+    expect(conn.setConnectionModel).not.toHaveBeenCalled();
+    expect(adapter.verify).not.toHaveBeenCalled();
+    expect(takeToken).not.toHaveBeenCalled();
+  });
+
+  it('a database that cannot keep it says unavailable, never ok', async () => {
+    vi.mocked(conn.writeAIHidden).mockResolvedValue(false);
+    const res = await patch({ hidden: true });
+    expect(res.status).toBe(503);
+    expect(await json(res)).toEqual({ error: 'unavailable' });
+  });
+
+  it('a failed write answers 503 server', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.mocked(conn.writeAIHidden).mockRejectedValue(new conn.AiDbError('hidden', '23514'));
+    const res = await patch({ hidden: true });
+    expect(res.status).toBe(503);
+    expect(await json(res)).toEqual({ error: 'server' });
+  });
+
+  it.each([
+    ['a string', { hidden: 'true' }],
+    ['null', { hidden: null }],
+    ['a second key', { hidden: true, recheck: true }],
+    ['a stowaway', { hidden: true, user_id: 'user-2' }],
+  ])('refuses %s with 400 invalid and writes nothing', async (_label, body) => {
+    const res = await patch(body);
+    expect(res.status).toBe(400);
+    expect(conn.writeAIHidden).not.toHaveBeenCalled();
   });
 });
 

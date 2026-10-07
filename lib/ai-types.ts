@@ -55,6 +55,11 @@ export interface AIConnectionResponse {
   available: boolean;
   model: ModelConnectionView | null;
   openclaw: OpenClawView;
+  /**
+   * user_settings.ai_hidden: the account said "No AI, thanks". Null when the
+   * database cannot say (060 not applied), which invites nobody.
+   */
+  aiHidden: boolean | null;
 }
 
 export interface ModelOption {
@@ -88,7 +93,10 @@ export interface ConnectResponse {
   listed: boolean;
 }
 
-export type PatchRequest = { provider: ModelProviderId; model: string } | { recheck: true };
+export type PatchRequest =
+  | { provider: ModelProviderId; model: string }
+  | { recheck: true }
+  | { hidden: boolean };
 
 export interface ModelsResponse {
   models: ModelOption[];

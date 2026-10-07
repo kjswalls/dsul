@@ -55,10 +55,15 @@ export interface AIConnectionState {
   available: boolean;
   model: ModelConnectionView | null;
   openclaw: OpenClawView;
+  /**
+   * The account said "No AI, thanks" (user_settings.ai_hidden, 060). Null
+   * until an answer arrives, and when the database cannot keep the choice.
+   */
+  aiHidden: boolean | null;
   models: ModelOption[] | null;
   modelsListed: boolean;
   modelsStatus: 'idle' | 'loading' | 'ready' | 'error';
-  busy: null | 'connect' | 'model' | 'recheck' | 'disconnect';
+  busy: null | 'connect' | 'model' | 'recheck' | 'disconnect' | 'hidden';
 }
 
 export interface AIConnectionStore extends AIConnectionState {
@@ -79,6 +84,12 @@ export interface AIConnectionStore extends AIConnectionState {
   recheck(): Promise<ApiResult>;
   /** DELETE; clears models */
   disconnect(): Promise<ApiResult>;
+  /**
+   * PATCH {hidden}: "No AI, thanks" for the account, or its undo. Applied at
+   * once; a failed write goes back to what the server last said and asks it
+   * again, never keeping the tap as if it had been saved.
+   */
+  setAIHidden(hidden: boolean): Promise<ApiResult>;
   /** GET /models */
   loadModels(opts?: { force?: boolean }): Promise<ApiResult>;
   /** 'auth' → model.status='failing' locally, then refresh(); 'not_connected' → refresh() */
@@ -100,6 +111,7 @@ const INITIAL: AIConnectionState = {
   available: false,
   model: null,
   openclaw: EMPTY_OPENCLAW,
+  aiHidden: null,
   models: null,
   modelsListed: false,
   modelsStatus: 'idle',
@@ -159,6 +171,27 @@ let modelsInflight: Promise<ApiResult> | null = null;
 let listSeq = 0;
 /** The epoch the state was last wiped for, so a same-account retry does not wipe it again. */
 let clearedGen = -1;
+/**
+ * "No AI, thanks" (or its undo) tapped and not yet answered: the account epoch
+ * it was tapped in, the latest value tapped, how many of those writes are still
+ * queued or out, and the last value the server itself gave. While any write is
+ * pending, a status read cannot know the answer (it may have read the row
+ * before the write landed), so the tap stands over it. Keyed by epoch, so a
+ * tap on another account never stands over this one.
+ */
+let hiddenTap: {
+  gen: number;
+  value: boolean;
+  pending: number;
+  /** Counts taps, so a write can tell whether a newer one came after it. */
+  taps: number;
+  server: boolean | null;
+} | null = null;
+
+/** The tapped value standing over status reads in epoch `gen`, if one is. */
+function tapFor(gen: number): typeof hiddenTap {
+  return hiddenTap !== null && hiddenTap.gen === gen && hiddenTap.pending > 0 ? hiddenTap : null;
+}
 
 /** Forget every status read in flight (a fresh one is started on the next ask). */
 function dropInflightStatus() {
@@ -215,12 +248,17 @@ function readOpenClaw(v: unknown): OpenClawView {
   };
 }
 
+function readHidden(v: unknown): boolean | null {
+  return typeof v === 'boolean' ? v : null;
+}
+
 function readConnectionResponse(body: unknown): AIConnectionResponse | null {
   if (!isObj(body) || typeof body.available !== 'boolean') return null;
   return {
     available: body.available,
     model: body.available ? readModelView(body.model) : null,
     openclaw: readOpenClaw(body.openclaw),
+    aiHidden: readHidden(body.aiHidden),
   };
 }
 
@@ -292,6 +330,7 @@ function somethingCanAnswer(s: AIConnectionState): boolean {
     model: s.model,
     openclaw: s.openclaw,
     choice: 'model',
+    aiHidden: false,
   });
   return caps.modelUsable || caps.openclawUsable;
 }
@@ -385,6 +424,11 @@ export const useAIConnectionStore: UseBoundStore<StoreApi<AIConnectionStore>> =
       // screen. Ask again; the fresh answer includes the write.
       if (seq !== writeSeq) return load(userId, true);
 
+      // A "No AI" tap still on its way: the read may predate it, so the tap
+      // stands, and what the server said is kept for a write that fails.
+      const tap = tapFor(gen);
+      if (tap) tap.server = parsed.aiHidden;
+
       const prev = get().model;
       const patch: Partial<AIConnectionState> = {
         phase: 'ready',
@@ -393,6 +437,7 @@ export const useAIConnectionStore: UseBoundStore<StoreApi<AIConnectionStore>> =
         available: parsed.available,
         model: parsed.model,
         openclaw: parsed.openclaw,
+        aiHidden: tap ? tap.value : parsed.aiHidden,
       };
       // Connections are server-side, so one replaced on another device shows
       // up here. The cached list belongs to the old one: offering its ids
@@ -557,6 +602,56 @@ export const useAIConnectionStore: UseBoundStore<StoreApi<AIConnectionStore>> =
           return { ok: true };
         }),
 
+      setAIHidden: (hidden) => {
+        // At once, so "No AI, thanks" hides everything on the tap and an undo
+        // brings it back on the tap. Until the last tap's write answers, no
+        // status read can put the old answer back (fetchStatus).
+        const gen = generation;
+        const s = get();
+        if (tapFor(gen) === null) {
+          const known = s.phase === 'ready' && s.hydratedUserId === currentUserId;
+          hiddenTap = { gen, value: hidden, pending: 0, taps: 0, server: known ? s.aiHidden : null };
+        }
+        const tap = hiddenTap as NonNullable<typeof hiddenTap>;
+        tap.value = hidden;
+        tap.pending += 1;
+        const mine = ++tap.taps;
+        if (s.phase === 'ready' && currentUserId !== null) set({ aiHidden: hidden });
+
+        const write = enqueueWrite('hidden', async (c) => {
+          let res: Response | null = null;
+          let body: unknown = null;
+          try {
+            res = await sendJson('PATCH', CONNECTION_URL, { hidden });
+            body = await readBody(res);
+          } catch {
+            // Offline, or the connection dropped: whether it landed is not
+            // knowable, which is the failure below.
+          }
+          if (!stillCurrent(c)) return { ok: false, code: 'unauthorized' };
+          // A status read begun while this was out may predate it.
+          serverMoved();
+          const last = tap.taps === mine;
+          if (res === null || !res.ok) {
+            if (last) {
+              // Nothing newer is queued to decide it: back to what the server
+              // last said, and ask it again. `fetchedAt: null` makes the next
+              // sign-in event ask too, should this read fail as well.
+              set({ aiHidden: tap.server, fetchedAt: null });
+            }
+            void get().refresh();
+            return res === null ? { ok: false, code: 'server' } : failureOf(body, res.status);
+          }
+          tap.server = hidden;
+          // An older write answering under a newer tap leaves the newer one on screen.
+          if (last) set({ aiHidden: hidden });
+          return { ok: true };
+        });
+        return write.finally(() => {
+          tap.pending -= 1;
+        });
+      },
+
       loadModels: (opts) => {
         const c = capture();
         if (c.uid === null) return Promise.resolve({ ok: false, code: 'unauthorized' });
@@ -645,6 +740,7 @@ function gateFields(s: AIConnectionState) {
     pluginChat: s.openclaw.pluginChat,
     agent: s.openclaw.agent,
     agentId: s.openclaw.agentId,
+    aiHidden: s.aiHidden,
   };
 }
 
@@ -683,6 +779,7 @@ export function useAICapabilities(): AICapabilities {
           agentId: f.agentId,
         },
         choice,
+        aiHidden: f.aiHidden,
       }),
     [f, choice]
   );
@@ -697,5 +794,6 @@ export function getAICapabilities(): AICapabilities {
     model: s.model,
     openclaw: s.openclaw,
     choice: useAISettingsStore.getState().chatTarget,
+    aiHidden: s.aiHidden,
   });
 }
