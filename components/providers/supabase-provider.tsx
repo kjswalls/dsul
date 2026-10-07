@@ -25,6 +25,7 @@ import {
 import { DEFAULT_LAYOUT, LAYOUT_STORAGE_KEY, isLayoutTheme } from '@/lib/layout-themes';
 import { APP_ICON_STORAGE_KEY, isAppIcon } from '@/lib/app-icons';
 import { useExtensionsStore } from '@/lib/extensions-store';
+import { useModsStore } from '@/lib/mods-store';
 import { useAIConnectionStore } from '@/lib/ai-connection-store';
 import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
 import { useGatewayStore } from '@/lib/gateway-store';
@@ -610,12 +611,13 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         // switch through its own hydratedUserId guard — so they stay here,
         // where the only gap they have (a sign-out with no sign-in after it) is.
         useExtensionsStore.getState().reset();
+        useModsStore.getState().reset();
         useChannelSecretsStore.getState().reset();
         useGatewayStore.getState().reset();
         useNudgeStore.getState().reset();
         // The AI gate: not persisted, and an account switch already clears it
         // synchronously inside its hydrate. This covers the same gap as the
-        // four above (a sign-out with no sign-in after it), and drops any
+        // five above (a sign-out with no sign-in after it), and drops any
         // answer still in flight for the account that left.
         useAIConnectionStore.getState().reset();
         useSessionUserStore.getState().clear();

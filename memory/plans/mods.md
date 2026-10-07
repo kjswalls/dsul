@@ -80,7 +80,7 @@ only on its multi-item path.
 
 **Timed triggers ride the tick #407 resumed** (`058_resume_cron_tick.sql`).
 `dsul_tick` short-circuits unless someone has reminders, stakes or the review on,
-so the migration that adds `user_mods` must widen that cheap question to "or any
+so the PR that adds timed triggers (build order 6) must widen that cheap question to "or any
 enabled recipe with a timed trigger", or timed recipes never run for someone
 with only a recipe on. The windows stay in TypeScript (`lib/reminders/due.ts`'s
 rule: no `time + interval` in SQL). Claim, then act: the run is claimed in
@@ -256,7 +256,7 @@ Two tables, owner-only RLS (`using` and `with check (user_id = auth.uid())`),
 idempotent and replayable on an empty database. **Number:** 058 is
 `resume_cron_tick` (#407), 059 is `agent_key_to_secrets` (#413), 060 is claimed
 by AI setup's `ai_hidden`; take the next free number after checking main,
-prod's ledger and open branches. Prod needs Kirby's typed go.
+prod's ledger and open branches. Taken: **061**. Prod needs Kirby's typed go.
 
 ```sql
 create table if not exists public.user_mods (
@@ -282,10 +282,14 @@ create table if not exists public.mod_runs (
   unique (mod_id, claim_key));
 ```
 
-`$.store` writes go through a `mod_store_set(id, key, value)` RPC (security
-invoker, owner-checked `jsonb_set`), one key at a time, so two devices never
-overwrite each other. The same migration widens `dsul_tick`'s cheap question
-(see Recipes).
+`$.store` writes go through a `mod_store_set(p_mod_id, p_key, p_value)` RPC
+(security invoker, owner-checked `jsonb_set`; PostgREST matches arguments by
+name, so callers send those names), one key at a time, so two devices never
+overwrite each other. `mod_runs` is SELECT and INSERT only to its owner (no
+DELETE: a deleted claim could run twice; deleting a mod cascades its runs).
+Migration 061 ships the tables and `mod_store_set` only; widening `dsul_tick`'s
+cheap question waits for the PR that adds timed triggers (build order 6), since
+no recipe can have one before then.
 
 ## Build order (one PR each, each usable alone)
 

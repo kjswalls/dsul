@@ -22,6 +22,7 @@ import { useAIConnectionStore } from '@/lib/ai-connection-store';
 import { useLookStore } from '@/lib/look-store';
 import { usePaletteStore } from '@/lib/palette-store';
 import { useExtensionsStore } from '@/lib/extensions-store';
+import { useModsStore } from '@/lib/mods-store';
 import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
 import { useGatewayStore } from '@/lib/gateway-store';
 import { useKeyboardShortcutsStore } from '@/lib/keyboard-shortcuts-store';
@@ -358,6 +359,9 @@ export default function SettingsPage() {
   // is for the OTHER path a binding is drawn on: a search result, which goes
   // through the generic rowFor and reads record.read(ctx) non-reactively.
   const shortcutsTick = useKeyboardShortcutsStore((s) => JSON.stringify(s.overrides));
+  // make.allOff's unavailable() reads `available`, which MakePane's hydrate can
+  // latch false after the row first renders.
+  const modsTick = useModsStore((s) => s.available);
 
   const signOut = useCallback(async () => {
     // Anything still buffered has to land while the session is alive, or RLS
@@ -426,6 +430,7 @@ export default function SettingsPage() {
       channelSecretsTick,
       gatewayTick,
       shortcutsTick,
+      modsTick,
     ]
   );
 
