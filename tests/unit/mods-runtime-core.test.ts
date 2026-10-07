@@ -8,6 +8,8 @@ import {
 } from 'quickjs-emscripten';
 import { CORE_LIMITS, loadMod, scratchEvaluate, type LoadedMod } from '@/lib/mods/runtime/core';
 import type { HookEvent, ModMethod } from '@/lib/mods/protocol';
+import { MOD_TEMPLATE, MOD_TEMPLATE_USES } from '@/lib/mods/template';
+import { ModManifestSchema } from '@/lib/mods/schema';
 
 // The real QuickJS, in node: the release variant loads its own wasm under the
 // `import` condition. The worker builds the same thing from the frame's
@@ -42,14 +44,14 @@ function modOn(body: string, kind = 'command') {
   return `${MANIFEST}\nexport function register(on) { on('${kind}', async ($, e, next) => { ${body} }); }`;
 }
 
-async function loaded(source: string, call = recorder().call): Promise<LoadedMod> {
-  const mod = await loadMod(qjs, source, CORE_LIMITS, call);
+async function loaded(source: string, call = recorder().call, limits = CORE_LIMITS): Promise<LoadedMod> {
+  const mod = await loadMod(qjs, source, limits, call);
   if (!mod.ok) throw new Error(`load failed: ${mod.fault.code} ${mod.fault.message}`);
   return mod;
 }
 
-async function hook(body: string, call = recorder().call, e: HookEvent = command) {
-  const mod = await loaded(modOn(body), call);
+async function hook(body: string, call = recorder().call, e: HookEvent = command, limits = CORE_LIMITS) {
+  const mod = await loaded(modOn(body), call, limits);
   try {
     return await mod.runHook(HOOK, e);
   } finally {
@@ -218,12 +220,19 @@ describe('runHook', () => {
   });
 
   it('faults an uncaught out of memory as memory, and lets a caught one carry on', async () => {
-    expect(await hook('new Array(1e8).fill(1)')).toMatchObject({ ok: false, fault: { code: 'memory' } });
+    // A roomier CPU budget than a real hook's: filling toward 16MB under a
+    // loaded test run can take longer than 50ms, and then the fault is cpu.
+    const roomy = { ...CORE_LIMITS, cpuMs: 2000 };
+    expect(await hook('new Array(1e8).fill(1)', undefined, command, roomy)).toMatchObject({
+      ok: false,
+      fault: { code: 'memory' },
+    });
 
     const { calls, call } = recorder();
     const mod = await loaded(
       modOn(`let r = 'none'; try { new Array(1e8).fill(1) } catch (err) { r = String(err) } await $.log({ level: 'info', text: r });`),
-      call
+      call,
+      roomy
     );
     expect(await mod.runHook(HOOK, command)).toEqual({ ok: true });
     expect(await mod.runHook(HOOK, command)).toEqual({ ok: true });
@@ -364,5 +373,28 @@ describe('handles', () => {
     two.dispose();
     probe.dispose();
     probeRt.dispose();
+  });
+});
+
+describe('the editor’s template', () => {
+  it('scratch-evaluates to a manifest the schema takes, and counts a glass', async () => {
+    const scratch = await scratchEvaluate(qjs, MOD_TEMPLATE, CORE_LIMITS);
+    if (!scratch.ok) throw new Error(scratch.fault.message);
+    const manifest = ModManifestSchema.parse(JSON.parse(scratch.manifestJson));
+    expect(manifest.uses).toEqual(MOD_TEMPLATE_USES);
+    expect(manifest.commands.map((c) => c.id)).toEqual(['add-glass']);
+
+    const r = recorder((method) =>
+      method === 'today' ? { date: '2026-10-07', time: '09:00', bucket: 'morning' } : method === 'store.get' ? { date: '2026-10-07', count: 2 } : { ok: true }
+    );
+    const mod = await loaded(MOD_TEMPLATE, r.call);
+    try {
+      expect(await mod.runHook(HOOK, { kind: 'command', id: 'add-glass' })).toEqual({ ok: true });
+    } finally {
+      mod.dispose();
+    }
+    expect(r.calls.map((c) => c.method)).toEqual(['today', 'store.get', 'store.set', 'ui.toast']);
+    expect(r.calls[2].args).toEqual({ key: 'glasses', value: { date: '2026-10-07', count: 3 } });
+    expect(r.calls[3].args).toEqual({ text: '3 of 8 glasses today' });
   });
 });

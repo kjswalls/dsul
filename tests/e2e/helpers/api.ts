@@ -340,6 +340,49 @@ export async function cleanupTestGoals(prefix: string): Promise<void> {
 }
 
 /**
+ * The same sweep for what a spec made in Settings → Make (`user_mods`).
+ * `mod_runs` needs no line: its rows cascade with their mod.
+ */
+export async function cleanupTestMods(prefix: string): Promise<void> {
+  await sweepByNamePrefix(['user_mods'], prefix);
+}
+
+/** Service-key REST GET against the local stack, or null on any failure. */
+async function serviceGet<T>(path: string): Promise<T | null> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const key = process.env.SUPABASE_SECRET_KEY!;
+  try {
+    const res = await fetch(`${url}/rest/v1/${path}`, { headers: { apikey: key, Authorization: `Bearer ${key}` } });
+    return res.ok ? ((await res.json()) as T) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * One of the test user's mods as STORED, by its exact name, or null while it
+ * does not exist. Make's switch is optimistic, so poll this before leaving the
+ * page a write was made on.
+ */
+export async function fetchTestMod(
+  name: string
+): Promise<{ id: string; slug: string; enabled: boolean; disabled_reason: string | null } | null> {
+  const rows = await serviceGet<{ id: string; slug: string; name: string; enabled: boolean; disabled_reason: string | null }[]>(
+    `user_mods?user_id=eq.${testUserId()}&kind=eq.mod&select=id,slug,name,enabled,disabled_reason`
+  );
+  return rows?.find((r) => r.name === name) ?? null;
+}
+
+/** A mod's fault rows (`fault:` claim keys), newest first. */
+export async function fetchTestModFaults(modId: string): Promise<{ summary: { code: string; hook: string } }[]> {
+  return (
+    (await serviceGet<{ claim_key: string; summary: { code: string; hook: string } }[]>(
+      `mod_runs?mod_id=eq.${modId}&select=claim_key,summary&order=at.desc`
+    )) ?? []
+  ).filter((r) => r.claim_key.startsWith('fault:'));
+}
+
+/**
  * One goal as STORED, or null while it does not yet exist.
  *
  * Every goal write in the app is fire-and-forget, so a DOM assertion right

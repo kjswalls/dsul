@@ -11,7 +11,7 @@ three adversarial reviews) is in Kirby's project files, not the repo
 
 **Built so far:** build order 2 (raise sites), 3 (storage, Make, safe mode),
 4 (browser recipes, `lib/recipes/`), 5a (user themes), 5b (user Looks), 6 (the
-server runner) and 7 (AI writes recipes, themes and Looks), each below. Where PR 4's code departs from the body:
+server runner), 7 (AI writes recipes, themes and Looks) and 8 (the mod runtime), each below. Where PR 4's code departs from the body:
 a clock run writes TWO `mod_runs` rows, the claim `<key>` and its result
 `<key>:done`, because 061 grants no UPDATE; an event or ⌘K run writes one,
 `run:<uuid>`, and the run log reads only `summary.kind === 'run'`. The ⌘K
@@ -161,6 +161,94 @@ installed. Ask hands off through a ⌘K command, `make.write` ("Write a recipe w
 which opens `/settings/make?write=recipe` with the box focused and sends nothing; a chip on Ask home
 is deferred (it touches the rail's layout and its e2e). `extractJsonObject` moved to the pure
 `lib/json-extract.ts` (re-exported from `lib/openclaw-gateway.ts`) so the browser can use it.
+
+**Build order 8, the mod runtime, is built** (`lib/mods/`: `runtime/` (QuickJS core, prelude, worker),
+`sandbox/` (frame script, CSP, generated page), `protocol.ts`, `limits.ts`, `broker-core.ts`, `broker.ts`,
+`runtime-manager.ts`, `sandbox-host.ts`, `faults.ts`, `labels.ts`; `components/mods/mod-host.tsx`;
+`components/settings/mod-editor.tsx` and `mod-problems.tsx`; `app/mods/sandbox/[v]/route.ts`; no migration).
+Where it departs from the body:
+
+- **One self-contained frame page per runtime version, at `/mods/sandbox/<version>`,** not `script-src 'self'`
+  and a postMessage of the wasm. The boot script is pinned by its sha256 (an opaque-origin frame's subresource
+  requests are neither same-origin nor cookied, so `'self'` buys nothing). The worker glue and the wasm ride in
+  the page as base64 `text/plain` blocks, so the two can never come from different deploys (emscripten's import
+  names are minified). The version hashes the whole page and its CSP; the route serves only the current one
+  (`dynamicParams = false`), so deploy skew is a 404, never a stale page cached as immutable. The frame echoes the
+  version at boot and a mismatch reads "reload to save mods". Whether Vercel keeps the route's `Cache-Control` is
+  checked on the preview; if not, the route goes `force-dynamic` and checks the version by hand.
+- **The worker is built at install, with no new bundler:** `scripts/build-mod-runtime.mjs` drives Next's vendored
+  webpack and a loader around `next/dist/build/swc` (an `.mjs` loader, since the lint config refuses `.cjs`), runs
+  on `postinstall` and `prebuild`, and fails on any chunk loading, `importScripts`, real `import(`, or app module
+  (`zustand`, `@supabase`) in the bundle. A Next upgrade that moves those internals breaks the build; the fix is an
+  `esbuild` devDependency, which needs Kirby's yes. The one package added is `quickjs-emscripten` 0.32.0, exact
+  (not the core and variant packages separately); the release-sync variant is reached through it, and tree
+  shaking keeps the debug and asyncify variants out.
+- **The manifest is declared in the source** (`export const manifest = {...}`), read by the editor's scratch run
+  at save and stored in `user_mods.manifest`. The stored copy is what ⌘K and the broker trust; it is Zod-checked at
+  every load and must equal what the loaded code declares, or the load faults ("open it in Make and save"), which
+  catches a `source` changed outside the editor. No `slug` or `name` in it (the row's, as a Look's), and no
+  `panels[]` or `settings[]` until build order 9: the schema is strict, so either fails.
+- **`$.store` never reaches the network inside a hook.** Reads come from a snapshot taken at load; writes go to a
+  per-hook overlay that commits on success into a dirty set, flushed through `mod_store_set` one RPC per key, 5s
+  after the first write since the last flush, and on `pagehide` or hide. Another device's writes show at the next
+  load. Values are capped at 8KB and the whole store at 60,000 bytes as jsonb prints it (`store-bytes.ts`).
+- **One handler per event, and `next` is a no-op** (a mod intercepts nothing, so chaining means nothing); a
+  second handler for one kind is a load fault. A missing `manifest` or `register` export is a load fault, and so is
+  top-level await.
+- **The history label has a fixed host prefix,** `Mod: <name> · <hook>`, so a mod named like a built-in action
+  cannot spoof the undo strip; `Mod: ` is a significant action for the undo toast. The name everywhere a mod is
+  drawn is `modDisplayLabel` (the name if it passes the label rule, else the slug).
+- **Mods cannot write `notes`** (the body's `$.items.edit` lists it), and projections leave notes out: notes a mod
+  writes need the "untrusted" marker in the AI's context, which touches AI context code. Both come back together.
+- **Saving keeps a switched-on mod on** and hot reloads it, unless the new manifest asks for a use the old one did
+  not: then it saves switched off, and switching it on is the consent. Recipes differ (any manifest change).
+- **Each loaded mod has its own Worker and runtime,** so a wall-clock kill takes one mod. At most 8 are loaded;
+  a mod loads on its first event and unloads after 10 idle minutes with no timers. The frame compiles the wasm
+  once and posts the module to each worker. Hooks a mod registered are remembered against the row's `updated_at`,
+  so a mod that never listens for a kind is not loaded to hear it.
+- **After boot, all traffic is on a MessageChannel port;** the boot message is checked with `event.source`. The
+  frame stamps `modId` and `gen` from its own worker map, and the host takes identity, `uses` and the hook kind
+  only from its own record of the one live (mod, gen, hook). `unload` may name a generation, so a hot reload's
+  unload of the old one cannot kill the new. A `hook` for a worker the frame no longer has answers `done` and
+  `gone`, which the host treats as a reload, never a strike.
+- **Problems are `mod_runs` rows** with `claim_key = 'fault:<uuid>'` and `summary.kind = 'fault'` (061 already
+  grants INSERT), left out of the run log. The "3 faults in 10 minutes" counter is per tab and in memory; a trip
+  writes `enabled = false` with the reason "3 errors in 10 minutes. Last: <message>", and other devices see it on
+  their focus refresh (`mods-store.refresh`, which drops an answer older than a local write). Fault logging is
+  itself capped at 20 an hour per mod per tab. A `wall` fault while the tab was hidden or across a sleep does not
+  count. Make draws everything after "Last:" and every fault's message under a host label, "Your mod reported:".
+- **The undo event is on its own bus** (`ModOnlyEvent`, `item.uncompleted` with `origin: 'undo'`), so recipes can
+  never hear it; a hook on it is read-only for items and Looks (any write would wipe redo), and undoing a mod's own
+  entry does not wake that mod. Redo raises nothing.
+- **No migration.** 061 already has `source`, `store`, `mod_store_set` and `mod_runs`, so this PR writes nothing
+  to prod.
+- **`day.opened` and `bucket.changed` are not mod events yet.** They are the recipe clock's (`recipe-host.tsx`,
+  under `navigator.locks`), not `ModEvent` kinds; a mod clock needs a second leader-locked clock and cross-tab
+  claims. `$.after` covers short timing. Mods hear the item events, `review.saved`, `command` and `timer`.
+- **Every mod has a hook rate limit,** like recipes: more than 30 hooks a minute or 1,000 a day switches it off at
+  once (the recipe wording), since only item writes are capped by the history rule (10 real entries per mod and 20
+  across all mods in 10 minutes). Toasts: 1 a hook, 3 a minute. `look.set`, `nav.*` and `ui.openItem` work only
+  during a ⌘K command.
+- **Safe mode stops mods running, not being fixed:** the editor's scratch run and save work in safe mode; the saved
+  mod does not run in that tab.
+- **The wall clock lives in the frame** (500ms a hook, paused while a `$` call is out, 5s in all; 2s for a load or
+  scratch), with a 6s host backstop that removes the whole frame; every mod then reloads lazily.
+- **⌘K:** one provider (`modCommands`), ids `mod.<slug>.<id>`, labelled `Your mod · <name>: <label>` in the
+  "Made by you" group, no shortcut and no alias. `run` is a reserved command id, so a mod's command never takes a
+  recipe's `mod.<slug>.run`. A command loads its mod on demand through ModHost's slot (`lib/mods/command-run.ts`).
+- **Make's editor** is a name and a plain monospace textarea, no syntax colouring and no AI (build order 10). A new
+  mod starts from a Water counter (`lib/mods/template.ts`, which the QuickJS core test runs). The line under the
+  code says what the manifest may do in plain words, from the stored manifest (or the template's) until a save has
+  read the code. When the sandbox cannot run in this browser the editor says so and does not save; a mod name must
+  pass the label rule (`lib/mods/labels.ts`: NFKC, no format characters, no mixed-script word, no links, bare
+  domains or key shapes, none of AI, Settings, Sign in, Account, key, Beacon or a provider name).
+- **The end-to-end** (`tests/e2e/mods-sandbox.spec.ts`) runs in Chromium only: the Playwright config has no Firefox
+  or WebKit project yet. Adding them (with the CI browser installs) is the next step for cross-engine coverage; the
+  spec already asserts "Mods can't run in this browser yet" outside Chromium rather than skipping. The preview-deploy
+  checks (the route's `Cache-Control`, and the frame loading in the desktop shell) are Kirby's, on the PR's preview.
+- **Electron needed no release.** `/mods/sandbox/<v>` is an app URL, so `guardSubframe` passes it; the preload
+  does not run in subframes. The permission handler's `isApp` matches the frame too; refusing permissions to
+  subframes is recorded in [desktop-app.md](desktop-app.md) for the next shell release.
 
 **This amends [plugins-themes-store.md](plugins-themes-store.md)** in two places,
 both in its Project B item 6 ("Skip indefinitely"): the tier (c) sandboxed

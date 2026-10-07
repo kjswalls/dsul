@@ -29,6 +29,16 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
+const sandbox = vi.hoisted(() => ({
+  scratch: vi.fn(),
+  status: vi.fn(() => 'idle'),
+}));
+vi.mock('@/lib/mods/sandbox-host', () => ({ modSandbox: sandbox }));
+const faults = vi.hoisted(() => ({ fetchRecentFaults: vi.fn(async () => [] as unknown[]) }));
+vi.mock('@/lib/mods/faults-log', () => faults);
+const runtime = vi.hoisted(() => ({ saved: vi.fn() }));
+vi.mock('@/lib/mods/runtime-manager', () => ({ activeModRuntime: () => runtime }));
+
 import { MakePane } from '@/components/settings/make-pane';
 import { SettingsShell } from '@/components/settings/settings-shell';
 import { useModsStore } from '@/lib/mods-store';
@@ -66,6 +76,9 @@ const ACTIONS = {
   setEnabled: useModsStore.getState().setEnabled,
   remove: useModsStore.getState().remove,
   hydrate: useModsStore.getState().hydrate,
+  createMod: useModsStore.getState().createMod,
+  saveMod: useModsStore.getState().saveMod,
+  loadModCode: useModsStore.getState().loadModCode,
 };
 
 beforeEach(() => {
@@ -355,5 +368,158 @@ describe('Write with AI in Make', () => {
     } finally {
       unseed();
     }
+  });
+});
+
+describe('MakePane: mods', () => {
+  const MANIFEST = { version: 1, uses: ['storage', 'ui'], commands: [{ id: 'add-glass', label: 'Add a glass' }] };
+  const scratched = (manifest: unknown = MANIFEST) => ({
+    ok: true,
+    manifestJson: JSON.stringify(manifest),
+    hooks: ['command'],
+  });
+
+  beforeEach(() => {
+    sandbox.scratch.mockReset();
+    sandbox.status.mockReturnValue('idle');
+    faults.fetchRecentFaults.mockReset();
+    runtime.saved.mockReset();
+  });
+
+  it('New mod opens the editor on the Water template, and Cancel puts focus back on it', () => {
+    seed({});
+    render(<MakePane ctx={ctx} />);
+    fireEvent.click(screen.getByTestId('make-new-mod'));
+    expect((screen.getByTestId('mod-name') as HTMLInputElement).value).toBe('Water');
+    expect((screen.getByTestId('mod-source') as HTMLTextAreaElement).value).toContain('export function register(on)');
+    expect(screen.getByTestId('mod-uses').textContent).toBe(
+      'It may keep its own saved data and show short messages, and open items and views from its commands.'
+    );
+    expect(screen.getByTestId('mod-bytes').textContent).toMatch(/ of 65,536 bytes$/);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(document.activeElement).toBe(screen.getByTestId('make-new-mod'));
+  });
+
+  it('a scratch fault is shown inline, in words, and nothing is saved', async () => {
+    seed({});
+    const createMod = vi.fn();
+    useModsStore.setState({ createMod });
+    sandbox.scratch.mockResolvedValue({ ok: false, fault: { code: 'cpu', message: 'InternalError: interrupted' } });
+    render(<MakePane ctx={ctx} />);
+    fireEvent.click(screen.getByTestId('make-new-mod'));
+    fireEvent.click(screen.getByTestId('mod-save'));
+    const error = await screen.findByTestId('mod-editor-error');
+    expect(error.textContent).toContain('It used too much time.');
+    expect(error.textContent).toContain('The code said: InternalError: interrupted');
+    expect(createMod).not.toHaveBeenCalled();
+  });
+
+  it('says when the sandbox cannot run here, or needs a reload, and does not save', async () => {
+    seed({});
+    const createMod = vi.fn();
+    useModsStore.setState({ createMod });
+    render(<MakePane ctx={ctx} />);
+    fireEvent.click(screen.getByTestId('make-new-mod'));
+    sandbox.scratch.mockResolvedValueOnce({ ok: false, status: 'unavailable' });
+    fireEvent.click(screen.getByTestId('mod-save'));
+    expect((await screen.findByTestId('mod-editor-error')).textContent).toContain('Mods can’t run in this browser yet');
+    sandbox.scratch.mockResolvedValueOnce({ ok: false, status: 'outdated' });
+    fireEvent.click(screen.getByTestId('mod-save'));
+    await waitFor(() =>
+      expect(screen.getByTestId('mod-editor-error').textContent).toContain('dsul was updated; reload to save mods.')
+    );
+    expect(screen.getByRole('button', { name: 'Reload' })).toBeTruthy();
+    expect(createMod).not.toHaveBeenCalled();
+  });
+
+  it('refuses a name under the label rule before running anything', () => {
+    seed({});
+    render(<MakePane ctx={ctx} />);
+    fireEvent.click(screen.getByTestId('make-new-mod'));
+    fireEvent.change(screen.getByTestId('mod-name'), { target: { value: 'Account' } });
+    fireEvent.click(screen.getByTestId('mod-save'));
+    expect(screen.getByTestId('mod-editor-error')).toBeTruthy();
+    expect(sandbox.scratch).not.toHaveBeenCalled();
+  });
+
+  it('saves the manifest the code declared, in safe mode too', async () => {
+    seed({ safeMode: true });
+    const createMod = vi.fn(async () => ({ ok: true as const, id: 'new-id' }));
+    useModsStore.setState({ createMod });
+    sandbox.scratch.mockResolvedValue(scratched());
+    render(<MakePane ctx={ctx} />);
+    fireEvent.click(screen.getByTestId('make-new-mod'));
+    fireEvent.click(screen.getByTestId('mod-save'));
+    await waitFor(() => expect(createMod).toHaveBeenCalled());
+    expect(createMod).toHaveBeenCalledWith(USER, {
+      name: 'Water',
+      source: expect.stringContaining('add-glass'),
+      manifest: MANIFEST,
+    });
+    expect(await screen.findByTestId('make-notice')).toBeTruthy();
+    expect(screen.getByTestId('make-notice').textContent).toBe('Saved. It starts switched off.');
+  });
+
+  it('a manifest the schema refuses is not saved', async () => {
+    seed({});
+    const createMod = vi.fn();
+    useModsStore.setState({ createMod });
+    sandbox.scratch.mockResolvedValue(scratched({ ...MANIFEST, panels: [] }));
+    render(<MakePane ctx={ctx} />);
+    fireEvent.click(screen.getByTestId('make-new-mod'));
+    fireEvent.click(screen.getByTestId('mod-save'));
+    expect((await screen.findByTestId('mod-editor-error')).textContent).toContain('Its manifest is not valid.');
+    expect(createMod).not.toHaveBeenCalled();
+  });
+
+  it('a mod row has Edit, which loads its code, and a save tells the running runtime', async () => {
+    const r = mod({ kind: 'mod', slug: 'water', name: 'Water', enabled: true, manifest: MANIFEST });
+    seed({ rows: [r] });
+    const loadModCode = vi.fn(async () => ({ source: 'export const manifest = {};', store: {}, manifest: MANIFEST, updatedAt: 'u' }));
+    const saveMod = vi.fn(async () => ({ ok: true as const, switchedOff: false }));
+    useModsStore.setState({ loadModCode, saveMod });
+    sandbox.scratch.mockResolvedValue(scratched());
+    render(<MakePane ctx={ctx} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Water' }));
+    expect(loadModCode).toHaveBeenCalledWith(r.id);
+    await waitFor(() =>
+      expect((screen.getByTestId('mod-source') as HTMLTextAreaElement).value).toBe('export const manifest = {};')
+    );
+    fireEvent.click(screen.getByTestId('mod-save'));
+    await waitFor(() => expect(saveMod).toHaveBeenCalled());
+    expect(runtime.saved).toHaveBeenCalledWith(r.id);
+    expect((await screen.findByTestId('make-notice')).textContent).toBe('Saved.');
+  });
+
+  it('frames the mod’s own words: Problems and the switched-off reason sit under "Your mod reported:"', async () => {
+    const r = mod({
+      kind: 'mod',
+      slug: 'water',
+      name: 'Water',
+      manifest: MANIFEST,
+      disabledReason: '3 errors in 10 minutes. Last: Error: Sign in again',
+    });
+    seed({ rows: [r] });
+    faults.fetchRecentFaults.mockResolvedValue([
+      { at: new Date().toISOString(), summary: { kind: 'fault', hook: 'command', code: 'error', message: 'TypeError: x is null', day: '2026-10-07' } },
+    ]);
+    render(<MakePane ctx={ctx} />);
+    expect(screen.getByText('Switched off: 3 errors in 10 minutes.')).toBeTruthy();
+    expect(screen.getByTestId('mod-reported').textContent).toBe('Your mod reported: Error: Sign in again');
+    expect(screen.getByTestId('recipe-runs')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Problems for Water' }));
+    const problem = await screen.findByTestId('mod-problem');
+    expect(faults.fetchRecentFaults).toHaveBeenCalledWith(r.id);
+    expect(problem.textContent).toContain('command · It hit an error');
+    expect(problem.textContent).toContain('Your mod reported: TypeError: x is null');
+  });
+
+  it('editor copy has no em dashes and never names Beacon', () => {
+    seed({});
+    const { container } = render(<MakePane ctx={ctx} />);
+    fireEvent.click(screen.getByTestId('make-new-mod'));
+    const text = container.textContent ?? '';
+    expect(text).not.toContain('—');
+    expect(text).not.toMatch(/beacon/i);
   });
 });

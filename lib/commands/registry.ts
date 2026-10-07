@@ -55,6 +55,7 @@ import {
   Play as PlayIcon,
   Target,
   Workflow,
+  Puzzle,
 } from 'lucide-react';
 import { addDays, subDays } from 'date-fns';
 
@@ -82,9 +83,10 @@ import { getAICapabilities } from '../ai-connection-store';
 import { askNew, newChat, openHistory, revealChat, toggleRail } from '../open-chat';
 import { useConversationsStore } from '../conversations-store';
 import { useModsStore } from '../mods-store';
-import { modLabel, type UserMod } from '../mods/schema';
+import { modDisplayLabel, modLabel, parseModManifest, type UserMod } from '../mods/schema';
 import { parseRecipe } from '../recipes/validate';
 import { runRecipeCommand } from '../recipes/command-run';
+import { runModCommand } from '../mods/command-run';
 import { railModeNow, useRailStore } from '../rail-store';
 import { useUndoStripStore } from '../undo-strip-store';
 import { goToDate, stepScope } from '../nav-commands';
@@ -1745,12 +1747,67 @@ const recipeCommands: CommandProvider = () => {
   return cachedRecipeCommands;
 };
 
+let cachedModRows: readonly UserMod[] | null = null;
+let cachedModCommands: Command[] = [];
+
+/**
+ * "Your mod · Water: Add a glass", one per command a switched-on mod's STORED
+ * manifest declares (memory/plans/mods.md, "Commands"; build order 8). Ids
+ * `mod.<slug>.<id>`: slugs are unique across every kind (createMod checks
+ * every row) and `run` is a reserved command id, so a mod's command never
+ * takes a recipe's `mod.<slug>.run`. A duplicate is dropped anyway, first one
+ * wins.
+ *
+ * The stored manifest is Zod-checked here and again at every load, and the
+ * runtime refuses one that no longer matches the code, so ⌘K never offers a
+ * command the mod does not have. The prefix and the name (modDisplayLabel, so
+ * a name only the database accepted shows as the slug) are host chrome the
+ * mod cannot remove.
+ *
+ * No shortcut and no alias, for recipeCommands' reasons. No loaded runtime
+ * needed: runModCommand goes through ModHost's slot, which loads the mod
+ * lazily; an empty slot (a lean route) does nothing.
+ */
+const modCommands: CommandProvider = () => {
+  const { rows, available, safeMode } = useModsStore.getState();
+  if (!available || safeMode) return [];
+  if (rows === cachedModRows) return cachedModCommands;
+
+  cachedModRows = rows;
+  const seen = new Set<string>();
+  cachedModCommands = [];
+  for (const row of rows) {
+    if (row.kind !== 'mod' || !row.enabled) continue;
+    const manifest = parseModManifest(row);
+    if (!manifest) continue;
+    const name = modDisplayLabel(row);
+    for (const c of manifest.commands) {
+      const id = `mod.${row.slug}.${c.id}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      cachedModCommands.push({
+        id,
+        label: `Your mod · ${name}: ${c.label}`,
+        description: 'Your mod',
+        group: 'mods',
+        icon: Puzzle,
+        keywords: c.keywords?.join(' '),
+        availableWhen: () =>
+          useModsStore.getState().rows.some((r) => r.id === row.id && r.enabled),
+        run: () => runModCommand(row.id, c.id),
+      });
+    }
+  }
+  return cachedModCommands;
+};
+
 const PROVIDERS: CommandProvider[] = [
   customTypeCommands,
   routineCommands,
   seasonCommands,
   goalCommands,
   recipeCommands,
+  modCommands,
 ];
 
 /**

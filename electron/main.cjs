@@ -888,8 +888,9 @@ function guardNavigation(event, contents) {
 }
 
 function guardSubframe(event) {
-  // The app has no frames. One that appears (an embed in rendered markdown) may show the app
-  // and nothing else, and never opens a browser tab on its own.
+  // The one frame is the mod sandbox at /mods/sandbox/<v>, an app URL. Any other that appears
+  // (an embed in rendered markdown) may show the app and nothing else, and never opens a
+  // browser tab on its own.
   if (isApp(event.url) && !policy.carriesAuthCode(event.url)) return;
   event.preventDefault();
 }

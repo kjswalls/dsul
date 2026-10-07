@@ -7,7 +7,13 @@ import { DRAFT_SLUG, themeSlugForId } from '@/lib/user-themes/css';
 import {
   MOD_KINDS,
   MOD_SLUG_RE,
+  MOD_SOURCE_MAX_BYTES,
+  ModManifestSchema,
+  type ModManifest,
   ModNameSchema,
+  isModLabel,
+  parseModManifest,
+  usesWidened,
   LookManifestSchema,
   type LookManifest,
   RecipeManifestSchema,
@@ -39,7 +45,8 @@ import {
  * (`?safe-mode`) when this module loads and survives sign-out and every
  * client-side navigation until a reload without it. Make draws its banner off
  * it, and the recipe engine (lib/recipes/engine.ts) and ⌘K run nothing while it
- * is on; the mod runtime (build order 8) will ask it too.
+ * is on, and so does the mod runtime (lib/mods/runtime-manager.ts). Make's mod
+ * editor still saves in safe mode: safe mode stops mods running, not being fixed.
  */
 
 /** Make's list. Never `source` or `store`: the list has no use for 128KB a row. */
@@ -58,8 +65,12 @@ function readSafeMode(): boolean {
   return typeof window !== 'undefined' && hasSafeModeParam(window.location.search);
 }
 
-/** A slug from a name, under 061's rule: a letter first, then [a-z0-9-], at most 30. */
-export function slugFromName(name: string): string {
+/**
+ * A slug from a name, under 061's rule: a letter first, then [a-z0-9-], at
+ * most 30. `fallback` when nothing of the name survives (a name in another
+ * script): the kind's own word.
+ */
+export function slugFromName(name: string, fallback = 'recipe'): string {
   const base = name
     .toLowerCase()
     .normalize('NFKD')
@@ -69,7 +80,7 @@ export function slugFromName(name: string): string {
     .replace(/-+$/, '')
     .slice(0, 30)
     .replace(/-+$/, '');
-  return MOD_SLUG_RE.test(base) ? base : 'recipe';
+  return MOD_SLUG_RE.test(base) ? base : fallback;
 }
 
 /** `base`, or `base-2`, `base-3`... the first no row uses, kept to 30 characters. */
@@ -84,6 +95,12 @@ export function uniqueSlug(base: string, taken: ReadonlySet<string>): string {
 }
 
 const DISABLED_REASON_MAX = 200;
+
+const utf8Bytes = (s: string) => new TextEncoder().encode(s).length;
+/** Why a mod's name was refused: the label rule (lib/mods/labels.ts), in plain words. */
+export const MOD_NAME_REFUSED =
+  'Give it a plain name, with no link and none of AI, Settings, Sign in, Account or key.';
+const MOD_TOO_LONG = `The code is over ${MOD_SOURCE_MAX_BYTES / 1024}KB.`;
 
 function parseRows(data: unknown[] | null): UserMod[] {
   const rows: UserMod[] = [];
@@ -120,7 +137,7 @@ interface ModsStore {
   hydrate: (userId: string) => Promise<void>;
   /** Optimistic; switching on also clears why the app switched it off. True once the write lands. */
   setEnabled: (id: string, enabled: boolean) => Promise<boolean>;
-  /** False (and no write) when the name breaks 061's rule. */
+  /** False (and no write) when the name breaks 061's rule, or a mod's breaks the label rule. */
   rename: (id: string, name: string) => Promise<boolean>;
   /** Optimistic. True once the delete lands. */
   remove: (id: string) => Promise<boolean>;
@@ -164,6 +181,25 @@ interface ModsStore {
   ) => Promise<{ ok: true; id: string } | { ok: false; reason: string }>;
   /** A Look's name and manifest. The switch stays as it is: a Look is values, like a theme. */
   saveLook: (id: string, input: { name: string; manifest: LookManifest }) => Promise<boolean>;
+  /**
+   * Saves a new mod, switched off, with its code and the manifest the
+   * editor's scratch run read from it (build order 8). The name must pass the
+   * label rule, since it is drawn in ⌘K and toasts beside host chrome; the
+   * slug is one no row of ANY kind uses, as createRecipe's is.
+   */
+  createMod: (
+    userId: string,
+    input: { name: string; source: string; manifest: ModManifest }
+  ) => Promise<{ ok: true; id: string } | { ok: false; reason: string }>;
+  /**
+   * A mod's name, code and manifest. A switched-on mod stays on (it hot
+   * reloads), unless the new manifest asks for a use the old one did not:
+   * then it is saved switched off, and switching it back on is the consent.
+   */
+  saveMod: (
+    id: string,
+    input: { name: string; source: string; manifest: ModManifest }
+  ) => Promise<{ ok: true; switchedOff: boolean } | { ok: false; reason: string }>;
   /** Switched off by the app, with the reason Make shows (061: 1 to 200 characters). */
   disable: (id: string, reason: string) => Promise<void>;
   /** "Turn all mods off": every recipe and mod, on every device. */
@@ -254,7 +290,10 @@ export const useModsStore = create<ModsStore>((set, get) => {
    * Inserts one new row, shown at once and taken back on failure. Returns the
    * error so the caller can retry a 23505 its own way.
    */
-  const insertRow = async (row: UserMod): Promise<{ code?: string; message?: string } | null> => {
+  const insertRow = async (
+    row: UserMod,
+    source?: string
+  ): Promise<{ code?: string; message?: string } | null> => {
     startWrite();
     set((s) => ({ rows: sortMods([...s.rows.filter((r) => r.id !== row.id), row]) }));
     const { error } = await createClient().from('user_mods').insert({
@@ -265,6 +304,7 @@ export const useModsStore = create<ModsStore>((set, get) => {
       name: row.name,
       enabled: false,
       manifest: row.manifest,
+      ...(source !== undefined && { source }),
     });
     if (error && get().hydratedUserId === row.userId) set((s) => ({ rows: s.rows.filter((r) => r.id !== row.id) }));
     return error;
@@ -411,6 +451,8 @@ export const useModsStore = create<ModsStore>((set, get) => {
       const before = rows.find((r) => r.id === id);
       const trimmed = name.trim();
       if (!available || !userId || !before || !ModNameSchema.safeParse(trimmed).success) return false;
+      // A mod's name sits beside host chrome in ⌘K and its toasts.
+      if (before.kind === 'mod' && !isModLabel(trimmed)) return false;
       if (trimmed === before.name) return true;
       set((s) => ({ rows: sortMods(s.rows.map((r) => (r.id === id ? { ...r, name: trimmed } : r))) }));
       const { error } = await createClient()
@@ -512,6 +554,75 @@ export const useModsStore = create<ModsStore>((set, get) => {
         return false;
       }
       return true;
+    },
+
+    createMod: async (userId, { name, source, manifest }) => {
+      const { available, hydratedUserId, loaded } = get();
+      const trimmed = name.trim();
+      if (!available || hydratedUserId !== userId || !loaded) return { ok: false, reason: 'Make is not ready yet.' };
+      if (!ModNameSchema.safeParse(trimmed).success || !isModLabel(trimmed)) return { ok: false, reason: MOD_NAME_REFUSED };
+      if (utf8Bytes(source) > MOD_SOURCE_MAX_BYTES) return { ok: false, reason: MOD_TOO_LONG };
+      const parsed = ModManifestSchema.safeParse(manifest);
+      if (!parsed.success) return { ok: false, reason: 'Its manifest is not valid.' };
+
+      const id = crypto.randomUUID();
+      const taken = new Set(get().rows.map((r) => r.slug));
+      const base = slugFromName(trimmed, 'mod');
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const slug = uniqueSlug(base, taken);
+        const error = await insertRow(newRow(userId, id, 'mod', slug, trimmed, parsed.data), source);
+        if (!error) return { ok: true, id };
+        if (error.code === '23505') {
+          taken.add(slug);
+          continue;
+        }
+        writeFailed('createMod', error);
+        return { ok: false, reason: 'Could not save it. Try again.' };
+      }
+      return { ok: false, reason: 'Could not save it. Try again.' };
+    },
+
+    saveMod: async (id, { name, source, manifest }) => {
+      startWrite();
+      const { available, hydratedUserId: userId, rows } = get();
+      const before = rows.find((r) => r.id === id && r.kind === 'mod');
+      const trimmed = name.trim();
+      if (!available || !userId || !before) return { ok: false, reason: 'Make is not ready yet.' };
+      if (!ModNameSchema.safeParse(trimmed).success || !isModLabel(trimmed)) return { ok: false, reason: MOD_NAME_REFUSED };
+      if (utf8Bytes(source) > MOD_SOURCE_MAX_BYTES) return { ok: false, reason: MOD_TOO_LONG };
+      const parsed = ModManifestSchema.safeParse(manifest);
+      if (!parsed.success) return { ok: false, reason: 'Its manifest is not valid.' };
+      // A stored manifest that no longer parses counts as having asked for nothing.
+      const switchOff = before.enabled && usesWidened(parseModManifest(before), parsed.data);
+      const next = { name: trimmed, manifest: parsed.data, ...(switchOff && { enabled: false }) };
+      set((s) => ({ rows: sortMods(s.rows.map((r) => (r.id === id ? { ...r, ...next } : r))) }));
+      const { data, error } = await createClient()
+        .from('user_mods')
+        .update({ ...next, source })
+        .eq('id', id)
+        .eq('user_id', userId)
+        .select('updated_at');
+      const landed = !error && Array.isArray(data) && data.length > 0;
+      if (!landed) {
+        if (get().hydratedUserId === userId) {
+          set((s) => ({
+            rows: sortMods(
+              s.rows.map((r) =>
+                r.id === id ? { ...r, name: before.name, manifest: before.manifest, enabled: before.enabled } : r
+              )
+            ),
+          }));
+        }
+        if (error) writeFailed('saveMod', error);
+        return { ok: false, reason: 'Could not save it. Try again.' };
+      }
+      // The row's own updated_at, so the runtime sees the row moved and a
+      // refresh that agrees changes nothing.
+      const updatedAt = (data[0] as { updated_at?: unknown }).updated_at;
+      if (typeof updatedAt === 'string' && get().hydratedUserId === userId) {
+        set((s) => ({ rows: s.rows.map((r) => (r.id === id ? { ...r, updatedAt } : r)) }));
+      }
+      return { ok: true, switchedOff: switchOff };
     },
 
     createTheme: (userId, input) => createByIdSlug('theme', ThemeManifestSchema, userId, input),
