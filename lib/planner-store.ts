@@ -266,12 +266,13 @@ interface PlannerStore {
 
   // Task actions ('task' actions operate on any task-LIKE item — custom types
   // are task-shaped and ride this pipeline; only habits are excluded)
-  /** Create an item of a user-defined type (task-shaped). */
+  /** Create an item of a user-defined type (task-shaped). Returns the new
+   *  item's id, or undefined for a slug that isn't a hydrated custom type. */
   addItem: (
     customType: string,
     item: Omit<Task, 'id' | 'order' | 'status' | 'isScheduled'>,
     memberships?: Memberships,
-  ) => void;
+  ) => string | undefined;
   /** Returns the new item's id. */
   addTask: (
     task: Omit<Task, 'id' | 'order' | 'status' | 'isScheduled'>,
@@ -2854,7 +2855,7 @@ export const usePlannerStore = create<PlannerStore>()(
           ['task', 'habit', 'custom'].includes(customType) ||
           !get().itemTypes.some((t) => t.name === customType)
         ) {
-          return;
+          return undefined;
         }
         const config = getItemTypeConfig(customType);
         const timeBucket = autoCorrectBucket(itemData.startTime, itemData.timeBucket);
@@ -2888,6 +2889,7 @@ export const usePlannerStore = create<PlannerStore>()(
 
         const userId = get().userId;
         if (userId) persistNewItem(userId, item, memberships, get);
+        return item.id;
       },
 
       addTask: (taskData, memberships) => {

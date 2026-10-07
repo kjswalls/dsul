@@ -621,7 +621,8 @@ describe('connecting from the switch form', () => {
     fireEvent.click(screen.getByTestId('mcp-connect'));
     await waitFor(() => expect(screen.getByTestId('mcp-provider')).toHaveTextContent('OpenAI'));
     expect(calls.filter((c) => c.method === 'PUT').map((c) => c.body)).toEqual([{ provider: 'openai', apiKey: SENTINEL }]);
-    expect(screen.queryByTestId('mcp-switch-panel')).toBeNull();
+    // The panel closes on its own render, which can land after the label's.
+    await waitFor(() => expect(screen.queryByTestId('mcp-switch-panel')).toBeNull());
     expectNoKeyInMarkup('SENTINEL');
     for (const input of Array.from(document.querySelectorAll('input'))) {
       expect(input.value).not.toContain('SENTINEL');
