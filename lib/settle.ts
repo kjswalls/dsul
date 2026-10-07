@@ -813,20 +813,29 @@ function caretX(el: Element, at: number, range: Range): number | null {
 
 /**
  * The right edge of the row's text: its first text node with anything in it,
- * which in every planner row is the title (tests/unit/settle-participants.test.tsx
- * pins it), as drawn (a wrapped title's widest line) and only as far as its own
- * box shows it (a truncated title ends at its ellipsis). Null when not drawn.
+ * which in every planner row is the title or the start of it
+ * (tests/unit/settle-participants.test.tsx pins it), as drawn (a wrapped title's
+ * widest line) and only as far as its own box shows it (a truncated title ends
+ * at its ellipsis). A title with an emoji is several nodes (each emoji in its
+ * own span, components/primitives/row-title-text.tsx), so when that first node
+ * sits in a `[data-row-title]` element the whole element is measured. Null
+ * when not drawn.
  */
 function textEndX(el: Element, range: Range): number | null {
   const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
   for (let n = walker.nextNode(); n; n = walker.nextNode()) {
     const t = n as Text;
     if (t.data.trim() === '') continue;
-    range.setStart(t, 0);
-    range.setEnd(t, t.data.length);
+    const title = t.parentElement?.closest('[data-row-title]');
+    const whole = title && el.contains(title) ? title : null;
+    if (whole) range.selectNodeContents(whole);
+    else {
+      range.setStart(t, 0);
+      range.setEnd(t, t.data.length);
+    }
     const r = range.getBoundingClientRect();
     if (r.width === 0 && r.height === 0) return null;
-    const own = t.parentElement?.getBoundingClientRect();
+    const own = (whole ?? t.parentElement)?.getBoundingClientRect();
     const right = r.left + r.width;
     return own && own.width > 0 ? Math.min(right, own.left + own.width) : right;
   }

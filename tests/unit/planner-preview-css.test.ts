@@ -102,7 +102,7 @@ describe('the sync line CSS section', () => {
     expect(rules).toContain(`@keyframes ${SYNC_LINE_SWEEP} {`);
   });
 
-  it('animates only opacity and transform in its keyframes — no layout, no colour', () => {
+  it('animates only opacity and transform in its keyframes, and the bar its band — no layout, no colour', () => {
     const frames = [...rules.matchAll(/@keyframes (planner-sync-[a-z-]+)\s*\{([\s\S]*?)\n\}/g)];
     expect(frames.map((f) => f[1]).sort()).toEqual([
       'planner-sync-done',
@@ -113,7 +113,11 @@ describe('the sync line CSS section', () => {
     for (const [, name, body] of frames) {
       const props = [...body.matchAll(/([a-z-]+)\s*:/g)].map((p) => p[1]);
       expect(props.length, name).toBeGreaterThan(0);
-      for (const p of props) expect(['opacity', 'transform'], `${name}: ${p}`).toContain(p);
+      // The travelling bar is the waiting shimmer's band, painted as the titles
+      // paint theirs (a background-position on a 2px line), so the two are drawn
+      // in the same frame: a transform on the compositor ran a frame ahead.
+      const allowed = name === 'planner-sync-travel' ? ['background-position-x'] : ['opacity', 'transform'];
+      for (const p of props) expect(allowed, `${name}: ${p}`).toContain(p);
     }
   });
 });

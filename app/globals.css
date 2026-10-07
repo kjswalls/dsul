@@ -2546,12 +2546,19 @@ body {
    spans. Nothing on the canvas is faded while the cached planner is up; the
    one thing that dims is row title text (the waiting shimmer, next section).
 
-   The travelling bar is the shimmer's band, on one clock: the same period,
-   the same parked-then-crossing keyframes in viewport terms, the same width,
-   the same 300ms start, offset by the track's own left edge
-   (--planner-shimmer-x, which the component measures). So it crosses the
-   canvas exactly under the light crossing the titles, and goes on alone, still
-   saying syncing, once the shimmer's three passes are spent.
+   The travelling bar is the shimmer's band, painted the titles' way: a
+   gradient as wide as the band on a box the size of the track, its
+   background-position on the same keyframes in viewport terms, offset by the
+   track's own left edge (--planner-shimmer-x, which the component measures),
+   with the same period and the same 300ms start. So it crosses the canvas
+   exactly under the light crossing the titles, and goes on alone, still
+   saying syncing, once the shimmer's three passes are spent. Not a transform:
+   that runs on the compositor, which in Chromium kept the offset the
+   animation started with (none, before the component had measured the track)
+   while the main thread reported it in place, so the bar led the band by the
+   track's left edge, about 430px on a desktop; and even placed right it ran a
+   frame ahead of the titles' main-thread paint, about 50px at a desktop's
+   3px/ms. Painted on the main thread, the bar and the titles are one frame.
 
    The root's fade-in is never overridden. A landing can arrive mid-fade, so
    the done state animates the track (out) and ::after (the sweep) only — a
@@ -2572,11 +2579,11 @@ body {
 @keyframes planner-sync-travel {
   0%,
   14% {
-    transform: translateX(calc(-2 * var(--planner-shimmer-band) - var(--planner-shimmer-x, 0px)));
+    background-position-x: calc(-2 * var(--planner-shimmer-band) - var(--planner-shimmer-x, 0px));
   }
   62%,
   100% {
-    transform: translateX(calc(100vw - var(--planner-shimmer-x, 0px)));
+    background-position-x: calc(100vw - var(--planner-shimmer-x, 0px));
   }
 }
 @keyframes planner-sync-track-out {
@@ -2611,15 +2618,15 @@ body {
 }
 .planner-sync-line__bar {
   position: absolute;
-  inset-block: 0;
-  left: 0;
-  width: calc(2 * var(--planner-shimmer-band));
-  background: linear-gradient(
+  inset: 0;
+  background-image: linear-gradient(
     90deg,
     transparent,
     color-mix(in oklch, var(--muted-foreground) 55%, transparent),
     transparent
   );
+  background-size: calc(2 * var(--planner-shimmer-band)) 100%;
+  background-repeat: no-repeat;
   animation: planner-sync-travel var(--planner-shimmer-period) linear 300ms infinite;
 }
 .planner-sync-line::after {
@@ -2643,7 +2650,6 @@ body {
   }
   .planner-sync-line__bar {
     animation: none;
-    width: 100%;
     background: color-mix(in oklch, var(--muted-foreground) 35%, transparent);
   }
 }
@@ -2652,7 +2658,6 @@ body {
 }
 [data-reduce-motion='true'] .planner-sync-line__bar {
   animation: none;
-  width: 100%;
   background: color-mix(in oklch, var(--muted-foreground) 35%, transparent);
 }
 
@@ -2696,9 +2701,12 @@ body {
    start: one clock. Not background-attachment: fixed, which draws the same
    picture at about 11 frames a second (it re-rasters far more than the
    titles). The band waits off the left edge until 0.47s, reaches the
-   braindump as the ink settles (0.54s), has crossed the canvas by 1.0s, and
-   rests off the right edge until the next pass. It never enters from the
-   right. The ink easing down has no end keyframe (the rule's own ink is its
+   braindump at about 0.55s with the ink most of the way down, has crossed
+   the canvas by 1.0s, and rests off the right edge until the next pass. It
+   never enters from the right. The ink eases down over 360ms on --ease-roll,
+   settled at 0.66s: slow at both ends, so a load that lands early catches it
+   only a little way down and its ease back up is a small step, not a dip and
+   a pop. It has no end keyframe (the rule's own ink is its
    end) and fill backwards: a registered property holding an end value cost
    about 2ms of recalc a frame. Every title's mute and sweep run on the clock:
    one scrolled back into view or mounted mid-wait is put on it before it
@@ -2853,7 +2861,7 @@ body {
   }
   :root[data-planner-shimmer='wait']:not([data-reduce-motion='true']) [data-preview='true'] [data-row-title='open'] {
     animation:
-      planner-shimmer-mute 240ms var(--ease-out-soft) 300ms backwards,
+      planner-shimmer-mute 360ms var(--ease-roll) 300ms backwards,
       planner-shimmer-sweep var(--planner-shimmer-period) linear 300ms 3 both;
   }
   /* Outside the viewport (lib/planner-shimmer.ts marks it): the waiting ink,

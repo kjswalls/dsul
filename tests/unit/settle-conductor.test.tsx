@@ -52,6 +52,7 @@ vi.mock('@/lib/settle-plan', async (importOriginal) => {
 });
 
 import { SettleHost } from '@/components/shell/settle-host';
+import { RowTitleText } from '@/components/primitives/row-title-text';
 import { useDragStore } from '@/lib/drag-store';
 import { hoveredItem, setHoveredItemRef } from '@/lib/hovered-item';
 import { usePlannerStore } from '@/lib/planner-store';
@@ -383,6 +384,8 @@ type Row = Item & {
   railHidden?: boolean;
   done?: boolean;
   sink?: boolean;
+  /** The title as the planner draws it: marked `data-row-title`, each emoji in its own span (RowTitleText). */
+  titled?: boolean;
 };
 
 /** Only what is given: a row with none of it carries no style attribute at all. */
@@ -427,9 +430,15 @@ function TaskRow({ it }: { it: Row }) {
   const content = (
     <>
       <span data-top="0" data-x="8" data-w="16" data-h="16" />
-      <span data-top="0" data-x={TITLE_X} data-h="20">
-        {it.title}
-      </span>
+      {it.titled ? (
+        <span data-top="0" data-x={TITLE_X} data-h="20" data-row-title="open">
+          <RowTitleText text={it.title} />
+        </span>
+      ) : (
+        <span data-top="0" data-x={TITLE_X} data-h="20">
+          {it.title}
+        </span>
+      )}
       {it.rail !== undefined && (
         <span data-top="0" data-x={RAIL_X} data-h="20" style={it.railHidden ? { display: 'none' } : undefined}>
           {it.rail}
@@ -2138,16 +2147,26 @@ describe('a type-in starts where the text changed, and paces the text', () => {
   beforeEach(() => {
     reads = [];
     ranges = 0;
-    // jsdom draws no text: a character is CH px wide, from the left of its text node's element.
+    // jsdom draws no text: a character is CH px wide, flowing on from the left of the nearest element
+    // with an x of its own (an emoji's span inside a title flows on with the title's text).
     proto.getBoundingClientRect = function (this: Range) {
-      const el = this.startContainer.parentElement!;
+      const start = this.startContainer;
+      const el = (start instanceof Element ? start : start.parentElement!).closest<HTMLElement>('[data-x]')!;
       const scope = el.closest('[data-settle-scope]');
       const running = animations.filter((a) => !a.cancelled && scope?.contains(a.target));
       const count = (k: string) => running.filter((a) => kind(a) === k).length;
       reads.push({ live: running.length, glides: count('glide'), lifts: count('lift') });
       const box = layoutOf(el);
       if (box.width === 0 && box.height === 0) return box;
-      return rect(box.left + this.startOffset * CH, box.top, (this.endOffset - this.startOffset) * CH, 16);
+      const chars = (node: Node, offset: number) => {
+        const r = new Range();
+        r.setStart(el, 0);
+        r.setEnd(node, offset);
+        return r.toString().length;
+      };
+      const from = chars(start, this.startOffset);
+      const to = chars(this.endContainer, this.endOffset);
+      return rect(box.left + from * CH, box.top, (to - from) * CH, 16);
     };
     const createRange = document.createRange.bind(document);
     vi.spyOn(document, 'createRange').mockImplementation(() => {
@@ -2235,6 +2254,21 @@ describe('a type-in starts where the text changed, and paces the text', () => {
     expect(lift.options.easing).toBe(EASE_SETTLE);
     expect(ranges).toBe(1);
     expect(reads.every((r) => r.live === 0)).toBe(true);
+  });
+
+  it('a title with an emoji is paced whole, wherever the emoji sits: its span never ends the text early', () => {
+    startPreview(<Canvas />, [item('a'), item('d')]);
+    land([
+      item('a'),
+      item('e', '🏋️ Gym day', { titled: true }),
+      item('f', 'Call mom 📞', { titled: true }),
+      item('g', 'Plain', { titled: true }),
+      item('d'),
+    ]);
+    expect(document.querySelectorAll('[data-row-title] [data-row-emoji]')).toHaveLength(2);
+    expect(clipOf('e')).toEqual(pacedFrom(TYPE_IN, TITLE_X + '🏋️ Gym day'.length * CH));
+    expect(clipOf('f')).toEqual(pacedFrom(TYPE_IN, TITLE_X + 'Call mom 📞'.length * CH));
+    expect(clipOf('g')).toEqual(pacedFrom(TYPE_IN, TITLE_X + 5 * CH));
   });
 
   it('a new frame still unfolds in one stroke: only rows type in', () => {

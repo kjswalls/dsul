@@ -140,6 +140,54 @@ describe('the wait', () => {
     expect(shimmerPhase()).toBeNull();
   });
 
+  it.each([
+    ["the app's animations switch", null],
+    ['the OS reduced-motion setting', '(prefers-reduced-motion: reduce)'],
+    ['forced colours', '(forced-colors: active)'],
+  ])('never starts under %s: no attribute, no measures, no observer', async (_label, query) => {
+    if (query === null) document.documentElement.setAttribute('data-reduce-motion', 'true');
+    else {
+      const real = window.matchMedia;
+      vi.spyOn(window, 'matchMedia').mockImplementation((q: string) => ({ ...real(q), matches: q === query }));
+    }
+    const root = canvas();
+    const t = title(root, { left: 240 });
+    const read = vi.spyOn(t, 'getBoundingClientRect');
+    startPreview();
+    expect(attr()).toBeNull();
+    expect(shimmerPhase()).toBeNull();
+    // The CSS shows nothing under a veto, so nothing is done for it either.
+    animationStart(t, SWEEP_ANIMATION);
+    document.dispatchEvent(new Event('scroll'));
+    vi.advanceTimersByTime(16);
+    const mute = anim(MUTE_ANIMATION, null);
+    title(root, { anims: [mute] });
+    await Promise.resolve();
+    expect(read).not.toHaveBeenCalled();
+    expect(t.style.getPropertyValue(X_PROPERTY)).toBe('');
+    expect(mute.startTime).toBeNull();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('ends at the next measure when a veto arrives mid-wait', () => {
+    const root = canvas();
+    const t = title(root, { left: 240 });
+    startPreview();
+    animationStart(t, SWEEP_ANIMATION);
+    vi.advanceTimersByTime(16);
+    expect(t.style.getPropertyValue(X_PROPERTY)).toBe('240px');
+    // The animations switch, synced from the server: the CSS drops the shimmer
+    // at once, and the next scroll ends the phase instead of measuring for it.
+    document.documentElement.setAttribute('data-reduce-motion', 'true');
+    const read = vi.spyOn(t, 'getBoundingClientRect');
+    document.dispatchEvent(new Event('scroll'));
+    vi.advanceTimersByTime(16);
+    expect(read).not.toHaveBeenCalled();
+    expect(attr()).toBeNull();
+    expect(shimmerPhase()).toBeNull();
+    expect(t.style.getPropertyValue(X_PROPERTY)).toBe('');
+  });
+
   it('measures each started title in the next frame, and marks one outside the viewport away', () => {
     const root = canvas();
     startPreview();
@@ -246,6 +294,46 @@ describe('the wait', () => {
   it('a title joining before any sweep has reported takes the start of one already running', async () => {
     const root = canvas();
     // Styled by the preview's own commit, inside the delay: running, not yet started.
+    title(root, { anims: [anim(SWEEP_ANIMATION, 640)] });
+    startPreview();
+    const mute = anim(MUTE_ANIMATION, null);
+    const fresh = title(document.createElement('div'), { anims: [mute] });
+    root.appendChild(fresh.parentElement!);
+    await Promise.resolve();
+    expect(mute.startTime).toBe(640);
+  });
+
+  it('a title joining before any sweep has reported, with no other title left, takes the sync bar’s start', async () => {
+    // The phone: the preview commits on Today, and a tab switch inside the
+    // delay replaces every title. The sync line sits outside the tab.
+    const bar = document.createElement('span');
+    bar.className = 'planner-sync-line__bar';
+    (bar as unknown as { getAnimations: () => FakeAnim[] }).getAnimations = () => [anim(SYNC_BAR_ANIMATION, 640)];
+    document.body.appendChild(bar);
+    const today = canvas();
+    const gone = title(today, { anims: [anim(SWEEP_ANIMATION, 640)] });
+    startPreview();
+    gone.remove();
+    const tab = document.createElement('section');
+    tab.setAttribute('data-preview', 'true');
+    const mute = anim(MUTE_ANIMATION, null);
+    const sweep = anim(SWEEP_ANIMATION, null);
+    title(tab, { left: 24, anims: [mute, sweep] });
+    document.body.appendChild(tab);
+    await Promise.resolve();
+    // On the clock in its first frame, so it never shows full ink through its own delay.
+    expect(mute.startTime).toBe(640);
+    expect(sweep.startTime).toBe(640);
+
+    // And it is the clock: a sweep that reports later is moved onto it.
+    const late = anim(SWEEP_ANIMATION, 900);
+    animationStart(title(tab, { anims: [late] }), SWEEP_ANIMATION, 900);
+    expect(late.startTime).toBe(640);
+  });
+
+  it('looks past a waiting title whose sweep has no start yet', async () => {
+    const root = canvas();
+    title(root, { anims: [anim(SWEEP_ANIMATION, null)] });
     title(root, { anims: [anim(SWEEP_ANIMATION, 640)] });
     startPreview();
     const mute = anim(MUTE_ANIMATION, null);
@@ -511,8 +599,11 @@ describe('the ink curve', () => {
       expect(d).toBeGreaterThanOrEqual(last);
       last = d;
     }
-    // --ease-out-soft front-loads: most of the way down by half time.
-    expect(inkDepth(SHIMMER.delayMs + SHIMMER.inkMs / 2)).toBeGreaterThan(0.8);
+    // --ease-roll is slow at both ends: half way down at half time, and a
+    // landing a quarter of the way in catches the ink only a little way down,
+    // so its plain ease up is a small step, not a dip and a pop.
+    expect(inkDepth(SHIMMER.delayMs + SHIMMER.inkMs / 2)).toBeCloseTo(0.5, 2);
+    expect(inkDepth(SHIMMER.delayMs + SHIMMER.inkMs / 4)).toBeLessThan(0.2);
   });
 });
 

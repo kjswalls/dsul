@@ -20,10 +20,11 @@ import { DndContext } from '@dnd-kit/core';
  *    scope with no dedupe needed — a `#2` in normal use would pair the wrong
  *    boxes the moment the duplicates' order differed;
  *  - nothing interpolates a missing value into a key;
- *  - a row's first drawn text is its title, which is what a type-in paces
- *    itself to (lib/settle.ts textEndX), and a schedule block draws its
- *    surface on one plate of its own (`data-settle-plate`), which a lift makes
- *    solid in place of a ground.
+ *  - a row's first drawn text starts its title, inside the title element
+ *    that holds the whole of it (an emoji sits in a span of its own), which
+ *    is what a type-in paces itself to (lib/settle.ts textEndX), and a
+ *    schedule block draws its surface on one plate of its own
+ *    (`data-settle-plate`), which a lift makes solid in place of a ground.
  */
 
 beforeAll(() => {
@@ -100,9 +101,11 @@ const habit = (over: Partial<HabitItem>): HabitItem =>
   }) as HabitItem;
 
 const TASKS: Task[] = [
-  task({ id: 't-timed', title: 'Timed', startTime: '09:00', duration: 60, timeBucket: 'morning' }),
-  task({ id: 't-loose', title: 'Loose', timeBucket: 'afternoon', project: 'Work' }),
-  task({ id: 't-dump', title: 'Dumped', isScheduled: false, startDate: undefined }),
+  // Emoji in a title split it into several nodes (components/primitives/row-title-text.tsx):
+  // leading, trailing, and leading in the braindump.
+  task({ id: 't-timed', title: '🏋️ Timed', startTime: '09:00', duration: 60, timeBucket: 'morning' }),
+  task({ id: 't-loose', title: 'Loose ✍🏽', timeBucket: 'afternoon', project: 'Work' }),
+  task({ id: 't-dump', title: '🎂 Dumped', isScheduled: false, startDate: undefined }),
 ];
 const HABITS: HabitItem[] = [
   // Every day of the week: seven week-view rows that must never share a key.
@@ -318,18 +321,25 @@ describe('settle participants', () => {
       }
     });
 
-    it("a row's first drawn text is its title: what a type-in paces to", () => {
+    it("a row's first drawn text starts its title, in the element that holds all of it: what a type-in paces to", () => {
       const scope = mount();
       const titles = new Map<string, string>([...TASKS, ...HABITS].map((it) => [it.id, it.title]));
       const rows = [...scope.querySelectorAll<HTMLElement>(`${KEY}:not(${FRAME})`)];
       expect(rows.length).toBeGreaterThan(0);
       for (const el of rows) {
+        const key = el.getAttribute('data-settle-key')!;
         const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-        let first: string | null = null;
+        let first: Text | null = null;
         for (let n = walker.nextNode(); n && first === null; n = walker.nextNode()) {
-          if ((n as Text).data.trim() !== '') first = (n as Text).data;
+          if ((n as Text).data.trim() !== '') first = n as Text;
         }
-        expect(first, el.getAttribute('data-settle-key')!).toBe(titles.get(el.getAttribute('data-item-id')!));
+        const title = titles.get(el.getAttribute('data-item-id')!)!;
+        expect(first, key).not.toBeNull();
+        expect(title.startsWith(first!.data), key).toBe(true);
+        // textEndX measures this element whole, so an emoji's span never cuts the title short.
+        const holder = first!.parentElement!.closest('[data-row-title]');
+        expect(holder && el.contains(holder), key).toBe(true);
+        expect(holder!.textContent, key).toBe(title);
       }
     });
 

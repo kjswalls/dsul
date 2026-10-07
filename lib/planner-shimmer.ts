@@ -33,9 +33,9 @@ import { prefersReducedMotion } from '@/lib/zen-transition';
  *    (a store subscriber, after the conductor's capture so its rect reads
  *    never style the switch), so the first frame of the fresh rows is
  *    already styled for the landing and no title snaps:
- *      - a real landing whose ink had settled (LIGHT_AFTER_MS, 540ms on the
+ *      - a real landing whose ink had settled (LIGHT_AFTER_MS, 660ms on the
  *        shimmer's own clock, which starts with the first frame that styled
- *        the titles; that is 240ms after the shimmer first showed): LAND,
+ *        the titles; that is 360ms after the shimmer first showed): LAND,
  *        the pass of light. SettleHost's layout effect then measures each
  *        fresh title's x, which delays its rise from the muted ink to full
  *        ink.
@@ -51,9 +51,10 @@ import { prefersReducedMotion } from '@/lib/zen-transition';
  *    and the titles' inline x goes with it.
  *
  * Off entirely under `static` and `off`, both reduced-motion vetoes, forced
- * colours, and in the Zen room (whose titles are never marked). The CSS
- * gates itself on both vetoes and forced colours, so the app's animations
- * switch turned off mid-wait drops the shimmer at once.
+ * colours, and in the Zen room (whose titles are never marked): the wait
+ * never starts. The CSS gates itself on both vetoes and forced colours, so
+ * the app's animations switch turned off mid-wait drops the shimmer at once,
+ * and the next measure ends the phase.
  */
 
 type PlannerState = ReturnType<typeof usePlannerStore.getState>;
@@ -67,8 +68,12 @@ export type ShimmerPhase = 'wait' | 'land' | 'ease';
 export const SHIMMER = {
   /** Invisible this long: the sync line's own delay, so a warm load never sees either. */
   delayMs: 300,
-  /** The ink easing down to the waiting level, on --ease-out-soft. */
-  inkMs: 240,
+  /**
+   * The ink easing down to the waiting level, on --ease-roll: slow at both
+   * ends, so a load that lands early catches the ink only a little way down
+   * and the plain ease up is a small step, not a dip and a pop.
+   */
+  inkMs: 360,
   /** One pass of the band, shared with the sync line's bar. */
   periodMs: 1200,
   /** Passes before the band stops and the ink holds at the waiting level. */
@@ -89,12 +94,12 @@ export const SHIMMER = {
  * From here on the ink has settled, so a real landing gets the pass of light;
  * before it, a plain ease. Counted on the shimmer's clock, from the first frame
  * that styled the titles, NOT from when the shimmer showed: the light needs a
- * muted ink to rise from, which is there 240ms after the shimmer first shows.
+ * muted ink to rise from, which is there 360ms after the shimmer first shows.
  */
 export const LIGHT_AFTER_MS = SHIMMER.delayMs + SHIMMER.inkMs;
 
-/** --ease-out-soft, the ink's curve, as numbers: the ease's starting ink is computed from it. */
-export const INK_CURVE = [0.22, 1, 0.36, 1] as const;
+/** --ease-roll, the ink's curve, as numbers: the ease's starting ink is computed from it. */
+export const INK_CURVE = [0.45, 0, 0.55, 1] as const;
 
 /** The CSS animations this module listens for or holds to the clock (app/globals.css). */
 export const MUTE_ANIMATION = 'planner-shimmer-mute';
@@ -102,6 +107,7 @@ export const SWEEP_ANIMATION = 'planner-shimmer-sweep';
 export const RISE_ANIMATION = 'planner-shimmer-rise';
 /** The sync line's travelling bar (components/shell/planner-sync-line.tsx), held to the same clock. */
 export const SYNC_BAR_ANIMATION = 'planner-sync-travel';
+const SYNC_BAR_SELECTOR = '.planner-sync-line__bar';
 
 /** A row title that shimmers. A title that rests muted carries data-row-title="muted" and never does. */
 export const TITLE_SELECTOR = "[data-row-title='open']";
@@ -169,11 +175,15 @@ export function shimmerPhase(): ShimmerPhase | null {
  * SettleHost's layout effect while the preview is committed (its first
  * commit, or a host mounting under a preview already up). Starts the wait,
  * before the browser styles the cached rows, so every title's animations and
- * the sync line's start in one frame. Only in `on` mode: `static` keeps the
- * preview still but for its sync line.
+ * the sync line's start in one frame. Only when the shimmer may move at all
+ * (shimmerAllowed): `static` keeps the preview still but for its sync line,
+ * and under a veto the CSS would show nothing, so the attribute, the observer
+ * and the scroll measures would be work for nothing. The animations switch
+ * turned back on mid-wait therefore shows no shimmer for that preview; turned
+ * off mid-wait, the CSS drops it at once and the next measure ends it.
  */
 export function shimmerPreviewCommitted(): void {
-  if (phase === 'wait' || PREVIEW_MODE !== 'on' || typeof document === 'undefined') return;
+  if (phase === 'wait' || typeof document === 'undefined' || !shimmerAllowed()) return;
   endShimmer();
   phase = 'wait';
   waitAt = performance.now();
@@ -368,6 +378,12 @@ function holdToClock(el: Element, names: string[]): void {
  */
 function writeX(els: Element[], mounted = false): void {
   if (phase !== 'wait') return;
+  // A veto that arrived mid-wait (the animations switch, synced from the
+  // server): the CSS already shows nothing, so nothing is measured for it.
+  if (!shimmerAllowed()) {
+    endShimmer();
+    return;
+  }
   const width = window.innerWidth;
   const height = window.innerHeight;
   const rects = els.map((el) => (el.isConnected ? el.getBoundingClientRect() : null));
@@ -412,17 +428,27 @@ function joinClock(els: Element[]): void {
 /**
  * A join before any sweep has reported its start (inside the delay): the
  * start of a sweep already running on another waiting title, which every
- * title the preview's commit styled shares. It becomes the clock.
+ * title the preview's commit styled shares, or with none left (a phone tab
+ * switch inside the delay replaces every title) the sync line's bar, which
+ * mounted with them and outlives the tab. It becomes the clock.
  */
 function referenceClock(joining: Element[]): number | null {
   const skip = new Set(joining);
   for (const el of document.querySelectorAll(WAITING_TITLES)) {
     if (skip.has(el) || el.hasAttribute(AWAY_ATTR)) continue;
-    const anim = el.getAnimations?.().find((a) => (a as CSSAnimation).animationName === SWEEP_ANIMATION);
-    if (typeof anim?.startTime === 'number') clock = anim.startTime;
-    return clock;
+    const at = startOf(el, SWEEP_ANIMATION);
+    if (at !== null) return (clock = at);
   }
-  return null;
+  const bar = document.querySelector(SYNC_BAR_SELECTOR);
+  const at = bar ? startOf(bar, SYNC_BAR_ANIMATION) : null;
+  if (at !== null) clock = at;
+  return at;
+}
+
+/** The start time of `el`'s CSS animation `name`, or null when it has none yet. */
+function startOf(el: Element, name: string): number | null {
+  const anim = el.getAnimations?.().find((a) => (a as CSSAnimation).animationName === name);
+  return typeof anim?.startTime === 'number' ? anim.startTime : null;
 }
 
 /** The end leaves no title marked away and none carrying an inline x. */
@@ -469,8 +495,8 @@ function waitElapsed(): number {
   if (clock !== null) return now - clock;
   try {
     const el = document.querySelector(WAITING_TITLES);
-    const anim = el?.getAnimations?.().find((a) => (a as CSSAnimation).animationName === SWEEP_ANIMATION);
-    if (typeof anim?.startTime === 'number') return now - anim.startTime;
+    const at = el ? startOf(el, SWEEP_ANIMATION) : null;
+    if (at !== null) return now - at;
   } catch {
     /* the commit's moment is close enough */
   }

@@ -166,7 +166,69 @@ describe('row titles carry the shimmer’s mark', () => {
 });
 
 describe('emoji runs in a title', () => {
-  const runs = (t: string) => splitEmoji(t).map((r) => (r.emoji ? `[${r.text}]` : r.text)).join('');
+  const runs = (t: string, segmenter?: Intl.Segmenter | null) =>
+    splitEmoji(t, segmenter).map((r) => (r.emoji ? `[${r.text}]` : r.text)).join('');
+  const cp = (...points: number[]) => String.fromCodePoint(...points);
+  const ZWJ = 0x200d;
+  const VS16 = 0xfe0f;
+  const TONE = 0x1f3fd;
+  /**
+   * Titles whose emoji are easy to cut in two: a text-default base with a skin
+   * tone and no selector (what the iOS keyboard types for ✍🏽 and 🏋🏽‍♀️),
+   * minimally qualified ZWJ sequences, a ZWJ after a text-default base.
+   */
+  const TRICKY: [title: string, wrapped: string][] = [
+    [`${cp(0x270d, TONE)} Journal`, `[${cp(0x270d, TONE)}] Journal`],
+    [`${cp(0x1f3cb, TONE, ZWJ, 0x2640, VS16)} Gym`, `[${cp(0x1f3cb, TONE, ZWJ, 0x2640, VS16)}] Gym`],
+    [`${cp(0x1f3cb, TONE)} Gym`, `[${cp(0x1f3cb, TONE)}] Gym`],
+    [`${cp(0x270c, TONE)} peace`, `[${cp(0x270c, TONE)}] peace`],
+    [`${cp(0x261d, 0x1f3fe)} up`, `[${cp(0x261d, 0x1f3fe)}] up`],
+    [`${cp(0x1f590, 0x1f3fc)} hi`, `[${cp(0x1f590, 0x1f3fc)}] hi`],
+    [`${cp(0x1f575, 0x1f3fb)} spy`, `[${cp(0x1f575, 0x1f3fb)}] spy`],
+    [`${cp(0x26f9, TONE)} ball`, `[${cp(0x26f9, TONE)}] ball`],
+    [`Pride ${cp(0x1f3f3, ZWJ, 0x1f308)}`, `Pride [${cp(0x1f3f3, ZWJ, 0x1f308)}]`],
+    [`${cp(0x1f441, ZWJ, 0x1f5e8)} eye`, `[${cp(0x1f441, ZWJ, 0x1f5e8)}] eye`],
+    [`Love ${cp(0x2764, ZWJ, 0x1f525)}`, `Love [${cp(0x2764, ZWJ, 0x1f525)}]`],
+    [`Code ${cp(0x1f9d1, TONE, ZWJ, 0x1f4bb)}`, `Code [${cp(0x1f9d1, TONE, ZWJ, 0x1f4bb)}]`],
+  ];
+
+  it('never cuts an emoji in two: a skin tone or a join stays with a text-default base', () => {
+    for (const [title, wrapped] of TRICKY) expect(runs(title), title).toBe(wrapped);
+  });
+
+  it('cuts only at grapheme boundaries, with or without Intl.Segmenter, alike', () => {
+    const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+    const corpus = [
+      ...TRICKY.map(([t]) => t),
+      'Buy 🍋 lemons and 🥑',
+      'Family 👨‍👩‍👧 dinner',
+      '👍🏽 ok',
+      'Trip 🇯🇵🇺🇸',
+      'Keycap 1️⃣ two',
+      '☀️ walk ❤️‍🔥',
+      '🏴󠁧󠁢󠁳󠁣󠁴󠁿 trip',
+      '© 2026 ™, a bare ❤ and #3',
+      'Call mom 📞',
+      'a😀b',
+      `Gym ${cp(TONE)}`,
+      `Caf${cp(0x65, 0x301)} 🎂`,
+    ];
+    for (const title of corpus) {
+      const bounds = new Set([0]);
+      let at = 0;
+      for (const g of segmenter.segment(title)) bounds.add((at += g.segment.length));
+      for (const segment of [segmenter, null]) {
+        const parts = splitEmoji(title, segment);
+        expect(parts.map((r) => r.text).join(''), title).toBe(title);
+        let end = 0;
+        for (const part of parts) {
+          end += part.text.length;
+          expect(bounds.has(end), `${title}: a cut at ${end}`).toBe(true);
+        }
+      }
+      expect(runs(title, null), title).toBe(runs(title, segmenter));
+    }
+  });
 
   it('wraps each cluster whole: sequences, skin tones, flags, keycaps and tags', () => {
     expect(runs('Buy 🍋 lemons and 🥑')).toBe('Buy [🍋] lemons and [🥑]');

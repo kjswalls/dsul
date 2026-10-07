@@ -315,9 +315,9 @@ describe('the shimmer’s timing', () => {
     expect(SHIMMER.delayMs).toBe(SYNC_LINE_DELAY_MS);
     expect(wait, 'the waiting rule').toBeDefined();
     expect(wait!.body).toContain(
-      `planner-shimmer-mute ${SHIMMER.inkMs}ms var(--ease-out-soft) ${SHIMMER.delayMs}ms backwards`
+      `planner-shimmer-mute ${SHIMMER.inkMs}ms var(--ease-roll) ${SHIMMER.delayMs}ms backwards`
     );
-    const curve = /--ease-out-soft:\s*cubic-bezier\(([^)]*)\)/.exec(src);
+    const curve = /--ease-roll:\s*cubic-bezier\(([^)]*)\)/.exec(src);
     expect(curve?.[1].split(',').map(Number)).toEqual([...INK_CURVE]);
   });
 
@@ -372,21 +372,32 @@ describe('the shimmer’s timing', () => {
     expect(src).not.toMatch(/:root\s*\{[^}]*--planner-shimmer-depth/);
   });
 
-  it('shares its keyframe stops and its start with the sync line’s bar: one clock', () => {
+  it('shares its keyframes and its start with the sync line’s bar, painted the same way: one clock, one frame', () => {
     const stops = (css: string) => [...css.matchAll(/^\s*(\d+%)[,\s]/gm)].map((m) => m[1]);
     const sweep = keyframes(rules, SWEEP_ANIMATION);
     const bar = keyframes(syncRules, SYNC_BAR_ANIMATION);
     expect(stops(sweep)).toEqual(['0%', '14%', '62%', '100%']);
-    expect(stops(bar)).toEqual(stops(sweep));
-    // The same parked and crossing positions, as a transform on the bar.
-    expect(sweep).toContain('calc(-2 * var(--planner-shimmer-band) - var(--planner-shimmer-x, 0px))');
-    expect(sweep).toContain('calc(100vw - var(--planner-shimmer-x, 0px))');
-    expect(bar).toContain('translateX(calc(-2 * var(--planner-shimmer-band) - var(--planner-shimmer-x, 0px)))');
-    expect(bar).toContain('translateX(calc(100vw - var(--planner-shimmer-x, 0px)))');
-    expect(syncRules).toMatch(
-      new RegExp(`\\.planner-sync-line__bar\\s*\\{[^}]*animation:\\s*${SYNC_BAR_ANIMATION} var\\(--planner-shimmer-period\\) linear ${SHIMMER.delayMs}ms infinite;`)
-    );
-    expect(syncRules).toMatch(/\.planner-sync-line__bar\s*\{[^}]*width:\s*calc\(2 \* var\(--planner-shimmer-band\)\);/);
+    // The parked and crossing positions in viewport terms, each offset by the
+    // painted box's own left edge (a title's, the track's).
+    expect(sweep).toContain('background-position-x: calc(-2 * var(--planner-shimmer-band) - var(--planner-shimmer-x, 0px))');
+    expect(sweep).toContain('background-position-x: calc(100vw - var(--planner-shimmer-x, 0px))');
+    // The bar's keyframes are the sweep's, word for word: a background-position
+    // on the main thread, never a transform, which runs on the compositor (it
+    // kept the offset it started with, and ran a frame ahead of the titles).
+    const body = (css: string) => css.slice(css.indexOf('{'));
+    expect(body(bar)).toBe(body(sweep));
+    expect(bar).not.toContain('transform');
+    const barRule = ruleBlocks(syncRules).find((b) => b.selector === '.planner-sync-line__bar' && b.media === null)!;
+    expect(barRule.body).toMatch(new RegExp(`animation:\\s*${SYNC_BAR_ANIMATION} var\\(--planner-shimmer-period\\) linear ${SHIMMER.delayMs}ms infinite;`));
+    // A band-wide gradient on a box the size of the track, as on a title.
+    expect(barRule.body).toMatch(/inset:\s*0;/);
+    expect(barRule.body).toMatch(/background-size:\s*calc\(2 \* var\(--planner-shimmer-band\)\) 100%;/);
+    expect(barRule.body).toMatch(/background-repeat:\s*no-repeat;/);
+    expect(barRule.body).not.toMatch(/\b(left|width|transform)\s*:/);
+    // Under either motion veto, a still full-width hairline: the shorthand resets the band's size and position.
+    const still = ruleBlocks(syncRules).filter((b) => b.selector.endsWith('.planner-sync-line__bar') && b.body.includes('animation: none'));
+    expect(still).toHaveLength(2);
+    for (const b of still) expect(b.body).toMatch(/background:\s*color-mix\(/);
   });
 });
 

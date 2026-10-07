@@ -54,11 +54,11 @@ function landingPhase(loaded: boolean, shownAt: number): SyncPhase {
  * Nothing on the canvas is faded meanwhile. The one thing that dims is row
  * title TEXT, the waiting shimmer (lib/planner-shimmer.ts): a muted ink with a
  * band of full ink crossing it, its own ink on its own glyphs, never an
- * opacity on a container. This line's travelling bar IS that band: the same
- * keyframes, period and start, offset by the track's own left edge
- * (`--planner-shimmer-x`, measured here), so it crosses the canvas exactly
- * under the light crossing the titles. After the shimmer's last pass the bar
- * goes on alone, still saying "syncing".
+ * opacity on a container. This line's travelling bar IS that band, painted
+ * the titles' way: the same keyframes, period and start, offset by the
+ * track's own left edge (`--planner-shimmer-x`, measured here), so it crosses
+ * the canvas exactly under the light crossing the titles, in the same frame.
+ * After the shimmer's last pass the bar goes on alone, still saying "syncing".
  *
  * aria-hidden: the announcement is SettleHost's single role=status, so three
  * placements (desktop canvas, mobile content, Zen room) never speak three times.
@@ -90,7 +90,10 @@ export function PlannerSyncLine({ className }: { className?: string }) {
 
   // Where the track starts in the viewport: the bar's keyframes are written in
   // viewport terms (the waiting shimmer's band), and this offset puts them on
-  // the line. Before the first paint, and again when the window resizes.
+  // the line. A background-position on the main thread, as on every title, so
+  // a value written after the bar's animation started still reaches the
+  // screen (a transform on the compositor kept the one it started with).
+  // Before the first paint, and again when the window resizes.
   useLayoutEffect(() => {
     if (line.phase !== 'syncing') return;
     const place = () => {

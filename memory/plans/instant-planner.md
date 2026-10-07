@@ -297,45 +297,78 @@ added and its write attempted, as before this queue.
   landing replaces the store, row and all. So each row filed before its account's data
   has landed, by a capture or by `addTasksBulk` (a pasted list, the palette's "Add many
   items…", a subtask paste; reported through `lib/filed-rows.ts`, so the store imports
-  nothing of this module), stays in the queue as `{ userId, title, item }`, a list's rows
-  sharing a `batch`, and "Adds once synced" keeps counting it. That is over a failed
-  load, and while a load is in flight: a Retry leaves the failed load's rows on screen
-  (no preview is offered on a retry), and neither the item panel nor the bulk-add dialog
-  waits on it, so a list filed there is kept like one filed over the failure (a capture
-  there is held, as on any load). Never during the preview, which refuses the add. Up
+  nothing of this module), stays in the queue as `{ userId, title, item, filed }`, a
+  list's rows sharing a `batch`, and "Adds once synced" keeps counting it. That is over
+  a failed load, and while a load is in flight: a Retry leaves the failed load's rows on
+  screen (no preview is offered on a retry), and neither the item panel nor the bulk-add
+  dialog waits on it, so a list filed there is kept like one filed over the failure (a
+  capture there is held, as on any load). Never during the preview, which refuses the add. Up
   to the landing set() itself, the Retry's window included, the entry follows its row:
   `item` is the row as the person last left it (notes, dates, bucket, type, project,
-  order), and while the row is off the store (deleted, or its add undone) the entry is
-  marked `gone`, not dropped, and not counted. The mark is recomputed on every
-  pass, so a restore (the undo strip, ⌘Z, a redo of the add) clears it; that matters
-  because the restore's own write is an UPDATE of `deleted_at`, which finds nothing when
-  the insert never committed. The next landing for that account settles every entry:
-  - a row the landing brought back is confirmed;
-  - one marked `gone` is the person's removal and is not filed again;
+  order), `filed` the row as first filed, and while the row is off the store (deleted,
+  or its add undone) the entry is marked `gone`, not dropped, and not counted. The mark
+  is recomputed on every pass, so a restore (the undo strip, ⌘Z, a redo of the add)
+  clears it; that matters because the restore's own write is an UPDATE of
+  `deleted_at`, which finds nothing when the insert never committed.
+
+  Wherever the database turns out to hold the row, what the person changed since
+  filing (`filed` to `item`) is laid over the database's copy and only that is
+  written (`layOver` and `writeOver` in the store): a field they never touched keeps
+  the database's value, which may be an edit made on another device while this tab
+  was failing. A date list takes the dates they added and removed. A type switch is
+  the whole row, sent as `changeItemType` and followed by the date lists, which the
+  switch leaves out (`applyHistoryState` replays them the same way). The next landing
+  for that account settles every entry:
+  - one marked `gone` is the person's removal. It is not filed again, and if the
+    landing brought it back (its delete failed with the load) it is deleted again,
+    its subtasks with it (`settleLandedRows`);
+  - a row the landing brought back takes the person's changes since filing, so an
+    edit whose UPDATE failed with the load survives (`settleLandedRows`). Its order
+    stays the landing's;
   - for the rest the database is asked first (`fetchItemsAnyState`: the rows under those
-    ids, the bin included, which the own-rows policy allows), for 4 seconds at most
-    (`ASK_TIMEOUT_MS`): until it answers the rows are off the planner and only in this
-    module, where a reload loses them, and supabase-js sets no timeout of its own. An id
-    with no row is filed again, whole, under the SAME id (`refileItems`), so an insert
-    that commits late fails on the primary key instead of making a second row. A row in
-    the bin was deleted on another device and stays there: filed again, the insert
-    failed on the primary key while the store and the snapshot kept a row the database
-    had trashed. A live row the landing missed was inserted after the Retry's read began
-    (its first insert was still in flight). It is not inserted again, but the person's
-    version goes on the store and only where it differs from the database's is the
-    difference written (`diffItem`, or a type switch): an edit's UPDATE sent while that
-    insert was in flight matched nothing, so the person's copy is the only one holding
-    it. If the question fails or goes unanswered, every row is filed again: the id still
+    ids, the bin included, which the own-rows policy allows), once this tab's own first
+    inserts of them have settled (`awaitItemCreates`; asked while one is in flight, the
+    answer is "no row" and the insert sent again races it), for 4 seconds at most in
+    all (`ASK_TIMEOUT_MS`): until it answers the rows are off the planner and only in
+    this module, where a reload loses them, and supabase-js sets no timeout of its own.
+    An id with no row is filed again, whole, under the SAME id (`refileItems`), so an
+    insert that commits late fails on the primary key instead of making a second row;
+    an insert refused that way is read and settled as a row the database holds
+    (`settleAlreadySaved`: live, the person's changes are written over it; in the bin,
+    it leaves the store and every snapshot). A row in the bin was deleted on another
+    device and stays there: filed again, the insert failed on the primary key while
+    the store and the snapshot kept a row the database had trashed. So does a subtask
+    whose parent will not exist (not on the planner, not filed again, not live): its
+    parent's remote delete cascaded only to subtasks that existed. A live row the
+    landing missed was inserted after the Retry's read began (its first insert was
+    still in flight). It is not inserted again, but the person's changes go over it.
+    If the question fails or goes unanswered, every row is filed again: the id still
     guards against a duplicate, and a late answer finds the queue already empty.
 
   Every row going back has its project id stamped again against the landed store, and a
   task row its order: after the landed rows, in the order the person last left them
-  across the whole pass, so a drag over the failed load survives. A list is filed again
-  as the one undo entry it was ("Bulk add: N items", or "Add task: …" when one line is
-  left), a capture as its own. A subtask's insert waits for its parent's when that is in
-  flight (`persistNewItem`, for every add): sent in the same tick, a subtask reached the
-  table first most of the time and failed `items_parent_item_id_fkey` (23503). A Retry
-  that fails too keeps them waiting.
+  across the whole pass, so a drag over the failed load survives. A list's task rows go
+  back as one insert, as the paste did, and a custom-type list one row at a time, so
+  each keeps its own created_at, the order such types sort by. A list is filed again as
+  the one undo entry it was ("Bulk add: N items", or "Add task: …" when one line is
+  left), a capture as its own, unless the person has acted since the landing (the
+  history moved while the database was asked): then the rows are folded into every
+  snapshot with no entry, as `seedStarterContainers` folds its projects, because an
+  entry pushed on top of theirs would take their next ⌘Z. Settling a row the landing
+  brought back adds no entry either: it is what the person had before the landing. A
+  Retry that fails too keeps the entries waiting.
+
+  A subtask's insert waits for its parent's when that is in flight, for every add
+  (`insertWaitsFor`, through `persistNewItem` and `addTasksBulk`'s one statement):
+  sent in the same tick, a subtask reached the table first most of the time and failed
+  `items_parent_item_id_fkey` (23503), and a pasted list failed whole. Subtasks added
+  in that window also wait for each other, in the order added, since they share an
+  `order` and created_at sorts them. An insert that waited is held (`heldItemCreates`),
+  and every write to that item, a tick, an edit, a delete, a type switch, waits behind
+  it at the store's item doors (`dbUpdateItem` and its five siblings wrap the raw
+  writes): sent first, it matched no row and was lost, and the insert then wrote the
+  row as it was. An insert that left at once opens no window, so an ordinary add and
+  the writes after it keep the timing they always had.
 
 - **A module queue**, so it outlives the field: the launcher closes on Enter, and the phone
   remounts the dock per tab.
@@ -922,7 +955,16 @@ renders every open title (TaskRow, the schedule blocks, ProjectBlock's name, its
 its preview task) with each emoji run in a `data-row-emoji` span, and the CSS gives that
 span back its own fill, drawn over the ground. A text-style symbol (a bare heart, a
 trademark sign) is not an emoji and takes the ink like the letters around it. A title with
-no emoji renders as the bare string, exactly as before.
+no emoji renders as the bare string, exactly as before. Runs are cut on grapheme
+boundaries (`Intl.Segmenter`, with a regex fallback that cuts the same where it is
+missing), so an emoji is never split: a skin tone (✍🏽), a text-default symbol asked to
+draw as an emoji (🏋️, ❤️, a keycap), a ZWJ sequence and a flag each stay one span with
+nothing left over in the ink. The spans are part of the title to everything that reads it:
+Zen's `findSourceTitle` takes a title whose only children are emoji spans as the title's
+own text, and the settle's type-in measures the whole `[data-row-title]` for where the text
+ends, not its first text node (which stopped the paced clip at the first emoji's edge; on
+the build a fresh "🧺 Pick up the dry cleaning" now paces to x 668, its title's end, where
+the first node ended at 528).
 
 **The floor.** The waiting ink is `--planner-shimmer-level` of `--foreground` mixed into
 `--muted-foreground` (in oklab), at the lowest level where every waiting title is at least
@@ -953,25 +995,53 @@ Terminal Week 13%), counting that hint. Light themes are held by 4.5:1 (their la
 to 3:1). The worst waiting titles in the dark looks are a habit on its bucket card on the
 phone and a project block's name in Day. A muted row's title is 2.1:1 in Paper.
 
+**The dim.** Past the 300ms delay the ink goes down to the floor over 360ms on
+`--ease-roll` (`SHIMMER.inkMs`; `INK_CURVE` is the same curve, for the ease's computed
+depth), settled 0.66s into the wait. The first cut took 240ms on `--ease-out-soft`, which
+is three quarters of the way down by its first quarter, so even a load that came back just
+past the delay dimmed every title all the way and brought it back: on the build, a load
+released 450ms into the wait (landing at about 535ms) took the titles to the full waiting
+depth, more than 5% down for 350 to 370ms. On `--ease-roll` the same load takes them 37 to
+43% of the way down, more than 5% down for about 250ms. The cost is the landing's
+threshold, which is the end of the dim (below): a load landing 540 to 660ms in, which had
+the light, now has the ease.
+
 **One light.** Each title's gradient is a band (`2 x --planner-shimmer-band`, the band
 `clamp(32px, 9vw, 140px)`: wide on a desktop, a sliver on a phone) offset by
 `--planner-shimmer-x`, the title's own left edge in the viewport, which the module writes
 when the title's sweep starts and again on a resize or a scroll. So every title is a
-window onto one band, and the sync line's bar runs the same keyframes from the same start:
-one clock, one period (1.2s, linear). A sweep or bar that starts later (a mobile tab
-switch) is moved onto the first pass's start time, and so is its mute: a title that joins
-the wait late restarts both, and would otherwise show full ink for 300ms and then ink out
-on its own. Such a title is put on the clock in the frame it is first styled, before that
-frame paints: one scrolled back into view in the measure that un-marks it, and one mounted
-mid-wait (a tab switch, a view change) from a MutationObserver on the body, whose records
-arrive after React's commit and before the browser renders. If no sweep has reported yet,
-the clock is taken from one already running. Filmed on the build: a 400px braindump scroll
-at 1.5s and a phone tab switch at 3.5s, every title on screen at the waiting ink in every
-frame, and one band. Each pass parks the band off the left edge until 0.47s, crosses the
-viewport to 1.04s, then parks it off the right until the next pass; it never enters from
-the right. On a 1440px Day it reaches the braindump at about 0.55s, just as the ink has
-settled (0.54s), and has crossed the canvas by about 0.95s, so a 0.6 to 1.1s load sees it
-cross the canvas titles. Filmed on the final build: braindump 0.60 to 0.68s and canvas
+window onto one band, and the sync line's bar is another: one clock, one period (1.2s,
+linear). The bar is painted the titles' way, a full-track box whose background is the
+band, moved by the same `background-position` keyframes (`planner-sync-travel` and
+`planner-shimmer-sweep` have the same body) offset by the track's own
+`--planner-shimmer-x`. The first cut moved a band-wide box with a transform, and on the
+build it ran about 470px ahead of the band on a 1440px Day: the compositor kept a stale
+value of the `var()` in its keyframes, and even placed right it drew one frame ahead of
+the titles' main-thread paint, about 50px at the band's speed. Painted the same way, the two
+are drawn in the same frame: on the build, bar minus band in single screenshots was -8 to
++10px across a long canvas title, and -7 and +21px on the standard Day, where the band
+is read off short titles' edges (`background-position-x` is the one non-transform,
+non-opacity animation the preview's CSS test allows, for this bar only). A sweep or bar
+that starts later (a mobile tab switch) is moved onto the first pass's start time, and so
+is its mute: a title that joins the wait late restarts both, and would otherwise show full
+ink for 300ms and then ink out on its own. Such a title is put on the clock in the frame it
+is first styled, before that frame paints: one scrolled back into view in the measure that
+un-marks it, and one mounted mid-wait (a tab switch, a view change) from a
+MutationObserver on the body, whose records arrive after React's commit and before the
+browser renders. If no sweep has reported yet (inside the delay), the clock is the first
+waiting title's sweep that has a start time (one with none yet is passed over), and with no
+such title left (a phone tab switch inside the delay replaces every title) the sync line's
+bar, which started with them and outlives the tab. On the build a swipe to Braindump 10 to
+180ms into the wait mounts its titles 380 to 460ms in (the tab cross-fades), past the
+delay, and in six runs every joined title's sweep and mute started on the bar's start
+exactly, the ink settling with the bar's clock, not the mount's. The bar fallback itself is
+reached only by a mount inside the delay, and is pinned by a unit test. Filmed on the
+build: a 400px braindump scroll at 1.5s and a phone tab switch at 3.5s, every title on
+screen at the waiting ink in every frame, and one band. Each pass parks the band off the
+left edge until 0.47s, crosses the viewport to 1.04s, then parks it off the right until the
+next pass; it never enters from the right. On a 1440px Day it reaches the braindump at about
+0.55s, with the ink most of the way down (settled at 0.66s), and has crossed the canvas by
+about 0.95s, so a 0.6 to 1.1s load sees it cross the canvas titles. Filmed on the final build: braindump 0.60 to 0.68s and canvas
 0.77 to 0.83s in screencast time (about 40ms late); at 1920px Week, x 620 at 0.75s to x
 1800 at 1.07s. `background-attachment: fixed` would draw the same picture with no
 measuring, but it re-rasters the planner at about 11 frames a second.
@@ -991,9 +1061,9 @@ subscriber registered after the conductor's (so the conductor's capture reads th
 preview's rects before anything re-styles the titles), before React commits, so the fresh
 rows' first frame is already styled and no title snaps.
 
-- A real landing at least 540ms into the wait, on the shimmer's own clock (the first frame
-  that styled the titles, so 240ms after the shimmer first showed, not 540ms after it
-  showed): `land`, the pass of light. The light needs a settled ink to rise from; a
+- A real landing at least 660ms into the wait (`LIGHT_AFTER_MS`, the delay plus the
+  dim), on the shimmer's own clock (the first frame that styled the titles, so 360ms after
+  the shimmer first showed, not 660ms after it showed): `land`, the pass of light. The light needs a settled ink to rise from; a
   landing sooner catches the ink still going down, and gets the ease. Each title rises
   from the waiting ink to full ink in 150ms on `--ease-roll`, delayed by its x, 0 to 180ms
   across the viewport, so the light crosses left to right in about 330ms beside the glide.
@@ -1007,7 +1077,7 @@ rows' first frame is already styled and no title snaps.
   the rising ink overtakes it. Titles are never settle participants: the type-in clips row
   boxes and the lift writes a row's ground and shadow, never the title, so the two
   compose.
-- 300 to 540ms: `ease`, every title up at once in 170ms on the same rise, from the
+- 300 to 660ms: `ease`, every title up at once in 170ms on the same rise, from the
   depth its ink had reached (the ink's own curve, computed; a `<style>` rule for the
   titles, never a property on the root).
 - Under 300ms (it never showed), either motion veto, a hidden tab, or another account's
@@ -1042,7 +1112,13 @@ frame from the preview to rest identical in every title.
 (`html[data-reduce-motion]`, gated in the CSS too, so turning it off mid-wait stops the
 shimmer at once); forced colours (the system's colours replace the ink, and a clipped
 background is not one of them); and `static` and `off`, where the module never sets the
-attribute (`static` keeps the preview still but for its sync line). **Zen** takes no
+attribute (`static` keeps the preview still but for its sync line). The module asks the
+same vetoes (`shimmerAllowed()`) before it starts a wait, so under any of them it sets no
+attribute, measures nothing, writes no x, watches for no joins and sets no timer, and a
+veto that arrives mid-wait (the animations switch landing from the server) ends the phase
+at the next measure. On the build, a held reload under the OS setting and under the
+switch: no attribute, no x, no away mark and no shimmer animation in any frame from the
+preview to rest. **Zen** takes no
 shimmer, deliberately: the room's titles carry no mark, so it stays still but for its sync
 line. Zen is one item in large type in a calm room, and a band of light crossing it would
 be the only motion on the screen.
@@ -1281,13 +1357,18 @@ chose differently, each for a reason found while building or testing it.
 - **Filing again after a landing** is as good as the database's answer. A row the
   person deleted and restored over the failed load whose delete committed but whose
   restore did not (the outage began between them) reads as deleted elsewhere and stays
-  in the bin, and a subtask of a parent deleted on another device whose own insert never
-  committed is filed again, live, under a parent in the bin, where no view shows it
-  (the remote delete cascaded only to subtasks that existed). A custom-type list is
-  filed again with parallel inserts, so its created_at order (the order such types sort
-  by) can differ from the paste. A live row the landing missed takes the person's
-  version over the database's, so an edit made on another device in the seconds between
-  its insert committing and the question being asked is overwritten.
+  in the bin. A field changed both by the person over the failed load and on another
+  device takes the person's value; a type switched both ways takes the person's whole
+  row. A row the landing brought back keeps the landing's order, so a drag of it over
+  the failed load is not kept (one filed again keeps it). A live list the landing
+  missed is placed after the landed rows with one order UPDATE per row: no batched
+  item write exists (it would need a new RPC, a migration), every reorder verb already
+  writes one row at a time, and only a list pasted during a cold load whose insert
+  commits after the read began takes this path.
+- **A subtask added while its parent's insert is in flight** waits for that insert's
+  answer, success or failure, and so does every write to it. supabase-js sets no
+  timeout, so a tab closed before the parent's insert answers never sent the subtask's.
+  Sending it early instead trades that for a 23503 whenever the parent is merely slow.
 - **The crash marker's edges.** Chrome's Duplicate Tab copies sessionStorage, so a tab
   duplicated mid-preview inherits `'1'` from a page that is still alive and purges the
   snapshot for every tab. A preview that commits in a tab hidden from the start, then is
