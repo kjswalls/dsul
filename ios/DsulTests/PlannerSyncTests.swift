@@ -223,12 +223,14 @@ func bodyJSON(_ request: FakeServer.Request?) -> [String: Any]? {
 /// GET /api/app/planner bodies (lib/app-api.ts), on Thursday 2026-10-01:
 /// a one-off task on the day, a habit counted three times a day (once so
 /// far), a habit skipped today, and a braindump thought; `extra` adds rows
-/// (`plants`, `bags`, `reading`, `book`, `meds`) and `omitting` drops some. No
-/// stored timezone unless one is given, so the pinned day stays put. `writes`
-/// is the current server's list unless a test plays an older server (nil);
-/// `itemTypes` names the user's own types, `streaksEnabled` the Streaks
-/// switch, and `remindersEnabled` the raw JSON for Habit reminders ("true",
-/// "false" or "null"), each left out (an older server) unless given.
+/// (`plants`, `bags`, `reading`, `book`, `meds`, `parked`, `foldedFiling`,
+/// `nameOnly`) and `omitting` drops some, and `projects` adds the user's
+/// projects (`workJSON`, `healthJSON`). No stored timezone unless one is
+/// given, so the pinned day stays put. `writes` is the current server's list
+/// unless a test plays an older server (nil); `itemTypes` names the user's
+/// own types, `streaksEnabled` the Streaks switch, and `remindersEnabled` the
+/// raw JSON for Habit reminders ("true", "false" or "null"), each left out
+/// (an older server) unless given.
 enum PlannerJSON {
     static let today = "2026-10-01"
     /// Noon UTC on `today`: the live planner's clock. It is 2026-10-01 from
@@ -243,11 +245,18 @@ enum PlannerJSON {
     static let reading = UUID(uuidString: "0d000000-0000-4000-8000-000000000007")!
     static let book = UUID(uuidString: "0d000000-0000-4000-8000-000000000009")!
     static let meds = UUID(uuidString: "0d000000-0000-4000-8000-00000000000b")!
+    static let parked = UUID(uuidString: "0d000000-0000-4000-8000-00000000000d")!
+    static let foldedFiling = UUID(uuidString: "0d000000-0000-4000-8000-00000000000e")!
+    static let nameOnly = UUID(uuidString: "0d000000-0000-4000-8000-00000000000f")!
+    /// Work's and Health's project ids: strings, as `Project.id` is.
+    static let work = "0d000000-0000-4000-8000-000000000010"
+    static let health = "0d000000-0000-4000-8000-000000000011"
 
     /// Every item write the server takes (lib/app-api.ts `ITEM_WRITES`), in
     /// its order.
     static let allWrites = ["complete", "schedule", "skip", "move", "pause", "title", "notes", "delete",
-                            "addSubtask", "resetStreak", "priority", "timesPerDay", "reminder", "time", "repeat"]
+                            "addSubtask", "resetStreak", "priority", "timesPerDay", "reminder", "time", "repeat",
+                            "project"]
 
     /// The user's own type that `book` is, as they named it.
     static let bookType = ItemTypeLabel(name: "book", label: "Book to read", labelPlural: "Books to read")
@@ -282,6 +291,52 @@ enum PlannerJSON {
             + "\"completedDates\":[\"2026-09-29\",\"2026-09-30\"],\"skippedDates\":[],\"dailyCounts\":{}}"
     }
 
+    /// The user's projects, as the payload lists them (the route sends more
+    /// fields; these are what the project menu reads).
+    static var workJSON: String {
+        return "{\"id\":\"\(work)\",\"name\":\"Work\"}"
+    }
+
+    static var healthJSON: String {
+        return "{\"id\":\"\(health)\",\"name\":\"Health\"}"
+    }
+
+    /// Review PRs, a task parked in Work's block today
+    /// (lib/planner-store.ts `moveTasksToProjectBlock`): the block's day and
+    /// part of day (Morning), scheduled, no time of its own, and the stash it
+    /// was parked with, 14:00 on 2026-09-30.
+    static var parkedJSON: String {
+        return "{\"id\":\"\(lowerID(parked))\",\"type\":\"task\",\"title\":\"Review PRs\","
+            + "\"status\":\"pending\",\"startDate\":\"\(today)\",\"timeBucket\":\"morning\","
+            + "\"isScheduled\":true,\"order\":6,\"project\":\"Work\",\"projectId\":\"\(work)\","
+            + "\"inProjectBlock\":true,\"previousStartTime\":\"14:00\",\"previousStartDate\":\"2026-09-30\","
+            + "\"completedDates\":[],\"skippedDates\":[],\"dailyCounts\":{}}"
+    }
+
+    /// Standup, a task on today at Anytime, filed "work" (lowercase) with
+    /// Work's id: the same project as Work by its folded name.
+    static var foldedFilingJSON: String {
+        return "{\"id\":\"\(lowerID(foldedFiling))\",\"type\":\"task\",\"title\":\"Standup\","
+            + "\"status\":\"pending\",\"startDate\":\"\(today)\",\"timeBucket\":\"anytime\","
+            + "\"isScheduled\":true,\"order\":7,\"project\":\"work\",\"projectId\":\"\(work)\","
+            + "\"completedDates\":[],\"skippedDates\":[],\"dailyCounts\":{}}"
+    }
+
+    /// Weekly review, the same, filed "Work" with no `projectId` key: a
+    /// text-only name, which no project row is linked to.
+    static var nameOnlyJSON: String {
+        return "{\"id\":\"\(lowerID(nameOnly))\",\"type\":\"task\",\"title\":\"Weekly review\","
+            + "\"status\":\"pending\",\"startDate\":\"\(today)\",\"timeBucket\":\"anytime\","
+            + "\"isScheduled\":true,\"order\":8,\"project\":\"Work\","
+            + "\"completedDates\":[],\"skippedDates\":[],\"dailyCounts\":{}}"
+    }
+
+    /// One row decoded on its own, for a test that needs the `Item` rather
+    /// than its id.
+    static func item(_ json: String) throws -> SampleItem {
+        return try JSONDecoder().decode(Item.self, from: Data(json.utf8))
+    }
+
     /// A daily habit paused since September 20, with no end.
     static var readingJSON: String {
         return "{\"id\":\"\(lowerID(reading))\",\"type\":\"habit\",\"title\":\"Read\",\"status\":\"pending\","
@@ -294,7 +349,7 @@ enum PlannerJSON {
                         timezone: String? = nil, writes: [String]? = PlannerJSON.allWrites,
                         itemTypes: [ItemTypeLabel]? = nil, streaksEnabled: Bool? = nil,
                         remindersEnabled: String? = nil, omitting: Set<UUID> = [],
-                        extra: [String] = []) -> String {
+                        extra: [String] = [], projects: [String] = []) -> String {
         let status = groceriesDone ? "completed" : "pending"
         let zone: String = timezone.map { "\"\($0)\"" } ?? "null"
         let groceriesRow: String =
@@ -331,7 +386,8 @@ enum PlannerJSON {
             json += "\"itemTypes\":[" + named.joined(separator: ",") + "],"
         }
         json += "\"items\":[" + items.joined(separator: ",") + "],"
-        json += "\"projects\":[],\"routines\":[],\"seasons\":[]}"
+        json += "\"projects\":[" + projects.joined(separator: ",") + "],"
+        json += "\"routines\":[],\"seasons\":[]}"
         return json
     }
 }
@@ -746,7 +802,11 @@ final class DragFlag {
     /// failed date or time never rides along on a landed time edit, since
     /// each key the edit didn't send is the item's own on replay, as the
     /// server read it off the row. A failed repeat never changes how a landed
-    /// tick reads: the tick replays under the rule the server held.
+    /// tick reads: the tick replays under the rule the server held. A project
+    /// is paired with a tick, another project and a carry; on a task parked
+    /// in its project's block, a release that failed leaves a landed time or
+    /// tick on the parked row, and a time or tick that failed leaves the
+    /// landed release where the server put it.
     @Test func aRevertKeepsEveryLandedWrite() async throws {
         typealias Act = @MainActor (SamplePlanner) -> Void
         typealias Step = (SampleItem) -> SampleItem
@@ -775,6 +835,8 @@ final class DragFlag {
         let longer: Act = { $0.edit(id, .time(bucket: nil, startTime: nil, duration: 60)) }
         let noRepeat: Act = { $0.edit(id, .repeats(frequency: "none", days: nil, monthDay: nil)) }
         let toCustom: Act = { $0.edit(id, .repeats(frequency: "custom", days: [1, 4], monthDay: nil)) }
+        let toWork: Act = { $0.edit(id, .project(id: PlannerJSON.work, name: "Work")) }
+        let toHealth: Act = { $0.edit(id, .project(id: PlannerJSON.health, name: "Health")) }
         // What the server made of it, as DsulCore's steps play it.
         let ticked: Step = { applying(TickIntent(done: true), to: $0, on: today) }
         let unticked: Step = { applying(TickIntent(done: false), to: $0, on: today) }
@@ -802,6 +864,8 @@ final class DragFlag {
         let lengthened: Step = { editing($0, .time(bucket: nil, startTime: nil, duration: 60)) }
         let unrepeated: Step = { editing($0, .repeats(frequency: "none", days: nil, monthDay: nil)) }
         let customed: Step = { editing($0, .repeats(frequency: "custom", days: [1, 4], monthDay: nil)) }
+        let filed: Step = { editing($0, .project(id: PlannerJSON.work, name: "Work")) }
+        let refiled: Step = { editing($0, .project(id: PlannerJSON.health, name: "Health")) }
         // The failed write, the landed one, and the server's end state.
         let pairs: [Pair] = [
             ("tick, then title", tick, title, titled),
@@ -865,6 +929,15 @@ final class DragFlag {
             ("repeat, then repeat", noRepeat, toCustom, customed),
             ("repeat, then carry", noRepeat, move, moved),
             ("carry, then repeat", move, noRepeat, unrepeated),
+            // Plants is in no project. The planner doesn't check an id
+            // against the user's projects (the server does), so the payload
+            // needs none. Sent against the optimistic Work, Health lands on
+            // the unfiled row and writes the same name and id.
+            ("project, then tick", toWork, tick, ticked),
+            ("tick, then project", tick, toWork, filed),
+            ("project, then project", toWork, toHealth, refiled),
+            ("project, then carry", toWork, move, moved),
+            ("carry, then project", move, toWork, filed),
         ]
 
         // Meds, a habit on a 41-day streak, not yet done today.
@@ -905,9 +978,28 @@ final class DragFlag {
             ("repeat, then tick", medsWeekdays, medsTick, ticked),
             ("tick, then repeat", medsTick, medsWeekdays, weekdayed),
         ]
+        // Review PRs, parked in Work's block today: no time of its own,
+        // Morning, its stash 14:00 on 2026-09-30. No carry pair: a parked task
+        // can't be carried (`canReschedule` refuses `inProjectBlock`).
+        let parked = PlannerJSON.parked
+        let parkedTick: Act = { $0.toggle(parked, on: today) }
+        let parkedToHealth: Act = { $0.edit(parked, .project(id: PlannerJSON.health, name: "Health")) }
+        let parkedAtFifteen: Act = { $0.edit(parked, .time(bucket: nil, startTime: .set("15:00"), duration: nil)) }
+        let atFifteened: Step = { editing($0, .time(bucket: nil, startTime: .set("15:00"), duration: nil)) }
+        let onParked: [Pair] = [
+            // The release never landed, so 15:00 lands on the parked row: still
+            // in the block, at 15:00, Afternoon, its stash kept.
+            ("release, then time", parkedToHealth, parkedAtFifteen, atFifteened),
+            // The time never landed, so the release lands on the parked row
+            // with no time: out of the block, 14:00 on 2026-09-30, Morning kept.
+            ("time, then release", parkedAtFifteen, parkedToHealth, refiled),
+            ("release, then tick", parkedToHealth, parkedTick, ticked),
+            ("tick, then release", parkedTick, parkedToHealth, refiled),
+        ]
         // Each pair on a fresh planner, its item added to the payload.
         let tables: [(UUID, String, [Pair])] = [(id, PlannerJSON.plantsJSON, pairs),
-                                                (meds, PlannerJSON.medsJSON, onMeds)]
+                                                (meds, PlannerJSON.medsJSON, onMeds),
+                                                (parked, PlannerJSON.parkedJSON, onParked)]
         for (subject, row, table) in tables {
             for (name, failed, landedAfter, step) in table {
                 let server = FakeServer()
@@ -1006,6 +1098,64 @@ final class DragFlag {
         #expect(posts == 2)
     }
 
+    /// Health on Review PRs, parked in Work's block, never landed: shown at
+    /// once out of the block at its own 14:00 on 2026-09-30, then, the refetch
+    /// failing too, back in Work's block with its stash, and the banner.
+    @Test func aFailedReleaseLeavesTheTaskParked() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(extra: [PlannerJSON.parkedJSON])), .offline)
+        await server.on(itemRoute(PlannerJSON.parked), .offline)
+        let planner = await loaded(server)
+        let parked = try #require(planner.item(PlannerJSON.parked))
+
+        planner.edit(PlannerJSON.parked, .project(id: PlannerJSON.health, name: "Health"))
+        let released = try #require(planner.item(PlannerJSON.parked))
+        #expect(released.inProjectBlock == false)
+        #expect(released.startTime == "14:00")
+        #expect(released.startDate == "2026-09-30")
+        await drain(planner)
+
+        let back = try #require(planner.item(PlannerJSON.parked))
+        #expect(back == parked)
+        #expect(back.project == "Work")
+        #expect(back.projectId == PlannerJSON.work)
+        #expect(back.inProjectBlock == true)
+        #expect(back.startTime == nil)
+        #expect(back.previousStartTime == "14:00")
+        #expect(back.previousStartDate == "2026-09-30")
+        #expect(planner.banner?.isError == true)
+        let posts = await server.count(itemRoute(PlannerJSON.parked))
+        #expect(posts == 1)
+    }
+
+    /// Health on Review PRs landed and released it from Work's block; 15:00
+    /// on it then never landed. The time's snapshot is the released row, so
+    /// the revert puts back that row, its stash cleared, never the parked one.
+    @Test func aLandedReleaseSurvivesAFailedTime() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(extra: [PlannerJSON.parkedJSON])), .offline)
+        await server.on(itemRoute(PlannerJSON.parked), .status(200, ok), .offline)
+        let planner = await loaded(server)
+
+        planner.edit(PlannerJSON.parked, .project(id: PlannerJSON.health, name: "Health"))   // lands
+        planner.edit(PlannerJSON.parked, .time(bucket: nil, startTime: .set("15:00"), duration: nil))   // never lands
+        #expect(planner.item(PlannerJSON.parked)?.startTime == "15:00")
+        await drain(planner)
+
+        let back = try #require(planner.item(PlannerJSON.parked))
+        #expect(back.project == "Health")
+        #expect(back.projectId == PlannerJSON.health)
+        #expect(back.inProjectBlock == false)
+        #expect(back.startTime == "14:00")
+        #expect(back.startDate == "2026-09-30")
+        #expect(back.timeBucket == "morning")
+        #expect(back.previousStartTime == nil)
+        #expect(back.previousStartDate == nil)
+        #expect(planner.banner?.isError == true)
+        let posts = await server.count(itemRoute(PlannerJSON.parked))
+        #expect(posts == 2)
+    }
+
     /// Every part 1 write, each edit and Reset streak names its own item and
     /// nothing else; a delete names its item and every subtask it took out
     /// with it, a habit's only itself. A new subtask names the subtask, not
@@ -1028,6 +1178,7 @@ final class DragFlag {
             .edit(id: id, .reminder(time: "08:00", anchor: .set("I pour my coffee"))),
             .edit(id: id, .time(bucket: .set("evening"), startTime: .set("18:00"), duration: 45)),
             .edit(id: id, .repeats(frequency: "weekdays", days: nil, monthDay: nil)),
+            .edit(id: id, .project(id: PlannerJSON.work, name: "Work")),
             .resetStreak(id: id),
         ]
         for write in writes {

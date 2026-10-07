@@ -26,6 +26,12 @@ enum SampleData {
         }
         let day = anchor.description
 
+        /// A sample project's id, from its name: `projects` below is made
+        /// with it, and a row filed under a project carries it as its
+        /// `projectId`, as a payload's row does.
+        func sampleProjectId(_ name: String) -> String {
+            return "sample-" + name.lowercased()
+        }
         /// A task on `anchor`, filed under the hour's bucket when timed and
         /// under Anytime when not.
         func task(_ title: String, _ duration: Int, at start: Int? = nil, _ project: String? = nil,
@@ -34,13 +40,14 @@ enum SampleData {
             if let start { bucket = DayBucket.owning(minute: start) }
             return Item(id: next(), type: "task", title: title, status: "pending", startDate: day,
                         startTime: start.map { minutesToTime($0) }, timeBucket: bucket.rawValue,
-                        project: project, duration: duration, order: order, isScheduled: true)
+                        project: project, projectId: project.map(sampleProjectId), duration: duration, order: order,
+                        isScheduled: true)
         }
         func habit(_ title: String, _ frequency: String, days: [Int]? = nil, streak: Int, doneDaysAgo: [Int],
                    _ project: String? = nil, bucket: DayBucket) -> Item {
             return Item(id: next(), type: "habit", title: title, status: "pending", timeBucket: bucket.rawValue,
-                        repeatFrequency: frequency, project: project, duration: 15, streak: streak,
-                        repeatDays: days,
+                        repeatFrequency: frequency, project: project, projectId: project.map(sampleProjectId),
+                        duration: 15, streak: streak, repeatDays: days,
                         completedDates: doneDaysAgo.map { anchor.adding(days: -$0).description })
         }
 
@@ -83,6 +90,12 @@ enum SampleData {
         routineHabits[0].reminderTime = "08:00"
         routineHabits[0].reminderAnchor = "I pour my coffee"
         routineHabits[2].notes = "One page: what went well, what didn't, what's next."
+        // Standup is filed "work", lowercase, with no link to Work's row, as a
+        // name written before project ids (or by hand) can be. The project menu
+        // checks Work by its folded name, and picking Work relinks it: the chip
+        // then reads "Work".
+        blocks[2].project = "work"
+        blocks[2].projectId = nil
 
         let durations = [15, 30, 45, 60, 90]
         let thoughts = [
@@ -123,7 +136,7 @@ enum SampleData {
                            isScheduled: false)
 
         let projects = ["Work", "Home", "Writing", "dsul", "Health"].map { name in
-            Project(id: "sample-" + name.lowercased(), name: name)
+            Project(id: sampleProjectId(name), name: name)
         }
         let routines = [
             Routine(id: "sample-morning-routine", name: "Morning routine", sortOrder: 0,

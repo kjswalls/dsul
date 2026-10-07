@@ -99,6 +99,7 @@ import {
   durationLabel,
   EDIT_COPY,
   planTimeEdit,
+  projectBlockRelease,
   reminderPatch,
   repeatPatch,
   TIMES_PER_DAY_MAX,
@@ -475,6 +476,11 @@ export function habitUpdatesFromDraft(d: ItemDraft, keys: readonly string[]): Pa
  * stale comparison re-runs scheduleTask — which unconditionally clears
  * inProjectBlock and the previous-slot fields — on every subsequent save.
  *
+ * A project change takes a task parked in its old project's block out of it,
+ * in the same updateTask (one history entry, one undo), with the release the
+ * bulk Move to project writes (lib/item-edit.ts projectBlockRelease), read off
+ * the live item's stash.
+ *
  * Module scope, reading the store inside each call (never once at load: a test
  * that swaps an action with usePlannerStore.setState must still see its swap).
  * Exported for tests/unit/edit-writes-fixtures.test.ts and
@@ -494,6 +500,19 @@ export function commitEdit(item: Item, d: ItemDraft, keys: readonly string[]): v
     const live = found && found.type !== 'habit' ? found : item;
 
     const updates = taskUpdatesFromDraft(d, keys);
+    // Q6: a task parked in its project's block leaves it when it leaves the project, as the bulk
+    // Move to project releases it (projectBlockRelease, lib/item-edit.ts). A day or a time this
+    // save moved itself wins over the stash. Such a time goes with the live part of day beside it,
+    // which tells updateTask it is not the stash's (even when it equals the stash), so it is filed
+    // where it falls in this same write and the second pass moves nothing.
+    if ('project' in updates) {
+      for (const [key, value] of Object.entries(projectBlockRelease(live, updates.project))) {
+        const k = key as keyof Task;
+        const moved = k in updates && updates[k] !== (live as Partial<Task>)[k];
+        if (!moved) (updates as Record<string, unknown>)[k] = value;
+        else if (k === 'startTime' && updates.startTime) updates.timeBucket = live.timeBucket;
+      }
+    }
     if (Object.keys(updates).length > 0) store.updateTask(item.id, updates);
 
     // Scheduling is a second pass through scheduleTask/unscheduleTask — they

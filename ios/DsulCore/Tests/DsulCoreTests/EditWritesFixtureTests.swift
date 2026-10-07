@@ -3,21 +3,23 @@ import Testing
 import DsulCore
 
 // The web's own answers for the item sheet's edits (the fields, from 2c the
-// priority, times a day and reminder chips, from 2d the time chip, and from 2e
-// the repeat chip), its Delete, Add a subtask and Reset streak, checked
-// against ItemEdit.swift, Registry.swift's `canAddSubtask` and `isRemindable`,
-// DayBuckets.swift's time-to-bucket rules, Cadence.swift's repeat words and
-// EditCopy.swift.
+// priority, times a day and reminder chips, from 2d the time chip, from 2e
+// the repeat chip, and from 2f the project chip), its Delete, Add a subtask
+// and Reset streak, checked against ItemEdit.swift, Registry.swift's
+// `canAddSubtask` and `isRemindable`, DayBuckets.swift's time-to-bucket rules,
+// Cadence.swift's repeat words and EditCopy.swift (the container nouns too).
 // tests/unit/edit-writes-fixtures.test.ts drives the web's real gesture for
 // each case (the item panel's draft, seeded as the panel seeds it, changed as
 // the field or chip changes it, saved by the dialog's own `commitEdit`, both
-// its passes, to the store actions they name; `deleteTask` or `deleteHabit`;
-// the Subtasks section's `addTask`; the Reset streak verb) with the database
+// its passes, to the store actions they name; for the project chip the bulk
+// Move to project, `setItemsProject`, the rule's own home, with the fixture's
+// `projects` in the store; `deleteTask` or `deleteHabit`; the Subtasks
+// section's `addTask`; the Reset streak verb) with the database
 // mocked and the clock pinned, asks lib/item-edit.ts `editRefusal`,
 // `subtaskRefusal` and `resetStreakRefusal` for the refused ones (and the
 // route's schema for the bodies it refuses: an anchor with no time, a time
 // beside Anytime, an empty time edit, a repeat's days or day beside the wrong
-// frequency or out of order), and writes
+// frequency or out of order, a project id that isn't a uuid), and writes
 // tests/fixtures/day/edit-writes.json. Never edit the JSON by hand: regenerate
 // it from the Vitest side (UPDATE_FIXTURES=1).
 //
@@ -222,6 +224,43 @@ private struct EditWritesRepeats: Decodable, Sendable {
     let repeats: Repeats
 }
 
+/// The fixture's `projects`: the generator's own, which it seeds into the
+/// store for every project case, by `id` and `name`. Read on its own, as
+/// `limits` is.
+private struct EditWritesProjects: Decodable, Sendable {
+    struct Project: Decodable, Sendable {
+        let id: String
+        let name: String
+    }
+
+    let projects: [Project]
+}
+
+/// The fixture's `containers`: lib/container-registry.ts `CONTAINER_KINDS`'
+/// words for the three kinds an item meets, each kind's `label` and
+/// `labelPlural`, and the project's `unsetLabel`. Read on its own, as `limits`
+/// is.
+private struct EditWritesContainers: Decodable, Sendable {
+    struct Kind: Decodable, Sendable {
+        let label: String
+        let labelPlural: String
+    }
+
+    struct ProjectKind: Decodable, Sendable {
+        let label: String
+        let labelPlural: String
+        let unsetLabel: String
+    }
+
+    struct Containers: Decodable, Sendable {
+        let project: ProjectKind
+        let routine: Kind
+        let season: Kind
+    }
+
+    let containers: Containers
+}
+
 enum EditWritesFixtureError: Error {
     case notFound(String)
 }
@@ -245,15 +284,27 @@ func loadEditWrites(_ here: String = #filePath) throws -> EditWritesFixture {
     return try JSONDecoder().decode(EditWritesFixture.self, from: editWritesData(here))
 }
 
+/// The fixture's project names, by lowercase id, which a project body's id is
+/// resolved against (`phoneBody`): the menu sends the id and holds the name.
+/// Empty when the fixture has no `projects`.
+private let fixtureProjectNames: [String: String] = {
+    guard let data = try? editWritesData(),
+          let projects = try? JSONDecoder().decode(EditWritesProjects.self, from: data).projects
+    else { return [:] }
+    return Dictionary(projects.map { ($0.id.lowercased(), $0.name) }, uniquingKeysWith: { first, _ in first })
+}()
+
 /// The body the phone would build to send `wire`: `.edit` for a field or chip
 /// action, `.delete`, `.addSubtask` and `.resetStreak` for theirs. Nil for a
 /// body the phone never builds (an action it doesn't send, a key it doesn't
 /// write, a value of the wrong type, an id that isn't a uuid, a count that
 /// isn't whole, words with no time, a time edit with no key, a time beside
 /// Anytime or a null part of day, a length out of range, a frequency it
-/// doesn't know, a repeat's days or day the route's schema refuses), which
-/// only a case the server refuses may hold.
-func phoneBody(_ wire: JSONValue) -> ItemWriteBody? {
+/// doesn't know, a repeat's days or day the route's schema refuses, a project
+/// id that isn't a uuid), which only a case the server refuses may hold. A
+/// project id is resolved against `projects` (lowercase id to name), as the
+/// menu holds both; one it doesn't list is a body the phone never builds.
+func phoneBody(_ wire: JSONValue, projects: [String: String] = fixtureProjectNames) -> ItemWriteBody? {
     guard case .object(let fields) = wire, case .string(let action)? = fields["action"] else { return nil }
     switch action {
     case "title":
@@ -362,6 +413,17 @@ func phoneBody(_ wire: JSONValue) -> ItemWriteBody? {
               isRepeatShape(frequency: frequency, days: days, monthDay: monthDay)
         else { return nil }
         return .edit(.repeats(frequency: frequency, days: days, monthDay: monthDay))
+    case "project":
+        guard fields.count == 2, let projectId = fields["projectId"] else { return nil }
+        switch projectId {
+        case .null:
+            return .edit(.project(id: nil, name: nil))
+        case .string(let id):
+            guard UUID(uuidString: id) != nil, let name = projects[id.lowercased()] else { return nil }
+            return .edit(.project(id: id, name: name))
+        default:
+            return nil
+        }
     default:
         return nil
     }
@@ -408,11 +470,12 @@ extension EditWritesCase {
     }
 
     /// A typed edit's case, a field's (`title`, `notes`) or a chip's
-    /// (`priority`, `timesPerDay`, `reminder`, `time`, `repeat`), the phone's
-    /// body or not.
+    /// (`priority`, `timesPerDay`, `reminder`, `time`, `repeat`, `project`),
+    /// the phone's body or not.
     fileprivate var isFieldEdit: Bool {
         guard let action else { return false }
-        return ["title", "notes", "priority", "timesPerDay", "reminder", "time", "repeat"].contains(action)
+        return ["title", "notes", "priority", "timesPerDay", "reminder", "time", "repeat", "project"]
+            .contains(action)
     }
 
     /// The case's edit as the phone holds it; nil for anything but a field.
@@ -487,6 +550,13 @@ extension EditWritesCase {
         return (frequency, days, monthDay)
     }
 
+    /// A project edit the server takes: the id sent and the name the menu
+    /// holds for it, both nil for No project.
+    fileprivate var takenProject: (id: String?, name: String?)? {
+        guard case .project(let id, let name)? = phoneEdit, refusal == nil else { return nil }
+        return (id, name)
+    }
+
     /// The store wrote nothing (`updates` is `{}`).
     fileprivate var wroteNothing: Bool {
         return updates == .object([:])
@@ -503,7 +573,8 @@ extension EditWritesCase {
 /// once written (each sent, else the item's own) never put a time beside
 /// Anytime or none. A repeat edit has no row rule: its body's shape is all
 /// (`isRepeatShape`), and the type's frequencies and the subtask are the
-/// gate's (`frequency_not_allowed`, `not_for_subtask`).
+/// gate's (`frequency_not_allowed`, `not_for_subtask`). A project edit has no
+/// text and no row rule: its body's rules are the gate's.
 private func fits(_ edit: ItemEdit, on item: Item) -> Bool {
     switch edit {
     case .title(let raw):
@@ -538,6 +609,8 @@ private func fits(_ edit: ItemEdit, on item: Item) -> Bool {
         return true
     case .repeats(let frequency, let days, let monthDay):
         return isRepeatShape(frequency: frequency, days: days, monthDay: monthDay)
+    case .project:
+        return true
     }
 }
 
@@ -560,6 +633,11 @@ private func fits(_ edit: ItemEdit, on item: Item) -> Bool {
     /// five, a habit's and a custom item's, one that writes nothing, stored
     /// days in another order written in order, a stale day kept, and each
     /// refusal (`frequency_not_allowed`, `not_for_subtask` and the schema's).
+    /// And 2f's: a project set, one already there by folded name that writes
+    /// nothing, a stale id repaired, a text-only name linked, a clear, a
+    /// habit's always-written clear, a custom item's, a release from a
+    /// project block and a same-name repair that keeps it, and each refusal
+    /// (`not_for_subtask` and the schema's).
     @Test func everyKindOfCaseIsThere() throws {
         let cases = try loadEditWrites().cases
         #expect(cases.contains { $0.takenTitle && $0.after?.title != $0.item.title }, "a title that writes")
@@ -685,11 +763,54 @@ private func fits(_ edit: ItemEdit, on item: Item) -> Bool {
         #expect(cases.contains { $0.action == "repeat" && $0.refusal?.code == "not_for_subtask" }, "a subtask's repeat")
         #expect(cases.filter { $0.action == "repeat" && $0.phoneEdit == nil && $0.refusal?.code == "invalid" }.count >= 9,
                 "each of the schema's repeat rules")
+
+        #expect(cases.contains { c in
+            guard let p = c.takenProject, let name = p.name else { return false }
+            return c.item.project == nil && c.after?.project == name && c.after?.projectId == p.id
+        }, "a project set")
+        #expect(cases.contains { c in
+            guard let p = c.takenProject, let name = p.name, let stored = c.item.project else { return false }
+            return stored != name && sameProjectName(stored, name) && c.wroteNothing && c.after == c.item
+        }, "a project already there by folded name, which writes nothing")
+        #expect(cases.contains { c in
+            guard let p = c.takenProject, let id = p.id, let stored = c.item.projectId else { return false }
+            return stored != id && sameProjectName(c.item.project, p.name) && c.after?.projectId == id
+        }, "a stale project id repaired")
+        #expect(cases.contains { c in
+            guard let p = c.takenProject, let id = p.id, c.item.project != nil, c.item.projectId == nil else {
+                return false
+            }
+            return sameProjectName(c.item.project, p.name) && c.after?.projectId == id
+        }, "a text-only project name linked")
+        #expect(cases.contains { c in
+            guard let p = c.takenProject, p.id == nil, !c.item.isHabit, c.item.project != nil else { return false }
+            return c.after?.project == nil && c.after?.projectId == nil
+        }, "a project cleared")
+        #expect(cases.contains { c in
+            guard let p = c.takenProject, p.id == nil, c.item.isHabit, c.item.project == "" else { return false }
+            return !c.wroteNothing && c.after?.project == nil
+        }, "a habit's clear, which always writes")
+        #expect(cases.contains { $0.takenProject != nil && $0.item.type == "custom" && $0.after != $0.item },
+                "a custom item's project")
+        #expect(cases.contains { c in
+            guard c.takenProject != nil, c.item.inProjectBlock == true, let stash = c.item.previousStartTime else {
+                return false
+            }
+            return c.after?.inProjectBlock == false && c.after?.startTime == stash
+                && c.after?.previousStartTime == nil && c.after?.timeBucket == c.item.timeBucket
+        }, "a parked task released from its block")
+        #expect(cases.contains { c in
+            c.takenProject != nil && c.item.inProjectBlock == true && c.after?.inProjectBlock == true
+                && c.after != c.item
+        }, "a same-name repair that keeps the block")
+        #expect(cases.contains { $0.action == "project" && $0.refusal?.code == "not_for_subtask" }, "a subtask's project")
+        #expect(cases.contains { $0.action == "project" && $0.phoneEdit == nil && $0.refusal?.code == "invalid" },
+                "a project id that isn't a uuid, which the schema refuses")
     }
 
     /// `editAllowed` answers the type's refusals (`no_notes`, `no_priority`,
     /// `no_count`, `not_remindable`, `not_for_subtask`, `not_dated`,
-    /// `frequency_not_allowed`), and the
+    /// `frequency_not_allowed`; the project chip's `not_for_subtask`), and the
     /// field's growth cap or the time's row rule (`fits`) the `invalid` ones,
     /// or the body is one the phone never builds; everything else is taken.
     @Test func theGatesRefuseWhatTheServerRefuses() throws {
@@ -730,7 +851,7 @@ private func fits(_ edit: ItemEdit, on item: Item) -> Bool {
                 let limit = growthLimit(cap: EditLimits.anchor, stored: c.item.reminderAnchor)
                 let anchor = cleanAnchor(raw, limit: limit).map(ColumnWrite.set) ?? .clear
                 #expect(fits(ItemEdit.reminder(time: time, anchor: anchor), on: c.item), "\(c.name)")
-            case .reminder?, .priority?, .timesPerDay?, .time?, .repeats?:
+            case .reminder?, .priority?, .timesPerDay?, .time?, .repeats?, .project?:
                 // Nothing typed to clean.
                 continue
             case nil:
@@ -742,8 +863,9 @@ private func fits(_ edit: ItemEdit, on item: Item) -> Bool {
     /// The optimistic step is the store's end state: the whole decoded item,
     /// so a field the edit must not touch is pinned too (a habit's
     /// `dailyCounts` under a new times a day, the words under a time alone, a
-    /// project block under a new time, the day under every time edit, and the
-    /// status, the day and the streak under every repeat edit).
+    /// project block under a new time, the day under every time edit, the
+    /// status, the day and the streak under every repeat edit, and the part
+    /// of day, the stash and the id under every project edit).
     @Test func editingLandsWhereTheStoreDoes() throws {
         for c in try loadEditWrites().cases where c.refusal == nil && c.isFieldEdit {
             let edit = try #require(c.phoneEdit, "\(c.name): no edit")
@@ -916,6 +1038,23 @@ private func fits(_ edit: ItemEdit, on item: Item) -> Bool {
         for (day, word) in repeats.weekdays.enumerated() {
             #expect(Array(weekdayLabel(day).unicodeScalars) == Array(word.unicodeScalars), "weekdayLabel(\(day))")
         }
+    }
+
+    /// The container nouns are lib/container-registry.ts `CONTAINER_KINDS`',
+    /// character for character, so the phone never spells one on its own.
+    @Test func theContainerWordsAreTheWebs() throws {
+        let words = try JSONDecoder().decode(EditWritesContainers.self, from: editWritesData()).containers
+        // By scalar, as theCopyIsTheWebs compares.
+        func same(_ a: String, _ b: String) -> Bool {
+            return Array(a.unicodeScalars) == Array(b.unicodeScalars)
+        }
+        #expect(same(ContainerWords.project, words.project.label), "project.label")
+        #expect(same(ContainerWords.projects, words.project.labelPlural), "project.labelPlural")
+        #expect(same(ContainerWords.noProject, words.project.unsetLabel), "project.unsetLabel")
+        #expect(same(ContainerWords.routine, words.routine.label), "routine.label")
+        #expect(same(ContainerWords.routines, words.routine.labelPlural), "routine.labelPlural")
+        #expect(same(ContainerWords.season, words.season.label), "season.label")
+        #expect(same(ContainerWords.seasons, words.season.labelPlural), "season.labelPlural")
     }
 
     @Test func jsTrimIsStringPrototypeTrim() throws {

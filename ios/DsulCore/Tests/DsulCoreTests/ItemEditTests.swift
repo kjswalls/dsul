@@ -6,7 +6,8 @@ import DsulCore
 // JavaScript's trim, the growth caps, the type gate and the chips' edits (the
 // time chip's with the time-to-bucket rules under it, from DayBuckets.swift,
 // and the lengths' words, from EditCopy.swift; the repeat chip's, with the
-// Repeat sheet's two sentences), a new subtask and a streak reset, and where a
+// Repeat sheet's two sentences; the project chip's, with its folded name test
+// and the container nouns), a new subtask and a streak reset, and where a
 // failed delete puts things back. The web's own answers for
 // the same functions are in EditWritesFixtureTests; these restate them.
 
@@ -1163,5 +1164,254 @@ private func task(_ n: Int, _ title: String, parent: Int? = nil) -> Item {
         #expect(EditCopy.durationLabel(75) == "75 min")
         #expect(EditCopy.durationLabel(180) == "180 min")
         #expect(EditCopy.durationLabel(1) == "1 min")
+    }
+}
+
+/// lib/item-edit.ts `sameProjectName`: the project kind's folded name test,
+/// with no name read as none.
+@Suite struct SameProjectNameTests {
+    @Test func noNameIsNoneOnEitherSide() {
+        #expect(sameProjectName(nil, nil))
+        // An unfiled habit's "" is a name, so its clear always writes.
+        #expect(!sameProjectName("", nil))
+        // A "" name is no name, as the TS's `name ?` reads it.
+        #expect(sameProjectName(nil, ""))
+        #expect(!sameProjectName("", ""))
+    }
+
+    @Test func aNameIsFolded() {
+        #expect(sameProjectName("work", "Work"))
+        #expect(sameProjectName("Work", "Work"))
+        #expect(!sameProjectName("Work", nil))
+        #expect(!sameProjectName(nil, "Work"))
+        #expect(!sameProjectName("Work", "Health"))
+        // A stored "none" is a name here, as it is to the server.
+        #expect(!sameProjectName("none", nil))
+        // Folded as `toLowerCase`, the final sigma included.
+        #expect(sameProjectName("\u{03A3}\u{03A4}\u{039F}\u{03A7}\u{039F}\u{03A3}",
+                                "\u{03C3}\u{03C4}\u{03BF}\u{03C7}\u{03BF}\u{03C2}"))
+    }
+}
+
+/// The Project chip's gate: lib/item-edit.ts `editRefusal`'s `project` arm
+/// (`not_for_subtask`, `no_project`, `project_required`), and the body's own
+/// rule, which `editAllowed` judges with no row.
+@Suite struct ProjectEditAllowedTests {
+    private let roadmap = task(1, "Draft Q4 roadmap")
+    private let numbers = task(2, "Pull the numbers", parent: 1)
+    private let meds = Item(id: uuid(3), type: "habit", title: "Meds", repeatFrequency: "daily")
+    private let errand = Item(id: uuid(4), type: "custom", customType: "errand", title: "Post office")
+    private let work = "00000000-0000-4000-8000-00000000051e"
+
+    private func allowed(_ action: String, _ item: Item, caps: ItemCaps? = nil) -> Bool {
+        return editAllowed(action: action, on: item, caps: caps ?? DsulCore.caps(item.typeName))
+    }
+
+    /// Every shipped type's, never a subtask's, and never a type with no
+    /// project axis.
+    @Test func aProjectIsAnyTypesButASubtasks() {
+        #expect(allowed("project", roadmap))
+        #expect(allowed("project", meds))
+        #expect(allowed("project", errand))
+        #expect(!allowed("project", numbers), "a subtask")
+        var blank = roadmap
+        blank.parentItemId = ""
+        #expect(allowed("project", blank), "an empty parent is none")
+        var unfiled = ItemCaps.task
+        unfiled.containerKind = nil
+        #expect(!allowed("project", roadmap, caps: unfiled), "no_project")
+        #expect(!editAllowed(.project(id: work, name: "Work"), on: roadmap, caps: unfiled))
+        #expect(ItemCaps.task.containerKind == "projects" && ItemCaps.habit.containerKind == "projects")
+        #expect(caps("errand").containerKind == "projects")
+        #expect(!ItemCaps.task.containerRequired && !ItemCaps.habit.containerRequired
+            && !caps("errand").containerRequired)
+    }
+
+    /// The id and the name come together, and No project only where the
+    /// type's container isn't required.
+    @Test func theIdAndTheNameComeTogether() {
+        #expect(editAllowed(.project(id: work, name: "Work"), on: roadmap, caps: .task))
+        #expect(editAllowed(.project(id: nil, name: nil), on: roadmap, caps: .task))
+        #expect(editAllowed(.project(id: nil, name: nil), on: meds, caps: .habit))
+        #expect(!editAllowed(.project(id: work, name: nil), on: roadmap, caps: .task), "an id with no name")
+        #expect(!editAllowed(.project(id: nil, name: "Work"), on: roadmap, caps: .task), "a name with no id")
+        var required = ItemCaps.task
+        required.containerRequired = true
+        #expect(!editAllowed(.project(id: nil, name: nil), on: roadmap, caps: required), "project_required")
+        #expect(editAllowed(.project(id: work, name: "Work"), on: roadmap, caps: required))
+    }
+
+    /// The type gate still comes first: a body the rule takes is refused on
+    /// a subtask.
+    @Test func theTypeGateComesFirst() {
+        #expect(!editAllowed(.project(id: work, name: "Work"), on: numbers, caps: .task))
+        #expect(!editAllowed(.project(id: nil, name: nil), on: numbers, caps: .task))
+    }
+}
+
+/// `editing(.project)`: lib/item-edit.ts `projectRefilePatch`, the bulk Move
+/// to project's write, with the release of a parked task.
+@Suite struct ProjectEditingTests {
+    private let work = "00000000-0000-4000-8000-00000000051e"
+    private let health = "00000000-0000-4000-8000-00000000051f"
+    private let stale = "00000000-0000-4000-8000-000000000577"
+    /// An unfiled task, today, Anytime.
+    private let groceries = Item(
+        id: uuid(1), title: "Groceries", status: "pending", startDate: "2026-10-01", timeBucket: "anytime",
+        isScheduled: true
+    )
+    /// Filed under Work, by name and id.
+    private var standup: Item {
+        var item = groceries
+        item.title = "Standup"
+        item.project = "Work"
+        item.projectId = work
+        return item
+    }
+    /// Parked in Work's block: Morning, its own 14:00 on the 30th stashed.
+    private var parked: Item {
+        var item = standup
+        item.title = "Review PRs"
+        item.timeBucket = "morning"
+        item.inProjectBlock = true
+        item.previousStartTime = "14:00"
+        item.previousStartDate = "2026-09-30"
+        return item
+    }
+    private let meds = Item(
+        id: uuid(2), type: "habit", title: "Meds", status: "pending", timeBucket: "morning", repeatFrequency: "daily",
+        project: "", streak: 41, completedDates: ["2026-09-30"], dailyCounts: ["2026-09-30": 1]
+    )
+
+    /// The name and the id set; then moved, and cleared.
+    @Test func theNameAndTheIdAreSet() {
+        var filed = groceries
+        filed.project = "Work"
+        filed.projectId = work
+        #expect(editing(groceries, .project(id: work, name: "Work")) == filed)
+        var moved = filed
+        moved.project = "Health"
+        moved.projectId = health
+        #expect(editing(filed, .project(id: health, name: "Health")) == moved)
+        #expect(editing(moved, .project(id: nil, name: nil)) == groceries)
+    }
+
+    /// Already there by folded name and id: nothing, the stored spelling kept.
+    @Test func theSameProjectChangesNothing() {
+        #expect(editing(standup, .project(id: work, name: "Work")) == standup)
+        var folded = standup
+        folded.project = "work"
+        #expect(editing(folded, .project(id: work, name: "Work")) == folded)
+        #expect(editing(groceries, .project(id: nil, name: nil)) == groceries)
+    }
+
+    /// A stale id, or none behind the name, is repaired: the id alone moves.
+    @Test func aStaleLinkIsRepaired() {
+        var staleLink = standup
+        staleLink.projectId = stale
+        #expect(editing(staleLink, .project(id: work, name: "Work")) == standup)
+        var nameOnly = standup
+        nameOnly.projectId = nil
+        #expect(editing(nameOnly, .project(id: work, name: "Work")) == standup)
+    }
+
+    /// The id is stored lowercase, as Postgres writes it, so an uppercase
+    /// one sent back changes nothing.
+    @Test func theIdIsStoredLowercase() {
+        let next = editing(groceries, .project(id: work.uppercased(), name: "Work"))
+        #expect(next.projectId == work)
+        #expect(editing(standup, .project(id: work.uppercased(), name: "Work")) == standup)
+    }
+
+    /// A parked task moved, or cleared, leaves the block: its own time and day
+    /// back, the stash cleared, its part of day (the block's) and its
+    /// scheduling kept.
+    @Test func aParkedTaskLeavesItsBlock() {
+        var released = parked
+        released.project = "Health"
+        released.projectId = health
+        released.inProjectBlock = false
+        released.startTime = "14:00"
+        released.startDate = "2026-09-30"
+        released.previousStartTime = nil
+        released.previousStartDate = nil
+        let next = editing(parked, .project(id: health, name: "Health"))
+        #expect(next == released)
+        #expect(next.timeBucket == "morning" && next.isScheduled == true)
+
+        var cleared = released
+        cleared.project = nil
+        cleared.projectId = nil
+        #expect(editing(parked, .project(id: nil, name: nil)) == cleared)
+    }
+
+    /// Parked from the braindump, with nothing stashed: no time and no day
+    /// back, still scheduled (open question 1's default, the web's rule).
+    @Test func anUndatedParkedTaskComesBackWithNoDay() {
+        var undated = parked
+        undated.previousStartTime = nil
+        undated.previousStartDate = nil
+        let next = editing(undated, .project(id: health, name: "Health"))
+        #expect(next.inProjectBlock == false && next.startTime == nil && next.startDate == nil)
+        #expect(next.isScheduled == true && next.timeBucket == "morning")
+    }
+
+    /// A same-name link repair keeps it in its own block.
+    @Test func aRelinkUnderTheSameNameStaysParked() {
+        var staleLink = parked
+        staleLink.projectId = stale
+        #expect(editing(staleLink, .project(id: work, name: "Work")) == parked)
+        var folded = parked
+        folded.project = "work"
+        folded.projectId = nil
+        var relinked = parked
+        relinked.project = "Work"
+        #expect(editing(folded, .project(id: work, name: "Work")) == relinked)
+    }
+
+    /// An unfiled habit's "" is a name, so No project writes, to none; a
+    /// stored "none" is a name too, cleared the same way (the sheet reads it
+    /// as no project, and the write repairs the row).
+    @Test func aHabitsEmptyNameAndNoneAreCleared() {
+        var unfiled = meds
+        unfiled.project = nil
+        #expect(editing(meds, .project(id: nil, name: nil)) == unfiled)
+        var none = meds
+        none.project = "none"
+        #expect(editing(none, .project(id: nil, name: nil)) == unfiled)
+        var filed = meds
+        filed.project = "Work"
+        filed.projectId = work
+        #expect(editing(meds, .project(id: work, name: "Work")) == filed)
+    }
+
+    /// No project edit moves the status, the streak, the done days, the
+    /// scheduling or the part of day.
+    @Test func nothingElseMoves() {
+        let edits: [ItemEdit] = [
+            .project(id: work, name: "Work"), .project(id: health, name: "Health"), .project(id: nil, name: nil),
+        ]
+        for item in [groceries, standup, parked, meds] {
+            for edit in edits {
+                let next = editing(item, edit)
+                #expect(next.status == item.status, "\(item.title): \(edit)")
+                #expect(next.streak == item.streak, "\(item.title): \(edit)")
+                #expect(next.completedDates == item.completedDates && next.dailyCounts == item.dailyCounts,
+                        "\(item.title): \(edit)")
+                #expect(next.isScheduled == item.isScheduled, "\(item.title): \(edit)")
+                #expect(next.timeBucket == item.timeBucket, "\(item.title): \(edit)")
+            }
+        }
+    }
+}
+
+/// EditCopy.swift's container nouns, by hand. The fixture's `containers`
+/// (`theContainerWordsAreTheWebs`) is what pins them to the web.
+@Suite struct ContainerWordsTests {
+    @Test func theNounsAreTheWebs() {
+        #expect(ContainerWords.project == "Project" && ContainerWords.projects == "Projects")
+        #expect(ContainerWords.noProject == "No project")
+        #expect(ContainerWords.routine == "Routine" && ContainerWords.routines == "Routines")
+        #expect(ContainerWords.season == "Season" && ContainerWords.seasons == "Seasons")
     }
 }

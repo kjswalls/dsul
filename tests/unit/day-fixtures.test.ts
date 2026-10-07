@@ -1267,6 +1267,13 @@ type TypeCaps = {
    * frequency_not_allowed). More than one is what lets the chip edit.
    */
   allowedFrequencies: string[];
+  /**
+   * `containerKind`: the classify kind's registry name ('projects'), or null for a type with no
+   * project axis (lib/item-edit.ts no_project). The project chip edits only where it is set.
+   */
+  containerKind: string | null;
+  /** `containerRequired`: No project is refused (lib/item-edit.ts project_required). */
+  containerRequired: boolean;
   /** `form.titlePlaceholder`, the title field's empty prompt. */
   titlePlaceholder: string;
   /** The delete confirm's title (lib/item-verbs.ts deleteConfirmTitle). */
@@ -1341,6 +1348,8 @@ function buildCaps(): CapsFixture {
       hasNotes: c.fields.includes('notes'),
       hasDuration: c.fields.includes('duration'),
       allowedFrequencies: [...c.allowedFrequencies],
+      containerKind: c.containerKind,
+      containerRequired: c.containerRequired,
       titlePlaceholder: c.form.titlePlaceholder,
       deleteTitle: deleteConfirmTitle(c.label),
       deleteDescriptions: deleteDescriptions(c),

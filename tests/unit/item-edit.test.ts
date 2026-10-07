@@ -15,11 +15,15 @@ import {
   editRefusal,
   editShapeFromRow,
   planTimeEdit,
+  projectBlockRelease,
+  projectRefilePatch,
+  refileItemFromShape,
   reminderPatch,
   repeatEditPatch,
   repeatPatch,
   resetStreakPatch,
   resetStreakRefusal,
+  sameProjectName,
   scheduleHabitPatch,
   scheduleTaskPatch,
   streakRunText,
@@ -28,6 +32,7 @@ import {
   withinGrowthLimit,
   type EditShape,
   type ItemEdit,
+  type RefileItem,
   type TimeDraft,
   type TimeLive,
   type TimePlan,
@@ -217,6 +222,44 @@ describe('editShapeFromRow', () => {
     }
     const unread = editShapeFromRow({ id: ID, type: 'task', parent_item_id: null });
     for (const key of ['repeatFrequency', 'repeatDays', 'repeatMonthDay']) {
+      expect(key in unread, key).toBe(false);
+    }
+  });
+
+  it('carries the project chip’s four columns when they were read, null included, and leaves them absent otherwise', () => {
+    expect(
+      editShapeFromRow({
+        id: ID,
+        type: 'task',
+        parent_item_id: null,
+        project: 'Work',
+        project_id: 'p-work',
+        previous_start_time: '14:00',
+        previous_start_date: '2026-09-30',
+      }),
+    ).toEqual({
+      id: ID,
+      type: 'task',
+      parentItemId: null,
+      project: 'Work',
+      projectId: 'p-work',
+      previousStartTime: '14:00',
+      previousStartDate: '2026-09-30',
+    });
+    const nulls = editShapeFromRow({
+      id: ID,
+      type: 'task',
+      parent_item_id: null,
+      project: null,
+      project_id: null,
+      previous_start_time: null,
+      previous_start_date: null,
+    });
+    for (const key of ['project', 'projectId', 'previousStartTime', 'previousStartDate'] as const) {
+      expect(nulls[key], key).toBeNull();
+    }
+    const unread = editShapeFromRow({ id: ID, type: 'task', parent_item_id: null });
+    for (const key of ['project', 'projectId', 'previousStartTime', 'previousStartDate']) {
       expect(key in unread, key).toBe(false);
     }
   });
@@ -1081,5 +1124,275 @@ describe('repeat', () => {
     ] as [EditShape, ItemEdit][]) {
       expect(editPatch(row, edit), JSON.stringify(edit)).toEqual(editPatch(row, edit, getItemTypeConfig(row.type)));
     }
+  });
+});
+
+describe('sameProjectName', () => {
+  it('is the folded name, and no name is no name', () => {
+    expect(sameProjectName(undefined, undefined)).toBe(true);
+    // An unfiled habit reads '', a name: its clear always writes.
+    expect(sameProjectName('', undefined)).toBe(false);
+    // A '' name is no name, as setItemsProject's `name ?` reads it.
+    expect(sameProjectName(undefined, '')).toBe(true);
+    expect(sameProjectName('', '')).toBe(false);
+    expect(sameProjectName('work', 'Work')).toBe(true);
+    expect(sameProjectName('Work', 'Work')).toBe(true);
+    expect(sameProjectName('Work', undefined)).toBe(false);
+    expect(sameProjectName(undefined, 'Work')).toBe(false);
+    expect(sameProjectName('Work', 'Health')).toBe(false);
+    // A stored "none" is a name here; only the phone's sheet reads it as no project.
+    expect(sameProjectName('none', undefined)).toBe(false);
+    // Folded as JS folds it: a capital sigma at the end of a word is the final sigma.
+    expect(sameProjectName('\u03A3\u03A4\u039F\u03A7\u039F\u03A3', '\u03C3\u03C4\u03BF\u03C7\u03BF\u03C2')).toBe(true);
+  });
+});
+
+/** A task parked in Work's block, its own slot stashed. */
+const parkedInWork = (over: Partial<RefileItem> = {}): RefileItem => ({
+  project: 'Work',
+  projectId: 'p-work',
+  inProjectBlock: true,
+  previousStartTime: '14:00',
+  previousStartDate: '2026-09-30',
+  ...over,
+});
+
+/** moveTaskOutOfProjectBlock's release, in its order. */
+const RELEASE = [
+  ['inProjectBlock', false],
+  ['startTime', '14:00'],
+  ['startDate', '2026-09-30'],
+  ['previousStartTime', undefined],
+  ['previousStartDate', undefined],
+];
+
+describe('projectBlockRelease', () => {
+  it('is nothing for an item not parked, or parked under a name that doesn’t move', () => {
+    expect(projectBlockRelease({ project: 'Work', projectId: 'p-work' }, 'Health')).toEqual({});
+    expect(projectBlockRelease({ ...parkedInWork(), inProjectBlock: false }, 'Health')).toEqual({});
+    expect(projectBlockRelease(parkedInWork(), 'Work')).toEqual({});
+    expect(projectBlockRelease(parkedInWork(), 'work')).toEqual({});
+    expect(projectBlockRelease(parkedInWork({ projectId: 'stale' }), 'Work')).toEqual({});
+  });
+
+  it('gives a parked item moved, or cleared, its slot back and forgets the stash', () => {
+    expect(Object.entries(projectBlockRelease(parkedInWork(), 'Health'))).toEqual(RELEASE);
+    expect(Object.entries(projectBlockRelease(parkedInWork(), undefined))).toEqual(RELEASE);
+  });
+
+  it('gives back no time and no day when the stash holds none', () => {
+    expect(
+      Object.entries(projectBlockRelease(parkedInWork({ previousStartTime: undefined, previousStartDate: undefined }), 'Health')),
+    ).toEqual([
+      ['inProjectBlock', false],
+      ['startTime', undefined],
+      ['startDate', undefined],
+      ['previousStartTime', undefined],
+      ['previousStartDate', undefined],
+    ]);
+  });
+});
+
+describe('projectRefilePatch', () => {
+  it('is null when the item is already there by folded name and id', () => {
+    expect(projectRefilePatch({ project: 'Work', projectId: 'p-work' }, 'Work', 'p-work')).toBeNull();
+    expect(projectRefilePatch({ project: 'work', projectId: 'p-work' }, 'Work', 'p-work')).toBeNull();
+    expect(projectRefilePatch({}, undefined, undefined)).toBeNull();
+    expect(projectRefilePatch(parkedInWork(), 'Work', 'p-work')).toBeNull();
+  });
+
+  it('writes the name and the id alone for a stale id or a text-only name, parked or not', () => {
+    const relink = [
+      ['project', 'Work'],
+      ['projectId', 'p-work'],
+    ];
+    expect(Object.entries(projectRefilePatch({ project: 'Work', projectId: 'stale' }, 'Work', 'p-work')!)).toEqual(relink);
+    expect(Object.entries(projectRefilePatch({ project: 'Work' }, 'Work', 'p-work')!)).toEqual(relink);
+    expect(Object.entries(projectRefilePatch(parkedInWork({ projectId: 'stale' }), 'Work', 'p-work')!)).toEqual(relink);
+    expect(Object.entries(projectRefilePatch(parkedInWork({ projectId: undefined }), 'Work', 'p-work')!)).toEqual(relink);
+  });
+
+  it('files, and clears, with both keys always', () => {
+    expect(Object.entries(projectRefilePatch({}, 'Work', 'p-work')!)).toEqual([
+      ['project', 'Work'],
+      ['projectId', 'p-work'],
+    ]);
+    expect(Object.entries(projectRefilePatch({ project: 'Work', projectId: 'p-work' }, undefined, undefined)!)).toEqual([
+      ['project', undefined],
+      ['projectId', undefined],
+    ]);
+    // An unfiled habit reads '': its clear writes.
+    expect(Object.entries(projectRefilePatch({ project: '' }, undefined, undefined)!)).toEqual([
+      ['project', undefined],
+      ['projectId', undefined],
+    ]);
+  });
+
+  it('appends the release for a parked item that moves, in setItemsProject’s order', () => {
+    expect(Object.entries(projectRefilePatch(parkedInWork(), 'Health', 'p-health')!)).toEqual([
+      ['project', 'Health'],
+      ['projectId', 'p-health'],
+      ...RELEASE,
+    ]);
+    expect(Object.entries(projectRefilePatch(parkedInWork(), undefined, undefined)!)).toEqual([
+      ['project', undefined],
+      ['projectId', undefined],
+      ...RELEASE,
+    ]);
+  });
+});
+
+describe('refileItemFromShape', () => {
+  /** A row with the project chip's columns read, all NULL. */
+  const unfiled = (over: Partial<EditShape> = {}): EditShape =>
+    shape({ project: null, projectId: null, previousStartTime: null, previousStartDate: null, ...over });
+
+  it('reads a habit’s NULL project as the empty name, and never its block or stash', () => {
+    expect(refileItemFromShape(unfiled({ type: 'habit' }))).toEqual({ project: '', projectId: undefined });
+    expect(
+      refileItemFromShape(
+        unfiled({
+          type: 'habit',
+          project: 'Health',
+          projectId: 'p-health',
+          inProjectBlock: true,
+          previousStartTime: '14:00',
+          previousStartDate: '2026-09-30',
+        }),
+      ),
+    ).toEqual({ project: 'Health', projectId: 'p-health' });
+  });
+
+  it('reads a task’s NULLs as undefined, and carries its block and stash', () => {
+    expect(refileItemFromShape(unfiled({ inProjectBlock: null }))).toEqual({
+      project: undefined,
+      projectId: undefined,
+      inProjectBlock: undefined,
+      previousStartTime: undefined,
+      previousStartDate: undefined,
+    });
+    expect(
+      refileItemFromShape(
+        unfiled({
+          type: 'errand',
+          project: 'Work',
+          projectId: 'p-work',
+          inProjectBlock: true,
+          previousStartTime: '14:00',
+          previousStartDate: '2026-09-30',
+        }),
+      ),
+    ).toEqual(parkedInWork());
+  });
+
+  it.each(['project', 'projectId', 'previousStartTime', 'previousStartDate'] as const)('throws when %s was not read', (key) => {
+    expect(() => refileItemFromShape(unfiled({ [key]: undefined }))).toThrow();
+  });
+});
+
+describe('project', () => {
+  /** A task with the project chip's columns read, filed under Work. */
+  const filed = (over: Partial<EditShape> = {}): EditShape =>
+    shape({ project: 'Work', projectId: 'p-work', previousStartTime: null, previousStartDate: null, ...over });
+  const WORK = { id: 'p-work', name: 'Work' };
+  const HEALTH = { id: 'p-health', name: 'Health' };
+  const toWork: ItemEdit = { action: 'project', projectId: 'p-work' };
+  const toHealth: ItemEdit = { action: 'project', projectId: 'p-health' };
+  const toNone: ItemEdit = { action: 'project', projectId: null };
+  /** A type with no project axis: none ships, but the gate is the registry's. */
+  const noProject: ItemTypeConfig = { ...task, containerKind: null };
+  /** A type whose container is required: none ships since 2026-10-01. */
+  const required: ItemTypeConfig = { ...task, containerRequired: true };
+
+  it('is refused under a subtask, before the type is asked', () => {
+    const notForSubtask = { code: 'not_for_subtask', status: 400 };
+    expect(editRefusal(filed({ parentItemId: ID }), toWork, task)).toEqual(notForSubtask);
+    expect(editRefusal(filed({ parentItemId: ID }), toNone, noProject)).toEqual(notForSubtask);
+    expect(editRefusal(filed({ parentItemId: ID }), toNone, required)).toEqual(notForSubtask);
+  });
+
+  it('is refused on a type with no project axis, and No project where the container is required', () => {
+    expect(editRefusal(filed(), toWork, noProject)).toEqual({ code: 'no_project', status: 400 });
+    expect(editRefusal(filed(), toNone, noProject)).toEqual({ code: 'no_project', status: 400 });
+    expect(editRefusal(filed(), toNone, required)).toEqual({ code: 'project_required', status: 400 });
+    expect(editRefusal(filed(), toWork, required)).toBeNull();
+  });
+
+  it('takes a project and No project on every shipped type', () => {
+    for (const [type, config] of [
+      ['task', task],
+      ['habit', habit],
+      ['errand', errand],
+    ] as const) {
+      expect(editRefusal(filed({ type }), toWork, config), type).toBeNull();
+      expect(editRefusal(filed({ type }), toNone, config), type).toBeNull();
+    }
+  });
+
+  it('writes projectRefilePatch for the project the route read', () => {
+    const rows: EditShape[] = [
+      filed(),
+      filed({ project: 'work' }),
+      filed({ projectId: 'stale' }),
+      filed({ projectId: null }),
+      filed({ project: null, projectId: null }),
+      filed({ type: 'habit', project: null, projectId: null }),
+      filed({ inProjectBlock: true, previousStartTime: '14:00', previousStartDate: '2026-09-30' }),
+      filed({ type: 'errand', projectId: null }),
+    ];
+    for (const row of rows) {
+      for (const [edit, project] of [
+        [toWork, WORK],
+        [toHealth, HEALTH],
+        [toNone, null],
+      ] as const) {
+        expect(editPatch(row, edit, getItemTypeConfig(row.type), { project }), JSON.stringify([row, edit])).toEqual(
+          projectRefilePatch(refileItemFromShape(row), project?.name, project?.id) ?? {},
+        );
+      }
+    }
+    // Already there by folded name and id: nothing.
+    expect(editPatch(filed({ project: 'work' }), toWork, task, { project: WORK })).toEqual({});
+    // An unfiled habit's clear writes, as the web's does.
+    expect(editPatch(filed({ type: 'habit', project: null, projectId: null }), toNone, habit, { project: null })).toEqual({
+      project: undefined,
+      projectId: undefined,
+    });
+    // A parked task moved: the release, its bucket untouched.
+    expect(
+      Object.entries(
+        editPatch(filed({ inProjectBlock: true, previousStartTime: '14:00', previousStartDate: '2026-09-30' }), toHealth, task, {
+          project: HEALTH,
+        }),
+      ),
+    ).toEqual([['project', 'Health'], ['projectId', 'p-health'], ...RELEASE]);
+    // A stored "none" (habits saved before #373) is a name here, as to setItemsProject: No
+    // project writes NULL over it, which cleans the row, and a project files over it.
+    for (const [type, config] of [
+      ['habit', habit],
+      ['task', task],
+    ] as const) {
+      const none = filed({ type, project: 'none', projectId: null });
+      expect(editPatch(none, toNone, config, { project: null }), type).toEqual({ project: undefined, projectId: undefined });
+      expect(editPatch(none, toWork, config, { project: WORK }), type).toEqual({ project: 'Work', projectId: 'p-work' });
+    }
+  });
+
+  it('throws without the project the route read, or with another one', () => {
+    expect(() => editPatch(filed(), toWork, task)).toThrow();
+    expect(() => editPatch(filed(), toWork, task, {})).toThrow();
+    expect(() => editPatch(filed(), toWork, task, { project: null })).toThrow();
+    expect(() => editPatch(filed(), toNone, task, { project: WORK })).toThrow();
+    expect(() => editPatch(filed(), toWork, task, { project: HEALTH })).toThrow();
+    expect(() => editPatch(filed(), toNone, task)).toThrow();
+  });
+
+  it('throws when a project column was not read', () => {
+    expect(() => editPatch(filed({ projectId: undefined }), toWork, task, { project: WORK })).toThrow();
+  });
+
+  it('leaves every other edit to ignore the project', () => {
+    const edit: ItemEdit = { action: 'title', title: 'Renamed' };
+    expect(editPatch(filed(), edit, task, { project: WORK })).toEqual(editPatch(filed(), edit, task));
   });
 });

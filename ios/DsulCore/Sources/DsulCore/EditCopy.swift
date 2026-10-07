@@ -20,6 +20,13 @@ import Foundation
 // day" and Monthly's note on short months (the dialog's Repeat chip). The
 // frequency and weekday words are lib/planner-types.ts's, in Cadence.swift.
 //
+// From 2f, the container nouns (`ContainerWords`): "Project", "Routine",
+// "Season", their plurals and "No project", from lib/container-registry.ts
+// `CONTAINER_KINDS`, the one place the web keeps them. The fixture's
+// `containers` carries them here (checked by EditWritesFixtureTests'
+// `theContainerWordsAreTheWebs`), so the phone never spells a container's noun
+// on its own.
+//
 // The phone's own words (the "Add a subtask" row, the confirm's title) are
 // the app's, in ItemSheetModel.
 
@@ -62,6 +69,29 @@ public enum EditCopy {
     public static func durationLabel(_ minutes: Int) -> String {
         return durationLabels[minutes] ?? "\(minutes) min"
     }
+}
+
+/// lib/container-registry.ts `CONTAINER_KINDS`' words for the three kinds an
+/// item meets (edit-writes.json `containers`): each kind's `label` and
+/// `labelPlural`, and the project's `unsetLabel`, the "carries the axis,
+/// value unset" heading (the Display menu's unset row and the list's
+/// grouping heading). The item dialog's picker spells the same words from
+/// `form.containerLabel` (`No {containerLabel.toLowerCase()}`).
+public enum ContainerWords {
+    /// `CONTAINER_KINDS.project.label`.
+    public static let project = "Project"
+    /// `CONTAINER_KINDS.project.labelPlural`.
+    public static let projects = "Projects"
+    /// `CONTAINER_KINDS.project.unsetLabel`.
+    public static let noProject = "No project"
+    /// `CONTAINER_KINDS.routine.label`.
+    public static let routine = "Routine"
+    /// `CONTAINER_KINDS.routine.labelPlural`.
+    public static let routines = "Routines"
+    /// `CONTAINER_KINDS.season.label`.
+    public static let season = "Season"
+    /// `CONTAINER_KINDS.season.labelPlural`.
+    public static let seasons = "Seasons"
 }
 
 /// lib/item-edit.ts `streakRunText`, the streak flame's tooltip: "No streak

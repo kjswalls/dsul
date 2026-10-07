@@ -23,6 +23,8 @@ import { postItemWrite } from '@/lib/app-api';
  *                                                         the days with Custom days only and the day
  *                                                         with Monthly only; then any goal role it
  *                                                         left untrue is demoted
+ *   { action: 'project', projectId }                      the project, by id; null for none. A task
+ *                                                         parked in its old project's block leaves it
  * The handler is in lib/app-api.ts.
  */
 export async function POST(

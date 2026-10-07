@@ -23,7 +23,9 @@ import SwiftUI
 ///   that verb is), and the time chip opens the Time sheet (`TimeSheet`).
 ///   From 2e the repeat chip is a menu whose Monthly… and Custom days… open
 ///   the Repeat sheet (`RepeatSheet`), and a one-off task's Add property
-///   holds Repeat ▸;
+///   holds Repeat ▸. From 2f the project chip is a menu of the user's
+///   projects, checked by folded name, whose pick files the item at once,
+///   and an item with no project gets Project ▸ while the user has one;
 /// - the subtasks, each ticked in place, its title opening its own page, and
 ///   Delete in its context menu; then, where one may be added, "Add a
 ///   subtask", which swaps in a field (`SubtaskField`).
@@ -419,7 +421,14 @@ struct ItemDetail: View {
         let chips = shownChips(item)
         let showsStreak = planner.showsStreak(for: item)
         let canEdit: (String) -> Bool = { planner.canEdit($0, item) }
-        let unset = ItemSheetModel.unsetProperties(item, shown: chips, offered: offered, canEdit: canEdit)
+        // The user's projects, once per folded name, for the project chip's
+        // menu and Project ▸; and the container kinds the user has one of,
+        // which Add property may offer.
+        let projects = ItemSheetModel.projectChoices(planner.projectRecords)
+        let containers = ItemSheetModel.ownedContainers(projects: projects.count, routines: planner.routines.count,
+                                                        seasons: planner.seasons.count)
+        let unset = ItemSheetModel.unsetProperties(item, shown: chips, offered: offered, canEdit: canEdit,
+                                                   containers: containers)
         // The Date menu's days, as drawn now; a pick reads them again
         // (`setDate`).
         let dates = ItemSheetModel.dateOptions(today: planner.today, nextWeekStart: planner.nextWeekStart)
@@ -432,19 +441,22 @@ struct ItemDetail: View {
                     streakChip(item, ctx, offered: offered)
                 }
                 ForEach(chips) { chip in
-                    chipControl(chip, item, offered: offered, dates: dates, canEdit: canEdit)
+                    chipControl(chip, item, offered: offered, dates: dates, projects: projects, canEdit: canEdit)
                 }
                 if !unset.isEmpty {
                     AddPropertyMenu(kinds: unset,
                                     label: ItemSheetModel.seedLabel(rowHasOthers: showsStreak || !chips.isEmpty),
                                     dates: dates,
                                     repeats: repeats,
+                                    projects: projects,
+                                    projectColor: { ProjectPalette.color(for: $0, in: planner.projects) },
                                     onPriority: { pick(.priority($0), settling: .priority) },
                                     onDate: { setDate($0) },
                                     onTime: { editor = .time(item.id) },
                                     onTimes: { pick(.timesPerDay($0), settling: .timesPerDay) },
                                     onRepeat: { setRepeat($0) },
-                                    onRemind: { editor = .reminder(item.id) })
+                                    onRemind: { editor = .reminder(item.id) },
+                                    onProject: { pick(ItemSheetModel.projectEdit($0), settling: .project) })
                         .accessibilityFocused($chipVoiceOver, equals: .seed)
                 }
             }
@@ -461,17 +473,18 @@ struct ItemDetail: View {
     }
 
     /// One property chip. Where it edits (`ItemSheetModel.chipEditor`), a
-    /// menu (priority, the date, times per day, the repeat) or a button that
-    /// opens its sheet (the time, the reminder), labelled on the control
-    /// itself, as the streak chip and the bar's Reschedule menu are, with the
-    /// button trait and a hint, and with VoiceOver's focus bound to it so it
-    /// can land there after a change. Otherwise part 1's read-only chip, in
-    /// its slot.
+    /// menu (priority, the date, times per day, the repeat, the project) or
+    /// a button that opens its sheet (the time, the reminder), labelled on the
+    /// control itself, as the streak chip and the bar's Reschedule menu are,
+    /// with the button trait and a hint, and with VoiceOver's focus bound to
+    /// it so it can land there after a change. Otherwise part 1's read-only
+    /// chip, in its slot.
     /// `offered` is the page's `offeredVerbs`, whose Reschedule gates the
-    /// date; `dates` the Date menu's entries.
+    /// date; `dates` the Date menu's entries; `projects` the project menu's
+    /// rows (`ItemSheetModel.projectChoices`).
     @ViewBuilder
     private func chipControl(_ chip: SheetChip, _ item: SampleItem, offered: [VerbID], dates: [DateOption],
-                             canEdit: (String) -> Bool) -> some View {
+                             projects: [ProjectChoice], canEdit: (String) -> Bool) -> some View {
         switch ItemSheetModel.chipEditor(chip.kind, item, offered: offered, canEdit: canEdit) {
         case .menu?:
             if chip.kind == .priority {
@@ -489,6 +502,12 @@ struct ItemDetail: View {
                 RepeatChipMenu(chip: chip, item: item, caps: planner.caps(for: item),
                                onPick: { setRepeat($0) })
                     .accessibilityFocused($chipVoiceOver, equals: .chip(.repeats))
+            } else if chip.kind == .project {
+                ProjectChipMenu(chip: chip, item: item, choices: projects,
+                                offersNone: ItemSheetModel.offersNoProject(planner.caps(for: item)),
+                                color: { ProjectPalette.color(for: $0, in: planner.projects) },
+                                onPick: { pick(ItemSheetModel.projectEdit($0), settling: .project) })
+                    .accessibilityFocused($chipVoiceOver, equals: .chip(.project))
             } else {
                 readOnlyChip(chip)
             }
@@ -595,8 +614,12 @@ struct ItemDetail: View {
     /// `announceSettled` waits: by then the menu or the sheet has closed, the
     /// target is drawn, and iOS has handed focus back to their source, which
     /// a pick may have taken away (a seed pick that set the last unset
-    /// property; None, 1× a day, No reminder or Anytime taking its chip).
-    /// Never in the same transaction as the edit. A gone item moves nothing.
+    /// property; None, 1× a day, No reminder, Anytime or No project taking
+    /// its chip). Never in the same transaction as the edit. A gone item
+    /// moves nothing. When nothing is left to offer, no seed is drawn (No
+    /// project on a text-only name, for a user with no projects and every
+    /// other property set): `.seed` then binds to no view, and VoiceOver
+    /// stays where iOS puts it, as after a gone item.
     private func settleVoiceOver(on kind: SheetChip.Kind) {
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(600))

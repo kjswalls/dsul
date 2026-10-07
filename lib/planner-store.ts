@@ -33,7 +33,7 @@ import { PRIORITY_LABELS } from './planner-types';
 // The time → bucket rules live in a plain module so a route can share them.
 import { autoCorrectBucket } from './time-bucket';
 // The schedule actions' patches live in lib/item-edit.ts, so the iPhone's routes write the same ones.
-import { scheduleHabitPatch, scheduleTaskPatch, UNSCHEDULE_TASK_PATCH } from './item-edit';
+import { projectRefilePatch, scheduleHabitPatch, scheduleTaskPatch, UNSCHEDULE_TASK_PATCH } from './item-edit';
 import { validateProposalOperations } from './proposal';
 import {
   addDaysToDateStr,
@@ -2970,8 +2970,16 @@ export const usePlannerStore = create<PlannerStore>()(
         );
 
         const newUpdates = { ...updates };
-        // Auto-correct bucket if start time changes
-        if (updates.startTime && task) {
+        // Auto-correct bucket if start time changes, unless the patch releases a project block with
+        // the stash's own time and names no part of day: that goes back beside the block's part of
+        // day, as setItemsProject and moveTaskOutOfProjectBlock write it (open question 4 of the 2f
+        // brief). A time the same save set itself comes with the part of day beside it (the item
+        // dialog's, beside its release), so it is filed where it falls, as ever, even when it
+        // equals the stash.
+        const stashedTime = (task as Partial<TaskItem> | undefined)?.previousStartTime;
+        const releasesStash =
+          updates.inProjectBlock === false && !('timeBucket' in updates) && updates.startTime === stashedTime;
+        if (updates.startTime && task && !releasesStash) {
           const bucket = updates.timeBucket || task.timeBucket;
           const corrected = autoCorrectBucket(updates.startTime, bucket);
           if (corrected !== bucket) newUpdates.timeBucket = corrected;
@@ -3797,12 +3805,19 @@ export const usePlannerStore = create<PlannerStore>()(
        * updateTask/updateHabit — resolved ONCE here, since every item is going
        * to the same place.
        *
+       * Name AND id: a folded match whose id is stale (or missing, from before
+       * 027) is still worth the write — it repairs the link.
+       *
        * An item sitting in its old project's time block has to come out of it.
        * `inProjectBlock` parks it inside the block with its own time stashed in
        * previousStartTime/Date (moveTasksToProjectBlock), and the block it is
        * parked in is the one it no longer belongs to — left alone, it would
        * render in no block at all and vanish from the day. So the release is
        * moveTaskOutOfProjectBlock's, folded into the same patch.
+       *
+       * The rule lives in lib/item-edit.ts as projectRefilePatch, so the
+       * iPhone's `project` route writes what this writes; the item dialog's
+       * project change shares its release (projectBlockRelease).
        */
       setItemsProject: (ids, name) => {
         const idSet = new Set(ids);
@@ -3811,24 +3826,10 @@ export const usePlannerStore = create<PlannerStore>()(
         for (const item of get().items) {
           if (!idSet.has(item.id)) continue;
           if (name ? !canBulkSetProject(item) : !canBulkClearProject(item)) continue;
-          const current = item.project;
-          const sameName = name
-            ? current != null && sameContainerName('project', current, name)
-            : current == null;
-          // Name AND id: a folded match whose id is stale (or missing, from
-          // before 027) is still worth the write — it repairs the link.
-          if (sameName && item.projectId === projectId) continue;
-
-          const patch: Partial<Task> = { project: name, projectId };
-          const parked = item as Partial<TaskItem>;
-          if (parked.inProjectBlock && !sameName) {
-            patch.inProjectBlock = false;
-            patch.startTime = parked.previousStartTime;
-            patch.startDate = parked.previousStartDate;
-            patch.previousStartTime = undefined;
-            patch.previousStartDate = undefined;
-          }
-          patchById.set(item.id, patch);
+          // The bulk Move to project's rule (lib/item-edit.ts projectRefilePatch, which the iPhone's
+          // route runs too): name AND id, and the release of a parked item.
+          const patch = projectRefilePatch(item, name, projectId);
+          if (patch) patchById.set(item.id, patch);
         }
         if (patchById.size === 0) return;
 

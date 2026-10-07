@@ -69,16 +69,20 @@ func minutesAfterMidnight(_ time: String) -> Int? {
 
 /// `item` put on `date`'s grid at `startMin`, as the web's hour drop writes it
 /// (lib/dnd/handle-drag-end.ts → `scheduleTask`): scheduled, the hour's
-/// bucket, the time, out of any project block, and anchored to the day it was
-/// dropped on. The one placing step: the planner's optimistic drop
-/// (`SamplePlanner.schedule`) and PlannerSync's replay of a drop that landed
-/// both take it, so the two can't drift.
+/// bucket, the time, out of any project block with the stash it was parked
+/// with cleared (`inProjectBlock` false, no `previousStartTime` or
+/// `previousStartDate`, as lib/item-edit.ts `scheduleTaskPatch` writes them),
+/// and anchored to the day it was dropped on. The one placing step: the
+/// planner's optimistic drop (`SamplePlanner.schedule`) and PlannerSync's
+/// replay of a drop that landed both take it, so the two can't drift.
 func placing(_ item: Item, on date: String, startMin: Int) -> Item {
     var placed = item
     placed.isScheduled = true
     placed.timeBucket = DayBucket.owning(minute: startMin).rawValue
     placed.startTime = minutesToTime(startMin)
     placed.inProjectBlock = false
+    placed.previousStartTime = nil
+    placed.previousStartDate = nil
     placed.startDate = date
     return placed
 }

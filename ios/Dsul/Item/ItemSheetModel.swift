@@ -28,7 +28,12 @@ import Foundation
 // `repeatPick`) and the Repeat sheet's rules and words, the web's where it
 // has them (item-dialog.tsx's Repeat chip; DsulCore Cadence.swift and
 // EditCopy.swift, lib/planner-types.ts `REPEAT_FREQUENCY_LABELS` and
-// `WEEKDAY_LABELS`, lib/item-edit.ts `repeatEditPatch` and `EDIT_COPY`).
+// `WEEKDAY_LABELS`, lib/item-edit.ts `repeatEditPatch` and `EDIT_COPY`). From
+// 2f, the project chip's menu and Add property's Project ▸ (`projectChoices`,
+// `projectKey`, `projectEdit`), keyed on the folded name as the web's bulk
+// Move to project matches it (lib/item-edit.ts `sameProjectName`), and the
+// container nouns, which are lib/container-registry.ts `CONTAINER_KINDS`'
+// (DsulCore EditCopy.swift `ContainerWords`), never spelled here.
 
 /// One thing the sheet can do: the web's verbs it offers, plus Pause until
 /// (the `pause` verb with a resume day, which the bar shows as its own slot).
@@ -175,6 +180,15 @@ struct RepeatChoice: Identifiable, Hashable, Sendable {
 enum RepeatPick: Hashable, Sendable {
     case write(ItemEdit)
     case open(RepeatDetail)
+}
+
+/// One row of the project menu: a project, listed once per folded name.
+struct ProjectChoice: Identifiable, Hashable, Sendable {
+    /// The project's id, which the edit sends.
+    let id: String
+    let name: String
+    /// The folded name (`jsLowercased`), what the menu checks against.
+    var key: String { jsLowercased(name) }
 }
 
 /// The Date chip's choices (Q3 a, Q4 a): today and tomorrow, wall-clock days
@@ -832,16 +846,21 @@ enum ItemSheetModel {
             out.append(SheetChip(kind: .reminder, text: reminder, systemImage: "bell",
                                  spoken: "Reminder: " + reminder.replacingOccurrences(of: " \u{00B7} ", with: ", ")))
         }
-        if let project = item.project, !project.isEmpty {
-            out.append(SheetChip(kind: .project, text: project, systemImage: nil, spoken: "Project: \(project)"))
+        // A stored "none" (`legacyNoProject`) is no project, as the web's
+        // dialog reads it: no chip, and Project in Add property.
+        if let project = item.project, projectKey(project) != nil {
+            out.append(SheetChip(kind: .project, text: project, systemImage: nil,
+                                 spoken: "\(ContainerWords.project): \(project)"))
         }
         if let summary = membershipSummary(routineNames) {
             out.append(SheetChip(kind: .routine, text: summary, systemImage: "checklist",
-                                 spoken: spokenMembership(routineNames, one: "Routine", many: "Routines")))
+                                 spoken: spokenMembership(routineNames, one: ContainerWords.routine,
+                                                          many: ContainerWords.routines)))
         }
         if let summary = membershipSummary(seasonNames) {
             out.append(SheetChip(kind: .season, text: summary, systemImage: "leaf",
-                                 spoken: spokenMembership(seasonNames, one: "Season", many: "Seasons")))
+                                 spoken: spokenMembership(seasonNames, one: ContainerWords.season,
+                                                          many: ContainerWords.seasons)))
         }
         return out
     }
@@ -934,7 +953,9 @@ enum ItemSheetModel {
     ///   Weekdays and Weekends write at once and whose Monthly… and Custom
     ///   days… open the Repeat sheet (`repeatPick`);
     /// - the reminder and the time: their sheets;
-    /// - every other chip: read-only, until 2f.
+    /// - the project: a menu (`projectChoices`) whose pick writes at once,
+    ///   never on a subtask;
+    /// - the routines and the seasons: read-only, until their PR (2f-b).
     static func chipEditor(_ kind: SheetChip.Kind, _ item: SampleItem, offered: [VerbID],
                            canEdit: (String) -> Bool) -> ChipEditor? {
         switch kind {
@@ -950,7 +971,9 @@ enum ItemSheetModel {
             return canEdit("repeat") ? .menu : nil
         case .reminder:
             return canEdit("reminder") ? .sheet(.reminder(item.id)) : nil
-        case .project, .routine, .season:
+        case .project:
+            return canEdit("project") ? .menu : nil
+        case .routine, .season:
             return nil
         }
     }
@@ -964,16 +987,39 @@ enum ItemSheetModel {
     /// offered Priority, an undated task is offered Date (and no Time…: it has
     /// no day for a time yet), an Anytime item is offered Time… (part 1 draws
     /// no chip for Anytime), and a one-off task is offered Repeat (a recurring
-    /// item, and every habit, draws its chip). Never drawn as dimmed
-    /// placeholder chips (Q2 a).
+    /// item, and every habit, draws its chip). Then the containers, last and
+    /// project first, as the web seed orders its bands (item-dialog.tsx): each
+    /// only while the user has one of that kind (`containers`, from
+    /// `ownedContainers`), so an item with no project is offered Project while
+    /// the user has a project (the web seed's rule, lib/item-bands.ts, without
+    /// the Organize console the phone doesn't have). A stored "none" draws no
+    /// chip, so it is offered Project too. Routines and seasons are offered
+    /// nothing until their chips edit (2f-b). `containers` defaults to none,
+    /// so a caller that passes none is offered no container. Never drawn as
+    /// dimmed placeholder chips (Q2 a).
     static func unsetProperties(_ item: SampleItem, shown: [SheetChip], offered: [VerbID],
-                                canEdit: (String) -> Bool) -> [SheetChip.Kind] {
+                                canEdit: (String) -> Bool,
+                                containers: Set<SheetChip.Kind> = []) -> [SheetChip.Kind] {
         let drawn = Set(shown.map(\.kind))
         var out: [SheetChip.Kind] = []
-        let kinds: [SheetChip.Kind] = [.priority, .date, .time, .timesPerDay, .repeats, .reminder]
+        let kinds: [SheetChip.Kind] = [.priority, .date, .time, .timesPerDay, .repeats, .reminder,
+                                       .project, .routine, .season]
+        let containerKinds: Set<SheetChip.Kind> = [.project, .routine, .season]
         for kind in kinds where !drawn.contains(kind) {
+            if containerKinds.contains(kind) && !containers.contains(kind) { continue }
             if chipEditor(kind, item, offered: offered, canEdit: canEdit) != nil { out.append(kind) }
         }
+        return out
+    }
+
+    /// The container kinds the user has at least one of, which Add property
+    /// may offer (`unsetProperties`'s `containers`): the project with a
+    /// project, the routine with a routine, the season with a season.
+    static func ownedContainers(projects: Int, routines: Int, seasons: Int) -> Set<SheetChip.Kind> {
+        var out: Set<SheetChip.Kind> = []
+        if projects > 0 { out.insert(.project) }
+        if routines > 0 { out.insert(.routine) }
+        if seasons > 0 { out.insert(.season) }
         return out
     }
 
@@ -1003,7 +1049,9 @@ enum ItemSheetModel {
     }
 
     /// An editable chip's hint to VoiceOver, after its words and "button":
-    /// what a tap changes. Nil for a chip that doesn't edit.
+    /// what a tap changes. The project's noun is the registry's
+    /// (`ContainerWords`), lower-cased as JavaScript does. Nil for a chip
+    /// that doesn't edit.
     static func chipHint(_ kind: SheetChip.Kind) -> String? {
         switch kind {
         case .priority: return "Changes the priority"
@@ -1012,7 +1060,8 @@ enum ItemSheetModel {
         case .timesPerDay: return "Changes how many times a day"
         case .repeats: return "Changes how it repeats"
         case .reminder: return "Changes the reminder"
-        case .project, .routine, .season: return nil
+        case .project: return "Changes the \(jsLowercased(ContainerWords.project))"
+        case .routine, .season: return nil
         }
     }
 
@@ -1031,9 +1080,10 @@ enum ItemSheetModel {
 
     /// A property's entry in the seed: the web seed's label, with an ellipsis
     /// for one that opens a sheet rather than a submenu ("Remind…", "Time…").
-    /// 2e's seed holds the first six (`unsetProperties`); the rest carry the
-    /// words design §3.7 gives their PRs (Project, Routine, Season). Repeat
-    /// is a submenu, so its entry is "Repeat", with no ellipsis.
+    /// 2f's seed holds the first six and the project (`unsetProperties`); the
+    /// routine and the season join it with their PR (2f-b). The containers'
+    /// entries are the registry's nouns (`ContainerWords`), the web seed's
+    /// band labels. Repeat and Project are submenus, so with no ellipsis.
     static func seedEntry(_ kind: SheetChip.Kind) -> String {
         switch kind {
         case .priority: return "Priority"
@@ -1042,9 +1092,9 @@ enum ItemSheetModel {
         case .date: return "Date"
         case .time: return "Time\u{2026}"
         case .repeats: return "Repeat"
-        case .project: return "Project"
-        case .routine: return "Routine"
-        case .season: return "Season"
+        case .project: return ContainerWords.project
+        case .routine: return ContainerWords.routine
+        case .season: return ContainerWords.season
         }
     }
 
@@ -1146,6 +1196,61 @@ enum ItemSheetModel {
         if case .open = repeatPick(frequency) { return true }
         return false
     }
+
+    /// The project menu's rows, and Add property's Project ▸: the user's
+    /// projects in payload order, the first of each folded name. Names are
+    /// unique per user exactly, not folded, so "Work" and "work" can both
+    /// exist, and two rows for one folded name would both be checked.
+    static func projectChoices(_ projects: [Project]) -> [ProjectChoice] {
+        var seen: Set<String> = []
+        var out: [ProjectChoice] = []
+        for project in projects {
+            let choice = ProjectChoice(id: project.id, name: project.name)
+            if seen.insert(choice.key).inserted { out.append(choice) }
+        }
+        return out
+    }
+
+    /// The web dialog's no-project sentinel, which habits saved before #373
+    /// can carry as a stored project (components/planner/item-dialog.tsx
+    /// `draftFromItem` seeds the chip with it, and `projectFromDraft` reads it
+    /// as no project). Matched exactly, never folded: the dialog compares
+    /// `=== 'none'`, so a project the user named "None" is a name.
+    static let legacyNoProject = "none"
+
+    /// What the project menu checks: the stored name folded (`jsLowercased`),
+    /// as the bulk Move to project and the server match it (lib/item-edit.ts
+    /// `sameProjectName`, design P1), so an item filed "work" checks Work. Nil
+    /// for no project: none stored, "" (an unfiled habit) and
+    /// `legacyNoProject`, which `chips` draws no chip for. The menu checks the
+    /// row whose `key` equals it, and No project when it is nil; a name no
+    /// project has (a text-only reference, which the agent API can still
+    /// write) checks nothing. A stored "none" draws no chip, so its item is
+    /// filed from Add property's Project ▸, as on the web; DsulCore and the
+    /// server still read "none" as a name, so that pick writes the project
+    /// over it.
+    static func projectKey(_ name: String?) -> String? {
+        guard let name, !name.isEmpty, name != legacyNoProject else { return nil }
+        return jsLowercased(name)
+    }
+
+    /// What a pick in the project menu sends: the project's id and its name,
+    /// or both nil for No project. The name is for the planner's own step
+    /// alone; the wire carries the id, and the route reads the name.
+    static func projectEdit(_ choice: ProjectChoice?) -> ItemEdit {
+        return .project(id: choice?.id, name: choice?.name)
+    }
+
+    /// Does the project menu offer No project? Not on a type whose container
+    /// is required (`containerRequired`, the server's `project_required`),
+    /// which no shipped type is.
+    static func offersNoProject(_ caps: ItemCaps) -> Bool {
+        return !caps.containerRequired
+    }
+
+    /// The project menu's first row: the registry's
+    /// (`CONTAINER_KINDS.project.unsetLabel`).
+    static let noProject = ContainerWords.noProject
 
     // MARK: Streak
 
