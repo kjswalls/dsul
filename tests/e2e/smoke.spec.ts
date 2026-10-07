@@ -176,6 +176,10 @@ test.describe('Smoke: core daily loop', () => {
       await expect(page.locator('[data-rail] [data-ask-home]')).toHaveCount(0);
       await expect(page.getByRole('button', { name: 'Open Ask' })).toHaveCount(0);
       await expect(page.getByPlaceholder('Ask anything…')).toHaveCount(0);
+      // Nor the unlit key: a paired agent is something connected, so AI is
+      // not offered for setting up either (rail.spec.ts covers the key).
+      await expect(page.locator('[data-ask-opener]')).toHaveCount(0);
+      await expect(page.locator('[data-rail] [data-ask-setup]')).toHaveCount(0);
 
       // Nothing was filed. Held for a beat first: a fall-through write is a
       // network round trip, and the claim is that it never happens.

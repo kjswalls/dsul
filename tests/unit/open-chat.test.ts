@@ -51,13 +51,21 @@ import {
   conversationsSettled,
   useConversationsStore,
 } from '@/lib/conversations-store';
-import { useRailStore } from '@/lib/rail-store';
+import { railModeNow, useRailStore } from '@/lib/rail-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { registerItemPanelClose, registerItemPanelFlush, useUIStore } from '@/lib/ui-store';
 import { useViewStore } from '@/lib/view-store';
 import { useProposalStore } from '@/lib/proposal-store';
-import { CONNECTED_MODEL, NOTHING_CONNECTED, OPENCLAW_PLUGIN, capsFor, seedAI } from './helpers/ai-fixtures';
+import {
+  AI_HIDDEN,
+  CONNECTED_MODEL,
+  KEY_TURNED_DOWN,
+  NOTHING_CONNECTED,
+  OPENCLAW_PLUGIN,
+  capsFor,
+  seedAI,
+} from './helpers/ai-fixtures';
 import { fakeApi, fakeTransport, flush, hangs, summary, type FakeApi, type FakeTransport } from './helpers/conversations-fakes';
 
 const store = () => useConversationsStore.getState();
@@ -181,14 +189,71 @@ describe('toggleRail (Ctrl+J)', () => {
     expect(rail().summoned).toBe(true);
   });
 
-  it('is inert with nothing to answer', () => {
-    unseed();
-    unseed = seedAI(NOTHING_CONNECTED);
-    openItem();
-    toggleRail();
-    expect(useUIStore.getState().activeDialog?.type).toBe('edit-item');
-    expect(useSidebarStore.getState().askOpen).toBe(false);
-    expect(rail().summoned).toBe(false);
+  it('is inert with nothing offered', () => {
+    for (const nothing of [AI_HIDDEN, { ...KEY_TURNED_DOWN, aiHidden: true }, { ...NOTHING_CONNECTED, choice: 'none' as const }]) {
+      unseed();
+      unseed = seedAI(nothing);
+      openItem();
+      toggleRail();
+      expect(useUIStore.getState().activeDialog?.type).toBe('edit-item');
+      expect(useSidebarStore.getState().askOpen).toBe(false);
+      expect(rail().summoned).toBe(false);
+    }
+  });
+
+  // Nothing answers, but the gate offers setup or a fix: the same toggle
+  // opens and shuts the setup column. Never kept open, never a box asked for,
+  // and a kept-open Ask's preference is left as it was.
+  describe.each([
+    ['setup', NOTHING_CONNECTED],
+    ['the fix', KEY_TURNED_DOWN],
+  ])('with %s offered', (_label, offered) => {
+    beforeEach(() => {
+      unseed();
+      unseed = seedAI(offered);
+    });
+
+    it('summons the setup column with no box asked for and nothing kept, then parks it', () => {
+      for (const askOpen of [false, true]) {
+        useSidebarStore.setState({ askOpen });
+        toggleRail();
+        expect(rail().summoned).toBe(true);
+        expect(railModeNow()).toBe('setup');
+        expect(rail().pendingFocus).toBeNull();
+        expect(useSidebarStore.getState().askOpen).toBe(askOpen);
+        toggleRail();
+        expect(rail().summoned).toBe(false);
+        expect(railModeNow()).toBe('hidden');
+        expect(useSidebarStore.getState().askOpen).toBe(askOpen);
+      }
+    });
+
+    it('in Zen: leaves Zen and opens the setup column', () => {
+      useViewStore.setState({ zenOpen: true });
+      toggleRail();
+      expect(useViewStore.getState().zenOpen).toBe(false);
+      expect(railModeNow()).toBe('setup');
+    });
+
+    it('an item open on top: closes the item, as it does over Ask, and shows nothing', () => {
+      openItem();
+      toggleRail();
+      expect(useUIStore.getState().activeDialog).toBeNull();
+      expect(rail().summoned).toBe(false);
+      expect(railModeNow()).toBe('hidden');
+      // The setup column under an item: one press closes both.
+      toggleRail();
+      expect(railModeNow()).toBe('setup');
+      openItem();
+      toggleRail();
+      expect(useUIStore.getState().activeDialog).toBeNull();
+      expect(railModeNow()).toBe('hidden');
+    });
+
+    it('opens nothing through revealChat: that is Ask, which nothing can answer', () => {
+      expect(revealChat(false)).toBe(false);
+      expect(rail().summoned).toBe(false);
+    });
   });
 });
 

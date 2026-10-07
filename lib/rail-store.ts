@@ -56,17 +56,28 @@ export const PANEL_OVERLAY_QUERY = 'not all and (min-width: 1180px)';
  */
 export const RAIL_RESERVE_PX = 432;
 
-export type RailMode = 'item' | 'ask' | 'hidden';
+export type RailMode = 'item' | 'ask' | 'setup' | 'hidden';
 
 /**
  * THE visibility rule, pure.
  *   item    an item is open: the column is its panel, with or without AI
  *   ask     Ask shows: kept open (or summoned), something answers, and either
  *           the column docks or Ask was summoned while it overlays
+ *   setup   nothing answers, the gate offers to set AI up or fix it
+ *           (`invite`: its askInvite or askFix), and the unlit key or Ctrl+J
+ *           summoned it this session
  *   hidden  nothing to show
  * `summoned` alone opens Ask only for the tour's non-persisting summon: every
  * other summon also sets `askOpen`, and closeRail clears both. An overlay
  * needs `summoned`, so a persisted `askOpen` never raises one at boot.
+ *
+ * Setup needs `summoned`, never `askOpen`: it is not Ask, its open state is
+ * not kept, and the next load starts closed. A kept-open Ask whose key
+ * stopped working shows nothing until the "Fix AI" key is pressed. It is its
+ * own mode, not 'ask', so every reader of 'ask' keeps meaning "Ask, with a
+ * box, is on screen" (Ask home's catch-up card, a composer focus request);
+ * the readers of 'hidden' (the key hiding, an overlay making <main> inert,
+ * park's hand-back) take it in on their own.
  */
 export function railMode(i: {
   itemOpen: boolean;
@@ -74,9 +85,11 @@ export function railMode(i: {
   canChat: boolean;
   overlays: boolean;
   summoned: boolean;
+  invite?: boolean;
 }): RailMode {
   if (i.itemOpen) return 'item';
   if ((i.askOpen || i.summoned) && i.canChat && (!i.overlays || i.summoned)) return 'ask';
+  if (i.summoned && i.invite && !i.canChat) return 'setup';
   return 'hidden';
 }
 
@@ -775,12 +788,14 @@ function overlaysNow(): boolean {
 }
 
 function modeFromStores(overlays: boolean): RailMode {
+  const ai = getAICapabilities();
   return railMode({
     itemOpen: useUIStore.getState().activeDialog?.type === 'edit-item',
     askOpen: askOpenOf(useSidebarStore.getState()),
-    canChat: getAICapabilities().canChat,
+    canChat: ai.canChat,
     overlays,
     summoned: useRailStore.getState().summoned,
+    invite: ai.askInvite || ai.askFix,
   });
 }
 

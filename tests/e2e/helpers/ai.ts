@@ -49,6 +49,81 @@ export async function stubConnectedModel(page: Page, o: { agent?: boolean } = {}
   );
 }
 
+/** What `stubAIGate` was asked, and what it now answers. */
+export type GateStub = {
+  /** Every PATCH body the app sent, in order. */
+  patches: Array<Record<string, unknown>>;
+  /** The account's "No AI, thanks", as the stub now answers it. */
+  hidden(): boolean;
+};
+
+/**
+ * Answer the gate "nothing answers here, and AI may be offered", for every
+ * load of this page: no OpenClaw at all, and either no model (`model: 'none'`,
+ * the unlit "Set up AI" key) or a saved Gemini key its provider turned down
+ * (`model: 'failing'`, "Fix AI").
+ *
+ * Stateful, because "No AI, thanks" is an account write: PATCH `{hidden}` is
+ * answered here and the next GET says what it wrote, so a reload sees it. The
+ * real route is never reached. The e2e account is shared by every parallel
+ * spec, and a real `ai_hidden = true` on it would take AI away from all of
+ * them. `aiHidden` is always sent as a boolean: null (a server that has not
+ * said) invites nobody.
+ */
+export async function stubAIGate(
+  page: Page,
+  o: { model?: 'none' | 'failing'; aiHidden?: boolean } = {}
+): Promise<GateStub> {
+  let hidden = o.aiHidden ?? false;
+  const patches: GateStub['patches'] = [];
+  const model =
+    o.model === 'failing'
+      ? {
+          provider: 'gemini',
+          model: 'gemini-flash-latest',
+          baseUrl: null,
+          authMethod: 'key',
+          status: 'failing',
+          problem: 'key_rejected',
+          checkedAt: '2026-10-01T00:00:00.000Z',
+        }
+      : null;
+  const json = (status: number, body: unknown) => ({
+    status,
+    contentType: 'application/json',
+    headers: { 'Cache-Control': 'no-store' },
+    body: JSON.stringify(body),
+  });
+  await page.route('**/api/ai/connection', (route) => {
+    const req = route.request();
+    if (req.method() === 'GET') {
+      return route.fulfill(
+        json(200, {
+          available: true,
+          model,
+          openclaw: { gateway: false, pluginChat: false, agent: false, agentId: null },
+          aiHidden: hidden,
+        })
+      );
+    }
+    const body = (req.postDataJSON() ?? {}) as Record<string, unknown>;
+    patches.push(body);
+    if (req.method() === 'PATCH' && typeof body.hidden === 'boolean') {
+      hidden = body.hidden;
+      return route.fulfill(json(200, { aiHidden: hidden }));
+    }
+    // A fresh check of a key still turned down, as the route answers it: the
+    // check was made, so 200, with the connection still failing.
+    if (req.method() === 'PATCH' && body.recheck === true && model) {
+      return route.fulfill(json(200, { connection: model }));
+    }
+    // Anything else (a connect, a model pick) is not this stub's to answer,
+    // and must not reach the real route either.
+    return route.fulfill(json(400, { error: 'invalid' }));
+  });
+  return { patches, hidden: () => hidden };
+}
+
 /** Answer every chat request with `reply`, in one chunk of the app's SSE. */
 export async function stubChatReply(page: Page, reply: string): Promise<void> {
   await page.route('**/api/chat', (route) =>
@@ -114,6 +189,14 @@ export function rail(page: Page): Locator {
 /** The Ask button on the canvas's header row, shown while Ask is closed. */
 export function askButton(page: Page): Locator {
   return page.getByRole('button', { name: 'Open Ask' });
+}
+
+/**
+ * The same key while nothing answers: unlit, and named for what it opens
+ * ("Set up AI", or "Fix AI" for a saved model that stopped working).
+ */
+export function unlitKey(page: Page): Locator {
+  return page.locator('[data-ask-opener][data-lit="false"]');
 }
 
 /**

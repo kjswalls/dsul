@@ -66,6 +66,7 @@ import {
 import { useProposalStore, type ProposalStatus, type ProposalSurface } from '@/lib/proposal-store';
 import {
   seedAI,
+  AI_HIDDEN,
   CONNECTED_MODEL,
   NOTHING_CONNECTED,
   OPENCLAW_PLUGIN,
@@ -80,12 +81,19 @@ const FAILING: SeedAI = {
   model: { provider: 'openai', model: 'gpt-4o-mini', status: 'failing', problem: 'key_rejected' },
 };
 
-/** Every way the gate says "no chat". */
-const NO_CHAT: Array<[string, SeedAI | undefined]> = [
-  ['the status has not loaded', undefined],
-  ['the status read failed', { phase: 'error' }],
-  ['nothing is connected', NOTHING_CONNECTED],
-  ['the key stopped working', FAILING],
+/**
+ * Every way the gate says "no chat", and what it offers instead: the setup
+ * column ("Set up AI", `askInvite`), the fix ("Fix AI", `askFix`), or nothing.
+ */
+const NO_CHAT: Array<[string, SeedAI | undefined, 'invite' | 'fix' | null]> = [
+  ['the status has not loaded', undefined, null],
+  ['the status read failed', { phase: 'error' }, null],
+  ['nothing is connected', NOTHING_CONNECTED, 'invite'],
+  ['the key stopped working', FAILING, 'fix'],
+  ['the account said No AI, thanks', AI_HIDDEN, null],
+  ['the key stopped working, and the account said No AI, thanks', { ...FAILING, aiHidden: true }, null],
+  ['the server cannot say whether AI is hidden', { ...NOTHING_CONNECTED, aiHidden: null }, null],
+  ['chat is Off on this device', { ...NOTHING_CONNECTED, choice: 'none' }, null],
 ];
 
 const desktopCtx: CommandContext = {
@@ -231,7 +239,7 @@ function capsuleRows(): string[] {
 
 /* ── no chat ─────────────────────────────────────────────────────────── */
 
-describe.each(NO_CHAT)('with no chat (%s)', (_label, state) => {
+describe.each(NO_CHAT)('with no chat (%s)', (_label, state, offered) => {
   beforeEach(() => seed(state));
 
   it('offers no Ask row in the dock', () => {
@@ -296,34 +304,88 @@ describe.each(NO_CHAT)('with no chat (%s)', (_label, state) => {
     }
   });
 
-  it('makes Ctrl+J inert, and still keeps it from the browser', () => {
-    useSidebarStore.setState({ leftSidebarOpen: false });
-    render(<ShortcutHarness />);
-    // Consumed: Ctrl+J is Downloads in Chrome, Edge and Firefox. Handed
-    // through, it would open the browser's downloads on every press until the
-    // gate's read lands, for users who do have AI as well.
-    for (const askOpen of [false, true]) {
-      useSidebarStore.setState({ askOpen });
-      expect(pressToggleChat()).toBe(true);
-      // And inert: nothing opened, nothing closed, nothing summoned.
-      expect(useSidebarStore.getState().askOpen).toBe(askOpen);
-      expect(useRailStore.getState().summoned).toBe(false);
-    }
-    expect(useSidebarStore.getState().leftSidebarOpen).toBe(false);
-  });
+  if (offered === null) {
+    it('makes Ctrl+J inert, and still keeps it from the browser', () => {
+      useSidebarStore.setState({ leftSidebarOpen: false });
+      render(<ShortcutHarness />);
+      // Consumed: Ctrl+J is Downloads in Chrome, Edge and Firefox. Handed
+      // through, it would open the browser's downloads on every press until the
+      // gate's read lands, for users who do have AI as well.
+      for (const askOpen of [false, true]) {
+        useSidebarStore.setState({ askOpen });
+        expect(pressToggleChat()).toBe(true);
+        // And inert: nothing opened, nothing closed, nothing summoned.
+        expect(useSidebarStore.getState().askOpen).toBe(askOpen);
+        expect(useRailStore.getState().summoned).toBe(false);
+      }
+      expect(useSidebarStore.getState().leftSidebarOpen).toBe(false);
+    });
+  } else {
+    // The spec's ":299": the chord opens what the unlit key opens.
+    it(`opens the ${offered === 'fix' ? 'fix' : 'setup'} column with Ctrl+J, and shuts it, kept open or not`, () => {
+      useSidebarStore.setState({ leftSidebarOpen: false });
+      render(<ShortcutHarness />);
+      renderDockAndRail();
+      const column = document.querySelector('[data-rail]') as HTMLElement;
+      for (const askOpen of [false, true]) {
+        useSidebarStore.setState({ askOpen });
+        let consumed = false;
+        act(() => {
+          consumed = pressToggleChat();
+        });
+        expect(consumed).toBe(true);
+        expect(useRailStore.getState().summoned).toBe(true);
+        expect(document.querySelector(`[data-ask-setup="${offered}"]`)).toBeInTheDocument();
+        expect(column.className).toMatch(/\bw-\[420px\]/);
+        // Not Ask: no Ask view, no box, nothing asked of a box, and never kept open.
+        expect(askRail()).toBeNull();
+        expect(screen.queryByPlaceholderText(/Ask anything|Message/)).toBeNull();
+        expect(useRailStore.getState().pendingFocus).toBeNull();
+        expect(useSidebarStore.getState().askOpen).toBe(askOpen);
+        act(() => {
+          consumed = pressToggleChat();
+        });
+        expect(consumed).toBe(true);
+        expect(useRailStore.getState().summoned).toBe(false);
+        expect(column.className).toMatch(/\bw-0\b/);
+        // A kept-open Ask's preference is the person's, untouched by setup.
+        expect(useSidebarStore.getState().askOpen).toBe(askOpen);
+      }
+      expect(useSidebarStore.getState().leftSidebarOpen).toBe(false);
+    });
+  }
 
-  it('mounts no Ask, even with Ask left open from an earlier session', () => {
+  // The spec's ":315": setup is only ever summoned, never kept open, so a
+  // persisted `askOpen` raises nothing, offered or not.
+  it('mounts no Ask and no setup, even with Ask left open from an earlier session', () => {
     useSidebarStore.setState({ askOpen: true });
     renderDockAndRail();
     // The column is only the item host: closed, with nothing in it, and not
     // the tour's Ask target. The tour points at the dock instead.
     expect(askRail()).toBeNull();
+    expect(document.querySelector('[data-ask-setup]')).toBeNull();
     expect(screen.queryByTestId('rail-close')).toBeNull();
     expect(screen.queryByPlaceholderText(/Ask anything|Message/)).toBeNull();
     const column = document.querySelector('[data-rail]') as HTMLElement;
     expect(column.className).toMatch(/\bw-0\b/);
     expect(column).not.toHaveAttribute('data-tour');
     expect(document.querySelector('[data-tour="dock"]')).toBeInTheDocument();
+  });
+
+  it(offered ? 'shows the setup column when summoned, and never Ask' : 'shows nothing when summoned', () => {
+    renderDockAndRail();
+    act(() => useRailStore.getState().summon({ persist: false }));
+    expect(askRail()).toBeNull();
+    const column = document.querySelector('[data-rail]') as HTMLElement;
+    if (offered) {
+      expect(document.querySelector(`[data-ask-setup="${offered}"]`)).toBeInTheDocument();
+      expect(column.className).toMatch(/\bw-\[420px\]/);
+    } else {
+      expect(document.querySelector('[data-ask-setup]')).toBeNull();
+      expect(column.className).toMatch(/\bw-0\b/);
+    }
+    // Not the tour's Ask target either way (PR 6 points the tour at the key).
+    expect(column).not.toHaveAttribute('data-tour');
   });
 });
 
@@ -365,6 +427,23 @@ describe('catch-up when chat is hidden', () => {
     // Not even an empty wrapper: the user row is the capsule's first row,
     // exactly as in a dock that never had a catch-up slot.
     expect(capsuleRows()).toEqual(['user', 'omnibar']);
+  });
+
+  // The setup column is not Ask home: it carries no catch-up card, so the
+  // dock keeps it while setup shows (lib/open-chat.ts useAskHomeShown).
+  it.each([
+    ['nothing connected', NOTHING_CONNECTED, 'invite'],
+    ['the key stopped working', FAILING, 'fix'],
+  ])('keeps its card in the dock while the setup column shows (%s)', (_label, state, kind) => {
+    seed(state);
+    renderDockAndRail();
+    act(() => useRailStore.getState().summon({ persist: false }));
+    expect(document.querySelector(`[data-ask-setup="${kind}"]`)).toBeInTheDocument();
+    act(() => {
+      void useProposalStore.getState().request('catch-up');
+    });
+    expect(screen.getByTestId('dock-catch-up-host')).toContainElement(screen.getByTestId('proposal-card'));
+    expect(screen.getAllByTestId('proposal-card')).toHaveLength(1);
   });
 
   it('leaves an item panel’s card to the item panel', () => {

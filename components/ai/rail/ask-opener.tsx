@@ -267,12 +267,21 @@ function useHeaderFit(ref: RefObject<HTMLButtonElement | null>, active: boolean,
  * eases in, so a double-click's second click would otherwise land on History,
  * "+" or ✕, or on whatever of the braindump's had just arrived there.
  *
- * WHEN it shows: something answers (the AI gate's `canChat`, asked, never
- * re-derived; unknown is no), on the desktop, outside Zen, and only while the
- * right column is not shown, i.e. Ask closed and no item open (rail-store
- * `railMode` is 'hidden'). Below 1180px that includes an Ask kept open
- * but not summoned this session: the column is hidden there, and this summons
- * it as the overlay Ctrl+J would. The phone has the Ask tab instead.
+ * WHEN it shows: under exactly one of the AI gate's `canChat` (something
+ * answers: lit, "Ask"), `askInvite` (nothing connected and the account never
+ * said "No AI, thanks": unlit, "Set up AI") and `askFix` (a saved model needs
+ * attention and nothing else answers: unlit, "Fix AI"), asked, never
+ * re-derived; unknown is none of them. On the desktop, outside Zen, and only
+ * while the right column is not shown, i.e. Ask (or the setup column) closed
+ * and no item open (rail-store `railMode` is 'hidden'). Below 1180px that
+ * includes an Ask kept open but not summoned this session: the column is
+ * hidden there, and this summons it as the overlay Ctrl+J would. The phone
+ * has the Ask tab instead.
+ *
+ * UNLIT it opens the setup column (components/ai/rail/ask-setup.tsx), with no
+ * box to focus and nothing written to `askOpen`, and it wears no light: the
+ * mark's neutral ink, no rim light, no lime (globals.css `[data-lit='false']`).
+ * Its name is its word, and the chord still shows from the first day.
  *
  * WHERE: the last thing on the canvas's header row (desktop-shell.tsx), the
  * key on the date's line (`railHeaderRowOffset`, the rail header's own rule,
@@ -318,7 +327,10 @@ function useHeaderFit(ref: RefObject<HTMLButtonElement | null>, active: boolean,
  * without it and the key alone still say it on hover); never typed by hand.
  */
 export function AskOpener({ className }: { className?: string }) {
-  const { canChat } = useAICapabilities();
+  const { canChat, askInvite, askFix } = useAICapabilities();
+  // The gate says which, at most one of the three (lib/ai-registry.ts).
+  const offered = canChat || askInvite || askFix;
+  const word = canChat ? 'Ask' : askFix ? 'Fix AI' : 'Set up AI';
   const isMobile = useIsMobile();
   const zen = useViewStore((s) => s.zenOpen);
   const columnShown = useRailMode(usePanelOverlays()) !== 'hidden';
@@ -329,9 +341,11 @@ export function AskOpener({ className }: { className?: string }) {
   const hidden = columnShown || zen;
   const chord = chordLabel(keys, isMac);
   // A rebinding is a change of face too: the chord's width is read afresh.
-  const fit = useHeaderFit(ref, canChat && !isMobile && !hidden, `${slots.header} ${chord}`);
+  // So is the word: "Set up AI" is wider than "Ask", and a width read for
+  // one must never place the other.
+  const fit = useHeaderFit(ref, offered && !isMobile && !hidden, `${slots.header} ${chord} ${word}`);
 
-  if (!canChat || isMobile) return null;
+  if (!offered || isMobile) return null;
   const full = fit === 'full';
   // The key on its plate, with its chord or without; else the key alone.
   const plate = full || fit === 'key';
@@ -343,11 +357,14 @@ export function AskOpener({ className }: { className?: string }) {
   // plate stands proud of it by its own padding: 8px round the raised key,
   // 4px round the drawn one.
   const offset = !plate ? railHeaderRowOffset(slots) : raised ? 'mt-0' : '-mt-1';
-  // Where the rim's light comes from: the mark's lit part, from its slot's centre.
-  const light = {
-    '--ask-light-x': `${ASK_MARK_LIGHT.x}px`,
-    '--ask-light-y': `${ASK_MARK_LIGHT.y}px`,
-  } as CSSProperties;
+  // Where the rim's light comes from: the mark's lit part, from its slot's
+  // centre. Unlit there is no light to aim.
+  const light = canChat
+    ? ({
+        '--ask-light-x': `${ASK_MARK_LIGHT.x}px`,
+        '--ask-light-y': `${ASK_MARK_LIGHT.y}px`,
+      } as CSSProperties)
+    : undefined;
 
   return (
     // The slot is the row's child: what is hidden, and what gives way.
@@ -362,13 +379,15 @@ export function AskOpener({ className }: { className?: string }) {
         type="button"
         data-ask-opener=""
         data-form={plate ? fit : 'icon'}
+        data-lit={canChat ? undefined : 'false'}
         onClick={(e) => {
           if (document.activeElement !== e.currentTarget) e.currentTarget.focus({ preventScroll: true });
           if (e.detail > 0) holdRailHeader(e.currentTarget);
           toggleRail();
         }}
-        aria-label="Open Ask"
-        title={`Open Ask (${chord})`}
+        // Lit, it opens Ask and says so; unlit, its name is its word.
+        aria-label={canChat ? 'Open Ask' : word}
+        title={`${canChat ? 'Open Ask' : word} (${chord})`}
         style={light}
         className={cn(
           'titlebar-hole group/ask-key relative isolate flex min-w-0 cursor-pointer items-center gap-2 text-[12px] leading-[17px] font-medium whitespace-nowrap text-[var(--ink-1)]',
@@ -392,8 +411,8 @@ export function AskOpener({ className }: { className?: string }) {
             plate && !raised ? 'rounded-[8px]' : 'rounded-[10px]'
           )}
         >
-          <AskMark />
-          {plate && <span>Ask</span>}
+          <AskMark lit={canChat} />
+          {plate && <span>{word}</span>}
         </span>
         {full && (
           <span data-ask-opener-chord="" aria-hidden className="text-[11px] font-normal tracking-[0.01em] tabular-nums">

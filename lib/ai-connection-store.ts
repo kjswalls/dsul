@@ -618,38 +618,51 @@ export const useAIConnectionStore: UseBoundStore<StoreApi<AIConnectionStore>> =
         const mine = ++tap.taps;
         if (s.phase === 'ready' && currentUserId !== null) set({ aiHidden: hidden });
 
-        const write = enqueueWrite('hidden', async (c) => {
-          let res: Response | null = null;
-          let body: unknown = null;
-          try {
-            res = await sendJson('PATCH', CONNECTION_URL, { hidden });
-            body = await readBody(res);
-          } catch {
-            // Offline, or the connection dropped: whether it landed is not
-            // knowable, which is the failure below.
-          }
-          if (!stillCurrent(c)) return { ok: false, code: 'unauthorized' };
-          // A status read begun while this was out may predate it.
-          serverMoved();
-          const last = tap.taps === mine;
-          if (res === null || !res.ok) {
-            if (last) {
-              // Nothing newer is queued to decide it: back to what the server
-              // last said, and ask it again. `fetchedAt: null` makes the next
-              // sign-in event ask too, should this read fail as well.
-              set({ aiHidden: tap.server, fetchedAt: null });
-            }
-            void get().refresh();
-            return res === null ? { ok: false, code: 'server' } : failureOf(body, res.status);
-          }
-          tap.server = hidden;
-          // An older write answering under a newer tap leaves the newer one on screen.
-          if (last) set({ aiHidden: hidden });
-          return { ok: true };
-        });
-        return write.finally(() => {
+        // This tap stops standing over status reads the moment its write has
+        // answered: before the read a failure asks for can answer, so that
+        // read is never covered by the very value that just failed. Once
+        // only, whichever comes first: the write's own end, or the queue
+        // skipping it (the account changed before it ran).
+        let standing = true;
+        const stand = () => {
+          if (!standing) return;
+          standing = false;
           tap.pending -= 1;
+        };
+        const write = enqueueWrite('hidden', async (c) => {
+          try {
+            let res: Response | null = null;
+            let body: unknown = null;
+            try {
+              res = await sendJson('PATCH', CONNECTION_URL, { hidden });
+              body = await readBody(res);
+            } catch {
+              // Offline, or the connection dropped: whether it landed is not
+              // knowable, which is the failure below.
+            }
+            if (!stillCurrent(c)) return { ok: false, code: 'unauthorized' };
+            // A status read begun while this was out may predate it.
+            serverMoved();
+            const last = tap.taps === mine;
+            if (res === null || !res.ok) {
+              if (last) {
+                // Nothing newer is queued to decide it: back to what the server
+                // last said, and ask it again. `fetchedAt: null` makes the next
+                // sign-in event ask too, should this read fail as well.
+                set({ aiHidden: tap.server, fetchedAt: null });
+              }
+              void get().refresh();
+              return res === null ? { ok: false, code: 'server' } : failureOf(body, res.status);
+            }
+            tap.server = hidden;
+            // An older write answering under a newer tap leaves the newer one on screen.
+            if (last) set({ aiHidden: hidden });
+            return { ok: true };
+          } finally {
+            stand();
+          }
         });
+        return write.finally(stand);
       },
 
       loadModels: (opts) => {

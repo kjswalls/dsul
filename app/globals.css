@@ -2046,7 +2046,10 @@ body {
                           light deepened 14% toward the ink ("sonar": light mode
                           cannot add light to near-white, so it deepens), except
                           where the accent is already dark (Studio, Retro)
-     --ask-icon-key       the key's fill, to knock a detail out against it */
+     --ask-icon-key       the key's fill, to knock a detail out against it
+     --ask-icon-unlit     the unlit mark's ink (nothing answers yet: "Set up
+                          AI", "Fix AI"), the look's secondary ink
+     --ask-icon-unlit-mid its middle tile, the look's muted ink */
 @property --ask-key-hold {
   syntax: '<length>';
   inherits: false;
@@ -2094,6 +2097,8 @@ body {
   --ask-icon-pair: oklch(0.64 0.1 195);
   --ask-icon-pair-ink: color-mix(in oklch, var(--ask-icon-pair), var(--foreground) 14%);
   --ask-icon-key: var(--surface-2);
+  --ask-icon-unlit: var(--ink-1);
+  --ask-icon-unlit-mid: var(--ink-2);
 }
 .dark :is([data-ask-opener], [data-ask-mark]) {
   --ask-icon-ink: var(--ai);
@@ -2145,6 +2150,17 @@ body {
   --ask-focus-rim: var(--ring);
   --ask-focus-rim-offset: -1px;
   --ask-wash: color-mix(in oklab, var(--foreground) 6%, transparent);
+}
+
+/* Unlit ("Set up AI", "Fix AI": nothing answers yet): no light at all. The
+   rim's accent and partner both take the hairline, so the gradient is one
+   flat colour at rest and engaged, and the mark wears neutral ink
+   (ask-mark.tsx). Nothing is faded: there is simply no lime to draw. The
+   key-alone focus rule still re-points all three on [data-ask-key] below, so
+   focus stays visible; the ring is the app's keyboard focus, not the light. */
+[data-ask-opener][data-lit='false'] {
+  --ask-key-accent: var(--ask-key-rim);
+  --ask-key-pair: var(--ask-key-rim);
 }
 
 /* The well: nothing at rest; the header capsule's own material on hover and

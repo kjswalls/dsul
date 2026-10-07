@@ -12,9 +12,11 @@ import {
   gateAnswered,
   rail,
   stubChatReply,
+  stubAIGate,
   stubConnectedModel,
   turnSaved,
   uniqueWord,
+  unlitKey,
 } from './helpers/ai';
 
 /**
@@ -340,4 +342,153 @@ test.describe('Ask in the right rail', () => {
       await expect(page.locator('main[inert]')).toHaveCount(0);
     });
   }
+});
+
+/**
+ * The same key and column while nothing answers (memory/plans/ai-vision.md,
+ * AI setup PR 3): unlit, it reads "Set up AI" (or "Fix AI" for a saved model
+ * that stopped working) and opens the setup column, which says what AI could
+ * do here and the way in, and offers "No AI, thanks".
+ *
+ * The gate is stubbed statefully (helpers/ai.ts `stubAIGate`): the e2e
+ * account is shared by every parallel spec, so "No AI, thanks" must never
+ * reach the real route, and a reload must still see what it wrote.
+ */
+test.describe('Set up AI in the right rail', () => {
+  async function signInWith(page: Page, o: Parameters<typeof stubAIGate>[1] = {}) {
+    // Before the first load: the gate is asked once, at sign-in.
+    const gate = await stubAIGate(page, o);
+    const answered = gateAnswered(page);
+    await loginTestUser(page);
+    await answered;
+    return gate;
+  }
+
+  test('nothing connected: the unlit key opens the setup column, and Ctrl+J, ✕ and a reload close it', async ({
+    page,
+  }) => {
+    await signInWith(page);
+    const key = unlitKey(page);
+    const column = rail(page);
+    const setup = column.locator('[data-ask-setup]');
+
+    // Unlit and named for what it opens; there is no Ask, and nothing is open.
+    await expect(key).toBeVisible();
+    await expect(key).toHaveAccessibleName('Set up AI');
+    await expect(askButton(page)).toHaveCount(0);
+    await expect(setup).toHaveCount(0);
+
+    // The key opens the setup column, never Ask, and focus goes to its heading.
+    await key.click();
+    await expect(setup).toBeVisible();
+    await expect(setup).toHaveAttribute('data-ask-setup', 'invite');
+    await expect(setup.locator('[data-ask-heading]')).toBeFocused();
+    await expect(key).toBeHidden();
+    await expect(column.locator('[data-ask-home]')).toHaveCount(0);
+    await expect(askBox(column)).toHaveCount(0);
+    await expect(
+      setup.getByTestId('setup-connect').getByRole('link', { name: 'Set up in Settings → AI' })
+    ).toHaveAttribute('href', '/settings/beacon?focus=beacon.apiKey');
+    await expect(setup.locator('[data-ask-setup-foot]')).toContainText(
+      'AI is optional. dsul works fully without it.'
+    );
+
+    // Ctrl+J from inside closes it and hands focus back to the key; again opens it.
+    await page.keyboard.press('ControlOrMeta+j');
+    await expect(setup).toBeHidden();
+    await expect(key).toBeFocused();
+    await page.keyboard.press('ControlOrMeta+j');
+    await expect(setup).toBeVisible();
+
+    // ✕ closes it too.
+    await column.getByTestId('setup-close').click();
+    await expect(setup).toBeHidden();
+    await expect(key).toBeFocused();
+
+    // Never kept open: a reload starts with the key, the column closed.
+    await page.keyboard.press('ControlOrMeta+j');
+    await expect(setup).toBeVisible();
+    const answered = gateAnswered(page);
+    await reloadApp(page);
+    await answered;
+    await expect(key).toBeVisible();
+    await expect(setup).toHaveCount(0);
+  });
+
+  test('No AI, thanks puts the key away for the account, and Undo brings it back', async ({
+    page,
+  }) => {
+    const gate = await signInWith(page);
+    const key = unlitKey(page);
+    const setup = rail(page).locator('[data-ask-setup]');
+    const strip = page.getByTestId('undo-strip');
+    const undo = strip.getByRole('button', { name: 'Undo' });
+
+    await key.click();
+    await setup.getByTestId('no-ai-thanks').click();
+
+    // Said in prose in the strip, focus on its Undo; the column and the key go.
+    await expect(strip).toContainText('AI is off. dsul won’t bring it up again.');
+    await expect(undo).toBeFocused();
+    await expect(setup).toHaveCount(0);
+    await expect(page.locator('[data-ask-opener]')).toHaveCount(0);
+    await expect.poll(() => gate.patches).toEqual([{ hidden: true }]);
+
+    // Undo: the key is back, unlit, with focus on it, and the account says so.
+    await undo.click();
+    await expect(strip).toHaveCount(0);
+    await expect(key).toBeVisible();
+    await expect(key).toBeFocused();
+    await expect.poll(() => gate.patches).toEqual([{ hidden: true }, { hidden: false }]);
+
+    // Said again and left: it holds across a reload, and Ctrl+J offers nothing.
+    await key.click();
+    await setup.getByTestId('no-ai-thanks').click();
+    await expect.poll(() => gate.hidden()).toBe(true);
+    const answered = gateAnswered(page);
+    await reloadApp(page);
+    await answered;
+    // The planner is up and the gate has answered; the key never comes.
+    await expect(page.getByTestId('view-root')).toBeVisible();
+    await expect(page.locator('[data-ask-opener]')).toHaveCount(0);
+    await page.keyboard.press('ControlOrMeta+j');
+    await expect(setup).toHaveCount(0);
+    await expect(rail(page).locator('[data-ask-home]')).toHaveCount(0);
+
+    // Once the strip has gone, Settings → AI is the way back.
+    await page.goto(`${BASE_URL}/settings/beacon`);
+    const off = page.getByTestId('mcp-ai-off');
+    await expect(off).toContainText('AI is off');
+    await off.getByRole('button', { name: 'Turn AI back on' }).click();
+    await expect(off).toHaveCount(0);
+    await expect.poll(() => gate.hidden()).toBe(false);
+    await loginTestUser(page);
+    await expect(key).toBeVisible();
+  });
+
+  test('a saved key its provider turned down: the key reads Fix AI, and says what is wrong', async ({
+    page,
+  }) => {
+    const gate = await signInWith(page, { model: 'failing' });
+    const key = unlitKey(page);
+    const setup = rail(page).locator('[data-ask-setup]');
+
+    await expect(key).toHaveAccessibleName('Fix AI');
+    await key.click();
+    await expect(setup).toHaveAttribute('data-ask-setup', 'fix');
+    const fix = setup.getByTestId('setup-fix');
+    await expect(fix).toContainText('Google Gemini stopped accepting your key');
+    await expect(fix.getByRole('link', { name: 'Fix it in Settings → AI' })).toHaveAttribute(
+      'href',
+      '/settings/beacon?focus=beacon.apiKey'
+    );
+    await expect(setup.getByTestId('setup-previews')).toHaveCount(0);
+
+    // A fresh check that finds the key still turned down says so.
+    await fix.getByTestId('setup-recheck').click();
+    await expect(fix.getByRole('status')).toHaveText(
+      'Google Gemini still turns it down. A new key in Settings → AI fixes it.'
+    );
+    expect(gate.patches).toEqual([{ recheck: true }]);
+  });
 });

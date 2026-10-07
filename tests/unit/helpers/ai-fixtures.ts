@@ -92,11 +92,23 @@ export const OPENCLAW_PLUGIN: SeedAI = Object.freeze<SeedAI>({
   choice: 'openclaw',
 });
 
-/** Phase ready, available, no model, OpenClaw all false. */
+/** Phase ready, available, no model, OpenClaw all false: the gate invites (`askInvite`). */
 export const NOTHING_CONNECTED: SeedAI = Object.freeze<SeedAI>({
   phase: 'ready',
   available: true,
   model: null,
+  openclaw: {},
+  choice: 'model',
+});
+
+/** NOTHING_CONNECTED on an account that said "No AI, thanks": nothing offered at all. */
+export const AI_HIDDEN: SeedAI = Object.freeze<SeedAI>({ ...NOTHING_CONNECTED, aiHidden: true });
+
+/** Google Gemini saved, its key turned down, nothing else answering: the gate offers the fix (`askFix`). */
+export const KEY_TURNED_DOWN: SeedAI = Object.freeze<SeedAI>({
+  phase: 'ready',
+  available: true,
+  model: { provider: 'gemini', model: 'gemini-flash-latest', status: 'failing', problem: 'key_rejected' },
   openclaw: {},
   choice: 'model',
 });

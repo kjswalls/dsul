@@ -30,6 +30,24 @@ export type UndoStripEntry = {
   receipt?: string;
   /** How long this row lives, in ms. Drives the hairline and the timer alike. */
   durationMs: number;
+  /**
+   * What Undo takes back, for a row that is not the planner's (the default
+   * reverses the planner's last action, which is every action-log row). A row
+   * with its own Undo never touches the planner's history.
+   */
+  onUndo?: () => void;
+  /**
+   * The row's typeface. The default is the numeric face the action log's
+   * receipts are set in; 'ui' is for a sentence of prose ("AI is off. dsul
+   * won't bring it up again."), which the numeric face is never used for.
+   */
+  face?: 'ui';
+  /**
+   * Put focus on Undo as the row appears: the control the user just pressed
+   * went away with what it did ("No AI, thanks" closes the column it sat in),
+   * so the take-back is where focus lands rather than <body>.
+   */
+  focusUndo?: boolean;
 };
 
 type UndoStripState = {
@@ -42,11 +60,32 @@ type UndoStripState = {
   dismiss: (id?: string) => void;
 };
 
+/**
+ * A row that took focus (`focusUndo`) and leaves with it still inside would
+ * drop it to <body>, where the next Tab starts over at the top of the page.
+ * Hand it to the dock first, as a notice that dismisses itself under the
+ * keyboard does (morning-check.tsx `useDismissWithFocus`): moved before the
+ * row is torn down, so the removal never has a focused node to orphan. Only
+ * such a row: an action-log row's Undo, clicked, leaves focus to <body> as
+ * it always has, where Escape still closes the item panel and the rail.
+ */
+function releaseFocus(): void {
+  if (typeof document === 'undefined') return;
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement) || !active.closest('[data-undo-id]')) return;
+  const host = document.querySelector<HTMLElement>('[data-dock-surface]');
+  if (!host) return;
+  host.tabIndex = -1;
+  host.focus({ preventScroll: true });
+}
+
 export const useUndoStripStore = create<UndoStripState>((set, get) => ({
   entry: null,
   show: (entry) => set({ entry }),
   dismiss: (id) => {
-    if (id !== undefined && get().entry?.id !== id) return;
+    const entry = get().entry;
+    if (!entry || (id !== undefined && entry.id !== id)) return;
+    if (entry.focusUndo) releaseFocus();
     set({ entry: null });
   },
 }));

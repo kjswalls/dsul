@@ -45,7 +45,15 @@ import { useUIStore } from '@/lib/ui-store';
 import { useViewStore } from '@/lib/view-store';
 import { useKeyboardShortcutsStore } from '@/lib/keyboard-shortcuts-store';
 import { chordLabel } from '@/lib/commands/keys';
-import { seedAI, CONNECTED_MODEL, NOTHING_CONNECTED, OPENCLAW_PLUGIN, type SeedAI } from './helpers/ai-fixtures';
+import {
+  seedAI,
+  AI_HIDDEN,
+  CONNECTED_MODEL,
+  KEY_TURNED_DOWN,
+  NOTHING_CONNECTED,
+  OPENCLAW_PLUGIN,
+  type SeedAI,
+} from './helpers/ai-fixtures';
 
 const realMatchMedia = window.matchMedia;
 const realInnerWidth = window.innerWidth;
@@ -169,17 +177,22 @@ describe('when it shows', () => {
     expect(opener()?.style.getPropertyValue('--ask-light-y')).toBe(`${ASK_MARK_LIGHT.y}px`);
   });
 
-  it('is not there while the gate has not answered, nor with nothing to answer', () => {
+  it('is not there while the gate has not answered, nor when it offers nothing', () => {
     seed();
-    const { rerender } = renderRow();
+    renderRow();
     expect(opener()).toBeNull();
-    act(() => seed(NOTHING_CONNECTED));
-    rerender(
-      <div className="flex gap-3">
-        <AskOpener />
-      </div>
-    );
-    expect(opener()).toBeNull();
+    // Nothing offered: the read failed, the account said "No AI, thanks", the
+    // server cannot say whether it did (060 missing), or chat is Off here.
+    for (const nothing of [
+      { phase: 'error' as const },
+      AI_HIDDEN,
+      { ...NOTHING_CONNECTED, aiHidden: null },
+      { ...NOTHING_CONNECTED, choice: 'none' as const },
+      { ...KEY_TURNED_DOWN, aiHidden: true },
+    ]) {
+      act(() => seed(nothing));
+      expect(opener(), JSON.stringify(nothing)).toBeNull();
+    }
     // OpenClaw answering is something answering.
     act(() => seed(OPENCLAW_PLUGIN));
     expect(opener()).not.toBeNull();
@@ -211,6 +224,87 @@ describe('when it shows', () => {
   it('is never on the phone, which has the Ask tab', () => {
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
     renderRow();
+    expect(opener()).toBeNull();
+  });
+});
+
+describe('unlit: nothing answers, and the gate offers to set AI up or fix it', () => {
+  it('reads "Set up AI" while the gate invites: the same key, unlit, named for its word, the chord beside it', () => {
+    seed(NOTHING_CONNECTED);
+    renderRow();
+    const button = screen.getByRole('button', { name: 'Set up AI' });
+    expect(button).toBe(opener());
+    expect(button).toHaveAttribute('title', 'Set up AI (Ctrl+J)');
+    expect(key()).toHaveTextContent(/^Set up AI$/);
+    // The chord from day one: no "Set up" note in its place.
+    expect(button.querySelector('[data-ask-opener-chord]')).toHaveTextContent(/^Ctrl\+J$/);
+    expect(button).toHaveAttribute('data-form', 'full');
+    // Unlit, and nothing aims a light: the plate (globals.css) and the mark
+    // (ask-mark.tsx) both draw it without any.
+    expect(button).toHaveAttribute('data-lit', 'false');
+    expect(mark()).toHaveAttribute('data-lit', 'false');
+    expect(button.style.getPropertyValue('--ask-light-x')).toBe('');
+    expect(button.style.getPropertyValue('--ask-light-y')).toBe('');
+    // Where the lit key is, and as clickable under the desktop app's drag band.
+    expect(button).toHaveClass('titlebar-hole');
+    expect(pill()).toHaveClass('ml-auto');
+    expect(screen.queryByRole('button', { name: 'Open Ask' })).toBeNull();
+  });
+
+  it('reads "Fix AI" while a saved model needs attention and nothing else answers', () => {
+    seed(KEY_TURNED_DOWN);
+    renderRow();
+    const button = screen.getByRole('button', { name: 'Fix AI' });
+    expect(button).toHaveAttribute('title', 'Fix AI (Ctrl+J)');
+    expect(key()).toHaveTextContent(/^Fix AI$/);
+    expect(button).toHaveAttribute('data-lit', 'false');
+    expect(mark()).toHaveAttribute('data-lit', 'false');
+    // A connection saved with no model picked needs the fix too.
+    act(() => seed({ ...CONNECTED_MODEL, model: { provider: 'openai', model: null, status: 'ok' } }));
+    expect(screen.getByRole('button', { name: 'Fix AI' })).toBe(opener());
+  });
+
+  it('lights the moment something answers, and names a rebinding in every word', () => {
+    seed(NOTHING_CONNECTED);
+    renderRow();
+    act(() => useKeyboardShortcutsStore.setState({ overrides: { toggle_right_sidebar: ['meta', 'shift', 'k'] } }));
+    expect(opener()).toHaveAttribute('title', 'Set up AI (Ctrl+Shift+K)');
+    act(() => seed(CONNECTED_MODEL));
+    expect(opener()).toHaveAccessibleName('Open Ask');
+    expect(opener()).toHaveAttribute('title', 'Open Ask (Ctrl+Shift+K)');
+    expect(opener()).not.toHaveAttribute('data-lit');
+    expect(mark()).not.toHaveAttribute('data-lit');
+    expect(opener()?.style.getPropertyValue('--ask-light-x')).toBe(`${ASK_MARK_LIGHT.x}px`);
+  });
+
+  it('opens the setup column: summoned for this session only, with no box asked for', () => {
+    seed(NOTHING_CONNECTED);
+    renderRow();
+    fireEvent.click(screen.getByRole('button', { name: 'Set up AI' }));
+    expect(useRailStore.getState().summoned).toBe(true);
+    // Setup is never kept open, and it has no box: a composer request would
+    // wait and take the caret in the next box to mount anywhere.
+    expect(useSidebarStore.getState().askOpen).toBe(false);
+    expect(useRailStore.getState().pendingFocus).toBeNull();
+    expect(document.activeElement).toBe(opener());
+    // The column shows setup, so the key hides, as it does for Ask.
+    expect(pill()).toHaveAttribute('hidden');
+  });
+
+  it('hides while the setup column shows, and comes back when it closes', () => {
+    seed(KEY_TURNED_DOWN);
+    renderRow();
+    act(() => useRailStore.getState().summon({ persist: false }));
+    expect(pill()).toHaveAttribute('hidden');
+    act(() => useRailStore.getState().park());
+    expect(pill()).not.toHaveAttribute('hidden');
+  });
+
+  it('goes the moment the account says "No AI, thanks"', () => {
+    seed(NOTHING_CONNECTED);
+    renderRow();
+    expect(opener()).not.toBeNull();
+    act(() => seed(AI_HIDDEN));
     expect(opener()).toBeNull();
   });
 });
@@ -842,6 +936,45 @@ describe('room on the header row', () => {
     expect(draw(84)).toBe('icon');
     expect(draw(120)).toBe('key');
     expect(draw(130)).toBe('full');
+  });
+
+  // "Set up AI" is wider than "Ask", and a width is read again only while its
+  // form or a wider one is drawn. So a width read for one word must never
+  // place the other: back to "Ask" from the key alone, the "Set up AI" key
+  // form's width would keep the key alone up with room for the "Ask" key.
+  it('forgets the widths it read for another word', () => {
+    seed(CONNECTED_MODEL);
+    renderRow();
+    const button = opener() as HTMLElement;
+    /** How much wider each form draws with the longer word. */
+    const extra = () => (key()?.textContent === 'Set up AI' ? 54 : 0);
+    const draw = (room: number) => {
+      layOut(374 + 12 + room, 374);
+      Object.defineProperty(button, 'scrollWidth', {
+        configurable: true,
+        get: () => {
+          if (button.querySelector('[data-ask-opener-chord]')) return wholeFor('Ctrl+J') + extra();
+          return key()?.textContent ? KEY_FORM + extra() : 32;
+        },
+      });
+      (key() as HTMLElement).getBoundingClientRect = () => ({ left: 8, right: 72 + extra(), width: 64 }) as DOMRect;
+      resized();
+      return pill()?.dataset.fit;
+    };
+
+    // "Ask": 106px whole, 80px the key form. 100px holds the key form.
+    expect(draw(100)).toBe('key');
+    // "Set up AI": 160 and 134. The key form is read again and does not fit.
+    act(() => seed(NOTHING_CONNECTED));
+    expect(draw(100)).toBe('icon');
+    expect(draw(159)).toBe('key');
+    expect(draw(160)).toBe('full');
+    expect(draw(100)).toBe('icon');
+    // Lit again with the key alone drawn, which reads no width: the "Ask" key
+    // form fits in 100px, and shows.
+    act(() => seed(CONNECTED_MODEL));
+    expect(draw(100)).toBe('key');
+    expect(key()).toHaveTextContent(/^Ask$/);
   });
 
   it('gives way to the row and never the other way: it shrinks first, and to nothing', () => {
