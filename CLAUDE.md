@@ -431,10 +431,11 @@ the capability gate, delegation to OpenClaw, saved conversations and their priva
 statement, and which earlier decisions steps 1 and 2a superseded. Read it before touching
 `lib/ai-*`, `lib/ai-server/**`, `app/api/ai/**`, `app/api/chat`, the AI settings pane, the
 right rail, or anything under `components/ai/`.
-[sign-in-with-apple.md](memory/plans/sign-in-with-apple.md) holds the Apple provider: why its
-button follows Supabase's own settings, the desktop shell's provider list, the dashboard setup,
-and the client secret that must be re-minted every six months
-(`scripts/apple-client-secret.mjs`) or Apple sign-in stops.
+[sign-in-with-apple.md](memory/plans/sign-in-with-apple.md) holds the Apple provider: why the web's
+button follows Supabase's own settings (the iPhone's is always shown), the desktop shell's provider
+list, the iPhone's native id_token flow, the dashboard setup, and the client secret that must be
+re-minted every six months (`scripts/apple-client-secret.mjs`) or Apple sign-in stops on the web
+and the desktop (the iPhone's id_token grant needs no secret).
 [reminders-platforms.md](memory/plans/reminders-platforms.md) is the plan for reminders on
 every surface (web/PWA, Electron, the iPhone app, Android, Apple Watch): one server authority
 on owed/discharged, a `devices` registry replacing `push_subscriptions`, device-local scheduling

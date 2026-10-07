@@ -1,12 +1,12 @@
 # dsul for iPhone
 
-A native SwiftUI app (iOS 27). It signs in with Google or an emailed link
-and shows your own day from do.dsul.app; a tick, a drop on an hour, a capture,
-the item sheet's Skip, move (Tomorrow, Reschedule) and Pause, an item's title
-and notes, Delete, a new subtask, a streak reset, an item's priority, times
-per day and reminder, and an item's date, part of day, time and length, how
-it repeats, its project, and the routines and seasons it is in, are saved to
-the server.
+A native SwiftUI app (iOS 27). It signs in with Google, Apple or an emailed
+link and shows your own day from do.dsul.app; a tick, a drop on an hour, a
+capture, the item sheet's Skip, move (Tomorrow, Reschedule) and Pause, an
+item's title and notes, Delete, a new subtask, a streak reset, an item's
+priority, times per day and reminder, and an item's date, part of day, time
+and length, how it repeats, its project, and the routines and seasons it is
+in, are saved to the server.
 "Try with sample data" on the sign-in screen opens a made-up day instead,
 which needs no account and whose changes last until the app quits.
 
@@ -30,7 +30,8 @@ or by pasting a list. A tap on a row's circle still just ticks it.
 - `Dsul/` is the app. `DsulTests/` tests it in the simulator.
   - `App/`: the app, `AppGate` (sign-in screen, sample or your planner) and
     `AppConfig` (the server's address).
-  - `Auth/`: Google and email-link sign-in, the tokens and the Keychain.
+  - `Auth/`: Google, Apple and email-link sign-in, the tokens and the
+    Keychain.
   - `Data/`: the calls to `/api/app/*` and `PlannerSync`, which sends your
     changes in order and fetches your day.
   - `Model/`, `Today/`, `Schedule/`: the planner and the screens.
@@ -61,6 +62,12 @@ open Dsul.xcodeproj
 ```
 Then in Xcode: pick the **Dsul** target → Signing & Capabilities → Team =
 your team (once), choose your iPhone as the run destination, and press ⌘R.
+Use the paid team: Sign in with Apple (listed there, from project.yml) can't
+be signed by a Personal Team. The App ID already has the capability
+(memory/plans/sign-in-with-apple.md, setup step 2). If Continue with Apple
+fails at once with "Apple couldn't sign you in. Try again.", check that
+Signing & Capabilities lists Sign in with Apple under the paid team, and that
+the iPhone is signed in to an Apple Account with two-factor authentication.
 
 ## Signing in
 
@@ -70,6 +77,19 @@ so it never signs in as whoever Safari last was). Afterwards the app shows
 app asks `https://do.dsul.app/api/app/config` for the Supabase address and its
 public key the first time you tap the button, and a signed-out launch makes
 no network request at all.
+
+**Continue with Apple** (under Google) opens Apple's own sheet. The first time
+you use Apple for dsul, here or on the web, it asks for your name and whether
+to share or hide your email, then Face ID; after that it shows only Continue
+and Face ID. The app hands Apple's answer to Supabase and shows
+"Signed in as …" once. The first time an Apple Account signs in to dsul, Hide
+My Email starts a separate, empty account, and Share My Email opens the
+account with that address if there is one. After that, the same Apple Account
+always opens the same account. The first time, the app also saves the name
+Apple gives to your account if it has none, so the web shows it. If you stop
+using Sign in with Apple for dsul in Settings, or sign the iPhone in to
+another Apple Account, the app signs this phone out the next time you open
+it; the web stays signed in.
 
 **Email me a sign-in link** asks for your address and sends a link; the
 screen then says "Check your email". Open the email on the same iPhone and tap
@@ -91,6 +111,14 @@ Before the first sign-in on a phone (once, in the Supabase dashboard):
 2. **Auth → Users:** your user should already have a Google identity, or a
    verified Gmail address Google can link to. Otherwise Google signs in to a
    second, empty account.
+3. **Sign in with Apple** (once, memory/plans/sign-in-with-apple.md steps 1
+   to 6), with `app.dsul.ios` among the Apple provider's Client IDs. The
+   web's /login shows Continue with Apple once the provider is on, but only
+   the dashboard shows the Client IDs. With the provider off, the phone's
+   Apple button ends with "Sign in with Apple isn't available right now. Use
+   Google or an email link." Without `app.dsul.ios` among the Client IDs it
+   ends with "Couldn't sign in. Try again." while the web still signs in with
+   Apple: add `app.dsul.ios` to the Apple provider's Client IDs.
 
 The phone talks to production, so it can only sign in once `/auth/ios` and
 `/api/app/*` are deployed.
@@ -129,6 +157,72 @@ The tests can't open Mail or Safari, so these need your iPhone (after Step 0):
 5. Send, then Send again within a minute ("Too many sign-in emails"), then tap
    the FIRST email's link: it still signs in.
 6. Continue with Google still signs in now that the app owns its link scheme.
+
+## Checking Sign in with Apple
+
+The tests can't open Apple's sheet, so these need your iPhone, signed in to
+your Apple Account. Which dsul account an Apple Account opens is settled the
+first time it signs in to dsul, on the web or here. If you have used Continue
+with Apple on the web, first open Settings, then your Apple Account, find Sign
+in with Apple, pick dsul and Stop Using, so Apple asks again.
+1. In a private window, do.dsul.app/login shows Continue with Apple. In the
+   Supabase dashboard, Authentication → Sign In / Providers → Apple, the
+   Client IDs read `app.dsul.web,app.dsul.ios`. If either isn't so, finish
+   the setup first (Before the first sign-in, item 3).
+2. The sign-in screen: Continue with Apple sits right under Continue with
+   Google, the same height and the same rounded shape, black in Light Mode
+   and white in Dark Mode. Switch the appearance in Control Center while the
+   screen is up: it follows. VoiceOver reads it as Continue with Apple. Then
+   in Settings → Accessibility → Display & Text Size → Larger Text, turn on
+   Larger Accessibility Sizes and drag the slider to its end. Back in dsul
+   every button is whole and readable on one line, Apple and Google are the
+   same height, and the screen scrolls if it doesn't fit. Open the email form
+   there too: the field and Send link can be scrolled to above the keyboard.
+   Put the text size back.
+3. Tap Continue with Apple. Apple's sheet asks for your name and whether to
+   share or hide your email (if it shows only Continue, this Apple Account
+   has used dsul before: see above). Pick Share My Email, with the address
+   your dsul account uses: "Signed in as" that address, and your own day.
+4. Sign out, then Continue with Apple again: Apple shows only Continue, with
+   no name or email step, and the same account opens.
+5. Sign out. Tap Continue with Apple, then close Apple's sheet: no message,
+   and you can tap again.
+6. Double-tap Continue with Apple quickly: one sheet opens; close it. Then
+   make Sending… last: Settings → Developer → Network Link Conditioner, turn
+   it on with Very Bad Network. In dsul tap Email me a sign-in link, type
+   your address, tap Send link, and while Sending… shows, tap Continue with
+   Apple: nothing opens. Turn the conditioner off. If Check your email shows,
+   tap Use a different email.
+7. With Airplane Mode on, tap Continue with Apple: Apple can't finish (it may
+   show its own alert), and you're back on the sign-in screen with the
+   buttons working and either "Apple couldn't sign you in. Try again." or no
+   line. Turn Airplane Mode off. (The "Couldn't reach dsul" line needs the
+   network to drop between Apple and Supabase; a hosted test covers it.)
+8. Continue with Apple (Apple shows only Continue) so you are signed in.
+   Then in Settings, open your Apple Account, find Sign in with Apple, pick
+   dsul and Stop Using. Back in dsul: the sign-in screen, with "You were
+   signed out. Sign in again to see your day." The web is still signed in.
+9. Continue with Apple again after step 8: Apple asks for your name and email
+   again, and the same account opens whichever email choice you make
+   (Supabase finds the account by your Apple ID before any email). An
+   account that already has a name, such as any account that has used
+   Google, keeps it. One that had none shows the name you gave on the web
+   after its next sign-in there, or within the hour. (Hosted tests cover the
+   name write itself.)
+10. Sign out, then Continue with Google: signed in. In Settings, stop using
+    Sign in with Apple for dsul again, then come back to dsul: still signed
+    in, no message. Sign out, and Email me a sign-in link still signs in.
+11. Sign out, then tap Continue with Apple, and with Apple's sheet up switch
+    the appearance in Control Center, then close the sheet: no message, the
+    button takes the new colour, and you can tap again.
+12. If you have a second Apple Account that has never used dsul, sign in with
+    it on the web, where any Apple Account can sign in: in a private window,
+    Continue with Apple on /login, give a name and pick Hide My Email. You get
+    a new, empty account with a `…@privaterelay.appleid.com` address. Note
+    whether the sidebar shows the name you gave (GoTrue's source says it
+    should; the plan said it wouldn't), and tell the thread which.
+13. Try with sample data still opens the sample, and Leave sample data comes
+    back to both buttons.
 
 ## Trying the drag
 
