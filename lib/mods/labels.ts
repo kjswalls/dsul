@@ -37,10 +37,32 @@ export const KEY_SHAPED_RE = /\b(?:sk-[A-Za-z0-9_-]{6,}|AIza[0-9A-Za-z_-]{6,})/;
 /**
  * Words a mod's label may not use: the app's own account, sign-in, settings
  * and AI vocabulary and every model provider's name (a test holds these to
- * MODEL_PROVIDERS), and never "Beacon".
+ * MODEL_PROVIDERS), and never "Beacon". A word ends where the letters do, so
+ * "my_settings" and "Settings2" are refused as "Settings" is, and plurals
+ * are spelled out; "Said" and "Aim" are not "AI". Tested against
+ * confusableSkeleton(), so "АІ" in Cyrillic letters is refused too.
  */
 export const MOD_LABEL_FORBIDDEN_RE =
-  /\b(?:ai|settings?|sign[\s-]?(?:in|out|up)|log[\s-]?(?:in|out)|login|logout|account|keys?|passwords?|passcode|session|verify|verification|billing|payments?|card|beacon|openai|anthropic|claude|gemini|google|openrouter|openclaw)\b/i;
+  /(?<!\p{L})(?:ai|settings?|sign[\s_-]?(?:in|out|up)s?|log[\s_-]?(?:in|out)s?|logins?|logouts?|accounts?|keys?|passkeys?|passwords?|passcodes?|sessions?|verify|verification|billing|payments?|cards?|credentials?|tokens?|beacon|openai|anthropic|claude|gemini|google|openrouter|openclaw)(?!\p{L})/iu;
+
+/**
+ * Cyrillic and Greek letters that read as Latin ones. A label written wholly
+ * in another script passes the mixed-script check, so the forbidden words are
+ * tested against this skeleton as well.
+ */
+const CONFUSABLES: Record<string, string> = {
+  А: 'A', В: 'B', Е: 'E', К: 'K', М: 'M', Н: 'H', О: 'O', Р: 'P', С: 'C', Т: 'T', Х: 'X', У: 'Y', Ү: 'Y',
+  І: 'I', Ӏ: 'I', Ј: 'J', Ѕ: 'S', Ԁ: 'D', Ԛ: 'Q', Ԝ: 'W',
+  а: 'a', в: 'b', е: 'e', к: 'k', м: 'm', н: 'h', о: 'o', р: 'p', с: 'c', т: 't', х: 'x', у: 'y', ү: 'y',
+  і: 'i', ӏ: 'l', ј: 'j', ѕ: 's', ԁ: 'd', һ: 'h', ԛ: 'q', ԝ: 'w', п: 'n', г: 'r',
+  Α: 'A', Β: 'B', Ε: 'E', Ζ: 'Z', Η: 'H', Ι: 'I', Κ: 'K', Μ: 'M', Ν: 'N', Ο: 'O', Ρ: 'P', Τ: 'T', Υ: 'Y', Χ: 'X',
+  α: 'a', ε: 'e', ι: 'i', κ: 'k', ν: 'v', ο: 'o', ρ: 'p', τ: 't', υ: 'u', χ: 'x', γ: 'y',
+};
+
+/** The text with every Cyrillic and Greek look-alike swapped for the Latin letter it reads as. */
+export function confusableSkeleton(s: string): string {
+  return s.replace(/[\u0370-\u03ff\u0400-\u052f]/g, (ch) => CONFUSABLES[ch] ?? ch);
+}
 
 const SCRIPTS = [/\p{Script=Latin}/u, /\p{Script=Cyrillic}/u, /\p{Script=Greek}/u];
 
@@ -78,7 +100,12 @@ export function isPlainModText(s: string): boolean {
 /** Plain text that also stays clear of the app's own words and of mixed-script look-alikes. */
 export function passesLabelRule(s: string): boolean {
   const n = normalizeModText(s);
-  return isPlainModText(s) && !isMixedScript(n) && !MOD_LABEL_FORBIDDEN_RE.test(n);
+  return (
+    isPlainModText(s) &&
+    !isMixedScript(n) &&
+    !MOD_LABEL_FORBIDDEN_RE.test(n) &&
+    !MOD_LABEL_FORBIDDEN_RE.test(confusableSkeleton(n))
+  );
 }
 
 /** A name, command label or keyword a mod may show under the app's own chrome. */

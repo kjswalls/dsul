@@ -475,7 +475,7 @@ describe('MakePane: mods', () => {
   it('a mod row has Edit, which loads its code, and a save tells the running runtime', async () => {
     const r = mod({ kind: 'mod', slug: 'water', name: 'Water', enabled: true, manifest: MANIFEST });
     seed({ rows: [r] });
-    const loadModCode = vi.fn(async () => ({ source: 'export const manifest = {};', store: {}, manifest: MANIFEST, updatedAt: 'u' }));
+    const loadModCode = vi.fn(async () => ({ enabled: true, source: 'export const manifest = {};', store: {}, manifest: MANIFEST, updatedAt: 'u' }));
     const saveMod = vi.fn(async () => ({ ok: true as const, switchedOff: false }));
     useModsStore.setState({ loadModCode, saveMod });
     sandbox.scratch.mockResolvedValue(scratched());

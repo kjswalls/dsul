@@ -86,6 +86,10 @@ export function ModHost() {
       apply: applyHeld,
       uiDeps: { navigate: (href) => push(href) },
       hidden: () => document.visibilityState === 'hidden',
+      // Past the focus throttle: a mod whose row disagrees with the database waits on this.
+      refresh: () => {
+        if (userId) void useModsStore.getState().refresh(userId);
+      },
     });
     const unslotActive = setActiveModRuntime(runtime);
     const unsubscribe = subscribeModEvents((e) => runtime.dispatch(e));

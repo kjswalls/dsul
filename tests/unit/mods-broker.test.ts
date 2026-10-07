@@ -224,6 +224,20 @@ describe('reads', () => {
     expect(call(env(), hook(), 'items.query', { limit: 101 })?.ok).toBe(false);
   });
 
+  it('counts every item a hook\'s queries look at, matched or not', () => {
+    const many = Array.from({ length: 4000 }, (_, i) => task(`00000000-0000-4000-8000-${String(i).padStart(12, '0')}`));
+    const e = env({}, { items: many });
+    const h = hook();
+    // Nothing matches both, so each query scans the whole planner.
+    expect(value(call(e, h, 'items.query', { open: true, done: true }))).toEqual([]);
+    expect(value(call(e, h, 'items.query', { open: true, done: true }))).toEqual([]);
+    expect(h.scanned).toBe(8000);
+    expect(call(e, h, 'items.query', { open: true, done: true })).toEqual({
+      ok: false,
+      error: 'too many items looked at in one hook',
+    });
+  });
+
   it('lists container names only', () => {
     expect(value(call(env(), hook(), 'containers.list'))).toEqual({
       projects: ['Work', 'Wellness'],

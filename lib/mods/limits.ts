@@ -50,6 +50,12 @@ export const MOD_FAULT_WINDOW_MS = 600_000;
 export const MOD_FAULT_LOGS_PER_HOUR = 20;
 
 export const MOD_QUERY_LIMIT = 100;
+/**
+ * Items one hook's queries may look at in all. The host answers on the main
+ * thread while the mod's own clock is paused, so this is what bounds that
+ * time on a large planner.
+ */
+export const MOD_SCAN_PER_HOOK = 10_000;
 export const MOD_QUEUE_MAX = 50;
 /** One `$` call's arguments, as JSON text. */
 export const MOD_ARGS_MAX_BYTES = 16_384;

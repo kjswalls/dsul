@@ -14,6 +14,7 @@ import {
   MOD_CALLS_PER_HOOK,
   MOD_QUERY_LIMIT,
   MOD_REPLY_ERROR_MAX,
+  MOD_SCAN_PER_HOOK,
   MOD_STORE_VALUE_MAX_BYTES,
   MOD_TIMERS_PENDING,
   MOD_TIMER_MAX_MS,
@@ -128,6 +129,8 @@ export interface HookState {
   toastsLastMinute: number;
 
   calls: number;
+  /** Items this hook's queries have looked at, against MOD_SCAN_PER_HOOK. */
+  scanned: number;
   logs: number;
   toasts: number;
   /** Writes refused for the cap, logged as `stop:cap`. */
@@ -149,6 +152,7 @@ export function createHookState(
   return {
     ...init,
     calls: 0,
+    scanned: 0,
     logs: 0,
     toasts: 0,
     stopped: 0,
@@ -180,9 +184,15 @@ export function isLiveCall(live: HookState | null, msg: Pick<CallMessage, 'modId
 
 const NAME_MAX = 60;
 
+type OpenContext = Parameters<typeof wantsDoingOn>[2];
+
+/** What `open` is judged against, built once per call rather than once per item. */
+function openContext(view: PlannerView): OpenContext {
+  return { userTimezone: view.userTimezone, routines: [...view.routines], seasons: [...view.seasons] };
+}
+
 /** What a mod with items:read sees of an item: never the completion record, the habit counter, notes or the AI fields. */
-export function projectItem(item: Item, today: string, view: PlannerView): ModItem {
-  const ctx = { userTimezone: view.userTimezone, routines: [...view.routines], seasons: [...view.seasons] };
+export function projectItem(item: Item, today: string, view: PlannerView, ctx = openContext(view)): ModItem {
   const f = item as { project?: string; priority?: string; timeBucket?: string; startDate?: string };
   return {
     id: item.id,
@@ -420,18 +430,23 @@ function run(env: BrokerEnv, hook: HookState, method: ModMethod, a: unknown): Ca
       const q = (a as Args<'items.query'>) ?? {};
       const view = env.planner();
       const { today } = env.todayAndTime();
+      const ctx = openContext(view);
       const out: ModItem[] = [];
       const limit = q.limit ?? MOD_QUERY_LIMIT;
       for (const item of view.items) {
         if (out.length >= limit) break;
+        // Counted per item looked at, not per match, so a query that matches
+        // nothing still costs what it scanned.
+        if (++hook.scanned > MOD_SCAN_PER_HOOK) return error('too many items looked at in one hook');
         if (q.type && itemTypeName(item) !== q.type) continue;
         if (q.project) {
           const project = (item as { project?: string }).project;
           if (!project || !sameContainerName('project', project, q.project)) continue;
         }
-        const p = projectItem(item, today, view);
+        // The cheap test first: `open` is the costly one.
+        if (q.done !== undefined && isDoneOn(item, today) !== q.done) continue;
+        const p = projectItem(item, today, view, ctx);
         if (q.open !== undefined && p.open !== q.open) continue;
-        if (q.done !== undefined && p.done !== q.done) continue;
         out.push(p);
       }
       return { ok: true, value: out };

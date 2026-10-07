@@ -94,4 +94,10 @@ describe('the broker reaches only what a mod may', () => {
     const src = readFileSync(path, 'utf8');
     for (const word of NEVER) expect(src.includes(word), `${rel(path)}: ${word}`).toBe(false);
   });
+
+  it('the sandbox probe fetches only the HEAD of the frame URL it is given', () => {
+    const text = readFileSync(join(ROOT, 'lib/mods/sandbox-probe.ts'), 'utf8');
+    expect(text.split('fetch(').length - 1).toBe(1);
+    expect(text).toContain("fetch(src, { method: 'HEAD', cache: 'no-store' })");
+  });
 });

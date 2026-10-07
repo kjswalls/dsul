@@ -483,6 +483,22 @@ describe('refresh', () => {
     expect(useModsStore.getState().rows[0]).toMatchObject({ name: 'Water', enabled: true });
   });
 
+  it('drops an answer read while a write that started before it was still out', async () => {
+    const r = row({ kind: 'mod', slug: 'water', name: 'Water', enabled: true });
+    await hydrateWith([r]);
+    let release!: () => void;
+    db.gate = new Promise<void>((resolve) => (release = resolve));
+    db.results.push({ error: null });
+    const disabling = useModsStore.getState().disable(r.id, 'Too many errors.');
+    db.gate = null;
+    // The select reads the row before the switch-off commits.
+    db.results.push({ data: [r], error: null });
+    await useModsStore.getState().refresh(USER);
+    release();
+    await disabling;
+    expect(useModsStore.getState().rows[0]).toMatchObject({ enabled: false, disabledReason: 'Too many errors.' });
+  });
+
   it('does nothing for another account, or before the list loaded', async () => {
     await useModsStore.getState().refresh(USER);
     expect(db.calls).toEqual([]);
@@ -493,21 +509,28 @@ describe('refresh', () => {
 });
 
 describe('loadModCode', () => {
-  it('selects one mod’s source, store, manifest and updated_at, as its owner', async () => {
+  it('selects one mod’s switch, source, store, manifest and updated_at, as its owner', async () => {
     const r = row({ kind: 'mod', slug: 'water', name: 'Water' });
     await hydrateWith([r]);
     db.results.push({
-      data: { source: 'export function register() {}', store: { n: 1 }, manifest: { version: 1, uses: [] }, updated_at: 'u' },
+      data: {
+        enabled: true,
+        source: 'export function register() {}',
+        store: { n: 1 },
+        manifest: { version: 1, uses: [] },
+        updated_at: 'u',
+      },
       error: null,
     });
     expect(await useModsStore.getState().loadModCode(r.id)).toEqual({
+      enabled: true,
       source: 'export function register() {}',
       store: { n: 1 },
       manifest: { version: 1, uses: [] },
       updatedAt: 'u',
     });
     expect(opsOf(1)).toEqual([
-      ['select', ['source,store,manifest,updated_at']],
+      ['select', ['enabled,source,store,manifest,updated_at']],
       ['eq', ['id', r.id]],
       ['eq', ['user_id', USER]],
       ['eq', ['kind', 'mod']],
@@ -517,7 +540,7 @@ describe('loadModCode', () => {
 
   it('is null for a row with no source, or a failed read', async () => {
     await hydrateWith([]);
-    db.results.push({ data: { source: null, store: {}, manifest: {}, updated_at: 'u' }, error: null });
+    db.results.push({ data: { enabled: true, source: null, store: {}, manifest: {}, updated_at: 'u' }, error: null });
     expect(await useModsStore.getState().loadModCode(USER)).toBeNull();
     db.results.push({ data: null, error: { code: 'XX000' } });
     expect(await useModsStore.getState().loadModCode(USER)).toBeNull();
@@ -566,10 +589,17 @@ describe('mods (build order 8)', () => {
   it('saveMod keeps a switched-on mod on when its uses do not widen', async () => {
     const existing = row({ kind: 'mod', slug: 'water', name: 'Water', enabled: true, manifest: { version: 1, uses: ['storage', 'ui'] } });
     await hydrateWith([existing]);
+    db.results.push({ data: { enabled: true, manifest: existing.manifest }, error: null });
     db.results.push({ data: [{ updated_at: '2026-10-08T00:00:00Z' }], error: null });
     const r = await useModsStore.getState().saveMod(existing.id, { name: 'Water', source: SOURCE, manifest });
     expect(r).toEqual({ ok: true, switchedOff: false });
     expect(opsOf(1)).toEqual([
+      ['select', ['enabled,manifest']],
+      ['eq', ['id', existing.id]],
+      ['eq', ['user_id', USER]],
+      ['maybeSingle', []],
+    ]);
+    expect(opsOf(2)).toEqual([
       ['update', [{ name: 'Water', manifest, source: SOURCE }]],
       ['eq', ['id', existing.id]],
       ['eq', ['user_id', USER]],
@@ -581,18 +611,46 @@ describe('mods (build order 8)', () => {
   it('saveMod switches a mod off when its uses widen, and a failed save puts it back', async () => {
     const existing = row({ kind: 'mod', slug: 'water', name: 'Water', enabled: true, manifest: { version: 1, uses: [] } });
     await hydrateWith([existing]);
+    db.results.push({ data: { enabled: true, manifest: existing.manifest }, error: null });
     db.results.push({ data: [{ updated_at: 'u2' }], error: null });
     expect(await useModsStore.getState().saveMod(existing.id, { name: 'Water', source: SOURCE, manifest })).toEqual({
       ok: true,
       switchedOff: true,
     });
-    expect(opsOf(1)[0]).toEqual(['update', [{ name: 'Water', manifest, enabled: false, source: SOURCE }]]);
+    expect(opsOf(2)[0]).toEqual(['update', [{ name: 'Water', manifest, enabled: false, source: SOURCE }]]);
     expect(useModsStore.getState().rows[0].enabled).toBe(false);
 
     useModsStore.setState((st) => ({ rows: st.rows.map((r) => ({ ...r, enabled: true, manifest: { version: 1, uses: [] } })) }));
+    db.results.push({ data: { enabled: true, manifest: { version: 1, uses: [] } }, error: null });
     db.results.push({ data: null, error: { code: '500', message: 'boom' } });
     expect((await useModsStore.getState().saveMod(existing.id, { name: 'Water', source: SOURCE, manifest })).ok).toBe(false);
     expect(useModsStore.getState().rows[0]).toMatchObject({ enabled: true, manifest: { version: 1, uses: [] } });
+  });
+
+  it('saveMod writes the switch off when uses widen, even where this tab shows the mod off', async () => {
+    const existing = row({ kind: 'mod', slug: 'water', name: 'Water', enabled: false, manifest: { version: 1, uses: [] } });
+    await hydrateWith([existing]);
+    // Switched on from another device since this tab loaded.
+    db.results.push({ data: { enabled: true, manifest: { version: 1, uses: [] } }, error: null });
+    db.results.push({ data: [{ updated_at: 'u2' }], error: null });
+    expect(await useModsStore.getState().saveMod(existing.id, { name: 'Water', source: SOURCE, manifest })).toEqual({
+      ok: true,
+      switchedOff: true,
+    });
+    expect(opsOf(2)[0]).toEqual(['update', [{ name: 'Water', manifest, enabled: false, source: SOURCE }]]);
+  });
+
+  it('saveMod judges the widening against the stored manifest when this tab’s copy is stale', async () => {
+    // This tab still shows an older, wider manifest; the database holds a narrower one, switched on.
+    const existing = row({ kind: 'mod', slug: 'water', name: 'Water', enabled: true, manifest: { version: 1, uses: ['storage'] } });
+    await hydrateWith([existing]);
+    db.results.push({ data: { enabled: true, manifest: { version: 1, uses: [] } }, error: null });
+    db.results.push({ data: [{ updated_at: 'u2' }], error: null });
+    expect(await useModsStore.getState().saveMod(existing.id, { name: 'Water', source: SOURCE, manifest })).toEqual({
+      ok: true,
+      switchedOff: true,
+    });
+    expect(opsOf(2)[0]).toEqual(['update', [{ name: 'Water', manifest, enabled: false, source: SOURCE }]]);
   });
 
   it('rename of a mod refuses "Sign in" with no call; a recipe may still be called that', async () => {

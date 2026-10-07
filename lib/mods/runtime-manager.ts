@@ -33,7 +33,14 @@ import {
   type ParsedFrameMessage,
 } from './protocol';
 import { createHookRate, hookRateReason } from './rate';
-import { ModManifestSchema, manifestsEqual, type ModManifest, type UserMod } from './schema';
+import {
+  ModManifestSchema,
+  manifestsEqual,
+  parseModManifest,
+  usesWidened,
+  type ModManifest,
+  type UserMod,
+} from './schema';
 import type { SandboxStatus } from './sandbox-host';
 import type { StoreSetResult } from './store-rpc';
 import type { ModCode } from '@/lib/mods-store';
@@ -96,6 +103,8 @@ export interface RuntimeDeps {
   uiDeps: UiStepDeps;
   /** Whether the document is hidden now (a hidden frame's timers are throttled). */
   hidden: () => boolean;
+  /** Reads Make's rows again: this tab's view of a mod disagreed with the database. */
+  refresh?: () => void;
   now?: () => number;
 }
 
@@ -128,6 +137,8 @@ interface ModState {
   failures: Map<string, number>;
   flushTimer: ReturnType<typeof setTimeout> | null;
   flushing: Promise<void> | null;
+  /** Flushes started, so a load can tell one ran while it read the row. */
+  flushes: number;
 
   queue: Work[];
   busy: boolean;
@@ -207,6 +218,7 @@ export function createModRuntime(deps: RuntimeDeps): ModRuntime {
   let writeNo = 0;
   let stopped = false;
   let warnedUnavailable = false;
+  let lastRefresh = -Infinity;
 
   const rowOf = (modId: string) => deps.rows().find((r) => r.id === modId);
   const today = () => deps.env().todayAndTime().today;
@@ -227,6 +239,7 @@ export function createModRuntime(deps: RuntimeDeps): ModRuntime {
         failures: new Map(),
         flushTimer: null,
         flushing: null,
+        flushes: 0,
         queue: [],
         busy: false,
         timers: new Map(),
@@ -238,6 +251,29 @@ export function createModRuntime(deps: RuntimeDeps): ModRuntime {
       states.set(modId, s);
     }
     return s;
+  }
+
+  /** At most one refresh every few seconds, however many events find the row stale. */
+  function askRefresh(): void {
+    const t = now();
+    if (t - lastRefresh < 5000) return;
+    lastRefresh = t;
+    deps.refresh?.();
+  }
+
+  /**
+   * Whether the code just read may run under what this tab's row says the
+   * user switched on. The row in the database must be on, and its `uses`
+   * no wider than the ones this tab's row shows: a save on another device
+   * that widened them switched it off there, and this tab's cached row may
+   * not know yet. Either way the mod does not run, and the rows are read
+   * again.
+   */
+  function consented(modId: string, code: ModCode, manifest: ModManifest): boolean {
+    const row = rowOf(modId);
+    if (code.enabled && row && !usesWidened(parseModManifest(row), manifest)) return true;
+    askRefresh();
+    return false;
   }
 
   /* ── faults ──────────────────────────────────────────────────────────── */
@@ -279,6 +315,11 @@ export function createModRuntime(deps: RuntimeDeps): ModRuntime {
   /* ── loading ─────────────────────────────────────────────────────────── */
 
   function unload(s: ModState, clearTimers: boolean): void {
+    // A hook in flight ends here, unfaulted: the frame kills its worker on
+    // unload and answers nothing, so waiting would end in a false wall fault
+    // and the backstop's remove() of every other mod's worker.
+    const run = running.get(s.modId);
+    if (run && run.hook.gen === s.loaded?.gen) run.resolve({ ok: false, fault: null });
     if (s.loaded) deps.sandbox.post({ t: 'unload', modId: s.modId, gen: s.loaded.gen });
     s.loaded = null;
     s.needsReload = false;
@@ -340,12 +381,22 @@ export function createModRuntime(deps: RuntimeDeps): ModRuntime {
         return false;
       }
       if (s.flushing) await s.flushing;
+      // Store writes committed or flushed from here on are newer than the row read next.
+      const flushesBefore = s.flushes;
       const code = await deps.loadCode(s.modId);
       if (!code || stopped) return false;
 
       const manifest = ModManifestSchema.safeParse(code.manifest);
       if (!manifest.success) {
         onFault(s, 'load', fault('load', 'manifest invalid'));
+        return false;
+      }
+      if (!consented(s.modId, code, manifest.data)) {
+        // A generation already running stops too: the row says it may not.
+        if (s.loaded) {
+          s.queue = [];
+          unload(s, true);
+        }
         return false;
       }
       const gen = (gens.get(s.modId) ?? 0) + 1;
@@ -376,8 +427,12 @@ export function createModRuntime(deps: RuntimeDeps): ModRuntime {
       s.loaded = { gen, hooks: r.hooks, sourceHash: hashSource(code.source), manifest: manifest.data, updatedAt: code.updatedAt };
       s.knownHooks = { updatedAt: code.updatedAt, hooks: r.hooks };
       s.needsReload = false;
-      // A reload never replaces a snapshot with keys still to flush.
-      if (s.dirty.size === 0 && !s.flushing) s.snapshot = { ...(code.store as Record<string, Json>) };
+      // The row's store replaces the snapshot only when nothing newer is in
+      // memory: no key still to flush, and no flush ran while the row was
+      // read (its answer may predate that flush's writes).
+      if (s.dirty.size === 0 && !s.flushing && s.flushes === flushesBefore) {
+        s.snapshot = { ...(code.store as Record<string, Json>) };
+      }
       if (old) deps.sandbox.post({ t: 'unload', modId: s.modId, gen: old.gen });
       return true;
     } finally {
@@ -392,6 +447,15 @@ export function createModRuntime(deps: RuntimeDeps): ModRuntime {
     try {
       const code = await deps.loadCode(s.modId);
       if (!code || !s.loaded) return;
+      const manifest = ModManifestSchema.safeParse(code.manifest);
+      if (manifest.success && !consented(s.modId, code, manifest.data)) {
+        // Off in the database, or asking for more than was switched on: what
+        // runs here stops now, rather than at the next refresh.
+        s.queue = [];
+        unload(s, true);
+        void flush(s);
+        return;
+      }
       const changed =
         hashSource(code.source) !== s.loaded.sourceHash || !manifestsEqual(code.manifest, s.loaded.manifest);
       if (changed) enqueue(s, { kind: 'reload' });
@@ -587,6 +651,7 @@ export function createModRuntime(deps: RuntimeDeps): ModRuntime {
     if (s.dirty.size === 0) return;
     if (s.flushTimer) clearTimeout(s.flushTimer);
     s.flushTimer = null;
+    s.flushes++;
     s.flushing = (async () => {
       for (const [key, written] of [...s.dirty]) {
         const value = Object.hasOwn(s.snapshot, key) ? s.snapshot[key] : null;

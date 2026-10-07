@@ -318,6 +318,28 @@ describe('mod labels', () => {
     }
   });
 
+  it('refuses plurals, joined words and look-alikes written wholly in another script', () => {
+    for (const label of [
+      'Accounts',
+      'Sessions',
+      'Logins',
+      'Cards',
+      'Passkey',
+      'Credentials',
+      'API token',
+      'my_settings',
+      'Settings2',
+      '\u0410\u0406',
+      '\u0391\u0399',
+      '\u041a\u0435\u0443\u0455',
+    ]) {
+      expect(isModLabel(label), label).toBe(false);
+    }
+    for (const label of ['Said hello', 'Aim high', 'Flashcards', 'Monkeys']) {
+      expect(isModLabel(label), label).toBe(true);
+    }
+  });
+
   it('holds the provider names to the AI connection list', () => {
     for (const p of MODEL_PROVIDERS.filter((p) => p !== 'custom')) expect(MOD_LABEL_FORBIDDEN_RE.test(p), p).toBe(true);
   });

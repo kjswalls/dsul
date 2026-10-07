@@ -128,7 +128,7 @@ function addMod(n: number, b: Behaviour, over: Partial<UserMod> = {}): UserMod {
     ...over,
   };
   rows.push(row);
-  codes.set(row.id, { source: `// mod ${n}`, store: {}, manifest: row.manifest, updatedAt: row.updatedAt });
+  codes.set(row.id, { enabled: true, source: `// mod ${n}`, store: {}, manifest: row.manifest, updatedAt: row.updatedAt });
   sandbox.behaviours.set(row.id, b);
   return row;
 }
@@ -559,5 +559,91 @@ describe('events', () => {
     await vi.advanceTimersByTimeAsync(2000);
     expect(seen).toEqual(['command']);
     expect(sandbox.sent('unload')).toEqual([{ t: 'unload', modId: id(1), gen: 1 }]);
+  });
+});
+
+describe('consent and races', () => {
+  it('runs nothing whose row the database holds switched off, and reads the rows again', async () => {
+    const refresh = vi.fn();
+    const row = addMod(1, { hooks: ['command'] });
+    codes.set(row.id, { ...codes.get(row.id)!, enabled: false });
+    const rt = createModRuntime({ ...deps, refresh });
+    rt.runCommand(row.id, 'log');
+    await settle();
+    expect(sandbox.sent('load')).toEqual([]);
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('runs nothing whose stored uses are wider than the ones this tab switched on', async () => {
+    const refresh = vi.fn();
+    const wider: ModManifest = { ...MANIFEST, uses: [...MANIFEST.uses, 'items:write'] };
+    // Saved wider on another device; this tab's row still shows the old uses, switched on.
+    const row = addMod(1, { hooks: ['command'], declared: wider });
+    codes.set(row.id, { ...codes.get(row.id)!, manifest: wider });
+    const rt = createModRuntime({ ...deps, refresh });
+    rt.runCommand(row.id, 'log');
+    await settle();
+    expect(sandbox.sent('load')).toEqual([]);
+    expect(sandbox.sent('hook')).toEqual([]);
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('a loaded mod whose row went off in the database stops when the change is read', async () => {
+    const row = addMod(1, { hooks: ['command'] });
+    const rt = createModRuntime({ ...deps, refresh: vi.fn() });
+    rt.runCommand(row.id, 'log');
+    await settle();
+    codes.set(row.id, { ...codes.get(row.id)!, enabled: false, source: '// v2', updatedAt: '2026-03-02T00:00:00Z' });
+    rows[0] = { ...rows[0], updatedAt: '2026-03-02T00:00:00Z' };
+    rt.rowsChanged();
+    await settle();
+    expect(sandbox.sent('load')).toHaveLength(1);
+    expect(sandbox.sent('unload')).toEqual([{ t: 'unload', modId: row.id, gen: 1 }]);
+    expect(rt.loadedIds()).toEqual([]);
+  });
+
+  it('switching a mod off mid-hook ends the hook with no wall fault and keeps the sandbox', async () => {
+    addMod(1, { hooks: ['command'], onHook: () => new Promise<void>(() => {}) });
+    const rt = createModRuntime(deps);
+    rt.runCommand(id(1), 'log');
+    await settle();
+    expect(sandbox.sent('hook')).toHaveLength(1);
+    rows[0] = { ...rows[0], enabled: false };
+    rt.rowsChanged();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(sandbox.remove).not.toHaveBeenCalled();
+    expect(deps.logFault).not.toHaveBeenCalled();
+    expect(deps.apply).not.toHaveBeenCalled();
+  });
+
+  it('a flush that lands while a reload reads the row keeps the newer snapshot', async () => {
+    const values: unknown[] = [];
+    const row = addMod(1, {
+      hooks: ['command'],
+      onHook: async (_e, call) => {
+        const got = await call('store.get', { key: 'n' });
+        values.push(got.value);
+        if (got.value === null) await call('store.set', { key: 'n', value: 1 });
+      },
+    });
+    const rt = createModRuntime(deps);
+    rt.runCommand(row.id, 'log');
+    await settle();
+
+    // The reload's read goes out before the flush and answers after it.
+    let answer!: (c: ModCode) => void;
+    const stale = { ...codes.get(row.id)!, source: '// v2', store: {} };
+    deps.loadCode.mockImplementationOnce(() => new Promise<ModCode>((resolve) => (answer = resolve)));
+    rt.saved(row.id);
+    await settle();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(deps.storeSet).toHaveBeenCalledWith(row.id, 'n', 1);
+    answer(stale);
+    await settle();
+    expect(sandbox.sent('load')).toHaveLength(2);
+
+    rt.runCommand(row.id, 'log');
+    await settle();
+    expect(values).toEqual([null, 1]);
   });
 });

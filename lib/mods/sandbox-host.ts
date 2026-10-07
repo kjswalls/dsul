@@ -9,6 +9,7 @@ import {
   type ModEventKind,
   type ParsedFrameMessage,
 } from './protocol';
+import { silentFrameStatus } from './sandbox-probe';
 import { MOD_RUNTIME_VERSION } from './sandbox/generated/version';
 
 /**
@@ -23,9 +24,11 @@ import { MOD_RUNTIME_VERSION } from './sandbox/generated/version';
  * port, and parses every message with parseFrameMessage before anything
  * reads it.
  *
- * - No `ready` within MOD_LOAD_WALL_MS: the iframe goes and mods are
- *   unavailable in this browser for the session. That is a console line,
- *   not a mod's fault.
+ * - No `ready` within MOD_LOAD_WALL_MS of the iframe's load: the iframe
+ *   goes and mods are unavailable in this browser for the session. That is a
+ *   console line, not a mod's fault. A frame URL that is a 404 (this tab is
+ *   from an older deploy) is `outdated` instead, and a page that never
+ *   arrives latches nothing.
  * - `boot-failed` for the version: this tab and the deploy disagree, and
  *   mods wait for a reload.
  * - remove() is the hard kill: every worker in the frame goes with it, and
@@ -89,38 +92,74 @@ function onPortMessage(e: MessageEvent): void {
   }
 }
 
+/**
+ * How long the frame's page may take to arrive. Separate from the boot clock,
+ * which starts at the iframe's load: a ~1MB page on a slow connection is not
+ * a browser that cannot run mods, so running out of this one latches nothing,
+ * and the next ensure() tries again.
+ */
+const FRAME_FETCH_MS = 30_000;
+
+/** Ends the boot in flight, if any, as `idle`: remove() was called under it. */
+let cancelBoot: (() => void) | null = null;
+
+const OUTDATED_WHY = 'Mods wait for a reload: the sandbox is from another version of dsul.';
+const UNAVAILABLE_WHY = 'Mods are unavailable in this browser: the sandbox did not start.';
+
 function boot(): Promise<SandboxStatus> {
   if (typeof document === 'undefined') return Promise.resolve(settle('unavailable'));
   status = 'booting';
   return new Promise<SandboxStatus>((resolve) => {
+    const src = `/mods/sandbox/${MOD_RUNTIME_VERSION}`;
     const frame = document.createElement('iframe');
     frame.setAttribute('sandbox', 'allow-scripts');
     frame.setAttribute('aria-hidden', 'true');
     frame.tabIndex = -1;
     frame.hidden = true;
-    frame.src = `/mods/sandbox/${MOD_RUNTIME_VERSION}`;
+    frame.src = src;
     iframe = frame;
 
     let finished = false;
-    const finish = (next: SandboxStatus, why?: string) => {
+    let bootTimer: ReturnType<typeof setTimeout> | null = null;
+    /**
+     * `latch` false: this attempt failed, but the next ensure() boots again.
+     * A frame that is no longer the mounted one (remove() ran, or a newer boot
+     * took its place) settles nothing: status and `booting` are theirs now.
+     */
+    const finish = (next: SandboxStatus, why?: string, latch = true) => {
       if (finished) return;
       finished = true;
-      clearTimeout(timer);
-      // Removed while it booted: whatever it says now, it is gone.
-      if (iframe !== frame && next === 'ready') return resolve(settle('idle'));
+      clearTimeout(fetchTimer);
+      if (bootTimer) clearTimeout(bootTimer);
+      if (cancelBoot === cancel) cancelBoot = null;
+      if (iframe !== frame) return resolve('idle');
       if (next !== 'ready') {
         if (why) console.warn(`[mods] ${why}`);
-        if (iframe === frame) teardown();
+        teardown();
+      }
+      if (!latch) {
+        settle('idle');
+        return resolve(next);
       }
       resolve(settle(next));
     };
-    const timer = setTimeout(
-      () => finish('unavailable', 'Mods are unavailable in this browser: the sandbox did not start.'),
-      MOD_LOAD_WALL_MS
+    const cancel = () => finish('idle');
+    cancelBoot = cancel;
+    const fetchTimer = setTimeout(
+      () => finish('unavailable', 'The mod sandbox did not load; it will be tried again.', false),
+      FRAME_FETCH_MS
     );
 
     frame.addEventListener('load', () => {
+      // Only the first load boots; the frame never navigates itself.
+      if (finished || bootTimer) return;
       if (iframe !== frame || !frame.contentWindow) return finish('unavailable');
+      clearTimeout(fetchTimer);
+      // The boot clock starts once the page is here, as the plan says: it
+      // covers the frame's compile and the ready round trip, not the network.
+      bootTimer = setTimeout(() => {
+        void silentFrameStatus(src).then((s) => finish(s, s === 'outdated' ? OUTDATED_WHY : UNAVAILABLE_WHY));
+      }, MOD_LOAD_WALL_MS);
       const channel = new MessageChannel();
       port = channel.port1;
       port.onmessage = (e) => {
@@ -132,11 +171,11 @@ function boot(): Promise<SandboxStatus> {
               port!.onmessage = onPortMessage;
               return finish('ready');
             }
-            return finish('outdated', 'Mods wait for a reload: the sandbox is from another version of dsul.');
+            return finish('outdated', OUTDATED_WHY);
           }
           if (m.t === 'boot-failed') {
             return m.reason === 'version'
-              ? finish('outdated', 'Mods wait for a reload: the sandbox is from another version of dsul.')
+              ? finish('outdated', OUTDATED_WHY)
               : finish('unavailable', `Mods are unavailable in this browser: ${m.message ?? 'the sandbox did not start'}.`);
           }
         }
@@ -182,8 +221,12 @@ export const modSandbox = {
   /** The hard kill. A latched `unavailable` or `outdated` stays. */
   remove(): void {
     const was = iframe;
+    const cancel = cancelBoot;
     teardown();
     if (status === 'ready' || status === 'booting') settle('idle');
+    // A boot in flight ends here, as `idle`: its clocks must not latch a
+    // frame that is already gone, or overwrite a newer boot's status.
+    cancel?.();
     for (const [, done] of scratchWaiters) done({ ok: false, fault: fault('wall', 'the sandbox was stopped') });
     scratchWaiters.clear();
     if (was) {
@@ -250,7 +293,10 @@ export type ModSandbox = typeof modSandbox;
 
 /** Test-only: back to no frame, no listeners. */
 export function __resetModSandboxForTests(): void {
+  const cancel = cancelBoot;
   teardown();
+  cancel?.();
+  cancelBoot = null;
   listeners.clear();
   removedListeners.clear();
   scratchWaiters.clear();

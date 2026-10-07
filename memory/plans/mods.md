@@ -174,7 +174,9 @@ Where it departs from the body:
   the page as base64 `text/plain` blocks, so the two can never come from different deploys (emscripten's import
   names are minified). The version hashes the whole page and its CSP; the route serves only the current one
   (`dynamicParams = false`), so deploy skew is a 404, never a stale page cached as immutable. The frame echoes the
-  version at boot and a mismatch reads "reload to save mods". Whether Vercel keeps the route's `Cache-Control` is
+  version at boot and a mismatch reads "reload to save mods". A 404 frame never answers at all, so when the boot
+  clock (from the iframe's load, never its creation) runs out, the host asks for the frame URL's HEAD
+  (`lib/mods/sandbox-probe.ts`) and a 404 reads as that same reload, not "can't run in this browser". Whether Vercel keeps the route's `Cache-Control` is
   checked on the preview; if not, the route goes `force-dynamic` and checks the version by hand.
 - **The worker is built at install, with no new bundler:** `scripts/build-mod-runtime.mjs` drives Next's vendored
   webpack and a loader around `next/dist/build/swc` (an `.mjs` loader, since the lint config refuses `.cjs`), runs

@@ -193,8 +193,10 @@ interface ModsStore {
   ) => Promise<{ ok: true; id: string } | { ok: false; reason: string }>;
   /**
    * A mod's name, code and manifest. A switched-on mod stays on (it hot
-   * reloads), unless the new manifest asks for a use the old one did not:
-   * then it is saved switched off, and switching it back on is the consent.
+   * reloads), unless the new manifest asks for a use the old one did not,
+   * as this tab holds it or as the database does (read just before the
+   * write): then it is saved switched off, even if this tab shows it off,
+   * and switching it back on is the consent.
    */
   saveMod: (
     id: string,
@@ -221,6 +223,12 @@ interface ModsStore {
 }
 
 export interface ModCode {
+  /**
+   * The switch as the database holds it now, which may be newer than the
+   * list's: the runtime runs nothing whose row is off here (another device's
+   * save that widened `uses` switched it off, and this tab may not know yet).
+   */
+  enabled: boolean;
   source: string;
   store: Record<string, unknown>;
   manifest: unknown;
@@ -228,15 +236,29 @@ export interface ModCode {
 }
 
 /**
- * Bumped by every write before it goes out, so a refresh whose select was
- * already in flight knows its answer may predate the write and drops it.
+ * Bumped by every write before it goes out and again when it lands, so a
+ * refresh whose select was in flight while a write was knows its answer may
+ * predate the write and drops it. A write that started before the select
+ * and lands after it is caught by `writesInFlight`.
  */
 let writeSeq = 0;
+let writesInFlight = 0;
 const startWrite = () => {
   writeSeq++;
 };
 
-const ModCodeRowSchema = UserModRowSchema.pick({ manifest: true, updated_at: true }).extend({
+/** Awaits one write to user_mods, counted as in flight until it settles. */
+async function track<T>(write: PromiseLike<T>): Promise<T> {
+  writesInFlight++;
+  try {
+    return await write;
+  } finally {
+    writesInFlight--;
+    writeSeq++;
+  }
+}
+
+const ModCodeRowSchema = UserModRowSchema.pick({ enabled: true, manifest: true, updated_at: true }).extend({
   source: UserModRowSchema.shape.source.unwrap().unwrap(),
   store: z.record(z.unknown()),
 });
@@ -296,7 +318,7 @@ export const useModsStore = create<ModsStore>((set, get) => {
   ): Promise<{ code?: string; message?: string } | null> => {
     startWrite();
     set((s) => ({ rows: sortMods([...s.rows.filter((r) => r.id !== row.id), row]) }));
-    const { error } = await createClient().from('user_mods').insert({
+    const { error } = await track(createClient().from('user_mods').insert({
       id: row.id,
       user_id: row.userId,
       kind: row.kind,
@@ -305,7 +327,7 @@ export const useModsStore = create<ModsStore>((set, get) => {
       enabled: false,
       manifest: row.manifest,
       ...(source !== undefined && { source }),
-    });
+    }));
     if (error && get().hydratedUserId === row.userId) set((s) => ({ rows: s.rows.filter((r) => r.id !== row.id) }));
     return error;
   };
@@ -367,11 +389,13 @@ export const useModsStore = create<ModsStore>((set, get) => {
     if (!ModNameSchema.safeParse(trimmed).success || !schema.safeParse(manifest).success) return false;
     if (keep && !keep(before)) return false;
     set((s) => ({ rows: sortMods(s.rows.map((r) => (r.id === id ? { ...r, name: trimmed, manifest } : r))) }));
-    const { error } = await createClient()
-      .from('user_mods')
-      .update({ name: trimmed, manifest })
-      .eq('id', id)
-      .eq('user_id', userId);
+    const { error } = await track(
+      createClient()
+        .from('user_mods')
+        .update({ name: trimmed, manifest })
+        .eq('id', id)
+        .eq('user_id', userId)
+    );
     if (error) {
       if (get().hydratedUserId === userId) {
         set((s) => ({
@@ -432,11 +456,13 @@ export const useModsStore = create<ModsStore>((set, get) => {
           r.id === id ? { ...r, enabled, disabledReason: enabled ? null : r.disabledReason } : r
         ),
       }));
-      const { error } = await createClient()
-        .from('user_mods')
-        .update(patch)
-        .eq('id', id)
-        .eq('user_id', userId);
+      const { error } = await track(
+        createClient()
+          .from('user_mods')
+          .update(patch)
+          .eq('id', id)
+          .eq('user_id', userId)
+      );
       if (error) {
         restore(userId, id, { enabled: before.enabled, disabledReason: before.disabledReason });
         writeFailed('setEnabled', error);
@@ -455,11 +481,13 @@ export const useModsStore = create<ModsStore>((set, get) => {
       if (before.kind === 'mod' && !isModLabel(trimmed)) return false;
       if (trimmed === before.name) return true;
       set((s) => ({ rows: sortMods(s.rows.map((r) => (r.id === id ? { ...r, name: trimmed } : r))) }));
-      const { error } = await createClient()
-        .from('user_mods')
-        .update({ name: trimmed })
-        .eq('id', id)
-        .eq('user_id', userId);
+      const { error } = await track(
+        createClient()
+          .from('user_mods')
+          .update({ name: trimmed })
+          .eq('id', id)
+          .eq('user_id', userId)
+      );
       if (error) {
         if (get().hydratedUserId === userId) {
           set((s) => ({ rows: sortMods(s.rows.map((r) => (r.id === id ? { ...r, name: before.name } : r))) }));
@@ -477,11 +505,13 @@ export const useModsStore = create<ModsStore>((set, get) => {
       if (!available || !userId || at < 0) return false;
       const before = rows[at];
       set((s) => ({ rows: s.rows.filter((r) => r.id !== id) }));
-      const { error } = await createClient()
-        .from('user_mods')
-        .delete()
-        .eq('id', id)
-        .eq('user_id', userId);
+      const { error } = await track(
+        createClient()
+          .from('user_mods')
+          .delete()
+          .eq('id', id)
+          .eq('user_id', userId)
+      );
       if (error) {
         if (get().hydratedUserId === userId && !get().rows.some((r) => r.id === id)) {
           set((s) => {
@@ -535,11 +565,13 @@ export const useModsStore = create<ModsStore>((set, get) => {
           s.rows.map((r) => (r.id === id ? { ...r, name: trimmed, manifest, ...(switchOff && { enabled: false }) } : r))
         ),
       }));
-      const { error } = await createClient()
-        .from('user_mods')
-        .update({ name: trimmed, manifest, ...(switchOff && { enabled: false }) })
-        .eq('id', id)
-        .eq('user_id', userId);
+      const { error } = await track(
+        createClient()
+          .from('user_mods')
+          .update({ name: trimmed, manifest, ...(switchOff && { enabled: false }) })
+          .eq('id', id)
+          .eq('user_id', userId)
+      );
       if (error) {
         if (get().hydratedUserId === userId) {
           set((s) => ({
@@ -592,16 +624,34 @@ export const useModsStore = create<ModsStore>((set, get) => {
       if (utf8Bytes(source) > MOD_SOURCE_MAX_BYTES) return { ok: false, reason: MOD_TOO_LONG };
       const parsed = ModManifestSchema.safeParse(manifest);
       if (!parsed.success) return { ok: false, reason: 'Its manifest is not valid.' };
-      // A stored manifest that no longer parses counts as having asked for nothing.
-      const switchOff = before.enabled && usesWidened(parseModManifest(before), parsed.data);
+      // The switch and manifest as the database holds them now: this tab's
+      // copy may be stale (switched on, or saved, on another device since).
+      const stored = await track(
+        createClient()
+          .from('user_mods')
+          .select('enabled,manifest')
+          .eq('id', id)
+          .eq('user_id', userId)
+          .maybeSingle()
+      );
+      const fresh = stored.error ? null : (stored.data as { enabled?: unknown; manifest?: unknown } | null);
+      // Wider than either copy: saved switched off, whatever either copy says
+      // of the switch, so no view can skip the consent. A stored manifest that
+      // no longer parses counts as having asked for nothing.
+      const switchOff =
+        usesWidened(parseModManifest(before), parsed.data) ||
+        (!!fresh && usesWidened(parseModManifest({ kind: 'mod', manifest: fresh.manifest }), parsed.data));
+      const wasOn = before.enabled || fresh?.enabled === true;
       const next = { name: trimmed, manifest: parsed.data, ...(switchOff && { enabled: false }) };
       set((s) => ({ rows: sortMods(s.rows.map((r) => (r.id === id ? { ...r, ...next } : r))) }));
-      const { data, error } = await createClient()
-        .from('user_mods')
-        .update({ ...next, source })
-        .eq('id', id)
-        .eq('user_id', userId)
-        .select('updated_at');
+      const { data, error } = await track(
+        createClient()
+          .from('user_mods')
+          .update({ ...next, source })
+          .eq('id', id)
+          .eq('user_id', userId)
+          .select('updated_at')
+      );
       const landed = !error && Array.isArray(data) && data.length > 0;
       if (!landed) {
         if (get().hydratedUserId === userId) {
@@ -622,7 +672,7 @@ export const useModsStore = create<ModsStore>((set, get) => {
       if (typeof updatedAt === 'string' && get().hydratedUserId === userId) {
         set((s) => ({ rows: s.rows.map((r) => (r.id === id ? { ...r, updatedAt } : r)) }));
       }
-      return { ok: true, switchedOff: switchOff };
+      return { ok: true, switchedOff: switchOff && wasOn };
     },
 
     createTheme: (userId, input) => createByIdSlug('theme', ThemeManifestSchema, userId, input),
@@ -646,11 +696,13 @@ export const useModsStore = create<ModsStore>((set, get) => {
       if (!available || !userId || !before) return;
       const why = reason.trim().slice(0, DISABLED_REASON_MAX) || 'Switched off.';
       set((s) => ({ rows: s.rows.map((r) => (r.id === id ? { ...r, enabled: false, disabledReason: why } : r)) }));
-      const { error } = await createClient()
-        .from('user_mods')
-        .update({ enabled: false, disabled_reason: why })
-        .eq('id', id)
-        .eq('user_id', userId);
+      const { error } = await track(
+        createClient()
+          .from('user_mods')
+          .update({ enabled: false, disabled_reason: why })
+          .eq('id', id)
+          .eq('user_id', userId)
+      );
       if (error) {
         // Left off locally even so: a recipe that broke its limit must not run
         // again in this tab because the write that recorded it failed.
@@ -672,12 +724,14 @@ export const useModsStore = create<ModsStore>((set, get) => {
         for (const r of get().rows) if (isCode(r) && r.enabled) flipped.add(r.id);
         set((s) => ({ rows: s.rows.map((r) => (flipped.has(r.id) ? { ...r, enabled: false } : r)) }));
       }
-      const { error } = await createClient()
-        .from('user_mods')
-        .update({ enabled: false })
-        .eq('user_id', userId)
-        .eq('enabled', true)
-        .in('kind', [...kinds]);
+      const { error } = await track(
+        createClient()
+          .from('user_mods')
+          .update({ enabled: false })
+          .eq('user_id', userId)
+          .eq('enabled', true)
+          .in('kind', [...kinds])
+      );
       if (error) {
         if (get().hydratedUserId === userId) {
           set((s) => ({ rows: s.rows.map((r) => (flipped.has(r.id) ? { ...r, enabled: true } : r)) }));
@@ -697,8 +751,9 @@ export const useModsStore = create<ModsStore>((set, get) => {
         console.warn('[mods] refresh failed:', error);
         return;
       }
-      // Another account, or a local write that started meanwhile: this answer may predate it.
-      if (get().hydratedUserId !== userId || writeSeq !== seq) return;
+      // Another account, or a local write that started, landed or is still out
+      // meanwhile: this answer may predate it.
+      if (get().hydratedUserId !== userId || writeSeq !== seq || writesInFlight > 0) return;
       if (result.error) {
         if (missingTable(result.error)) set({ available: false, rows: [], loaded: false, failed: false });
         else console.warn('[mods] refresh failed:', result.error);
@@ -714,7 +769,7 @@ export const useModsStore = create<ModsStore>((set, get) => {
       try {
         const { data, error } = await createClient()
           .from('user_mods')
-          .select('source,store,manifest,updated_at')
+          .select('enabled,source,store,manifest,updated_at')
           .eq('id', id)
           .eq('user_id', userId)
           .eq('kind', 'mod')
@@ -725,8 +780,8 @@ export const useModsStore = create<ModsStore>((set, get) => {
         }
         const parsed = ModCodeRowSchema.safeParse(data);
         if (!parsed.success) return null;
-        const { source, store, manifest, updated_at } = parsed.data;
-        return { source, store, manifest, updatedAt: updated_at };
+        const { enabled, source, store, manifest, updated_at } = parsed.data;
+        return { enabled, source, store, manifest, updatedAt: updated_at };
       } catch (error) {
         console.warn('[mods] could not read a mod:', error);
         return null;
