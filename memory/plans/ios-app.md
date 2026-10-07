@@ -10,7 +10,9 @@ under `/api/app/*`, Today's rules ported to DsulCore against fixtures the TS
 writes, and three writes (tick, braindump→hour, capture). "Try with sample
 data" on the sign-in screen keeps the PR 2 sample (and the drag spike) one tap
 away. One PR for all three parts, so merging deploys the routes and the app
-together.
+together. Sign in with Apple joins Google and the email link: Apple's button,
+GoTrue's id_token grant, and a sign-out when Apple says the Apple ID was
+revoked or changed.
 Item detail, part 1 adds the item sheet, opened from every surface: what the
 item is (read-only) and its verbs, with three more writes (skip, move, pause)
 on the same route. Part 2 makes it editable, in seven PRs; the first (2a) edits
@@ -57,7 +59,8 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   (lib/grouping.ts); `ItemToggle.swift` ← `lib/item-toggle.ts` and the store's
   resolution of it; `AuthCore.swift`, the pure half of sign-in (PKCE, the
   GoTrue requests, refresh verdicts, the callback check of
-  app/auth/ios/route.ts).
+  app/auth/ios/route.ts, the Apple nonce, the id_token grant and the name
+  write).
   Item detail adds `ItemVerbs.swift` ← `lib/item-verbs.ts` (each verb's gate,
   label and detail, `drawnState`/`occurrenceOn`) and `occursOn` from
   `lib/reminders/due.ts`; `RowMoves.swift` ← `lib/row-moves.ts` (the carry)
@@ -110,7 +113,8 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
 - `ios/Dsul/App`: `DsulApp` (one `AuthStore`), `AppGate` (sign-in screen,
   sample or the user's planner, keyed on `AuthStore.gateKey`), `AppConfig`.
   `ios/Dsul/Auth`: `AuthStore`, `TokenStore` (Keychain, or memory in tests),
-  `SignInView`. `ios/Dsul/Data`: `APIClient`, `PlannerSync`.
+  `SignInView`, `AppleAuthorization` (AuthenticationServices' half of Apple,
+  kept out of AuthStore). `ios/Dsul/Data`: `APIClient`, `PlannerSync`.
   `ios/Dsul/Item`: the item sheet (`ItemSheet`, `ItemDetail`, `VerbBar`,
   `ChipFlow`, `StreakChip`, `DayPickSheet`, and from part 2 `TitleField`,
   `NotesEditor`, `SubtaskField` and `StreakPopover`, and from 2c `Editors/`:
@@ -822,8 +826,8 @@ and the PR would stall.
   token, inside GoTrue's reuse window (about 10s, from memory).
 - **Sign-out is `scope=local`**, so the web and the desktop stay signed in.
   The local wipe comes first, whatever the call does.
-- Sign in with Apple and universal links wait for a later PR; the email link
-  is the next section.
+- Sign in with Apple has its own section below; universal links wait for a
+  later PR; the email link is the next section.
 
 ## Email link
 "Email me a sign-in link" under Google: the link only. A typed 6-digit code
@@ -870,6 +874,131 @@ needs `{{ .Token }}` in two hosted email templates and waits on Kirby.
   and the button), Gmail with each link browser, a cold launch, the older
   email after a refused resend, and Google still caught by its sheet now that
   the app owns the scheme. ios/README.md lists the checks.
+
+## Sign in with Apple
+"Continue with Apple" under Google: Apple's own button and sheet, then
+GoTrue's id_token grant, with no browser, no redirect and no URL scheme. The
+setup in Apple's and Supabase's dashboards is in
+memory/plans/sign-in-with-apple.md; the phone needs nothing beyond it, since
+`app.dsul.ios` is already among the Apple provider's Client IDs.
+- **The button.** `SignInWithAppleButton(.continue)`, so the title
+  ("Continue with Apple", the web's words), the logo and the VoiceOver label
+  are Apple's. It sits under Google and above the email link, in the same
+  branch, so it shows exactly when Google does. Black in Light Mode, white in
+  Dark Mode (HIG), full width, as tall as Google's button (measured with
+  `onGeometryChange`, never under 44pt), and both are capsules. Its `.id` is
+  the colour scheme, so an appearance switch rebuilds it, but from a tap
+  until the attempt ends the id holds still: a rebuild drops the object
+  Apple's controller reports back to (its delegate is weak), and the attempt
+  would never end. While busy it is disabled and also takes no hits: no
+  source says the UIKit control under it honours `.disabled`, and a tap that
+  got through would open Apple's sheet even when AuthStore refused the
+  attempt. While Apple's sign-in runs, the message line says "Signing in…",
+  and Google's button keeps its own title.
+- **Large text.** Apple's title is 43% of its button's height and can't
+  follow Dynamic Type, so the lower stack stops growing at the first
+  accessibility size and the Google and email titles stay one line; the
+  title block above keeps scaling. The screen is a ScrollView at least as tall
+  as the screen, so it lays out as before and scrolls only when it doesn't
+  fit.
+- **No gate.** The button shows wherever Google does; the phone doesn't ask
+  whether Supabase has Apple on. The web gates so its button could ship
+  ahead of the setup, and the phone ships after it. A gate would need a
+  request on a signed-out launch, which makes none, and /api/app/config is
+  cached (in UserDefaults, and publicly for an hour), so it would lag a
+  switch anyway. A provider that is off answers `provider_disabled`: "Sign in
+  with Apple isn't available right now. Use Google or an email link." A
+  missing `app.dsul.ios` among the Client IDs is GoTrue's audience refusal,
+  with no code, so the phone says "Couldn't sign in. Try again." while the
+  web still signs in. Guideline 4.8 wants a login like Apple's wherever
+  Google is offered.
+- **The nonce.** One per attempt: `beginAppleSignIn()` makes 32 random bytes
+  (base64url, as PKCE's verifier), keeps them in memory only, and hands
+  Apple's request their lowercase hex SHA-256. The grant sends the RAW nonce,
+  which GoTrue hashes and compares with the token's claim (`token_oidc.go`).
+  GoTrue stores no nonce, so a replayed token with its raw nonce works until
+  it expires, and the guard is the phone's: `finishAppleSignIn` clears the
+  nonce first, whatever happens, and a completion with no attempt under way
+  is dropped. Accepted: a second tap that beats `.disabled` can end the live
+  attempt with a line, or reach GoTrue with a nonce-less token it refuses.
+  Nothing signs in wrongly, and the cost is one more tap.
+- **The grant.** `POST /auth/v1/token?grant_type=id_token` with
+  `{id_token, nonce, provider: "apple"}` and no Authorization (a sign-in,
+  never a link). The answer is the PKCE exchange's token response, kept the
+  same way: Keychain first, then signed in, then "Signed in as …" once. No
+  client secret: GoTrue checks the token against Apple's public keys, so the
+  web's six-monthly rotation never touches the phone. A blank `user.email`
+  (GoTrue sends `""` for a user without one) reads as none, for every
+  provider. Nothing retries on its own: a tap is a fresh attempt with a fresh
+  nonce, as a Google code is good once.
+- **The name.** Apple hands it to the app once, on the first consent, and
+  never in the token. After the grant, when Apple gave a name and the account
+  has none (`full_name`, else `name`, as `sessionUserFrom` in
+  lib/session-user-store.ts reads them), one `PUT /auth/v1/user` writes
+  `{data: {full_name, name}}`, the two keys GoTrue's own Apple callback
+  writes. No retry and no message: a failed write loses the name until the
+  user stops using Sign in with Apple for dsul and signs in again. The name
+  is GoTrue's `TrimSpace(first + " " + last)` with control characters
+  dropped, and none at all over 200 UTF-8 bytes, since it rides in every
+  access token. A name the account already has (Google's, or one the web
+  flow stored) stays. The phone shows no name for any provider; the web's
+  user card, profile menu and Ask greeting do.
+- **Credential state.** The session keeps the Apple user id it signed in
+  with (`Session.appleUserId`, in the same Keychain blob, kept across
+  refreshes). At launch, on every return to the front and on Apple's
+  `credentialRevokedNotification`, `checkAppleCredential()` asks
+  `credentialState(forUserID:)` (a local call) and, on `revoked` or
+  `notFound`, signs this phone out as Sign out does, with "You were signed
+  out. Sign in again to see your day." `notFound` is Apple's "the user
+  changed". `authorized`, `transferred` or an error keep the session, and a
+  Google or email session is never asked about. The notification names no
+  user, so it runs the same check rather than a blind sign-out. The web and
+  the desktop stay signed in: no server-to-server notifications are set up.
+- **Errors.** One line, in the message slot Google and the email link use. A
+  cancel says nothing. Any other failure of Apple's sheet: "Apple couldn't
+  sign you in. Try again." No network: "Couldn't reach dsul. Check your
+  connection and try again." Any other refusal: "Couldn't sign in. Try
+  again." A failed name write says nothing.
+- **Hide My Email.** Supabase finds the account by the Apple ID first, then
+  by a matching verified email, so an Apple Account's first sign-in to dsul,
+  on the web or the phone, decides: Hide My Email starts a separate, empty
+  account, and Share My Email opens the account with that address. After
+  that, the same Apple Account opens the same account whatever it shares.
+  The phone says nothing beyond "Signed in as …" (the relay address, for an
+  account Hide My Email made), as the web says nothing.
+- **The entitlement.** project.yml's `entitlements:` has XcodeGen write
+  `Dsul/Dsul.entitlements` (`com.apple.developer.applesignin: [Default]`),
+  gitignored like `Info.plist`, and set `CODE_SIGN_ENTITLEMENTS`. CI builds
+  unsigned, so nothing checks it there. A device build needs the paid team
+  (a Personal Team can't sign Sign in with Apple); a profile without the
+  capability fails Apple's request at once, as "Apple couldn't sign you in".
+- **Where it lives.** DsulCore's `AuthCore.swift`: the nonce and its hash,
+  the grant, the name write, the name rule and `displayName(in:)`.
+  `AppleAuthorization`: the request's scopes and nonce, the button's result
+  as `AppleSignInOutcome`, and the credential state, so AuthStore and its
+  tests need none of AuthenticationServices' types (only the
+  AppleAuthorization suite beside them imports it). `AuthStore`: the
+  attempt, the grant, the name write and the check. `SignInView`: the
+  button. `AppGate`: the check's three triggers, each in an unstructured
+  Task so the view swap a sign-out causes can't cancel its logout.
+- **Unproven on a device:** Apple's sheet and its first consent, the held
+  colour, the large-text layout, Stop Using, and a Hide My Email account
+  made on the web. ios/README.md lists the checks.
+
+**Next: account deletion.** App Store guideline 5.1.1(v) wants it in the
+app, and for an Apple account it means revoking its token with Apple's REST
+API. That PR gets a fresh authorization code at the moment of deletion:
+Delete account runs a new Apple request (Face ID, no scopes), takes the
+credential's `authorizationCode` and sends it at once to a new bearer-auth
+server route, which exchanges it at `https://appleid.apple.com/auth/token`
+(`grant_type=authorization_code`, `client_id=app.dsul.ios`, since a native
+code is issued to the bundle ID, and a client secret minted with
+`scripts/apple-client-secret.mjs --client-id app.dsul.ios`; today's is
+minted for `app.dsul.web`), revokes the refresh token it gets back at
+`https://appleid.apple.com/auth/revoke`, then deletes the account. A code is
+single-use and good for five minutes, which is why this PR keeps none and
+never reads `authorizationCode`. The secret and the `.p8` stay server-side,
+never in `ios/`.
 
 ## Data (PR 3)
 - **Routes, not tables.** `GET /api/app/planner` (items, projects,
@@ -1121,16 +1250,16 @@ the payload, and any word that a repeat took a goal role away (the web then
 lists the item as a plain member, with no notice), the Beeminder row, the
 Streaks switch, which the
 phone honours, in the sheet and on Today's rows, but can't turn on or off,
-the thread and Ask, Focus), sign-in with Apple,
+the thread and Ask, Focus),
 universal links (the email link uses the custom scheme), unschedule, resize
 and moving existing blocks from the phone, the overdue tray, sinking completed rows,
 filters and `showPausedOnGrid` (the phone uses the defaults), syncing the
 timezone from the phone, notifications, Focus as a Live Activity, a
 local-stack password grant for development, and the web-side work the app
-still needs (a native push channel). Sign in with Apple is live on the web, and
-memory/plans/sign-in-with-apple.md says what the phone's native flow needs. App Store
-review will also want in-app account deletion and consent before sending data
-to a model. Notifications, the timezone write and the native push channel are
+still needs (a native push channel). Account deletion is next (App Store
+review wants it in the app), and for an Apple account it revokes the token
+with Apple (see "Sign in with Apple"). App Store review will also want consent
+before sending data to a model. Notifications, the timezone write and the native push channel are
 planned in [reminders-platforms.md](reminders-platforms.md) (§2.3 and its
 Phase 2: local `UNUserNotificationCenter` triggers computed by a DsulCore port
 of `lib/reminders/plan.ts`; APNs follows in its Phase 3 on the paid team Kirby

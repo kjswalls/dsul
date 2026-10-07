@@ -17,9 +17,21 @@ import FoundationNetworking
 // may be opened after the app was quit), and the page hands the code back
 // with the record's nonce, which `parseEmailCallback` reads.
 //
-// What lives here is pure: the PKCE strings, the URLs and requests, the token
-// response, expiry, how a failed refresh is read, and the callback check. The
-// SHA-256 (CryptoKit), the Keychain and the auth session stay in the app.
+// Sign in with Apple has no redirect at all. Apple's own sheet hands the app
+// an identity token, and the app trades it at GoTrue's id_token grant
+// (`idTokenRequest`, token_oidc.go IdTokenGrant) with no Authorization: a
+// sign-in, never a link. Apple's request carries the lowercase hex SHA-256 of
+// a fresh nonce (`AppleSignIn.hashedNonce`); the grant carries the RAW nonce,
+// which GoTrue hashes the same way and compares with the token's claim. Apple
+// gives the name once, on the first consent, and never in the token, so the
+// app writes it to the account itself (`userNameRequest`, the keys GoTrue's
+// own Apple callback writes), and only when the account has none
+// (`displayName(in:)`).
+//
+// What lives here is pure: the PKCE strings and Apple's nonce, the URLs and
+// requests, the token response, expiry, how a failed refresh is read, and the
+// callback check. The SHA-256 (CryptoKit), the Keychain, the auth session and
+// Apple's sheet stay in the app.
 // Every request carries `apikey` and pins the API version, so errors come back
 // with a stable `code` (auth-js reads `code` from that version on).
 
@@ -148,9 +160,12 @@ extension GoTrue {
         return request
     }
 
-    private static func jsonRequest(_ url: URL, config: GoTrueConfig, body: [String: String]?) -> URLRequest {
+    /// Every GoTrue call: the method (POST unless said), `apikey`, JSON and the
+    /// pinned API version, and the body, if any, with its keys sorted.
+    private static func jsonRequest(_ url: URL, config: GoTrueConfig, method: String = "POST",
+                                    body: [String: Any]?) -> URLRequest {
         var request = URLRequest(url: url)
-        request.httpMethod = "POST"
+        request.httpMethod = method
         request.setValue(config.anonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(GoTrue.apiVersion, forHTTPHeaderField: "X-Supabase-Api-Version")
@@ -197,16 +212,25 @@ public struct Session: Codable, Sendable, Hashable {
     public var expiresAt: Date
     public var userId: UUID
     public var email: String?
+    /// The Apple user id a Sign in with Apple session signed in with; nil for
+    /// Google and the email link. Kept across refreshes by AuthStore. Nil is
+    /// left out of the blob, and a blob saved before Apple decodes as nil.
+    public var appleUserId: String?
 
-    public init(accessToken: String, refreshToken: String, expiresAt: Date, userId: UUID, email: String?) {
+    public init(accessToken: String, refreshToken: String, expiresAt: Date, userId: UUID, email: String?,
+                appleUserId: String? = nil) {
         self.accessToken = accessToken
         self.refreshToken = refreshToken
         self.expiresAt = expiresAt
         self.userId = userId
         self.email = email
+        self.appleUserId = appleUserId
     }
 
-    /// Nil when the user id isn't a uuid or a token is empty.
+    /// Nil when the user id isn't a uuid or a token is empty. A blank email is
+    /// none: GoTrue writes `"email":""` for a user it made without one (its
+    /// NullString has no JSON method), which only an Apple token with no email
+    /// claim could do. The Apple user id is the caller's to set.
     public init?(response: TokenResponse, receivedAt: Date) {
         guard let userId = UUID(uuidString: response.user.id),
               !response.accessToken.isEmpty, !response.refreshToken.isEmpty
@@ -216,11 +240,12 @@ public struct Session: Codable, Sendable, Hashable {
             refreshToken: response.refreshToken,
             expiresAt: receivedAt.addingTimeInterval(response.expiresIn),
             userId: userId,
-            email: response.user.email
+            email: response.user.email.flatMap { $0.isEmpty ? nil : $0 }
         )
     }
 
-    /// Decodes a token response body (the PKCE exchange or a refresh).
+    /// Decodes a token response body (the PKCE exchange, the id_token grant or
+    /// a refresh).
     public static func decode(_ data: Data, receivedAt: Date) throws -> Session {
         let response = try JSONDecoder().decode(TokenResponse.self, from: data)
         guard let session = Session(response: response, receivedAt: receivedAt) else {
@@ -495,5 +520,136 @@ private func isNonce(_ s: String) -> Bool {
     guard bytes.count >= 16 && bytes.count <= 64 else { return false }
     return bytes.allSatisfy { b in
         (b >= 65 && b <= 90) || (b >= 97 && b <= 122) || (b >= 48 && b <= 57) || b == 95 || b == 45
+    }
+}
+
+// MARK: - Sign in with Apple
+
+extension GoTrue {
+    /// POST /auth/v1/token?grant_type=id_token
+    /// {"id_token": idToken, "nonce": nonce, "provider": "apple"}: Apple's identity
+    /// token and the RAW nonce, which GoTrue hashes and compares with the token's
+    /// claim (token_oidc.go IdTokenGrant). No Authorization: a sign-in, never a link.
+    /// With `provider` set GoTrue needs no `client_id` or `issuer`, and with no
+    /// `access_token` (Apple's native credential has none) it skips the at_hash
+    /// check.
+    public static func idTokenRequest(config: GoTrueConfig, idToken: String, nonce: String) -> URLRequest? {
+        guard let url = goTrueURL(config, "token", [("grant_type", "id_token")]) else { return nil }
+        return jsonRequest(url, config: config, body: [
+            "id_token": idToken,
+            "nonce": nonce,
+            "provider": AppleSignIn.provider,
+        ])
+    }
+
+    /// PUT /auth/v1/user {"data": {"full_name": fullName, "name": fullName}}, bearing
+    /// the access token: the two keys GoTrue's own Apple callback writes on a first
+    /// consent (provider_apple.go ParseUser), merged into user_metadata.
+    public static func userNameRequest(config: GoTrueConfig, accessToken: String, fullName: String) -> URLRequest? {
+        guard let url = goTrueURL(config, "user", []) else { return nil }
+        var request = jsonRequest(url, config: config, method: "PUT", body: [
+            "data": ["full_name": fullName, "name": fullName],
+        ])
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        return request
+    }
+
+    /// The name a token response's user already has, as lib/session-user-store.ts
+    /// `sessionUserFrom` reads it: user_metadata.full_name, else .name, each
+    /// `jsTrim`med; blank or not a string falls through. Nil when neither, and for
+    /// a body that isn't a token response.
+    public static func displayName(in tokenBody: Data) -> String? {
+        guard let object = try? JSONSerialization.jsonObject(with: tokenBody, options: []),
+              let json = object as? [String: Any],
+              let user = json["user"] as? [String: Any],
+              let metadata = user["user_metadata"] as? [String: Any]
+        else { return nil }
+        return nonBlank(metadata["full_name"]) ?? nonBlank(metadata["name"])
+    }
+
+    /// session-user-store.ts `str`: a string, trimmed, or nil when blank.
+    private static func nonBlank(_ value: Any?) -> String? {
+        guard let s = value as? String else { return nil }
+        let trimmed = jsTrim(s)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+/// Sign in with Apple's pure half: the nonce, its hash, and the name GoTrue would
+/// store. The SHA-256 is injected, as PKCE's is; the app passes CryptoKit's.
+public enum AppleSignIn {
+    /// GoTrue's provider name (token_oidc.go `AppleProvider`).
+    public static let provider = "apple"
+    /// The largest name the phone saves, in UTF-8 bytes (it rides in every access
+    /// token). Larger is not saved at all.
+    public static let nameLimit = 200
+
+    /// 32 random bytes, base64url: 43 characters. One per attempt, kept in
+    /// memory only: GoTrue stores no nonce, so a replayed token with its raw
+    /// nonce would pass until it expires.
+    public static func makeNonce() -> String {
+        var generator = SystemRandomNumberGenerator()
+        var bytes: [UInt8] = []
+        bytes.reserveCapacity(32)
+        for _ in 0..<32 { bytes.append(UInt8.random(in: UInt8.min...UInt8.max, using: &generator)) }
+        return makeNonce(bytes: bytes)
+    }
+
+    /// The nonce for given bytes (tests).
+    public static func makeNonce(bytes: [UInt8]) -> String {
+        return base64URLEncode(Data(bytes))
+    }
+
+    /// What Apple's request carries: the lowercase hex SHA-256 of the raw nonce's
+    /// UTF-8, as GoTrue computes it (`fmt.Sprintf("%x", sha256.Sum256(...))`,
+    /// token_oidc.go), so its comparison with the token's claim holds.
+    public static func hashedNonce(_ raw: String, sha256: (Data) -> Data) -> String {
+        let hex: [Character] = Array("0123456789abcdef")
+        var out = ""
+        for byte in sha256(Data(raw.utf8)) {
+            out.append(hex[Int(byte >> 4)])
+            out.append(hex[Int(byte & 0x0F)])
+        }
+        return out
+    }
+
+    /// GoTrue's Apple name, `TrimSpace(first + " " + last)` (provider_apple.go
+    /// ParseUser), as `jsTrim`, with control characters (Cc) dropped from each half
+    /// first. Nil when empty or when its UTF-8 is longer than `nameLimit` bytes:
+    /// never cut, and measured in bytes because one Character can carry any
+    /// number of combining scalars.
+    public static func fullName(given: String?, family: String?) -> String? {
+        let joined = jsTrim(withoutControls(given ?? "") + " " + withoutControls(family ?? ""))
+        guard !joined.isEmpty, joined.utf8.count <= nameLimit else { return nil }
+        return joined
+    }
+
+    /// `s` without its Unicode general category Cc scalars.
+    private static func withoutControls(_ s: String) -> String {
+        var kept = String.UnicodeScalarView()
+        for scalar in s.unicodeScalars where scalar.properties.generalCategory != .control {
+            kept.append(scalar)
+        }
+        return String(kept)
+    }
+}
+
+/// What Apple's sheet handed back, without AuthenticationServices' types, so
+/// AuthStore and its tests need none of them.
+public struct AppleCredential: Sendable, Hashable {
+    /// The credential's `user`: what `credentialState(forUserID:)` takes, and
+    /// the token's `sub`. One id for all of a team's apps.
+    public var user: String
+    /// The identity token (a JWT), decoded from the credential's UTF-8 `Data`.
+    public var identityToken: String?
+    /// Apple's name halves, given only on the first consent.
+    public var givenName: String?
+    public var familyName: String?
+
+    public init(user: String, identityToken: String?, givenName: String? = nil, familyName: String? = nil) {
+        self.user = user
+        self.identityToken = identityToken
+        self.givenName = givenName
+        self.familyName = familyName
     }
 }

@@ -46,6 +46,12 @@ targets:
             UTTypeConformsTo:
               - public.data
             UTTypeTagSpecification: {}
+    # Sign in with Apple (memory/plans/sign-in-with-apple.md). XcodeGen writes
+    # this file on every generate and points CODE_SIGN_ENTITLEMENTS at it.
+    entitlements:
+      path: Dsul/Dsul.entitlements
+      properties:
+        com.apple.developer.applesignin: [Default]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.dsul.ios
