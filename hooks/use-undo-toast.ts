@@ -70,6 +70,10 @@ const SIGNIFICANT_ACTIONS = [
   // no trace on screen at all, and no way back but the item panel.
   'Hand off to ',
   'Take back from ',
+  // A recipe run (lib/recipes/engine.ts): writes the user did not make with
+  // their own hand, so the one-⌘Z offer is what makes them safe to leave on.
+  // An item title cannot spoof it: the user's own verbs carry their own prefix.
+  'Recipe: ',
 ];
 
 /**

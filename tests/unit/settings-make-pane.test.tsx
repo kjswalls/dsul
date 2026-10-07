@@ -82,7 +82,9 @@ describe('MakePane', () => {
     render(<MakePane ctx={ctx} />);
     const empty = screen.getByTestId('make-empty');
     expect(empty.textContent).toContain('Nothing made yet');
-    expect(empty.textContent).toContain('Recipes are coming soon.');
+    expect(empty.textContent).not.toContain('coming soon');
+    // Recipes can be made now (PR 4).
+    expect(screen.getByTestId('make-new-recipe').textContent).toContain('New recipe');
     expect(screen.queryByTestId('make-safe-mode')).toBeNull();
   });
 

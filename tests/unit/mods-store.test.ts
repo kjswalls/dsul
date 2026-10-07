@@ -22,7 +22,7 @@ vi.mock('@/lib/supabase', () => ({
       const result = db.results.shift() ?? { data: [], error: null };
       const gate = db.gate;
       const builder: Record<string, unknown> = {};
-      for (const op of ['select', 'eq', 'in', 'order', 'update', 'delete']) {
+      for (const op of ['select', 'eq', 'in', 'order', 'update', 'delete', 'insert']) {
         builder[op] = (...args: unknown[]) => {
           call.ops.push([op, args]);
           return builder;
@@ -35,7 +35,7 @@ vi.mock('@/lib/supabase', () => ({
   }),
 }));
 
-import { useModsStore, hasSafeModeParam } from '@/lib/mods-store';
+import { useModsStore, hasSafeModeParam, slugFromName, uniqueSlug } from '@/lib/mods-store';
 
 const USER = '11111111-1111-4111-8111-111111111111';
 const OTHER = '22222222-2222-4222-8222-222222222222';
@@ -269,5 +269,94 @@ describe('?safe-mode', () => {
       window.history.replaceState({}, '', before);
       vi.resetModules();
     }
+  });
+});
+
+describe('recipes', () => {
+  const manifest = { version: 1 as const, trigger: { on: 'command' as const }, filters: {}, steps: [{ do: 'toast' as const, text: 'Hi' }] };
+
+  it('slugs follow 061: a letter first, [a-z0-9-], at most 30', () => {
+    expect(slugFromName('After my run!')).toBe('after-my-run');
+    expect(slugFromName('Résumé')).toBe('resume');
+    expect(slugFromName('123 go')).toBe('go');
+    expect(slugFromName('!!!')).toBe('recipe');
+    expect(slugFromName('a'.repeat(40))).toHaveLength(30);
+    expect(uniqueSlug('a', new Set(['a', 'a-2']))).toBe('a-3');
+    expect(uniqueSlug('x'.repeat(30), new Set(['x'.repeat(30)]))).toBe(`${'x'.repeat(28)}-2`);
+  });
+
+  it('createRecipe inserts 061\'s columns, switched off, with a slug no kind uses', async () => {
+    await hydrateWith([row({ kind: 'theme', slug: 'legs', name: 'Legs' })]);
+    db.results.push({ error: null });
+    const r = await useModsStore.getState().createRecipe(USER, { name: ' Legs ', manifest });
+    expect(r.ok).toBe(true);
+    const [op, args] = opsOf(1)[0];
+    expect(op).toBe('insert');
+    expect(args[0]).toEqual({
+      id: (r as { id: string }).id,
+      user_id: USER,
+      kind: 'recipe',
+      slug: 'legs-2',
+      name: 'Legs',
+      enabled: false,
+      manifest,
+    });
+    expect(useModsStore.getState().rows.find((x) => x.kind === 'recipe')).toMatchObject({ slug: 'legs-2', enabled: false });
+  });
+
+  it('createRecipe takes the next suffix on a unique clash', async () => {
+    await hydrateWith([]);
+    db.results.push({ error: { code: '23505', message: 'duplicate' } }, { error: null });
+    const r = await useModsStore.getState().createRecipe(USER, { name: 'Legs', manifest });
+    expect(r.ok).toBe(true);
+    expect((opsOf(1)[0][1][0] as { slug: string }).slug).toBe('legs');
+    expect((opsOf(2)[0][1][0] as { slug: string }).slug).toBe('legs-2');
+    expect(useModsStore.getState().rows).toHaveLength(1);
+  });
+
+  it('createRecipe refuses a bad name and drops the row when the insert fails', async () => {
+    await hydrateWith([]);
+    expect(await useModsStore.getState().createRecipe(USER, { name: '  ', manifest })).toEqual({ ok: false, reason: 'Give it a name.' });
+    db.results.push({ error: { code: '500', message: 'boom' } });
+    const r = await useModsStore.getState().createRecipe(USER, { name: 'Legs', manifest });
+    expect(r.ok).toBe(false);
+    expect(useModsStore.getState().rows).toEqual([]);
+  });
+
+  it('saveRecipe: a rename alone leaves a switched-on recipe on', async () => {
+    // Read back from jsonb, so its keys come in another order than the form's.
+    const stored = { filters: {}, steps: [{ text: 'Hi', do: 'toast' }], trigger: { on: 'command' }, version: 1 };
+    const existing = row({ slug: 'a', name: 'A', enabled: true, manifest: stored });
+    await hydrateWith([existing]);
+    db.results.push({ error: null });
+    expect(await useModsStore.getState().saveRecipe(existing.id, { name: 'B', manifest })).toBe(true);
+    expect(opsOf(1)[0]).toEqual(['update', [{ name: 'B', manifest }]]);
+    expect(useModsStore.getState().rows[0]).toMatchObject({ name: 'B', enabled: true, manifest });
+  });
+
+  it('saveRecipe: a changed manifest saves a switched-on recipe off, and a failed save puts it back', async () => {
+    const existing = row({ slug: 'a', name: 'A', enabled: true, manifest });
+    await hydrateWith([existing]);
+    const changed = { ...manifest, steps: [{ do: 'toast' as const, text: 'Bye' }] };
+    db.results.push({ error: null });
+    expect(await useModsStore.getState().saveRecipe(existing.id, { name: 'A', manifest: changed })).toBe(true);
+    expect(opsOf(1)[0]).toEqual(['update', [{ name: 'A', manifest: changed, enabled: false }]]);
+    expect(useModsStore.getState().rows[0]).toMatchObject({ enabled: false, manifest: changed });
+
+    useModsStore.setState((st) => ({ rows: st.rows.map((r) => ({ ...r, enabled: true, manifest })) }));
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    db.results.push({ error: { code: '500', message: 'boom' } });
+    expect(await useModsStore.getState().saveRecipe(existing.id, { name: 'A', manifest: changed })).toBe(false);
+    expect(useModsStore.getState().rows[0]).toMatchObject({ enabled: true, manifest });
+    err.mockRestore();
+  });
+
+  it('disable switches off with a reason, capped at 200', async () => {
+    const existing = row({ enabled: true });
+    await hydrateWith([existing]);
+    db.results.push({ error: null });
+    await useModsStore.getState().disable(existing.id, 'x'.repeat(300));
+    expect(opsOf(1)[0]).toEqual(['update', [{ enabled: false, disabled_reason: 'x'.repeat(200) }]]);
+    expect(useModsStore.getState().rows[0]).toMatchObject({ enabled: false, disabledReason: 'x'.repeat(200) });
   });
 });

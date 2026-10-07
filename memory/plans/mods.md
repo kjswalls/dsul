@@ -1,6 +1,6 @@
 # Mods and recipes: your own commands, workflows, panels, themes and Looks
 
-**Status (2026-10-07): PLANNED, nothing built.** Kirby asked on 2026-10-03 how
+**Status (2026-10-07): IN PROGRESS, see "Built so far" below.** Kirby asked on 2026-10-03 how
 Claude Code shipped mods and how dsul could have them, so people can make their
 own UI, workflows, commands, themes and looks. He picked **private mods plus
 recipes** the same day, and on 2026-10-07 took all six recommendations below
@@ -8,6 +8,35 @@ recipes** the same day, and on 2026-10-07 took all six recommendations below
 The research behind it (subsystem maps with file:line, a critique, three drafts,
 three adversarial reviews) is in Kirby's project files, not the repo
 (`/mnt/project-files/mods/`); everything a build needs is in this file.
+
+**Built so far:** build order 2 (raise sites), 3 (storage, Make, safe mode) and
+4 (browser recipes, `lib/recipes/`). Where PR 4's code departs from the body:
+a clock run writes TWO `mod_runs` rows, the claim `<key>` and its result
+`<key>:done`, because 061 grants no UPDATE; an event or ⌘K run writes one,
+`run:<uuid>`, and the run log reads only `summary.kind === 'run'`. The ⌘K
+trigger is `on: 'command'`. `<RecipeHost>` (not `<ModHost>`) mounts in
+`app/layout.tsx`, gated on the planner having settled, so ticks on
+/routine/[id] and /item/[id] start recipes too and lean routes run nothing.
+`openConsole(target, navigate)` takes the router from its caller, and needed
+no allow-list entry (console-door.ts is already on it). The ⌘K provider calls
+the engine through a slot (`lib/recipes/command-run.ts`), so the registry does
+not import the engine and its UI steps. The builder
+fetches its own pick lists, because /settings never loads the planner. Parts
+of day start at `BUCKET_START_TIMES` (05:00, 12:00, 17:00); before 05:00
+nothing fires. The rate limit counts per tab. A clock claim that errors (offline)
+is tried again the next minute; a claim won and then dropped by the re-check after
+its await (switched off, safe mode, the planner reloading) does not run that day
+anywhere, accepted rather than adding a release no grant allows. Clock keys use the
+account's time zone, falling back to the device's while it is unset (the same
+fallback every view uses, and hooks/use-timezone-sync.ts fills it), so two devices
+in different zones before that sync could each claim their own day. An event recipe
+first asks whether the event still holds (the item still ticked, unticked, skipped
+or there), so a ⌘Z between a tick and its dispatch runs nothing. "Still open today"
+is refused on a tick or skip trigger, which closes the loop it asks about. Saving
+an edit that changes a switched-on recipe's manifest switches it off; a rename alone
+does not. Write steps run before UI steps whatever their order in the list, and the
+builder says so. Theme and Look steps import the settings manifest lazily, so
+`<RecipeHost>` in the root layout does not pull it into every route.
 
 **This amends [plugins-themes-store.md](plugins-themes-store.md)** in two places,
 both in its Project B item 6 ("Skip indefinitely"): the tier (c) sandboxed

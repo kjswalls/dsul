@@ -54,6 +54,7 @@ import {
   Pause as PauseIcon,
   Play as PlayIcon,
   Target,
+  Workflow,
 } from 'lucide-react';
 import { addDays, subDays } from 'date-fns';
 
@@ -81,10 +82,13 @@ import { getAICapabilities } from '../ai-connection-store';
 import { askNew, newChat, openHistory, revealChat, toggleRail } from '../open-chat';
 import { useConversationsStore } from '../conversations-store';
 import { useModsStore } from '../mods-store';
+import { modLabel, type UserMod } from '../mods/schema';
+import { parseRecipe } from '../recipes/validate';
+import { runRecipeCommand } from '../recipes/command-run';
 import { railModeNow, useRailStore } from '../rail-store';
 import { goToDate, stepScope } from '../nav-commands';
 import { resolveCategoryIcon } from '../category-icons';
-import { getItemTypeConfig } from '../item-registry';
+import { getCustomTypeDefs, getItemTypeConfig } from '../item-registry';
 import { selectOverdue } from '../overdue';
 import { inactiveItemIdsOn, isPausedOn, isSeasonActiveOn } from '../active';
 import { seasonStateForSwitch } from '../scope-rail';
@@ -1651,11 +1655,61 @@ const goalCommands: CommandProvider = () => {
   return cachedGoalCommands;
 };
 
+let cachedRecipeRows: readonly UserMod[] | null = null;
+let cachedRecipeTypes: readonly unknown[] | null = null;
+let cachedRecipeCommands: Command[] = [];
+
+/**
+ * "Run recipe: Morning reset", one per switched-on recipe whose trigger is
+ * ⌘K (memory/plans/mods.md, "Commands"). Ids `mod.<slug>.run`; the slug is
+ * unique across every kind a person makes (lib/mods-store.ts createRecipe), and
+ * a duplicate is dropped anyway, first one wins.
+ *
+ * No shortcut (only STATIC_COMMANDS may own a binding) and no alias: a recipe's
+ * name is free text, for the reason spelled out above routineCommands. The
+ * label always starts "Run recipe:", host chrome the name cannot remove.
+ *
+ * Memoised on the rows array's identity, which every write replaces, and on
+ * the hydrated custom types', which parseRecipe asks (a recipe that adds an
+ * Errand is invalid until the Errand type has loaded).
+ */
+const recipeCommands: CommandProvider = () => {
+  const { rows, available, safeMode } = useModsStore.getState();
+  if (!available || safeMode) return [];
+  const types = getCustomTypeDefs();
+  if (rows === cachedRecipeRows && types === cachedRecipeTypes) return cachedRecipeCommands;
+
+  cachedRecipeRows = rows;
+  cachedRecipeTypes = types;
+  const seen = new Set<string>();
+  cachedRecipeCommands = [];
+  for (const row of rows) {
+    if (row.kind !== 'recipe' || !row.enabled) continue;
+    if (parseRecipe(row)?.trigger.on !== 'command') continue;
+    const id = `mod.${row.slug}.run`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const label = modLabel(row);
+    cachedRecipeCommands.push({
+      id,
+      label: `Run recipe: ${label}`,
+      group: 'mods',
+      icon: Workflow,
+      keywords: `recipe ${label} run`,
+      availableWhen: () =>
+        useModsStore.getState().rows.some((r) => r.id === row.id && r.enabled),
+      run: () => runRecipeCommand(row.id),
+    });
+  }
+  return cachedRecipeCommands;
+};
+
 const PROVIDERS: CommandProvider[] = [
   customTypeCommands,
   routineCommands,
   seasonCommands,
   goalCommands,
+  recipeCommands,
 ];
 
 /**

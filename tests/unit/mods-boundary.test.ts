@@ -8,7 +8,7 @@ import { join } from 'node:path';
  * API has no reason to read it and no business writing it.
  */
 const ROOT = process.cwd();
-const FORBIDDEN = /\buser_mods\b|\bmod_runs\b|mod_store_set|mods-store|lib\/mods\//;
+const FORBIDDEN = /\buser_mods\b|\bmod_runs\b|mod_store_set|mods-store|lib\/mods\/|lib\/recipes\//;
 
 function files(dir: string): string[] {
   if (!existsSync(dir)) return [];
