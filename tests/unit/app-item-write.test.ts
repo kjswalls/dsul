@@ -95,6 +95,7 @@ const h = vi.hoisted(() => ({
   after: vi.fn(),
   reportLiveCompletion: vi.fn(),
   serviceClient: { service: true },
+  afterItemWrite: vi.fn(),
 }));
 
 vi.mock('@supabase/supabase-js', async (importOriginal) => ({
@@ -112,6 +113,9 @@ vi.mock('next/server', async (importOriginal) => ({
   after: h.after,
 }));
 vi.mock('@/lib/stakes/live', () => ({ reportLiveCompletion: h.reportLiveCompletion }));
+// The recipe runner's one door (lib/recipes/server). Its own tests run it; here
+// it is only the listener the route hands the handler.
+vi.mock('@/lib/recipes/server', () => ({ afterItemWrite: h.afterItemWrite }));
 vi.mock('@/lib/supabase-service', () => ({
   createServiceClient: () => h.serviceClient,
   resolveUserIdFromApiKey: vi.fn(),
@@ -155,6 +159,7 @@ const token = () =>
   [b64({ alg: 'HS256' }), b64({ sub: USER, role: 'authenticated', exp: Date.now() / 1000 + 3600 }), 'sig'].join('.');
 
 import { POST } from '@/app/api/app/items/[id]/route';
+import { postItemWrite } from '@/lib/app-api';
 import { updatesToRow } from '@/lib/db';
 import { itemTypeName } from '@/lib/item-registry';
 import type { Item } from '@/lib/planner-types';
@@ -2645,5 +2650,148 @@ describe('webhooks', () => {
     }
     await settle();
     expect(h.notifyPlugins).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Recipes for a phone tick (memory/plans/mods.md, build order 6). The route
+ * hands the handler a listener, and the handler calls it once per REAL
+ * transition, after the write committed, as the web's store raises
+ * (lib/mod-events.ts): never for a repeat `done`, an unskip, a move or a
+ * schedule. Whether the day was done is read before the write, and only when
+ * a listener is passed.
+ */
+describe('item events for recipes', () => {
+  /** What the one-date read of completed_dates answers. */
+  let doneBefore: boolean;
+  beforeEach(() => {
+    doneBefore = false;
+    const base = respond;
+    respond = (q) =>
+      q.table === 'items' && called(q, 'contains').length > 0
+        ? { data: doneBefore ? { id: ITEM } : null, error: null }
+        : base(q);
+  });
+
+  const events = () => h.afterItemWrite.mock.calls.map(([e]) => e);
+  const containsReads = () => queries.filter((q) => called(q, 'contains').length > 0);
+
+  it('a habit ticked on a day not done raises item.completed, with the user, after the write', async () => {
+    expect((await write({ action: 'complete', date: DATE, done: true })).status).toBe(200);
+    expect(events()).toEqual([{ kind: 'item.completed', userId: USER, itemId: ITEM, type: 'habit', date: DATE }]);
+    expect(h.afterItemWrite.mock.invocationCallOrder[0]).toBeGreaterThan(rpc.mock.invocationCallOrder[0]);
+    // The day asked about, as the user, before the RPC.
+    expect(containsReads()).toHaveLength(1);
+    expect(containsReads()[0].calls).toEqual(
+      expect.arrayContaining([
+        ['eq', ['user_id', USER]],
+        ['contains', ['completed_dates', [DATE]]],
+      ]),
+    );
+  });
+
+  it('a repeat done (a retry, a stale phone) raises nothing', async () => {
+    doneBefore = true;
+    expect((await write({ action: 'complete', date: DATE, done: true })).status).toBe(200);
+    expect(events()).toEqual([]);
+  });
+
+  it('an untick of a done day raises item.uncompleted; an untick of an open one, nothing', async () => {
+    doneBefore = true;
+    await write({ action: 'complete', date: DATE, done: false });
+    expect(events()).toEqual([{ kind: 'item.uncompleted', userId: USER, itemId: ITEM, type: 'habit', date: DATE }]);
+    h.afterItemWrite.mockClear();
+    doneBefore = false;
+    await write({ action: 'complete', date: DATE, done: false });
+    expect(events()).toEqual([]);
+  });
+
+  it('a recurring task: the same, by its stored slug', async () => {
+    row = { ...RECURRING_TASK, type: 'book' };
+    await write({ action: 'complete', date: DATE, done: true });
+    expect(events()).toEqual([{ kind: 'item.completed', userId: USER, itemId: ITEM, type: 'book', date: DATE }]);
+  });
+
+  it('a one-off decides on its status, with no extra read, and its date is its own day', async () => {
+    row = ONE_OFF;
+    await write({ action: 'complete', date: TOMORROW, done: true });
+    expect(events()).toEqual([{ kind: 'item.completed', userId: USER, itemId: ITEM, type: 'task', date: DATE }]);
+    expect(containsReads()).toEqual([]);
+    h.afterItemWrite.mockClear();
+    row = { ...ONE_OFF, status: 'completed' };
+    await write({ action: 'complete', date: DATE, done: true });
+    expect(events()).toEqual([]);
+  });
+
+  it('a refused tick raises nothing and reads nothing more', async () => {
+    row = { ...HABIT, skipped_dates: [DATE] };
+    expect((await write({ action: 'complete', date: DATE, done: true })).status).toBe(409);
+    expect(events()).toEqual([]);
+    expect(containsReads()).toEqual([]);
+  });
+
+  it('a skip that changed the day raises item.skipped; a repeat skip and an unskip raise nothing', async () => {
+    await write({ action: 'skip', date: DATE, skipped: true });
+    expect(events()).toEqual([{ kind: 'item.skipped', userId: USER, itemId: ITEM, type: 'habit', date: DATE }]);
+    h.afterItemWrite.mockClear();
+    row = { ...HABIT, skipped_dates: [DATE] };
+    await write({ action: 'skip', date: DATE, skipped: true });
+    await write({ action: 'skip', date: DATE, skipped: false });
+    expect(events()).toEqual([]);
+  });
+
+  it.each([
+    ['move', ONE_OFF, { action: 'move', date: TOMORROW }],
+    ['schedule', ONE_OFF, { action: 'schedule', date: DATE, startTime: '09:15' }],
+    ['title', ONE_OFF, { action: 'title', title: 'Renamed' }],
+  ])('%s raises nothing, as on the web', async (_, r, body) => {
+    row = { ...r, title: 'Call the bank' };
+    expect((await write(body)).status).toBe(200);
+    expect(events()).toEqual([]);
+  });
+
+  it('a 404 raises nothing', async () => {
+    row = null;
+    await write({ action: 'complete', date: DATE, done: true });
+    expect(events()).toEqual([]);
+  });
+
+  it('a listener that throws still answers 200, the write kept', async () => {
+    h.afterItemWrite.mockImplementation(() => {
+      throw new Error('recipes down');
+    });
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const res = await write({ action: 'complete', date: DATE, done: true });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(rpc).toHaveBeenCalledTimes(1);
+    error.mockRestore();
+    h.afterItemWrite.mockReset();
+  });
+
+  it('a failed read of the day answers 200, keeps the write, and raises nothing either way', async () => {
+    const base = respond;
+    respond = (q) =>
+      q.table === 'items' && called(q, 'contains').length > 0 ? { data: null, error: { message: 'timeout' } } : base(q);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const done = await write({ action: 'complete', date: DATE, done: true });
+    expect(done.status).toBe(200);
+    expect(rpc).toHaveBeenCalledTimes(1);
+    const undone = await write({ action: 'complete', date: DATE, done: false });
+    expect(undone.status).toBe(200);
+    expect(rpc).toHaveBeenCalledTimes(2);
+    expect(events()).toEqual([]);
+    error.mockRestore();
+  });
+
+  it('without a listener the call sequence is the one it always was: no extra read', async () => {
+    const req = new Request(`https://do.dsul.app/api/app/items/${ITEM}`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token()}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'complete', date: DATE, done: true }),
+    });
+    expect((await postItemWrite(req, ITEM)).status).toBe(200);
+    expect(containsReads()).toEqual([]);
+    expect(queries.filter((q) => q.table === 'items').map(op)).toEqual(['select', 'update']);
   });
 });

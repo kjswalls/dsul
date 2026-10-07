@@ -3,6 +3,7 @@
 import { useEffect, useId, useState } from 'react';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { fetchRecentRuns, type RunRow, type RunSummary } from '@/lib/recipes/runs';
+import { revertServerRun } from '@/lib/recipes/revert';
 
 /**
  * A recipe's recent runs, from mod_runs, newest first. Read when opened, never
@@ -15,7 +16,37 @@ export function describeRun(s: RunSummary): string {
   if (s.skipped > 0) parts.push(`skipped ${s.skipped}`);
   if (s.refused > 0) parts.push(`refused ${s.refused}`);
   if (s.stopped > 0) parts.push(`stopped ${s.stopped} at the limit`);
+  if (s.server) parts.push('on the server');
+  if (s.ui && s.ui > 0) parts.push(`${s.ui} screen ${s.ui === 1 ? 'step' : 'steps'} skipped (dsul was closed)`);
   return parts.join(', ');
+}
+
+/** Whether a run can be put back from here: a server run with its inverse writes, no Revert claimed yet. */
+export function canRevert(r: RunRow): boolean {
+  return (
+    !!r.summary.server &&
+    Array.isArray(r.summary.undo) &&
+    r.summary.undo.length > 0 &&
+    !r.reverted &&
+    !r.revertClaimed
+  );
+}
+
+/** What a Revert that did not put anything back says, by why. */
+export const REVERT_COPY = {
+  unavailable: 'Open your planner first, then revert from here.',
+  nothing: 'Nothing left to put back.',
+  failed: 'Couldn’t revert this run.',
+  pending: 'Revert started on another tab or device.',
+} as const;
+
+/** A run's Revert state, after the run's own line. */
+function revertNote(r: RunRow): string | null {
+  if (r.reverted) return 'Reverted';
+  if (r.revertFailed) return 'Revert failed';
+  if (r.revertClaimed) return REVERT_COPY.pending;
+  if (r.summary.server && r.summary.revertable === false) return 'too large to revert';
+  return null;
 }
 
 function ago(at: string): string {
@@ -28,6 +59,29 @@ export function RecipeRuns({ modId, label }: { modId: string; label: string }) {
   const listId = useId();
   const [rows, setRows] = useState<RunRow[] | null>(null);
   const [failed, setFailed] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [said, setSaid] = useState<Record<string, string>>({});
+
+  const revert = async (r: RunRow) => {
+    setBusy(r.claimKey);
+    const out = await revertServerRun(modId, label, r).catch(() => 'failed' as const);
+    if (out === 'done') {
+      setRows((rs) =>
+        rs?.map((x) => (x.claimKey === r.claimKey ? { ...x, reverted: true, revertClaimed: true } : x)) ?? rs
+      );
+    } else if (out === 'taken') {
+      // Someone else's Revert: what came of it is its result row's to say,
+      // never the claim's.
+      const fresh = await fetchRecentRuns(modId).catch(() => null);
+      const row = fresh?.find((x) => x.claimKey === r.claimKey);
+      setRows((rs) =>
+        rs?.map((x) => (x.claimKey === r.claimKey ? (row ?? { ...x, revertClaimed: true }) : x)) ?? rs
+      );
+    } else {
+      setSaid((m) => ({ ...m, [r.claimKey]: REVERT_COPY[out] }));
+    }
+    setBusy(null);
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -67,8 +121,24 @@ export function RecipeRuns({ modId, label }: { modId: string; label: string }) {
             <li>No runs yet.</li>
           ) : (
             rows.map((r) => (
-              <li key={r.claimKey}>
+              <li key={r.claimKey} data-testid="recipe-run">
                 {describeRun(r.summary)} · {ago(r.at)}
+                {revertNote(r) && <span> · {revertNote(r)}</span>}
+                {canRevert(r) && (
+                  <>
+                    {' · '}
+                    <button
+                      type="button"
+                      data-testid="recipe-run-revert"
+                      className="hover:text-foreground underline underline-offset-2"
+                      disabled={busy !== null}
+                      onClick={() => void revert(r)}
+                    >
+                      Revert
+                    </button>
+                  </>
+                )}
+                {said[r.claimKey] && <span> · {said[r.claimKey]}</span>}
               </li>
             ))
           )}

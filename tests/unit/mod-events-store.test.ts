@@ -322,6 +322,22 @@ describe('what never raises', () => {
     expect(delivered()).toEqual([]);
   });
 
+  // A tick or a capture the server made (the iPhone, a reminder's Done, a
+  // server recipe run) reaches this browser as a load, which raises nothing,
+  // so the browser never runs that tick's recipes a second time.
+  it('a load bringing in what the server ticked, skipped and added', async () => {
+    store().clearStore();
+    vi.mocked(db.fetchItems).mockResolvedValue([
+      habit('h9', { completedDates: [TODAY] }),
+      recurring('r9', { skippedDates: [TODAY] }),
+      task('n9', { status: 'completed' }),
+      task('c9'),
+    ]);
+    events = [];
+    await store().initializeStore(USER);
+    expect(delivered()).toEqual([]);
+  });
+
   it('an agent merge', () => {
     expect(
       mergeAgentStates([

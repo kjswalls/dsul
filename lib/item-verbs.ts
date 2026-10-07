@@ -1,14 +1,37 @@
 import { usePlannerStore } from './planner-store';
 import { useUIStore } from './ui-store';
-import { isPausedOn } from './active';
 import { streaksEnabled } from './extension-gates';
-import { getItemTypeConfig, isPausable, isSkippable, itemTypeName } from './item-registry';
+import { getItemTypeConfig, itemTypeName } from './item-registry';
 import { toggleRowDone, toggleTaskDone } from './item-toggle';
-import { isCompletedOnDate, isRecurring } from './recurrence';
-import { occursOn } from './reminders/due';
-import { canMoveToNextDay, canReschedule, canSendToBraindump, formatTargetDay, nextDayLabel, nextDayTarget } from './row-moves';
-import type { OccurrenceState } from './container-schedule';
+import { isRecurring } from './recurrence';
+import { formatTargetDay, nextDayLabel } from './row-moves';
+import {
+  isDoneOn,
+  isHabit,
+  isTaskLike,
+  nextDayOf,
+  VERB_GATES,
+  type VerbContext,
+  type VerbId,
+} from './verb-gates';
 import type { HabitItem, Item, Task } from './planner-types';
+
+// The pure half lives in lib/verb-gates.ts (server code asks the same gates);
+// every name ItemVerbs.swift cites still exports from here.
+export {
+  drawnState,
+  isCancelled,
+  isDoneOn,
+  isHabit,
+  isSkippedOn,
+  isTaskLike,
+  nextDayOf,
+  occurrenceOn,
+  VERB_GATES,
+  type GatedVerbId,
+  type VerbContext,
+  type VerbId,
+} from './verb-gates';
 
 /**
  * WHAT CAN BE DONE TO ONE ITEM, declared once.
@@ -31,39 +54,6 @@ import type { HabitItem, Item, Task } from './planner-types';
  * a fresh context.
  */
 
-export interface VerbContext {
-  /** The day the verb acts on, yyyy-MM-dd in the user's zone. */
-  dateStr: string;
-  /** The same day as the Date the store resolves writes against. */
-  date: Date;
-  /** Wall-clock today in the user's zone. Pausing is dateless and reads this, not `dateStr`. */
-  todayStr: string;
-  tz: string;
-  /** Items that are some goal's milestone — they never go to the braindump. */
-  milestoneIds: ReadonlySet<string>;
-  /**
-   * What the caller KNOWS about this item on `dateStr`, when it knows:
-   * an OccurrenceState when the item falls on that day, `'absent'` when it
-   * does not. Undefined means unknown (the palette has no schedule to hand),
-   * and the per-day verbs then gate on the item's own records alone.
-   */
-  occurrence?: OccurrenceState | 'absent';
-}
-
-export type VerbId =
-  | 'complete'
-  | 'tick'
-  | 'skip'
-  | 'unskip'
-  | 'pause'
-  | 'resume'
-  | 'nextDay'
-  | 'reschedule'
-  | 'braindump'
-  | 'resetStreak'
-  | 'leaveProjectBlock'
-  | 'delete';
-
 export interface ItemVerb {
   id: VerbId;
   /** The label for this item on this day ("Count one (1/3)", "Move to next day"). */
@@ -77,80 +67,6 @@ export interface ItemVerb {
    * `reschedule` takes the target day as `arg`; nothing else takes one.
    */
   run: (item: Item, ctx: VerbContext, arg?: string) => void;
-}
-
-/* ── shared predicates ─────────────────────────────────────────────────── */
-
-export function isHabit(item: Item): item is HabitItem {
-  return item.type === 'habit';
-}
-
-/** Task-shaped: a task or a custom type, which rides the task pipeline. */
-export function isTaskLike(item: Item): item is Exclude<Item, HabitItem> {
-  return item.type !== 'habit';
-}
-
-export function isCancelled(item: Item): boolean {
-  return item.type !== 'habit' && item.status === 'cancelled';
-}
-
-/**
- * "Done" means three different things depending on the item: a habit and a
- * recurring task track completion per date, a one-shot item carries a scalar
- * status whose done value comes from its type config.
- */
-export function isDoneOn(item: Item, dateStr: string): boolean {
-  if (item.type === 'habit') return item.completedDates.includes(dateStr);
-  if (isRecurring(item)) return isCompletedOnDate(item, dateStr);
-  return item.status === getItemTypeConfig(itemTypeName(item)).doneStatus;
-}
-
-/** Skips are per-DATE on every type that has them (`skippedDates`). */
-export function isSkippedOn(item: Item, dateStr: string): boolean {
-  return (item.skippedDates ?? []).includes(dateStr);
-}
-
-/**
- * What "drawn on this day" says about an item there, for the per-day verbs.
- * A one-off has no per-day state; a recurring item's day is what was recorded,
- * else due from today on and merely open before it (never "missed").
- */
-export function drawnState(item: Item, dateStr: string, todayStr: string): OccurrenceState | undefined {
-  if (!isRecurring(item as { repeatFrequency?: string })) return undefined;
-  if (isDoneOn(item, dateStr)) return 'done';
-  if (isSkippedOn(item, dateStr)) return 'skipped';
-  return dateStr >= todayStr ? 'due' : 'open';
-}
-
-/**
- * `drawnState` for a caller that was not handed the day by a schedule — the
- * phone's item sheet, opened on whatever day is selected: it first asks
- * whether the item falls on the day at all (lib/reminders/due.ts `occursOn`),
- * so a weekday habit opened on a Saturday answers `'absent'` rather than due.
- * Undefined for a one-off, as with `drawnState`.
- */
-export function occurrenceOn(
-  item: Item,
-  dateStr: string,
-  todayStr: string,
-  tz: string
-): OccurrenceState | 'absent' | undefined {
-  if (!isRecurring(item as { repeatFrequency?: string })) return undefined;
-  return occursOn(item, dateStr, tz) ? drawnState(item, dateStr, todayStr) : 'absent';
-}
-
-/** A recurring item whose caller knows it does not fall on the day. */
-function absent(item: Item, ctx: VerbContext): boolean {
-  return isRecurring(item as { repeatFrequency?: string }) && ctx.occurrence === 'absent';
-}
-
-/** The day a dated row is drawn on, for the put-off verbs' gates. */
-function rowDateOf(item: Item, ctx: VerbContext): string {
-  return (isTaskLike(item) && item.startDate) || ctx.dateStr;
-}
-
-function kindOf(item: Item): 'task' | 'habit' {
-  return isHabit(item) ? 'habit' : 'task';
 }
 
 const planner = () => usePlannerStore.getState();
@@ -171,8 +87,7 @@ function toggleActions() {
 const complete: ItemVerb = {
   id: 'complete',
   label: () => 'Complete',
-  eligible: (item, ctx) =>
-    !isDoneOn(item, ctx.dateStr) && !isCancelled(item) && !absent(item, ctx),
+  eligible: VERB_GATES.complete,
   run: (item, ctx) =>
     isHabit(item)
       ? planner().toggleHabitStatus(item.id, 'done', undefined, ctx.date)
@@ -201,11 +116,7 @@ const tick: ItemVerb = {
     }
     return 'Done today';
   },
-  eligible: (item, ctx) => {
-    if (isCancelled(item) || absent(item, ctx)) return false;
-    if (!isRecurring(item as { repeatFrequency?: string })) return true;
-    return !isSkippedOn(item, ctx.dateStr);
-  },
+  eligible: VERB_GATES.tick,
   run: (item, ctx) => {
     const on = { date: ctx.date, dateStr: ctx.dateStr };
     if (!isRecurring(item as { repeatFrequency?: string })) {
@@ -226,13 +137,7 @@ const tick: ItemVerb = {
 const skip: ItemVerb = {
   id: 'skip',
   label: () => 'Skip today',
-  eligible: (item, ctx) =>
-    isSkippable(item) &&
-    !isDoneOn(item, ctx.dateStr) &&
-    !isSkippedOn(item, ctx.dateStr) &&
-    // A caller that knows the day's state offers a skip only on a live one:
-    // not on a day the item does not fall on, not on a past open day.
-    (ctx.occurrence === undefined || ctx.occurrence === 'due'),
+  eligible: VERB_GATES.skip,
   run: (item, ctx) => planner().setItemSkipped(item.id, true, ctx.date),
 };
 
@@ -244,7 +149,7 @@ const skip: ItemVerb = {
 const unskip: ItemVerb = {
   id: 'unskip',
   label: () => 'Unskip today',
-  eligible: (item, ctx) => isSkippedOn(item, ctx.dateStr) && !absent(item, ctx),
+  eligible: VERB_GATES.unskip,
   run: (item, ctx) => planner().setItemSkipped(item.id, false, ctx.date),
 };
 
@@ -257,14 +162,14 @@ const unskip: ItemVerb = {
 const pause: ItemVerb = {
   id: 'pause',
   label: () => 'Pause',
-  eligible: (item, ctx) => isPausable(item) && !isPausedOn(item, ctx.todayStr, ctx.tz),
+  eligible: VERB_GATES.pause,
   run: (item) => planner().setItemPaused(item.id, true),
 };
 
 const resume: ItemVerb = {
   id: 'resume',
   label: () => 'Resume',
-  eligible: (item, ctx) => isPausedOn(item, ctx.todayStr, ctx.tz),
+  eligible: VERB_GATES.resume,
   run: (item) => planner().setItemPaused(item.id, false),
 };
 
@@ -276,16 +181,12 @@ const resume: ItemVerb = {
  * `reschedule`. Lands on the day after the later of its own day and today, so
  * an overdue carry never lands in the past.
  */
-export function nextDayOf(item: Item, ctx: VerbContext): string {
-  return nextDayTarget(rowDateOf(item, ctx), ctx.todayStr);
-}
 
 const nextDay: ItemVerb = {
   id: 'nextDay',
   label: (item, ctx) => nextDayLabel(nextDayOf(item, ctx), ctx.todayStr),
   detail: (item, ctx) => formatTargetDay(nextDayOf(item, ctx)),
-  eligible: (item, ctx) =>
-    isTaskLike(item) && !!item.startDate && canMoveToNextDay(item, kindOf(item), rowDateOf(item, ctx)),
+  eligible: VERB_GATES.nextDay,
   run: (item, ctx) => planner().moveTaskToDate(item.id, nextDayOf(item, ctx)),
 };
 
@@ -296,7 +197,7 @@ const nextDay: ItemVerb = {
 const reschedule: ItemVerb = {
   id: 'reschedule',
   label: (item) => (isTaskLike(item) && item.startDate ? 'Reschedule' : 'Schedule'),
-  eligible: (item, ctx) => isTaskLike(item) && canReschedule(item, kindOf(item), rowDateOf(item, ctx)),
+  eligible: VERB_GATES.reschedule,
   run: (item, _ctx, dateStr) => {
     if (dateStr) planner().moveTaskToDate(item.id, dateStr);
   },
@@ -306,10 +207,7 @@ const reschedule: ItemVerb = {
 const braindump: ItemVerb = {
   id: 'braindump',
   label: () => 'Move to Braindump',
-  eligible: (item, ctx) =>
-    isTaskLike(item) &&
-    !!item.startDate &&
-    canSendToBraindump(item, kindOf(item), rowDateOf(item, ctx), ctx.milestoneIds),
+  eligible: VERB_GATES.braindump,
   run: (item) => planner().unscheduleTask(item.id),
 };
 
@@ -327,7 +225,7 @@ const resetStreak: ItemVerb = {
 const leaveProjectBlock: ItemVerb = {
   id: 'leaveProjectBlock',
   label: () => 'Move out of project block',
-  eligible: (item) => isTaskLike(item) && !!item.inProjectBlock,
+  eligible: VERB_GATES.leaveProjectBlock,
   run: (item) => planner().moveTaskOutOfProjectBlock(item.id),
 };
 

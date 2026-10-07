@@ -5,9 +5,8 @@ import { batchHistory, usePlannerStore } from '@/lib/planner-store';
 import { selectPlannerSettled } from '@/lib/planner-ready';
 import { useModsStore } from '@/lib/mods-store';
 import { subscribeModEvents, withSuppressed, type ModEvent } from '@/lib/mod-events';
-import { ITEM_VERBS, isDoneOn, isSkippedOn, occurrenceOn, type VerbContext } from '@/lib/item-verbs';
+import { ITEM_VERBS, occurrenceOn, type VerbContext } from '@/lib/item-verbs';
 import { getItemTypeConfig } from '@/lib/item-registry';
-import type { Item } from '@/lib/planner-types';
 import { sameContainerName } from '@/lib/container-registry';
 import { canCreateType } from '@/lib/proposal';
 import { addDaysToDateStr, milestoneItemIds } from '@/lib/goals';
@@ -18,10 +17,12 @@ import { claimRun, logRun, type RunSummary } from './runs';
 import { stakeRefusal } from './stake-lock';
 import { runUiStep, type UiStepDeps } from './ui-steps';
 import { setRecipeCommandRunner } from './command-run';
+import { RATE_PER_DAY, RATE_PER_MINUTE, RUN_WRITE_CAP, rateReason } from './limits';
 import {
   currentRecipeEnv,
   isWriteStep,
   parseRecipe,
+  stillHolds,
   type RecipeUiStep,
   type RecipeWriteStep,
 } from './validate';
@@ -55,9 +56,7 @@ import {
  *  - UI steps run after the batch, in order.
  */
 
-export const RUN_WRITE_CAP = 25;
-export const RATE_PER_MINUTE = 10;
-export const RATE_PER_DAY = 100;
+export { RATE_PER_DAY, RATE_PER_MINUTE, RUN_WRITE_CAP } from './limits';
 
 const planner = () => usePlannerStore.getState();
 
@@ -123,10 +122,7 @@ function takeRateSlot(id: string, today: string, nowMs: number): 'minute' | 'day
 }
 
 function switchOff(mod: UserMod, over: 'minute' | 'day'): void {
-  const why =
-    over === 'minute'
-      ? `It ran more than ${RATE_PER_MINUTE} times in a minute.`
-      : `It ran more than ${RATE_PER_DAY} times today.`;
+  const why = rateReason(over);
   void useModsStore.getState().disable(mod.id, why);
   toast(`Switched off ${modLabel(mod)}. ${why}`);
 }
@@ -204,6 +200,7 @@ export function executeRecipe(
   const summary: RunSummary = {
     kind: 'run',
     trigger: m.trigger.on,
+    day: localDayAndTime(new Date(), zone()).today,
     did: 0,
     of: writes.length,
     skipped: 0,
@@ -274,27 +271,6 @@ function fire(mod: UserMod, m: RecipeManifest, triggerItemId: string | undefined
 const runKey = () => `run:${crypto.randomUUID()}`;
 
 /* ── triggers ──────────────────────────────────────────────────────────── */
-
-/**
- * The event, asked again of the store as it is now (lib/mod-events.ts: a
- * consumer re-checks live state). Dispatch is a task after the action, so a ⌘Z
- * or a delete may have landed in between: then the event no longer holds and
- * nothing runs, not even the steps that never touch the item.
- */
-function stillHolds(e: ModEvent, item: Item | undefined): boolean {
-  switch (e.kind) {
-    case 'item.completed':
-      return !!item && isDoneOn(item, e.date);
-    case 'item.uncompleted':
-      return !!item && !isDoneOn(item, e.date);
-    case 'item.skipped':
-      return !!item && isSkippedOn(item, e.date);
-    case 'item.created':
-      return !!item;
-    case 'review.saved':
-      return true;
-  }
-}
 
 /** A mod-events listener. Already inside withSuppressed (lib/mod-events.ts flush). */
 function onEvent(e: ModEvent): void {

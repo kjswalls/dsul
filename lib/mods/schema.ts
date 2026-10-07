@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { TimeBucketSchema } from '@dsul/types';
 import type { ModEvent } from '@/lib/mod-events';
-import type { VerbId } from '@/lib/item-verbs';
+import type { VerbId } from '@/lib/verb-gates';
 import { isLayoutTheme, type LayoutTheme } from '@/lib/layout-themes';
 import { DRAFT_SLUG, USER_THEME_SLUG_RE } from '@/lib/user-themes/css';
 import { DARK_BASES, LIGHT_BASES, ThemeManifestSchema, type ThemeManifest } from './theme-grammar';

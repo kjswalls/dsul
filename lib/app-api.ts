@@ -16,12 +16,22 @@ import {
   isMissingColumnError,
   loadPlannerData,
   removeContainerMember,
-  setItemCompletion,
-  setItemSkip,
   updateItem,
   type PlannerData,
 } from './db';
-import { getItemTypeConfig, isCollectible, type ItemTypeConfig } from './item-registry';
+import {
+  applyComplete,
+  applyMove,
+  applySkip,
+  completedOn,
+  nextTaskOrder,
+  writeContextFor,
+  WRITE_ROW_COLUMNS,
+  type IntentResult,
+  type WriteContext,
+  type WriteRow,
+} from './item-intents';
+import { getItemTypeConfig, isCollectible } from './item-registry';
 import {
   editPatch,
   editRefusal,
@@ -39,14 +49,12 @@ import { demoteInvalidGoalRoles } from './goal-roles';
 import { EXT_STREAKS, resolveEnabled } from './extension-registry';
 import { capabilityShape, isPausableRow, resolveItemPause } from './item-pause';
 import { DEFAULT_APP_ICON, isAppIcon, type AppIcon } from './app-icons';
-import { isRecurring } from './recurrence';
-import { canReschedule } from './row-moves';
 import { getBucketForTime } from './time-bucket';
 import { reportLiveCompletion } from './stakes/live';
 import { createServiceClient } from './supabase-service';
 import type { WeekStartDay } from './container-schedule';
 import type { TimeFormat } from './reminders/copy';
-import type { HabitItem, Item, Project, Routine, Season, Task, TaskItem } from './planner-types';
+import type { Item, Project, Routine, Season, Task, TaskItem } from './planner-types';
 
 /**
  * The iPhone app's API: /api/app/planner, /api/app/items, /api/app/items/:id.
@@ -538,7 +546,7 @@ export async function getPlanner(req: Request): Promise<Response> {
  * conflict, and is not described further: another user's row is invisible
  * under RLS, so "not yours" and "trashed" read alike, which is the point.
  */
-export async function postCapture(req: Request): Promise<Response> {
+export async function postCapture(req: Request, opts: AppWriteOptions = {}): Promise<Response> {
   const auth = await authenticateAppRequest(req);
   if (auth instanceof Response) return auth;
   const { userId, client } = auth;
@@ -569,24 +577,9 @@ export async function postCapture(req: Request): Promise<Response> {
     if (errorCode(err) === '23505') return captureRetry(client, id);
     return dbErrorResponse(err, 'app/items');
   }
+  // Only a capture that made the row: a retry that found it raises nothing.
+  committed(opts, { kind: 'item.created', userId, itemId: id, type: 'task' });
   return NextResponse.json({ ok: true, id }, { status: 201 });
-}
-
-/**
- * The `order` the web's addTask gives a new task: `tasks.length`, every live
- * task-like row that is not a subtask, which is the store's `tasks`
- * projection. A capture and a new subtask both take it. Throws a failed count.
- */
-async function nextTaskOrder(client: Client, userId: string): Promise<number> {
-  const { count, error } = await client
-    .from('items')
-    .select('id', { count: 'exact', head: true })
-    .eq('user_id', userId)
-    .neq('type', 'habit')
-    .is('parent_item_id', null)
-    .is('deleted_at', null);
-  if (error) throw error;
-  return count ?? 0;
 }
 
 async function captureRetry(client: Client, id: string): Promise<Response> {
@@ -604,15 +597,6 @@ async function captureRetry(client: Client, id: string): Promise<Response> {
 }
 
 // ── POST /api/app/items/:id ──────────────────────────────────────────────────
-
-/**
- * The row every intent decides on. Never completed_dates: no intent reads it
- * (a skip clears the day's completion through the idempotent RPC, unasked),
- * and it is the column that grows without bound.
- */
-const WRITE_ROW_COLUMNS =
-  'id, type, parent_item_id, repeat_frequency, status, start_date, time_bucket, in_project_block, ' +
-  'skipped_dates, daily_counts, current_day_count, paused_at, paused_until';
 
 /**
  * What an edit reads on top: only the column it decides on. A tick never reads
@@ -633,59 +617,8 @@ const EDIT_COLUMNS: Partial<Record<ItemWriteAction, string>> = {
   project: 'project, project_id, previous_start_time, previous_start_date',
 };
 
-interface WriteRow {
-  id: string;
-  type: string;
-  parent_item_id: string | null;
-  repeat_frequency: string | null;
-  status: string | null;
-  start_date: string | null;
-  time_bucket: string | null;
-  in_project_block: boolean | null;
-  skipped_dates: string[] | null;
-  daily_counts: Record<string, number> | null;
-  current_day_count: number | null;
-  paused_at: string | null;
-  paused_until: string | null;
-  /** EDIT_COLUMNS: present only when the action read it. */
-  title?: string | null;
-  notes?: string | null;
-  streak?: number | null;
-  priority?: string | null;
-  times_per_day?: number | null;
-  reminder_time?: string | null;
-  reminder_anchor?: string | null;
-  start_time?: string | null;
-  is_scheduled?: boolean | null;
-  duration?: number | null;
-  repeat_days?: number[] | null;
-  repeat_month_day?: number | null;
-  project?: string | null;
-  project_id?: string | null;
-  previous_start_time?: string | null;
-  previous_start_date?: string | null;
-}
-
 type ItemWrite = z.infer<typeof ItemWriteSchema>;
 type IntentBody<A extends ItemWriteAction> = Extract<ItemWrite, { action: A }>;
-
-/** What every intent knows once the row is read. */
-interface WriteContext {
-  userId: string;
-  client: Client;
-  id: string;
-  /** The stored slug, never 'custom': every write filters on it. */
-  type: string;
-  config: ItemTypeConfig;
-  row: WriteRow;
-  /**
-   * Through the registry, not the raw column: repeat_frequency has no
-   * default, and NULL means the type's default (the itemFromRow fallback),
-   * so a habit stored with NULL recurs daily rather than reading as one-shot.
-   */
-  frequency: string;
-  recurring: boolean;
-}
 
 /**
  * Report a completion to a live stake once the response is sent, as the
@@ -745,7 +678,7 @@ function reportStake(userId: string, itemId: string, dateStr: string, completed:
  * (lib/item-verbs.ts), asked of the registry. Whether the day is due, done or
  * drawn at all is the surface's question, on the phone as on the web.
  */
-export async function postItemWrite(req: Request, rawId: string): Promise<Response> {
+export async function postItemWrite(req: Request, rawId: string, opts: AppWriteOptions = {}): Promise<Response> {
   const auth = await authenticateAppRequest(req);
   if (auth instanceof Response) return auth;
   const { userId, client } = auth;
@@ -769,27 +702,18 @@ export async function postItemWrite(req: Request, rawId: string): Promise<Respon
   const row = data as WriteRow | null;
   if (!row) return body.action === 'delete' ? deleteTrashed(client, userId, id) : notFound();
 
-  const config = getItemTypeConfig(row.type);
-  const frequency = row.repeat_frequency ?? config.defaultFrequency;
-  const ctx: WriteContext = {
-    userId,
-    client,
-    id,
-    type: row.type,
-    config,
-    row,
-    frequency,
-    recurring: isRecurring({ repeatFrequency: frequency }),
-  };
+  // The id as the route was asked, which the row read matched.
+  const ctx: WriteContext = { ...writeContextFor(userId, client, row), id };
+  const raise = opts.onCommitted;
 
   try {
     switch (body.action) {
       case 'complete':
-        return await complete(ctx, body);
+        return await complete(ctx, body, raise);
       case 'schedule':
         return await schedule(ctx, body);
       case 'skip':
-        return await skip(ctx, body);
+        return await skip(ctx, body, raise);
       case 'move':
         return await move(ctx, body);
       case 'pause':
@@ -818,51 +742,116 @@ export async function postItemWrite(req: Request, rawId: string): Promise<Respon
 }
 
 /**
- * `complete`: the web's tick.
- *
- * A skipped occurrence is refused outright, as toggleRowDone refuses it
- * (lib/item-toggle.ts): ticking it would leave a date both skipped and done,
- * and on a habit it would turn a deliberate skip back into an open loop that
- * settles as a miss. Its answer is `skip` with `skipped: false`.
+ * A write the phone made that the web raises an item event for
+ * (lib/mod-events.ts): one per real transition, after the write committed.
+ * Generic on purpose: this module knows nothing about who listens (the route
+ * files pass the listener).
  */
-async function complete(ctx: WriteContext, body: IntentBody<'complete'>): Promise<Response> {
-  const { userId, client, id, type, config, row } = ctx;
-  const { date, done, count } = body;
-  const skipped = (row.skipped_dates ?? []).includes(date);
+export interface AppWriteEvent {
+  kind: 'item.completed' | 'item.uncompleted' | 'item.skipped' | 'item.created';
+  userId: string;
+  itemId: string;
+  /** The stored slug. */
+  type: string;
+  /** The occurrence date; a one-off's is its start date, or the day acted on. */
+  date?: string;
+}
 
-  if (config.skipStatus) {
-    // A habit: the store's toggleHabitStatus. The RPC owns the per-date
-    // array and the streak; the companion update writes the status snapshot
-    // and the day's tally, never the arrays. `dailyCounts` is written whole
-    // by the column, so the stored map is merged with this one date rather
-    // than replaced by a phone's copy of it.
-    if (skipped) return refused('skipped', 409);
-    await setItemCompletion(id, type, date, done, true, client);
-    reportStake(userId, id, date, done);
-    const updates: Partial<HabitItem> = {
-      status: done ? 'done' : 'pending',
-      ...(count !== undefined ? { dailyCounts: { ...(row.daily_counts ?? {}), [date]: count } } : {}),
-      currentDayCount: count ?? row.current_day_count ?? 0,
-    };
-    await updateItem(id, type, updates, undefined, client);
-    return ok();
+export interface AppWriteOptions {
+  /**
+   * Called once per real transition, after the write committed. Never
+   * awaited, and a throw is swallowed: the user's write landed, and nothing a
+   * listener does may fail it.
+   */
+  onCommitted?: (e: AppWriteEvent) => void;
+}
+
+function committed(opts: AppWriteOptions, e: AppWriteEvent): void {
+  try {
+    opts.onCommitted?.(e);
+  } catch (err) {
+    console.error('[app/items] write listener failed:', err instanceof Error ? err.message : err);
   }
+}
 
-  // A tally belongs to a habit's daily target; nothing else has one.
-  if (count !== undefined) return invalid({ count: ['only a habit takes a count'] });
-  if (skipped) return refused('skipped', 409);
-
-  if (ctx.recurring) {
-    // toggleTaskStatus's recurring branch: the per-date RPC and nothing
-    // else. No status write and no event, as on the web.
-    await setItemCompletion(id, type, date, done, true, client);
-    reportStake(userId, id, date, done);
-    return ok();
-  }
-
-  // A one-off: the scalar status, which stamps completed_at by trigger.
-  await updateItem(id, type, { status: done ? config.doneStatus : 'pending' } as Partial<Task>, undefined, client);
+/** An intent's result as the phone's Response. */
+function answer(result: IntentResult): Response {
+  if ('refused' in result) return refused(result.refused, result.status);
+  if ('invalid' in result) return invalid(result.invalid);
   return ok();
+}
+
+/**
+ * `complete`: the web's tick (lib/item-intents.ts applyComplete). With a
+ * listener, whether the day was already done is read first, so a repeat
+ * `done` (a retry, a stale phone) raises nothing, as the web raises only on a
+ * real transition: a one-off's scalar status, a recurring row's one date.
+ */
+async function complete(
+  ctx: WriteContext,
+  body: IntentBody<'complete'>,
+  onCommitted?: AppWriteOptions['onCommitted'],
+): Promise<Response> {
+  let wasDone: boolean | undefined;
+  const result = await applyComplete(ctx, body, {
+    onStake: (itemId, date, done) => reportStake(ctx.userId, itemId, date, done),
+    ...(onCommitted && {
+      beforeWrite: async () => {
+        if (!ctx.recurring) {
+          wasDone = ctx.row.status === ctx.config.doneStatus;
+          return;
+        }
+        // Only the listener needs this read, so its failure must not fail the
+        // tick: an unknown before raises nothing, in either direction.
+        try {
+          wasDone = await completedOn(ctx, body.date);
+        } catch (err) {
+          console.error('[app/items] transition read failed:', err instanceof Error ? err.message : err);
+          wasDone = undefined;
+        }
+      },
+    }),
+  });
+  if (onCommitted && 'ok' in result && wasDone !== undefined && body.done !== wasDone) {
+    committed(
+      { onCommitted },
+      {
+        kind: body.done ? 'item.completed' : 'item.uncompleted',
+        userId: ctx.userId,
+        itemId: ctx.id,
+        type: ctx.type,
+        date: ctx.recurring ? body.date : (ctx.row.start_date ?? body.date),
+      },
+    );
+  }
+  return answer(result);
+}
+
+/**
+ * `skip`: Skip today and Unskip today (lib/item-intents.ts applySkip). A skip
+ * that changed the day raises `item.skipped`; an unskip raises nothing, as on
+ * the web.
+ */
+async function skip(
+  ctx: WriteContext,
+  body: IntentBody<'skip'>,
+  onCommitted?: AppWriteOptions['onCommitted'],
+): Promise<Response> {
+  const result = await applySkip(ctx, body, {
+    onStake: (itemId, date, done) => reportStake(ctx.userId, itemId, date, done),
+  });
+  if (onCommitted && 'ok' in result && result.changed && body.skipped) {
+    committed(
+      { onCommitted },
+      { kind: 'item.skipped', userId: ctx.userId, itemId: ctx.id, type: ctx.type, date: body.date },
+    );
+  }
+  return answer(result);
+}
+
+/** `move`: Tomorrow and Reschedule (lib/item-intents.ts applyMove). */
+async function move(ctx: WriteContext, body: IntentBody<'move'>): Promise<Response> {
+  return answer(await applyMove(ctx, body));
 }
 
 /**
@@ -882,116 +871,6 @@ async function schedule(ctx: WriteContext, body: IntentBody<'schedule'>): Promis
   const updates: Partial<Task> = {
     ...scheduleTaskPatch(getBucketForTime(body.startTime), body.startTime),
     startDate: body.date,
-  };
-  await updateItem(id, type, updates, undefined, client);
-  return ok();
-}
-
-/**
- * `skip`: Skip today and Unskip today, the store's setItemSkipped, which
- * splits on whether the type's status vocabulary has a skip in it.
- *
- * Gate: the registry's isSkippable (a skippable type that recurs), and never
- * a subtask, which has no occurrence of its own. A one-off is completed,
- * cancelled or deleted, never skipped.
- *
- * Order: the day's completion is cleared BEFORE the skip is set, so a write
- * that fails halfway leaves the day open, never skipped-and-done.
- */
-async function skip(ctx: WriteContext, body: IntentBody<'skip'>): Promise<Response> {
-  const { userId, client, id, type, config, row } = ctx;
-  if (!config.skippable || !ctx.recurring || row.parent_item_id) return refused('not_skippable', 400);
-  const { date, skipped } = body;
-  const changes = (row.skipped_dates ?? []).includes(date) !== skipped;
-
-  if (config.skipStatus) {
-    // A habit: toggleHabitStatus(skipped ? 'skipped' : 'pending'). Neither is
-    // 'done', so the day's completion is cleared either way (an unskip on a
-    // ticked day unticks it, as on the web), through the RPC that takes the
-    // streak down only if the day was done. In the browser that RPC reports
-    // to a live stake, so a skip retracts a datapoint already posted; this
-    // reports it too. The skip RPC runs only when the skip changes. The
-    // companion update is the status snapshot and the tally the row already
-    // has: never the arrays, and never dailyCounts, which the web writes
-    // whole from its copy and the phone only holds a window of.
-    await setItemCompletion(id, type, date, false, true, client);
-    reportStake(userId, id, date, false);
-    if (changes) await setItemSkip(id, type, date, skipped, client);
-    const updates: Partial<HabitItem> = {
-      status: (skipped ? config.skipStatus : 'pending') as HabitItem['status'],
-      currentDayCount: row.current_day_count ?? 0,
-    };
-    await updateItem(id, type, updates, undefined, client);
-    return ok();
-  }
-
-  // Task-like: skippedDates and nothing else. `pending|completed|cancelled`
-  // is an external contract with no skip in it, so no status write, no
-  // updateItem and no event, and an unchanged skip is no write at all.
-  if (!changes) return ok();
-  if (skipped) {
-    // A skipped occurrence is not a completed one. The store clears a done
-    // day first; this clears it unasked, since the RPC is idempotent and the
-    // row read leaves completed_dates out.
-    await setItemCompletion(id, type, date, false, true, client);
-    reportStake(userId, id, date, false);
-  }
-  await setItemSkip(id, type, date, skipped, client);
-  return ok();
-}
-
-/**
- * `move`: Tomorrow and Reschedule, the store's moveTaskToDate. The phone picks
- * the day (nextDayTarget, or the one picked), as the web's verbs pass it in.
- *
- * Gate: lib/row-moves.ts canReschedule, the looser of the two verbs' gates,
- * asked of the row: a date-addressable type, never inside a project block
- * (nothing here clears it, so the item would land nowhere visible), never
- * finished. A recurring task may move: the picked day becomes the series
- * start, which always shows as an occurrence. Tomorrow's own refusal of a
- * series (canMoveToNextDay) is the phone's to keep, since the write is the
- * same. And never a subtask, which shows only inside its parent. Refused is a
- * 409: the row said no, not the body.
- */
-async function move(ctx: WriteContext, body: IntentBody<'move'>): Promise<Response> {
-  const { userId, client, id, type, row } = ctx;
-  const kind = type === 'habit' ? 'habit' : 'task';
-  // The day the gate asks about, as the web's rowDateOf does: the row's own
-  // date, or the target for an undated one.
-  const dateStr = row.start_date ?? body.date;
-  // Whether that day is done matters only for a series (isOpenOn), so only
-  // then is it asked, and of that one date: the row read leaves
-  // completed_dates out.
-  let completedDates: string[] = [];
-  if (kind === 'task' && ctx.recurring && !row.parent_item_id) {
-    const { data, error } = await client
-      .from('items')
-      .select('id')
-      .eq('id', id)
-      .eq('user_id', userId)
-      .contains('completed_dates', [dateStr])
-      .maybeSingle();
-    if (error) throw error;
-    if (data) completedDates = [dateStr];
-  }
-  const movable = {
-    id,
-    type: type === 'task' || type === 'habit' ? type : 'custom',
-    customType: type,
-    status: row.status as Task['status'],
-    repeatFrequency: ctx.frequency as Task['repeatFrequency'],
-    inProjectBlock: !!row.in_project_block,
-    completedDates,
-  };
-  if (row.parent_item_id || !canReschedule(movable, kind, dateStr)) {
-    return refused('not_movable', 409);
-  }
-  // The bucket fallback is load-bearing: a day view lists only rows that have
-  // a bucket, so a carry that wrote the date alone would land out of sight.
-  // startTime is kept, as the web keeps it for a one-item carry.
-  const updates: Partial<Task> = {
-    startDate: body.date,
-    timeBucket: (row.time_bucket ?? 'anytime') as Task['timeBucket'],
   };
   await updateItem(id, type, updates, undefined, client);
   return ok();

@@ -5,6 +5,8 @@ import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { useModsStore } from '@/lib/mods-store';
+import { usePlannerStore } from '@/lib/planner-store';
+import { formatCueTime } from '@/lib/reminders/copy';
 import { useUIStore } from '@/lib/ui-store';
 import { MOD_KINDS, modLabel, type ModKind, type UserMod } from '@/lib/mods/schema';
 import type { SettingCtx } from '@/lib/settings/manifest';
@@ -215,9 +217,10 @@ export function MakePane({ ctx, isMobile = false }: { ctx: SettingCtx; isMobile?
   );
 }
 
-/** A time trigger is the server runner's (build order 6), so such a row says it waits. */
-function waitsForServer(row: UserMod): boolean {
-  return (row.manifest as { trigger?: { on?: unknown } } | null)?.trigger?.on === 'time';
+/** A timed recipe's hour, when it has one: the server runs it (lib/recipes/server/). */
+function timedAt(row: UserMod): string | null {
+  const t = (row.manifest as { trigger?: { on?: unknown; at?: unknown } } | null)?.trigger;
+  return t?.on === 'time' && typeof t.at === 'string' ? t.at : null;
 }
 
 function MakeRow({
@@ -233,6 +236,7 @@ function MakeRow({
   onEdit?: () => void;
 }) {
   const stateId = `make-state-${row.id}`;
+  const timeFormat = usePlannerStore((s) => s.timeFormat);
   const label = modLabel(row);
   const stateText = row.disabledReason
     ? `Switched off: ${row.disabledReason}`
@@ -274,8 +278,10 @@ function MakeRow({
           <span id={stateId} className="text-muted-foreground block text-xs">
             {stateText}
           </span>
-          {row.kind === 'recipe' && waitsForServer(row) && (
-            <span className="text-muted-foreground block text-xs">Runs at a set time. Not available yet.</span>
+          {row.kind === 'recipe' && timedAt(row) && (
+            <span data-testid="recipe-timed-hint" className="text-muted-foreground block text-xs">
+              Runs at {formatCueTime(timedAt(row)!, timeFormat)}, even with dsul closed
+            </span>
           )}
         </span>
         <Switch

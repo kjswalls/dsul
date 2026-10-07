@@ -8,6 +8,7 @@ import {
   MOD_SOURCE_MAX_BYTES,
   MOD_STORE_MAX_BYTES,
 } from '@/lib/mods/schema';
+import { MOD_RUN_SUMMARY_MAX_BYTES } from '@/lib/recipes/limits';
 
 /**
  * Migration 061 (user_mods, mod_runs, mod_store_set), read as text, as
@@ -120,5 +121,14 @@ describe('migration 061 user_mods', () => {
     expect(SQL).not.toContain('dsul_tick');
     expect(SQL).not.toMatch(/\bcron\./);
     expect(FLAT).toContain("notify pgrst, 'reload schema';");
+  });
+});
+
+describe('migration 061 and the server runner', () => {
+  // lib/recipes/server/run.ts drops a run's Revert ops past this, so its log
+  // line always fits; a drift here would make the insert fail instead.
+  it("pins the run summary's byte cap to mod_runs' CHECK", () => {
+    expect(FLAT).toContain(`octet_length(summary::text) <= ${MOD_RUN_SUMMARY_MAX_BYTES})`);
+    expect(MOD_RUN_SUMMARY_MAX_BYTES).toBe(4096);
   });
 });

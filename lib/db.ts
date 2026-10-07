@@ -826,6 +826,26 @@ export async function fetchItems(userId: string, type?: string, client?: DbClien
   return itemsFromRows(data as ItemRow[]);
 }
 
+/**
+ * One live item of one user, mapped as fetchItems maps it, or null. Scoped by
+ * `user_id` itself, so a service-role caller (the recipe runner,
+ * lib/recipes/server/) reads only that user's row: the completion and skip
+ * RPCs filter on id and type alone, so a caller re-reads the row with the
+ * user scope before each one.
+ */
+export async function fetchItemById(userId: string, id: string, client?: DbClient): Promise<Item | null> {
+  const supabase = client ?? createClient();
+  const run = async () =>
+    itemsReadFrom(supabase).select('*').eq('id', id).eq('user_id', userId).is('deleted_at', null).maybeSingle();
+  let { data, error } = await run();
+  if (missingItemsWindow(error) && itemsWindowAvailable) {
+    itemsWindowAvailable = false;
+    ({ data, error } = await run());
+  }
+  if (error) throw error;
+  return data ? itemsFromRows([data as ItemRow])[0] : null;
+}
+
 /** Shared by fetchItems and loadPlannerData, so both paths map rows alike. */
 function itemsFromRows(rows: ItemRow[]): Item[] {
   return rows.map(itemFromRow);
@@ -1214,8 +1234,16 @@ export async function updateItem(
   updates: Partial<Task> | Partial<HabitItem>,
   userId?: string,
   client?: DbClient,
+  /**
+   * `ownerId` adds `user_id = ownerId` to the row update: a service-role
+   * caller (the recipe runner, lib/recipes/server/) scopes every write to one
+   * user itself, since RLS does not. Not the webhook's `userId`.
+   */
+  opts: { ownerId?: string } = {},
 ): Promise<void> {
   const supabase = client ?? createClient();
+  const scoped = <Q extends { eq: (column: string, value: string) => Q }>(q: Q): Q =>
+    opts.ownerId ? q.eq('user_id', opts.ownerId) : q;
   // Per-date arrays are applied as intents and removed from the body BEFORE
   // the allowlist sees it — they have no column mapping any more.
   const routedDates = 'completedDates' in updates || 'skippedDates' in updates;
@@ -1232,7 +1260,7 @@ export async function updateItem(
     // reconciliation exists to serve.
     if (!routedDates) return;
   } else {
-    let { error } = await supabase.from('items').update(row).eq('id', id).eq('type', type);
+    let { error } = await scoped(supabase.from('items').update(row).eq('id', id).eq('type', type));
 
     // Schema-behind fallback, applied AFTER reconciliation so it can only ever
     // drop reminder columns — the per-date arrays are already gone from `row`
@@ -1253,7 +1281,7 @@ export async function updateItem(
             'Apply supabase/migrations/032_habit_reminders.sql to fix this.',
         );
         if (Object.keys(stable).length > 0) {
-          ({ error } = await supabase.from('items').update(stable).eq('id', id).eq('type', type));
+          ({ error } = await scoped(supabase.from('items').update(stable).eq('id', id).eq('type', type)));
         } else {
           error = null;
         }
