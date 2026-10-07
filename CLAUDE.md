@@ -22,7 +22,9 @@ pnpm workspace (Node 24). `packages/types` is `@dsul/types`, and its `dist/` is
 without `pnpm --filter @dsul/types build` is a red build. `openclaw-plugin/` is a
 separate consumer of the agent API; its `dist/` is gitignored and built at publish time,
 so CI does not gate it — a plugin `src` change reaches users only when the npm package
-is republished.
+is republished. Both packages publish from the hand-dispatched `npm publish` workflow
+([npm-publish.yml](.github/workflows/npm-publish.yml), main only, Kirby approves each run);
+bump the version in a PR first, since a version already on npm is skipped.
 
 ## Setting up a new machine
 

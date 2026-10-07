@@ -15,6 +15,7 @@ import { useUIStore } from '@/lib/ui-store';
 import { useAICapabilities } from '@/lib/ai-connection-store';
 import { useRailStore } from '@/lib/rail-store';
 import { rowSwipeActive, closeAllRowSwipes } from '@/lib/row-swipe';
+import { SectionBoundary } from '@/components/primitives/section-boundary';
 import { cn } from '@/lib/utils';
 
 /**
@@ -230,6 +231,10 @@ export const MobileShell = memo(function MobileShell() {
             activeTab !== 'chat' && 'animate-in fade-in-0 duration-200'
           )}
         >
+          {/* One boundary per tab body (#74): this div is keyed by the tab, so
+              switching tabs remounts it and clears a caught error. The dock
+              below stays up either way. */}
+          <SectionBoundary label={activeTab === 'chat' ? 'chat' : activeTab === 'braindump' ? 'braindump' : 'day'}>
           {activeTab === 'chat' && canChat && <AskTab headerAccessory={userMenu} />}
 
           {/* No Scope Rail under it any more — the rail is retired (#229) and
@@ -249,6 +254,7 @@ export const MobileShell = memo(function MobileShell() {
               2rem desktop gutter to the artboards' 14px under 768px, so the
               views need nothing from the shell but height. */}
           {activeTab === 'today' && <MobileViewRouter />}
+          </SectionBoundary>
         </div>
       </div>
 
