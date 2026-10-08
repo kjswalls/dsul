@@ -921,9 +921,9 @@ export function OnboardingTour({ userId, onComplete, onExpandChat, onCollapseCha
 
   // ─── Step 4: AI (coach mark) ────────────────────────────────────────────────
   // Every variant is a dialog with its title focused (the effect above) and
-  // Tab kept inside it. Neither wrapper fades in: the lime button and the lime
-  // dot would fade through the wrapper's opacity (CLAUDE.md), so the card only
-  // zooms (desktop) or slides (phone) in.
+  // Tab kept inside it. Neither wrapper fades in: the progress dots' lime would
+  // fade through the wrapper's opacity (CLAUDE.md), so the card only zooms
+  // (desktop) or slides (phone) in.
   if (step === 4) {
     const dialogProps = {
       ref: cardRef,

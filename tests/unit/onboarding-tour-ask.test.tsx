@@ -358,7 +358,7 @@ describe('the desktop tour, with nothing connected: the invitation', () => {
     });
   });
 
-  it('never fades the lime button or dot through the wrapper, and keeps one tour root', () => {
+  it('never fades the lime dot through the wrapper, and keeps one tour root', () => {
     renderTour(NOTHING_CONNECTED);
     toStep4();
     const wrapper = card().parentElement!;
