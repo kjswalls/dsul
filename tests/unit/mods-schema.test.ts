@@ -23,9 +23,12 @@ import {
   manifestsEqual,
   modDisplayLabel,
   parseModManifest,
+  parseModSettings,
+  consentWidened,
   usesWidened,
 } from '@/lib/mods/schema';
-import { MOD_WRITES_PER_HOOK } from '@/lib/mods/limits';
+import { MOD_MANIFEST_MAX_BYTES, MOD_WRITES_PER_HOOK } from '@/lib/mods/limits';
+import { MOD_UI_EVENT_KINDS } from '@/lib/mods/protocol';
 import { MOD_LABEL_FORBIDDEN_RE } from '@/lib/mods/labels';
 import { RUN_WRITE_CAP } from '@/lib/recipes/limits';
 import { MODEL_PROVIDERS } from '@/lib/ai-types';
@@ -230,10 +233,17 @@ describe('mod manifest', () => {
 
   it('takes a plain manifest and fills commands', () => {
     expect(ModManifestSchema.safeParse(OK).success).toBe(true);
-    expect(ModManifestSchema.parse({ version: 1, uses: [] })).toEqual({ version: 1, uses: [], commands: [] });
+    expect(ModManifestSchema.parse({ version: 1, uses: [] })).toEqual({
+      version: 1,
+      uses: [],
+      commands: [],
+      panels: [],
+      settings: [],
+    });
+    expect(ModManifestSchema.safeParse({ ...OK, panels: [], settings: [] }).success).toBe(true);
   });
 
-  it('refuses a wrong version, an unknown use, a use or command twice, `run`, and panels for now', () => {
+  it('refuses a wrong version, an unknown use, a use or command twice, `run`, and a stray key', () => {
     const bad = [
       { ...OK, version: 2 },
       { ...OK, uses: ['network'] },
@@ -241,8 +251,8 @@ describe('mod manifest', () => {
       { ...OK, commands: [OK.commands[0], OK.commands[0]] },
       { ...OK, commands: [{ id: 'run', label: 'Run' }] },
       { ...OK, commands: [{ id: 'Bad', label: 'Run' }] },
-      { ...OK, panels: [] },
-      { ...OK, settings: [] },
+      { ...OK, panels: [{ id: 'x' }] },
+      { ...OK, settings: [{ kind: 'toggle', key: 'x' }] },
       { ...OK, slug: 'water' },
     ];
     for (const m of bad) expect(ModManifestSchema.safeParse(m).success, JSON.stringify(m)).toBe(false);
@@ -274,12 +284,106 @@ describe('mod manifest', () => {
       true
     );
     expect(manifestsEqual(OK, { ...OK, uses: ['ui', 'storage'] })).toBe(false);
-    expect(manifestsEqual(OK, { ...OK, panels: [] })).toBe(false);
+    expect(manifestsEqual(OK, { ...OK, panels: [] })).toBe(true);
+    expect(manifestsEqual(OK, { ...OK, panels: [{ id: 'water', label: 'Water' }] })).toBe(false);
   });
 
   it('hears the recipe triggers, then command and timer, and caps writes as a recipe run does', () => {
-    expect(MOD_EVENT_KINDS).toEqual([...RECIPE_EVENT_TRIGGERS, 'command', 'timer']);
+    expect(MOD_EVENT_KINDS).toEqual([...RECIPE_EVENT_TRIGGERS, 'command', 'timer', ...MOD_UI_EVENT_KINDS]);
     expect(MOD_WRITES_PER_HOOK).toBe(RUN_WRITE_CAP);
+  });
+});
+
+describe('mod panels and settings (build order 9)', () => {
+  const OK = { version: 1, uses: ['storage', 'ui'] };
+  const ok = (m: object) => ModManifestSchema.safeParse({ ...OK, ...m }).success;
+
+  it('takes panels, one card at most, under "ui"', () => {
+    expect(ok({ panels: [{ id: 'water', label: 'Water', icon: 'CupSoda', card: true }, { id: 'run', label: 'Runs' }] })).toBe(true);
+    expect(ok({ uses: ['storage'], panels: [{ id: 'water', label: 'Water' }] })).toBe(false);
+    expect(ok({ panels: [{ id: 'a', label: 'A' }, { id: 'a', label: 'B' }] })).toBe(false);
+    expect(ok({ panels: [{ id: 'a', label: 'A', card: true }, { id: 'b', label: 'B', card: true }] })).toBe(false);
+    expect(ok({ panels: Array.from({ length: 5 }, (_, i) => ({ id: `p${i}`, label: `P${i}` })) })).toBe(false);
+  });
+
+  it('refuses a panel label under the surface rule, an icon off the list and a stray key', () => {
+    expect(ok({ panels: [{ id: 'a', label: 'Chat' }] })).toBe(false);
+    expect(ok({ panels: [{ id: 'a', label: 'Your model' }] })).toBe(false);
+    expect(ok({ panels: [{ id: 'a', label: 'Water', icon: 'Lock' }] })).toBe(false);
+    expect(ok({ panels: [{ id: 'a', label: 'Water', icon: 'NotAnIcon' }] })).toBe(false);
+    expect(ok({ panels: [{ id: 'a', label: 'Water', style: 'x' }] })).toBe(false);
+  });
+
+  it('takes settings of four kinds, held to their own values', () => {
+    expect(
+      ok({
+        settings: [
+          { kind: 'toggle', key: 'loud', label: 'Loud', default: true },
+          { kind: 'number', key: 'goal', label: 'Goal', default: 8, min: 1, max: 20 },
+          { kind: 'text', key: 'unit', label: 'Unit', default: 'glass', maxLength: 20 },
+          { kind: 'select', key: 'size', label: 'Size', options: [{ value: 'small', label: 'Small' }], default: 'small' },
+        ],
+      })
+    ).toBe(true);
+    expect(ok({ settings: [{ kind: 'toggle', key: 'a', label: 'A' }, { kind: 'toggle', key: 'a', label: 'B' }] })).toBe(false);
+    expect(ok({ settings: [{ kind: 'number', key: 'a', label: 'A', min: 5, max: 1 }] })).toBe(false);
+    expect(ok({ settings: [{ kind: 'number', key: 'a', label: 'A', default: 30, max: 20 }] })).toBe(false);
+    expect(ok({ settings: [{ kind: 'select', key: 'a', label: 'A', options: [{ value: 'x', label: 'X' }], default: 'y' }] })).toBe(false);
+    expect(ok({ settings: [{ kind: 'text', key: 'a', label: 'A', default: 'Sign in' }] })).toBe(false);
+    expect(ok({ settings: [{ kind: 'text', key: 'a', label: 'API secret' }] })).toBe(false);
+  });
+
+  it('fits a realistic large manifest in 8KB', () => {
+    const big = {
+      version: 1,
+      uses: ['storage', 'ui', 'items:read', 'items:write'],
+      commands: Array.from({ length: 5 }, (_, i) => ({ id: `cmd-${i}`, label: `Log water ${i}`, keywords: ['drink', 'glass'] })),
+      panels: Array.from({ length: 4 }, (_, i) => ({ id: `panel-${i}`, label: `Water ${i}`, icon: 'CupSoda', card: i === 0 })),
+      settings: Array.from({ length: 10 }, (_, i) => ({ kind: 'number', key: `goal-${i}`, label: `Goal ${i}`, default: 8, min: 1, max: 20 })),
+    };
+    expect(ModManifestSchema.safeParse(big).success).toBe(true);
+    expect(new TextEncoder().encode(JSON.stringify(big)).length).toBeLessThanOrEqual(MOD_MANIFEST_MAX_BYTES);
+  });
+
+  it('parses stored settings against the declaration, falling back to the default, then null', () => {
+    const m = ModManifestSchema.parse({
+      ...OK,
+      settings: [
+        { kind: 'toggle', key: 'loud', label: 'Loud', default: true },
+        { kind: 'number', key: 'goal', label: 'Goal', default: 8, min: 1, max: 20 },
+        { kind: 'text', key: 'unit', label: 'Unit', maxLength: 10 },
+        { kind: 'select', key: 'size', label: 'Size', options: [{ value: 'small', label: 'Small' }] },
+      ],
+    });
+    expect(parseModSettings(m, { loud: false, goal: 12, unit: 'cup', size: 'small', extra: 1 })).toEqual({
+      loud: false,
+      goal: 12,
+      unit: 'cup',
+      size: 'small',
+    });
+    expect(parseModSettings(m, { loud: 'yes', goal: 99, unit: 'x'.repeat(11), size: 'huge' })).toEqual({
+      loud: true,
+      goal: 8,
+      unit: null,
+      size: null,
+    });
+    expect(parseModSettings(m, { unit: 'sk_live_abcdef123' }).unit).toBeNull();
+    expect(parseModSettings(m, 'not an object')).toEqual({ loud: true, goal: 8, unit: null, size: null });
+    expect(parseModSettings(m, [1, 2])).toEqual({ loud: true, goal: 8, unit: null, size: null });
+    expect(parseModSettings(null, { a: 1 })).toEqual({});
+  });
+
+  it('counts a first card panel as widening consent, and nothing else about panels', () => {
+    const base = { uses: ['ui' as const], panels: [] };
+    const card = { uses: ['ui' as const], panels: [{ id: 'a', label: 'A', card: true }] };
+    const plain = { uses: ['ui' as const], panels: [{ id: 'a', label: 'A' }] };
+    expect(consentWidened(base, plain)).toBe(false);
+    expect(consentWidened(base, card)).toBe(true);
+    expect(consentWidened(plain, card)).toBe(true);
+    expect(consentWidened(card, card)).toBe(false);
+    expect(consentWidened(card, plain)).toBe(false);
+    expect(consentWidened(base, { uses: ['ui', 'storage'], panels: [] })).toBe(true);
+    expect(consentWidened(null, base)).toBe(true);
   });
 });
 

@@ -454,7 +454,7 @@ describe('MakePane: mods', () => {
     expect(createMod).toHaveBeenCalledWith(USER, {
       name: 'Water',
       source: expect.stringContaining('add-glass'),
-      manifest: MANIFEST,
+      manifest: { ...MANIFEST, panels: [], settings: [] },
     });
     expect(await screen.findByTestId('make-notice')).toBeTruthy();
     expect(screen.getByTestId('make-notice').textContent).toBe('Saved. It starts switched off.');
@@ -464,7 +464,7 @@ describe('MakePane: mods', () => {
     seed({});
     const createMod = vi.fn();
     useModsStore.setState({ createMod });
-    sandbox.scratch.mockResolvedValue(scratched({ ...MANIFEST, panels: [] }));
+    sandbox.scratch.mockResolvedValue(scratched({ ...MANIFEST, panels: [{ id: 'x' }] }));
     render(<MakePane ctx={ctx} />);
     fireEvent.click(screen.getByTestId('make-new-mod'));
     fireEvent.click(screen.getByTestId('mod-save'));

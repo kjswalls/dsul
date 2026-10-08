@@ -550,7 +550,7 @@ describe('loadModCode', () => {
 
 describe('mods (build order 8)', () => {
   const SOURCE = 'export const manifest = { version: 1, uses: [] };\nexport function register(on) {}';
-  const manifest = { version: 1 as const, uses: ['storage' as const], commands: [] };
+  const manifest = { version: 1 as const, uses: ['storage' as const], commands: [], panels: [], settings: [] };
 
   it('slugs fall back to the kind’s own word', () => {
     expect(slugFromName('Вода', 'mod')).toBe('mod');
@@ -581,7 +581,7 @@ describe('mods (build order 8)', () => {
     const store = useModsStore.getState();
     expect((await store.createMod(USER, { name: 'Sign in', source: SOURCE, manifest })).ok).toBe(false);
     expect(
-      (await store.createMod(USER, { name: 'Water', source: SOURCE, manifest: { ...manifest, panels: [] } as never })).ok
+      (await store.createMod(USER, { name: 'Water', source: SOURCE, manifest: { ...manifest, panels: [{ id: 'x' }] } as never })).ok
     ).toBe(false);
     expect((await store.createMod(USER, { name: 'Water', source: 'x'.repeat(65537), manifest })).ok).toBe(false);
     expect(db.calls).toHaveLength(1);

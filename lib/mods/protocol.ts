@@ -6,6 +6,9 @@ import {
   MOD_MANIFEST_MAX_BYTES,
   MOD_REPLY_ERROR_MAX,
   MOD_SOURCE_MAX_BYTES,
+  MOD_ATOMS_MAX,
+  MOD_ATOM_TEXT_MAX,
+  MOD_TREE_MAX_BYTES,
 } from './limits';
 
 /**
@@ -29,10 +32,15 @@ export const MOD_ITEM_EVENT_KINDS = [
   'item.created',
   'review.saved',
 ] as const;
-export const MOD_EVENT_KINDS = [...MOD_ITEM_EVENT_KINDS, 'command', 'timer'] as const;
+/** A panel's hooks (build order 9): drawing it, a press on it, and a field the person committed. */
+export const MOD_UI_EVENT_KINDS = ['ui.resolve', 'ui.action', 'atom.changed'] as const;
+export const MOD_EVENT_KINDS = [...MOD_ITEM_EVENT_KINDS, 'command', 'timer', ...MOD_UI_EVENT_KINDS] as const;
 export type ModEventKind = (typeof MOD_EVENT_KINDS)[number];
 
-/** Every `$` method PR 8 ships (mods.md, build order 8, "Broker"). */
+/**
+ * Every `$` method (mods.md, build order 8, "Broker"), append-only: build
+ * order 9's four come last, so the order PR 8 shipped stays a prefix.
+ */
 export const MOD_METHODS = [
   'today',
   'log',
@@ -53,6 +61,10 @@ export const MOD_METHODS = [
   'nav.go',
   'nav.organize',
   'look.set',
+  'ui.open',
+  'atom.get',
+  'atom.set',
+  'settings.get',
 ] as const;
 export type ModMethod = (typeof MOD_METHODS)[number];
 
@@ -102,6 +114,21 @@ export const ModItemSchema = z
   .strict();
 export type ModItem = z.infer<typeof ModItemSchema>;
 
+/** A panel, action or atom id: the slug rule. */
+export const ModIdentSchema = z.string().regex(/^[a-z][a-z0-9-]{0,29}$/);
+
+/** What an atom holds: UI state for the whole mod, in memory only. */
+export const AtomValueSchema = z.union([
+  z.boolean(),
+  z.number().finite(),
+  z.string().max(MOD_ATOM_TEXT_MAX),
+  z.null(),
+]);
+export type AtomValue = z.infer<typeof AtomValueSchema>;
+
+/** A button's `arg`, as the tree may carry it. */
+export const MOD_ACTION_ARG_MAX = 64;
+
 const ItemRef = { itemId: z.string(), type: z.string(), item: ModItemSchema.nullable().optional() };
 
 export const HookEventSchema = z.discriminatedUnion('kind', [
@@ -113,6 +140,21 @@ export const HookEventSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('review.saved'), date: z.string() }).strict(),
   z.object({ kind: z.literal('command'), id: z.string() }).strict(),
   z.object({ kind: z.literal('timer'), name: z.string() }).strict(),
+  // One tree per panel, whatever mounts it, so no presentation.
+  z.object({ kind: z.literal('ui.resolve'), panelId: ModIdentSchema }).strict(),
+  z
+    .object({
+      kind: z.literal('ui.action'),
+      panelId: ModIdentSchema,
+      action: ModIdentSchema,
+      arg: z.string().max(MOD_ACTION_ARG_MAX).optional(),
+      atoms: z
+        .record(ModIdentSchema, AtomValueSchema)
+        .refine((a) => Object.keys(a).length <= MOD_ATOMS_MAX, { message: 'too many atoms' }),
+    })
+    .strict(),
+  // Atoms are mod-wide, so no panelId.
+  z.object({ kind: z.literal('atom.changed'), key: ModIdentSchema, value: AtomValueSchema }).strict(),
 ]);
 export type HookEvent = z.infer<typeof HookEventSchema>;
 
@@ -194,7 +236,18 @@ const FRAME_SCHEMAS = {
     })
     .strict(),
   done: z.union([
-    z.object({ t: z.literal('done'), modId: Uuid, gen: Gen, hookId: Uuid, ok: z.literal(true) }).strict(),
+    // `resultJson` is a ui.resolve's tree. UTF-16 length never exceeds UTF-8
+    // bytes, so this never wrongly refuses; the host counts bytes again.
+    z
+      .object({
+        t: z.literal('done'),
+        modId: Uuid,
+        gen: Gen,
+        hookId: Uuid,
+        ok: z.literal(true),
+        resultJson: z.string().max(MOD_TREE_MAX_BYTES).optional(),
+      })
+      .strict(),
     z.object({ t: z.literal('done'), modId: Uuid, gen: Gen, hookId: Uuid, ok: z.literal(false), fault: FaultSchema }).strict(),
   ]),
   gone: z.object({ t: z.literal('gone'), modId: Uuid, gen: Gen, fault: FaultSchema }).strict(),

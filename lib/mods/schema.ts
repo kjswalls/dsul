@@ -5,8 +5,20 @@ import type { VerbId } from '@/lib/verb-gates';
 import { isLayoutTheme, type LayoutTheme } from '@/lib/layout-themes';
 import { DRAFT_SLUG, USER_THEME_SLUG_RE } from '@/lib/user-themes/css';
 import { DARK_BASES, LIGHT_BASES, ThemeManifestSchema, type ThemeManifest } from './theme-grammar';
-import { MOD_COMMANDS_MAX } from './limits';
-import { MOD_NAME_MAX, isModLabel, isModName, isPlainModText, normalizeModText, passesLabelRule, URL_RE } from './labels';
+import { MOD_COMMANDS_MAX, MOD_PANELS_MAX, MOD_SETTINGS_MAX } from './limits';
+import {
+  MOD_NAME_MAX,
+  isModLabel,
+  isModName,
+  isPlainModText,
+  isSafeTypedValue,
+  normalizeModText,
+  passesLabelRule,
+  passesSurfaceRule,
+  URL_RE,
+} from './labels';
+import { MOD_ICON_NAMES } from './ui/icons-list';
+import { ModIdentSchema } from './protocol';
 
 export {
   BARE_DOMAIN_RE,
@@ -22,6 +34,11 @@ export {
   modDisplayLabel,
   normalizeModText,
   passesLabelRule,
+  passesSurfaceRule,
+  isSafeTypedValue,
+  surfaceMessage,
+  SECRET_SHAPED_RE,
+  MOD_SURFACE_FORBIDDEN_RE,
 } from './labels';
 /** The events a mod hears: lib/mods/protocol.ts, self-contained for the worker bundle. */
 export { MOD_EVENT_KINDS, type ModEventKind } from './protocol';
@@ -296,11 +313,75 @@ export const ModCommandSchema = z
   .strict();
 export type ModCommand = z.infer<typeof ModCommandSchema>;
 
+/** A panel id or setting key: the slug rule, as the protocol holds it. */
+const ModIdent = ModIdentSchema;
+
+/** A label a panel or setting shows under host chrome: the label rule and the stricter surface rule, 40 at most. */
+const PanelLabel = z
+  .string()
+  .max(40)
+  .refine((s) => isModLabel(s) && passesSurfaceRule(s), { message: 'That label cannot be shown.' });
+
+/**
+ * A panel a mod draws (build order 9). Any panel opens in the rail (desktop)
+ * or the sheet (phone); one with `card` also shows under the braindump. Panel
+ * ids are their own namespace, so `run` is fine here.
+ */
+export const ModPanelSchema = z
+  .object({
+    id: ModIdent,
+    label: PanelLabel,
+    icon: z.enum(MOD_ICON_NAMES).optional(),
+    card: z.boolean().optional(),
+  })
+  .strict();
+export type ModPanel = z.infer<typeof ModPanelSchema>;
+
+const finite = z.number().finite();
+
+/** A value the person sets for the mod in Make. The mod reads them through `$.settings.get` and never writes them. */
+export const ModSettingSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('toggle'), key: ModIdent, label: PanelLabel, default: z.boolean().optional() }).strict(),
+  z
+    .object({
+      kind: z.literal('number'),
+      key: ModIdent,
+      label: PanelLabel,
+      default: finite.optional(),
+      min: finite.optional(),
+      max: finite.optional(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('text'),
+      key: ModIdent,
+      label: PanelLabel,
+      default: z
+        .string()
+        .max(100)
+        .refine((t) => !t.includes('\n') && passesSurfaceRule(t), { message: 'That text cannot be shown.' })
+        .optional(),
+      maxLength: z.number().int().min(1).max(200).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('select'),
+      key: ModIdent,
+      label: PanelLabel,
+      options: z.array(z.object({ value: ModIdent, label: PanelLabel }).strict()).min(1).max(6),
+      default: ModIdent.optional(),
+    })
+    .strict(),
+]);
+export type ModSetting = z.infer<typeof ModSettingSchema>;
+
 /**
  * A mod's manifest, declared in its source (`export const manifest = {...}`)
  * and stored in user_mods.manifest at save (build order 8). No slug or name:
- * those are the row's, as a Look's are. `panels` and `settings` wait for
- * build order 9, and the schema is strict, so a manifest with either fails.
+ * those are the row's, as a Look's are. `panels` and `settings` are build
+ * order 9's, and default to none, so a build order 8 manifest still parses.
  */
 export const ModManifestSchema = z
   .object({
@@ -314,21 +395,108 @@ export const ModManifestSchema = z
       .max(MOD_COMMANDS_MAX)
       .refine((cs) => unique(cs.map((c) => c.id)), { message: 'Each command id once.' })
       .default([]),
+    panels: z
+      .array(ModPanelSchema)
+      .max(MOD_PANELS_MAX)
+      .refine((ps) => unique(ps.map((p) => p.id)), { message: 'Each panel id once.' })
+      .refine((ps) => ps.filter((p) => p.card).length <= 1, { message: 'One card panel at most.' })
+      .default([]),
+    settings: z
+      .array(ModSettingSchema)
+      .max(MOD_SETTINGS_MAX)
+      .refine((ss) => unique(ss.map((x) => x.key)), { message: 'Each setting key once.' })
+      .refine((ss) => ss.every(settingDeclarationOk), {
+        message: 'A setting\'s default must be one of its own values.',
+      })
+      .default([]),
   })
-  .strict();
+  .strict()
+  .refine((m) => m.panels.length === 0 || m.uses.includes('ui'), {
+    message: 'Panels need "ui" in uses.',
+    path: ['panels'],
+  });
 export type ModManifest = z.infer<typeof ModManifestSchema>;
 
-/** A mod row's stored manifest, parsed, or null. Never trusted because the app wrote it. */
+/** A select's default among its options; a number's min no more than its max, and its default between them. */
+function settingDeclarationOk(s: ModSetting): boolean {
+  if (s.kind === 'select') return s.default === undefined || s.options.some((o) => o.value === s.default);
+  if (s.kind === 'number') {
+    if (s.min !== undefined && s.max !== undefined && s.min > s.max) return false;
+    if (s.default === undefined) return true;
+    return (s.min === undefined || s.default >= s.min) && (s.max === undefined || s.default <= s.max);
+  }
+  if (s.kind === 'text') return s.default === undefined || s.maxLength === undefined || s.default.length <= s.maxLength;
+  return true;
+}
+
+/** A row's stored manifest, parsed, or null. Never trusted because the app wrote it. */
 export function parseModManifest(row: { kind: ModKind; manifest: unknown }): ModManifest | null {
   if (row.kind !== 'mod') return null;
   const parsed = ModManifestSchema.safeParse(row.manifest);
   return parsed.success ? parsed.data : null;
 }
 
-/** True when the new manifest asks for a use the old one did not: a save that does is saved switched off. */
+/** True when the new manifest asks for a use the old one did not. */
 export function usesWidened(before: Pick<ModManifest, 'uses'> | null, after: Pick<ModManifest, 'uses'>): boolean {
   const had = new Set(before?.uses ?? []);
   return after.uses.some((u) => !had.has(u));
+}
+
+/** Whether a manifest declares a card panel, the one under the braindump. */
+export function hasCard(m: Pick<ModManifest, 'panels'> | null): boolean {
+  return !!m?.panels?.some((p) => p.card);
+}
+
+/**
+ * True when a save asks for more than the person switched on: a wider `uses`,
+ * or a first card panel, which puts the mod somewhere the person did not see
+ * it before. Such a save is saved switched off. Any other panel or settings
+ * change keeps the mod on.
+ */
+export function consentWidened(
+  before: Pick<ModManifest, 'uses' | 'panels'> | null,
+  after: Pick<ModManifest, 'uses' | 'panels'>
+): boolean {
+  return usesWidened(before, after) || (!hasCard(before) && hasCard(after));
+}
+
+export type ModSettingValue = boolean | number | string | null;
+
+/**
+ * The values the person set (store['@settings']), held to what the manifest
+ * declares now: each declared key's stored value when it still fits, else its
+ * default, else null. Undeclared keys are dropped. A text value shaped like a
+ * secret falls back too. Never throws.
+ */
+export function parseModSettings(
+  manifest: Pick<ModManifest, 'settings'> | null,
+  raw: unknown
+): Record<string, ModSettingValue> {
+  const out: Record<string, ModSettingValue> = {};
+  const stored = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  for (const s of manifest?.settings ?? []) {
+    const v = Object.hasOwn(stored, s.key) ? stored[s.key] : undefined;
+    out[s.key] = settingFits(s, v) ? (v as ModSettingValue) : (s.default ?? null);
+  }
+  return out;
+}
+
+function settingFits(s: ModSetting, v: unknown): boolean {
+  switch (s.kind) {
+    case 'toggle':
+      return typeof v === 'boolean';
+    case 'number':
+      return (
+        typeof v === 'number' &&
+        Number.isFinite(v) &&
+        (s.min === undefined || v >= s.min) &&
+        (s.max === undefined || v <= s.max)
+      );
+    case 'text':
+      return typeof v === 'string' && v.length <= (s.maxLength ?? 200) && isSafeTypedValue(v);
+    case 'select':
+      return typeof v === 'string' && s.options.some((o) => o.value === v);
+  }
 }
 
 /** Keys sorted at every depth, so jsonb's key order and the code's compare equal. */

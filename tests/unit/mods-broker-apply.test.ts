@@ -50,6 +50,16 @@ vi.mock('@/lib/openclaw-registry', () => ({ notifyPlugins: vi.fn() }));
 vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}), flushSettings: vi.fn(async () => {}) }));
 vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }) }));
 vi.mock('@/lib/completion-confetti', () => ({ celebrateCompletion: vi.fn() }));
+const sheet = vi.hoisted(() => ({ hosted: false, order: [] as string[] }));
+vi.mock('@/lib/mods/ui/open-panel', () => ({
+  isSheetHosted: () => sheet.hosted,
+  closeModSheet: vi.fn(() => void sheet.order.push('closeSheet')),
+  openModPanel: vi.fn(),
+}));
+vi.mock('@/lib/ui-store', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/ui-store')>();
+  return { ...actual, openEditFor: vi.fn(() => void sheet.order.push('openItem')) };
+});
 
 import { toast } from 'sonner';
 import { getActionLog, usePlannerStore } from '@/lib/planner-store';
@@ -60,6 +70,8 @@ import { __resetBrokerForTests, applyHeld, type ApplyContext } from '@/lib/mods/
 import { createHookState, type HeldWrite, type HookState } from '@/lib/mods/broker-core';
 import { MOD_USES, type UserMod } from '@/lib/mods/schema';
 import * as db from '@/lib/db';
+import { closeModSheet, openModPanel } from '@/lib/mods/ui/open-panel';
+import { openEditFor } from '@/lib/ui-store';
 import type { Item } from '@/lib/planner-types';
 
 const USER = '11111111-1111-4111-8111-111111111111';
@@ -112,7 +124,7 @@ function heldHook(row: UserMod, writes: HeldWrite[], over: Partial<HookState> = 
     slug: row.slug,
     hookKind: 'item.completed',
     origin: null,
-    manifest: { version: 1, uses: [...MOD_USES], commands: [] },
+    manifest: { version: 1, uses: [...MOD_USES], commands: [], panels: [], settings: [] },
     snapshot: {},
     pendingTimers: 0,
     toastsLastMinute: 0,
@@ -304,5 +316,107 @@ describe('applying held writes', () => {
     });
     expect(toast).toHaveBeenCalledWith('3 glasses', { description: 'Your mod: water' });
     expect(runInserts()).toEqual([]);
+  });
+});
+
+describe('a panel\'s hooks (build order 9)', () => {
+  const action = { kind: 'ui.action' as const, panelId: 'water', action: 'add', atoms: {} };
+
+  beforeEach(() => {
+    sheet.hosted = false;
+    sheet.order = [];
+    vi.mocked(openModPanel).mockClear();
+    vi.mocked(closeModSheet).mockClear();
+    vi.mocked(openEditFor).mockClear();
+  });
+
+  it('a held ui.open goes through the panel router', () => {
+    const row = mod();
+    seed(row);
+    const h = heldHook(row, [], { hookKind: 'ui.action' });
+    h.ui.push({ kind: 'openPanel', panelId: 'water' });
+    applyHeld(h, ctx({ event: action, hookLabel: 'Water' }));
+    expect(openModPanel).toHaveBeenCalledWith({ modId: row.id, panelId: 'water' });
+  });
+
+  it('atoms commit as the mod\'s own, and only when a bridge is there', () => {
+    const row = mod();
+    seed(row);
+    const commitAtoms = vi.fn();
+    const panels = { atoms: () => ({}), atomKinds: () => ({}), actionShown: () => true, commitAtoms };
+    const h = heldHook(row, [], { hookKind: 'ui.action' });
+    h.atomOverlay.set('done', true);
+    h.atomOverlay.set('note', 'hi');
+    applyHeld(h, ctx({ event: action, hookLabel: 'Water', panels }));
+    expect(commitAtoms).toHaveBeenCalledWith(row.id, { done: true, note: 'hi' });
+    expect(() => applyHeld(heldHook(row, [], { hookKind: 'ui.action' }), ctx({ event: action }))).not.toThrow();
+  });
+
+  it('a press\'s writes skip the history window, a command\'s do not', () => {
+    const row = mod();
+    seed(row);
+    for (let i = 0; i < 15; i++) {
+      const r = applyHeld(
+        heldHook(row, [{ kind: 'edit', id: T2, patch: { title: `Press ${i}` } }], { hookKind: 'ui.action' }),
+        ctx({ event: action, hookLabel: 'Water' })
+      );
+      expect(r).toMatchObject({ fault: null });
+    }
+    expect(getActionLog()[0].label).toBe('Mod: Water · Water');
+    expect(item(T2).title).toBe('Press 14');
+    const changed = { kind: 'atom.changed' as const, key: 'note', value: 'x' };
+    expect(
+      applyHeld(
+        heldHook(row, [{ kind: 'edit', id: T2, patch: { title: 'Field' } }], { hookKind: 'atom.changed' }),
+        ctx({ event: changed, hookLabel: 'note' })
+      )
+    ).toMatchObject({ fault: null });
+    for (let i = 0; i < 10; i++) {
+      const r = applyHeld(
+        heldHook(row, [{ kind: 'edit', id: T2, patch: { title: `Cmd ${i}` } }], { hookKind: 'command' }),
+        ctx({ event: { kind: 'command', id: 'log' }, hookLabel: 'command Log' })
+      );
+      expect(r).toMatchObject({ fault: null });
+    }
+    expect(
+      applyHeld(
+        heldHook(row, [{ kind: 'edit', id: T2, patch: { title: 'Eleventh' } }], { hookKind: 'command' }),
+        ctx({ event: { kind: 'command', id: 'log' }, hookLabel: 'command Log' })
+      )
+    ).toMatchObject({ fault: { code: 'history' } });
+  });
+
+  it('on the phone the sheet closes before a held openItem or a nav step', () => {
+    const row = mod();
+    seed(row);
+    sheet.hosted = true;
+    const h = heldHook(row, [], { hookKind: 'ui.action' });
+    h.ui.push({ kind: 'openItem', id: T2 });
+    h.ui.push({ kind: 'step', step: { do: 'organize' } });
+    const navigate = vi.fn(() => void sheet.order.push('nav'));
+    applyHeld(h, ctx({ event: action, hookLabel: 'Water', deps: { navigate } }));
+    expect(sheet.order.slice(0, 3)).toEqual(['closeSheet', 'openItem', 'closeSheet']);
+    expect(openEditFor).toHaveBeenCalledTimes(1);
+
+    sheet.hosted = false;
+    sheet.order = [];
+    const d = heldHook(row, [], { hookKind: 'ui.action' });
+    d.ui.push({ kind: 'openItem', id: T2 });
+    applyHeld(d, ctx({ event: action, hookLabel: 'Water' }));
+    expect(sheet.order).toEqual(['openItem']);
+  });
+
+  it('a resolve never applies anything', () => {
+    const row = mod();
+    seed(row);
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const h = heldHook(row, [{ kind: 'edit', id: T2, patch: { title: 'Drawn' } }], { hookKind: 'ui.resolve' });
+    h.ui.push({ kind: 'toast', text: 'hi' });
+    h.atomOverlay.set('a', 1);
+    expect(applyHeld(h, ctx({ event: { kind: 'ui.resolve', panelId: 'water' } }))).toEqual({ status: 'stale' });
+    expect(item(T2).title).not.toBe('Drawn');
+    expect(toast).not.toHaveBeenCalled();
+    expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
   });
 });

@@ -13,7 +13,7 @@ import {
   ModNameSchema,
   isModLabel,
   parseModManifest,
-  usesWidened,
+  consentWidened,
   LookManifestSchema,
   type LookManifest,
   RecipeManifestSchema,
@@ -194,8 +194,9 @@ interface ModsStore {
   /**
    * A mod's name, code and manifest. A switched-on mod stays on (it hot
    * reloads), unless the new manifest asks for a use the old one did not,
-   * as this tab holds it or as the database does (read just before the
-   * write): then it is saved switched off, even if this tab shows it off,
+   * or gives the mod its first card panel (consentWidened), as this tab
+   * holds it or as the database does (read just before the write): then it
+   * is saved switched off, even if this tab shows it off,
    * and switching it back on is the consent.
    */
   saveMod: (
@@ -465,7 +466,7 @@ export const useModsStore = create<ModsStore>((set, get) => {
         const fresh = stored.error ? null : (stored.data as { manifest?: unknown } | null);
         const shown = parseModManifest(before);
         const current = fresh ? parseModManifest({ kind: 'mod', manifest: fresh.manifest }) : null;
-        if (!shown || !current || usesWidened(shown, current)) {
+        if (!shown || !current || consentWidened(shown, current)) {
           void get().refresh(userId);
           return false;
         }
@@ -659,8 +660,8 @@ export const useModsStore = create<ModsStore>((set, get) => {
       // of the switch, so no view can skip the consent. A stored manifest that
       // no longer parses counts as having asked for nothing.
       const switchOff =
-        usesWidened(parseModManifest(before), parsed.data) ||
-        (!!fresh && usesWidened(parseModManifest({ kind: 'mod', manifest: fresh.manifest }), parsed.data));
+        consentWidened(parseModManifest(before), parsed.data) ||
+        (!!fresh && consentWidened(parseModManifest({ kind: 'mod', manifest: fresh.manifest }), parsed.data));
       const wasOn = before.enabled || fresh?.enabled === true;
       const next = { name: trimmed, manifest: parsed.data, ...(switchOff && { enabled: false }) };
       set((s) => ({ rows: sortMods(s.rows.map((r) => (r.id === id ? { ...r, ...next } : r))) }));

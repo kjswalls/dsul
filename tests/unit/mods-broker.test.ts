@@ -3,6 +3,8 @@ import {
   DELETE,
   METHOD_USES,
   MOD_STORE_TOTAL_MAX_BYTES,
+  RESOLVE_ALLOWED,
+  USER_ACTED,
   brokerCall,
   createHookState,
   type BrokerEnv,
@@ -86,7 +88,7 @@ function hook(over: Partial<Parameters<typeof createHookState>[0]> = {}): HookSt
     slug: 'water',
     hookKind: 'command',
     origin: null,
-    manifest: { version: 1, uses: [...MOD_USES], commands: [] },
+    manifest: { version: 1, uses: [...MOD_USES], commands: [], panels: [{ id: 'water', label: 'Water' }], settings: [] },
     snapshot: {},
     pendingTimers: 0,
     toastsLastMinute: 0,
@@ -123,13 +125,19 @@ const SAMPLE: Record<ModMethod, unknown> = {
   'nav.go': { scope: 'day', layout: 'list' },
   'nav.organize': null,
   'look.set': { look: 'paper' },
+  'ui.open': { panelId: 'water' },
+  'atom.get': null,
+  'atom.set': { key: 'note', value: 'hi' },
+  'settings.get': null,
 };
 
 describe('the gates', () => {
   it.each(MOD_METHODS.filter((m) => METHOD_USES[m]).map((m) => [m, METHOD_USES[m] as ModUse]))(
     '%s needs "%s"',
     (method, use) => {
-      const without = hook({ manifest: { version: 1, uses: MOD_USES.filter((u) => u !== use), commands: [] } });
+      const without = hook({
+        manifest: { version: 1, uses: MOD_USES.filter((u) => u !== use), commands: [], panels: [], settings: [] },
+      });
       expect(call(env(), without, method, SAMPLE[method])).toEqual({ ok: false, error: `needs "${use}" in manifest.uses` });
       const answer = call(env(), hook(), method, SAMPLE[method]);
       expect(answer?.ok, JSON.stringify(answer)).toBe(true);
@@ -137,7 +145,7 @@ describe('the gates', () => {
   );
 
   it('today, log and after need no use', () => {
-    const none = hook({ manifest: { version: 1, uses: [], commands: [] } });
+    const none = hook({ manifest: { version: 1, uses: [], commands: [], panels: [], settings: [] } });
     for (const m of ['today', 'log', 'after'] as const) expect(call(env(), none, m, SAMPLE[m])?.ok).toBe(true);
   });
 
@@ -169,12 +177,41 @@ describe('the gates', () => {
     });
   });
 
-  it('nav, openItem and look.set only during a command', () => {
-    const timer = hook({ hookKind: 'timer' });
-    for (const m of ['nav.go', 'nav.organize', 'ui.openItem', 'look.set'] as const) {
-      expect(call(env(), timer, m, SAMPLE[m]), m).toEqual({ ok: false, error: 'only during a command' });
+  it('the four panel methods ask for "ui", and settings.get for nothing', () => {
+    expect(METHOD_USES['ui.open']).toBe('ui');
+    expect(METHOD_USES['atom.get']).toBe('ui');
+    expect(METHOD_USES['atom.set']).toBe('ui');
+    expect(METHOD_USES['settings.get']).toBeNull();
+  });
+
+  it('opening a panel, an item, a view or a Look only when the person acted: a command or a press', () => {
+    expect([...USER_ACTED].sort()).toEqual(['look.set', 'nav.go', 'nav.organize', 'ui.open', 'ui.openItem']);
+    for (const kind of ['timer', 'item.completed', 'atom.changed', 'review.saved'] as const) {
+      const h = hook({ hookKind: kind });
+      for (const m of USER_ACTED) {
+        expect(call(env(), h, m, SAMPLE[m]), `${kind} ${m}`).toEqual({ ok: false, error: 'only when the person acted' });
+      }
+      expect(h.ui).toEqual([]);
     }
-    expect(timer.ui).toEqual([]);
+    for (const kind of ['command', 'ui.action'] as const) {
+      for (const m of USER_ACTED) expect(call(env(), hook({ hookKind: kind }), m, SAMPLE[m])?.ok, `${kind} ${m}`).toBe(true);
+    }
+  });
+
+  it('a resolve may only read: everything off RESOLVE_ALLOWED is refused', () => {
+    for (const m of MOD_METHODS) {
+      const answer = call(env(), hook({ hookKind: 'ui.resolve' }), m, SAMPLE[m]);
+      if (RESOLVE_ALLOWED.has(m)) expect(answer?.ok, `${m} ${JSON.stringify(answer)}`).toBe(true);
+      else if (USER_ACTED.has(m)) expect(answer, m).toEqual({ ok: false, error: 'only when the person acted' });
+      else expect(answer, m).toEqual({ ok: false, error: 'read-only while drawing a panel' });
+    }
+    expect([...RESOLVE_ALLOWED]).not.toContain('atom.set');
+  });
+
+  it('a press during undo still may not write items', () => {
+    const h = hook({ hookKind: 'ui.action', origin: 'undo' });
+    expect(call(env(), h, 'items.create', SAMPLE['items.create'])).toEqual({ ok: false, error: 'not during undo' });
+    expect(value(call(env(), h, 'ui.open', { panelId: 'water' }))).toEqual({ ok: true });
   });
 
   it('during an undo hook: no item writes and no Look, but the store and a toast', () => {
@@ -360,10 +397,87 @@ describe('the store', () => {
     expect(MOD_STORE_TOTAL_MAX_BYTES).toBeLessThan(65_536);
   });
 
+  it("@ keys are the app's: no store call reaches one, and store.keys leaves them out", () => {
+    const h = hook({ snapshot: { '@settings': { goal: 8 }, n: 1 } });
+    for (const [m, a] of [
+      ['store.get', { key: '@settings' }],
+      ['store.set', { key: '@settings', value: 1 }],
+      ['store.delete', { key: '@settings' }],
+    ] as const) {
+      expect(call(env(), h, m, a)?.ok, m).toBe(false);
+    }
+    expect(value(call(env(), h, 'store.keys'))).toEqual(['n']);
+    expect(h.storeOverlay.size).toBe(0);
+  });
+
   it('keys are 1 to 64 characters with no control characters', () => {
     expect(call(env(), hook(), 'store.set', { key: '', value: 1 })?.ok).toBe(false);
     expect(call(env(), hook(), 'store.set', { key: 'x'.repeat(65), value: 1 })?.ok).toBe(false);
     expect(call(env(), hook(), 'store.set', { key: 'a\nb', value: 1 })?.ok).toBe(false);
+  });
+});
+
+describe('panels, atoms and settings', () => {
+  it('ui.open holds one of the mod\'s own panels, and refuses another', () => {
+    const h = hook({ hookKind: 'ui.action' });
+    expect(value(call(env(), h, 'ui.open', { panelId: 'water' }))).toEqual({ ok: true });
+    expect(value(call(env(), h, 'ui.open', { panelId: 'other' }))).toEqual({ ok: false, reason: 'no_panel' });
+    expect(h.ui).toEqual([{ kind: 'openPanel', panelId: 'water' }]);
+  });
+
+  it('atom.get reads the snapshot with the hook\'s own writes over it', () => {
+    const h = hook({ hookKind: 'ui.action', atoms: { done: false, note: 'a' } });
+    expect(value(call(env(), h, 'atom.set', { key: 'done', value: true }))).toEqual({ ok: true });
+    expect(value(call(env(), h, 'atom.get', { key: 'done' }))).toBe(true);
+    expect(value(call(env(), h, 'atom.get', { key: 'missing' }))).toBeNull();
+    expect(value(call(env(), h, 'atom.get'))).toEqual({ done: true, note: 'a' });
+    expect(h.atoms).toEqual({ done: false, note: 'a' });
+  });
+
+  it('atom.set is held to the field that shows the atom', () => {
+    const h = hook({
+      hookKind: 'command',
+      atomKinds: {
+        done: { kind: 'checkbox' },
+        size: { kind: 'select', options: ['small', 'large'] },
+        day: { kind: 'date' },
+        n: { kind: 'number', min: 0, max: 10 },
+        note: { kind: 'text' },
+      },
+    });
+    const set = (key: string, v: unknown) => value(call(env(), h, 'atom.set', { key, value: v }));
+    const bad = { ok: false, reason: 'bad_value' };
+    expect(set('done', true)).toEqual({ ok: true });
+    expect(set('done', 'yes')).toEqual(bad);
+    expect(set('size', 'large')).toEqual({ ok: true });
+    expect(set('size', 'huge')).toEqual(bad);
+    expect(set('day', '2026-02-28')).toEqual({ ok: true });
+    expect(set('day', '2026-02-30')).toEqual(bad);
+    expect(set('n', 5)).toEqual({ ok: true });
+    expect(set('n', 11)).toEqual(bad);
+    expect(set('note', 'buy milk')).toEqual({ ok: true });
+    expect(set('note', 'Signed in as kirby')).toEqual(bad);
+    expect(set('note', 'sk_live_abcdef123')).toEqual(bad);
+    // A key no tree shows takes any atom value, its text under the same rules.
+    expect(set('free', 3)).toEqual({ ok: true });
+    expect(set('free', 'Reconnect your model')).toEqual(bad);
+    expect(set('free', null)).toEqual({ ok: true });
+    expect(call(env(), h, 'atom.set', { key: 'free', value: { a: 1 } })?.ok).toBe(false);
+  });
+
+  it('atom.set stops at 50 distinct atoms', () => {
+    const atoms = Object.fromEntries(Array.from({ length: 50 }, (_, i) => [`a${i}`, i]));
+    const h = hook({ hookKind: 'command', atoms });
+    expect(value(call(env(), h, 'atom.set', { key: 'a3', value: 1 }))).toEqual({ ok: true });
+    expect(value(call(env(), h, 'atom.set', { key: 'one-more', value: 1 }))).toEqual({ ok: false, reason: 'too_many' });
+  });
+
+  it('settings.get returns the parsed values, a copy', () => {
+    const h = hook({ settings: { goal: 8, loud: true } });
+    const got = value(call(env(), h, 'settings.get')) as Record<string, unknown>;
+    expect(got).toEqual({ goal: 8, loud: true });
+    got.goal = 9;
+    expect(h.settings.goal).toBe(8);
   });
 });
 

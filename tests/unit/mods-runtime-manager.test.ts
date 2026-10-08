@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { createModRuntime, type RuntimeDeps } from '@/lib/mods/runtime-manager';
-import type { BrokerEnv, HookState } from '@/lib/mods/broker-core';
+import type { BrokerEnv, HookState, PanelBridge } from '@/lib/mods/broker-core';
 import type { ApplyResult } from '@/lib/mods/broker';
 import { parseFrameMessage, type Fault, type HookEvent, type HostMessage, type ModMethod } from '@/lib/mods/protocol';
-import { MOD_LOADED_MAX } from '@/lib/mods/limits';
+import { MOD_IDLE_UNLOAD_MS, MOD_LOADED_MAX } from '@/lib/mods/limits';
 import type { ModManifest, UserMod } from '@/lib/mods/schema';
 import type { SandboxStatus } from '@/lib/mods/sandbox-host';
 import type { ModCode } from '@/lib/mods-store';
@@ -18,7 +18,13 @@ const USER = '11111111-1111-4111-8111-111111111111';
 const TODAY = '2026-03-10';
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
-const MANIFEST: ModManifest = { version: 1, uses: ['storage', 'ui'], commands: [{ id: 'log', label: 'Log a glass' }] };
+const MANIFEST: ModManifest = {
+  version: 1,
+  uses: ['storage', 'ui'],
+  commands: [{ id: 'log', label: 'Log a glass' }],
+  panels: [{ id: 'water', label: 'Water', card: true }],
+  settings: [],
+};
 
 type Call = (method: ModMethod, args?: unknown) => Promise<{ ok: boolean; value?: unknown; error?: string }>;
 
@@ -27,8 +33,11 @@ interface Behaviour {
   /** What the code declares; the stored manifest unless a test says otherwise. */
   declared?: unknown;
   loadFault?: Fault;
-  onHook?: (e: HookEvent, call: Call) => Promise<Fault | void> | Fault | void;
+  /** A fault ends the hook faulted; `{ resultJson }` ends it ok with a resolve's tree. */
+  onHook?: (e: HookEvent, call: Call) => Promise<Outcome> | Outcome;
 }
+
+type Outcome = Fault | { resultJson: string } | void;
 
 class FakeSandbox {
   status: SandboxStatus = 'ready';
@@ -78,7 +87,9 @@ class FakeSandbox {
             this.say({ t: 'call', modId: m.modId, gen: m.gen, hookId: m.hookId, callId, method, argsJson: JSON.stringify(args) });
           });
         const f = await b?.onHook?.(m.event, call);
-        this.say(f ? { t: 'done', modId: m.modId, gen: m.gen, hookId: m.hookId, ok: false, fault: f } : { t: 'done', modId: m.modId, gen: m.gen, hookId: m.hookId, ok: true });
+        const key = { t: 'done', modId: m.modId, gen: m.gen, hookId: m.hookId };
+        if (f && 'resultJson' in f) this.say({ ...key, ok: true, resultJson: f.resultJson });
+        else this.say(f ? { ...key, ok: false, fault: f } : { ...key, ok: true });
       });
     } else if (m.t === 'reply') {
       this.replies.get(`${m.hookId}:${m.callId}`)?.(m);
@@ -645,5 +656,297 @@ describe('consent and races', () => {
     rt.runCommand(row.id, 'log');
     await settle();
     expect(values).toEqual([null, 1]);
+  });
+});
+
+describe('panels (build order 9)', () => {
+  const TREE = JSON.stringify({ type: 'button', label: '+1', action: 'add' });
+  const RESOLVE = { kind: 'ui.resolve' as const, panelId: 'water' };
+
+  /** A panel bridge holding one cached tree at seq 1 with one button and two atoms. */
+  function bridge(over: Partial<PanelBridge> = {}): PanelBridge {
+    return {
+      atoms: () => ({ note: 'hi' }),
+      atomKinds: () => ({ note: { kind: 'text' }, done: { kind: 'checkbox' } }),
+      actionShown: (_m, panelId, action, arg, seq) => panelId === 'water' && action === 'add' && arg === undefined && seq === 1,
+      commitAtoms: vi.fn(),
+      ...over,
+    };
+  }
+
+  function panelRuntime(over: Partial<RuntimeDeps> = {}) {
+    const onPanelsStale = vi.fn();
+    const onUserHooksSlowed = vi.fn();
+    const rt = createModRuntime({ ...deps, panels: bridge(), onPanelsStale, onUserHooksSlowed, ...over });
+    return { rt, onPanelsStale, onUserHooksSlowed };
+  }
+
+  it('resolvePanel loads on demand and hands back the tree, off the hook rate', async () => {
+    addMod(1, { hooks: ['ui.resolve'], onHook: () => ({ resultJson: TREE }) });
+    const { rt, onPanelsStale } = panelRuntime();
+    for (let i = 0; i < 40; i++) {
+      const p = rt.resolvePanel(id(1), 'water');
+      await settle();
+      expect(await p).toEqual({ ok: true, resultJson: TREE });
+    }
+    expect(sandbox.sent('load')).toHaveLength(1);
+    expect(sandbox.sent('hook')[0].event).toEqual(RESOLVE);
+    // 40 resolves would trip the 30-a-minute hook rate; they never touch it.
+    expect(deps.disable).not.toHaveBeenCalled();
+    expect(deps.apply).not.toHaveBeenCalled();
+    // One resolve never starts another.
+    expect(onPanelsStale).not.toHaveBeenCalled();
+    expect(rt.resolvesPanels(id(1))).toBe(true);
+  });
+
+  it('a mod with no resolve handler draws nothing, and a panel it does not declare is dropped', async () => {
+    addMod(1, { hooks: ['command'] });
+    const { rt } = panelRuntime();
+    const p = rt.resolvePanel(id(1), 'water');
+    await settle();
+    expect(await p).toEqual({ ok: true });
+    expect(sandbox.sent('hook')).toEqual([]);
+    expect(rt.resolvesPanels(id(1))).toBe(false);
+    // Loaded now: answered with no hook and no queue.
+    expect(await rt.resolvePanel(id(1), 'water')).toEqual({ ok: true });
+    expect(await rt.resolvePanel(id(1), 'other')).toBe('dropped');
+    expect(await rt.resolvePanel(id(9), 'water')).toBe('off');
+  });
+
+  it('a resolve that faults settles with the fault and redraws nothing', async () => {
+    addMod(1, { hooks: ['ui.resolve'], onHook: () => ({ code: 'error', message: 'TypeError: boom' }) });
+    const { rt, onPanelsStale } = panelRuntime();
+    const p = rt.resolvePanel(id(1), 'water');
+    await settle();
+    expect(await p).toEqual({ fault: { code: 'error', message: 'TypeError: boom' } });
+    expect(deps.logFault).toHaveBeenCalledTimes(1);
+    expect(onPanelsStale).not.toHaveBeenCalled();
+  });
+
+  it('a hook other than a resolve that settles ok tells the panels; a faulted one does not', async () => {
+    let fail = false;
+    addMod(1, { hooks: ['command'], onHook: () => (fail ? { code: 'error', message: 'x' } : undefined) });
+    const { rt, onPanelsStale } = panelRuntime();
+    rt.runCommand(id(1), 'log');
+    await settle();
+    expect(onPanelsStale).toHaveBeenCalledWith(id(1), 'hook');
+    onPanelsStale.mockClear();
+    fail = true;
+    rt.runCommand(id(1), 'log');
+    await settle();
+    expect(onPanelsStale).not.toHaveBeenCalled();
+  });
+
+  it('saved() tells the panels whether or not the mod is loaded', () => {
+    addMod(1, { hooks: ['ui.resolve'] });
+    const { rt, onPanelsStale } = panelRuntime();
+    rt.saved(id(1));
+    expect(onPanelsStale).toHaveBeenCalledWith(id(1), 'saved');
+  });
+
+  describe('every way out of the queue settles the work', () => {
+    it('not ready', async () => {
+      addMod(1, { hooks: ['ui.resolve'] });
+      const { rt } = panelRuntime();
+      ready = false;
+      expect(await rt.resolvePanel(id(1), 'water')).toBe('dropped');
+    });
+
+    it('not ready by the time the queue runs', async () => {
+      addMod(1, {
+        hooks: ['ui.resolve', 'command'],
+        onHook: (e) => (e.kind === 'command' ? new Promise<void>((r) => setTimeout(r, 100)) : { resultJson: TREE }),
+      });
+      const { rt } = panelRuntime();
+      rt.runCommand(id(1), 'log');
+      await settle();
+      const p = rt.resolvePanel(id(1), 'water');
+      ready = false;
+      await vi.advanceTimersByTimeAsync(200);
+      expect(await p).toBe('dropped');
+    });
+
+    it('a failed load', async () => {
+      addMod(1, { hooks: [], loadFault: { code: 'load', message: 'nope' } });
+      const { rt } = panelRuntime();
+      const p = rt.resolvePanel(id(1), 'water');
+      await settle();
+      expect(await p).toBe('dropped');
+    });
+
+    it('a full queue', async () => {
+      addMod(1, { hooks: ['ui.resolve', 'command'], onHook: () => new Promise<void>(() => {}) });
+      const { rt } = panelRuntime();
+      rt.runCommand(id(1), 'log');
+      await settle();
+      const settled: unknown[] = [];
+      for (let i = 0; i < 60; i++) void rt.resolvePanel(id(1), 'water').then((o) => settled.push(o));
+      await settle();
+      expect(settled.length).toBeGreaterThan(0);
+      expect(settled.every((o) => o === 'dropped')).toBe(true);
+    });
+
+    it('a row change that switches it off, for running and queued work', async () => {
+      addMod(1, { hooks: ['ui.resolve'], onHook: () => new Promise<void>(() => {}) });
+      const { rt } = panelRuntime();
+      const running = rt.resolvePanel(id(1), 'water');
+      await settle();
+      const queued = rt.resolvePanel(id(1), 'water');
+      rows[0] = { ...rows[0], enabled: false };
+      rt.rowsChanged();
+      expect(await running).toBe('off');
+      expect(await queued).toBe('off');
+    });
+
+    it('a switch-off by its fault count drains what waits', async () => {
+      addMod(1, { hooks: ['command', 'ui.resolve'], onHook: (e) => (e.kind === 'command' ? { code: 'error', message: 'x' } : undefined) });
+      const { rt } = panelRuntime();
+      rt.runCommand(id(1), 'log');
+      rt.runCommand(id(1), 'log');
+      rt.runCommand(id(1), 'log');
+      const p = rt.resolvePanel(id(1), 'water');
+      await settle();
+      expect(deps.disable).toHaveBeenCalledTimes(1);
+      expect(await p).toBe('off');
+    });
+
+    it('stop', async () => {
+      addMod(1, { hooks: ['ui.resolve'], onHook: () => new Promise<void>(() => {}) });
+      const { rt } = panelRuntime();
+      const running = rt.resolvePanel(id(1), 'water');
+      await settle();
+      const queued = rt.resolvePanel(id(1), 'water');
+      await rt.stop();
+      expect(await running).toBe('dropped');
+      expect(await queued).toBe('dropped');
+      expect(await rt.resolvePanel(id(1), 'water')).toBe('dropped');
+    });
+
+  });
+
+  describe("the person's own hooks", () => {
+    it('runAction counts a press only on the tree the person saw, and loads on demand', async () => {
+      const seen: HookEvent[] = [];
+      addMod(1, { hooks: ['ui.action'], onHook: (e) => void seen.push(e) });
+      const { rt, onPanelsStale } = panelRuntime();
+      const p = rt.runAction(id(1), 'water', 'add', undefined, { note: 'hi' }, 1);
+      await settle();
+      expect(await p).toEqual({ ok: true });
+      expect(seen).toEqual([{ kind: 'ui.action', panelId: 'water', action: 'add', atoms: { note: 'hi' } }]);
+      expect(deps.apply).toHaveBeenCalledWith(
+        expect.objectContaining({ hookKind: 'ui.action' }),
+        expect.objectContaining({ hookLabel: 'Water' })
+      );
+      expect(onPanelsStale).toHaveBeenCalledWith(id(1), 'hook');
+
+      onPanelsStale.mockClear();
+      // A newer tree (seq 2), another button, another panel: dropped, and the panel redraws.
+      expect(await rt.runAction(id(1), 'water', 'add', undefined, {}, 2)).toBe('dropped');
+      expect(await rt.runAction(id(1), 'water', 'remove', undefined, {}, 1)).toBe('dropped');
+      expect(await rt.runAction(id(1), 'other', 'add', undefined, {}, 1)).toBe('dropped');
+      expect(onPanelsStale).toHaveBeenCalledTimes(2);
+      expect(seen).toHaveLength(1);
+    });
+
+    it('runAction works after an idle unload: the tree is the check, not the generation', async () => {
+      addMod(1, { hooks: ['ui.action'] });
+      const { rt } = panelRuntime();
+      const first = rt.runAction(id(1), 'water', 'add', undefined, {}, 1);
+      await settle();
+      expect(await first).toEqual({ ok: true });
+      await vi.advanceTimersByTimeAsync(MOD_IDLE_UNLOAD_MS + 1);
+      expect(rt.loadedIds()).toEqual([]);
+      const second = rt.runAction(id(1), 'water', 'add', undefined, {}, 1);
+      await settle();
+      expect(await second).toEqual({ ok: true });
+      expect(sandbox.sent('load')).toHaveLength(2);
+    });
+
+    it('61 presses in a minute drop the excess quietly and never switch the mod off', async () => {
+      addMod(1, { hooks: ['ui.action'] });
+      const { rt, onUserHooksSlowed } = panelRuntime();
+      const outcomes: unknown[] = [];
+      for (let i = 0; i < 61; i++) {
+        const p = rt.runAction(id(1), 'water', 'add', undefined, {}, 1);
+        await settle();
+        outcomes.push(await p);
+      }
+      expect(outcomes.filter((o) => o === 'dropped')).toHaveLength(1);
+      expect(onUserHooksSlowed).toHaveBeenCalledTimes(1);
+      expect(deps.disable).not.toHaveBeenCalled();
+      expect(deps.logFault).not.toHaveBeenCalled();
+      // A command still has its own rate, untouched by the presses.
+      rt.runCommand(id(1), 'log');
+      await settle();
+      expect(deps.disable).not.toHaveBeenCalled();
+    });
+
+    it('atomChanged takes only a key a tree shows, and the latest value wins while one waits', async () => {
+      const seen: HookEvent[] = [];
+      addMod(1, {
+        hooks: ['atom.changed', 'command'],
+        onHook: (e) => {
+          seen.push(e);
+          if (e.kind === 'command') return new Promise<void>((r) => setTimeout(r, 100));
+        },
+      });
+      const { rt } = panelRuntime();
+      expect(await rt.atomChanged(id(1), 'unshown', 'x')).toBe('dropped');
+      rt.runCommand(id(1), 'log');
+      await settle();
+      const a = rt.atomChanged(id(1), 'note', 'a');
+      const b = rt.atomChanged(id(1), 'note', 'ab');
+      const c = rt.atomChanged(id(1), 'done', true);
+      await vi.advanceTimersByTimeAsync(200);
+      expect(await a).toEqual({ ok: true });
+      expect(await b).toEqual({ ok: true });
+      expect(await c).toEqual({ ok: true });
+      expect(seen.slice(1)).toEqual([
+        { kind: 'atom.changed', key: 'note', value: 'ab' },
+        { kind: 'atom.changed', key: 'done', value: true },
+      ]);
+    });
+  });
+
+  it('a hook starts with the atoms, their kinds and the parsed settings', async () => {
+    const manifest: ModManifest = {
+      ...MANIFEST,
+      settings: [{ kind: 'number', key: 'goal', label: 'Goal', default: 8, min: 1, max: 20 }],
+    };
+    const row = addMod(1, { hooks: ['command'], declared: manifest }, { manifest });
+    codes.set(row.id, { ...codes.get(row.id)!, store: { '@settings': { goal: 12, stray: 1 } } });
+    const { rt } = panelRuntime();
+    rt.runCommand(row.id, 'log');
+    await settle();
+    const hook = deps.apply.mock.calls[0][0];
+    expect(hook.atoms).toEqual({ note: 'hi' });
+    expect(hook.atomKinds).toEqual({ note: { kind: 'text' }, done: { kind: 'checkbox' } });
+    expect(hook.settings).toEqual({ goal: 12 });
+  });
+
+  it('settingsChanged updates the snapshot in memory, with no reload, and redraws', async () => {
+    const manifest: ModManifest = {
+      ...MANIFEST,
+      settings: [{ kind: 'number', key: 'goal', label: 'Goal', default: 8 }],
+    };
+    addMod(1, { hooks: ['command'], declared: manifest }, { manifest });
+    const { rt, onPanelsStale } = panelRuntime();
+    rt.runCommand(id(1), 'log');
+    await settle();
+    rt.settingsChanged(id(1), { goal: 3 });
+    expect(onPanelsStale).toHaveBeenCalledWith(id(1), 'settings');
+    rt.runCommand(id(1), 'log');
+    await settle();
+    expect(sandbox.sent('load')).toHaveLength(1);
+    expect(deps.apply.mock.calls[1][0].settings).toEqual({ goal: 3 });
+    expect(deps.storeSet).not.toHaveBeenCalled();
+  });
+
+  it('panelFault counts a tree the host refused as an error fault', async () => {
+    addMod(1, { hooks: ['ui.resolve'] });
+    const { rt } = panelRuntime();
+    for (let i = 0; i < 3; i++) rt.panelFault(id(1), 'water', 'the panel: root is not JSON');
+    expect(deps.logFault).toHaveBeenCalledTimes(3);
+    expect(deps.disable).toHaveBeenCalledTimes(1);
   });
 });

@@ -5,6 +5,7 @@ import {
   MOD_FAULT_MESSAGE_MAX,
   MOD_LOAD_WALL_MS,
   MOD_MANIFEST_MAX_BYTES,
+  MOD_TREE_MAX_BYTES,
   MOD_WALL_MS,
   MOD_WALL_TOTAL_MS,
 } from '@/lib/mods/limits';
@@ -276,6 +277,17 @@ describe('frame limits', () => {
     expect(value('ARGS_MAX')).toBe(MOD_ARGS_MAX_BYTES);
     expect(value('MANIFEST_MAX')).toBe(MOD_MANIFEST_MAX_BYTES);
     expect(value('TEXT_MAX')).toBe(MOD_FAULT_MESSAGE_MAX);
+    expect(value('RESULT_MAX')).toBe(MOD_TREE_MAX_BYTES);
+  });
+
+  it("lets a panel's tree through up to RESULT_MAX, and drops one over it", async () => {
+    const { w, sent, host } = await withMod();
+    host({ t: 'hook', modId: MOD, gen: 1, hookId: HOOK, event: { kind: 'ui.resolve', panelId: 'water' } });
+    w.say({ t: 'done', hookId: HOOK, ok: true, resultJson: 'x'.repeat(33 * 1024) });
+    expect(sent).toEqual([]);
+    const tree = JSON.stringify({ type: 'text', text: 'y'.repeat(30 * 1024) });
+    w.say({ t: 'done', hookId: HOOK, ok: true, resultJson: tree });
+    expect(sent).toEqual([{ t: 'done', modId: MOD, gen: 1, hookId: HOOK, ok: true, resultJson: tree }]);
   });
 });
 
