@@ -1,5 +1,13 @@
 import { create } from 'zustand';
-import { ThemeManifestSchema, isPrintedDecl, printTheme, type Decl, type ThemeMode } from '@/lib/mods/theme-grammar';
+import {
+  SHIMMER_LEVEL_VAR,
+  ThemeManifestSchema,
+  isPrintedDecl,
+  printTheme,
+  shimmerLevelForDecls,
+  type Decl,
+  type ThemeMode,
+} from '@/lib/mods/theme-grammar';
 import { modLabel, type UserMod } from '@/lib/mods/schema';
 import { DRAFT_SLUG, USER_THEME_CACHE_KEY, isUserThemeSlug, themeSlugForId, type UserThemeCss } from './css';
 
@@ -63,6 +71,12 @@ function entryFromCache(raw: unknown): UserThemeDef | null {
   for (const d of e.d) {
     if (!Array.isArray(d) || d.length !== 2 || !isPrintedDecl(d[0], d[1])) return null;
     decls.push([d[0], d[1]]);
+  }
+  // Printed by a build with no waiting-shimmer level (main's before the instant
+  // planner): the mode's level would stand in, under the floor for a Dusk copy
+  // or a theme with its own inks. In memory only; the rows reprint the cache.
+  if (!decls.some(([name]) => name === SHIMMER_LEVEL_VAR)) {
+    decls.push([SHIMMER_LEVEL_VAR, `${shimmerLevelForDecls(e.m, decls)}%`]);
   }
   return { slug: e.s, mode: e.m, label: 'Your theme', themeColor: e.c, decls };
 }

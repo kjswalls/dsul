@@ -15,8 +15,9 @@ import {
   type AskView,
   type ComposerBinding,
 } from './rail-store';
-import { closeItemPanel, openEditFor, useUIStore } from './ui-store';
+import { closeItemPanel, letGoHeldItem, openEditFor, useUIStore } from './ui-store';
 import { usePlannerStore } from './planner-store';
+import { isPlannerPreviewing, selectPlannerSettled } from './planner-ready';
 import { useViewStore } from './view-store';
 import { chatPlaceholder, itemChatPlaceholder } from './chat-utils';
 import type { Item, Task } from './planner-types';
@@ -140,11 +141,12 @@ function toggleSetup(): void {
  * Ctrl+K's "Set up AI" and "Fix AI". Open only, never a toggle, so a door
  * pressed with setup already showing leaves it showing. Desktop: an item on
  * top closes through the one flushing close (a toggle would close it and
- * show nothing), then out of Zen and a summon that writes no `askOpen`, as
- * Ctrl+J's does. Phone: the Ask tab, which shows the setup page while the
- * gate offers it; never a summon there, which would arm the desktop column to
- * spring open on a wider window. True when it opened something; false with
- * neither setup nor a fix on offer.
+ * show nothing), and one held for the landing is let go, so it never opens
+ * over the setup asked for after it; then out of Zen and a summon that
+ * writes no `askOpen`, as Ctrl+J's does. Phone: the Ask tab, which shows the
+ * setup page while the gate offers it; never a summon there, which would arm
+ * the desktop column to spring open on a wider window. True when it opened
+ * something; false with neither setup nor a fix on offer.
  */
 export function openSetup(isMobile: boolean): boolean {
   const ai = getAICapabilities();
@@ -154,6 +156,10 @@ export function openSetup(isMobile: boolean): boolean {
     return true;
   }
   if (useUIStore.getState().activeDialog?.type === 'edit-item') closeItemPanel();
+  // Over the preview an item asked for is held, not open (lib/ui-store.ts
+  // deferredDialog), and would open on top of setup at the landing. The door
+  // is the later ask, so it lets the held item go as it closes an open one.
+  letGoHeldItem();
   leaveZen();
   useRailStore.getState().summon({ persist: false });
   return true;
@@ -321,6 +327,35 @@ export function openItemFromAsk(item: Item): void {
 }
 
 /**
+ * Ask the item's conversation to reveal itself (rail-store `pendingReveal`)
+ * for the desktop open just asked for, once that open is real. Called right
+ * after the open: nothing renders in between, so the conversation still
+ * finds the request when it mounts.
+ *
+ * Over the look-only preview the open is HELD (lib/ui-store.ts defers it), and
+ * the landing may drop it (a busy slot, a failed load, the row gone). A reveal
+ * armed for a dropped open would wait for the item's NEXT open and scroll that
+ * one, unasked. So a held open arms its reveal only when that very request is
+ * the one promoted (hooks/use-deferred-dialog.ts opens it before clearing it),
+ * and lets go the moment it is dropped or replaced. An open the preview
+ * refused outright (a pasted list is waiting, lib/ui-store.ts) arms nothing.
+ */
+function revealWhenOpened(itemId: string): void {
+  if (!isPlannerPreviewing()) {
+    useRailStore.getState().setPendingReveal(itemId);
+    return;
+  }
+  const held = useUIStore.getState().deferredDialog;
+  if (held?.type !== 'edit-item' || held.item.id !== itemId) return;
+  const unsubscribe = useUIStore.subscribe((s) => {
+    if (s.deferredDialog === held) return;
+    unsubscribe();
+    const open = s.activeDialog;
+    if (open?.type === 'edit-item' && open.item.id === itemId) useRailStore.getState().setPendingReveal(itemId);
+  });
+}
+
+/**
  * Show Ask from a command (the palette), with whatever was on top of it closed
  * through the one flushing close, so the view about to be pushed is the one on
  * screen. False when nothing can answer.
@@ -387,6 +422,16 @@ export function openHistory(
  *    focus its context on. Nothing focuses the box: a row is not a request to
  *    type.
  *
+ * "Is the item gone?" is asked of fresh rows only. Before the planner settles
+ * it holds the look-only preview's cached rows (or, on a cold load, none), so
+ * on the phone an item's conversation pushes its item whatever they say, with
+ * the conversation as `fallbackConversation`: the item view waits for the load
+ * and resolves both ways there (components/mobile/ask-tab.tsx PhoneItemView).
+ * On desktop the item goes through openEditFor, which ui-store defers while
+ * previewing and promotion re-resolves against fresh rows, so the cached row
+ * is only an address; its reveal is armed only if that held open is the one
+ * promoted (revealWhenOpened).
+ *
  * Either way it spends Ask home's "It works." (and the sign-in's note in its
  * place): an item opened is no push of a conversation, so rail-store's push
  * would not see it, and the card would be back when the item closes.
@@ -397,21 +442,29 @@ export function openConversation(id: string, isMobile: boolean, o: { returnFocus
   const rid = resolveConversationId(id);
   const conversations = useConversationsStore.getState();
   const itemId = conversations.summaries[rid]?.itemId ?? conversations.threads[rid]?.itemId ?? null;
-  const item = itemId ? usePlannerStore.getState().items.find((i) => i.id === itemId) : undefined;
+  const planner = usePlannerStore.getState();
+  const item = itemId ? planner.items.find((i) => i.id === itemId) : undefined;
 
   if (isMobile) {
     showAskTab();
     const rail = useRailStore.getState();
-    if (item) rail.setPendingReveal(item.id);
-    const view: AskView = item ? { kind: 'item', itemId: item.id } : { kind: 'conversation', id: rid };
+    let view: AskView;
+    if (itemId && !selectPlannerSettled(planner)) {
+      view = { kind: 'item', itemId, fallbackConversation: rid };
+    } else if (item) {
+      view = { kind: 'item', itemId: item.id };
+    } else {
+      view = { kind: 'conversation', id: rid };
+    }
+    if (view.kind === 'item') rail.setPendingReveal(view.itemId);
     rail.push('phone', o.returnFocus ? { ...view, returnFocus: o.returnFocus } : view);
     return;
   }
 
   if (item) {
     leaveZen();
-    useRailStore.getState().setPendingReveal(item.id);
     openItemFromAsk(item);
+    revealWhenOpened(item.id);
     return;
   }
 
@@ -604,8 +657,8 @@ function showItemForAsk(item: Item, isMobile: boolean, o: { reveal: boolean }): 
   // Already the open item: opening it again would only re-seed the panel.
   const open = useUIStore.getState().activeDialog;
   if (open?.type !== 'edit-item' || open.item.id !== item.id) {
-    if (o.reveal) rail.setPendingReveal(item.id);
     openItemFromAsk(item);
+    if (o.reveal) revealWhenOpened(item.id);
   }
   return 'desktop';
 }

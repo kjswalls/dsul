@@ -268,6 +268,13 @@ export function AddRow({
       data-testid="add-row"
       data-add-row={target.scope}
       data-slot-scope={target.scope}
+      // A persistent row is a settle frame (lib/settle.ts), as the braindump's
+      // quick-add is: it sits at the foot of a list that can change length on
+      // landing, and glides with the rows above it instead of jumping ahead of
+      // them. A transient one is never open at a landing (the preview is
+      // inert, a Retry shows the skeleton), so it takes no part.
+      data-settle-key={persistent ? `add:${target.scope}` : undefined}
+      data-settle-role={persistent ? 'frame' : undefined}
       data-click-away-ignore=""
       onPointerEnter={() => setHoveredSlot(target)}
       onPointerLeave={() => setHoveredSlot(null)}

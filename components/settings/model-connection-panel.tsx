@@ -867,6 +867,8 @@ function ConnectedCard({
       confirmLabel: 'Disconnect',
       destructive: true,
       testId: 'model-disconnect-confirm',
+      // The model's key, never a planner row.
+      touchesPlanner: false,
       onConfirm: () => {
         void useAIConnectionStore
           .getState()

@@ -21,9 +21,11 @@ import { act, renderHook } from '@testing-library/react';
  */
 
 /** A context build that throws: send finishes before it returns. */
-const context = vi.hoisted(() => ({ throws: false }));
+const context = vi.hoisted(() => ({ throws: false, titles: [] as string[][] }));
 vi.mock('@/lib/ai-context', () => ({
-  buildDsulContext: () => {
+  buildDsulContext: (o: { items: { title: string }[] }) => {
+    // The titles each built context was made from (the look-only preview's case).
+    context.titles.push(o.items.map((i) => i.title));
     if (context.throws) throw new RangeError('Invalid time zone specified: Mars/Olympus');
     return '## dsul Context';
   },
@@ -126,8 +128,9 @@ afterEach(async () => {
   sessionStorage.clear();
   localStorage.removeItem(ASK_CLAIMED_KEY);
   __resetKeptForTests();
-  usePlannerStore.setState({ userId: null, isLoading: false, error: null });
+  usePlannerStore.setState({ userId: null, isLoading: false, isPreview: false, error: null, items: [] });
   context.throws = false;
+  context.titles = [];
   vi.useRealTimers();
 });
 
@@ -451,6 +454,29 @@ describe('the watcher', () => {
     usePlannerStore.setState({ isLoading: false, error: null });
     await settle();
     expect(sent()).toEqual([QUESTION]);
+  });
+
+  it('never asks over the look-only preview or its crash drop: it goes out once, with the fresh rows as context', async () => {
+    // memory/plans/instant-planner.md: the cached rows are up while the load
+    // is still in flight (isLoading on), so the watcher's settled check holds
+    // it, as it holds a cold load. A crash drop empties the rows and keeps the
+    // load in flight: still held.
+    const cached = [{ type: 'task', id: 't1', title: 'Cached row', status: 'pending', isScheduled: false, order: 0, completedDates: [] }];
+    const fresh = [{ ...cached[0], title: 'Fresh row' }];
+    usePlannerStore.setState({ userId: SEED_USER_ID, isLoading: true, isPreview: true, items: cached } as never);
+    keepConsented();
+    watch();
+    connect();
+    await settle();
+    expect(sent()).toEqual([]);
+    expect(readKept(SEED_USER_ID)?.text).toBe(QUESTION);
+    usePlannerStore.setState({ isPreview: false, items: [] } as never);
+    await settle();
+    expect(sent()).toEqual([]);
+    usePlannerStore.setState({ isLoading: false, items: fresh } as never);
+    await settle();
+    expect(sent()).toEqual([QUESTION]);
+    expect(context.titles).toEqual([['Fresh row']]);
   });
 
   it("asks nothing over a planner load that failed, or one that is another account's, and keeps the question", async () => {

@@ -80,7 +80,9 @@ function DaySection({ date }: { date: Date }) {
   }));
 
   return (
-    <section ref={rootRef}>
+    // A settle frame (lib/settle.ts): a day whose list changed length moves
+    // every day below it, and their rows ride each day's glide.
+    <section ref={rootRef} data-settle-key={`day:${dateStr}`} data-settle-role="frame">
       <ListDropZone dateStr={dateStr} className="-mx-2 px-2 pb-1">
         <div className="group/dayhead mb-1 flex items-center gap-1">
           <button

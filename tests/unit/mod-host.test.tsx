@@ -128,6 +128,31 @@ describe('ModHost', () => {
     expect(rt.created).toBe(0);
   });
 
+  it('builds nothing over the look-only preview, even with Make hydrated early, and starts at the landing', () => {
+    // memory/plans/instant-planner.md: ThemeInjector may hydrate Make's rows
+    // while the cached rows are up. The preview keeps isLoading on, so no
+    // runtime, no ⌘K slot, no bus and no refresh until the fresh rows land.
+    const refresh = vi.fn(async () => {});
+    seed([mod()], { isLoading: true, isPreview: true });
+    useModsStore.setState({ refresh });
+    render(<ModHost />);
+    expect(rt.created).toBe(0);
+    expect(activeModRuntime()).toBeNull();
+    runModCommand('m', 'log');
+    raiseModEvent({ kind: 'review.saved', date: '2026-03-10' });
+    vi.runAllTimers();
+    window.dispatchEvent(new Event('focus'));
+    expect(rt.runtime.runCommand).not.toHaveBeenCalled();
+    expect(rt.runtime.dispatch).not.toHaveBeenCalled();
+    expect(refresh).not.toHaveBeenCalled();
+
+    act(() => {
+      usePlannerStore.setState({ isLoading: false, isPreview: false } as never);
+    });
+    expect(rt.created).toBe(1);
+    expect(activeModRuntime()).toBe(rt.runtime);
+  });
+
   it('stops when the last mod goes off, and tells the runtime when rows change', () => {
     seed([mod(), mod({ id: '00000000-0000-4000-8000-000000000002', slug: 'b', enabled: false })]);
     render(<ModHost />);

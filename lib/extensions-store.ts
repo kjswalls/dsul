@@ -49,6 +49,15 @@ interface ExtensionsStore {
   /** Sparse: only slugs the user has actually toggled have entries. */
   enabled: Record<string, boolean>;
   /**
+   * The toggles as the planner snapshot remembers them (lib/planner-snapshot.ts),
+   * so a preview groups exactly as the fresh render will. DISPLAY-ONLY: read by
+   * the gates in lib/extension-gates.ts and nothing else — never `isEnabled()`,
+   * never a write. hydrate's synchronous reset and every one of its outcomes set
+   * it back to null, so a previous account's map cannot survive and the server's
+   * answer always replaces it.
+   */
+  previewEnabled: Record<string, boolean> | null;
+  /**
    * Per-extension settings (user_extensions.config), keyed by slug.
    *
    * NON-SECRET only, and that is a boundary rather than a convention: this map
@@ -60,6 +69,8 @@ interface ExtensionsStore {
   hydratedUserId: string | null;
 
   hydrate: (userId: string) => Promise<void>;
+  /** Seed `previewEnabled` for `userId`'s in-flight hydrate. No-op once configs have loaded. */
+  seedPreviewEnabled: (userId: string, map: Record<string, boolean>) => void;
   /** Manifest-default fallback included; safe for non-reactive reads. */
   isEnabled: (slug: string) => boolean;
   /** Optimistic; no-ops (with a warn) while the table is unavailable. */
@@ -73,6 +84,7 @@ const INITIAL = {
   available: true,
   configsLoaded: false,
   enabled: {} as Record<string, boolean>,
+  previewEnabled: null as Record<string, boolean> | null,
   configs: {} as Record<string, Record<string, unknown>>,
   hydratedUserId: null as string | null,
 };
@@ -89,7 +101,14 @@ export const useExtensionsStore = create<ExtensionsStore>((set, get) => ({
     // user with no SIGNED_OUT — the morning-store pattern): the previous
     // user's toggles must not answer isEnabled() during the fetch window. A
     // no-op on plain page load, where state is still initial.
-    set({ hydratedUserId: userId, enabled: {}, configs: {}, available: true, configsLoaded: false });
+    set({
+      hydratedUserId: userId,
+      enabled: {},
+      previewEnabled: null,
+      configs: {},
+      available: true,
+      configsLoaded: false,
+    });
 
     let rows: Record<string, boolean> | null;
     let configRows: Record<string, Record<string, unknown>> | null;
@@ -105,7 +124,7 @@ export const useExtensionsStore = create<ExtensionsStore>((set, get) => ({
       // returns null. Un-stamp the guard so the next auth event retries, and
       // leave `available` alone: a blip must not read as a missing migration.
       console.warn('[extensions] hydrate failed, will retry on next auth event:', error);
-      if (get().hydratedUserId === userId) set({ hydratedUserId: null });
+      if (get().hydratedUserId === userId) set({ hydratedUserId: null, previewEnabled: null });
       return;
     }
 
@@ -114,7 +133,7 @@ export const useExtensionsStore = create<ExtensionsStore>((set, get) => ({
     if (get().hydratedUserId !== userId) return;
 
     if (rows === null) {
-      set({ available: false, enabled: {}, configs: {}, configsLoaded: false });
+      set({ available: false, enabled: {}, previewEnabled: null, configs: {}, configsLoaded: false });
     } else {
       // Merge UNDER any local entries: `enabled` was cleared above, so entries
       // present now are exactly the toggles made while the fetch was in flight
@@ -126,9 +145,26 @@ export const useExtensionsStore = create<ExtensionsStore>((set, get) => ({
         for (const [slug, local] of Object.entries(s.configs)) {
           configs[slug] = { ...(configs[slug] ?? {}), ...local };
         }
-        return { available: true, configsLoaded: true, enabled: { ...rows, ...s.enabled }, configs };
+        return {
+          available: true,
+          configsLoaded: true,
+          enabled: { ...rows, ...s.enabled },
+          previewEnabled: null,
+          configs,
+        };
       });
     }
+  },
+
+  /** Display-only, from the planner snapshot. NEVER feeds `enabled`, `isEnabled()` or any write:
+   *  `enabled` entries present when the fetch resolves are merged OVER the server rows as in-flight
+   *  toggles (the merge note in hydrate), so seeding them would let a cached value beat server truth;
+   *  and stamping hydratedUserId would make hydrate() return early and never fetch.
+   *  `!available` too: after the missing-table branch nothing would ever clear the seed again. */
+  seedPreviewEnabled: (userId, map) => {
+    const s = get();
+    if (s.configsLoaded || !s.available || s.hydratedUserId !== userId) return;
+    set({ previewEnabled: { ...map } });
   },
 
   isEnabled: (slug) => resolveEnabled(get().enabled, slug),

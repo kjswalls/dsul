@@ -34,11 +34,14 @@ import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
 import { useGatewayStore } from '@/lib/gateway-store';
 import { useNudgeStore } from '@/lib/nudge-store';
 import { sessionUserFrom, useSessionUserStore } from '@/lib/session-user-store';
-import { useUIStore } from '@/lib/ui-store';
-import { adoptLocalState, clearUserScopedLocalState } from '@/lib/local-state';
+import { isDataDialogArmed, useUIStore } from '@/lib/ui-store';
+import { adoptLocalState, clearUserScopedLocalState, localStateOwner } from '@/lib/local-state';
+import { clearPlannerSnapshot, warmPlannerSnapshot } from '@/lib/planner-snapshot';
+import { startPlannerSnapshotWriter } from '@/lib/planner-snapshot-writer';
 import { leaveForLoginIfNoSession, leaveForLoginIfSignedOutPage } from '@/lib/signed-out-redirect';
 import { fetchContainersSeeded, fetchTrashedNames, markContainersSeeded } from '@/lib/db';
 import { runFirstRunSeed } from '@/lib/seed-containers';
+import { withoutReleasedCaptures } from '@/lib/held-captures';
 import { routeNeedsItems } from '@/lib/route-data';
 import { useTheme } from 'next-themes';
 import type { TimeBucket } from '@/lib/planner-types';
@@ -52,6 +55,11 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
   const hydratedUserId = useRef<string | null>(null);
   /** Its sibling for the planner load itself — see loadPlanner. */
   const loadedUserId = useRef<string | null>(null);
+  /**
+   * Whether this page has offered the look-only preview yet (lib/planner-snapshot.ts).
+   * Once per page lifetime, on the first load attempt — see loadPlanner.
+   */
+  const previewOffered = useRef(false);
 
   /**
    * Does the route on screen render any of what `loadPlanner` fetches?
@@ -206,6 +214,17 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       // Private mode — the pick still holds for this session.
     }
   }, [appIcon, appIconKnown]);
+
+  // The planner snapshot (lib/planner-snapshot.ts): its writer for the page's
+  // lifetime, and an orphan purge. Declared BEFORE the auth effect, so the purge
+  // is asked for ahead of anything that effect reads. A sign-out's hard
+  // navigation can abort the IndexedDB clear, but the owner stamp went
+  // synchronously — so an unowned browser holding a snapshot (/login, after
+  // that sign-out) is exactly the leftover to drop.
+  useEffect(() => {
+    if (localStateOwner() === null) clearPlannerSnapshot();
+    return startPlannerSnapshotWriter();
+  }, []);
 
   useEffect(() => {
     const supabase = createClient();
@@ -379,7 +398,20 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         hasSeeded: fetchContainersSeeded,
         markSeeded: markContainersSeeded,
         trashedNames: fetchTrashedNames,
-        snapshot: () => usePlannerStore.getState(),
+        snapshot: () => {
+          const s = usePlannerStore.getState();
+          // A capture held through the load is filed just after the landing,
+          // ahead of this read (lib/held-captures.ts). It is not the account's
+          // data: decided on it, a brand-new account would adopt nothing and
+          // latch with no starter set.
+          return {
+            userId: s.userId,
+            isLoading: s.isLoading,
+            loadFailedUserId: s.loadFailedUserId,
+            projects: s.projects,
+            items: withoutReleasedCaptures(s.userId, s.items),
+          };
+        },
         commit: (plan, forUserId) =>
           usePlannerStore.getState().seedStarterContainers(plan, forUserId),
       }).catch((error) => console.error('first-run container seeding failed', error));
@@ -442,6 +474,20 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     const loadPlanner = (userId: string) => {
       if (loadedUserId.current === userId) return;
       loadedUserId.current = userId;
+      // The look-only preview (lib/planner-snapshot.ts) is offered ONCE per
+      // page lifetime, on the first load attempt. Never on a retry: Retry calls
+      // initializeStore bare, and a SIGNED_IN after a failure (or an account
+      // switch) comes back here — re-previewing each offline retry would
+      // flicker cached → empty. Such a load is bare here too. Asked at APPLY
+      // time, not now: still on '/', and no data dialog armed (the /settings →
+      // Organize arm-then-push opens the console on fresh data, as it does
+      // without a preview). A first load on /item/x spends the offer, and its
+      // answer is no.
+      let preview: (() => boolean) | undefined;
+      if (!previewOffered.current) {
+        previewOffered.current = true;
+        preview = () => window.location.pathname === '/' && !isDataDialogArmed();
+      }
       // UNLATCHED ON FAILURE, and this half matters as much as the guard. A
       // failed load is a designed outcome, not a freak one: fetchRoutines
       // rethrows deliberately so a blip fails the WHOLE load rather than
@@ -460,7 +506,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       // The `userId` re-check is for a raced account switch: a slow failure for
       // the previous account must not unlatch the current one and trigger a
       // second load of someone else's data.
-      initializeStore(userId).then(
+      (preview ? initializeStore(userId, { preview }) : initializeStore(userId)).then(
         () => {
           const state = usePlannerStore.getState();
           // The deferred reads go out on a FAILED load too, ahead of the unlatch
@@ -572,6 +618,15 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     loadPlannerRef.current = loadPlanner;
     hydrateAfterLoadRef.current = hydrateAfterLoad;
 
+    // The cached planner's read, started BESIDE getSession rather than after
+    // it: a token refresh can hold getSession for longer than the skeleton's
+    // 250ms grace. Only a prefetch into memory, keyed on the on-disk owner
+    // stamp — nothing is painted until initializeStore offers the preview for
+    // the confirmed account, and a different account's adoption clears it
+    // (RAW_CLEARERS bumps the epoch, which voids the prefetch). Only where the
+    // route renders items; a lean route has no load to preview.
+    if (needsItemsRef.current) warmPlannerSnapshot(localStateOwner());
+
     // Check current session on mount
     supabase.auth.getSession().then(
       ({ data: { session }, error }) => {
@@ -587,7 +642,13 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         // retry; sending that user to /login would strand them on a sign-in
         // form they cannot use, so they stay where they are. That is the
         // backstop, not the usual road: a real offline launch rejects (below).
-        else if (!session && !error) leaveForLoginIfNoSession();
+        //
+        // The planner snapshot goes with it: with no session (expired, revoked
+        // or never), no account's whole planner should sit at rest here.
+        else if (!session && !error) {
+          clearPlannerSnapshot();
+          leaveForLoginIfNoSession();
+        }
       },
       // A rejection proves nothing about the account, and it is how an offline
       // launch with an expired session actually ends. auth-js retries the

@@ -48,6 +48,7 @@ import {
   __resetModEventsForTests,
   type ModEvent,
 } from '@/lib/mod-events';
+import { PREVIEW_ALLOWED_ACTIONS } from '@/lib/preview-write-guard';
 import * as db from '@/lib/db';
 import type { Item } from '@/lib/planner-types';
 
@@ -377,19 +378,91 @@ describe('review.saved', () => {
   });
 });
 
+/**
+ * The look-only preview (lib/planner-snapshot.ts) paints THIS browser's copy
+ * of the last session while the load is still in flight. A recipe that fired
+ * on it would be answering a tick nobody made this session, against rows that
+ * are about to be replaced — so the write barrier is the mod-event barrier
+ * too: every raise site is an action it refuses, and the landing itself has
+ * never raised anything (the test above). Nothing in mod-events.ts knows about
+ * the preview, and nothing needs to.
+ */
+describe('the look-only preview', () => {
+  beforeEach(() => load([task('t1'), habit('h1'), recurring('r1')]));
+  const preview = () => usePlannerStore.setState({ isPreview: true, isLoading: true });
+  const landing = () => usePlannerStore.setState({ isPreview: false, isLoading: false });
+
+  it('refuses every action that raises, so no recipe can hear a cached row', () => {
+    for (const name of RAISING_ACTIONS) expect(PREVIEW_ALLOWED_ACTIONS.has(name), name).toBe(false);
+    preview();
+    expect(store().addTask(newTask('Buy milk'))).toBe('');
+    store().addItem('errand', newTask('Post office'));
+    store().addTasksBulk('task', [newTask('one'), newTask('two')]);
+    store().toggleTaskStatus('t1');
+    store().toggleHabitStatus('h1', 'done');
+    store().setItemSkipped('r1', true);
+    store().setItemsCompleted(['t1'], true);
+    expect(delivered()).toEqual([]);
+    // Refused at entry, so the cached rows are untouched as well.
+    expect(store().items.map((i) => i.id)).toEqual(['t1', 'h1', 'r1']);
+    expect(item('t1').status).toBe('pending');
+  });
+
+  it('raises nothing at the landing, however much changed under the cached rows', async () => {
+    preview();
+    vi.mocked(db.fetchItems).mockResolvedValue([
+      habit('h1', { completedDates: [TODAY] }),
+      recurring('r1', { skippedDates: [TODAY] }),
+      task('t1', { status: 'completed' }),
+      task('new1'),
+    ]);
+    events = [];
+    await store().initializeStore(USER);
+    expect(store().isPreview).toBe(false);
+    expect(delivered()).toEqual([]);
+  });
+
+  it('raises a capture held through the preview once it is filed at the landing', () => {
+    preview();
+    expect(store().addTask(newTask('Water the plants'))).toBe('');
+    expect(delivered()).toEqual([]);
+    // What held-captures.ts does with the line it kept: files it after the
+    // landing, one entry each, exactly as if the Enter had landed then. Raised
+    // is all this pins: whether a recipe hears it depends on the account's mods
+    // having loaded (recipes-engine.test.ts, 'guards').
+    landing();
+    const id = store().addTask(newTask('Water the plants'));
+    expect(delivered()).toEqual([{ kind: 'item.created', itemId: id, type: 'task' }]);
+  });
+
+  it('raises nothing for rows a landing brings back: they are not new', () => {
+    landing();
+    store().refileItems([[task('q1')]]);
+    expect(store().items.some((i) => i.id === 'q1')).toBe(true);
+    store().settleLandedRows([{ row: task('q1', { title: 'Renamed' }), filed: task('q1'), gone: false }]);
+    expect(item('q1').title).toBe('Renamed');
+    expect(delivered()).toEqual([]);
+  });
+});
+
+/**
+ * The actions that raise. The plan asks for the list: a raise from any other
+ * planner-store action fails below, and the preview barrier must refuse each
+ * one. eod-store's single raise is covered by the review test above.
+ */
+const RAISING_ACTIONS = [
+  'addItem',
+  'addTask',
+  'addTasksBulk',
+  'addHabit',
+  'toggleTaskStatus',
+  'setItemsCompleted',
+  'setItemSkipped',
+  'toggleHabitStatus',
+];
+
 describe('raise sites', () => {
-  // The plan asks for the list: a raise from any other planner-store action
-  // fails here. eod-store's one raise is covered by the review test above.
-  const ALLOWED = [
-    'addItem',
-    'addTask',
-    'addTasksBulk',
-    'addHabit',
-    'toggleTaskStatus',
-    'setItemsCompleted',
-    'setItemSkipped',
-    'toggleHabitStatus',
-  ];
+  const ALLOWED = RAISING_ACTIONS;
   const read = (rel: string) => readFileSync(join(process.cwd(), rel), 'utf8');
 
   it('emit( appears only inside the named actions', () => {

@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { parseColor, printColor, toHex, type Color } from './color';
-import { THEME_BASES, type ThemeBaseId } from './theme-bases';
+import { contrast, mixOklab, parseColor, printColor, toHex, type Color } from './color';
+import { MODE_BASE, THEME_BASES, type ThemeBaseId } from './theme-bases';
 
 /**
  * The grammar of a user theme (memory/plans/mods.md, "Themes and Looks"). Pure,
@@ -305,6 +305,122 @@ export function effectiveColor(m: Pick<ThemeManifest, 'base' | 'tokens'>, key: C
   return c ? printColor(c) : null;
 }
 
+/**
+ * The waiting shimmer's floor for a user theme (`--planner-shimmer-level`,
+ * app/globals.css "The floor", memory/plans/instant-planner.md). It is not a
+ * token: nobody types it, and a built-in theme's level was MEASURED from
+ * pixels in every view — the lowest at which a waiting title still reads as
+ * the title it is. A user theme cannot be measured, so it is derived:
+ *
+ *   - Left the inks and the grounds alone (an accent-only theme, a swapped
+ *     lime, a different radius or font): the base's own measurement still
+ *     holds, so the theme keeps it. This is what makes a Studio copy shimmer
+ *     like Studio.
+ *   - Changed any of them: the strongest of three. The base's level and its
+ *     mode's (Paper's 30%, Night's 45%; Dusk is why the mode's is not enough,
+ *     at 51%). And the floor solved on the theme's own tokens
+ *     (`tokenShimmerFloor`), plus the margin the base's measurement sat above
+ *     that same solve on the base's tokens: the token solve sees only the four
+ *     paper grounds, and the real surfaces (a bucket card, a project block)
+ *     ask more, 0 to 12 points across the built-ins. Without it a theme that
+ *     softens its full ink or brightens its muted one would print a level whose
+ *     waiting titles fall under 4.5:1, or under the labels around them.
+ *
+ * Erring upwards costs only a little of the difference between waiting and
+ * settled: a higher level moves the waiting ink towards the title's resting
+ * ink. Capped at 100, which is the resting ink itself, for a theme whose full
+ * ink cannot keep the floor at any level (one saved with contrastOverride).
+ *
+ * The accent tokens are deliberately not consulted: the shimmer is foreground
+ * mixed into muted ink and never names lime (tests/unit/planner-shimmer-css.test.ts).
+ */
+export const SHIMMER_LEVEL_VAR = '--planner-shimmer-level';
+
+/** What the measurement rests on: the two inks that mix, and the grounds they mix over. */
+const SHIMMER_KEYS = ['ink0', 'ink2', 'paper0', 'paper1', 'paper2', 'paper3', 'paperWell'] as const satisfies readonly ColorKey[];
+/** The grounds a title or a label sits on, as tokens. */
+const SHIMMER_GROUNDS = ['paper0', 'paper1', 'paper2', 'paper3'] as const satisfies readonly ColorKey[];
+
+/**
+ * The lowest whole level (1 to 100) at which the waiting ink, `level`% of the
+ * full ink mixed into the muted ink in oklab as the CSS draws it, is on every
+ * ground at least 4.5:1, at least 1.25 times the muted ink on that ground, and
+ * at least 1.05 times the best the muted ink reaches on any of them: the
+ * floor's three tests, on tokens instead of pixels. 101 when no level passes.
+ */
+export function shimmerFloorOn(ink: Color, muted: Color, grounds: readonly Color[]): number {
+  const on = grounds.map((g) => ({ g, label: contrast(muted, g) }));
+  const bestLabel = Math.max(...on.map((x) => x.label));
+  for (let level = 1; level <= 100; level++) {
+    const wait = mixOklab(ink, muted, level / 100);
+    const holds = on.every(({ g, label }) => {
+      const c = contrast(wait, g);
+      return c >= 4.5 && c >= 1.25 * label && c >= 1.05 * bestLabel;
+    });
+    if (holds) return level;
+  }
+  return 101;
+}
+
+/** `shimmerFloorOn` for a manifest: ink0 into ink2, over the four paper grounds. */
+export function tokenShimmerFloor(m: Pick<ThemeManifest, 'base' | 'tokens'>): number {
+  const read = (key: ColorKey) => {
+    const v = effectiveColor(m, key);
+    return v === null ? null : parseColor(v);
+  };
+  const ink = read('ink0');
+  const muted = read('ink2');
+  const grounds = SHIMMER_GROUNDS.map(read);
+  if (!ink || !muted || grounds.some((g) => !g)) return 101;
+  return shimmerFloorOn(ink, muted, grounds as Color[]);
+}
+
+const baseMargin = new Map<ThemeBaseId, number>();
+/** How far the base's measured level sits above the token solve of its own tokens. */
+function marginOf(id: ThemeBaseId): number {
+  let margin = baseMargin.get(id);
+  if (margin === undefined) {
+    margin = Math.max(0, THEME_BASES[id].shimmerLevel - tokenShimmerFloor({ base: id, tokens: {} }));
+    baseMargin.set(id, margin);
+  }
+  return margin;
+}
+
+/**
+ * A level for a printed theme that carries none: a cache entry written by a
+ * build that printed no level (main's before the instant planner merged), read
+ * on the first cold load after this one ships, until the rows land and the
+ * cache is printed again. Without one the mode's level stands in, which is
+ * under the floor for a Dusk copy (45% against 51%) and for a theme that moved
+ * its inks. The cache keeps no manifest, so no base: this takes the strongest
+ * any base of the mode could need, the highest measured level of the mode and
+ * the token solve on the entry's own printed inks and grounds plus the largest
+ * base margin. Never lower than what printTheme would print for the same
+ * theme, so the landing of the rows can only step the level down.
+ */
+export function shimmerLevelForDecls(mode: ThemeMode, decls: readonly Decl[]): number {
+  const ids = (Object.keys(THEME_BASES) as ThemeBaseId[]).filter((id) => THEME_BASES[id].mode === mode);
+  const highest = Math.max(...ids.map((id) => THEME_BASES[id].shimmerLevel));
+  const margin = Math.max(...ids.map(marginOf));
+  const value = (key: ColorKey) => {
+    const d = decls.find(([name]) => name === CSS_VAR[key]);
+    return d ? parseColor(d[1]) : null;
+  };
+  const ink = value('ink0');
+  const muted = value('ink2');
+  const grounds = SHIMMER_GROUNDS.map(value);
+  if (!ink || !muted || grounds.some((g) => !g)) return highest;
+  return Math.min(100, Math.max(highest, shimmerFloorOn(ink, muted, grounds as Color[]) + margin));
+}
+
+export function shimmerLevelFor(m: Pick<ThemeManifest, 'base' | 'tokens'>): number {
+  const base = THEME_BASES[m.base];
+  const kept = SHIMMER_KEYS.every((key) => effectiveColor(m, key) === effectiveColor({ base: m.base, tokens: {} }, key));
+  if (kept) return base.shimmerLevel;
+  const guess = Math.max(base.shimmerLevel, THEME_BASES[MODE_BASE[base.mode]].shimmerLevel);
+  return Math.min(100, Math.max(guess, tokenShimmerFloor(m) + marginOf(m.base)));
+}
+
 /** Parsed: the declarations to write, never the manifest's text. */
 export function printTheme(m: ThemeManifest): PrintedTheme {
   const base = THEME_BASES[m.base];
@@ -324,6 +440,7 @@ export function printTheme(m: ThemeManifest): PrintedTheme {
     const printed = list.map((v) => parseOpaque(v)).filter((c): c is Color => !!c).map(printColor);
     if (printed.length > 0) decls.push([CSS_VAR[key], printed.slice(0, RELAY_MAX).join(', ')]);
   }
+  decls.push([SHIMMER_LEVEL_VAR, `${shimmerLevelFor(m)}%`]);
   decls.push([CSS_VAR.font, THEME_FONTS[m.tokens.font ?? base.tokens.font ?? 'inter'].stack]);
   for (const key of ASK_COLOR_KEYS) {
     const v = effectiveColor(m, key);
@@ -359,6 +476,8 @@ function buildPrepaintTable(): Record<string, { scope: DeclScope; re: string }> 
   for (const key of RELAY_KEYS) {
     t[CSS_VAR[key]] = { scope: 'root', re: `^${OPAQUE_SRC}(?:, ${OPAQUE_SRC}){0,${RELAY_MAX - 1}}$` };
   }
+  // A whole percentage, 1 to 100: never the labels' own ink (0), never full ink (above 100).
+  t[SHIMMER_LEVEL_VAR] = { scope: 'root', re: String.raw`^(?:100|[1-9][0-9]?)%$` };
   t[CSS_VAR.font] = { scope: 'body', re: exactly(THEME_FONT_KEYS.map((f) => THEME_FONTS[f].stack)) };
   for (const key of ASK_COLOR_KEYS) t[CSS_VAR[key]] = { scope: 'ask', re: `^${OPAQUE_SRC}$` };
   return t;

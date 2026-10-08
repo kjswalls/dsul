@@ -7,6 +7,7 @@ import { ArrowLeftToLine, Redo2, SkipForward, Undo2 } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { GroupSection } from '@/components/primitives/group-section';
 import { TaskRow, type RowItem } from '@/components/primitives/task-row';
+import { RowTitleText } from '@/components/primitives/row-title-text';
 import { PriorityGlyph, MetaText, RollingMetaText, formatDuration } from '@/components/primitives/pills';
 import { useDayItems } from '@/hooks/use-day-items';
 import { useFieldWidth, useFitHourPx, useResizeScrollCompensation } from '@/lib/use-fit-hour-px';
@@ -155,6 +156,10 @@ export function NowMarker({ top, lanes }: { top: number; lanes?: number[] }) {
   const stubs = lanes?.length ? lanes : [0];
   return (
     <div
+      // A settle frame (lib/settle.ts), in both schedule views: it glides with
+      // the hour lines when the landing moves the grid's window.
+      data-settle-key="now"
+      data-settle-role="frame"
       className="pointer-events-none absolute left-0 right-0 z-[var(--now-z)]"
       style={{ top, '--now-z': NOW_MARKER_Z } as React.CSSProperties}
       aria-hidden
@@ -362,6 +367,11 @@ function HourSlot({
       ref={setNodeRef}
       data-dnd-id={`hour:${hour}`}
       data-dnd-over={isOver ? 'true' : 'false'}
+      // A settle frame (lib/settle.ts): the hour's label and line glide with the
+      // blocks when the landing widens or narrows the window, so no block sits
+      // off its hairline mid-settle.
+      data-settle-key={`hour:${hour}`}
+      data-settle-role="frame"
       className="relative flex"
       style={{ height: hourPx }}
     >
@@ -615,6 +625,10 @@ export function ScheduleBlock({
   const timezone = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const rowDate = date ?? selectedDate;
   const dateStr = toDateStr(rowDate, timezone);
+  // This block to the cached → fresh settle (lib/settle.ts): the same key a
+  // TaskRow for this item on this day carries, so a task timed elsewhere glides
+  // from its Anytime row into the grid. Both variants, like the row.
+  const settleKey = `${dateStr}|${item.id}`;
   // Asked at THIS block's date, same as TaskRow and for the same reason: a week
   // column and the day view are different questions, and only the block knows
   // which one it is. Non-null only when the item is set aside, so it doubles as
@@ -939,6 +953,7 @@ export function ScheduleBlock({
         data-item-id={item.id}
         data-item-kind={itemType}
         data-item-type={typeName}
+        data-settle-key={settleKey}
         data-row-variant="skipped"
         data-completed="false"
         data-start-min={entry.startMin}
@@ -985,10 +1000,15 @@ export function ScheduleBlock({
           <div
             onClick={() => openEditFor(item, itemType)}
             style={{ marginLeft: LANE_PX }}
+            // The strip is this block's surface, as the pane is a live one's.
+            data-settle-plate=""
             className="pointer-events-auto flex h-full cursor-pointer items-center gap-1.5 rounded-[5px] bg-surface-3/60 px-2 hover-wash"
           >
             <SkipForward className="h-3 w-3 flex-shrink-0 text-muted-foreground/60" />
-            <span className="min-w-0 flex-1 truncate font-content text-content text-muted-foreground/70">
+            <span
+              data-row-title="muted"
+              className="min-w-0 flex-1 truncate font-content text-content text-muted-foreground/70"
+            >
               {item.title}
             </span>
             <button
@@ -1079,6 +1099,10 @@ export function ScheduleBlock({
     picking && 'pointer-events-auto opacity-100'
   );
 
+  // The waiting shimmer's mark, by the same three states that mute the title
+  // below (lib/planner-shimmer.ts): a muted title keeps its ink while the
+  // preview is up, and only an open one takes the band.
+  const titleMark = suppressed || receded || done ? 'muted' : 'open';
   const titleClass = cn(
     'min-w-0 flex-1 font-content text-content text-foreground',
     // Set aside (showPausedOnGrid). Muted, never struck through and never a
@@ -1102,6 +1126,7 @@ export function ScheduleBlock({
       data-item-id={item.id}
       data-item-kind={itemType}
       data-item-type={typeName}
+      data-settle-key={settleKey}
       // A skipped block is a different DOM shape under the same testid (no
       // checkbox, no resize handles) — same disambiguation TaskRow carries.
       data-row-variant="default"
@@ -1212,6 +1237,9 @@ export function ScheduleBlock({
           // share one band — only their panes tile inside it. So the pane is the
           // only honest handle on "this item's pixels", for a test or anything else.
           data-slot="pane"
+          // The block's surface: a settle that lifts this block makes it solid
+          // for the glide instead of grounding the whole band (lib/settle.ts).
+          data-settle-plate=""
           {...attributes}
           {...listeners}
           // The pane is the block's only stable handle: the wrapper is
@@ -1364,6 +1392,7 @@ export function ScheduleBlock({
                 <div className="flex min-w-0 items-start gap-1.5">
                   {checkbox}
                   <span
+                    data-row-title={titleMark}
                     className={cn(
                       titleClass,
                       'break-words',
@@ -1372,7 +1401,7 @@ export function ScheduleBlock({
                     )}
                     title={item.title}
                   >
-                    {item.title}
+                    <RowTitleText text={item.title} />
                   </span>
                 </div>
                 {/* No width to overlay here without covering the title, so the
@@ -1398,7 +1427,9 @@ export function ScheduleBlock({
               <>
                 <div className="relative flex min-w-0 items-center gap-2">
                   {checkbox}
-                  <span className={cn(titleClass, 'truncate')}>{item.title}</span>
+                  <span data-row-title={titleMark} className={cn(titleClass, 'truncate')}>
+                    <RowTitleText text={item.title} />
+                  </span>
                   {effDuration > 0 && (
                     <RollingMetaText
                       value={effDuration}
@@ -1422,7 +1453,9 @@ export function ScheduleBlock({
             ) : (
               <div className="relative flex min-w-0 items-center gap-2">
                 {checkbox}
-                <span className={cn(titleClass, 'truncate')}>{item.title}</span>
+                <span data-row-title={titleMark} className={cn(titleClass, 'truncate')}>
+                  <RowTitleText text={item.title} />
+                </span>
                 <span className={cn('flex flex-shrink-0 items-center gap-2', done && 'opacity-60')}>
                   {task?.priority && <PriorityGlyph priority={task.priority} />}
                   {effDuration > 0 && (
@@ -1717,7 +1750,9 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
         <LaneCapRow plan={lanePlan} fieldLeft={DAY_FIELD_LEFT} />
 
         {/* Hour grid with absolutely positioned blocks */}
-        <div ref={anchorRef} className="relative">
+        {/* A settle frame (lib/settle.ts): when the landing changes the length
+            of the Anytime strip above, the hours and blocks glide with it. */}
+        <div ref={anchorRef} data-settle-key="grid" data-settle-role="frame" className="relative">
           <div>
             {hours.map((hour, i) => (
               <HourSlot
@@ -1740,6 +1775,10 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
               why the label it lands on steps aside. */}
           {nowY !== null && (
             <span
+              // A settle frame, the week gutter's `gutter-now`: it glides with
+              // the now-marker's diamond rather than snapping beside it.
+              data-settle-key="gutter-now"
+              data-settle-role="frame"
               className={cn(
                 'pointer-events-none absolute left-0 z-[6] -translate-y-1/2 font-num text-2xs font-medium text-success-text',
                 DAY_GUTTER_INSET

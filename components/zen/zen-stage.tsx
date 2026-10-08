@@ -148,13 +148,15 @@ function onScreen(r: Rect): boolean {
 
 /**
  * The hero's own title somewhere in the planner canvas: the text leaf under a
- * `[data-item-id]` whose whole text is the title. The sidebar is left out (a
- * braindump row is not where the day keeps this item), and the same item can
- * render once per day column, so a copy inside today's column
- * (`[data-date]`) wins over the first one on screen. None at all means the
- * ring runs without a flight.
+ * `[data-item-id]` whose whole text is the title. A row title's emoji sit in
+ * their own `[data-row-emoji]` spans (components/primitives/row-title-text.tsx),
+ * so an element whose only children are those still counts as the leaf. The
+ * sidebar is left out (a braindump row is not where the day keeps this item),
+ * and the same item can render once per day column, so a copy inside today's
+ * column (`[data-date]`) wins over the first one on screen. None at all means
+ * the ring runs without a flight.
  */
-function findSourceTitle(planner: HTMLElement, id: string, title: string): HTMLElement | null {
+export function findSourceTitle(planner: HTMLElement, id: string, title: string): HTMLElement | null {
   const canvas = planner.querySelector('main') ?? planner;
   const tz =
     usePlannerStore.getState().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -164,7 +166,8 @@ function findSourceTitle(planner: HTMLElement, id: string, title: string): HTMLE
     if (!onScreen(rectOf(host))) continue;
     let leaf: HTMLElement | null = null;
     for (const el of host.querySelectorAll<HTMLElement>('*')) {
-      if (el.children.length === 0 && el.textContent?.trim() === title) {
+      const textOnly = [...el.children].every((child) => child.hasAttribute('data-row-emoji'));
+      if (textOnly && el.textContent?.trim() === title) {
         leaf = el;
         break;
       }

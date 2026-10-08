@@ -7,6 +7,7 @@ import { clearChatState } from './conversations-store';
 import { useEODStore } from './eod-store';
 import { useKeyboardShortcutsStore } from './keyboard-shortcuts-store';
 import { useMorningStore } from './morning-store';
+import { clearPlannerSnapshot } from './planner-snapshot';
 import { usePlannerStore } from './planner-store';
 import { releaseThisBrowserPush } from './push-release';
 import { useSidebarStore } from './sidebar-store';
@@ -280,17 +281,21 @@ export const PERSISTED_USER_STORES: readonly PersistedUserStore[] = [
  * Per-user state outside any zustand persist blob, so the audit test cannot
  * walk it by key: saved conversations are a memory-only cache (whose clear
  * also sweeps the pre-2a transcript keys, one fixed plus one per item thread),
- * and sweep-grace is plain functions over a raw map. Both are wholly
- * disclosive, so neither takes a scope. Covered by named tests. The user-theme
- * cache (lib/user-themes/store.ts) is the account's own colours, so it goes too,
- * with any device pick naming one of them (lib/user-themes/forget-picks.ts).
- * So does a question kept from `?` (lib/ask-pending.ts): sessionStorage, and
- * the memory mirror a reader may have filled before this ran.
+ * and sweep-grace is plain functions over a raw map. The planner snapshot
+ * (lib/planner-snapshot.ts) is IndexedDB, which the localStorage audit cannot
+ * see at all: a copy of every title and note, so it has its own audit line and
+ * named tests. All three are wholly disclosive, so none takes a scope. The
+ * user-theme cache (lib/user-themes/store.ts) is the account's own colours, so
+ * it goes too, with any device pick naming one of them
+ * (lib/user-themes/forget-picks.ts). So does a question kept from `?`
+ * (lib/ask-pending.ts): sessionStorage, and the memory mirror a reader may have
+ * filled before this ran.
  */
 const RAW_CLEARERS: readonly (() => void)[] = [
   clearChatState,
   clearKeptQuestionState,
   clearReleased,
+  clearPlannerSnapshot,
   clearUserThemeCache,
   forgetUserThemePicks,
 ];
@@ -324,7 +329,7 @@ function setLocalStateOwner(userId: string | null): void {
  * is a zustand `set()`, and the persist middleware calls `storage.setItem`
  * UNWRAPPED — a browser at its quota, or one with site data blocked, throws
  * `QuotaExceededError`/`SecurityError` straight back out of `set()`. In a bare
- * loop that one throw aborts the stores after it, both raw clearers and the
+ * loop that one throw aborts the stores after it, every raw clearer and the
  * stamp write; and because this runs FIRST inside the provider's `adoptUser`,
  * it would take `loadPlanner`, `hydrateSettings` and both extension hydrates
  * down with it. The app would come up as a blank shell on a browser that,

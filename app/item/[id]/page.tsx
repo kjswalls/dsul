@@ -11,6 +11,7 @@ import { ItemDetailSections } from '@/components/planner/item-detail-sections';
 import { ItemConversation } from '@/components/ai/item-conversation';
 import { BandSquare } from '@/components/planner/item-bands';
 import { usePlannerStore } from '@/lib/planner-store';
+import { selectPlannerSettled } from '@/lib/planner-ready';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
 import { useAICapabilities } from '@/lib/ai-connection-store';
 
@@ -50,8 +51,13 @@ export default function ItemPage() {
   const router = useRouter();
   /* Field selectors, not the whole store — `usePlannerStore()` bare
      re-renders on every set() anywhere. Selecting the item itself narrows it
-     further: `find` returns the same object until that one row changes. */
-  const item = usePlannerStore((s) => s.items.find((i) => i.id === id));
+     further: `find` returns the same object until that one row changes.
+     Only once SETTLED: the look-only preview (reached by client navigation
+     from `/`) holds cached rows, and the inline editor below autosaves. Until
+     then the page reads as loading. */
+  const item = usePlannerStore((s) =>
+    selectPlannerSettled(s) ? s.items.find((i) => i.id === id) : undefined
+  );
   const userId = usePlannerStore((s) => s.userId);
   const isLoading = usePlannerStore((s) => s.isLoading);
   // The thread column exists only while something can answer in it.

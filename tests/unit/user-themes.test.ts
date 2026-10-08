@@ -19,6 +19,7 @@ import {
   resolveLightPick,
 } from '@/lib/theme-looks';
 import type { UserMod } from '@/lib/mods/schema';
+import { SHIMMER_LEVEL_VAR, ThemeManifestSchema, printTheme } from '@/lib/mods/theme-grammar';
 
 /** The user-theme registry (lib/user-themes/store.ts) and how a pick resolves against it. */
 
@@ -97,6 +98,48 @@ describe('from the cache', () => {
     raw.t.push({ s: 'not-a-slug', m: 'light', c: '#ffffff', d: [] });
     localStorage.setItem(USER_THEME_CACHE_KEY, JSON.stringify(raw));
     expect(Object.keys(readUserThemeCache())).toEqual([themeSlugForId(r.id)]);
+  });
+
+  /**
+   * A cache written by a build that printed no waiting-shimmer level (main's,
+   * before the instant planner): read on the first cold load after this one
+   * ships, until the rows land and reprint it. The level is derived from the
+   * entry's own inks and grounds, never under what printTheme would print for
+   * the theme, so the rows landing can only step it down.
+   */
+  it('gives an entry printed with no shimmer level one at least as strong as its rows will', () => {
+    const manifests = [
+      { version: 1, mode: 'dark', base: 'dusk', tokens: {} },
+      { version: 1, mode: 'dark', base: 'night', tokens: {} },
+      { version: 1, mode: 'dark', base: 'terminal', tokens: { ink0: '#eeeeee' } },
+      { version: 1, mode: 'dark', base: 'night', tokens: { ink2: 'oklch(0.85 0.008 286)' } },
+      { version: 1, mode: 'light', base: 'studio', tokens: {} },
+      { version: 1, mode: 'light', base: 'paper', tokens: { ink0: 'oklch(0.5 0 0)', ink1: 'oklch(0.5 0 0)', ink2: 'oklch(0.66 0 0)' } },
+    ];
+    const pct = (decls: [string, string][]) => Number(new Map(decls).get(SHIMMER_LEVEL_VAR)?.replace('%', ''));
+    const t = manifests.map((m, i) => {
+      const printed = printTheme(ThemeManifestSchema.parse(m));
+      return { s: `u-0000000${i}`, m: printed.mode, c: printed.themeColor, d: printed.decls.filter(([n]) => n !== SHIMMER_LEVEL_VAR) };
+    });
+    localStorage.setItem(USER_THEME_CACHE_KEY, JSON.stringify({ v: 1, t }));
+    const cached = readUserThemeCache();
+    manifests.forEach((m, i) => {
+      const rows = pct(printTheme(ThemeManifestSchema.parse(m)).decls);
+      const fromCache = pct(cached[`u-0000000${i}`].decls);
+      expect(fromCache, m.base).toBeGreaterThanOrEqual(rows);
+      expect(fromCache, m.base).toBeLessThanOrEqual(100);
+    });
+    // Dusk's measured 51%, not the 45% `.dark` would have given it.
+    expect(pct(cached['u-00000000'].decls)).toBe(51);
+    // The mode's own level for a light copy: what `:root` gave it before.
+    expect(pct(cached['u-00000004'].decls)).toBe(30);
+  });
+
+  it('leaves an entry that carries its level as printed', () => {
+    const r = row({ manifest: { version: 1, mode: 'light', base: 'studio', tokens: {} } });
+    setUserThemesFromRows([r], false);
+    const decls = readUserThemeCache()[themeSlugForId(r.id)].decls;
+    expect(decls.filter(([n]) => n === SHIMMER_LEVEL_VAR)).toEqual([[SHIMMER_LEVEL_VAR, '13%']]);
   });
 
   it('the account-switch clear empties the cache and the registry', () => {

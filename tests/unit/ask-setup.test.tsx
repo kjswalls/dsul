@@ -723,6 +723,41 @@ describe('No AI, thanks', () => {
     usePlannerStore.setState({ historyIndex: at } as never);
   });
 
+  it('stays through a load landing under it: the look-only preview\'s, or a cold one, is not an edit', async () => {
+    // The column is up over the preview (isLoading true, history at -1); the
+    // landing's set() restarts the history at its 'Session start', 0.
+    usePlannerStore.setState({ isLoading: true, isPreview: true, historyIndex: -1 } as never);
+    try {
+      renderOpen();
+      await pressNoAI();
+      expect(strip()).toHaveTextContent(AI_OFF_LABEL);
+      act(() => usePlannerStore.setState({ isLoading: false, isPreview: false, historyIndex: 0 } as never));
+      expect(strip()).toHaveTextContent(AI_OFF_LABEL);
+      // The first edit after the landing still takes the strip and Ctrl+Z.
+      act(() => usePlannerStore.setState({ historyIndex: 1 } as never));
+      expect(strip()).toBeNull();
+    } finally {
+      usePlannerStore.setState({ isLoading: false, isPreview: false, historyIndex: -1 } as never);
+    }
+  });
+
+  it('goes on a change of account, even with a load in flight: the last account\'s Undo is not the next one\'s', async () => {
+    const was = usePlannerStore.getState().userId;
+    usePlannerStore.setState({ userId: 'u-a', isLoading: true, isPreview: true, historyIndex: -1 } as never);
+    try {
+      renderOpen();
+      await pressNoAI();
+      expect(strip()).toHaveTextContent(AI_OFF_LABEL);
+      // A sibling tab signed in as another account: the adoption stamps it, data emptied, its load starting.
+      act(() => usePlannerStore.getState().identifyUser('u-b'));
+      expect(usePlannerStore.getState().isLoading).toBe(true);
+      expect(strip()).toBeNull();
+      expect(patches).toEqual([{ hidden: true }]);
+    } finally {
+      usePlannerStore.setState({ userId: was, isLoading: false, isPreview: false, historyIndex: -1 } as never);
+    }
+  });
+
   it('a row that leaves without Undo hands focus to the dock, never to <body>', async () => {
     renderOpen();
     await pressNoAI();

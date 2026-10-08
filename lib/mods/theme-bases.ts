@@ -21,7 +21,19 @@ export interface ThemeBase {
   mode: ThemeMode;
   tokens: ThemeTokens;
   same: Partial<Record<ColorKey, ColorKey>>;
+  /**
+   * The waiting shimmer's contrast floor for this theme, as a percentage of
+   * full ink mixed into the muted ink (`--planner-shimmer-level`, app/globals.css,
+   * "The floor"). MEASURED from pixels in every view, not computed — so a user
+   * theme, which nobody measured, inherits it (shimmerLevelFor in
+   * theme-grammar.ts). The light and dark mode defaults are Paper's and
+   * Night's, since those are the mode base blocks.
+   */
+  shimmerLevel: number;
 }
+
+/** The theme whose block IS the mode's base block: `:root` for light, `.dark` for dark. */
+export const MODE_BASE = { light: 'paper', dark: 'night' } as const satisfies Record<ThemeMode, ThemeBaseId>;
 
 /** What a palette (a tint) re-tints. A user theme always prints these, so no tint shows through. */
 export const TINT_GROUND_KEYS = [
@@ -72,6 +84,7 @@ export const THEME_BASES: Record<ThemeBaseId, ThemeBase> = {
       font: 'inter',
     },
     same: {},
+    shimmerLevel: 30,
   },
   studio: {
     mode: 'light',
@@ -125,6 +138,7 @@ export const THEME_BASES: Record<ThemeBaseId, ThemeBase> = {
       ],
     },
     same: { askIconPairInk: 'askIconPair' },
+    shimmerLevel: 13,
   },
   sorbet: {
     mode: 'light',
@@ -178,6 +192,7 @@ export const THEME_BASES: Record<ThemeBaseId, ThemeBase> = {
       ],
     },
     same: {},
+    shimmerLevel: 30,
   },
   night: {
     mode: 'dark',
@@ -205,6 +220,7 @@ export const THEME_BASES: Record<ThemeBaseId, ThemeBase> = {
       font: 'inter',
     },
     same: { askIconPairInk: 'askIconPair' },
+    shimmerLevel: 45,
   },
   terminal: {
     mode: 'dark',
@@ -243,6 +259,7 @@ export const THEME_BASES: Record<ThemeBaseId, ThemeBase> = {
       ],
     },
     same: { askIconPairInk: 'askIconPair' },
+    shimmerLevel: 24,
   },
   dusk: {
     mode: 'dark',
@@ -281,6 +298,7 @@ export const THEME_BASES: Record<ThemeBaseId, ThemeBase> = {
       ],
     },
     same: { askIconPairInk: 'askIconPair' },
+    shimmerLevel: 51,
   },
 };
 

@@ -66,7 +66,7 @@ import { getActionLog, usePlannerStore } from '@/lib/planner-store';
 import { useModsStore } from '@/lib/mods-store';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { __resetModEventsForTests, subscribeModEvents, type ModEvent } from '@/lib/mod-events';
-import { __resetBrokerForTests, applyHeld, type ApplyContext } from '@/lib/mods/broker';
+import { __resetBrokerForTests, applyHeld, modRuntimeReady, type ApplyContext } from '@/lib/mods/broker';
 import { createHookState, type HeldWrite, type HookState } from '@/lib/mods/broker-core';
 import { MOD_USES, type UserMod } from '@/lib/mods/schema';
 import * as db from '@/lib/db';
@@ -302,6 +302,37 @@ describe('applying held writes', () => {
     useModsStore.setState({ safeMode: true });
     expect(applyHeld(heldHook(row, edit), ctx())).toEqual({ status: 'stale' });
     expect(item(T2).title).not.toBe('Nope');
+  });
+
+  it('the look-only preview is never ready: a hook held over cached rows writes, toasts and opens nothing', () => {
+    // memory/plans/instant-planner.md: the preview keeps isLoading on for its
+    // whole length, so settled (modRuntimeReady's planner half) is false, and
+    // ModHost never builds a runtime then. applyHeld asks again regardless.
+    const row = mod();
+    seed(row);
+    expect(modRuntimeReady()).toBe(true);
+    usePlannerStore.setState({ isLoading: true, isPreview: true });
+    expect(modRuntimeReady()).toBe(false);
+    const h = heldHook(row, [
+      { kind: 'edit', id: T2, patch: { title: 'Nope' } },
+      { kind: 'create', type: 'task', title: 'From the cache' },
+    ]);
+    h.ui.push({ kind: 'toast', text: 'Nope' });
+    h.ui.push({ kind: 'openItem', id: T2 });
+    vi.mocked(db.createItem).mockClear();
+    vi.mocked(db.createItems).mockClear();
+    vi.mocked(db.updateItem).mockClear();
+    expect(applyHeld(h, ctx({ event: { kind: 'command', id: 'log' }, hookLabel: 'command Log' }))).toEqual({
+      status: 'stale',
+    });
+    expect(item(T2).title).not.toBe('Nope');
+    expect(store().items.some((i) => i.title === 'From the cache')).toBe(false);
+    expect(db.createItem).not.toHaveBeenCalled();
+    expect(db.createItems).not.toHaveBeenCalled();
+    expect(db.updateItem).not.toHaveBeenCalled();
+    expect(toast).not.toHaveBeenCalled();
+    usePlannerStore.setState({ isLoading: false, isPreview: false });
+    expect(modRuntimeReady()).toBe(true);
   });
 
   it('a toast runs after the batch, under host chrome, and nothing is logged without writes', () => {

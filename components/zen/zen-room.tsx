@@ -26,7 +26,9 @@ import {
 } from '@/lib/zen';
 import { toDateStr } from '@/lib/recurrence';
 import { prefersReducedMotion } from '@/lib/zen-transition';
+import { usePlannerPreviewing, usePlannerVisible } from '@/lib/planner-ready';
 import { cn } from '@/lib/utils';
+import { PlannerSyncLine } from '@/components/shell/planner-sync-line';
 
 /**
  * Zen — the room.
@@ -82,6 +84,17 @@ export function ZenSurface() {
   const toggleHabitStatus = usePlannerStore((s) => s.toggleHabitStatus);
   const getProjectColor = usePlannerStore((s) => s.getProjectColor);
   const streaksOn = useStreaksEnabled();
+  /*
+   * The room has no skeleton of its own, and a reload with Zen open lands
+   * straight in here. Visible: there is a day to talk about — the fresh load,
+   * or the look-only preview (lib/planner-ready.ts). Until then the room claims
+   * nothing: "Clear / That's the day." over an empty store was a false claim on
+   * every cold load. Previewing: the rows are this browser's cache, so <main>
+   * goes inert until the fresh data lands — a tick would write on stale state
+   * (Beeminder included). The exit stays live.
+   */
+  const visible = usePlannerVisible();
+  const previewing = usePlannerPreviewing();
   const [foldOpen, setFoldOpen] = useState(false);
   /*
    * The fold's height while it is moving, in real pixels. `max-height` cannot
@@ -247,7 +260,17 @@ export function ZenSurface() {
   const heroMulti = hero ? multiCount(hero.row, todayStr) : null;
 
   return (
-    <div className="zen-room relative flex h-[100dvh] flex-col items-center overflow-y-auto bg-surface-0 px-5 pt-7 pb-24">
+    <div
+      data-settle-scope="zen"
+      // Rows glide unlifted here: the frost and the ledger's veil are not their ancestors (lib/settle.ts LIFT_OFF).
+      data-settle-lift="off"
+      className="zen-room relative flex h-[100dvh] flex-col items-center overflow-y-auto bg-surface-0 px-5 pt-7 pb-24"
+    >
+      {/* The look-only preview's sync line (components/shell/planner-sync-line.tsx):
+          a reload with Zen open lands straight in here, so the room says
+          "syncing" the way the canvas does. Neutral, over the frost. */}
+      <PlannerSyncLine className="absolute inset-x-0 top-0 z-20" />
+
       {/* The frost field — the room's whole ambience. aria-hidden and
           pointer-events-none: it is weather, not content. See app/globals.css
           for why it is this dim and this slow. */}
@@ -265,9 +288,16 @@ export function ZenSurface() {
         }).format(todayDate)}
       </header>
 
-      <main className="relative z-10 flex w-full max-w-[560px] flex-1 flex-col justify-center">
+      {/* Inert while previewing — <main>, not the room, so the exit below and
+          Escape still leave. */}
+      <main
+        inert={previewing}
+        className="relative z-10 flex w-full max-w-[560px] flex-1 flex-col justify-center"
+      >
         {/* ── The hero ─────────────────────────────────────────────────── */}
-        <section className="flex flex-col gap-[18px]">
+        {/* A settle frame (lib/settle.ts): <main> centres it, so it moves
+            whenever the ledger below changes length. */}
+        <section data-settle-key="zen:hero" data-settle-role="frame" className="flex flex-col gap-[18px]">
           <div className="flex items-center gap-[7px] text-[10.5px] font-medium uppercase leading-[14px] tracking-[0.09em] text-muted-foreground">
             <span
               className={cn(
@@ -275,12 +305,16 @@ export function ZenSurface() {
                 hero?.kind === 'now' ? 'bg-primary' : 'bg-border'
               )}
             />
-            {heroKicker(hero)}
+            {/* "Clear" is a claim about the day: none until there is one. */}
+            {hero || visible ? heroKicker(hero) : null}
           </div>
 
           {hero === null ? (
-            <h1 className="m-0 font-serif text-[clamp(2rem,5.5vw,3.15rem)] font-semibold leading-[1.16] tracking-[-0.01em] text-balance text-secondary-foreground">
-              That&apos;s the day.
+            <h1
+              data-settle-key="zen:hero:none"
+              className="m-0 font-serif text-[clamp(2rem,5.5vw,3.15rem)] font-semibold leading-[1.16] tracking-[-0.01em] text-balance text-secondary-foreground"
+            >
+              {visible && <>That&apos;s the day.</>}
             </h1>
           ) : (
             <>
@@ -303,6 +337,9 @@ export function ZenSurface() {
                   // The item the room is about — components/zen/zen-stage.tsx
                   // flies it here from its slot in the planner and back.
                   data-zen-hero={hero.row.item.id}
+                  // Keyed by item, so a hero that changes on landing settles as
+                  // one row leaving and another arriving, not a text swap.
+                  data-settle-key={`zen:hero:${hero.row.item.id}`}
                   className={cn(
                     'm-0 font-serif text-[clamp(2rem,5.5vw,3.15rem)] font-semibold leading-[1.16] tracking-[-0.01em] text-balance',
                     heroDone && 'text-muted-foreground line-through opacity-60'
@@ -356,7 +393,11 @@ export function ZenSurface() {
         {/* ── The ledger ───────────────────────────────────────────────── */}
         {(ledger.length > 0 || doneRows.length > 0) && (
           <>
-            <div className="mt-11 flex items-center gap-[7px] text-[10.5px] font-medium uppercase leading-[14px] tracking-[0.09em] text-muted-foreground">
+            <div
+              data-settle-key="zen:ledger"
+              data-settle-role="frame"
+              className="mt-11 flex items-center gap-[7px] text-[10.5px] font-medium uppercase leading-[14px] tracking-[0.09em] text-muted-foreground"
+            >
               <span className="h-1.5 w-1.5 flex-none rounded-full bg-border" />
               {ledger.length > 0 ? 'Next' : 'Earlier'}
             </div>
@@ -488,7 +529,15 @@ function ZenLedgerRow({
         : streak;
 
   return (
-    <li className="grid grid-cols-[16px_1fr_auto] items-center gap-x-[19px] rounded-[5px] py-[7px] pl-[3px] pr-2 hover:bg-accent">
+    <li
+      data-settle-key={`zen:${row.item.id}`}
+      // Identity, as every planner row carries it. The hero's <h1> deliberately
+      // has none: the settle pairs unmatched rows by id (lib/settle-plan.ts),
+      // and a hero that changed on landing should leave and arrive in place,
+      // not slide a headline in from a ledger line's slot.
+      data-item-id={row.item.id}
+      className="grid grid-cols-[16px_1fr_auto] items-center gap-x-[19px] rounded-[5px] py-[7px] pl-[3px] pr-2 hover:bg-accent"
+    >
       <button
         type="button"
         onClick={onTick}

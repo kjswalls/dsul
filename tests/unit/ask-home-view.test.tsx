@@ -66,6 +66,7 @@ import {
   useConversationsStore,
 } from '@/lib/conversations-store';
 import { resetAgentFreshness } from '@/hooks/use-agent-freshness';
+import { answerAgentQuestion } from '@/lib/agent-question';
 import { seedAI, CONNECTED_MODEL } from './helpers/ai-fixtures';
 import { fakeApi, fakeTransport, summary } from './helpers/conversations-fakes';
 import type { Item } from '@/lib/planner-types';
@@ -395,6 +396,35 @@ describe('Needs you', () => {
     more.focus();
     fireEvent.click(more);
     await waitFor(() => expect(document.activeElement).toBe(within(cards()[3]).getByTestId('needs-you-title')));
+  });
+
+  it('waits for fresh data: none over the look-only preview, the cards once it lands', () => {
+    hoisted.events.dentist = ask('Tue 3pm or Thu 10am?', ['Tue 3pm', 'Thu 10am']);
+    setItems([DENTIST]);
+    // The preview (lib/planner-ready.ts): last session's rows, the load still in flight.
+    usePlannerStore.setState({ isLoading: true, isPreview: true } as never);
+    try {
+      render(<AskHome />);
+      expect(screen.queryByTestId('needs-you')).toBeNull();
+      act(() => usePlannerStore.setState({ isLoading: false, isPreview: false } as never));
+      expect(cards()).toHaveLength(1);
+    } finally {
+      usePlannerStore.setState({ isLoading: false, isPreview: false } as never);
+    }
+  });
+
+  it('an answer made over the preview anyway writes nothing, not even the reply', () => {
+    setItems([DENTIST]);
+    usePlannerStore.setState({ isLoading: true, isPreview: true } as never);
+    try {
+      // The write barrier would refuse the re-queue, so the reply must not go alone.
+      expect(answerAgentQuestion(DENTIST, 'Thu 10am')).toBe(false);
+      expect(hoisted.recordAgentReply).not.toHaveBeenCalled();
+    } finally {
+      usePlannerStore.setState({ isLoading: false, isPreview: false } as never);
+    }
+    expect(answerAgentQuestion(DENTIST, 'Thu 10am')).toBe(true);
+    expect(hoisted.recordAgentReply).toHaveBeenCalledWith('dentist', 'task', 'Thu 10am');
   });
 
   it('reads "AI needs you" for the AI, and its title opens the item', () => {

@@ -1,12 +1,18 @@
 import { describe, it, expect } from 'vitest';
-import { parseColor, printColor } from '@/lib/mods/color';
+import { contrast, mixOklab, parseColor, printColor } from '@/lib/mods/color';
 import {
   CSS_VAR,
+  SHIMMER_LEVEL_VAR,
   ThemeManifestSchema,
   canonicalTokens,
+  effectiveColor,
+  isPrintedDecl,
   parseToken,
   printTheme,
+  tokenShimmerFloor,
 } from '@/lib/mods/theme-grammar';
+import { contrastWarnings } from '@/lib/mods/theme-contrast';
+import { THEME_BASES } from '@/lib/mods/theme-bases';
 
 /**
  * The user-theme grammar (memory/plans/mods.md, "Themes and Looks"): what a
@@ -207,6 +213,106 @@ describe('printing', () => {
     for (const v of ['--paper-0', '--paper-well', '--ink-2', '--accent', '--border', '--input', '--row-selected', '--scrim', '--sidebar-border']) {
       expect(decls.has(v), v).toBe(true);
     }
+  });
+
+  /**
+   * The waiting shimmer's floor, derived rather than measured for a user theme
+   * (shimmerLevelFor, app/globals.css "The floor"). The level is printed as a
+   * root declaration, so the theme's own rule — (0,4,0), its attribute twice —
+   * beats the `:root` and `.dark` blocks a user theme's slug no longer matches.
+   */
+  describe('the waiting shimmer’s level', () => {
+    const level = (over: Record<string, unknown> = {}) =>
+      new Map(printTheme(ThemeManifestSchema.parse(manifest(over))).decls).get(SHIMMER_LEVEL_VAR);
+
+    it('is printed for every theme, as a whole percentage the table accepts', () => {
+      for (const base of ['paper', 'studio', 'sorbet', 'night', 'terminal', 'dusk'] as const) {
+        const mode = THEME_BASES[base].mode;
+        const value = level({ base, mode });
+        expect(value, base).toMatch(/^\d{1,3}%$/);
+        expect(isPrintedDecl(SHIMMER_LEVEL_VAR, value), base).toBe(true);
+      }
+    });
+
+    it('keeps the base’s own measurement while the inks and grounds are its own', () => {
+      expect(level({ base: 'studio' })).toBe('13%');
+      expect(level({ base: 'dusk', mode: 'dark' })).toBe('51%');
+      // Re-typing a base's own value is not a change.
+      expect(level({ base: 'studio', tokens: { ink0: THEME_BASES.studio.tokens.ink0 } })).toBe('13%');
+      // Neither is the accent, the radius or the font: the shimmer never names lime.
+      expect(level({ base: 'studio', tokens: { limeSolid: '#ff00ff', accent: 'oklch(0.2 0 0 / 5%)', radius: 2, font: 'jetbrains' } })).toBe(
+        '13%'
+      );
+    });
+
+    it('takes the stronger of the base’s and its mode’s once an ink or a ground moves', () => {
+      // Studio measured low (13%) on its own inks; moved, it falls back to light's 30%.
+      expect(level({ base: 'studio', tokens: { ink2: '#777777' } })).toBe('30%');
+      expect(level({ base: 'studio', tokens: { paper2: '#f4f4f4' } })).toBe('30%');
+      // Dusk sits above its mode, so a changed ground keeps Dusk's 51%, not Night's 45%.
+      expect(level({ base: 'dusk', mode: 'dark', tokens: { paper0: '#101010' } })).toBe('51%');
+      // Terminal measured below Night: a moved ink takes the mode's.
+      expect(level({ base: 'terminal', mode: 'dark', tokens: { ink0: '#eeeeee' } })).toBe('45%');
+    });
+
+    /**
+     * The floor's three tests on the theme's own tokens: on every paper ground
+     * the waiting ink (the level's share of ink0 mixed into ink2, in oklab, as
+     * the CSS draws it) is at least 4.5:1, at least 1.25 times ink2 there, and
+     * at least 1.05 times the best ink2 reaches anywhere.
+     */
+    const keepsFloor = (raw: Record<string, unknown>) => {
+      const m = ThemeManifestSchema.parse(raw);
+      const pct = Number(level(raw)!.replace('%', ''));
+      const read = (k: Parameters<typeof effectiveColor>[1]) => parseColor(effectiveColor(m, k)!)!;
+      const ink = read('ink0');
+      const muted = read('ink2');
+      const grounds = (['paper0', 'paper1', 'paper2', 'paper3'] as const).map(read);
+      const best = Math.max(...grounds.map((g) => contrast(muted, g)));
+      const wait = mixOklab(ink, muted, pct / 100);
+      const worst = Math.min(...grounds.map((g) => contrast(wait, g)));
+      const vsLabel = Math.min(...grounds.map((g) => contrast(wait, g) / contrast(muted, g)));
+      return { pct, warnings: contrastWarnings(m), worst, vsLabel, vsBest: worst / best };
+    };
+
+    it('never prints a level under the floor on the theme’s own tokens, a theme with no contrast warning included', () => {
+      // Paper with a softer full ink: every pair passes contrastWarnings, yet
+      // 30% would leave waiting titles at about 3.7:1.
+      const softer = manifest({ tokens: { ink0: 'oklch(0.5 0 0)', ink1: 'oklch(0.5 0 0)', ink2: 'oklch(0.66 0 0)' } });
+      // Night with only its muted ink raised: at 45% the labels on the page outrank the titles.
+      const brightMuted = manifest({ base: 'night', mode: 'dark', tokens: { ink2: 'oklch(0.85 0.008 286)' } });
+      // Night with its full ink dimmed.
+      const dimInk = manifest({
+        base: 'night',
+        mode: 'dark',
+        tokens: { ink0: 'oklch(0.72 0 0)', ink1: 'oklch(0.72 0 0)', ink2: 'oklch(0.62 0 0)' },
+      });
+      for (const [name, raw] of [['softer', softer], ['brightMuted', brightMuted], ['dimInk', dimInk]] as const) {
+        const r = keepsFloor(raw);
+        expect(r.warnings, name).toEqual([]);
+        expect(r.pct, name).toBeLessThanOrEqual(100);
+        expect(r.worst, name).toBeGreaterThanOrEqual(4.5);
+        expect(r.vsLabel, name).toBeGreaterThanOrEqual(1.25);
+        expect(r.vsBest, name).toBeGreaterThanOrEqual(1.05);
+      }
+      expect(keepsFloor(softer).pct).toBeGreaterThan(30);
+      expect(keepsFloor(brightMuted).pct).toBeGreaterThan(45);
+    });
+
+    it('the token solve sits at or under every built-in’s measurement, so the measured level is the one kept', () => {
+      for (const base of ['paper', 'studio', 'sorbet', 'night', 'terminal', 'dusk'] as const) {
+        const floor = tokenShimmerFloor({ base, tokens: {} });
+        expect(floor, base).toBeLessThanOrEqual(THEME_BASES[base].shimmerLevel);
+        expect(floor, base).toBeGreaterThanOrEqual(1);
+      }
+    });
+
+    it('caps at 100, the resting ink, when no level can keep the floor', () => {
+      // Full ink under 4.5:1 on its own page: saved past the warning, the floor is out of reach.
+      const faint = manifest({ tokens: { ink0: 'oklch(0.7 0 0)', ink2: 'oklch(0.75 0 0)' }, contrastOverride: true });
+      expect(tokenShimmerFloor(ThemeManifestSchema.parse(faint))).toBe(101);
+      expect(level(faint)).toBe('100%');
+    });
   });
 
   it('themeColor: the manifest’s, else the ground as hex', () => {

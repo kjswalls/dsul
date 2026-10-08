@@ -1,6 +1,6 @@
 import { leaveZen } from '../../open-chat';
 import { useRailStore, type ModPanelRef } from '../../rail-store';
-import { closeItemPanel, useUIStore } from '../../ui-store';
+import { closeItemPanel, letGoHeldItem, useUIStore } from '../../ui-store';
 import { useModSheet } from './sheet-store';
 
 /**
@@ -43,8 +43,16 @@ export function isSheetHosted(): boolean {
  * the desktop an open item closes first, through the one flushing close (the
  * panel would only open under it), then out of Zen, which replaces the shell
  * the rail lives in, then the rail's 'mod' mode.
+ *
+ * An item held for the landing (lib/ui-store.ts deferredDialog, over the
+ * look-only preview) is let go first: the panel is the later ask, and the
+ * held item would open over the rail's panel when the fresh data lands. The
+ * sheet's branch does the same as a guard only; no phone door reaches here
+ * over the preview today (the opener is desktop-only, ⌘K's panel commands are
+ * gated, `$.ui.open` waits for the runtime).
  */
 export function openModPanel(ref: ModPanelRef): void {
+  letGoHeldItem();
   if (isSheetHosted()) {
     useModSheet.getState().show(ref);
     return;

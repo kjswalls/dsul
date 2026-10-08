@@ -13,6 +13,7 @@ import { ScheduleSheet } from '@/components/mobile/schedule-sheet';
 import { ModSheet } from '@/components/mods/mod-sheet';
 import { setModSheetHost } from '@/lib/mods/ui/open-panel';
 import { Braindump } from '@/components/sidebar/braindump';
+import { PlannerSyncLine } from '@/components/shell/planner-sync-line';
 import {
   chatOffered,
   mobileTabOrder,
@@ -247,7 +248,12 @@ export const MobileShell = memo(function MobileShell() {
           halves of the open-flag fix, because the desktop⇄mobile shell swap can
           still strand a tray. */}
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden" {...swipeHandlers}>
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden" {...swipeHandlers}>
+        {/* The look-only preview's sync line (planner-sync-line.tsx), along the
+            content's top edge under the header card. Here, outside the keyed
+            tab below, so a tab change neither remounts it nor fades it. */}
+        <PlannerSyncLine className="absolute inset-x-6 top-0 z-[5]" />
+
         {/* Keyed on activeTab → a soft cross-fade on tab change (auto-disabled
             under [data-reduce-motion]). Not into Ask: its home carries the lime
             accent (a run come back), which never fades through a parent's

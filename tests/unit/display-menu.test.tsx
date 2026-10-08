@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, within, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, cleanup, within, fireEvent, waitFor } from '@testing-library/react';
 
 /**
  * The Display menu — what it writes, and what it refuses to render.
@@ -743,6 +743,75 @@ describe('the Paused scopes list', () => {
     // Rangeless → auto already yields on, so turning it on returns it to auto,
     // never a raw 'active' that would discard the season's dates.
     expect(setSeasonState).toHaveBeenCalledWith('off', 'auto');
+  });
+
+  describe('before the planner has loaded', () => {
+    // Turning a scope on is a planner write, refused by the write barrier over
+    // the look-only preview. The rows say so instead of looking live.
+    const offScopes = (setRoutinePaused: () => void, setSeasonState: () => void) =>
+      usePlannerStore.setState({
+        routines: [{ id: 'r', name: 'Mornings', itemIds: [], pausedAt: '2026-01-01T00:00:00.000Z' }] as Routine[],
+        seasons: [{ id: 's', name: 'Summer', state: 'paused', itemIds: [], routineIds: [] }] as Season[],
+        setRoutinePaused,
+        setSeasonState,
+      });
+    afterEach(() => usePlannerStore.setState({ isLoading: false, isPreview: false, error: null, loadFailedUserId: null }));
+
+    it.each([
+      ['pointer', false],
+      ['touch', true],
+    ])('draws the rows disabled with "Syncing…" during the preview, and a click writes nothing (%s)', async (_shell, isTouch) => {
+      touch.current = isTouch;
+      try {
+        const setRoutinePaused = vi.fn();
+        const setSeasonState = vi.fn();
+        offScopes(setRoutinePaused, setSeasonState);
+        usePlannerStore.setState({ isLoading: true, isPreview: true });
+        render(<DisplayMenu surface="canvas" />);
+        if (isTouch) fireEvent.click(screen.getByTestId('display-trigger-canvas'));
+        else openMenu();
+
+        for (const name of [/Mornings/, /Summer/]) {
+          const row = await screen.findByRole('menuitem', { name });
+          expect(row).toHaveAttribute('data-disabled');
+          expect(row).toHaveTextContent('Syncing…');
+          fireEvent.click(row);
+        }
+        expect(setRoutinePaused).not.toHaveBeenCalled();
+        expect(setSeasonState).not.toHaveBeenCalled();
+      } finally {
+        touch.current = false;
+      }
+    });
+
+    it('turns live, with each scope’s own rail, once the fresh data lands', async () => {
+      const setRoutinePaused = vi.fn();
+      const setSeasonState = vi.fn();
+      offScopes(setRoutinePaused, setSeasonState);
+      usePlannerStore.setState({ isLoading: true, isPreview: true });
+      render(<DisplayMenu surface="canvas" />);
+      openMenu();
+      expect(await screen.findByRole('menuitem', { name: /Summer/ })).toHaveAttribute('data-disabled');
+
+      act(() => usePlannerStore.setState({ isLoading: false, isPreview: false }));
+      const row = screen.getByRole('menuitem', { name: /Summer/ });
+      expect(row).not.toHaveAttribute('data-disabled');
+      expect(row).not.toHaveTextContent('Syncing…');
+      fireEvent.click(row);
+      expect(setSeasonState).toHaveBeenCalledWith('s', 'auto');
+    });
+
+    it('is not drawn after a FAILED load: nothing is syncing, and the Retry notice is the way on', async () => {
+      offScopes(vi.fn(), vi.fn());
+      usePlannerStore.setState({ isLoading: false, isPreview: false, error: 'Failed to load data', loadFailedUserId: 'user-1' });
+      render(<DisplayMenu surface="canvas" />);
+      openMenu();
+
+      // The menu itself is up; only the section is left out.
+      expect(await screen.findAllByRole('menuitem')).not.toHaveLength(0);
+      expect(screen.queryByText('Paused scopes')).toBeNull();
+      expect(screen.queryByRole('menuitem', { name: /Summer/ })).toBeNull();
+    });
   });
 
   it('excludes a routine merely held off by a season — the season is listed instead', async () => {

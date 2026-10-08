@@ -18,7 +18,13 @@ import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
 import { formatKeys } from '@/lib/commands/keys';
 import { usePlannerStore } from '@/lib/planner-store';
 import { PlannerSkeleton } from '@/components/primitives/planner-skeleton';
-import { selectPlannerPending, selectPlannerSettled } from '@/lib/planner-ready';
+import {
+  isPlannerLoaded,
+  selectPlannerSettled,
+  usePlannerPreviewing,
+  usePlannerVisible,
+} from '@/lib/planner-ready';
+import { captureTask, useHeldCount } from '@/lib/held-captures';
 import { useUIStore, openAddDialog, openBulkAdd } from '@/lib/ui-store';
 import { isBulkPaste } from '@/lib/bulk-add';
 import { useViewStore } from '@/lib/view-store';
@@ -57,9 +63,14 @@ import { cn } from '@/lib/utils';
  * commits the title as a new unscheduled task (lands right here in the
  * braindump), clears, and holds focus — type, Enter, type, Enter. The plus
  * commits the same way, or focuses the field when it's empty.
+ *
+ * While the planner's load is in flight (a cold load, the look-only preview)
+ * Enter still clears: the capture is HELD (lib/held-captures.ts) and lands when
+ * the load finishes, and the row says so until it has. Over a failed load it is
+ * added at once, and the row keeps saying so until a landing confirms it.
  */
 function QuickAddRow({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement | null> }) {
-  const addTask = usePlannerStore((s) => s.addTask);
+  const heldCount = useHeldCount();
   const inputRef = useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState('');
   const [focused, setFocused] = useState(false);
@@ -70,11 +81,13 @@ function QuickAddRow({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement 
       inputRef.current?.focus();
       return;
     }
-    addTask({ title: trimmed });
+    const result = captureTask(trimmed);
     setTitle('');
     // Focus survives the re-render (same DOM node), but re-assert it so the
     // plus-button path lands the caret back in the field too.
     inputRef.current?.focus();
+    // A held capture has no row yet, and lands mid-settle: never scroll for it.
+    if (result !== 'added') return;
     // Keep the just-added item in view: once it mounts (two frames — one for
     // React's commit, one for layout) drop the scroll to the bottom so the new
     // row lands just above this card. A no-op when the list doesn't overflow,
@@ -90,7 +103,15 @@ function QuickAddRow({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement 
   // The plus hands off to the full add dialog instead of quick-committing,
   // seeding it with whatever's typed so far. Enter stays the fast inline path.
   const openFull = () => {
-    openAddDialog('task', undefined, undefined, title.trim() || undefined);
+    const trimmed = title.trim();
+    // Not loaded, the dialog would be deferred (or dropped by a failed load)
+    // with the text already cleared out of here. Keep the text where it is;
+    // Enter can hold it.
+    if (trimmed && !isPlannerLoaded()) {
+      inputRef.current?.focus();
+      return;
+    }
+    openAddDialog('task', undefined, undefined, trimmed || undefined);
     setTitle('');
     inputRef.current?.blur();
   };
@@ -112,6 +133,10 @@ function QuickAddRow({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement 
     <div
       data-testid="braindump-quick-add"
       data-focused={focused ? 'true' : 'false'}
+      // A settle frame (lib/settle.ts), for the same reason as the paused strip:
+      // it sits at the foot of a list that can change length on landing.
+      data-settle-key="braindump:quickadd"
+      data-settle-role="frame"
       className={cn(
         '-mt-2 mx-[14px] flex shrink-0 items-center gap-3 rounded-[5px] px-2 py-1.5',
         // Match the row hover: a flat --accent wash, landed instantly (no
@@ -163,6 +188,12 @@ function QuickAddRow({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement 
           focused ? 'placeholder:text-foreground' : 'placeholder:text-muted-foreground'
         )}
       />
+      {/* The field cleared, but nothing has landed yet: say where it went. */}
+      {heldCount > 0 && (
+        <span role="status" data-testid="quick-add-held" className="font-num text-2xs text-muted-foreground">
+          Adds once synced
+        </span>
+      )}
       {/* Enter affordance — the row commits on Enter, so surface a ↵ keycap
           while it's focused to make that discoverable. Kept mounted (opacity,
           not conditional render) so the field width doesn't jump on focus. */}
@@ -277,6 +308,10 @@ function PausedSection({
   return (
     <div
       data-testid="braindump-paused-section"
+      // A settle frame (lib/settle.ts): the strip moves when the list above it
+      // grows or shrinks on the preview → fresh swap.
+      data-settle-key="braindump:paused"
+      data-settle-role="frame"
       className="mx-[10px] mb-2 shrink-0 rounded-[10px] bg-surface-2"
     >
       <button
@@ -524,12 +559,20 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
    */
   const loaded = usePlannerStore((s) => selectPlannerSettled(s) && !s.error);
   /**
-   * The list body's own gate: bars until the load lands, so a cold launch
-   * never shows the empty-state poem ("A clear head") over an account that is
-   * about to fill. Pending only — a FAILED load is settled and keeps the poem
-   * beside its Retry notice, which is why this is not `!loaded`.
+   * The list body's own gate: bars until there is something to show, so a
+   * cold launch never shows the empty-state poem ("A clear head") over an
+   * account that is about to fill. Visible is the fresh load OR the look-only
+   * preview (lib/planner-ready.ts). A FAILED load is settled, so visible, and
+   * keeps the poem beside its Retry notice — which is why this is not `loaded`.
    */
-  const pending = usePlannerStore(selectPlannerPending);
+  const visible = usePlannerVisible();
+  /**
+   * The look-only preview: the rows are this browser's cache, so the list body
+   * and the paused strip refuse pointer and focus until the fresh data lands.
+   * The quick-add and the sweep receipt stay live — a capture is held until
+   * then (lib/held-captures.ts), and a receipt's actions say "Syncing…".
+   */
+  const previewing = usePlannerPreviewing();
   const openTotal = useMemo(() => base.filter((r) => !isRowCompletedOn(r, null)).length, [base]);
   const openShown = useMemo(() => rows.filter((r) => !isRowCompletedOn(r, null)).length, [rows]);
   const narrowed = narrowingClauseCount(braindumpFilters, goalMemberIds) > 0;
@@ -711,6 +754,14 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
       // currently does double duty as both, so a spec scoping assertions to the
       // braindump is really asserting against a drop target.
       data-testid="braindump"
+      // The settle scope is the whole SECTION, not the scroller: the paused
+      // strip and the quick-add are its flex siblings, and they move when a
+      // short list grows (the scroller is flex-1 only when empty).
+      data-settle-scope="braindump"
+      // The look-only state, as view-root marks it: the waiting shimmer's
+      // scope (app/globals.css). Not inert here: the section's scroller, notice
+      // slot and quick-add stay live, and the rows below carry their own.
+      data-preview={previewing ? 'true' : undefined}
       className="flex min-h-0 flex-1 flex-col gap-2"
     >
       {/* Header — the shared double-card capsule (SurfaceHeader). The phone
@@ -853,17 +904,17 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
           // Fill the column only when there is genuinely nothing here — a
           // paused-only sidebar still wants the poem's space collapsed so the
           // Paused strip sits under the header rather than adrift at the foot.
-          // Not while pending: the skeleton sits where rows will, so the
+          // Not while the bars are up: the skeleton sits where rows will, so the
           // quick-add card sits under it as it sits under real rows, rather
           // than jumping from the foot when the load lands.
-          !pending && shownRows.length === 0 && pausedCount === 0 && 'flex-1',
+          visible && shownRows.length === 0 && pausedCount === 0 && 'flex-1',
           // The whole list lights only when what is landing will be hidden by
           // the Display filters, so there is no row slot to show instead.
           landingIds.size > 0 && !landingShown && 'drop-armed'
         )}
       >
-        <div className="px-[14px] py-2">
-          {pending ? (
+        <div className="px-[14px] py-2" inert={previewing}>
+          {!visible ? (
             <PlannerSkeleton variant="braindump" />
           ) : (
             grouped.map((g) =>
@@ -886,7 +937,7 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
             )
           )}
 
-          {!pending && shownRows.length === 0 && pausedCount === 0 && (
+          {visible && shownRows.length === 0 && pausedCount === 0 && (
             <div className="relative flex min-h-[220px] flex-col items-center justify-center gap-2 py-12 text-center">
               {RELAY.emptyState && (
                 // pitch matches the dock capsule (20) — tile size derives from it.
@@ -916,7 +967,12 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
         </div>
       </div>
 
-      <PausedSection groups={pausedGroups} count={pausedCount} landing={pausingRows} />
+      {/* Inert with the list body while previewing. `contents`, so the wrapper
+          joins no layout: the strip stays the section's own flex child, and
+          its settle frame key sits on its root, which has a box. */}
+      <div inert={previewing} className="contents">
+        <PausedSection groups={pausedGroups} count={pausedCount} landing={pausingRows} />
+      </div>
 
       {/* Quick-add — a floating card at the section foot, peer of the header. */}
       <QuickAddRow scrollRef={listRef} />

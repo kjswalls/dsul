@@ -1334,6 +1334,9 @@ export const STATIC_COMMANDS: Command[] = [
     // ("AI is off" · Undo, lib/no-ai.ts) is what Ctrl+Z takes back while it
     // shows, never the planner's last action from before it.
     availableWhen: () => planner().canUndo || !!useUndoStripStore.getState().entry?.onUndo,
+    // That row is not the planner's history, so the look-only preview leaves
+    // it live; the planner's own undo stays refused there (lib/commands/types.ts).
+    liveDuringPreview: () => !!useUndoStripStore.getState().entry?.onUndo,
     run: () => {
       const strip = useUndoStripStore.getState();
       const own = strip.entry;
