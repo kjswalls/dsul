@@ -12,7 +12,26 @@ const h = vi.hoisted(() => ({
   inputs: null as null | Record<string, unknown>,
   inserts: [] as Array<{ table: string; payload: Record<string, unknown> }>,
   search: '',
+  sandbox: {
+    status: 'idle' as string,
+    ensure: null as null | (() => Promise<string>),
+    scratch: null as null | ((source: string) => Promise<unknown>),
+  },
 }));
+
+// The mod sandbox, as Write sees it: what ensure() and scratch() answer.
+vi.mock('@/lib/mods/sandbox-host', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/mods/sandbox-host')>();
+  return {
+    ...actual,
+    modSandbox: {
+      ...actual.modSandbox,
+      status: () => h.sandbox.status,
+      ensure: () => h.sandbox.ensure!(),
+      scratch: (source: string) => h.sandbox.scratch!(source),
+    },
+  };
+});
 
 vi.mock('@/lib/ai-connection-store', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/ai-connection-store')>();
@@ -52,13 +71,14 @@ vi.mock('next/navigation', () => ({
 }));
 
 import { MakePane } from '@/components/settings/make-pane';
-import { CUT_SHORT_COPY, MakeWrite, UNREADABLE_COPY } from '@/components/settings/make-write';
+import { CUT_SHORT_COPY, MakeWrite, UNREADABLE_COPY, WRITE_SANDBOX_WORDS } from '@/components/settings/make-write';
 import { useModsStore } from '@/lib/mods-store';
 import { useUserThemes } from '@/lib/user-themes/store';
 import { DRAFT_SLUG } from '@/lib/user-themes/css';
 import { CONTRAST_PROBLEM } from '@/lib/make-draft';
 import { MAKE_EXAMPLES } from '@/lib/ai-server/make-prompt';
 import type { SettingCtx } from '@/lib/settings/manifest';
+import { MOD_TEMPLATE } from '@/lib/mods/template';
 
 const USER = '11111111-1111-4111-8111-111111111111';
 const ctx: SettingCtx = { theme: 'system', setTheme: () => {}, userId: USER };
@@ -94,6 +114,11 @@ beforeEach(() => {
   h.inputs = { ...READY };
   h.inserts = [];
   h.search = '';
+  h.sandbox.status = 'idle';
+  h.sandbox.ensure = vi.fn(async () => 'ready');
+  h.sandbox.scratch = vi.fn(async () => {
+    throw new Error('unexpected scratch');
+  });
   useModsStore.getState().reset();
   useModsStore.setState({ ...ACTIONS, available: true, loaded: true, failed: false, hydratedUserId: USER, rows: [], safeMode: false });
   useUserThemes.setState({ themes: {}, draft: null, rev: 0, source: 'none' });
@@ -438,5 +463,221 @@ describe('when the reply is no use', () => {
     );
     press();
     expect((await screen.findByTestId('make-write-error')).textContent).toContain('this hour');
+  });
+});
+
+describe('a mod', () => {
+  const SOURCE = MOD_TEMPLATE.replace('const GOAL = 8;', 'const GOAL = 6;');
+  const MANIFEST = {
+    version: 1,
+    uses: ['storage', 'ui'],
+    commands: [{ id: 'add-glass', label: 'Add a glass', keywords: ['water', 'drink'] }],
+    panels: [{ id: 'water', label: 'Water', icon: 'CupSoda', card: true }],
+  };
+  const ran = (manifest: unknown = MANIFEST, hooks = ['command', 'ui.resolve', 'ui.action']) => ({
+    ok: true,
+    manifestJson: JSON.stringify(manifest),
+    hooks,
+  });
+  const reply = (source = SOURCE, name = 'Six glasses') => replyWith({ kind: 'mod', name, source });
+  const asMod = () => fireEvent.change(screen.getByTestId('make-write-kind'), { target: { value: 'mod' } });
+
+  it('the picker offers it; choosing it boots the sandbox and calls no model', async () => {
+    write();
+    const options = [...(screen.getByTestId('make-write-kind') as HTMLSelectElement).options].map((o) => o.value);
+    expect(options).toEqual(['recipe', 'theme', 'look', 'mod']);
+    expect(h.sandbox.ensure).not.toHaveBeenCalled();
+    asMod();
+    await waitFor(() => expect(h.sandbox.ensure).toHaveBeenCalledTimes(1));
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(screen.getByTestId('make-write-privacy').textContent).toContain('never your projects’ names');
+    expect(screen.getByTestId('make-write-privacy').textContent).toContain('A mod it writes cannot use AI.');
+  });
+
+  it('Write waits while the sandbox boots', async () => {
+    let boot!: (s: string) => void;
+    h.sandbox.ensure = vi.fn(() => new Promise<string>((ok) => (boot = ok)));
+    write();
+    asMod();
+    ask('A water counter');
+    expect(screen.getByTestId('make-write-go').hasAttribute('disabled')).toBe(true);
+    await act(async () => boot('ready'));
+    expect(screen.getByTestId('make-write-go').hasAttribute('disabled')).toBe(false);
+  });
+
+  it.each(['unavailable', 'outdated'] as const)('a sandbox that is %s holds Write, says why, and sends nothing', async (status) => {
+    h.sandbox.ensure = vi.fn(async () => status);
+    write();
+    asMod();
+    ask('A water counter');
+    expect((await screen.findByTestId('make-write-sandbox')).textContent).toContain(WRITE_SANDBOX_WORDS[status]);
+    expect(screen.getByTestId('make-write-go').hasAttribute('disabled')).toBe(true);
+    expect(!!screen.queryByTestId('make-write-reload')).toBe(status === 'outdated');
+    press();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('the card waits for the scratch run, which gets the reply\'s exact source', async () => {
+    let finish!: (r: unknown) => void;
+    h.sandbox.scratch = vi.fn(() => new Promise((ok) => (finish = ok)));
+    write();
+    asMod();
+    ask('A water counter');
+    await waitFor(() => expect(screen.getByTestId('make-write-go').hasAttribute('disabled')).toBe(false));
+    reply();
+    press();
+    await waitFor(() => expect(h.sandbox.scratch).toHaveBeenCalledWith(SOURCE));
+    expect(screen.getByTestId('make-write-running').textContent).toBe('Checking it…');
+    expect(screen.queryByTestId('make-draft')).toBeNull();
+    await act(async () => finish(ran()));
+    const card = await screen.findByTestId('make-draft');
+    expect(card.getAttribute('data-make-draft-kind')).toBe('mod');
+    expect(screen.getByTestId('make-draft-name').textContent).toBe('Six glasses');
+    expect(screen.getByTestId('make-draft-uses').textContent).toBe('It may keep its own saved data and show short messages, and open items and views from its commands.');
+    expect(screen.queryByTestId('make-draft-unattended')).toBeNull();
+    expect(screen.getByTestId('make-draft-hooks').textContent).toBe('As written now, it runs when one of its commands is run.');
+    expect(screen.getByTestId('make-draft-commands').textContent).toContain('In the command bar as Your mod · Six glasses: Add a glass');
+    expect(screen.getByTestId('make-draft-panels').textContent).toContain('shown under the braindump');
+    expect(screen.getByTestId('make-draft-panels').textContent).toContain('Panel: Water, under the braindump');
+    expect(screen.queryByTestId('make-draft-problems')).toBeNull();
+    expect(screen.getByTestId('make-draft-install').hasAttribute('disabled')).toBe(false);
+    expect(card.textContent).not.toMatch(/—/);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(fetchSpy.mock.calls[0][1].body)).toEqual({ kind: 'mod', ask: 'A water counter' });
+  });
+
+  it.each(['unavailable', 'outdated'] as const)('a scratch run that answers %s shows Write\'s words and no card', async (status) => {
+    h.sandbox.scratch = vi.fn(async () => ({ ok: false, status }));
+    write();
+    asMod();
+    ask('A water counter');
+    await waitFor(() => expect(screen.getByTestId('make-write-go').hasAttribute('disabled')).toBe(false));
+    reply();
+    press();
+    expect((await screen.findByTestId('make-write-error')).textContent).toContain(WRITE_SANDBOX_WORDS[status]);
+    expect(!!screen.queryByTestId('make-write-reload')).toBe(status === 'outdated');
+    expect(screen.queryByTestId('make-draft')).toBeNull();
+  });
+
+  async function drafted(scratch: unknown = ran(), source = SOURCE) {
+    h.sandbox.scratch = vi.fn(async () => scratch);
+    asMod();
+    ask('A water counter');
+    await waitFor(() => expect(screen.getByTestId('make-write-go').hasAttribute('disabled')).toBe(false));
+    reply(source);
+    press();
+    return screen.findByTestId('make-draft');
+  }
+
+  it('Install saves exactly the scratched source and manifest, switched off', async () => {
+    write();
+    await drafted();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('make-draft-install'));
+    });
+    await waitFor(() => expect(h.inserts).toHaveLength(1));
+    expect(h.inserts[0]).toMatchObject({
+      table: 'user_mods',
+      payload: { kind: 'mod', name: 'Six glasses', enabled: false, user_id: USER, source: SOURCE },
+    });
+    expect(h.inserts[0].payload.manifest).toEqual({ ...MANIFEST, settings: [] });
+    expect(screen.getByTestId('make-write-notice').textContent).toBe('Saved. It starts switched off.');
+  });
+
+  it('Edit hands over the name, the code and the manifest, marked as written by AI', async () => {
+    const onEdit = vi.fn();
+    write(onEdit);
+    await drafted();
+    fireEvent.click(screen.getByTestId('make-draft-edit'));
+    expect(onEdit).toHaveBeenCalledWith({
+      kind: 'mod',
+      initial: { name: 'Six glasses', source: SOURCE, manifest: { ...MANIFEST, settings: [] }, fromAI: true },
+    });
+  });
+
+  it('in Make, Edit opens the mod editor and Cancel comes back to the card with one call in all', async () => {
+    render(<MakePane ctx={ctx} />);
+    await drafted();
+    fireEvent.click(screen.getByTestId('make-draft-edit'));
+    expect(screen.getByTestId('mod-editor')).toBeTruthy();
+    expect(screen.getByTestId('make-write').hidden).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.getByTestId('make-write').hidden).toBe(false);
+    expect(screen.getByTestId('make-draft-name').textContent).toBe('Six glasses');
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(h.sandbox.scratch).toHaveBeenCalledTimes(1);
+  });
+
+  it('a draft that would not load shows no uses or panels, only why; Install is held', async () => {
+    write();
+    await drafted({ ok: false, fault: { code: 'load', message: 'export a register function' } });
+    expect(screen.queryByTestId('make-draft-mod')).toBeNull();
+    expect(screen.queryByTestId('make-draft-touches')).toBeNull();
+    const problems = screen.getByTestId('make-draft-problems').textContent!;
+    expect(problems).toContain('It would not load.');
+    expect(problems).toContain('Your mod reported: export a register function');
+    expect(screen.getByTestId('make-draft-install').hasAttribute('disabled')).toBe(true);
+    expect(screen.getByTestId('make-draft-edit').hasAttribute('disabled')).toBe(false);
+  });
+
+  it('"items:write" shows the unattended line even with no item hook', async () => {
+    write();
+    await drafted(ran({ version: 1, uses: ['items:write', 'ui'], commands: [{ id: 'tidy', label: 'Tidy up' }] }, ['command']));
+    expect(screen.getByTestId('make-draft-unattended').textContent).toBe(
+      'It can change items when its code runs, including on its own.'
+    );
+  });
+
+  it('an item hook adds an example to the unattended line, never removes it', async () => {
+    write();
+    await drafted(ran({ version: 1, uses: ['items:write'] }, ['item.completed']));
+    expect(screen.getByTestId('make-draft-unattended').textContent).toBe(
+      'It can change items when its code runs, including on its own, for example when you tick an item.'
+    );
+    expect(screen.getByTestId('make-draft-hooks').textContent).toBe('As written now, it runs when an item is ticked.');
+  });
+
+  it('its source shows as text, never as markup', async () => {
+    const source = SOURCE.replace('// Water:', '// <img src=x onerror=alert(1)> Water:');
+    write();
+    await drafted(ran(), source);
+    fireEvent.click(screen.getByTestId('make-draft-source-toggle'));
+    const pre = screen.getByTestId('make-draft-source');
+    expect(pre.textContent).toBe(source);
+    expect(pre.querySelector('img')).toBeNull();
+    expect(pre.parentElement!.className).toContain('max-h-80');
+  });
+
+  it('the gate closing mid-scratch drops the result and goes back to idle', async () => {
+    let finish!: (r: unknown) => void;
+    h.sandbox.scratch = vi.fn(() => new Promise((ok) => (finish = ok)));
+    const { rerender } = write();
+    asMod();
+    ask('A water counter');
+    await waitFor(() => expect(screen.getByTestId('make-write-go').hasAttribute('disabled')).toBe(false));
+    reply();
+    press();
+    await waitFor(() => expect(h.sandbox.scratch).toHaveBeenCalled());
+    h.inputs = { ...READY, aiHidden: true };
+    rerender(<MakeWrite userId={USER} onEdit={vi.fn()} />);
+    expect(screen.queryByTestId('make-write')).toBeNull();
+    await act(async () => finish(ran()));
+    h.inputs = { ...READY };
+    rerender(<MakeWrite userId={USER} onEdit={vi.fn()} />);
+    expect(screen.queryByTestId('make-draft')).toBeNull();
+    expect(screen.queryByTestId('make-write-running')).toBeNull();
+  });
+
+  it('the example sent back as it is says so', async () => {
+    write();
+    asMod();
+    ask('A water counter');
+    await waitFor(() => expect(screen.getByTestId('make-write-go').hasAttribute('disabled')).toBe(false));
+    reply(MOD_TEMPLATE, 'Water');
+    press();
+    expect((await screen.findByTestId('make-write-error')).textContent).toContain(
+      'It repeated the example instead of writing your mod.'
+    );
+    expect(h.sandbox.scratch).not.toHaveBeenCalled();
   });
 });
