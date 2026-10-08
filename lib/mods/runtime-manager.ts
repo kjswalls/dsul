@@ -979,8 +979,15 @@ export function createModRuntime(deps: RuntimeDeps): ModRuntime {
         if (typeof target === 'string') return resolve(target);
         const s = stateFor(modId);
         // A mod whose last load registered no resolve draws nothing, unloaded.
+        // Not while newer code is on its way in: the resolve queues behind
+        // the reload, which may be what adds the handler.
+        const stale =
+          s.needsReload ||
+          s.loading ||
+          s.queue.some((w) => w.kind === 'reload') ||
+          (s.loaded !== null && s.loaded.updatedAt !== target.row.updatedAt);
         const known = s.loaded?.hooks ?? (s.knownHooks?.updatedAt === target.row.updatedAt ? s.knownHooks.hooks : null);
-        if (known && !known.includes('ui.resolve')) return resolve({ ok: true });
+        if (!stale && known && !known.includes('ui.resolve')) return resolve({ ok: true });
         enqueue(s, {
           kind: 'hook',
           event: { kind: 'ui.resolve', panelId },

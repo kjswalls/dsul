@@ -311,6 +311,20 @@ describe('ModTree: presses', () => {
     expect(runAction).toHaveBeenCalledTimes(1);
   });
 
+  it('a button moved to another place in the tree restarts the settle time', () => {
+    const keep: ModNode = { type: 'button', label: 'Keep', action: 'keep' };
+    const del: ModNode = { type: 'button', label: 'Delete', action: 'del' };
+    const { redraw } = draw({ type: 'row', children: [keep, del] });
+    clock += 1000;
+    // Same seq, same label, same key: only the place changed.
+    redraw(7, { type: 'row', children: [del, keep] });
+    press('Delete');
+    expect(runAction).not.toHaveBeenCalled();
+    clock += 500;
+    press('Delete');
+    expect(runAction).toHaveBeenCalledTimes(1);
+  });
+
   it('is busy, never disabled, while in flight, and ignores clicks meanwhile', async () => {
     draw();
     clock += 1000;
@@ -338,13 +352,47 @@ describe('ModTree: fields', () => {
 
   it('a checkbox commits on change, as the person’s', () => {
     draw();
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Big glass' }));
+    clock += 1000;
+    const box = screen.getByRole('checkbox', { name: 'Big glass' });
+    fireEvent.pointerDown(box);
+    fireEvent.click(box);
     expect(atoms().big).toBe(false);
     expect(atomChanged).toHaveBeenCalledWith(MOD, 'big', false);
   });
 
+  it('a checkbox ignores a press within the settle, or over a newer tree', () => {
+    const { redraw } = draw();
+    const box = screen.getByRole('checkbox', { name: 'Big glass' });
+    clock += 100;
+    fireEvent.pointerDown(box);
+    fireEvent.click(box);
+    clock += 1000;
+    fireEvent.pointerDown(box);
+    redraw(8);
+    fireEvent.click(box);
+    // A click with no press at all (a script) is not one either.
+    fireEvent.click(box);
+    expect(atoms().big).toBeUndefined();
+    expect(atomChanged).not.toHaveBeenCalled();
+  });
+
+  it('a select opens only once settled, and a pick over a newer tree is dropped', async () => {
+    const { redraw } = draw();
+    const trigger = screen.getByRole('combobox', { name: 'Size' });
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' });
+    expect(screen.queryByRole('option')).toBeNull();
+    clock += 1000;
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' });
+    const option = await screen.findByRole('option', { name: 'Large' });
+    redraw(8);
+    fireEvent.click(option);
+    expect(atoms().size).toBeUndefined();
+    expect(atomChanged).not.toHaveBeenCalled();
+  });
+
   it('a select commits on change', async () => {
     draw();
+    clock += 1000;
     const trigger = screen.getByRole('combobox', { name: 'Size' });
     fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' });
     const option = await screen.findByRole('option', { name: 'Large' });
@@ -406,22 +454,39 @@ describe('ModTree: fields', () => {
 });
 
 describe('ModTree: itemRef', () => {
+  const open = (el: HTMLElement) => {
+    fireEvent.pointerDown(el);
+    fireEvent.click(el);
+  };
+
   it('opens the item as a held openItem does, task or habit', () => {
     draw();
+    clock += 1000;
     const [task, habit] = screen.getAllByTestId('mod-item-ref');
     expect(task).toHaveTextContent('Drink water');
     expect(task).toHaveTextContent('09:30');
-    fireEvent.click(task);
+    open(task);
     expect(ui.openEditFor).toHaveBeenLastCalledWith(expect.objectContaining({ id: ITEM }), 'task');
-    fireEvent.click(habit);
+    open(habit);
     expect(ui.openEditFor).toHaveBeenLastCalledWith(expect.objectContaining({ id: HABIT }), 'habit');
     expect(sheet.close).not.toHaveBeenCalled();
   });
 
   it('closes the phone sheet first when shown there', () => {
     draw({ type: 'itemRef', id: ITEM }, { inSheet: true });
-    fireEvent.click(screen.getByTestId('mod-item-ref'));
+    clock += 1000;
+    open(screen.getByTestId('mod-item-ref'));
     expect(sheet.close).toHaveBeenCalled();
     expect(sheet.close.mock.invocationCallOrder[0]).toBeLessThan(ui.openEditFor.mock.invocationCallOrder[0]);
+  });
+
+  it('ignores a click within the settle, or with no press', () => {
+    draw({ type: 'itemRef', id: ITEM });
+    const ref = screen.getByTestId('mod-item-ref');
+    clock += 100;
+    open(ref);
+    clock += 1000;
+    fireEvent.click(ref);
+    expect(ui.openEditFor).not.toHaveBeenCalled();
   });
 });

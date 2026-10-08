@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import * as SelectPrimitive from '@radix-ui/react-select';
 import { ChevronDownIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -12,7 +12,7 @@ import { Progress } from '@/components/ui/progress';
 import { SelectContent, SelectItem } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { isSafeTypedValue } from '@/lib/mods/labels';
-import { MOD_ATOM_TEXT_MAX, MOD_CLICK_SETTLE_MS } from '@/lib/mods/limits';
+import { MOD_ATOM_TEXT_MAX } from '@/lib/mods/limits';
 import type { AtomValue } from '@/lib/mods/protocol';
 import { ModIcon } from '@/lib/mods/ui/icons';
 import { runPanelAction } from '@/lib/mods/ui/panel-run';
@@ -20,6 +20,7 @@ import { atomsOf, usePanelStore } from '@/lib/mods/ui/panel-store';
 import { atomValueFits, isRealDate, nodeKey, type AtomKind, type ModNode, type ModTone } from '@/lib/mods/ui/tree';
 import { cn } from '@/lib/utils';
 import { ModItemRef } from './mod-item-ref';
+import { useSettledPress } from './settled-press';
 
 /**
  * Draws a mod panel's element tree (memory/plans/mods.md, build order 9).
@@ -34,13 +35,16 @@ import { ModItemRef } from './mod-item-ref';
  *
  * A press goes to the mod only as the person saw it: the tree's seq at
  * pointerdown or keydown must still be the current one at the click, and the
- * button must have looked the same for MOD_CLICK_SETTLE_MS. Anything else is
- * ignored without a word, since the newer tree is already showing.
+ * control must have looked the same, at the same place, for
+ * MOD_CLICK_SETTLE_MS (./settled-press.ts). That holds for a button, a
+ * checkbox, opening a select (whose pick counts only while the tree that
+ * opened it still shows) and an itemRef. Anything else is ignored without a
+ * word, since the newer tree is already showing.
  *
  * Fields read their atom from the panel store, falling back to the node's
  * initial value when the stored one does not fit the node. A checkbox or a
  * select commits on change; text, number and date keep a draft and commit on
- * blur or Enter. What the person types is refused when it is shaped like a
+ * blur or Enter, which takes typing, so no layout shift can land one. What the person types is refused when it is shaped like a
  * password or key, and no field takes autofill.
  */
 
@@ -114,6 +118,8 @@ export function ModTree(props: ModTreeProps) {
 }
 
 function ModNodeView({ node, path, ctx }: { node: ModNode; path: (string | number)[]; ctx: ModTreeProps }): ReactNode {
+  // Where the node sits, part of every pressable control's look.
+  const pathKey = path.join('.');
   const kids = (children: ModNode[]) =>
     children.map((child, i) => {
       const p = [...path, 'children', i];
@@ -169,15 +175,15 @@ function ModNodeView({ node, path, ctx }: { node: ModNode; path: (string | numbe
         </div>
       );
     case 'button':
-      return <ModButton node={node} ctx={ctx} />;
+      return <ModButton node={node} ctx={ctx} pathKey={pathKey} />;
     case 'checkbox':
-      return <ModCheckbox node={node} modId={ctx.modId} />;
+      return <ModCheckbox node={node} ctx={ctx} pathKey={pathKey} />;
     case 'input':
       return <ModInput node={node} modId={ctx.modId} />;
     case 'select':
-      return <ModSelect node={node} modId={ctx.modId} boundary={ctx.boundary ?? null} />;
+      return <ModSelect node={node} ctx={ctx} pathKey={pathKey} />;
     case 'itemRef':
-      return <ModItemRef id={node.id} inSheet={ctx.inSheet} />;
+      return <ModItemRef id={node.id} inSheet={ctx.inSheet} seq={ctx.seq} look={pathKey} />;
     case 'icon':
       return node.label ? (
         <ModIcon
@@ -208,30 +214,27 @@ function ModProgress({ node }: { node: Extract<ModNode, { type: 'progress' }> })
   );
 }
 
-function ModButton({ node, ctx }: { node: Extract<ModNode, { type: 'button' }>; ctx: ModTreeProps }) {
+interface ControlProps<N> {
+  node: N;
+  ctx: ModTreeProps;
+  pathKey: string;
+}
+
+/** Enter or Space on a focused control starts a press, as a pointerdown does. */
+const keyPress = (press: () => void) => (e: KeyboardEvent<HTMLElement>) => {
+  if (e.key === 'Enter' || e.key === ' ') press();
+};
+
+function ModButton({ node, ctx, pathKey }: ControlProps<Extract<ModNode, { type: 'button' }>>) {
   const [busy, setBusy] = useState(false);
-  const shownAt = useRef(0);
-  const seqAtPress = useRef<number | null>(null);
   const flying = useRef(false);
-  const look = `${node.label}\u0000${node.tone ?? ''}`;
-
-  // When this key last changed how it looks. A press sooner than the settle
-  // could be meant for whatever stood here before.
-  useEffect(() => {
-    shownAt.current = Date.now();
-  }, [look]);
-
-  const press = () => {
-    seqAtPress.current = ctx.seq;
-  };
-  const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>) => {
-    if (e.key === 'Enter' || e.key === ' ') press();
-  };
+  const { ref, press, take } = useSettledPress<HTMLButtonElement>(
+    ctx.seq,
+    `${pathKey}\u0000${node.label}\u0000${node.tone ?? ''}`
+  );
 
   const onClick = () => {
-    const pressed = seqAtPress.current;
-    seqAtPress.current = null;
-    if (flying.current || pressed !== ctx.seq || Date.now() - shownAt.current < MOD_CLICK_SETTLE_MS) return;
+    if (!take() || flying.current) return;
     flying.current = true;
     setBusy(true);
     void runPanelAction({ modId: ctx.modId, panelId: ctx.panelId }, node.action, node.arg, ctx.seq, atomsOf(ctx.modId))
@@ -250,8 +253,9 @@ function ModButton({ node, ctx }: { node: Extract<ModNode, { type: 'button' }>; 
       variant={variant}
       aria-busy={busy || undefined}
       className={cn('max-w-full', FULL_STRENGTH, node.tone === 'accent' && 'hover:bg-primary')}
+      ref={ref}
       onPointerDown={press}
-      onKeyDown={onKeyDown}
+      onKeyDown={keyPress(press)}
       onClick={onClick}
     >
       <span className="truncate">{node.label}</span>
@@ -259,8 +263,10 @@ function ModButton({ node, ctx }: { node: Extract<ModNode, { type: 'button' }>; 
   );
 }
 
-function ModCheckbox({ node, modId }: { node: Extract<ModNode, { type: 'checkbox' }>; modId: string }) {
+function ModCheckbox({ node, ctx, pathKey }: ControlProps<Extract<ModNode, { type: 'checkbox' }>>) {
+  const { modId } = ctx;
   const id = useId();
+  const { ref, press, take } = useSettledPress<HTMLButtonElement>(ctx.seq, `${pathKey}\u0000${node.label}`);
   const stored = usePanelStore((s) => s.atoms[modId]?.[node.atom]);
   const value = shownValue({ kind: 'checkbox' }, stored) ?? node.initial ?? false;
   return (
@@ -269,7 +275,12 @@ function ModCheckbox({ node, modId }: { node: Extract<ModNode, { type: 'checkbox
         id={id}
         checked={value === true}
         className={FULL_STRENGTH}
-        onCheckedChange={(v) => usePanelStore.getState().setAtom(modId, node.atom, v === true, { fromUser: true })}
+        ref={ref}
+        onPointerDown={press}
+        onKeyDown={keyPress(press)}
+        onCheckedChange={(v) => {
+          if (take()) usePanelStore.getState().setAtom(modId, node.atom, v === true, { fromUser: true });
+        }}
       />
       <Label htmlFor={id} className={cn('font-normal [overflow-wrap:anywhere]', LABEL_FULL)}>
         {node.label}
@@ -347,16 +358,18 @@ function ModInput({ node, modId }: { node: Extract<ModNode, { type: 'input' }>; 
   );
 }
 
-function ModSelect({
-  node,
-  modId,
-  boundary,
-}: {
-  node: Extract<ModNode, { type: 'select' }>;
-  modId: string;
-  boundary: HTMLElement | null;
-}) {
+function ModSelect({ node, ctx, pathKey }: ControlProps<Extract<ModNode, { type: 'select' }>>) {
+  const { modId } = ctx;
+  const boundary = ctx.boundary ?? null;
   const id = useId();
+  const options = node.options.map((o) => `${o.value}\u0000${o.label}`).join('\u0001');
+  const { ref, press, take, currentSeq } = useSettledPress<HTMLButtonElement>(
+    ctx.seq,
+    `${pathKey}\u0000${node.label}\u0000${options}`
+  );
+  const [open, setOpen] = useState(false);
+  /** The seq of the tree the list opened over: a pick counts only while it still shows. */
+  const openedAt = useRef<number | null>(null);
   const kind: AtomKind = { kind: 'select', options: node.options.map((o) => o.value) };
   const stored = usePanelStore((s) => s.atoms[modId]?.[node.atom]);
   const value = shownValue(kind, stored) ?? node.initial;
@@ -367,10 +380,25 @@ function ModSelect({
       </Label>
       <SelectPrimitive.Root
         value={typeof value === 'string' ? value : undefined}
-        onValueChange={(v) => usePanelStore.getState().setAtom(modId, node.atom, v, { fromUser: true })}
+        open={open}
+        onOpenChange={(next) => {
+          if (next && !take()) return;
+          openedAt.current = next ? currentSeq() : null;
+          setOpen(next);
+        }}
+        onValueChange={(v) => {
+          if (openedAt.current !== currentSeq()) return;
+          usePanelStore.getState().setAtom(modId, node.atom, v, { fromUser: true });
+        }}
       >
         <SelectPrimitive.Trigger
           id={id}
+          ref={ref}
+          onPointerDown={press}
+          onKeyDown={(e) => {
+            // The keys Radix opens a select on.
+            if (['Enter', ' ', 'ArrowDown', 'ArrowUp'].includes(e.key)) press();
+          }}
           data-slot="select-trigger"
           className="field dark:bg-input/30 flex h-8 w-full min-w-0 items-center justify-between gap-2 border bg-transparent px-3 text-sm whitespace-nowrap outline-none focus-visible:ring-ring"
         >

@@ -143,9 +143,17 @@ export const SECRET_SHAPED_RE = new RegExp(
   ].join('|')
 );
 
-/** The words a panel may not draw: the label rule's, plus sign-in, session, model and chat words. */
-const SURFACE_EXTRA_WORDS =
-  String.raw`signed|signing|logged|logging|log[\s_-]?off|re-?connect(?:s|ed|ing)?|secrets?|otp|2fa|mfa|api|assistant|chat(?:s|bot)?|gpt|models?|ask`;
+/**
+ * The words a panel may not draw: the label rule's, plus sign-in, session,
+ * model and chat words. A bare "pin" stays allowed (dsul pins items), so only
+ * "your PIN" and "enter PIN" are a credential's ask; "author" is not "auth".
+ */
+const SURFACE_EXTRA_WORDS = [
+  String.raw`signed|signing|logged|logging|log[\s_-]?off|re-?connect(?:s|ed|ing)?|secrets?|otp|2fa|mfa|api|assistant|chat(?:s|bot)?|gpt|models?|ask`,
+  String.raw`sign[\s_-]+back[\s_-]+in|auth[nz]?|authenticat\w*|re-?auth\w*|(?:un)?authori[sz]\w*|oauth\w*`,
+  String.raw`passphrases?|(?:your|enter)[\s_-]+pins?|pin[\s_-]?(?:codes?|numbers?)|user[\s_-]?names?`,
+  String.raw`unlock(?:s|ed|ing)?|identity|identities|expired`,
+].join('|');
 export const MOD_SURFACE_FORBIDDEN_RE = new RegExp(
   MOD_LABEL_FORBIDDEN_RE.source.replace('(?:', `(?:${SURFACE_EXTRA_WORDS}|`),
   'iu'
@@ -180,6 +188,19 @@ export function passesSurfaceRule(s: string): boolean {
  */
 export function isSafeTypedValue(s: string): boolean {
   return !FORMAT_RE.test(s) && !SECRET_SHAPED_RE.test(normalizeModText(s));
+}
+
+/**
+ * What a panel's chrome calls a mod (the rail, the card, the sheet, the
+ * opener, ⌘K's Open commands): modDisplayLabel, kept clear of the surface
+ * words as well, else the slug. Only the words: a name is the owner's own and
+ * a long one with digits in it is a name, not a key someone pasted. Only the
+ * display falls back, so a name stored under build order 8 still loads.
+ */
+export function modSurfaceLabel(row: { name: string; slug: string }): string {
+  if (!isModLabel(row.name)) return row.slug;
+  const n = normalizeModText(row.name);
+  return MOD_SURFACE_FORBIDDEN_RE.test(n) || MOD_SURFACE_FORBIDDEN_RE.test(confusableSkeleton(n)) ? row.slug : row.name;
 }
 
 /** A fault message or disabled reason as a panel may show it. */

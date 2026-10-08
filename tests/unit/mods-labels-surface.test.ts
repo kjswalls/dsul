@@ -3,6 +3,8 @@ import {
   MOD_SURFACE_FORBIDDEN_RE,
   SECRET_SHAPED_RE,
   isSafeTypedValue,
+  modDisplayLabel,
+  modSurfaceLabel,
   passesLabelRule,
   passesSurfaceRule,
   surfaceMessage,
@@ -17,9 +19,23 @@ import { ModManifestSchema } from '@/lib/mods/schema';
 
 const HEX40 = 'a3f9c2e81b7d4f60a9e5c3b2d1f0e8a7c6b5d4e3';
 
+describe('modSurfaceLabel', () => {
+  it('shows a name only when it passes the surface rule too, else the slug', () => {
+    expect(modSurfaceLabel({ name: 'Water', slug: 'water' })).toBe('Water');
+    for (const name of ['Signed out', 'Chat', 'Ask', 'Reconnect']) {
+      expect(modDisplayLabel({ name, slug: 'water' }), name).toBe(name);
+      expect(modSurfaceLabel({ name, slug: 'water' }), name).toBe('water');
+    }
+    expect(modSurfaceLabel({ name: 'Сhat', slug: 'water' })).toBe('water');
+    // A long name with digits is still a name (the e2e suite's are 30-odd characters).
+    const long = 'e2e_mods-panels_Water_muyybewyhgebv1';
+    expect(modSurfaceLabel({ name: long, slug: 'water' })).toBe(long);
+  });
+});
+
 describe('passesSurfaceRule', () => {
   it('takes ordinary planning text, line by line', () => {
-    for (const s of ['3 of 8 glasses', 'Glasses today', 'Pin the recovery day', 'Run 5km\nStretch after', 'Вода', '+1']) {
+    for (const s of ['3 of 8 glasses', 'Glasses today', 'Pin the recovery day', 'Run 5km\nStretch after', 'Вода', '+1', 'Author: Le Guin']) {
       expect(passesSurfaceRule(s), s).toBe(true);
     }
   });
@@ -40,6 +56,18 @@ describe('passesSurfaceRule', () => {
       'Chatbot',
       'Settings',
       'Password',
+      'Re-authenticate to continue',
+      'Reauth',
+      'Enter your passphrase',
+      'Your PIN',
+      'PIN code',
+      'Username',
+      'User name',
+      'Unlock',
+      'Authorize dsul',
+      'OAuth',
+      'Expired: sign back in',
+      'Confirm identity',
     ]) {
       expect(passesSurfaceRule(s), s).toBe(false);
     }

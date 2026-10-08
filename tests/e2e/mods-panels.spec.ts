@@ -239,6 +239,8 @@ test.describe('Mod panels on the phone @mobile', () => {
 
     const row = sheet.getByTestId('mod-item-ref');
     await expect(row).toContainText(itemTitle, { timeout: 20_000 });
+    // A press on a node shown less than 500ms ago is ignored, by design.
+    await page.waitForTimeout(600);
     await row.click();
     await expect(sheet).toHaveCount(0, { timeout: 5_000 });
     await expect(page.getByTestId('item-dialog')).toBeVisible();

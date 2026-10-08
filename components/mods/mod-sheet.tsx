@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { Drawer, DrawerContent, DrawerTitle } from '@/components/ui/drawer';
 import { useModsStore } from '@/lib/mods-store';
-import { modDisplayLabel } from '@/lib/mods/labels';
+import { modSurfaceLabel } from '@/lib/mods/labels';
 import { useModSheet } from '@/lib/mods/ui/sheet-store';
 import { panelOf } from '@/lib/mods/ui/surface-state';
 import { ModSurface } from './mod-surface';
@@ -32,7 +32,7 @@ export function ModSheet() {
   });
   const name = useModsStore((s) => {
     const row = ref ? s.rows.find((r) => r.id === ref.modId) : undefined;
-    return row ? modDisplayLabel(row) : 'Your mod';
+    return row ? modSurfaceLabel(row) : 'Your mod';
   });
 
   useEffect(() => {

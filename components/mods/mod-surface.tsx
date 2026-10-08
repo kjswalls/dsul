@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useModsStore } from '@/lib/mods-store';
 import { splitModReason } from '@/lib/mods/faults';
-import { modDisplayLabel, surfaceMessage } from '@/lib/mods/labels';
+import { modSurfaceLabel, surfaceMessage } from '@/lib/mods/labels';
 import { modSandbox } from '@/lib/mods/sandbox-host';
 import { ModIcon } from '@/lib/mods/ui/icons';
 import type { ModPanelRef } from '@/lib/mods/ui/open-panel';
@@ -92,7 +92,7 @@ export function ModSurface({
 
   if (state === 'absent' || !panelRef) return null;
 
-  const name = row ? modDisplayLabel(row) : 'Your mod';
+  const name = row ? modSurfaceLabel(row) : 'Your mod';
   const card = presentation === 'card';
   // The card wears the host's mod glyph, apart from the dock under it; the rail and sheet the panel's own.
   const iconName = card ? undefined : panel?.icon;

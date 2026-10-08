@@ -31,7 +31,7 @@ import { useBackLabel } from '@/components/ai/rail/rail-header';
 import { ModOpener } from '@/components/mods/mod-opener';
 import { ModRail } from '@/components/mods/mod-rail';
 import { useModsStore } from '@/lib/mods-store';
-import { modDisplayLabel } from '@/lib/mods/labels';
+import { modSurfaceLabel } from '@/lib/mods/labels';
 import {
   PANEL_OVERLAY_QUERY,
   RAIL_RESERVE_PX,
@@ -527,7 +527,7 @@ export const RailColumn = memo(function RailColumn({
   // chrome ("Your mod · Water"), never the panel's own words.
   const modBackLabel = useModsStore((s) => {
     const row = modPanel ? s.rows.find((r) => r.id === modPanel.modId) : undefined;
-    return modPanel ? `Your mod · ${row ? modDisplayLabel(row) : 'Your mod'}` : null;
+    return modPanel ? `Your mod · ${row ? modSurfaceLabel(row) : 'Your mod'}` : null;
   });
   // The item goes back to whatever Ask has on top (the item is ui-store's
   // slot, not a stack entry), by its live name.

@@ -123,6 +123,23 @@ describe('panel-store: when a panel resolves', () => {
     expect(r.resolvePanel).toHaveBeenCalledTimes(2);
   });
 
+  it('a remount over a moved row leaves a panel in error alone', async () => {
+    const r = install(runner([ok(), { fault: { code: 'error', message: 'boom' } }]));
+    const off = store().mountPanel(REF);
+    await flush();
+    store().invalidate(MOD, 'hook');
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(store().status[KEY]).toBe('error');
+    expect(store().trees[KEY]).toBeDefined();
+    off();
+    useModsStore.setState({ rows: [row({ updatedAt: '2026-03-02T00:00:00Z' })] });
+    store().mountPanel(REF)();
+    store().mountPanel(REF);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(r.resolvePanel).toHaveBeenCalledTimes(2);
+    expect(store().status[KEY]).toBe('error');
+  });
+
   it('coalesces: requests during a resolve make exactly one more, at least 250ms after', async () => {
     let release!: (o: SettleOutcome) => void;
     const r = install(runner());

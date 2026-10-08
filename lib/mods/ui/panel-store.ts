@@ -195,7 +195,9 @@ export const usePanelStore = create<PanelStore>((set, get) => ({
     watchVisibility();
     const cached = get().trees[key];
     const row = rowOf(ref.modId);
-    if (cached && row && cached.rowUpdatedAt !== row.updatedAt) want(key, 'force');
+    // A moved row (a $.store write moves it too) draws again, but never a panel
+    // in error: only a save, a settings save, a change or Try again may.
+    if (cached && row && cached.rowUpdatedAt !== row.updatedAt) want(key, get().status[key] === 'error' ? 'auto' : 'force');
     else if (!cached && get().status[key] !== 'empty') want(key, 'auto');
     else pump(key);
     let mounted = true;

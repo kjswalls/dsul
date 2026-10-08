@@ -84,6 +84,7 @@ import { askNew, newChat, openHistory, openSetup, revealChat, toggleRail } from 
 import { useConversationsStore } from '../conversations-store';
 import { useModsStore } from '../mods-store';
 import { modDisplayLabel, modLabel, parseModManifest, type UserMod } from '../mods/schema';
+import { modSurfaceLabel } from '../mods/labels';
 import { parseRecipe } from '../recipes/validate';
 import { runRecipeCommand } from '../recipes/command-run';
 import { runModCommand } from '../mods/command-run';
@@ -1826,8 +1827,9 @@ let cachedModCommands: Command[] = [];
  *
  * Build order 9 adds "Your mod · Water: Open Water", one per panel, with ids
  * `mod.<slug>.open.<panelId>`: a mod's command id has no `.`, so none can
- * collide. They open through the one router (lib/mods/ui/open-panel.ts), the
- * rail on the desktop and the sheet on the phone. And `mod.close-panel`, while
+ * collide, and their name is modSurfaceLabel, the panel chrome's. They open
+ * through the one router (lib/mods/ui/open-panel.ts), the rail on the desktop
+ * and the sheet on the phone. And `mod.close-panel`, while
  * a panel shows in the rail: the keyboard's way out with no AI, where Ctrl+J
  * is consumed before it reaches the toggle.
  */
@@ -1865,7 +1867,7 @@ const modCommands: CommandProvider = () => {
     const id = `mod.${p.row.slug}.open.${p.panelId}`;
     if (seen.has(id)) continue;
     seen.add(id);
-    const name = modDisplayLabel(p.row);
+    const name = modSurfaceLabel(p.row);
     cachedModCommands.push({
       id,
       label: `Your mod · ${name}: Open ${p.panel.label}`,

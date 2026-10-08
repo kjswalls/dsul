@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useAICapabilities } from '@/lib/ai-connection-store';
 import { useModsStore } from '@/lib/mods-store';
-import { modDisplayLabel } from '@/lib/mods/labels';
+import { modSurfaceLabel } from '@/lib/mods/labels';
 import { openablePanelsOf } from '@/lib/mods/ui/card';
 import { openModPanel } from '@/lib/mods/ui/open-panel';
 import { holdRailHeader, usePanelOverlays, useRailMode } from '@/lib/rail-store';
@@ -111,7 +111,7 @@ export function ModOpener() {
           >
             <Puzzle aria-hidden />
             <span className="min-w-0 truncate">
-              Your mod · {modDisplayLabel(p.row)}: {p.panel.label}
+              Your mod · {modSurfaceLabel(p.row)}: {p.panel.label}
             </span>
           </DropdownMenuItem>
         ))}

@@ -713,6 +713,22 @@ describe('panels (build order 9)', () => {
     expect(await rt.resolvePanel(id(9), 'water')).toBe('off');
   });
 
+  it('a resolve asked while newer code is on its way waits for it, not the old hooks', async () => {
+    addMod(1, { hooks: ['command'] });
+    const { rt } = panelRuntime();
+    const first = rt.resolvePanel(id(1), 'water');
+    await settle();
+    expect(await first).toEqual({ ok: true });
+    // The new code adds a resolve handler; the save queues the reload.
+    sandbox.behaviours.set(id(1), { hooks: ['command', 'ui.resolve'], onHook: () => ({ resultJson: TREE }) });
+    rows[0] = { ...rows[0], updatedAt: '2026-03-02T00:00:00Z' };
+    codes.set(id(1), { ...codes.get(id(1))!, source: '// mod 1, v2', updatedAt: '2026-03-02T00:00:00Z' });
+    rt.saved(id(1));
+    const p = rt.resolvePanel(id(1), 'water');
+    await settle();
+    expect(await p).toEqual({ ok: true, resultJson: TREE });
+  });
+
   it('a resolve that faults settles with the fault and redraws nothing', async () => {
     addMod(1, { hooks: ['ui.resolve'], onHook: () => ({ code: 'error', message: 'TypeError: boom' }) });
     const { rt, onPanelsStale } = panelRuntime();
