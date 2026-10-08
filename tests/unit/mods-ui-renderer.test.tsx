@@ -22,7 +22,6 @@ vi.mock('@/lib/mods/ui/open-panel', async (importOriginal) => ({
 }));
 
 import { ModTree } from '@/components/mods/mod-tree';
-import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
@@ -225,9 +224,9 @@ describe('ModTree: what it draws', () => {
         <Separator />
       </div>
     );
-    // The walk sees what it should: the accent fill, and the stock fade it replaced.
-    expect(screen.getByRole('button', { name: 'Accent' }).className).toMatch(/\bbg-primary\b.*\bhover:bg-primary\b/);
-    const stock = render(<Button>Stock</Button>);
+    // An accent button is the app's main button (ink, #436); the walk still sees a faded lime fill.
+    expect(screen.getByRole('button', { name: 'Accent' }).className).toMatch(/\bbg-foreground\b/);
+    const stock = render(<div className="bg-primary hover:bg-primary/90 disabled:opacity-50">Stock</div>);
     expect(classesUnder(stock.container).some((c) => LIME_ALPHA.test(c) && DIM.test(c))).toBe(true);
     stock.unmount();
     for (const root of [container, wrappers.container]) {

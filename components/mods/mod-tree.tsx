@@ -256,7 +256,7 @@ function ModButton({ node, ctx, pathKey }: ControlProps<Extract<ModNode, { type:
       size="sm"
       variant={variant}
       aria-busy={busy || undefined}
-      className={cn('max-w-full', FULL_STRENGTH, node.tone === 'accent' && 'hover:bg-primary')}
+      className={cn('max-w-full', FULL_STRENGTH)}
       ref={ref}
       onPointerDown={press}
       onKeyDown={keyPress(press)}
