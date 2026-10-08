@@ -49,12 +49,16 @@ import { SidebarDock } from '@/components/sidebar/sidebar-dock';
 import { RailColumn } from '@/components/shell/desktop-shell';
 import { ProposalCard } from '@/components/ai/proposal-card';
 import { useCommandShortcuts } from '@/hooks/use-command-shortcuts';
-import { matchCommands, STATIC_COMMANDS, type CommandContext } from '@/lib/commands';
+import { matchCommands, RECENT_HEADING, STATIC_COMMANDS, type CommandContext } from '@/lib/commands';
 import { proposalCardShowsOn } from '@/lib/open-chat';
 import { PANEL_OVERLAY_QUERY, useRailStore, type AskView } from '@/lib/rail-store';
 import { getAICapabilities } from '@/lib/ai-connection-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useUIStore } from '@/lib/ui-store';
+import { useMobileNavStore } from '@/lib/mobile-nav-store';
+import { useCommandUsageStore } from '@/lib/command-usage-store';
+import { clearKeptQuestionState, readKept } from '@/lib/ask-pending';
 import { chatTransport } from '@/lib/chat-transport';
 import { httpConversationsApi } from '@/lib/conversations-api';
 import {
@@ -68,8 +72,10 @@ import {
   seedAI,
   AI_HIDDEN,
   CONNECTED_MODEL,
+  KEY_TURNED_DOWN,
   NOTHING_CONNECTED,
   OPENCLAW_PLUGIN,
+  SEED_USER_ID,
   type SeedAI,
 } from './helpers/ai-fixtures';
 import { fakeApi, fakeTransport, flush, type FakeTransport } from './helpers/conversations-fakes';
@@ -104,6 +110,8 @@ const desktopCtx: CommandContext = {
 };
 
 const CHAT_COMMANDS = ['rituals.chat', 'rituals.planDay', 'workspace.toggleChat', 'ask.newChat', 'ask.history'];
+/** The doors into setup while nothing answers: never one of the AI rows above. */
+const SETUP_COMMANDS = ['ai.setup', 'ai.fix'];
 
 beforeAll(() => {
   if (!('PointerEvent' in globalThis)) {
@@ -150,7 +158,7 @@ afterEach(async () => {
   await conversationsSettled();
   unseed();
   unseed = () => {};
-  usePlannerStore.setState({ addTask: originalAddTask });
+  usePlannerStore.setState({ addTask: originalAddTask, userId: null });
   configureConversations({ api: httpConversationsApi, transport: chatTransport });
   useProposalStore.getState().dismiss();
 });
@@ -171,6 +179,9 @@ function renderDock(text?: string) {
 }
 
 const askRow = () => document.querySelector('[data-value="action-chat"]');
+/** The door into setup: the dock's `?` row, or the launcher's inline Set up AI / Fix AI. */
+const setupRow = (variant: 'dock' | 'launcher') =>
+  scopeFor(variant).querySelector<HTMLElement>('[data-value="action-setup"]');
 
 function ShortcutHarness() {
   useCommandShortcuts(desktopCtx);
@@ -256,13 +267,27 @@ describe.each(NO_CHAT)('with no chat (%s)', (_label, state, offered) => {
     expect(screen.queryByText(/\? chat/)).toBeNull();
   });
 
-  it('treats `?` as text, not as a chat prefix', () => {
-    renderDock('?foo');
-    expect(screen.queryByText('Chat')).toBeNull();
-    expect(askRow()).toBeNull();
-    // Free text: it can still be filed, prefix and all.
-    expect(screen.getByTestId('omnibar-add-row')).toHaveTextContent('“?foo”');
-  });
+  if (offered === 'invite') {
+    // The spec's ":251", flipped while invited: `?` is setup's door (F14),
+    // never a chat and never a task.
+    it('makes `?` the door into setup, not a chat prefix and not a task', () => {
+      renderDock('?foo');
+      expect(screen.queryByText('Chat')).toBeNull();
+      expect(askRow()).toBeNull();
+      expect(setupRow('dock')).toHaveTextContent('Set up AI to ask this');
+      expect(screen.getByText('Ask')).toBeInTheDocument();
+      expect(screen.queryByTestId('omnibar-add-row')).toBeNull();
+    });
+  } else {
+    it('treats `?` as text, not as a chat prefix', () => {
+      renderDock('?foo');
+      expect(screen.queryByText('Chat')).toBeNull();
+      expect(askRow()).toBeNull();
+      expect(setupRow('dock')).toBeNull();
+      // Free text: it can still be filed, prefix and all.
+      expect(screen.getByTestId('omnibar-add-row')).toHaveTextContent('“?foo”');
+    });
+  }
 
   it('keeps the launcher from offering to ask, in its placeholder and its footer', () => {
     render(<Omnibar variant="launcher" />);
@@ -270,7 +295,15 @@ describe.each(NO_CHAT)('with no chat (%s)', (_label, state, offered) => {
       'Search, add a task, or run a command…'
     );
     const footer = screen.getByTestId('omnibar-launcher-footer');
-    expect(footer.textContent).not.toMatch(/chat|\bAI\b|OpenClaw|Beacon/);
+    if (offered === 'invite') {
+      // `?` opens setup then, so the footer keeps its chat hint (F15), in the
+      // unlit mark, and still names no one who answers.
+      expect(footer.textContent).toMatch(/\bchat\b/);
+      expect(footer.querySelector('svg[data-ask-mark][data-lit="false"]')).not.toBeNull();
+      expect(footer.textContent).not.toMatch(/\bAI\b|OpenClaw|Beacon/);
+    } else {
+      expect(footer.textContent).not.toMatch(/chat|\bAI\b|OpenClaw|Beacon/);
+    }
     expect(footer).toHaveTextContent('↵ open');
     expect(askRow()).toBeNull();
   });
@@ -301,6 +334,29 @@ describe.each(NO_CHAT)('with no chat (%s)', (_label, state, offered) => {
     for (const q of ['ask', 'chat', 'beacon', 'plan my day']) {
       const hits = matchCommands(q, desktopCtx).map((r) => r.command.id);
       for (const id of CHAT_COMMANDS) expect(hits).not.toContain(id);
+    }
+  });
+
+  // The spec's ":287", flipped: "Set up AI" takes the AI rows' place while
+  // invited, "Fix AI" while a saved key needs attention, and neither shows
+  // anywhere else (No AI, an unknown or failed read, chat Off here).
+  it(`offers ${offered === 'invite' ? '"Set up AI"' : offered === 'fix' ? '"Fix AI"' : 'neither "Set up AI" nor "Fix AI"'} in the palette`, () => {
+    const doors = (q: string) =>
+      matchCommands(q, desktopCtx)
+        .map((r) => r.command.id)
+        .filter((id) => SETUP_COMMANDS.includes(id));
+    const expected = offered === 'invite' ? ['ai.setup'] : offered === 'fix' ? ['ai.fix'] : [];
+    expect(doors('')).toEqual(expected);
+    // Reachable by the words that found the AI rows.
+    for (const q of ['ai', 'ask', 'chat']) expect(doors(q)).toEqual(expected);
+
+    render(<Omnibar variant="launcher" />);
+    const row = setupRow('launcher');
+    if (offered) {
+      expect(row).toHaveTextContent(offered === 'invite' ? 'Set up AI' : 'Fix AI');
+      expect(row).toHaveAttribute('data-command-id', expected[0]);
+    } else {
+      expect(row).toBeNull();
     }
   });
 
@@ -361,7 +417,8 @@ describe.each(NO_CHAT)('with no chat (%s)', (_label, state, offered) => {
     useSidebarStore.setState({ askOpen: true });
     renderDockAndRail();
     // The column is only the item host: closed, with nothing in it, and not
-    // the tour's Ask target. The tour points at the dock instead.
+    // the tour's Ask target. The tour's 3C points at the dock, and its last
+    // card at the key while invited, or the dock while AI is off.
     expect(askRail()).toBeNull();
     expect(document.querySelector('[data-ask-setup]')).toBeNull();
     expect(screen.queryByTestId('rail-close')).toBeNull();
@@ -384,7 +441,8 @@ describe.each(NO_CHAT)('with no chat (%s)', (_label, state, offered) => {
       expect(document.querySelector('[data-ask-setup]')).toBeNull();
       expect(column.className).toMatch(/\bw-0\b/);
     }
-    // Not the tour's Ask target either way (PR 6 points the tour at the key).
+    // Not the tour's Ask target either way: while invited the tour points at
+    // the key, and while AI is off at the dock.
     expect(column).not.toHaveAttribute('data-tour');
   });
 });
@@ -775,9 +833,22 @@ describe('with a connected model', () => {
   it('files a plain Enter as a task, as it always has', () => {
     // The control for the ⌘Enter cases: this harness DOES see an add when one
     // happens, so "addTask was not called" above is a real absence.
+    // Loaded: a capture before landing is now held, not added (lib/held-captures.ts).
+    usePlannerStore.setState({ userId: 'u1', isLoading: false, error: null });
     const input = renderDock('plan my day');
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(addTask).toHaveBeenCalledWith({ title: 'plan my day' });
+  });
+
+  it('offers no door into setup: no "Set up AI", no "Fix AI", and `?` is a chat', () => {
+    const ids = matchCommands('', desktopCtx).map((r) => r.command.id);
+    for (const id of SETUP_COMMANDS) expect(ids).not.toContain(id);
+    render(<Omnibar variant="launcher" />);
+    expect(setupRow('launcher')).toBeNull();
+    cleanup();
+    renderDock('?what now');
+    expect(setupRow('dock')).toBeNull();
+    expect(askRow()).toBeInTheDocument();
   });
 
   it('lists the AI rows in the palette, named for no one in particular', () => {
@@ -805,7 +876,7 @@ describe('with a connected model', () => {
     expect(rail).toBeVisible();
     expect(within(rail).getByRole('heading', { name: 'Ask' })).toBeInTheDocument();
     expect(within(rail).getByPlaceholderText('Ask anything…')).toBeInTheDocument();
-    expect(within(rail).getByTestId('answerer-label')).toHaveTextContent(/^gpt-4o-mini$/);
+    expect(within(rail).getByTestId('answerer-label')).toHaveTextContent(/^GPT-4o mini$/);
     // The tour's Ask target is the column, and the dock keeps its own.
     expect(document.querySelector('[data-tour="right-sidebar"]')).toHaveAttribute('data-rail');
     expect(document.querySelector('[data-tour="dock"]')).toHaveAttribute('data-dock-surface');
@@ -840,6 +911,299 @@ describe('with OpenClaw on the plugin path', () => {
     expect(screen.getByTestId('chat-openers').querySelectorAll('button').length).toBeGreaterThan(0);
     expect(screen.queryByTestId('chat-make-plan')).toBeNull();
     expect(screen.queryByText('Turn this into a plan')).toBeNull();
+  });
+});
+
+/* ── the doors into setup, while nothing answers ─────────────────────── */
+
+/** The cmdk rows a shell renders, by value, top to bottom. */
+const rowValues = (variant: 'dock' | 'launcher') =>
+  Array.from(scopeFor(variant).querySelectorAll('[cmdk-item]')).map((el) => el.getAttribute('data-value'));
+/** The heading of the cmdk group a row sits in. */
+const headingOf = (row: Element) =>
+  row.closest('[cmdk-group]')?.querySelector('[cmdk-group-heading]')?.textContent ?? null;
+const keptNow = () => readKept(SEED_USER_ID);
+
+/** The dock beside the right column, with `text` typed into the dock. */
+function typeBesideRail(text: string) {
+  renderDockAndRail();
+  const input = inputIn('dock');
+  fireEvent.focus(input);
+  fireEvent.change(input, { target: { value: text } });
+  return input;
+}
+
+describe('the doors into setup, with nothing connected', () => {
+  const realWidth = window.innerWidth;
+  const realTasks = usePlannerStore.getState().tasks;
+
+  beforeEach(() => {
+    seed(NOTHING_CONNECTED);
+    useUIStore.setState({ activeDialog: null, displacedItemId: null });
+    useMobileNavStore.setState({ activeTab: 'today' });
+    useCommandUsageStore.setState({ usage: {} });
+  });
+  afterEach(() => {
+    clearKeptQuestionState();
+    useCommandUsageStore.setState({ usage: {} });
+    usePlannerStore.setState({ tasks: realTasks });
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: realWidth });
+  });
+
+  describe('`?` in the dock and Ctrl+K (F14)', () => {
+    it('is one row in one group, Ask: "Set up AI to ask this", the unlit mark and a muted "↵ open"', () => {
+      renderDock('? what should I do first');
+      const row = setupRow('dock') as HTMLElement;
+      expect(row).toHaveTextContent('Set up AI to ask this');
+      expect(headingOf(row)).toBe('Ask');
+      expect(rowValues('dock')).toEqual(['action-setup']);
+      // One line: the question is in the bar below it, not quoted again.
+      expect(row).not.toHaveTextContent('what should I do first');
+      expect(row.querySelector('svg[data-ask-mark][data-lit="false"]')).not.toBeNull();
+      // The desktop dock's hint, muted; the launcher's lime pill is not here.
+      expect(row.querySelector('[data-slot="command-shortcut"]')).toHaveTextContent('↵ open');
+      expect(row.querySelector('[data-testid="omnibar-enter-pill"]')).toBeNull();
+      expect(row.querySelector('[class*="bg-primary"]')).toBeNull();
+    });
+
+    it('reads "Set up AI" for a bare `?`, and keeps nothing', () => {
+      const input = typeBesideRail('?');
+      expect(setupRow('dock')).toHaveTextContent(/^Set up AI↵ open$/);
+      fireEvent.keyDown(input, { key: 'Enter' });
+      expect(keptNow()).toBeNull();
+      expect(useRailStore.getState().summoned).toBe(true);
+      expect(document.querySelector('[data-ask-setup="invite"]')).toBeInTheDocument();
+    });
+
+    it('keeps the question on Enter and opens the setup column, never kept open, never a task', async () => {
+      const input = typeBesideRail('?  what should I do first ');
+      fireEvent.keyDown(input, { key: 'Enter' });
+      await act(() => flush());
+
+      expect(keptNow()).toMatchObject({ text: 'what should I do first', uid: SEED_USER_ID, consent: null });
+      expect(useRailStore.getState().summoned).toBe(true);
+      expect(document.querySelector('[data-ask-setup="invite"]')).toBeInTheDocument();
+      expect(useSidebarStore.getState().askOpen).toBe(false);
+      // Kept, not asked: nothing answers yet, and nothing was filed.
+      expect(addTask).not.toHaveBeenCalled();
+      expect(transport.inputs).toEqual([]);
+      expect(useConversationsStore.getState().threads).toEqual({});
+      expect(input.value).toBe('');
+    });
+
+    it('does the same for a click on the row', () => {
+      typeBesideRail('?what first');
+      fireEvent.click(setupRow('dock') as HTMLElement);
+      expect(keptNow()?.text).toBe('what first');
+      expect(useRailStore.getState().summoned).toBe(true);
+    });
+
+    it('opens from Ctrl+Enter too, inside `?` only', () => {
+      const input = typeBesideRail('?plan my day');
+      const notPrevented = fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true });
+      expect(notPrevented).toBe(false);
+      expect(keptNow()?.text).toBe('plan my day');
+      expect(useRailStore.getState().summoned).toBe(true);
+      expect(addTask).not.toHaveBeenCalled();
+    });
+
+    it('owns the panel: no search hits, command rows, Add task or hint row beside it', () => {
+      usePlannerStore.setState({
+        tasks: [{ id: 't1', type: 'task', title: '?dentist at three', status: 'pending', isScheduled: false, order: 0, completedDates: [] }] as never,
+      });
+      useCommandUsageStore.getState().record('rituals.eod');
+      renderDock('?dentist');
+      expect(rowValues('dock')).toEqual(['action-setup']);
+      expect(screen.queryByTestId('omnibar-result')).toBeNull();
+      expect(screen.queryByText(/commands/)).toBeNull();
+      cleanup();
+
+      // The control: under No AI the same text is search text, and the hit is real.
+      seed(AI_HIDDEN);
+      renderDock('?dentist');
+      expect(screen.getByTestId('omnibar-result')).toBeInTheDocument();
+      expect(setupRow('dock')).toBeNull();
+    });
+
+    it('keeps a pasted paragraph as the question, rather than opening bulk add', () => {
+      const paste = (input: HTMLInputElement) =>
+        fireEvent.paste(input, { clipboardData: { getData: () => 'what first\nand after that' } });
+      paste(renderDock('?'));
+      expect(useUIStore.getState().activeDialog).toBeNull();
+      cleanup();
+
+      // The control: with `?` as text, the same paste is a list to file.
+      seed(AI_HIDDEN);
+      paste(renderDock('?'));
+      expect(useUIStore.getState().activeDialog?.type).toBe('bulk-add');
+    });
+
+    it('never shows in `+` mode, the desktop capture\'s `+` seed, or as a command\'s argument', () => {
+      renderDock('+?foo');
+      expect(setupRow('dock')).toBeNull();
+      expect(screen.getByTestId('omnibar-add-row')).toHaveTextContent('“?foo”');
+      cleanup();
+
+      render(<Omnibar variant="launcher" initialQuery="+" />);
+      expect(setupRow('launcher')).toBeNull();
+      cleanup();
+
+      render(<Omnibar variant="launcher" initialQuery="/project" />);
+      fireEvent.click(scopeFor('launcher').querySelector('[data-command-id="create.project"]') as HTMLElement);
+      fireEvent.change(inputIn('launcher'), { target: { value: '?foo' } });
+      expect(setupRow('launcher')).toBeNull();
+      expect(scopeFor('launcher').querySelector('[data-value="arg-submit"]')).toHaveTextContent('“?foo”');
+    });
+
+    it('in the launcher, wears the lime "↵ open" pill (no hint), and closes the launcher behind it', () => {
+      useUIStore.setState({ activeDialog: { type: 'launcher' } });
+      render(<Omnibar variant="launcher" />);
+      fireEvent.change(inputIn('launcher'), { target: { value: '?what first' } });
+      const row = setupRow('launcher') as HTMLElement;
+      expect(row).toHaveTextContent('Set up AI to ask this');
+      expect(rowValues('launcher')).toEqual(['action-setup']);
+      expect(row.querySelector('[data-testid="omnibar-enter-pill"]')).toHaveTextContent('open');
+      expect(row.querySelector('[data-slot="command-shortcut"]')).toBeNull();
+
+      fireEvent.keyDown(inputIn('launcher'), { key: 'Enter' });
+      expect(keptNow()?.text).toBe('what first');
+      expect(useRailStore.getState().summoned).toBe(true);
+      expect(useUIStore.getState().activeDialog).toBeNull();
+    });
+
+    it('on the phone, shows neither hint nor pill, and opens the Ask tab without a summon', () => {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
+      const input = renderDock('?what first');
+      const row = setupRow('dock') as HTMLElement;
+      expect(row).toHaveTextContent(/^Set up AI to ask this$/);
+      expect(row.querySelector('[data-slot="command-shortcut"]')).toBeNull();
+      expect(row.querySelector('[data-testid="omnibar-enter-pill"]')).toBeNull();
+
+      fireEvent.keyDown(input, { key: 'Enter' });
+      expect(keptNow()?.text).toBe('what first');
+      expect(useMobileNavStore.getState().activeTab).toBe('chat');
+      // A summon on the phone shell arms a column that springs open on a wider window.
+      expect(useRailStore.getState().summoned).toBe(false);
+    });
+
+    it('turns back into text the moment the gate stops inviting', () => {
+      const input = renderDock('?foo');
+      expect(setupRow('dock')).not.toBeNull();
+      act(() => seed(AI_HIDDEN));
+      expect(setupRow('dock')).toBeNull();
+      expect(screen.getByTestId('omnibar-add-row')).toHaveTextContent('“?foo”');
+      // And Ctrl+Enter is inert again: no question kept, nothing opened.
+      fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true });
+      expect(keptNow()).toBeNull();
+      expect(useRailStore.getState().summoned).toBe(false);
+    });
+  });
+
+  describe('Ctrl+K: "Set up AI" first in Actions (F15)', () => {
+    beforeEach(() => {
+      useUIStore.setState({ activeDialog: { type: 'launcher' } });
+    });
+
+    it('leads Actions at rest, above Add task, with the unlit mark and "↵ open"', () => {
+      render(<Omnibar variant="launcher" />);
+      expect(rowValues('launcher').slice(0, 2)).toEqual(['action-setup', 'action-add']);
+      const row = setupRow('launcher') as HTMLElement;
+      expect(row).toHaveTextContent('Set up AI');
+      expect(headingOf(row)).toBe('Actions');
+      expect(row).toHaveAttribute('data-command-id', 'ai.setup');
+      expect(row.querySelector('svg[data-ask-mark][data-lit="false"]')).not.toBeNull();
+      expect(row.querySelector('[data-testid="omnibar-enter-pill"]')).toHaveTextContent('open');
+    });
+
+    it.each(['ai', 'setup', 'connect', 'ask'])('leads Actions for "%s", once', (q) => {
+      render(<Omnibar variant="launcher" initialQuery={q} />);
+      expect(rowValues('launcher').slice(0, 2)).toEqual(['action-setup', 'action-add']);
+      expect(scopeFor('launcher').querySelectorAll('[data-command-id="ai.setup"]')).toHaveLength(1);
+    });
+
+    it('stays out of the way of text that does not name it', () => {
+      render(<Omnibar variant="launcher" initialQuery="milk" />);
+      expect(setupRow('launcher')).toBeNull();
+      expect(rowValues('launcher')[0]).toBe('action-add');
+    });
+
+    it('never shows twice, Recently used included', () => {
+      useCommandUsageStore.getState().record('ai.setup');
+      useCommandUsageStore.getState().record('rituals.eod');
+      render(<Omnibar variant="launcher" />);
+      expect(screen.getByText(RECENT_HEADING)).toBeInTheDocument();
+      expect(scopeFor('launcher').querySelector('[data-value="recent:rituals.eod"]')).not.toBeNull();
+      expect(scopeFor('launcher').querySelectorAll('[data-command-id="ai.setup"]')).toHaveLength(1);
+      expect(setupRow('launcher')).not.toBeNull();
+    });
+
+    it('opens the setup column on Enter at rest, never kept open, keeping no question', () => {
+      renderDockAndRail();
+      render(<Omnibar variant="launcher" />);
+      fireEvent.keyDown(inputIn('launcher'), { key: 'Enter' });
+      expect(useRailStore.getState().summoned).toBe(true);
+      expect(document.querySelector('[data-ask-setup="invite"]')).toBeInTheDocument();
+      expect(useSidebarStore.getState().askOpen).toBe(false);
+      expect(keptNow()).toBeNull();
+      expect(useUIStore.getState().activeDialog).toBeNull();
+    });
+
+    it('reads "Fix AI" while a saved key needs attention, and opens the fix', () => {
+      seed(KEY_TURNED_DOWN);
+      renderDockAndRail();
+      render(<Omnibar variant="launcher" />);
+      const row = setupRow('launcher') as HTMLElement;
+      expect(row).toHaveTextContent('Fix AI');
+      expect(row).toHaveAttribute('data-command-id', 'ai.fix');
+      expect(rowValues('launcher').slice(0, 2)).toEqual(['action-setup', 'action-add']);
+      fireEvent.click(row);
+      expect(document.querySelector('[data-ask-setup="fix"]')).toBeInTheDocument();
+      // `?` stays text while fixing: the fix home's paste checks at once.
+      cleanup();
+      renderDock('?foo');
+      expect(setupRow('dock')).toBeNull();
+      expect(screen.getByTestId('omnibar-add-row')).toHaveTextContent('“?foo”');
+    });
+
+    it('is an ordinary Rituals row in `/`, saying "open"', () => {
+      render(<Omnibar variant="launcher" initialQuery="/" />);
+      expect(setupRow('launcher')).toBeNull();
+      const row = scopeFor('launcher').querySelector('[data-command-id="ai.setup"]') as HTMLElement;
+      expect(row).toHaveAttribute('data-testid', 'omnibar-row');
+      expect(headingOf(row)).toBe('Rituals');
+      expect(row).toHaveTextContent('/setup');
+      expect(row.querySelector('[data-testid="omnibar-enter-pill"]')).toHaveTextContent('open');
+    });
+
+    it('leaves the dock capture-first: an ordinary ranked row after Add task', () => {
+      renderDock('setup');
+      expect(setupRow('dock')).toBeNull();
+      expect(rowValues('dock')[0]).toBe('action-add');
+      const row = scopeFor('dock').querySelector('[data-command-id="ai.setup"]') as HTMLElement;
+      expect(row).toHaveAttribute('data-testid', 'omnibar-row');
+    });
+
+    it('follows the gate with the text unchanged, as invited, fixing and hidden trade places', () => {
+      // canChat is false throughout. In the app only a command context that
+      // re-forms on askInvite, askFix and aiHidden redraws these rows (this
+      // file's router mock re-forms it on every render, so
+      // use-command-context.test.tsx pins that part).
+      renderDock('ai');
+      const has = (id: string) => scopeFor('dock').querySelector(`[data-command-id="${id}"]`) !== null;
+      expect([has('ai.setup'), has('ai.fix')]).toEqual([true, false]);
+      act(() => seed(KEY_TURNED_DOWN));
+      expect([has('ai.setup'), has('ai.fix')]).toEqual([false, true]);
+      act(() => seed(AI_HIDDEN));
+      expect([has('ai.setup'), has('ai.fix')]).toEqual([false, false]);
+    });
+
+    it('arrives with the gate\'s answer, never before it', () => {
+      seed(undefined);
+      render(<Omnibar variant="launcher" />);
+      expect(setupRow('launcher')).toBeNull();
+      act(() => seed(NOTHING_CONNECTED));
+      expect(setupRow('launcher')).toHaveTextContent('Set up AI');
+    });
   });
 });
 

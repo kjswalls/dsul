@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase';
 type DbClient = any;
 import type { Task, Habit, Item, ItemTypeDef, TaskItem, HabitItem, Project, Routine, Season, Goal, GoalRole } from './planner-types';
 import { ITEM_TYPES, getItemTypeConfig } from './item-registry';
+import { foldContainerName } from './container-registry';
 import { notifyPlugins } from './openclaw-registry';
 import { COMPLETION_RETRACTION_WINDOW_DAYS, windowStart } from './completion-window';
 
@@ -849,6 +850,39 @@ export async function fetchItemById(userId: string, id: string, client?: DbClien
 /** Shared by fetchItems and loadPlannerData, so both paths map rows alike. */
 function itemsFromRows(rows: ItemRow[]): Item[] {
   return rows.map(itemFromRow);
+}
+
+/**
+ * The rows under `ids`, the trashed ones too, each with whether it is in the
+ * bin. No deleted_at filter, on purpose: the own-rows policy lets an owner
+ * read their trashed rows, and the bin is the question. One reader,
+ * lib/held-captures.ts, before it files again a row first filed over a failed
+ * load: an id with no row is filed, a trashed one was deleted elsewhere and
+ * stays in the bin, and a live one is shown as saved.
+ *
+ * Reads `items`, not items_windowed: a row filed this session has no history
+ * to window. Throws the client's error, as fetchItems does.
+ */
+export async function fetchItemsAnyState(
+  userId: string,
+  ids: readonly string[],
+  client?: DbClient,
+): Promise<{ item: Item; deleted: boolean }[]> {
+  const supabase = client ?? createClient();
+  const found: { item: Item; deleted: boolean }[] = [];
+  // Chunked so a long pasted list cannot outgrow the request URL an `in` list lives in.
+  for (let i = 0; i < ids.length; i += 100) {
+    const { data, error } = await supabase
+      .from('items')
+      .select('*')
+      .eq('user_id', userId)
+      .in('id', ids.slice(i, i + 100));
+    if (error) throw error;
+    for (const row of (data ?? []) as (ItemRow & { deleted_at?: string | null })[]) {
+      found.push({ item: itemFromRow(row), deleted: !!row.deleted_at });
+    }
+  }
+  return found;
 }
 
 /** One item's agent columns, as `fetchAgentStates` reads them. */
@@ -3215,6 +3249,32 @@ export function loadPlannerData(
 function notifyContainerChange(userId: string, data: Record<string, unknown>): void {
   notifyPlugins(userId, 'projects.updated', data);
   notifyPlugins(userId, 'habitGroups.updated', data);
+}
+
+/**
+ * The live project an agent's name would collide with, folding case the way
+ * every lookup does (`CONTAINER_KINDS.project.caseFold`). The unique index is
+ * exact-case, so without this an agent could create "work" beside "Work" and
+ * leave two rows the app treats as one container. `exceptId` lets a rename
+ * keep its own name in a different case. Trashed rows are left to the index.
+ */
+export async function findLiveProjectByName(
+  userId: string,
+  name: string,
+  client: DbClient,
+  exceptId?: string,
+): Promise<Project | null> {
+  const { data, error } = await client
+    .from('projects')
+    .select('*')
+    .eq('user_id', userId)
+    .is('deleted_at', null);
+  if (error) throw error;
+  const folded = foldContainerName('project', name);
+  const hit = ((data ?? []) as ProjectRow[]).find(
+    (r) => r.id !== exceptId && foldContainerName('project', r.name) === folded,
+  );
+  return hit ? projectFromRow(hit) : null;
 }
 
 export async function createProject(userId: string, project: Project, client?: DbClient): Promise<void> {

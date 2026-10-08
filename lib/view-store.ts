@@ -525,6 +525,10 @@ const remapRefs = (
 // the failure surfaces as an unrelated suite collecting zero tests. Real zustand
 // always has it; the dedicated coverage in tests/unit/view-store-merge.test.ts
 // drives the actual store.
+//
+// Not off the look-only preview: the landing replaces cached names with the
+// server's, which is a load, not a rename. Loads have never remapped refs, and
+// a chain of remote renames (Y B→C, then X A→B) would mis-point them for good.
 usePlannerStore.subscribe?.((state, prev) => {
-  if (state.projects !== prev.projects) remapRefs(prev.projects, state.projects);
+  if (state.projects !== prev.projects && !prev.isPreview) remapRefs(prev.projects, state.projects);
 });

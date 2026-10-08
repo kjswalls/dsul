@@ -20,6 +20,8 @@ import { useRailStore } from '@/lib/rail-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useProposalStore } from '@/lib/proposal-store';
 import { useUndoStripStore } from '@/lib/undo-strip-store';
+import { useMobileNavStore } from '@/lib/mobile-nav-store';
+import { AskMarkUnlitIcon } from '@/components/ai/ask-mark';
 import type { Item, ItemTypeDef } from '@/lib/planner-types';
 import { AI_HIDDEN, CONNECTED_MODEL, KEY_TURNED_DOWN, NOTHING_CONNECTED, OPENCLAW_PLUGIN, seedAI } from './helpers/ai-fixtures';
 
@@ -989,6 +991,161 @@ describe('make.write: "Write a recipe with AI"', () => {
     } finally {
       unseed();
       fetchSpy.mockRestore();
+    }
+  });
+});
+
+describe('make.write-mod: "Write a mod with AI"', () => {
+  const write = () => commandById('make.write-mod');
+
+  it('shares make.write\'s gate: a connected model only', () => {
+    for (const [seed, shown] of [
+      [CONNECTED_MODEL, true],
+      [OPENCLAW_PLUGIN, false],
+      [KEY_TURNED_DOWN, false],
+      [AI_HIDDEN, false],
+      [undefined, false],
+    ] as const) {
+      const unseed = seedAI(seed);
+      try {
+        expect(write().availableWhen!(ctx)).toBe(shown);
+        expect((write().hidden as (c: CommandContext) => boolean)(ctx)).toBe(!shown);
+      } finally {
+        unseed();
+      }
+    }
+  });
+
+  it('opens Make with the Mod box, and sends nothing; no shortcut id; make.write is unchanged', () => {
+    expect(write().label).toBe('Write a mod with AI');
+    expect(write().group).toBe(commandById('make.write').group);
+    expect(write().shortcut).toBeUndefined();
+    expect(commandById('make.write').label).toBe('Write a recipe with AI');
+    const navigate = vi.fn();
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const unseed = seedAI(CONNECTED_MODEL);
+    try {
+      write().run({ ...ctx, navigate });
+      expect(navigate).toHaveBeenCalledWith('/settings/make?write=mod');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      unseed();
+      fetchSpy.mockRestore();
+    }
+  });
+});
+
+/* ── the doors into setup (AI setup PR 5) ──────────────────────────────── */
+
+// Ask AI's place while nothing answers: "Set up AI" while the gate invites,
+// "Fix AI" while a saved key needs attention, and nothing anywhere else.
+describe('ai.setup and ai.fix: "Set up AI" and "Fix AI"', () => {
+  const setup = () => commandById('ai.setup');
+  const fix = () => commandById('ai.fix');
+  const phone: CommandContext = { ...ctx, isMobile: true };
+  let unseed: () => void = () => {};
+
+  beforeEach(() => {
+    useRailStore.getState().reset();
+    useSidebarStore.setState({ askOpen: false });
+    useUIStore.setState({ activeDialog: null, displacedItemId: null });
+    useMobileNavStore.setState({ activeTab: 'today' });
+  });
+  afterEach(() => {
+    unseed();
+    unseed = () => {};
+  });
+
+  it('shows each only in its own state of the gate, on desktop and on the phone', () => {
+    for (const [label, seed, offered] of [
+      ['nothing connected', NOTHING_CONNECTED, 'setup'],
+      ['a key turned down', KEY_TURNED_DOWN, 'fix'],
+      ['No AI', AI_HIDDEN, null],
+      ['a key turned down, and No AI', { ...KEY_TURNED_DOWN, aiHidden: true }, null],
+      ['the server cannot say whether AI is hidden', { ...NOTHING_CONNECTED, aiHidden: null }, null],
+      ['chat Off on this device', { ...NOTHING_CONNECTED, choice: 'none' as const }, null],
+      ['a connected model', CONNECTED_MODEL, null],
+      ['OpenClaw answering', OPENCLAW_PLUGIN, null],
+      ['the status read failed', { phase: 'error' as const }, null],
+      ['the status unknown', undefined, null],
+    ] as const) {
+      unseed();
+      unseed = seedAI(seed);
+      for (const c of [ctx, phone]) {
+        const where = `${label}, ${c.isMobile ? 'phone' : 'desktop'}`;
+        expect(setup().availableWhen!(c), where).toBe(offered === 'setup');
+        expect((setup().hidden as (x: CommandContext) => boolean)(c), where).toBe(offered !== 'setup');
+        expect(fix().availableWhen!(c), where).toBe(offered === 'fix');
+        expect((fix().hidden as (x: CommandContext) => boolean)(c), where).toBe(offered !== 'fix');
+        const ids = matchCommands('', c).map((r) => r.command.id);
+        expect(ids.includes('ai.setup'), where).toBe(offered === 'setup');
+        expect(ids.includes('ai.fix'), where).toBe(offered === 'fix');
+      }
+    }
+  });
+
+  it('sits where Ask AI sits, says "open", wears the unlit mark, and owns no shortcut', () => {
+    for (const command of [setup(), fix()]) {
+      expect(command.group).toBe('rituals');
+      expect(command.verb).toBe('open');
+      expect(command.icon).toBe(AskMarkUnlitIcon);
+      // Palette only: the frozen shortcut list above stays as it is.
+      expect(command.shortcut).toBeUndefined();
+      expect(STATIC_COMMANDS.includes(command)).toBe(true);
+    }
+    expect(setup().label).toBe('Set up AI');
+    expect(fix().label).toBe('Fix AI');
+    // Declared right after Ask AI, so `/` lists them in its place.
+    const order = STATIC_COMMANDS.map((c) => c.id);
+    const chat = order.indexOf('rituals.chat');
+    expect(order.slice(chat, chat + 3)).toEqual(['rituals.chat', 'ai.setup', 'ai.fix']);
+  });
+
+  it('is what the old words and its own find while invited', () => {
+    unseed = seedAI(NOTHING_CONNECTED);
+    for (const q of ['setup', 'connect']) expect(matchCommands(q, ctx)[0].command.id).toBe('ai.setup');
+    for (const q of ['ai', 'ask', 'chat', 'set up']) {
+      expect(matchCommands(q, ctx).map((r) => r.command.id)).toContain('ai.setup');
+    }
+    unseed();
+    unseed = seedAI(KEY_TURNED_DOWN);
+    expect(matchCommands('fix', ctx)[0].command.id).toBe('ai.fix');
+  });
+
+  it('opens the setup column on desktop: open only, never kept open, and an open item closes', () => {
+    unseed = seedAI(NOTHING_CONNECTED);
+    useUIStore.setState({ activeDialog: { type: 'edit-item', item: { id: 'i1' } as never } });
+    setup().run(ctx);
+    expect(useRailStore.getState().summoned).toBe(true);
+    expect(useSidebarStore.getState().askOpen).toBe(false);
+    expect(useRailStore.getState().pendingFocus).toBeNull();
+    expect(useUIStore.getState().activeDialog).toBeNull();
+    // A second run leaves it showing: a door, not a toggle.
+    setup().run(ctx);
+    expect(useRailStore.getState().summoned).toBe(true);
+  });
+
+  it('opens the fix the same way while a key needs attention', () => {
+    unseed = seedAI(KEY_TURNED_DOWN);
+    fix().run(ctx);
+    expect(useRailStore.getState().summoned).toBe(true);
+    expect(useSidebarStore.getState().askOpen).toBe(false);
+  });
+
+  // The phone's palette (Ctrl+K and `/` focus the dock's omnibar there) lists
+  // these too, and the Ask tab holds the setup page while nothing answers.
+  it('on the phone, shows the Ask tab and never summons the desktop column', () => {
+    for (const [seed, command] of [
+      [NOTHING_CONNECTED, setup],
+      [KEY_TURNED_DOWN, fix],
+    ] as const) {
+      unseed();
+      unseed = seedAI(seed);
+      useMobileNavStore.setState({ activeTab: 'today' });
+      expect(matchCommands('', phone).map((r) => r.command.id)).toContain(command().id);
+      command().run(phone);
+      expect(useMobileNavStore.getState().activeTab).toBe('chat');
+      expect(useRailStore.getState().summoned).toBe(false);
     }
   });
 });

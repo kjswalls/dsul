@@ -14,7 +14,7 @@ import { useWeekColumns } from '@/lib/use-week-columns';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore, type BucketStyle } from '@/lib/view-store';
 import { useCanvasGroupBy } from '@/lib/extension-gates';
-import { openEditFor } from '@/lib/ui-store';
+import { openAddDialog, openEditFor } from '@/lib/ui-store';
 import { BUCKET_ORDER } from '@/lib/day-items';
 import { groupRows, type GroupableRow } from '@/lib/grouping';
 import { groupBySupport } from '@/lib/view-options';
@@ -158,6 +158,8 @@ function WeekBucketCell({
         isCurrent={isCurrent}
         variant={variant}
         contentMaxH={isEmpty ? undefined : WEEK_BUCKET_MAX_H}
+        // The same + Day × Buckets carries, on every caption of every day.
+        onAdd={(b, type) => openAddDialog(type, b, date)}
         // Blocks lead the cell, so they lead the shut caption's peek too.
         peek={[
           ...bucketProjects.map((p) => p.name),

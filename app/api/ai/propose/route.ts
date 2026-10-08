@@ -11,7 +11,13 @@ import {
   type GatewayConfig,
 } from '@/lib/openclaw-gateway'
 import { appendInstructions, clipText, MAX_CONTEXT_CHARS, MAX_OUTPUT_TOKENS } from '@/lib/ai-limits'
-import { AiDbError, openModelConnection, setConnectionStatus, type Opened } from '@/lib/ai-server/connections'
+import {
+  AiDbError,
+  openModelConnection,
+  setConnectionLimit,
+  setConnectionStatus,
+  type Opened,
+} from '@/lib/ai-server/connections'
 import {
   httpStatusFor,
   logProviderError,
@@ -294,8 +300,11 @@ export async function POST(req: Request): Promise<Response> {
   } catch (err) {
     const e = toProviderError(err, creds.provider, 'call')
     logProviderError('propose', creds.provider, e.kind, e.status)
+    // Conditional on the ciphertext this request read, as in /api/chat.
     if (e.kind === 'auth') {
       await setConnectionStatus(user.id, row.key_ciphertext, 'failing', 'key_rejected').catch(() => {})
+    } else if (e.kind === 'daily_limit') {
+      await setConnectionLimit(user.id, row.key_ciphertext, e.resetAt ?? null).catch(() => {})
     }
     if (e.kind === 'aborted') return new Response(null, { status: 204, headers: NO_STORE })
     return jsonChatError(httpStatusFor(e.kind), e.message, toChatErrorCode(e.kind))

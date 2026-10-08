@@ -6,6 +6,7 @@ import { ItemContextMenu } from '@/components/planner/item-context-menu';
 import { ContainerContextMenu } from '@/components/planner/container-context-menu';
 import { Check, GripVertical, ChevronsRight, ArrowRight, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { RowTitleText } from '@/components/primitives/row-title-text';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useSelectionStore, rangeIds } from '@/lib/selection-store';
 import { isRecurring, isCompletedOnDate, toDateStr } from '@/lib/recurrence';
@@ -107,9 +108,10 @@ function BlockTask({ task, onClick, date }: { task: Task; onClick: () => void; d
             {done && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
           </button>
           <span
+            data-row-title={done ? 'muted' : 'open'}
             className={cn('flex-1 font-content text-content', done && 'text-muted-foreground line-through opacity-60')}
           >
-            {task.title}
+            <RowTitleText text={task.title} />
           </span>
         </div>
       </ItemContextMenu>
@@ -181,6 +183,10 @@ export function ProjectBlock({
       // A project block only accepts a task whose project matches, so a test
       // asserting the reject path needs to see the distinction.
       data-dnd-accepts={canAcceptDrop ? 'true' : 'false'}
+      // A settle frame (lib/settle.ts). By id, not by the name the droppable
+      // uses: a rename elsewhere is the same block, retitled.
+      data-settle-key={`project:${project.id}`}
+      data-settle-role="frame"
       // A card floating ON the bucket's card, not a dashed outline drawn on it.
       // The dashed 2px project-coloured border was the loudest edge inside a
       // bucket — heavier than the bucket's own — and it read as a dropzone
@@ -213,7 +219,9 @@ export function ProjectBlock({
           {/* Truncation is a no-op at day width; in a ~240px week column it is the
               difference between "name pushes the time out of the clipped card" and
               "name ellipsises, time stays". No sizing of its own. */}
-          <span className="min-w-0 truncate font-content text-content text-foreground">{project.name}</span>
+          <span data-row-title="open" className="min-w-0 truncate font-content text-content text-foreground">
+            <RowTitleText text={project.name} />
+          </span>
           <span className="flex flex-shrink-0 items-center gap-1 whitespace-nowrap text-xs text-muted-foreground">
             <Clock className="h-3 w-3" />
             {project.startTime}
@@ -261,7 +269,9 @@ export function ProjectBlock({
                   className="group/preview flex cursor-pointer items-center gap-2 rounded-lg bg-muted/50 px-2.5 py-2 transition-colors hover-wash"
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="truncate font-content text-content text-foreground">{task.title}</p>
+                    <p data-row-title="open" className="truncate font-content text-content text-foreground">
+                      <RowTitleText text={task.title} />
+                    </p>
                   </div>
                   <Button
                     variant="ghost"

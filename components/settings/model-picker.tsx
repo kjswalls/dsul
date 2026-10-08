@@ -292,7 +292,7 @@ function TypedModelForm({
           spellCheck={false}
           className="h-8 text-xs"
         />
-        <Button type="submit" size="sm" disabled={!valid || id === current}>
+        <Button type="submit" size="sm" disabled={!valid || id === current} className="h-8">
           Save
         </Button>
       </div>

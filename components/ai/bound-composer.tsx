@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useRef } from 'react';
 import { ChatComposer } from '@/components/ai/chat-composer';
 import { useAICapabilities, useAIConnectionStore } from '@/lib/ai-connection-store';
+import { modelName } from '@/lib/ai-model-names';
 import { chatAssistantLabel } from '@/lib/chat-utils';
 import { bindingKey, useRailStore, type AskSurface, type ComposerBinding } from '@/lib/rail-store';
 import { cn } from '@/lib/utils';
@@ -114,16 +115,25 @@ export function BoundComposer({
 }
 
 /**
- * Who answers, under the box: the connected model's id ("gpt-4o-mini") or the
- * paired agent ("OpenClaw · kirby-1"). Plain text, not a control: 2c turns it
- * into the picker, and until then nothing about it may look clickable (no
- * hover, focus or cursor change). Nothing when nothing answers, which is
- * never, since every composer it sits under mounts behind the gate.
+ * Who answers, under the box: the connected model by name ("GPT-4o mini",
+ * lib/ai-model-names.ts: the catalog, an id's shape, or the name the provider
+ * listed it under when it was saved; the raw id only when none of those names
+ * it) or the paired agent ("OpenClaw · kirby-1"). Plain text, not a control:
+ * 2c turns it into the picker, and until then nothing about it may look
+ * clickable (no hover, focus or cursor change). Nothing when nothing answers,
+ * which is never, since every composer it sits under mounts behind the gate.
  */
 export function AnswererLabel({ className }: { className?: string }) {
   const { target, agentId } = useAICapabilities();
+  const provider = useAIConnectionStore((s) => s.model?.provider ?? null);
   const model = useAIConnectionStore((s) => s.model?.model ?? null);
-  const label = target === 'openclaw' ? chatAssistantLabel('openclaw', agentId) : target === 'model' ? model : null;
+  const listed = useAIConnectionStore((s) => s.model?.modelLabel ?? null);
+  const label =
+    target === 'openclaw'
+      ? chatAssistantLabel('openclaw', agentId)
+      : target === 'model' && provider && model
+        ? modelName(provider, model, listed).name
+        : null;
   if (!label) return null;
   return (
     <p data-testid="answerer-label" className={cn('truncate text-[11px] text-muted-foreground', className)}>

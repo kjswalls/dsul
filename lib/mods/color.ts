@@ -114,3 +114,36 @@ export function toHex(c: Color): string {
   const [r, g, b] = toLinearRgb(c);
   return `#${hex2(encode(r) * 255)}${hex2(encode(g) * 255)}${hex2(encode(b) * 255)}`;
 }
+
+/* ── OKLab ─────────────────────────────────────────────────────────────────── */
+
+/** OKLab coordinates [L, a, b]. A hex colour goes through sRGB; an oklch one is unrolled. */
+export function toOklab(c: Color): [number, number, number] {
+  if (c.kind === 'oklch') {
+    const rad = (c.h * Math.PI) / 180;
+    return [c.l, c.c * Math.cos(rad), c.c * Math.sin(rad)];
+  }
+  const [r, g, b] = toLinearRgb(c);
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  return [
+    0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
+    1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
+    0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s,
+  ];
+}
+
+/**
+ * `color-mix(in oklab, a p, b)` for opaque colours, p from 0 to 1: `p` of `a`,
+ * the rest `b`. What the browser draws for the waiting shimmer's ink.
+ */
+export function mixOklab(a: Color, b: Color, p: number): Color {
+  const A = toOklab(a);
+  const B = toOklab(b);
+  const L = A[0] * p + B[0] * (1 - p);
+  const x = A[1] * p + B[1] * (1 - p);
+  const y = A[2] * p + B[2] * (1 - p);
+  const h = (Math.atan2(y, x) * 180) / Math.PI;
+  return { kind: 'oklch', l: L, c: Math.hypot(x, y), h: h < 0 ? h + 360 : h };
+}

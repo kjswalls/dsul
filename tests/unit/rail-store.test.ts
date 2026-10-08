@@ -38,6 +38,8 @@ import { useProposalStore } from '@/lib/proposal-store';
 import { useUIStore } from '@/lib/ui-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useViewStore } from '@/lib/view-store';
+import { useMobileNavStore } from '@/lib/mobile-nav-store';
+import { useAIConnectionStore } from '@/lib/ai-connection-store';
 import { AI_HIDDEN, CONNECTED_MODEL, KEY_TURNED_DOWN, NOTHING_CONNECTED, seedAI } from './helpers/ai-fixtures';
 
 const rail = () => useRailStore.getState();
@@ -224,6 +226,64 @@ describe('carryDraftHome', () => {
   });
 });
 
+describe('appendDraftHome', () => {
+  it("leaves text in Ask home's box, after anything already typed there, and touches no other draft", () => {
+    rail().setDraft('conv:c1', 'a reply');
+    rail().appendDraftHome('what should I do first');
+    expect(rail().drafts).toEqual({ 'conv:c1': 'a reply', home: 'what should I do first' });
+    rail().appendDraftHome('and then?');
+    expect(rail().drafts.home).toBe('what should I do first\nand then?');
+    const before = rail().drafts;
+    rail().appendDraftHome('');
+    expect(rail().drafts).toBe(before);
+  });
+});
+
+// The phone's close: leaving its Ask tab, by any road, says "It works." once.
+describe('leaving the phone’s Ask tab', () => {
+  const said = () => {
+    useAIConnectionStore.getState().setJustConnected({ provider: 'gemini', model: 'gemini-flash-latest', freeTier: true, at: 1 });
+    useAIConnectionStore.getState().setFlowResult('saved');
+  };
+
+  afterEach(() => {
+    useMobileNavStore.setState({ activeTab: 'today' });
+    useAIConnectionStore.getState().reset();
+  });
+
+  it('spends It works. and the note in its place, by the setter or a bare setState, and keeps the stack and every draft', () => {
+    for (const leave of [
+      () => useMobileNavStore.getState().setActiveTab('today'),
+      () => useMobileNavStore.setState({ activeTab: 'braindump' }),
+    ]) {
+      useMobileNavStore.setState({ activeTab: 'chat' });
+      rail().push('phone', conv('c1'));
+      rail().setDraft('conv:c1', 'half a reply');
+      rail().setDraft('home', 'half a question');
+      said();
+      leave();
+      expect(useAIConnectionStore.getState().justConnected).toBeNull();
+      expect(useAIConnectionStore.getState().flowResult).toBeNull();
+      expect(rail().stacks.phone).toEqual([conv('c1')]);
+      expect(rail().drafts).toEqual({ 'conv:c1': 'half a reply', home: 'half a question' });
+      rail().reset();
+    }
+  });
+
+  it('spends nothing arriving on it, or moving between the other two', () => {
+    said();
+    useMobileNavStore.getState().setActiveTab('chat');
+    expect(useAIConnectionStore.getState().justConnected).not.toBeNull();
+    useMobileNavStore.getState().setActiveTab('chat');
+    expect(useAIConnectionStore.getState().justConnected).not.toBeNull();
+    useMobileNavStore.setState({ activeTab: 'today' });
+    said();
+    useMobileNavStore.getState().setActiveTab('braindump');
+    expect(useAIConnectionStore.getState().justConnected).not.toBeNull();
+    expect(useAIConnectionStore.getState().flowResult).toBe('saved');
+  });
+});
+
 describe("a conversation's proposal card", () => {
   it('is dismissed when its conversation leaves both stacks, and only then', () => {
     const dismiss = stubDismiss();
@@ -260,7 +320,13 @@ describe('reset', () => {
     rail().focusComposer();
     rail().setDraft('home', 'x');
     rail().reset();
-    expect(rail()).toMatchObject({ stacks: { desktop: [], phone: [] }, pendingFocus: null, drafts: {}, lastNav: null });
+    expect(rail()).toMatchObject({
+      stacks: { desktop: [], phone: [] },
+      modPanel: null,
+      pendingFocus: null,
+      drafts: {},
+      lastNav: null,
+    });
   });
 });
 
@@ -293,11 +359,13 @@ function setNarrow(narrow: boolean) {
 describe('railMode, the one visibility rule', () => {
   const B = [false, true];
   const cases = B.flatMap((itemOpen) =>
-    B.flatMap((askOpen) =>
-      B.flatMap((canChat) =>
-        B.flatMap((overlays) =>
-          B.flatMap((summoned) =>
-            [undefined, false, true].map((invite) => ({ itemOpen, askOpen, canChat, overlays, summoned, invite }))
+    B.flatMap((modOpen) =>
+      B.flatMap((askOpen) =>
+        B.flatMap((canChat) =>
+          B.flatMap((overlays) =>
+            B.flatMap((summoned) =>
+              [undefined, false, true].map((invite) => ({ itemOpen, modOpen, askOpen, canChat, overlays, summoned, invite }))
+            )
           )
         )
       )
@@ -308,7 +376,9 @@ describe('railMode, the one visibility rule', () => {
     const i = c as (typeof cases)[number];
     const expected = i.itemOpen
       ? 'item'
-      : (i.askOpen || i.summoned) && i.canChat && (!i.overlays || i.summoned)
+      : i.modOpen
+        ? 'mod'
+        : (i.askOpen || i.summoned) && i.canChat && (!i.overlays || i.summoned)
         ? 'ask'
         : i.summoned && i.invite && !i.canChat
           ? 'setup'
@@ -319,6 +389,15 @@ describe('railMode, the one visibility rule', () => {
   it('shows setup only on a summon: a kept-open Ask never raises it', () => {
     expect(railMode({ itemOpen: false, askOpen: true, canChat: false, overlays: false, summoned: false, invite: true })).toBe('hidden');
     expect(railMode({ itemOpen: false, askOpen: false, canChat: false, overlays: true, summoned: true, invite: true })).toBe('setup');
+  });
+
+  it("a mod's panel is the column at any width, with or without AI, over a kept-open Ask and under an item", () => {
+    const base = { itemOpen: false, modOpen: true, askOpen: false, canChat: false, overlays: false, summoned: false };
+    expect(railMode(base)).toBe('mod');
+    // Overlaid and never summoned: the panel is its own summon.
+    expect(railMode({ ...base, overlays: true })).toBe('mod');
+    expect(railMode({ ...base, askOpen: true, canChat: true })).toBe('mod');
+    expect(railMode({ ...base, itemOpen: true })).toBe('item');
   });
 
   it('an open item is the column, with or without AI', () => {
@@ -332,6 +411,106 @@ describe('railMode, the one visibility rule', () => {
   it('never an overlay at boot: a persisted askOpen alone does not raise one', () => {
     expect(railMode({ itemOpen: false, askOpen: true, canChat: true, overlays: true, summoned: false })).toBe('hidden');
     expect(railMode({ itemOpen: false, askOpen: true, canChat: true, overlays: false, summoned: false })).toBe('ask');
+  });
+});
+
+describe("a mod's panel in the column (build order 9)", () => {
+  const water = { modId: 'm1', panelId: 'water' };
+  let unseed: () => void = () => {};
+  beforeEach(() => {
+    installViewport();
+    setNarrow(false);
+    unseed = seedAI(NOTHING_CONNECTED);
+    useSidebarStore.setState({ askOpen: false });
+    useViewStore.setState({ zenOpen: false, zenMoving: false });
+  });
+  afterEach(() => {
+    unseed();
+    window.matchMedia = realMatchMedia;
+    viewport.listeners.clear();
+    useSidebarStore.setState({ askOpen: true });
+  });
+
+  it("is 'mod' with no AI, and openModPanel leaves summoned and askOpen alone", () => {
+    rail().openModPanel(water);
+    expect(rail().modPanel).toEqual(water);
+    expect(railModeNow()).toBe('mod');
+    expect(rail().summoned).toBe(false);
+    expect(useSidebarStore.getState().askOpen).toBe(false);
+  });
+
+  it("an item over it is 'item'; a kept-open Ask under it is still 'mod'", () => {
+    unseed();
+    unseed = seedAI(CONNECTED_MODEL);
+    useSidebarStore.setState({ askOpen: true });
+    rail().openModPanel(water);
+    expect(railModeNow()).toBe('mod');
+    useUIStore.setState({ activeDialog: { type: 'edit-item', item: { id: 'i1' } } as never });
+    expect(railModeNow()).toBe('item');
+    useUIStore.setState({ activeDialog: null });
+    // Closing it shows the docked Ask kept open, and keeps askOpen.
+    rail().closeModPanel();
+    expect(railModeNow()).toBe('ask');
+    expect(useSidebarStore.getState().askOpen).toBe(true);
+  });
+
+  it("overlaid and not summoned, it is still 'mod'", () => {
+    setNarrow(true);
+    rail().openModPanel(water);
+    expect(railModeNow()).toBe('mod');
+  });
+
+  it("closing it with an invite and nothing summoned is 'hidden', never 'setup'", () => {
+    unseed();
+    unseed = seedAI(NOTHING_CONNECTED);
+    rail().openModPanel(water);
+    rail().closeModPanel();
+    expect(railModeNow()).toBe('hidden');
+  });
+
+  it('summon replaces it with Ask', () => {
+    unseed();
+    unseed = seedAI(CONNECTED_MODEL);
+    rail().openModPanel(water);
+    rail().summon();
+    expect(rail().modPanel).toBeNull();
+    expect(railModeNow()).toBe('ask');
+  });
+
+  it('parkOverlay closes it only when the column overlays', () => {
+    rail().openModPanel(water);
+    rail().parkOverlay(false);
+    expect(rail().modPanel).toEqual(water);
+    rail().parkOverlay(true);
+    expect(rail().modPanel).toBeNull();
+    rail().openModPanel(water);
+    setNarrow(true);
+    rail().parkOverlay();
+    expect(rail().modPanel).toBeNull();
+  });
+
+  it('reset clears it', () => {
+    rail().openModPanel(water);
+    rail().reset();
+    expect(rail().modPanel).toBeNull();
+  });
+
+  it('closing hands focus back to where it was before the open', async () => {
+    const before = document.createElement('button');
+    document.body.appendChild(before);
+    const column = document.createElement('div');
+    column.setAttribute('data-rail', '');
+    const inside = document.createElement('button');
+    column.appendChild(inside);
+    document.body.appendChild(column);
+    before.focus();
+    rail().openModPanel(water);
+    inside.focus();
+    rail().closeModPanel();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(document.activeElement).toBe(before);
+    before.remove();
+    column.remove();
   });
 });
 

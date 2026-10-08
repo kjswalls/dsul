@@ -3,6 +3,7 @@ import { usePlannerStore } from './planner-store';
 import { getAICapabilities, useAIConnectionStore } from './ai-connection-store';
 import { buildDsulContext } from './ai-context';
 import { goalsEnabled } from './extension-gates';
+import { isPlannerPreviewing, whenPreviewEnds } from './planner-ready';
 import { isModelId } from './ai-types';
 import { replyErrorCode } from './chat-errors';
 import {
@@ -28,7 +29,7 @@ import {
   type TurnOutcome,
 } from './chat-transport';
 import { addChanges, hasChanges } from './conversation-summary';
-import { useRailStore } from './rail-store';
+import { spendJustConnected, useRailStore } from './rail-store';
 import { useProposalStore } from './proposal-store';
 
 /**
@@ -1262,9 +1263,15 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
       const content = cleanText(trimmed, CHAT_LIMITS.userChars);
       if (!/[^ \t\r\n]/.test(content)) return;
 
+      // The first send spends Ask home's "It works." (or the sign-in's note in
+      // its place), whichever box it came from (an item's does not push, so
+      // rail-store's push cannot see it).
+      spendJustConnected();
+      const ai = useAIConnectionStore.getState();
+
       const answerer: Answerer = caps.target === 'openclaw' ? 'openclaw' : 'model';
       const via = answerer === 'openclaw' && caps.openclawTransport === 'plugin' ? 'plugin' : 'chat';
-      const connected = useAIConnectionStore.getState().model?.model;
+      const connected = ai.model?.model;
       const modelId = answerer === 'model' && isModelId(connected) ? connected : null;
 
       const summary = get().summaries[id];
@@ -1315,28 +1322,52 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
 
       let outcome: TurnOutcome;
       try {
-        const { context, typeNouns } = plannerContext(base.itemId);
-        const note = continuityNote(prior, answerer, via, now);
-        // Whatever comes back, OpenClaw has the message from here on.
-        if (answerer === 'openclaw') noteOpenclawAsked(id);
-        outcome = await deps.transport.streamTurn({
-          conversationId: id,
-          target: answerer,
-          via,
-          message: content,
-          turns: outgoingTurns([...prior, user]),
-          context: note ? `${context}\n\n${note}` : context,
-          typeNouns,
-          signal: controller.signal,
-          onDelta: (delta) => {
-            if (isStale(st) || !delta) return;
-            updateThread(resolveId(id), (t) => ({
-              ...t,
-              typing: false,
-              messages: t.messages.map((m) => (m.id === reply.id ? { ...m, content: m.content + delta } : m)),
-            }));
-          },
-        });
+        // Nothing goes out on cached rows. The look-only preview paints the
+        // snapshot while the load is still in flight, and a question answered
+        // against it is answered against yesterday's planner — so the turn
+        // waits for the load to settle and builds its context from the fresh
+        // rows. Settle, not the preview's end: a crash drop (dropPreview) ends
+        // the preview with the store emptied and the load still in flight.
+        // The question is already in the transcript with its reply streaming,
+        // so the wait shows as a slow answer, and the composer is free.
+        //
+        // Asked before awaiting, so the ordinary send still reaches the
+        // transport in its caller's own tick: an `await` on an already-settled
+        // promise costs a microtask, and in that gap a Stop (or anything else
+        // that aborts) would take the turn before the request was made.
+        if (isPlannerPreviewing()) {
+          await whenPreviewEnds(controller.signal);
+          if (isStale(st)) return;
+        }
+        if (controller.signal.aborted) {
+          // Stopped during the wait: nothing was sent, so OpenClaw was never
+          // asked and no provider was charged. The empty reply drops below,
+          // leaving the question — exactly a stop before the first token.
+          outcome = { content: '', status: 'stopped', errorCode: null, model: modelId };
+        } else {
+          const { context, typeNouns } = plannerContext(base.itemId);
+          const note = continuityNote(prior, answerer, via, now);
+          // Whatever comes back, OpenClaw has the message from here on.
+          if (answerer === 'openclaw') noteOpenclawAsked(id);
+          outcome = await deps.transport.streamTurn({
+            conversationId: id,
+            target: answerer,
+            via,
+            message: content,
+            turns: outgoingTurns([...prior, user]),
+            context: note ? `${context}\n\n${note}` : context,
+            typeNouns,
+            signal: controller.signal,
+            onDelta: (delta) => {
+              if (isStale(st) || !delta) return;
+              updateThread(resolveId(id), (t) => ({
+                ...t,
+                typing: false,
+                messages: t.messages.map((m) => (m.id === reply.id ? { ...m, content: m.content + delta } : m)),
+              }));
+            },
+          });
+        }
       } catch {
         const partial = get().threads[resolveId(id)]?.messages.find((m) => m.id === reply.id)?.content ?? '';
         outcome = { content: partial, status: 'error', errorCode: 'client', model: modelId };

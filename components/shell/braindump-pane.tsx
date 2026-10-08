@@ -1,6 +1,7 @@
 'use client';
 
 import { Braindump } from '@/components/sidebar/braindump';
+import { ModCard } from '@/components/mods/mod-card';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { cn } from '@/lib/utils';
 
@@ -36,6 +37,7 @@ export function BraindumpPane({ covered = false }: { covered?: boolean }) {
     >
       <div className={cn('flex min-h-0 flex-1 flex-col pt-4 pr-3 pb-3 pl-3', PANE_W)}>
         <Braindump />
+        {open && <ModCard />}
       </div>
     </aside>
   );

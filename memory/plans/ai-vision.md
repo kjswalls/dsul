@@ -49,6 +49,74 @@ cleared on a stale "Queued". Both writes are named history entries with the undo
 The item panel's "Assign to OpenClaw" / "Unassign" is unchanged for now (it still offers
 finished and paused tasks); naming the AI across the rest of the app is parked.
 
+**Note 2026-10-07: connecting asks one test question (AI setup PR 4).** Every connect,
+recheck and OpenRouter sign-in lists the models and then asks the chosen one a 1-token
+question (`lib/ai-server/check.ts`), so "connected" means a model answered. The answers are
+typed: key_rejected, wrong_provider (a key whose prefix names another company is refused
+before anything is sent, `lib/ai-key-prefix.ts`), no_credit, daily_limit, region, network.
+A free key's daily cap is read from Google's and OpenRouter's error bodies by fixed fields
+only (`lib/ai-server/error-hints.ts`), written to `model_connections.limited_until` (060),
+and the chat note says when it resets. Connecting lives in one card, `ConnectAI`
+(`components/ai/connect/`), in the setup column and in Settings → AI; a free Google key
+leads, pasting a sure key checks it at once, and the key field is uncontrolled so a key is
+never in a `value` attribute. The pane's address is `/settings/ai` (an alias of the
+permanent `beacon` id), and an OpenRouter sign-in returns to the pane or home (`r`, sealed
+in the PKCE cookie). Open: a model that refuses only streamed requests (an unverified
+OpenAI org) still passes the check; the rate limit is still per-instance memory.
+
+**Note 2026-10-07: the doors into setup and the kept question (AI setup PR 5).** While
+nothing answers and the gate offers setup, three doors open it besides the unlit key and
+Ctrl+J: `?` in the dock or the launcher, whose one row "Set up AI to ask this" keeps the
+question typed after it; Ctrl+K's "Set up AI" or "Fix AI" (`ai.setup`, `ai.fix`, no
+shortcut), first in the launcher's Actions; and on the phone, the Ask tab itself. The kept
+question (`lib/ask-pending.ts`) lives in the tab's sessionStorage, never a URL, cookie or
+persisted store, shows in the setup home as YOUR QUESTION with Clear, and is asked at most
+once: the watcher claims its id on a short localStorage list before it sends, so a reload,
+a status flap or a duplicated tab finds nothing to send. It is sent only to the company the
+consent line named ("Connecting sends your question … to Google."), pressed within the
+hour: with a question kept a paste only fills the box, and Connect and ask, Check again or
+the OpenRouter sign-in stamps the consent. Any other road to a working AI (Settings → AI,
+another device, OpenClaw, another company, a stale press) leaves the question unsent in Ask
+home's box, so it is never lost and never goes somewhere the person did not see named. On
+the phone the third surface is offered while AI can be set up or fixed: the switcher reads
+"Set up AI" (Optional) or "Fix AI" (Needs attention) with the unlit mark, the tab holds a
+setup page built from the column's pieces (`components/mobile/setup-tab.tsx`) with the
+dock's omnibar kept under it, and a key that works turns it into Ask in place. Leaving the
+phone's Ask tab spends "It works.". Open: a question kept over an open item is sent without
+the item, and the one-time "Connected to …" notice belongs to no PR yet.
+
+**Note 2026-10-08: the tour ends on the AI invitation (AI setup PR 6).** The tour's last
+step reads the gate once (`tourAIStep`, `components/onboarding/onboarding-tour.tsx`) and is
+one of three cards or none: `ready` while something answers ("Your AI is ready", as before),
+`invite` while the gate offers setup, `off` on a replay after No AI ("AI stays off", with Got
+it), and otherwise no step 4 at all. An unknown or failed read, AI unavailable, chat Off on
+this device, an OpenClaw agent key with no chat, or a key that needs fixing ends the tour on
+step 3's last card, whose button then reads "Got it": no invitation while the gate cannot say
+one is right. A card already up keeps its variant through a brief flap of the gate. No card
+offers Settings any more, so the shell's `onOpenSettings` is gone. On the desktop the invite
+card spotlights the unlit key (`data-tour="ask-key"` on its button, the cutout sealed so a
+click through it cannot open setup under the tour) and hangs under it; on the phone it
+spotlights the mode card and adds "Later, it waits under the mode button.". It is a dialog
+that takes focus on its title and keeps Tab among its own buttons. Its two example questions
+come from `buildTourOpenerPreviews` (`lib/ai-openers.ts`): Ask home's first two chips at the
+real hour, with shorter lines that quote the task added at step 2, found by the id `addTask`
+returned (never the typed text, so a Skip quotes nothing); triage, let-go and reflect keep
+the column's lines. The three exits do everything that moves the rail, the tab or the gate
+before their one await (`setOnboardingComplete`), so nothing opens a round trip late or under
+the scrim. Set up AI puts back what the tour showed, then calls `openSetup` (the column, or
+the phone's setup page), with no toast either way. Not now toasts "You're all set. One thing at a
+time." with where Set up AI waits (at the top right, or under the mode button). No AI, thanks
+calls `chooseNoAI` (the undo strip, no toast) and still writes `onboarding_completed`, so the
+tour never comes back. The rituals intro waits for three things (`ritualsNudgeReady`'s
+`setupOrUndoUp`, read in `FirstRunNudges`): setup on screen (the column on the desktop, the
+setup page on the phone's Ask tab, each read on its own shell), the "It works." a connect
+there ends on, and an undo row, so it never covers No AI's focused Undo. Each is spent when
+the person moves on, and the intro comes after. Defaults awaiting Kirby: the real hour, so
+before 16:00 the card offers "Plan my day" with a new line, "Drafts today from your
+braindump, like “…”."; "AI stays off" on a replay after No AI, and no step 4 whenever the
+gate cannot invite; and the intro's wait. Open: app shortcuts (Ctrl+J, Ctrl+K) still fire
+under the tour, as on every step, and a replay with a key that needs fixing gets no fix card.
+
 **Status (2026-10-01): step 1, "Honest setup", SHIPPED (#355).** dsul ships no AI of
 its own any more: `process.env.OPENAI_API_KEY` is never read. Each user connects their own
 model in Settings → AI: OpenAI, Anthropic, Google Gemini, OpenRouter (sign-in or key) or any
@@ -973,9 +1041,11 @@ conversation is saved to the account.
   - proposal cards;
   - error text (only a short error code);
   - your model key (which never leaves the server's sealed store, as before);
-  - "Write with AI" in Settings → Make (mods build order 7): neither the ask nor the reply. Only what
-    you install is saved, switched off, as anything made in Make is. The model is sent the ask and
-    the names of your projects, types, themes and Looks, never your items, notes or conversations.
+  - "Write with AI" in Settings → Make (mods build orders 7 and 10): neither the ask nor the reply.
+    Only what you install is saved, switched off, as anything made in Make is. The model is sent the
+    ask and the names of your projects, types, themes and Looks (for a mod, only types, themes and
+    Looks; project names are not even read), never your items, notes or conversations. A mod it
+    writes has no AI of its own.
 - *Who can read it:*
   - you, on any device you sign in on;
   - the database's operators.

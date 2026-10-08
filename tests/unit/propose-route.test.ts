@@ -2,7 +2,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { ModelProviderId } from '@/lib/ai-types';
 import { POST } from '@/app/api/ai/propose/route';
-import { AiDbError, openModelConnection, setConnectionStatus } from '@/lib/ai-server/connections';
+import {
+  AiDbError,
+  openModelConnection,
+  setConnectionLimit,
+  setConnectionStatus,
+} from '@/lib/ai-server/connections';
 import { ProviderError, USER_MESSAGES, type ProviderErrorKind } from '@/lib/ai-server/errors';
 import { getAdapter } from '@/lib/ai-server/providers';
 import * as gateway from '@/lib/openclaw-gateway';
@@ -25,7 +30,12 @@ vi.mock('@/lib/supabase-server', () => ({
 
 vi.mock('@/lib/ai-server/connections', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/ai-server/connections')>();
-  return { ...actual, openModelConnection: vi.fn(), setConnectionStatus: vi.fn(async () => true) };
+  return {
+    ...actual,
+    openModelConnection: vi.fn(),
+    setConnectionStatus: vi.fn(async () => true),
+    setConnectionLimit: vi.fn(async () => true),
+  };
 });
 
 vi.mock('@/lib/ai-server/errors', async (importOriginal) => {
@@ -38,9 +48,15 @@ vi.mock('@/lib/ai-server/errors', async (importOriginal) => {
     toChatErrorCode: vi.fn((k: ProviderErrorKind) =>
       k === 'aborted' ? 'network' : k === 'model_required' ? 'bad_model' : k
     ),
-    httpStatusFor: vi.fn((k: ProviderErrorKind) =>
-      k === 'blocked_url' || k === 'model_required' ? 400 : k === 'timeout' ? 504 : 502
-    ),
+    // The documented contract (errors.ts): blocked_url and model_required 400,
+    // region 403, daily_limit 429, timeout 504, else 502.
+    httpStatusFor: vi.fn((k: ProviderErrorKind) => {
+      if (k === 'blocked_url' || k === 'model_required') return 400;
+      if (k === 'region') return 403;
+      if (k === 'daily_limit') return 429;
+      if (k === 'timeout') return 504;
+      return 502;
+    }),
     logProviderError: vi.fn(),
   };
 });
@@ -76,6 +92,7 @@ function rowFor(provider: ModelProviderId) {
     status: 'ok' as const,
     last_error: null,
     checked_at: null,
+    limited_until: null,
   };
 }
 function connected(provider: ModelProviderId = 'openai') {
@@ -113,6 +130,7 @@ beforeEach(() => {
   vi.mocked(openModelConnection).mockReset();
   connected();
   vi.mocked(setConnectionStatus).mockClear();
+  vi.mocked(setConnectionLimit).mockClear();
   adapter.completeText.mockReset();
   adapter.completeText.mockResolvedValue(JSON.stringify(DRAFT));
   vi.mocked(getAdapter).mockClear();
@@ -229,6 +247,29 @@ describe('POST /api/ai/propose → the connected model', () => {
     expect(res.headers.get('cache-control')).toBe('no-store');
     expect(await res.json()).toEqual({ error: USER_MESSAGES[kind], code: kind });
     expect(setConnectionStatus).not.toHaveBeenCalled();
+    expect(setConnectionLimit).not.toHaveBeenCalled();
+  });
+
+  it('a daily limit records when it lifts, and leaves the status alone', async () => {
+    const at = '2026-10-08T07:00:00.000Z';
+    adapter.completeText.mockRejectedValue(new ProviderError('daily_limit', 429, at));
+    const res = await post({ prompt: 'x' });
+    expect(res.status).toBe(429);
+    expect(await res.json()).toEqual({ error: USER_MESSAGES.daily_limit, code: 'daily_limit' });
+    // Conditional on the ciphertext this request read, as in /api/chat.
+    expect(setConnectionLimit).toHaveBeenCalledWith('user-1', 'v1:aXY=:dGFn:Y3Q=', at);
+    expect(setConnectionStatus).not.toHaveBeenCalled();
+  });
+
+  it('a daily limit with no reset time known still records the cap, and a failed write is no failure', async () => {
+    adapter.completeText.mockRejectedValue(new ProviderError('daily_limit', 429));
+    await post({ prompt: 'x' });
+    expect(setConnectionLimit).toHaveBeenCalledWith('user-1', 'v1:aXY=:dGFn:Y3Q=', null);
+
+    vi.mocked(setConnectionLimit).mockRejectedValue(new AiDbError('limit', '42703'));
+    const res = await post({ prompt: 'x' });
+    expect(res.status).toBe(429);
+    expect(await res.json()).toEqual({ error: USER_MESSAGES.daily_limit, code: 'daily_limit' });
   });
 
   it('a rejected key marks the connection failing, conditionally on the ciphertext read', async () => {

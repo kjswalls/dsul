@@ -46,6 +46,7 @@ function GripDots() {
 }
 import { Braindump } from '@/components/sidebar/braindump';
 import { SidebarDock } from '@/components/sidebar/sidebar-dock';
+import { ModCard } from '@/components/mods/mod-card';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Wordmark } from '@/components/primitives/wordmark';
 import {
@@ -522,6 +523,8 @@ export const Sidebar = memo(function Sidebar() {
           data-testid="sidebar-wordmark"
         />
         <Braindump />
+        {/* A mod's card, only while the column is docked open: a peek runs no resolves. */}
+        {leftSidebarOpen && <ModCard />}
         <SidebarDock />
       </div>
 

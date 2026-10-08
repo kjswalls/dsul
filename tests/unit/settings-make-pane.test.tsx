@@ -29,6 +29,16 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
+const sandbox = vi.hoisted(() => ({
+  scratch: vi.fn(),
+  status: vi.fn(() => 'idle'),
+}));
+vi.mock('@/lib/mods/sandbox-host', () => ({ modSandbox: sandbox }));
+const faults = vi.hoisted(() => ({ fetchRecentFaults: vi.fn(async () => [] as unknown[]) }));
+vi.mock('@/lib/mods/faults-log', () => faults);
+const runtime = vi.hoisted(() => ({ saved: vi.fn() }));
+vi.mock('@/lib/mods/runtime-manager', () => ({ activeModRuntime: () => runtime }));
+
 import { MakePane } from '@/components/settings/make-pane';
 import { SettingsShell } from '@/components/settings/settings-shell';
 import { useModsStore } from '@/lib/mods-store';
@@ -37,6 +47,7 @@ import type { UserMod } from '@/lib/mods/schema';
 import type { SettingCtx } from '@/lib/settings/manifest';
 import { useLookStore } from '@/lib/look-store';
 import { saveSettings } from '@/lib/settings-service';
+import { ModEditor, panelsInWords } from '@/components/settings/mod-editor';
 
 const USER = 'test-user';
 const ctx: SettingCtx = { theme: 'system', setTheme: () => {}, userId: USER };
@@ -66,6 +77,10 @@ const ACTIONS = {
   setEnabled: useModsStore.getState().setEnabled,
   remove: useModsStore.getState().remove,
   hydrate: useModsStore.getState().hydrate,
+  createMod: useModsStore.getState().createMod,
+  saveMod: useModsStore.getState().saveMod,
+  loadModCode: useModsStore.getState().loadModCode,
+  setModSettings: useModsStore.getState().setModSettings,
 };
 
 beforeEach(() => {
@@ -355,5 +370,310 @@ describe('Write with AI in Make', () => {
     } finally {
       unseed();
     }
+  });
+});
+
+describe('MakePane: mods', () => {
+  const MANIFEST = { version: 1, uses: ['storage', 'ui'], commands: [{ id: 'add-glass', label: 'Add a glass' }] };
+  const scratched = (manifest: unknown = MANIFEST) => ({
+    ok: true,
+    manifestJson: JSON.stringify(manifest),
+    hooks: ['command'],
+  });
+
+  beforeEach(() => {
+    sandbox.scratch.mockReset();
+    sandbox.status.mockReturnValue('idle');
+    faults.fetchRecentFaults.mockReset();
+    runtime.saved.mockReset();
+  });
+
+  it('New mod opens the editor on the Water template, and Cancel puts focus back on it', () => {
+    seed({});
+    render(<MakePane ctx={ctx} />);
+    fireEvent.click(screen.getByTestId('make-new-mod'));
+    expect((screen.getByTestId('mod-name') as HTMLInputElement).value).toBe('Water');
+    expect((screen.getByTestId('mod-source') as HTMLTextAreaElement).value).toContain('export function register(on)');
+    expect(screen.getByTestId('mod-uses').textContent).toBe(
+      'It may keep its own saved data and show short messages, and open items and views from its commands.'
+    );
+    expect(screen.getByTestId('mod-bytes').textContent).toMatch(/ of 65,536 bytes$/);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(document.activeElement).toBe(screen.getByTestId('make-new-mod'));
+  });
+
+  it('a scratch fault is shown inline, in words, and nothing is saved', async () => {
+    seed({});
+    const createMod = vi.fn();
+    useModsStore.setState({ createMod });
+    sandbox.scratch.mockResolvedValue({ ok: false, fault: { code: 'cpu', message: 'InternalError: interrupted' } });
+    render(<MakePane ctx={ctx} />);
+    fireEvent.click(screen.getByTestId('make-new-mod'));
+    fireEvent.click(screen.getByTestId('mod-save'));
+    const error = await screen.findByTestId('mod-editor-error');
+    expect(error.textContent).toContain('It used too much time.');
+    expect(error.textContent).toContain('The code said: InternalError: interrupted');
+    expect(createMod).not.toHaveBeenCalled();
+  });
+
+  it('says when the sandbox cannot run here, or needs a reload, and does not save', async () => {
+    seed({});
+    const createMod = vi.fn();
+    useModsStore.setState({ createMod });
+    render(<MakePane ctx={ctx} />);
+    fireEvent.click(screen.getByTestId('make-new-mod'));
+    sandbox.scratch.mockResolvedValueOnce({ ok: false, status: 'unavailable' });
+    fireEvent.click(screen.getByTestId('mod-save'));
+    expect((await screen.findByTestId('mod-editor-error')).textContent).toContain('Mods can’t run in this browser yet');
+    sandbox.scratch.mockResolvedValueOnce({ ok: false, status: 'outdated' });
+    fireEvent.click(screen.getByTestId('mod-save'));
+    await waitFor(() =>
+      expect(screen.getByTestId('mod-editor-error').textContent).toContain('dsul was updated; reload to save mods.')
+    );
+    expect(screen.getByRole('button', { name: 'Reload' })).toBeTruthy();
+    expect(createMod).not.toHaveBeenCalled();
+  });
+
+  it('refuses a name under the label rule before running anything', () => {
+    seed({});
+    render(<MakePane ctx={ctx} />);
+    fireEvent.click(screen.getByTestId('make-new-mod'));
+    fireEvent.change(screen.getByTestId('mod-name'), { target: { value: 'Account' } });
+    fireEvent.click(screen.getByTestId('mod-save'));
+    expect(screen.getByTestId('mod-editor-error')).toBeTruthy();
+    expect(sandbox.scratch).not.toHaveBeenCalled();
+  });
+
+  it('saves the manifest the code declared, in safe mode too', async () => {
+    seed({ safeMode: true });
+    const createMod = vi.fn(async () => ({ ok: true as const, id: 'new-id' }));
+    useModsStore.setState({ createMod });
+    sandbox.scratch.mockResolvedValue(scratched());
+    render(<MakePane ctx={ctx} />);
+    fireEvent.click(screen.getByTestId('make-new-mod'));
+    fireEvent.click(screen.getByTestId('mod-save'));
+    await waitFor(() => expect(createMod).toHaveBeenCalled());
+    expect(createMod).toHaveBeenCalledWith(USER, {
+      name: 'Water',
+      source: expect.stringContaining('add-glass'),
+      manifest: { ...MANIFEST, panels: [], settings: [] },
+    });
+    expect(await screen.findByTestId('make-notice')).toBeTruthy();
+    expect(screen.getByTestId('make-notice').textContent).toBe('Saved. It starts switched off.');
+  });
+
+  it('a manifest the schema refuses is not saved', async () => {
+    seed({});
+    const createMod = vi.fn();
+    useModsStore.setState({ createMod });
+    sandbox.scratch.mockResolvedValue(scratched({ ...MANIFEST, panels: [{ id: 'x' }] }));
+    render(<MakePane ctx={ctx} />);
+    fireEvent.click(screen.getByTestId('make-new-mod'));
+    fireEvent.click(screen.getByTestId('mod-save'));
+    expect((await screen.findByTestId('mod-editor-error')).textContent).toContain('Its manifest is not valid.');
+    expect(createMod).not.toHaveBeenCalled();
+  });
+
+  it('a mod row has Edit, which loads its code, and a save tells the running runtime', async () => {
+    const r = mod({ kind: 'mod', slug: 'water', name: 'Water', enabled: true, manifest: MANIFEST });
+    seed({ rows: [r] });
+    const loadModCode = vi.fn(async () => ({ enabled: true, source: 'export const manifest = {};', store: {}, manifest: MANIFEST, updatedAt: 'u' }));
+    const saveMod = vi.fn(async () => ({ ok: true as const, switchedOff: false }));
+    useModsStore.setState({ loadModCode, saveMod });
+    sandbox.scratch.mockResolvedValue(scratched());
+    render(<MakePane ctx={ctx} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Water' }));
+    expect(loadModCode).toHaveBeenCalledWith(r.id);
+    await waitFor(() =>
+      expect((screen.getByTestId('mod-source') as HTMLTextAreaElement).value).toBe('export const manifest = {};')
+    );
+    fireEvent.click(screen.getByTestId('mod-save'));
+    await waitFor(() => expect(saveMod).toHaveBeenCalled());
+    expect(runtime.saved).toHaveBeenCalledWith(r.id);
+    expect((await screen.findByTestId('make-notice')).textContent).toBe('Saved.');
+  });
+
+  it('frames the mod’s own words: Problems and the switched-off reason sit under "Your mod reported:"', async () => {
+    const r = mod({
+      kind: 'mod',
+      slug: 'water',
+      name: 'Water',
+      manifest: MANIFEST,
+      disabledReason: '3 errors in 10 minutes. Last: Error: Sign in again',
+    });
+    seed({ rows: [r] });
+    faults.fetchRecentFaults.mockResolvedValue([
+      { at: new Date().toISOString(), summary: { kind: 'fault', hook: 'command', code: 'error', message: 'TypeError: x is null', day: '2026-10-07' } },
+    ]);
+    render(<MakePane ctx={ctx} />);
+    expect(screen.getByText('Switched off: 3 errors in 10 minutes.')).toBeTruthy();
+    expect(screen.getByTestId('mod-reported').textContent).toBe('Your mod reported: Error: Sign in again');
+    expect(screen.getByTestId('recipe-runs')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Problems for Water' }));
+    const problem = await screen.findByTestId('mod-problem');
+    expect(faults.fetchRecentFaults).toHaveBeenCalledWith(r.id);
+    expect(problem.textContent).toContain('command · It hit an error');
+    expect(problem.textContent).toContain('Your mod reported: TypeError: x is null');
+  });
+
+  it('editor copy has no em dashes and never names Beacon', () => {
+    seed({});
+    const { container } = render(<MakePane ctx={ctx} />);
+    fireEvent.click(screen.getByTestId('make-new-mod'));
+    const text = container.textContent ?? '';
+    expect(text).not.toContain('—');
+    expect(text).not.toMatch(/beacon/i);
+  });
+});
+
+describe('ModEditor: a "Write with AI" draft (build order 10)', () => {
+  const SOURCE = "export const manifest = { version: 1, uses: ['storage'], commands: [{ id: 'log', label: 'Log a page' }] };\nexport function register(on) {\n  on('command', async ($) => {\n    await $.store.set({ key: 'n', value: 1 });\n  });\n}\n";
+  const MANIFEST = { version: 1 as const, uses: ['storage' as const], commands: [{ id: 'log', label: 'Log a page' }], panels: [], settings: [] };
+  const editor = (initial: Parameters<typeof ModEditor>[0]['initial'], onDone = vi.fn()) =>
+    render(<ModEditor userId={USER} editing={null} initial={initial} onDone={onDone} onCancel={vi.fn()} />);
+  const scratched = (manifest: unknown, hooks = ['command']) => ({ ok: true, manifestJson: JSON.stringify(manifest), hooks });
+
+  beforeEach(() => {
+    sandbox.scratch.mockReset();
+    sandbox.status.mockReturnValue('idle');
+  });
+
+  it('seeds the name, the code and what it asks for from the draft, never the template', () => {
+    editor({ name: 'Pages', source: SOURCE, manifest: MANIFEST, fromAI: true });
+    expect((screen.getByTestId('mod-name') as HTMLInputElement).value).toBe('Pages');
+    expect((screen.getByTestId('mod-source') as HTMLTextAreaElement).value).toBe(SOURCE);
+    expect(screen.getByTestId('mod-uses').textContent).toBe('It may keep its own saved data.');
+  });
+
+  it('a draft that would not load starts with nothing read, not the template\'s uses', async () => {
+    const createMod = vi.fn(async () => ({ ok: true as const, id: 'new-id' }));
+    useModsStore.setState({ createMod });
+    editor({ name: 'Pages', source: SOURCE, manifest: null, fromAI: true });
+    expect(screen.getByTestId('mod-uses').textContent).toBe('Not read yet: save to check it.');
+    sandbox.scratch.mockResolvedValue(scratched(MANIFEST));
+    fireEvent.click(screen.getByTestId('mod-save'));
+    await waitFor(() => expect(createMod).toHaveBeenCalled());
+    expect(screen.getByTestId('mod-uses').textContent).toBe('It may keep its own saved data.');
+  });
+
+  it('holds Save on the draft\'s checks, and still does after an edit elsewhere', async () => {
+    const createMod = vi.fn(async () => ({ ok: true as const, id: 'new-id' }));
+    useModsStore.setState({ createMod });
+    const chat = { ...MANIFEST, commands: [{ id: 'chat', label: 'Chat' }] };
+    sandbox.scratch.mockResolvedValue(scratched(chat));
+    editor({ name: 'Pages', source: SOURCE, manifest: chat, fromAI: true });
+    fireEvent.click(screen.getByTestId('mod-save'));
+    const checks = await screen.findByTestId('mod-editor-checks');
+    expect(checks.textContent).toContain('Command 1 has a label that cannot be shown.');
+    expect(sandbox.scratch).toHaveBeenCalledWith(SOURCE);
+
+    fireEvent.change(screen.getByTestId('mod-name'), { target: { value: 'Page count' } });
+    fireEvent.change(screen.getByTestId('mod-source'), { target: { value: `${SOURCE}// edited\n` } });
+    fireEvent.click(screen.getByTestId('mod-save'));
+    await waitFor(() => expect(sandbox.scratch).toHaveBeenCalledTimes(2));
+    expect((await screen.findByTestId('mod-editor-checks')).textContent).toContain('Command 1 has a label');
+    expect(createMod).not.toHaveBeenCalled();
+  });
+
+  it('a hand-written mod is not held to the draft checks', async () => {
+    const createMod = vi.fn(async () => ({ ok: true as const, id: 'new-id' }));
+    useModsStore.setState({ createMod });
+    const chat = { ...MANIFEST, commands: [{ id: 'chat', label: 'Chat' }] };
+    sandbox.scratch.mockResolvedValue(scratched(chat));
+    editor({ name: 'Pages', source: SOURCE, manifest: chat });
+    fireEvent.click(screen.getByTestId('mod-save'));
+    await waitFor(() => expect(createMod).toHaveBeenCalled());
+  });
+
+  it('a draft that passes saves its own code, switched off', async () => {
+    const onDone = vi.fn();
+    const createMod = vi.fn(async () => ({ ok: true as const, id: 'new-id' }));
+    useModsStore.setState({ createMod });
+    sandbox.scratch.mockResolvedValue(scratched(MANIFEST));
+    editor({ name: 'Pages', source: SOURCE, manifest: MANIFEST, fromAI: true }, onDone);
+    fireEvent.click(screen.getByTestId('mod-save'));
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith('Saved. It starts switched off.'));
+    expect(createMod).toHaveBeenCalledWith(USER, { name: 'Pages', source: SOURCE, manifest: MANIFEST });
+  });
+
+  it('a fault\'s own words go through the surface rule, for any mod', async () => {
+    sandbox.scratch.mockResolvedValue({ ok: false, fault: { code: 'error', message: 'Error: Sign in again to keep your key' } });
+    editor({ name: 'Pages', source: SOURCE, manifest: MANIFEST });
+    fireEvent.click(screen.getByTestId('mod-save'));
+    const error = await screen.findByTestId('mod-editor-error');
+    expect(error.textContent).toContain('The code said: (message hidden)');
+    expect(error.textContent).not.toContain('Sign in');
+  });
+});
+
+describe('MakePane: mod panels and settings (build order 9)', () => {
+  const SETTINGS = [
+    { kind: 'number', key: 'goal', label: 'Daily goal', default: 8, min: 1, max: 20 },
+    { kind: 'toggle', key: 'loud', label: 'Remind me', default: false },
+    { kind: 'text', key: 'cup', label: 'Cup name' },
+  ];
+  const WITH_CARD = { version: 1, uses: ['ui'], panels: [{ id: 'water', label: 'Water', card: true }] };
+
+  it('draws a mod’s settings under a host label, from its store, and saves them through the store', async () => {
+    const r = mod({ kind: 'mod', slug: 'water', name: 'Water', enabled: true, manifest: { version: 1, uses: [], settings: SETTINGS } });
+    seed({ rows: [r] });
+    const loadModCode = vi.fn(async () => ({
+      enabled: true,
+      source: '',
+      store: { '@settings': { goal: 5, cup: 'sk-abcdefghijklmnop' } },
+      manifest: r.manifest,
+      updatedAt: 'u',
+    }));
+    const setModSettings = vi.fn(async (_id: string, values: Record<string, unknown>) => ({ ok: true as const, values: values as never }));
+    useModsStore.setState({ loadModCode, setModSettings });
+    render(<MakePane ctx={ctx} />);
+    const form = screen.getByTestId('mod-settings-form');
+    expect(form.textContent).toContain('Set by your mod Water');
+    const goal = (await within(form).findByLabelText('Daily goal')) as HTMLInputElement;
+    expect(goal.value).toBe('5');
+    // A stored value shaped like a key falls back, never shown.
+    expect((within(form).getByLabelText('Cup name') as HTMLInputElement).value).toBe('');
+    expect(within(form).getByLabelText('Cup name')).toHaveAttribute('autocomplete', 'off');
+    fireEvent.change(goal, { target: { value: '30' } });
+    fireEvent.click(within(form).getByTestId('mod-settings-save'));
+    expect(await within(form).findByRole('alert')).toHaveTextContent('Daily goal needs a number between 1 and 20.');
+    expect(setModSettings).not.toHaveBeenCalled();
+    fireEvent.change(goal, { target: { value: '12' } });
+    fireEvent.click(within(form).getByRole('switch', { name: 'Remind me' }));
+    fireEvent.click(within(form).getByTestId('mod-settings-save'));
+    await waitFor(() => expect(setModSettings).toHaveBeenCalledWith(r.id, { goal: 12, loud: true, cup: null }));
+    expect(await within(form).findByRole('status')).toHaveTextContent('Saved.');
+  });
+
+  it('a mod without settings draws no form', () => {
+    seed({ rows: [mod({ kind: 'mod', slug: 'water', name: 'Water', manifest: { version: 1, uses: [] } })] });
+    render(<MakePane ctx={ctx} />);
+    expect(screen.queryByTestId('mod-settings-form')).toBeNull();
+  });
+
+  it('says which mod’s card is the one under the braindump', () => {
+    const first = mod({ kind: 'mod', slug: 'water', name: 'Water', enabled: true, manifest: WITH_CARD, createdAt: '2026-10-01T00:00:00Z' });
+    const second = mod({ kind: 'mod', slug: 'steps', name: 'Steps', enabled: true, manifest: WITH_CARD, createdAt: '2026-10-02T00:00:00Z' });
+    const off = mod({ kind: 'mod', slug: 'tea', name: 'Tea', enabled: false, manifest: WITH_CARD, createdAt: '2026-09-01T00:00:00Z' });
+    seed({ rows: [first, second, off] });
+    render(<MakePane ctx={ctx} />);
+    const line = (id: string) => document.querySelector(`[data-make-row="${id}"] [data-testid="mod-card-line"]`);
+    expect(line(first.id)?.textContent).toBe('Shows under the braindump');
+    expect(line(second.id)?.textContent).toBe('Another mod’s card is showing');
+    expect(line(off.id)).toBeNull();
+  });
+
+  it('the editor says what a mod draws and asks for, in plain words', () => {
+    expect(panelsInWords({ uses: ['ui'], panels: [{ id: 'a', label: 'A', card: true }], settings: [] })).toBe(
+      'Draws 1 panel, shown under the braindump.'
+    );
+    expect(
+      panelsInWords({
+        uses: ['ui', 'items:read'],
+        panels: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B', card: true }],
+        settings: [{ kind: 'toggle', key: 'x', label: 'X' }],
+      })
+    ).toBe('Draws 2 panels, one shown under the braindump. Shows titles of items you link to. Has 1 setting you set in Make.');
+    expect(panelsInWords({ uses: [], panels: [], settings: [] })).toBe('');
   });
 });

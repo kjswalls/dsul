@@ -2,12 +2,13 @@ import { NextResponse } from 'next/server'
 import { isSameOrigin, NO_STORE, readJson, requireSession } from '@/app/api/ai/_shared/guard'
 import type { ChatErrorCode } from '@/lib/ai-types'
 import { ROUTE_ERROR_COPY } from '@/lib/chat-errors'
-import { clipText, MAKE_MAX_CHARS, MAKE_OUTPUT_TOKENS, MAX_MAKE_ASK_CHARS } from '@/lib/ai-limits'
+import { clipText, MAKE_CAPS, MAX_MAKE_ASK_CHARS } from '@/lib/ai-limits'
 import { SSE_HEADERS } from '@/lib/sse'
 import {
   AiDbError,
   openModelConnection,
   readAIHidden,
+  setConnectionLimit,
   setConnectionStatus,
   type Opened,
 } from '@/lib/ai-server/connections'
@@ -26,8 +27,8 @@ import { isMakeKind, makeSystem } from '@/lib/ai-server/make-prompt'
 
 /**
  * POST /api/ai/make: "Write with AI" in Settings → Make (memory/plans/mods.md,
- * "AI writes it", decision 6). One press writes one recipe, theme or Look as
- * JSON, streamed as dsul's own SSE frames (`{content}` deltas, at most one
+ * "AI writes it", decision 6). One press writes one recipe, theme, Look or mod
+ * as JSON (a mod's code rides in it as one string), streamed as dsul's own SSE frames (`{content}` deltas, at most one
  * `{error, code}`, then `[DONE]`), exactly as /api/chat streams.
  *
  * The person's own connected model only. Never OpenClaw, and never a key of
@@ -38,8 +39,12 @@ import { isMakeKind, makeSystem } from '@/lib/ai-server/make-prompt'
  * The body is read for `kind` and `ask` and nothing else. What the model sees
  * besides the ask is built here: the fixed prompt (lib/ai-server/make-prompt.ts)
  * and the person's project, type, theme and Look names, read from the database
- * through the session client (lib/ai-server/make-context.ts). No item, note or
- * conversation, and no Custom instructions. A `context` in the body is ignored.
+ * through the session client (lib/ai-server/make-context.ts); for a mod, no
+ * project names. No item, note or conversation, and no Custom instructions. A
+ * `context` in the body is ignored.
+ *
+ * The caps are per kind (MAKE_CAPS in lib/ai-limits.ts): a mod may write
+ * 4,000 tokens, so it gets a 110 s deadline and costs two from the bucket.
  *
  * Nothing is stored: not the ask, not the reply. The browser checks the reply
  * against the same schemas and saves it, switched off, only on Install.
@@ -47,10 +52,8 @@ import { isMakeKind, makeSystem } from '@/lib/ai-server/make-prompt'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
-export const maxDuration = 60
-
-/** Our own deadline, inside `maxDuration`, as /api/chat's. */
-const MAKE_TIMEOUT_MS = 50_000
+/** A mod's 110 s deadline (MAKE_CAPS) and room to close the stream. Plan-dependent on Vercel. */
+export const maxDuration = 120
 
 /** A kind and a 1,000-character ask, with room to spare for a body an older tab pads. */
 const MAX_BODY_BYTES = 16_384
@@ -86,7 +89,10 @@ export async function POST(req: Request): Promise<Response> {
   const ask = clipText(body.ask, MAX_MAKE_ASK_CHARS).trim()
   if (!ask) return jsonError(400, ROUTE_ERROR_COPY.invalid, 'invalid')
 
-  if (!takeToken(user.id, 'make')) return jsonError(429, RATE_LIMITED, 'rate_limit')
+  // This kind's output, stream and deadline caps (the deadline is ours, inside
+  // `maxDuration`, as /api/chat's) and what it takes from the bucket.
+  const caps = MAKE_CAPS[kind]
+  if (!takeToken(user.id, 'make', undefined, caps.cost)) return jsonError(429, RATE_LIMITED, 'rate_limit')
 
   let hidden: boolean | null
   let conn: Opened
@@ -110,11 +116,11 @@ export async function POST(req: Request): Promise<Response> {
     }
   }
 
-  const context = await buildMakeContext(db, user.id)
+  const context = await buildMakeContext(db, user.id, kind)
 
   const { row, creds, model } = conn
   const abort = new AbortController()
-  const signal = anySignal([req.signal, abort.signal, AbortSignal.timeout(MAKE_TIMEOUT_MS)])
+  const signal = anySignal([req.signal, abort.signal, AbortSignal.timeout(caps.timeoutMs)])
   const adapter = getAdapter(creds.provider)
   const onFailure = async (err: unknown) => {
     const e = toProviderError(err, creds.provider, 'call')
@@ -122,6 +128,9 @@ export async function POST(req: Request): Promise<Response> {
     if (e.kind === 'auth') {
       // Conditional on the ciphertext this request read, as chat's.
       await setConnectionStatus(user.id, row.key_ciphertext, 'failing', 'key_rejected').catch(() => {})
+    } else if (e.kind === 'daily_limit') {
+      // So the connection says when the free day's limit lifts, as chat's.
+      await setConnectionLimit(user.id, row.key_ciphertext, e.resetAt ?? null).catch(() => {})
     }
     return e
   }
@@ -133,7 +142,7 @@ export async function POST(req: Request): Promise<Response> {
       modelMeta: row.model_meta ?? {},
       system: makeSystem(kind, context),
       messages: [{ role: 'user', content: ask }],
-      maxOutputTokens: MAKE_OUTPUT_TOKENS,
+      maxOutputTokens: caps.outputTokens,
       signal,
       json: true,
     })
@@ -146,7 +155,7 @@ export async function POST(req: Request): Promise<Response> {
   return new Response(
     deltasToSse(source, {
       abort,
-      maxChars: MAKE_MAX_CHARS,
+      maxChars: caps.maxChars,
       onError: async (err) => {
         const e = await onFailure(err)
         return { error: e.message, code: toChatErrorCode(e.kind) }

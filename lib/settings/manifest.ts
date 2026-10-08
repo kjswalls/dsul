@@ -1906,6 +1906,39 @@ export function isPaneId(value: string): value is PaneId {
   return ALL_PANES.some((p) => p.id === value);
 }
 
+/**
+ * A pane's user-facing path, where it differs from its id: the AI pane's id
+ * stays 'beacon' (the route every old link and the `beacon.*` records name,
+ * permanent), but the address bar says what the rail says. Never in PANES or
+ * ALL_PANES: an alias is a second way to the same pane, not a pane, so the
+ * rail, search and every pane lookup still see one AI pane.
+ */
+export const PANE_ALIASES: Readonly<Record<string, RootPaneId>> = Object.freeze({ ai: 'beacon' });
+
+/** The other direction: the path a pane is linked by. Only the panes with an alias are here. */
+export const PANE_PATHS: Readonly<Partial<Record<PaneId, string>>> = Object.freeze({ beacon: 'ai' });
+
+/**
+ * The pane a `/settings/<path>` names: its id, or the pane its alias stands
+ * for (`ai` → 'beacon'). Null for anything else. Own keys only, so a path of
+ * `constructor` is no pane.
+ */
+export function resolvePaneSlug(path: string | undefined): PaneId | null {
+  if (!path) return null;
+  if (isPaneId(path)) return path;
+  return Object.hasOwn(PANE_ALIASES, path) ? PANE_ALIASES[path] : null;
+}
+
+/**
+ * Where the app links a pane: `/settings/ai` for the AI pane, `/settings/<id>`
+ * for every other. Every href and push the settings surface builds goes
+ * through here, so the address bar never shows "beacon" for a link dsul made
+ * (`/settings/beacon` itself keeps working).
+ */
+export function paneHref(id: PaneId): string {
+  return `/settings/${PANE_PATHS[id] ?? id}`;
+}
+
 /** The value as the user sees it — chip copy, and what search echoes back. */
 export function displayValue(record: SettingRecord, value: string | boolean): string {
   if (record.display) return record.display(value);

@@ -72,8 +72,14 @@ vi.mock('@/lib/proposal-store', () => {
   return { useProposalStore };
 });
 
+/**
+ * The planner as the card reads it: rows for the line text, and where its load
+ * is (accept waits for it). Loaded unless a test says otherwise.
+ */
+const LOADED = { userId: 'u1', isLoading: false, isPreview: false, error: null, loadFailedUserId: null };
+const planner = vi.hoisted(() => ({ state: {} as Record<string, unknown> }));
 vi.mock('@/lib/planner-store', () => ({
-  usePlannerStore: (sel: (s: unknown) => unknown) => sel({ items: [], itemTypes: [] }),
+  usePlannerStore: (sel: (s: unknown) => unknown) => sel({ items: [], itemTypes: [], ...planner.state }),
 }));
 
 // The card's job here is selection, not phrasing — one stable line per op keeps
@@ -106,6 +112,7 @@ beforeEach(() => {
   accept.mockClear();
   retry.mockClear();
   dismiss.mockClear();
+  planner.state = { ...LOADED };
   status = 'ready';
   intent = 'ask';
   surface = 'chat';
@@ -193,6 +200,50 @@ describe('dropping individual lines', () => {
     proposal = { ...makeProposal('a', 'b', 'c'), id: 'p2' } as Proposal;
     rerender(<ProposalCard />);
     expect(acceptButton().textContent).toContain('Do all of it');
+  });
+});
+
+describe('accept waits for the planner to load', () => {
+  // The store's accept refuses before the planner has loaded and keeps the
+  // card (lib/proposal-store.ts). On its own that was a button that did
+  // nothing; the card says why instead, and only says "Syncing…" while a load
+  // is actually in flight.
+  const reason = () => screen.queryByTestId('proposal-accept-reason');
+
+  it('is disabled with "Syncing…" while the load is in flight (the preview included)', () => {
+    planner.state = { ...LOADED, isLoading: true, isPreview: true };
+    render(<ProposalCard />);
+
+    expect(acceptButton().disabled).toBe(true);
+    expect(reason()).toHaveTextContent('Syncing…');
+    expect(acceptButton().getAttribute('aria-describedby')).toBe(reason()!.id);
+    // Still says what it would do.
+    expect(acceptButton().textContent).toContain('Do all of it');
+    fireEvent.click(acceptButton());
+    expect(accept).not.toHaveBeenCalled();
+  });
+
+  it('after a FAILED load, is disabled with a reason that is not "Syncing…"', () => {
+    planner.state = { ...LOADED, error: 'Failed to load data', loadFailedUserId: 'u1' };
+    render(<ProposalCard />);
+
+    expect(acceptButton().disabled).toBe(true);
+    expect(reason()).toHaveTextContent('Can’t apply until your data loads');
+    expect(reason()).not.toHaveTextContent('Syncing');
+    fireEvent.click(acceptButton());
+    expect(accept).not.toHaveBeenCalled();
+    // The way out stays open.
+    expect(screen.getByRole('button', { name: 'Not now' })).not.toBeDisabled();
+  });
+
+  it('is live, with no reason, once loaded', () => {
+    render(<ProposalCard />);
+
+    expect(acceptButton().disabled).toBe(false);
+    expect(reason()).toBeNull();
+    expect(acceptButton().hasAttribute('aria-describedby')).toBe(false);
+    fireEvent.click(acceptButton());
+    expect(accept).toHaveBeenCalledTimes(1);
   });
 });
 

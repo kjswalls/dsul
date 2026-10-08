@@ -1,52 +1,67 @@
 'use client';
 
-import {
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  useSyncExternalStore,
-  type FormEvent,
-  type KeyboardEvent,
-} from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { ArrowUpRight } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { ConnectAI } from '@/components/ai/connect/connect-ai';
+import {
+  ANCHOR_CLASS,
+  connectErrorCopy,
+  hostOf,
+  labelName,
+  openRouterStartHref,
+  settingAnchor as anchor,
+  useInDesktopApp,
+  useRefreshOnWindowFocus,
+  useResetsAt,
+} from '@/components/ai/connect/connect-shared';
+import { KeyField, type KeyFieldHandle } from '@/components/ai/connect/key-field';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ModelPicker } from './model-picker';
-import { useAIConnectionStore, useAICapabilities } from '@/lib/ai-connection-store';
+import { useAIConnectionStore, useAICapabilities, type ApiFailure } from '@/lib/ai-connection-store';
+import { isPlausibleKey, mismatchedKey, type DetectedProvider } from '@/lib/ai-key-prefix';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
+import { FLOW_COPY, UNAVAILABLE_COPY, flowSaved, readFlow, type ConnectFlow } from '@/lib/connect-flow';
 import { revealChat } from '@/lib/open-chat';
 import { serverSaysHidden } from '@/lib/no-ai';
 import { chordLabel, isApplePlatform } from '@/lib/commands/keys';
 import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
-import { getDesktopBridge } from '@/lib/desktop';
 import { useUIStore } from '@/lib/ui-store';
 import {
+  AI_SETTINGS_PATH,
   MODEL_PROVIDERS,
   PROVIDER_META,
   isModelId,
-  type ApiErrorCode,
   type ConnectRequest,
   type ModelConnectionView,
   type ModelProviderId,
 } from '@/lib/ai-types';
 import { cn } from '@/lib/utils';
 
+// The pane's error words live with the connect card's (components/ai/connect/
+// connect-shared.ts); the model picker and its tests still read them here.
+export { connectErrorCopy, type ErrorCopyContext } from '@/components/ai/connect/connect-shared';
+
 /**
- * Connect a model: the top of the AI settings pane (pane id 'beacon').
+ * Connect a model: the top of the AI settings pane (pane id 'beacon', at
+ * /settings/ai).
  *
  * dsul ships no AI of its own. A user brings a provider they already pay for,
- * and this is the one place that happens: paste a key (OpenAI, Anthropic,
- * Google Gemini, OpenRouter, or any OpenAI-compatible service) or sign in with
- * OpenRouter. The key goes to the server once, is sealed there, and never
- * comes back: not into a store, not into the URL, not masked, not as a last
- * four. It lives in this component's state only between keystroke and submit,
- * and is cleared on every submit, on a provider change and on unmount.
+ * or a free key from Google. With nothing connected this is the connect card
+ * the setup column shows too (components/ai/connect/connect-ai.tsx): the free
+ * key first, then OpenRouter's sign-in, then a key from anyone. Once connected
+ * it is the card below, with its own forms to replace the key or switch
+ * provider. The key goes to the server once, is sealed there, and never comes
+ * back: not into a store, not into the URL, not masked, not as a last four.
+ * Between paste and send it lives only in the key box's value
+ * (components/ai/connect/key-field.tsx, uncontrolled, so never in an
+ * attribute). A key that fails stays there to be fixed; one that works is
+ * emptied out at once, and so is the box on a provider change and on unmount.
  *
  * Bespoke rather than manifest rows (the ShortcutsPanel / ExtensionHero
  * precedent): connecting is a form with states, not a value. The two records
@@ -59,145 +74,6 @@ import { cn } from '@/lib/utils';
  * is where an OpenClaw user lands after pairing, and where a model connected on
  * another device first shows up, so it must never show a five-minute-old answer.
  */
-
-const OPENROUTER_START = '/api/ai/openrouter/start';
-const UNAVAILABLE_COPY = 'Connecting a model isn’t available on this server yet.';
-
-const noopSubscribe = () => () => {};
-const isDesktopApp = () => getDesktopBridge() !== null;
-
-/**
- * Whether this page is inside the desktop app (electron/). OpenRouter's sign-in
- * can't finish there: the shell sends openrouter.ai to the system browser, and
- * the callback then lands in a browser that has neither the PKCE cookie (it is
- * in the app's cookie jar) nor, often, a dsul session. So the app offers the
- * key path only. A connection belongs to the account, so one made by signing
- * in from a browser works in the app too. Read as app/login/login-page.tsx reads it,
- * so the server render and hydration agree.
- */
-function useInDesktopApp(): boolean {
-  return useSyncExternalStore(noopSubscribe, isDesktopApp, () => false);
-}
-
-/** What `/api/ai/openrouter/callback` reports back through `?connect=`. */
-type FlowResult = 'ok' | 'denied' | 'expired' | 'failed' | 'busy' | 'unavailable';
-
-const FLOW_COPY: Record<FlowResult, string> = {
-  ok: 'Signed in with OpenRouter. You’re connected.',
-  denied: 'OpenRouter sign-in was cancelled.',
-  expired: 'That sign-in took too long or was already used. Try again.',
-  failed: 'Couldn’t finish signing in to OpenRouter. Try again.',
-  busy: 'Too many tries. Wait a few minutes and try again.',
-  unavailable: UNAVAILABLE_COPY,
-};
-
-function readFlow(raw: string | null | undefined): FlowResult | null {
-  // Own keys only: `in` would also accept 'constructor' and 'toString'.
-  return raw && Object.hasOwn(FLOW_COPY, raw) ? (raw as FlowResult) : null;
-}
-
-/** The provider as the copy names it. "Other" says nothing, so a custom host is its hostname. */
-function providerName(provider: ModelProviderId, baseUrl?: string | null): string {
-  if (provider === 'custom') return hostOf(baseUrl) ?? 'That service';
-  return PROVIDER_META[provider].label;
-}
-
-function hostOf(url: string | null | undefined): string | null {
-  if (!url) return null;
-  try {
-    return new URL(url).hostname || null;
-  } catch {
-    return null;
-  }
-}
-
-/** Where an error is shown, which changes what it can honestly say. */
-export interface ErrorCopyContext {
-  /**
-   * 'connect': a form the user typed into (the default). 'recheck': Check
-   * again on the connected card. 'model': a pick in the model picker. The last
-   * two send no field the user typed, so they never say "the fields": an
-   * `invalid` the route pins on `model` is a model the key can't use, and an
-   * unnamed one is a request we sent wrong.
-   */
-  during?: 'connect' | 'recheck' | 'model';
-  /** The form was for Other: a base URL the user typed. */
-  custom?: boolean;
-  /** The field the route said an `invalid` is about, when the answer names one. */
-  field?: string | null;
-}
-
-/**
- * A custom host answers 404 at a wrong path, which reads as "doesn't list its
- * models" and then as an unknown model. The usual cause is a base URL missing
- * its /v1, so every Other failure that could be that says so.
- */
-const BASE_URL_HINT = 'Check the base URL (it usually ends in /v1)';
-
-/** ApiErrorCode → our words. Never a provider's own error text: the routes don't send one. */
-export function connectErrorCopy(
-  code: ApiErrorCode,
-  name: string,
-  { during = 'connect', custom = false, field = null }: ErrorCopyContext = {}
-): string {
-  switch (code) {
-    case 'key_rejected':
-      return during === 'connect'
-        ? `${name} didn’t accept that key. Check that you copied all of it.`
-        : `${name} turned down your saved key.`;
-    case 'unreachable':
-      return `Couldn’t reach ${name}. Try again in a moment.`;
-    case 'blocked_url':
-      return 'That address isn’t allowed. Use a public https address.';
-    case 'model_required':
-      return `Nothing at that address listed its models. ${BASE_URL_HINT}, or add a model name above and connect again.`;
-    case 'busy':
-      return 'Too many tries. Wait a few minutes and try again.';
-    case 'invalid':
-      if (during !== 'connect') {
-        if (field === 'model') return 'That model isn’t available to your key. Pick another.';
-        return during === 'model' ? 'Couldn’t save. Try again.' : 'Something went wrong. Try again.';
-      }
-      if (field === 'apiKey') {
-        return 'That doesn’t look like a whole key. Check that you copied all of it, and nothing else.';
-      }
-      if (field === 'baseUrl') return `${BASE_URL_HINT}.`;
-      if (field === 'model') {
-        return custom
-          ? `Nothing answered for that model at that address. ${BASE_URL_HINT} and the model name.`
-          : 'Check the model name and try again.';
-      }
-      if (!custom) return 'Check the fields and try again.';
-      // Unnamed: every field it could be, the likeliest first.
-      return `${BASE_URL_HINT}, the model name and the key.`;
-    case 'conflict':
-      return 'Your connection changed in another tab. Reload this page.';
-    case 'unavailable':
-      return UNAVAILABLE_COPY;
-    default:
-      return during === 'model' ? 'Couldn’t save. Try again.' : 'Something went wrong. Try again.';
-  }
-}
-
-/* ── Deep-link anchors ──────────────────────────────────────────────────── */
-
-type AnchorId = 'beacon.apiKey' | 'beacon.model';
-
-/**
- * Where `?focus=beacon.apiKey` / `beacon.model` land (settings-shell resolves
- * `[data-setting-alias]`, scrolls, focuses and rings it). Focusable but out of
- * the tab order, like a SettingRow.
- */
-function anchor(id: AnchorId, highlightId: string | null | undefined) {
-  return {
-    'data-setting-alias': id,
-    'data-highlight': highlightId === id || undefined,
-    tabIndex: -1,
-  } as const;
-}
-
-const ANCHOR_CLASS =
-  'rounded-[6px] outline-none focus-visible:ring-2 focus-visible:ring-ring data-[highlight]:ring-2 data-[highlight]:ring-ring';
 
 const QUIET_LINK =
   'text-muted-foreground hover:text-foreground text-xs underline-offset-4 transition-colors hover:underline ' +
@@ -267,6 +143,7 @@ export function ModelConnectionPanel({
   highlightId?: string | null;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const phase = useAIConnectionStore((s) => s.phase);
   const available = useAIConnectionStore((s) => s.available);
@@ -274,7 +151,15 @@ export function ModelConnectionPanel({
   const aiHidden = useAIConnectionStore((s) => s.aiHidden);
 
   // Read ONCE: the URL is cleaned right after, and the notice has to outlive that.
-  const [flow, setFlow] = useState<FlowResult | null>(() => readFlow(searchParams?.get('connect')));
+  const [flow, setFlow] = useState<ConnectFlow | null>(() => readFlow(searchParams?.get('connect')));
+  // `?start=openrouter` (the desktop app's copied link, connect-shared.ts
+  // `desktopSignInLink`): the connect card opens on OpenRouter's sign-in, its
+  // button focused. Only ever an unfold, never a sign-in by itself, and only
+  // for the first connect card: once something is connected it is spent.
+  const [start, setStart] = useState<'openrouter' | undefined>(() =>
+    searchParams?.get('start') === 'openrouter' ? 'openrouter' : undefined
+  );
+  if (start && model) setStart(undefined);
   const [justConnected, setJustConnected] = useState(false);
   const flowHandled = useRef(false);
 
@@ -284,13 +169,8 @@ export function ModelConnectionPanel({
 
   // In the desktop app an OpenRouter sign-in happens in the browser
   // (useInDesktopApp), so the connection it makes lands while this pane sits
-  // open behind it. Ask again when the window comes back to the front.
-  useEffect(() => {
-    if (!getDesktopBridge()) return;
-    const ask = () => void useAIConnectionStore.getState().refresh();
-    window.addEventListener('focus', ask);
-    return () => window.removeEventListener('focus', ask);
-  }, []);
+  // open behind it.
+  useRefreshOnWindowFocus();
 
   // …but no longer than the state it reports. The notice says how ONE
   // OpenRouter round trip ended; the next connect, check or disconnect gives a
@@ -310,9 +190,11 @@ export function ModelConnectionPanel({
     flowHandled.current = true;
     // The callback saved the connection server-side; ask for it. (The mount
     // refresh is usually still in flight, and this joins it.)
-    if (flow === 'ok') void useAIConnectionStore.getState().refresh();
-    router.replace('/settings/beacon');
-  }, [flow, router]);
+    if (flowSaved(flow)) void useAIConnectionStore.getState().refresh();
+    // The address the pane was reached by, /settings/ai or the permanent
+    // /settings/beacon, minus the query.
+    router.replace(pathname || AI_SETTINGS_PATH);
+  }, [flow, router, pathname]);
 
   const unavailableHere = phase === 'ready' && !available;
   const aiOff = phase === 'ready' && available && aiHidden === true;
@@ -327,15 +209,15 @@ export function ModelConnectionPanel({
   } else if (!available) {
     body = <UnavailableCard highlightId={highlightId} />;
   } else if (!model) {
+    // The connect card's key box carries `beacon.apiKey` itself.
     body = (
-      <div {...anchor('beacon.model', highlightId)} className={ANCHOR_CLASS}>
-        <Card>
-          <ConnectForm
-            variant="fresh"
-            highlightId={highlightId}
-            onConnected={() => setJustConnected(true)}
-          />
-        </Card>
+      <div {...anchor('beacon.model', highlightId)} className={ANCHOR_CLASS} data-testid="mcp-connect-fresh">
+        <ConnectAI
+          host="pane"
+          highlightId={highlightId}
+          onConnected={() => setJustConnected(true)}
+          unfold={start}
+        />
       </div>
     );
   } else {
@@ -576,72 +458,107 @@ function FieldLabel({ htmlFor, children }: { htmlFor: string; children: React.Re
   );
 }
 
-/** Attributes every key field carries: never autofilled, never remembered, never spellchecked. */
-const KEY_FIELD_PROPS = {
-  type: 'password',
-  name: 'model-api-key',
-  autoComplete: 'off',
-  spellCheck: false,
-  'data-1p-ignore': true,
-  'data-lpignore': 'true',
-} as const;
+/** What a form's last send was refused with: the route's answer, or the same words for one refused here. */
+type FormFailure = Pick<ApiFailure, 'code' | 'field' | 'detected' | 'limitedUntil'> & {
+  /** The provider as the pane names it, for the copy. */
+  name: string;
+  /** The form was for Other. */
+  custom: boolean;
+};
 
+/**
+ * Refused before it leaves the page: something that can't be a key, or a key
+ * that reads as another company's (lib/ai-key-prefix.ts). The route refuses
+ * both again; this only spares a round trip, and keeps a key from ever going
+ * to a company it was not made for.
+ */
+function refuseHere(provider: ModelProviderId, key: string): Pick<ApiFailure, 'code' | 'field' | 'detected'> | null {
+  if (!isPlausibleKey(key)) return { code: 'invalid', field: 'apiKey' };
+  const detected: DetectedProvider | null = mismatchedKey(provider, key);
+  return detected ? { code: 'wrong_provider', detected } : null;
+}
+
+function FormError({ error }: { error: FormFailure }) {
+  const resetsAtOf = useResetsAt();
+  return (
+    <p role="alert" className="text-destructive text-xs" data-testid="mcp-error">
+      {connectErrorCopy(error.code, error.name, {
+        custom: error.custom,
+        field: error.field ?? null,
+        detected: error.detected ?? null,
+        resetsAt: resetsAtOf(error.limitedUntil),
+      })}
+    </p>
+  );
+}
+
+/**
+ * "Use a different provider": a provider's key, or OpenRouter's sign-in, in
+ * place of the connection there is. The not-connected state is the connect
+ * card instead (ConnectAI).
+ */
 function ConnectForm({
-  variant,
-  highlightId,
   exclude,
   onConnected,
 }: {
-  /** 'fresh': nothing is connected. 'switch': replacing the connection there is. */
-  variant: 'fresh' | 'switch';
-  highlightId: string | null;
-  /** The provider already connected, so 'switch' does not preselect it. */
-  exclude?: ModelProviderId;
+  /** The provider already connected, so it is not preselected. */
+  exclude: ModelProviderId;
   onConnected: () => void;
 }) {
   const uid = useId();
   const busy = useAIConnectionStore((s) => s.busy === 'connect');
   const inDesktopApp = useInDesktopApp();
+  const field = useRef<KeyFieldHandle>(null);
   const [provider, setProvider] = useState<ModelProviderId>(
     () => MODEL_PROVIDERS.find((p) => p !== exclude) ?? 'openai'
   );
-  // The key exists only here, between keystroke and submit.
-  const [apiKey, setApiKey] = useState('');
+  // Whether the box holds a key, never the key: the box itself holds that.
+  const [hasKey, setHasKey] = useState(false);
   const [baseUrl, setBaseUrl] = useState('');
   const [modelName, setModelName] = useState('');
-  const [error, setError] = useState<{ code: ApiErrorCode; name: string; field: string | null } | null>(
-    null
-  );
+  const [error, setError] = useState<FormFailure | null>(null);
 
   const custom = provider === 'custom';
   const meta = PROVIDER_META[provider];
   const typedModel = modelName.trim();
   const modelOk = typedModel === '' || isModelId(typedModel);
-  const ready =
-    apiKey.trim() !== '' && (!custom || baseUrl.trim() !== '') && (!custom || modelOk) && !busy;
+  const ready = hasKey && (!custom || baseUrl.trim() !== '') && (!custom || modelOk) && !busy;
 
   const choose = (next: ModelProviderId) => {
     if (next === provider) return;
     setProvider(next);
-    setApiKey('');
+    // A key pasted for one provider never rides along to the next.
+    field.current?.clear();
     setError(null);
   };
 
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
+  const submit = async (e?: FormEvent) => {
+    e?.preventDefault();
     if (!ready) return;
-    const req: ConnectRequest = { provider, apiKey: apiKey.trim() };
+    // Back in the box, which stays focusable (readOnly) while its key is out.
+    field.current?.focus();
+    const key = field.current?.read() ?? '';
+    const req: ConnectRequest = { provider, apiKey: key };
     if (custom) {
       req.baseUrl = baseUrl.trim();
       if (typedModel) req.model = typedModel;
     }
-    const name = providerName(provider, req.baseUrl);
-    // Gone from the field before the request is even out, whatever it answers.
-    setApiKey('');
+    const name = labelName(provider, req.baseUrl);
     setError(null);
+    const refused = refuseHere(provider, key);
+    if (refused) {
+      setError({ ...refused, name, custom });
+      return;
+    }
     const result = await useAIConnectionStore.getState().connect(req);
-    if (result.ok) onConnected();
-    else setError({ code: result.code, name, field: result.field ?? null });
+    // A key that works leaves the box at once; one that fails stays to be fixed.
+    if (result.ok) {
+      field.current?.clear();
+      onConnected();
+    } else {
+      const { code, field: named, detected, limitedUntil } = result;
+      setError({ code, field: named, detected, limitedUntil, name, custom });
+    }
   };
 
   const keyId = `${uid}-key`;
@@ -649,14 +566,7 @@ function ConnectForm({
   const modelId = `${uid}-model`;
 
   return (
-    <div className="flex flex-col gap-4" data-testid={`mcp-connect-${variant}`}>
-      {variant === 'fresh' && (
-        <p className="text-muted-foreground max-w-[60ch] text-xs leading-relaxed">
-          dsul doesn’t include AI. Use a provider you already have. Your key is stored encrypted on
-          our server, used only to answer you, and never shown again.
-        </p>
-      )}
-
+    <div className="flex flex-col gap-4" data-testid="mcp-connect-switch">
       {inDesktopApp ? (
         <p
           className="text-muted-foreground max-w-[60ch] text-xs leading-relaxed"
@@ -675,7 +585,7 @@ function ConnectForm({
               </p>
             </div>
             <a
-              href={OPENROUTER_START}
+              href={openRouterStartHref('settings')}
               data-testid="mcp-openrouter-signin"
               className={cn(buttonVariants({ size: 'sm' }), 'shrink-0 self-start sm:self-auto')}
             >
@@ -702,20 +612,18 @@ function ConnectForm({
       >
         <ProviderChips value={provider} onChange={choose} disabled={busy} />
 
-        <div
-          {...(variant === 'fresh' ? anchor('beacon.apiKey', highlightId) : {})}
-          className={cn('flex flex-col gap-1.5', variant === 'fresh' && ANCHOR_CLASS)}
-        >
+        <div className="flex flex-col gap-1.5">
           <FieldLabel htmlFor={keyId}>API key</FieldLabel>
-          <Input
+          <KeyField
+            ref={field}
             id={keyId}
-            {...KEY_FIELD_PROPS}
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
             placeholder={meta.keyPlaceholder}
-            disabled={busy}
-            data-testid="mcp-key"
-            className="h-8 max-w-[360px] text-xs"
+            checking={busy}
+            testId="mcp-key"
+            className="max-w-[360px]"
+            onChange={(key) => setHasKey(key !== '')}
+            onPaste={() => setHasKey(true)}
+            onEnter={() => void submit()}
           />
           {meta.keyHelpUrl && (
             <a
@@ -775,12 +683,7 @@ function ConnectForm({
           </>
         )}
 
-        {error && (
-          <p role="alert" className="text-destructive text-xs" data-testid="mcp-error">
-            {/* `custom` from the provider shown: picking another clears the error. */}
-            {connectErrorCopy(error.code, error.name, { custom, field: error.field })}
-          </p>
-        )}
+        {error && <FormError error={error} />}
 
         <div>
           <Button type="submit" size="sm" disabled={!ready} data-testid="mcp-connect">
@@ -788,16 +691,6 @@ function ConnectForm({
           </Button>
         </div>
       </form>
-
-      {variant === 'fresh' && (
-        <div className="flex flex-col gap-2">
-          <p className="text-muted-foreground max-w-[60ch] text-[11px] leading-relaxed">
-            You pay your provider directly. When you use AI, your request and the parts of your plan
-            it needs go from dsul’s server to that provider.
-          </p>
-          <UseOpenClawLink />
-        </div>
-      )}
     </div>
   );
 }
@@ -813,25 +706,36 @@ function ReplaceKeyForm({
 }) {
   const uid = useId();
   const busy = useAIConnectionStore((s) => s.busy === 'connect');
-  const [apiKey, setApiKey] = useState('');
-  const [error, setError] = useState<{ code: ApiErrorCode; field: string | null } | null>(null);
-  const name = providerName(model.provider, model.baseUrl);
+  const field = useRef<KeyFieldHandle>(null);
+  const [hasKey, setHasKey] = useState(false);
+  const [error, setError] = useState<FormFailure | null>(null);
+  const name = labelName(model.provider, model.baseUrl);
   const keyHelpUrl = PROVIDER_META[model.provider].keyHelpUrl;
 
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    const key = apiKey.trim();
-    if (!key || busy) return;
+  const submit = async (e?: FormEvent) => {
+    e?.preventDefault();
+    if (!hasKey || busy) return;
+    field.current?.focus();
+    const key = field.current?.read() ?? '';
+    setError(null);
+    const refused = refuseHere(model.provider, key);
+    if (refused) {
+      setError({ ...refused, name, custom: false });
+      return;
+    }
     // Same provider and host; the model rides along so a new key does not
     // quietly swap the user's pick for the provider's default.
     const req: ConnectRequest = { provider: model.provider, apiKey: key };
     if (model.baseUrl) req.baseUrl = model.baseUrl;
     if (model.model) req.model = model.model;
-    setApiKey('');
-    setError(null);
     const result = await useAIConnectionStore.getState().connect(req);
-    if (result.ok) onDone();
-    else setError({ code: result.code, field: result.field ?? null });
+    if (result.ok) {
+      field.current?.clear();
+      onDone();
+    } else {
+      const { code, field: named, detected, limitedUntil } = result;
+      setError({ code, field: named, detected, limitedUntil, name, custom: false });
+    }
   };
 
   const keyId = `${uid}-key`;
@@ -845,18 +749,19 @@ function ReplaceKeyForm({
     >
       <FieldLabel htmlFor={keyId}>New API key</FieldLabel>
       <div className="flex flex-wrap items-center gap-2">
-        <Input
+        <KeyField
+          ref={field}
           id={keyId}
-          {...KEY_FIELD_PROPS}
-          value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
           placeholder={PROVIDER_META[model.provider].keyPlaceholder}
-          disabled={busy}
-          aria-describedby={`${keyId}-help`}
-          data-testid="mcp-replace-key"
-          className="h-8 max-w-[300px] text-xs"
+          checking={busy}
+          describedBy={`${keyId}-help`}
+          testId="mcp-replace-key"
+          className="w-full max-w-[300px]"
+          onChange={(key) => setHasKey(key !== '')}
+          onPaste={() => setHasKey(true)}
+          onEnter={() => void submit()}
         />
-        <Button type="submit" size="sm" disabled={busy || apiKey.trim() === ''}>
+        <Button type="submit" size="sm" disabled={busy || !hasKey}>
           {busy ? 'Checking key…' : 'Save'}
         </Button>
         <Button type="button" variant="ghost" size="sm" onClick={onDone} disabled={busy}>
@@ -881,11 +786,7 @@ function ReplaceKeyForm({
           <ArrowUpRight className="size-3" aria-hidden />
         </a>
       )}
-      {error && (
-        <p role="alert" className="text-destructive text-xs" data-testid="mcp-error">
-          {connectErrorCopy(error.code, name, { field: error.field })}
-        </p>
-      )}
+      {error && <FormError error={error} />}
     </form>
   );
 }
@@ -925,7 +826,7 @@ function ConnectedCard({
   const [actionError, setActionError] = useState<string | null>(null);
 
   const label = PROVIDER_META[model.provider].label;
-  const name = providerName(model.provider, model.baseUrl);
+  const name = labelName(model.provider, model.baseUrl);
   const host = model.provider === 'custom' ? hostOf(model.baseUrl) : null;
   const oauth = model.authMethod === 'oauth';
   // A sign-in is renewed by signing in again, except in the desktop app, where
@@ -966,6 +867,8 @@ function ConnectedCard({
       confirmLabel: 'Disconnect',
       destructive: true,
       testId: 'model-disconnect-confirm',
+      // The model's key, never a planner row.
+      touchesPlanner: false,
       onConfirm: () => {
         void useAIConnectionStore
           .getState()
@@ -979,7 +882,7 @@ function ConnectedCard({
 
   const replaceAction = signInAgain ? (
     <a
-      href={OPENROUTER_START}
+      href={openRouterStartHref('settings')}
       data-testid="mcp-signin-again"
       className={failing ? buttonVariants({ size: 'sm' }) : QUIET_LINK}
     >
@@ -1047,6 +950,12 @@ function ConnectedCard({
                 {busy === 'recheck' ? 'Checking…' : 'Check again'}
               </TextAction>
             )}
+            {/* A key turned down may be the provider's doing, not the key's
+                (no credit, a region it won't answer): another one is a way out
+                that keeps the saved connection until the new one works. */}
+            <TextAction onClick={() => setMode(mode === 'switch' ? 'idle' : 'switch')} testId="mcp-switch">
+              Use a different provider
+            </TextAction>
             <TextAction onClick={disconnect} disabled={busy !== null} testId="mcp-disconnect">
               {busy === 'disconnect' ? 'Disconnecting…' : 'Disconnect'}
             </TextAction>
@@ -1125,7 +1034,7 @@ function ConnectedCard({
         <ReplaceKeyForm model={model} onDone={() => setMode('idle')} />
       )}
 
-      {mode === 'switch' && !failing && (
+      {mode === 'switch' && (
         <div className="border-border flex flex-col gap-3 border-t pt-4" data-testid="mcp-switch-panel">
           <div>
             <p className="text-foreground text-sm font-medium">Switch provider</p>
@@ -1134,8 +1043,6 @@ function ConnectedCard({
             </p>
           </div>
           <ConnectForm
-            variant="switch"
-            highlightId={highlightId}
             exclude={model.provider}
             onConnected={() => {
               setMode('idle');

@@ -25,7 +25,7 @@ vi.mock('@/lib/planner-store', () => ({
 }));
 vi.mock('@/lib/ai-context', () => ({ buildDsulContext: () => '## dsul Context' }));
 
-import { askFromCommandBar } from '@/lib/open-chat';
+import { askFromCommandBar, toggleRail } from '@/lib/open-chat';
 import {
   clearChatState,
   configureConversations,
@@ -306,5 +306,36 @@ describe('the phone (C5): the same routes, on the Ask tab\'s stack', () => {
     await settle();
     expect(rail().stacks.phone).toEqual([{ kind: 'conversation', id: 'c1' }]);
     expect(tx.inputs[0]).toMatchObject({ conversationId: 'c1', message: 'and then?' });
+  });
+});
+
+describe("toggleRail over a mod's panel (build order 9)", () => {
+  const water = { modId: 'm1', panelId: 'water' };
+
+  it("in 'mod' closes only the panel, and a kept-open Ask keeps askOpen", () => {
+    rail().openModPanel(water);
+    toggleRail();
+    expect(rail().modPanel).toBeNull();
+    expect(useSidebarStore.getState().askOpen).toBe(true);
+  });
+
+  it("in 'item' over a panel, closes the item once and the panel, then Ask", () => {
+    rail().openModPanel(water);
+    openItem();
+    toggleRail();
+    expect(calls).toEqual(['flush', 'close']);
+    expect(ui().activeDialog).toBeNull();
+    expect(rail().modPanel).toBeNull();
+    expect(useSidebarStore.getState().askOpen).toBe(false);
+  });
+
+  it('with no AI it still closes the panel', () => {
+    unseed();
+    unseed = seedAI(NOTHING_CONNECTED);
+    useSidebarStore.setState({ askOpen: false });
+    rail().openModPanel(water);
+    toggleRail();
+    expect(rail().modPanel).toBeNull();
+    expect(rail().summoned).toBe(false);
   });
 });

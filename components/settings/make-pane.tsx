@@ -9,13 +9,18 @@ import { useModsStore } from '@/lib/mods-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { formatCueTime } from '@/lib/reminders/copy';
 import { useUIStore } from '@/lib/ui-store';
-import { MOD_KINDS, modLabel, type ModKind, type UserMod } from '@/lib/mods/schema';
+import { MOD_KINDS, modLabel, parseModManifest, type ModKind, type UserMod } from '@/lib/mods/schema';
+import { cardPanelOf } from '@/lib/mods/ui/card';
+import { splitModReason } from '@/lib/mods/faults';
 import type { SettingCtx } from '@/lib/settings/manifest';
 import { RecipeBuilder } from './recipe-builder';
 import { RecipeRuns } from './recipe-runs';
 import { ThemeBuilder } from './theme-builder';
 import { LookBuilder } from './look-builder';
-import { MakeWrite } from './make-write';
+import { ModEditor } from './mod-editor';
+import { ModSettingsForm } from './mod-settings-form';
+import { MOD_REPORTED, ModProblems } from './mod-problems';
+import { MakeWrite, type MakeEditRequest } from './make-write';
 import { isMakeKind } from '@/lib/ai-limits';
 import { releaseUserTheme } from '@/lib/user-themes/release';
 
@@ -23,8 +28,15 @@ import { releaseUserTheme } from '@/lib/user-themes/release';
  * Settings → Make: what the person made, one section per kind, each with a
  * switch and Delete (memory/plans/mods.md). Recipes also get New, Edit and
  * Recent runs (./recipe-builder.tsx, ./recipe-runs.tsx), themes New and Edit
- * (./theme-builder.tsx), and Looks New and Edit (./look-builder.tsx);
- * building mods comes in a later PR.
+ * (./theme-builder.tsx), Looks New and Edit (./look-builder.tsx), and mods
+ * New, Edit (./mod-editor.tsx, a plain source editor), Problems
+ * (./mod-problems.tsx) and Recent runs.
+ *
+ * A mod's own words (a fault's message, the "Last:" of why it was switched
+ * off) are drawn only under a host label, so a mod cannot speak as the app.
+ * A mod that declares settings gets their fields under its row
+ * (./mod-settings-form.tsx), and one with a card panel says whether its card
+ * is the one under the braindump (one slot, lib/mods/ui/card.ts).
  *
  * Switching off or deleting a theme that is a saved pick writes the default
  * pick first (lib/user-themes/release.ts), so no device keeps pointing at it.
@@ -39,17 +51,19 @@ import { releaseUserTheme } from '@/lib/user-themes/release';
  * "Write with AI" (./make-write.tsx) sits above the New buttons and gates
  * itself on the AI gate's `canMake`. Its Edit opens the builder for a new row,
  * prefilled with the draft (`initial`); the Write box stays mounted, hidden,
- * so Cancel returns to the same card, and saving from the builder clears it. `?write=recipe|theme|look` picks the
- * kind and puts the caret in its box (⌘K's "Write a recipe with AI"); the ask
- * is never read from the URL, and nothing is sent until Write is pressed.
+ * so Cancel returns to the same card, and saving from the builder clears it.
+ * A mod draft opens the mod editor with its code (build order 10), marked as
+ * written by AI so the editor holds it to the draft's checks on Save.
+ * `?write=recipe|theme|look|mod` picks the kind and puts the caret in its box
+ * (⌘K's "Write a recipe with AI" and "Write a mod with AI"); the ask is never
+ * read from the URL, and nothing is sent until Write is pressed.
  */
 
-interface Editing {
-  kind: 'recipe' | 'theme' | 'look';
-  id: 'new' | string;
-  /** A new row's starting point: a "Write with AI" draft opened in Edit. */
-  initial?: { name: string; manifest: unknown };
-}
+/** The form in the list's place: one kind, a row or a new one, and a draft's starting point when Write opened it. */
+type Editing = { id: 'new' | string } & (
+  | { kind: Exclude<ModKind, 'mod'>; initial?: Exclude<MakeEditRequest, { kind: 'mod' }>['initial'] }
+  | { kind: 'mod'; initial?: Extract<MakeEditRequest, { kind: 'mod' }>['initial'] }
+);
 
 const SECTION: Record<ModKind, string> = {
   recipe: 'Recipes',
@@ -134,7 +148,16 @@ export function MakePane({ ctx, isMobile = false }: { ctx: SettingCtx; isMobile?
           </Button>
         </div>
       ) : !loaded ? null : editing && ctx.userId && (editing.id === 'new' || editingRow) ? (
-        editing.kind === 'look' ? (
+        editing.kind === 'mod' ? (
+          <ModEditor
+            key={editing.id}
+            userId={ctx.userId}
+            editing={editingRow}
+            initial={editing.initial}
+            onCancel={() => setEditing(null)}
+            onDone={done}
+          />
+        ) : editing.kind === 'look' ? (
           <LookBuilder
             key={editing.id}
             userId={ctx.userId}
@@ -188,11 +211,7 @@ export function MakePane({ ctx, isMobile = false }: { ctx: SettingCtx; isMobile?
                     row={row}
                     ctx={ctx}
                     isMobile={isMobile}
-                    onEdit={
-                      row.kind === 'recipe' || row.kind === 'theme' || row.kind === 'look'
-                        ? () => open({ kind: row.kind as Editing['kind'], id: row.id })
-                        : undefined
-                    }
+                    onEdit={() => open({ kind: row.kind, id: row.id })}
                   />
                 ))}
               </div>
@@ -209,7 +228,7 @@ export function MakePane({ ctx, isMobile = false }: { ctx: SettingCtx; isMobile?
           focus={writeKind !== null}
           hidden={editing !== null}
           settled={draftSettled}
-          onEdit={(r) => open({ kind: r.kind, id: 'new', initial: r.initial })}
+          onEdit={(r) => open({ ...r, id: 'new' })}
         />
       )}
 
@@ -239,6 +258,14 @@ export function MakePane({ ctx, isMobile = false }: { ctx: SettingCtx; isMobile?
           >
             <Plus className="size-3.5" aria-hidden /> New Look
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            data-testid="make-new-mod"
+            onClick={() => open({ kind: 'mod', id: 'new' })}
+          >
+            <Plus className="size-3.5" aria-hidden /> New mod
+          </Button>
           {notice && (
             <p role="status" data-testid="make-notice" className="text-muted-foreground text-xs">
               {notice}
@@ -249,6 +276,8 @@ export function MakePane({ ctx, isMobile = false }: { ctx: SettingCtx; isMobile?
     </div>
   );
 }
+
+export { splitModReason };
 
 /** A timed recipe's hour, when it has one: the server runs it (lib/recipes/server/). */
 function timedAt(row: UserMod): string | null {
@@ -270,9 +299,14 @@ function MakeRow({
 }) {
   const stateId = `make-state-${row.id}`;
   const timeFormat = usePlannerStore((s) => s.timeFormat);
+  const manifest = row.kind === 'mod' ? parseModManifest(row) : null;
+  const hasCardPanel = !!manifest?.panels.some((p) => p.card);
+  /** The braindump has one card slot: whether it is this mod's (lib/mods/ui/card.ts). */
+  const cardShowing = useModsStore((s) => (hasCardPanel ? cardPanelOf(s.rows)?.modId ?? null : null));
   const label = modLabel(row);
+  const reported = row.kind === 'mod' && row.disabledReason ? splitModReason(row.disabledReason) : null;
   const stateText = row.disabledReason
-    ? `Switched off: ${row.disabledReason}`
+    ? `Switched off: ${reported ? reported.head : row.disabledReason}`
     : row.enabled
       ? row.kind === 'theme'
         ? 'On. Pick it in Look, under Yours.'
@@ -311,6 +345,16 @@ function MakeRow({
           <span id={stateId} className="text-muted-foreground block text-xs">
             {stateText}
           </span>
+          {reported && (
+            <span data-testid="mod-reported" className="text-muted-foreground block text-xs">
+              {MOD_REPORTED} <span className="break-words">{reported.reported}</span>
+            </span>
+          )}
+          {hasCardPanel && row.enabled && !isMobile && (
+            <span data-testid="mod-card-line" className="text-muted-foreground block text-xs">
+              {cardShowing === row.id ? 'Shows under the braindump' : 'Another mod’s card is showing'}
+            </span>
+          )}
           {row.kind === 'recipe' && timedAt(row) && (
             <span data-testid="recipe-timed-hint" className="text-muted-foreground block text-xs">
               Runs at {formatCueTime(timedAt(row)!, timeFormat)}, even with dsul closed
@@ -350,7 +394,9 @@ function MakeRow({
           <Trash2 className="size-3.5" aria-hidden />
         </Button>
       </div>
-      {row.kind === 'recipe' && <RecipeRuns modId={row.id} label={label} />}
+      {manifest && manifest.settings.length > 0 && <ModSettingsForm row={row} />}
+      {row.kind === 'mod' && <ModProblems modId={row.id} label={label} />}
+      {(row.kind === 'recipe' || row.kind === 'mod') && <RecipeRuns modId={row.id} label={label} />}
     </div>
   );
 }

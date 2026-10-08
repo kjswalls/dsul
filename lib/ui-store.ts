@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import type { Task, HabitItem, Item, KnownItemType, TimeBucket } from './planner-types';
+import { isPlannerPreviewing } from './planner-ready';
+import { usePlannerStore } from './planner-store';
 
 /**
  * Ephemeral UI state for the desktop shell: which dialog is open, the shared
@@ -108,11 +110,46 @@ export interface ConfirmRequest {
    * the closing dialog's button. Without it, focus falls to <body>.
    */
   fallbackFocus?: () => void;
+  /**
+   * `false` declares that `onConfirm` reads and writes no planner row (deleting
+   * a conversation, disconnecting the model). Only such a confirm is raised on
+   * `/` while the planner is the look-only preview; every other one is refused
+   * there, because one decided on cached rows would act on them after the
+   * landing. Absent means it may touch rows, so a new confirm is refused until
+   * someone has checked and said otherwise.
+   */
+  touchesPlanner?: false;
 }
 
 interface UIStore {
   activeDialog: ActiveDialog | null;
+  /**
+   * A data slot (PREVIEW_DEFERRED_SLOTS) asked for while the planner was the
+   * look-only preview. Held here instead of opened, last request wins, and
+   * opened by useDeferredDialogPromotion (hooks/use-deferred-dialog.ts) once
+   * fresh data lands. Never rendered from.
+   *
+   * A pasted list (`isWaitingPaste`) is the exception. The paste was consumed
+   * by the field, so its text exists nowhere else: only another pasted list
+   * replaces it here (any other data request, an empty bulk-add included, is
+   * refused), and it can outlive the landing, waiting for the slot to free
+   * instead of being dropped (the hook opens it then).
+   */
+  deferredDialog: ActiveDialog | null;
+  /**
+   * The account `deferredDialog` was asked for under, stamped with it. The
+   * promotion opens it only for that account, including when it opens after
+   * the edge (a promoter mounted late, a pasted list waiting for the slot).
+   */
+  deferredFor: string | null;
+  /**
+   * While previewing, a data slot is deferred rather than opened (refused
+   * while a pasted list waits, unless it is another pasted list). Any other
+   * slot opens as usual; a data slot opened on real data drops the deferral,
+   * except a waiting pasted list, which only a newer pasted list replaces.
+   */
   openDialog: (dialog: ActiveDialog) => void;
+  /** Leaves `deferredDialog` alone: the launcher closes itself right after running "Open Organize". */
   closeDialog: () => void;
   /**
    * The item the ⌘K launcher replaced when it opened over the docked item
@@ -133,6 +170,10 @@ interface UIStore {
 
   /** Shared AlertDialog rendered once in the shell. */
   confirmRequest: ConfirmRequest | null;
+  /**
+   * Refused while previewing on `/`, where confirms guard data actions, unless
+   * the request says it touches no planner row (`touchesPlanner: false`).
+   */
   confirm: (request: ConfirmRequest) => void;
   resolveConfirm: (confirmed: boolean) => void;
 
@@ -171,6 +212,44 @@ interface UIStore {
 
 const NEW_SURFACE_SLOTS: ReadonlySet<ActiveDialog['type']> = new Set(['add', 'new-container']);
 
+/**
+ * The slots that seed from, or write to, planner rows. Opened over the
+ * look-only preview, the autosaving docked panel and the modal's save would
+ * seed from cached rows and write the result after landing; so while
+ * previewing they are deferred instead (lib/planner-ready.ts).
+ */
+export const PREVIEW_DEFERRED_SLOTS: ReadonlySet<ActiveDialog['type']> = new Set([
+  'add',
+  'edit-item',
+  'new-container',
+  'bulk-add',
+  'organize',
+]);
+
+export const isDataDialog = (dialog: ActiveDialog | null | undefined): boolean =>
+  !!dialog && PREVIEW_DEFERRED_SLOTS.has(dialog.type);
+
+/**
+ * A bulk-add carrying pasted text. The paste was `preventDefault`ed, so the
+ * dialog is the only place the text exists: a deferral of one is never dropped
+ * for a busy slot, and waits for it to free.
+ */
+export const isWaitingPaste = (dialog: ActiveDialog | null | undefined): boolean =>
+  dialog?.type === 'bulk-add' && !!dialog.text;
+
+/**
+ * A data slot is open or waiting to open. The preview is not offered then:
+ * /settings arms Organize and pushes '/', and that console must open on fresh
+ * data, as it does today.
+ */
+export const isDataDialogArmed = (): boolean => {
+  const { activeDialog, deferredDialog } = useUIStore.getState();
+  return isDataDialog(activeDialog) || deferredDialog !== null;
+};
+
+const onPlannerRoute = (): boolean =>
+  typeof window !== 'undefined' && window.location.pathname === '/';
+
 /** An item's "new" ↔ an organizer's "new": one surface, two slots. */
 function isNewSurfaceSwap(prev: ActiveDialog | null, next: ActiveDialog): boolean {
   return (
@@ -183,8 +262,25 @@ function isNewSurfaceSwap(prev: ActiveDialog | null, next: ActiveDialog): boolea
 
 export const useUIStore = create<UIStore>()((set, get) => ({
   activeDialog: null,
+  deferredDialog: null,
+  deferredFor: null,
   openDialog: (dialog) => {
-    const { activeDialog: prev, displacedItemId } = get();
+    const data = isDataDialog(dialog);
+    if (data && isPlannerPreviewing()) {
+      // A waiting paste is typed text with no other copy; losing a deferred
+      // click instead costs far less. Only another pasted list replaces it, as
+      // below: an empty bulk-add ("Add many items…") carries nothing to keep.
+      if (isWaitingPaste(get().deferredDialog) && !isWaitingPaste(dialog)) return;
+      // Optional-called, as planner-ready's readers: some unit-test mocks of
+      // planner-store have no getState.
+      set({ deferredDialog: dialog, deferredFor: usePlannerStore.getState?.()?.userId ?? null });
+      return;
+    }
+    const { activeDialog: prev, displacedItemId, deferredDialog } = get();
+    // A data slot opened on real data supersedes whatever was waiting, but a
+    // pasted list only gives way to another pasted list: it opens once this
+    // one closes.
+    const supersede = data && (isWaitingPaste(dialog) || !isWaitingPaste(deferredDialog));
     let displaced: string | null = null;
     if (dialog.type === 'launcher') {
       // A launcher re-opened over itself (⌘K pressed inside it) is still the
@@ -192,14 +288,27 @@ export const useUIStore = create<UIStore>()((set, get) => ({
       if (prev?.type === 'edit-item') displaced = prev.item.id;
       else if (prev?.type === 'launcher') displaced = displacedItemId;
     }
-    set({ activeDialog: dialog, displacedItemId: displaced, dialogHandoff: isNewSurfaceSwap(prev, dialog) });
+    set({
+      activeDialog: dialog,
+      displacedItemId: displaced,
+      dialogHandoff: isNewSurfaceSwap(prev, dialog),
+      ...(supersede ? { deferredDialog: null, deferredFor: null } : {}),
+    });
   },
   closeDialog: () => set({ activeDialog: null, displacedItemId: null, dialogHandoff: false }),
   displacedItemId: null,
   dialogHandoff: false,
 
   confirmRequest: null,
-  confirm: (request) => set({ confirmRequest: request }),
+  confirm: (request) => {
+    // Decided on cached rows, a confirm accepted after landing would act on
+    // them. The planner's route only: the preview outlives a client navigation,
+    // and no page off `/` raises a row-acting confirm through this slot. One
+    // that declares itself row-free is raised anyway: refused, its button
+    // would do nothing at all.
+    if (request.touchesPlanner !== false && isPlannerPreviewing() && onPlannerRoute()) return;
+    set({ confirmRequest: request });
+  },
   resolveConfirm: (confirmed) => {
     const request = get().confirmRequest;
     set({ confirmRequest: null });
@@ -314,9 +423,23 @@ export const openEditFor = (item: Task | HabitItem, itemType: KnownItemType) => 
     runtime.type === 'custom'
       ? ({ ...item } as unknown as Item)
       : ({ ...item, type: itemType } as Item);
-  if (editItemInterceptor?.(stamped)) return;
-  useUIStore.getState().openDialog({ type: 'edit-item', item: stamped });
+  openStampedEdit(stamped);
 };
+
+/**
+ * The open after openEditFor's stamp: the interceptor, then the slot. Also
+ * how a deferred `edit-item` is promoted (hooks/use-deferred-dialog.ts), so a
+ * promoted item still pushes over the phone's Ask tab.
+ *
+ * Not the interceptor while the planner is the look-only preview: the item
+ * Ask pushes autosaves from the row it is handed (components/mobile/ask-tab.tsx
+ * PhoneItemView), which would be a cached one. The slot defers the open
+ * instead, and promotion comes back here with the fresh row.
+ */
+export function openStampedEdit(item: Item): void {
+  if (!isPlannerPreviewing() && editItemInterceptor?.(item)) return;
+  useUIStore.getState().openDialog({ type: 'edit-item', item });
+}
 
 /**
  * Asked by every `openEditFor` before the slot: true means the open was taken
@@ -378,4 +501,16 @@ export function closeItemPanel(): void {
   itemPanelFlush?.();
   if (itemPanelClose) itemPanelClose();
   else useUIStore.getState().closeDialog();
+}
+
+/**
+ * Let go of an item held for the landing (`deferredDialog`, over the
+ * preview). A door that opens something else where the item would show (AI
+ * setup in the column, a mod's panel) is the later ask: kept, the held item
+ * would open over it at the landing. A held modal stays, in its own layer. A
+ * no-op when no item is held.
+ */
+export function letGoHeldItem(): void {
+  if (useUIStore.getState().deferredDialog?.type !== 'edit-item') return;
+  useUIStore.setState({ deferredDialog: null, deferredFor: null });
 }

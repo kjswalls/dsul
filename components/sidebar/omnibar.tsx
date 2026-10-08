@@ -15,11 +15,13 @@ import {
   CommandShortcut,
 } from '@/components/ui/command';
 import { RelayField } from '@/components/primitives/relay-field';
-import { AskMark } from '@/components/ai/ask-mark';
+import { AskMark, AskMarkUnlitIcon } from '@/components/ai/ask-mark';
 import { usePlannerStore } from '@/lib/planner-store';
+import { captureTask } from '@/lib/held-captures';
 import { useUIStore, openEditFor, openAddDialog, openBulkAdd } from '@/lib/ui-store';
 import { isBulkPaste } from '@/lib/bulk-add';
-import { askFromCommandBar } from '@/lib/open-chat';
+import { askFromCommandBar, openSetup } from '@/lib/open-chat';
+import { keepQuestion } from '@/lib/ask-pending';
 import { getAICapabilities, useAICapabilities } from '@/lib/ai-connection-store';
 import { groupResults, searchGoals, searchItems, type SearchGroup } from '@/lib/search';
 import { sortGoalsForDisplay } from '@/lib/goals';
@@ -30,10 +32,13 @@ import { toDateStr } from '@/lib/recurrence';
 import { CategoryIcon } from '@/lib/category-icons';
 import { RELAY } from '@/lib/relay-config';
 import { cn } from '@/lib/utils';
+import { ButtonKey, buttonVariants } from '@/components/ui/button';
 import {
+  findCommand,
   formatKeys,
   groupRows,
   isAvailable,
+  isHidden,
   matchArgOptions,
   matchCommands,
   matchEntityOptions,
@@ -53,7 +58,8 @@ import { useCommandContext } from '@/hooks/use-command-context';
 
 /**
  * The omnibar: search, quick-add, /commands and chat from one input. Prefixes:
- * '+' add, '/' command, '?' chat.
+ * '+' add, '/' command, '?' chat (or, with nothing to answer yet, the door
+ * into setup that keeps the question).
  *
  * ONE COMPONENT, TWO SHELLS (`variant`). The same input logic renders in two
  * chromes: the resting `dock` bar at the bottom of the sidebar, and the
@@ -168,7 +174,6 @@ export function Omnibar({
   const {
     tasks,
     habits,
-    addTask,
     userTimezone,
     routines,
     seasons,
@@ -248,8 +253,10 @@ export function Omnibar({
   // The AI gate (lib/ai-registry.ts). Every chat affordance below — the `?`
   // prefix, the Ask rows, the `? chat` hint, ⌘Enter, the launcher's copy and
   // footer — exists only while something can answer. Fails closed: while the
-  // status is unknown, `?` is just search text.
-  const { canChat, answererName } = useAICapabilities();
+  // status is unknown, `?` is just search text. With nothing connected yet
+  // (`askInvite`), `?` is setup's door instead, and Ctrl+K's AI row is "Set
+  // up AI" (or "Fix AI" while a saved key needs attention, `askFix`).
+  const { canChat, answererName, askInvite, askFix } = useAICapabilities();
   const askLabel = `Ask ${answererName ?? 'AI'}`;
   const usage = useCommandUsageStore((s) => s.usage);
   const bindings = useShortcutBindings();
@@ -318,14 +325,25 @@ export function Omnibar({
   // project called "/etc" has to be typeable.
   const isCommandMode = !activeCommand && trimmed.startsWith('/');
   const isAddMode = !activeCommand && trimmed.startsWith('+');
-  // With no chat, `?` is not a mode at all: the text searches like any other.
+  // With no chat, `?` is not a chat at all: the text searches like any other,
+  // unless the gate invites setup (below).
   const isChatMode = canChat && !activeCommand && trimmed.startsWith('?');
+  // Nothing connected, and the gate inviting: `?` is the door into setup,
+  // which keeps the question to ask once something answers (lib/ask-pending.ts).
+  // Only with `askInvite`. No AI, an unknown gate and chat Off here have no
+  // setup to open, and a key turned down keeps `?` as text too: the fix
+  // home's paste checks at once, with no consent line to name where a kept
+  // question would go.
+  const isSetupMode = askInvite && !canChat && !activeCommand && trimmed.startsWith('?');
+  // Either way `?` leads and owns the panel: everything search, recents,
+  // commands, Actions and bulk paste do with free text stands aside for it.
+  const isQuestionMode = isChatMode || isSetupMode;
   const commandQuery = isCommandMode ? trimmed.slice(1).trim() : '';
   const addTitle = isAddMode ? trimmed.slice(1).trim() : trimmed;
   // Every prefix is stripped, not just '?': ⌘Enter sends to the chat from any
   // mode, and it must not send the literal '+' or '/' along with the text.
   const chatText =
-    isChatMode || isAddMode || isCommandMode ? trimmed.slice(1).trim() : trimmed;
+    isQuestionMode || isAddMode || isCommandMode ? trimmed.slice(1).trim() : trimmed;
 
   /* ── argument mode ─────────────────────────────────────────────────── */
 
@@ -413,20 +431,52 @@ export function Omnibar({
     // prefix still ran a substring search — and since a goal's `why` is
     // paragraph-shaped, prose containing a slash meant pressing `/` could
     // render a Goals section above the command palette.
-    if (activeCommand || isCommandMode || isAddMode || isChatMode) return [];
+    if (activeCommand || isCommandMode || isAddMode || isQuestionMode) return [];
     const trimmed = query.trim();
     if (!trimmed) return [];
     // Ended goals sort last inside the cap. They stay findable — searching by
     // name is how you reach a record — but four achieved goals must not push
     // the one you are running off the list.
     return sortGoalsForDisplay(searchGoals(trimmed, goals)).slice(0, 4);
-  }, [goalsOn, query, goals, activeCommand, isCommandMode, isAddMode, isChatMode]);
+  }, [goalsOn, query, goals, activeCommand, isCommandMode, isAddMode, isQuestionMode]);
 
   /** Search hits as one section per item type; row caps live in groupResults. */
   const results = useMemo<SearchGroup[]>(() => {
-    if (activeCommand || isCommandMode || isAddMode || isChatMode || !trimmed) return [];
+    if (activeCommand || isCommandMode || isAddMode || isQuestionMode || !trimmed) return [];
     return groupResults(searchItems(trimmed, tasks, habits));
-  }, [trimmed, activeCommand, isCommandMode, isAddMode, isChatMode, tasks, habits]);
+  }, [trimmed, activeCommand, isCommandMode, isAddMode, isQuestionMode, tasks, habits]);
+
+  /**
+   * Every command the typed free text reaches, ranked and uncapped. The flat
+   * list below takes its slice, and the launcher's setup door asks it whether
+   * the text names Set up AI or Fix AI.
+   */
+  const freeTextMatches = useMemo<CommandRow[]>(() => {
+    if (activeCommand || isAddMode || isQuestionMode || isCommandMode || !trimmed) return [];
+    return matchCommands(trimmed, ctx, { usage });
+  }, [activeCommand, isAddMode, isQuestionMode, isCommandMode, trimmed, ctx, usage]);
+
+  /**
+   * Launcher only: Ctrl+K's one AI row while nothing answers. "Set up AI"
+   * while the gate invites (`ai.setup`), "Fix AI" while a saved key needs
+   * attention (`ai.fix`), drawn inline FIRST in Actions, above Add task, the
+   * way the connected launcher carries "Ask AI" inline (F15). At rest it is
+   * always there; with text, only when the text reaches the command (the
+   * registry's own ranking, so "ai", "setup" or "connect" find it and "milk"
+   * does not). Never in `/`, where it is an ordinary Rituals row, in `+`, or
+   * under `?`, which has its own door. The dock leaves both as ordinary ranked
+   * rows: it rests capture-first, and Enter there must still add the task.
+   */
+  const setupDoor = useMemo<DsulCommand | null>(() => {
+    if (!isLauncher || activeCommand || isCommandMode || isAddMode || isQuestionMode) return null;
+    const id = askInvite ? 'ai.setup' : askFix ? 'ai.fix' : null;
+    if (!id) return null;
+    if (!trimmed) {
+      const command = findCommand(id, ctx);
+      return command && !isHidden(command, ctx) ? command : null;
+    }
+    return freeTextMatches.find((row) => row.command.id === id)?.command ?? null;
+  }, [isLauncher, activeCommand, isCommandMode, isAddMode, isQuestionMode, askInvite, askFix, trimmed, ctx, freeTextMatches]);
 
   /**
    * The "Recently used" rows, kept out of `commandRows` so they render as
@@ -435,18 +485,24 @@ export function Omnibar({
    * searching, relevance is the only ordering that makes sense.
    *
    * Add task and Ask AI are excluded: the inline rows below already are
-   * those two commands, so a recent entry for either would render twice.
+   * those two commands, so a recent entry for either would render twice. So
+   * is the launcher's setup door while it is drawn, for the same reason.
    */
   const recentCommandRows = useMemo<CommandRow[]>(() => {
-    if (activeCommand || isAddMode || isChatMode) return [];
+    if (activeCommand || isAddMode || isQuestionMode) return [];
     if (trimmed && !(isCommandMode && !commandQuery)) return [];
     return recentRows(ctx, usage, 6)
-      .filter((row) => row.command.id !== 'create.task' && row.command.id !== 'rituals.chat')
+      .filter(
+        (row) =>
+          row.command.id !== 'create.task' &&
+          row.command.id !== 'rituals.chat' &&
+          row.command.id !== setupDoor?.id,
+      )
       .slice(0, ctx.isMobile ? 3 : 4);
-  }, [activeCommand, isAddMode, isChatMode, isCommandMode, commandQuery, trimmed, ctx, usage]);
+  }, [activeCommand, isAddMode, isQuestionMode, isCommandMode, commandQuery, trimmed, ctx, usage, setupDoor]);
 
   const commandRows = useMemo<CommandRow[]>(() => {
-    if (activeCommand || isAddMode || isChatMode) return [];
+    if (activeCommand || isAddMode || isQuestionMode) return [];
 
     // Resting state: nothing but the recents section above and the inline
     // add / chat rows below.
@@ -463,16 +519,18 @@ export function Omnibar({
     // section above is those rows, with the same destination — and leaving both
     // in also spent one of a capped four slots on a repeat. In COMMAND mode
     // they stay: the goal channel is gated off there, so the command row is the
-    // only way to reach a goal by typing.
-    return matchCommands(trimmed, ctx, { usage })
+    // only way to reach a goal by typing. The launcher's setup door is the
+    // inline row above Add task while it is drawn, so it goes too.
+    return freeTextMatches
       .filter(
         (row) =>
           row.command.id !== 'create.task' &&
           row.command.id !== 'rituals.chat' &&
+          row.command.id !== setupDoor?.id &&
           !row.command.id.startsWith('goal.open.'),
       )
       .slice(0, ctx.isMobile ? 3 : FREE_TEXT_COMMAND_LIMIT);
-  }, [activeCommand, isAddMode, isChatMode, isCommandMode, commandQuery, trimmed, ctx, usage]);
+  }, [activeCommand, isAddMode, isQuestionMode, isCommandMode, commandQuery, trimmed, ctx, usage, freeTextMatches, setupDoor]);
 
   /**
    * Grouped headings only in the full palette on desktop. On mobile the panel
@@ -571,10 +629,16 @@ export function Omnibar({
       openAddDialog('task');
       useCommandUsageStore.getState().record('create.task');
       closeAndClear();
-      // openAddDialog replaced the launcher slot — nothing to close here.
+      // openAddDialog replaced the launcher slot, so this is a no-op — except
+      // during the look-only preview, which DEFERS the dialog (lib/ui-store.ts)
+      // and leaves the launcher in the slot. Its promotion at landing waits for
+      // a free slot, so a launcher left open would cost the dialog.
+      closeLauncher();
       return;
     }
-    addTask({ title: addTitle });
+    // Held while the planner's load is in flight (lib/held-captures.ts), so the text
+    // is never lost to a cold load or the preview; everything below runs as for an add.
+    captureTask(addTitle);
     // The launcher is a one-shot command surface: close after the add. The dock
     // stays open and refocuses for rapid successive capture. Nothing to strike
     // on the way out — `relayOnCapture` is false here by construction (the field
@@ -610,6 +674,27 @@ export function Omnibar({
     inputRef.current?.blur();
     // Ask opens in the right rail (not a dialog), so the launcher is still
     // active — close it so the modal doesn't sit over the conversation.
+    closeLauncher();
+  };
+
+  /**
+   * `?` with nothing connected: keep the question, then open setup (the
+   * column on desktop, the Ask tab's setup page on the phone), where it shows
+   * as YOUR QUESTION and is asked once something answers. A bare `?` keeps
+   * nothing and only opens.
+   */
+  const openSetupDoor = () => {
+    // Read fresh, as askBeacon does: a press after the gate moved (AI hidden
+    // from another device, a connection made elsewhere) must not keep a
+    // question no setup page will show or offer to clear. The next render
+    // drops the row, and `?` is text again.
+    if (!getAICapabilities().askInvite) return;
+    if (chatText) keepQuestion(chatText);
+    openSetup(ctx.isMobile);
+    closeAndClear();
+    // Blurred, as for Ask: the setup column moves focus it finds lost to its
+    // heading, and the phone's keyboard goes down over the setup page.
+    inputRef.current?.blur();
     closeLauncher();
   };
 
@@ -680,7 +765,7 @@ export function Omnibar({
           {needsArgument && <span className="text-muted-foreground">…</span>}
         </span>
         {trailing(
-          'run',
+          row.command.verb ?? 'run',
           hint && (
             <CommandShortcut className={cn(!keyHint && 'font-mono tracking-normal')}>
               {hint}
@@ -942,6 +1027,28 @@ export function Omnibar({
                     </CommandGroup>
                   )}
 
+                  {/* `?` with nothing connected: the door into setup, alone in
+                      the panel, so Enter can only open it (never file the
+                      question as a task). One line: the question is in the
+                      input below it. Its own value, never `action-chat`, which
+                      means something answers. The dock's muted "↵ open" is the
+                      desktop hint (the launcher's pill says it instead, and the
+                      phone's dock keeps no key hints). */}
+                  {isSetupMode && (
+                    <CommandGroup heading="Ask">
+                      <CommandItem value="action-setup" className="group" onSelect={openSetupDoor}>
+                        <AskMarkUnlitIcon className="size-4" />
+                        <span className="truncate">{chatText ? 'Set up AI to ask this' : 'Set up AI'}</span>
+                        {trailing(
+                          'open',
+                          !isLauncher && !ctx.isMobile && (
+                            <CommandShortcut className="tracking-normal">↵ open</CommandShortcut>
+                          ),
+                        )}
+                      </CommandItem>
+                    </CommandGroup>
+                  )}
+
                   {/* Goals first: they are containers, so a hit here reframes
                       every item row beneath it. Four at most — this is a jump,
                       not a browse. */}
@@ -1010,6 +1117,11 @@ export function Omnibar({
                             onSelect={() => {
                               openEditFor(item, item.type === 'habit' ? 'habit' : 'task');
                               closeAndClear();
+                              // A no-op once the item has replaced the launcher
+                              // slot; over the look-only preview the open is
+                              // deferred instead, and its promotion at landing
+                              // needs the slot free (as quickAdd's empty add).
+                              closeLauncher();
                             }}
                           >
                             <Icon
@@ -1057,8 +1169,25 @@ export function Omnibar({
                   {/* Flat list: mobile, or the free-text slice beside search.
                       Rendered before the recents so Enter at rest still lands on
                       Add task rather than on whatever you last ran. */}
-                  {!grouped && !isChatMode && (
+                  {!grouped && !isQuestionMode && (
                     <CommandGroup heading={isCommandMode ? 'Commands' : 'Actions'}>
+                      {/* The launcher's setup door (see setupDoor), first in
+                          Actions and above Add task, as F15 draws it: while
+                          nothing answers it is the AI row Ctrl+K has, so Enter
+                          at rest opens setup. The command's own label, icon and
+                          verb, run as any command row runs. */}
+                      {setupDoor && (
+                        <CommandItem
+                          value="action-setup"
+                          className="group"
+                          data-command-id={setupDoor.id}
+                          onSelect={() => runCommand(setupDoor)}
+                        >
+                          <setupDoor.icon className="h-4 w-4" />
+                          <span className="truncate">{resolveLabel(setupDoor, ctx)}</span>
+                          {trailing(setupDoor.verb ?? 'run')}
+                        </CommandItem>
+                      )}
                       {!isCommandMode && (
                         <CommandItem value="action-add" data-testid="omnibar-add-row" className="group" onSelect={quickAdd}>
                           <Plus className="h-4 w-4 text-success-text" />
@@ -1109,7 +1238,7 @@ export function Omnibar({
 
                   {/* Dock-only: the launcher shows the same affordances in its
                       persistent footer bar below the panel (see the card footer). */}
-                  {!isChatMode && !isCommandMode && !trimmed && !isLauncher && (
+                  {!isQuestionMode && !isCommandMode && !trimmed && !isLauncher && (
                     <div className="flex items-center gap-3 px-3 py-1.5 text-2xs text-muted-foreground/70">
                       <span className="flex items-center gap-1">
                         <Plus className="h-3 w-3" /> add
@@ -1157,9 +1286,10 @@ export function Omnibar({
                     data-testid="omnibar-run-selection"
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => runPicked(livePicked)}
-                    className="h-7 rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+                    className={buttonVariants({ size: 'sm' })}
                   >
-                    {ctx.isMobile ? 'Run' : 'Run ↵'}
+                    Run
+                    {!ctx.isMobile && <ButtonKey />}
                   </button>
                 </div>
               </div>
@@ -1419,10 +1549,12 @@ export function Omnibar({
                 // must not fall through without chat: cmdk's root keydown takes
                 // Enter with no modifier check unless defaultPrevented, and in
                 // the dock Enter adds a task, so "plan my day" would be filed as
-                // one.
+                // one. With nothing connected it opens setup only from `?`,
+                // the door the panel is showing; any other text stays put.
                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !activeCommand) {
                   e.preventDefault();
                   if (canChat) askBeacon();
+                  else if (isSetupMode) openSetupDoor();
                   return;
                 }
                 // Submit a text argument explicitly rather than relying on cmdk
@@ -1445,19 +1577,23 @@ export function Omnibar({
               }}
               // A multi-line paste can't be a search and can't be typed into a
               // single-line input without folding — treat it as a list and hand
-              // it to the bulk-add dialog. Chat mode keeps native paste (a
-              // pasted paragraph is a legitimate question to ask), and so
-              // does a pending command chip (its argument is a value, not a
-              // list). The typed query survives, as the braindump's draft
-              // does: the paste is what's being promoted, not the draft.
+              // it to the bulk-add dialog. `?` keeps native paste (a pasted
+              // paragraph is a legitimate question to ask, or to keep behind
+              // setup's door), and so does a pending command chip (its
+              // argument is a value, not a list). The typed query survives,
+              // as the braindump's draft does: the paste is what's being
+              // promoted, not the draft.
               onPaste={(e) => {
-                if (isChatMode || activeCommand) return;
+                if (isQuestionMode || activeCommand) return;
                 const pasted = e.clipboardData.getData('text/plain');
                 if (isBulkPaste(pasted)) {
                   e.preventDefault();
                   openBulkAdd({ text: pasted });
                   setOpen(false);
                   inputRef.current?.blur();
+                  // As for a picked result: the dialog replaced the launcher,
+                  // or (over the preview) was deferred and needs the slot.
+                  closeLauncher();
                 }
               }}
               placeholder={
@@ -1581,11 +1717,19 @@ export function Omnibar({
                   <span className="flex items-center gap-1">
                     <SlashSquare className="h-3 w-3" /> commands
                   </span>
-                  {canChat && (
+                  {canChat ? (
                     <span className="flex items-center gap-1">
                       <AskMark tone="ink" className="size-3" /> chat
                     </span>
-                  )}
+                  ) : askInvite ? (
+                    // `?` is setup's door then (F15), so the hint stays, in
+                    // the unlit mark: neutral tiles, nothing lime on a hint
+                    // for something that cannot answer yet. Ctrl↵ stays
+                    // hidden on the right; it names who answers.
+                    <span className="flex items-center gap-1">
+                      <AskMarkUnlitIcon className="size-3" /> chat
+                    </span>
+                  ) : null}
                 </div>
                 <div className="flex items-center gap-2 font-mono tracking-normal">
                   <span>↵ open</span>

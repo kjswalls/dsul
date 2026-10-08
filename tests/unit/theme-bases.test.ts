@@ -2,13 +2,14 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseColor, printColor } from '@/lib/mods/color';
-import { THEME_BASES, TINT_GROUND_KEYS, type ThemeBaseId } from '@/lib/mods/theme-bases';
+import { MODE_BASE, THEME_BASES, TINT_GROUND_KEYS, type ThemeBaseId } from '@/lib/mods/theme-bases';
 import {
   COLOR_KEYS,
   CSS_VAR,
   PREPAINT_TABLE,
   RELAY_KEYS,
   SHADOW_VALUES,
+  SHIMMER_LEVEL_VAR,
   SHADOW_VARS,
   THEME_FONTS,
   parseToken,
@@ -165,6 +166,21 @@ describe('THEME_BASES matches app/globals.css', () => {
       }
       for (const key of RELAY_KEYS) for (const v of t[key] ?? []) expect(printColor(parseColor(v)!)).toBe(v);
     }
+  });
+
+  /**
+   * The measured waiting level, restated as a base token so a user theme can
+   * inherit it (shimmerLevelFor). The CSS is where it really lives: a look's
+   * own block, else its mode's. MODE_BASE names the two themes whose block IS
+   * the mode's, so those two must read the same either way.
+   */
+  it.each(IDS)('%s: the waiting shimmer level the CSS gives it', (id) => {
+    expect(cssValue(id, SHIMMER_LEVEL_VAR), id).toBe(`${THEME_BASES[id].shimmerLevel}%`);
+  });
+
+  it('the mode defaults are Paper’s and Night’s own levels', () => {
+    expect(LIGHT_ROOT.get(SHIMMER_LEVEL_VAR)).toBe(`${THEME_BASES[MODE_BASE.light].shimmerLevel}%`);
+    expect(DARK_ROOT.get(SHIMMER_LEVEL_VAR)).toBe(`${THEME_BASES[MODE_BASE.dark].shimmerLevel}%`);
   });
 
   it('every base has a literal for everything a tint touches', () => {

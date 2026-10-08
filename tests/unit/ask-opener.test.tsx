@@ -137,6 +137,8 @@ describe('when it shows', () => {
     expect(button).toHaveAttribute('title', `Open Ask (${chordLabel(['meta', 'j'], false)})`);
     expect(button).toHaveAttribute('title', 'Open Ask (Ctrl+J)');
     expect(button).toHaveAttribute('data-form', 'full');
+    // The tour's handle (onboarding-tour.tsx), on the key in every state.
+    expect(button).toHaveAttribute('data-tour', 'ask-key');
     // Clickable in the desktop app's drag band, at the row's far end.
     expect(button).toHaveClass('titlebar-hole');
     expect(pill()).toHaveClass('ml-auto');
@@ -239,6 +241,9 @@ describe('unlit: nothing answers, and the gate offers to set AI up or fix it', (
     // The chord from day one: no "Set up" note in its place.
     expect(button.querySelector('[data-ask-opener-chord]')).toHaveTextContent(/^Ctrl\+J$/);
     expect(button).toHaveAttribute('data-form', 'full');
+    // What the tour's last step spotlights while it invites (onboarding-tour.tsx):
+    // renamed, the step would draw a plain scrim with nothing lit.
+    expect(button).toHaveAttribute('data-tour', 'ask-key');
     // Unlit, and nothing aims a light: the plate (globals.css) and the mark
     // (ask-mark.tsx) both draw it without any.
     expect(button).toHaveAttribute('data-lit', 'false');
@@ -256,6 +261,7 @@ describe('unlit: nothing answers, and the gate offers to set AI up or fix it', (
     renderRow();
     const button = screen.getByRole('button', { name: 'Fix AI' });
     expect(button).toHaveAttribute('title', 'Fix AI (Ctrl+J)');
+    expect(button).toHaveAttribute('data-tour', 'ask-key');
     expect(key()).toHaveTextContent(/^Fix AI$/);
     expect(button).toHaveAttribute('data-lit', 'false');
     expect(mark()).toHaveAttribute('data-lit', 'false');
@@ -632,6 +638,28 @@ describe('room on the header row', () => {
     }
     // With the inset, 106px of room is the key without its chord: 14px short.
     expect(at(106)).toBe('key');
+  });
+
+  // Build order 9: the mod key after it is one more fixed sibling (32px and a
+  // gap), so its rungs move by that and stay put however often it is read.
+  it('counts the mod key after it as a fixed sibling, without flapping', () => {
+    render(
+      <div data-testid="row" className="flex gap-3">
+        <div data-testid="capsule" />
+        <AskOpener className="ml-auto" />
+        <button type="button" data-testid="mod-key" />
+      </div>
+    );
+    (screen.getByTestId('mod-key') as HTMLElement).getBoundingClientRect = () => ({ width: 32 }) as DOMRect;
+    const fullRung = wholeFor('Ctrl+J');
+    expect(at(fullRung + 44)).toBe('full');
+    for (let i = 0; i < 4; i++) {
+      resized();
+      expect(pill()?.dataset.fit).toBe('full');
+    }
+    expect(at(fullRung + 43)).toBe('key');
+    resized();
+    expect(pill()?.dataset.fit).toBe('key');
   });
 
   it('keeps the chord in the title and the name in the key form: the same raised key on the same plate, the well even round it', () => {

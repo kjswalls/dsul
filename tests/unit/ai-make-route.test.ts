@@ -51,18 +51,21 @@ vi.mock('@/lib/ai-server/connections', async (importOriginal) => {
     openModelConnection: vi.fn(),
     readAIHidden: vi.fn(async () => false),
     setConnectionStatus: vi.fn(async () => true),
+    setConnectionLimit: vi.fn(async () => true),
   };
 });
 
 const adapter = vi.hoisted(() => ({ openStream: vi.fn() }));
 vi.mock('@/lib/ai-server/providers', () => ({ getAdapter: vi.fn(() => adapter) }));
 
-import { POST } from '@/app/api/ai/make/route';
+import { POST, maxDuration } from '@/app/api/ai/make/route';
 import * as conn from '@/lib/ai-server/connections';
 import { __resetRateLimits } from '@/lib/ai-server/rate-limit';
 import { ProviderError } from '@/lib/ai-server/errors';
-import { MAKE_MAX_CHARS, MAKE_OUTPUT_TOKENS, MAX_MAKE_ASK_CHARS } from '@/lib/ai-limits';
-import { NAMES_LEAD } from '@/lib/ai-server/make-prompt';
+import { MAKE_CAPS, MAX_MAKE_ASK_CHARS } from '@/lib/ai-limits';
+import { MOD_PROJECTS_LINE, NAMES_LEAD } from '@/lib/ai-server/make-prompt';
+
+const MAKE_MAX_CHARS = MAKE_CAPS.recipe.maxChars;
 import { createServiceClient } from '@/lib/supabase-service';
 
 const ORIGIN = 'https://do.dsul.app';
@@ -108,6 +111,7 @@ beforeEach(() => {
   vi.mocked(conn.openModelConnection).mockReset().mockResolvedValue(OPENED);
   vi.mocked(conn.readAIHidden).mockReset().mockResolvedValue(false);
   vi.mocked(conn.setConnectionStatus).mockClear();
+  vi.mocked(conn.setConnectionLimit).mockClear();
   adapter.openStream.mockReset().mockImplementation(stream('{"kind":', '"recipe"}'));
   logs = [];
   for (const level of ['log', 'info', 'warn', 'error'] as const) {
@@ -156,7 +160,7 @@ describe('before any model call', () => {
 
   it.each([
     ['no kind', { ask: 'x' }],
-    ['a mod', { kind: 'mod', ask: 'x' }],
+    ['a kind with the wrong case', { kind: 'Mod', ask: 'x' }],
     ['an unknown kind', { kind: 'toString', ask: 'x' }],
     ['an empty ask', { kind: 'recipe', ask: '   ' }],
     ['an ask that is not text', { kind: 'theme', ask: ['x'] }],
@@ -181,6 +185,35 @@ describe('before any model call', () => {
     expect(body.error).toContain('this hour');
     expectNoStore(res);
     expect(adapter.openStream).toHaveBeenCalledTimes(30);
+  });
+
+  async function calls(kind: string, n: number): Promise<number[]> {
+    const statuses: number[] = [];
+    for (let i = 0; i < n; i++) {
+      const res = await POST(req({ kind, ask: `ask ${i}` }));
+      statuses.push(res.status);
+      await res.text();
+    }
+    return statuses;
+  }
+
+  it('a mod costs two: the 16th mod call in the hour is refused', async () => {
+    expect(await calls('mod', 15)).toEqual(Array(15).fill(200));
+    expect(await calls('mod', 1)).toEqual([429]);
+    expect(adapter.openStream).toHaveBeenCalledTimes(15);
+  });
+
+  it('14 recipes and 8 mods fill the hour, and a refused mod takes nothing', async () => {
+    expect(await calls('recipe', 14)).toEqual(Array(14).fill(200));
+    expect(await calls('mod', 8)).toEqual(Array(8).fill(200));
+    expect(await calls('mod', 1)).toEqual([429]);
+    expect(await calls('recipe', 1)).toEqual([429]);
+  });
+
+  it('one slot left: a recipe fits, a mod does not and leaves the slot', async () => {
+    expect(await calls('recipe', 29)).toEqual(Array(29).fill(200));
+    expect(await calls('mod', 1)).toEqual([429]);
+    expect(await calls('recipe', 1)).toEqual([200]);
   });
 });
 
@@ -224,6 +257,27 @@ describe('the gate, server side', () => {
 });
 
 describe('the stream', () => {
+  it('waits up to 120 s, for a mod\'s 110 s deadline', () => {
+    expect(maxDuration).toBe(120);
+    expect(MAKE_CAPS.mod.timeoutMs).toBeLessThan(maxDuration * 1000);
+    expect(MAKE_CAPS.recipe.timeoutMs).toBe(50_000);
+  });
+
+  it.each([
+    ['recipe', 2000, 12_000],
+    ['theme', 2000, 12_000],
+    ['look', 2000, 12_000],
+    ['mod', 4000, 24_000],
+  ] as const)('a %s is capped at %i tokens and %i characters, in JSON mode', async (kind, tokens, chars) => {
+    expect(MAKE_CAPS[kind]).toMatchObject({ outputTokens: tokens, maxChars: chars });
+    adapter.openStream.mockImplementation(stream('x'.repeat(chars - 5), 'y'.repeat(50), 'never'));
+    const res = await POST(req({ kind, ask: 'x' }));
+    const out = await frames(res);
+    const text = out.map((f) => (f === '[DONE]' ? '' : String(f.content ?? ''))).join('');
+    expect(text).toHaveLength(chars);
+    expect(adapter.openStream.mock.calls[0][1]).toMatchObject({ maxOutputTokens: tokens, json: true });
+  });
+
   it('turns deltas into frames and ends with [DONE], capped at 2,000 tokens in JSON mode', async () => {
     const res = await POST(req({ kind: 'recipe', ask: 'When I tick Run, add Stretch' }));
     expect(res.status).toBe(200);
@@ -232,8 +286,7 @@ describe('the stream', () => {
     expect(await frames(res)).toEqual([{ content: '{"kind":' }, { content: '"recipe"}' }, '[DONE]']);
     const [creds, call] = adapter.openStream.mock.calls[0];
     expect(creds).toMatchObject({ provider: 'openai' });
-    expect(call).toMatchObject({ model: 'gpt-4o-mini', maxOutputTokens: MAKE_OUTPUT_TOKENS, json: true });
-    expect(MAKE_OUTPUT_TOKENS).toBe(2000);
+    expect(call).toMatchObject({ model: 'gpt-4o-mini', maxOutputTokens: 2000, json: true });
     expect(call.messages).toEqual([{ role: 'user', content: 'When I tick Run, add Stretch' }]);
   });
 
@@ -264,6 +317,15 @@ describe('the stream', () => {
     expect(text).not.toContain('SENTINEL');
     expect(conn.setConnectionStatus).toHaveBeenCalledWith('user-1', 'v1:cipher', 'failing', 'key_rejected');
     expect(JSON.stringify(logs)).not.toContain('SENTINEL');
+  });
+
+  it('a used-up daily limit records when it lifts and answers code daily_limit', async () => {
+    const resetAt = '2026-10-08T07:00:00.000Z';
+    adapter.openStream.mockRejectedValue(new ProviderError('daily_limit', 429, resetAt));
+    const res = await POST(req({ kind: 'recipe', ask: 'x' }));
+    expect(JSON.parse(await res.text())).toMatchObject({ code: 'daily_limit' });
+    expect(conn.setConnectionLimit).toHaveBeenCalledWith('user-1', 'v1:cipher', resetAt);
+    expect(conn.setConnectionStatus).not.toHaveBeenCalled();
   });
 
   it('an abort before the stream answers 204', async () => {
@@ -356,6 +418,20 @@ describe('what the model sees', () => {
     // The fixed part carries no runtime name.
     expect(system[0]).not.toContain('Moss');
     expect(system[0]).not.toContain('Work');
+  });
+
+  it('a mod never reads project names: two tables, and the projects line in their place', async () => {
+    seedDb();
+    const res = await POST(req({ kind: 'mod', ask: 'A card that counts pages' }));
+    await res.text();
+    expect([...new Set(h.tables)].sort()).toEqual(['item_types', 'user_mods']);
+    const system: string[] = adapter.openStream.mock.calls[0][1].system;
+    expect(system[1]).toContain(MOD_PROJECTS_LINE);
+    expect(system.join('\n')).not.toContain('Ignore the rules');
+    expect(system.join('\n')).not.toMatch(/"Work"/);
+    expect(system[1]).toContain('[{"name":"chore","label":"Chore"}]');
+    expect(system[1]).toContain('"name":"Moss"');
+    expect(system[1]).toContain('"name":"Deep work"');
   });
 
   it('a long name is clipped to 60 characters', async () => {

@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
-  MOD_KINDS,
   ModNameSchema,
   ModSlugSchema,
   RECIPE_EVENT_TRIGGERS,
@@ -15,6 +14,24 @@ import {
   manifestSchemaFor,
   userModFromRow,
 } from '@/lib/mods/schema';
+import {
+  MOD_EVENT_KINDS,
+  ModManifestSchema,
+  ModTitleSchema,
+  ModToastTextSchema,
+  isModLabel,
+  manifestsEqual,
+  modDisplayLabel,
+  parseModManifest,
+  parseModSettings,
+  consentWidened,
+  usesWidened,
+} from '@/lib/mods/schema';
+import { MOD_MANIFEST_MAX_BYTES, MOD_WRITES_PER_HOOK } from '@/lib/mods/limits';
+import { MOD_UI_EVENT_KINDS } from '@/lib/mods/protocol';
+import { MOD_LABEL_FORBIDDEN_RE } from '@/lib/mods/labels';
+import { RUN_WRITE_CAP } from '@/lib/recipes/limits';
+import { MODEL_PROVIDERS } from '@/lib/ai-types';
 import { ITEM_VERBS } from '@/lib/item-verbs';
 import { LAYOUTS } from '@/lib/layout-themes';
 import { DARK_LOOKS, LIGHT_LOOKS } from '@/lib/theme-looks';
@@ -154,11 +171,10 @@ describe('recipe manifest', () => {
 });
 
 describe('placeholders', () => {
-  it('mods accept anything until their PR lands', () => {
-    for (const kind of MOD_KINDS.filter((k) => k === 'mod')) {
-      expect(manifestSchemaFor(kind).safeParse({ whatever: [1] }).success, kind).toBe(true);
-    }
+  it('recipes and mods each have their own schema', () => {
     expect(manifestSchemaFor('recipe')).toBe(RecipeManifestSchema);
+    expect(manifestSchemaFor('mod')).toBe(ModManifestSchema);
+    expect(manifestSchemaFor('mod').safeParse({ whatever: [1] }).success).toBe(false);
   });
 
   it('a theme is the real grammar (lib/mods/theme-grammar.ts), not anything', () => {
@@ -209,5 +225,277 @@ describe('Look manifest', () => {
   it("the built-in lists match theme-looks' (the schema cannot import them)", () => {
     expect([...LIGHT_BASES]).toEqual(LIGHT_LOOKS.map((l) => l.value));
     expect([...DARK_BASES]).toEqual(DARK_LOOKS.map((l) => l.value));
+  });
+});
+
+describe('mod manifest', () => {
+  const OK = { version: 1, uses: ['storage', 'ui'], commands: [{ id: 'log-water', label: 'Log a glass' }] };
+
+  it('takes a plain manifest and fills commands', () => {
+    expect(ModManifestSchema.safeParse(OK).success).toBe(true);
+    expect(ModManifestSchema.parse({ version: 1, uses: [] })).toEqual({
+      version: 1,
+      uses: [],
+      commands: [],
+      panels: [],
+      settings: [],
+    });
+    expect(ModManifestSchema.safeParse({ ...OK, panels: [], settings: [] }).success).toBe(true);
+  });
+
+  it('refuses a wrong version, an unknown use, a use or command twice, `run`, and a stray key', () => {
+    const bad = [
+      { ...OK, version: 2 },
+      { ...OK, uses: ['network'] },
+      { ...OK, uses: ['ui', 'ui'] },
+      { ...OK, commands: [OK.commands[0], OK.commands[0]] },
+      { ...OK, commands: [{ id: 'run', label: 'Run' }] },
+      { ...OK, commands: [{ id: 'Bad', label: 'Run' }] },
+      { ...OK, panels: [{ id: 'x' }] },
+      { ...OK, settings: [{ kind: 'toggle', key: 'x' }] },
+      { ...OK, slug: 'water' },
+    ];
+    for (const m of bad) expect(ModManifestSchema.safeParse(m).success, JSON.stringify(m)).toBe(false);
+  });
+
+  it('refuses a command label or keyword that could pass for the app', () => {
+    expect(ModManifestSchema.safeParse({ ...OK, commands: [{ id: 'a', label: 'Sign in again' }] }).success).toBe(false);
+    expect(
+      ModManifestSchema.safeParse({ ...OK, commands: [{ id: 'a', label: 'Water', keywords: ['password'] }] }).success
+    ).toBe(false);
+  });
+
+  it('reads only a mod row, and only a valid manifest', () => {
+    expect(parseModManifest({ kind: 'mod', manifest: OK })?.uses).toEqual(['storage', 'ui']);
+    expect(parseModManifest({ kind: 'recipe', manifest: OK })).toBeNull();
+    expect(parseModManifest({ kind: 'mod', manifest: { version: 1 } })).toBeNull();
+  });
+
+  it('knows when uses widened', () => {
+    expect(usesWidened({ uses: ['ui'] }, { uses: ['ui'] })).toBe(false);
+    expect(usesWidened({ uses: ['ui', 'storage'] }, { uses: ['ui'] })).toBe(false);
+    expect(usesWidened({ uses: ['ui'] }, { uses: ['ui', 'items:write'] })).toBe(true);
+    expect(usesWidened(null, { uses: ['ui'] })).toBe(true);
+  });
+
+  it('compares manifests by value, whatever the key order or a missing commands', () => {
+    expect(manifestsEqual({ version: 1, uses: [] }, { uses: [], commands: [], version: 1 })).toBe(true);
+    expect(manifestsEqual(OK, { commands: [{ label: 'Log a glass', id: 'log-water' }], uses: ['storage', 'ui'], version: 1 })).toBe(
+      true
+    );
+    expect(manifestsEqual(OK, { ...OK, uses: ['ui', 'storage'] })).toBe(false);
+    expect(manifestsEqual(OK, { ...OK, panels: [] })).toBe(true);
+    expect(manifestsEqual(OK, { ...OK, panels: [{ id: 'water', label: 'Water' }] })).toBe(false);
+  });
+
+  it('hears the recipe triggers, then command and timer, and caps writes as a recipe run does', () => {
+    expect(MOD_EVENT_KINDS).toEqual([...RECIPE_EVENT_TRIGGERS, 'command', 'timer', ...MOD_UI_EVENT_KINDS]);
+    expect(MOD_WRITES_PER_HOOK).toBe(RUN_WRITE_CAP);
+  });
+});
+
+describe('mod panels and settings (build order 9)', () => {
+  const OK = { version: 1, uses: ['storage', 'ui'] };
+  const ok = (m: object) => ModManifestSchema.safeParse({ ...OK, ...m }).success;
+
+  it('takes panels, one card at most, under "ui"', () => {
+    expect(ok({ panels: [{ id: 'water', label: 'Water', icon: 'CupSoda', card: true }, { id: 'run', label: 'Runs' }] })).toBe(true);
+    expect(ok({ uses: ['storage'], panels: [{ id: 'water', label: 'Water' }] })).toBe(false);
+    expect(ok({ panels: [{ id: 'a', label: 'A' }, { id: 'a', label: 'B' }] })).toBe(false);
+    expect(ok({ panels: [{ id: 'a', label: 'A', card: true }, { id: 'b', label: 'B', card: true }] })).toBe(false);
+    expect(ok({ panels: Array.from({ length: 5 }, (_, i) => ({ id: `p${i}`, label: `P${i}` })) })).toBe(false);
+  });
+
+  it('refuses a panel label under the surface rule, an icon off the list and a stray key', () => {
+    expect(ok({ panels: [{ id: 'a', label: 'Chat' }] })).toBe(false);
+    expect(ok({ panels: [{ id: 'a', label: 'Your model' }] })).toBe(false);
+    expect(ok({ panels: [{ id: 'a', label: 'Water', icon: 'Lock' }] })).toBe(false);
+    expect(ok({ panels: [{ id: 'a', label: 'Water', icon: 'NotAnIcon' }] })).toBe(false);
+    expect(ok({ panels: [{ id: 'a', label: 'Water', style: 'x' }] })).toBe(false);
+  });
+
+  it('takes settings of four kinds, held to their own values', () => {
+    expect(
+      ok({
+        settings: [
+          { kind: 'toggle', key: 'loud', label: 'Loud', default: true },
+          { kind: 'number', key: 'goal', label: 'Goal', default: 8, min: 1, max: 20 },
+          { kind: 'text', key: 'unit', label: 'Unit', default: 'glass', maxLength: 20 },
+          { kind: 'select', key: 'size', label: 'Size', options: [{ value: 'small', label: 'Small' }], default: 'small' },
+        ],
+      })
+    ).toBe(true);
+    expect(ok({ settings: [{ kind: 'toggle', key: 'a', label: 'A' }, { kind: 'toggle', key: 'a', label: 'B' }] })).toBe(false);
+    expect(ok({ settings: [{ kind: 'number', key: 'a', label: 'A', min: 5, max: 1 }] })).toBe(false);
+    expect(ok({ settings: [{ kind: 'number', key: 'a', label: 'A', default: 30, max: 20 }] })).toBe(false);
+    expect(ok({ settings: [{ kind: 'select', key: 'a', label: 'A', options: [{ value: 'x', label: 'X' }], default: 'y' }] })).toBe(false);
+    expect(ok({ settings: [{ kind: 'text', key: 'a', label: 'A', default: 'Sign in' }] })).toBe(false);
+    expect(ok({ settings: [{ kind: 'text', key: 'a', label: 'API secret' }] })).toBe(false);
+  });
+
+  it('fits a realistic large manifest in 8KB', () => {
+    const big = {
+      version: 1,
+      uses: ['storage', 'ui', 'items:read', 'items:write'],
+      commands: Array.from({ length: 5 }, (_, i) => ({ id: `cmd-${i}`, label: `Log water ${i}`, keywords: ['drink', 'glass'] })),
+      panels: Array.from({ length: 4 }, (_, i) => ({ id: `panel-${i}`, label: `Water ${i}`, icon: 'CupSoda', card: i === 0 })),
+      settings: Array.from({ length: 10 }, (_, i) => ({ kind: 'number', key: `goal-${i}`, label: `Goal ${i}`, default: 8, min: 1, max: 20 })),
+    };
+    expect(ModManifestSchema.safeParse(big).success).toBe(true);
+    expect(new TextEncoder().encode(JSON.stringify(big)).length).toBeLessThanOrEqual(MOD_MANIFEST_MAX_BYTES);
+  });
+
+  it('parses stored settings against the declaration, falling back to the default, then null', () => {
+    const m = ModManifestSchema.parse({
+      ...OK,
+      settings: [
+        { kind: 'toggle', key: 'loud', label: 'Loud', default: true },
+        { kind: 'number', key: 'goal', label: 'Goal', default: 8, min: 1, max: 20 },
+        { kind: 'text', key: 'unit', label: 'Unit', maxLength: 10 },
+        { kind: 'select', key: 'size', label: 'Size', options: [{ value: 'small', label: 'Small' }] },
+      ],
+    });
+    expect(parseModSettings(m, { loud: false, goal: 12, unit: 'cup', size: 'small', extra: 1 })).toEqual({
+      loud: false,
+      goal: 12,
+      unit: 'cup',
+      size: 'small',
+    });
+    expect(parseModSettings(m, { loud: 'yes', goal: 99, unit: 'x'.repeat(11), size: 'huge' })).toEqual({
+      loud: true,
+      goal: 8,
+      unit: null,
+      size: null,
+    });
+    expect(parseModSettings(m, { unit: 'sk_live_abcdef123' }).unit).toBeNull();
+    expect(parseModSettings(m, 'not an object')).toEqual({ loud: true, goal: 8, unit: null, size: null });
+    expect(parseModSettings(m, [1, 2])).toEqual({ loud: true, goal: 8, unit: null, size: null });
+    expect(parseModSettings(null, { a: 1 })).toEqual({});
+  });
+
+  it('counts a first card panel as widening consent, and nothing else about panels', () => {
+    const base = { uses: ['ui' as const], panels: [] };
+    const card = { uses: ['ui' as const], panels: [{ id: 'a', label: 'A', card: true }] };
+    const plain = { uses: ['ui' as const], panels: [{ id: 'a', label: 'A' }] };
+    expect(consentWidened(base, plain)).toBe(false);
+    expect(consentWidened(base, card)).toBe(true);
+    expect(consentWidened(plain, card)).toBe(true);
+    expect(consentWidened(card, card)).toBe(false);
+    expect(consentWidened(card, plain)).toBe(false);
+    expect(consentWidened(base, { uses: ['ui', 'storage'], panels: [] })).toBe(true);
+    expect(consentWidened(null, base)).toBe(true);
+  });
+});
+
+describe('mod labels', () => {
+  it('refuses every word that could pass for the app', () => {
+    for (const label of [
+      'AI helper',
+      'Settings',
+      'Setting',
+      'Sign in',
+      'sign-up',
+      'Log out',
+      'Login',
+      'logout',
+      'Account',
+      'API key',
+      'Keys',
+      'Password',
+      'Passcode',
+      'Session',
+      'Verify',
+      'Verification',
+      'Billing',
+      'Payment',
+      'Card',
+      'Beacon',
+      'OpenAI',
+      'Claude',
+      'Gemini',
+      'Google',
+      'OpenRouter',
+      'OpenClaw',
+      'Anthropic',
+    ]) {
+      expect(isModLabel(label), label).toBe(false);
+    }
+  });
+
+  it('refuses plurals, joined words and look-alikes written wholly in another script', () => {
+    for (const label of [
+      'Accounts',
+      'Sessions',
+      'Logins',
+      'Cards',
+      'Passkey',
+      'Credentials',
+      'API token',
+      'my_settings',
+      'Settings2',
+      '\u0410\u0406',
+      '\u0391\u0399',
+      '\u041a\u0435\u0443\u0455',
+    ]) {
+      expect(isModLabel(label), label).toBe(false);
+    }
+    for (const label of ['Said hello', 'Aim high', 'Flashcards', 'Monkeys']) {
+      expect(isModLabel(label), label).toBe(true);
+    }
+  });
+
+  it('holds the provider names to the AI connection list', () => {
+    for (const p of MODEL_PROVIDERS.filter((p) => p !== 'custom')) expect(MOD_LABEL_FORBIDDEN_RE.test(p), p).toBe(true);
+  });
+
+  it('refuses links, bare domains, key-shaped values, invisible characters and mixed scripts', () => {
+    for (const label of [
+      'see https://x.test',
+      'www.example',
+      'evil.com/x',
+      'pay.example',
+      'sk-abcdef123',
+      'AIzaSyabcdef',
+      'Wa\u200Bter',
+      'Water\u202E',
+      '\uFEFFWater',
+      'S\u0435ttings',
+      'W\u0430ter',
+      '\uFF21\uFF29',
+      'a\u0085b',
+    ]) {
+      expect(isModLabel(label), JSON.stringify(label)).toBe(false);
+    }
+  });
+
+  it('takes a plain label, and one written wholly in another script', () => {
+    for (const label of ['Water counter', 'Глоток воды', 'Νερό', '💧 Water', 'Deep work: 25 min']) {
+      expect(isModLabel(label), label).toBe(true);
+    }
+  });
+
+  it('shows the slug when the name fails the rule', () => {
+    expect(modDisplayLabel({ name: 'Water', slug: 'water' })).toBe('Water');
+    expect(modDisplayLabel({ name: 'Sign in', slug: 'water' })).toBe('water');
+    expect(modDisplayLabel({ name: 'x'.repeat(61), slug: 'water' })).toBe('water');
+  });
+});
+
+describe('mod titles and toasts', () => {
+  it('a title is at most 120, trimmed and NFKC-normalised, with no link, domain or key', () => {
+    expect(ModTitleSchema.parse('  Drink water  ')).toBe('Drink water');
+    expect(ModTitleSchema.parse('\uFF37ater')).toBe('Water');
+    expect(ModTitleSchema.safeParse('x'.repeat(120)).success).toBe(true);
+    for (const bad of ['x'.repeat(121), '', 'see https://x.test', 'go to evil.com/x', 'sk-abcdef123', 'AIzaSyabcdef', 'Wa\u200Bter']) {
+      expect(ModTitleSchema.safeParse(bad).success, bad).toBe(false);
+    }
+    // A title is not a label: the app's words are fine in one.
+    expect(ModTitleSchema.safeParse('Update account settings').success).toBe(true);
+  });
+
+  it('a toast is a title that also passes the label rule', () => {
+    expect(ModToastTextSchema.safeParse('3 glasses today').success).toBe(true);
+    expect(ModToastTextSchema.safeParse('Sign in again to keep going').success).toBe(false);
+    expect(ModToastTextSchema.safeParse('Your Gemini key expired').success).toBe(false);
   });
 });

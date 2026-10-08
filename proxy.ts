@@ -92,8 +92,14 @@ export async function proxy(request: NextRequest) {
 // and no app name or icons. A service worker's update check from a browser
 // whose session has ended met the same redirect and failed as one. Neither file
 // holds anything an account owns.
+//
+// /mods/sandbox/<version> is the mod sandbox frame (app/mods/sandbox/[v]),
+// which holds no account data either: left out so a frame load costs no
+// getUser() and a signed-out moment cannot put the login page inside the
+// frame. The exact segment, not a mods/ prefix, so any later /mods/* page is
+// still gated (tests/unit/proxy-matcher.test.ts).
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|icon|apple-icon|manifest\\.json$|sw\\.js$|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|mods/sandbox/|favicon.ico|icon|apple-icon|manifest\\.json$|sw\\.js$|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 };

@@ -2,7 +2,8 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup, act } from '@testing-library/react';
 
 /**
- * WeekScale re-measures on the planner's pending → settled edge.
+ * WeekScale re-measures on the edge where a view first mounts: the planner's
+ * pending → settled edge, or the look-only preview's when one paints.
  *
  * The control lives in the header and finds the week view's scroll viewport by
  * selector, in a layout effect keyed on scope/layout. Since ViewRouter shows a
@@ -70,5 +71,35 @@ describe('WeekScale on a cold load into a week layout', () => {
     const scale = screen.getByTestId('week-scale');
     expect(scale.dataset.measured).toBe('true');
     expect(scale.dataset.colPx).not.toBe('');
+  });
+
+  it('measures on the PREVIEW edge, where the views now mount, and keeps it at landing', () => {
+    // The look-only preview (lib/planner-snapshot.ts) mounts the week view with
+    // isLoading still true. Keyed on settled, the readout would sit on its
+    // fallback for the whole preview and pop in at the fresh edge.
+    useViewStore.setState({ scope: 'week', layout: 'schedule' });
+    usePlannerStore.setState({ userId: 'u1', isLoading: true, isPreview: false });
+
+    const { container } = render(
+      <div data-tour="timeline">
+        <WeekScale />
+      </div>
+    );
+    expect(screen.getByTestId('week-scale').dataset.measured).toBe('false');
+
+    const viewport = document.createElement('div');
+    viewport.setAttribute('data-slot', 'scroll-area-viewport');
+    Object.defineProperty(viewport, 'clientWidth', { configurable: true, value: 1200 });
+    act(() => {
+      container.querySelector('[data-tour="timeline"]')!.appendChild(viewport);
+      usePlannerStore.setState({ isPreview: true });
+    });
+    expect(observed.has(viewport)).toBe(true);
+    expect(screen.getByTestId('week-scale').dataset.measured).toBe('true');
+
+    // Preview → fresh is the same ScrollArea: the observer already on it stays.
+    act(() => usePlannerStore.setState({ isLoading: false, isPreview: false }));
+    expect(observed.has(viewport)).toBe(true);
+    expect(screen.getByTestId('week-scale').dataset.measured).toBe('true');
   });
 });

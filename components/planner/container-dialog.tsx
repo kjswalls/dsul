@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
+import { Button, ButtonKey } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   ResponsiveModalDescription,
@@ -14,7 +14,6 @@ import { ColorChip } from '@/components/primitives/organizer-chips';
 import { NotesField } from '@/components/planner/organize/detail-parts';
 import {
   ADD_MODAL_CLASS,
-  EnterHint,
   NewTypeMenu,
   ORGANIZER_SECTION,
   SERIF_TITLE_CLASS,
@@ -427,8 +426,7 @@ function ContainerForm({
           bar so nothing scrolls under it, and -bottom-6 because a sticky box
           measures from inside the scroller's padding: at bottom-0 it rode 24px
           high, over the last row of the form. */}
-      <div className="bg-modal flex items-center justify-between gap-3 border-t pt-3 sm:sticky sm:-bottom-6 sm:z-10 sm:-mb-6 sm:pb-6">
-        <EnterHint verb="add" />
+      <div className="bg-modal flex items-center justify-end gap-3 border-t pt-3 sm:sticky sm:-bottom-6 sm:z-10 sm:-mb-6 sm:pb-6">
         <div className="flex items-center gap-1 max-sm:w-full">
           {canOpen && (
             <Button
@@ -436,7 +434,7 @@ function ContainerForm({
               onClick={() => submit(true)}
               disabled={!canAdd}
               data-testid={`${kind}-dialog-add-open`}
-              className="text-muted-foreground h-9 max-sm:flex-1"
+              className="text-muted-foreground max-sm:flex-1"
             >
               Add &amp; open
             </Button>
@@ -445,9 +443,11 @@ function ContainerForm({
             onClick={() => submit()}
             disabled={!canAdd}
             data-testid={`${kind}-dialog-add`}
-            className="h-9 max-sm:flex-1"
+            aria-keyshortcuts="Enter"
+            className="max-sm:flex-1"
           >
             Add {noun}
+            <ButtonKey />
           </Button>
         </div>
       </div>

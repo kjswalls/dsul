@@ -11,7 +11,7 @@ three adversarial reviews) is in Kirby's project files, not the repo
 
 **Built so far:** build order 2 (raise sites), 3 (storage, Make, safe mode),
 4 (browser recipes, `lib/recipes/`), 5a (user themes), 5b (user Looks), 6 (the
-server runner) and 7 (AI writes recipes, themes and Looks), each below. Where PR 4's code departs from the body:
+server runner), 7 (AI writes recipes, themes and Looks), 8 (the mod runtime) and 9 (the mod UI), each below. Where PR 4's code departs from the body:
 a clock run writes TWO `mod_runs` rows, the claim `<key>` and its result
 `<key>:done`, because 061 grants no UPDATE; an event or ⌘K run writes one,
 `run:<uuid>`, and the run log reads only `summary.kind === 'run'`. The ⌘K
@@ -161,6 +161,258 @@ installed. Ask hands off through a ⌘K command, `make.write` ("Write a recipe w
 which opens `/settings/make?write=recipe` with the box focused and sends nothing; a chip on Ask home
 is deferred (it touches the rail's layout and its e2e). `extractJsonObject` moved to the pure
 `lib/json-extract.ts` (re-exported from `lib/openclaw-gateway.ts`) so the browser can use it.
+
+**Build order 8, the mod runtime, is built** (`lib/mods/`: `runtime/` (QuickJS core, prelude, worker),
+`sandbox/` (frame script, CSP, generated page), `protocol.ts`, `limits.ts`, `broker-core.ts`, `broker.ts`,
+`runtime-manager.ts`, `sandbox-host.ts`, `faults.ts`, `labels.ts`; `components/mods/mod-host.tsx`;
+`components/settings/mod-editor.tsx` and `mod-problems.tsx`; `app/mods/sandbox/[v]/route.ts`; no migration).
+Where it departs from the body:
+
+- **One self-contained frame page per runtime version, at `/mods/sandbox/<version>`,** not `script-src 'self'`
+  and a postMessage of the wasm. The boot script is pinned by its sha256 (an opaque-origin frame's subresource
+  requests are neither same-origin nor cookied, so `'self'` buys nothing). The worker glue and the wasm ride in
+  the page as base64 `text/plain` blocks, so the two can never come from different deploys (emscripten's import
+  names are minified). The version hashes the whole page and its CSP; the route serves only the current one
+  (`dynamicParams = false`), so deploy skew is a 404, never a stale page cached as immutable. The frame echoes the
+  version at boot and a mismatch reads "reload to save mods". A 404 frame never answers at all, so when the boot
+  clock (from the iframe's load, never its creation) runs out, the host asks for the frame URL's HEAD
+  (`lib/mods/sandbox-probe.ts`) and a 404 reads as that same reload, not "can't run in this browser". Whether Vercel keeps the route's `Cache-Control` is
+  checked on the preview; if not, the route goes `force-dynamic` and checks the version by hand.
+- **The worker is built at install, with no new bundler:** `scripts/build-mod-runtime.mjs` drives Next's vendored
+  webpack and a loader around `next/dist/build/swc` (an `.mjs` loader, since the lint config refuses `.cjs`), runs
+  on `postinstall` and `prebuild`, and fails on any chunk loading, `importScripts`, real `import(`, or app module
+  (`zustand`, `@supabase`) in the bundle. A Next upgrade that moves those internals breaks the build; the fix is an
+  `esbuild` devDependency, which needs Kirby's yes. The one package added is `quickjs-emscripten` 0.32.0, exact
+  (not the core and variant packages separately); the release-sync variant is reached through it, and tree
+  shaking keeps the debug and asyncify variants out.
+- **The manifest is declared in the source** (`export const manifest = {...}`), read by the editor's scratch run
+  at save and stored in `user_mods.manifest`. The stored copy is what ⌘K and the broker trust; it is Zod-checked at
+  every load and must equal what the loaded code declares, or the load faults ("open it in Make and save"), which
+  catches a `source` changed outside the editor. No `slug` or `name` in it (the row's, as a Look's), and no
+  `panels[]` or `settings[]` until build order 9: the schema is strict, so either fails.
+- **`$.store` never reaches the network inside a hook.** Reads come from a snapshot taken at load; writes go to a
+  per-hook overlay that commits on success into a dirty set, flushed through `mod_store_set` one RPC per key, 5s
+  after the first write since the last flush, and on `pagehide` or hide. Another device's writes show at the next
+  load. Values are capped at 8KB and the whole store at 60,000 bytes as jsonb prints it (`store-bytes.ts`).
+- **One handler per event, and `next` is a no-op** (a mod intercepts nothing, so chaining means nothing); a
+  second handler for one kind is a load fault. A missing `manifest` or `register` export is a load fault, and so is
+  top-level await.
+- **The history label has a fixed host prefix,** `Mod: <name> · <hook>`, so a mod named like a built-in action
+  cannot spoof the undo strip; `Mod: ` is a significant action for the undo toast. The name everywhere a mod is
+  drawn is `modDisplayLabel` (the name if it passes the label rule, else the slug).
+- **Mods cannot write `notes`** (the body's `$.items.edit` lists it), and projections leave notes out: notes a mod
+  writes need the "untrusted" marker in the AI's context, which touches AI context code. Both come back together.
+- **Saving keeps a switched-on mod on** and hot reloads it, unless the new manifest asks for a use the old one did
+  not: then it saves switched off, and switching it on is the consent. Recipes differ (any manifest change).
+- **Each loaded mod has its own Worker and runtime,** so a wall-clock kill takes one mod. At most 8 are loaded;
+  a mod loads on its first event and unloads after 10 idle minutes with no timers. The frame compiles the wasm
+  once and posts the module to each worker. Hooks a mod registered are remembered against the row's `updated_at`,
+  so a mod that never listens for a kind is not loaded to hear it.
+- **After boot, all traffic is on a MessageChannel port;** the boot message is checked with `event.source`. The
+  frame stamps `modId` and `gen` from its own worker map, and the host takes identity, `uses` and the hook kind
+  only from its own record of the one live (mod, gen, hook). `unload` may name a generation, so a hot reload's
+  unload of the old one cannot kill the new. A `hook` for a worker the frame no longer has answers `done` and
+  `gone`, which the host treats as a reload, never a strike.
+- **Problems are `mod_runs` rows** with `claim_key = 'fault:<uuid>'` and `summary.kind = 'fault'` (061 already
+  grants INSERT), left out of the run log. The "3 faults in 10 minutes" counter is per tab and in memory; a trip
+  writes `enabled = false` with the reason "3 errors in 10 minutes. Last: <message>", and other devices see it on
+  their focus refresh (`mods-store.refresh`, which drops an answer older than a local write). Fault logging is
+  itself capped at 20 an hour per mod per tab. A `wall` fault while the tab was hidden or across a sleep does not
+  count. Make draws everything after "Last:" and every fault's message under a host label, "Your mod reported:".
+- **The undo event is on its own bus** (`ModOnlyEvent`, `item.uncompleted` with `origin: 'undo'`), so recipes can
+  never hear it; a hook on it is read-only for items and Looks (any write would wipe redo), and undoing a mod's own
+  entry does not wake that mod. Redo raises nothing.
+- **No migration.** 061 already has `source`, `store`, `mod_store_set` and `mod_runs`, so this PR writes nothing
+  to prod.
+- **`day.opened` and `bucket.changed` are not mod events yet.** They are the recipe clock's (`recipe-host.tsx`,
+  under `navigator.locks`), not `ModEvent` kinds; a mod clock needs a second leader-locked clock and cross-tab
+  claims. `$.after` covers short timing. Mods hear the item events, `review.saved`, `command` and `timer`.
+- **Every mod has a hook rate limit,** like recipes: more than 30 hooks a minute or 1,000 a day switches it off at
+  once (the recipe wording), since only item writes are capped by the history rule (10 real entries per mod and 20
+  across all mods in 10 minutes). Toasts: 1 a hook, 3 a minute. `look.set`, `nav.*` and `ui.openItem` work only
+  during a ⌘K command.
+- **Safe mode stops mods running, not being fixed:** the editor's scratch run and save work in safe mode; the saved
+  mod does not run in that tab.
+- **The wall clock lives in the frame** (500ms a hook, paused while a `$` call is out, 5s in all; 2s for a load or
+  scratch), with a 6s host backstop that removes the whole frame; every mod then reloads lazily.
+- **⌘K:** one provider (`modCommands`), ids `mod.<slug>.<id>`, labelled `Your mod · <name>: <label>` in the
+  "Made by you" group, no shortcut and no alias. `run` is a reserved command id, so a mod's command never takes a
+  recipe's `mod.<slug>.run`. A command loads its mod on demand through ModHost's slot (`lib/mods/command-run.ts`).
+- **Make's editor** is a name and a plain monospace textarea, no syntax colouring and no AI of its own (a mod is
+  written by AI only through Write with AI, build order 10, which opens this editor on the draft). A new
+  mod starts from a Water counter (`lib/mods/template.ts`, which the QuickJS core test runs). The line under the
+  code says what the manifest may do in plain words, from the stored manifest (or the template's) until a save has
+  read the code. When the sandbox cannot run in this browser the editor says so and does not save; a mod name must
+  pass the label rule (`lib/mods/labels.ts`: NFKC, no format characters, no mixed-script word, no links, bare
+  domains or key shapes, none of AI, Settings, Sign in, Account, key, Beacon or a provider name).
+- **The end-to-end** (`tests/e2e/mods-sandbox.spec.ts`) runs in Chromium only: the Playwright config has no Firefox
+  or WebKit project yet. Adding them (with the CI browser installs) is the next step for cross-engine coverage; the
+  spec already asserts "Mods can't run in this browser yet" outside Chromium rather than skipping. The preview-deploy
+  checks (the route's `Cache-Control`, and the frame loading in the desktop shell) are Kirby's, on the PR's preview.
+- **Electron needed no release.** `/mods/sandbox/<v>` is an app URL, so `guardSubframe` passes it; the preload
+  does not run in subframes. The permission handler's `isApp` matches the frame too; refusing permissions to
+  subframes is recorded in [desktop-app.md](desktop-app.md) for the next shell release.
+
+**Build order 9, the mod UI, is built** (`lib/mods/ui/`: `tree.ts`, `icons-list.ts`, `icons.tsx`,
+`panel-store.ts`, `panel-run.ts`, `surface-state.ts`, `card.ts`, `open-panel.ts`, `sheet-store.ts`;
+`components/mods/`: `mod-tree.tsx`, `mod-surface.tsx`, `mod-item-ref.tsx`, `mod-rail.tsx`, `mod-opener.tsx`,
+`mod-card.tsx`, `mod-sheet.tsx`; `components/settings/mod-settings-form.tsx`; the shadcn-shaped `checkbox`,
+`progress` and `separator` wrappers; rail-store's `'mod'` mode; no migration, no new package). A mod declares
+`panels[]` (at most 4, at most one `card: true`) and `settings[]` (at most 10); a `ui.resolve` hook returns an
+element tree the host parses (UTF-8 size, an iterative walk against the caps, then Zod, never throwing) and draws
+with its own components under its own chrome. Where it departs from the body:
+
+- **The person's own hooks and the resolves are off the hook rate.** `ui.resolve` has its own coalescing (one in
+  flight per panel, 250ms apart) and a cap of 60 a minute per mod, over which the last tree stays with "Paused,
+  redrawing too often". `ui.action` and `atom.changed` have a budget of 60 a minute per mod, over which a press is
+  dropped with "Slow down a little", never faulted. CPU, wall-clock and call caps and the fault counter still apply.
+  `command`, `timer` and item events keep the 30 a minute and 1,000 a day switch-off. A fault never starts a resolve:
+  while a panel shows its error only Try again, a save or a settings save draws it again, so a throwing panel cannot
+  trip the 3-fault switch-off by itself.
+- **`ui.action` and `atom.changed` writes skip the history window** (10 entries per 10 minutes), as the person's own
+  gestures, like their own tick; a checklist panel would otherwise trip the switch-off. Commands keep it. Their
+  history labels are `Mod: <name> · <panel label>` and `Mod: <name> · <atom key>`.
+- **The rail reserve is the same 432px** (`RAIL_RESERVE_PX`) and the column the same 420px. "Its own share" is read
+  as "it reserves while docked": a narrower column would make an item opened over the panel jump in width.
+- **The `'mod'` mode is its own summon.** rail-store's `modPanel` is memory only and set only by an explicit open
+  (the header key, ⌘K, a held `$.ui.open`, all through `lib/mods/ui/open-panel.ts`). It shows at any width, docked
+  or as an overlay, with or without AI, and never writes Ask's `summoned` or `askOpen`. Precedence is
+  `item > mod > ask > setup > hidden`: opening a panel closes an open item first, an item opened over the panel
+  wears "‹ Your mod · <name>" (Back shows the panel, ✕ closes both), and Ask's summon replaces the panel. Closing
+  the panel leaves a kept-open Ask as it was (docked, it shows again). An overlay's click-away, Escape there and a
+  window narrowing into one go through `parkOverlay()`, which closes the panel and then parks. Ctrl+J
+  (`toggleRail`) closes a panel before anything else; with no AI, where Ctrl+J is consumed before the toggle,
+  ⌘K's "Close your mod's panel" (`mod.close-panel`) is the keyboard's way out.
+- **`look.set` is allowed in `ui.action`** as well as `command`. `ui.open`, `ui.openItem`, `nav.go`,
+  `nav.organize` and `look.set` are the `USER_ACTED` set: refused unless the hook is `command` or `ui.action`.
+  While drawing (`ui.resolve`) a mod may only read (`RESOLVE_ALLOWED`, an allow-list, so a future method is refused
+  there by default).
+- **`atom.changed` may write items and the store but never navigate.** Atoms are the panel's UI state, mod-wide
+  (no panel id), memory only, never persisted. The person's input sets them, and so does a mod's `$.atom.set`
+  (never in `ui.resolve`); a mod's own writes fire no `atom.changed`. Every value is checked against the node that
+  shows it, and the renderer shows the node's `initial` for one that does not fit.
+- **Settings live in `store['@settings']`** (no migration), written by the existing `mod_store_set` from Make's
+  form ("Set by your mod <name>"), and read by the mod only through `$.settings.get()`. `@`-prefixed store keys
+  are unreachable to a mod's `$.store` (and left out of `store.keys`); a PR 8 mod that wrote one loses it, accepted
+  rather than a migration. A settings save reaches a loaded mod in memory (`settingsChanged`), with no reload.
+- **The braindump card picks the earliest-created switched-on mod with a card panel,** on the desktop only, in
+  every layout, mounted only while the braindump is open (never in a hover peek); Make says which card is showing.
+  A mod's first card panel needs re-consent: a save that adds one saves the mod switched off (`consentWidened`).
+- **A stricter surface rule** (`passesSurfaceRule`, `lib/mods/labels.ts`) applies to every string PR 9 draws:
+  the label rule's words plus sign-in, session, model and chat words, and a wider secret-shape test
+  (`SECRET_SHAPED_RE`). What the person types is refused only when shaped like a secret (`isSafeTypedValue`, so
+  "chat with mom" is fine). Fault text that fails it shows as "(message hidden)". Both are new functions, so PR 8's
+  label rule, and the manifests stored under it, are unchanged.
+- **`ui.resolve` carries no `presentation`.** There is one tree per panel, whatever mounts it; the rail, the card
+  and the sheet share its cache and its atoms.
+- **`itemRef` needs `items:read`,** and draws the item from the planner as it is now (title, type glyph, time),
+  never from anything the mod sent but the id.
+- **New method names:** `ui.open`, `atom.get`, `atom.set` and `settings.get`, appended to `MOD_METHODS`.
+- **New UI wrappers** for checkbox, progress and separator, over Radix packages already installed. No new package.
+- **A maximal manifest exceeds 8KB** (20 commands, 10 settings and 4 panels come to about 15KB). The cap stays, and
+  the scratch run reports "manifest too large"; a realistic one (5 commands, 4 panels, 10 short settings) fits.
+- **Clicks go only to what the person saw:** a press counts when the tree's sequence number is the one at
+  pointerdown or keydown, the button has been unchanged for 500ms, and `(action, arg)` is unique in the tree. The
+  manager checks a press against the host's cached tree and its sequence, never the runtime generation, so an idle
+  unload or a reload never swallows a click.
+- **The phone has no card and no rail.** A panel opens there in a vaul sheet (`components/mods/mod-sheet.tsx`,
+  hosted by the phone shell through `setModSheetHost()`, a count), with nothing focused on open. An `itemRef` row,
+  a held `openItem` or a held nav step closes the sheet first, so two drawers never stack.
+
+Where the code departs from its own spec (the PR's three parts): `onPanelsStale(modId, why)` carries the reason
+(`hook`, `saved`, `enabled`, `changed`, `settings`), which is how an errored panel tells a save from a hook; a tree
+the host refuses becomes a counted fault through the manager's `panelFault`; `runAction` takes the press's sequence
+and checks it through an injected `PanelBridge`, so the manager never imports the panel store; `atom.set` is allowed
+in timer and item hooks too (only `ui.resolve` refuses it). The panel store keeps plain records rather than Maps,
+draws once after a throttled minute ends, and holds a request for a hidden panel until it next mounts. The card's
+chrome always wears the host's Puzzle glyph (the rail and sheet wear the panel's icon). A mod's Select is built from
+the Radix primitives, since the shared trigger's chevron fades through an opacity the lime rule refuses.
+`ModPanelRef` lives in `lib/rail-store.ts` (re-exported by `open-panel.ts`). The rail's mod panel never wears
+`data-rail-view`, which means Ask. `mod.close-panel` is in the mods provider whenever any mod exists, hidden unless a panel
+shows, since a panel stays open (saying it is off) after its mod is switched off. The end-to-end
+(`tests/e2e/mods-panels.spec.ts`) runs in Chromium and the phone project, under the same "can't run here" rule as
+build order 8's.
+
+**Build order 10, AI writes mods, is built** (a fourth Make kind, `'mod'`, through build order 7's pipeline:
+`lib/ai-limits.ts`'s `MAKE_CAPS`, `app/api/ai/make/route.ts`, `lib/ai-server/make-prompt.ts`'s `modSection()`,
+`make-context.ts`, `lib/make-draft.ts`'s mod reader, `draftChecks` and `finishModDraft`, `lib/mods/words.ts`,
+`components/settings/make-write.tsx`, `make-pane.tsx` and `mod-editor.tsx`, and ⌘K's `make.write-mod`; no new
+package, no migration, no new table, no new endpoint). Between reading the reply and showing the card, the client
+runs the code once in the sandbox (`modSandbox.scratch`: no `$`, no handler runs), and the card reads the manifest
+that run declared, never one the reply wrote apart from the code. Decision 6 holds: the gate is `canMake`, a mod
+gets 4,000 output tokens, and `$` has no AI, ever (`tests/unit/mods-no-ai.test.ts` locks `MOD_METHODS` and the
+import graph).
+
+What the safety rests on: Install saves switched off (`createMod` writes `enabled: false`); the runtime refuses
+code whose manifest differs from the stored one (`manifestsEqual`); consent is re-checked; the broker gates every
+call on `METHOD_USES` and `z.enum(MOD_METHODS)`. Everything the draft reader adds on top (the label rules, the
+literal scan, the `$.x(` scan, hook and manifest agreement) is a quality and copy guard, not a security boundary,
+and the card never words it as one. Where it departs from the body:
+
+- **The route's deadline is 120s.** `maxDuration` on `/api/ai/make` went from 60 to 120: a mod gets 110s, recipes,
+  themes and Looks keep 50s, since at 40 to 80 tokens a second a 4,000-token reply takes 50 to 100s. `vercel.json`
+  is `{}`, so 120s depends on the Vercel plan, which Kirby confirms on the preview; if it is not allowed, the
+  fallback is 60/50 and more "cut short" replies. A reasoning model spends part of the 4,000 on reasoning, so
+  "cut short" is more common for it.
+- **No project names for a mod, and none are even read.** `buildMakeContext(db, userId, kind)` skips the
+  `projects` select for a mod. Projects are agent-writable, so their names may carry instructions, and an
+  agent-writable name never reaches a prompt that writes code. Type labels and theme and Look names are owner-only
+  and are still sent. The prompt says project names come from the ask or from `$.containers.list()` at run time.
+  This is narrower than build order 7's privacy line (ai-vision.md, "Not stored", says so).
+- **An AI draft meets stricter rules than a hand-written mod, in the editor too.** Command labels and keywords must
+  also pass `passesSurfaceRule`, and a string literal shaped like a link (`URL_RE`) or a secret
+  (`SECRET_SHAPED_RE`) holds Install. `BARE_DOMAIN_RE` is not used on source: it matches every dotted event name,
+  `'ui.resolve'` included. These are `draftChecks()` in `lib/make-draft.ts`, and the mod editor runs them on every
+  Save of a session opened from a draft (`fromAI`, which an edit never clears), so Edit then Save cannot step
+  around them. A problem names a command by position and never repeats the model's text, except the `$.x` of an
+  unknown call (identifier characters only, at most 40).
+- **Panel trees are not checked before Install.** Scratch runs no hooks, so a bad `ui.resolve` tree shows later as
+  a panel fault; under build order 9 a resolve fault never switches a mod off by itself.
+- **One example in the prompt,** the Water template (`MOD_TEMPLATE`), the only mod the QuickJS test already runs.
+  A reply whose source is the template (compared trimmed) is refused as an echo.
+- **A mod costs two from the `make` bucket.** `takeToken` takes a `cost`, refusing without recording anything when
+  fewer are left, so an hour's output ceiling stays at build order 7's 60,000 tokens. The bucket stays in memory
+  per instance.
+- **The name rule is stricter for a mod only.** `draftName` also requires `isModLabel` and `passesSurfaceRule` for
+  a mod (its name shares the command bar row with a command label, so "Chat" falls back to "New mod" as a label
+  would be held); recipes, themes and Looks keep `ModNameSchema` alone, so "Card rhythm" stays a recipe's name. A
+  name the person types in the editor is their own and is not held to the surface rule.
+- **Scratch on the Write press can trip the 6s host backstop,** which removes the frame and stops every running mod
+  in the tab (they reload lazily). Accepted; scratch never calls `$`.
+- **The hooks the card shows are "as written now".** `register(on)` is ordinary code and may branch on
+  `Date.now()`; the runtime compares manifests, never hooks. So the card's warnings come from the manifest ("It can
+  change items when its code runs, including on its own." for `items:write`), and hooks only add detail.
+- **An indirect AI path, noted.** A mod with `items:write` writes item titles, and `/api/chat` sends titles to the
+  person's model. The chat context's "data, not instructions" framing is the backstop; the prompt adds that titles
+  a mod writes are fixed short words, never text meant for a reader to follow.
+- **A `$` call while loading does not always fault.** The prelude defines `$` as a global and the core refuses any
+  call made while loading, so an un-awaited `$.items.create(...)` at the top level or in `register` loads without a
+  fault. What always holds is that no call reaches the host; an awaited one, a missing global and top-level await
+  all fault (`tests/unit/make-mod-roundtrip.test.ts`).
+- **The reader repairs raw control characters for a mod only.** A raw newline, carriage return or tab inside a
+  JSON string becomes its escape (other control characters `\u00XX`), since `json: true` has no effect for
+  Anthropic and OpenRouter. An object left open at the end is "cut short" even after an earlier one closed, so an
+  echoed example followed by a truncated draft never installs the example. A recipe keeps the old rules.
+- **What the card and the editor show of the model's words.** A fault reads "It would not load." (or "It would not
+  load: it hit an error." and the like), and its message only through `surfaceMessage` under "Your mod reported:";
+  a manifest the schema refuses shows only the path, never Zod's message, which can quote the model's values. The
+  editor passes every fault message and manifest issue through `surfaceMessage`, for every mod, not only AI ones.
+- **A draft that would not load opens the editor with nothing read** ("Not read yet: save to check it."), never the
+  template's uses or words.
+- **Words shared by the card and the prompt are neutral** (`lib/mods/words.ts`: "when an item is ticked", not
+  "when you tick an item"), since the same table speaks to the person and to the model. The tree size cap is
+  printed as a raw byte count so a test can match it to the constant, and the icon list is printed once.
+- **The import-graph test is split** (`tests/unit/mods-no-ai.test.ts`). Followed all the way, `broker.ts` and
+  `ui/open-panel.ts` reach app-wide stores that import chat for the app's own Ask, so the test checks that nothing
+  reachable reaches `lib/make-ai` or `lib/ai-server/**`, that no file under `lib/mods/` imports
+  `conversations-store`, `chat-target`, `make-ai` or `ai-server` directly, and that from `lib/open-chat` they take
+  only `leaveZen` (the walk still goes on through `open-chat`, so nothing past it reaches `make-ai` either).
+- **⌘K's "Write a mod with AI"** (`make.write-mod`, the same group, glyph and `canMake` gate as `make.write`, no
+  shortcut) opens `/settings/make?write=mod`; Make boots the sandbox when the kind becomes a mod and holds Write
+  until it answers, saying why when it cannot run ("Mods can't run in this browser, so AI can't check one here.").
+  No chip on Ask home. Safe mode changes nothing: scratch and Install work, and the mod saves switched off.
+- **The end-to-end** (`tests/e2e/make-write-mod.spec.ts`) answers `/api/ai/make` with canned frames, so nothing
+  leaves the machine, and runs under build order 8's "can't run here" rule.
 
 **This amends [plugins-themes-store.md](plugins-themes-store.md)** in two places,
 both in its Project B item 6 ("Skip indefinitely"): the tier (c) sandboxed

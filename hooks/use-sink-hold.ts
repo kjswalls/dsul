@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useReducer, useRef } from 'react';
 import { isRowSettledOn, type SortableRow } from '@/lib/sort-rows';
 import { useDragStore } from '@/lib/drag-store';
+import { settleEpoch } from '@/lib/settle-epoch';
+import { prefersReducedMotion } from '@/lib/zen-transition';
 
 /**
  * How long a row that was just ticked (or unticked) keeps its old place before
@@ -26,10 +28,18 @@ export const SINK_SLIDE_MS = 320;
  * `rootRef`).
  *
  * VIEW-LEVEL, on purpose. A completion reaches the store from the checkbox, the
- * command palette, Beacon, the EOD review and realtime sync, so a hold armed at
- * any one of those would miss the rest. Watching what each surface renders
- * catches all of them, and leaves the store's own state instant — the row's
- * checkbox, strike-through and every count are live; only its POSITION waits.
+ * command palette, the right-click menu, Beacon and the EOD review, so a hold
+ * armed at any one of those would miss the rest. Watching what each surface
+ * renders catches all of them, and leaves the store's own state instant — the
+ * row's checkbox, strike-through and every count are live; only its POSITION
+ * waits.
+ *
+ * There is no realtime sync: a tick made on another device arrives with the
+ * next load, and only there. When that load lands over the cached preview,
+ * the settle conductor (lib/settle.ts) moves every row once, so a completion
+ * that changed on that edge was made ELSEWHERE, not ticked here. The hook
+ * adopts it with no hold and no slide (the settle epoch, lib/settle-epoch.ts)
+ * rather than move the row a second time 700ms later.
  *
  * One timer, debounced: ticking three rows in quick succession keeps all three
  * in place and moves them together once you stop, rather than shuffling the
@@ -44,8 +54,9 @@ export const SINK_SLIDE_MS = 320;
  * postpones the commit until the drop.
  *
  * The FLIP only runs on a commit this hook made, never on an ordinary re-render,
- * so a group collapsing or a window resize does not animate. Reduced motion
- * keeps the hold (it is a pause, not motion) and drops the slide.
+ * so a group collapsing or a window resize does not animate. Reduced motion —
+ * the OS setting or dsul's own animations toggle — keeps the hold (it is a
+ * pause, not motion) and drops the slide.
  */
 export function useSinkHold<E extends HTMLElement = HTMLDivElement>(
   /**
@@ -68,6 +79,8 @@ export function useSinkHold<E extends HTMLElement = HTMLDivElement>(
   const lastSignature = useRef('');
   const before = useRef<Map<Element, DOMRect> | null>(null);
   const root = useRef<E | null>(null);
+  /** The settle epoch this hook last ordered under; a change is a preview → fresh landing. */
+  const epochSeen = useRef(settleEpoch());
   const [version, commit] = useReducer((n: number) => n + 1, 0);
 
   const rootRef = useCallback(
@@ -80,6 +93,17 @@ export function useSinkHold<E extends HTMLElement = HTMLDivElement>(
 
   const completedAs = useCallback(
     (row: SortableRow, dateStr: string | null): boolean => {
+      const epoch = settleEpoch();
+      if (epoch !== epochSeen.current) {
+        // The preview → fresh landing: a completion that differs from what the
+        // preview drew was made ELSEWHERE, not ticked here. Adopt every row as
+        // it now is, with no hold; the settle conductor moves it once.
+        epochSeen.current = epoch;
+        committed.current.clear();
+        if (timer.current) clearTimeout(timer.current);
+        timer.current = null;
+        lastSignature.current = '';
+      }
       const actual = isRowSettledOn(row, dateStr);
       const key = `${row.item.id}|${dateStr ?? ''}`;
       batch.current.set(key, actual);
@@ -184,8 +208,4 @@ function measure(root: HTMLElement | null): Map<Element, DOMRect> | null {
     rects.set(box, box.getBoundingClientRect());
   });
   return rects;
-}
-
-function prefersReducedMotion(): boolean {
-  return typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 }

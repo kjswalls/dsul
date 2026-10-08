@@ -43,6 +43,8 @@ const MODEL_DEFAULTS: ModelConnectionView = {
   status: 'ok',
   problem: null,
   checkedAt: '2026-10-01T00:00:00.000Z',
+  limitedUntil: null,
+  modelLabel: null,
 };
 
 const OPENCLAW_DEFAULTS: OpenClawView = {

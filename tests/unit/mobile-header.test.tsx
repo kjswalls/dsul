@@ -44,7 +44,14 @@ import { UserProfileDropdown } from '@/components/planner/user-profile-dropdown'
 import { usePlannerStore } from '@/lib/planner-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { useViewStore } from '@/lib/view-store';
-import { seedAI, CONNECTED_MODEL } from './helpers/ai-fixtures';
+import {
+  seedAI,
+  AI_HIDDEN,
+  CONNECTED_MODEL,
+  KEY_TURNED_DOWN,
+  NOTHING_CONNECTED,
+  type SeedAI,
+} from './helpers/ai-fixtures';
 
 /** jsdom implements neither PointerEvent nor pointer capture; Radix needs both. */
 beforeAll(() => {
@@ -145,7 +152,7 @@ describe('the week strip', () => {
     renderHeader();
 
     expect(screen.queryAllByTestId('week-day')).toHaveLength(0);
-    // The whole card goes, not only the strip: Braindump and Beacon each bring
+    // The whole card goes, not only the strip: Braindump and Ask each bring
     // their own header, and a date row stacked above one of those is a second
     // header offering a calendar for a surface that has no date.
     expect(screen.queryByTestId('header-date')).toBeNull();
@@ -172,26 +179,44 @@ describe('the view cycler', () => {
     expect(useViewStore.getState().layout).toBe('buckets');
   });
 
-  it('stays off the dateless tabs, which render no canvas for it to switch', () => {
-    // The chat tab is on screen only while something can answer.
-    const unseed = seedAI(CONNECTED_MODEL);
+  // The chat tab is on screen only while the gate offers it: Ask while
+  // something answers, the setup page or the fix home in its place while the
+  // gate invites or offers the fix. Each brings its own capsule and the user
+  // menu in it, so the header is the bare inset.
+  it.each<[string, SeedAI]>([
+    ['Ask', CONNECTED_MODEL],
+    ['the setup page', NOTHING_CONNECTED],
+    ['the fix home', KEY_TURNED_DOWN],
+  ])('stays off the dateless tabs, which render no canvas for it to switch: %s', (_, s) => {
+    const unseed = seedAI(s);
     try {
       useMobileNavStore.setState({ activeTab: 'chat' });
       renderHeader();
 
       expect(screen.queryByTestId('mobile-view-cycle')).toBeNull();
+      expect(screen.queryByTestId('header-date')).toBeNull();
+      expect(screen.queryByRole('button', { name: 'User menu' })).toBeNull();
     } finally {
       unseed();
     }
   });
 
-  it('follows the tab the shell shows: a stored chat tab with nothing to answer is Today, card and all', () => {
+  it.each<[string, SeedAI | undefined]>([
+    ['the gate has not answered', undefined],
+    ['the account has said No AI', AI_HIDDEN],
+  ])('follows the tab the shell shows: a stored chat tab that is not offered is Today, card and all (%s)', (_, s) => {
     // The shell renders Today for it (shownMobileTab); a dateless header over
     // Today would leave the phone with no date and no user menu.
-    useMobileNavStore.setState({ activeTab: 'chat' });
-    renderHeader();
+    const unseed = seedAI(s);
+    try {
+      useMobileNavStore.setState({ activeTab: 'chat' });
+      renderHeader();
 
-    expect(screen.getByTestId('mobile-view-cycle')).toBeInTheDocument();
+      expect(screen.getByTestId('mobile-view-cycle')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'User menu' })).toBeInTheDocument();
+    } finally {
+      unseed();
+    }
   });
 });
 

@@ -11,6 +11,7 @@ import {
   Check,
   Copy,
   Flame,
+  FolderTree,
   Footprints,
   Link2,
   Maximize2,
@@ -43,6 +44,7 @@ import {
   EligibleCount,
   MENU_ROW,
   MIXED,
+  NONE,
   OptionBody,
   optionChecked,
   PANEL,
@@ -51,6 +53,7 @@ import {
   sharedSummary,
   useEditModel,
   type OptionSpec,
+  type PaneKey,
 } from '@/components/shell/bulk-edit-menu';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useMediaQuery } from '@/hooks/use-media-query';
@@ -59,6 +62,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useSelectionStore } from '@/lib/selection-store';
 import { openEditFor } from '@/lib/ui-store';
 import { milestoneItemIds } from '@/lib/goals';
+import { membershipSummary } from '@/lib/item-bands';
 import { toDateStr } from '@/lib/recurrence';
 import { addDaysStr, weekStartOf, type OccurrenceState } from '@/lib/container-schedule';
 import { ITEM_VERBS, drawnState, isDoneOn, type VerbContext, type VerbId } from '@/lib/item-verbs';
@@ -545,78 +549,119 @@ function AskSection({ item, todayStr, tz, page }: { item: Item; todayStr: string
 
 /* ── properties: the Edit menu's own lists ─────────────────────────────── */
 
-function EditSection({ edit }: { edit: ReturnType<typeof useEditModel> }) {
+/**
+ * The rows that file the item into a container. They change rarely, so when
+ * more than one applies they sit under one "Organize ▸" row instead of
+ * lengthening the menu; a lone one stays a row of its own, since nesting it
+ * would add a hop and save no line.
+ */
+const CONTAINER_PANES: ReadonlySet<PaneKey> = new Set(['project', 'routine', 'season', 'goal']);
+
+type EditModel = ReturnType<typeof useEditModel>;
+
+/**
+ * What the Organize row previews, in the house "first +N" form: the first
+ * container set and how many other kinds are, "Mixed" when the selection
+ * disagrees on any of them, or "None".
+ */
+function organizeSummary(rows: EditModel['visibleRows']) {
+  if (rows.some((r) => r.summary === MIXED)) return MIXED;
+  return membershipSummary(rows.map((r) => r.summary).filter((s) => s !== NONE)) ?? NONE;
+}
+
+function EditSection({ edit }: { edit: EditModel }) {
   const [remindTime, setRemindTime] = useState('');
   if (edit.visibleRows.length === 0) return null;
+  const containers = edit.visibleRows.filter((r) => CONTAINER_PANES.has(r.key));
+  const grouped = containers.length > 1;
+  const flat = grouped ? edit.visibleRows.filter((r) => !CONTAINER_PANES.has(r.key)) : edit.visibleRows;
   const ids = (list: readonly Item[]) => list.map((i) => i.id);
   const prefillRemind = () => {
     const shared = sharedSummary(edit.remindable, (i) => i.reminderTime || undefined);
     setRemindTime(shared && shared !== MIXED ? shared : '');
   };
+  const pane = (r: EditModel['visibleRows'][number]) => (
+    <ContextMenuSub key={r.key} onOpenChange={(o) => o && r.key === 'remind' && prefillRemind()}>
+      <ContextMenuSubTrigger
+        className={cn(ROW, '[&>svg:last-child]:size-3.5')}
+        data-testid={`item-menu-edit-${r.key}`}
+      >
+        <span className="flex size-3.5 shrink-0 items-center justify-center text-muted-foreground">{r.icon}</span>
+        <span className="flex-1 truncate">
+          {r.label} <EligibleCount n={r.eligible} of={edit.count} />
+        </span>
+        <RowSummary summary={r.summary} />
+      </ContextMenuSubTrigger>
+      <ContextMenuSubContent
+        className={PANEL}
+        onKeyDown={
+          r.key === 'remind'
+            ? (e) => {
+                if (e.target !== e.currentTarget) return;
+                if (e.key !== 'ArrowDown' && e.key !== 'Home' && e.key !== 'Tab') return;
+                e.preventDefault();
+                e.currentTarget.querySelector<HTMLElement>('[data-testid="bulk-remind-time"]')?.focus();
+              }
+            : undefined
+        }
+      >
+        {r.key === 'remind' ? (
+          <RemindPane
+            value={remindTime}
+            onChange={setRemindTime}
+            undated={edit.undatedReminders}
+            anySet={edit.remindable.some((i) => !!i.reminderTime)}
+            onApply={() => {
+              if (remindTime) edit.setItemsReminder(ids(edit.remindable), remindTime);
+            }}
+            onClear={() => edit.setItemsReminder(ids(edit.remindable), undefined)}
+          />
+        ) : (
+          <div className="scrollbar-hide max-h-[min(20rem,60vh)] overflow-x-hidden overflow-y-auto">
+            {edit.optionsFor(r.key).map((o: OptionSpec) => (
+              <Fragment key={o.key}>
+                {o.divider && <ContextMenuSeparator />}
+                <ContextMenuItem
+                  role={o.role}
+                  aria-checked={optionChecked(o)}
+                  data-testid={o.testId}
+                  {...o.data}
+                  className={cn(MENU_ROW, o.muted && 'text-muted-foreground')}
+                  onSelect={(e) => {
+                    if (o.keepOpen) e.preventDefault();
+                    o.onSelect();
+                  }}
+                >
+                  <OptionBody o={o} />
+                </ContextMenuItem>
+              </Fragment>
+            ))}
+          </div>
+        )}
+      </ContextMenuSubContent>
+    </ContextMenuSub>
+  );
   return (
     <>
       <ContextMenuSeparator />
-      {edit.visibleRows.map((r) => (
-        <ContextMenuSub key={r.key} onOpenChange={(o) => o && r.key === 'remind' && prefillRemind()}>
+      {flat.map(pane)}
+      {grouped && (
+        <ContextMenuSub>
           <ContextMenuSubTrigger
             className={cn(ROW, '[&>svg:last-child]:size-3.5')}
-            data-testid={`item-menu-edit-${r.key}`}
+            data-testid="item-menu-edit-organize"
           >
-            <span className="flex size-3.5 shrink-0 items-center justify-center text-muted-foreground">{r.icon}</span>
-            <span className="flex-1 truncate">
-              {r.label} <EligibleCount n={r.eligible} of={edit.count} />
+            <span className="flex size-3.5 shrink-0 items-center justify-center text-muted-foreground">
+              <FolderTree className="size-3.5" />
             </span>
-            <RowSummary summary={r.summary} />
+            <span className="flex-1 truncate">Organize</span>
+            <RowSummary summary={organizeSummary(containers)} />
           </ContextMenuSubTrigger>
-          <ContextMenuSubContent
-            className={PANEL}
-            onKeyDown={
-              r.key === 'remind'
-                ? (e) => {
-                    if (e.target !== e.currentTarget) return;
-                    if (e.key !== 'ArrowDown' && e.key !== 'Home' && e.key !== 'Tab') return;
-                    e.preventDefault();
-                    e.currentTarget.querySelector<HTMLElement>('[data-testid="bulk-remind-time"]')?.focus();
-                  }
-                : undefined
-            }
-          >
-            {r.key === 'remind' ? (
-              <RemindPane
-                value={remindTime}
-                onChange={setRemindTime}
-                undated={edit.undatedReminders}
-                anySet={edit.remindable.some((i) => !!i.reminderTime)}
-                onApply={() => {
-                  if (remindTime) edit.setItemsReminder(ids(edit.remindable), remindTime);
-                }}
-                onClear={() => edit.setItemsReminder(ids(edit.remindable), undefined)}
-              />
-            ) : (
-              <div className="scrollbar-hide max-h-[min(20rem,60vh)] overflow-x-hidden overflow-y-auto">
-                {edit.optionsFor(r.key).map((o: OptionSpec) => (
-                  <Fragment key={o.key}>
-                    {o.divider && <ContextMenuSeparator />}
-                    <ContextMenuItem
-                      role={o.role}
-                      aria-checked={optionChecked(o)}
-                      data-testid={o.testId}
-                      {...o.data}
-                      className={cn(MENU_ROW, o.muted && 'text-muted-foreground')}
-                      onSelect={(e) => {
-                        if (o.keepOpen) e.preventDefault();
-                        o.onSelect();
-                      }}
-                    >
-                      <OptionBody o={o} />
-                    </ContextMenuItem>
-                  </Fragment>
-                ))}
-              </div>
-            )}
+          <ContextMenuSubContent className={PANEL} data-testid="item-menu-organize-content">
+            {containers.map(pane)}
           </ContextMenuSubContent>
         </ContextMenuSub>
-      ))}
+      )}
     </>
   );
 }

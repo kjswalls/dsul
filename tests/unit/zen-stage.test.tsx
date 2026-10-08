@@ -8,7 +8,8 @@ vi.mock('@/lib/settings-service', () => ({
   saveSettings: vi.fn(async () => {}),
 }));
 
-import { ZenStage } from '@/components/zen/zen-stage';
+import { ZenStage, findSourceTitle } from '@/components/zen/zen-stage';
+import { RowTitleText } from '@/components/primitives/row-title-text';
 import { useViewStore } from '@/lib/view-store';
 
 function setReduced(reduced: boolean) {
@@ -98,5 +99,55 @@ describe('ZenStage', () => {
     expect(zenLayer.hasAttribute('inert')).toBe(false);
     expect(document.querySelector('canvas')).toBeNull();
     expect(useViewStore.getState().zenMoving).toBe(false);
+  });
+});
+
+describe('findSourceTitle', () => {
+  /** A planner canvas with one row per title, drawn the way TaskRow draws its title. */
+  function planner(rows: [id: string, title: string][]) {
+    const view = render(
+      <div data-testid="planner">
+        <main>
+          {rows.map(([id, title]) => (
+            <div key={id} data-item-id={id}>
+              <button type="button" aria-label="Complete" />
+              <p data-row-title="open">
+                <RowTitleText text={title} />
+              </p>
+            </div>
+          ))}
+        </main>
+      </div>
+    );
+    // jsdom lays nothing out: every box on screen.
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
+      left: 100, top: 100, right: 300, bottom: 120, width: 200, height: 20, x: 100, y: 100, toJSON: () => ({}),
+    } as DOMRect);
+    return view.getByTestId('planner');
+  }
+
+  it('finds a title whose emoji sit in their own spans: the Relay Lift flies from it', () => {
+    const root = planner([
+      ['plain', 'Gym'],
+      ['lead', '🏋️ Gym'],
+      ['trail', 'Call mom 📞'],
+      ['only', '🎂'],
+    ]);
+    for (const [id, title] of [
+      ['plain', 'Gym'],
+      ['lead', '🏋️ Gym'],
+      ['trail', 'Call mom 📞'],
+      ['only', '🎂'],
+    ]) {
+      const found = findSourceTitle(root, id, title);
+      expect(found, title).not.toBeNull();
+      expect(found!.tagName, title).toBe('P');
+      expect(found!.getAttribute('data-row-title'), title).toBe('open');
+    }
+  });
+
+  it('still wants the whole title: part of one is not it', () => {
+    const root = planner([['lead', '🏋️ Gym']]);
+    expect(findSourceTitle(root, 'lead', 'Gym')).toBeNull();
   });
 });

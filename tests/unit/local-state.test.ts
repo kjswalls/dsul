@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
@@ -10,12 +10,15 @@ import {
   localStateOwner,
 } from '@/lib/local-state';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
+import { useAIConnectionStore } from '@/lib/ai-connection-store';
+import { ASK_PENDING_KEY, clearKeptQuestionState, keepQuestion, readKept } from '@/lib/ask-pending';
 import { useCommandUsageStore } from '@/lib/command-usage-store';
 import { useConversationsStore } from '@/lib/conversations-store';
 import { useRailStore } from '@/lib/rail-store';
 import { useEODStore } from '@/lib/eod-store';
 import { useKeyboardShortcutsStore } from '@/lib/keyboard-shortcuts-store';
 import { useMorningStore } from '@/lib/morning-store';
+import { getSnapshotEpoch } from '@/lib/planner-snapshot';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useSidebarStore, SIDEBAR_DEFAULT_WIDTH } from '@/lib/sidebar-store';
 import { recordReleased, releasedOn } from '@/lib/sweep-grace';
@@ -254,6 +257,41 @@ describe('the sweep grace map', () => {
   });
 });
 
+/**
+ * The planner snapshot is IndexedDB, which jsdom does not have — so what this
+ * file can see is the clear's SYNCHRONOUS half, the epoch bump that drops every
+ * read, prefetch and write already in flight. That half is the one that has to
+ * hold: the async IDB clear can be aborted by sign-out's hard navigation. The
+ * disk half is pinned in planner-snapshot.test.ts.
+ */
+describe('the planner snapshot', () => {
+  it('is in RAW_CLEARERS: a sign-out and an account switch both bump its epoch', () => {
+    adoptLocalState(USER_A);
+
+    let before = getSnapshotEpoch();
+    clearUserScopedLocalState();
+    expect(getSnapshotEpoch()).toBeGreaterThan(before);
+
+    adoptLocalState(USER_A);
+    before = getSnapshotEpoch();
+    expect(adoptLocalState(USER_B)).toBe(true);
+    expect(getSnapshotEpoch()).toBeGreaterThan(before);
+  });
+
+  it('is left alone when the same user signs in again', () => {
+    adoptLocalState(USER_A);
+    const before = getSnapshotEpoch();
+    expect(adoptLocalState(USER_A)).toBe(false);
+    expect(getSnapshotEpoch()).toBe(before);
+  });
+
+  it('is dropped on an unstamped browser — every title and note is disclosive', () => {
+    const before = getSnapshotEpoch();
+    adoptUnstamped(USER_A);
+    expect(getSnapshotEpoch()).toBeGreaterThan(before);
+  });
+});
+
 describe("the last account's user themes", () => {
   it('drop a device pick naming one, and keep a built-in pick', () => {
     useLookStore.setState({ light: 'u-aaaaaaaa', dark: 'terminal' });
@@ -302,7 +340,7 @@ describe('hostile storage cannot take the clear — or the boot — down with it
 
     // zustand's persist calls storage.setItem UNWRAPPED, so this throw comes
     // straight back out of the first store's set(). In a bare loop it would
-    // abort the seven stores after it, both raw clearers and the stamp write.
+    // abort the seven stores after it, every raw clearer and the stamp write.
     const setItem = Storage.prototype.setItem;
     Storage.prototype.setItem = () => {
       throw new DOMException('The operation is insecure.', 'SecurityError');
@@ -321,7 +359,21 @@ describe('hostile storage cannot take the clear — or the boot — down with it
   });
 });
 
+/** A question kept from `?` as `uid` (the gate's account, which is whom keepQuestion asks). */
+function keepAs(uid: string, text: string) {
+  const before = useAIConnectionStore.getState().hydratedUserId;
+  useAIConnectionStore.setState({ hydratedUserId: uid });
+  try {
+    expect(keepQuestion(text)).toBe(true);
+  } finally {
+    useAIConnectionStore.setState({ hydratedUserId: before });
+  }
+  expect(readKept(uid)?.text).toBe(text);
+}
+
 describe('another tab adopting a new user (case 5)', () => {
+  afterEach(() => clearKeptQuestionState());
+
   /** What the browser delivers to every tab EXCEPT the one that wrote. */
   function siblingTabStamped(userId: string | null) {
     localStorage.setItem(LOCAL_STATE_OWNER_KEY, userId ?? '');
@@ -333,8 +385,13 @@ describe('another tab adopting a new user (case 5)', () => {
   it('clears this tab, which the stamp comparison alone can never do', () => {
     adoptLocalState(USER_A);
     useAISettingsStore.setState({ systemPrompt: A_PROMPT });
+    keepAs(USER_A, 'A private question');
 
     siblingTabStamped(USER_B);
+
+    // A's kept question, in sessionStorage and in the memory mirror alike.
+    expect(sessionStorage.getItem(ASK_PENDING_KEY)).toBeNull();
+    expect(readKept(USER_A)).toBeNull();
 
     // The whole hazard: this tab's own adopt now returns false, because the
     // stamp already says USER_B. If the listener had not cleared, the next
@@ -729,9 +786,26 @@ describe('nothing persists per-user state outside the registry', () => {
       // the account is gone, read and removed by /login, and it dies with the
       // tab, so there is no account left to clear it for.
       'lib/account-client.ts',
+      // the per-tab crash marker (sessionStorage, '1'): tab-scoped and says nothing about anyone
+      'lib/planner-snapshot.ts',
       // `dsul-user-themes`: the account's own themes, printed, for the pre-paint
       // script. Per user, so clearUserThemeCache is in RAW_CLEARERS.
       'lib/user-themes/store.ts',
+      // Two writers. `dsul-ask-pending`, sessionStorage: a question kept from
+      // `?` while nothing answered, text the user wrote, so
+      // clearKeptQuestionState is in RAW_CLEARERS (the other-tab block above
+      // checks it). `dsul-ask-claimed`, localStorage: at most eight random ids
+      // of questions already asked or cleared, so a duplicated tab never asks
+      // one again. Nothing about anyone, so nothing clears it.
+      'lib/ask-pending.ts',
     ].sort());
+  });
+
+  it('every IndexedDB database in the app is accounted for', () => {
+    // IndexedDB is invisible to every scan above. The planner snapshot is the
+    // one database, wholly disclosive, and cleared through RAW_CLEARERS (its
+    // own describe in this file). A second entry here is per-user state that
+    // nothing has been told to clear.
+    expect(filesMatching(/\bindexedDB\.(open|deleteDatabase)\(/)).toEqual(['lib/planner-snapshot.ts']);
   });
 });

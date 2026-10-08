@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { toast } from 'sonner';
-import { useRouter } from 'next/navigation';
 import {
   DndContext,
   TouchSensor,
@@ -38,12 +37,18 @@ import { ZenStage } from '@/components/zen/zen-stage';
 import { OnboardingTour } from '@/components/onboarding/onboarding-tour';
 import { BugReportDialog } from '@/components/bug-report/bug-report-dialog';
 import { OneTimeNudge } from '@/components/primitives/one-time-nudge';
+import { SettleHost } from '@/components/shell/settle-host';
 
 import { batchHistory, usePlannerStore } from '@/lib/planner-store';
 import { milestoneItemIds } from '@/lib/goals';
-import { tourHideAsk, tourShowAsk } from '@/lib/rail-store';
-import { useMobileNavStore } from '@/lib/mobile-nav-store';
+import { tourHideAsk, tourShowAsk, usePanelOverlays, useRailMode } from '@/lib/rail-store';
+import { setupPageShown, useMobileNavStore } from '@/lib/mobile-nav-store';
+import { useAICapabilities } from '@/lib/ai-connection-store';
+import { useUndoStripStore } from '@/lib/undo-strip-store';
+import { useItWorksShown } from '@/components/ai/ask/it-works-card';
 import { openReviewFromLink } from '@/lib/eod-link';
+import { takeConnectReturn } from '@/lib/connect-return';
+import { watchKeptQuestion } from '@/lib/ask-pending';
 import { flushSettings } from '@/lib/settings-service';
 import { useUIStore, openEditFor } from '@/lib/ui-store';
 import { ITEM_TYPES } from '@/lib/item-registry';
@@ -67,6 +72,7 @@ import { useUndoToast } from '@/hooks/use-undo-toast';
 import { useTimezoneSync } from '@/hooks/use-timezone-sync';
 import { useOverdueSweep } from '@/hooks/use-overdue-sweep';
 import { useCompletionFiling } from '@/hooks/use-completion-filing';
+import { useDeferredDialogPromotion } from '@/hooks/use-deferred-dialog';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useOneTimeNudge } from '@/hooks/use-one-time-nudge';
 import { isOnboardingComplete } from '@/lib/user-profile';
@@ -116,9 +122,12 @@ function DragGhost() {
  * The first-run toasts, "Streaks are on" and the rituals intro, with their own
  * subscribers like DragGhost, so the stores they wait on never re-render
  * AppShell. When each may show is streakNudgeEnabled (lib/nudges/streak-gate.ts)
- * and ritualsNudgeReady (lib/nudges/registry.ts). Exported for
- * tests/unit/first-run-nudges.test.tsx, which mounts this rather than a copy of
- * its wiring.
+ * and ritualsNudgeReady (lib/nudges/registry.ts). The rituals intro also waits
+ * out what the tour's last card can leave on screen: AI setup (the column, or
+ * the phone's setup page), the "It works." a connect there ends on, and an undo
+ * row such as No AI's. It reads those here, not through a prop, so the mount
+ * line below stays as it is. Exported for tests/unit/first-run-nudges.test.tsx,
+ * which mounts this rather than a copy of its wiring.
  */
 export function FirstRunNudges({
   tourAnsweredFor,
@@ -135,6 +144,20 @@ export function FirstRunNudges({
   const settingsHydratedUserId = useMorningStore((s) => s.settingsHydratedUserId);
   const morningCheckEnabled = useMorningStore((s) => s.morningCheckEnabled);
   const eodReviewEnabled = useEODStore((s) => s.eodReviewEnabled);
+  // Setup is read per shell, as each shell shows it: the column's own mode on
+  // the desktop, the Ask tab holding the setup page on the phone. A `chat` tab
+  // left in the store says nothing about a desktop, so it never holds one.
+  const isMobile = useIsMobile();
+  const railMode = useRailMode(usePanelOverlays());
+  const offer = useAICapabilities();
+  const onChatTab = useMobileNavStore((s) => s.activeTab === 'chat');
+  const setupShowing = isMobile ? onChatTab && setupPageShown(offer) : railMode === 'setup';
+  // Both are spent when the person moves on: "It works." by Ask closing, a
+  // first send or leaving the phone's Ask tab (lib/rail-store.ts
+  // spendJustConnected), an undo row by its own clock. So the intro still
+  // comes, after them.
+  const itWorks = useItWorksShown();
+  const undoUp = useUndoStripStore((s) => s.entry !== null);
   const streakNudgeOn = streakNudgeEnabled({
     extReady,
     streaksOn,
@@ -150,6 +173,7 @@ export function FirstRunNudges({
     hasTasks,
     morningCheckEnabled,
     eodReviewEnabled,
+    setupOrUndoUp: setupShowing || itWorks || undoUp,
   });
   // One first-run toast at a time: while the streak nudge is up (or about to
   // be), the rituals one waits its turn rather than stacking under it. An
@@ -257,8 +281,12 @@ export function AppShell() {
   // that day is over (lib/completion-filing.ts). Always on; same mount point
   // and the same load-time gates as the sweep above.
   useCompletionFiling();
+  // A data dialog asked for during the look-only preview opens once fresh data
+  // lands (lib/ui-store.ts). Here, above the desktop/mobile/Zen swap, so no
+  // shell change drops the request; leaving `/` does. <SettleHost /> below is
+  // mounted at the same level for the same reason.
+  useDeferredDialogPromotion();
 
-  const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [showTour, setShowTour] = useState(false);
   const [tourUserId, setTourUserId] = useState<string | null>(null);
@@ -335,6 +363,33 @@ export function AppShell() {
       subscribe: usePlannerStore.subscribe,
       clearLink: () => window.history.replaceState({}, '', '/'),
     });
+  }, []);
+
+  // OpenRouter sign-in's home return: ?connect=<result> says how a sign-in
+  // begun in the setup column ended, once the AI gate has answered, and opens
+  // the column again (lib/connect-return.ts, which says why it waits). Only
+  // this parameter comes off the address bar, at once.
+  useEffect(() => {
+    if (typeof window === 'undefined' || window.location.pathname !== '/') return;
+    return takeConnectReturn(window.location.search, {
+      clearLink: () => {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('connect');
+        window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+      },
+      // useIsMobile's own test (hooks/use-mobile.ts), read when the gate
+      // answers: at mount the hook has not measured yet.
+      isPhone: () => window.innerWidth < 768,
+    });
+  }, []);
+
+  // A question kept from `?` while nothing answered is asked once something
+  // does, or left in Ask home's box when the connection is not the one its
+  // consent line named (lib/ask-pending.ts, which says why it waits a tick).
+  // On `/` only, and the shell's width is read when it asks, as above.
+  useEffect(() => {
+    if (typeof window === 'undefined' || window.location.pathname !== '/') return;
+    return watchKeptQuestion({ isPhone: () => window.innerWidth < 768 });
   }, []);
 
   // There is deliberately NO in-app EOD auto-trigger here. There used to be
@@ -685,6 +740,12 @@ export function AppShell() {
           droppables, so the brief overlap registers no duplicate ids. */}
       {isMobile ? <MobileShell /> : <ZenStage planner={<DesktopShell />} />}
 
+      {/* The cached → fresh settle's React end and the preview's one
+          announcement (settle-host.tsx). A sibling of the shell swap, not a
+          child of either shell, so a desktop⇄mobile or Zen switch mid-preview
+          neither drops the landing edge nor announces it twice. */}
+      <SettleHost />
+
       <DragGhost />
 
       {/* Add is always the modal. Desktop EDIT is the docked panel, which
@@ -743,9 +804,6 @@ export function AppShell() {
         <OnboardingTour
           userId={tourUserId}
           onComplete={() => setShowTour(false)}
-          // The tour calls handleComplete() before this fires, so navigating
-          // away doesn't abandon it. Beacon is the pane the step is about.
-          onOpenSettings={() => router.push('/settings/beacon')}
           // The tour shows Ask for its step and puts it back, never writing
           // `askOpen` (lib/rail-store.ts tourShowAsk, tourHideAsk).
           onExpandChat={tourShowAsk}

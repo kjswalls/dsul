@@ -382,6 +382,10 @@ export function BucketCard({
       data-current={isCurrent ? 'true' : 'false'}
       data-collapsed={collapsed ? 'true' : 'false'}
       data-drop-target={isDropTarget ? 'true' : 'false'}
+      // A settle frame (lib/settle.ts), qualified by its week column's
+      // data-date: the card glides when a bucket above it changes length.
+      data-settle-key={`bucket:${bucket}`}
+      data-settle-role="frame"
       // No trailing space of its own — see the GEO note. The parent spaces
       // these with flex `gap`, sourced from bucketGap().
       className={cn('group/bucket relative isolate', className)}

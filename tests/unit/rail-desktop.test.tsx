@@ -112,6 +112,8 @@ import {
 import { seedAI, AI_HIDDEN, CONNECTED_MODEL, KEY_TURNED_DOWN, NOTHING_CONNECTED, type SeedAI } from './helpers/ai-fixtures';
 import { fakeApi, fakeTransport, flush, hangs, summary, type FakeTransport } from './helpers/conversations-fakes';
 import { askFromCommandBar } from '@/lib/open-chat';
+import { useModsStore } from '@/lib/mods-store';
+import type { UserMod } from '@/lib/mods/schema';
 import type { TaskItem } from '@/lib/planner-types';
 
 /* ── fixtures ────────────────────────────────────────────────────────── */
@@ -1808,13 +1810,48 @@ describe('the setup column', () => {
     renderShell();
     pressCtrlJ();
     openRow();
-    expect(setup()).toBeNull();
+    // Still mounted under the item, as Ask is, but hidden and inert.
+    expect(setup()).toBeInTheDocument();
+    expect(setup()).not.toBeVisible();
+    expect(setup()).toHaveAttribute('inert');
     // The plain panel: no "‹ Ask" (there is no Ask to go back to), Done kept.
     expect(within(dialog()).queryByTestId('rail-back')).toBeNull();
     expect(within(dialog()).getByTestId('item-dialog-submit')).toBeInTheDocument();
     expect(dialog().querySelector('[data-ask-composer]')).toBeNull();
     act(() => useUIStore.getState().closeDialog());
+    expect(setup()).toBeVisible();
+    expect(setup()).not.toHaveAttribute('inert');
+  });
+
+  it('keeps a key left in its box, and the column itself, while an item is open over it', () => {
+    renderShell();
+    pressCtrlJ();
+    const before = setup();
+    const field = before!.querySelector<HTMLInputElement>('input');
+    expect(field).not.toBeNull();
+    // A sentinel, set on the DOM value as a paste leaves it (the box is uncontrolled).
+    fireEvent.change(field!, { target: { value: 'AQ.sentinel-left-in-the-box' } });
+
+    openRow();
+    expect(setup()).toBe(before);
+    act(() => useUIStore.getState().closeDialog());
+
+    // The same column, not a fresh mount: the box still holds what was in it.
+    expect(setup()).toBe(before);
+    expect(field!.isConnected).toBe(true);
+    expect(field!.value).toBe('AQ.sentinel-left-in-the-box');
+  });
+
+  it('goes when the summon does, under an item too', () => {
+    renderShell();
+    pressCtrlJ();
+    openRow();
     expect(setup()).toBeInTheDocument();
+    // Ctrl+J over the item closes both (lib/open-chat.ts toggleSetup).
+    pressCtrlJ();
+    expect(itemOpen()).toBe(false);
+    expect(useRailStore.getState().summoned).toBe(false);
+    expect(setup()).toBeNull();
   });
 
   it('Escape closes it, docked as well as overlaid: it is not a place to rest', () => {
@@ -2063,7 +2100,7 @@ describe('<AskHome/>, a brand-new account', () => {
     expect(within(home).queryByTestId('needs-you')).toBeNull();
     expect(within(home).queryByTestId('ai-activity')).toBeNull();
     expect(home.querySelector('[data-ask-composer] textarea')).not.toBeNull();
-    expect(within(home).getByTestId('answerer-label')).toHaveTextContent('gpt-4o-mini');
+    expect(within(home).getByTestId('answerer-label')).toHaveTextContent('GPT-4o mini');
     expect(within(home).queryByTestId('proposal-card')).toBeNull();
 
     act(() => {
@@ -2180,5 +2217,130 @@ describe('<RailHeader/>', () => {
     expect(screen.getByTestId('rail-back')).toHaveClass('min-w-0');
     expect(screen.getByTestId('rail-back')).not.toHaveClass('shrink-0');
     expect(screen.getByTestId('rail-close')).toHaveClass('ml-auto');
+  });
+});
+
+/* ── a mod's panel (build order 9) ───────────────────────────────────── */
+
+describe("a mod's panel in the column", () => {
+  const WATER_ROW: UserMod = {
+    id: 'm1',
+    userId: 'u1',
+    kind: 'mod',
+    slug: 'water',
+    name: 'Water',
+    enabled: true,
+    manifest: { version: 1, uses: ['ui'], commands: [], panels: [{ id: 'water', label: 'Glasses' }] },
+    disabledReason: null,
+    createdAt: '2026-03-01T00:00:00Z',
+    updatedAt: '2026-03-01T00:00:00Z',
+  };
+  const modRail = () => document.querySelector<HTMLElement>('[data-mod-rail]');
+  const openWater = () => act(() => useRailStore.getState().openModPanel({ modId: 'm1', panelId: 'water' }));
+
+  beforeEach(() => {
+    useModsStore.setState({ available: true, loaded: true, safeMode: false, rows: [WATER_ROW] });
+  });
+  afterEach(() => {
+    act(() => useRailStore.getState().reset());
+    useModsStore.setState({ rows: [] });
+  });
+
+  it('shows with the host chrome, and Ask is not mounted under it while askOpen is false', () => {
+    useSidebarStore.setState({ askOpen: false });
+    renderShell();
+    openWater();
+    expect(modRail()).toBeVisible();
+    expect(within(modRail()!).getByTestId('mod-surface-chrome')).toHaveTextContent('Water');
+    expect(within(modRail()!).getByTestId('mod-surface-chrome')).toHaveTextContent('Your mod');
+    expect(askView()).toBeNull();
+    expect(useRailStore.getState().reservePx).toBe(432);
+    expect(main()).not.toHaveAttribute('inert');
+  });
+
+  it("is covered by an item, whose back reads \"Your mod · Water\" and returns to the panel", () => {
+    useSidebarStore.setState({ askOpen: false });
+    seed(NOTHING_CONNECTED);
+    renderShell();
+    openWater();
+    openRow();
+    expect(modRail()).not.toBeVisible();
+    expect(modRail()).toHaveAttribute('inert');
+    const back = within(dialog()).getByTestId('rail-back');
+    expect(back).toHaveTextContent('Your mod · Water');
+    fireEvent.click(back);
+    expect(itemOpen()).toBe(false);
+    expect(useRailStore.getState().modPanel).not.toBeNull();
+    expect(modRail()).toBeVisible();
+  });
+
+  it('✕ over the item closes the item once, then the panel', () => {
+    renderShell();
+    openWater();
+    const closes = vi.fn();
+    const off = useUIStore.subscribe((s, prev) => {
+      if (prev.activeDialog && !s.activeDialog) closes();
+    });
+    openRow();
+    fireEvent.click(within(dialog()).getByTestId('item-dialog-close'));
+    off();
+    expect(closes).toHaveBeenCalledTimes(1);
+    expect(itemOpen()).toBe(false);
+    expect(useRailStore.getState().modPanel).toBeNull();
+    // Ask was kept open, so it shows again; the panel never wrote askOpen.
+    expect(useSidebarStore.getState().askOpen).toBe(true);
+  });
+
+  it('stays painted while the column eases shut, until its width transition ends', () => {
+    useSidebarStore.setState({ askOpen: false });
+    renderShell();
+    openWater();
+    act(() => useRailStore.getState().closeModPanel());
+    expect(modRail()).toBeVisible();
+    expect(modRail()).toHaveAttribute('inert');
+    fireEvent.transitionEnd(column(), { propertyName: 'width' });
+    expect(modRail()).toBeNull();
+  });
+
+  it('as an overlay, a click on the canvas closes it', () => {
+    viewport.narrow = true;
+    useSidebarStore.setState({ askOpen: false });
+    renderShell();
+    openWater();
+    expect(modRail()).toBeVisible();
+    expect(main()).toHaveAttribute('inert');
+    clickAway();
+    expect(useRailStore.getState().modPanel).toBeNull();
+    expect(main()).not.toHaveAttribute('inert');
+  });
+
+  it('closes when its mod is deleted', () => {
+    renderShell();
+    openWater();
+    act(() => useModsStore.setState({ rows: [] }));
+    expect(useRailStore.getState().modPanel).toBeNull();
+  });
+
+  it('with no AI, the header key opens it and its ✕ closes it, handing focus back to the key', async () => {
+    seed(AI_HIDDEN);
+    useSidebarStore.setState({ askOpen: false });
+    renderShell();
+    const key = screen.getByRole('button', { name: 'Your mod panels' });
+    fireEvent.click(key, { detail: 1 });
+    expect(modRail()).toBeVisible();
+    expect(key).toHaveAttribute('hidden');
+    within(modRail()!).getByTestId('mod-rail-close').focus();
+    act(() => useRailStore.getState().closeModPanel());
+    expect(modRail()).toBeVisible();
+    fireEvent.transitionEnd(column(), { propertyName: 'width' });
+    await timers();
+    expect(key).not.toHaveAttribute('hidden');
+    expect(document.activeElement).toBe(key);
+  });
+
+  it('its header carries titlebar-hole', () => {
+    renderShell();
+    openWater();
+    expect(within(modRail()!).getByTestId('mod-surface-chrome')).toHaveClass('titlebar-hole');
   });
 });
