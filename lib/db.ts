@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase';
 type DbClient = any;
 import type { Task, Habit, Item, ItemTypeDef, TaskItem, HabitItem, Project, Routine, Season, Goal, GoalRole } from './planner-types';
 import { ITEM_TYPES, getItemTypeConfig } from './item-registry';
+import { foldContainerName } from './container-registry';
 import { notifyPlugins } from './openclaw-registry';
 import { COMPLETION_RETRACTION_WINDOW_DAYS, windowStart } from './completion-window';
 
@@ -3248,6 +3249,32 @@ export function loadPlannerData(
 function notifyContainerChange(userId: string, data: Record<string, unknown>): void {
   notifyPlugins(userId, 'projects.updated', data);
   notifyPlugins(userId, 'habitGroups.updated', data);
+}
+
+/**
+ * The live project an agent's name would collide with, folding case the way
+ * every lookup does (`CONTAINER_KINDS.project.caseFold`). The unique index is
+ * exact-case, so without this an agent could create "work" beside "Work" and
+ * leave two rows the app treats as one container. `exceptId` lets a rename
+ * keep its own name in a different case. Trashed rows are left to the index.
+ */
+export async function findLiveProjectByName(
+  userId: string,
+  name: string,
+  client: DbClient,
+  exceptId?: string,
+): Promise<Project | null> {
+  const { data, error } = await client
+    .from('projects')
+    .select('*')
+    .eq('user_id', userId)
+    .is('deleted_at', null);
+  if (error) throw error;
+  const folded = foldContainerName('project', name);
+  const hit = ((data ?? []) as ProjectRow[]).find(
+    (r) => r.id !== exceptId && foldContainerName('project', r.name) === folded,
+  );
+  return hit ? projectFromRow(hit) : null;
 }
 
 export async function createProject(userId: string, project: Project, client?: DbClient): Promise<void> {
