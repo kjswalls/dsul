@@ -64,6 +64,17 @@ export function faultReason(code: FaultCode, message: string): string {
 }
 
 /**
+ * A mod's "Switched off:" reason split where the mod's own words start
+ * (faultReason: "3 errors in 10 minutes. Last: <message>"), so Make and the
+ * panels can frame them. Null when there is no such part.
+ */
+export function splitModReason(reason: string): { head: string; reported: string } | null {
+  const at = reason.indexOf(' Last: ');
+  if (at < 0) return null;
+  return { head: reason.slice(0, at), reported: reason.slice(at + ' Last: '.length) };
+}
+
+/**
  * Whether a `wall` fault counts toward switching off: not when the tab was
  * hidden during the hook (hidden frames' timers are throttled), nor after a
  * sleep (the wall clock and the monotonic clock drifted more than 2s apart).

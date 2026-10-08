@@ -47,6 +47,7 @@ import type { UserMod } from '@/lib/mods/schema';
 import type { SettingCtx } from '@/lib/settings/manifest';
 import { useLookStore } from '@/lib/look-store';
 import { saveSettings } from '@/lib/settings-service';
+import { panelsInWords } from '@/components/settings/mod-editor';
 
 const USER = 'test-user';
 const ctx: SettingCtx = { theme: 'system', setTheme: () => {}, userId: USER };
@@ -79,6 +80,7 @@ const ACTIONS = {
   createMod: useModsStore.getState().createMod,
   saveMod: useModsStore.getState().saveMod,
   loadModCode: useModsStore.getState().loadModCode,
+  setModSettings: useModsStore.getState().setModSettings,
 };
 
 beforeEach(() => {
@@ -521,5 +523,77 @@ describe('MakePane: mods', () => {
     const text = container.textContent ?? '';
     expect(text).not.toContain('—');
     expect(text).not.toMatch(/beacon/i);
+  });
+});
+
+describe('MakePane: mod panels and settings (build order 9)', () => {
+  const SETTINGS = [
+    { kind: 'number', key: 'goal', label: 'Daily goal', default: 8, min: 1, max: 20 },
+    { kind: 'toggle', key: 'loud', label: 'Remind me', default: false },
+    { kind: 'text', key: 'cup', label: 'Cup name' },
+  ];
+  const WITH_CARD = { version: 1, uses: ['ui'], panels: [{ id: 'water', label: 'Water', card: true }] };
+
+  it('draws a mod’s settings under a host label, from its store, and saves them through the store', async () => {
+    const r = mod({ kind: 'mod', slug: 'water', name: 'Water', enabled: true, manifest: { version: 1, uses: [], settings: SETTINGS } });
+    seed({ rows: [r] });
+    const loadModCode = vi.fn(async () => ({
+      enabled: true,
+      source: '',
+      store: { '@settings': { goal: 5, cup: 'sk-abcdefghijklmnop' } },
+      manifest: r.manifest,
+      updatedAt: 'u',
+    }));
+    const setModSettings = vi.fn(async (_id: string, values: Record<string, unknown>) => ({ ok: true as const, values: values as never }));
+    useModsStore.setState({ loadModCode, setModSettings });
+    render(<MakePane ctx={ctx} />);
+    const form = screen.getByTestId('mod-settings-form');
+    expect(form.textContent).toContain('Set by your mod Water');
+    const goal = (await within(form).findByLabelText('Daily goal')) as HTMLInputElement;
+    expect(goal.value).toBe('5');
+    // A stored value shaped like a key falls back, never shown.
+    expect((within(form).getByLabelText('Cup name') as HTMLInputElement).value).toBe('');
+    expect(within(form).getByLabelText('Cup name')).toHaveAttribute('autocomplete', 'off');
+    fireEvent.change(goal, { target: { value: '30' } });
+    fireEvent.click(within(form).getByTestId('mod-settings-save'));
+    expect(await within(form).findByRole('alert')).toHaveTextContent('Daily goal needs a number between 1 and 20.');
+    expect(setModSettings).not.toHaveBeenCalled();
+    fireEvent.change(goal, { target: { value: '12' } });
+    fireEvent.click(within(form).getByRole('switch', { name: 'Remind me' }));
+    fireEvent.click(within(form).getByTestId('mod-settings-save'));
+    await waitFor(() => expect(setModSettings).toHaveBeenCalledWith(r.id, { goal: 12, loud: true, cup: null }));
+    expect(await within(form).findByRole('status')).toHaveTextContent('Saved.');
+  });
+
+  it('a mod without settings draws no form', () => {
+    seed({ rows: [mod({ kind: 'mod', slug: 'water', name: 'Water', manifest: { version: 1, uses: [] } })] });
+    render(<MakePane ctx={ctx} />);
+    expect(screen.queryByTestId('mod-settings-form')).toBeNull();
+  });
+
+  it('says which mod’s card is the one under the braindump', () => {
+    const first = mod({ kind: 'mod', slug: 'water', name: 'Water', enabled: true, manifest: WITH_CARD, createdAt: '2026-10-01T00:00:00Z' });
+    const second = mod({ kind: 'mod', slug: 'steps', name: 'Steps', enabled: true, manifest: WITH_CARD, createdAt: '2026-10-02T00:00:00Z' });
+    const off = mod({ kind: 'mod', slug: 'tea', name: 'Tea', enabled: false, manifest: WITH_CARD, createdAt: '2026-09-01T00:00:00Z' });
+    seed({ rows: [first, second, off] });
+    render(<MakePane ctx={ctx} />);
+    const line = (id: string) => document.querySelector(`[data-make-row="${id}"] [data-testid="mod-card-line"]`);
+    expect(line(first.id)?.textContent).toBe('Shows under the braindump');
+    expect(line(second.id)?.textContent).toBe('Another mod’s card is showing');
+    expect(line(off.id)).toBeNull();
+  });
+
+  it('the editor says what a mod draws and asks for, in plain words', () => {
+    expect(panelsInWords({ uses: ['ui'], panels: [{ id: 'a', label: 'A', card: true }], settings: [] })).toBe(
+      'Draws 1 panel, shown under the braindump.'
+    );
+    expect(
+      panelsInWords({
+        uses: ['ui', 'items:read'],
+        panels: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B', card: true }],
+        settings: [{ kind: 'toggle', key: 'x', label: 'X' }],
+      })
+    ).toBe('Draws 2 panels, one shown under the braindump. Shows titles of items you link to. Has 1 setting you set in Make.');
+    expect(panelsInWords({ uses: [], panels: [], settings: [] })).toBe('');
   });
 });
