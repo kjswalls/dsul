@@ -19,11 +19,21 @@ import { stakeEditRefusal, stakeFactsNow, stakeRefusal } from '@/lib/recipes/sta
 import { runUiStep, type UiStepDeps } from '@/lib/recipes/ui-steps';
 import { currentRecipeEnv, stillHolds } from '@/lib/recipes/validate';
 import type { HabitItem, Item, Task } from '@/lib/planner-types';
-import { datedOnCreate, findProject, verbStep, type BrokerEnv, type HeldWrite, type HookState, type PlannerView } from './broker-core';
+import {
+  datedOnCreate,
+  findProject,
+  verbStep,
+  type BrokerEnv,
+  type HeldWrite,
+  type HookState,
+  type PanelBridge,
+  type PlannerView,
+} from './broker-core';
 import { createHistoryWindow } from './rate';
 import { modDisplayLabel } from './labels';
 import { fault, type Fault, type HookEvent } from './protocol';
 import type { UserMod } from './schema';
+import { closeModSheet, isSheetHosted, openModPanel } from './ui/open-panel';
 
 /**
  * The broker, bound to the app (memory/plans/mods.md, "Safety"; build order
@@ -42,8 +52,14 @@ import type { UserMod } from './schema';
  *  - A mod may add MOD_HISTORY_PER_WINDOW real entries in the window, and
  *    every mod together MOD_HISTORY_ALL_PER_WINDOW (./rate.ts). Over that the
  *    writes are dropped and the hook faults with `history`.
- *  - UI effects run after the batch, in order.
- * The store overlay and the timers are the runtime manager's to commit.
+ *  - UI effects run after the batch, in order. On the phone a held openItem
+ *    or nav step closes the mod sheet first, so two drawers never stack.
+ *  - A panel's own hooks (ui.action, atom.changed) are one gesture of the
+ *    person each, like their own tick, so their writes skip the history
+ *    window; a command keeps it (build order 9).
+ *  - `$.atom.set` writes commit to the panels as the mod's own.
+ * The store overlay and the timers are the runtime manager's to commit. A
+ * ui.resolve is read-only and never reaches here.
  */
 
 const planner = () => usePlannerStore.getState();
@@ -104,6 +120,8 @@ export interface ApplyContext {
   event: HookEvent;
   hookLabel: string;
   deps: UiStepDeps;
+  /** Where atom writes commit. Absent where no panel can show (a test, a lean route). */
+  panels?: PanelBridge;
 }
 
 export type ApplyResult =
@@ -113,7 +131,7 @@ export type ApplyResult =
 
 /** The event, asked again of the planner as it is now. */
 function eventStillHolds(e: HookEvent): boolean {
-  if (e.kind === 'command' || e.kind === 'timer' || e.kind === 'review.saved') return true;
+  if (!('itemId' in e)) return true;
   const item = planner().items.find((i) => i.id === e.itemId);
   return stillHolds(e, item);
 }
@@ -187,6 +205,11 @@ function count(summary: RunSummary, code: string): void {
  * applies nothing (the runtime manager's rule).
  */
 export function applyHeld(hook: HookState, ctx: ApplyContext): ApplyResult {
+  if (hook.hookKind === 'ui.resolve') {
+    // The broker refuses every write while drawing, so nothing should be held.
+    console.error('[mods] a panel resolve reached apply; nothing it held was applied.');
+    return { status: 'stale' };
+  }
   const row = liveModRow(hook.modId);
   const tz = zone();
   const { today } = localDayAndTime(new Date(), tz);
@@ -221,9 +244,11 @@ export function applyHeld(hook: HookState, ctx: ApplyContext): ApplyResult {
   const label = modDisplayLabel(row);
   let historyFault: Fault | null = null;
 
+  // The person's own gestures on a panel are not counted against the window.
+  const windowed = hook.hookKind !== 'ui.action' && hook.hookKind !== 'atom.changed';
   if (hook.writes.length > 0) {
     const now = Date.now();
-    if (!historyWindow.allows(hook.modId, now)) {
+    if (windowed && !historyWindow.allows(hook.modId, now)) {
       historyFault = fault('history', 'It made more changes in 10 minutes than a mod may.');
       hook.writes.forEach(() => count(summary, 'refuse:history'));
     } else {
@@ -249,10 +274,18 @@ export function applyHeld(hook: HookState, ctx: ApplyContext): ApplyResult {
         )
       );
       // Only a real entry counts: a batch whose writes were all refused adds none.
-      if (getActionLog()[0]?.id !== head) historyWindow.record(hook.modId, now);
+      if (windowed && getActionLog()[0]?.id !== head) historyWindow.record(hook.modId, now);
     }
   }
   for (let i = 0; i < hook.stopped; i++) count(summary, 'stop:cap');
+
+  if (hook.atomOverlay.size > 0) {
+    try {
+      ctx.panels?.commitAtoms(hook.modId, Object.fromEntries(hook.atomOverlay));
+    } catch (err) {
+      console.error('[mods] atoms failed:', err);
+    }
+  }
 
   // After the batch, so nothing navigates while its entry is open.
   let toasts = 0;
@@ -264,8 +297,16 @@ export function applyHeld(hook: HookState, ctx: ApplyContext): ApplyResult {
         toasts++;
       } else if (effect.kind === 'openItem') {
         const item: Item | undefined = planner().items.find((i) => i.id === effect.id);
-        if (item) openEditFor(item as unknown as Task, isHabit(item) ? 'habit' : 'task');
-      } else runUiStep(effect.step, label, ctx.deps);
+        if (item) {
+          if (isSheetHosted()) closeModSheet();
+          openEditFor(item as unknown as Task, isHabit(item) ? 'habit' : 'task');
+        }
+      } else if (effect.kind === 'openPanel') {
+        openModPanel({ modId: hook.modId, panelId: effect.panelId });
+      } else {
+        if ((effect.step.do === 'goto' || effect.step.do === 'organize') && isSheetHosted()) closeModSheet();
+        runUiStep(effect.step, label, ctx.deps);
+      }
     } catch (err) {
       console.error('[mods] effect failed:', err);
     }

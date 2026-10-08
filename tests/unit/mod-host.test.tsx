@@ -10,6 +10,7 @@ import { act, cleanup, render } from '@testing-library/react';
 
 const rt = vi.hoisted(() => ({
   created: 0,
+  deps: null as null | Record<string, unknown>,
   runtime: {
     dispatch: vi.fn(),
     dispatchUndo: vi.fn(),
@@ -21,14 +22,21 @@ const rt = vi.hoisted(() => ({
     flushAll: vi.fn(async () => {}),
     stop: vi.fn(async () => {}),
     loadedIds: () => [],
+    resolvePanel: vi.fn(async () => ({ ok: true }) as const),
+    runAction: vi.fn(async () => 'dropped' as const),
+    atomChanged: vi.fn(async () => 'dropped' as const),
+    resolvesPanels: vi.fn(() => true),
+    settingsChanged: vi.fn(),
+    panelFault: vi.fn(),
   },
 }));
 vi.mock('@/lib/mods/runtime-manager', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/mods/runtime-manager')>();
   return {
     ...actual,
-    createModRuntime: () => {
+    createModRuntime: (deps: Record<string, unknown>) => {
       rt.created++;
+      rt.deps = deps;
       return rt.runtime;
     },
   };
@@ -44,7 +52,12 @@ import { useModsStore } from '@/lib/mods-store';
 import { __resetModEventsForTests, raiseModEvent } from '@/lib/mod-events';
 import { runModCommand } from '@/lib/mods/command-run';
 import { activeModRuntime } from '@/lib/mods/runtime-manager';
+import { hasModPanelRunner, resolvePanel } from '@/lib/mods/ui/panel-run';
+import { __resetPanelStoreForTests, panelBridge, usePanelStore } from '@/lib/mods/ui/panel-store';
 import type { UserMod } from '@/lib/mods/schema';
+
+/** The store's own actions, put back before each test (some tests swap one for a spy). */
+const ACTIONS = { ...usePanelStore.getState() };
 
 const USER = '11111111-1111-4111-8111-111111111111';
 
@@ -70,6 +83,8 @@ function seed(rows: UserMod[], plannerOver: Record<string, unknown> = {}) {
 beforeEach(() => {
   vi.useFakeTimers();
   __resetModEventsForTests();
+  usePanelStore.setState(ACTIONS);
+  __resetPanelStoreForTests();
   rt.created = 0;
   release.mockClear();
   for (const fn of Object.values(rt.runtime)) if (vi.isMockFunction(fn)) fn.mockClear();
@@ -177,5 +192,67 @@ describe('ModHost', () => {
     window.dispatchEvent(new Event('focus'));
     expect(refresh).toHaveBeenCalledTimes(2);
     expect(refresh).toHaveBeenCalledWith(USER);
+  });
+
+  it('fills the panel slot, hands the runtime the panel store, and empties both when it stops', async () => {
+    seed([mod()]);
+    const { unmount } = render(<ModHost />);
+    expect(hasModPanelRunner()).toBe(true);
+    await resolvePanel({ modId: 'm', panelId: 'p' });
+    expect(rt.runtime.resolvePanel).toHaveBeenCalledWith('m', 'p');
+    expect(rt.deps?.panels).toBe(panelBridge);
+
+    const invalidate = vi.fn();
+    const slowDown = vi.fn();
+    usePanelStore.setState({ invalidate, slowDown });
+    (rt.deps?.onPanelsStale as (id: string, why: string) => void)('m', 'saved');
+    expect(invalidate).toHaveBeenCalledWith('m', 'saved');
+    (rt.deps?.onUserHooksSlowed as (id: string) => void)('m');
+    expect(slowDown).toHaveBeenCalledWith('m');
+
+    const reset = vi.fn();
+    usePanelStore.setState({ reset });
+    unmount();
+    expect(hasModPanelRunner()).toBe(false);
+    expect(reset).toHaveBeenCalled();
+  });
+
+  it('redraws the panels of mods that draw any, a second after the items settle, only while one shows', () => {
+    seed([mod()]);
+    render(<ModHost />);
+    const invalidate = vi.fn();
+    usePanelStore.setState({ invalidate });
+    act(() => usePlannerStore.setState({ items: [] }));
+    vi.advanceTimersByTime(2000);
+    expect(invalidate).not.toHaveBeenCalled();
+
+    usePanelStore.setState({ visible: { 'x:y': 1 } });
+    act(() => usePlannerStore.setState({ items: [] }));
+    vi.advanceTimersByTime(500);
+    act(() => usePlannerStore.setState({ items: [] }));
+    vi.advanceTimersByTime(999);
+    expect(invalidate).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(invalidate).toHaveBeenCalledTimes(1);
+    expect(invalidate).toHaveBeenCalledWith(mod().id, 'items');
+
+    rt.runtime.resolvesPanels.mockReturnValue(false);
+    act(() => usePlannerStore.setState({ items: [] }));
+    vi.advanceTimersByTime(1000);
+    expect(invalidate).toHaveBeenCalledTimes(1);
+    rt.runtime.resolvesPanels.mockReturnValue(true);
+  });
+
+  it('forgets a mod’s panels when it goes off, and resets the panels for another account', () => {
+    const second = mod({ id: '00000000-0000-4000-8000-000000000002', slug: 'b' });
+    seed([mod(), second]);
+    render(<ModHost />);
+    const forgetMod = vi.fn();
+    const reset = vi.fn();
+    usePanelStore.setState({ forgetMod, reset });
+    act(() => useModsStore.setState({ rows: [mod(), { ...second, enabled: false }] }));
+    expect(forgetMod).toHaveBeenCalledWith(second.id);
+    act(() => usePlannerStore.setState({ userId: '22222222-2222-4222-8222-222222222222' } as never));
+    expect(reset).toHaveBeenCalled();
   });
 });

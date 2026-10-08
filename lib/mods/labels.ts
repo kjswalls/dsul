@@ -121,3 +121,89 @@ export function isModLabel(s: string): boolean {
 export function modDisplayLabel(row: { name: string; slug: string }): string {
   return isModLabel(row.name) ? row.name : row.slug;
 }
+
+/* ── What a panel draws (build order 9) ─────────────────────────────────── */
+
+// A panel sits in the app's own rail, sheet and braindump, so its text is held
+// to a stricter rule than a ⌘K label. These are new names: widening the label
+// rule itself would make manifests stored under build order 8 fail at load.
+
+/**
+ * A credential's shape: KEY_SHAPED_RE's prefixes, the common provider and
+ * forge token prefixes, a JWT's head, and any run of 32 or more base64ish
+ * characters holding both a letter and a digit.
+ */
+export const SECRET_SHAPED_RE = new RegExp(
+  [
+    KEY_SHAPED_RE.source,
+    String.raw`\b(?:sk_(?:live|test)_|rk_live_|ghp_|gho_|github_pat_|glpat-|xox[abpr]-)`,
+    String.raw`\bAKIA[0-9A-Z]{16}`,
+    String.raw`\beyJ[\w-]{10,}\.`,
+    String.raw`(?<![A-Za-z0-9+/_=-])(?=[A-Za-z0-9+/_=-]*[A-Za-z])(?=[A-Za-z0-9+/_=-]*\d)[A-Za-z0-9+/_=-]{32,}`,
+  ].join('|')
+);
+
+/**
+ * The words a panel may not draw: the label rule's, plus sign-in, session,
+ * model and chat words. A bare "pin" stays allowed (dsul pins items), so only
+ * "your PIN" and "enter PIN" are a credential's ask; "author" is not "auth".
+ */
+const SURFACE_EXTRA_WORDS = [
+  String.raw`signed|signing|logged|logging|log[\s_-]?off|re-?connect(?:s|ed|ing)?|secrets?|otp|2fa|mfa|api|assistant|chat(?:s|bot)?|gpt|models?|ask`,
+  String.raw`sign[\s_-]+back[\s_-]+in|auth[nz]?|authenticat\w*|re-?auth\w*|(?:un)?authori[sz]\w*|oauth\w*`,
+  String.raw`passphrases?|(?:your|enter)[\s_-]+pins?|pin[\s_-]?(?:codes?|numbers?)|user[\s_-]?names?`,
+  String.raw`unlock(?:s|ed|ing)?|identity|identities|expired`,
+].join('|');
+export const MOD_SURFACE_FORBIDDEN_RE = new RegExp(
+  MOD_LABEL_FORBIDDEN_RE.source.replace('(?:', `(?:${SURFACE_EXTRA_WORDS}|`),
+  'iu'
+);
+
+function linePassesSurfaceRule(line: string): boolean {
+  const n = normalizeModText(line);
+  const skeleton = confusableSkeleton(n);
+  return (
+    isPlainModText(line) &&
+    !isMixedScript(n) &&
+    !MOD_LABEL_FORBIDDEN_RE.test(n) &&
+    !MOD_LABEL_FORBIDDEN_RE.test(skeleton) &&
+    !MOD_SURFACE_FORBIDDEN_RE.test(n) &&
+    !MOD_SURFACE_FORBIDDEN_RE.test(skeleton) &&
+    !SECRET_SHAPED_RE.test(n)
+  );
+}
+
+/**
+ * Text a mod draws in a panel, a panel or setting label, or an atom it sets.
+ * Checked line by line, so a newline is the one control character it may hold.
+ */
+export function passesSurfaceRule(s: string): boolean {
+  return s.split('\n').every(linePassesSurfaceRule);
+}
+
+/**
+ * What the person typed into a mod's field or setting, before the mod sees it.
+ * Ordinary words are fine ("chat with mom"); a value shaped like a password
+ * manager's fill or a pasted key is not.
+ */
+export function isSafeTypedValue(s: string): boolean {
+  return !FORMAT_RE.test(s) && !SECRET_SHAPED_RE.test(normalizeModText(s));
+}
+
+/**
+ * What a panel's chrome calls a mod (the rail, the card, the sheet, the
+ * opener, ⌘K's Open commands): modDisplayLabel, kept clear of the surface
+ * words as well, else the slug. Only the words: a name is the owner's own and
+ * a long one with digits in it is a name, not a key someone pasted. Only the
+ * display falls back, so a name stored under build order 8 still loads.
+ */
+export function modSurfaceLabel(row: { name: string; slug: string }): string {
+  if (!isModLabel(row.name)) return row.slug;
+  const n = normalizeModText(row.name);
+  return MOD_SURFACE_FORBIDDEN_RE.test(n) || MOD_SURFACE_FORBIDDEN_RE.test(confusableSkeleton(n)) ? row.slug : row.name;
+}
+
+/** A fault message or disabled reason as a panel may show it. */
+export function surfaceMessage(s: string): string {
+  return passesSurfaceRule(s) ? s : '(message hidden)';
+}

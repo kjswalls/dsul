@@ -9,13 +9,16 @@ import { useModsStore } from '@/lib/mods-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { formatCueTime } from '@/lib/reminders/copy';
 import { useUIStore } from '@/lib/ui-store';
-import { MOD_KINDS, modLabel, type ModKind, type UserMod } from '@/lib/mods/schema';
+import { MOD_KINDS, modLabel, parseModManifest, type ModKind, type UserMod } from '@/lib/mods/schema';
+import { cardPanelOf } from '@/lib/mods/ui/card';
+import { splitModReason } from '@/lib/mods/faults';
 import type { SettingCtx } from '@/lib/settings/manifest';
 import { RecipeBuilder } from './recipe-builder';
 import { RecipeRuns } from './recipe-runs';
 import { ThemeBuilder } from './theme-builder';
 import { LookBuilder } from './look-builder';
 import { ModEditor } from './mod-editor';
+import { ModSettingsForm } from './mod-settings-form';
 import { MOD_REPORTED, ModProblems } from './mod-problems';
 import { MakeWrite } from './make-write';
 import { isMakeKind } from '@/lib/ai-limits';
@@ -31,6 +34,9 @@ import { releaseUserTheme } from '@/lib/user-themes/release';
  *
  * A mod's own words (a fault's message, the "Last:" of why it was switched
  * off) are drawn only under a host label, so a mod cannot speak as the app.
+ * A mod that declares settings gets their fields under its row
+ * (./mod-settings-form.tsx), and one with a card panel says whether its card
+ * is the one under the braindump (one slot, lib/mods/ui/card.ts).
  *
  * Switching off or deleting a theme that is a saved pick writes the default
  * pick first (lib/user-themes/release.ts), so no device keeps pointing at it.
@@ -268,16 +274,7 @@ export function MakePane({ ctx, isMobile = false }: { ctx: SettingCtx; isMobile?
   );
 }
 
-/**
- * A mod's "Switched off:" reason split where the mod's own words start
- * (lib/mods/faults.ts faultReason: "3 errors in 10 minutes. Last: <message>"),
- * so Make can frame them. Null when there is no such part.
- */
-export function splitModReason(reason: string): { head: string; reported: string } | null {
-  const at = reason.indexOf(' Last: ');
-  if (at < 0) return null;
-  return { head: reason.slice(0, at), reported: reason.slice(at + ' Last: '.length) };
-}
+export { splitModReason };
 
 /** A timed recipe's hour, when it has one: the server runs it (lib/recipes/server/). */
 function timedAt(row: UserMod): string | null {
@@ -299,6 +296,10 @@ function MakeRow({
 }) {
   const stateId = `make-state-${row.id}`;
   const timeFormat = usePlannerStore((s) => s.timeFormat);
+  const manifest = row.kind === 'mod' ? parseModManifest(row) : null;
+  const hasCardPanel = !!manifest?.panels.some((p) => p.card);
+  /** The braindump has one card slot: whether it is this mod's (lib/mods/ui/card.ts). */
+  const cardShowing = useModsStore((s) => (hasCardPanel ? cardPanelOf(s.rows)?.modId ?? null : null));
   const label = modLabel(row);
   const reported = row.kind === 'mod' && row.disabledReason ? splitModReason(row.disabledReason) : null;
   const stateText = row.disabledReason
@@ -346,6 +347,11 @@ function MakeRow({
               {MOD_REPORTED} <span className="break-words">{reported.reported}</span>
             </span>
           )}
+          {hasCardPanel && row.enabled && !isMobile && (
+            <span data-testid="mod-card-line" className="text-muted-foreground block text-xs">
+              {cardShowing === row.id ? 'Shows under the braindump' : 'Another mod’s card is showing'}
+            </span>
+          )}
           {row.kind === 'recipe' && timedAt(row) && (
             <span data-testid="recipe-timed-hint" className="text-muted-foreground block text-xs">
               Runs at {formatCueTime(timedAt(row)!, timeFormat)}, even with dsul closed
@@ -385,6 +391,7 @@ function MakeRow({
           <Trash2 className="size-3.5" aria-hidden />
         </Button>
       </div>
+      {manifest && manifest.settings.length > 0 && <ModSettingsForm row={row} />}
       {row.kind === 'mod' && <ModProblems modId={row.id} label={label} />}
       {(row.kind === 'recipe' || row.kind === 'mod') && <RecipeRuns modId={row.id} label={label} />}
     </div>

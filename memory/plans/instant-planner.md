@@ -1418,15 +1418,36 @@ their own say so.
   a held item still lands over the Ask tab, as any promoted item does. Ctrl+J's toggle is
   unchanged: from hidden it only summons, so a held item still opens over the column it
   summoned.
+- **The mod UI** ([components/mods/](../../components/mods/),
+  [lib/mods/ui/open-panel.ts](../../lib/mods/ui/open-panel.ts)). The rail's mod mode, the
+  braindump card and the phone's sheet draw a mod's tree. A resolve or a press reaches the
+  runtime only through ModHost's panel runner, which is not slotted over the preview, so a
+  panel shown then holds its skeleton (every call answers `unavailable`) and asks again
+  when the slot fills after the landing; nothing a mod draws can act on cached rows. The
+  header's opener (desktop only) is chrome and works over the preview whenever Make is
+  already hydrated: ThemeInjector for a user theme, or Settings → Make or the Look picker
+  on the way in. ⌘K's panel commands ride the gated `mods` group, and `$.ui.open` waits for
+  the runtime. `openModPanel` is a door like setup's: it lets go of an item held for the
+  landing (`letGoHeldItem` in ui-store, which `openSetup` now shares). It does so on the
+  phone's sheet branch too, as a guard only: no phone door reaches it over the preview
+  today, and a drawer promoted there would stack on the sheet. The braindump card sits outside the braindump's settle scope, and
+  Make's rows usually arrive one round trip after the landing, mid-glide; appearing then,
+  it shrank the list where the conductor could not see it, and the quick-add and Paused
+  strip snapped up. So its first appearance waits out `data-planner-settling`
+  ([hooks/use-settle-quiet.ts](../../hooks/use-settle-quiet.ts)), and once shown it stays
+  through a later settle. A card that first shows after the run still shortens the list
+  without a glide, as it does on main. Its tree replacing the skeleton once the runtime
+  starts is the same.
 - **Nothing to do for the rest.** The agent key moving server-side (a route, no store); the
   push subscription released on a user change (its own table, nothing read from the
   planner); the braindump's Hide finished (a view filter over whatever is on screen); dated
   project-block drop ids (the canvas is `inert`, so no drag starts); the rituals nudge
   (`watchOnboardingAfterLoad` already waits for settled, and the preview is a load in
   flight); Ask home's "It works." card and the error routes; the phone's mode switcher and
-  header changes, and `leaveAskForOmnibar`. `SNAPSHOT_FORMAT` does not move: none of it,
-  the canvas add, the mod runtime and the setup doors included, adds a planner-store field
-  or a slice to what the snapshot carries.
+  header changes, and `leaveAskForOmnibar`; the tour's AI card (the tour opens only once
+  the load has settled) and the ink buttons. `SNAPSHOT_FORMAT` does not move: none of it,
+  the canvas add, the mod runtime, the mod UI and the setup doors included, adds a
+  planner-store field or a slice to what the snapshot carries.
 
 ## Where the build departs from the design
 
@@ -1636,8 +1657,9 @@ chose differently, each for a reason found while building or testing it.
   transient ones take no part), `commands-preview` (`n` over a drawn slot held, the setup
   doors live, a mod's command gated), `open-chat-preview-reveal` (a setup door lets an item
   held for the landing go on desktop, and leaves it on the phone and with no door on
-  offer), `mod-host` (no runtime, slot, bus or refresh over the
-  preview), `mods-broker-apply` (`modRuntimeReady` false, nothing applied),
+  offer; a mod's panel lets it go), `mod-card-settle` (the card's first appearance
+  waits out a running settle, then stays), `mod-host` (no runtime, slot, bus or refresh
+  over the preview), `mods-broker-apply` (`modRuntimeReady` false, nothing applied),
   `mods-undo-events` (a refused ⌘Z raises no uncompletion), `ask-pending` (the kept
   question held through the preview and a crash drop, sent once with the fresh rows).
 - The guards: `ui-store-preview` (including the `touchesPlanner: false` opt-out, and a

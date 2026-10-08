@@ -15,7 +15,7 @@ import {
   type AskView,
   type ComposerBinding,
 } from './rail-store';
-import { closeItemPanel, openEditFor, useUIStore } from './ui-store';
+import { closeItemPanel, letGoHeldItem, openEditFor, useUIStore } from './ui-store';
 import { usePlannerStore } from './planner-store';
 import { isPlannerPreviewing, selectPlannerSettled } from './planner-ready';
 import { useViewStore } from './view-store';
@@ -80,8 +80,14 @@ export function revealChat(isMobile: boolean, o: { boxOnPhone?: boolean } = {}):
  * next box to mount anywhere), and a park that leaves a kept-open Ask's
  * preference alone. With nothing offered (AI hidden, the gate unknown, chat
  * Off here) it does nothing; the shortcut is consumed before it gets here.
+ *
+ * A mod's panel showing is closed first, whatever answers (rail-store's
+ * 'mod' mode), and only it: never closeRail, so an Ask kept open keeps its
+ * `askOpen` (and shows again, docked). An item over a mod's panel closes with
+ * the panel, and Ask's preference is cleared only when there is an Ask.
  */
 export function toggleRail(): void {
+  if (closeModMode()) return;
   const ai = getAICapabilities();
   if (!ai.canChat) {
     if (ai.askInvite || ai.askFix) toggleSetup();
@@ -97,7 +103,29 @@ export function toggleRail(): void {
   useRailStore.getState().closeRail();
 }
 
+/**
+ * The 'mod' branch of the two toggles: the panel closes (an item over it
+ * first). True when it handled the key; in 'item' over a panel, the caller
+ * still closes Ask when there is one.
+ */
+function closeModMode(): boolean {
+  const mode = railModeNow();
+  const rail = useRailStore.getState();
+  if (mode === 'mod') {
+    rail.closeModPanel();
+    return true;
+  }
+  if (mode === 'item' && rail.modPanel) {
+    closeItemPanel();
+    rail.closeModPanel();
+    if (getAICapabilities().canChat) useRailStore.getState().closeRail();
+    return true;
+  }
+  return false;
+}
+
 function toggleSetup(): void {
+  if (closeModMode()) return;
   const mode = railModeNow();
   if (mode === 'hidden') {
     leaveZen();
@@ -131,9 +159,7 @@ export function openSetup(isMobile: boolean): boolean {
   // Over the preview an item asked for is held, not open (lib/ui-store.ts
   // deferredDialog), and would open on top of setup at the landing. The door
   // is the later ask, so it lets the held item go as it closes an open one.
-  if (useUIStore.getState().deferredDialog?.type === 'edit-item') {
-    useUIStore.setState({ deferredDialog: null, deferredFor: null });
-  }
+  letGoHeldItem();
   leaveZen();
   useRailStore.getState().summon({ persist: false });
   return true;

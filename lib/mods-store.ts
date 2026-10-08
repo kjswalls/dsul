@@ -13,7 +13,7 @@ import {
   ModNameSchema,
   isModLabel,
   parseModManifest,
-  usesWidened,
+  consentWidened,
   LookManifestSchema,
   type LookManifest,
   RecipeManifestSchema,
@@ -22,8 +22,13 @@ import {
   type ThemeManifest,
   UserModRowSchema,
   userModFromRow,
+  parseModSettings,
+  type ModSettingValue,
   type UserMod,
 } from '@/lib/mods/schema';
+import { isSafeTypedValue } from '@/lib/mods/labels';
+import { activeModRuntime } from '@/lib/mods/runtime-manager';
+import { modStoreSet } from '@/lib/mods/store-rpc';
 
 /**
  * The signed-in user's recipes, mods, themes and Looks (user_mods, migration
@@ -194,8 +199,9 @@ interface ModsStore {
   /**
    * A mod's name, code and manifest. A switched-on mod stays on (it hot
    * reloads), unless the new manifest asks for a use the old one did not,
-   * as this tab holds it or as the database does (read just before the
-   * write): then it is saved switched off, even if this tab shows it off,
+   * or gives the mod its first card panel (consentWidened), as this tab
+   * holds it or as the database does (read just before the write): then it
+   * is saved switched off, even if this tab shows it off,
    * and switching it back on is the consent.
    */
   saveMod: (
@@ -218,9 +224,23 @@ interface ModsStore {
    * by the mod runtime when it loads the mod. Null when it cannot be read.
    */
   loadModCode: (id: string) => Promise<ModCode | null>;
+  /**
+   * The values the person set for a mod in Make (build order 9), in its
+   * store under the reserved `@settings` key, which a mod reads through
+   * `$.settings.get` and can never write. Held to the manifest's declarations
+   * first (parseModSettings), and a text value shaped like a password or key
+   * is refused outright. A running mod takes them now, with no reload; one
+   * that is off or on another device reads them at its next load.
+   */
+  setModSettings: (
+    id: string,
+    values: Record<string, ModSettingValue>
+  ) => Promise<{ ok: true; values: Record<string, ModSettingValue> } | { ok: false; reason: string }>;
   /** Back to the start for the next account, keeping `safeMode`. */
   reset: () => void;
 }
+
+export const MOD_SETTING_SECRET = 'That looks like a password or key, so it was not saved.';
 
 export interface ModCode {
   /**
@@ -465,7 +485,7 @@ export const useModsStore = create<ModsStore>((set, get) => {
         const fresh = stored.error ? null : (stored.data as { manifest?: unknown } | null);
         const shown = parseModManifest(before);
         const current = fresh ? parseModManifest({ kind: 'mod', manifest: fresh.manifest }) : null;
-        if (!shown || !current || usesWidened(shown, current)) {
+        if (!shown || !current || consentWidened(shown, current)) {
           void get().refresh(userId);
           return false;
         }
@@ -659,8 +679,8 @@ export const useModsStore = create<ModsStore>((set, get) => {
       // of the switch, so no view can skip the consent. A stored manifest that
       // no longer parses counts as having asked for nothing.
       const switchOff =
-        usesWidened(parseModManifest(before), parsed.data) ||
-        (!!fresh && usesWidened(parseModManifest({ kind: 'mod', manifest: fresh.manifest }), parsed.data));
+        consentWidened(parseModManifest(before), parsed.data) ||
+        (!!fresh && consentWidened(parseModManifest({ kind: 'mod', manifest: fresh.manifest }), parsed.data));
       const wasOn = before.enabled || fresh?.enabled === true;
       const next = { name: trimmed, manifest: parsed.data, ...(switchOff && { enabled: false }) };
       set((s) => ({ rows: sortMods(s.rows.map((r) => (r.id === id ? { ...r, ...next } : r))) }));
@@ -806,6 +826,24 @@ export const useModsStore = create<ModsStore>((set, get) => {
         console.warn('[mods] could not read a mod:', error);
         return null;
       }
+    },
+
+    setModSettings: async (id, values) => {
+      const { available, hydratedUserId: userId, rows } = get();
+      const row = rows.find((r) => r.id === id && r.kind === 'mod');
+      if (!available || !userId || !row) return { ok: false, reason: 'Make is not ready yet.' };
+      const manifest = parseModManifest(row);
+      if (!manifest) return { ok: false, reason: 'Its manifest is not valid.' };
+      if (Object.values(values).some((v) => typeof v === 'string' && !isSafeTypedValue(v))) {
+        return { ok: false, reason: MOD_SETTING_SECRET };
+      }
+      const clean = parseModSettings(manifest, values);
+      const result = await modStoreSet(id, '@settings', clean);
+      if (result === 'too_big') return { ok: false, reason: 'Your mod’s storage is full.' };
+      if (result === 'gone') return { ok: false, reason: 'This mod was deleted.' };
+      if (result !== 'ok') return { ok: false, reason: 'Could not save. Try again.' };
+      activeModRuntime()?.settingsChanged(id, clean);
+      return { ok: true, values: clean };
     },
 
     reset: () => set({ ...INITIAL }),

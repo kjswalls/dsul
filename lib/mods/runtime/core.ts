@@ -15,6 +15,7 @@ import {
   MOD_MEMORY_BYTES,
   MOD_REPLY_ERROR_MAX,
   MOD_STACK_BYTES,
+  MOD_TREE_MAX_BYTES,
 } from '@/lib/mods/limits';
 import {
   MOD_EVENT_KINDS,
@@ -57,6 +58,8 @@ export interface CoreLimits {
   handlersMax: number;
   argsMaxBytes: number;
   manifestMaxBytes: number;
+  /** A ui.resolve's tree, as JSON text. */
+  treeMaxBytes: number;
 }
 
 export const CORE_LIMITS: CoreLimits = {
@@ -68,6 +71,7 @@ export const CORE_LIMITS: CoreLimits = {
   handlersMax: MOD_HANDLERS_MAX,
   argsMaxBytes: MOD_ARGS_MAX_BYTES,
   manifestMaxBytes: MOD_MANIFEST_MAX_BYTES,
+  treeMaxBytes: MOD_TREE_MAX_BYTES,
 };
 
 /** All the core needs of a QuickJS module; the tests pass a TestQuickJSWASMModule. */
@@ -76,7 +80,8 @@ export type QuickJSFactory = Pick<QuickJSWASMModule, 'newRuntime'>;
 /** Answers a `$` call with the reply's JSON text, or rejects with the broker's error. */
 export type HostCall = (method: ModMethod, argsJson: string) => Promise<string>;
 
-export type HookOutcome = { ok: true } | { ok: false; fault: Fault };
+/** `resultJson` only for a ui.resolve that returned something: the panel's tree. */
+export type HookOutcome = { ok: true; resultJson?: string } | { ok: false; fault: Fault };
 
 export interface LoadedMod {
   ok: true;
@@ -446,8 +451,18 @@ class ModSession {
         const st = this.ctx.getPromiseState(result);
         if (st.type === 'rejected') return { ok: false, fault: this.faultFrom(st.error, 'hook') };
         if (st.type === 'fulfilled') {
-          if (!st.notAPromise) st.value.dispose();
-          return { ok: true };
+          // Only a panel's resolve returns a value; every other hook's is
+          // dropped unread, so a command returning a large array costs nothing.
+          if (e.kind !== 'ui.resolve') {
+            if (!st.notAPromise) st.value.dispose();
+            return { ok: true };
+          }
+          // notAPromise hands back `result` itself, which the finally disposes.
+          try {
+            return this.treeOf(st.value);
+          } finally {
+            if (!st.notAPromise) st.value.dispose();
+          }
         }
         if (this.outstanding.size === 0) {
           return { ok: false, fault: fault('error', 'the hook is waiting on something that never settles') };
@@ -459,6 +474,27 @@ class ModSession {
       }
     } finally {
       result.dispose();
+    }
+  }
+
+  /** A resolve's value as JSON text, under the tree cap. `undefined` and `null` draw nothing. */
+  private treeOf(valueH: QuickJSHandle): HookOutcome {
+    const api = this.api!;
+    const t = this.ctx.typeof(valueH);
+    if (t === 'undefined') return { ok: true };
+    const strR = this.slice(() => this.ctx.callFunction(api.stringify, this.ctx.undefined, valueH));
+    if (strR.error) return { ok: false, fault: this.faultFrom(strR.error, 'hook') };
+    try {
+      // JSON.stringify gives undefined for a function or a symbol: nothing to draw.
+      if (this.ctx.typeof(strR.value) === 'undefined') return { ok: true };
+      const json = this.boundedString(strR.value, this.limits.treeMaxBytes);
+      if (json === 'too-large') {
+        return { ok: false, fault: fault('error', `the panel is over ${Math.round(this.limits.treeMaxBytes / 1024)}KB`) };
+      }
+      if (json === 'not-a-string' || json === 'null') return { ok: true };
+      return { ok: true, resultJson: json };
+    } finally {
+      strR.value.dispose();
     }
   }
 

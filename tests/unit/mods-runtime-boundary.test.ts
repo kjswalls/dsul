@@ -73,6 +73,7 @@ describe('the broker reaches only what a mod may', () => {
     'lib/mods/broker.ts',
     'lib/mods/runtime-manager.ts',
     'lib/mods/sandbox-host.ts',
+    'lib/mods/ui/tree.ts',
   ].map((p) => join(ROOT, p));
   const NEVER = [
     'conversations',
@@ -99,5 +100,25 @@ describe('the broker reaches only what a mod may', () => {
     const text = readFileSync(join(ROOT, 'lib/mods/sandbox-probe.ts'), 'utf8');
     expect(text.split('fetch(').length - 1).toBe(1);
     expect(text).toContain("fetch(src, { method: 'HEAD', cache: 'no-store' })");
+  });
+});
+
+describe('the panel tree stays pure', () => {
+  // memory/plans/mods.md, build order 9: the tree's rules are read by the
+  // broker and the runtime manager as well as the renderer, so they bring no
+  // React, no icon library and no store with them.
+  it.each(['lib/mods/ui/tree.ts', 'lib/mods/ui/icons-list.ts'])('%s imports only zod and mods modules', (path) => {
+    for (const spec of specifiers(readFileSync(join(ROOT, path), 'utf8'))) {
+      expect(spec, `${path}: ${spec}`).toMatch(/^(?:zod|\.\.\/(?:labels|limits|protocol)|\.\/icons-list)$/);
+    }
+  });
+
+  it('icons-list.ts imports nothing', () => {
+    expect(specifiers(readFileSync(join(ROOT, 'lib/mods/ui/icons-list.ts'), 'utf8'))).toEqual([]);
+  });
+
+  it('the runtime manager reaches the panels only through its deps', () => {
+    const specs = specifiers(readFileSync(join(ROOT, 'lib/mods/runtime-manager.ts'), 'utf8'));
+    expect(specs.filter((s) => /(?:^|\/)ui\/|panel-store|rail-store/.test(s))).toEqual([]);
   });
 });

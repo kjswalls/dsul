@@ -27,6 +27,8 @@ import { openAddDialog, openBulkAdd, openEditFor, useUIStore } from '@/lib/ui-st
 import { useViewStore } from '@/lib/view-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useDeferredDialogPromotion } from '@/hooks/use-deferred-dialog';
+import { __resetModSheetHostsForTests, openModPanel, setModSheetHost } from '@/lib/mods/ui/open-panel';
+import { useModSheet } from '@/lib/mods/ui/sheet-store';
 import { ItemConversation } from '@/components/ai/item-conversation';
 import type { Item, Task } from '@/lib/planner-types';
 import { CONNECTED_MODEL, KEY_TURNED_DOWN, NOTHING_CONNECTED, seedAI } from './helpers/ai-fixtures';
@@ -237,5 +239,56 @@ describe('a setup door pressed over an item held for the landing', () => {
     expect(ui().deferredDialog).toMatchObject({ type: 'edit-item', item: { id: 'i1' } });
     landFresh();
     expect(ui().activeDialog).toMatchObject({ type: 'edit-item', item: { id: 'i1', title: 'Fresh title' } });
+  });
+});
+
+describe("a mod's panel opened over an item held for the landing", () => {
+  const water = { modId: 'm1', panelId: 'water' };
+  beforeEach(() => {
+    __resetModSheetHostsForTests();
+    useModSheet.setState({ ref: null });
+  });
+
+  it('desktop: lets the held item go, so the panel still shows once the data lands', () => {
+    openEditFor(task('i1', 'Cached title') as unknown as Task, 'task');
+    expect(ui().deferredDialog).toMatchObject({ type: 'edit-item', item: { id: 'i1' } });
+
+    openModPanel(water);
+    expect(ui().deferredDialog).toBeNull();
+    expect(rail().modPanel).toEqual(water);
+
+    landFresh();
+    // Before: the item, promoted over the panel asked for after it.
+    expect(ui().activeDialog).toBeNull();
+    expect(rail().modPanel).toEqual(water);
+  });
+
+  it('desktop: the same as on real data, where the door closes the open item', () => {
+    landFresh();
+    openEditFor(task('i1', 'Fresh title') as unknown as Task, 'task');
+    expect(ui().activeDialog?.type).toBe('edit-item');
+    openModPanel(water);
+    expect(ui().activeDialog).toBeNull();
+    expect(rail().modPanel).toEqual(water);
+  });
+
+  it('leaves a held dialog that is not the item alone (it is a modal, not the column)', () => {
+    openAddDialog();
+    const held = ui().deferredDialog;
+    expect(held?.type).toBe('add');
+    openModPanel(water);
+    expect(ui().deferredDialog).toBe(held);
+  });
+
+  // No phone door reaches openModPanel over the preview today; this pins the guard.
+  it('phone (a guard): lets the held item go too, so no drawer would stack on the sheet', () => {
+    const release = setModSheetHost();
+    openEditFor(task('i1', 'Cached title') as unknown as Task, 'task');
+    openModPanel(water);
+    expect(useModSheet.getState().ref).toEqual(water);
+    expect(ui().deferredDialog).toBeNull();
+    landFresh();
+    expect(ui().activeDialog).toBeNull();
+    release();
   });
 });

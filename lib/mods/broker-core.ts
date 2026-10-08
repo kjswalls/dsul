@@ -22,8 +22,18 @@ import {
   MOD_TOASTS_PER_HOOK,
   MOD_TOASTS_PER_MINUTE,
   MOD_WRITES_PER_HOOK,
+  MOD_ATOMS_MAX,
 } from './limits';
-import { fault, type Fault, type ModEventKind, type ModItem, type ModMethod } from './protocol';
+import {
+  AtomValueSchema,
+  ModIdentSchema,
+  fault,
+  type AtomValue,
+  type Fault,
+  type ModEventKind,
+  type ModItem,
+  type ModMethod,
+} from './protocol';
 import {
   ApplyLookStepSchema,
   GotoStepSchema,
@@ -33,9 +43,13 @@ import {
   RECIPE_VERBS,
   SetThemeStepSchema,
   type ModManifest,
+  type ModSettingValue,
   type ModUse,
 } from './schema';
 import { jsonbTextBytes } from './store-bytes';
+import { atomValueFits, type AtomKind } from './ui/tree';
+
+export type { AtomKind, AtomValue };
 
 /**
  * The broker's rules, pure (memory/plans/mods.md, "Safety"; build order 8).
@@ -105,7 +119,9 @@ export type HeldWrite =
 export type HeldUi =
   | { kind: 'toast'; text: string }
   | { kind: 'openItem'; id: string }
-  | { kind: 'step'; step: GotoStep | { do: 'organize' } | ThemeStep | LookStep };
+  | { kind: 'step'; step: GotoStep | { do: 'organize' } | ThemeStep | LookStep }
+  /** One of the mod's own panels, through the panel router (lib/mods/ui/open-panel.ts). */
+  | { kind: 'openPanel'; panelId: string };
 
 export interface HeldTimer {
   ms: number;
@@ -127,6 +143,12 @@ export interface HookState {
   pendingTimers: number;
   /** Toasts this mod showed in the last minute. */
   toastsLastMinute: number;
+  /** The mod's atoms (panel UI state) when the hook started. Read-only here. */
+  atoms: Readonly<Record<string, AtomValue>>;
+  /** What each atom the mod's cached trees show accepts, by key. */
+  atomKinds: Readonly<Record<string, AtomKind>>;
+  /** The person's values for the mod's settings, parsed from the snapshot's `@settings` at hook start. */
+  settings: Readonly<Record<string, ModSettingValue>>;
 
   calls: number;
   /** Items this hook's queries have looked at, against MOD_SCAN_PER_HOOK. */
@@ -138,6 +160,8 @@ export interface HookState {
   writes: HeldWrite[];
   ui: HeldUi[];
   storeOverlay: Map<string, Json | typeof DELETE>;
+  /** `$.atom.set` writes, committed (never as the person's) only when the hook settles ok. */
+  atomOverlay: Map<string, AtomValue>;
   timers: HeldTimer[];
   /** Set when the broker ended the hook (too many calls): it applies nothing. */
   aborted: Fault | null;
@@ -147,9 +171,13 @@ export function createHookState(
   init: Pick<
     HookState,
     'modId' | 'gen' | 'hookId' | 'slug' | 'hookKind' | 'origin' | 'manifest' | 'snapshot' | 'pendingTimers' | 'toastsLastMinute'
-  >
+  > &
+    Partial<Pick<HookState, 'atoms' | 'atomKinds' | 'settings'>>
 ): HookState {
   return {
+    atoms: {},
+    atomKinds: {},
+    settings: {},
     ...init,
     calls: 0,
     scanned: 0,
@@ -159,9 +187,26 @@ export function createHookState(
     writes: [],
     ui: [],
     storeOverlay: new Map(),
+    atomOverlay: new Map(),
     timers: [],
     aborted: null,
   };
+}
+
+/**
+ * The panels' state as the runtime reads and writes it (lib/mods/ui/panel-store.ts,
+ * bound by components/mods/mod-host.tsx). Injected, so neither the broker nor
+ * the runtime manager imports a store.
+ */
+export interface PanelBridge {
+  /** The mod's atoms now. */
+  atoms(modId: string): Record<string, AtomValue>;
+  /** What each atom the mod's cached trees show accepts. */
+  atomKinds(modId: string): Record<string, AtomKind>;
+  /** Whether the panel's cached tree is still at `seq` and holds a button with (action, arg). */
+  actionShown(modId: string, panelId: string, action: string, arg: string | undefined, seq: number): boolean;
+  /** A hook's `$.atom.set` writes, committed as the mod's own: they fire no atom.changed. */
+  commitAtoms(modId: string, values: Record<string, AtomValue>): void;
 }
 
 export type CallAnswer = { ok: true; value: Json } | { ok: false; error: string };
@@ -236,11 +281,13 @@ export function findProject(view: PlannerView, name: string): string | undefined
 const NoArgs = z.union([z.null(), z.object({}).strict()]);
 const Id = z.string().uuid();
 const ProjectName = z.string().min(1).max(NAME_MAX);
+/** Keys starting with `@` are the host's (`@settings`): a mod can neither read nor write one through `$.store`. */
 const StoreKey = z
   .string()
   .min(1)
   .max(64)
-  .refine((k) => !/[\u0000-\u001f\u007f-\u009f]/.test(k), { message: 'No control characters in a key.' });
+  .refine((k) => !/[\u0000-\u001f\u007f-\u009f]/.test(k), { message: 'No control characters in a key.' })
+  .refine((k) => !k.startsWith('@'), { message: 'Keys starting with @ are the app\'s.' });
 const Verb = z.enum(RECIPE_VERBS);
 
 const ARGS = {
@@ -307,6 +354,10 @@ const ARGS = {
       .refine((a) => a.light !== undefined || a.dark !== undefined, { message: 'Name a theme.' }),
     z.object({ look: ApplyLookStepSchema.shape.look }).strict(),
   ]),
+  'ui.open': z.object({ panelId: ModIdentSchema }).strict(),
+  'atom.get': z.union([NoArgs, z.object({ key: ModIdentSchema }).strict()]),
+  'atom.set': z.object({ key: ModIdentSchema, value: AtomValueSchema }).strict(),
+  'settings.get': NoArgs,
 } satisfies Record<ModMethod, z.ZodTypeAny>;
 
 type Args<M extends ModMethod> = z.infer<(typeof ARGS)[M]>;
@@ -332,10 +383,35 @@ export const METHOD_USES: Readonly<Record<ModMethod, ModUse | null>> = {
   'nav.go': 'ui',
   'nav.organize': 'ui',
   'look.set': 'look',
+  'ui.open': 'ui',
+  'atom.get': 'ui',
+  'atom.set': 'ui',
+  'settings.get': null,
 };
 
-/** Methods that act on what the person is looking at: only when they ran the command. */
-const COMMAND_ONLY: ReadonlySet<ModMethod> = new Set(['ui.openItem', 'nav.go', 'nav.organize', 'look.set']);
+/**
+ * Methods that move what the person is looking at: only when they acted, by
+ * running a command or pressing a panel's button. Not atom.changed:
+ * committing a field is not a request to move.
+ */
+export const USER_ACTED: ReadonlySet<ModMethod> = new Set(['ui.open', 'ui.openItem', 'nav.go', 'nav.organize', 'look.set']);
+const ACTING_HOOKS: ReadonlySet<ModEventKind> = new Set(['command', 'ui.action']);
+/**
+ * What a panel's resolve may call: reads only. An allow-list, so a method
+ * added later is refused while drawing until it is put here.
+ */
+export const RESOLVE_ALLOWED: ReadonlySet<ModMethod> = new Set([
+  'today',
+  'log',
+  'items.get',
+  'items.query',
+  'containers.list',
+  'verbs.eligible',
+  'store.get',
+  'store.keys',
+  'atom.get',
+  'settings.get',
+]);
 /** Writes an undo-raised hook may not make: any item write would wipe redo. */
 const NOT_DURING_UNDO: ReadonlySet<ModMethod> = new Set(['items.create', 'items.edit', 'verbs.run', 'look.set']);
 
@@ -383,7 +459,8 @@ export function brokerCall(env: BrokerEnv, live: HookState | null, msg: CallMess
   if (use && !hook.manifest.uses.includes(use)) return error(`needs "${use}" in manifest.uses`);
 
   // 3. The context.
-  if (COMMAND_ONLY.has(msg.method) && hook.hookKind !== 'command') return error('only during a command');
+  if (USER_ACTED.has(msg.method) && !ACTING_HOOKS.has(hook.hookKind)) return error('only when the person acted');
+  if (hook.hookKind === 'ui.resolve' && !RESOLVE_ALLOWED.has(msg.method)) return error('read-only while drawing a panel');
   if (hook.origin === 'undo' && NOT_DURING_UNDO.has(msg.method)) return error('not during undo');
 
   // 4. The arguments.
@@ -529,7 +606,7 @@ function run(env: BrokerEnv, hook: HookState, method: ModMethod, a: unknown): Ca
       return { ok: true, value: v === undefined ? null : v };
     }
     case 'store.keys':
-      return { ok: true, value: Object.keys(storeView(hook)) };
+      return { ok: true, value: Object.keys(storeView(hook)).filter((k) => !k.startsWith('@')) };
     case 'store.set':
     case 'store.delete': {
       const s = a as { key: string; value?: unknown };
@@ -578,7 +655,37 @@ function run(env: BrokerEnv, hook: HookState, method: ModMethod, a: unknown): Ca
       for (const step of steps) hook.ui.push({ kind: 'step', step });
       return accepted;
     }
+    case 'ui.open': {
+      const { panelId } = a as Args<'ui.open'>;
+      if (!hook.manifest.panels.some((p) => p.id === panelId)) return refused('no_panel');
+      hook.ui.push({ kind: 'openPanel', panelId });
+      return accepted;
+    }
+    case 'atom.get': {
+      const g = a as Args<'atom.get'>;
+      const atoms = atomView(hook);
+      if (g && 'key' in g) return { ok: true, value: Object.hasOwn(atoms, g.key) ? atoms[g.key] : null };
+      return { ok: true, value: atoms };
+    }
+    case 'atom.set': {
+      const { key, value } = a as Args<'atom.set'>;
+      // Held to the field that shows it; text, shown or not, to the surface rule.
+      if (!atomValueFits(hook.atomKinds[key], value)) return refused('bad_value');
+      const atoms = atomView(hook);
+      if (!Object.hasOwn(atoms, key) && Object.keys(atoms).length >= MOD_ATOMS_MAX) return refused('too_many');
+      hook.atomOverlay.set(key, value);
+      return accepted;
+    }
+    case 'settings.get':
+      return { ok: true, value: { ...hook.settings } };
   }
+}
+
+/** The atoms as this hook sees them: its own writes over the snapshot. */
+function atomView(hook: HookState): Record<string, AtomValue> {
+  const out: Record<string, AtomValue> = { ...hook.atoms };
+  for (const [k, v] of hook.atomOverlay) out[k] = v;
+  return out;
 }
 
 /** A verb as the recipe step the stake rule reads. */

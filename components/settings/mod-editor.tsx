@@ -56,6 +56,26 @@ export function usesInWords(uses: readonly ModUse[]): string {
   return `It may ${list}.`;
 }
 
+/**
+ * What a mod draws and asks of the person, in plain words (build order 9):
+ * its panels and where they show, its settings, and that a panel can show
+ * the titles of items it links to when it may read items. Empty for a mod
+ * with neither panels nor settings.
+ */
+export function panelsInWords(m: Pick<ModManifest, 'uses' | 'panels' | 'settings'>): string {
+  const parts: string[] = [];
+  const n = m.panels.length;
+  if (n > 0) {
+    const card = m.panels.some((p) => p.card);
+    const what = `Draws ${n} panel${n === 1 ? '' : 's'}`;
+    parts.push(card ? `${what}, ${n === 1 ? '' : 'one '}shown under the braindump.` : `${what}.`);
+    if (m.uses.includes('items:read')) parts.push('Shows titles of items you link to.');
+  }
+  const k = m.settings.length;
+  if (k > 0) parts.push(`Has ${k} setting${k === 1 ? '' : 's'} you set in Make.`);
+  return parts.join(' ');
+}
+
 const SANDBOX_WORDS = {
   unavailable: 'Mods can’t run in this browser yet, so it was not saved.',
   outdated: 'dsul was updated; reload to save mods.',
@@ -98,6 +118,11 @@ export function ModEditor({
   const [uses, setUses] = useState<ModUse[]>(() =>
     editing ? (parseModManifest(editing)?.uses ?? []) : MOD_TEMPLATE_USES
   );
+  /** The panels and settings line, from the stored manifest until a save reads the code's own. */
+  const [drawsWords, setDrawsWords] = useState(() => {
+    const m = editing ? parseModManifest(editing) : null;
+    return m ? panelsInWords(m) : '';
+  });
   const [problem, setProblem] = useState<Problem | null>(() => {
     const s = modSandbox.status();
     return s === 'unavailable' || s === 'outdated' ? { text: SANDBOX_WORDS[s], reload: s === 'outdated' } : null;
@@ -154,6 +179,7 @@ export function ModEditor({
         return setProblem({ text: 'Its manifest is not valid.' });
       }
       setUses(manifest.uses);
+      setDrawsWords(panelsInWords(manifest));
 
       const store = useModsStore.getState();
       if (editing) {
@@ -214,6 +240,7 @@ export function ModEditor({
         <div className="mt-1 flex flex-wrap items-baseline justify-between gap-2 text-xs">
           <p data-testid="mod-uses" className="text-muted-foreground">
             {usesInWords(uses)}
+            {drawsWords && <span data-testid="mod-draws"> {drawsWords}</span>}
           </p>
           <p
             data-testid="mod-bytes"

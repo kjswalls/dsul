@@ -3,7 +3,7 @@
  * bundle (lib/mods/runtime/), the sandbox frame and the host, so it imports
  * nothing: anything it pulled in would land in the worker
  * (scripts/build-mod-runtime.mjs). The frame script cannot import it either,
- * and repeats the four numbers it needs; tests/unit/mods-frame-script.test.ts
+ * and repeats the numbers it needs; tests/unit/mods-frame-script.test.ts
  * pins those to these.
  */
 
@@ -71,3 +71,24 @@ export const MOD_HANDLERS_MAX = 20;
 export const MOD_COMMANDS_MAX = 20;
 export const MOD_LOADED_MAX = 8;
 export const MOD_IDLE_UNLOAD_MS = 600_000;
+
+/* Build order 9: a mod's panels (memory/plans/mods.md, "Mods"). */
+
+/** A panel's tree as JSON text, in UTF-8 bytes. The frame repeats it as RESULT_MAX. */
+export const MOD_TREE_MAX_BYTES = 32768;
+export const MOD_TREE_NODES_MAX = 300;
+export const MOD_TREE_DEPTH_MAX = 8;
+export const MOD_TREE_CHILDREN_MAX = 50;
+export const MOD_TEXT_LINES_MAX = 12;
+export const MOD_PANELS_MAX = 4;
+export const MOD_SETTINGS_MAX = 10;
+/** Distinct atoms per mod, and a text atom's length. */
+export const MOD_ATOMS_MAX = 50;
+export const MOD_ATOM_TEXT_MAX = 500;
+/** Per panel: resolves at least this far apart, and at most this many a minute per mod. */
+export const MOD_RESOLVE_MIN_MS = 250;
+export const MOD_RESOLVES_PER_MINUTE = 60;
+/** The person's own hooks (ui.action, atom.changed) per mod per minute, off MOD_HOOKS_PER_MINUTE. */
+export const MOD_USER_HOOKS_PER_MINUTE = 60;
+/** A button counts a click only once it has shown unchanged this long. */
+export const MOD_CLICK_SETTLE_MS = 500;

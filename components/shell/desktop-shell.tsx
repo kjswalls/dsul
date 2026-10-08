@@ -29,6 +29,10 @@ import { RightRail } from '@/components/ai/rail/right-rail';
 import { AskSetup } from '@/components/ai/rail/ask-setup';
 import { AskOpener } from '@/components/ai/rail/ask-opener';
 import { useBackLabel } from '@/components/ai/rail/rail-header';
+import { ModOpener } from '@/components/mods/mod-opener';
+import { ModRail } from '@/components/mods/mod-rail';
+import { useModsStore } from '@/lib/mods-store';
+import { modSurfaceLabel } from '@/lib/mods/labels';
 import {
   PANEL_OVERLAY_QUERY,
   RAIL_RESERVE_PX,
@@ -273,6 +277,10 @@ export const DesktopShell = memo(function DesktopShell() {
               the far end themselves). It gives way to everything else here
               (ask-opener.tsx has the rules). */}
           <AskOpener className={canvasWide ? undefined : 'ml-auto'} />
+          {/* The key to a mod's panels, after the Ask button: it takes the
+              row's far end itself only when the Ask button is not offered
+              (mod-opener.tsx). */}
+          <ModOpener />
         </div>
 
         {/* The waiting bar used to sit here, and its "50px in flow, forever"
@@ -426,6 +434,12 @@ type RailColumnProps = {
  * bottom, and Ask stays mounted underneath it, `hidden` and `inert`
  * (right-rail.tsx has why).
  *
+ * A MOD'S PANEL (components/mods/mod-rail.tsx) is the column's third
+ * occupant, opened only by an explicit open (lib/mods/ui/open-panel.ts) and
+ * shown at any width, with or without AI. It sits between the item and Ask
+ * (railMode's 'mod'): an item opens over it, mounted beneath as Ask is, and
+ * wears the rail's header "‹ Your mod · <name>"; Ask's summon replaces it.
+ *
  * The width lives out here rather than in ItemDialog so the column can animate
  * both ways while its contents mount and unmount — the item surface itself
  * must reach count 0 when closed. Opening it narrows <main> (flex-1 recomputes
@@ -452,9 +466,11 @@ export const RailColumn = memo(function RailColumn({
   const askOpen = useSidebarStore(askOpenOf);
   const summoned = useRailStore((s) => s.summoned);
   const askTop = useRailStore((s) => s.stacks.desktop.at(-1));
+  const modPanel = useRailStore((s) => s.modPanel);
   const { canChat, askInvite, askFix } = useAICapabilities();
   const mode = railMode({
     itemOpen: !!panelState,
+    modOpen: !!modPanel,
     askOpen,
     canChat,
     overlays,
@@ -478,22 +494,29 @@ export const RailColumn = memo(function RailColumn({
   const [shownMode, setShownMode] = useState(mode);
   const [leaving, setLeaving] = useState(false);
   const [setupLeaving, setSetupLeaving] = useState(false);
+  // A mod's panel leaves the same way, and is drawn from the ref it last had
+  // while it does (`modPanel` is already null then).
+  const [modLeaving, setModLeaving] = useState(false);
+  const [lastModRef, setLastModRef] = useState(modPanel);
+  if (modPanel && modPanel !== lastModRef) setLastModRef(modPanel);
   if (shownMode !== mode) {
     setShownMode(mode);
     const eases = mode === 'hidden' && !overlays && !prefersReducedMotion();
     setLeaving(shownMode === 'ask' && eases);
     setSetupLeaving(shownMode === 'setup' && eases);
+    setModLeaving(shownMode === 'mod' && eases);
   }
   // The fallback for an ease that never reports its end (a tab in the
   // background, a width interrupted at the same value).
   useEffect(() => {
-    if (!leaving && !setupLeaving) return;
+    if (!leaving && !setupLeaving && !modLeaving) return;
     const timer = setTimeout(() => {
       setLeaving(false);
       setSetupLeaving(false);
+      setModLeaving(false);
     }, LEAVE_FALLBACK_MS);
     return () => clearTimeout(timer);
-  }, [leaving, setupLeaving]);
+  }, [leaving, setupLeaving, modLeaving]);
 
   // Ask stays mounted under an item, so Back finds it as it was.
   const askMounted = canChat && (askOpen || summoned || leaving);
@@ -502,6 +525,16 @@ export const RailColumn = memo(function RailColumn({
   // only in 'setup'; hidden and inert under the item (AskSetup's `visible`).
   // Gone the moment something answers, when the column becomes Ask.
   const setupMounted = (summoned && (askInvite || askFix) && !canChat) || setupLeaving;
+  // A mod's panel stays mounted under an item opened over it, hidden and
+  // inert (ModRail's `visible`), so Back finds it as it was.
+  const modMounted = !!modPanel || modLeaving;
+  const modRef = modPanel ?? lastModRef;
+  // The name an item opened over a mod's panel goes back to: the host's
+  // chrome ("Your mod · Water"), never the panel's own words.
+  const modBackLabel = useModsStore((s) => {
+    const row = modPanel ? s.rows.find((r) => r.id === modPanel.modId) : undefined;
+    return modPanel ? `Your mod · ${row ? modSurfaceLabel(row) : 'Your mod'}` : null;
+  });
   // The item goes back to whatever Ask has on top (the item is ui-store's
   // slot, not a stack entry), by its live name.
   const itemBack = useBackLabel(null, askTop);
@@ -545,7 +578,7 @@ export const RailColumn = memo(function RailColumn({
   // not with `shown`: Ask leaving is still painted for the whole ease, and
   // undressed it sat bare on the desk, the grey chrome or the backdrop for
   // 300ms. The width eases on `shown`, so the close still starts at once.
-  const dressed = shown || leaving || setupLeaving;
+  const dressed = shown || leaving || setupLeaving || modLeaving;
 
   // The rail's focus record (lib/rail-store.ts) is per showing: a close takes
   // it, and the column hiding any other way (the item's Done or Escape with
@@ -557,10 +590,11 @@ export const RailColumn = memo(function RailColumn({
   // A docked Ask whose window narrows into overlay goes away: `summoned` is
   // set by every explicit open, at any width, and would otherwise bring it up
   // as an overlay over an inert planner (a half-screen snap is 960px). After
-  // the edge only a summon made there shows it. An item on top stays.
+  // the edge only a summon made there shows it. So does a mod's panel
+  // (parkOverlay). An item on top stays.
   const wasOverlay = useRef(overlays);
   useEffect(() => {
-    if (overlays && !wasOverlay.current) useRailStore.getState().park();
+    if (overlays && !wasOverlay.current) useRailStore.getState().parkOverlay(true);
     wasOverlay.current = overlays;
   }, [overlays]);
 
@@ -570,20 +604,30 @@ export const RailColumn = memo(function RailColumn({
   // click closes the item and does not raise Ask as a second overlay.
   useEffect(() => {
     if (!shown || !overlays) return;
-    return subscribeClickAway(() => useRailStore.getState().park());
+    return subscribeClickAway(() => useRailStore.getState().parkOverlay(true));
   }, [shown, overlays]);
 
+  // An item over a mod's panel wears the rail's header, with or without AI:
+  // Back closes the item (RailHeader closes it first), which shows the panel
+  // again; ✕ closes the item and then the panel. With no mod beneath, Back
+  // goes to Ask, and with no AI either the item keeps Done.
   const railChrome = useMemo(
     () =>
-      canChat
+      modBackLabel
         ? {
-            backLabel: itemBack,
-            // Back shows Ask, at an overlay too, where nothing else would.
-            onBack: () => useRailStore.getState().summon(),
-            onCloseRail: () => useRailStore.getState().closeRail(),
+            backLabel: modBackLabel,
+            onBack: undefined,
+            onCloseRail: () => useRailStore.getState().closeModPanel(),
           }
-        : undefined,
-    [canChat, itemBack]
+        : canChat
+          ? {
+              backLabel: itemBack,
+              // Back shows Ask, at an overlay too, where nothing else would.
+              onBack: () => useRailStore.getState().summon(),
+              onCloseRail: () => useRailStore.getState().closeRail(),
+            }
+          : undefined,
+    [canChat, itemBack, modBackLabel]
   );
 
   return (
@@ -602,6 +646,7 @@ export const RailColumn = memo(function RailColumn({
         if (e.target !== e.currentTarget || e.propertyName !== 'width') return;
         if (leaving) setLeaving(false);
         if (setupLeaving) setSetupLeaving(false);
+        if (modLeaving) setModLeaving(false);
       }}
       className={cn(
         // titlebar-hole: the item panel scrolls (surface.tsx), and so does Ask,
@@ -669,6 +714,11 @@ export const RailColumn = memo(function RailColumn({
       {setupMounted && (
         <SectionBoundary label="AI setup" className="w-[360px] flex-none">
           <AskSetup visible={mode === 'setup'} leaving={setupLeaving} />
+        </SectionBoundary>
+      )}
+      {modMounted && modRef && (
+        <SectionBoundary label="mod panel" className="w-[360px] flex-none">
+          <ModRail visible={mode === 'mod'} leaving={modLeaving} overlays={overlays} panelRef={modRef} />
         </SectionBoundary>
       )}
     </div>

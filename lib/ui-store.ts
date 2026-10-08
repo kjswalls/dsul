@@ -502,3 +502,15 @@ export function closeItemPanel(): void {
   if (itemPanelClose) itemPanelClose();
   else useUIStore.getState().closeDialog();
 }
+
+/**
+ * Let go of an item held for the landing (`deferredDialog`, over the
+ * preview). A door that opens something else where the item would show (AI
+ * setup in the column, a mod's panel) is the later ask: kept, the held item
+ * would open over it at the landing. A held modal stays, in its own layer. A
+ * no-op when no item is held.
+ */
+export function letGoHeldItem(): void {
+  if (useUIStore.getState().deferredDialog?.type !== 'edit-item') return;
+  useUIStore.setState({ deferredDialog: null, deferredFor: null });
+}

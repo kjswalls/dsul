@@ -83,3 +83,13 @@ describe('<Sidebar/> holes in the band', () => {
     expect(screen.getByTestId('sidebar-wordmark')).toHaveClass('titlebar-hole-word');
   });
 });
+
+describe("a mod's surfaces are holes in the band (build order 9)", () => {
+  it('the opener key and its menu, the rail header, and a Select opened in a panel', () => {
+    const opener = read('components/mods/mod-opener.tsx');
+    expect(opener).toMatch(/'titlebar-hole [^']*size-8/);
+    expect(opener).toMatch(/<DropdownMenuContent[^>]*className="titlebar-hole/);
+    expect(read('components/mods/mod-rail.tsx')).toMatch(/'titlebar-hole box-content h-8/);
+    expect(read('components/mods/mod-tree.tsx')).toContain('titlebar-hole');
+  });
+});
