@@ -10,6 +10,7 @@ import { CORE_LIMITS, loadMod, scratchEvaluate, type LoadedMod } from '@/lib/mod
 import type { HookEvent, ModMethod } from '@/lib/mods/protocol';
 import { MOD_TEMPLATE, MOD_TEMPLATE_USES } from '@/lib/mods/template';
 import { ModManifestSchema } from '@/lib/mods/schema';
+import { parseModTree } from '@/lib/mods/ui/tree';
 
 // The real QuickJS, in node: the release variant loads its own wasm under the
 // `import` condition. The worker builds the same thing from the frame's
@@ -324,6 +325,62 @@ describe('runHook', () => {
   });
 });
 
+describe('a panel\'s resolve', () => {
+  const resolve: HookEvent = { kind: 'ui.resolve', panelId: 'water' };
+  async function run(kind: string, body: string, e: HookEvent, limits = CORE_LIMITS) {
+    const mod = await loaded(modOn(body, kind), recorder().call, limits);
+    try {
+      return await mod.runHook(HOOK, e);
+    } finally {
+      mod.dispose();
+    }
+  }
+
+  it('hands back the returned tree as JSON text, sync or after an await', async () => {
+    const tree = { type: 'text', text: 'hi' };
+    const mod = await loaded(
+      `${MANIFEST}\nexport function register(on) { on('ui.resolve', ($, e) => (${JSON.stringify(tree)})); }`
+    );
+    try {
+      expect(await mod.runHook(HOOK, resolve)).toEqual({ ok: true, resultJson: JSON.stringify(tree) });
+    } finally {
+      mod.dispose();
+    }
+    expect(await run('ui.resolve', `await $.today(); return ${JSON.stringify(tree)};`, resolve)).toEqual({
+      ok: true,
+      resultJson: JSON.stringify(tree),
+    });
+  });
+
+  it('a command returning a large array gives no result and no fault', async () => {
+    expect(await run('command', 'return Array.from({ length: 100000 }, (_, i) => i);', command)).toEqual({ ok: true });
+  });
+
+  it('undefined and null draw nothing', async () => {
+    expect(await run('ui.resolve', 'return undefined;', resolve)).toEqual({ ok: true });
+    expect(await run('ui.resolve', 'return null;', resolve)).toEqual({ ok: true });
+    expect(await run('ui.resolve', 'return () => 1;', resolve)).toEqual({ ok: true });
+  });
+
+  it('faults a tree over 32KB, and one that cannot be written down', async () => {
+    expect(await run('ui.resolve', "return { type: 'text', text: 'x'.repeat(40000) };", resolve)).toEqual({
+      ok: false,
+      fault: { code: 'error', message: 'the panel is over 32KB' },
+    });
+    const cycle = await run('ui.resolve', "const a = { type: 'stack' }; a.children = [a]; return a;", resolve);
+    expect(cycle).toMatchObject({ ok: false, fault: { code: 'error' } });
+    const throws = await run('ui.resolve', 'return { toJSON() { throw new Error("nope"); } };', resolve);
+    expect(throws).toMatchObject({ ok: false, fault: { code: 'error', message: expect.stringMatching(/nope/) } });
+  });
+
+  it('counts bytes as written, so a 3-byte character fills the cap sooner', async () => {
+    const small = { ...CORE_LIMITS, treeMaxBytes: 30 };
+    expect(await run('ui.resolve', "return 'aaaaaaaaaaaa';", resolve, small)).toMatchObject({ ok: true });
+    expect(await run('ui.resolve', "return '€€€€€€€€€€€€';", resolve, small)).toMatchObject({ ok: false });
+  });
+
+});
+
 describe('scratchEvaluate', () => {
   it('reads the manifest and hooks and runs nothing', async () => {
     expect(await scratchEvaluate(qjs, modOn('throw new Error("ran")', 'timer'), CORE_LIMITS)).toEqual({
@@ -364,7 +421,18 @@ describe('handles', () => {
       if (m.ok) return m.runHook(HOOK, command).then(() => m.dispose());
     });
     await scratchEvaluate(factory, modOn(''), CORE_LIMITS);
-    expect(made).toHaveLength(4);
+    // A resolve's tree, drawn, too large and a cycle: each value freed.
+    const panel = await loadMod(
+      factory,
+      modOn("await $.today(); return e.panelId === 'a' ? { type: 'divider' } : e.panelId === 'b' ? 'x'.repeat(40000) : (() => { const c = {}; c.c = c; return c; })();", 'ui.resolve'),
+      CORE_LIMITS,
+      recorder().call
+    );
+    if (!panel.ok) throw new Error('load failed');
+    for (const panelId of ['a', 'b', 'c']) await panel.runHook(HOOK, { kind: 'ui.resolve', panelId });
+    expect(panel.broken).toBe(false);
+    panel.dispose();
+    expect(made).toHaveLength(5);
     expect(made.every((rt) => !rt.alive)).toBe(true);
     const probeRt = qjs.newRuntime();
     const probe = probeRt.newContext();
@@ -396,5 +464,33 @@ describe('the editor’s template', () => {
     expect(r.calls.map((c) => c.method)).toEqual(['today', 'store.get', 'store.set', 'ui.toast']);
     expect(r.calls[2].args).toEqual({ key: 'glasses', value: { date: '2026-10-07', count: 3 } });
     expect(r.calls[3].args).toEqual({ text: '3 of 8 glasses today' });
+  });
+
+  it('declares the Water card, draws it from the store, and counts a glass on +1', async () => {
+    const scratch = await scratchEvaluate(qjs, MOD_TEMPLATE, CORE_LIMITS);
+    if (!scratch.ok) throw new Error(scratch.fault.message);
+    const manifest = ModManifestSchema.parse(JSON.parse(scratch.manifestJson));
+    expect(manifest.panels).toEqual([{ id: 'water', label: 'Water', icon: 'CupSoda', card: true }]);
+    expect(scratch.hooks.sort()).toEqual(['command', 'ui.action', 'ui.resolve']);
+
+    const r = recorder((method) =>
+      method === 'today' ? { date: '2026-10-07', time: '09:00', bucket: 'morning' } : method === 'store.get' ? { date: '2026-10-07', count: 2 } : { ok: true }
+    );
+    const mod = await loaded(MOD_TEMPLATE, r.call);
+    try {
+      const drawn = await mod.runHook(HOOK, { kind: 'ui.resolve', panelId: 'water' });
+      if (!drawn.ok || !drawn.resultJson) throw new Error('drew nothing');
+      const tree = parseModTree(drawn.resultJson, { uses: manifest.uses });
+      expect(tree).toMatchObject({ ok: true, actions: [{ action: 'add' }] });
+      expect(drawn.resultJson).toContain('"2 of 8"');
+      expect(r.calls.map((c) => c.method)).toEqual(['today', 'store.get']);
+
+      r.calls.length = 0;
+      expect(await mod.runHook(HOOK, { kind: 'ui.action', panelId: 'water', action: 'add', atoms: {} })).toEqual({ ok: true });
+      expect(r.calls.map((c) => c.method)).toEqual(['today', 'store.get', 'store.set']);
+      expect(r.calls[2].args).toEqual({ key: 'glasses', value: { date: '2026-10-07', count: 3 } });
+    } finally {
+      mod.dispose();
+    }
   });
 });

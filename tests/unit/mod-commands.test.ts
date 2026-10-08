@@ -10,10 +10,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const run = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/mods/command-run', () => ({ runModCommand: run, setModCommandRunner: vi.fn() }));
+const openPanel = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/mods/ui/open-panel', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/mods/ui/open-panel')>()),
+  openModPanel: openPanel,
+}));
 
 import type { CommandContext } from '@/lib/commands/types';
 import { STATIC_COMMANDS, resolveCommands } from '@/lib/commands/registry';
 import { useModsStore } from '@/lib/mods-store';
+import { useRailStore } from '@/lib/rail-store';
 import type { UserMod } from '@/lib/mods/schema';
 
 const ctx: CommandContext = {
@@ -46,10 +52,22 @@ const row = (slug: string, over: Partial<UserMod> = {}): UserMod => ({
   ...over,
 });
 
-const modCommands = () => resolveCommands(ctx).filter((c) => c.id.startsWith('mod.'));
+/** A mod's own commands and its panel openers; `mod.close-panel` is the host's. */
+const modCommands = () => resolveCommands(ctx).filter((c) => c.id.startsWith('mod.') && c.id !== 'mod.close-panel');
+const closePanel = () => resolveCommands(ctx).find((c) => c.id === 'mod.close-panel');
+
+const WITH_PANELS = {
+  ...WATER,
+  panels: [
+    { id: 'water', label: 'Water', icon: 'CupSoda', card: true },
+    { id: 'log', label: 'Log' },
+  ],
+};
 
 beforeEach(() => {
   run.mockClear();
+  openPanel.mockClear();
+  useRailStore.getState().reset();
   useModsStore.setState({ available: true, loaded: true, safeMode: false, rows: [] });
 });
 
@@ -115,5 +133,57 @@ describe('mod commands', () => {
     expect(run).toHaveBeenCalledWith(first.id, 'add');
     const bound = resolveCommands(ctx).filter((c) => c.shortcut);
     expect(bound.every((c) => STATIC_COMMANDS.includes(c))).toBe(true);
+  });
+});
+
+describe('mod panel commands (build order 9)', () => {
+  it('one opener per panel of a switched-on mod, after its commands, under host chrome', () => {
+    useModsStore.setState({ rows: [row('water', { manifest: WITH_PANELS }), row('off', { enabled: false, manifest: WITH_PANELS })] });
+    const commands = modCommands();
+    expect(commands.map((c) => c.id)).toEqual([
+      'mod.water.add',
+      'mod.water.reset',
+      'mod.water.open.water',
+      'mod.water.open.log',
+    ]);
+    expect(commands[2]).toMatchObject({
+      label: 'Your mod · Water: Open Water',
+      description: 'Your mod',
+      group: 'mods',
+    });
+    expect(commands[3].label).toBe('Your mod · Water: Open Log');
+    for (const c of commands) {
+      expect(c.shortcut).toBeUndefined();
+      expect(c.aliases).toBeUndefined();
+    }
+  });
+
+  it('opens through the router', () => {
+    const r = row('water', { manifest: WITH_PANELS });
+    useModsStore.setState({ rows: [r] });
+    modCommands()
+      .find((c) => c.id === 'mod.water.open.log')!
+      .run(ctx);
+    expect(openPanel).toHaveBeenCalledWith({ modId: r.id, panelId: 'log' });
+  });
+
+  it('none in safe mode', () => {
+    useModsStore.setState({ rows: [row('water', { manifest: WITH_PANELS })], safeMode: true });
+    expect(modCommands()).toEqual([]);
+    expect(closePanel()).toBeUndefined();
+  });
+
+  it('"Close your mod\'s panel" shows only while a panel is in the rail, and closes it', () => {
+    const r = row('water', { manifest: WITH_PANELS });
+    useModsStore.setState({ rows: [r] });
+    const close = closePanel()!;
+    expect(close.shortcut).toBeUndefined();
+    expect(close.group).toBe('mods');
+    expect(typeof close.hidden === 'function' && close.hidden(ctx)).toBe(true);
+    useRailStore.getState().openModPanel({ modId: r.id, panelId: 'water' });
+    expect(typeof close.hidden === 'function' && close.hidden(ctx)).toBe(false);
+    expect(close.availableWhen?.(ctx)).toBe(true);
+    close.run(ctx);
+    expect(useRailStore.getState().modPanel).toBeNull();
   });
 });

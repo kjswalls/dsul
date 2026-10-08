@@ -113,7 +113,7 @@ function RailButton({
  * glyph on every member row while its colour stayed put. One string decides
  * both.
  */
-function TypeGlyph({ item, className }: { item: Item; className?: string }) {
+export function TypeGlyph({ item, className }: { item: Item; className?: string }) {
   const name = itemTypeName(item);
   const config = getItemTypeConfig(name);
   return (
@@ -141,7 +141,7 @@ function rowTip(item: Item): string {
   return [item.title, cadenceLabel(item as never), item.startTime ?? bucket].filter(Boolean).join(' · ');
 }
 
-function memberMeta(item: Item): { text: string; numeric: boolean } {
+export function memberMeta(item: Item): { text: string; numeric: boolean } {
   if (item.startTime) return { text: item.startTime, numeric: true };
   if (item.timeBucket && item.timeBucket !== 'anytime') {
     return { text: BUCKET_TEXT[item.timeBucket] ?? item.timeBucket, numeric: false };

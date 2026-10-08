@@ -75,7 +75,11 @@ async function handle(d: Exclude<HostMessage, { t: 'reply' }>) {
       const outcome = await mod.runHook(d.hookId, d.event);
       liveHookId = null;
       for (const [id, w] of waiting) if (w.hookId === d.hookId) waiting.delete(id);
-      post(outcome.ok ? { t: 'done', ...modKey, hookId: d.hookId, ok: true } : { t: 'done', ...modKey, hookId: d.hookId, ok: false, fault: outcome.fault });
+      post(
+        outcome.ok
+          ? { t: 'done', ...modKey, hookId: d.hookId, ok: true, ...(outcome.resultJson !== undefined && { resultJson: outcome.resultJson }) }
+          : { t: 'done', ...modKey, hookId: d.hookId, ok: false, fault: outcome.fault }
+      );
       if (mod.broken) quit(outcome.ok ? fault('broken', 'the runtime stopped working') : outcome.fault);
       return;
     }

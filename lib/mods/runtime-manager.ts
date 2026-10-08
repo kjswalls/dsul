@@ -10,6 +10,7 @@ import {
   type HeldTimer,
   type HookState,
   type Json,
+  type PanelBridge,
 } from './broker-core';
 import type { ApplyContext, ApplyResult } from './broker';
 import { createFaultCounter, faultReason, wallFaultCounts } from './faults';
@@ -22,10 +23,16 @@ import {
   MOD_LOADED_MAX,
   MOD_QUEUE_MAX,
   MOD_STORE_FLUSH_MS,
+  MOD_USER_HOOKS_PER_MINUTE,
 } from './limits';
 import {
+  AtomValueSchema,
+  ModIdentSchema,
   fault,
+  type AtomValue,
   type Fault,
+  HookEventSchema,
+  MOD_UI_EVENT_KINDS,
   type FrameMessage,
   type HookEvent,
   type HostMessage,
@@ -37,7 +44,9 @@ import {
   ModManifestSchema,
   manifestsEqual,
   parseModManifest,
-  usesWidened,
+  parseModSettings,
+  type ModSettingValue,
+  consentWidened,
   type ModManifest,
   type UserMod,
 } from './schema';
@@ -75,6 +84,16 @@ import type { ModCode } from '@/lib/mods-store';
  * `$.store` never touches the network inside a hook. The snapshot comes with
  * the code; committed writes mark keys dirty, and the dirty keys flush one
  * mod_store_set each, at most once per MOD_STORE_FLUSH_MS per mod.
+ *
+ * Panels (build order 9). A panel's resolve, a press on it and a field the
+ * person committed are hooks like any other, with three differences. They
+ * stay off the hook rate: resolves are paced by the panel state
+ * (lib/mods/ui/panel-store.ts), and the person's own hooks have a budget of
+ * their own whose excess is dropped quietly, never faulted. Their work
+ * carries `settle`, which every way out of the queue calls exactly once, so a
+ * panel never waits on work that left. And a hook other than a resolve that
+ * settles ok tells the panels to redraw (`onPanelsStale`); a resolve never
+ * does, so one resolve never starts another.
  */
 
 export interface RuntimeSandbox {
@@ -106,10 +125,29 @@ export interface RuntimeDeps {
   /** Reads Make's rows again: this tab's view of a mod disagreed with the database. */
   refresh?: () => void;
   now?: () => number;
+  /** The panels' atoms and cached trees. Without it no press or field reaches a mod. */
+  panels?: PanelBridge;
+  /** A mod's visible panels should redraw, and why (a panel in error redraws only for some). */
+  onPanelsStale?: (modId: string, why: PanelsStaleReason) => void;
+  /** The person pressed or typed faster than the mod's budget: "Slow down a little". */
+  onUserHooksSlowed?: (modId: string) => void;
 }
 
+/**
+ * Why panels went stale: a hook other than a resolve settled ok, the mod was
+ * saved or switched on, its row changed under this tab, or its settings saved.
+ */
+export type PanelsStaleReason = 'hook' | 'saved' | 'enabled' | 'changed' | 'settings';
+
+/**
+ * How a piece of work left the queue. `dropped`: it never ran, or ran and was
+ * cut off with no fault (not ready, a full queue, an unload). `off`: the mod
+ * is off or gone. An ok resolve carries its tree's JSON text, unparsed.
+ */
+export type SettleOutcome = { ok: true; resultJson?: string } | { fault: Fault } | 'dropped' | 'off';
+
 type Work =
-  | { kind: 'hook'; event: HookEvent; label: string }
+  | { kind: 'hook'; event: HookEvent; label: string; settle?: (o: SettleOutcome) => void }
   /** A changed source or manifest: load a new generation, swap on success. */
   | { kind: 'reload' };
 
@@ -149,7 +187,8 @@ interface ModState {
   lastUsedAt: number;
 }
 
-type HookOutcome = { ok: true } | { ok: false; fault: Fault | null };
+/** `why` says what a fault-less end was, for the work's settle. */
+type HookOutcome = { ok: true; resultJson?: string } | { ok: false; fault: Fault | null; why?: 'dropped' | 'off' };
 type LoadOutcome = Extract<FrameMessage, { t: 'loaded' }> | { ok: false; fault: Fault | null };
 
 export interface ModRuntime {
@@ -169,6 +208,30 @@ export interface ModRuntime {
   stop(): Promise<void>;
   /** Test and debugging aid: mod ids with a loaded generation. */
   loadedIds(): string[];
+
+  /** Draws a panel: its resolve, loading the mod on demand. Off the hook rate. */
+  resolvePanel(modId: string, panelId: string): Promise<SettleOutcome>;
+  /**
+   * A press on a panel's button, as the person saw it: `seq` is the cached
+   * tree's at the press, and the press counts only while that tree is still
+   * the current one and holds (action, arg).
+   */
+  runAction(
+    modId: string,
+    panelId: string,
+    action: string,
+    arg: string | undefined,
+    atoms: Record<string, AtomValue>,
+    seq: number
+  ): Promise<SettleOutcome>;
+  /** A field the person committed. A newer value for the same key replaces one still waiting. */
+  atomChanged(modId: string, key: string, value: AtomValue): Promise<SettleOutcome>;
+  /** Whether the mod draws panels, as far as its last load says. */
+  resolvesPanels(modId: string): boolean;
+  /** Make saved the mod's settings: the snapshot takes them now, with no reload. */
+  settingsChanged(modId: string, values: Record<string, ModSettingValue>): void;
+  /** A resolve's tree failed the host's checks: a counted `error` fault. */
+  panelFault(modId: string, panelId: string, message: string): void;
 }
 
 /** cyrb53: a short content hash for "did the source change". */
@@ -213,6 +276,8 @@ export function createModRuntime(deps: RuntimeDeps): ModRuntime {
   const running = new Map<string, { hook: HookState; resolve: (o: HookOutcome) => void }>();
   const counter = createFaultCounter();
   const rate = createHookRate();
+  /** The person's own hooks (ui.action, atom.changed): a minute budget, no daily one. */
+  const userRate = createHookRate(MOD_USER_HOOKS_PER_MINUTE, Number.POSITIVE_INFINITY);
   let hiddenEpoch = 0;
   let timerIds = 0;
   let writeNo = 0;
@@ -271,7 +336,7 @@ export function createModRuntime(deps: RuntimeDeps): ModRuntime {
    */
   function consented(modId: string, code: ModCode, manifest: ModManifest): boolean {
     const row = rowOf(modId);
-    if (code.enabled && row && !usesWidened(parseModManifest(row), manifest)) return true;
+    if (code.enabled && row && !consentWidened(parseModManifest(row), manifest)) return true;
     askRefresh();
     return false;
   }
@@ -301,8 +366,29 @@ export function createModRuntime(deps: RuntimeDeps): ModRuntime {
     const row = rowOf(s.modId);
     deps.disable(s.modId, reason);
     if (row) deps.switchedOff(row);
+    drainQueue(s, 'off');
+    unload(s, true, 'off');
+  }
+
+  /** Work leaving the queue without running: its settle hears why. */
+  function drop(work: Work, why: 'dropped' | 'off'): void {
+    if (work.kind === 'hook') settle(work, why);
+  }
+
+  function drainQueue(s: ModState, why: 'dropped' | 'off'): void {
+    const queue = s.queue;
     s.queue = [];
-    unload(s, true);
+    for (const work of queue) drop(work, why);
+  }
+
+  function settle(work: Extract<Work, { kind: 'hook' }>, o: SettleOutcome): void {
+    const fn = work.settle;
+    work.settle = undefined;
+    try {
+      fn?.(o);
+    } catch (err) {
+      console.error('[mods] settle:', err);
+    }
   }
 
   /** Logs the fault, counts it when it counts, and switches the mod off on a trip. */
@@ -314,12 +400,12 @@ export function createModRuntime(deps: RuntimeDeps): ModRuntime {
 
   /* ── loading ─────────────────────────────────────────────────────────── */
 
-  function unload(s: ModState, clearTimers: boolean): void {
+  function unload(s: ModState, clearTimers: boolean, why: 'dropped' | 'off' = 'dropped'): void {
     // A hook in flight ends here, unfaulted: the frame kills its worker on
     // unload and answers nothing, so waiting would end in a false wall fault
     // and the backstop's remove() of every other mod's worker.
     const run = running.get(s.modId);
-    if (run && run.hook.gen === s.loaded?.gen) run.resolve({ ok: false, fault: null });
+    if (run && run.hook.gen === s.loaded?.gen) run.resolve({ ok: false, fault: null, why });
     if (s.loaded) deps.sandbox.post({ t: 'unload', modId: s.modId, gen: s.loaded.gen });
     s.loaded = null;
     s.needsReload = false;
@@ -394,8 +480,8 @@ export function createModRuntime(deps: RuntimeDeps): ModRuntime {
       if (!consented(s.modId, code, manifest.data)) {
         // A generation already running stops too: the row says it may not.
         if (s.loaded) {
-          s.queue = [];
-          unload(s, true);
+          drainQueue(s, 'off');
+          unload(s, true, 'off');
         }
         return false;
       }
@@ -451,15 +537,17 @@ export function createModRuntime(deps: RuntimeDeps): ModRuntime {
       if (manifest.success && !consented(s.modId, code, manifest.data)) {
         // Off in the database, or asking for more than was switched on: what
         // runs here stops now, rather than at the next refresh.
-        s.queue = [];
-        unload(s, true);
+        drainQueue(s, 'off');
+        unload(s, true, 'off');
         void flush(s);
         return;
       }
       const changed =
         hashSource(code.source) !== s.loaded.sourceHash || !manifestsEqual(code.manifest, s.loaded.manifest);
-      if (changed) enqueue(s, { kind: 'reload' });
-      else {
+      if (changed) {
+        enqueue(s, { kind: 'reload' });
+        deps.onPanelsStale?.(s.modId, 'changed');
+      } else {
         s.loaded.updatedAt = code.updatedAt;
         if (s.knownHooks) s.knownHooks.updatedAt = code.updatedAt;
       }
@@ -471,10 +559,10 @@ export function createModRuntime(deps: RuntimeDeps): ModRuntime {
   /* ── hooks ───────────────────────────────────────────────────────────── */
 
   function enqueue(s: ModState, work: Work): void {
-    if (stopped) return;
+    if (stopped) return drop(work, 'dropped');
     if (s.queue.length >= MOD_QUEUE_MAX) {
       console.warn('[mods] a mod has too much waiting; an event was dropped.');
-      return;
+      return drop(work, 'dropped');
     }
     s.queue.push(work);
     void pump(s);
@@ -487,7 +575,9 @@ export function createModRuntime(deps: RuntimeDeps): ModRuntime {
       while (s.queue.length > 0 && !stopped) {
         const work = s.queue.shift()!;
         if (!deps.ready() || !rowOf(s.modId)) {
-          s.queue = [];
+          const why = rowOf(s.modId) ? 'dropped' : 'off';
+          drop(work, why);
+          drainQueue(s, why);
           break;
         }
         if (work.kind === 'reload') {
@@ -497,6 +587,9 @@ export function createModRuntime(deps: RuntimeDeps): ModRuntime {
         if (!s.loaded || s.needsReload) {
           if (!(await load(s))) {
             // Whatever waited for this load cannot run either.
+            const why = rowOf(s.modId) ? 'dropped' : 'off';
+            drop(work, why);
+            for (const w of s.queue) if (w.kind === 'hook') drop(w, why);
             s.queue = s.queue.filter((w) => w.kind === 'reload');
             continue;
           }
@@ -507,6 +600,7 @@ export function createModRuntime(deps: RuntimeDeps): ModRuntime {
       console.error('[mods] runtime:', err);
     } finally {
       s.busy = false;
+      if (stopped) drainQueue(s, 'dropped');
       armIdle(s);
     }
   }
@@ -533,14 +627,34 @@ export function createModRuntime(deps: RuntimeDeps): ModRuntime {
     return { ...e, item: item ? projectItem(item, env.todayAndTime().today, view) : null };
   }
 
+  /** Runs one hook, and settles its work however it ends. */
   async function runHook(s: ModState, work: Extract<Work, { kind: 'hook' }>): Promise<void> {
+    let outcome: SettleOutcome = 'dropped';
+    try {
+      outcome = await runHookInner(s, work);
+    } finally {
+      settle(work, outcome);
+    }
+  }
+
+  async function runHookInner(s: ModState, work: Extract<Work, { kind: 'hook' }>): Promise<SettleOutcome> {
     const loaded = s.loaded;
     const userId = deps.userId();
     const row = rowOf(s.modId);
-    if (!loaded || !userId || !row || !loaded.hooks.includes(work.event.kind)) return;
+    if (!row) return 'off';
+    if (!loaded || !userId) return 'dropped';
+    // No handler: nothing runs, and a resolve draws nothing.
+    if (!loaded.hooks.includes(work.event.kind)) return { ok: true };
 
-    const breach = rate.take(s.modId, now(), today());
-    if (breach) return onFault(s, work.label, fault('rate', hookRateReason(breach)));
+    // A panel's hooks are paced elsewhere (resolvePanel, runAction, atomChanged).
+    if (!isPanelKind(work.event.kind)) {
+      const breach = rate.take(s.modId, now(), today());
+      if (breach) {
+        const f = fault('rate', hookRateReason(breach));
+        onFault(s, work.label, f);
+        return { fault: f };
+      }
+    }
 
     const t = now();
     s.lastUsedAt = t;
@@ -556,6 +670,9 @@ export function createModRuntime(deps: RuntimeDeps): ModRuntime {
       snapshot: s.snapshot,
       pendingTimers: s.timers.size,
       toastsLastMinute: s.toastTimes.length,
+      atoms: { ...(deps.panels?.atoms(s.modId) ?? {}) },
+      atomKinds: { ...(deps.panels?.atomKinds(s.modId) ?? {}) },
+      settings: parseModSettings(loaded.manifest, s.snapshot['@settings']),
     });
     const event = withItem(work.event, loaded.manifest);
 
@@ -586,10 +703,10 @@ export function createModRuntime(deps: RuntimeDeps): ModRuntime {
       const f = hook.aborted ?? (outcome.ok ? null : outcome.fault);
       // A fresh generation before the next hook: whatever this one left is not trusted.
       if (s.loaded?.gen === hook.gen) s.needsReload = true;
-      if (!f) return;
+      if (!f) return (!outcome.ok && outcome.why) || 'dropped';
       if (f.code === 'broken' && f.message === NOT_LOADED) {
         if (s.loaded?.gen === hook.gen) s.loaded = null;
-        return;
+        return 'dropped';
       }
       let counts = true;
       if (f.code === 'wall') {
@@ -599,7 +716,14 @@ export function createModRuntime(deps: RuntimeDeps): ModRuntime {
           monoElapsedMs: (typeof performance !== 'undefined' ? performance.now() : Date.now()) - monoStart,
         });
       }
-      return onFault(s, work.label, f, counts);
+      onFault(s, work.label, f, counts);
+      return { fault: f };
+    }
+
+    // A resolve is read-only (the broker's RESOLVE_ALLOWED): nothing to apply,
+    // and nothing to tell the panels, so one draw never starts another.
+    if (work.event.kind === 'ui.resolve') {
+      return outcome.resultJson === undefined ? { ok: true } : { ok: true, resultJson: outcome.resultJson };
     }
 
     const result = deps.apply(hook, {
@@ -608,8 +732,9 @@ export function createModRuntime(deps: RuntimeDeps): ModRuntime {
       event: work.event,
       hookLabel: work.label,
       deps: deps.uiDeps,
+      ...(deps.panels && { panels: deps.panels }),
     });
-    if (result.status === 'stale') return;
+    if (result.status === 'stale') return 'dropped';
 
     // The store overlay and the timers commit only now, on ok.
     for (const [key, value] of hook.storeOverlay) {
@@ -620,7 +745,13 @@ export function createModRuntime(deps: RuntimeDeps): ModRuntime {
     if (hook.storeOverlay.size > 0) scheduleFlush(s);
     for (const timer of hook.timers) schedule(s, timer);
     for (let i = 0; i < result.toasts; i++) s.toastTimes.push(now());
-    if (result.fault) onFault(s, work.label, result.fault);
+    if (result.fault) {
+      onFault(s, work.label, result.fault);
+      return { fault: result.fault };
+    }
+    // What the hook changed may show in a panel. A fault redraws nothing.
+    deps.onPanelsStale?.(s.modId, 'hook');
+    return { ok: true };
   }
 
   function schedule(s: ModState, t: HeldTimer): void {
@@ -715,7 +846,9 @@ export function createModRuntime(deps: RuntimeDeps): ModRuntime {
       case 'done': {
         const run = running.get(m.modId);
         if (!run || run.hook.gen !== m.gen || run.hook.hookId !== m.hookId) return;
-        run.resolve(m.ok ? { ok: true } : { ok: false, fault: m.fault });
+        // Only a resolve's tree is read; any other hook's result was never sent.
+        const resultJson = m.ok && run.hook.hookKind === 'ui.resolve' ? m.resultJson : undefined;
+        run.resolve(m.ok ? { ok: true, ...(resultJson !== undefined && { resultJson }) } : { ok: false, fault: m.fault });
         return;
       }
       case 'gone': {
@@ -788,8 +921,8 @@ export function createModRuntime(deps: RuntimeDeps): ModRuntime {
         const row = rows.get(s.modId);
         if (!row) {
           // Off or deleted: nothing of it runs here any more.
-          s.queue = [];
-          unload(s, true);
+          drainQueue(s, 'off');
+          unload(s, true, 'off');
           void flush(s);
           continue;
         }
@@ -802,11 +935,15 @@ export function createModRuntime(deps: RuntimeDeps): ModRuntime {
       const s = states.get(modId);
       if (s?.loaded) enqueue(s, { kind: 'reload' });
       else if (s) s.knownHooks = null;
+      // Loaded, the redraw queues behind the reload; not, it loads the new code.
+      deps.onPanelsStale?.(modId, 'saved');
     },
 
     enabled(modId) {
       counter.clear(modId);
       rate.clear(modId);
+      userRate.clear(modId);
+      deps.onPanelsStale?.(modId, 'enabled');
     },
 
     noteHidden() {
@@ -826,7 +963,7 @@ export function createModRuntime(deps: RuntimeDeps): ModRuntime {
       for (const run of [...running.values()]) run.resolve({ ok: false, fault: null });
       for (const resolve of [...pendingLoads.values()]) resolve({ ok: false, fault: null });
       for (const s of states.values()) {
-        s.queue = [];
+        drainQueue(s, 'dropped');
         if (s.flushTimer) clearTimeout(s.flushTimer);
         s.flushTimer = null;
         unload(s, true);
@@ -835,8 +972,124 @@ export function createModRuntime(deps: RuntimeDeps): ModRuntime {
     },
 
     loadedIds: () => [...states.values()].filter((s) => s.loaded).map((s) => s.modId),
+
+    resolvePanel(modId, panelId) {
+      return new Promise<SettleOutcome>((resolve) => {
+        const target = panelTarget(modId, panelId);
+        if (typeof target === 'string') return resolve(target);
+        const s = stateFor(modId);
+        // A mod whose last load registered no resolve draws nothing, unloaded.
+        // Not while newer code is on its way in: the resolve queues behind
+        // the reload, which may be what adds the handler.
+        const stale =
+          s.needsReload ||
+          s.loading ||
+          s.queue.some((w) => w.kind === 'reload') ||
+          (s.loaded !== null && s.loaded.updatedAt !== target.row.updatedAt);
+        const known = s.loaded?.hooks ?? (s.knownHooks?.updatedAt === target.row.updatedAt ? s.knownHooks.hooks : null);
+        if (!stale && known && !known.includes('ui.resolve')) return resolve({ ok: true });
+        enqueue(s, {
+          kind: 'hook',
+          event: { kind: 'ui.resolve', panelId },
+          label: `panel ${target.panel.label}`,
+          settle: resolve,
+        });
+      });
+    },
+
+    runAction(modId, panelId, action, arg, atoms, seq) {
+      return new Promise<SettleOutcome>((resolve) => {
+        const target = panelTarget(modId, panelId);
+        if (typeof target === 'string') return resolve(target);
+        // Only what the person saw: the panel's cached tree, still at the
+        // press's seq, holds this button. Not the runtime's generation, so an
+        // idle unload or a reload never swallows a press: it loads on demand.
+        const event = { kind: 'ui.action' as const, panelId, action, ...(arg !== undefined && { arg }), atoms };
+        if (
+          !deps.panels?.actionShown(modId, panelId, action, arg, seq) ||
+          !HookEventSchema.safeParse(event).success
+        ) {
+          deps.onPanelsStale?.(modId, 'hook');
+          return resolve('dropped');
+        }
+        if (!takeUserHook(modId)) return resolve('dropped');
+        enqueue(stateFor(modId), { kind: 'hook', event, label: target.panel.label, settle: resolve });
+      });
+    },
+
+    atomChanged(modId, key, value) {
+      return new Promise<SettleOutcome>((resolve) => {
+        if (stopped || !deps.ready()) return resolve('dropped');
+        if (!rowOf(modId)) return resolve('off');
+        const kinds = deps.panels?.atomKinds(modId);
+        if (!kinds || !Object.hasOwn(kinds, key) || !ModIdentSchema.safeParse(key).success) return resolve('dropped');
+        if (!AtomValueSchema.safeParse(value).success) return resolve('dropped');
+        const s = stateFor(modId);
+        // The latest value wins: one still waiting for this key takes it, and
+        // both callers hear how that one hook ends.
+        const waiting = s.queue.find(
+          (w): w is Extract<Work, { kind: 'hook' }> =>
+            w.kind === 'hook' && w.event.kind === 'atom.changed' && w.event.key === key
+        );
+        if (waiting) {
+          waiting.event = { kind: 'atom.changed', key, value };
+          const before = waiting.settle;
+          waiting.settle = (o) => {
+            before?.(o);
+            resolve(o);
+          };
+          return;
+        }
+        if (!takeUserHook(modId)) return resolve('dropped');
+        enqueue(s, { kind: 'hook', event: { kind: 'atom.changed', key, value }, label: key, settle: resolve });
+      });
+    },
+
+    resolvesPanels(modId) {
+      const s = states.get(modId);
+      const hooks = s?.loaded?.hooks ?? s?.knownHooks?.hooks;
+      return !!hooks?.includes('ui.resolve');
+    },
+
+    settingsChanged(modId, values) {
+      if (stopped) return;
+      const s = stateFor(modId);
+      // Make already wrote them (mod_store_set), so they are not dirty. The
+      // bump keeps a load in flight from replacing this with an older row.
+      s.snapshot['@settings'] = { ...values } as Json;
+      s.flushes++;
+      deps.onPanelsStale?.(modId, 'settings');
+    },
+
+    panelFault(modId, panelId, message) {
+      if (stopped || !rowOf(modId)) return;
+      const panel = parseModManifest(rowOf(modId)!)?.panels.find((p) => p.id === panelId);
+      onFault(stateFor(modId), `panel ${panel?.label ?? panelId}`, fault('error', message));
+    },
   };
+
+  /** The row and its declared panel, or how a panel request ends without them. */
+  function panelTarget(
+    modId: string,
+    panelId: string
+  ): { row: UserMod; panel: ModManifest['panels'][number] } | 'dropped' | 'off' {
+    if (stopped || !deps.ready()) return 'dropped';
+    const row = rowOf(modId);
+    if (!row) return 'off';
+    const panel = parseModManifest(row)?.panels.find((p) => p.id === panelId);
+    return panel ? { row, panel } : 'dropped';
+  }
+
+  /** The person's own budget. Over it the hook is dropped and they are told to slow down; never a fault. */
+  function takeUserHook(modId: string): boolean {
+    if (!userRate.take(modId, now(), today())) return true;
+    deps.onUserHooksSlowed?.(modId);
+    return false;
+  }
 }
+
+const PANEL_KINDS: ReadonlySet<ModEventKind> = new Set(MOD_UI_EVENT_KINDS);
+const isPanelKind = (kind: ModEventKind) => PANEL_KINDS.has(kind);
 
 /* ── the running one ─────────────────────────────────────────────────── */
 

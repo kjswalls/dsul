@@ -35,7 +35,17 @@ vi.mock('@/lib/supabase', () => ({
   }),
 }));
 
-import { useModsStore, hasSafeModeParam, slugFromName, uniqueSlug } from '@/lib/mods-store';
+const rpc = vi.hoisted(() => ({
+  set: vi.fn<(id: string, key: string, value: unknown) => Promise<string>>(async () => 'ok'),
+  settingsChanged: vi.fn(),
+}));
+vi.mock('@/lib/mods/store-rpc', () => ({ modStoreSet: rpc.set }));
+vi.mock('@/lib/mods/runtime-manager', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/mods/runtime-manager')>()),
+  activeModRuntime: () => ({ settingsChanged: rpc.settingsChanged }),
+}));
+
+import { useModsStore, hasSafeModeParam, slugFromName, uniqueSlug, MOD_SETTING_SECRET } from '@/lib/mods-store';
 
 const USER = '11111111-1111-4111-8111-111111111111';
 const OTHER = '22222222-2222-4222-8222-222222222222';
@@ -550,7 +560,7 @@ describe('loadModCode', () => {
 
 describe('mods (build order 8)', () => {
   const SOURCE = 'export const manifest = { version: 1, uses: [] };\nexport function register(on) {}';
-  const manifest = { version: 1 as const, uses: ['storage' as const], commands: [] };
+  const manifest = { version: 1 as const, uses: ['storage' as const], commands: [], panels: [], settings: [] };
 
   it('slugs fall back to the kind’s own word', () => {
     expect(slugFromName('Вода', 'mod')).toBe('mod');
@@ -581,7 +591,7 @@ describe('mods (build order 8)', () => {
     const store = useModsStore.getState();
     expect((await store.createMod(USER, { name: 'Sign in', source: SOURCE, manifest })).ok).toBe(false);
     expect(
-      (await store.createMod(USER, { name: 'Water', source: SOURCE, manifest: { ...manifest, panels: [] } as never })).ok
+      (await store.createMod(USER, { name: 'Water', source: SOURCE, manifest: { ...manifest, panels: [{ id: 'x' }] } as never })).ok
     ).toBe(false);
     expect((await store.createMod(USER, { name: 'Water', source: 'x'.repeat(65537), manifest })).ok).toBe(false);
     expect(db.calls).toHaveLength(1);
@@ -690,5 +700,51 @@ describe('mods (build order 8)', () => {
     await useModsStore.getState().turnAllOff(USER);
     expect(opsOf(1)).toContainEqual(['in', ['kind', ['recipe', 'mod']]]);
     expect(useModsStore.getState().rows[0].enabled).toBe(false);
+  });
+});
+
+describe('setModSettings (build order 9)', () => {
+  const manifest = {
+    version: 1,
+    uses: ['ui'],
+    settings: [
+      { kind: 'number', key: 'goal', label: 'Goal', default: 8, min: 1, max: 20 },
+      { kind: 'text', key: 'cup', label: 'Cup name' },
+      { kind: 'toggle', key: 'loud', label: 'Loud' },
+    ],
+  };
+
+  beforeEach(() => {
+    rpc.set.mockReset();
+    rpc.set.mockResolvedValue('ok');
+    rpc.settingsChanged.mockClear();
+  });
+
+  it('holds the values to the manifest, writes @settings, and tells the running mod', async () => {
+    const mod = row({ kind: 'mod', slug: 'water', name: 'Water', manifest });
+    await hydrateWith([mod]);
+    const result = await useModsStore.getState().setModSettings(mod.id, { goal: 50, cup: 'Blue', loud: true, extra: 1 });
+    const clean = { goal: 8, cup: 'Blue', loud: true };
+    expect(result).toEqual({ ok: true, values: clean });
+    expect(rpc.set).toHaveBeenCalledWith(mod.id, '@settings', clean);
+    expect(rpc.settingsChanged).toHaveBeenCalledWith(mod.id, clean);
+  });
+
+  it('refuses a value shaped like a key, with no write', async () => {
+    const mod = row({ kind: 'mod', slug: 'water', name: 'Water', manifest });
+    await hydrateWith([mod]);
+    const result = await useModsStore.getState().setModSettings(mod.id, { cup: 'sk-abcdefghijklmnop' });
+    expect(result).toEqual({ ok: false, reason: MOD_SETTING_SECRET });
+    expect(rpc.set).not.toHaveBeenCalled();
+    expect(rpc.settingsChanged).not.toHaveBeenCalled();
+  });
+
+  it('says when the mod’s storage is full, and tells no runtime', async () => {
+    const mod = row({ kind: 'mod', slug: 'water', name: 'Water', manifest });
+    await hydrateWith([mod]);
+    rpc.set.mockResolvedValue('too_big');
+    const result = await useModsStore.getState().setModSettings(mod.id, { goal: 3 });
+    expect(result).toEqual({ ok: false, reason: 'Your mod’s storage is full.' });
+    expect(rpc.settingsChanged).not.toHaveBeenCalled();
   });
 });
