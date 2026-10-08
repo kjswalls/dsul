@@ -11,11 +11,21 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
  * here reaches fetch.
  */
 
-const planner = vi.hoisted(() => ({ items: [] as { id: string; type: string; title: string }[] }));
+const planner = vi.hoisted(() => ({
+  items: [] as { id: string; type: string; title: string }[],
+  /** The look-only preview: cached rows painted while the load is still in flight. */
+  isPreview: false,
+  /** The load in flight with no preview up: a dropped preview (dropPreview) leaves exactly this. */
+  loading: false,
+  listeners: new Set<(s: unknown, prev: unknown) => void>(),
+}));
 vi.mock('@/lib/planner-store', () => ({
   usePlannerStore: {
     getState: () => ({
       items: planner.items,
+      isPreview: planner.isPreview,
+      userId: 'seed-user',
+      isLoading: planner.isPreview || planner.loading,
       projects: [],
       itemTypes: [{ labelPlural: 'Errands' }],
       routines: [],
@@ -23,6 +33,10 @@ vi.mock('@/lib/planner-store', () => ({
       goals: [],
       userTimezone: 'UTC',
     }),
+    subscribe: (fn: (s: unknown, prev: unknown) => void) => {
+      planner.listeners.add(fn);
+      return () => planner.listeners.delete(fn);
+    },
   },
 }));
 
@@ -46,6 +60,7 @@ import {
   type ChatMessage,
 } from '@/lib/conversations-store';
 import { useAIConnectionStore } from '@/lib/ai-connection-store';
+import { usePlannerStore } from '@/lib/planner-store';
 import { useRailStore } from '@/lib/rail-store';
 import type { TurnInput } from '@/lib/chat-transport';
 import type { TurnRequest } from '@/lib/conversation-types';
@@ -111,8 +126,29 @@ let api: FakeApi;
 let tx: FakeTransport;
 let unseed: () => void = () => {};
 
+/** The landing: fresh rows take the preview's place, and the store notifies. */
+function landPlanner(items: typeof planner.items) {
+  planner.items = items;
+  planner.isPreview = false;
+  planner.loading = false;
+  const s = usePlannerStore.getState();
+  for (const fn of [...planner.listeners]) fn(s, s);
+}
+
+/** dropPreview, the crash recovery: the cached rows go, the preview ends, the load is still in flight. */
+function dropPlannerPreview() {
+  planner.items = [];
+  planner.isPreview = false;
+  planner.loading = true;
+  const s = usePlannerStore.getState();
+  for (const fn of [...planner.listeners]) fn(s, s);
+}
+
 beforeEach(() => {
   planner.items = [];
+  planner.isPreview = false;
+  planner.loading = false;
+  planner.listeners.clear();
   contextArgs.length = 0;
   api = fakeApi();
   tx = fakeTransport();
@@ -690,6 +726,82 @@ describe('sending', () => {
     seed(51 * 60_000);
     await store().send('c', 'later');
     expect(tx.inputs[1].context).toContain('## Earlier in this conversation\nUser: q\nAssistant: a');
+  });
+
+  /**
+   * The look-only preview paints cached rows while the load is still in
+   * flight (lib/planner-snapshot.ts). A question answered against them is
+   * answered against yesterday's planner, so the turn waits for the landing
+   * and reads its context then. An outward call waits (this and a proposal
+   * asked of a model), since it cannot be hidden the way a write is refused.
+   */
+  it('holds a send through the look-only preview, then asks with the fresh rows', async () => {
+    planner.isPreview = true;
+    const id = store().newDraft({ itemId: 'i1' });
+    const sent = store().send(id, 'what is left today?');
+    await flush();
+    expect(tx.transport.streamTurn).not.toHaveBeenCalled();
+    // The question is in the transcript already, its reply streaming: a slow answer.
+    expect(roles(id)).toEqual(['user', 'assistant']);
+    expect(thread(id).streaming).toBe(true);
+
+    landPlanner([{ id: 'i1', type: 'task', title: 'Water the plants' }]);
+    await sent;
+    await conversationsSettled();
+    expect(tx.inputs).toHaveLength(1);
+    // Built after the landing: the item is only in the fresh rows.
+    expect(contextArgs[0]?.focusItemId).toBe('i1');
+    expect(thread(id).streaming).toBe(false);
+    expect(roles(id)).toEqual(['user', 'assistant']);
+  });
+
+  it('a preview dropped mid-wait keeps the send waiting: nothing goes out on the emptied store', async () => {
+    planner.isPreview = true;
+    planner.items = [{ id: 'cached', type: 'task', title: 'Cached' }];
+    const id = store().newDraft({ itemId: 'i1' });
+    const sent = store().send(id, 'what is left today?');
+    await flush();
+    // PreviewCrashBoundary: a render threw on the cached rows, and the load is still in flight.
+    dropPlannerPreview();
+    await flush();
+    expect(tx.transport.streamTurn).not.toHaveBeenCalled();
+    expect(thread(id).streaming).toBe(true);
+
+    landPlanner([{ id: 'i1', type: 'task', title: 'Water the plants' }]);
+    await sent;
+    await conversationsSettled();
+    expect(tx.inputs).toHaveLength(1);
+    expect(contextArgs).toHaveLength(1);
+    expect(contextArgs[0]?.focusItemId).toBe('i1');
+    expect(roles(id)).toEqual(['user', 'assistant']);
+  });
+
+  it('a Stop while the send waits for the landing sends nothing and keeps the question', async () => {
+    planner.isPreview = true;
+    const id = store().newDraft();
+    const sent = store().send(id, 'plan my day');
+    await flush();
+    store().stop(id);
+    landPlanner([]);
+    await sent;
+    await conversationsSettled();
+    expect(tx.transport.streamTurn).not.toHaveBeenCalled();
+    expect(roles(id)).toEqual(['user']);
+    expect(thread(id).streaming).toBe(false);
+  });
+
+  it('a Stop while the send waits leaves OpenClaw unasked: the message never went', async () => {
+    unseed();
+    unseed = seedAI(OPENCLAW_PLUGIN);
+    planner.isPreview = true;
+    const id = store().newDraft();
+    const sent = store().send(id, 'take this on');
+    await flush();
+    store().stop(id);
+    landPlanner([]);
+    await sent;
+    await conversationsSettled();
+    expect(openclawWasAsked(id)).toBe(false);
   });
 });
 

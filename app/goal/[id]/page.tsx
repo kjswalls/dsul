@@ -13,6 +13,7 @@ import {
   MilestoneTimeline,
 } from '@/components/planner/goal-sections';
 import { usePlannerStore } from '@/lib/planner-store';
+import { usePlannerSettled } from '@/lib/planner-ready';
 import { BufferedTextarea, TitleRow } from '@/components/planner/organize/detail-parts';
 import { GOAL_STATES } from '@/components/planner/organize/container-fields';
 import { ChoiceChip, ColorChip, DateRangeChip } from '@/components/primitives/organizer-chips';
@@ -64,7 +65,6 @@ export default function GoalPage() {
   const goals = usePlannerStore((s) => s.goals);
   const items = usePlannerStore((s) => s.items);
   const userId = usePlannerStore((s) => s.userId);
-  const isLoading = usePlannerStore((s) => s.isLoading);
   const openDialog = useUIStore((s) => s.openDialog);
   const updateGoal = usePlannerStore((s) => s.updateGoal);
   const setGoalState = usePlannerStore((s) => s.setGoalState);
@@ -74,7 +74,10 @@ export default function GoalPage() {
   const goalsOn = useGoalsEnabled();
 
   const itemsById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
-  const goal = goals.find((g) => g.id === id);
+  // Only once SETTLED: during the look-only preview (reached by client
+  // navigation from `/`) `goals` is cached, and every field here writes.
+  const settled = usePlannerSettled();
+  const goal = settled ? goals.find((g) => g.id === id) : undefined;
 
   /**
    * Goals switched off — INERT, and deliberately not the not-found state below.
@@ -112,8 +115,7 @@ export default function GoalPage() {
   if (!goal) {
     // Same reasoning as the item page: initializeStore stamps userId BEFORE the
     // fetches resolve, so "signed in" alone is not "loaded" — without the
-    // isLoading check a valid deep link flashes not-found for the whole fetch.
-    const settled = !!userId && !isLoading;
+    // settled check a valid deep link flashes not-found for the whole fetch.
     return (
       <main className="mx-auto flex max-w-lg flex-col items-start gap-4 px-6 py-16">
         <h1 className="text-foreground text-lg font-semibold">

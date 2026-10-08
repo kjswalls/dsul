@@ -17,6 +17,7 @@ import {
 import { RelayField } from '@/components/primitives/relay-field';
 import { AskMark, AskMarkUnlitIcon } from '@/components/ai/ask-mark';
 import { usePlannerStore } from '@/lib/planner-store';
+import { captureTask } from '@/lib/held-captures';
 import { useUIStore, openEditFor, openAddDialog, openBulkAdd } from '@/lib/ui-store';
 import { isBulkPaste } from '@/lib/bulk-add';
 import { askFromCommandBar, openSetup } from '@/lib/open-chat';
@@ -173,7 +174,6 @@ export function Omnibar({
   const {
     tasks,
     habits,
-    addTask,
     userTimezone,
     routines,
     seasons,
@@ -629,10 +629,16 @@ export function Omnibar({
       openAddDialog('task');
       useCommandUsageStore.getState().record('create.task');
       closeAndClear();
-      // openAddDialog replaced the launcher slot — nothing to close here.
+      // openAddDialog replaced the launcher slot, so this is a no-op — except
+      // during the look-only preview, which DEFERS the dialog (lib/ui-store.ts)
+      // and leaves the launcher in the slot. Its promotion at landing waits for
+      // a free slot, so a launcher left open would cost the dialog.
+      closeLauncher();
       return;
     }
-    addTask({ title: addTitle });
+    // Held while the planner's load is in flight (lib/held-captures.ts), so the text
+    // is never lost to a cold load or the preview; everything below runs as for an add.
+    captureTask(addTitle);
     // The launcher is a one-shot command surface: close after the add. The dock
     // stays open and refocuses for rapid successive capture. Nothing to strike
     // on the way out — `relayOnCapture` is false here by construction (the field
@@ -1111,6 +1117,11 @@ export function Omnibar({
                             onSelect={() => {
                               openEditFor(item, item.type === 'habit' ? 'habit' : 'task');
                               closeAndClear();
+                              // A no-op once the item has replaced the launcher
+                              // slot; over the look-only preview the open is
+                              // deferred instead, and its promotion at landing
+                              // needs the slot free (as quickAdd's empty add).
+                              closeLauncher();
                             }}
                           >
                             <Icon
@@ -1580,6 +1591,9 @@ export function Omnibar({
                   openBulkAdd({ text: pasted });
                   setOpen(false);
                   inputRef.current?.blur();
+                  // As for a picked result: the dialog replaced the launcher,
+                  // or (over the preview) was deferred and needs the slot.
+                  closeLauncher();
                 }
               }}
               placeholder={

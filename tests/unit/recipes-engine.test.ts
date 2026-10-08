@@ -516,6 +516,49 @@ describe('guards', () => {
     expect(toastTexts()).toEqual([]);
   });
 
+  /**
+   * The look-only preview is a load still in flight, so the readiness check
+   * above already covers it (`isPreview` never stands alone: the landing set()
+   * clears it with `isLoading`, lib/planner-ready.ts). Pinned separately
+   * because a hand-run is the one way in that no trigger and no write barrier
+   * sees: ⌘K's recipe commands are held during a preview, but a recipe run
+   * from anywhere else must still find the engine shut.
+   */
+  it('nothing runs while the look-only preview is up, by hand either', () => {
+    const one = recipe({ trigger: { on: 'command' }, steps: [{ do: 'toast', text: 'on command' }] });
+    seedRecipes(one);
+    usePlannerStore.setState({ isLoading: true, isPreview: true });
+    runRecipeFromCommand(one.id);
+    flush();
+    expect(toastTexts()).toEqual([]);
+    usePlannerStore.setState({ isLoading: false, isPreview: false });
+    runRecipeFromCommand(one.id);
+    flush();
+    expect(toastTexts()).toEqual(['on command']);
+  });
+
+  /**
+   * What a capture held through the look-only preview meets at the landing.
+   * held-captures files it a microtask after the landing's set(), and its
+   * item.created is raised then, but RecipeHost starts this account's mods
+   * hydrate only once the planner has settled, so the rows are still on their
+   * way and the engine drops the event. The same as main's capture typed
+   * during a cold load: a recipe hears a create only once its mods are loaded
+   * (memory/plans/instant-planner.md, "Main's features during the preview").
+   */
+  it('a create raised while this account\'s mods are still loading runs nothing', () => {
+    seedRecipes(recipe({ trigger: { on: 'item.created' }, steps: [{ do: 'toast', text: 'added' }] }));
+    // mods-store's hydrate: the account stamped, its rows not back yet.
+    useModsStore.setState({ loaded: false });
+    store().addTask({ title: 'Held' } as Parameters<ReturnType<typeof store>['addTask']>[0]);
+    flush();
+    expect(toastTexts()).toEqual([]);
+    useModsStore.setState({ loaded: true });
+    store().addTask({ title: 'Later' } as Parameters<ReturnType<typeof store>['addTask']>[0]);
+    flush();
+    expect(toastTexts()).toEqual(['added']);
+  });
+
   it("nothing runs for another account's rows", () => {
     seedRecipes(r());
     useModsStore.setState({ hydratedUserId: '22222222-2222-4222-8222-222222222222' });

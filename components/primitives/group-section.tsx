@@ -141,7 +141,9 @@ export function GroupSection({
   );
 
   return (
-    <div className={className}>
+    // A settle frame (lib/settle.ts): the cached → fresh landing glides the
+    // section to its new place, and its rows ride along.
+    <div className={className} data-settle-key={`group:${groupKey ?? label}`} data-settle-role="frame">
       {menuTarget ? (
         <ContainerContextMenu kind={menuTarget.kind} id={menuTarget.id}>
           {head}

@@ -3,6 +3,7 @@
 import { create } from 'zustand';
 import { format } from 'date-fns';
 import { usePlannerStore } from './planner-store';
+import { isPlannerLoaded, isPlannerPreviewing, whenPreviewEnds } from './planner-ready';
 import { inactiveItemIdsOn } from './active';
 import { milestoneItemIds } from './goals';
 import { useAISettingsStore } from './ai-settings-store';
@@ -272,7 +273,13 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
    * cannot resurrect a card the user has already dealt with.
    */
   let generation = 0;
-  const claim = () => ++generation;
+  /** The ask waiting out a look-only preview, if any: a newer claim ends its wait. */
+  let waiting: AbortController | null = null;
+  const claim = () => {
+    waiting?.abort();
+    waiting = null;
+    return ++generation;
+  };
   const settle = (token: number, patch: Partial<ProposalStore>) => {
     if (token === generation) set(patch);
   };
@@ -285,6 +292,19 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
    * second copy of the fetch that will one day be updated alone.
    */
   async function askModel(promptForModel: string, itemId: string | undefined, token: number): Promise<void> {
+    // Nothing goes out on cached rows, as with Ask's send
+    // (lib/conversations-store.ts): during the look-only preview the ask
+    // waits for the load to settle, then reads the gate and builds its context
+    // from the fresh rows. The card shows its spinner meanwhile. Asked before
+    // awaiting, so an ordinary ask still reaches fetch in its caller's tick.
+    if (isPlannerPreviewing()) {
+      const wait = new AbortController();
+      waiting = wait;
+      await whenPreviewEnds(wait.signal);
+      if (waiting === wait) waiting = null;
+      if (token !== generation) return;
+    }
+
     // Who proposes is the gate's call (lib/ai-registry.ts): the connected
     // model, or an OpenClaw GATEWAY. The plugin path has no structured
     // proposals, and the route never reroutes an OpenClaw user's planner to a
@@ -485,6 +505,10 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
     },
 
     accept: (operations) => {
+      // Before claim(), so the card stays: applyProposal re-validates against
+      // the CURRENT planner, which before landing is empty or the look-only
+      // preview, and a 0 from there would close it as "those items have changed".
+      if (!isPlannerLoaded()) return 0;
       const { proposal, lastRequest } = get();
       if (!proposal) return 0;
       const chosen = operations ?? proposal.operations;

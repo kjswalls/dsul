@@ -171,6 +171,26 @@ describe('undo in the store', () => {
     expect(only.map((e) => e.undoneLabel)).toEqual(['Mod: Water · command Log']);
   });
 
+  it('raises nothing for a ⌘Z the look-only preview refused, and the same ⌘Z after the landing does', async () => {
+    // memory/plans/instant-planner.md: undo is refused while previewing (the
+    // write barrier), and the refusal returns before the history is read, so a
+    // mod never hears an uncompletion computed against cached rows.
+    await load([habit('h1')]);
+    store().toggleHabitStatus('h1', 'done');
+    vi.runAllTimers();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    usePlannerStore.setState({ isPreview: true });
+    store().undo();
+    vi.runAllTimers();
+    expect(only).toEqual([]);
+    expect(store().items.find((i) => i.id === 'h1')?.completedDates).toEqual([TODAY]);
+    usePlannerStore.setState({ isPreview: false });
+    warn.mockRestore();
+    store().undo();
+    vi.runAllTimers();
+    expect(only.map((e) => [e.kind, e.itemId])).toEqual([['item.uncompleted', 'h1']]);
+  });
+
   it('redo raises nothing, and an undo that took no completion away raises nothing', async () => {
     await load([task('t1')]);
     store().toggleTaskStatus('t1');

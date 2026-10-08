@@ -132,9 +132,24 @@ function safeEnabled(enabled: Record<string, boolean>, slug: string): boolean {
   }
 }
 
+/**
+ * The map every DISPLAY gate below reads: the planner snapshot's remembered
+ * toggles while a look-only preview waits on the real fetch, then the server's.
+ * Without it a goal-grouped canvas would paint ungrouped from the cache and
+ * regroup mid-preview, un-animated. `isEnabled()` in the store never sees the
+ * preview map — Beeminder live and confetti act, and acting reads server truth.
+ *
+ * Returns one of the two STORED objects, never a merge, so a selector over it
+ * keeps its identity between renders.
+ */
+const gateMap = (s: {
+  enabled: Record<string, boolean>;
+  previewEnabled?: Record<string, boolean> | null;
+}): Record<string, boolean> => s.previewEnabled ?? s.enabled;
+
 /** Reactive: re-renders the caller when the toggle flips. */
 export function useExtensionEnabled(slug: string): boolean {
-  return useExtensionsStore((s) => safeEnabled(s.enabled, slug));
+  return useExtensionsStore((s) => safeEnabled(gateMap(s), slug));
 }
 
 /**
@@ -144,7 +159,7 @@ export function useExtensionEnabled(slug: string): boolean {
  */
 export function extensionEnabled(slug: string): boolean {
   try {
-    return safeEnabled(useExtensionsStore.getState().enabled, slug);
+    return safeEnabled(gateMap(useExtensionsStore.getState()), slug);
   } catch (error) {
     console.warn(`[extensions] gate read failed for "${slug}" — treating as off:`, error);
     return false;
@@ -157,12 +172,12 @@ export function extensionEnabled(slug: string): boolean {
  * entry per row, each naming its own extension, and it resolves them all
  * through this (see components/planner/organize/console-rail.tsx).
  *
- * Stable while the toggles are: `enabled` is a whole object the store replaces
- * only when something is actually written, so the callback identity survives
- * ordinary re-renders and a `useMemo` keyed on it does not churn.
+ * Stable while the toggles are: `gateMap` hands back a whole object the store
+ * replaces only when something is actually written, so the callback identity
+ * survives ordinary re-renders and a `useMemo` keyed on it does not churn.
  */
 export function useExtensionPredicate(): (slug: string) => boolean {
-  const enabled = useExtensionsStore((s) => s.enabled);
+  const enabled = useExtensionsStore(gateMap);
   return useCallback((slug: string) => safeEnabled(enabled, slug), [enabled]);
 }
 
@@ -208,7 +223,7 @@ function resolveGroupBy<T extends string>(value: T, enabled: Record<string, bool
 /** The canvas group-by every view should actually group by. */
 export function useCanvasGroupBy(): GroupBy {
   const stored = useViewStore((s) => s.canvasGroupBy);
-  return useExtensionsStore((s) => resolveGroupBy(stored, s.enabled));
+  return useExtensionsStore((s) => resolveGroupBy(stored, gateMap(s)));
 }
 
 /**
@@ -224,7 +239,7 @@ export function resolvedCanvasGroupBy(): GroupBy {
   try {
     return resolveGroupBy(
       useViewStore.getState().canvasGroupBy,
-      useExtensionsStore.getState().enabled
+      gateMap(useExtensionsStore.getState())
     );
   } catch (error) {
     console.warn('[extensions] group-by resolution failed — falling back to none:', error);
@@ -244,7 +259,7 @@ export function resolvedCanvasGroupBy(): GroupBy {
 export function groupByOptionsFor<T extends { value: string }>(list: readonly T[]): T[] {
   let enabled: Record<string, boolean>;
   try {
-    enabled = useExtensionsStore.getState().enabled;
+    enabled = gateMap(useExtensionsStore.getState());
   } catch {
     enabled = {};
   }
@@ -257,7 +272,7 @@ export function groupByOptionsFor<T extends { value: string }>(list: readonly T[
 /** The braindump's own vocabulary — same resolution. */
 export function useBraindumpGroupBy(): BraindumpGroupBy {
   const stored = useViewStore((s) => s.braindumpGroupBy);
-  return useExtensionsStore((s) => resolveGroupBy(stored, s.enabled));
+  return useExtensionsStore((s) => resolveGroupBy(stored, gateMap(s)));
 }
 
 /* ── goal membership ──────────────────────────────────────────────────────── */

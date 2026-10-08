@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach, onTestFinished } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor, act, within } from '@testing-library/react';
 
 /**
@@ -306,6 +306,24 @@ describe('the shell', () => {
     expect(tab()).toBe('braindump');
     act(() => swipe.handlers?.onSwipedLeft?.());
     expect(tab()).toBe('today');
+  });
+
+  it("keeps the preview's sync line outside the keyed tab, so a tab change neither remounts nor fades it", () => {
+    seed(NOTHING_CONNECTED);
+    usePlannerStore.setState({ isLoading: true, isPreview: true });
+    onTestFinished(() => {
+      usePlannerStore.setState({ isLoading: false, isPreview: false });
+    });
+    render(<MobileShell />);
+    const line = screen.getByTestId('planner-sync-line');
+    const content = line.parentElement!;
+    expect(content).toHaveClass('relative');
+    expect(content.firstElementChild).toBe(line);
+    expect(within(content).getByTestId('surface-today')).toBeInTheDocument();
+
+    act(() => swipe.handlers?.onSwipedRight?.());
+    expect(tab()).toBe('braindump');
+    expect(screen.getByTestId('planner-sync-line')).toBe(line);
   });
 
   it('swipes onto chat when something can answer', () => {

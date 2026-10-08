@@ -14,6 +14,7 @@
 import { recordAgentReply, type ItemEvent } from './db'
 import { itemTypeName } from './item-registry'
 import { usePlannerStore } from './planner-store'
+import { isPlannerPreviewing } from './planner-ready'
 import type { Item } from './planner-types'
 
 /**
@@ -60,11 +61,13 @@ export function pickOpenQuestionOptions(
  *
  * The flip is what takes the item out of Needs you and puts it under With AI
  * activity, spinning: the honest next state. Returns false, writing nothing,
- * for a blank answer.
+ * for a blank answer, and while the planner is the look-only preview: the
+ * store's write barrier (lib/preview-write-guard.ts) would refuse the flip,
+ * leaving a reply on the trail of an item that never re-queues.
  */
 export function answerAgentQuestion(item: Item, text: string): boolean {
   const trimmed = text.trim()
-  if (!trimmed) return false
+  if (!trimmed || isPlannerPreviewing()) return false
   recordAgentReply(item.id, itemTypeName(item), trimmed)
   usePlannerStore.getState().updateTask(item.id, { aiStatus: 'queued' })
   return true

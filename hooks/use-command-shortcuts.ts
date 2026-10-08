@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { getShortcutBindings, useKeyboardShortcutsStore } from '@/lib/keyboard-shortcuts-store';
-import { MOD, STATIC_COMMANDS, isAvailable, matchesBinding, pressedKeys } from '@/lib/commands';
+import { MOD, STATIC_COMMANDS, heldByPreview, isAvailable, matchesBinding, pressedKeys } from '@/lib/commands';
 import { useCommandUsageStore } from '@/lib/command-usage-store';
 import type { CommandContext } from '@/lib/commands';
 
@@ -136,7 +136,13 @@ export function useCommandShortcuts(ctx: CommandContext, shellHandlers: ShellHan
             // browser's page zoom everywhere except the week views that scale
             // columns (lib/commands/registry.ts), and that handback is the only
             // reason those bindings have an `availableWhen`.
-            if (command.shortcut?.allowInInput) event.preventDefault();
+            //
+            // Except one greyed only by the look-only preview (heldByPreview):
+            // it is the app's key, refused for a moment, and handing ⌘A back
+            // would select the whole page in the browser's blue.
+            if (command.shortcut?.allowInInput || heldByPreview(command, ctxRef.current)) {
+              event.preventDefault();
+            }
             return;
           }
           event.preventDefault();

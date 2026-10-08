@@ -87,7 +87,8 @@ let addTask: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   addTask = vi.fn();
-  usePlannerStore.setState({ addTask, animationsEnabled: true });
+  // Signed in and loaded: a capture before landing is now held, not added (lib/held-captures.ts).
+  usePlannerStore.setState({ addTask, animationsEnabled: true, userId: 'u1', isLoading: false, error: null });
   useMobileNavStore.setState({ activeTab: 'today' });
 });
 afterEach(() => {

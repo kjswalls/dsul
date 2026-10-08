@@ -50,6 +50,15 @@ let intent = 0;
  * newer row is never taken down), and only while it is the newest thing the
  * user did: a planner edit after it takes the strip and Ctrl+Z, so the row
  * goes then, and Ctrl+Z undoes the edit rather than turning AI back on.
+ *
+ * A load is not an edit. The setup column is up through the look-only preview
+ * and a cold load, and the landing restarts the history at its 'Session
+ * start' (historyIndex -1 to 0), as a Retry's opening set() does the other
+ * way: while a load is in flight on either side of a change, the mark just
+ * follows it (memory/plans/instant-planner.md, "Main's features during the
+ * preview"). A change of account is not a load: identifyUser's switch (or a
+ * sign-out) takes the row down before the load rule can re-mark across it, or
+ * the last account's Undo would turn AI back on for the next.
  */
 function showOffRow(label: string, focusUndo: boolean, kept: KeptQuestion | null): string {
   const id = `ai-off-${++seq}`;
@@ -61,11 +70,14 @@ function showOffRow(label: string, focusUndo: boolean, kept: KeptQuestion | null
     focusUndo,
     onUndo: () => void undoNoAI(kept),
   });
-  const mark = usePlannerStore.getState().historyIndex;
+  let mark = usePlannerStore.getState().historyIndex;
   const leave = () => useUndoStripStore.getState().dismiss(id);
   const timer = setTimeout(leave, AI_OFF_STRIP_MS);
-  const stopWatching = usePlannerStore.subscribe((s) => {
-    if (s.historyIndex !== mark) leave();
+  const stopWatching = usePlannerStore.subscribe((s, prev) => {
+    // Another account (or none): the row was the last one's, and its Undo would write to this one.
+    if (s.userId !== prev.userId) leave();
+    else if (s.isLoading || prev.isLoading) mark = s.historyIndex;
+    else if (s.historyIndex !== mark) leave();
   });
   // However the row goes (its clock, ✕, Undo, a newer row), the watch goes with it.
   const stopOnLeave = useUndoStripStore.subscribe((s) => {

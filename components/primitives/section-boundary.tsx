@@ -2,6 +2,7 @@
 
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
+import { isPlannerPreviewing } from '@/lib/planner-ready';
 import { cn } from '@/lib/utils';
 
 /**
@@ -16,6 +17,13 @@ import { cn } from '@/lib/utils';
  * `resetKey` clears a caught error when it changes, so moving to another view
  * (or tab) is a way out as well as the button. Copy follows the app's rule for
  * failure: say what happened in plain words, blame no one, offer the next step.
+ *
+ * Not while the planner is the look-only preview (memory/plans/instant-planner.md,
+ * Crash recovery): a throw then is the cached rows' until shown otherwise, so
+ * it goes on up to PreviewCrashBoundary, which drops the preview and the
+ * snapshot and renders again. Kept here, it would hold its error over the
+ * fresh rows once they land, leave the snapshot that threw on disk, and hold
+ * the crash marker's clean exit, so every reload would fail the same way.
  */
 interface SectionBoundaryProps {
   /** What the person calls this part of the screen, for the message. */
@@ -54,6 +62,7 @@ export class SectionBoundary extends Component<SectionBoundaryProps, SectionBoun
 
   render() {
     if (!this.state.error) return this.props.children;
+    if (isPlannerPreviewing()) throw this.state.error;
     return (
       <div
         role="alert"

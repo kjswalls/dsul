@@ -9,6 +9,7 @@ import { NeedsYou } from '@/components/ai/ask/needs-you';
 import { AIActivity } from '@/components/ai/ask/ai-activity';
 import { AskFlowNote, ItWorksCard, useItWorksShown } from '@/components/ai/ask/it-works-card';
 import { usePlannerStore } from '@/lib/planner-store';
+import { usePlannerLoaded } from '@/lib/planner-ready';
 import { useConversationsStore } from '@/lib/conversations-store';
 import { useEODStore } from '@/lib/eod-store';
 import { buildChatOpeners, HOME_OPENERS, type ChatOpener } from '@/lib/ai-openers';
@@ -127,7 +128,12 @@ export function AskHome({ variant = 'rail' }: { variant?: 'rail' | 'mobile' }) {
     [ctx, minutesNow, eodEnabled, eodTime]
   );
 
-  const waiting = useMemo(() => needsYou(items), [items]);
+  // Answering is an act (a reply on the item's trail, then the re-queue), so
+  // Needs you waits for fresh data (lib/planner-ready.ts, loaded). Over the
+  // look-only preview it would offer a question already answered elsewhere,
+  // and the write barrier would refuse the re-queue after the reply had gone.
+  const loaded = usePlannerLoaded();
+  const waiting = useMemo(() => (loaded ? needsYou(items) : []), [loaded, items]);
 
   // The conversations History lists, not every summary ever cached: one
   // deleted on another device leaves both at the same refresh. Today's are

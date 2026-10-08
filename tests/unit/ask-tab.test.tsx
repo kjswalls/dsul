@@ -130,7 +130,7 @@ import type { TaskItem } from '@/lib/planner-types';
 import { matchCommands, STATIC_COMMANDS, type CommandContext } from '@/lib/commands';
 import { useAIConnectionStore } from '@/lib/ai-connection-store';
 import { CONNECTED_MODEL, NOTHING_CONNECTED, OPENCLAW_PLUGIN, seedAI } from './helpers/ai-fixtures';
-import { fakeApi, fakeTransport, flush, summary, type FakeTransport } from './helpers/conversations-fakes';
+import { fakeApi, fakeTransport, flush, summary, type FakeApi, type FakeTransport } from './helpers/conversations-fakes';
 
 beforeAll(() => {
   if (!('PointerEvent' in globalThis)) {
@@ -583,6 +583,113 @@ describe('items push over Ask while the tab is mounted', () => {
     renderShell([{ kind: 'history' }, { kind: 'item', itemId: 'item-1' }]);
     act(() => usePlannerStore.setState({ items: [] }));
     expect(phone()).toEqual([{ kind: 'history' }]);
+  });
+});
+
+/**
+ * An item's conversation opened from a History row or an activity row while
+ * the planner is the look-only preview (lib/open-chat.ts openConversation).
+ * The pushed view is an inline, autosaving editor, so it must never be seeded
+ * from a cached row: it waits for the load, then edits the fresh one.
+ */
+describe("an item's conversation opened over the look-only preview", () => {
+  const CACHED = { ...TASK, title: 'Book the dentist (cached)' } as TaskItem;
+  const FRESH = { ...TASK, title: 'Book the dentist, Tuesday' } as TaskItem;
+  // Today's, so Ask home lists it under With AI activity too.
+  const ROW = summary({ id: 'c-item', itemId: 'item-1', title: 'Dentist', lastMessageAt: new Date().toISOString() });
+  const TOP = { kind: 'item', itemId: 'item-1', fallbackConversation: 'c-item', returnFocus: 'conv:c-item' };
+
+  let api: FakeApi;
+  beforeEach(() => {
+    api = fakeApi();
+    api.answer.list = (o) =>
+      o?.cursor ? undefined : { ok: true, value: { conversations: [ROW], starred: [], nextCursor: null } };
+    api.answer.thread = () => ({ ok: true, value: { conversation: ROW, messages: [], hasEarlier: false } });
+    configureConversations({ api: api.api, transport: transport.transport });
+    usePlannerStore.setState({ isLoading: true, isPreview: true, items: [CACHED] } as never);
+  });
+  afterEach(() =>
+    usePlannerStore.setState({ isPreview: false, isLoading: false, error: null, loadFailedUserId: null } as never)
+  );
+
+  const land = (items: TaskItem[]) =>
+    act(() => usePlannerStore.setState({ isLoading: false, isPreview: false, items } as never));
+
+  async function openFrom(testId: string) {
+    renderShell(testId === 'history-row' ? [{ kind: 'history' }] : []);
+    await act(() => flush());
+    fireEvent.click(screen.getByTestId(testId));
+  }
+
+  it.each([['history-row'], ['ai-activity-row']])(
+    'from a %s: reads as loading, never an editor on the cached row, then edits the fresh one',
+    async (testId) => {
+      await openFrom(testId);
+      expect(phone().at(-1)).toEqual(TOP);
+      expect(screen.getByTestId('ask-item-loading')).toHaveTextContent('Loading…');
+      expect(screen.queryByTestId('ask-item')).toBeNull();
+      expect(screen.queryByDisplayValue(CACHED.title)).toBeNull();
+
+      land([FRESH]);
+      expect(screen.queryByTestId('ask-item-loading')).toBeNull();
+      expect(screen.getByTestId('ask-item')).toBeInTheDocument();
+      expect(screen.getByDisplayValue(FRESH.title)).toBeInTheDocument();
+      expect(screen.queryByDisplayValue(CACHED.title)).toBeNull();
+      expect(phone().at(-1)).toEqual(TOP);
+    }
+  );
+
+  it.each([['history-row'], ['ai-activity-row']])(
+    'from a %s: an item gone from the fresh rows gives way to its conversation',
+    async (testId) => {
+      await openFrom(testId);
+      land([]);
+      await act(() => flush());
+      expect(phone().at(-1)).toEqual({ kind: 'conversation', id: 'c-item', returnFocus: 'conv:c-item' });
+      expect(screen.queryByTestId('ask-item')).toBeNull();
+      expect(screen.getByTestId('conversation-item-gone')).toHaveTextContent('The item this was about is gone.');
+    }
+  );
+
+  it('an item made since the snapshot (missing from the cache) still opens as its item', async () => {
+    usePlannerStore.setState({ items: [] } as never);
+    await openFrom('history-row');
+    expect(phone().at(-1)).toEqual(TOP);
+    land([FRESH]);
+    expect(screen.getByDisplayValue(FRESH.title)).toBeInTheDocument();
+  });
+
+  it('once found, a later delete goes back, not to the conversation', async () => {
+    await openFrom('history-row');
+    land([FRESH]);
+    act(() => usePlannerStore.setState({ items: [] }));
+    expect(phone()).toEqual([{ kind: 'history' }]);
+  });
+
+  it('a failed load settles with nothing to edit: the conversation shows', async () => {
+    await openFrom('history-row');
+    act(() =>
+      usePlannerStore.setState({
+        isLoading: false,
+        isPreview: false,
+        items: [],
+        error: 'load failed',
+        loadFailedUserId: 'user-1',
+      } as never)
+    );
+    await act(() => flush());
+    expect(phone().at(-1)).toMatchObject({ kind: 'conversation', id: 'c-item' });
+    // Nothing loaded, so nothing is known to be gone.
+    expect(screen.queryByTestId('conversation-item-gone')).toBeNull();
+  });
+
+  it("a conversation's view says its item is gone only on fresh rows", async () => {
+    usePlannerStore.setState({ items: [] } as never);
+    renderShell([{ kind: 'conversation', id: 'c-item' }]);
+    await act(() => flush());
+    expect(screen.queryByTestId('conversation-item-gone')).toBeNull();
+    land([]);
+    expect(screen.getByTestId('conversation-item-gone')).toBeInTheDocument();
   });
 });
 

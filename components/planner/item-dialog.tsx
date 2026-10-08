@@ -1805,9 +1805,11 @@ function ItemDialogInner({
                 label={CONTAINER_KINDS.routine.newLabel}
                 defaultIcon={makeIconToken('Repeat')}
                 testId="item-dialog-routine-new"
-                onCreate={(name, icon) =>
-                  toggleRoutine(addRoutine({ name, icon, itemIds: [] }), true)
-                }
+                onCreate={(name, icon) => {
+                  // '' is a refusal (the preview's write barrier): nothing to tick.
+                  const id = addRoutine({ name, icon, itemIds: [] });
+                  if (id) toggleRoutine(id, true);
+                }}
               />
             )}
             {/* The manager's home. It is NOT in the braindump header —
@@ -1931,12 +1933,10 @@ function ItemDialogInner({
                 label={CONTAINER_KINDS.season.newLabel}
                 defaultIcon={makeIconToken('CalendarRange')}
                 testId="item-dialog-season-new"
-                onCreate={(name, icon) =>
-                  toggleSeason(
-                    addSeason({ name, icon, state: 'auto', itemIds: [], routineIds: [] }),
-                    true
-                  )
-                }
+                onCreate={(name, icon) => {
+                  const id = addSeason({ name, icon, state: 'auto', itemIds: [], routineIds: [] });
+                  if (id) toggleSeason(id, true);
+                }}
               />
             )}
             {/* A door, gone while the console is off — see the routine
@@ -2079,19 +2079,17 @@ function ItemDialogInner({
                 label={CONTAINER_KINDS.goal.newLabel}
                 defaultIcon={makeIconToken('Target')}
                 testId="item-dialog-goal-new"
-                onCreate={(name, icon) =>
-                  toggleGoal(
-                    addGoal({
-                      name,
-                      icon,
-                      state: 'active',
-                      memberIds: [],
-                      milestoneIds: [],
-                      checkinIds: [],
-                    }),
-                    true
-                  )
-                }
+                onCreate={(name, icon) => {
+                  const id = addGoal({
+                    name,
+                    icon,
+                    state: 'active',
+                    memberIds: [],
+                    milestoneIds: [],
+                    checkinIds: [],
+                  });
+                  if (id) toggleGoal(id, true);
+                }}
               />
             )}
             {/* The Goals section of the console rides EXT_GOALS, not

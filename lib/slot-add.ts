@@ -3,6 +3,7 @@ import { getItemTypeConfig, ALL_ITEM_TYPES } from './item-registry';
 import { getBucketForTime } from './time-bucket';
 import { repeatPatch } from './item-edit';
 import { usePlannerStore } from './planner-store';
+import { keepCanvasAdd } from './held-captures';
 import { openEditFor, useUIStore } from './ui-store';
 import { useSelectionStore } from './selection-store';
 import type { ItemTypeDef, Priority } from '@dsul/types';
@@ -117,6 +118,9 @@ export function addableTypes(itemTypes: ItemTypeDef[]): Array<{ name: string; la
  *     repeats, which is why the composer says "every day" when one is chosen.
  *   - A task without a date is a braindump item, so a dated surface always
  *     passes its date.
+ *
+ * Until the account's data has landed (over a failed load, where these fields
+ * are live), the row is kept by lib/held-captures.ts as a capture's is.
  */
 export function addAt(target: SlotTarget, typeName: string, rawTitle: string): string | undefined {
   const title = rawTitle.trim();
@@ -135,23 +139,30 @@ export function addAt(target: SlotTarget, typeName: string, rawTitle: string): s
   const project = target.kind === 'grid' ? target.project : undefined;
   const priority = target.kind === 'grid' && fieldApplies(typeName, 'priority') ? target.priority : undefined;
 
+  let id: string | undefined;
   if (typeName === 'habit') {
-    return store.addHabit({
+    id = store.addHabit({
       title,
       project,
       ...placement,
       ...repeatPatch('habit', config.defaultFrequency, [], 1),
       timesPerDay: 1,
     });
+  } else {
+    const fields = {
+      title,
+      project,
+      priority,
+      ...placement,
+      startDate: config.dateAnchored ? target.dateStr : undefined,
+    };
+    id = typeName === 'task' ? store.addTask(fields) : store.addItem(typeName, fields);
   }
-  const fields = {
-    title,
-    project,
-    priority,
-    ...placement,
-    startDate: config.dateAnchored ? target.dateStr : undefined,
-  };
-  return typeName === 'task' ? store.addTask(fields) : store.addItem(typeName, fields);
+  // Typed text, like a quick capture: filed over a failed load (or by the blur
+  // a click on its Retry makes), the row is kept until a landing settles it,
+  // or the Retry's landing would replace the store it was filed on.
+  keepCanvasAdd(id);
+  return id;
 }
 
 /** Open what was just made in the item panel (⇧↵, "add it, then the details"). */
