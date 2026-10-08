@@ -217,7 +217,7 @@ describe('inviting', () => {
     fireEvent.paste(screen.getByTestId('connect-key'), { clipboardData: { getData: () => 'AIzaSyTEST-SENTINEL-9876' } });
     expect(screen.getByTestId('connect-submit')).toHaveTextContent('Connect and ask');
     fireEvent.click(screen.getByTestId('connect-fold-openrouter'));
-    expect(Array.from(page().querySelectorAll('[class*="bg-primary"]'))).toEqual([]);
+    expect(Array.from(page().querySelectorAll('[class*="bg-primary"], [data-slot="button-key"]'))).toEqual([]);
   });
 });
 
