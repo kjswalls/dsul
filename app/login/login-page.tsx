@@ -1,6 +1,6 @@
 'use client';
 
-import { useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 import { ExternalLink, MailCheck } from 'lucide-react';
@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { RelayField } from '@/components/primitives/relay-field';
 import { DEFAULT_LOGIN_HEADLINE, pickLoginHeadline } from '@/lib/login-headlines';
+import { takeDeletionNotice } from '@/lib/account-client';
 
 const BROWSER_UNOPENED = 'Couldn’t open your browser to sign in. Try again.';
 
@@ -138,6 +139,18 @@ function LoginPageInner({ apple }: { apple: boolean }) {
   // A token, not a counter of anything meaningful: every change re-strikes the
   // field's ripple from the focal point. See RelayField's `burst` docs.
   const [burst, setBurst] = useState(0);
+  // Settings → dsul → Delete account left a note in sessionStorage (it
+  // survives the sign-out that brought the browser here), so this page says
+  // the account is deleted. Read once, in an effect: the server render never
+  // reads storage, and a reload shows nothing. react-hooks/set-state-in-effect
+  // flags the set; reading FROM an external store is the case its guidance
+  // carves out. Only a line is ever set, so a second run (Strict Mode) that
+  // finds the note already taken keeps the first one's.
+  const [deletedNotice, setDeletedNotice] = useState<string | null>(null);
+  useEffect(() => {
+    const line = takeDeletionNotice();
+    if (line) setDeletedNotice(line);
+  }, []);
 
   const { ref: columnRef, focal } = useContentFocal();
 
@@ -441,6 +454,15 @@ function LoginPageInner({ apple }: { apple: boolean }) {
               </div>
 
               <div className="space-y-3 delay-200 duration-700 animate-in fade-in slide-in-from-bottom-2 fill-mode-both motion-reduce:animate-none">
+                {deletedNotice && (
+                  <p
+                    role="status"
+                    className="text-[12.5px] leading-relaxed text-foreground"
+                    data-testid="login-deleted"
+                  >
+                    {deletedNotice}
+                  </p>
+                )}
                 {/* bg-card/55 replaces the outline variant's opaque
                     `bg-background`, which was the one solid patch on the whole
                     frost — the glass died inside the button's rectangle, which

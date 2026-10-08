@@ -311,6 +311,8 @@ export interface SettingCtx {
     replayTour: () => void;
     signOut: () => void;
     openLedger: () => void;
+    /** Opens Delete account's dialog, which the settings page owns. */
+    deleteAccount: () => void;
   };
 }
 
@@ -1626,6 +1628,20 @@ export const SETTINGS: SettingRecord[] = [
     read: () => 'Sign out',
     write: (_v, ctx) => ctx.actions?.signOut(),
     defaultValue: 'Sign out',
+  },
+  {
+    // memory/plans/account-deletion.md. The dialog says what goes and what
+    // dsul can't delete for the person, and asks them to type DELETE.
+    id: 'dsul.deleteAccount',
+    pane: 'dsul',
+    label: 'Delete account',
+    description: 'Deletes your account and everything in it, on every device. It cannot be undone.',
+    control: 'action',
+    // Not 'delete account': that is the label, which search already reads.
+    keywords: ['remove account', 'close account', 'erase', 'gdpr'],
+    read: () => 'Delete…',
+    write: (_v, ctx) => ctx.actions?.deleteAccount(),
+    defaultValue: 'Delete…',
   },
 
   /* ── Extensions ───────────────────────────────────────────────────────── */

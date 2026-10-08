@@ -4,8 +4,11 @@ import Foundation
 
 /// AuthenticationServices' half of Sign in with Apple, so AuthStore and its
 /// tests need none of the framework's types: what Apple's request asks for,
-/// what the button's result comes to, and what Apple says about an Apple ID.
-/// With SignInView, the only app file that imports AuthenticationServices.
+/// what the button's result comes to, and what Apple says about an Apple ID;
+/// and for Delete account, the request for a fresh code and what it comes to.
+/// With SignInView and DeleteAccountSheet, the only app files that import
+/// AuthenticationServices. It imports no SwiftUI, so `ASAuthorizationResult`
+/// (AuthenticationServices' SwiftUI overlay) is the sheet's to unwrap.
 enum AppleAuthorization {
     /// Name and email, and the attempt's hashed nonce (nil: an attempt AuthStore
     /// refused; its completion is dropped unless another attempt is live).
@@ -72,4 +75,49 @@ enum AppleAuthorization {
     /// `ASAuthorizationAppleIDProvider.credentialRevokedNotification`, so AppGate
     /// needn't import the framework.
     static let revokedNotification: Notification.Name = ASAuthorizationAppleIDProvider.credentialRevokedNotification
+}
+
+/// What Apple's sheet came to, for Delete account.
+enum AppleDeletionOutcome: Sendable, Equatable {
+    /// Apple's one-time code, for the server to exchange for the tokens it
+    /// revokes once the account is deleted.
+    case code(String)
+    /// ASAuthorizationError.canceled: nothing is sent, and the sheet stays.
+    case cancelled
+    /// Any other error, or a credential without a usable code: the account is
+    /// deleted without one, and the sign-in screen says Apple may still list
+    /// dsul.
+    case failed
+}
+
+extension AppleAuthorization {
+    /// Apple's request before a deletion (memory/plans/account-deletion.md):
+    /// no scopes, since nothing is read from it, and `user` set to the Apple
+    /// ID AuthStore found this phone can authorize, as Apple advises for a
+    /// known user (`ASAuthorizationAppleIDRequest.user`). No nonce: the code
+    /// goes to dsul's server, never to GoTrue.
+    static func deletionRequest(user: String) -> ASAuthorizationAppleIDRequest {
+        let request = ASAuthorizationAppleIDProvider().createRequest()
+        request.requestedScopes = []
+        request.user = user
+        return request
+    }
+
+    /// The credential's `authorizationCode`, good once and for five minutes,
+    /// which Apple hands over as UTF-8 `Data`: `.code` when it reads as UTF-8
+    /// and isn't empty, else `.failed`. The sheet takes the credential out of
+    /// `ASAuthorizationResult.appleID` itself.
+    static func deletionOutcome(credential: ASAuthorizationAppleIDCredential) -> AppleDeletionOutcome {
+        guard let data = credential.authorizationCode,
+              let code = String(data: data, encoding: .utf8), !code.isEmpty
+        else { return .failed }
+        return .code(code)
+    }
+
+    /// `ASAuthorizationError.canceled` is `.cancelled`, as for sign-in;
+    /// anything else is `.failed`.
+    static func deletionOutcome(error: any Error) -> AppleDeletionOutcome {
+        if (error as? ASAuthorizationError)?.code == .canceled { return .cancelled }
+        return .failed
+    }
 }

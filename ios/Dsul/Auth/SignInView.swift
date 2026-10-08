@@ -1,3 +1,4 @@
+import Accessibility
 import AuthenticationServices
 import DsulCore
 import SwiftUI
@@ -13,14 +14,21 @@ import SwiftUI
 /// Apple is Apple's own `SignInWithAppleButton`, under Google's and as tall,
 /// with no browser and no redirect: its sheet hands back an identity token,
 /// which AuthStore sends to GoTrue's id_token grant with the attempt's nonce.
-/// AppleAuthorization turns the framework's types into AuthStore's; it and
-/// this view are the only app files that import AuthenticationServices
+/// AppleAuthorization turns the framework's types into AuthStore's; it, this
+/// view and DeleteAccountSheet (Apple's sheet again, for a code the server
+/// revokes with) are the only app files that import AuthenticationServices
 /// (memory/plans/ios-app.md, "Sign in with Apple").
 ///
 /// The emailed link comes back through the same page from Mail, Safari or
 /// another app's browser, so the app registers the scheme (project.yml) and
 /// DsulApp hands it to `AuthStore.handleOpenURL`. After a send this screen says
 /// "Check your email" until the link signs in or the user starts over.
+///
+/// VoiceOver hears the message line (`AuthStore.message`) when the screen
+/// appears with one and whenever a new one arrives: a deletion's done line,
+/// the signed-out line, a failed sign-in. The screen swap that brings most of
+/// them moves VoiceOver to "dsul" and never reads the line, and Apple asks
+/// that a deletion say it is done.
 struct SignInView: View {
     @Environment(AuthStore.self) private var auth
     @Environment(\.webAuthenticationSession) private var webAuthenticationSession
@@ -60,6 +68,21 @@ struct SignInView: View {
         }
         .onChange(of: auth.isSigningInWithApple) { _, signingIn in
             if !signingIn { appleAttemptScheme = nil }
+        }
+        .onChange(of: auth.message, initial: true) { _, message in
+            if let message { announceSettled(message) }
+        }
+    }
+
+    /// Says `message` to VoiceOver once the screen has settled: said at once,
+    /// the focus move that comes with the screen (or the sheet closing over
+    /// it) would cut it off. Not said if a newer line has replaced it by then.
+    private func announceSettled(_ message: String) {
+        let store = auth
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(600))
+            guard store.message == message else { return }
+            AccessibilityNotification.Announcement(AttributedString(message)).post()
         }
     }
 

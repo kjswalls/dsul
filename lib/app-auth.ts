@@ -21,8 +21,11 @@ import {
  * EVERY STATEMENT RUNS AS THE USER. The client this returns is the anon key
  * plus the caller's JWT, so RLS is the tenant guard on every read and write a
  * route makes with it, the same model /api/reminders/act uses with its cookie
- * client. The service role appears only where a route reports a completion to
- * a stake (reportLiveCompletion), which scopes by user_id itself.
+ * client. The service role appears in two places only: where a route reports a
+ * completion to a stake (reportLiveCompletion), which scopes by user_id itself,
+ * and in the account routes (lib/account-server), which build the service
+ * client only after the caller and the body are verified and act only on the
+ * verified caller's own id (memory/plans/account-deletion.md).
  *
  * TWO CHECKS, CHEAP FIRST. The token is decoded locally and refused if it is
  * not a live `authenticated` token for a uuid subject, so junk and expired
@@ -35,12 +38,26 @@ import {
  * 502-504 into `{ user: null }` just as it does a bad token, and the phone
  * answers a 401 by refreshing and retrying. Mapping a GoTrue blip to 401 would
  * turn it into a refresh storm against prod Auth from every signed-in phone.
+ *
+ * A DELETED ACCOUNT IS "GONE", AND ONLY THE ACCOUNT ROUTES SAY SO. A deleted
+ * user's access token stays well formed until it expires, and GoTrue answers it
+ * with `user_not_found` only after the signature checks out, so that answer
+ * proves the token's own `sub` was an account that no longer exists.
+ * `authenticateAppCaller` hands it back as `{ gone: true, userId }`, and the
+ * account routes use it: a delete retried after its answer was lost is 200
+ * (nothing left to delete), and a facts read is 410, so the phone can say the
+ * account is deleted rather than that it was signed out
+ * (memory/plans/account-deletion.md). Every other route goes through
+ * `authenticateAppRequest`, where gone is a 401 like any refused token.
  */
 
 export interface AppAuth {
   userId: string;
   client: SupabaseClient;
 }
+
+/** `userId` on gone is the token's `sub` (precheckToken's), from the token GoTrue just checked. */
+export type AppCaller = AppAuth | { gone: true; userId: string };
 
 /** A body never carries server text: `error` is one of a few fixed words. */
 export const unauthorized = () => NextResponse.json({ error: 'unauthorized' }, { status: 401 });
@@ -89,6 +106,13 @@ function bearerToken(req: Request): string | null {
  * send instead (401, or 503 when Auth could not be asked).
  */
 export async function authenticateAppRequest(req: Request): Promise<AppAuth | Response> {
+  const caller = await authenticateAppCaller(req);
+  if (caller instanceof Response) return caller;
+  return 'gone' in caller ? unauthorized() : caller;
+}
+
+/** authenticateAppRequest's checks, with GoTrue's user_not_found (after a good signature) as gone. */
+export async function authenticateAppCaller(req: Request): Promise<AppCaller | Response> {
   const jwt = bearerToken(req);
   if (!jwt) return unauthorized();
   const claims = precheckToken(jwt, Date.now() / 1000);
@@ -114,6 +138,9 @@ export async function authenticateAppRequest(req: Request): Promise<AppAuth | Re
       // a token this route does not understand, not a different caller.
       return user.id === claims.sub ? { userId: user.id, client } : unauthorized();
     }
+    // GoTrue loads the user only once the signature checks out, so this is
+    // the token's own subject, deleted (the header's "gone").
+    if (isAuthApiError(error) && error.code === 'user_not_found') return { gone: true, userId: claims.sub };
     // A session signed out since the token was minted (session_not_found
     // arrives as AuthSessionMissingError), or GoTrue refusing the token
     // outright. Everything else (no response, a 5xx, a 429) is Auth being

@@ -69,7 +69,9 @@ enum APIError: Error, Equatable, Sendable {
 /// Supabase access token as the bearer: capture, and the item writes (tick,
 /// braindump row to an hour, skip, move, pause, and the item sheet's title,
 /// notes, priority, times a day, reminder, time, repeat and project, Delete,
-/// Add a subtask, Reset streak and its routine and season toggles).
+/// Add a subtask, Reset streak and its routine and season toggles). And
+/// Delete account's two calls, on the account routes (lib/account-types.ts):
+/// what the sheet says, and the deletion.
 ///
 /// Writes are intents, never arrays: a tick or a skip sends the date and the
 /// end state, never `completedDates` or `skippedDates`, because the phone reads
@@ -182,6 +184,31 @@ final class APIClient {
     func capture(id: UUID, title: String) async throws {
         let body = CaptureBody(id: id.uuidString.lowercased(), title: title)
         _ = try await send("POST", "/api/app/items", body: try Self.encode(body))
+    }
+
+    /// GET /api/app/account: what the Delete account sheet says (DsulCore
+    /// `AccountFacts`). A body that isn't JSON, or has no `userId`, is
+    /// `badResponse`. A 410 is `.rejected(status: 410, code: "gone")`, as any
+    /// refusal is: the account is already deleted.
+    func accountFacts() async throws -> AccountFacts {
+        let result = try await send("GET", AccountDeletion.factsPath, body: nil)
+        do {
+            return try JSONDecoder().decode(AccountFacts.self, from: result.data)
+        } catch {
+            throw APIError.badResponse
+        }
+    }
+
+    /// POST /api/app/account/delete: `{"account":…,"confirm":"DELETE"}`, with
+    /// Apple's one-time code when there is one (DsulCore `AccountDeleteBody`).
+    /// `account` is the facts' `userId`, a guard the route checks against the
+    /// verified caller, never a target. Any 2xx is a deletion: its body only
+    /// says what became of Sign in with Apple, and one that can't be read is
+    /// `.unknown` (`AccountDeleted.read` never throws).
+    func deleteAccount(account: String, appleCode: String?) async throws -> AccountDeleted {
+        let body = AccountDeleteBody(account: account, appleCode: appleCode)
+        let result = try await send("POST", AccountDeletion.deletePath, body: try Self.encode(body))
+        return AccountDeleted.read(result.data)
     }
 
     /// Postgres stores uuids lowercase; `uuidString` is uppercase.

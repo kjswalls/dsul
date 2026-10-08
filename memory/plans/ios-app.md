@@ -108,13 +108,16 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   to `Registry.swift`, and `ContainerWords` to `EditCopy.swift`, pinned to
   `CONTAINER_KINDS` through the fixture. 2f-b adds `.collect` to
   `ItemWriteBody.swift` and `settingMembership` (← the store's
-  `setItemsCollected`) in `Membership.swift`.
+  `setItemsCollected`) in `Membership.swift`. Account deletion adds
+  `Account.swift` ← `lib/account-types.ts` (the facts, the answer, the body)
+  and `lib/account-copy.ts` (the sheet's words and the rules that pick them).
   Each cites what it mirrors.
 - `ios/Dsul/App`: `DsulApp` (one `AuthStore`), `AppGate` (sign-in screen,
   sample or the user's planner, keyed on `AuthStore.gateKey`), `AppConfig`.
   `ios/Dsul/Auth`: `AuthStore`, `TokenStore` (Keychain, or memory in tests),
   `SignInView`, `AppleAuthorization` (AuthenticationServices' half of Apple,
-  kept out of AuthStore). `ios/Dsul/Data`: `APIClient`, `PlannerSync`.
+  kept out of AuthStore), `DeleteAccountSheet` (Delete account, from the
+  avatar menu). `ios/Dsul/Data`: `APIClient`, `PlannerSync`.
   `ios/Dsul/Item`: the item sheet (`ItemSheet`, `ItemDetail`, `VerbBar`,
   `ChipFlow`, `StreakChip`, `DayPickSheet`, and from part 2 `TitleField`,
   `NotesEditor`, `SubtaskField` and `StreakPopover`, and from 2c `Editors/`:
@@ -937,7 +940,7 @@ memory/plans/sign-in-with-apple.md; the phone needs nothing beyond it, since
   lib/session-user-store.ts reads them), one `PUT /auth/v1/user` writes
   `{data: {full_name, name}}`, the two keys GoTrue's own Apple callback
   writes. No retry and no message: a failed write loses the name until the
-  user stops using Sign in with Apple for dsul and signs in again. The name
+  user removes dsul from Sign in with Apple and signs in again. The name
   is GoTrue's `TrimSpace(first + " " + last)` with control characters
   dropped, and none at all over 200 UTF-8 bytes, since it rides in every
   access token. A name the account already has (Google's, or one the web
@@ -977,28 +980,39 @@ memory/plans/sign-in-with-apple.md; the phone needs nothing beyond it, since
   `AppleAuthorization`: the request's scopes and nonce, the button's result
   as `AppleSignInOutcome`, and the credential state, so AuthStore and its
   tests need none of AuthenticationServices' types (only the
-  AppleAuthorization suite beside them imports it). `AuthStore`: the
-  attempt, the grant, the name write and the check. `SignInView`: the
-  button. `AppGate`: the check's three triggers, each in an unstructured
-  Task so the view swap a sign-out causes can't cancel its logout.
+  AppleAuthorization suites beside them import it, Delete account's
+  included). `AuthStore`: the attempt, the grant, the name write and the
+  check. `SignInView`: the button, and VoiceOver's reading of the message
+  line. `AppGate`: the check's three triggers, each in an unstructured Task
+  so the view swap a sign-out causes can't cancel its logout.
 - **Unproven on a device:** Apple's sheet and its first consent, the held
-  colour, the large-text layout, Stop Using, and a Hide My Email account
-  made on the web. ios/README.md lists the checks.
+  colour, the large-text layout, removing dsul from Sign in with Apple, and a
+  Hide My Email account made on the web. ios/README.md lists the checks.
 
-**Next: account deletion.** App Store guideline 5.1.1(v) wants it in the
-app, and for an Apple account it means revoking its token with Apple's REST
-API. That PR gets a fresh authorization code at the moment of deletion:
-Delete account runs a new Apple request (Face ID, no scopes), takes the
-credential's `authorizationCode` and sends it at once to a new bearer-auth
-server route, which exchanges it at `https://appleid.apple.com/auth/token`
-(`grant_type=authorization_code`, `client_id=app.dsul.ios`, since a native
-code is issued to the bundle ID, and a client secret minted with
-`scripts/apple-client-secret.mjs --client-id app.dsul.ios`; today's is
-minted for `app.dsul.web`), revokes the refresh token it gets back at
-`https://appleid.apple.com/auth/revoke`, then deletes the account. A code is
-single-use and good for five minutes, which is why this PR keeps none and
-never reads `authorizationCode`. The secret and the `.p8` stay server-side,
-never in `ios/`.
+**Account deletion** shipped with the web's
+(memory/plans/account-deletion.md). Delete account… in the avatar menu opens
+`DeleteAccountSheet` (a `PlannerSheet`): it names the account, says what goes
+and what dsul can't delete, and asks for DELETE; the server deletes the
+account at once, and the sign-in screen says "Your dsul account is deleted.",
+which VoiceOver reads. For an account that signs in with Apple, on a phone
+whose Apple Account can authorize its Apple ID, the sheet first asks Apple for
+a fresh code (Face ID, through SwiftUI's `authorizationController`: no scopes,
+`user` set, no nonce), which the server exchanges as `app.dsul.ios` and
+revokes after the delete, never before, with a five-minute client secret it
+signs itself, so nothing secret is in `ios/` and nothing needs rotating.
+
+**App Review waits for revocation on prod.** Submit the build only once the
+four Apple variables are deployed (sign-in-with-apple.md, setup step 8) and an
+Apple deletion has answered `revoked`: ios/README.md, "Checking account
+deletion", check 6 showed dsul gone from Sign in with Apple, or Vercel's logs
+show `[account] deleted revoked`. Reviewers sign up with Apple, and the
+guideline's FAQ says such apps "should use the Sign in with Apple REST API to
+revoke user tokens"; a build reviewed before that shows the manual line
+instead, which says dsul can't. The review notes, in App Store Connect:
+"Delete account: sign in first (Continue with Apple makes an account; Try with
+sample data has no account). On Today, tap the initials at the top right, then
+Delete account… in that menu. It deletes the account at once and, for an
+account made with Sign in with Apple, removes dsul from Sign in with Apple."
 
 ## Data (PR 3)
 - **Routes, not tables.** `GET /api/app/planner` (items, projects,
@@ -1256,9 +1270,7 @@ and moving existing blocks from the phone, the overdue tray, sinking completed r
 filters and `showPausedOnGrid` (the phone uses the defaults), syncing the
 timezone from the phone, notifications, Focus as a Live Activity, a
 local-stack password grant for development, and the web-side work the app
-still needs (a native push channel). Account deletion is next (App Store
-review wants it in the app), and for an Apple account it revokes the token
-with Apple (see "Sign in with Apple"). App Store review will also want consent
+still needs (a native push channel). App Store review will also want consent
 before sending data to a model. Notifications, the timezone write and the native push channel are
 planned in [reminders-platforms.md](reminders-platforms.md) (§2.3 and its
 Phase 2: local `UNUserNotificationCenter` triggers computed by a DsulCore port

@@ -29,8 +29,8 @@ one-time setup in Apple's and Supabase's dashboards, and the six-monthly secret 
   has none. The app asks Apple about the session's Apple ID at launch, on return and when Apple
   says it was revoked, and signs this phone out if it was revoked or the phone's Apple Account
   changed. App Store review also wants in-app account deletion, and for an Apple account that
-  means revoking its token with Apple; that is the next iPhone PR (memory/plans/ios-app.md,
-  "Sign in with Apple").
+  means revoking its token with Apple: Delete account does that from the iPhone (step 8 below
+  sets it up; memory/plans/account-deletion.md).
 
 ## The identifiers
 
@@ -82,6 +82,10 @@ Identifiers & Profiles at developer.apple.com/account, then in Supabase.
    lands in that account). Hide My Email makes a new, separate account only for an Apple Account
    that has never signed in to dsul, so try it with a second Apple Account if you have one (see
    below). On the iPhone, ios/README.md "Checking Sign in with Apple".
+8. **Revocation on account deletion.** In Vercel, Project → Settings → Environment Variables,
+   Production: `APPLE_TEAM_ID` (step 1), `APPLE_KEY_ID` (step 4), `APPLE_PRIVATE_KEY` (the whole
+   .p8 file's text, marked Sensitive) and `APPLE_IOS_CLIENT_ID` = `app.dsul.ios`. Redeploy. The
+   server signs its own short-lived secret from the key, so nothing here needs rotating.
 
 ## Rotation (every six months)
 
@@ -90,6 +94,10 @@ Google and email carry on. The iPhone's sign-in needs no client secret (GoTrue c
 against Apple's public keys), so it carries on. Before the date step 5 printed, rerun step 5 with
 the same .p8 and paste the new secret into Supabase (step 6). Nothing else changes, and nobody is
 signed out.
+
+Deletion's revocation has no secret to rotate. If the key itself is ever revoked in Apple's
+portal, make a new one (step 4) and replace `APPLE_KEY_ID` and `APPLE_PRIVATE_KEY`, and step 5's
+secret too.
 
 ## How it behaves
 
