@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
-import { ArrowUpRight, CircleAlert, Info } from 'lucide-react';
+import { ArrowUpRight, CircleAlert, Info, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAIConnectionStore } from '@/lib/ai-connection-store';
 import { detectKeyProvider, isPlausibleKey, mismatchedKey, type DetectedProvider } from '@/lib/ai-key-prefix';
@@ -179,25 +179,34 @@ export function useKeyCheck({
   };
 }
 
-/** The honey note: something went wrong, the key is still in the box. Never lime. */
-function HoneyNote({
+/**
+ * The honey note: something went wrong, the key is still in the box. Never
+ * lime. A check's answer is an alert, said the moment it arrives; a note that
+ * is a card's resting state (the daily limit, Settings → AI) passes
+ * `role={null}`, so it is not announced again on every load.
+ */
+export function HoneyNote({
   noteRef,
   testId,
   data,
   text,
   children,
+  icon: Icon = CircleAlert,
+  role = 'alert',
 }: {
-  noteRef: RefObject<HTMLDivElement | null>;
+  noteRef?: RefObject<HTMLDivElement | null>;
   testId: string;
-  data: Record<string, string>;
+  data?: Record<string, string>;
   text: ReactNode;
   children?: ReactNode;
+  icon?: LucideIcon;
+  role?: 'alert' | null;
 }) {
   return (
     <div ref={noteRef} data-testid={testId} {...data} className="flex gap-2 rounded-lg bg-warning/10 px-3 py-2.5">
-      <CircleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-warning-text" />
+      <Icon aria-hidden className="mt-0.5 size-4 shrink-0 text-warning-text" />
       <div className="flex min-w-0 flex-col gap-2">
-        <p role="alert" className="text-sm leading-snug text-foreground">
+        <p role={role ?? undefined} className="text-sm leading-snug text-foreground">
           {text}
         </p>
         {children}

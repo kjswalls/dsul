@@ -18,8 +18,10 @@ import {
   settingById,
   extensionSlugFromPane,
   displayValue,
+  AI_PANE_RECORD_IDS,
   CONNECT_PANEL_RECORD_IDS,
   LOOK_PICKER_RECORD_IDS,
+  type SettingsPane,
   type PaneId,
   type SettingCtx,
   type SettingRecord,
@@ -37,9 +39,9 @@ import { ExtensionRailList } from './extension-rail-list';
 import { ExtensionHero } from './extension-hero';
 import { ExtensionBrowse } from '@/components/extensions/extension-browse';
 import { ShortcutsPanel } from './shortcuts-panel';
-import { ModelConnectionPanel } from './model-connection-panel';
+import { AIPane, AIPaneMark, UseAIRow } from './ai-pane';
 import { MakePane } from './make-pane';
-import { useAICapabilities } from '@/lib/ai-connection-store';
+import { useAICapabilities, useAIConnectionStore } from '@/lib/ai-connection-store';
 import { revealChat } from '@/lib/open-chat';
 
 /**
@@ -95,6 +97,13 @@ function Eyebrow({
     </Tag>
   );
 }
+
+/**
+ * A pane's glyph in the rail, its eyebrow and its search group header. The AI
+ * pane's is the live mark (AIPaneMark), lit only while something answers chat
+ * here; every other pane's is the static icon its manifest entry names.
+ */
+const iconFor = (p: SettingsPane): React.ElementType => (p.id === 'beacon' ? AIPaneMark : p.icon);
 
 function CountChip({ n }: { n: number }) {
   return (
@@ -286,7 +295,15 @@ export function SettingsShell({
      waits for `focusPending` to clear rather than ringing the wrong row. */
   const arrivedFor = useRef<string | null>(null);
   const focusRecord = focusId ? settingById(focusId) : undefined;
-  const focusPending = focusRecord ? anyAncestorPending(focusRecord, ctx) : false;
+  // Every AI record waits for the connection check, too. Until it answers the
+  // AI pane has no shape yet: the explainer and the sections under it are
+  // drawn by the answer, so a target found on the checking card would be
+  // pushed off screen (or replaced) a moment later and focus would fall to
+  // <body>. Once it answers, focusPending changes and the effect runs again
+  // against the ready layout. PENDING_WAIT_MS still bounds the wait.
+  const aiPhase = useAIConnectionStore((s) => s.phase);
+  const aiHold = focusRecord?.pane === 'beacon' && aiPhase === 'unknown';
+  const focusPending = (focusRecord ? anyAncestorPending(focusRecord, ctx) : false) || aiHold;
   // A load that never finishes (a failed extensions hydrate leaves its loaded
   // flag false until the next auth event) must not strand the arrival — and the
   // `?focus=` it would have stripped. After PENDING_WAIT_MS the walk runs anyway
@@ -325,6 +342,8 @@ export function SettingsShell({
       return;
     }
 
+    if (aiHold && waitedOutFor !== focusId) return;
+
     const find = (id: string) =>
       document.querySelector<HTMLElement>(`[data-setting-row="${id}"]`) ??
       document.querySelector<HTMLElement>(`[data-setting-alias="${id}"]`);
@@ -351,7 +370,7 @@ export function SettingsShell({
     ringRef.current = requestAnimationFrame(() => setHighlight(hostId));
     clearRef.current = setTimeout(() => setHighlight(null), 1600);
     window.history.replaceState({}, '', window.location.pathname);
-  }, [focusId, pane, advOpen, focusPending, waitedOutFor]);
+  }, [focusId, pane, advOpen, focusPending, waitedOutFor, aiHold]);
 
   const write = useCallback(
     (record: SettingRecord, next: string | boolean) => {
@@ -446,6 +465,9 @@ export function SettingsShell({
           highlighted={highlight === record.id}
           onWrite={(next) => write(record, next)}
           onReset={() => reset(record)}
+          // An AI row's modified bar is grey while nothing answers chat, in
+          // the pane and in search: no lime on a pane where nothing is lit.
+          quietMark={record.pane === 'beacon' && !canChat}
           paneName={extra?.paneName}
           ranges={extra?.ranges}
           matchedValue={extra?.matchedValue}
@@ -500,17 +522,21 @@ export function SettingsShell({
   };
 
   const paneOwn = paneRows(pane, { isMobile });
-  const advanced = paneOwn.advanced;
-  // The AI pane's key and model records are drawn by ModelConnectionPanel,
-  // which carries their `data-setting-alias` anchors, and the Look pane's mode,
+  // The AI pane draws every one of its records itself (AIPane), the gateway
+  // rows included, in the OpenClaw section's own fold: so no flat rows and no
+  // Advanced fold here.
+  const advanced = pane === 'beacon' ? [] : paneOwn.advanced;
+  // The AI pane's records are drawn by AIPane, which gives each one a row or
+  // a `data-setting-alias` anchor in every state, and the Look pane's mode,
   // themes, tint and layout by LookPicker, which carries a `data-setting-row`
   // anchor for each. paneRows stays pure (the search index and the
   // no-empty-rooms test read it); only this flat list leaves them out. Search
-  // still draws them through rowFor (the AI pair with a "Set up" that opens
-  // the panel, setUpAction; the Look ones as the ordinary rows they are).
+  // still draws them (the key and model through rowFor with a "Set up" that
+  // opens the panel, setUpAction; Use AI in dsul as UseAIRow; the rest as the
+  // ordinary rows they are).
   const rows =
     pane === 'beacon'
-      ? paneOwn.rows.filter((r) => !CONNECT_PANEL_RECORD_IDS.has(r.id))
+      ? paneOwn.rows.filter((r) => !AI_PANE_RECORD_IDS.has(r.id))
       : pane === 'look'
         ? paneOwn.rows.filter((r) => !LOOK_PICKER_RECORD_IDS.has(r.id))
         : paneOwn.rows;
@@ -588,7 +614,7 @@ export function SettingsShell({
             // only route to the result.
             const count = searching ? paneMatchCount(results, p.id) : null;
             const active = !searching && p.id === railPane;
-            const Icon = p.icon;
+            const Icon = iconFor(p);
             // Inside Extensions the lit row is the sub-list's — Browse or the
             // extension you're on — so on a desktop the parent reads as open,
             // not lit. The phone's chip strip has no sub-list and keeps it lit.
@@ -725,17 +751,29 @@ export function SettingsShell({
                   : p.name;
                 return (
                   <section key={p.id} aria-labelledby={`results-${p.id}`}>
-                    <Eyebrow as="h2" id={`results-${p.id}`} icon={p.icon}>
+                    <Eyebrow as="h2" id={`results-${p.id}`} icon={iconFor(p)}>
                       {groupName}
                     </Eyebrow>
                     <div className="divide-border divide-y">
                       {hits.map((hit) =>
-                        rowFor(hit.record, {
-                          paneName: groupName,
-                          ranges: hit.ranges,
-                          matchedValue: hit.matchedValue,
-                          action: setUpAction(hit.record),
-                        })
+                        // Use AI in dsul is drawn by the pane's own row here
+                        // too: "No AI, thanks" while nothing is connected
+                        // (never a lit switch), and no modified bar or reset.
+                        hit.record.id === 'beacon.useAi' ? (
+                          <div key={hit.record.id}>
+                            <UseAIRow
+                              highlightId={null}
+                              search={{ paneName: groupName, ranges: hit.ranges, matchedValue: hit.matchedValue }}
+                            />
+                          </div>
+                        ) : (
+                          rowFor(hit.record, {
+                            paneName: groupName,
+                            ranges: hit.ranges,
+                            matchedValue: hit.matchedValue,
+                            action: setUpAction(hit.record),
+                          })
+                        )
                       )}
                     </div>
                   </section>
@@ -792,7 +830,7 @@ export function SettingsShell({
             </>
           ) : (
             <>
-              <Eyebrow icon={activePane.icon}>{activePane.name}</Eyebrow>
+              <Eyebrow icon={iconFor(activePane)}>{activePane.name}</Eyebrow>
               {/* An extension pane's blurb IS its catalog description, and the
                   toggle directly below carries that same sentence as its own
                   description — printing it twice, one line apart, reads as a
@@ -809,11 +847,6 @@ export function SettingsShell({
                   preview, what changes, the maker's note — above its own rows,
                   which are unchanged and still hold the one switch. */}
               {activePane.parent === 'extensions' && <ExtensionHero slug={extensionSlugFromPane(pane)!} />}
-
-              {/* The AI pane opens with the model connection, above its rows:
-                  connecting is a form with states, not a row. Two records
-                  (CONNECT_PANEL_RECORD_IDS) are drawn by it instead of below. */}
-              {pane === 'beacon' && <ModelConnectionPanel isMobile={isMobile} highlightId={highlight} />}
 
               {/* The Look pane opens with its pictures: the looks, a preview per
                   mode with its themes under it, and the layouts. Six records
@@ -848,12 +881,27 @@ export function SettingsShell({
                   not a sibling — a test pins that the two sets are the same.
                   Search results still go through rowFor like every other
                   record, so a hit here is drawn by the generic path. */}
+              {/* The AI pane is a body of its own too (components/settings/
+                  ai-pane.tsx): What AI does, Use AI in dsul, Connection,
+                  OpenClaw and On this device, each shown by state. It draws
+                  every record this pane holds (AI_PANE_RECORD_IDS), the
+                  device rows and the gateway rows through rowFor, so they are
+                  the same SettingRows search draws. */}
               {pane === 'keyboard' ? (
                 <ShortcutsPanel
                   variant="pane"
                   ctx={ctx}
                   highlightId={highlight}
                   onReset={reset}
+                />
+              ) : pane === 'beacon' ? (
+                <AIPane
+                  ctx={ctx}
+                  isMobile={isMobile}
+                  highlightId={highlight}
+                  rowFor={(r) => rowFor(r)}
+                  gatewayOpen={advOpen}
+                  onToggleGateway={toggleAdv}
                 />
               ) : (
                 <div className="divide-border divide-y">{groupPaneRows(rows).map(groupFor)}</div>

@@ -12,6 +12,13 @@ vi.mock('@/lib/supabase', () => ({
   }),
 }));
 
+// setUseAI is the only way beacon.useAi writes; spied so a write sends nothing.
+const setUseAIMock = vi.hoisted(() => vi.fn<(on: boolean) => Promise<boolean>>(async () => true));
+vi.mock('@/lib/no-ai', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/no-ai')>()),
+  setUseAI: setUseAIMock,
+}));
+
 import {
   SETTINGS,
   DESTINATIONS,
@@ -30,14 +37,22 @@ import {
   displayValue,
   valueLabels,
   CONNECT_PANEL_RECORD_IDS,
+  AI_PANE_RECORD_IDS,
   SHORTCUT_RECORDS,
+  isModified,
   type SettingCtx,
 } from '@/lib/settings/manifest';
 import { useAIConnectionStore } from '@/lib/ai-connection-store';
+import { USE_AI_CHECK_FAILED, USE_AI_COPY, USE_AI_NEEDS_UPDATE } from '@/lib/ai-pane-state';
 import {
   seedAI,
+  AI_HIDDEN,
   CONNECTED_MODEL,
+  DAILY_LIMIT,
+  GEMINI_WORKING,
+  KEY_TURNED_DOWN,
   NOTHING_CONNECTED,
+  NO_MODEL_PICKED,
   OPENCLAW_PLUGIN,
 } from './helpers/ai-fixtures';
 import { OFFICIAL_EXTENSIONS } from '@/lib/extension-registry';
@@ -443,37 +458,70 @@ describe('the model key never reaches a record', () => {
     // In the pane's own records (search and the empty-room test read these)…
     const ids = paneRows('beacon').rows.map((r) => r.id);
     expect(ids).toEqual(expect.arrayContaining(['beacon.apiKey', 'beacon.model']));
-    // …and drawn by the panel, not as flat rows: the shell drops exactly these.
-    const flat = paneRows('beacon').rows.filter((r) => !CONNECT_PANEL_RECORD_IDS.has(r.id));
-    expect(flat.map((r) => r.id)).toEqual(['beacon.provider', 'beacon.instructions']);
+    // …and drawn by the AI pane, not as flat rows: the shell draws none there,
+    // and no Advanced fold either (the gateway rows live in the OpenClaw section).
+    expect(paneRows('beacon').rows.filter((r) => !AI_PANE_RECORD_IDS.has(r.id))).toEqual([]);
+    expect(paneRows('beacon').advanced.filter((r) => !AI_PANE_RECORD_IDS.has(r.id))).toEqual([]);
+    // The pane anchors every beacon record, and only those.
+    const beacon = SETTINGS.filter((r) => r.pane === 'beacon').map((r) => r.id);
+    expect([...AI_PANE_RECORD_IDS].sort()).toEqual([...beacon].sort());
+    expect(AI_PANE_RECORD_IDS.size).toBe(7);
+    // "Set up" in search still means only the connection's two records.
+    expect([...CONNECT_PANEL_RECORD_IDS].sort()).toEqual(['beacon.apiKey', 'beacon.model']);
   });
 
   it('beacon.apiKey reads only a status word, in every gate state', () => {
-    const allowed = new Set([
+    // The Connection pill's words (lib/ai-pane-state.ts), plus the three the
+    // pane says without a pill, plus the Saved / Signed in forms.
+    const words = new Set([
       'Checking…',
       'Couldn’t check',
       'Not available on this server',
-      'Not connected',
-      'Stopped working',
-      'Saved (OpenAI)',
-      'Signed in (OpenRouter)',
+      'Not set up',
+      'Needs attention',
+      'Daily limit',
     ]);
+    const allowed = (v: string) => words.has(v) || /^(Saved|Signed in) \([^()]+\)$/.test(v);
     const record = settingById('beacon.apiKey')!;
     const cases: [Parameters<typeof seedAI>[0], string][] = [
       [undefined, 'Checking…'],
       [{ phase: 'error' }, 'Couldn’t check'],
       [{ ...NOTHING_CONNECTED, available: false }, 'Not available on this server'],
-      [NOTHING_CONNECTED, 'Not connected'],
+      [NOTHING_CONNECTED, 'Not set up'],
+      [OPENCLAW_PLUGIN, 'Not set up'],
       [CONNECTED_MODEL, 'Saved (OpenAI)'],
+      [GEMINI_WORKING, 'Saved (Google Gemini)'],
       [{ ...CONNECTED_MODEL, model: { provider: 'openrouter', authMethod: 'oauth' } }, 'Signed in (OpenRouter)'],
-      [{ ...CONNECTED_MODEL, model: { status: 'failing', problem: 'key_rejected' } }, 'Stopped working'],
+      [{ ...CONNECTED_MODEL, model: { status: 'failing', problem: 'key_rejected' } }, 'Needs attention'],
+      [KEY_TURNED_DOWN, 'Needs attention'],
+      [NO_MODEL_PICKED, 'Needs attention'],
+      [DAILY_LIMIT, 'Daily limit'],
     ];
     for (const [seed, expected] of cases) {
       cleanup?.();
       cleanup = seedAI(seed);
       const value = record.read(ctx);
       expect(value, JSON.stringify(seed)).toBe(expected);
-      expect(allowed.has(String(value))).toBe(true);
+      expect(allowed(String(value)), String(value)).toBe(true);
+    }
+  });
+
+  it('beacon.model reads the name the picker shows, never a raw id', () => {
+    const record = settingById('beacon.model')!;
+    expect(record.description).toBe('Answers in Ask and drafts your plans.');
+    const cases: [Parameters<typeof seedAI>[0], string][] = [
+      [undefined, 'None'],
+      [NOTHING_CONNECTED, 'None'],
+      [CONNECTED_MODEL, 'GPT-4o mini'],
+      [GEMINI_WORKING, 'Gemini Flash'],
+      [NO_MODEL_PICKED, 'None'],
+      // Neither the catalog nor an id shape names it: the label it was listed under.
+      [{ ...CONNECTED_MODEL, model: { provider: 'openrouter', model: 'acme/x-1', modelLabel: 'Acme X1' } }, 'Acme X1'],
+    ];
+    for (const [seed, expected] of cases) {
+      cleanup?.();
+      cleanup = seedAI(seed);
+      expect(record.read(ctx), JSON.stringify(seed)).toBe(expected);
     }
   });
 
@@ -520,14 +568,14 @@ describe('the model key never reaches a record', () => {
       expect(placeholder ?? '', record.id).not.toContain('SENTINEL');
     }
     expect(settingById('beacon.apiKey')!.read(ctx)).toBe('Saved (OpenAI)');
-    expect(settingById('beacon.model')!.read(ctx)).toBe('gpt-4o-mini');
+    expect(settingById('beacon.model')!.read(ctx)).toBe('GPT-4o mini');
   });
 
   it('no relabelled beacon.* record repeats its own label as a keyword', () => {
     // The structural rule above, named for these four: `beacon.apiKey` is
     // labelled "API key" now, and 'api key' was one of its old keywords.
     expect(settingById('beacon.apiKey')!.keywords).not.toContain('api key');
-    for (const id of ['beacon.provider', 'beacon.instructions', 'beacon.apiKey', 'beacon.model']) {
+    for (const id of ['beacon.useAi', 'beacon.provider', 'beacon.instructions', 'beacon.apiKey', 'beacon.model']) {
       const record = settingById(id)!;
       expect(record.keywords, id).not.toContain(record.label.toLowerCase());
     }
@@ -544,7 +592,7 @@ describe('the AI pane', () => {
   it('is called AI, keeps its permanent id, and never says Beacon', () => {
     const pane = paneById('beacon')!;
     expect(pane.name).toBe('AI');
-    expect(pane.blurb).toBe('Connect a model and choose who answers.');
+    expect(pane.blurb).toBe('Optional help that knows your planner.');
     for (const record of settingsForPane('beacon')) {
       const copy = [
         record.label,
@@ -558,6 +606,7 @@ describe('the AI pane', () => {
   it('"Who answers in chat" offers the three choices and waits for the gate', () => {
     const record = settingById('beacon.provider')!;
     expect(record.label).toBe('Who answers in chat');
+    expect(record.description).toBe('Who replies when you open Ask here. Off keeps Ask closed on this device only.');
     expect(record.options!.map((o) => [o.value, o.label])).toEqual([
       ['model', 'Your model'],
       ['openclaw', 'OpenClaw'],
@@ -584,6 +633,108 @@ describe('the AI pane', () => {
     cleanup = seedAI(OPENCLAW_PLUGIN);
     expect(record.unavailable!(ctx)).toBeNull();
     expect(record.read(ctx)).toBe('openclaw');
+  });
+
+  it('"Who answers in chat" set to Off can always be changed back', () => {
+    // With nothing connected, On this device shows only so Off can be undone:
+    // the select it shows must work.
+    const record = settingById('beacon.provider')!;
+    cleanup = seedAI({ ...NOTHING_CONNECTED, choice: 'none' });
+    expect(record.unavailable!(ctx)).toBeNull();
+    cleanup();
+    cleanup = seedAI({ ...NOTHING_CONNECTED, choice: 'model' });
+    expect(record.unavailable!(ctx)).toBe('Connect a model or OpenClaw first.');
+  });
+
+  it('"Custom instructions" says it stays on this device, with a curly placeholder', () => {
+    const record = settingById('beacon.instructions')!;
+    expect(record.description).toBe(
+      'What the AI should know about how you work. Added to every message you send from this device.'
+    );
+    expect(record.placeholder).toBe('I plan in two-hour blocks and I’d rather you were blunt…');
+  });
+
+  describe('"Use AI in dsul" (beacon.useAi)', () => {
+    const record = () => settingById('beacon.useAi')!;
+    afterEach(() => setUseAIMock.mockClear());
+
+    it('is an account switch the pane draws, with no column of its own', () => {
+      const r = record();
+      expect(r).toBeDefined();
+      expect(r.pane).toBe('beacon');
+      expect(r.control).toBe('switch');
+      expect(r.label).toBe('Use AI in dsul');
+      expect(r.description).toBe(USE_AI_COPY.on);
+      expect(r.advanced).toBeFalsy();
+      // Server-backed through the connection route (060), never the settings upsert.
+      expect(r.dbColumn).toBeUndefined();
+      expect(r.defaultValue).toBe(true);
+      // First in the pane's records.
+      expect(settingsForPane('beacon')[0]?.id).toBe('beacon.useAi');
+    });
+
+    it('reads on only once the server has said AI is not hidden (inverted polarity)', () => {
+      const cases: [Parameters<typeof seedAI>[0], boolean][] = [
+        [NOTHING_CONNECTED, true],
+        [CONNECTED_MODEL, true],
+        [AI_HIDDEN, false],
+        [{ ...NOTHING_CONNECTED, aiHidden: null }, false],
+        [undefined, false],
+        [{ ...NOTHING_CONNECTED, phase: 'error' }, false],
+      ];
+      for (const [seed, expected] of cases) {
+        cleanup?.();
+        cleanup = seedAI(seed);
+        expect(record().read(ctx), JSON.stringify(seed)).toBe(expected);
+      }
+    });
+
+    it('is pending only while the check has not answered', () => {
+      cleanup = seedAI();
+      expect(record().pending!(ctx)).toBe(true);
+      for (const seed of [NOTHING_CONNECTED, AI_HIDDEN, { ...NOTHING_CONNECTED, phase: 'error' as const }]) {
+        cleanup();
+        cleanup = seedAI(seed);
+        expect(record().pending!(ctx), JSON.stringify(seed)).toBe(false);
+      }
+    });
+
+    it('is unavailable while the check failed, and while the account cannot keep the choice', () => {
+      cleanup = seedAI({ ...NOTHING_CONNECTED, phase: 'error' });
+      expect(record().unavailable!(ctx)).toBe(USE_AI_CHECK_FAILED);
+      cleanup();
+      cleanup = seedAI({ ...NOTHING_CONNECTED, aiHidden: null });
+      expect(record().unavailable!(ctx)).toBe(USE_AI_NEEDS_UPDATE);
+      for (const seed of [undefined, NOTHING_CONNECTED, AI_HIDDEN, CONNECTED_MODEL]) {
+        cleanup();
+        cleanup = seedAI(seed);
+        expect(record().unavailable!(ctx), JSON.stringify(seed)).toBeNull();
+      }
+    });
+
+    it('writes only through setUseAI', () => {
+      cleanup = seedAI(NOTHING_CONNECTED);
+      record().write(false, ctx);
+      expect(setUseAIMock).toHaveBeenLastCalledWith(false);
+      record().write(true, ctx);
+      expect(setUseAIMock).toHaveBeenLastCalledWith(true);
+      expect(setUseAIMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('takes none of the words that find the connection or Sign out', () => {
+      const reserved = ['ai', 'connect', 'connection', 'setup', 'set up', 'sign'];
+      for (const word of reserved) expect(record().keywords, word).not.toContain(word);
+    });
+
+    it('is modified while AI is off, and not while it is on', () => {
+      // isModified is also true while unknown, failed or 060 missing (read() is
+      // false there); the row never draws a modified bar, which settings-shell-render pins.
+      cleanup = seedAI(AI_HIDDEN);
+      expect(isModified(record(), ctx)).toBe(true);
+      cleanup();
+      cleanup = seedAI(NOTHING_CONNECTED);
+      expect(isModified(record(), ctx)).toBe(false);
+    });
   });
 
   it('the gateway rows are no longer gated on who answers', () => {
@@ -616,7 +767,7 @@ describe('the AI pane', () => {
 
 describe('settings search', () => {
   it('finds the model connection by the words people use for it', () => {
-    for (const term of ['api key', 'openai', 'claude', 'gemini', 'openrouter', 'byok', 'api']) {
+    for (const term of ['api key', 'openai', 'claude', 'gemini', 'openrouter', 'byok', 'api', 'chatgpt']) {
       const hits = searchSettings(term, ctx).settings.map((h) => h.record.id);
       expect(hits, term).toContain('beacon.apiKey');
     }
@@ -648,6 +799,21 @@ describe('settings search', () => {
     // behind a ritual.
     const { settings } = searchSettings('ai', ctx);
     expect(settings.slice(0, 2).map((h) => h.record.id).sort()).toEqual(['beacon.apiKey', 'beacon.provider']);
+  });
+
+  it('"no ai" finds Use AI in dsul first', () => {
+    const { settings } = searchSettings('no ai', ctx);
+    expect(settings[0]?.record.id).toBe('beacon.useAi');
+    for (const term of ['turn off ai', 'hide ai', 'disable ai', 'opt out']) {
+      expect(searchSettings(term, ctx).settings.map((h) => h.record.id), term).toContain('beacon.useAi');
+    }
+  });
+
+  it('"Connect OpenClaw" opens the pairing guide, since pairing starts in a terminal', () => {
+    const dest = DESTINATIONS.find((d) => d.id === 'dest.openclaw')!;
+    expect(dest.label).toBe('Connect OpenClaw');
+    expect(dest.where).toBe('/docs/openclaw');
+    expect(dest.action).toBe('openclaw-docs');
   });
 
   it('"sign" and "sign out" find Sign out, not the AI connection', () => {

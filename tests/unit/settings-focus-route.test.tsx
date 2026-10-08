@@ -199,6 +199,9 @@ describe('/settings/ai, the AI pane by the name the rail gives it', () => {
   it('sends an AI record that arrived on another pane to /settings/ai, never /settings/beacon', () => {
     expect(at(['day'], 'beacon.model')).toEqual(['/settings/ai?focus=beacon.model']);
     cleanup();
+    // Use AI in dsul, the pane's first row, is a record like the rest.
+    expect(at(['day'], 'beacon.useAi')).toEqual(['/settings/ai?focus=beacon.useAi']);
+    cleanup();
     // The one-time nudges' bare /settings?focus=<id>: normalized first, then the record's own pane.
     expect(at(undefined, 'beacon.apiKey').at(-1)).toBe('/settings/ai?focus=beacon.apiKey');
   });

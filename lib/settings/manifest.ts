@@ -20,6 +20,15 @@ import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { getAICapabilities, useAIConnectionStore } from '@/lib/ai-connection-store';
 import { chooseChatTarget } from '@/lib/chat-target';
 import { PROVIDER_META, type ChatTarget } from '@/lib/ai-types';
+import { modelName } from '@/lib/ai-model-names';
+import {
+  AI_PANE_IDS,
+  USE_AI_CHECK_FAILED,
+  USE_AI_COPY,
+  USE_AI_NEEDS_UPDATE,
+  connectionPill,
+} from '@/lib/ai-pane-state';
+import { setUseAI } from '@/lib/no-ai';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { useModsStore } from '@/lib/mods-store';
 import {
@@ -186,8 +195,10 @@ export const PANES: SettingsPane[] = [
     // every beacon.* record, all permanent. Only the name the user reads moved.
     id: 'beacon',
     name: 'AI',
+    // The static mark stays here (the rail and the eyebrow draw the live one,
+    // components/settings/ai-pane.tsx `AIPaneMark`, lit only while something answers).
     icon: AskMarkIcon,
-    blurb: 'Connect a model and choose who answers.',
+    blurb: 'Optional help that knows your planner.',
   },
   {
     id: 'keyboard',
@@ -1344,17 +1355,52 @@ export const SETTINGS: SettingRecord[] = [
   },
 
   /* ── AI (pane id 'beacon') ────────────────────────────────────────────
-     The pane's top is ModelConnectionPanel (components/settings/
-     model-connection-panel.tsx), mounted by settings-shell: connecting a model
-     is a form with states, not a row. Two of the records below exist so search
-     and `?focus=` can still reach that form, and the panel owns their anchors
-     (see CONNECT_PANEL_RECORD_IDS). The ids are permanent, so they kept their
-     `beacon.*` names when the AI lost its own. */
+     The pane is drawn by AIPane (components/settings/ai-pane.tsx), not as flat
+     rows: Use AI in dsul, Connection (ModelConnectionPanel), OpenClaw (holding
+     the gateway rows) and On this device (who answers, custom instructions),
+     each shown or hidden by state (lib/ai-pane-state.ts). Every record below
+     stays here so search and `?focus=` reach it, and the pane gives each one
+     exactly one anchor in every state (see AI_PANE_RECORD_IDS). The ids are
+     permanent, so they kept their `beacon.*` names when the AI lost its own. */
+  {
+    // "Use AI in dsul": the account's "No AI, thanks" (user_settings.ai_hidden,
+    // 060), read from the connection store and written only through setUseAI
+    // (lib/no-ai.ts): never a dbColumn (the server writes it, service role),
+    // and never chooseNoAI, whose undo strip /settings does not mount.
+    // No surface draws it through the generic SettingRow: the pane and search
+    // both draw `UseAIRow`, which says "No AI, thanks" while nothing is
+    // connected and never shows a modified bar or a reset.
+    id: 'beacon.useAi',
+    pane: 'beacon',
+    label: 'Use AI in dsul',
+    control: 'switch',
+    description: USE_AI_COPY.on,
+    // Never ai, connect, connection, setup, set up or sign: those words find
+    // the connection (beacon.apiKey) first, and Sign out.
+    keywords: ['no ai', 'turn off', 'hide', 'disable', 'opt out'],
+    // Inverted polarity: the account stores ai_hidden; this row says "use AI". On only once the server
+    // has said false, so a disabled row never draws a checked (lime) track through disabled:opacity-50.
+    read: () => {
+      const s = aiConn();
+      return s.phase === 'ready' && s.aiHidden === false;
+    },
+    write: (v) => {
+      void setUseAI(v === true);
+    },
+    defaultValue: true,
+    pending: () => aiConn().phase === 'unknown',
+    unavailable: () => {
+      const s = aiConn();
+      if (s.phase === 'error') return USE_AI_CHECK_FAILED;
+      if (s.phase === 'ready' && s.aiHidden === null) return USE_AI_NEEDS_UPDATE;
+      return null;
+    },
+  },
   {
     id: 'beacon.provider',
     pane: 'beacon',
     label: 'Who answers in chat',
-    description: 'Saved on this device. If your choice isn’t connected, the other one answers.',
+    description: 'Who replies when you open Ask here. Off keeps Ask closed on this device only.',
     control: 'enum',
     options: [
       { value: 'model', label: 'Your model' },
@@ -1362,8 +1408,9 @@ export const SETTINGS: SettingRecord[] = [
       { value: 'none', label: 'Off' },
     ],
     keywords: ['ai', 'agent', 'assistant', 'chat', 'llm', 'openclaw', 'beacon', 'provider'],
-    // The only user-initiated way to change who answers: it wipes transcripts,
-    // which a raw setter (or a rehydrate) must never do. lib/chat-target.ts.
+    // The only user-initiated way to change who answers (lib/chat-target.ts):
+    // it deletes nothing, and a raw setter (or a rehydrate) must never stand in
+    // for the user's choice.
     read: () => ai().chatTarget,
     write: (v) => chooseChatTarget(v as ChatTarget),
     defaultValue: 'model',
@@ -1371,6 +1418,9 @@ export const SETTINGS: SettingRecord[] = [
     // a choice that works.
     pending: () => aiConn().phase === 'unknown',
     unavailable: () => {
+      // Off on this device is always undoable: with nothing connected, On this
+      // device shows for exactly this reason, so the way back must work.
+      if (ai().chatTarget === 'none') return null;
       const caps = getAICapabilities();
       if (!caps.known) return null;
       return caps.modelUsable || caps.openclawUsable ? null : 'Connect a model or OpenClaw first.';
@@ -1380,10 +1430,10 @@ export const SETTINGS: SettingRecord[] = [
     id: 'beacon.instructions',
     pane: 'beacon',
     label: 'Custom instructions',
-    description: 'What the AI should know about how you work. Added to every message.',
+    description: 'What the AI should know about how you work. Added to every message you send from this device.',
     control: 'text',
     textVariant: 'multiline',
-    placeholder: "I plan in two-hour blocks and I'd rather you were blunt…",
+    placeholder: 'I plan in two-hour blocks and I’d rather you were blunt…',
     keywords: ['system prompt', 'personality', 'context', 'about me', 'profile', 'memory'],
     read: () => ai().systemPrompt,
     write: (v) => ai().setSystemPrompt(String(v)),
@@ -1466,13 +1516,21 @@ export const SETTINGS: SettingRecord[] = [
       'openrouter',
       'llm',
     ],
+    // The Connection pill's words (lib/ai-pane-state.ts), so search and the
+    // pane never name one state two ways. `busy` is left out: a check in flight
+    // is the pane's moment, not the record's.
     read: () => {
       const conn = aiConn();
       if (conn.phase === 'unknown') return 'Checking…';
       if (conn.phase === 'error') return 'Couldn’t check';
       if (!conn.available) return 'Not available on this server';
-      if (!conn.model) return 'Not connected';
-      if (conn.model.status === 'failing') return 'Stopped working';
+      const pill = connectionPill(
+        { phase: conn.phase, available: conn.available, model: conn.model, busy: null },
+        Date.now()
+      );
+      if (pill === 'needs_attention') return 'Needs attention';
+      if (pill === 'daily_limit') return 'Daily limit';
+      if (pill !== 'working' || !conn.model) return 'Not set up';
       const label = PROVIDER_META[conn.model.provider].label;
       return conn.model.authMethod === 'oauth' ? `Signed in (${label})` : `Saved (${label})`;
     },
@@ -1485,10 +1543,14 @@ export const SETTINGS: SettingRecord[] = [
     id: 'beacon.model',
     pane: 'beacon',
     label: 'Model',
-    description: 'Which of your provider’s models answers.',
+    description: 'Answers in Ask and drafts your plans.',
     control: 'info',
     keywords: ['gpt', 'claude', 'gemini', 'llama', 'engine', 'free', 'model picker'],
-    read: () => aiConn().model?.model ?? 'None',
+    // The model's name, as the picker's chip shows it ("GPT-4o mini"), never a raw id.
+    read: () => {
+      const model = aiConn().model;
+      return model?.model ? modelName(model.provider, model.model, model.modelLabel).name : 'None';
+    },
     write: () => {},
     defaultValue: '',
   },
@@ -1773,9 +1835,11 @@ export const DESTINATIONS: DestinationRecord[] = [
   {
     id: 'dest.openclaw',
     label: 'Connect OpenClaw',
-    where: '/connect',
+    // Pairing is a CLI device-code flow, so the guide is where it starts:
+    // /connect without a code is a dead end.
+    where: '/docs/openclaw',
     keywords: ['openclaw', 'agent', 'connect', 'pair', 'device', 'cli'],
-    action: 'connect-openclaw',
+    action: 'openclaw-docs',
   },
   {
     id: 'dest.ledger',
@@ -1797,6 +1861,15 @@ export const DESTINATIONS: DestinationRecord[] = [
  * `data-setting-alias` anchors.
  */
 export const CONNECT_PANEL_RECORD_IDS: ReadonlySet<string> = new Set(['beacon.apiKey', 'beacon.model']);
+
+/**
+ * Every record the AI pane (components/settings/ai-pane.tsx) draws or
+ * anchors itself, so the shell draws no flat rows and no Advanced fold there.
+ * They stay in SETTINGS, so search finds them, and the pane gives each one
+ * exactly one anchor in every state for `?focus=`. CONNECT_PANEL_RECORD_IDS,
+ * beside it, means only "search shows Set up".
+ */
+export const AI_PANE_RECORD_IDS: ReadonlySet<string> = new Set(AI_PANE_IDS);
 
 /**
  * Records the Look pane's picker (components/settings/look-picker.tsx) draws as

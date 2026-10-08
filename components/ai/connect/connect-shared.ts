@@ -1,12 +1,15 @@
 'use client';
 
 import { useEffect, useSyncExternalStore } from 'react';
+import { formatDistanceStrict } from 'date-fns';
 import { useAIConnectionStore } from '@/lib/ai-connection-store';
 import type { DetectedProvider } from '@/lib/ai-key-prefix';
+import type { AIPaneRecordId } from '@/lib/ai-pane-state';
 import {
   AI_SETTINGS_PATH,
   PROVIDER_META,
   type ApiErrorCode,
+  type ModelConnectionView,
   type ModelProviderId,
   type OpenRouterReturn,
 } from '@/lib/ai-types';
@@ -103,6 +106,21 @@ export function useResetsAt(): (limitedUntil: string | null | undefined) => stri
   };
 }
 
+/**
+ * "just now" under a minute, then "a minute ago", "an hour ago", "3 days ago":
+ * how long since an answer, as a sentence says it. Null for no time, or one
+ * that doesn't parse. `now` defaults to the wall clock.
+ */
+export function ago(iso: string | null | undefined, now: number = Date.now()): string | null {
+  if (!iso) return null;
+  const at = Date.parse(iso);
+  if (Number.isNaN(at)) return null;
+  if (now - at < 60_000) return 'just now';
+  return formatDistanceStrict(at, now, { addSuffix: true })
+    .replace(/^1 hour\b/, 'an hour')
+    .replace(/^1 (minute|day|month|year)\b/, 'a $1');
+}
+
 /* ── Names ──────────────────────────────────────────────────────────────── */
 
 export function hostOf(url: string | null | undefined): string | null {
@@ -171,10 +189,12 @@ export function desktopSignInLink(): string {
 
 /* ── Settings anchors ───────────────────────────────────────────────────── */
 
-export type AnchorId = 'beacon.apiKey' | 'beacon.model';
+/** Every id Settings → AI anchors (lib/ai-pane-state.ts AI_PANE_IDS). */
+export type AnchorId = AIPaneRecordId;
 
 /**
- * Where `?focus=beacon.apiKey` / `beacon.model` land (settings-shell resolves
+ * Where `?focus=beacon.apiKey`, `beacon.model` and the rest of the AI pane's
+ * ids land when no row of their own is drawn (settings-shell resolves
  * `[data-setting-alias]`, scrolls, focuses and rings it). Focusable but out of
  * the tab order, like a SettingRow.
  */
@@ -188,6 +208,24 @@ export function settingAnchor(id: AnchorId, highlightId: string | null | undefin
 
 export const ANCHOR_CLASS =
   'rounded-[6px] outline-none focus-visible:ring-2 focus-visible:ring-ring data-[highlight]:ring-2 data-[highlight]:ring-ring';
+
+/* ── Text actions ───────────────────────────────────────────────────────── */
+
+/**
+ * The one size of every action in a band of them on Settings → AI's cards
+ * ("Check again", "Replace key", "Use a different service"): muted text,
+ * underlined on hover, a ring on keyboard focus. No border and no wash. Here
+ * rather than in components/settings, so the fix card (connect-fix.tsx) can
+ * use it without an import cycle through the panel.
+ */
+export const TEXT_ACTION =
+  'text-muted-foreground hover:text-foreground text-xs underline-offset-4 transition-colors hover:underline ' +
+  'focus-visible:ring-ring rounded-[3px] focus-visible:ring-2 focus-visible:outline-none';
+
+/** TEXT_ACTION's red twin, for Disconnect: the same geometry in the destructive text colour. */
+export const DANGER_TEXT_ACTION =
+  'text-destructive-text text-xs underline-offset-4 transition-colors hover:underline ' +
+  'focus-visible:ring-ring rounded-[3px] focus-visible:ring-2 focus-visible:outline-none';
 
 /* ── The words for each answer ──────────────────────────────────────────── */
 
@@ -394,4 +432,102 @@ export function checkingCopy(provider: ModelProviderId, baseUrl?: string | null)
 export function consentCopy(provider: ModelProviderId, baseUrl?: string | null): string {
   const to = provider === 'custom' && !hostOf(baseUrl) ? 'your service' : companyName(provider, baseUrl);
   return `Connecting sends your question, and the parts of your plan it needs, from dsul’s server to ${to}.`;
+}
+
+/* ── A connection's own words ───────────────────────────────────────────── */
+
+/** The company mid-sentence: a custom service with no host is "your service". */
+function midName(provider: ModelProviderId, baseUrl?: string | null): string {
+  return provider === 'custom' && !hostOf(baseUrl) ? 'your service' : companyName(provider, baseUrl);
+}
+
+/** Good to know, once something is connected: the four facts, for this connection. */
+export interface GoodToKnowCopy {
+  cost: string;
+  sent: string;
+  key: string;
+  back: string;
+}
+
+/**
+ * The connected fold's facts. Only what the connection itself tells us: no
+ * plan or tier is claimed (none of the providers says which a key is on), so
+ * Gemini's daily limit is "Google’s free key has…", a fact about the free key,
+ * and the others name who bills for it.
+ */
+export function goodToKnowCopy(model: Pick<ModelConnectionView, 'provider' | 'baseUrl'>): GoodToKnowCopy {
+  const { provider, baseUrl } = model;
+  const company = companyName(provider, baseUrl);
+  const key =
+    'Stored encrypted on dsul’s server and never shown again, not even here. The web and the desktop app share this one connection.';
+  const sentTo = (to: string) =>
+    `Only when you ask: your question and the parts of your plan it needs, from dsul’s server to ${to}`;
+  const back = 'Disconnect above and dsul deletes the key. To cancel the key itself,';
+  switch (provider) {
+    case 'gemini':
+      return {
+        cost: 'Google’s free key has a daily limit. If you reach it, AI pauses until Google resets it. dsul never charges for AI.',
+        sent: `${sentTo('Google')}. On the free plan, Google may use it to improve its products.`,
+        key,
+        back: `${back} delete it in Google AI Studio.`,
+      };
+    case 'openrouter':
+      return {
+        cost: 'OpenRouter’s free models have a daily limit. If you reach it, AI pauses until OpenRouter resets it. Other models use the credit on your OpenRouter account. dsul never charges for AI.',
+        sent: `${sentTo('OpenRouter')}, which passes it to the model you picked.`,
+        key,
+        back: `${back} revoke it with OpenRouter.`,
+      };
+    case 'custom':
+      return {
+        cost: 'Your service sets its own price. dsul never charges for AI.',
+        sent: `${sentTo(midName(provider, baseUrl))}.`,
+        key,
+        back: `${back} revoke it where you made it.`,
+      };
+    default:
+      return {
+        cost: `${company} bills its API to your ${company} account. dsul never charges for AI.`,
+        sent: `${sentTo(company)}.`,
+        key,
+        back: `${back} revoke it with ${company}.`,
+      };
+  }
+}
+
+/** The daily-limit card's note and its quieter line. */
+export interface LimitCopy {
+  note: string;
+  paid: string;
+}
+
+/**
+ * Today's limit is used up. `resetsAt` is when it lifts on the planner's clock
+ * ("3 pm"); with none, the clause says "once it resets". No tier is claimed:
+ * Google's daily limit is read from any per-day quota, paid keys included, so
+ * its words never say "free". OpenRouter's daily limit is only ever its
+ * free-model cap, so its note does.
+ */
+export function limitCopy(
+  model: Pick<ModelConnectionView, 'provider' | 'baseUrl'>,
+  resetsAt: string | null
+): LimitCopy {
+  const back = resetsAt ? `AI comes back by itself at ${resetsAt}` : 'AI comes back by itself once it resets';
+  switch (model.provider) {
+    case 'gemini':
+      return {
+        note: `Google’s daily limit on this key is used up. It resets once a day, and ${back}.`,
+        paid: 'A paid Google plan raises the daily limit. dsul never charges for AI.',
+      };
+    case 'openrouter':
+      return {
+        note: `You’ve used today’s free questions. OpenRouter resets them once a day, and ${back}.`,
+        paid: 'Credit on your OpenRouter account raises the daily limit. dsul never charges for AI.',
+      };
+    default:
+      return {
+        note: `Today’s limit with ${midName(model.provider, model.baseUrl)} is used up, and ${back}.`,
+        paid: 'dsul never charges for AI.',
+      };
+  }
 }

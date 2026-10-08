@@ -475,11 +475,16 @@ test.describe('Set up AI in the right rail', () => {
     await expect(setup).toHaveCount(0);
     await expect(rail(page).locator('[data-ask-home]')).toHaveCount(0);
 
-    // Once the strip has gone, Settings → AI is the way back.
+    // Once the strip has gone, Settings → AI is the way back: the card says
+    // AI is off, and the Use AI switch above it turns it back on.
     await page.goto(`${BASE_URL}/settings/ai`);
     const off = page.getByTestId('mcp-ai-off');
     await expect(off).toContainText('AI is off');
-    await off.getByRole('button', { name: 'Turn AI back on' }).click();
+    await expect(off).toContainText('turn it back on above');
+    await page
+      .locator('[data-setting-row="beacon.useAi"]')
+      .getByRole('switch', { name: 'Use AI in dsul' })
+      .click();
     await expect(off).toHaveCount(0);
     await expect.poll(() => gate.hidden()).toBe(false);
     await loginTestUser(page);

@@ -6,12 +6,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PropertyChip } from '@/components/primitives/property-chip';
 import { useAIConnectionStore, type ApiResult } from '@/lib/ai-connection-store';
+import { modelName } from '@/lib/ai-model-names';
 import { isModelId, type ApiErrorCode, type ModelOption } from '@/lib/ai-types';
 import { cn } from '@/lib/utils';
 
 /**
- * The model chip on the Connect-a-model panel: which of the provider's models
- * answers.
+ * The model chip on Settings → AI's Connection card: which of the provider's
+ * models answers.
  *
  * The list is the provider's own, fetched live through the server (the key
  * never leaves it), so it is as long as the provider makes it: OpenRouter lists
@@ -49,9 +50,13 @@ export function ModelPicker({
   const [error, setError] = useState<string | null>(null);
 
   const current = optimistic ?? model?.model ?? '';
-  // The friendly name once the list has been read (the popover's first open
-  // reads it); the raw id until then, which is still right, just plainer.
-  const shown = useAIConnectionStore((s) => s.models?.find((m) => m.id === current)?.label) ?? current;
+  // A model's name as a person reads it ("Gemini Flash", "GPT-4o mini"), even
+  // before the list loads: the catalog and the id's shape name most, then the
+  // label the provider listed it under (the loaded list's, or the one saved
+  // with the connection, which is only the saved model's), then the raw id.
+  const listedLabel = useAIConnectionStore((s) => s.models?.find((m) => m.id === current)?.label);
+  const savedLabel = model && current === model.model ? model.modelLabel : null;
+  const shown = model && current ? modelName(model.provider, current, listedLabel ?? savedLabel).name : current;
 
   const choose = async (id: string) => {
     if (!model || id === model.model) return;

@@ -7,6 +7,7 @@ import {
   ArrowUpRight,
   Check,
   ChevronDown,
+  ChevronRight,
   CircleAlert,
   Coins,
   Info,
@@ -19,7 +20,7 @@ import { ASK_SECTION_HEADING } from '@/components/ai/ask/needs-you';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { useAIConnectionStore } from '@/lib/ai-connection-store';
 import { detectKeyProvider, isSureKey, type DetectedProvider } from '@/lib/ai-key-prefix';
-import { AI_SETTINGS_PATH, PROVIDER_META, isModelId, type ModelProviderId } from '@/lib/ai-types';
+import { AI_SETTINGS_PATH, PROVIDER_META, isModelId, type ModelConnectionView, type ModelProviderId } from '@/lib/ai-types';
 import { markConsent, useKeptQuestion } from '@/lib/ask-pending';
 import { FLOW_COPY, type FlowResult } from '@/lib/connect-flow';
 import { getDesktopBridge } from '@/lib/desktop';
@@ -41,6 +42,7 @@ import {
   companyName,
   consentCopy,
   desktopSignInLink,
+  goodToKnowCopy,
   openRouterStartHref,
   settingAnchor,
   shortName,
@@ -1196,8 +1198,12 @@ function Fact({ icon: Icon, title, children }: { icon: LucideIcon; title: string
   );
 }
 
-/** What it costs, what is sent, the key, and taking it back: at body size, never fine print. */
-function GoodToKnow({ host }: { host: FormProps['host'] }) {
+/**
+ * What it costs, what is sent, the key, and taking it back: at body size, never
+ * fine print. The setup wording, before anything is connected: the connect
+ * card's own section, in the column and on Settings → AI.
+ */
+export function GoodToKnow({ host }: { host: 'column' | 'pane' }) {
   const id = useId();
   return (
     <section aria-labelledby={id} data-testid="connect-good-to-know" className="flex flex-col gap-3">
@@ -1231,5 +1237,59 @@ function GoodToKnow({ host }: { host: FormProps['host'] }) {
         </Fact>
       </ul>
     </section>
+  );
+}
+
+/**
+ * Good to know, once something is connected (Settings → AI, under the
+ * Connection card): the same four facts in the connection's own words
+ * (`goodToKnowCopy`), folded to one row. Folded on every visit, and never
+ * remembered: it is reference, not a setting.
+ */
+export function GoodToKnowConnected({ model }: { model: ModelConnectionView }) {
+  const [open, setOpen] = useState(false);
+  const bodyId = useId();
+  const copy = goodToKnowCopy(model);
+  return (
+    <div data-testid="connect-good-to-know-connected" className="flex flex-col rounded-[8px] border border-border">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={open ? bodyId : undefined}
+        data-testid="good-to-know-toggle"
+        onClick={() => setOpen((o) => !o)}
+        className={cn(
+          'flex w-full items-center gap-3 rounded-t-[7px] px-4 py-3 text-left transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-inset',
+          !open && 'rounded-b-[7px]'
+        )}
+      >
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="text-sm font-medium text-foreground">Good to know</span>
+          <span className="text-xs leading-snug text-muted-foreground">
+            Cost, what’s sent, your key, and taking it back
+          </span>
+        </span>
+        <ChevronRight
+          aria-hidden
+          className={cn('size-4 shrink-0 text-muted-foreground transition-transform', open && 'rotate-90')}
+        />
+      </button>
+      {open && (
+        <ul id={bodyId} data-testid="good-to-know-body" className="flex flex-col gap-2.5 px-4 pt-1 pb-4">
+          <Fact icon={Coins} title="Cost.">
+            {copy.cost}
+          </Fact>
+          <Fact icon={Send} title="What’s sent.">
+            {copy.sent}
+          </Fact>
+          <Fact icon={KeyRound} title="Your key.">
+            {copy.key}
+          </Fact>
+          <Fact icon={Undo2} title="Taking it back.">
+            {copy.back}
+          </Fact>
+        </ul>
+      )}
+    </div>
   );
 }

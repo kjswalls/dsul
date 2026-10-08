@@ -103,8 +103,8 @@ export default function OpenClawDocsPage() {
               Leaving it blank is a perfectly fine choice. That is pull-only mode: the
               plugin still refreshes your context on its own, there is just no push and no
               plugin chat in Ask (a Gateway URL in Settings → AI still gives you one).
-              Settings will show{' '}
-              <span className="text-foreground">Connected · pull-only</span>. It is
+              Settings → AI will show OpenClaw as{' '}
+              <span className="text-foreground">Paired</span>. It is
               still connected and working. You can add{' '}
               <code className="font-mono text-xs text-foreground">publicUrl</code>{' '}
               to the <code className="font-mono text-xs text-foreground">dsul-context</code>{' '}

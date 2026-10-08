@@ -328,13 +328,14 @@ export default function SettingsPage() {
   // because it is free text and can contain the separator.
   const aiTick = useAISettingsStore((s) => JSON.stringify([s.chatTarget, s.systemPrompt]));
   // What the server last said is connected. The AI pane's rows read it through
-  // getState() (who answers, the status words on the panel-owned records), so
-  // it has to move the ctx like every other store. Never a key: the store
-  // cannot hold one.
+  // getState() (who answers, Use AI in dsul, the status words on the
+  // panel-owned records, the model's name), so it has to move the ctx like
+  // every other store. Never a key: the store cannot hold one.
   const aiConnTick = useAIConnectionStore(
     (s) =>
       `${s.phase}|${s.available}|${s.model?.provider}|${s.model?.model}|${s.model?.status}|` +
-      `${s.model?.authMethod}|${s.openclaw.gateway}|${s.openclaw.pluginChat}`
+      `${s.model?.authMethod}|${s.openclaw.gateway}|${s.openclaw.pluginChat}` +
+      `|${s.aiHidden}|${s.model?.limitedUntil}|${s.model?.modelLabel}|${s.openclaw.agent}|${s.openclaw.agentId}`
   );
   const paletteTick = usePaletteStore((s) => s.palette);
   const lookTick = useLookStore((s) => `${s.light}|${s.dark}|${s.layout}|${s.appIcon}`);

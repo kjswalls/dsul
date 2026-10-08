@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { NO_AI, resolveAICapabilities, type AIInputs } from '@/lib/ai-registry';
+import { NO_AI, nothingConnected, resolveAICapabilities, type AIInputs } from '@/lib/ai-registry';
+import { EMPTY_OPENCLAW } from '@/lib/ai-connection-store';
 import type { ChatTarget, ModelConnectionView, OpenClawView } from '@/lib/ai-types';
 
 /**
@@ -351,5 +352,37 @@ describe('canMake ("Write with AI" in Settings → Make)', () => {
     expect(resolveAICapabilities(inputs({ model: MODEL_OK, available: false })).canMake).toBe(false);
     expect(resolveAICapabilities(inputs({ model: MODEL_OK, choice: 'none' })).canMake).toBe(false);
     expect(NO_AI.canMake).toBe(false);
+  });
+});
+
+describe('nothingConnected (Settings → AI asks it too)', () => {
+  it('is exported, so the pane and the invitation share one meaning of "nothing"', () => {
+    expect(typeof nothingConnected).toBe('function');
+  });
+
+  it('is true only with no model and nothing of OpenClaw at all', () => {
+    expect(nothingConnected(null, EMPTY_OPENCLAW)).toBe(true);
+    expect(nothingConnected(null, NO_OPENCLAW)).toBe(true);
+    expect(nothingConnected(MODEL_OK, NO_OPENCLAW)).toBe(false);
+    // A failing model or one with no model picked is still something saved.
+    expect(nothingConnected({ ...MODEL_OK, status: 'failing', problem: 'key_rejected' }, NO_OPENCLAW)).toBe(false);
+    expect(nothingConnected({ ...MODEL_OK, model: null }, NO_OPENCLAW)).toBe(false);
+    expect(nothingConnected(null, { ...NO_OPENCLAW, gateway: true })).toBe(false);
+    expect(nothingConnected(null, { ...NO_OPENCLAW, pluginChat: true })).toBe(false);
+    // An agent key alone (pull-only) is paired: something.
+    expect(nothingConnected(null, { ...NO_OPENCLAW, agent: true })).toBe(false);
+  });
+
+  it('is what askInvite reads', () => {
+    for (const [model, openclaw] of [
+      [null, NO_OPENCLAW],
+      [MODEL_OK, NO_OPENCLAW],
+      [null, { ...NO_OPENCLAW, agent: true }],
+      [null, PLUGIN],
+      [null, GATEWAY],
+    ] as const) {
+      const caps = resolveAICapabilities(inputs({ model, openclaw }));
+      expect(caps.askInvite, JSON.stringify(openclaw)).toBe(nothingConnected(model, openclaw));
+    }
   });
 });

@@ -117,6 +117,27 @@ braindump, like “…”."; "AI stays off" on a replay after No AI, and no step
 gate cannot invite; and the intro's wait. Open: app shortcuts (Ctrl+J, Ctrl+K) still fire
 under the tour, as on every step, and a replay with a key that needs fixing gets no fix card.
 
+**Note 2026-10-08: Settings → AI is the pane F18 to F22 draw (AI setup PR 7).** The shell
+draws no flat rows and no Advanced fold on the pane: `AIPane` (`components/settings/ai-pane.tsx`)
+draws, top to bottom, What AI does (three tiles while nothing is connected, else one sentence),
+Use AI in dsul, the AI-off card (only while AI is off), Connection (`ModelConnectionPanel`, always
+mounted, drawing nothing while AI is off), OpenClaw (with the gateway rows in its own fold), and
+On this device (Who answers in chat, Custom instructions). Which of them show, and where each
+`beacon.*` record's one anchor sits in every state, is pure data in `lib/ai-pane-state.ts`
+(`aiPaneLayout`, `connectionPill`, `connectionBody`). Use AI in dsul is a new permanent record,
+`beacon.useAi`: it reads the account's `ai_hidden` inverted (on only once the server has said
+false), has no `dbColumn`, and is written only by `setUseAI` (`lib/no-ai.ts`), never by
+`chooseNoAI` and never by `setAIHidden` directly; while nothing is connected it is a "No AI,
+thanks" button rather than a lit switch, in the pane and in search alike. The Connection pill
+says one of `Checking…`, `Not set up`, `Working`, `Needs attention` or `Daily limit · back at
+{t}` (the reset in the user's time zone), and search's `beacon.apiKey` reads the same words
+(`Saved ({provider})` for Working, and no time on the limit). The frames'
+data clauses that no column backs are dropped: no "Free key" (no provider gives a tier signal),
+no "today’s limit reached at {t}" (no `limited_at`), and no "back tomorrow" (a daily limit
+always carries its reset). Unpair, with its route and the AI-off card's "Unpair it to stop
+that.", is deferred to PR 7b. The header mark lights only with `canChat`, so F20's mark is
+unlit by rule while the frame draws it lit.
+
 **Status (2026-10-01): step 1, "Honest setup", SHIPPED (#355).** dsul ships no AI of
 its own any more: `process.env.OPENAI_API_KEY` is never read. Each user connects their own
 model in Settings → AI: OpenAI, Anthropic, Google Gemini, OpenRouter (sign-in or key) or any

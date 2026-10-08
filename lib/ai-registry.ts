@@ -94,6 +94,17 @@ export const NO_AI: AICapabilities = Object.freeze({
 }) as AICapabilities;
 
 /**
+ * Nothing at all: no model saved, no gateway, no plugin chat, no agent key.
+ * resolveAICapabilities uses it for `askInvite`, and Settings → AI asks it
+ * (lib/ai-pane-state.ts) for the tiles and the "No AI, thanks" button, so the
+ * pane and the invitation can never disagree about what "nothing" means.
+ * A pull-only agent key is something: it is paired, and it takes on tasks.
+ */
+export function nothingConnected(model: ModelConnectionView | null, openclaw: OpenClawView): boolean {
+  return !model && !openclaw.gateway && !openclaw.pluginChat && !openclaw.agent;
+}
+
+/**
  * The gate truth table (design 1.12). `known = phase === 'ready'`; anything
  * else is `NO_AI`, including `error` — a failed status read is not permission.
  *
@@ -144,8 +155,6 @@ export function resolveAICapabilities(i: AIInputs): AICapabilities {
   const modelFailing = model?.status === 'failing';
   const modelNeedsAttention = !!model && (modelFailing || !model.model);
   const mayInvite = i.available && i.aiHidden === false && i.choice !== 'none';
-  const nothingConnected =
-    !model && !i.openclaw.gateway && !i.openclaw.pluginChat && !i.openclaw.agent;
 
   return {
     known: true,
@@ -163,7 +172,7 @@ export function resolveAICapabilities(i: AIInputs): AICapabilities {
     modelFailing,
     modelNeedsAttention,
     aiHidden,
-    askInvite: mayInvite && nothingConnected,
+    askInvite: mayInvite && nothingConnected(model, i.openclaw),
     askFix: mayInvite && modelNeedsAttention && target === 'none',
   };
 }
