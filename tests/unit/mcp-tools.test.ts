@@ -92,9 +92,112 @@ describe('items', () => {
   });
 
   it('tells the model, in the tool text, how to complete a recurring item', () => {
-    // The single most common way to corrupt a series is status-instead-of-date.
+    // The single most common way to corrupt a series is status-instead-of-date,
+    // and the next is a short completedDates list un-ticking the rest.
+    expect(toolByName('dsul_update_task')!.description).toMatch(/dsul_complete/);
     expect(toolByName('dsul_update_task')!.description).toMatch(/completedDates/);
+    expect(toolByName('dsul_update_habit')!.description).toMatch(/dsul_complete/);
     expect(toolByName('dsul_update_habit')!.description).toMatch(/completedDates/);
+  });
+
+  it('takes a monthly repeat day on tasks and habits', () => {
+    for (const name of ['dsul_create_task', 'dsul_update_task', 'dsul_create_habit', 'dsul_update_habit']) {
+      const args = name.startsWith('dsul_create') ? { title: 'Rent', repeatMonthDay: 1 } : { id: 'abc', repeatMonthDay: 1 };
+      expect((plan(name, args) as { body: Record<string, unknown> }).body.repeatMonthDay, name).toBe(1);
+    }
+  });
+});
+
+describe('one-day verbs', () => {
+  const ACT = '/api/agent/items/abc/act';
+
+  it('ticks one date, done by default', () => {
+    expect(plan('dsul_complete', { id: 'abc', date: '2026-10-08' })).toEqual({
+      method: 'POST',
+      path: ACT,
+      body: { action: 'complete', date: '2026-10-08', done: true },
+    });
+  });
+
+  it('unticks, and carries a habit tally', () => {
+    expect(plan('dsul_complete', { id: 'abc', date: '2026-10-08', done: false, count: 2 })).toEqual({
+      method: 'POST',
+      path: ACT,
+      body: { action: 'complete', date: '2026-10-08', done: false, count: 2 },
+    });
+  });
+
+  it('skips and unskips one date', () => {
+    expect(plan('dsul_skip', { id: 'abc', date: '2026-10-08' })).toEqual({
+      method: 'POST',
+      path: ACT,
+      body: { action: 'skip', date: '2026-10-08', skipped: true },
+    });
+    expect((plan('dsul_skip', { id: 'abc', date: '2026-10-08', skipped: false }) as { body: unknown }).body).toEqual({
+      action: 'skip',
+      date: '2026-10-08',
+      skipped: false,
+    });
+  });
+
+  it('carries a task to a day', () => {
+    expect(plan('dsul_move', { id: 'abc', date: '2026-10-09' })).toEqual({
+      method: 'POST',
+      path: ACT,
+      body: { action: 'move', date: '2026-10-09' },
+    });
+  });
+
+  it('resets a streak with no other field', () => {
+    expect(plan('dsul_reset_streak', { id: 'abc' })).toEqual({
+      method: 'POST',
+      path: ACT,
+      body: { action: 'resetStreak' },
+    });
+  });
+
+  it('adds or removes one routine or season member', () => {
+    expect(plan('dsul_set_membership', { id: 'abc', kind: 'routine', collectionId: 'r1' })).toEqual({
+      method: 'POST',
+      path: ACT,
+      body: { action: 'collect', kind: 'routine', containerId: 'r1', member: true },
+    });
+    expect(
+      (plan('dsul_set_membership', { id: 'abc', kind: 'season', collectionId: 's1', member: false }) as { body: unknown }).body
+    ).toEqual({ action: 'collect', kind: 'season', containerId: 's1', member: false });
+  });
+
+  it('refuses a missing or loose date rather than guessing today', () => {
+    for (const name of ['dsul_complete', 'dsul_skip', 'dsul_move']) {
+      expect(plan(name, { id: 'abc' }), name).toHaveProperty('error');
+      expect(plan(name, { id: 'abc', date: 'Oct 8' }), name).toHaveProperty('error');
+    }
+  });
+
+  it('refuses a non-boolean flag and a goal membership', () => {
+    expect(plan('dsul_complete', { id: 'abc', date: '2026-10-08', done: 'yes' })).toHaveProperty('error');
+    expect(plan('dsul_skip', { id: 'abc', date: '2026-10-08', skipped: 'yes' })).toHaveProperty('error');
+    expect(plan('dsul_set_membership', { id: 'abc', kind: 'goal', collectionId: 'g1' })).toHaveProperty('error');
+    expect(plan('dsul_set_membership', { id: 'abc', kind: 'routine' })).toHaveProperty('error');
+  });
+
+  it('sends every schema property it lists', () => {
+    // The verbs rename two keys on the way (collectionId → containerId, and the
+    // action), so this compares by value: a property the plan drops is one the
+    // model believes it set.
+    const cases: [string, Record<string, unknown>][] = [
+      ['dsul_complete', { id: 'abc', date: '2026-10-08', done: false, count: 7 }],
+      ['dsul_skip', { id: 'abc', date: '2026-10-08', skipped: false }],
+      ['dsul_move', { id: 'abc', date: '2026-10-09' }],
+      ['dsul_reset_streak', { id: 'abc' }],
+      ['dsul_set_membership', { id: 'abc', kind: 'season', collectionId: 's9', member: false }],
+    ];
+    for (const [name, args] of cases) {
+      const props = Object.keys((toolByName(name)!.inputSchema as { properties: Record<string, unknown> }).properties);
+      expect(Object.keys(args).sort(), name).toEqual(props.sort());
+      const body = JSON.stringify((plan(name, args) as { body: unknown }).body);
+      for (const [k, v] of Object.entries(args)) if (k !== 'id') expect(body, `${name}.${k}`).toContain(JSON.stringify(v));
+    }
   });
 });
 
@@ -140,6 +243,11 @@ describe('projects', () => {
 
   it('refuses a create with no name', () => {
     expect(plan('dsul_create_project', { name: ' ' })).toMatchObject({ error: expect.any(String) });
+  });
+
+  it('deletes by id, in the path', () => {
+    expect(plan('dsul_delete_project', { id: 'p1' })).toEqual({ method: 'DELETE', path: '/api/agent/projects/p1' });
+    expect(plan('dsul_delete_project', {})).toHaveProperty('error');
   });
 
   it('updates by id, in the path', () => {
