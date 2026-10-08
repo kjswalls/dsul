@@ -69,75 +69,126 @@ export async function stubConnectedModel(page: Page, o: { agent?: boolean } = {}
 
 /** What `stubAIGate` was asked, and what it now answers. */
 export type GateStub = {
-  /** Every PATCH body the app sent, in order. */
+  /** Every PATCH body the app sent, in order. A DELETE never lands here. */
   patches: Array<Record<string, unknown>>;
   /**
    * Every connect (PUT) the app sent, in order: which provider, and whether
    * the stub took the key. Never the key itself.
    */
   connects: Array<{ provider: unknown; accepted: boolean }>;
+  /** How many disconnects (DELETE) the app sent. */
+  deletes: () => number;
   /** The account's "No AI, thanks", as the stub now answers it. */
   hidden(): boolean;
+  /** The saved connection, as the stub now answers it: null once nothing is connected. */
+  model(): Record<string, unknown> | null;
 };
 
 /**
- * Answer the gate "nothing answers here, and AI may be offered", for every
- * load of this page: no OpenClaw at all, and either no model (`model: 'none'`,
- * the unlit "Set up AI" key) or a saved Gemini key its provider turned down
- * (`model: 'failing'`, "Fix AI").
+ * The reset time `model: 'limited'` answers with: far enough ahead that no run
+ * outlives it, so the daily limit is always in force while a spec looks.
+ */
+const STUB_LIMITED_UNTIL = '2099-01-01T15:00:00.000Z';
+
+/** OpenClaw, as the gate reports it: none, paired and answering in chat, or pull-only. */
+const STUB_OPENCLAW = {
+  none: { gateway: false, pluginChat: false, agent: false, agentId: null },
+  // A live chat transport, so `atlas` is a name the pane shows.
+  paired: { gateway: false, pluginChat: true, agent: true, agentId: 'atlas' },
+  // The agent key alone: the shape the real e2e account has, since global
+  // setup seeds an agent key for it.
+  'pull-only': { gateway: false, pluginChat: false, agent: true, agentId: null },
+} as const;
+
+/** The saved Gemini key each `model` option starts from (none for `'none'`). */
+function stubModel(kind: 'none' | 'failing' | 'ok' | 'limited'): Record<string, unknown> | null {
+  if (kind === 'none') return null;
+  const failing = kind === 'failing';
+  return {
+    provider: 'gemini',
+    model: STUB_GEMINI_MODEL,
+    baseUrl: null,
+    authMethod: 'key',
+    status: failing ? 'failing' : 'ok',
+    problem: failing ? 'key_rejected' : null,
+    checkedAt: '2026-10-01T00:00:00.000Z',
+    limitedUntil: kind === 'limited' ? STUB_LIMITED_UNTIL : null,
+    modelLabel: null,
+  };
+}
+
+/**
+ * Answer the gate for every load of this page, from a starting state:
  *
- * Stateful, because "No AI, thanks" and a connect are account writes: PATCH
- * `{hidden}` and a PUT are answered here and the next GET says what they
- * wrote, so a reload sees it. The real route is never reached. The e2e account
- * is shared by every parallel spec: a real `ai_hidden = true` on it would take
- * AI away from all of them, and a real connect would save a key to it and
- * light AI for all of them. `aiHidden` is always sent as a boolean: null (a
- * server that has not said) invites nobody.
+ * - `model`: `'none'` (the default: the unlit "Set up AI" key), `'failing'` (a
+ *   saved Gemini key its provider turned down, "Fix AI"), `'ok'` (the same key,
+ *   working, last checked 2026-10-01) or `'limited'` (working, with today's
+ *   limit used up until `STUB_LIMITED_UNTIL`).
+ * - `aiHidden`: the account's "No AI, thanks" (default false).
+ * - `openclaw`: `'none'` (the default), `'paired'` (agent `atlas`, answering
+ *   in chat through the plugin) or `'pull-only'` (the agent key alone).
+ *
+ * Stateful, because "No AI, thanks", the Use AI switch, a connect, a model
+ * pick and a disconnect are all account writes: each is answered here and the
+ * next GET says what it wrote, so a reload sees it. The real route is never
+ * reached. The e2e account is shared by every parallel spec: a real
+ * `ai_hidden = true` on it would take AI away from all of them, a real
+ * connect would save a key to it and light AI for all of them, and a real
+ * disconnect would delete whatever another spec relies on. `aiHidden` is
+ * always sent as a boolean: null (a server that has not said) invites nobody.
  *
  * A connect is checked on the key's prefix alone: `STUB_GOOD_KEY` (any Gemini
  * key starting `AQ.good` or `AIzagood`) connects `STUB_GEMINI_MODEL`, working;
  * `STUB_BAD_KEY` (`AQ.bad…`, `AIzabad…`) is turned down as Google turns a
  * deleted key down (400 `key_rejected`), and the connection stays as it was.
  * Any other connect is refused as `invalid`.
+ *
+ * A model pick (`PATCH {provider, model}`) is answered as the real route
+ * answers it: 404 `not_connected` with nothing saved, 409 `conflict` with
+ * another provider's key saved, else the connection with its new model. A
+ * DELETE forgets the connection and answers `{ok: true}`. The model list
+ * (`/api/ai/connection/models`) is answered here too, so the list a working
+ * key prefetches never reaches the real route.
  */
 export async function stubAIGate(
   page: Page,
-  o: { model?: 'none' | 'failing'; aiHidden?: boolean } = {}
+  o: {
+    model?: 'none' | 'failing' | 'ok' | 'limited';
+    aiHidden?: boolean;
+    openclaw?: 'none' | 'paired' | 'pull-only';
+  } = {}
 ): Promise<GateStub> {
   let hidden = o.aiHidden ?? false;
   const patches: GateStub['patches'] = [];
   const connects: GateStub['connects'] = [];
-  let model: Record<string, unknown> | null =
-    o.model === 'failing'
-      ? {
-          provider: 'gemini',
-          model: STUB_GEMINI_MODEL,
-          baseUrl: null,
-          authMethod: 'key',
-          status: 'failing',
-          problem: 'key_rejected',
-          checkedAt: '2026-10-01T00:00:00.000Z',
-          limitedUntil: null,
-          modelLabel: null,
-        }
-      : null;
+  let deletes = 0;
+  let model = stubModel(o.model ?? 'none');
+  const openclaw = STUB_OPENCLAW[o.openclaw ?? 'none'];
   const json = (status: number, body: unknown) => ({
     status,
     contentType: 'application/json',
     headers: { 'Cache-Control': 'no-store' },
     body: JSON.stringify(body),
   });
+  await page.route('**/api/ai/connection/models', (route) => {
+    if (route.request().method() !== 'GET') return route.fulfill(json(400, { error: 'invalid' }));
+    // As the real route: no list without a saved connection.
+    if (!model) return route.fulfill(json(404, { error: 'not_connected' }));
+    return route.fulfill(
+      json(200, { models: [{ id: STUB_GEMINI_MODEL, label: 'Gemini Flash' }], listed: true })
+    );
+  });
   await page.route('**/api/ai/connection', (route) => {
     const req = route.request();
     if (req.method() === 'GET') {
-      return route.fulfill(
-        json(200, {
-          available: true,
-          model,
-          openclaw: { gateway: false, pluginChat: false, agent: false, agentId: null },
-          aiHidden: hidden,
-        })
-      );
+      return route.fulfill(json(200, { available: true, model, openclaw, aiHidden: hidden }));
+    }
+    // A disconnect: counted (never in `patches`), and the connection is gone
+    // for every later read.
+    if (req.method() === 'DELETE') {
+      deletes += 1;
+      model = null;
+      return route.fulfill(json(200, { ok: true }));
     }
     const body = (req.postDataJSON() ?? {}) as Record<string, unknown>;
     if (req.method() === 'PUT') {
@@ -171,7 +222,7 @@ export async function stubAIGate(
       if (verdict === 'bad') return route.fulfill(json(400, { error: 'key_rejected' }));
       return route.fulfill(json(400, { error: 'invalid' }));
     }
-    patches.push(body);
+    if (req.method() === 'PATCH') patches.push(body);
     if (req.method() === 'PATCH' && typeof body.hidden === 'boolean') {
       hidden = body.hidden;
       return route.fulfill(json(200, { aiHidden: hidden }));
@@ -181,11 +232,18 @@ export async function stubAIGate(
     if (req.method() === 'PATCH' && body.recheck === true && model) {
       return route.fulfill(json(200, { connection: model }));
     }
-    // Anything else (a model pick, a disconnect) is not this stub's to
-    // answer, and must not reach the real route either.
+    // A model pick, as the route answers it (app/api/ai/connection/route.ts).
+    if (req.method() === 'PATCH' && typeof body.provider === 'string' && typeof body.model === 'string') {
+      if (!model) return route.fulfill(json(404, { error: 'not_connected' }));
+      if (model.provider !== body.provider) return route.fulfill(json(409, { error: 'conflict' }));
+      model = { ...model, model: body.model, modelLabel: null };
+      return route.fulfill(json(200, { connection: model }));
+    }
+    // Anything else is not this stub's to answer, and must not reach the
+    // real route either.
     return route.fulfill(json(400, { error: 'invalid' }));
   });
-  return { patches, connects, hidden: () => hidden };
+  return { patches, connects, deletes: () => deletes, hidden: () => hidden, model: () => model };
 }
 
 /**

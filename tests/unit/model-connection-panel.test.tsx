@@ -2,11 +2,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 /**
- * The Connect-a-model panel (components/settings/model-connection-panel.tsx)
+ * Settings → AI's Connection section (components/settings/model-connection-panel.tsx)
  * and its model picker, rendered against the REAL connection store with a fake
- * server behind `fetch`.
+ * server behind `fetch`. The pane around it (What AI does, Use AI in dsul, the
+ * AI-off card, OpenClaw, On this device) is ai-pane.test.tsx's.
  *
- * Four promises are pinned here, beyond the copy of every state:
+ * Five promises are pinned here, beyond the copy of every state:
  *
  *   1. The key is write-only from the browser's side. It is pasted or typed
  *      into a password field that holds it only in its value property (never
@@ -16,10 +17,15 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
  *   2. Every mount re-asks the server, even over a fresh answer: this pane is
  *      where an OpenClaw user lands after pairing.
  *   3. Deep links (and a search hit's "Set up") still land here, on the
- *      `data-setting-alias` anchors, in every state. With nothing connected
- *      the state is the connect card the setup column shows too (its own
- *      behaviour is connect-ai.test.tsx's); this is how the pane hosts it.
- *   4. The picker filters the provider's list itself and offers a typed id, but
+ *      `data-setting-alias` anchors: both anchors, exactly once each, in every
+ *      state the panel draws, and it draws nothing while AI is off. With
+ *      nothing connected the state is the connect card the setup column shows
+ *      too (its own behaviour is connect-ai.test.tsx's); this is how the pane
+ *      hosts it. A key turned down is the fix card (connect-fix.test.tsx).
+ *   4. The pill and the body are separate: a check in flight turns only the
+ *      pill to "Checking…", and the card under it (with whatever was typed
+ *      into it) stays mounted.
+ *   5. The picker filters the provider's list itself and offers a typed id, but
  *      only one the server would accept.
  */
 
@@ -51,22 +57,33 @@ vi.mock('@/lib/settings-service', () => ({
   flushSettings: vi.fn(async () => {}),
 }));
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { ModelConnectionPanel, connectErrorCopy } from '@/components/settings/model-connection-panel';
+import { goodToKnowCopy, limitCopy } from '@/components/ai/connect/connect-shared';
 import { useAIConnectionStore } from '@/lib/ai-connection-store';
+import { modelName } from '@/lib/ai-model-names';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
+import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { chordLabel } from '@/lib/commands/keys';
+import { resetClock } from '@/lib/format-chat-timestamp';
 import { DEFAULT_SHORTCUTS, useKeyboardShortcutsStore } from '@/lib/keyboard-shortcuts-store';
-import type {
-  AIConnectionResponse,
-  ApiErrorCode,
-  ModelConnectionView,
-  ModelOption,
+import {
+  PROVIDER_META,
+  type AIConnectionResponse,
+  type ApiErrorCode,
+  type ModelConnectionView,
+  type ModelOption,
 } from '@/lib/ai-types';
 import {
   seedAI,
-  AI_HIDDEN,
+  AI_OFF_CONNECTED,
   CONNECTED_MODEL,
+  DAILY_LIMIT,
+  GEMINI_WORKING,
+  KEY_TURNED_DOWN,
+  NO_MODEL_PICKED,
   NOTHING_CONNECTED,
   type SeedAI,
 } from './helpers/ai-fixtures';
@@ -196,7 +213,7 @@ function renderPanel(o: { isMobile?: boolean; highlightId?: string } = {}) {
 const askChord = (keys = DEFAULT_SHORTCUTS.find((b) => b.id === 'toggle_right_sidebar')!.keys) =>
   chordLabel(keys, false);
 
-/** The switch form's key box ("Use a different provider"). */
+/** The switch form's key box ("Use a different service"). */
 const keyInput = () => screen.getByTestId('mcp-key') as HTMLInputElement;
 /** The connect card's free-key box (the not-connected state). */
 const geminiInput = () => screen.getByTestId('connect-key') as HTMLInputElement;
@@ -206,7 +223,7 @@ function paste(input: HTMLElement, text: string) {
   fireEvent.paste(input, { clipboardData: { getData: () => text } });
 }
 
-/** Connected to `provider`'s key, with "Use a different provider" open. */
+/** Connected to `provider`'s key, with "Use a different service" open. */
 function openSwitch(over: Partial<ModelConnectionView> = {}) {
   given(CONNECTED_MODEL, view(over));
   renderPanel();
@@ -237,91 +254,62 @@ describe('mounting', () => {
     expect(statusGets()).toBe(1);
   });
 
-  it('is a section titled "Connect a model"', () => {
+  it('is a section titled "Connection", its pill flush right on the heading’s row', () => {
     given(NOTHING_CONNECTED);
     renderPanel();
     const section = screen.getByTestId('model-connection-panel');
     expect(section.tagName).toBe('SECTION');
-    expect(within(section).getByRole('heading', { name: 'Connect a model' })).toBeInTheDocument();
+    const heading = within(section).getByRole('heading', { name: 'Connection' });
+    expect(heading).toHaveAttribute('id', 'mcp-title');
+    expect(section).toHaveAttribute('aria-labelledby', 'mcp-title');
+    const pill = screen.getByTestId('mcp-status');
+    expect(pill).toHaveTextContent('Not set up');
+    expect(pill).toHaveAttribute('data-tone', 'grey');
+    expect(pill.parentElement).toBe(heading.parentElement);
+    expect(pill.parentElement!.className).toMatch(/justify-between/);
   });
 });
 
 /* ── AI is off ──────────────────────────────────────────────────────────── */
 
-// "No AI, thanks" for the account (lib/no-ai.ts). Until the pane's own switch
-// (AI setup PR 7), this card is the way back once the strip's Undo is gone.
+// "No AI, thanks" for the account (lib/no-ai.ts). The pane's own card says
+// what is still connected (ai-pane.test.tsx); this section draws nothing then.
 describe('AI is off', () => {
-  beforeEach(() => toastMock.error.mockClear());
-
-  it('says so above the connection, and turns AI back on, focus kept in the panel', async () => {
-    given(AI_HIDDEN);
-    server.patch = (body) => {
-      if ((body as { hidden?: boolean }).hidden !== false) return json({ error: 'server' }, 503);
-      server.status = { ...(server.status as AIConnectionResponse), aiHidden: false };
-      return json({ aiHidden: false });
-    };
+  it('draws nothing, though the mount still asks the server', async () => {
+    given(AI_OFF_CONNECTED);
     renderPanel();
-    const card = screen.getByTestId('mcp-ai-off');
-    expect(card).toHaveTextContent('AI is off');
-    expect(card).toHaveTextContent(
-      'dsul won’t show AI or bring it up again until you turn it back on here. Your planner works exactly the same.'
-    );
-    // Above the connect card, which stays as it is.
-    const connect = screen.getByTestId('connect-ai');
-    expect(card.compareDocumentPosition(connect) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-
-    const button = within(card).getByRole('button', { name: 'Turn AI back on' });
-    button.focus();
-    await act(async () => {
-      fireEvent.click(button);
-    });
-    expect(calls.filter((c) => c.method === 'PATCH').map((c) => c.body)).toEqual([{ hidden: false }]);
-    expect(useAIConnectionStore.getState().aiHidden).toBe(false);
+    expect(screen.queryByTestId('model-connection-panel')).toBeNull();
+    await waitFor(() => expect(statusGets()).toBe(1));
+    expect(screen.queryByTestId('model-connection-panel')).toBeNull();
     expect(screen.queryByTestId('mcp-ai-off')).toBeNull();
-    expect(document.activeElement).toBe(screen.getByTestId('model-connection-panel'));
-    expect(toastMock.error).not.toHaveBeenCalled();
+    expect(document.querySelector('[data-setting-alias]')).toBeNull();
   });
 
-  it('a write the server refused leaves AI off, the card back, and says so', async () => {
-    given(AI_HIDDEN);
-    renderPanel();
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Turn AI back on' }));
-    });
-    await waitFor(() => expect(useAIConnectionStore.getState().aiHidden).toBe(true));
-    expect(screen.getByTestId('mcp-ai-off')).toBeInTheDocument();
-    expect(toastMock.error).toHaveBeenCalledWith('Couldn’t turn AI back on just now. Try again in a moment.');
-  });
-
-  it('a write that landed but whose answer was lost turns AI on, and says nothing failed', async () => {
-    given(AI_HIDDEN);
-    server.patch = () => {
-      server.status = { ...(server.status as AIConnectionResponse), aiHidden: false };
-      throw new TypeError('Failed to fetch');
-    };
-    renderPanel();
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Turn AI back on' }));
-    });
-    await waitFor(() => expect(useAIConnectionStore.getState().aiHidden).toBe(false));
-    expect(screen.queryByTestId('mcp-ai-off')).toBeNull();
-    expect(toastMock.error).not.toHaveBeenCalled();
-  });
-
-  it('is not there while AI is on', () => {
+  it('never draws the AI-off card itself, on or off', () => {
     given(NOTHING_CONNECTED);
     renderPanel();
+    expect(screen.getByTestId('model-connection-panel')).toBeInTheDocument();
     expect(screen.queryByTestId('mcp-ai-off')).toBeNull();
+  });
+
+  it('comes back when AI is turned back on, with the connection as it was', async () => {
+    given(AI_OFF_CONNECTED);
+    renderPanel();
+    await waitFor(() => expect(statusGets()).toBe(1));
+    act(() => useAIConnectionStore.setState({ aiHidden: false }));
+    expect(screen.getByTestId('mcp-provider')).toHaveTextContent('Google Gemini');
   });
 });
 
 /* ── States ─────────────────────────────────────────────────────────────── */
 
 describe('before the server has answered', () => {
-  it('unknown: a quiet checking card, and both anchors', () => {
+  it('unknown: a quiet checking card, a grey Checking… pill, and both anchors', () => {
     cleanupAI = seedAI();
     renderPanel();
     expect(screen.getByText('Checking your AI connection…')).toHaveAttribute('aria-live', 'polite');
+    expect(screen.getByTestId('mcp-status')).toHaveTextContent('Checking…');
+    expect(screen.getByTestId('mcp-status')).toHaveAttribute('data-tone', 'grey');
     expect(document.querySelector('[data-setting-alias="beacon.apiKey"]')).not.toBeNull();
     expect(document.querySelector('[data-setting-alias="beacon.model"]')).not.toBeNull();
     // Nobody is signed in yet, so the mount refresh has no one to ask for.
@@ -334,6 +322,8 @@ describe('before the server has answered', () => {
     renderPanel();
     expect(await screen.findByText('Couldn’t check your AI connection.')).toBeInTheDocument();
     expect(document.querySelector('[data-setting-alias="beacon.apiKey"]')).not.toBeNull();
+    // Nothing is known, so no word is claimed for it.
+    expect(screen.queryByTestId('mcp-status')).toBeNull();
 
     await waitFor(() => expect(statusGets()).toBe(1));
     server.status = { available: true, model: null, openclaw: CLAW_OFF, aiHidden: false };
@@ -353,6 +343,7 @@ describe('before the server has answered', () => {
     // The env hint is for a developer's own machine only.
     expect(screen.queryByText(/MODEL_KEYS_ENCRYPTION_KEY/)).toBeNull();
     expect(screen.queryByTestId('connect-ai')).toBeNull();
+    expect(screen.queryByTestId('mcp-status')).toBeNull();
     expect(document.querySelector('[data-setting-alias="beacon.apiKey"]')).not.toBeNull();
     expect(document.querySelector('[data-setting-alias="beacon.model"]')).not.toBeNull();
   });
@@ -537,7 +528,7 @@ describe('connecting from the switch form', () => {
     expect(signIn).toHaveAttribute('href', '/api/ai/openrouter/start?r=settings');
     expect(within(panel).getByText('Or paste a key')).toBeInTheDocument();
 
-    const group = within(panel).getByRole('radiogroup', { name: 'Provider' });
+    const group = within(panel).getByRole('radiogroup', { name: 'Service' });
     expect(within(group).getAllByRole('radio').map((r) => r.textContent)).toEqual([
       'OpenAI',
       'Anthropic',
@@ -888,15 +879,24 @@ describe('error copy', () => {
 });
 
 describe('connected', () => {
-  it('names the provider, says it works, and holds the model picker', async () => {
+  it('names the provider, says when it last answered, and holds the model picker', async () => {
     given(CONNECTED_MODEL, view());
     renderPanel();
-    expect(screen.getByTestId('mcp-provider')).toHaveTextContent('OpenAI');
-    expect(screen.getByText(/Key saved/)).toHaveTextContent('Key saved · Checked 3 minutes ago');
-    expect(screen.getByTestId('mcp-status')).toHaveTextContent('Working');
-    expect(screen.getByTestId('model-picker')).toHaveTextContent('gpt-4o-mini');
+    expect(screen.getByTestId('mcp-provider')).toHaveTextContent(/^OpenAI$/);
+    expect(screen.getByTestId('mcp-subline')).toHaveTextContent(
+      /^Key saved · answered a test question 3 minutes ago · Check again$/
+    );
+    // A link inside a sentence is underlined at rest, not only on hover.
+    expect(screen.getByTestId('mcp-recheck')).toHaveClass('underline');
+    // The pill sits on the heading's row, not in the card.
+    const pill = screen.getByTestId('mcp-status');
+    expect(pill).toHaveTextContent('Working');
+    expect(pill.parentElement).toBe(screen.getByRole('heading', { name: 'Connection' }).parentElement);
+    // The catalog's name, not the raw id, even before the list loads.
+    expect(screen.getByTestId('model-picker')).toHaveTextContent('GPT-4o mini');
+    expect(screen.getByTestId('mcp-model-hint')).toHaveTextContent('Answers in Ask and drafts your plans.');
     expect(screen.getByText('Replace key')).toBeInTheDocument();
-    expect(screen.getByText('Use a different provider')).toBeInTheDocument();
+    expect(screen.getByText('Use a different service')).toBeInTheDocument();
     // Anchors: the status row and the picker.
     const keyAnchor = document.querySelector('[data-setting-alias="beacon.apiKey"]')!;
     expect(keyAnchor).toHaveTextContent('Key saved');
@@ -986,20 +986,25 @@ describe('connected', () => {
     expectNoKeyInMarkup('SENTINEL');
   });
 
-  it('Use a different provider opens the connect form, without the current one preselected', () => {
+  it('Use a different service opens the connect form, without the current one preselected', () => {
     given(CONNECTED_MODEL, view());
     renderPanel();
-    fireEvent.click(screen.getByText('Use a different provider'));
+    fireEvent.click(screen.getByText('Use a different service'));
     const panel = screen.getByTestId('mcp-switch-panel');
-    expect(within(panel).getByText('Switch provider')).toBeInTheDocument();
-    expect(within(panel).getByText('Connecting a different provider replaces this one.')).toBeInTheDocument();
+    expect(within(panel).getByText('Switch service')).toBeInTheDocument();
+    expect(within(panel).getByText('Connecting a different service replaces this one.')).toBeInTheDocument();
     expect(within(panel).getByRole('radio', { name: 'Anthropic' })).toHaveAttribute('aria-checked', 'true');
   });
 
-  it('with no model yet: asks for one, with the picker already open', async () => {
-    given(CONNECTED_MODEL, view({ model: null }));
+  it('with no model yet: needs attention, asks for one, with the picker already open', async () => {
+    given(NO_MODEL_PICKED);
     renderPanel();
-    expect(screen.getByText('Pick a model to finish connecting.')).toBeInTheDocument();
+    expect(screen.getByTestId('mcp-status')).toHaveTextContent('Needs attention');
+    expect(screen.getByTestId('mcp-status')).toHaveAttribute('data-tone', 'honey');
+    // The working card all the same: the key answers, only the pick is missing.
+    expect(screen.getByTestId('mcp-subline')).toBeInTheDocument();
+    expect(screen.getByTestId('mcp-model-hint')).toHaveTextContent('Pick a model to finish connecting.');
+    expect(screen.getByTestId('model-picker')).toHaveAttribute('aria-label', 'Choose a model');
     expect(await screen.findByPlaceholderText(/Search .*models…/)).toBeInTheDocument();
   });
 
@@ -1011,18 +1016,23 @@ describe('connected', () => {
     ).toBeInTheDocument();
   });
 
-  it('says when OpenClaw can answer too', () => {
+  it('leaves OpenClaw to its own section', () => {
     given({ ...CONNECTED_MODEL, openclaw: { gateway: true } }, view());
     renderPanel();
-    expect(
-      screen.getByText('OpenClaw is connected too. Choose who answers in chat below.')
-    ).toBeInTheDocument();
+    expect(screen.queryByTestId('mcp-openclaw-too')).toBeNull();
+    expect(screen.queryByText(/OpenClaw is connected too/)).toBeNull();
+    expect(screen.queryByTestId('mcp-chat-off')).toBeNull();
   });
 
   it('Disconnect goes through confirm, and only then deletes', async () => {
     given(CONNECTED_MODEL, view());
     renderPanel();
-    fireEvent.click(screen.getByTestId('mcp-disconnect'));
+    // Red text: no border, no wash. The confirm carries the destructive button.
+    const action = screen.getByTestId('mcp-disconnect');
+    expect(action).toHaveClass('text-destructive-text');
+    expect(action.className.split(/\s+/)).not.toContain('border');
+    expect(action.className).not.toMatch(/(^|\s)bg-/);
+    fireEvent.click(action);
     const request = useUIStore.getState().confirmRequest!;
     expect(request).toMatchObject({
       title: 'Disconnect OpenAI?',
@@ -1038,6 +1048,22 @@ describe('connected', () => {
     act(() => useUIStore.getState().resolveConfirm(true));
     await waitFor(() => expect(calls.some((c) => c.method === 'DELETE')).toBe(true));
     await waitFor(() => expect(screen.getByTestId('mcp-connect-fresh')).toBeInTheDocument());
+    expect(screen.getByTestId('mcp-status')).toHaveTextContent('Not set up');
+  });
+
+  it('a refused Disconnect says so, and keeps the card', async () => {
+    given(CONNECTED_MODEL, view());
+    server.del = () => json({ error: 'server' }, 503);
+    renderPanel();
+    fireEvent.click(screen.getByTestId('mcp-disconnect'));
+    act(() => useUIStore.getState().resolveConfirm(true));
+    expect(await screen.findByTestId('mcp-error')).toHaveTextContent('Something went wrong. Try again.');
+    expect(screen.getByTestId('mcp-provider')).toHaveTextContent('OpenAI');
+    // Cancelled, nothing is sent and nothing is said.
+    fireEvent.click(screen.getByTestId('mcp-disconnect'));
+    expect(screen.queryByTestId('mcp-error')).toBeNull();
+    act(() => useUIStore.getState().resolveConfirm(false));
+    expect(calls.filter((c) => c.method === 'DELETE')).toHaveLength(1);
   });
 
   it('Disconnect names a custom host by its hostname, not "Other"', () => {
@@ -1057,33 +1083,121 @@ describe('connected', () => {
   });
 });
 
-describe('failing', () => {
-  it('a rejected key: says so, in our words, with the ways out', () => {
-    given(CONNECTED_MODEL, view({ status: 'failing', problem: 'key_rejected' }));
+describe('needs attention (a key turned down)', () => {
+  /** Google Gemini's key, turned down an hour ago, relative to the real clock as view() is. */
+  const turnedDown = (over: Partial<ModelConnectionView> = {}) =>
+    view({
+      provider: 'gemini',
+      model: 'gemini-flash-latest',
+      status: 'failing',
+      problem: 'key_rejected',
+      checkedAt: new Date(Date.now() - 61 * 60_000).toISOString(),
+      ...over,
+    });
+
+  it('the fix card: what is wrong, a box for a new key, and the ways out', () => {
+    given(KEY_TURNED_DOWN, turnedDown());
     renderPanel();
-    expect(screen.getByTestId('mcp-failing')).toHaveTextContent(
-      'This key stopped working. OpenAI turned it down the last time dsul used it.'
+    const fix = screen.getByTestId('mcp-fix');
+    expect(within(fix).getByTestId('mcp-provider')).toHaveTextContent(/^Google Gemini$/);
+    expect(screen.getByTestId('fix-line')).toHaveTextContent(/^Key saved · Google turned it down an hour ago$/);
+    const explain = screen.getByTestId('fix-explain');
+    expect(explain).toHaveTextContent(
+      'Google stopped accepting this key. It may have been deleted in AI Studio, or its project was turned off. Ask and plan suggestions are paused until a working key is in.'
     );
-    expect(screen.getByTestId('mcp-failing')).toHaveAttribute('role', 'status');
-    expect(screen.getByTestId('mcp-status')).toHaveTextContent('Stopped working');
-    expect(screen.getByRole('button', { name: 'Replace key' })).toBeInTheDocument();
-    expect(screen.getByTestId('mcp-recheck')).toHaveTextContent('Check again');
-    expect(screen.getByTestId('mcp-disconnect')).toHaveTextContent('Disconnect');
-    // The failing explanation is where `beacon.apiKey` lands now.
-    expect(
-      document.querySelector('[data-setting-alias="beacon.apiKey"]')!.contains(screen.getByTestId('mcp-failing'))
-    ).toBe(true);
-    expect(document.querySelector('[data-setting-alias="beacon.model"]')).not.toBeNull();
+    // The card's resting state: said once, not announced on every load.
+    expect(explain.querySelector('[role="alert"]')).toBeNull();
+    // A password box (no textbox role), labelled for the key it wants.
+    expect(screen.getByLabelText('New Gemini key')).toBe(screen.getByTestId('fix-key'));
+    const studio = screen.getByRole('link', { name: 'Open Google AI Studio' });
+    expect(studio).toHaveAttribute('href', 'https://aistudio.google.com/apikey');
+    expect(studio.closest('p')).toHaveTextContent(/^Your old key is replaced only once this one works\. Open Google AI Studio$/);
+    expect(studio.className).not.toMatch(/border-input/);
+    expect(screen.getByTestId('setup-recheck')).toHaveTextContent('Check the old key again');
+    expect(fix).toContainElement(screen.getByTestId('mcp-switch'));
+    expect(fix).toContainElement(screen.getByTestId('mcp-disconnect'));
+    expect(screen.getByTestId('mcp-switch')).toHaveTextContent('Use a different service');
+    // None of the working card's parts, and none of the column's.
+    expect(screen.queryByTestId('mcp-replace')).toBeNull();
+    expect(screen.queryByTestId('model-picker')).toBeNull();
+    expect(screen.queryByTestId('fix-caption')).toBeNull();
+    expect(screen.queryByTestId('mcp-failing')).toBeNull();
+    const pill = screen.getByTestId('mcp-status');
+    expect(pill).toHaveTextContent('Needs attention');
+    expect(pill).toHaveAttribute('data-tone', 'honey');
     // A refused key is not asked for a model list.
     expect(calls.some((c) => c.url === '/api/ai/connection/models')).toBe(false);
   });
 
-  it('a rejected key can be swapped for another provider, the saved one kept until it works', async () => {
+  it('every action in its band is one size', () => {
+    given(KEY_TURNED_DOWN, turnedDown());
+    renderPanel();
+    for (const id of ['setup-recheck', 'mcp-switch', 'mcp-disconnect']) {
+      expect(screen.getByTestId(id), id).toHaveClass('text-xs');
+      expect(screen.getByTestId(id).className, id).not.toMatch(/\btext-sm\b/);
+    }
+    expect(screen.getByTestId('mcp-disconnect')).toHaveClass('text-destructive-text');
+  });
+
+  it('a pasted Gemini key carries the saved model, so the fix keeps the pick', async () => {
+    given(KEY_TURNED_DOWN, turnedDown());
+    server.put = () => json({ connection: view({ provider: 'gemini', model: 'gemini-flash-latest' }), models: [], listed: true });
+    renderPanel();
+    await act(async () => paste(screen.getByTestId('fix-key'), GEMINI_SENTINEL));
+    await waitFor(() => expect(calls.some((c) => c.method === 'PUT')).toBe(true));
+    expect(calls.filter((c) => c.method === 'PUT').map((c) => c.body)).toEqual([
+      { provider: 'gemini', apiKey: GEMINI_SENTINEL, model: 'gemini-flash-latest' },
+    ]);
+    await waitFor(() => expect(screen.getByTestId('mcp-status')).toHaveTextContent('Working'));
+    expectNoKeyInMarkup('SENTINEL');
+  });
+
+  it('a fix in flight turns only the pill: the card and its box stay mounted', async () => {
+    given(KEY_TURNED_DOWN, turnedDown());
+    let release: (r: Response) => void = () => {};
+    server.put = () => new Promise<Response>((resolve) => (release = resolve));
+    renderPanel();
+    const fix = screen.getByTestId('mcp-fix');
+    const box = screen.getByTestId('fix-key');
+    await act(async () => paste(box, GEMINI_SENTINEL));
+    expect(screen.getByTestId('mcp-status')).toHaveTextContent('Checking…');
+    expect(screen.getByTestId('mcp-status')).toHaveAttribute('data-tone', 'grey');
+    expect(screen.getByTestId('mcp-fix')).toBe(fix);
+    expect(screen.getByTestId('fix-key')).toBe(box);
+    await act(async () => release(json({ error: 'key_rejected' }, 400)));
+    expect(screen.getByTestId('mcp-status')).toHaveTextContent('Needs attention');
+    expect(screen.getByTestId('fix-key')).toBe(box);
+  });
+
+  it('a key dsul cannot read says so, with no fresh check', () => {
+    given(KEY_TURNED_DOWN, turnedDown({ problem: 'key_unreadable' }));
+    renderPanel();
+    expect(screen.getByTestId('fix-line')).toHaveTextContent(/^Key saved · dsul can’t read it anymore$/);
+    expect(screen.getByTestId('fix-explain')).toHaveTextContent(
+      'dsul can’t read your saved key anymore. Ask and plan suggestions are paused until a working key is in.'
+    );
+    expect(screen.queryByTestId('setup-recheck')).toBeNull();
+    expect(screen.getByTestId('mcp-disconnect')).toBeInTheDocument();
+  });
+
+  it('a rejected sign-in signs in again, back to this pane', () => {
+    given(
+      CONNECTED_MODEL,
+      view({ provider: 'openrouter', authMethod: 'oauth', status: 'failing', problem: 'key_rejected', model: 'openai/gpt-4o-mini' })
+    );
+    renderPanel();
+    expect(screen.getByTestId('fix-signin-again')).toHaveAttribute('href', '/api/ai/openrouter/start?r=settings');
+    expect(screen.getByTestId('fix-signin-again')).toHaveTextContent('Sign in again');
+    expect(screen.queryByTestId('fix-key')).toBeNull();
+    expect(screen.queryByTestId('mcp-signin-again')).toBeNull();
+    expect(screen.getByTestId('setup-recheck')).toHaveTextContent('Check again');
+  });
+
+  it('a rejected key can be swapped for another service, the saved one kept until it works', async () => {
     given(CONNECTED_MODEL, view({ status: 'failing', problem: 'key_rejected' }));
     renderPanel();
-    const failing = screen.getByTestId('mcp-failing').parentElement!;
-    const swap = within(failing).getByTestId('mcp-switch');
-    expect(swap).toHaveTextContent('Use a different provider');
+    const swap = within(screen.getByTestId('mcp-fix')).getByTestId('mcp-switch');
+    expect(swap).toHaveTextContent('Use a different service');
     fireEvent.click(swap);
     const panel = screen.getByTestId('mcp-switch-panel');
     expect(within(panel).getByRole('radio', { name: 'Anthropic' })).toHaveAttribute('aria-checked', 'true');
@@ -1100,37 +1214,19 @@ describe('failing', () => {
     expectNoKeyInMarkup('SENTINEL');
   });
 
-  it('a rejected sign-in offers to sign in again', () => {
-    given(
-      CONNECTED_MODEL,
-      view({ provider: 'openrouter', authMethod: 'oauth', status: 'failing', problem: 'key_rejected' })
-    );
+  it('Disconnect from the fix card goes through the same confirm', async () => {
+    given(KEY_TURNED_DOWN, turnedDown());
     renderPanel();
-    expect(screen.getByTestId('mcp-signin-again')).toHaveAttribute('href', '/api/ai/openrouter/start?r=settings');
-    expect(screen.getByTestId('mcp-signin-again')).toHaveTextContent('Sign in again');
-  });
-
-  it('an unreadable key: connect it again', () => {
-    given(CONNECTED_MODEL, view({ status: 'failing', problem: 'key_unreadable' }));
-    renderPanel();
-    expect(screen.getByTestId('mcp-failing')).toHaveTextContent(
-      'dsul can’t read your saved key anymore. Connect it again.'
-    );
-    expect(screen.getByRole('button', { name: 'Replace key' })).toBeInTheDocument();
-    expect(screen.getByTestId('mcp-disconnect')).toBeInTheDocument();
-    expect(screen.queryByTestId('mcp-recheck')).toBeNull();
-  });
-
-  for (const problem of ['key_rejected', 'key_unreadable'] as const) {
-    it(`${problem}: Replace key never claims the current key "keeps working"`, () => {
-      given(CONNECTED_MODEL, view({ status: 'failing', problem }));
-      renderPanel();
-      fireEvent.click(screen.getByRole('button', { name: 'Replace key' }));
-      const help = screen.getByTestId('mcp-replace-help');
-      expect(help).toHaveTextContent('Paste a new key from OpenAI. It’s checked before it’s saved.');
-      expect(help.textContent).not.toMatch(/keeps working/);
+    fireEvent.click(screen.getByTestId('mcp-disconnect'));
+    expect(useUIStore.getState().confirmRequest).toMatchObject({
+      title: 'Disconnect Google Gemini?',
+      testId: 'model-disconnect-confirm',
+      destructive: true,
     });
-  }
+    server.status = { available: true, model: null, openclaw: CLAW_OFF, aiHidden: false };
+    act(() => useUIStore.getState().resolveConfirm(true));
+    await waitFor(() => expect(screen.getByTestId('mcp-connect-fresh')).toBeInTheDocument());
+  });
 });
 
 describe('outside the desktop app', () => {
@@ -1186,22 +1282,20 @@ describe('in the desktop app', () => {
     given(CONNECTED_MODEL, failing);
     server.put = () => json({ connection: view({ provider: 'openrouter', model: 'openai/gpt-4o-mini' }) });
     renderPanel();
-    expect(screen.queryByTestId('mcp-signin-again')).toBeNull();
+    expect(screen.queryByTestId('fix-signin-again')).toBeNull();
     // The way they connected in the first place still works, from the browser.
-    expect(screen.getByTestId('mcp-signin-browser')).toHaveTextContent(
-      'Or sign in to OpenRouter again from dsul in your browser. The connection works here too.'
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Replace key' }));
+    expect(screen.getByTestId('connect-openrouter-desktop')).toBeInTheDocument();
     // Someone who only ever signed in has no key yet: say where one comes from.
-    expect(screen.getByRole('link', { name: 'Get a key from OpenRouter' })).toHaveAttribute(
+    const box = screen.getByLabelText('New OpenRouter key') as HTMLInputElement;
+    expect(box).toBe(screen.getByTestId('fix-key'));
+    expect(screen.getByRole('link', { name: 'Open OpenRouter’s key page' })).toHaveAttribute(
       'href',
-      'https://openrouter.ai/settings/keys'
+      PROVIDER_META.openrouter.keyHelpUrl!
     );
-    const key = screen.getByTestId('mcp-replace-key') as HTMLInputElement;
-    // The desktop app reads no clipboard: no [Paste], Ctrl+V into the box instead.
-    expect(screen.queryByTestId('mcp-replace-key-paste')).toBeNull();
-    fireEvent.change(key, { target: { value: OPENROUTER_SENTINEL } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.change(box, { target: { value: OPENROUTER_SENTINEL } });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('fix-submit'));
+    });
     await waitFor(() => expect(calls.some((c) => c.method === 'PUT')).toBe(true));
     expect(calls.find((c) => c.method === 'PUT')!.body).toEqual({
       provider: 'openrouter',
@@ -1227,7 +1321,7 @@ describe('in the desktop app', () => {
     expect(statusGets()).toBe(2);
   });
 
-  it('Use a different provider: the key form, without the sign-in', () => {
+  it('Use a different service: the key form, without the sign-in', () => {
     given(CONNECTED_MODEL, view());
     renderPanel();
     fireEvent.click(screen.getByTestId('mcp-switch'));
@@ -1483,7 +1577,7 @@ describe('the model picker', () => {
     expect(await screen.findByTestId('model-picker-error')).toHaveTextContent(
       'That model isn’t available to your key. Pick another.'
     );
-    expect(screen.getByTestId('model-picker')).toHaveTextContent('claude-sonnet-4-0');
+    expect(screen.getByTestId('model-picker')).toHaveTextContent(modelName('anthropic', 'claude-sonnet-4-0').name);
 
     server.patch = () => json({ error: 'busy' }, 429);
     fireEvent.click(screen.getByTestId('model-picker'));
@@ -1523,5 +1617,358 @@ describe('the model picker', () => {
     fireEvent.change(field, { target: { value: 'my model' } });
     expect(within(form).getByText('Model names can’t contain spaces.')).toBeInTheDocument();
     expect(within(form).getByRole('button', { name: 'Save' })).toBeDisabled();
+  });
+});
+
+/* ── Today's limit ──────────────────────────────────────────────────────── */
+
+describe('a daily limit', () => {
+  const LIFTS = Date.parse('2099-01-01T15:00:00.000Z');
+
+  it('says when AI comes back, on the planner’s clock, with no recheck and no Replace key', () => {
+    usePlannerStore.setState({ userTimezone: 'UTC', timeFormat: '12h' } as never);
+    const at = resetClock(LIFTS, 'UTC', '12h');
+    given(DAILY_LIMIT);
+    renderPanel();
+    const pill = screen.getByTestId('mcp-status');
+    expect(pill).toHaveTextContent(`Daily limit · back at ${at}`);
+    expect(pill).toHaveAttribute('data-tone', 'honey');
+    expect(screen.getByTestId('mcp-provider')).toHaveTextContent(/^Google Gemini$/);
+    expect(screen.getByTestId('mcp-subline')).toHaveTextContent(/^Key saved · today’s limit is used up$/);
+    const note = screen.getByTestId('mcp-limit-note');
+    expect(note).toHaveTextContent(
+      `Google’s daily limit on this key is used up. It resets once a day, and AI comes back by itself at ${at}.`
+    );
+    // The card's resting state: never an alert that announces on every load.
+    expect(note.querySelector('[role="alert"]')).toBeNull();
+    expect(screen.getByTestId('mcp-limit-paid')).toHaveTextContent(
+      'A paid Google plan raises the daily limit. dsul never charges for AI.'
+    );
+    const studio = screen.getByRole('link', { name: 'Open Google AI Studio' });
+    expect(studio).toHaveAttribute('href', 'https://aistudio.google.com/apikey');
+    expect(studio.className).toMatch(/border-input/);
+    const limit = screen.getByTestId('mcp-limit');
+    expect(limit).toContainElement(screen.getByTestId('mcp-switch'));
+    expect(limit).toContainElement(screen.getByTestId('mcp-disconnect'));
+    expect(screen.getByTestId('model-picker')).toHaveTextContent('Gemini Flash');
+    expect(screen.queryByTestId('mcp-recheck')).toBeNull();
+    expect(screen.queryByTestId('mcp-replace')).toBeNull();
+  });
+
+  it('OpenRouter’s is its free questions, and OpenAI’s names the company', () => {
+    usePlannerStore.setState({ userTimezone: 'UTC', timeFormat: '12h' } as never);
+    const at = resetClock(LIFTS, 'UTC', '12h');
+    const limitedUntil = '2099-01-01T15:00:00.000Z';
+    const first = renderLimited({ provider: 'openrouter', model: 'openai/gpt-4o-mini', authMethod: 'oauth', limitedUntil });
+    expect(screen.getByTestId('mcp-subline')).toHaveTextContent(/^Signed in · today’s limit is used up$/);
+    expect(screen.getByTestId('mcp-limit-note')).toHaveTextContent(
+      `You’ve used today’s free questions. OpenRouter resets them once a day, and AI comes back by itself at ${at}.`
+    );
+    expect(screen.getByTestId('mcp-limit-paid')).toHaveTextContent(
+      'Credit on your OpenRouter account raises the daily limit. dsul never charges for AI.'
+    );
+    // A sign-in has no key page to send anyone to.
+    expect(screen.queryByRole('link', { name: /key page/ })).toBeNull();
+    first.unmount();
+    cleanupAI?.();
+
+    renderLimited({ provider: 'openai', model: 'gpt-4o-mini', limitedUntil });
+    expect(screen.getByTestId('mcp-limit-note')).toHaveTextContent(
+      `Today’s limit with OpenAI is used up, and AI comes back by itself at ${at}.`
+    );
+    expect(screen.getByTestId('mcp-limit-paid')).toHaveTextContent(/^dsul never charges for AI\.$/);
+    expect(screen.getByRole('link', { name: 'Open OpenAI’s key page' })).toHaveAttribute(
+      'href',
+      PROVIDER_META.openai.keyHelpUrl!
+    );
+    expect(limitCopy({ provider: 'openai', baseUrl: null }, at).note).toBe(
+      screen.getByTestId('mcp-limit-note').textContent
+    );
+  });
+
+  function renderLimited(model: Partial<ModelConnectionView>) {
+    given({ ...CONNECTED_MODEL, model });
+    return renderPanel();
+  }
+});
+
+describe('the limit lifting', () => {
+  // Fake timers only for the clock the panel re-renders on (useMinuteClock's
+  // setTimeout) and Date. No waitFor or findBy here: they wait on setTimeout.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    vi.setSystemTime(new Date('2099-01-01T14:59:30Z'));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const flush = async () => {
+    for (let i = 0; i < 5; i += 1) await act(async () => {});
+  };
+  /** Moves the wall clock (when given) and runs the timers due in `ms`. */
+  const pass = async (ms: number, to?: string) => {
+    act(() => {
+      if (to) vi.setSystemTime(new Date(to));
+      vi.advanceTimersByTime(ms);
+    });
+    await flush();
+  };
+
+  it('turns the pill back to Working on the edge, and asks the server once', async () => {
+    given(DAILY_LIMIT);
+    renderPanel();
+    await flush();
+    expect(screen.getByTestId('mcp-status')).toHaveTextContent(/^Daily limit · back at /);
+    expect(statusGets()).toBe(1);
+
+    await pass(60_250, '2099-01-01T15:00:30Z');
+    expect(screen.getByTestId('mcp-status')).toHaveTextContent('Working');
+    expect(screen.queryByTestId('mcp-limit')).toBeNull();
+    expect(screen.getByTestId('mcp-subline')).toHaveTextContent(/^Key saved · answered a test question /);
+    // The mount's ask, and one more on the edge.
+    expect(statusGets()).toBe(2);
+
+    await pass(60_250);
+    expect(statusGets()).toBe(2);
+  });
+
+  it('a mount with no limit never asks for this', async () => {
+    given(CONNECTED_MODEL, view());
+    renderPanel();
+    await flush();
+    expect(statusGets()).toBe(1);
+    await pass(60_250, '2099-01-01T15:00:30Z');
+    await pass(60_250);
+    expect(statusGets()).toBe(1);
+  });
+
+  it('a limit disconnected before it lifts asks nothing when the clock passes it', async () => {
+    given(DAILY_LIMIT);
+    renderPanel();
+    await flush();
+    fireEvent.click(screen.getByTestId('mcp-disconnect'));
+    act(() => useUIStore.getState().resolveConfirm(true));
+    await flush();
+    expect(calls.filter((c) => c.method === 'DELETE')).toHaveLength(1);
+    expect(screen.getByTestId('mcp-connect-fresh')).toBeInTheDocument();
+    await pass(60_250, '2099-01-01T15:00:30Z');
+    await pass(60_250);
+    expect(statusGets()).toBe(1);
+  });
+});
+
+/* ── The pill and the body are separate questions ───────────────────────── */
+
+describe('a check in flight', () => {
+  it('a connect from the connect card turns only the pill: the card and its box stay mounted', async () => {
+    given(NOTHING_CONNECTED);
+    let release: (r: Response) => void = () => {};
+    server.put = () => new Promise<Response>((resolve) => (release = resolve));
+    renderPanel();
+    const card = screen.getByTestId('connect-ai');
+    const box = geminiInput();
+    expect(screen.getByTestId('mcp-status')).toHaveTextContent('Not set up');
+    paste(box, GEMINI_SENTINEL);
+    await waitFor(() => expect(screen.getByTestId('mcp-status')).toHaveTextContent('Checking…'));
+    expect(screen.getByTestId('connect-ai')).toBe(card);
+    expect(geminiInput()).toBe(box);
+    await act(async () => release(json({ error: 'key_rejected' }, 400)));
+    expect(screen.getByTestId('mcp-status')).toHaveTextContent('Not set up');
+    expect(screen.getByTestId('connect-ai')).toBe(card);
+    expect(geminiInput()).toBe(box);
+  });
+
+  it('Check again turns the pill to Checking… and keeps the card', async () => {
+    given(CONNECTED_MODEL, view());
+    let release: (r: Response) => void = () => {};
+    server.patch = () => new Promise<Response>((resolve) => (release = resolve)) as unknown as Response;
+    renderPanel();
+    const subline = screen.getByTestId('mcp-subline');
+    fireEvent.click(screen.getByTestId('mcp-recheck'));
+    await waitFor(() => expect(screen.getByTestId('mcp-status')).toHaveTextContent('Checking…'));
+    expect(screen.getByTestId('mcp-subline')).toBe(subline);
+    expect(screen.getByTestId('mcp-recheck')).toHaveTextContent('Checking…');
+    await act(async () => release(json({ connection: view() })));
+    expect(screen.getByTestId('mcp-status')).toHaveTextContent('Working');
+  });
+});
+
+/* ── The pill's dot ─────────────────────────────────────────────────────── */
+
+describe('the Working dot', () => {
+  it('is lime only while something answers here', () => {
+    given(CONNECTED_MODEL, view());
+    const first = renderPanel();
+    let pill = screen.getByTestId('mcp-status');
+    expect(pill).toHaveAttribute('data-tone', 'lime');
+    expect(pill.querySelector('[data-dot]')).toHaveClass('bg-primary');
+    first.unmount();
+    cleanupAI?.();
+
+    // Chat is Off on this device: the key works, but nothing answers here.
+    given({ ...CONNECTED_MODEL, choice: 'none' }, view());
+    renderPanel();
+    pill = screen.getByTestId('mcp-status');
+    expect(pill).toHaveTextContent('Working');
+    expect(pill).toHaveAttribute('data-tone', 'grey');
+    expect(pill.querySelector('[data-dot]')).toHaveClass('bg-muted-foreground');
+    expect(pill.querySelector('[class*="bg-primary"]')).toBeNull();
+    expect(screen.getByTestId('mcp-chat-off')).toHaveTextContent(
+      'Chat is off on this device. Change it under Who answers in chat below.'
+    );
+  });
+
+  it('follows the device’s choice as it changes', () => {
+    given(CONNECTED_MODEL, view());
+    renderPanel();
+    expect(screen.getByTestId('mcp-status')).toHaveAttribute('data-tone', 'lime');
+    act(() => useAISettingsStore.setState({ chatTarget: 'none' }));
+    expect(screen.getByTestId('mcp-status')).toHaveAttribute('data-tone', 'grey');
+  });
+});
+
+/* ── Good to know ───────────────────────────────────────────────────────── */
+
+describe('good to know', () => {
+  it('is folded under every card for a saved connection, and never beside the setup one', () => {
+    for (const [name, seed] of [
+      ['working', GEMINI_WORKING],
+      ['limit', DAILY_LIMIT],
+      ['fix', KEY_TURNED_DOWN],
+    ] as const) {
+      given(seed);
+      const v = renderPanel();
+      const fold = screen.getByTestId('connect-good-to-know-connected');
+      expect(screen.getByTestId('good-to-know-toggle'), name).toHaveAttribute('aria-expanded', 'false');
+      expect(screen.queryByTestId('good-to-know-body'), name).toBeNull();
+      expect(screen.queryByTestId('connect-good-to-know'), name).toBeNull();
+      expect(screen.getByTestId('model-connection-panel')).toContainElement(fold);
+      v.unmount();
+      cleanupAI?.();
+      cleanupAI = null;
+    }
+
+    given(NOTHING_CONNECTED);
+    renderPanel();
+    expect(screen.getByTestId('connect-good-to-know')).toBeInTheDocument();
+    expect(screen.queryByTestId('connect-good-to-know-connected')).toBeNull();
+  });
+
+  it('opens onto the four facts, in the connection’s own words', () => {
+    given(GEMINI_WORKING);
+    const first = renderPanel();
+    fireEvent.click(screen.getByTestId('good-to-know-toggle'));
+    const gemini = goodToKnowCopy({ provider: 'gemini', baseUrl: null });
+    const body = screen.getByTestId('good-to-know-body');
+    expect(Array.from(body.querySelectorAll('li')).map((li) => li.textContent)).toEqual([
+      `Cost. ${gemini.cost}`,
+      `What’s sent. ${gemini.sent}`,
+      `Your key. ${gemini.key}`,
+      `Taking it back. ${gemini.back}`,
+    ]);
+    first.unmount();
+    cleanupAI?.();
+
+    given(CONNECTED_MODEL, view());
+    renderPanel();
+    fireEvent.click(screen.getByTestId('good-to-know-toggle'));
+    expect(screen.getByTestId('good-to-know-body')).toHaveTextContent(
+      'Cost. OpenAI bills its API to your OpenAI account. dsul never charges for AI.'
+    );
+    expect(screen.getByTestId('good-to-know-body')).toHaveTextContent(
+      'Taking it back. Disconnect above and dsul deletes the key. To cancel the key itself, revoke it with OpenAI.'
+    );
+  });
+});
+
+/* ── Rules across states ────────────────────────────────────────────────── */
+
+describe('nothing lime', () => {
+  const lime = () =>
+    Array.from(
+      document.querySelectorAll(
+        '[data-testid="model-connection-panel"] [class*="bg-primary"], [data-testid="model-connection-panel"] [data-slot="button-key"]'
+      )
+    );
+
+  it('while nothing is connected, or the key needs attention', () => {
+    given(NOTHING_CONNECTED);
+    const first = renderPanel();
+    expect(screen.getByTestId('model-connection-panel')).toBeInTheDocument();
+    expect(lime()).toEqual([]);
+    first.unmount();
+    cleanupAI?.();
+
+    given(KEY_TURNED_DOWN);
+    renderPanel();
+    expect(screen.getByTestId('mcp-fix')).toBeInTheDocument();
+    expect(lime()).toEqual([]);
+  });
+});
+
+describe('anchors', () => {
+  const count = (id: string) =>
+    screen.getByTestId('model-connection-panel').querySelectorAll(`[data-setting-alias="${id}"]`).length;
+
+  it('each of the two lands exactly once in every state the section draws', () => {
+    const oauthTurnedDown = view({
+      provider: 'openrouter',
+      authMethod: 'oauth',
+      status: 'failing',
+      problem: 'key_rejected',
+      model: 'openai/gpt-4o-mini',
+    });
+    const states: [string, () => void][] = [
+      ['checking', () => (cleanupAI = seedAI())],
+      [
+        'failed',
+        () => {
+          cleanupAI = seedAI({ phase: 'error' });
+          server.status = () => json({ error: 'server' }, 503);
+        },
+      ],
+      ['unavailable', () => given({ ...NOTHING_CONNECTED, available: false })],
+      ['not set up', () => given(NOTHING_CONNECTED)],
+      ['working', () => given(GEMINI_WORKING)],
+      ['no model picked', () => given(NO_MODEL_PICKED)],
+      ['daily limit', () => given(DAILY_LIMIT)],
+      ['fix, a key', () => given(KEY_TURNED_DOWN)],
+      ['fix, a sign-in', () => given(KEY_TURNED_DOWN, oauthTurnedDown)],
+    ];
+    for (const [name, seed] of states) {
+      seed();
+      const v = renderPanel();
+      expect(count('beacon.apiKey'), name).toBe(1);
+      expect(count('beacon.model'), name).toBe(1);
+      v.unmount();
+      cleanupAI?.();
+      cleanupAI = null;
+    }
+  });
+
+  it('the limit card: the key on its header, the model on its picker', () => {
+    given(DAILY_LIMIT);
+    renderPanel({ highlightId: 'beacon.model' });
+    const model = document.querySelector('[data-setting-alias="beacon.model"]')!;
+    expect(model.contains(screen.getByTestId('model-picker'))).toBe(true);
+    expect(model).toHaveAttribute('data-highlight', 'true');
+    expect(document.querySelector('[data-setting-alias="beacon.apiKey"]')!.contains(screen.getByTestId('mcp-provider'))).toBe(
+      true
+    );
+  });
+});
+
+describe('the panel’s files', () => {
+  it.each([
+    'components/settings/model-connection-panel.tsx',
+    'components/settings/status-pill.tsx',
+    'components/settings/disconnect.ts',
+    'components/settings/model-picker.tsx',
+  ])('%s has no em dashes, says Ctrl not the Mac symbol, and never names the AI', (file) => {
+    const src = readFileSync(join(process.cwd(), file), 'utf8');
+    expect(src).not.toMatch(/—/);
+    expect(src).not.toMatch(/⌘/);
+    expect(src).not.toMatch(/\bBeacon\b/);
   });
 });

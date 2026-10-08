@@ -1,9 +1,8 @@
 'use client';
 
-import { useId, useRef, useState } from 'react';
+import { useId, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { ArrowUpRight, CircleAlert } from 'lucide-react';
-import { formatDistanceToNowStrict } from 'date-fns';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { useAIConnectionStore } from '@/lib/ai-connection-store';
 import { detectKeyProvider, isSureKey } from '@/lib/ai-key-prefix';
@@ -13,13 +12,18 @@ import { DesktopSignIn, FlowNote } from './connect-ai';
 import { KeyField, type KeyFieldHandle } from './key-field';
 import { CheckNoteView, KeyPageLink, noteHasActions, useKeyCheck } from './key-check';
 import {
+  ANCHOR_CLASS,
   SETUP_MODEL_HREF,
+  TEXT_ACTION,
+  ago,
   checkFailureCopy,
   checkingCopy,
   companyName,
+  hostOf,
   keyPageLabel,
   labelName,
   openRouterStartHref,
+  settingAnchor,
   shortName,
   spendFlowResult,
   useFlowResultSpentOnLeave,
@@ -36,8 +40,16 @@ import {
  *
  * `check` labels the fresh check of the saved key and `still` is what it says
  * when the provider still turns it down.
+ *
+ * `host` is where the note is read. The setup column's (the default) is
+ * unchanged; Settings → AI's says what is paused, since that pane is where the
+ * fix happens. Only `note` differs. (`status` is read only by the setup
+ * column's no-model home; the card's own line is ConnectFix's.)
  */
-export function fixCopy(model: ModelConnectionView): {
+export function fixCopy(
+  model: ModelConnectionView,
+  host: 'column' | 'pane' = 'column'
+): {
   status: string;
   note: string;
   href: string;
@@ -62,38 +74,27 @@ export function fixCopy(model: ModelConnectionView): {
     };
   }
   if (model.problem === 'key_unreadable') {
-    return {
-      status: 'Needs attention',
-      note: signIn
-        ? 'dsul can’t read your saved sign-in anymore, so AI can’t answer right now. Sign in again and Ask picks up where it left off.'
-        : 'dsul can’t read your saved key anymore, so AI can’t answer right now. Paste it again and Ask picks up where it left off.',
-      href: AI_SETTINGS_PATH,
-      action: 'Settings → AI',
-      check,
-      still,
-    };
+    const note =
+      host === 'pane'
+        ? signIn
+          ? 'dsul can’t read your saved sign-in anymore. Ask and plan suggestions are paused until you sign in again.'
+          : 'dsul can’t read your saved key anymore. Ask and plan suggestions are paused until a working key is in.'
+        : signIn
+          ? 'dsul can’t read your saved sign-in anymore, so AI can’t answer right now. Sign in again and Ask picks up where it left off.'
+          : 'dsul can’t read your saved key anymore, so AI can’t answer right now. Paste it again and Ask picks up where it left off.';
+    return { status: 'Needs attention', note, href: AI_SETTINGS_PATH, action: 'Settings → AI', check, still };
   }
-  return {
-    status: 'Needs attention',
-    note: signIn
-      ? `${company} stopped accepting your sign-in, so AI can’t answer right now. Sign in again and Ask picks up where it left off.`
-      : `${company} stopped accepting your key, so AI can’t answer right now. Paste a new one and Ask picks up where it left off.`,
-    href: AI_SETTINGS_PATH,
-    action: 'Settings → AI',
-    check,
-    still,
-  };
-}
-
-/** "an hour ago", "3 minutes ago", "just now". */
-function ago(iso: string | null): string | null {
-  if (!iso) return null;
-  const at = new Date(iso);
-  if (Number.isNaN(at.getTime())) return null;
-  if (Date.now() - at.getTime() < 60_000) return 'just now';
-  return formatDistanceToNowStrict(at, { addSuffix: true })
-    .replace(/^1 hour\b/, 'an hour')
-    .replace(/^1 (minute|day|month|year)\b/, 'a $1');
+  const note =
+    host === 'pane'
+      ? signIn
+        ? `${company} stopped accepting your sign-in. Ask and plan suggestions are paused until you sign in again.`
+        : model.provider === 'gemini'
+          ? 'Google stopped accepting this key. It may have been deleted in AI Studio, or its project was turned off. Ask and plan suggestions are paused until a working key is in.'
+          : `${company} stopped accepting this key. It may have been deleted or revoked. Ask and plan suggestions are paused until a working key is in.`
+      : signIn
+        ? `${company} stopped accepting your sign-in, so AI can’t answer right now. Sign in again and Ask picks up where it left off.`
+        : `${company} stopped accepting your key, so AI can’t answer right now. Paste a new one and Ask picks up where it left off.`;
+  return { status: 'Needs attention', note, href: AI_SETTINGS_PATH, action: 'Settings → AI', check, still };
 }
 
 /** Recheck answers that say something about the key (or its account) worth its own line. */
@@ -109,27 +110,54 @@ const SAYS_SOMETHING: ReadonlySet<ApiErrorCode> = new Set<ApiErrorCode>([
 const QUIET_ACTION =
   'rounded-md px-2 py-1 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-disabled:cursor-default aria-disabled:hover:text-muted-foreground';
 
+/** The pane's recheck: one size with the band's other actions, quiet while a check is out. */
+const PANE_RECHECK = cn(
+  TEXT_ACTION,
+  'aria-disabled:cursor-default aria-disabled:hover:text-muted-foreground aria-disabled:hover:no-underline'
+);
+
 /**
- * The fix home's card (the setup column, "Fix AI"): a saved connection the
- * provider stopped accepting, or one dsul can no longer read, fixed in place.
+ * A saved connection the provider stopped accepting, or one dsul can no
+ * longer read, fixed in place. Two hosts, one mechanism:
  *
- *  - Its name, "Key saved · Google turned it down an hour ago", and what that
- *    means, in a honey note.
- *  - A box for a new key, with the same mechanics as the connect card's: a
- *    paste the saved provider's prefix makes sure of is checked at once, and
- *    the old key is replaced only once the new one works (the route checks
- *    before it saves). A sign-in signs in again instead, from the browser in
- *    the desktop app, where a pasted OpenRouter key also works.
- *  - A fresh check of the old key, with a line for each answer.
- *  - Outside the card: where everything else is, Settings → AI.
+ *  - 'column' (the default): the setup column's fix home ("Fix AI"). Its name,
+ *    "Key saved · Google turned it down an hour ago", and what that means, in
+ *    a honey note; a box for a new key; a fresh check of the old one; and,
+ *    outside the card, where everything else is: Settings → AI.
+ *  - 'pane': Settings → AI's Connection section, inside its card. The same
+ *    pieces, plus the pane's own actions after the fresh check (`paneActions`:
+ *    another service, Disconnect), the key page as a link in the box's help,
+ *    and the deep-link anchors (`beacon.model` on the header, `beacon.apiKey`
+ *    on the key box, or on the note when a sign-in has no box). A new key
+ *    carries the saved model, so fixing the key never resets the pick.
  *
- * A key that works turns the column into Ask on its own, home as it was: a
- * fix picks up where it left off, so it never says "It works." (no
- * `justConnected`). Nothing in it is lime.
+ * The box has the connect card's mechanics: a paste the saved provider's
+ * prefix makes sure of is checked at once, and the old key is replaced only
+ * once the new one works (the route checks before it saves). A sign-in signs
+ * in again instead, from the browser in the desktop app, where a pasted
+ * OpenRouter key also works.
+ *
+ * A key that works fixes it in place: the column turns into Ask on its own,
+ * home as it was, and the pane's card becomes the working one. It never says
+ * "It works." (no `justConnected`). Nothing in it is lime.
  */
-export function ConnectFix({ model }: { model: ModelConnectionView }) {
+export function ConnectFix({
+  model,
+  host = 'column',
+  highlightId = null,
+  paneActions,
+}: {
+  model: ModelConnectionView;
+  /** 'column' (default): the setup column's fix home, unchanged. 'pane': Settings → AI. */
+  host?: 'column' | 'pane';
+  /** The pane's deep-link ring (`?focus=` lands on these anchors). Pane only. */
+  highlightId?: string | null;
+  /** The pane's own actions, after the fresh check in the actions band. Pane only. */
+  paneActions?: ReactNode;
+}) {
   const uid = useId();
   const keyId = `${uid}-key`;
+  const pane = host === 'pane';
   const inDesktopApp = useInDesktopApp();
   const busy = useAIConnectionStore((s) => s.busy);
   const flowResult = useAIConnectionStore((s) => s.flowResult);
@@ -141,7 +169,7 @@ export function ConnectFix({ model }: { model: ModelConnectionView }) {
   const check = useKeyCheck({ field, onOk: () => {} });
   useFlowResultSpentOnLeave();
 
-  const copy = fixCopy(model);
+  const copy = fixCopy(model, host);
   const { provider, baseUrl } = model;
   const oauth = model.authMethod === 'oauth';
   const unreadable = model.problem === 'key_unreadable';
@@ -152,15 +180,22 @@ export function ConnectFix({ model }: { model: ModelConnectionView }) {
   const keyPage = PROVIDER_META[provider].keyHelpUrl;
   const target = check.target;
   const when = ago(model.checkedAt);
+  const company = companyName(provider, baseUrl);
   const status = unreadable
-    ? 'Needs attention'
-    : `${companyName(provider, baseUrl)} turned it down${when ? ` ${when}` : ''}`;
+    ? pane
+      ? 'dsul can’t read it anymore'
+      : 'Needs attention'
+    : `${company} turned it down${when ? ` ${when}` : ''}`;
+  // Where a key from another service goes: this pane itself, or Settings → AI.
+  const elsewhere = pane ? 'here' : 'settings';
 
   const send = () => {
     setLine(null);
-    // Same provider and host; a custom service's model rides along, since
-    // its list may not name one.
-    if (provider === 'custom') {
+    // Same provider and host. On the pane the saved model rides along for
+    // every provider, as Replace key's does, so a new key never swaps the
+    // user's pick for the provider's default. The column sends it only for a
+    // custom service, whose list may not name one.
+    if (pane || provider === 'custom') {
       void check.send(provider, { baseUrl: baseUrl ?? undefined, model: model.model ?? undefined });
     } else void check.send(provider);
   };
@@ -196,12 +231,166 @@ export function ConnectFix({ model }: { model: ModelConnectionView }) {
     if (result.code === 'key_rejected') return setLine(copy.still);
     if (SAYS_SOMETHING.has(result.code)) {
       const resetsAt = resetsAtOf(result.limitedUntil);
-      return setLine(checkFailureCopy(result.code, provider, { baseUrl, resetsAt, elsewhere: 'settings' }));
+      return setLine(checkFailureCopy(result.code, provider, { baseUrl, resetsAt, elsewhere }));
     }
     setLine('Couldn’t check it just now. Try again in a moment.');
   };
 
   const showConnect = hasKey && target === null && !noteHasActions(check.note);
+
+  // The note says what is wrong. On the pane, a sign-in with no box to land
+  // on carries `beacon.apiKey` here instead.
+  const noteAnchored = pane && !takesKey;
+  const note = (
+    <div
+      data-testid="fix-explain"
+      {...(noteAnchored ? settingAnchor('beacon.apiKey', highlightId) : {})}
+      className={cn('flex gap-2 rounded-lg bg-warning/10 px-3 py-2.5', noteAnchored && ANCHOR_CLASS)}
+    >
+      <CircleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-warning-text" />
+      <p className="text-sm leading-snug text-foreground">{copy.note}</p>
+    </div>
+  );
+
+  const signIn = (
+    <>
+      {signInAgain && (
+        <a
+          href={openRouterStartHref(pane ? 'settings' : 'home')}
+          data-testid="fix-signin-again"
+          onClick={spendFlowResult}
+          className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'self-start')}
+        >
+          Sign in again
+          <ArrowUpRight aria-hidden className="size-3.5" />
+        </a>
+      )}
+      {oauth && inDesktopApp && <DesktopSignIn onSay={setLine} inline={false} />}
+      {oauth && flowResult && <FlowNote flow={flowResult} testId="fix-flow-note" />}
+    </>
+  );
+
+  const keyBox = takesKey && (
+    <div
+      {...(pane ? settingAnchor('beacon.apiKey', highlightId) : {})}
+      className={cn('flex flex-col gap-1.5', pane && cn('-mx-2 -my-1 px-2 py-1', ANCHOR_CLASS))}
+    >
+      <label htmlFor={keyId} className="text-xs font-medium text-foreground">
+        New {shortName(provider, baseUrl)} key
+      </label>
+      <KeyField
+        ref={field}
+        id={keyId}
+        placeholder={provider === 'custom' ? PROVIDER_META.custom.keyPlaceholder : undefined}
+        checking={target !== null}
+        describedBy={`${uid}-help`}
+        testId="fix-key"
+        onChange={(key) => {
+          setHasKey(key !== '');
+          check.forget();
+        }}
+        onPaste={onPaste}
+        onEnter={() => hasKey && send()}
+      />
+      <p id={`${uid}-help`} className="text-xs leading-snug text-muted-foreground">
+        Your old key is replaced only once this one works.
+        {pane && keyPage && (
+          <>
+            {' '}
+            <a
+              href={keyPage}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-[3px] text-foreground underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+            >
+              {keyPageLabel(provider, baseUrl)}
+              <ArrowUpRight aria-hidden className="ml-0.5 inline size-3 align-[-1px]" />
+            </a>
+          </>
+        )}
+      </p>
+      {check.note && (
+        <CheckNoteView
+          note={check.note}
+          noteRef={check.noteRef}
+          elsewhere={elsewhere}
+          testId="fix-note"
+          onCheckAgain={() => {
+            // The note's provider: the saved one, or the one "Use it with" sent it to.
+            if (check.note?.kind !== 'failure') return;
+            setLine(null);
+            if (check.note.provider === provider) send();
+            else void check.send(check.note.provider);
+          }}
+          onUseIt={(p) => {
+            setLine(null);
+            void check.send(p);
+          }}
+          onClear={() => {
+            field.current?.clear();
+            field.current?.focus();
+          }}
+        />
+      )}
+      {showConnect && (
+        <Button type="button" variant="outline" size="sm" data-testid="fix-submit" onClick={send} className="self-start">
+          Connect
+        </Button>
+      )}
+    </div>
+  );
+
+  // A fresh check only helps a key the provider turned down: an unreadable
+  // key reads no better a second time.
+  const recheckButton = !unreadable && (
+    <button
+      type="button"
+      data-testid="setup-recheck"
+      aria-disabled={busy !== null || undefined}
+      onClick={() => void recheck()}
+      className={pane ? PANE_RECHECK : QUIET_ACTION}
+    >
+      {busy === 'recheck' ? 'Checking…' : copy.check}
+    </button>
+  );
+
+  // There from the start, so what it says next is announced. Empty, it gives
+  // back the gap above it.
+  const statusLine = (
+    <p role="status" data-testid="fix-status" className="text-xs leading-snug text-muted-foreground empty:-mt-3">
+      {target ? checkingCopy(target.provider, target.baseUrl) : line}
+    </p>
+  );
+
+  if (pane) {
+    const customHost = provider === 'custom' ? hostOf(baseUrl) : null;
+    return (
+      <div data-testid="mcp-fix" className="flex flex-col gap-4">
+        <div
+          {...settingAnchor('beacon.model', highlightId)}
+          className={cn('-mx-2 -my-1 flex min-w-0 flex-col px-2 py-1', ANCHOR_CLASS)}
+        >
+          <p className="truncate text-sm font-medium text-foreground" data-testid="mcp-provider">
+            {PROVIDER_META[provider].label}
+            {customHost && <span className="font-normal text-muted-foreground"> · {customHost}</span>}
+          </p>
+          <p data-testid="fix-line" className="text-xs text-muted-foreground">
+            {oauth ? 'Signed in' : 'Key saved'} · {status}
+          </p>
+        </div>
+        {note}
+        {signIn}
+        {keyBox}
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-4">
+            {recheckButton}
+            {paneActions}
+          </div>
+          {statusLine}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -218,99 +407,14 @@ export function ConnectFix({ model }: { model: ModelConnectionView }) {
             {oauth ? 'Signed in' : 'Key saved'} · {status}
           </p>
         </div>
-        <div className="flex gap-2 rounded-lg bg-warning/10 px-3 py-2.5">
-          <CircleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-warning-text" />
-          <p className="text-sm leading-snug text-foreground">{copy.note}</p>
-        </div>
-
-        {signInAgain && (
-          <a
-            href={openRouterStartHref('home')}
-            data-testid="fix-signin-again"
-            onClick={spendFlowResult}
-            className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'self-start')}
-          >
-            Sign in again
-            <ArrowUpRight aria-hidden className="size-3.5" />
-          </a>
-        )}
-        {oauth && inDesktopApp && <DesktopSignIn onSay={setLine} inline={false} />}
-        {oauth && flowResult && <FlowNote flow={flowResult} testId="fix-flow-note" />}
-
-        {takesKey && (
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor={keyId} className="text-xs font-medium text-foreground">
-              New {shortName(provider, baseUrl)} key
-            </label>
-            <KeyField
-              ref={field}
-              id={keyId}
-              placeholder={provider === 'custom' ? PROVIDER_META.custom.keyPlaceholder : undefined}
-              checking={target !== null}
-              describedBy={`${uid}-help`}
-              testId="fix-key"
-              onChange={(key) => {
-                setHasKey(key !== '');
-                check.forget();
-              }}
-              onPaste={onPaste}
-              onEnter={() => hasKey && send()}
-            />
-            <p id={`${uid}-help`} className="text-xs leading-snug text-muted-foreground">
-              Your old key is replaced only once this one works.
-            </p>
-            {check.note && (
-              <CheckNoteView
-                note={check.note}
-                noteRef={check.noteRef}
-                elsewhere="settings"
-                testId="fix-note"
-                onCheckAgain={() => {
-                  // The note's provider: the saved one, or the one "Use it with" sent it to.
-                  if (check.note?.kind !== 'failure') return;
-                  setLine(null);
-                  if (check.note.provider === provider) send();
-                  else void check.send(check.note.provider);
-                }}
-                onUseIt={(p) => {
-                  setLine(null);
-                  void check.send(p);
-                }}
-                onClear={() => {
-                  field.current?.clear();
-                  field.current?.focus();
-                }}
-              />
-            )}
-            {showConnect && (
-              <Button type="button" variant="outline" size="sm" data-testid="fix-submit" onClick={send} className="self-start">
-                Connect
-              </Button>
-            )}
-          </div>
-        )}
-
+        {note}
+        {signIn}
+        {keyBox}
         <div className="flex flex-wrap items-center gap-2">
           {takesKey && keyPage && <KeyPageLink href={keyPage} label={keyPageLabel(provider, baseUrl)} />}
-          {/* A fresh check only helps a key the provider turned down: an
-              unreadable key reads no better a second time. */}
-          {!unreadable && (
-            <button
-              type="button"
-              data-testid="setup-recheck"
-              aria-disabled={busy !== null || undefined}
-              onClick={() => void recheck()}
-              className={QUIET_ACTION}
-            >
-              {busy === 'recheck' ? 'Checking…' : copy.check}
-            </button>
-          )}
+          {recheckButton}
         </div>
-        {/* There from the start, so what it says next is announced. Empty, it
-            gives back the gap above it. */}
-        <p role="status" data-testid="fix-status" className="text-xs leading-snug text-muted-foreground empty:-mt-3">
-          {target ? checkingCopy(target.provider, target.baseUrl) : line}
-        </p>
+        {statusLine}
       </section>
       <p data-testid="fix-caption" className="text-xs leading-snug text-muted-foreground">
         Other services, the model and Disconnect are in{' '}

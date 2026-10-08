@@ -32,7 +32,8 @@ vi.mock('@/lib/settings-service', () => ({
 import { ModelPicker } from '@/components/settings/model-picker';
 import { connectErrorCopy } from '@/components/settings/model-connection-panel';
 import { useAIConnectionStore } from '@/lib/ai-connection-store';
-import { CONNECTED_MODEL, seedAI } from './helpers/ai-fixtures';
+import { modelName } from '@/lib/ai-model-names';
+import { CONNECTED_MODEL, GEMINI_WORKING, seedAI } from './helpers/ai-fixtures';
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -125,5 +126,38 @@ describe('a refused pick', () => {
     await waitFor(() =>
       expect(screen.getByTestId('model-picker-error')).toHaveTextContent('Couldn’t save. Try again.')
     );
+  });
+});
+
+describe('the chip', () => {
+  /** Seeded with no list loaded: the chip has only the saved connection to go by. */
+  function seedWithoutList(seed: Parameters<typeof seedAI>[0]) {
+    cleanupAI?.();
+    cleanupAI = seedAI(seed);
+    useAIConnectionStore.setState({ models: null, modelsListed: false, modelsStatus: 'idle' });
+  }
+
+  it('names the model before the list loads: gemini-flash-latest is Gemini Flash', () => {
+    seedWithoutList(GEMINI_WORKING);
+    render(<ModelPicker errorCopy={() => ''} />);
+    expect(screen.getByTestId('model-picker')).toHaveTextContent('Gemini Flash');
+    expect(screen.getByTestId('model-picker')).not.toHaveTextContent('gemini-flash-latest');
+  });
+
+  it('a model no catalog names reads as the label saved with the connection', () => {
+    seedWithoutList({
+      ...CONNECTED_MODEL,
+      model: { provider: 'openrouter', model: 'mistralai/mistral-small', modelLabel: 'Mistral Small' },
+    });
+    render(<ModelPicker errorCopy={() => ''} />);
+    const expected = modelName('openrouter', 'mistralai/mistral-small', 'Mistral Small').name;
+    expect(expected).toBe('Mistral Small');
+    expect(screen.getByTestId('model-picker')).toHaveTextContent(expected);
+  });
+
+  it('with no model saved yet it asks for one, and never throws', () => {
+    seedWithoutList({ ...CONNECTED_MODEL, model: { provider: 'openai', model: null } });
+    render(<ModelPicker errorCopy={() => ''} />);
+    expect(screen.getByRole('button', { name: 'Choose a model' })).toBeInTheDocument();
   });
 });

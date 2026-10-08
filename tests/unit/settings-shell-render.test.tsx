@@ -12,13 +12,16 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
  * secret-row test builds its own hand-written record.
  *
  * Both of those are rendering facts, so they are pinned here, against the real
- * SettingsShell and the real manifest. Three claims:
+ * SettingsShell and the real manifest. Four claims:
  *
  *   1. A query crosses into sub-panes and the hits are DRAWN, not merely
  *      counted — the rail number and the row count are the same number.
  *   2. No credential's value can reach the screen.
  *   3. The extension list and the extension's own pane say the same word about
  *      whether it is live.
+ *   4. The AI pane's body is AIPane (components/settings/ai-pane.tsx), wired
+ *      into the shell: its rows, its marks, its fold, its deep links (which
+ *      wait for the connection check) and its row in search.
  */
 
 vi.mock('@/lib/supabase', () => ({
@@ -46,8 +49,16 @@ import { SettingsShell } from '@/components/settings/settings-shell';
 import { SETTINGS, type PaneId, type SettingCtx } from '@/lib/settings/manifest';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { useReminderStore } from '@/lib/reminder-store';
-import { useAIConnectionStore } from '@/lib/ai-connection-store';
-import { seedAI, CONNECTED_MODEL, NOTHING_CONNECTED } from './helpers/ai-fixtures';
+import { __armUserForTests, useAIConnectionStore } from '@/lib/ai-connection-store';
+import { useAISettingsStore } from '@/lib/ai-settings-store';
+import {
+  seedAI,
+  paneInputFor,
+  CONNECTED_MODEL,
+  NOTHING_CONNECTED,
+  SEED_USER_ID,
+  type SeedAI,
+} from './helpers/ai-fixtures';
 
 const ctx: SettingCtx = { theme: 'system', setTheme: () => {}, userId: 'test-user' };
 
@@ -83,6 +94,53 @@ function railCount(name: string): number {
   );
   expect(button, `no rail row named ${name}`).toBeTruthy();
   return Number(button!.textContent!.slice(name.length).trim());
+}
+
+/* ── A fake AI server, for the panes that mount the Connection section ──── */
+
+interface Call {
+  url: string;
+  method: string;
+  body: unknown;
+}
+let calls: Call[] = [];
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+}
+
+/** The connection GET's answer for a seed: what the server would say about that account (AI on, unless told). */
+function statusBody(seed: SeedAI, aiHidden = false) {
+  const s = paneInputFor(seed);
+  return json({ available: s.available, model: s.model, openclaw: s.openclaw, aiHidden });
+}
+
+/**
+ * Answer `/api/ai/connection` as `seed` does (the Connection section re-asks
+ * on mount, and an answer that disagreed with the seed would overwrite it),
+ * the models route with an empty list, and a PATCH {hidden} as accepted.
+ * `status` replaces the GET's answer (a failure, or one held open).
+ */
+function answerAs(seed: SeedAI, o: { status?: () => Response | Promise<Response> } = {}) {
+  let hidden = false;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? 'GET';
+      const body = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined;
+      calls.push({ url, method, body });
+      if (url === '/api/ai/connection' && method === 'GET') {
+        return o.status ? o.status() : statusBody(seed, hidden);
+      }
+      if (url === '/api/ai/connection' && method === 'PATCH' && typeof body?.hidden === 'boolean') {
+        hidden = body.hidden;
+        return json({ aiHidden: hidden });
+      }
+      if (url === '/api/ai/connection/models') return json({ models: [], listed: true });
+      return json({ error: 'server' }, 404);
+    })
+  );
 }
 
 beforeEach(() => {
@@ -268,64 +326,136 @@ describe('the extension list and the extension pane agree', () => {
 describe('the AI pane', () => {
   let cleanupAI: (() => void) | null = null;
   beforeEach(() => {
-    // The panel re-asks the server on mount; answer as the seed would.
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () =>
-        new Response(
-          JSON.stringify({
-            available: true,
-            model: null,
-            openclaw: { gateway: false, pluginChat: false, agent: false, agentId: null },
-          }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } }
-        )
-      )
-    );
+    calls = [];
+    // The Connection section re-asks the server on mount; answer as the seed would.
+    answerAs(NOTHING_CONNECTED);
   });
   afterEach(() => {
     cleanupAI?.();
     cleanupAI = null;
+    __armUserForTests(null);
     vi.unstubAllGlobals();
+    try {
+      sessionStorage.clear();
+    } catch {
+      /* no storage */
+    }
+    window.history.replaceState(null, '', '/');
   });
 
-  it('opens with the Connect-a-model panel, which owns the key and model rows', () => {
-    cleanupAI = seedAI(NOTHING_CONNECTED);
+  /** Seed the gate and make the server say the same thing, so the pane's mount refresh agrees. */
+  function given(seed: SeedAI) {
+    cleanupAI = seedAI(seed);
+    answerAs(seed);
+  }
+
+  const row = (id: string) => document.querySelector<HTMLElement>(`[data-setting-row="${id}"]`);
+  const alias = (id: string) => document.querySelector<HTMLElement>(`[data-setting-alias="${id}"]`);
+  /** Every lime class in the pane, the switch's own track and thumb left out (the house switch stays lime). */
+  const lime = () =>
+    Array.from(
+      document.querySelectorAll('[data-testid="ai-pane"] [class*="bg-primary"], [data-testid="ai-pane"] [data-slot="button-key"]')
+    ).filter((el) => el.closest('[data-slot="switch"]') === null);
+  const eyebrowMark = () => {
+    const eyebrow = Array.from(document.querySelectorAll('main p')).find((p) => p.textContent === 'AI');
+    expect(eyebrow, 'no AI eyebrow').toBeTruthy();
+    return eyebrow!.querySelector('[data-ask-mark]');
+  };
+  const railMark = () => {
+    const rail = screen.getByRole('navigation', { name: 'Settings sections' });
+    const button = Array.from(rail.querySelectorAll('button')).find((b) => b.textContent === 'AI');
+    return button!.querySelector('[data-ask-mark]');
+  };
+
+  it('opens with the pane body: Use AI, then the Connection section, which owns the key and model', async () => {
+    given(NOTHING_CONNECTED);
     renderShell('beacon');
+    expect(screen.getByTestId('ai-pane')).toBeInTheDocument();
     expect(screen.getByTestId('model-connection-panel')).toBeInTheDocument();
     // The panel's anchors, not flat rows: one id, one home.
-    expect(document.querySelector('[data-setting-row="beacon.apiKey"]')).toBeNull();
-    expect(document.querySelector('[data-setting-row="beacon.model"]')).toBeNull();
-    expect(document.querySelector('[data-setting-alias="beacon.apiKey"]')).not.toBeNull();
-    expect(document.querySelector('[data-setting-alias="beacon.model"]')).not.toBeNull();
-    // The rest of the pane is unchanged rows.
-    expect(document.querySelector('[data-setting-row="beacon.provider"]')).not.toBeNull();
-    expect(document.querySelector('[data-setting-row="beacon.instructions"]')).not.toBeNull();
+    expect(row('beacon.apiKey')).toBeNull();
+    expect(row('beacon.model')).toBeNull();
+    expect(alias('beacon.apiKey')).not.toBeNull();
+    expect(alias('beacon.model')).not.toBeNull();
+    // Nothing connected: "No AI, thanks", not a switch.
+    const use = screen.getByTestId('ai-use-row');
+    expect(within(use).getByTestId('ai-no-ai-thanks')).toBeInTheDocument();
+    expect(within(use).queryByRole('switch')).toBeNull();
+    // On this device is hidden (F18): its rows answer through the Connection section.
+    expect(screen.queryByTestId('ai-device')).toBeNull();
+    expect(row('beacon.provider')).toBeNull();
+    expect(row('beacon.instructions')).toBeNull();
+    expect(alias('beacon.provider')).not.toBeNull();
+    expect(alias('beacon.instructions')).not.toBeNull();
     expect(screen.queryByText(/\bBeacon\b/)).toBeNull();
+    await act(async () => {});
+  });
+
+  it('shows On this device while nothing is connected only when chat is Off here', async () => {
+    given({ ...NOTHING_CONNECTED, choice: 'none' });
+    renderShell('beacon');
+    expect(screen.getByTestId('ai-device')).toBeInTheDocument();
+    expect(row('beacon.provider')).not.toBeNull();
+    expect(row('beacon.instructions')).not.toBeNull();
+    await act(async () => {});
+  });
+
+  it('shows On this device once something is connected', async () => {
+    given(CONNECTED_MODEL);
+    renderShell('beacon');
+    expect(screen.getByTestId('ai-device')).toBeInTheDocument();
+    expect(row('beacon.provider')).not.toBeNull();
+    expect(row('beacon.instructions')).not.toBeNull();
+    expect(within(screen.getByTestId('ai-use-row')).getByRole('switch')).toBeChecked();
+    await act(async () => {});
+  });
+
+  it('the rail and the eyebrow wear the live mark: unlit while nothing answers, lit once something does', async () => {
+    given(NOTHING_CONNECTED);
+    const first = renderShell('beacon');
+    expect(railMark()).toHaveAttribute('data-lit', 'false');
+    expect(eyebrowMark()).toHaveAttribute('data-lit', 'false');
+    await act(async () => {});
+    first.unmount();
+    cleanupAI?.();
+
+    given(CONNECTED_MODEL);
+    const second = renderShell('beacon');
+    expect(railMark()).not.toBeNull();
+    expect(railMark()).not.toHaveAttribute('data-lit');
+    expect(eyebrowMark()).not.toHaveAttribute('data-lit');
+    await act(async () => {});
+    second.unmount();
+
+    // On another pane, where no Connection section mounts, the rail still knows.
+    renderShell('day');
+    expect(railMark()).not.toHaveAttribute('data-lit');
+  });
+
+  it('has no shell Advanced fold: the gateway rows live in the OpenClaw section’s own', async () => {
+    given(NOTHING_CONNECTED);
+    renderShell('beacon');
+    const advanced = screen.getAllByRole('button', { name: /Advanced/ });
+    expect(advanced).toEqual([screen.getByTestId('openclaw-gateway-toggle')]);
+    expect(row('beacon.gatewayUrl')).toBeNull();
+    fireEvent.click(screen.getByTestId('openclaw-gateway-toggle'));
+    expect(row('beacon.gatewayUrl')).not.toBeNull();
+    expect(row('beacon.gatewayToken')).not.toBeNull();
+    await act(async () => {});
+  });
+
+  it('a deep link to a gateway row opens the fold and lands on the row', async () => {
+    given(NOTHING_CONNECTED);
+    render(
+      <SettingsShell pane="beacon" ctx={ctx} focusId="beacon.gatewayUrl" isMobile={false} onOpenDestination={() => {}} />
+    );
+    await waitFor(() => expect(row('beacon.gatewayUrl')?.dataset.highlight).toBe('true'));
+    expect(screen.getByTestId('openclaw-gateway-toggle')).toHaveAttribute('aria-expanded', 'true');
+    expect(document.activeElement).toBe(row('beacon.gatewayUrl'));
   });
 
   it('a deep link to a panel-owned record lands on the panel and rings it', async () => {
-    cleanupAI = seedAI(CONNECTED_MODEL);
-    // The panel's mount refresh answers with the same connection.
-    const connected = useAIConnectionStore.getState();
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (input: RequestInfo | URL) =>
-        String(input) === '/api/ai/connection'
-          ? new Response(
-              JSON.stringify({
-                available: true,
-                model: connected.model,
-                openclaw: connected.openclaw,
-              }),
-              { status: 200, headers: { 'Content-Type': 'application/json' } }
-            )
-          : new Response(JSON.stringify({ models: [], listed: true }), {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            })
-      )
-    );
+    given(CONNECTED_MODEL);
     render(
       <SettingsShell
         pane="beacon"
@@ -335,44 +465,179 @@ describe('the AI pane', () => {
         onOpenDestination={() => {}}
       />
     );
-    const target = () =>
-      document.querySelector<HTMLElement>('[data-setting-alias="beacon.model"]')!;
+    const target = () => alias('beacon.model')!;
     await waitFor(() => expect(target().dataset.highlight).toBe('true'));
     expect(target().contains(screen.getByTestId('model-picker'))).toBe(true);
     expect(document.activeElement).toBe(target());
   });
 
+  describe('a cold deep link waits for the connection check', () => {
+    /** A status GET held open until the test answers it. */
+    function holdStatus() {
+      let answer!: (seed: SeedAI) => void;
+      const held = new Promise<SeedAI>((resolve) => {
+        answer = resolve;
+      });
+      answerAs(NOTHING_CONNECTED, { status: async () => statusBody(await held) });
+      return (seed: SeedAI) => act(async () => answer(seed));
+    }
+
+    function arrive(focusId: string) {
+      __armUserForTests(SEED_USER_ID);
+      useAIConnectionStore.setState({ phase: 'unknown' });
+      const answer = holdStatus();
+      window.history.pushState(null, '', `?focus=${focusId}`);
+      const strip = vi.spyOn(window.history, 'replaceState');
+      render(<SettingsShell pane="beacon" ctx={ctx} focusId={focusId} isMobile={false} onOpenDestination={() => {}} />);
+      return { answer, strip };
+    }
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+      useAIConnectionStore.getState().reset();
+    });
+
+    it.each([
+      { id: 'beacon.provider', as: 'connected', seed: CONNECTED_MODEL, kind: 'row' },
+      { id: 'beacon.provider', as: 'nothing connected', seed: NOTHING_CONNECTED, kind: 'alias' },
+      { id: 'beacon.useAi', as: 'nothing connected', seed: NOTHING_CONNECTED, kind: 'row' },
+    ] as const)('$id, answered as $as, lands on its $kind only after the answer', async ({ id, seed, kind }) => {
+      const { answer, strip } = arrive(id);
+      await act(async () => {});
+      expect(strip).not.toHaveBeenCalled();
+      expect(document.querySelector('[data-highlight]')).toBeNull();
+      // The row the record will have is not rung while the check is out, even where one is drawn.
+      if (id === 'beacon.useAi') expect(row(id)).not.toBeNull();
+
+      await answer(seed);
+      const target = () => (kind === 'row' ? row(id) : alias(id));
+      await waitFor(() => expect(target()?.dataset.highlight).toBe('true'));
+      expect(document.activeElement).toBe(target());
+      expect(strip).toHaveBeenCalled();
+      expect(window.location.search).toBe('');
+    });
+
+    it('beacon.apiKey rings nothing on the checking card, then lands on the connect card’s key box', async () => {
+      const { answer, strip } = arrive('beacon.apiKey');
+      await act(async () => {});
+      expect(screen.getByTestId('mcp-checking')).toBeInTheDocument();
+      expect(strip).not.toHaveBeenCalled();
+      expect(document.querySelector('[data-highlight]')).toBeNull();
+
+      await answer(NOTHING_CONNECTED);
+      await waitFor(() => expect(alias('beacon.apiKey')?.dataset.highlight).toBe('true'));
+      expect(screen.queryByTestId('mcp-checking')).toBeNull();
+      expect(alias('beacon.apiKey')!.contains(screen.getByTestId('connect-key'))).toBe(true);
+      expect(document.activeElement).toBe(alias('beacon.apiKey'));
+    });
+  });
+
+  describe('search for "no ai"', () => {
+    const hit = () => row('beacon.useAi')!;
+
+    it('draws the pane’s own row: "No AI, thanks" while nothing is connected, and no reset', async () => {
+      given(NOTHING_CONNECTED);
+      renderShell('day');
+      await search('no ai');
+      expect(within(hit()).getByTestId('ai-no-ai-thanks')).toBeInTheDocument();
+      expect(within(hit()).queryByRole('switch')).toBeNull();
+      expect(within(hit()).queryByRole('button', { name: /Reset to default/ })).toBeNull();
+      // The location line names the pane.
+      expect(within(hit()).getByText('AI', { selector: 'p' })).toBeInTheDocument();
+    });
+
+    it('is the switch once something is connected, and turning it off writes the account', async () => {
+      given(CONNECTED_MODEL);
+      renderShell('day');
+      await search('no ai');
+      // By role alone: the label is split into highlight runs here, which
+      // jsdom's name computation joins without their spaces.
+      const toggle = within(hit()).getByRole('switch');
+      expect(toggle).toBeChecked();
+      await act(async () => {
+        fireEvent.click(toggle);
+      });
+      expect(calls.filter((c) => c.method === 'PATCH').map((c) => c.body)).toEqual([{ hidden: true }]);
+    });
+
+    it.each([
+      ['while the check is out', undefined],
+      ['when the check failed', { phase: 'error' } as SeedAI],
+    ])('%s it has no modified bar and no reset', async (_label, seed) => {
+      cleanupAI = seedAI(seed);
+      answerAs(NOTHING_CONNECTED, { status: () => json({ error: 'server' }, 503) });
+      renderShell('day');
+      await search('no ai');
+      expect(hit().className).not.toMatch(/before:bg-primary/);
+      expect(within(hit()).queryByRole('button', { name: /Reset to default/ })).toBeNull();
+      expect(within(hit()).queryByRole('switch')).toBeNull();
+    });
+  });
+
+  describe('the modified bar on an AI row', () => {
+    it('is grey while nothing answers (chat Off here, nothing connected), and the pane has no lime', async () => {
+      given({ ...NOTHING_CONNECTED, choice: 'none' });
+      renderShell('beacon');
+      const provider = row('beacon.provider')!;
+      expect(provider.className).toMatch(/before:bg-muted-foreground/);
+      expect(provider.className).not.toMatch(/before:bg-primary/);
+      expect(lime()).toEqual([]);
+      await act(async () => {});
+    });
+
+    it('is lime once something answers', async () => {
+      given(CONNECTED_MODEL);
+      act(() => useAISettingsStore.setState({ systemPrompt: 'Be blunt.' }));
+      renderShell('beacon');
+      expect(row('beacon.instructions')!.className).toMatch(/before:bg-primary/);
+      await act(async () => {});
+    });
+  });
+
+  it('keeps On this device, and the focus in it, when chat is turned back on', async () => {
+    given({ ...NOTHING_CONNECTED, choice: 'none' });
+    renderShell('beacon');
+    const control = screen.getByTestId('setting-beacon.provider');
+    control.focus();
+    expect(document.activeElement).toBe(control);
+    act(() => useAISettingsStore.setState({ chatTarget: 'model' }));
+    expect(screen.getByTestId('ai-device')).toBeInTheDocument();
+    expect(screen.getByTestId('setting-beacon.provider')).toBe(control);
+    expect(document.activeElement).toBe(control);
+    await act(async () => {});
+  });
+
   it('search still draws the panel-owned records as rows', async () => {
-    cleanupAI = seedAI(CONNECTED_MODEL);
+    given(CONNECTED_MODEL);
     renderShell('day');
     await search('openai');
-    const row = document.querySelector<HTMLElement>('[data-setting-row="beacon.apiKey"]');
-    expect(row).not.toBeNull();
-    expect(row!.textContent).toContain('Saved (OpenAI)');
+    const found = row('beacon.apiKey');
+    expect(found).not.toBeNull();
+    expect(found!.textContent).toContain('Saved (OpenAI)');
   });
 
   it('a panel-owned hit offers "Set up", which clears the search and lands on the panel', async () => {
-    cleanupAI = seedAI(NOTHING_CONNECTED);
+    given(NOTHING_CONNECTED);
     const shell = (pane: PaneId, focusId?: string) => (
       <SettingsShell pane={pane} ctx={ctx} focusId={focusId} isMobile={false} onOpenDestination={() => {}} />
     );
     const view = render(shell('day'));
     const input = () => screen.getByTestId('settings-search') as HTMLInputElement;
-    const anchor = () => document.querySelector<HTMLElement>('[data-setting-alias="beacon.apiKey"]');
+    const anchor = () => alias('beacon.apiKey');
 
     await search('openai');
-    const row = document.querySelector<HTMLElement>('[data-setting-row="beacon.apiKey"]')!;
-    expect(row.textContent).toContain('Not connected');
+    const hit = row('beacon.apiKey')!;
+    expect(hit.textContent).toContain('Not set up');
     // A hit with a control of its own needs no way out; only the panel's records get one.
     expect(screen.getAllByTestId('settings-set-up')).toHaveLength(1);
-    fireEvent.click(within(row).getByRole('button', { name: 'Set up API key' }));
+    fireEvent.click(within(hit).getByRole('button', { name: 'Set up API key' }));
 
     expect(nav.push).toHaveBeenCalledTimes(1);
     // By the pane's alias: the address bar says "ai", never "beacon".
     expect(nav.push).toHaveBeenCalledWith('/settings/ai?focus=beacon.apiKey');
     // The query is gone at once, so the pane (and its panel) is what renders, not the results.
     expect(input().value).toBe('');
-    expect(document.querySelector('[data-setting-row="beacon.apiKey"]')).toBeNull();
+    expect(row('beacon.apiKey')).toBeNull();
 
     // The router answers with the AI pane and the focus; the panel takes it.
     view.rerender(shell('beacon', 'beacon.apiKey'));
@@ -392,14 +657,14 @@ describe('the AI pane', () => {
   });
 
   it('offers "Ask AI" on an empty search only when something can answer', async () => {
-    cleanupAI = seedAI(NOTHING_CONNECTED);
+    given(NOTHING_CONNECTED);
     const first = renderShell('day');
     await search('zzqqxxnothing');
     expect(screen.queryByRole('link', { name: 'Ask AI' })).toBeNull();
     first.unmount();
 
-    cleanupAI();
-    cleanupAI = seedAI(CONNECTED_MODEL);
+    cleanupAI?.();
+    given(CONNECTED_MODEL);
     renderShell('day');
     await search('zzqqxxnothing');
     expect(screen.getByRole('link', { name: 'Ask AI' })).toBeInTheDocument();

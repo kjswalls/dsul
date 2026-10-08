@@ -16,7 +16,7 @@ import { useUndoStripStore } from './undo-strip-store';
  * says so in the undo strip, in prose: "AI is off. dsul won't bring it up
  * again." · Undo. Not a toast: the strip is where the app says what it just
  * did on your say-so, and offers it back. Once the strip has gone, Settings →
- * AI is the way back (model-connection-panel.tsx, the AI-off card).
+ * AI is the way back: its "Use AI in dsul" switch (`setUseAI`, below).
  *
  * The column goes first (`park`, so `summoned` is gone and Undo cannot spring
  * it back open), and the dock is shown, since the strip lives in it and a
@@ -40,6 +40,8 @@ export const AI_OFF_LABEL = 'AI is off. dsul won’t bring it up again.';
 /** Undo's write failed and the server still has AI off: the strip comes back, Undo now a retry. */
 export const AI_STILL_OFF_LABEL = 'Couldn’t turn AI back on just now. AI is still off.';
 export const AI_OFF_FAILED = 'Couldn’t turn AI off just now. Try again in a moment.';
+/** Settings → AI's switch, turned on, and the server still has AI off. */
+export const AI_BACK_ON_FAILED = 'Couldn’t turn AI back on just now. Try again in a moment.';
 
 let seq = 0;
 /** The user's latest word on AI here: a write's failure speaks only while it is still theirs. */
@@ -99,6 +101,31 @@ function showOffRow(label: string, focusUndo: boolean, kept: KeptQuestion | null
 export async function serverSaysHidden(): Promise<boolean> {
   await useAIConnectionStore.getState().refresh();
   return useAIConnectionStore.getState().aiHidden === true;
+}
+
+/**
+ * Settings → AI's switch and "No AI, thanks": the account's answer and nothing else.
+ * No rail park, no dock reveal, no undo strip, no kept question (the off state is its own undo).
+ * Shares `intent` with chooseNoAI. On a failed write, asks serverSaysHidden(): if the server already says
+ * what was asked, it resolves true with no toast; otherwise, while the intent is still current, it toasts
+ * AI_OFF_FAILED (asked off) or AI_BACK_ON_FAILED (asked on) and resolves false.
+ * First, it dismisses a live `ai-off-*` undo-strip row left by chooseNoAI (the strip's store is a module
+ * singleton and its 5 s clock runs across the trip to /settings): a row that says "AI is off" must not greet
+ * someone back home who just turned it on here.
+ */
+export async function setUseAI(on: boolean): Promise<boolean> {
+  const mine = ++intent;
+  const live = useUndoStripStore.getState().entry;
+  if (live?.id.startsWith('ai-off-')) useUndoStripStore.getState().dismiss(live.id);
+  const result = await useAIConnectionStore.getState().setAIHidden(!on);
+  if (result.ok) return true;
+  // Settled by what the server says, not the failure: a dropped connection
+  // can lose the answer to a write that landed.
+  if ((await serverSaysHidden()) === !on) return true;
+  // Taken back meanwhile: the newer press is what the user said last.
+  if (mine !== intent) return false;
+  toast.error(on ? AI_BACK_ON_FAILED : AI_OFF_FAILED);
+  return false;
 }
 
 export async function chooseNoAI(o: { phone?: boolean } = {}): Promise<void> {

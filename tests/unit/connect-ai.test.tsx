@@ -33,13 +33,15 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
-import { ConnectAI } from '@/components/ai/connect/connect-ai';
+import { ConnectAI, GoodToKnow, GoodToKnowConnected } from '@/components/ai/connect/connect-ai';
 import { KEY_FIELD_PROPS } from '@/components/ai/connect/key-field';
 import {
   checkFailureCopy,
   desktopSignInLink,
+  goodToKnowCopy,
   hostOf,
   labelName,
+  limitCopy,
   wrongKindCopy,
 } from '@/components/ai/connect/connect-shared';
 import { useAIConnectionStore } from '@/lib/ai-connection-store';
@@ -1021,6 +1023,154 @@ describe('good to know', () => {
     expect(within(good).getByRole('link', { name: 'Settings → AI' })).toHaveAttribute('href', '/settings/ai');
     // Never fine print.
     for (const li of Array.from(good.querySelectorAll('li'))) expect(li.className).toMatch(/text-\[13px\]/);
+  });
+});
+
+describe('good to know, exported', () => {
+  it('is the same section on its own, for either host', () => {
+    render(<GoodToKnow host="pane" />);
+    const good = screen.getByTestId('connect-good-to-know');
+    expect(within(good).getByRole('heading', { name: 'Good to know' })).toBeInTheDocument();
+    expect(good).toHaveTextContent('Taking it back. Disconnect here any time, and dsul deletes the key.');
+    expect(within(good).queryByRole('link')).toBeNull();
+  });
+});
+
+describe('good to know, once connected', () => {
+  const KEY =
+    'Stored encrypted on dsul’s server and never shown again, not even here. The web and the desktop app share this one connection.';
+  const sent = (to: string) =>
+    `Only when you ask: your question and the parts of your plan it needs, from dsul’s server to ${to}`;
+
+  it('says each fact in the connection’s own words', () => {
+    const cases: [Pick<ModelConnectionView, 'provider' | 'baseUrl'>, ReturnType<typeof goodToKnowCopy>][] = [
+      [
+        { provider: 'gemini', baseUrl: null },
+        {
+          cost: 'Google’s free key has a daily limit. If you reach it, AI pauses until Google resets it. dsul never charges for AI.',
+          sent: `${sent('Google')}. On the free plan, Google may use it to improve its products.`,
+          key: KEY,
+          back: 'Disconnect above and dsul deletes the key. To cancel the key itself, delete it in Google AI Studio.',
+        },
+      ],
+      [
+        { provider: 'openrouter', baseUrl: null },
+        {
+          cost: 'OpenRouter’s free models have a daily limit. If you reach it, AI pauses until OpenRouter resets it. Other models use the credit on your OpenRouter account. dsul never charges for AI.',
+          sent: `${sent('OpenRouter')}, which passes it to the model you picked.`,
+          key: KEY,
+          back: 'Disconnect above and dsul deletes the key. To cancel the key itself, revoke it with OpenRouter.',
+        },
+      ],
+      [
+        { provider: 'openai', baseUrl: null },
+        {
+          cost: 'OpenAI bills its API to your OpenAI account. dsul never charges for AI.',
+          sent: `${sent('OpenAI')}.`,
+          key: KEY,
+          back: 'Disconnect above and dsul deletes the key. To cancel the key itself, revoke it with OpenAI.',
+        },
+      ],
+      [
+        { provider: 'anthropic', baseUrl: null },
+        {
+          cost: 'Anthropic bills its API to your Anthropic account. dsul never charges for AI.',
+          sent: `${sent('Anthropic')}.`,
+          key: KEY,
+          back: 'Disconnect above and dsul deletes the key. To cancel the key itself, revoke it with Anthropic.',
+        },
+      ],
+      [
+        { provider: 'custom', baseUrl: 'https://llm.example.com/v1' },
+        {
+          cost: 'Your service sets its own price. dsul never charges for AI.',
+          sent: `${sent('llm.example.com')}.`,
+          key: KEY,
+          back: 'Disconnect above and dsul deletes the key. To cancel the key itself, revoke it where you made it.',
+        },
+      ],
+      [
+        { provider: 'custom', baseUrl: null },
+        {
+          cost: 'Your service sets its own price. dsul never charges for AI.',
+          sent: `${sent('your service')}.`,
+          key: KEY,
+          back: 'Disconnect above and dsul deletes the key. To cancel the key itself, revoke it where you made it.',
+        },
+      ],
+    ];
+    for (const [model, copy] of cases) expect(goodToKnowCopy(model), `${model.provider} ${model.baseUrl}`).toEqual(copy);
+  });
+
+  it('is folded on every mount, and opens onto the four facts at body size', () => {
+    const { unmount } = render(<GoodToKnowConnected model={view()} />);
+    const fold = screen.getByTestId('connect-good-to-know-connected');
+    const toggle = screen.getByTestId('good-to-know-toggle');
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).toHaveTextContent('Good to know');
+    expect(toggle).toHaveTextContent('Cost, what’s sent, your key, and taking it back');
+    expect(screen.queryByTestId('good-to-know-body')).toBeNull();
+
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    const body = screen.getByTestId('good-to-know-body');
+    expect(fold).toContainElement(body);
+    const copy = goodToKnowCopy({ provider: 'gemini', baseUrl: null });
+    expect(Array.from(body.querySelectorAll('li')).map((li) => li.textContent)).toEqual([
+      `Cost. ${copy.cost}`,
+      `What’s sent. ${copy.sent}`,
+      `Your key. ${copy.key}`,
+      `Taking it back. ${copy.back}`,
+    ]);
+    for (const li of Array.from(body.querySelectorAll('li'))) expect(li.className).toMatch(/text-\[13px\]/);
+
+    // Never remembered: a new mount is folded again.
+    unmount();
+    render(<GoodToKnowConnected model={view()} />);
+    expect(screen.getByTestId('good-to-know-toggle')).toHaveAttribute('aria-expanded', 'false');
+  });
+});
+
+describe('the daily limit’s words', () => {
+  it('say when AI comes back, and what raises the limit, never claiming a free key', () => {
+    const cases: [Pick<ModelConnectionView, 'provider' | 'baseUrl'>, string, string, string][] = [
+      [
+        { provider: 'gemini', baseUrl: null },
+        'Google’s daily limit on this key is used up. It resets once a day, and AI comes back by itself at 7 am.',
+        'Google’s daily limit on this key is used up. It resets once a day, and AI comes back by itself once it resets.',
+        'A paid Google plan raises the daily limit. dsul never charges for AI.',
+      ],
+      [
+        { provider: 'openrouter', baseUrl: null },
+        'You’ve used today’s free questions. OpenRouter resets them once a day, and AI comes back by itself at 7 am.',
+        'You’ve used today’s free questions. OpenRouter resets them once a day, and AI comes back by itself once it resets.',
+        'Credit on your OpenRouter account raises the daily limit. dsul never charges for AI.',
+      ],
+      [
+        { provider: 'openai', baseUrl: null },
+        'Today’s limit with OpenAI is used up, and AI comes back by itself at 7 am.',
+        'Today’s limit with OpenAI is used up, and AI comes back by itself once it resets.',
+        'dsul never charges for AI.',
+      ],
+      [
+        { provider: 'anthropic', baseUrl: null },
+        'Today’s limit with Anthropic is used up, and AI comes back by itself at 7 am.',
+        'Today’s limit with Anthropic is used up, and AI comes back by itself once it resets.',
+        'dsul never charges for AI.',
+      ],
+      [
+        { provider: 'custom', baseUrl: 'https://llm.example.com/v1' },
+        'Today’s limit with llm.example.com is used up, and AI comes back by itself at 7 am.',
+        'Today’s limit with llm.example.com is used up, and AI comes back by itself once it resets.',
+        'dsul never charges for AI.',
+      ],
+    ];
+    for (const [model, at, noTime, paid] of cases) {
+      expect(limitCopy(model, '7 am'), model.provider).toEqual({ note: at, paid });
+      expect(limitCopy(model, null), model.provider).toEqual({ note: noTime, paid });
+    }
+    // Gemini's daily limit is any per-day quota, paid keys included: no "free" there.
+    expect(Object.values(limitCopy({ provider: 'gemini', baseUrl: null }, '7 am')).join(' ')).not.toMatch(/\bfree\b/i);
   });
 });
 
