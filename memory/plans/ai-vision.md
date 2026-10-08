@@ -85,6 +85,38 @@ dock's omnibar kept under it, and a key that works turns it into Ask in place. L
 phone's Ask tab spends "It works.". Open: a question kept over an open item is sent without
 the item, and the one-time "Connected to …" notice belongs to no PR yet.
 
+**Note 2026-10-08: the tour ends on the AI invitation (AI setup PR 6).** The tour's last
+step reads the gate once (`tourAIStep`, `components/onboarding/onboarding-tour.tsx`) and is
+one of three cards or none: `ready` while something answers ("Your AI is ready", as before),
+`invite` while the gate offers setup, `off` on a replay after No AI ("AI stays off", with Got
+it), and otherwise no step 4 at all. An unknown or failed read, AI unavailable, chat Off on
+this device, an OpenClaw agent key with no chat, or a key that needs fixing ends the tour on
+step 3's last card, whose button then reads "Got it": no invitation while the gate cannot say
+one is right. A card already up keeps its variant through a brief flap of the gate. No card
+offers Settings any more, so the shell's `onOpenSettings` is gone. On the desktop the invite
+card spotlights the unlit key (`data-tour="ask-key"` on its button, the cutout sealed so a
+click through it cannot open setup under the tour) and hangs under it; on the phone it
+spotlights the mode card and adds "Later, it waits under the mode button.". It is a dialog
+that takes focus on its title and keeps Tab among its own buttons. Its two example questions
+come from `buildTourOpenerPreviews` (`lib/ai-openers.ts`): Ask home's first two chips at the
+real hour, with shorter lines that quote the task added at step 2, found by the id `addTask`
+returned (never the typed text, so a Skip quotes nothing); triage, let-go and reflect keep
+the column's lines. The three exits do everything that moves the rail, the tab or the gate
+before their one await (`setOnboardingComplete`), so nothing opens a round trip late or under
+the scrim. Set up AI puts back what the tour showed, then calls `openSetup` (the column, or
+the phone's setup page), with no toast either way. Not now toasts "You're all set. One thing at a
+time." with where Set up AI waits (at the top right, or under the mode button). No AI, thanks
+calls `chooseNoAI` (the undo strip, no toast) and still writes `onboarding_completed`, so the
+tour never comes back. The rituals intro waits for three things (`ritualsNudgeReady`'s
+`setupOrUndoUp`, read in `FirstRunNudges`): setup on screen (the column on the desktop, the
+setup page on the phone's Ask tab, each read on its own shell), the "It works." a connect
+there ends on, and an undo row, so it never covers No AI's focused Undo. Each is spent when
+the person moves on, and the intro comes after. Defaults awaiting Kirby: the real hour, so
+before 16:00 the card offers "Plan my day" with a new line, "Drafts today from your
+braindump, like “…”."; "AI stays off" on a replay after No AI, and no step 4 whenever the
+gate cannot invite; and the intro's wait. Open: app shortcuts (Ctrl+J, Ctrl+K) still fire
+under the tour, as on every step, and a replay with a key that needs fixing gets no fix card.
+
 **Status (2026-10-01): step 1, "Honest setup", SHIPPED (#355).** dsul ships no AI of
 its own any more: `process.env.OPENAI_API_KEY` is never read. Each user connects their own
 model in Settings → AI: OpenAI, Anthropic, Google Gemini, OpenRouter (sign-in or key) or any

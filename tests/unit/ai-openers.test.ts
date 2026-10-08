@@ -3,6 +3,7 @@ import { format, subDays, addDays } from 'date-fns';
 import {
   buildChatOpeners,
   buildOpenerPreviews,
+  buildTourOpenerPreviews,
   BUSY_DAY_THRESHOLD,
   PREVIEW_TITLE_MAX,
   EVENING_FROM_MIN,
@@ -291,6 +292,128 @@ describe('buildOpenerPreviews', () => {
     expect(blank.find((p) => p.id === 'let-go')?.description).toBe(
       'Goes through things that have waited a while, and helps you keep them or let them go.'
     );
+  });
+});
+
+/**
+ * The tour's last card (components/onboarding/onboarding-tour.tsx): Ask
+ * home's two previews, with shorter lines that name the task typed at step 2.
+ * The example is found by id, so a skipped step, a deleted task or a blank
+ * title drops it; only `plan`, `plan-tomorrow` and `review` get the shorter
+ * line, and `let-go` keeps quoting what has been sitting.
+ */
+describe('buildTourOpenerPreviews', () => {
+  const DENTIST = 'Call the dentist';
+  const undated = (title: string) => task(title);
+  const tour = (items: Item[], minutesNow: number, exampleId: string | null) =>
+    buildTourOpenerPreviews(ctx(items), { minutesNow, exampleId });
+
+  it("says the spec's two evening lines on a fresh account, with the task from step 2", () => {
+    expect(tour([undated(DENTIST)], EVENING, DENTIST)).toEqual([
+      {
+        id: 'plan-tomorrow',
+        label: 'Plan tomorrow',
+        description: 'Drafts tomorrow from your braindump, like “Call the dentist”.',
+      },
+      {
+        id: 'review',
+        label: 'Review today',
+        description: "Looks back at today with you, and what you'd carry into tomorrow.",
+      },
+    ]);
+  });
+
+  it('drops the example when step 2 was skipped', () => {
+    expect(tour([], EVENING, null).map((p) => p.description)).toEqual([
+      'Drafts tomorrow from your braindump.',
+      "Looks back at today with you, and what you'd carry into tomorrow.",
+    ]);
+  });
+
+  it("offers Ask home's morning pair: plan today with the example, and the column's reflect line", () => {
+    const got = tour([undated(DENTIST)], MORNING, DENTIST);
+    expect(got.map((p) => [p.id, p.label])).toEqual([
+      ['plan', 'Plan my day'],
+      ['reflect', "How's this week going?"],
+    ]);
+    expect(got[0].description).toBe('Drafts today from your braindump, like “Call the dentist”.');
+    expect(tour([], MORNING, null)[0].description).toBe('Drafts today from your braindump.');
+    expect(got[1].description).toBe(
+      "An honest read on how your week is going, from what you've done and what's still open."
+    );
+  });
+
+  it("keeps the column's line for triage on a busy morning", () => {
+    const busy = Array.from({ length: BUSY_DAY_THRESHOLD }, (_, i) => task(`t${i}`, TODAY));
+    const got = tour([...busy, undated(DENTIST)], MORNING, DENTIST);
+    expect(got.map((p) => p.id)).toEqual(['triage', 'reflect']);
+    expect(got[0].description).toBe('Sorts today into what matters now and what can move to another day.');
+  });
+
+  it('is the same list as the column, only the lines differ', () => {
+    for (const minutesNow of [0, MORNING, EVENING_FROM_MIN, EVENING]) {
+      const items = [undated(DENTIST), task('old', past(4))];
+      const column = buildOpenerPreviews(ctx(items), { max: HOME_OPENERS, minutesNow });
+      expect(tour(items, minutesNow, DENTIST).map((p) => [p.id, p.label])).toEqual(
+        column.map((p) => [p.id, p.label])
+      );
+    }
+  });
+
+  it('drops the example for an id that is unknown, deleted, or names a blank title', () => {
+    const none = 'Drafts tomorrow from your braindump.';
+    expect(tour([undated(DENTIST)], EVENING, 'gone')[0].description).toBe(none);
+    expect(tour([], EVENING, DENTIST)[0].description).toBe(none);
+    expect(tour([undated('   ')], EVENING, '   ')[0].description).toBe(none);
+  });
+
+  it('takes one closing full stop, ! or ? off the title, so the sentence ends once', () => {
+    const line = (title: string) => tour([undated(title)], EVENING, title)[0].description;
+    expect(line('Call the dentist.')).toBe('Drafts tomorrow from your braindump, like “Call the dentist”.');
+    expect(line('Call the dentist. ')).toBe('Drafts tomorrow from your braindump, like “Call the dentist”.');
+    expect(line('Book it!')).toBe('Drafts tomorrow from your braindump, like “Book it”.');
+    expect(line('Who to call?')).toBe('Drafts tomorrow from your braindump, like “Who to call”.');
+    // Once only: whatever else the title says stays as typed.
+    expect(line('Ship it!!')).toBe('Drafts tomorrow from your braindump, like “Ship it!”.');
+    // Nothing left once the stop is off: no example rather than quoting nothing.
+    expect(line('?')).toBe('Drafts tomorrow from your braindump.');
+  });
+
+  it('cuts a long title at a word, as the column quotes', () => {
+    const long = 'Call the insurance company about the claim from the spring storm.';
+    expect(tour([undated(long)], EVENING, long)[0].description).toBe(
+      'Drafts tomorrow from your braindump, like “Call the insurance company about the…”.'
+    );
+  });
+
+  it('lets let-go quote what has been sitting, never the example', () => {
+    const got = tour([undated(DENTIST), task('Fix the squeaky door', past(5))], EVENING, DENTIST);
+    expect(got.map((p) => p.id)).toEqual(['plan-tomorrow', 'let-go']);
+    expect(got[0].description).toBe('Drafts tomorrow from your braindump, like “Call the dentist”.');
+    expect(got[1].description).toBe(
+      'Goes through things that have waited a while, like “Fix the squeaky door”, and helps you keep them or let them go.'
+    );
+  });
+
+  it('keeps the copy contract in every line', () => {
+    const forbidden = /overdue|late|behind|missed|failed|should have|neglect/i;
+    const busy = Array.from({ length: BUSY_DAY_THRESHOLD }, (_, i) => task(`t${i}`, TODAY));
+    const seen = new Set<string>();
+    for (const items of [[], [task('old', past(5))], busy, [...busy, task('old', past(30))]]) {
+      for (const minutesNow of [0, MORNING, EVENING_FROM_MIN, EVENING]) {
+        for (const example of [null, DENTIST, 'Call the insurance company about the claim from the spring storm']) {
+          const all = example ? [...items, undated(example)] : items;
+          for (const p of tour(all, minutesNow, example)) {
+            seen.add(p.id);
+            expect(p.description.length, p.id).toBeGreaterThan(20);
+            expect(p.description).not.toMatch(forbidden);
+            expect(p.description).not.toMatch(/—/);
+            expect(p.description).toMatch(/\.$/);
+          }
+        }
+      }
+    }
+    expect([...seen].sort()).toEqual(['let-go', 'plan', 'plan-tomorrow', 'reflect', 'review', 'triage']);
   });
 });
 

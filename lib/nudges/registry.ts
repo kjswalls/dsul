@@ -64,6 +64,14 @@ export const NUDGES: NudgeDef[] = [
  * shared browser's previous values could hide it, or show it to someone who
  * already turned a ritual on. The tour gate waits for the tour's ANSWER, not
  * just its absence, so the toast never lands on top of a tour about to open.
+ *
+ * `setupOrUndoUp` holds it while the tour's last card has left something on
+ * screen: AI setup (the setup column, or the phone's setup page under the Ask
+ * tab), the "It works." a connect there ends on, or an undo row (No AI's, whose
+ * focused Undo the desktop toaster would cover). After Set up AI there is no
+ * toast, and this keeps that true until the person moves on. The shell reads
+ * the three (components/shell/app-shell.tsx FirstRunNudges); this only says
+ * that any one of them holds the intro.
  */
 export function ritualsNudgeReady(s: {
   settingsHydrated: boolean;
@@ -72,6 +80,7 @@ export function ritualsNudgeReady(s: {
   hasTasks: boolean;
   morningCheckEnabled: boolean;
   eodReviewEnabled: boolean;
+  setupOrUndoUp: boolean;
 }): boolean {
   return (
     s.settingsHydrated &&
@@ -79,7 +88,8 @@ export function ritualsNudgeReady(s: {
     !s.tourShowing &&
     s.hasTasks &&
     !s.morningCheckEnabled &&
-    !s.eodReviewEnabled
+    !s.eodReviewEnabled &&
+    !s.setupOrUndoUp
   );
 }
 
