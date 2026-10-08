@@ -720,9 +720,10 @@ describe('the label sections', () => {
     const zone = id('type-delete').closest('div')?.parentElement;
     expect(zone).toHaveTextContent('Your one existing goal is kept');
     expect(zone).toHaveTextContent('isn’t undoable');
-    // The filled destructive button is spent here and nowhere else in the
-    // console. Dressing all five the same way is what taught users to read none.
-    expect(id('type-delete').className).toContain('bg-destructive text-destructive-foreground');
+    // The destructive button (red words on a red hairline) is spent here and
+    // nowhere else in the console. Dressing all five the same way is what
+    // taught users to read none.
+    expect(id('type-delete').className).toContain('border-destructive/45');
   });
 
   it('keeps a project’s delete behind ⋯, with no red button on the pane', () => {
@@ -733,7 +734,7 @@ describe('the label sections', () => {
     open('projects');
     click('project-row');
     expect(maybe('project-delete')).toBeNull();
-    expect(id('organize-detail').querySelector('.bg-destructive')).toBeNull();
+    expect(id('organize-detail').querySelector('[class*="border-destructive/45"]')).toBeNull();
     expect(deleteSentence('project')).toContain('Nothing is filed under it');
   });
 

@@ -137,6 +137,14 @@ describe('the mode card', () => {
     expect(card()).toHaveAttribute('aria-label', 'Surface: Today. Change surface.');
   });
 
+  it("is the tour's spotlight on the phone, at every mobile step", () => {
+    // onboarding-tour.tsx `tourSpotlightSelector`: renamed, every phone step
+    // would draw a plain scrim with nothing lit, the AI card's included.
+    render(<MobileBottomDock />);
+    expect(card()).toHaveAttribute('data-tour', 'mode-card');
+    expect(document.querySelectorAll('[data-tour="mode-card"]')).toHaveLength(1);
+  });
+
   it('follows the active surface, and calls the chat surface Ask', () => {
     useMobileNavStore.setState({ activeTab: 'chat' });
     render(<MobileBottomDock />);

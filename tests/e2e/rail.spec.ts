@@ -408,7 +408,7 @@ test.describe('Set up AI in the right rail', () => {
     await expect(setup.getByTestId('connect-ai')).toBeVisible();
     await expect(setup.getByTestId('connect-key-card').getByLabel('Your Gemini key')).toBeVisible();
     // Nothing in the column is lime: its buttons are outline or quiet.
-    await expect(setup.locator('.bg-primary')).toHaveCount(0);
+    await expect(setup.locator('.bg-primary, [data-slot="button-key"]')).toHaveCount(0);
     await expect(setup.locator('[data-ask-setup-foot]')).toContainText(
       'AI is optional. dsul works fully without it.'
     );
@@ -677,7 +677,7 @@ test.describe('Set up AI in the right rail', () => {
       expect(gate.connects).toEqual([]);
       expect(chats).toEqual([]);
       // Nothing in the column is lime, Connect and ask included.
-      await expect(setup.locator('.bg-primary')).toHaveCount(0);
+      await expect(setup.locator('.bg-primary, [data-slot="button-key"]')).toHaveCount(0);
 
       // Connect and ask: the key is checked, the column becomes Ask, and the
       // question goes out as its first conversation, answered and saved.

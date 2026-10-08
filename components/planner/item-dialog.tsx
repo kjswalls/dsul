@@ -37,7 +37,7 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button, ButtonKey } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import {
   ResponsiveModalTitle,
@@ -46,7 +46,6 @@ import {
 import {
   ADD_MODAL_CLASS,
   ColorSquare,
-  EnterHint,
   NewTypeMenu,
   SERIF_NOTES_CLASS,
   SERIF_TITLE_CLASS,
@@ -3566,15 +3565,16 @@ function ItemDialogInner({
                 // Reached only when `autosaves` is false, so there is no
                 // saving-indicator arm here: this surface commits on submit and
                 // the button is the whole promise.
-                <div className="flex items-center justify-between gap-3 border-t pt-3">
-                  <EnterHint verb={mode === 'add' ? 'add' : 'save'} />
+                <div className="flex items-center justify-end gap-3 border-t pt-3">
                   <Button
                     onClick={handleSubmit}
                     data-testid="item-dialog-submit"
                     disabled={invalidCustomDays(activeDraft) || !activeDraft.title.trim()}
-                    className="h-9 max-sm:w-full"
+                    aria-keyshortcuts="Enter"
+                    className="max-sm:w-full"
                   >
-                    {mode === 'add' ? `Add ${activeConfig.label}` : 'Save Changes'}
+                    {mode === 'add' ? `Add ${activeConfig.label}` : 'Save changes'}
+                    <ButtonKey />
                   </Button>
                 </div>
               )}
@@ -3594,7 +3594,7 @@ function ItemDialogInner({
         <AlertDialog open={showResetConfirm} onOpenChange={setShowResetConfirm}>
           <AlertDialogContent data-testid="reset-streak-confirm">
             <AlertDialogHeader>
-              <AlertDialogTitle>Reset Streak?</AlertDialogTitle>
+              <AlertDialogTitle>Reset streak?</AlertDialogTitle>
               <AlertDialogDescription>{EDIT_COPY.resetStreakMessage}</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -3602,9 +3602,9 @@ function ItemDialogInner({
               <AlertDialogAction
                 data-testid="reset-streak-confirm-accept"
                 onClick={handleResetStreak}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                variant="destructive"
               >
-                Reset Streak
+                Reset streak
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -3727,7 +3727,7 @@ function ItemDialogInner({
             <AlertDialogAction
               data-testid="item-dialog-delete-confirm-accept"
               onClick={handleDeleteConfirm}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
             >
               Delete
             </AlertDialogAction>

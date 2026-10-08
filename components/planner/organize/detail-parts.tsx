@@ -20,6 +20,7 @@ import { Eyebrow } from './primitives';
 import { SECTION_IDENTITY, type ConsoleSection } from './console-rail';
 import { useEscapeRung } from './escape-ladder';
 import { cn } from '@/lib/utils';
+import { Button, ButtonKey, buttonVariants } from '@/components/ui/button';
 import { useUIStore } from '@/lib/ui-store';
 
 /**
@@ -786,26 +787,21 @@ export function CreateForm({
       <p className="text-muted-foreground mt-3 max-w-[46ch] text-sm">{hint}</p>
 
       <div className="mt-5 flex items-center gap-2">
-        <button
+        <Button
           type="button"
           onClick={submit}
           disabled={!valid}
+          aria-keyshortcuts="Enter"
           data-testid={`${testPrefix}-add`}
-          className="bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-ring flex h-8 shrink-0 items-center rounded-[6px] px-3.5 text-sm font-medium disabled:opacity-40 focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-solid"
         >
           {addLabel}
-        </button>
+          <ButtonKey />
+        </Button>
         {onCancel && (
-          <button
-            type="button"
-            onClick={onCancel}
-            data-testid={`${testPrefix}-cancel`}
-            className="border-border text-secondary-foreground hover:bg-accent hover:text-foreground focus-visible:outline-ring flex h-8 shrink-0 items-center rounded-[6px] border px-3 text-sm focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-solid"
-          >
+          <Button type="button" variant="outline" onClick={onCancel} data-testid={`${testPrefix}-cancel`}>
             Cancel
-          </button>
+          </Button>
         )}
-        <span className="text-muted-foreground font-num ml-auto text-2xs">↵ to create</span>
       </div>
     </div>
   );
@@ -1267,11 +1263,11 @@ export function DangerZone({
           type="button"
           onClick={onDelete}
           data-testid={testId}
+          // The hairline is spent only where the delete loses something
+          // (destructive); every other pane's Delete is red words alone.
           className={cn(
-            'h-[26px] shrink-0 rounded-[5px] px-3 text-sm',
-            destructive
-              ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
-              : 'text-destructive border-destructive/40 hover:bg-destructive/10 border'
+            buttonVariants({ variant: destructive ? 'destructive' : 'ghost', size: 'sm' }),
+            !destructive && 'text-destructive-text hover:bg-destructive/10 hover:text-destructive-text'
           )}
         >
           Delete

@@ -300,3 +300,49 @@ export function buildOpenerPreviews(ctx: OpenerContext, o: Omit<OpenerOptions, '
   const sitting = first?.title?.trim() ? quoteTitle(first.title) : null
   return openers.map((x) => ({ id: x.id, label: x.label, description: describe(x.id, sitting) }))
 }
+
+/**
+ * The tour's last card (components/onboarding/onboarding-tour.tsx): Ask
+ * home's first two offers as previews, the same ones the setup column opens
+ * on, with shorter lines that fit a coach mark and name the task typed at
+ * step 2, so the first thing someone sees AI offer is about their own list.
+ *
+ * The example is read by id from the planner, never from what was typed: a
+ * step 2 that was skipped added nothing, and an item deleted since has
+ * nothing to quote. Either way, and for a blank title, the line drops the
+ * example rather than quoting nothing. One closing `.`, `!` or `?` comes off
+ * the title, so the sentence never ends `“Call the dentist.”.`.
+ *
+ * Only the lines change. The ids, labels and order are `buildOpenerPreviews`'s,
+ * so the card previews exactly the chips Ask home will offer; `triage`,
+ * `let-go` and `reflect` keep the column's line, and `let-go` keeps quoting
+ * what has been sitting, never the example.
+ */
+export function buildTourOpenerPreviews(
+  ctx: OpenerContext,
+  o: { minutesNow: number; exampleId: string | null }
+): OpenerPreview[] {
+  const item = o.exampleId ? ctx.items.find((i) => i.id === o.exampleId) : undefined
+  const bare = (item?.title ?? '').replace(/\s+/g, ' ').trim().replace(/[.!?]$/, '').trim()
+  const example = bare ? quoteTitle(bare) : null
+  return buildOpenerPreviews(ctx, { max: HOME_OPENERS, minutesNow: o.minutesNow }).map((p) => {
+    const line = tourDescribe(p.id, example)
+    return line ? { ...p, description: line } : p
+  })
+}
+
+/** The tour's shorter line for an opener, or null to keep `describe`'s. Same COPY CONTRACT. */
+function tourDescribe(id: string, example: string | null): string | null {
+  switch (id) {
+    case 'plan-tomorrow':
+      return example
+        ? `Drafts tomorrow from your braindump, like “${example}”.`
+        : 'Drafts tomorrow from your braindump.'
+    case 'plan':
+      return example ? `Drafts today from your braindump, like “${example}”.` : 'Drafts today from your braindump.'
+    case 'review':
+      return "Looks back at today with you, and what you'd carry into tomorrow."
+    default:
+      return null
+  }
+}
