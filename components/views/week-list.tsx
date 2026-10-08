@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react';
 import { format, startOfWeek, addDays, isToday, isSameDay } from 'date-fns';
+import { Plus } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { GroupSection } from '@/components/primitives/group-section';
 import { TaskRow } from '@/components/primitives/task-row';
@@ -15,6 +16,9 @@ import { useSinkHold } from '@/hooks/use-sink-hold';
 import { useViewStore } from '@/lib/view-store';
 import { useCanvasGroupBy } from '@/lib/extension-gates';
 import { ListDropZone } from '@/components/views/list-drop-zone';
+import { AddRow } from '@/components/planner/slot-composer';
+import { rowScope, useSlotComposer, type SlotTarget } from '@/lib/slot-add';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 
 /**
@@ -63,6 +67,13 @@ function DaySection({ date }: { date: Date }) {
     [date, userTimezone]
   );
   const { completedAs, rootRef } = useSinkHold<HTMLElement>();
+  const addHere = !useIsMobile();
+  const addTarget = useMemo<Extract<SlotTarget, { kind: 'row' }>>(
+    () => ({ kind: 'row', scope: rowScope('weeklist', dateStr), dateStr, bucket: 'anytime' }),
+    [dateStr]
+  );
+  const adding = useSlotComposer((s) => s.target?.scope === addTarget.scope);
+  const openComposer = useSlotComposer((s) => s.open);
   const groups = groupRows(flattenDayRows(day), groupBy, { routines, seasons, goals }).map((g) => ({
     ...g,
     rows: orderRows(g.rows, sortBy, dateStr, completedAs),
@@ -73,20 +84,35 @@ function DaySection({ date }: { date: Date }) {
     // every day below it, and their rows ride each day's glide.
     <section ref={rootRef} data-settle-key={`day:${dateStr}`} data-settle-role="frame">
       <ListDropZone dateStr={dateStr} className="-mx-2 px-2 pb-1">
-        <button
-          onClick={() => setSelectedDate(date)}
-          className={cn(
-            'mb-1 flex items-baseline gap-2 rounded-lg px-2 py-1 transition-colors hover:bg-accent',
-            selected && 'bg-primary/10'
+        <div className="group/dayhead mb-1 flex items-center gap-1">
+          <button
+            onClick={() => setSelectedDate(date)}
+            className={cn(
+              'flex items-baseline gap-2 rounded-lg px-2 py-1 transition-colors hover:bg-accent',
+              selected && 'bg-primary/10'
+            )}
+            title={`Select ${format(date, 'EEEE, MMMM d')}`}
+          >
+            <span className="text-base font-medium text-foreground">{format(date, 'EEEE')}</span>
+            <span className="text-sm text-muted-foreground">{format(date, 'MMM d')}</span>
+            {isToday(date) && (
+              <span className="text-2xs font-medium uppercase tracking-wide text-success-text">today</span>
+            )}
+          </button>
+          {addHere && !adding && (
+            <button
+              type="button"
+              data-testid="week-list-add"
+              aria-label={`Add to ${format(date, 'EEEE')}`}
+              title={`Add to ${format(date, 'EEEE')}`}
+              onClick={() => openComposer(addTarget)}
+              // Hover-only on a pointer that can hover, like Week × Schedule's strip +.
+              className="flex h-4 w-4 items-center justify-center rounded-[5px] border-[1.5px] border-muted-foreground/70 text-foreground/80 transition-[opacity,colors] hover:border-muted-foreground hover:bg-accent hover:text-foreground focus-visible:opacity-100 [@media(hover:hover)_and_(pointer:fine)]:opacity-0 [@media(hover:hover)_and_(pointer:fine)]:group-hover/dayhead:opacity-100"
+            >
+              <Plus className="h-2.5 w-2.5" aria-hidden />
+            </button>
           )}
-          title={`Select ${format(date, 'EEEE, MMMM d')}`}
-        >
-          <span className="text-base font-medium text-foreground">{format(date, 'EEEE')}</span>
-          <span className="text-sm text-muted-foreground">{format(date, 'MMM d')}</span>
-          {isToday(date) && (
-            <span className="text-2xs font-medium uppercase tracking-wide text-success-text">today</span>
-          )}
-        </button>
+        </div>
 
         {day.totalCount === 0 ? (
           <p className="px-2 pb-2 font-serif text-sm italic text-muted-foreground/50">Nothing planned.</p>
@@ -111,6 +137,7 @@ function DaySection({ date }: { date: Date }) {
             )}
           </div>
         )}
+        {adding && <AddRow target={addTarget} placeholder={`Add to ${format(date, 'EEEE')}`} className="ml-2" />}
       </ListDropZone>
     </section>
   );

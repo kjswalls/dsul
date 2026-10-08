@@ -8,10 +8,17 @@ import { MobileHeader } from '@/components/mobile/mobile-header';
 import { MobileBottomDock } from '@/components/mobile/mobile-bottom-dock';
 import { MobileViewRouter } from '@/components/mobile/mobile-view-router';
 import { AskTab } from '@/components/mobile/ask-tab';
+import { SetupTab } from '@/components/mobile/setup-tab';
 import { ScheduleSheet } from '@/components/mobile/schedule-sheet';
 import { Braindump } from '@/components/sidebar/braindump';
 import { PlannerSyncLine } from '@/components/shell/planner-sync-line';
-import { useMobileNavStore, mobileTabOrder, shownMobileTab } from '@/lib/mobile-nav-store';
+import {
+  chatOffered,
+  mobileTabOrder,
+  setupPageShown,
+  shownMobileTab,
+  useMobileNavStore,
+} from '@/lib/mobile-nav-store';
 import { useUIStore } from '@/lib/ui-store';
 import { useAICapabilities } from '@/lib/ai-connection-store';
 import { useRailStore } from '@/lib/rail-store';
@@ -81,11 +88,14 @@ function startedInSideScroller(e: SwipeEventData | undefined): boolean {
  * active surface, and the bottom dock. The three-tab bar is gone — the dock's
  * mode card shows which surface you are on and opens the switcher sheet
  * (components/mobile/mode-switcher-sheet.tsx) to leave it; a swipe still walks
- * mobileTabOrder, Braindump · Today · Ask, and Ask only while something can
- * answer (lib/ai-registry.ts). Surfaces reuse the desktop primitives (shared
- * Braindump, DayBuckets/DayList via MobileViewRouter, the rail's Ask views via
- * AskTab) rather than the old bespoke panels. Rendered under the shell's
- * single DndContext, so items stay draggable.
+ * mobileTabOrder, Braindump · Today · Ask, and the third only while the AI
+ * gate offers it (lib/ai-registry.ts): Ask while something answers, and in
+ * its place the setup page or the fix home (components/mobile/setup-tab.tsx)
+ * while the gate invites or offers the fix. Surfaces reuse the desktop
+ * primitives (shared Braindump, DayBuckets/DayList via MobileViewRouter, the
+ * rail's Ask views via AskTab, the setup column's pieces via SetupTab) rather
+ * than the old bespoke panels. Rendered under the shell's single DndContext,
+ * so items stay draggable.
  *
  * Content sits directly on the paper backdrop. The rounded `bg-canvas` panel it
  * used to float in — the mobile echo of the desktop canvas — is gone; on paper
@@ -99,22 +109,30 @@ export const MobileShell = memo(function MobileShell() {
   const storedTab = useMobileNavStore((s) => s.activeTab);
   const openDialog = useUIStore((s) => s.openDialog);
   const shellHeight = useKeyboardSafeHeight();
-  const { known, canChat } = useAICapabilities();
+  const caps = useAICapabilities();
+  const { known, canChat } = caps;
+  const offered = chatOffered(caps);
+  // Offered and nothing answers: the chat tab hosts the setup page (or the
+  // fix home), which is not Ask and wears none of Ask's markers.
+  const setupShown = setupPageShown(caps);
 
   /**
-   * The chat tab exists only while something can answer. A tab the user was on
-   * when the capability dropped (a key revoked, OpenClaw unpaired, a sign-in
+   * The chat tab exists only while the gate offers it: Ask, or the setup page
+   * or the fix home in Ask's place. A key that stops working therefore keeps
+   * the tab, and the conversation on it turns into the fix home in place, its
+   * stack and draft kept for when the fix lands. A tab the user was on when
+   * nothing is offered any more (No AI chosen, chat turned off here, a sign-in
    * as someone without AI) renders as Today in the SAME frame — this value —
    * and the effect below moves the stored tab there once the gate has
    * actually answered. Not while it is unknown: a session start is not news
    * that chat went away, and the store's tab is the user's place.
    */
-  const activeTab = shownMobileTab(storedTab, canChat);
+  const activeTab = shownMobileTab(storedTab, offered);
   useEffect(() => {
-    if (known && !canChat && storedTab === 'chat') {
+    if (known && !offered && storedTab === 'chat') {
       useMobileNavStore.getState().setActiveTab('today');
     }
-  }, [known, canChat, storedTab]);
+  }, [known, offered, storedTab]);
 
   // Close any open row swipe-actions when switching tabs.
   useEffect(() => closeAllRowSwipes(), [activeTab]);
@@ -123,7 +141,7 @@ export const MobileShell = memo(function MobileShell() {
     onSwipedLeft: (e?: SwipeEventData) => {
       if (rowSwipeActive.current) return; // a row swipe is in progress, not a tab swipe
       if (startedInSideScroller(e)) return;
-      const order = mobileTabOrder(canChat);
+      const order = mobileTabOrder(offered);
       const idx = order.indexOf(activeTab);
       if (idx < order.length - 1) {
         useMobileNavStore.getState().setActiveTab(order[idx + 1]);
@@ -134,13 +152,16 @@ export const MobileShell = memo(function MobileShell() {
       // Inside Ask, a swipe right is back before it is a tab change: a
       // conversation or an item pops to what it was opened from, and only Ask
       // home walks left to Today — the iOS edge-swipe, and the one gesture the
-      // capsule's ‹ answers on a screen with no hardware back.
+      // capsule's ‹ answers on a screen with no hardware back. Only while Ask
+      // is what shows: the stack outlives the gate, and on the setup page or
+      // the fix home it is under a page that has no Back, so a pop there would
+      // change nothing on screen and the swipe would seem dead.
       const rail = useRailStore.getState();
-      if (activeTab === 'chat' && rail.stacks.phone.length > 0) {
+      if (activeTab === 'chat' && canChat && rail.stacks.phone.length > 0) {
         rail.back('phone');
         return;
       }
-      const order = mobileTabOrder(canChat);
+      const order = mobileTabOrder(offered);
       const idx = order.indexOf(activeTab);
       if (idx > 0) useMobileNavStore.getState().setActiveTab(order[idx - 1]);
     },
@@ -150,10 +171,11 @@ export const MobileShell = memo(function MobileShell() {
   });
 
   /**
-   * The one user menu, for the two tabs whose header is a capsule rather than
-   * the dated card. MobileHeader mounts its own on Today, so exactly one is in
-   * the tree at a time — which is also the contract `waitForAppReady` leans on
-   * when it looks up "User menu" without disambiguating.
+   * The one user menu, for the tabs whose header is a capsule rather than the
+   * dated card: Braindump, and Ask or the setup page in its place.
+   * MobileHeader mounts its own on Today, so exactly one is in the tree at a
+   * time — which is also the contract `waitForAppReady` leans on when it looks
+   * up "User menu" without disambiguating.
    */
   const userMenu = (
     // The avatar is sized down to 24px for the capsule, which is 13px shorter
@@ -229,12 +251,16 @@ export const MobileShell = memo(function MobileShell() {
         {/* Keyed on activeTab → a soft cross-fade on tab change (auto-disabled
             under [data-reduce-motion]). Not into Ask: its home carries the lime
             accent (a run come back), which never fades through a parent's
-            opacity (CLAUDE.md), and AskTab slides its own views instead. */}
+            opacity (CLAUDE.md), and AskTab slides its own views instead. The
+            setup page in Ask's place has nothing lime, so it fades as the
+            others do; when it turns into Ask the key holds (`chat` either way),
+            nothing remounts, and the class is gone in the same commit that
+            mounts Ask. */}
         <div
           key={activeTab}
           className={cn(
             'flex min-h-0 flex-1 flex-col overflow-hidden',
-            activeTab !== 'chat' && 'animate-in fade-in-0 duration-200'
+            (activeTab !== 'chat' || setupShown) && 'animate-in fade-in-0 duration-200'
           )}
         >
           {/* One boundary per tab body (#74): this div is keyed by the tab, so
@@ -242,6 +268,7 @@ export const MobileShell = memo(function MobileShell() {
               below stays up either way. */}
           <SectionBoundary label={activeTab === 'chat' ? 'chat' : activeTab === 'braindump' ? 'braindump' : 'day'}>
           {activeTab === 'chat' && canChat && <AskTab headerAccessory={userMenu} />}
+          {activeTab === 'chat' && setupShown && <SetupTab headerAccessory={userMenu} />}
 
           {/* No Scope Rail under it any more — the rail is retired (#229) and
               its two jobs live on the group headers' pause switch and in the

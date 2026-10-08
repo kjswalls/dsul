@@ -1,6 +1,7 @@
 'use client';
 
 import { useAISettingsStore } from './ai-settings-store';
+import { clearKeptQuestionState } from './ask-pending';
 import { useCommandUsageStore } from './command-usage-store';
 import { clearChatState } from './conversations-store';
 import { useEODStore } from './eod-store';
@@ -286,10 +287,13 @@ export const PERSISTED_USER_STORES: readonly PersistedUserStore[] = [
  * named tests. All three are wholly disclosive, so none takes a scope. The
  * user-theme cache (lib/user-themes/store.ts) is the account's own colours, so
  * it goes too, with any device pick naming one of them
- * (lib/user-themes/forget-picks.ts).
+ * (lib/user-themes/forget-picks.ts). So does a question kept from `?`
+ * (lib/ask-pending.ts): sessionStorage, and the memory mirror a reader may have
+ * filled before this ran.
  */
 const RAW_CLEARERS: readonly (() => void)[] = [
   clearChatState,
+  clearKeptQuestionState,
   clearReleased,
   clearPlannerSnapshot,
   clearUserThemeCache,

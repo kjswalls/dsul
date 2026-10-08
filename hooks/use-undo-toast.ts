@@ -74,6 +74,9 @@ const SIGNIFICANT_ACTIONS = [
   // their own hand, so the one-⌘Z offer is what makes them safe to leave on.
   // An item title cannot spoof it: the user's own verbs carry their own prefix.
   'Recipe: ',
+  // A mod's held writes (lib/mods/broker.ts), for the same reason. The prefix
+  // is the host's, so a mod named "Complete task:" cannot pass for the user.
+  'Mod: ',
 ];
 
 /**

@@ -19,17 +19,17 @@ import { cleanup, render, renderHook } from '@testing-library/react';
 
 vi.mock('@/lib/ai-context', () => ({ buildDsulContext: () => '## dsul Context' }));
 
-import { askAboutItem, openConversation } from '@/lib/open-chat';
+import { askAboutItem, openConversation, openSetup } from '@/lib/open-chat';
 import { clearChatState, configureConversations, conversationsSettled, useConversationsStore } from '@/lib/conversations-store';
 import { useRailStore } from '@/lib/rail-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
-import { openBulkAdd, openEditFor, useUIStore } from '@/lib/ui-store';
+import { openAddDialog, openBulkAdd, openEditFor, useUIStore } from '@/lib/ui-store';
 import { useViewStore } from '@/lib/view-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useDeferredDialogPromotion } from '@/hooks/use-deferred-dialog';
 import { ItemConversation } from '@/components/ai/item-conversation';
 import type { Item, Task } from '@/lib/planner-types';
-import { CONNECTED_MODEL, seedAI } from './helpers/ai-fixtures';
+import { CONNECTED_MODEL, KEY_TURNED_DOWN, NOTHING_CONNECTED, seedAI } from './helpers/ai-fixtures';
 import { fakeApi, fakeTransport, summary } from './helpers/conversations-fakes';
 
 const A = 'user-a';
@@ -171,5 +171,71 @@ describe("an item's conversation opened over the preview, on desktop", () => {
     openConversation('c1', false);
     expect(ui().activeDialog).toMatchObject({ type: 'edit-item', item: { id: 'i1' } });
     expect(rail().pendingReveal).toEqual({ itemId: 'i1' });
+  });
+});
+
+/**
+ * A door into AI setup (lib/open-chat.ts openSetup: `?` in the dock or the
+ * launcher, ⌘K's "Set up AI" and "Fix AI", all live through the preview)
+ * pressed after an item was asked for over the preview. On real data the door
+ * closes the open item and setup shows; over the preview the item is held,
+ * not open, so the door lets the held one go. Kept, it opened on top of the
+ * setup asked for after it the moment the data landed.
+ */
+describe('a setup door pressed over an item held for the landing', () => {
+  describe.each([
+    ['setup', NOTHING_CONNECTED],
+    ['the fix', KEY_TURNED_DOWN],
+  ])('with %s offered', (_label, offered) => {
+    beforeEach(() => {
+      unseed();
+      unseed = seedAI(offered);
+    });
+
+    it('desktop: lets the held item go, so setup still shows once the data lands', () => {
+      openEditFor(task('i1', 'Cached title') as unknown as Task, 'task');
+      expect(ui().deferredDialog).toMatchObject({ type: 'edit-item', item: { id: 'i1' } });
+
+      expect(openSetup(false)).toBe(true);
+      expect(ui().deferredDialog).toBeNull();
+      expect(rail().summoned).toBe(true);
+
+      landFresh();
+      // Before: the item, promoted over the setup column.
+      expect(ui().activeDialog).toBeNull();
+      expect(rail().summoned).toBe(true);
+    });
+
+    it('desktop: the same as on real data, where the door closes the open item', () => {
+      landFresh();
+      openEditFor(task('i1', 'Fresh title') as unknown as Task, 'task');
+      expect(ui().activeDialog?.type).toBe('edit-item');
+      expect(openSetup(false)).toBe(true);
+      expect(ui().activeDialog).toBeNull();
+      expect(rail().summoned).toBe(true);
+    });
+
+    it('desktop: leaves a held dialog that is not the item alone (it is a modal, not the column)', () => {
+      openAddDialog();
+      const held = ui().deferredDialog;
+      expect(held?.type).toBe('add');
+      openSetup(false);
+      expect(ui().deferredDialog).toBe(held);
+    });
+
+    it('phone: leaves the held item, which lands over the Ask tab as any promoted item does', () => {
+      openEditFor(task('i1', 'Cached title') as unknown as Task, 'task');
+      expect(openSetup(true)).toBe(true);
+      expect(ui().deferredDialog).toMatchObject({ type: 'edit-item', item: { id: 'i1' } });
+    });
+  });
+
+  it('leaves the held item alone when no door is on offer', () => {
+    openEditFor(task('i1', 'Cached title') as unknown as Task, 'task');
+    // CONNECTED_MODEL, from the outer beforeEach: nothing to set up.
+    expect(openSetup(false)).toBe(false);
+    expect(ui().deferredDialog).toMatchObject({ type: 'edit-item', item: { id: 'i1' } });
+    landFresh();
+    expect(ui().activeDialog).toMatchObject({ type: 'edit-item', item: { id: 'i1', title: 'Fresh title' } });
   });
 });

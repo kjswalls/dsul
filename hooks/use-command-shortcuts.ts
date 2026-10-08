@@ -147,7 +147,7 @@ export function useCommandShortcuts(ctx: CommandContext, shellHandlers: ShellHan
           }
           event.preventDefault();
           activeHandledRef.current = binding.id;
-          command.run(ctxRef.current);
+          (command.runFromShortcut ?? command.run)(ctxRef.current);
           useCommandUsageStore.getState().record(command.id);
           return;
         }

@@ -18,7 +18,11 @@ import {
 import { usePlannerStore } from '@/lib/planner-store';
 import { useModsStore } from '@/lib/mods-store';
 import { useUndoStripStore } from '@/lib/undo-strip-store';
+import { setModCommandRunner } from '@/lib/mods/command-run';
+import { setHoveredSlot, useSlotComposer, type SlotTarget } from '@/lib/slot-add';
+import { useRailStore } from '@/lib/rail-store';
 import type { UserMod } from '@/lib/mods/schema';
+import { NOTHING_CONNECTED, KEY_TURNED_DOWN, seedAI } from './helpers/ai-fixtures';
 import { enableGoalsAndOrganize } from './support/extensions';
 import type { Goal, Item, ItemTypeDef, Routine, Season } from '@/lib/planner-types';
 
@@ -90,6 +94,11 @@ const GATED_DURING_PREVIEW: Record<string, boolean> = {
   'view.weekColumnsNarrower': false,
   'view.weekColumnsReset': false,
   'rituals.chat': true,
+  // The doors into AI setup (#433): they only open the setup column, which is up
+  // through the preview as Ctrl+J's is (PREVIEW_CHROME_IDS). A question kept on
+  // the way waits for a loaded planner (lib/ask-pending.ts watchKeptQuestion).
+  'ai.setup': false,
+  'ai.fix': false,
   'rituals.catchUp': true,
   'rituals.planDay': true,
   // Ask's two doors (#382) ride their group, as rituals.chat does.
@@ -198,7 +207,7 @@ describe('the preview classification of the command registry', () => {
   it('gates exactly the five data groups plus two ids, less one chrome id', () => {
     expect([...PREVIEW_GATED_GROUPS].sort()).toEqual(['create', 'history', 'items', 'mods', 'rituals']);
     expect([...PREVIEW_GATED_IDS].sort()).toEqual(['goto.overdue', 'workspace.selectAll']);
-    expect([...PREVIEW_CHROME_IDS]).toEqual(['make.write']);
+    expect([...PREVIEW_CHROME_IDS].sort()).toEqual(['ai.fix', 'ai.setup', 'make.write']);
   });
 });
 
@@ -266,6 +275,56 @@ describe('isAvailable while previewing', () => {
     expect(isAvailable(byId('make.write'), ctx)).toBe(byId('make.write').availableWhen!(ctx));
     seed(false);
     expect(isAvailable(recipe!, ctx)).toBe(true);
+  });
+
+  it("gates a mod's own commands (#434): the runtime and its ⌘K slot wait for the landing", () => {
+    // A mod's command runs user code that reads and writes planner rows
+    // through the broker. ModHost fills the slot only once the planner has
+    // settled (lib/mods/broker.ts modRuntimeReady), so ungated the row would
+    // do nothing; gated, it says why.
+    const ran: string[] = [];
+    const unslot = setModCommandRunner((modId, commandId) => ran.push(`${modId}:${commandId}`));
+    const MOD: UserMod = {
+      ...RECIPE,
+      id: 'mod-2',
+      kind: 'mod',
+      slug: 'water',
+      name: 'Water',
+      manifest: { version: 1, uses: ['ui'], commands: [{ id: 'add', label: 'Add a glass' }] },
+    } as UserMod;
+    useModsStore.setState({ available: true, loaded: true, safeMode: false, rows: [MOD] });
+    seed(true);
+    const command = providerCommands().find((c) => c.id === 'mod.water.add');
+    expect(command?.group).toBe('mods');
+    expect(gatedDuringPreview(command!)).toBe(true);
+    expect(isAvailable(command!, ctx)).toBe(false);
+    seed(false);
+    expect(isAvailable(command!, ctx)).toBe(true);
+    command!.run(ctx);
+    expect(ran).toEqual(['mod-2:add']);
+    unslot();
+  });
+
+  it('leaves the doors into AI setup live (#433): they only open the setup column', () => {
+    // The launcher draws the one on offer first in Actions, run through
+    // isAvailable: gated, Enter at rest would do nothing until the load lands.
+    for (const [seedWith, id] of [
+      [NOTHING_CONNECTED, 'ai.setup'],
+      [KEY_TURNED_DOWN, 'ai.fix'],
+    ] as const) {
+      const unseed = seedAI(seedWith);
+      useRailStore.getState().reset();
+      seed(true);
+      const door = byId(id);
+      expect(gatedDuringPreview(door), id).toBe(false);
+      expect(isAvailable(door, ctx), id).toBe(true);
+      door.run(ctx);
+      // Opened, and nothing deferred: the column is chrome, not a data slot.
+      expect(useRailStore.getState().summoned, id).toBe(true);
+      expect(useUIStore.getState().deferredDialog, id).toBeNull();
+      unseed();
+    }
+    useRailStore.getState().reset();
   });
 
   it("keeps Undo live for a strip row with its own take-back, which is not the planner's history", () => {
@@ -343,6 +402,26 @@ describe('a gated shortcut while previewing', () => {
     expect(press('n')).toBe(true);
     expect(useUIStore.getState().activeDialog).toBeNull();
     expect(useUIStore.getState().deferredDialog).toBeNull();
+  });
+
+  it('opens no canvas composer for n over a slot (#432) until the preview ends', () => {
+    // The canvas is inert while previewing, so no pointer can write the
+    // hovered slot; one left from before is refused all the same, because the
+    // key's command (create.task) rides the gated 'create' group.
+    const target: SlotTarget = { kind: 'row', scope: 'row:anytime:2026-03-10', dateStr: '2026-03-10', bucket: 'anytime' };
+    const drawn = document.createElement('div');
+    drawn.setAttribute('data-slot-scope', target.scope);
+    document.body.appendChild(drawn);
+    setHoveredSlot(target);
+    seed(true);
+    expect(press('n')).toBe(true);
+    expect(useSlotComposer.getState().target).toBeNull();
+    expect(useUIStore.getState().deferredDialog).toBeNull();
+    seed(false);
+    expect(press('n')).toBe(true);
+    expect(useSlotComposer.getState().target).toBe(target);
+    useSlotComposer.getState().close();
+    setHoveredSlot(null);
   });
 
   it("hands back a key whose command has nothing to do anyway — the preview is not why (⌘Z, no history)", () => {

@@ -14,7 +14,7 @@ vi.mock('@/lib/supabase', () => ({
   createClient: () => ({
     from: (table: string) => {
       const b: Record<string, unknown> = {};
-      for (const op of ['select', 'eq', 'is', 'order', 'limit', 'like']) b[op] = () => b;
+      for (const op of ['select', 'eq', 'is', 'order', 'limit', 'like', 'not']) b[op] = () => b;
       const data =
         table === 'mod_runs' ? runs.data : table === 'items' ? runs.items : table === 'projects' ? runs.projects : [];
       b.then = (resolve: (r: unknown) => unknown, reject?: (e: unknown) => unknown) =>

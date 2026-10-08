@@ -385,3 +385,13 @@ export function keyPageLabel(provider: ModelProviderId, baseUrl?: string | null)
 export function checkingCopy(provider: ModelProviderId, baseUrl?: string | null): string {
   return `Checking your key with ${companyName(provider, baseUrl)}…`;
 }
+
+/**
+ * The consent line, while a question kept from `?` waits on this connect
+ * (lib/ask-pending.ts): where the press under it sends that question. Another
+ * service is its host, or "your service" mid-sentence when the address has none.
+ */
+export function consentCopy(provider: ModelProviderId, baseUrl?: string | null): string {
+  const to = provider === 'custom' && !hostOf(baseUrl) ? 'your service' : companyName(provider, baseUrl);
+  return `Connecting sends your question, and the parts of your plan it needs, from dsul’s server to ${to}.`;
+}

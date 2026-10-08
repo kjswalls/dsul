@@ -103,7 +103,7 @@ electron/
   - **Reveal refit.** `bringForward` re-runs the rule on a normal window the shell had parked whose band is out of reach now: one hidden in the tray on a display that has since gone. A window the user can see is never moved. A maximized one is left to the OS (Later).
   - **Not Electron's `windowStatePersistence`.** 44.5.1 has an experimental built-in. It restores after the window exists (native_window.cc:271), the order Electron's own comment says "deflates" a window on a secondary monitor with another DPI (native_window_views.cc:276-284) **[unverified]**; constructor `x`/`y` avoid it. Off the Mac it keeps only 100x100px on screen. It restores full screen together with maximized. It writes through a batched PrefService write that a Windows log-off never flushes. Never turn it on, or set `name` with it, beside this one: two restorers would fight over the window.
 - **Guards.** Attach them in `app.on('web-contents-created')`, so every webContents has them before its first load.
-  - **`will-navigate`, `will-frame-navigate` and `will-redirect`.** `will-frame-navigate` covers subframes; the app has none today.
+  - **`will-navigate`, `will-frame-navigate` and `will-redirect`.** `will-frame-navigate` covers subframes. The app's one frame is the mod sandbox at `/mods/sandbox/<version>` ([mods.md](mods.md), build order 8): a hidden `<iframe sandbox="allow-scripts">` with an opaque origin. It is an app URL with no `code` parameter, so `guardSubframe` lets it load with no shell change. No `nodeIntegrationInSubFrames` is set, so the preload never runs in it, and its blob Worker is not a navigation.
     - An app URL stays in the window, unless `carriesAuthCode` is true: the path is `/auth/callback`, or the URL has a `code` query parameter.
     - Anything else gets `preventDefault()`. It then goes to `shell.openExternal` only if `externalAllowed` passes, which allows `https:`, `http:` and `mailto:`.
   - **Why the code rule exists.** Three things will exchange a code that reaches them:
@@ -139,7 +139,7 @@ electron/
   - nothing otherwise.
 
   The app's own Radix menus cancel the DOM event, so they never reach this handler.
-- **Permissions.** The request and check handlers allow `clipboard-sanitized-write` and `notifications` for app URLs only, and deny everything else.
+- **Permissions.** The request and check handlers allow `clipboard-sanitized-write` and `notifications` for app URLs only, and deny everything else. `isApp` matches the mod sandbox frame too (an app URL), so it could be granted `notifications`. It never asks: the worker's LOCKDOWN removes `Notification` and the frame script never calls it. Refusing permissions to anything but the main frame waits for the next shell release (Later); the shell loads the live site, so the mod runtime needed no release.
 - **Offline.**
   - On a main-frame `did-fail-load` (ignore `-3`, ABORTED), call `loadFile('offline.html')`. Its only script is `location.replace('https://do.dsul.app/')` when the `online` event fires.
   - Main retries too, because `online` never fires if `navigator.onLine` was already true when the load failed (a wake from sleep while DNS or Wi-Fi settles, or the site briefly down). While the window shows the offline page it reloads the start URL after 5s, 15s, 30s, then every 60s, and stops once an app URL commits. A reveal (the shortcut, a relaunch, the tray, the Dock) retries at once, and `powerMonitor` `resume` restarts the backoff. offline.html and its pinned CSP hash are unchanged.
@@ -724,6 +724,7 @@ Also in v1: the push-row copy, the app icons, the CLAUDE.md layout line and the 
 - Placing the Mac buttons before a slow first commit: keep the last zoom factor in userData and set the position before the first show, so a launch past the 4s fallback doesn't show them move.
 - Notebook in the Mac app: its desk padding is 20px, not 12, so even at 100% the buttons sit about 8px above its wordmark row and the word starts about 22px past them. **[unverified: read, not rendered]**
 - Windows arm64.
+- Refuse every permission to a subframe (`details.isMainFrame === false`), so the mod sandbox frame could never be granted `notifications` even if it asked.
 - The `reloadOnOnline` decision.
 
 ## Open assumptions (not verified in this pass)

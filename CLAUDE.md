@@ -424,9 +424,13 @@ date, and the sweep and the carry verbs are excluded from it on purpose.
 2026-10-03; decisions 2026-10-07): private, sandboxed mods (QuickJS-in-WASM behind a
 capability broker, host-drawn UI, never CSS), no-code recipes over `ITEM_VERBS`, and
 user themes and Looks as token values. It reverses plugins-themes-store.md's "skip
-tier (c)" and "skip sidebar-panel slots" for private code only. Build orders 2 to 7 are built (6 is the
-server runner, `lib/recipes/server/`; 7 is "Write with AI" in Make, `/api/ai/make`); read it before adding a mod
-event, a recipe step, or anything that lets user-written code or values into the app.
+tier (c)" and "skip sidebar-panel slots" for private code only. Build orders 2 to 8 are built (6 is the
+server runner, `lib/recipes/server/`; 7 is "Write with AI" in Make, `/api/ai/make`; 8 is the mod runtime,
+`lib/mods/`: sandbox frame, broker, ⌘K commands, faults, Make's source editor); read it before adding a mod
+event, a recipe step, a `$` method, or anything that lets user-written code or values into the app. The mod
+runtime's worker, wasm and frame page are GENERATED: `scripts/build-mod-runtime.mjs` runs on `postinstall` and
+`prebuild` and writes `lib/mods/sandbox/generated/` (gitignored), served at `/mods/sandbox/<version>`, where the
+version hashes the whole page and its CSP. A fresh clone has none until `pnpm install` runs.
 [ai-vision.md](memory/plans/ai-vision.md) does the same for the AI: the model connection,
 the capability gate, delegation to OpenClaw, saved conversations and their privacy
 statement, and which earlier decisions steps 1 and 2a superseded. Read it before touching

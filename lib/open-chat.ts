@@ -109,6 +109,37 @@ function toggleSetup(): void {
 }
 
 /**
+ * Open setup (or the fix home) from a door: `?` in the dock or Ctrl+K, and
+ * Ctrl+K's "Set up AI" and "Fix AI". Open only, never a toggle, so a door
+ * pressed with setup already showing leaves it showing. Desktop: an item on
+ * top closes through the one flushing close (a toggle would close it and
+ * show nothing), and one held for the landing is let go, so it never opens
+ * over the setup asked for after it; then out of Zen and a summon that
+ * writes no `askOpen`, as Ctrl+J's does. Phone: the Ask tab, which shows the
+ * setup page while the gate offers it; never a summon there, which would arm
+ * the desktop column to spring open on a wider window. True when it opened
+ * something; false with neither setup nor a fix on offer.
+ */
+export function openSetup(isMobile: boolean): boolean {
+  const ai = getAICapabilities();
+  if (!ai.askInvite && !ai.askFix) return false;
+  if (isMobile) {
+    showAskTab();
+    return true;
+  }
+  if (useUIStore.getState().activeDialog?.type === 'edit-item') closeItemPanel();
+  // Over the preview an item asked for is held, not open (lib/ui-store.ts
+  // deferredDialog), and would open on top of setup at the landing. The door
+  // is the later ask, so it lets the held item go as it closes an open one.
+  if (useUIStore.getState().deferredDialog?.type === 'edit-item') {
+    useUIStore.setState({ deferredDialog: null, deferredFor: null });
+  }
+  leaveZen();
+  useRailStore.getState().summon({ persist: false });
+  return true;
+}
+
+/**
  * Exactly ProposalCard's own render rule (components/ai/proposal-card.tsx):
  * not idle, and the request came from this surface (or names none). Pure.
  *
@@ -467,17 +498,27 @@ export async function resolveSendTarget(
  * A send from the canvas's own controls never moves it.
  *
  * `contextItemIds` is the 2c seam (several items as context); unread for now.
+ *
+ * Resolves once the answer is done: true when the store's send took the text
+ * (the thread streaming right after the call, or already holding more
+ * messages than before it: a send whose context build threw has finished,
+ * error reply and save included, before it returns), false on every refusal
+ * (nothing to answer, the binding already sending, the thread still
+ * answering, or send's own re-check of the gate), none of which writes a
+ * message. A caller that must not lose the text (the kept question,
+ * lib/ask-pending.ts) reads it; the composers do not.
  */
 export async function sendFrom(
   binding: ComposerBinding,
   text: string,
   o: { surface?: AskSurface; returnTo?: { itemId: string }; focus?: boolean; contextItemIds?: string[] } = {}
-): Promise<void> {
-  if (!getAICapabilities().canChat || typeof text !== 'string' || !text.trim()) return;
+): Promise<boolean> {
+  if (!getAICapabilities().canChat || typeof text !== 'string' || !text.trim()) return false;
   const store = useConversationsStore.getState();
   const key = bindingKey(binding);
-  if (!store.beginSend(key)) return;
+  if (!store.beginSend(key)) return false;
   let sending: Promise<void> | null = null;
+  let took = false;
   try {
     store.ensureOwner();
     const { threadId, push } = await resolveSendTarget(binding, o.surface ?? 'desktop', o.returnTo);
@@ -489,7 +530,8 @@ export async function sendFrom(
     const before = useConversationsStore.getState().threads[threadId];
     if (before?.saved && before.load !== 'loaded') await useConversationsStore.getState().openThread(threadId);
     const thread = useConversationsStore.getState().threads[threadId];
-    if (thread?.streaming) return;
+    if (thread?.streaming) return false;
+    const had = thread?.messages.length ?? 0;
     if (push) {
       const rail = useRailStore.getState();
       const wantsFocus = o.focus || rail.pendingFocus?.target === 'composer' || focusIsInRail();
@@ -497,14 +539,41 @@ export async function sendFrom(
       if (wantsFocus && push.kind === 'conversation') rail.focusComposer({ kind: 'conversation', id: push.id });
     }
     // send's synchronous half appends both messages and marks the thread
-    // streaming before it first awaits.
+    // streaming before it first awaits; a send whose context build threw
+    // before that await has already finished, so the messages it wrote are
+    // what say it took.
     sending = useConversationsStore.getState().send(threadId, text);
+    const after = useConversationsStore.getState().threads[resolveConversationId(threadId)];
+    took = after?.streaming === true || (after?.messages.length ?? 0) > had;
   } catch {
     // A lookup never rejects, and send never throws: nothing to tell.
   } finally {
     useConversationsStore.getState().endSend(key);
   }
   if (sending) await sending;
+  return took;
+}
+
+/**
+ * Ask the question kept from `?` (lib/ask-pending.ts), once something
+ * answers: a new conversation on Ask's own surface, with its box asked for,
+ * as `?` itself asks when something answers. Desktop: an item on top closes
+ * through the one flushing close, then out of Zen and a summon that writes no
+ * `askOpen` (an Ask the setup door opened is for this session only), never
+ * revealChat, which keeps Ask open. Phone: the Ask tab; never a summon. The
+ * send's own answer: false when it was refused, so the caller can keep the
+ * question.
+ */
+export async function askKeptQuestion(text: string, isMobile: boolean): Promise<boolean> {
+  if (!getAICapabilities().canChat) return false;
+  if (isMobile) {
+    showAskTab();
+    return sendFrom({ kind: 'home' }, text, { surface: 'phone', focus: true });
+  }
+  if (useUIStore.getState().activeDialog?.type === 'edit-item') closeItemPanel();
+  leaveZen();
+  useRailStore.getState().summon({ persist: false });
+  return sendFrom({ kind: 'home' }, text, { surface: 'desktop', focus: true });
 }
 
 /**

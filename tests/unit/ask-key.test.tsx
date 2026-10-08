@@ -34,7 +34,7 @@ vi.mock('@/components/primitives/relay-field', () => ({ RelayField: () => null }
 import { AskOpener } from '@/components/ai/rail/ask-opener';
 import { AskSetup } from '@/components/ai/rail/ask-setup';
 import { RailHeader } from '@/components/ai/rail/rail-header';
-import { AskMark, AskMarkIcon, ASK_MARK_LIGHT, type AskMarkTone } from '@/components/ai/ask-mark';
+import { AskMark, AskMarkIcon, AskMarkUnlitIcon, ASK_MARK_LIGHT, type AskMarkTone } from '@/components/ai/ask-mark';
 import { useLookStore } from '@/lib/look-store';
 import { seedAI, CONNECTED_MODEL, KEY_TURNED_DOWN, NOTHING_CONNECTED } from './helpers/ai-fixtures';
 
@@ -352,6 +352,42 @@ describe('the mark', () => {
       const svg = container.querySelector('svg') as SVGSVGElement;
       expect(svg).toHaveAttribute('data-glyph', 'general');
       expect(svg).toHaveAttribute('data-ask-mark', 'aurora-step');
+    });
+  });
+
+  // The doors into setup while nothing answers (Ctrl+K's "Set up AI" and
+  // "Fix AI", the launcher's chat hint, the phone's switcher row) take a
+  // Lucide icon, and draw the unlit mark there: no lime, no light.
+  describe('unlit, where a slot takes a Lucide icon', () => {
+    it("stands in for a Lucide icon: sized by the slot's class, decorative whatever the slot passes", () => {
+      const ref = { current: null as SVGSVGElement | null };
+      const { container } = render(
+        <AskMarkUnlitIcon ref={ref} className="h-4 w-4 text-muted-foreground" strokeWidth={1.75} aria-hidden={false} />
+      );
+      const svg = container.querySelector('svg[data-ask-mark]') as SVGSVGElement;
+      expect(ref.current).toBe(svg);
+      expect(svg).toHaveAttribute('width', '16');
+      expect(svg).toHaveAttribute('height', '16');
+      expect(svg).toHaveClass('h-4', 'w-4', 'text-muted-foreground');
+      expect(svg.getAttribute('class')).not.toMatch(/\bsize-/);
+      expect(svg).not.toHaveAttribute('stroke-width');
+      expect(svg).toHaveAttribute('aria-hidden', 'true');
+      expect(svg).toHaveAttribute('focusable', 'false');
+    });
+
+    it("is the unlit mark's own paint, tile for tile, not the one ink, and nothing in it is the accent", () => {
+      const { container } = render(<AskMarkUnlitIcon />);
+      const svg = container.querySelector('svg[data-ask-mark]') as SVGSVGElement;
+      expect(svg).toHaveAttribute('data-lit', 'false');
+      expect(svg).toHaveAttribute('data-tone', 'aurora');
+      const { container: unlit } = render(<AskMark lit={false} />);
+      const paintOf = (root: Element) => Array.from(root.querySelectorAll('svg[data-ask-mark] *'), (el) => el.getAttribute('class'));
+      expect(paintOf(container)).toEqual(paintOf(unlit));
+      for (const el of [svg, ...Array.from(svg.querySelectorAll('*'))]) {
+        const paint = `${el.getAttribute('class') ?? ''} ${el.getAttribute('style') ?? ''} ${el.getAttribute('fill') ?? ''}`;
+        expect(paint, el.tagName).not.toMatch(ACCENT);
+        expect(paint, el.tagName).not.toMatch(/--ask-icon-(?:lit|pair|pair-ink|ink)\b|--ai\b|--lime|\bfill-current\b/);
+      }
     });
   });
 

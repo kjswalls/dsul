@@ -11,6 +11,13 @@ import { render, screen, cleanup, fireEvent, waitFor, act, within } from '@testi
  * sheet entry, a swipe stop, an empty second column — and the one thing that
  * needs no model, catch-up, has to keep a place to answer on the phone even
  * while the gate's own read is pending or failed.
+ *
+ * The phone's chat tab is the one exception to "only while something
+ * answers": while the gate invites (`askInvite`) or offers the fix
+ * (`askFix`) it is there too, holding the setup page or the fix home in Ask's
+ * place (components/mobile/setup-tab.tsx), so the phone has a way into
+ * setup. Three surfaces then, two once the account has said No AI or while
+ * the gate has not answered.
  */
 
 const swipe = vi.hoisted(() => ({
@@ -77,22 +84,29 @@ vi.mock('@/components/sidebar/braindump', () => ({
 vi.mock('@/components/mobile/ask-tab', () => ({
   AskTab: () => <div data-testid="surface-chat" />,
 }));
+vi.mock('@/components/mobile/setup-tab', () => ({
+  SetupTab: () => <div data-testid="surface-setup" />,
+}));
 
 import { MobileShell } from '@/components/shell/mobile-shell';
 import { MobileBottomDock } from '@/components/mobile/mobile-bottom-dock';
 import { ModeSwitcherSheet } from '@/components/mobile/mode-switcher-sheet';
 import { ItemDetailSections } from '@/components/planner/item-detail-sections';
 import ItemPage from '@/app/item/[id]/page';
-import { mobileTabOrder, useMobileNavStore } from '@/lib/mobile-nav-store';
+import { mobileTabOrder, useMobileNavStore, type MobileTab } from '@/lib/mobile-nav-store';
+import { useAIConnectionStore } from '@/lib/ai-connection-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useProposalStore } from '@/lib/proposal-store';
 import { useRailStore } from '@/lib/rail-store';
 import type { TaskItem } from '@/lib/planner-types';
 import {
+  AI_HIDDEN,
   CONNECTED_MODEL,
+  KEY_TURNED_DOWN,
   NOTHING_CONNECTED,
   OPENCLAW_PLUGIN,
   seedAI,
+  type SeedAI,
 } from './helpers/ai-fixtures';
 
 beforeAll(() => {
@@ -154,7 +168,7 @@ const seed = (o?: Parameters<typeof seedAI>[0]) => {
 // ── The phone ────────────────────────────────────────────────────────────────
 
 describe('mobileTabOrder', () => {
-  it('drops chat, and only chat, while nothing can answer', () => {
+  it('drops chat, and only chat, while it is not offered', () => {
     expect(mobileTabOrder(true)).toEqual(['braindump', 'today', 'chat']);
     expect(mobileTabOrder(false)).toEqual(['braindump', 'today']);
   });
@@ -164,8 +178,22 @@ describe('the switcher sheet', () => {
   const open = () => fireEvent.click(screen.getByTestId('mobile-mode-card'));
   const entries = () => document.querySelectorAll('[data-testid^="mode-option-"]');
 
-  it('lists two surfaces while nothing can answer', async () => {
-    seed(NOTHING_CONNECTED);
+  it.each<[string, SeedAI, string]>([
+    ['invited', NOTHING_CONNECTED, 'Set up AI'],
+    ['offering the fix', KEY_TURNED_DOWN, 'Fix AI'],
+  ])('lists three surfaces while the gate is %s, the third named for the page it holds', async (_, s, word) => {
+    seed(s);
+    render(<ModeSwitcherSheet />);
+    open();
+
+    await waitFor(() => expect(entries()).toHaveLength(3));
+    expect(screen.getByTestId('mode-option-chat')).toHaveTextContent(word);
+    expect(screen.getByTestId('mode-option-chat')).not.toHaveTextContent('Ask');
+    expect(screen.getByText(`Switch between the Braindump, Today and ${word} surfaces.`)).toBeInTheDocument();
+  });
+
+  it('lists two surfaces once the account has said No AI', async () => {
+    seed(AI_HIDDEN);
     render(<ModeSwitcherSheet />);
     open();
 
@@ -174,12 +202,16 @@ describe('the switcher sheet', () => {
     expect(screen.getByText('Switch between the Braindump and Today surfaces.')).toBeInTheDocument();
   });
 
-  it('lists two while the gate has not answered yet (fail closed)', async () => {
-    seed();
+  it.each<[string, SeedAI | undefined]>([
+    ['has not answered yet', undefined],
+    ['could not be read', { phase: 'error' }],
+  ])('lists two while the gate %s (fail closed)', async (_, s) => {
+    seed(s);
     render(<ModeSwitcherSheet />);
     open();
 
     await waitFor(() => expect(entries()).toHaveLength(2));
+    expect(screen.queryByTestId('mode-option-chat')).toBeNull();
   });
 
   it('lists three with a model, the third named Ask', async () => {
@@ -197,21 +229,58 @@ describe('the switcher sheet', () => {
 
 describe('the shell', () => {
   const tab = () => useMobileNavStore.getState().activeTab;
+  const phone = () => useRailStore.getState().stacks.phone;
+  /** Let the shell's effects (the bounce among them) run. */
+  const settle = () => act(() => new Promise((r) => setTimeout(r, 0)));
 
-  it('bounces off the chat tab when the capability drops', async () => {
+  it('bounces off the chat tab once nothing is offered there', async () => {
     seed(CONNECTED_MODEL);
     useMobileNavStore.setState({ activeTab: 'chat' });
     render(<MobileShell />);
     expect(screen.getByTestId('surface-chat')).toBeInTheDocument();
 
-    // The key stopped working, OpenClaw was unpaired: the gate answers again.
+    // "No AI, thanks", here or on another device: the gate answers again.
+    act(() => {
+      seed(AI_HIDDEN);
+    });
+
+    expect(screen.queryByTestId('surface-chat')).toBeNull();
+    expect(screen.queryByTestId('surface-setup')).toBeNull();
+    expect(screen.getByTestId('surface-today')).toBeInTheDocument();
+    await waitFor(() => expect(tab()).toBe('today'));
+  });
+
+  it('keeps the chat tab when Ask goes but setup is offered: the setup page in its place', async () => {
+    seed(CONNECTED_MODEL);
+    useMobileNavStore.setState({ activeTab: 'chat' });
+    render(<MobileShell />);
+
+    // Disconnected in Settings, OpenClaw unpaired: nothing answers, and the
+    // gate invites.
     act(() => {
       seed(NOTHING_CONNECTED);
     });
 
     expect(screen.queryByTestId('surface-chat')).toBeNull();
-    expect(screen.getByTestId('surface-today')).toBeInTheDocument();
-    await waitFor(() => expect(tab()).toBe('today'));
+    expect(screen.queryByTestId('surface-today')).toBeNull();
+    expect(screen.getByTestId('surface-setup')).toBeInTheDocument();
+    await settle();
+    expect(tab()).toBe('chat');
+  });
+
+  it.each<[string, SeedAI]>([
+    ['invited', NOTHING_CONNECTED],
+    ['offering the fix', KEY_TURNED_DOWN],
+  ])('shows the setup page on a stored chat tab while the gate is %s, never Ask', async (_, s) => {
+    seed(s);
+    useMobileNavStore.setState({ activeTab: 'chat' });
+    render(<MobileShell />);
+
+    expect(screen.getByTestId('surface-setup')).toBeInTheDocument();
+    expect(screen.queryByTestId('surface-chat')).toBeNull();
+    expect(screen.queryByTestId('surface-today')).toBeNull();
+    await settle();
+    expect(tab()).toBe('chat');
   });
 
   it('shows Today for a stored chat tab while the gate is unknown, without moving it', () => {
@@ -226,8 +295,8 @@ describe('the shell', () => {
     expect(tab()).toBe('chat');
   });
 
-  it('swipes past where chat would be while nothing can answer', () => {
-    seed(NOTHING_CONNECTED);
+  it('swipes past where chat would be while it is not offered', () => {
+    seed(AI_HIDDEN);
     render(<MobileShell />);
 
     act(() => swipe.handlers?.onSwipedLeft?.());
@@ -265,6 +334,91 @@ describe('the shell', () => {
     expect(tab()).toBe('chat');
     expect(screen.getByTestId('surface-chat')).toBeInTheDocument();
   });
+
+  it.each<[string, SeedAI]>([
+    ['invited', NOTHING_CONNECTED],
+    ['offering the fix', KEY_TURNED_DOWN],
+  ])('swipes onto the setup page while the gate is %s', (_, s) => {
+    seed(s);
+    render(<MobileShell />);
+
+    act(() => swipe.handlers?.onSwipedLeft?.());
+    expect(tab()).toBe('chat');
+    expect(screen.getByTestId('surface-setup')).toBeInTheDocument();
+  });
+
+  // The phone's stack outlives the gate: a conversation from before the key
+  // went is still on it, under a page with no Back. A swipe right that popped
+  // it would change nothing on screen.
+  it.each<[string, SeedAI]>([
+    ['the setup page', NOTHING_CONNECTED],
+    ['the fix home', KEY_TURNED_DOWN],
+  ])('swipes right from %s to Today, leaving the stack it does not show alone', (_, s) => {
+    seed(s);
+    useMobileNavStore.setState({ activeTab: 'chat' });
+    useRailStore.getState().push('phone', { kind: 'history' });
+    useRailStore.getState().push('phone', { kind: 'conversation', id: 'c1' });
+    render(<MobileShell />);
+
+    act(() => swipe.handlers?.onSwipedRight?.());
+    expect(tab()).toBe('today');
+    expect(phone()).toEqual([{ kind: 'history' }, { kind: 'conversation', id: 'c1' }]);
+  });
+
+  it('turns a conversation whose key is turned down into the fix home in place, and gives it back when the fix lands', async () => {
+    seed(CONNECTED_MODEL);
+    useMobileNavStore.setState({ activeTab: 'chat' });
+    useRailStore.getState().push('phone', { kind: 'history' });
+    useRailStore.getState().push('phone', { kind: 'conversation', id: 'c1' });
+    useRailStore.getState().setDraft('conv:c1', 'and after lunch?');
+    render(<MobileShell />);
+    expect(screen.getByTestId('surface-chat')).toBeInTheDocument();
+
+    // A chat call comes back `auth`: the store marks the key failing where it
+    // stands (ai-connection-store's noteCallFailure), and the gate offers the fix.
+    const model = useAIConnectionStore.getState().model!;
+    act(() => {
+      useAIConnectionStore.setState({ model: { ...model, status: 'failing', problem: 'key_rejected' } });
+    });
+
+    expect(screen.queryByTestId('surface-chat')).toBeNull();
+    expect(screen.getByTestId('surface-setup')).toBeInTheDocument();
+    await settle();
+    expect(tab()).toBe('chat');
+    expect(phone()).toEqual([{ kind: 'history' }, { kind: 'conversation', id: 'c1' }]);
+    expect(useRailStore.getState().drafts['conv:c1']).toBe('and after lunch?');
+
+    // The fix lands (a new key, the old one checked again): Ask picks up
+    // where it left off, nothing popped.
+    act(() => {
+      useAIConnectionStore.setState({ model: { ...model, status: 'ok', problem: null } });
+    });
+
+    expect(screen.getByTestId('surface-chat')).toBeInTheDocument();
+    expect(screen.queryByTestId('surface-setup')).toBeNull();
+    expect(phone()).toEqual([{ kind: 'history' }, { kind: 'conversation', id: 'c1' }]);
+    expect(useRailStore.getState().drafts['conv:c1']).toBe('and after lunch?');
+  });
+
+  // Ask home can carry the lime accent, which never fades through a parent's
+  // opacity; the setup page has none, so it fades in as Braindump and Today
+  // do. The tab keeps its key when the page turns into Ask, so the fade has
+  // to be gone in that same commit, not merely finished.
+  it('fades the setup page in, and never Ask, even when the page turns into Ask in place', () => {
+    const fadesAround = (el: HTMLElement) => {
+      for (let p = el.parentElement; p; p = p.parentElement) if (/fade-|opacity-/.test(p.className)) return true;
+      return false;
+    };
+    seed(NOTHING_CONNECTED);
+    useMobileNavStore.setState({ activeTab: 'chat' });
+    render(<MobileShell />);
+    expect(fadesAround(screen.getByTestId('surface-setup'))).toBe(true);
+
+    act(() => {
+      seed(CONNECTED_MODEL);
+    });
+    expect(fadesAround(screen.getByTestId('surface-chat'))).toBe(false);
+  });
 });
 
 describe('the catch-up host in the phone dock', () => {
@@ -283,7 +437,20 @@ describe('the catch-up host in the phone dock', () => {
   });
 
   it('answers catch-up when there is no chat tab to answer on', async () => {
+    seed(AI_HIDDEN);
+    render(<MobileBottomDock />);
+    await catchUp();
+
+    expect(within(host() as HTMLElement).getByTestId('proposal-card')).toBeInTheDocument();
+  });
+
+  // The setup page is the chat tab, but not Ask home: it has no card host.
+  it.each<[string, MobileTab]>([
+    ['on Today', 'today'],
+    ['on the setup page itself', 'chat'],
+  ])('answers catch-up in the dock while the gate invites, %s', async (_, at) => {
     seed(NOTHING_CONNECTED);
+    useMobileNavStore.setState({ activeTab: at });
     render(<MobileBottomDock />);
     await catchUp();
 

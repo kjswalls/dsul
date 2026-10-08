@@ -27,10 +27,11 @@ import type { Item } from './planner-types';
  * Its write is ATTEMPTED, not guaranteed. An outage fails the insert too
  * (persistNewItem only logs it), and a landing replaces the store it was filed
  * on, row and all. So every row filed before its account's data has landed,
- * by a capture or by a bulk add (a pasted list, reported through
- * lib/filed-rows.ts), is kept here as the person last left it, notes, dates,
- * type, project and order included, until a landing for its account settles
- * it, and it still counts toward "Adds once synced" until then. That is over a
+ * by a capture, by a bulk add (a pasted list, reported through
+ * lib/filed-rows.ts) or by a canvas composer (keepCanvasAdd), is kept here as
+ * the person last left it, notes, dates, type, project and order included,
+ * until a landing for its account settles it, and it still counts toward
+ * "Adds once synced" until then. That is over a
  * failed load, and while a load is in flight: a Retry leaves the failed load's
  * rows on screen to edit and add to, and a list (unlike a capture) is filed
  * there at once. The entry also keeps the row as first filed, so a landing can
@@ -69,9 +70,9 @@ import type { Item } from './planner-types';
  * the launcher closes on Enter, and the phone remounts the dock per tab.
  *
  * Only typed text is held: a capture's title while a load is in flight, and
- * until a landing the rows a capture or a list filed. A verb decided on
- * cached rows (a toggle, an order, a move) is never queued, because by landing
- * it may mean something else.
+ * until a landing the rows a capture, a list or a canvas add filed. A verb
+ * decided on cached rows (a toggle, an order, a move) is never queued, because
+ * by landing it may mean something else.
  */
 
 type HeldCapture = {
@@ -193,6 +194,21 @@ function keepUntilLanded(userId: string, rows: readonly Item[], asOne = false): 
 
 // A list filed before a landing is the same typed text as a capture.
 setBulkFiledListener((userId, rows) => keepUntilLanded(userId, rows, true));
+
+/**
+ * A row a canvas composer just filed (lib/slot-add.ts addAt: a grid slot, an
+ * Anytime strip, a day's add line), kept until a landing settles it as a
+ * capture's row is. The same typed text with no other copy, and the persistent
+ * add rows are live over a failed load (the views are drawn on its empty
+ * store) and commit on blur, so the click on the notice's Retry files a typed
+ * title on its way to the load that replaces the store. Nothing on a landed
+ * planner, and nothing during the preview, which refuses the add (`''`).
+ */
+export function keepCanvasAdd(id: string | undefined): void {
+  const s = usePlannerStore.getState?.();
+  if (!s?.userId || !id) return;
+  keepUntilLanded(s.userId, rowsOf([id]));
+}
 
 /**
  * Until the landing a filed row is the person's, and its entry follows it:

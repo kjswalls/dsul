@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
-import { render, cleanup } from '@testing-library/react';
+import { render, cleanup, screen } from '@testing-library/react';
 import { DndContext } from '@dnd-kit/core';
 
 /**
@@ -75,6 +75,7 @@ import { DayBuckets } from '@/components/views/day-buckets';
 import { WeekBuckets } from '@/components/views/week-buckets';
 import { DaySchedule } from '@/components/views/day-schedule';
 import { WeekSchedule } from '@/components/views/week-schedule';
+import { AddRow } from '@/components/planner/slot-composer';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
 import { EMPTY_VIEW_FILTERS } from '@/lib/filters';
@@ -194,6 +195,8 @@ const VIEWS: [name: string, ui: () => React.ReactElement, expected: Expected[]][
       ...rowsOf(['t-timed', 't-loose', 'h-daily', 'h-skip']),
       ['group:project:Work', 'frame'],
       ['group:project:Health', 'frame'],
+      // The day's add line, at the foot of a list that can change length on landing.
+      [`add:row:list:${D}`, 'frame'],
     ],
   ],
   [
@@ -210,6 +213,8 @@ const VIEWS: [name: string, ui: () => React.ReactElement, expected: Expected[]][
     () => inCanvas(<DaySchedule activeId={null} />),
     [
       ...rowsOf(['t-timed', 'h-skip', 't-loose', 'h-daily']),
+      // Add to Anytime, at the foot of the Anytime strip.
+      [`add:row:anytime:${D}`, 'frame'],
       ['grid', 'frame'],
       ['hour:9', 'frame'],
       ['hour:18', 'frame'],
@@ -351,6 +356,25 @@ describe('settle participants', () => {
       const repeated = keys.filter((k, i) => keys.indexOf(k) !== i);
       expect(repeated).toEqual([]);
     });
+  });
+
+  it('a persistent add line is a frame, glided with the list above it; a transient one takes no part', () => {
+    const target = { kind: 'row', scope: `row:week-list:${D}`, dateStr: D, bucket: 'anytime' } as const;
+    render(
+      <DndContext>
+        {inCanvas(
+          <>
+            <AddRow persistent target={target} placeholder="Add to Thursday" />
+            <AddRow target={{ ...target, scope: `row:week-anytime:${D}` }} placeholder="Add to Anytime" />
+          </>
+        )}
+      </DndContext>
+    );
+    const [persistent, transient] = screen.getAllByTestId('add-row');
+    expect(persistent.getAttribute('data-settle-key')).toBe(`add:row:week-list:${D}`);
+    expect(persistent.getAttribute('data-settle-role')).toBe('frame');
+    expect(transient.hasAttribute('data-settle-key')).toBe(false);
+    expect(transient.hasAttribute('data-settle-role')).toBe(false);
   });
 
   it('a skipped occurrence keeps its key as it changes shape, row and block alike', () => {

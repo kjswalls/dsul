@@ -17,7 +17,12 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
  *  - THE DOCK'S BOX is the tab's one box: bound to the top view, worded for
  *    it, with the answerer named under it; arriving puts the caret in it only
  *    at a conversation or an item.
- *  - LEAVING THE TAB keeps the stack, the drafts and a conversation's card.
+ *  - LEAVING THE TAB keeps the stack, the drafts and a conversation's card,
+ *    and spends "It works." (and a sign-in's note), as Ask closing does on
+ *    the desktop.
+ *  - THE SETUP PAGE holds the tab while nothing answers but the gate invites:
+ *    not Ask (no markers, no item interceptor, the dock's omnibar), and it
+ *    turns into Ask in place, at home, with no caret, once something answers.
  *
  * Stubbed: the dated header, the user menu (a bare button), the schedule
  * sheet, the braindump, and Today (one button that opens an item, as a row
@@ -123,6 +128,7 @@ import { phoneArrivalFocuses, useRailStore, type AskView } from '@/lib/rail-stor
 import { openEditFor, useUIStore } from '@/lib/ui-store';
 import type { TaskItem } from '@/lib/planner-types';
 import { matchCommands, STATIC_COMMANDS, type CommandContext } from '@/lib/commands';
+import { useAIConnectionStore } from '@/lib/ai-connection-store';
 import { CONNECTED_MODEL, NOTHING_CONNECTED, OPENCLAW_PLUGIN, seedAI } from './helpers/ai-fixtures';
 import { fakeApi, fakeTransport, flush, summary, type FakeApi, type FakeTransport } from './helpers/conversations-fakes';
 
@@ -377,6 +383,125 @@ describe('one stack under one capsule', () => {
     expect(phone()).toEqual([{ kind: 'history' }, { kind: 'conversation', id: 'c1' }]);
     expect(screen.getByText('Two items are open.')).toBeInTheDocument();
     expect(dockInput().value).toBe('and after lunch?');
+  });
+});
+
+describe('leaving the tab', () => {
+  const ai = () => useAIConnectionStore.getState();
+  /** "It works." for the model that answers, and a sign-in's note beside it. */
+  const say = () =>
+    act(() => {
+      ai().setJustConnected({ provider: 'openai', model: 'gpt-4o-mini', freeTier: false, at: Date.now() });
+      ai().setFlowResult('saved');
+    });
+  const said = () => [ai().justConnected, ai().flowResult];
+
+  // The phone's close: Ask closing spends it on the desktop (✕, Ctrl+J, a
+  // park), and here the tab is what closes. Only that: the stack and every
+  // draft are the tab's to come back to.
+  it('spends "It works." by the sheet, a swipe or any write, and keeps the stack and drafts', () => {
+    seedConversation('c1');
+    renderShell([{ kind: 'history' }, { kind: 'conversation', id: 'c1' }]);
+    fireEvent.change(dockInput(), { target: { value: 'and after lunch?' } });
+
+    say();
+    act(() => useMobileNavStore.getState().setActiveTab('today'));
+    expect(said()).toEqual([null, null]);
+    expect(phone()).toEqual([{ kind: 'history' }, { kind: 'conversation', id: 'c1' }]);
+    expect(rail().drafts['conv:c1']).toBe('and after lunch?');
+
+    act(() => useMobileNavStore.getState().setActiveTab('chat'));
+    say();
+    act(() => useMobileNavStore.setState({ activeTab: 'braindump' }));
+    expect(said()).toEqual([null, null]);
+
+    // From Ask home a swipe right walks to Today.
+    act(() => useMobileNavStore.getState().setActiveTab('chat'));
+    act(() => rail().popToHome('phone'));
+    say();
+    act(() => swipe.handlers?.onSwipedRight?.());
+    expect(tab()).toBe('today');
+    expect(said()).toEqual([null, null]);
+  });
+
+  it('spends nothing while the tab stays, or between the other two', () => {
+    renderShell();
+    say();
+    act(() => useMobileNavStore.getState().setActiveTab('chat'));
+    expect(said()).not.toEqual([null, null]);
+    expect(screen.getByTestId('it-works')).toBeInTheDocument();
+
+    act(() => useMobileNavStore.getState().setActiveTab('today'));
+    say();
+    act(() => useMobileNavStore.getState().setActiveTab('braindump'));
+    act(() => useMobileNavStore.getState().setActiveTab('today'));
+    expect(said()).not.toEqual([null, null]);
+  });
+});
+
+describe('the setup page in Ask\'s place', () => {
+  const gateAnswer = vi.fn(async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      available: true,
+      model: null,
+      openclaw: { gateway: false, pluginChat: false, agent: false, agentId: null },
+      aiHidden: false,
+    }),
+  }));
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', gateAnswer);
+    unseed();
+    unseed = seedAI(NOTHING_CONNECTED);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('is not Ask: none of its markers, nothing intercepted, and the dock keeps the omnibar', () => {
+    renderShell([{ kind: 'conversation', id: 'c1' }]);
+
+    expect(document.querySelector('[data-setup-tab]')).not.toBeNull();
+    expect(document.querySelector('[data-ask-tab]')).toBeNull();
+    expect(document.querySelector('[data-ask-home]')).toBeNull();
+    expect(rail().phoneAskHosts).toBe(0);
+    expect(screen.getByTestId('omnibar-input')).toBeInTheDocument();
+    expect(screen.queryByTestId('chat-dock-input')).toBeNull();
+    // The one user menu, in the page's own capsule.
+    expect(screen.getAllByRole('button', { name: 'User menu' })).toHaveLength(1);
+
+    act(() => openEditFor(TASK, 'task'));
+    expect(useUIStore.getState().activeDialog?.type).toBe('edit-item');
+    expect(phone()).toEqual([{ kind: 'conversation', id: 'c1' }]);
+  });
+
+  // A connect lights the gate first and pops the phone's stack home after
+  // (connect-ai.tsx's `succeed`), so for a moment Ask stands over whatever
+  // the stack kept from before. It lands at home, saying "It works.", with
+  // no keyboard raised over it.
+  it('turns into Ask in place once something answers: at home, "It works.", and no caret', async () => {
+    seedConversation('c1');
+    renderShell([{ kind: 'conversation', id: 'c1' }]);
+
+    act(() => {
+      unseed = seedAI(CONNECTED_MODEL);
+    });
+    act(() => {
+      rail().popToHome('phone');
+      useAIConnectionStore
+        .getState()
+        .setJustConnected({ provider: 'openai', model: 'gpt-4o-mini', freeTier: false, at: Date.now() });
+    });
+    await act(() => new Promise((r) => setTimeout(r, 0)));
+
+    expect(document.querySelector('[data-setup-tab]')).toBeNull();
+    expect(document.querySelector('[data-ask-tab] [data-ask-home]')).not.toBeNull();
+    expect(tab()).toBe('chat');
+    expect(phone()).toEqual([]);
+    expect(screen.getByTestId('it-works')).toBeInTheDocument();
+    expect(document.activeElement).not.toBe(dockInput());
   });
 });
 

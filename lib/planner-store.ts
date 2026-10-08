@@ -92,7 +92,8 @@ import { celebrateCompletion } from './completion-confetti';
 import { useExtensionsStore } from './extensions-store';
 import { markPreviewPending, readPlannerSnapshot, type PlannerSnapshotData } from './planner-snapshot';
 import { guardPreviewWrites } from './preview-write-guard';
-import { raiseModEvent, raiseModEvents, isModEventsSuppressed, type ModEvent } from './mod-events';
+import { raiseModEvent, raiseModEvents, raiseModOnlyEvents, isModEventsSuppressed, type ModEvent } from './mod-events';
+import { uncompletionsBetween } from './mods/undo-events';
 import type { CommitResult, SeedPlan } from './seed-containers';
 import { ITEM_TYPES, getItemTypeConfig, itemTypeName, isSkippable, isPausable, isCollectible, hydrateCustomTypes } from './item-registry';
 import {
@@ -288,12 +289,13 @@ interface PlannerStore {
 
   // Task actions ('task' actions operate on any task-LIKE item — custom types
   // are task-shaped and ride this pipeline; only habits are excluded)
-  /** Create an item of a user-defined type (task-shaped). */
+  /** Create an item of a user-defined type (task-shaped). Returns the new
+   *  item's id, or undefined for a slug that isn't a hydrated custom type. */
   addItem: (
     customType: string,
     item: Omit<Task, 'id' | 'order' | 'status' | 'isScheduled'>,
     memberships?: Memberships,
-  ) => void;
+  ) => string | undefined;
   /** Returns the new item's id. */
   addTask: (
     task: Omit<Task, 'id' | 'order' | 'status' | 'isScheduled'>,
@@ -3210,7 +3212,7 @@ export const usePlannerStore = create<PlannerStore>()(
           ['task', 'habit', 'custom'].includes(customType) ||
           !get().itemTypes.some((t) => t.name === customType)
         ) {
-          return;
+          return undefined;
         }
         const config = getItemTypeConfig(customType);
         const timeBucket = autoCorrectBucket(itemData.startTime, itemData.timeBucket);
@@ -3244,6 +3246,7 @@ export const usePlannerStore = create<PlannerStore>()(
 
         const userId = get().userId;
         if (userId) persistNewItem(userId, item, memberships, get);
+        return item.id;
       },
 
       addTask: (taskData, memberships) => {
@@ -5513,12 +5516,25 @@ export const usePlannerStore = create<PlannerStore>()(
           return;
         }
 
+        // The entry being taken back, and the items before it goes: a mod
+        // hears each completion this undo removed (lib/mods/undo-events.ts).
+        const undoneLabel = actionLog[historyIndex + 1]?.label ?? '';
+        const itemsBefore = currentState.items;
+
         applyHistoryState(prevState, currentState, {
           canUndo: historyIndex > 0,
           canRedo: true,
         }, userId, set);
 
         isUndoRedoAction = false;
+
+        // Redo raises nothing. A suppressed undo (none today) raises nothing either.
+        if (!isModEventsSuppressed()) {
+          const tz = get().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+          raiseModOnlyEvents(
+            uncompletionsBetween(itemsBefore, get().items, toDateStr(new Date(), tz)).map((e) => ({ ...e, undoneLabel }))
+          );
+        }
       },
 
       redo: () => {

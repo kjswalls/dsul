@@ -19,7 +19,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { DisplayMenu, type DisplayMenuHandle } from '@/components/primitives/display-menu';
 import { DisplayShelf } from '@/components/primitives/display-shelf';
 import { usePlannerStore } from '@/lib/planner-store';
-import { useMobileNavStore, shownMobileTab } from '@/lib/mobile-nav-store';
+import { chatOffered, useMobileNavStore, shownMobileTab } from '@/lib/mobile-nav-store';
 import { useAICapabilities } from '@/lib/ai-connection-store';
 import { useViewStore, type ViewLayout } from '@/lib/view-store';
 import { goToDate } from '@/lib/nav-commands';
@@ -173,11 +173,11 @@ function WeekStrip() {
 export function MobileHeader({ settingsHref, onOpenBugReport }: MobileHeaderProps) {
   const { selectedDate, setSelectedDate, weekStartDay } = usePlannerStore();
   const { layout, setLayout } = useViewStore();
-  // The tab on screen, not the stored one: while chat cannot answer the shell
-  // shows Today for a stored 'chat', and Today needs its dated card and user menu.
+  // The tab on screen, not the stored one: while the gate offers no chat tab
+  // the shell shows Today for a stored 'chat', and Today needs its dated card
+  // and user menu. The setup page in Ask's place is dateless, as Ask is.
   const storedTab = useMobileNavStore((s) => s.activeTab);
-  const { canChat } = useAICapabilities();
-  const activeTab = shownMobileTab(storedTab, canChat);
+  const activeTab = shownMobileTab(storedTab, chatOffered(useAICapabilities()));
   const [mounted, setMounted] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
   // The Display menu's handle, shared with the shelf at the foot of the card.
@@ -214,11 +214,12 @@ export function MobileHeader({ settingsHref, onOpenBugReport }: MobileHeaderProp
 
   // The dateless tabs get NO card. Braindump already opens with the header this
   // redesign ports — its own surface-3 capsule (components/sidebar/braindump.tsx)
-  // — and Beacon wears the same shape; a dated card above either is two
-  // stacked headers, the upper one offering a calendar for a surface with no
-  // date, where the chevron moved the Today cursor with no visible effect on the
-  // tab you were looking at. The user menu goes with the card: the shell hands
-  // those two tabs their own to mount inside their capsule, as the artboards
+  // — and Ask, or the setup page in its place, wears the same shape; a dated
+  // card above either is two stacked headers, the upper one offering a
+  // calendar for a surface with no date, where the chevron moved the Today
+  // cursor with no visible effect on the tab you were looking at. The user
+  // menu goes with the card: the shell hands those two tabs their own to
+  // mount inside their capsule, as the artboards
   // show (design/mobile-redesign/BraindumpTab.dc.html). The empty wrapper stays: it
   // carries the notch inset, plus the 10px the card's own top margin used to put
   // between the inset and whatever opens below — those surfaces need both

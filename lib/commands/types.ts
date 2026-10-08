@@ -228,6 +228,12 @@ export interface Command {
   aliases?: string[];
   argument?: CommandArgument;
   shortcut?: CommandShortcutSpec;
+  /**
+   * What Enter does to the row, as the launcher's pill says it ("↵ open").
+   * Absent is 'run'. A command that only takes you somewhere and changes
+   * nothing on the way (the doors into setup) says so instead.
+   */
+  verb?: 'open';
   /** Greys the row and blocks execution when false. */
   availableWhen?: (ctx: CommandContext) => boolean;
   /**
@@ -251,6 +257,12 @@ export interface Command {
    * argument — the chosen item's id.
    */
   run: (ctx: CommandContext, arg?: string) => void;
+  /**
+   * What the key does, when it differs from the palette row. `n` adds at the
+   * slot under the pointer (lib/slot-add.ts), which the palette has no
+   * pointer for; picking "Add task" from ⌘K always opens the add dialog.
+   */
+  runFromShortcut?: (ctx: CommandContext) => void;
 }
 
 /**
@@ -291,8 +303,13 @@ export const PREVIEW_GATED_GROUPS: ReadonlySet<CommandGroupId> = new Set<Command
 /**
  * Chrome in a gated group: it touches no planner row, so the preview leaves
  * it live. `make.write` only opens Settings → Make with its box focused.
+ * `ai.setup` and `ai.fix` only open the setup column (the phone's setup page),
+ * which is up through the preview as Ctrl+J's column is; the launcher draws
+ * the one on offer first in Actions, so Enter at rest would otherwise do
+ * nothing for the length of the load. A question kept on the way waits for a
+ * loaded planner before it goes anywhere (lib/ask-pending.ts).
  */
-export const PREVIEW_CHROME_IDS: ReadonlySet<string> = new Set(['make.write']);
+export const PREVIEW_CHROME_IDS: ReadonlySet<string> = new Set(['make.write', 'ai.setup', 'ai.fix']);
 
 /**
  * Data commands in otherwise-chrome groups. ⌘A reads row ids straight out of

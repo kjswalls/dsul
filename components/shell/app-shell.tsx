@@ -46,6 +46,7 @@ import { tourHideAsk, tourShowAsk } from '@/lib/rail-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { openReviewFromLink } from '@/lib/eod-link';
 import { takeConnectReturn } from '@/lib/connect-return';
+import { watchKeptQuestion } from '@/lib/ask-pending';
 import { AI_SETTINGS_PATH } from '@/lib/ai-types';
 import { flushSettings } from '@/lib/settings-service';
 import { useUIStore, openEditFor } from '@/lib/ui-store';
@@ -362,6 +363,15 @@ export function AppShell() {
       // answers: at mount the hook has not measured yet.
       isPhone: () => window.innerWidth < 768,
     });
+  }, []);
+
+  // A question kept from `?` while nothing answered is asked once something
+  // does, or left in Ask home's box when the connection is not the one its
+  // consent line named (lib/ask-pending.ts, which says why it waits a tick).
+  // On `/` only, and the shell's width is read when it asks, as above.
+  useEffect(() => {
+    if (typeof window === 'undefined' || window.location.pathname !== '/') return;
+    return watchKeptQuestion({ isPhone: () => window.innerWidth < 768 });
   }, []);
 
   // There is deliberately NO in-app EOD auto-trigger here. There used to be

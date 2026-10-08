@@ -28,16 +28,25 @@ vi.mock('@/lib/planner-store', () => ({
     }),
   },
 }));
-vi.mock('@/lib/ai-context', () => ({ buildDsulContext: () => '## dsul Context' }));
+/** A context build that throws: the store's send finishes before it returns. */
+const context = vi.hoisted(() => ({ throws: false }));
+vi.mock('@/lib/ai-context', () => ({
+  buildDsulContext: () => {
+    if (context.throws) throw new RangeError('Invalid time zone specified: Mars/Olympus');
+    return '## dsul Context';
+  },
+}));
 
 import {
   askAboutItem,
+  askKeptQuestion,
   askNew,
   bindingKey,
   breakDownItem,
   newChat,
   openConversation,
   openHistory,
+  openSetup,
   proposeForItem,
   resolveSendTarget,
   revealChat,
@@ -92,6 +101,7 @@ beforeEach(() => {
   useViewStore.setState({ zenOpen: false, zenMoving: false });
   planner.items = [];
   planner.preview = false;
+  context.throws = false;
 });
 
 afterEach(async () => {
@@ -1356,5 +1366,189 @@ describe("asked from an item's own menu (the item right-click menu's Ask AI)", (
       expect(request).not.toHaveBeenCalled();
       expect(fetchMock).not.toHaveBeenCalled();
     });
+  });
+});
+
+// What a send reports back: a caller that must not lose the text (the kept
+// question, lib/ask-pending.ts) puts it back on a refusal.
+describe('sendFrom says whether the send took the text', () => {
+  it('true once the store took it and the thread is answering', async () => {
+    expect(await sendFrom({ kind: 'home' }, 'what is next?', { surface: 'desktop' })).toBe(true);
+    expect(tx.inputs).toHaveLength(1);
+  });
+
+  it('true when the store took it and finished before returning (its context build threw)', async () => {
+    context.throws = true;
+    expect(await sendFrom({ kind: 'home' }, 'what is next?', { surface: 'desktop' })).toBe(true);
+    await conversationsSettled();
+    const id = (rail().stacks.desktop.at(-1) as { id: string }).id;
+    expect(store().threads[id].streaming).toBe(false);
+    expect(store().threads[id].messages.map((m) => [m.role, m.status])).toEqual([
+      ['user', 'complete'],
+      ['assistant', 'error'],
+    ]);
+    expect(tx.inputs).toHaveLength(0);
+    expect(api.turns).toHaveLength(1);
+  });
+
+  it('false with nothing to answer', async () => {
+    unseed();
+    unseed = seedAI(NOTHING_CONNECTED);
+    expect(await sendFrom({ kind: 'home' }, 'hello')).toBe(false);
+    expect(await sendFrom({ kind: 'home' }, '   ')).toBe(false);
+  });
+
+  it('false while the binding is already sending', async () => {
+    const h = hangs('');
+    tx.next = h.run;
+    const first = sendFrom({ kind: 'item', itemId: 'i1' }, 'one');
+    expect(await sendFrom({ kind: 'item', itemId: 'i1' }, 'two')).toBe(false);
+    await flush();
+    expect(tx.inputs).toHaveLength(1);
+    h.release('done');
+    expect(await first).toBe(true);
+  });
+
+  it('false while the thread is still answering', async () => {
+    const h = hangs('');
+    tx.next = h.run;
+    const id = store().newDraft();
+    const first = sendFrom({ kind: 'draft', id }, 'one');
+    await flush(1);
+    expect(store().threads[id].streaming).toBe(true);
+    expect(await sendFrom({ kind: 'conversation', id }, 'two')).toBe(false);
+    h.release('done');
+    expect(await first).toBe(true);
+    expect(tx.inputs).toHaveLength(1);
+  });
+
+  it("false when the store's own re-check of the gate refuses after sendFrom's", async () => {
+    const sending = sendFrom({ kind: 'home' }, 'hello');
+    // The gate closes between sendFrom's check and the store's own.
+    unseed();
+    unseed = seedAI(NOTHING_CONNECTED);
+    expect(await sending).toBe(false);
+    expect(tx.inputs).toHaveLength(0);
+  });
+});
+
+describe('askKeptQuestion', () => {
+  it('desktop: closes an item through the flushing close, leaves Zen, and asks in a new conversation without keeping Ask open', async () => {
+    const calls: string[] = [];
+    const offFlush = registerItemPanelFlush(() => calls.push('flush'));
+    const offClose = registerItemPanelClose(() => {
+      calls.push('close');
+      useUIStore.getState().closeDialog();
+    });
+    openItem();
+    useViewStore.setState({ zenOpen: true });
+    try {
+      expect(await askKeptQuestion('what should I do first', false)).toBe(true);
+    } finally {
+      offFlush();
+      offClose();
+    }
+    await conversationsSettled();
+    expect(calls).toEqual(['flush', 'close']);
+    expect(useViewStore.getState().zenOpen).toBe(false);
+    expect(rail().summoned).toBe(true);
+    // For this session only: an Ask the setup door opened is never kept open.
+    expect(useSidebarStore.getState().askOpen).toBe(false);
+    expect(railModeNow()).toBe('ask');
+    const top = rail().stacks.desktop.at(-1) as { kind: string; id: string };
+    expect(top.kind).toBe('conversation');
+    expect(rail().pendingFocus).toEqual({ target: 'composer', binding: { kind: 'conversation', id: top.id } });
+    expect(tx.inputs[0].conversationId).toBe(top.id);
+    expect(store().threads[top.id].messages[0].content).toBe('what should I do first');
+    // Nothing on the phone.
+    expect(rail().stacks.phone).toEqual([]);
+    expect(useMobileNavStore.getState().activeTab).toBe('today');
+  });
+
+  it('phone: the Ask tab and its own stack, never a summon', async () => {
+    expect(await askKeptQuestion('what should I do first', true)).toBe(true);
+    await conversationsSettled();
+    expect(useMobileNavStore.getState().activeTab).toBe('chat');
+    const top = rail().stacks.phone.at(-1) as { kind: string; id: string };
+    expect(top.kind).toBe('conversation');
+    expect(tx.inputs[0].conversationId).toBe(top.id);
+    expect(rail().summoned).toBe(false);
+    expect(useSidebarStore.getState().askOpen).toBe(false);
+    expect(rail().stacks.desktop).toEqual([]);
+  });
+
+  it('with nothing to answer: false, and nothing opens, closes or is sent', async () => {
+    unseed();
+    unseed = seedAI(NOTHING_CONNECTED);
+    openItem();
+    expect(await askKeptQuestion('hello', false)).toBe(false);
+    expect(await askKeptQuestion('hello', true)).toBe(false);
+    expect(useUIStore.getState().activeDialog?.type).toBe('edit-item');
+    expect(rail().summoned).toBe(false);
+    expect(useMobileNavStore.getState().activeTab).toBe('today');
+    expect(tx.inputs).toHaveLength(0);
+  });
+});
+
+describe('openSetup', () => {
+  describe.each([
+    ['setup', NOTHING_CONNECTED],
+    ['the fix', KEY_TURNED_DOWN],
+  ])('with %s offered', (_label, offered) => {
+    beforeEach(() => {
+      unseed();
+      unseed = seedAI(offered);
+    });
+
+    it('desktop: the setup column, with no box asked for and nothing kept, and a second press leaves it open', () => {
+      expect(openSetup(false)).toBe(true);
+      expect(railModeNow()).toBe('setup');
+      expect(rail().pendingFocus).toBeNull();
+      expect(useSidebarStore.getState().askOpen).toBe(false);
+      // Open only, never a toggle.
+      expect(openSetup(false)).toBe(true);
+      expect(railModeNow()).toBe('setup');
+      expect(useMobileNavStore.getState().activeTab).toBe('today');
+    });
+
+    it('desktop: an item on top closes through the flushing close and setup shows, out of Zen', () => {
+      const calls: string[] = [];
+      const offFlush = registerItemPanelFlush(() => calls.push('flush'));
+      const offClose = registerItemPanelClose(() => {
+        calls.push('close');
+        useUIStore.getState().closeDialog();
+      });
+      openItem();
+      useViewStore.setState({ zenOpen: true });
+      try {
+        expect(openSetup(false)).toBe(true);
+      } finally {
+        offFlush();
+        offClose();
+      }
+      expect(calls).toEqual(['flush', 'close']);
+      expect(useViewStore.getState().zenOpen).toBe(false);
+      expect(railModeNow()).toBe('setup');
+    });
+
+    it('phone: the Ask tab, which shows the setup page, and never a summon', () => {
+      expect(openSetup(true)).toBe(true);
+      expect(useMobileNavStore.getState().activeTab).toBe('chat');
+      expect(rail().summoned).toBe(false);
+      expect(useSidebarStore.getState().askOpen).toBe(false);
+    });
+  });
+
+  it('false, and nothing moves, with neither setup nor a fix on offer', () => {
+    for (const nothing of [AI_HIDDEN, CONNECTED_MODEL, OPENCLAW_PLUGIN, { ...NOTHING_CONNECTED, choice: 'none' as const }, {}]) {
+      unseed();
+      unseed = seedAI(nothing);
+      openItem();
+      expect(openSetup(false)).toBe(false);
+      expect(openSetup(true)).toBe(false);
+      expect(useUIStore.getState().activeDialog?.type).toBe('edit-item');
+      expect(rail().summoned).toBe(false);
+      expect(useMobileNavStore.getState().activeTab).toBe('today');
+    }
   });
 });

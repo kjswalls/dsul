@@ -99,6 +99,10 @@ describe('PREVIEW_ALLOWED_ACTIONS', () => {
       addTask: '', addHabit: '', addRoutine: '', addSeason: '', addGoal: '',
       addProject: null, seedStarterContainers: 'refused', applyProposal: 0,
     });
+    // addItem returns the new id since #432 (the canvas add opens what it made),
+    // and undefined for "nothing made" (an unknown slug): the barrier's default
+    // refusal is that same undefined, so it needs no entry.
+    expect('addItem' in PREVIEW_REFUSALS).toBe(false);
     const members = new Set(functionMembers());
     for (const name of Object.keys(PREVIEW_REFUSALS)) {
       expect(members, name).toContain(name);

@@ -5,6 +5,7 @@ import {
   type JustConnected,
 } from './ai-connection-store';
 import { flowSaved, readFlow, type ConnectFlow, type FlowResult } from './connect-flow';
+import { useMobileNavStore } from './mobile-nav-store';
 import { leaveZen } from './open-chat';
 import { useRailStore } from './rail-store';
 import type { ModelConnectionView } from './ai-types';
@@ -46,13 +47,15 @@ import type { ModelConnectionView } from './ai-types';
  *     fact ("answered a test question"), so the link alone never says it.
  *     `freeTier` is false here: the return carries no plan signal, and the
  *     card never guesses one.
- *  4. Then, on the desktop, the column opens where the sign-in began: out of
- *     Zen, Ask's stack home, and a summon that writes no `askOpen` (as the
- *     unlit key's does, lib/open-chat.ts). Only when the gate offers
- *     something to show, so a crafted link on an account with AI hidden
- *     leaves no summon waiting for later. The phone has no setup page to
- *     return to yet: AI setup PR 5 brings it, and with it the phone's half
- *     of this step (its Ask tab, opened the same way).
+ *  4. Then the surface opens where the sign-in began, only when the gate
+ *     offers something to show, so a crafted link on an account with AI
+ *     hidden leaves nothing waiting for later. On the desktop: out of Zen,
+ *     Ask's stack home, and a summon that writes no `askOpen` (as the unlit
+ *     key's does, lib/open-chat.ts). On the phone: its Ask tab (the setup
+ *     page, the fix home or Ask, whichever the gate now offers) on its
+ *     home. Never a summon there, which would arm the desktop column to
+ *     spring open on a wider window, and never Zen, which the phone has none
+ *     of.
  */
 
 /** How recent the sign-in's check must be for "It works." to claim it. */
@@ -115,10 +118,14 @@ function apply(flow: ConnectFlow, s: AIConnectionState, o: ConnectReturnOptions)
     ai.setFlowResult(flow);
     if (caps.canChat) spendWhenAskGoes(flow);
   }
-  if (o.isPhone()) return;
   if (!caps.canChat && !caps.askInvite && !caps.askFix) return;
-  leaveZen();
   const rail = useRailStore.getState();
+  if (o.isPhone()) {
+    rail.popToHome('phone');
+    useMobileNavStore.getState().setActiveTab('chat');
+    return;
+  }
+  leaveZen();
   rail.popToHome('desktop');
   rail.summon({ persist: false });
 }

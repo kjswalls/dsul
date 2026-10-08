@@ -3,7 +3,14 @@ import { loginTestUser } from './helpers/auth';
 import { createTestTask, cleanupByTitlePrefix, specScope } from './helpers/api';
 import { getTodayStr } from './helpers/dates';
 import { BASE_URL } from './helpers/env';
-import { reloadApp, itemCard, omnibar, omnibarPanel } from './helpers/app';
+import {
+  reloadApp,
+  itemCard,
+  launcherInput,
+  launcherPanel,
+  omnibar,
+  omnibarPanel,
+} from './helpers/app';
 import {
   askBox,
   askButton,
@@ -354,6 +361,11 @@ test.describe('Ask in the right rail', () => {
  * could do here, takes a key right there, and offers "No AI, thanks". A key
  * that works turns the column into Ask, which says so once ("It works.").
  *
+ * Two more doors open it (AI setup PR 5): `?` in the dock, which keeps the
+ * question typed after it and sends it once AI is connected, and Ctrl+K's
+ * "Set up AI". A kept question goes only where the consent line said, so a
+ * sure paste waits in the box for Connect and ask.
+ *
  * The gate is stubbed statefully (helpers/ai.ts `stubAIGate`): the e2e
  * account is shared by every parallel spec, so neither "No AI, thanks" nor a
  * connect may reach the real route, and a reload must still see what they
@@ -604,5 +616,126 @@ test.describe('Set up AI in the right rail', () => {
       { provider: 'gemini', accepted: false },
       { provider: 'gemini', accepted: true },
     ]);
+  });
+
+  test('a question kept from ? in the dock waits through setup, and is sent once to the company the line named', async ({
+    page,
+  }) => {
+    const gate = await signInWith(page);
+    const token = scope.title('kept');
+    const question = `${token} what should I do first`;
+    const word = uniqueWord('kept');
+    await stubChatReply(page, `Start with the ${word} list.`);
+    const column = rail(page);
+    const setup = column.locator('[data-ask-setup]');
+    // Every send and every save this page makes, so a reload can prove it
+    // asked nothing a second time.
+    const chats: string[] = [];
+    const saves: string[] = [];
+    page.on('request', (req) => {
+      if (req.method() !== 'POST') return;
+      const path = new URL(req.url()).pathname;
+      if (path === '/api/chat') chats.push(path);
+      if (/^\/api\/ai\/conversations\/[0-9a-f-]{36}\/turns$/.test(path)) saves.push(path);
+    });
+
+    try {
+      // `?` with nothing connected: one row, the door into setup, so Enter
+      // can only open it (never file the question as a task).
+      const bar = omnibar(page);
+      await bar.click();
+      await bar.fill(`? ${question}`);
+      const door = omnibarPanel(page).locator('[data-value="action-setup"]');
+      await expect(door).toHaveText(/Set up AI to ask this/);
+      await expect(omnibarPanel(page).locator('[cmdk-item]')).toHaveCount(1);
+      await expect(door).toHaveAttribute('data-selected', 'true');
+      await bar.press('Enter');
+
+      // The setup column, with the question in it instead of the previews.
+      await expect(setup).toHaveAttribute('data-ask-setup', 'invite');
+      await expect(bar).toHaveValue('');
+      await expect(setup.getByTestId('setup-question-text')).toContainText(question);
+      await expect(setup.getByTestId('setup-question')).toContainText(
+        'It’s kept here, and sent once AI is connected.'
+      );
+      await expect(setup.getByTestId('setup-previews')).toHaveCount(0);
+
+      // A sure paste fills the box and sends nothing: the line says where
+      // Connect and ask will send the question, and describes the button.
+      const card = setup.getByTestId('connect-key-card');
+      const field = card.getByLabel('Your Gemini key');
+      await pasteInto(field, STUB_GOOD_KEY);
+      const submit = card.getByTestId('connect-submit');
+      await expect(submit).toHaveText('Connect and ask');
+      const line =
+        'Connecting sends your question, and the parts of your plan it needs, from dsul’s server to Google.';
+      await expect(card.getByTestId('connect-consent')).toHaveText(line);
+      await expect(submit).toHaveAccessibleDescription(line);
+      await expect(field).toHaveValue(STUB_GOOD_KEY);
+      expect(await field.getAttribute('value')).toBeNull();
+      await expect(card.getByTestId('connect-checking')).toHaveCount(0);
+      expect(gate.connects).toEqual([]);
+      expect(chats).toEqual([]);
+      // Nothing in the column is lime, Connect and ask included.
+      await expect(setup.locator('.bg-primary')).toHaveCount(0);
+
+      // Connect and ask: the key is checked, the column becomes Ask, and the
+      // question goes out as its first conversation, answered and saved.
+      const saved = turnSaved(page);
+      await submit.click();
+      const conversation = column.locator('[data-ask-conversation]');
+      await expect(conversation.locator('[data-message-role="user"]')).toContainText(question);
+      await expect(conversation.locator('[data-message-role="assistant"]')).toContainText(word);
+      expect((await saved).ok()).toBe(true);
+      await expect(setup).toBeHidden();
+      expect(gate.connects).toEqual([{ provider: 'gemini', accepted: true }]);
+      expect(chats).toHaveLength(1);
+      // Claimed, then sent: the tab no longer holds it, and the key is
+      // nowhere in the page.
+      expect(await page.evaluate(() => sessionStorage.getItem('dsul-ask-pending'))).toBeNull();
+      expect(await page.content()).not.toContain(STUB_GOOD_KEY);
+
+      // A reload asks nothing again. The watcher acts one macrotask after the
+      // gate and the planner settle, both in by the time the key is lit, so
+      // a short wait past that is the window a second send would land in.
+      const answered = gateAnswered(page);
+      await reloadApp(page);
+      await answered;
+      await expect(askButton(page)).toBeVisible();
+      await page.waitForTimeout(500);
+      expect(chats).toHaveLength(1);
+      expect(saves).toHaveLength(1);
+    } finally {
+      await cleanupConversations(page, token);
+    }
+  });
+
+  test('Ctrl+K: Set up AI leads the launcher’s actions and opens the setup column', async ({
+    page,
+  }) => {
+    const gate = await signInWith(page);
+    const setup = rail(page).locator('[data-ask-setup]');
+
+    await page.keyboard.press('ControlOrMeta+k');
+    await expect(launcherInput(page)).toBeFocused();
+    // First in Actions, above Add task, so Enter at rest would open it too.
+    const door = launcherPanel(page).locator('[data-command-id="ai.setup"]');
+    await expect(door).toHaveCount(1);
+    await expect(door).toContainText('Set up AI');
+    await expect(door).toHaveAttribute('data-selected', 'true');
+    const add = launcherPanel(page).getByTestId('omnibar-add-row');
+    await expect(add).toBeVisible();
+    expect((await door.boundingBox())!.y).toBeLessThan((await add.boundingBox())!.y);
+    await expect(launcherPanel(page).locator('[data-command-id="ai.fix"]')).toHaveCount(0);
+
+    await door.click();
+    await expect(page.getByTestId('omni-launcher')).toHaveCount(0);
+    await expect(setup).toBeVisible();
+    await expect(setup).toHaveAttribute('data-ask-setup', 'invite');
+    await expect(unlitKey(page)).toBeHidden();
+    // Opened only: nothing kept, so no question block, and nothing sent.
+    await expect(setup.getByTestId('connect-key-card')).toBeVisible();
+    await expect(setup.getByTestId('setup-question')).toHaveCount(0);
+    expect(gate.connects).toEqual([]);
   });
 });

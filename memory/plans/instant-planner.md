@@ -156,7 +156,9 @@ Undo and redo are refused: they would replay history against cached rows.
 
 A refused action returns `PREVIEW_REFUSALS[name]`, else undefined: `''` for the
 id-returning creates, `null` for `addProject`, `'refused'` for the seed, `0` for
-`applyProposal`. A caller that uses a returned id must read `''` as nothing made (the item
+`applyProposal`. `addItem` returns an id too since main's canvas add, and undefined for
+nothing made (an unknown slug), so the default refusal already means that and it has no
+entry. A caller that uses a returned id must read `''` as nothing made (the item
 dialog's inline routine, season and goal creates check it before toggling).
 
 **To allow an action:** it must never write a planner row and never compute anything from
@@ -238,8 +240,11 @@ silent no-op, and that nothing decided on cached rows runs after the landing.
   because availability defaults to true. The `app.*` console doors stay live; ui-store
   defers what they open. Two narrow opt-outs, each one line:
   - `PREVIEW_CHROME_IDS` — a command that only opens a surface and happens to sit in a
-    gated group. `make.write` (Make a recipe) is the one: it opens the builder, which
-    writes a mod row and never a planner row.
+    gated group. `make.write` (Make a recipe) opens the builder, which writes a mod row and
+    never a planner row. `ai.setup` and `ai.fix` ("Set up AI", "Fix AI") open the setup
+    column or the phone's setup page, which is up through the preview as Ctrl+J's column
+    is; the launcher draws the one on offer first in Actions and runs it through
+    `isAvailable`, so gated, Enter at rest would do nothing for the length of the load.
   - `liveDuringPreview(ctx)` — asked per command, after the group rule. `history.undo`
     answers true while the undo strip holds a row with its own `onUndo` (the AI-off strip,
     lib/no-ai.ts): that take-back is not the planner's history, so ⌘Z must reach it.
@@ -305,9 +310,10 @@ added and its write attempted, as before this queue.
 - **Kept until confirmed.** The write over a failed load is attempted, not guaranteed:
   an outage fails the insert too (`persistNewItem` only logs it), and the Retry's
   landing replaces the store, row and all. So each row filed before its account's data
-  has landed, by a capture or by `addTasksBulk` (a pasted list, the palette's "Add many
+  has landed, by a capture, by `addTasksBulk` (a pasted list, the palette's "Add many
   items…", a subtask paste; reported through `lib/filed-rows.ts`, so the store imports
-  nothing of this module), stays in the queue as `{ userId, title, item, filed }`, a
+  nothing of this module) or by a canvas composer (`addAt` in `lib/slot-add.ts`, through
+  `keepCanvasAdd`), stays in the queue as `{ userId, title, item, filed }`, a
   list's rows sharing a `batch`, and "Adds once synced" keeps counting it. That is over
   a failed load, and while a load is in flight: a Retry leaves the failed load's rows on
   screen (no preview is offered on a retry), and neither the item panel nor the bulk-add
@@ -392,8 +398,8 @@ added and its write attempted, as before this queue.
   after the captures typed during the Retry. The subscription is made on the first entry
   and dropped when the queue drains.
 - **Typed text only, on purpose.** A capture's title while a load is in flight, and until
-  a landing the rows a capture or a list filed. No other verb is queued: one decided on
-  cached rows may mean something else by the landing.
+  a landing the rows a capture, a list or a canvas add filed. No other verb is queued: one
+  decided on cached rows may mean something else by the landing.
 - It also fixes an older loss: a capture typed during a plain cold load used to be erased
   by the landing `set()`.
 
@@ -1333,13 +1339,94 @@ their own say so.
 - **⌘K's `mods` group** (`make.write` exempt, `history.undo` live for the AI-off strip): see
   "Chokepoints" above. **Section boundaries** rethrowing while previewing: see "Crash
   recovery".
+- **Adding from the canvas** ([lib/slot-add.ts](../../lib/slot-add.ts),
+  [components/planner/slot-layer.tsx](../../components/planner/slot-layer.tsx),
+  [components/planner/slot-composer.tsx](../../components/planner/slot-composer.tsx)). A
+  new write path, refused like every other add. Every surface it draws (the grid's slot
+  layer, Day Schedule's always-present Add to Anytime row, Day List's add line, the week
+  strip's corner +, Week List's day +) sits inside the canvas view-root, which is `inert`
+  while previewing, so nothing can be pressed, focused or hovered, and no hovered slot is
+  written. `n` over a slot is `create.task`'s `runFromShortcut`, and the shortcut
+  dispatcher asks `isAvailable` before either `run`: the `create` group is gated, so the
+  key is held and opens nothing, not even a deferred add. Week Buckets' caption + is
+  `openAddDialog`, deferred by ui-store. Underneath all of it, `addAt` makes every insert
+  through the store's own creates (`addTask`, `addHabit`, `addItem`), which the barrier
+  refuses (`''`, `''`, undefined: nothing made, so the composer's ⇧↵ opens nothing). Once
+  the planner is real those creates are the insert chokepoint (`persistNewItem` →
+  `sendItemCreate`, waiting on a parent through `insertWaitsFor`), so a canvas add is
+  tracked in flight like any add. Over a failed load it adds at once, and its row is kept
+  by held-captures until a landing settles it, as a capture's is (`keepCanvasAdd`, called
+  by `addAt` after every create; a no-op on a landed planner). It is the same typed text
+  with no other copy: the views are drawn on the failed load's empty store, so the
+  persistent add rows and the grid's composer are live there, and they commit on blur, so
+  the click on the notice's Retry files a typed title on its way to the load that replaces
+  the store. Unkept, an outage lost that row, an insert that committed after the Retry's
+  read began left it off screen until a reload, and a brand-new account counted it as data
+  and latched the first-run seed. A Retry in flight shows the skeleton, so nothing is typed
+  during one. Its marks: the composers and the add rows render typed text and a
+  placeholder, never an item's title, so they carry no `data-row-title`; the rows they make
+  are TaskRow and ScheduleBlock rows, marked as ever. A persistent add row (Day Schedule's
+  Add to Anytime, Day List's add line) is a settle frame, `add:<its scope>`, for the
+  braindump quick-add's reason: it sits at the foot of a list that can change length on
+  landing, and with no key it snapped while the rows above it glided. A transient one (a
+  week strip's, a week list day's, opened by its +) is never open at a landing and takes
+  no part. The slot layer is under the blocks in the `grid` settle frame and has no box of
+  its own to glide; the landing shield swallows a press on it while rows glide, as it
+  swallows one on a row, and the add rows are text entry, which the shield leaves live.
+  Day Schedule now always draws Anytime on desktop, so the landing no longer adds or
+  removes that band there; it still grows or shrinks with its rows, which the `grid` frame
+  below follows.
+- **The mod runtime** ([components/mods/mod-host.tsx](../../components/mods/mod-host.tsx),
+  [lib/mods/broker.ts](../../lib/mods/broker.ts),
+  [lib/mods/runtime-manager.ts](../../lib/mods/runtime-manager.ts)). User code, so it must
+  never run against cached rows, and needed no code here: every door already waits for
+  settled, which the preview never is (`isLoading` stays on). ModHost builds a runtime,
+  fills the ⌘K slot, subscribes to both event buses and re-reads Make's rows only while
+  `ready` (signed in, settled, not a failed load, Make hydrated for this account), so over
+  the preview there is no runtime at all, even when ThemeInjector hydrated Make early. The
+  runtime asks `modRuntimeReady()` (the same settled check) at every dispatch, every
+  command, every queued hook and again in `applyHeld` before a write, a toast or an open.
+  What the broker exposes to a hook: reads of the planner (`items.query` and an event's
+  item projection, from the live store at hook time), writes (`addTasksBulk`,
+  `updateTask`/`updateHabit` and the item verbs, all store actions the barrier would
+  refuse anyway), UI effects (toast, open an item through `openEditFor`, navigate, Looks),
+  its own store (`user_mods` storage RPC, not a planner row) and timers; none of it is
+  reachable before the landing. Events: a ModEvent comes only from an action the barrier
+  refuses, and the new ModOnlyEvent (`item.uncompleted`, origin `undo`) only from `undo()`,
+  which the barrier refuses before it reads the history, so a ⌘Z over the preview raises
+  nothing. A mod's ⌘K commands ride the gated `mods` group. A capture held through the
+  preview raises its `item.created` when it is filed after the landing, against the fresh
+  rows; a mod hears it only if ModHost was already up by the flush, which needs Make
+  hydrated before the landing, so as for recipes nothing promises it. The source editor
+  and Problems are Settings chrome: the editor's check (`modSandbox.scratch`) loads the
+  code with no `$` and runs no hook, and a save writes a `user_mods` row.
+- **The doors into AI setup, and the kept question** ([lib/ask-pending.ts](../../lib/ask-pending.ts),
+  [lib/open-chat.ts](../../lib/open-chat.ts) `openSetup`). Opening setup is chrome, live
+  through the preview: `?` in the dock or the launcher, and ⌘K's "Set up AI" and "Fix AI"
+  (`PREVIEW_CHROME_IDS`, above), on the phone the chat tab's setup page. Keeping the
+  question writes sessionStorage only. Nothing goes out on cached rows: the watcher sends
+  it only when the planner has SETTLED for the gate's own account with no error, so it
+  holds through the preview and through a crash drop, and the send then builds its context
+  from the fresh rows; a send that did start while previewing would wait in
+  `conversations-store`'s `send` regardless. The connect's own test question carries no
+  planner rows. The merge kept both entries in `RAW_CLEARERS`: the planner snapshot and
+  the kept question go with the account. On desktop a door closes an item on top through
+  `closeItemPanel`, and over the preview it also lets go of an item held for the landing
+  (`deferredDialog` `edit-item`): the door is the later ask, and kept, the item opened over
+  the setup the moment the data landed, where on real data the same two presses leave setup
+  showing. A held dialog that is not the item (a modal, not the column) stays. On the phone
+  a held item still lands over the Ask tab, as any promoted item does. Ctrl+J's toggle is
+  unchanged: from hidden it only summons, so a held item still opens over the column it
+  summoned.
 - **Nothing to do for the rest.** The agent key moving server-side (a route, no store); the
   push subscription released on a user change (its own table, nothing read from the
   planner); the braindump's Hide finished (a view filter over whatever is on screen); dated
   project-block drop ids (the canvas is `inert`, so no drag starts); the rituals nudge
   (`watchOnboardingAfterLoad` already waits for settled, and the preview is a load in
-  flight); Ask home's "It works." card and the error routes. `SNAPSHOT_FORMAT` does not move:
-  none of it adds a slice to what the snapshot carries.
+  flight); Ask home's "It works." card and the error routes; the phone's mode switcher and
+  header changes, and `leaveAskForOmnibar`. `SNAPSHOT_FORMAT` does not move: none of it,
+  the canvas add, the mod runtime and the setup doors included, adds a planner-store field
+  or a slice to what the snapshot carries.
 
 ## Where the build departs from the design
 
@@ -1541,7 +1628,18 @@ chose differently, each for a reason found while building or testing it.
   ask held the same way, a dismiss ending its wait), `ask-setup` (the AI-off strip through
   a landing, and taken down by a change of account),
   `preview-crash-boundary` (a SectionBoundary throw handed up), `theme-grammar` and
-  `theme-bases` (the derived shimmer level and its drift against the CSS).
+  `theme-bases` (the derived shimmer level and its drift against the CSS),
+  `slot-add-preview` (a canvas add of every type refused with no write; once real, its
+  insert tracked in flight), `held-captures` (a canvas add over a failed load kept, a slot,
+  a line, a habit and a title committed by blur, and filed again or shown when the Retry
+  lands without it), `settle-participants` (the persistent add rows are frames, the
+  transient ones take no part), `commands-preview` (`n` over a drawn slot held, the setup
+  doors live, a mod's command gated), `open-chat-preview-reveal` (a setup door lets an item
+  held for the landing go on desktop, and leaves it on the phone and with no door on
+  offer), `mod-host` (no runtime, slot, bus or refresh over the
+  preview), `mods-broker-apply` (`modRuntimeReady` false, nothing applied),
+  `mods-undo-events` (a refused ⌘Z raises no uncompletion), `ask-pending` (the kept
+  question held through the preview and a crash drop, sent once with the fresh rows).
 - The guards: `ui-store-preview` (including the `touchesPlanner: false` opt-out, and a
   row-acting verb's confirm still refused), `commands-preview` (a frozen classification
   of every static command), `held-captures`, `omnibar-capture`, `deep-link-preview`,

@@ -68,6 +68,8 @@ import {
   __resetHeldCapturesForTests,
 } from '@/lib/held-captures';
 import { hydrateCustomTypes } from '@/lib/item-registry';
+import { addAt, gridScope, rowScope, type SlotTarget } from '@/lib/slot-add';
+import { AddRow } from '@/components/planner/slot-composer';
 import type { Item, Project } from '@/lib/planner-types';
 
 const A = 'user-a';
@@ -832,6 +834,114 @@ describe('a list filed over a failed load', () => {
     await landFresh(store().initializeStore(B));
     expect(titles()).toEqual(['Already there']);
     expect(db.createItem).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * A row added from the planner canvas (lib/slot-add.ts addAt): a grid slot's
+ * composer, Day Schedule's Add to Anytime, Day List's add line. Over a failed
+ * load the views are drawn on its empty store, so those fields are live, and
+ * they commit on blur: the click on the notice's Retry files a typed title on
+ * its way to the load that replaces the store. The same typed text as a
+ * capture, kept the same way.
+ */
+describe('a row added from the canvas over a failed load', () => {
+  afterEach(() => writesWork());
+
+  const DAY = '2026-10-08';
+  const slot: SlotTarget = { kind: 'grid', scope: gridScope('day', DAY), dateStr: DAY, startMin: 9 * 60, duration: 30 };
+  const line: SlotTarget = { kind: 'row', scope: rowScope('list', DAY), dateStr: DAY, bucket: 'anytime' };
+
+  it('is kept, slot and add line alike, and filed again under its id when the Retry lands without it', async () => {
+    writesFail();
+    await failLoad(startLoad(A));
+    const gridId = addAt(slot, 'task', 'Call the bank')!;
+    const lineId = addAt(line, 'task', 'Pick up the dry cleaning')!;
+    expect(held().map((e) => [e.title, e.item?.id])).toEqual([
+      ['Call the bank', gridId],
+      ['Pick up the dry cleaning', lineId],
+    ]);
+
+    writesWork();
+    await retryLanding([task('t-fresh', 'Already there')]);
+    // Before: ['Already there'], both rows lost with their failed inserts.
+    expect(titles()).toEqual(['Already there', 'Call the bank', 'Pick up the dry cleaning']);
+    expect(store().items[1]).toMatchObject({ id: gridId, startTime: '09:00', duration: 30, startDate: DAY });
+    expect(store().items[2]).toMatchObject({ id: lineId, timeBucket: 'anytime', startDate: DAY });
+    expect(writtenIds()).toEqual([gridId, lineId, gridId, lineId]);
+    expect(store().actionLog.map((e) => e.label)).toEqual([
+      'Add task: Pick up the dry cleaning',
+      'Add task: Call the bank',
+      'Session start',
+    ]);
+    expect(held()).toEqual([]);
+    // A brand-new account whose first load failed still reads as one with no data.
+    expect(withoutReleasedCaptures(A, store().items).map((i) => i.title)).toEqual(['Already there']);
+  });
+
+  it('keeps a habit made from a slot, and files it again as a habit', async () => {
+    writesFail();
+    await failLoad(startLoad(A));
+    const id = addAt(slot, 'habit', 'Stretch')!;
+    expect(held().map((e) => e.item?.type)).toEqual(['habit']);
+
+    writesWork();
+    await retryLanding([task('t-fresh', 'Already there')]);
+    expect(titles()).toEqual(['Already there', 'Stretch']);
+    expect(store().items[1]).toMatchObject({ id, type: 'habit', startTime: '09:00' });
+    expect(vi.mocked(db.createItem).mock.calls.at(-1)![1]).toMatchObject({ id, type: 'habit', title: 'Stretch' });
+    expect(store().actionLog.map((e) => e.label)).toEqual(['Add habit: Stretch', 'Session start']);
+  });
+
+  it('shows a row whose insert committed after the Retry read began, without inserting it again', async () => {
+    await failLoad(startLoad(A));
+    const id = addAt(line, 'task', 'Typed, then Retry')!;
+    dbHolds([{ item: store().items.find((i) => i.id === id)!, deleted: false }]);
+
+    await retryLanding([task('t-fresh', 'Already there')]);
+    // Before: ['Already there'] until a reload, and retyping it made two rows.
+    expect(titles()).toEqual(['Already there', 'Typed, then Retry']);
+    expect(writtenIds()).toEqual([id]);
+    expect(held()).toEqual([]);
+  });
+
+  it('keeps the title the Retry click commits, by the blur it makes in a persistent add line', async () => {
+    writesFail();
+    await failLoad(startLoad(A));
+    const target = line as Extract<SlotTarget, { kind: 'row' }>;
+    render(createElement(AddRow, { persistent: true, target, placeholder: 'Add to Thursday' }));
+    const input = screen.getByTestId('add-row-input');
+    fireEvent.change(input, { target: { value: 'Call the bank' } });
+    // The press on Retry takes the focus first: the blur adds what was typed.
+    fireEvent.blur(input);
+    expect(held().map((e) => e.title)).toEqual(['Call the bank']);
+
+    writesWork();
+    await retryLanding([task('t-fresh', 'Already there')]);
+    expect(titles()).toEqual(['Already there', 'Call the bank']);
+    expect(held()).toEqual([]);
+  });
+
+  it('keeps nothing on a landed planner', async () => {
+    await landFresh(startLoad(A));
+    addAt(slot, 'task', 'Call the bank');
+    addAt(line, 'habit', 'Stretch');
+    expect(titles()).toEqual(['Already there', 'Call the bank', 'Stretch']);
+    expect(held()).toEqual([]);
+  });
+
+  it('never files it into another account', async () => {
+    writesFail();
+    await failLoad(startLoad(A));
+    const id = addAt(line, 'task', 'Call the bank')!;
+
+    store().identifyUser(B);
+    expect(held()).toEqual([]);
+    writesWork();
+    await landFresh(store().initializeStore(B));
+    expect(titles()).toEqual(['Already there']);
+    // Only its own first insert, under A.
+    expect(vi.mocked(db.createItem).mock.calls.map((c) => [c[0], c[1].id])).toEqual([[A, id]]);
   });
 });
 
