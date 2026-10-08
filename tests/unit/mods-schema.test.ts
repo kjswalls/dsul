@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
-  MOD_KINDS,
   ModNameSchema,
   ModSlugSchema,
   RECIPE_EVENT_TRIGGERS,
@@ -15,6 +14,21 @@ import {
   manifestSchemaFor,
   userModFromRow,
 } from '@/lib/mods/schema';
+import {
+  MOD_EVENT_KINDS,
+  ModManifestSchema,
+  ModTitleSchema,
+  ModToastTextSchema,
+  isModLabel,
+  manifestsEqual,
+  modDisplayLabel,
+  parseModManifest,
+  usesWidened,
+} from '@/lib/mods/schema';
+import { MOD_WRITES_PER_HOOK } from '@/lib/mods/limits';
+import { MOD_LABEL_FORBIDDEN_RE } from '@/lib/mods/labels';
+import { RUN_WRITE_CAP } from '@/lib/recipes/limits';
+import { MODEL_PROVIDERS } from '@/lib/ai-types';
 import { ITEM_VERBS } from '@/lib/item-verbs';
 import { LAYOUTS } from '@/lib/layout-themes';
 import { DARK_LOOKS, LIGHT_LOOKS } from '@/lib/theme-looks';
@@ -154,11 +168,10 @@ describe('recipe manifest', () => {
 });
 
 describe('placeholders', () => {
-  it('mods accept anything until their PR lands', () => {
-    for (const kind of MOD_KINDS.filter((k) => k === 'mod')) {
-      expect(manifestSchemaFor(kind).safeParse({ whatever: [1] }).success, kind).toBe(true);
-    }
+  it('recipes and mods each have their own schema', () => {
     expect(manifestSchemaFor('recipe')).toBe(RecipeManifestSchema);
+    expect(manifestSchemaFor('mod')).toBe(ModManifestSchema);
+    expect(manifestSchemaFor('mod').safeParse({ whatever: [1] }).success).toBe(false);
   });
 
   it('a theme is the real grammar (lib/mods/theme-grammar.ts), not anything', () => {
@@ -209,5 +222,176 @@ describe('Look manifest', () => {
   it("the built-in lists match theme-looks' (the schema cannot import them)", () => {
     expect([...LIGHT_BASES]).toEqual(LIGHT_LOOKS.map((l) => l.value));
     expect([...DARK_BASES]).toEqual(DARK_LOOKS.map((l) => l.value));
+  });
+});
+
+describe('mod manifest', () => {
+  const OK = { version: 1, uses: ['storage', 'ui'], commands: [{ id: 'log-water', label: 'Log a glass' }] };
+
+  it('takes a plain manifest and fills commands', () => {
+    expect(ModManifestSchema.safeParse(OK).success).toBe(true);
+    expect(ModManifestSchema.parse({ version: 1, uses: [] })).toEqual({ version: 1, uses: [], commands: [] });
+  });
+
+  it('refuses a wrong version, an unknown use, a use or command twice, `run`, and panels for now', () => {
+    const bad = [
+      { ...OK, version: 2 },
+      { ...OK, uses: ['network'] },
+      { ...OK, uses: ['ui', 'ui'] },
+      { ...OK, commands: [OK.commands[0], OK.commands[0]] },
+      { ...OK, commands: [{ id: 'run', label: 'Run' }] },
+      { ...OK, commands: [{ id: 'Bad', label: 'Run' }] },
+      { ...OK, panels: [] },
+      { ...OK, settings: [] },
+      { ...OK, slug: 'water' },
+    ];
+    for (const m of bad) expect(ModManifestSchema.safeParse(m).success, JSON.stringify(m)).toBe(false);
+  });
+
+  it('refuses a command label or keyword that could pass for the app', () => {
+    expect(ModManifestSchema.safeParse({ ...OK, commands: [{ id: 'a', label: 'Sign in again' }] }).success).toBe(false);
+    expect(
+      ModManifestSchema.safeParse({ ...OK, commands: [{ id: 'a', label: 'Water', keywords: ['password'] }] }).success
+    ).toBe(false);
+  });
+
+  it('reads only a mod row, and only a valid manifest', () => {
+    expect(parseModManifest({ kind: 'mod', manifest: OK })?.uses).toEqual(['storage', 'ui']);
+    expect(parseModManifest({ kind: 'recipe', manifest: OK })).toBeNull();
+    expect(parseModManifest({ kind: 'mod', manifest: { version: 1 } })).toBeNull();
+  });
+
+  it('knows when uses widened', () => {
+    expect(usesWidened({ uses: ['ui'] }, { uses: ['ui'] })).toBe(false);
+    expect(usesWidened({ uses: ['ui', 'storage'] }, { uses: ['ui'] })).toBe(false);
+    expect(usesWidened({ uses: ['ui'] }, { uses: ['ui', 'items:write'] })).toBe(true);
+    expect(usesWidened(null, { uses: ['ui'] })).toBe(true);
+  });
+
+  it('compares manifests by value, whatever the key order or a missing commands', () => {
+    expect(manifestsEqual({ version: 1, uses: [] }, { uses: [], commands: [], version: 1 })).toBe(true);
+    expect(manifestsEqual(OK, { commands: [{ label: 'Log a glass', id: 'log-water' }], uses: ['storage', 'ui'], version: 1 })).toBe(
+      true
+    );
+    expect(manifestsEqual(OK, { ...OK, uses: ['ui', 'storage'] })).toBe(false);
+    expect(manifestsEqual(OK, { ...OK, panels: [] })).toBe(false);
+  });
+
+  it('hears the recipe triggers, then command and timer, and caps writes as a recipe run does', () => {
+    expect(MOD_EVENT_KINDS).toEqual([...RECIPE_EVENT_TRIGGERS, 'command', 'timer']);
+    expect(MOD_WRITES_PER_HOOK).toBe(RUN_WRITE_CAP);
+  });
+});
+
+describe('mod labels', () => {
+  it('refuses every word that could pass for the app', () => {
+    for (const label of [
+      'AI helper',
+      'Settings',
+      'Setting',
+      'Sign in',
+      'sign-up',
+      'Log out',
+      'Login',
+      'logout',
+      'Account',
+      'API key',
+      'Keys',
+      'Password',
+      'Passcode',
+      'Session',
+      'Verify',
+      'Verification',
+      'Billing',
+      'Payment',
+      'Card',
+      'Beacon',
+      'OpenAI',
+      'Claude',
+      'Gemini',
+      'Google',
+      'OpenRouter',
+      'OpenClaw',
+      'Anthropic',
+    ]) {
+      expect(isModLabel(label), label).toBe(false);
+    }
+  });
+
+  it('refuses plurals, joined words and look-alikes written wholly in another script', () => {
+    for (const label of [
+      'Accounts',
+      'Sessions',
+      'Logins',
+      'Cards',
+      'Passkey',
+      'Credentials',
+      'API token',
+      'my_settings',
+      'Settings2',
+      '\u0410\u0406',
+      '\u0391\u0399',
+      '\u041a\u0435\u0443\u0455',
+    ]) {
+      expect(isModLabel(label), label).toBe(false);
+    }
+    for (const label of ['Said hello', 'Aim high', 'Flashcards', 'Monkeys']) {
+      expect(isModLabel(label), label).toBe(true);
+    }
+  });
+
+  it('holds the provider names to the AI connection list', () => {
+    for (const p of MODEL_PROVIDERS.filter((p) => p !== 'custom')) expect(MOD_LABEL_FORBIDDEN_RE.test(p), p).toBe(true);
+  });
+
+  it('refuses links, bare domains, key-shaped values, invisible characters and mixed scripts', () => {
+    for (const label of [
+      'see https://x.test',
+      'www.example',
+      'evil.com/x',
+      'pay.example',
+      'sk-abcdef123',
+      'AIzaSyabcdef',
+      'Wa\u200Bter',
+      'Water\u202E',
+      '\uFEFFWater',
+      'S\u0435ttings',
+      'W\u0430ter',
+      '\uFF21\uFF29',
+      'a\u0085b',
+    ]) {
+      expect(isModLabel(label), JSON.stringify(label)).toBe(false);
+    }
+  });
+
+  it('takes a plain label, and one written wholly in another script', () => {
+    for (const label of ['Water counter', 'Глоток воды', 'Νερό', '💧 Water', 'Deep work: 25 min']) {
+      expect(isModLabel(label), label).toBe(true);
+    }
+  });
+
+  it('shows the slug when the name fails the rule', () => {
+    expect(modDisplayLabel({ name: 'Water', slug: 'water' })).toBe('Water');
+    expect(modDisplayLabel({ name: 'Sign in', slug: 'water' })).toBe('water');
+    expect(modDisplayLabel({ name: 'x'.repeat(61), slug: 'water' })).toBe('water');
+  });
+});
+
+describe('mod titles and toasts', () => {
+  it('a title is at most 120, trimmed and NFKC-normalised, with no link, domain or key', () => {
+    expect(ModTitleSchema.parse('  Drink water  ')).toBe('Drink water');
+    expect(ModTitleSchema.parse('\uFF37ater')).toBe('Water');
+    expect(ModTitleSchema.safeParse('x'.repeat(120)).success).toBe(true);
+    for (const bad of ['x'.repeat(121), '', 'see https://x.test', 'go to evil.com/x', 'sk-abcdef123', 'AIzaSyabcdef', 'Wa\u200Bter']) {
+      expect(ModTitleSchema.safeParse(bad).success, bad).toBe(false);
+    }
+    // A title is not a label: the app's words are fine in one.
+    expect(ModTitleSchema.safeParse('Update account settings').success).toBe(true);
+  });
+
+  it('a toast is a title that also passes the label rule', () => {
+    expect(ModToastTextSchema.safeParse('3 glasses today').success).toBe(true);
+    expect(ModToastTextSchema.safeParse('Sign in again to keep going').success).toBe(false);
+    expect(ModToastTextSchema.safeParse('Your Gemini key expired').success).toBe(false);
   });
 });

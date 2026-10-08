@@ -87,7 +87,8 @@ import {
   type AgentStateRow,
 } from './db';
 import { celebrateCompletion } from './completion-confetti';
-import { raiseModEvent, raiseModEvents, isModEventsSuppressed, type ModEvent } from './mod-events';
+import { raiseModEvent, raiseModEvents, raiseModOnlyEvents, isModEventsSuppressed, type ModEvent } from './mod-events';
+import { uncompletionsBetween } from './mods/undo-events';
 import type { CommitResult, SeedPlan } from './seed-containers';
 import { ITEM_TYPES, getItemTypeConfig, itemTypeName, isSkippable, isPausable, isCollectible, hydrateCustomTypes } from './item-registry';
 import {
@@ -5046,12 +5047,25 @@ export const usePlannerStore = create<PlannerStore>()(
           return;
         }
 
+        // The entry being taken back, and the items before it goes: a mod
+        // hears each completion this undo removed (lib/mods/undo-events.ts).
+        const undoneLabel = actionLog[historyIndex + 1]?.label ?? '';
+        const itemsBefore = currentState.items;
+
         applyHistoryState(prevState, currentState, {
           canUndo: historyIndex > 0,
           canRedo: true,
         }, userId, set);
 
         isUndoRedoAction = false;
+
+        // Redo raises nothing. A suppressed undo (none today) raises nothing either.
+        if (!isModEventsSuppressed()) {
+          const tz = get().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+          raiseModOnlyEvents(
+            uncompletionsBetween(itemsBefore, get().items, toDateStr(new Date(), tz)).map((e) => ({ ...e, undoneLabel }))
+          );
+        }
       },
 
       redo: () => {

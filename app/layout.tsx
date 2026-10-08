@@ -7,6 +7,7 @@ import { ConsoleSlotGuard } from '@/components/providers/console-slot-guard'
 import { DesktopBridge } from '@/components/providers/desktop-bridge'
 import { FaviconSync } from '@/components/providers/favicon-sync'
 import { RecipeHost } from '@/components/recipes/recipe-host'
+import { ModHost } from '@/components/mods/mod-host'
 import { ThemeInjector } from '@/components/providers/theme-injector'
 import { USER_THEME_PREPAINT } from '@/lib/user-themes/prepaint'
 import { Toaster } from '@/components/ui/sonner'
@@ -177,6 +178,8 @@ export default function RootLayout({
             {/* Your recipes, once the planner has loaded on this route. Nothing
                 on a route that never loads it. See the component. */}
             <RecipeHost />
+            {/* Your mods, on the same terms. See the component. */}
+            <ModHost />
             {/* Your themes as one stylesheet, on every route. See the component. */}
             <ThemeInjector />
             {children}

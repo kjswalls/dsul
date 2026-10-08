@@ -35,3 +35,9 @@ describe('isToastWorthy — recipes', () => {
     expect(isToastWorthy({ label: 'Recipe: After run' })).toBe(true);
   });
 });
+
+describe('isToastWorthy — mods', () => {
+  it("a mod's held writes offer their one undo", () => {
+    expect(isToastWorthy({ label: 'Mod: Water counter · item.completed' })).toBe(true);
+  });
+});

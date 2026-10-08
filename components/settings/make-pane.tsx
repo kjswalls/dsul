@@ -15,6 +15,8 @@ import { RecipeBuilder } from './recipe-builder';
 import { RecipeRuns } from './recipe-runs';
 import { ThemeBuilder } from './theme-builder';
 import { LookBuilder } from './look-builder';
+import { ModEditor } from './mod-editor';
+import { MOD_REPORTED, ModProblems } from './mod-problems';
 import { MakeWrite } from './make-write';
 import { isMakeKind } from '@/lib/ai-limits';
 import { releaseUserTheme } from '@/lib/user-themes/release';
@@ -23,8 +25,12 @@ import { releaseUserTheme } from '@/lib/user-themes/release';
  * Settings → Make: what the person made, one section per kind, each with a
  * switch and Delete (memory/plans/mods.md). Recipes also get New, Edit and
  * Recent runs (./recipe-builder.tsx, ./recipe-runs.tsx), themes New and Edit
- * (./theme-builder.tsx), and Looks New and Edit (./look-builder.tsx);
- * building mods comes in a later PR.
+ * (./theme-builder.tsx), Looks New and Edit (./look-builder.tsx), and mods
+ * New, Edit (./mod-editor.tsx, a plain source editor), Problems
+ * (./mod-problems.tsx) and Recent runs.
+ *
+ * A mod's own words (a fault's message, the "Last:" of why it was switched
+ * off) are drawn only under a host label, so a mod cannot speak as the app.
  *
  * Switching off or deleting a theme that is a saved pick writes the default
  * pick first (lib/user-themes/release.ts), so no device keeps pointing at it.
@@ -45,7 +51,7 @@ import { releaseUserTheme } from '@/lib/user-themes/release';
  */
 
 interface Editing {
-  kind: 'recipe' | 'theme' | 'look';
+  kind: 'recipe' | 'theme' | 'look' | 'mod';
   id: 'new' | string;
   /** A new row's starting point: a "Write with AI" draft opened in Edit. */
   initial?: { name: string; manifest: unknown };
@@ -134,7 +140,15 @@ export function MakePane({ ctx, isMobile = false }: { ctx: SettingCtx; isMobile?
           </Button>
         </div>
       ) : !loaded ? null : editing && ctx.userId && (editing.id === 'new' || editingRow) ? (
-        editing.kind === 'look' ? (
+        editing.kind === 'mod' ? (
+          <ModEditor
+            key={editing.id}
+            userId={ctx.userId}
+            editing={editingRow}
+            onCancel={() => setEditing(null)}
+            onDone={done}
+          />
+        ) : editing.kind === 'look' ? (
           <LookBuilder
             key={editing.id}
             userId={ctx.userId}
@@ -188,11 +202,7 @@ export function MakePane({ ctx, isMobile = false }: { ctx: SettingCtx; isMobile?
                     row={row}
                     ctx={ctx}
                     isMobile={isMobile}
-                    onEdit={
-                      row.kind === 'recipe' || row.kind === 'theme' || row.kind === 'look'
-                        ? () => open({ kind: row.kind as Editing['kind'], id: row.id })
-                        : undefined
-                    }
+                    onEdit={() => open({ kind: row.kind, id: row.id })}
                   />
                 ))}
               </div>
@@ -239,6 +249,14 @@ export function MakePane({ ctx, isMobile = false }: { ctx: SettingCtx; isMobile?
           >
             <Plus className="size-3.5" aria-hidden /> New Look
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            data-testid="make-new-mod"
+            onClick={() => open({ kind: 'mod', id: 'new' })}
+          >
+            <Plus className="size-3.5" aria-hidden /> New mod
+          </Button>
           {notice && (
             <p role="status" data-testid="make-notice" className="text-muted-foreground text-xs">
               {notice}
@@ -248,6 +266,17 @@ export function MakePane({ ctx, isMobile = false }: { ctx: SettingCtx; isMobile?
       )}
     </div>
   );
+}
+
+/**
+ * A mod's "Switched off:" reason split where the mod's own words start
+ * (lib/mods/faults.ts faultReason: "3 errors in 10 minutes. Last: <message>"),
+ * so Make can frame them. Null when there is no such part.
+ */
+export function splitModReason(reason: string): { head: string; reported: string } | null {
+  const at = reason.indexOf(' Last: ');
+  if (at < 0) return null;
+  return { head: reason.slice(0, at), reported: reason.slice(at + ' Last: '.length) };
 }
 
 /** A timed recipe's hour, when it has one: the server runs it (lib/recipes/server/). */
@@ -271,8 +300,9 @@ function MakeRow({
   const stateId = `make-state-${row.id}`;
   const timeFormat = usePlannerStore((s) => s.timeFormat);
   const label = modLabel(row);
+  const reported = row.kind === 'mod' && row.disabledReason ? splitModReason(row.disabledReason) : null;
   const stateText = row.disabledReason
-    ? `Switched off: ${row.disabledReason}`
+    ? `Switched off: ${reported ? reported.head : row.disabledReason}`
     : row.enabled
       ? row.kind === 'theme'
         ? 'On. Pick it in Look, under Yours.'
@@ -311,6 +341,11 @@ function MakeRow({
           <span id={stateId} className="text-muted-foreground block text-xs">
             {stateText}
           </span>
+          {reported && (
+            <span data-testid="mod-reported" className="text-muted-foreground block text-xs">
+              {MOD_REPORTED} <span className="break-words">{reported.reported}</span>
+            </span>
+          )}
           {row.kind === 'recipe' && timedAt(row) && (
             <span data-testid="recipe-timed-hint" className="text-muted-foreground block text-xs">
               Runs at {formatCueTime(timedAt(row)!, timeFormat)}, even with dsul closed
@@ -350,7 +385,8 @@ function MakeRow({
           <Trash2 className="size-3.5" aria-hidden />
         </Button>
       </div>
-      {row.kind === 'recipe' && <RecipeRuns modId={row.id} label={label} />}
+      {row.kind === 'mod' && <ModProblems modId={row.id} label={label} />}
+      {(row.kind === 'recipe' || row.kind === 'mod') && <RecipeRuns modId={row.id} label={label} />}
     </div>
   );
 }
