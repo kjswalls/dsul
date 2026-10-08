@@ -520,7 +520,7 @@ describe('YOUR QUESTION', () => {
     render(<AskSetup visible />);
     fireEvent.paste(screen.getByTestId('connect-key'), { clipboardData: { getData: () => 'AIzaSyTEST-SENTINEL-9876' } });
     expect(screen.getByTestId('connect-submit')).toHaveTextContent('Connect and ask');
-    expect(Array.from(column().querySelectorAll('[class*="bg-primary"]'))).toEqual([]);
+    expect(Array.from(column().querySelectorAll('[class*="bg-primary"], [data-slot="button-key"]'))).toEqual([]);
   });
 });
 
@@ -810,7 +810,7 @@ describe('the column’s rules', () => {
   });
 
   it('has nothing lime in it, in either home, whatever is open or said', async () => {
-    const lime = () => Array.from(column().querySelectorAll<HTMLElement>('[class*="bg-primary"]'));
+    const lime = () => Array.from(column().querySelectorAll<HTMLElement>('[class*="bg-primary"], [data-slot="button-key"]'));
     const { unmount } = render(<AskSetup visible />);
     expect(lime()).toEqual([]);
     // Every fold open in turn, the custom service too, and a note with actions.

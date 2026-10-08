@@ -154,7 +154,7 @@ test.describe('Set up AI on the phone @mobile', () => {
     await expect(setup.locator('[data-setup-foot]')).toContainText(
       'AI is optional. dsul works fully without it.'
     );
-    await expect(setup.locator('.bg-primary')).toHaveCount(0);
+    await expect(setup.locator('.bg-primary, [data-slot="button-key"]')).toHaveCount(0);
     await expect(omnibar(page)).toBeVisible();
     await expect(page.getByTestId('chat-dock-input')).toHaveCount(0);
 

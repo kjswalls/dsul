@@ -114,7 +114,7 @@ function ConnectPageInner() {
             </p>
             <button
               onClick={handleLogin}
-              className="w-full bg-primary text-primary-foreground rounded-md px-4 py-2.5 text-sm font-medium hover:bg-primary/90 transition-colors"
+              className="w-full bg-foreground text-background rounded-[calc(var(--radius)*0.5)] px-4 py-2 text-[13px] font-medium hover:bg-foreground/85 transition-colors"
             >
               Log in to dsul
             </button>
@@ -146,7 +146,7 @@ function ConnectPageInner() {
               <button
                 onClick={handleAuthorize}
                 disabled={state.kind === 'authorizing'}
-                className="flex-1 bg-primary text-primary-foreground rounded-md px-4 py-2.5 text-sm font-medium hover:bg-primary/90 disabled:opacity-60 transition-colors"
+                className="flex-1 bg-foreground text-background rounded-[calc(var(--radius)*0.5)] px-4 py-2 text-[13px] font-medium hover:bg-foreground/85 disabled:opacity-60 transition-colors"
               >
                 {state.kind === 'authorizing' ? 'Authorizing…' : 'Authorize'}
               </button>

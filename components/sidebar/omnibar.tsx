@@ -31,6 +31,7 @@ import { toDateStr } from '@/lib/recurrence';
 import { CategoryIcon } from '@/lib/category-icons';
 import { RELAY } from '@/lib/relay-config';
 import { cn } from '@/lib/utils';
+import { ButtonKey, buttonVariants } from '@/components/ui/button';
 import {
   findCommand,
   formatKeys,
@@ -1274,9 +1275,10 @@ export function Omnibar({
                     data-testid="omnibar-run-selection"
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => runPicked(livePicked)}
-                    className="h-7 rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+                    className={buttonVariants({ size: 'sm' })}
                   >
-                    {ctx.isMobile ? 'Run' : 'Run ↵'}
+                    Run
+                    {!ctx.isMobile && <ButtonKey />}
                   </button>
                 </div>
               </div>

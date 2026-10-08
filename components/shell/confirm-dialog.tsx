@@ -92,13 +92,11 @@ export function ConfirmDialog() {
         <AlertDialogFooter>
           <AlertDialogCancel data-testid="confirm-dialog-cancel">Cancel</AlertDialogCancel>
           <AlertDialogAction
-            // The confirm LABEL is caller-supplied ('Delete', 'Reset Streak',
+            // The confirm LABEL is caller-supplied ('Delete', 'Reset streak',
             // 'Confirm'), and 'Delete' collides with three other buttons in the
             // app. This id says which dialog, not which verb.
             data-testid={shown?.testId ?? 'confirm-dialog-confirm'}
-            className={
-              shown?.destructive ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : undefined
-            }
+            variant={shown?.destructive ? 'destructive' : 'default'}
             onClick={() => resolveConfirm(true)}
           >
             {shown?.confirmLabel ?? 'Confirm'}

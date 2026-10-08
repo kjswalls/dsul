@@ -177,11 +177,11 @@ describe('the goal pane', () => {
     expect(usePlannerStore.getState().goals[0].state).toBe('achieved');
   });
 
-  it('keeps delete behind ⋯, with no filled red button on the pane', () => {
+  it('keeps delete behind ⋯, with no red button on the pane', () => {
     seed({ goals: [goal()] });
     openGoal();
     expect(maybe('delete-goal')).toBeNull();
-    expect(id('organize-detail').querySelector('.bg-destructive')).toBeNull();
+    expect(id('organize-detail').querySelector('[class*="border-destructive/45"]')).toBeNull();
 
     fireEvent.pointerDown(id('goal-more'), { pointerType: 'mouse', button: 0, ctrlKey: false });
     click('delete-goal');

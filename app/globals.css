@@ -81,6 +81,10 @@
   --accent-foreground: var(--ink-0);
   --destructive: oklch(0.6 0.15 25);
   --destructive-foreground: oklch(0.98 0 0);
+  /* Red as TEXT (the destructive button is red words on a red hairline, not a
+     red block). Light mode can use the fill's own value; dark lifts it so the
+     words read on the near-black plate. */
+  --destructive-text: oklch(0.55 0.16 25);
   --border: oklch(0.9 0.008 272);     /* cool hairline (~#DCDDE1) */
   --input: oklch(0.86 0.012 272);     /* cool control border (~#C7C9D4) */
   --ring: var(--lime-solid);
@@ -305,6 +309,7 @@
   --accent-foreground: var(--ink-0);
   --destructive: oklch(0.55 0.15 25);
   --destructive-foreground: oklch(0.95 0.01 25);
+  --destructive-text: oklch(0.72 0.15 25);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 8%);
   --ring: var(--lime-solid);
@@ -554,6 +559,7 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-text: var(--destructive-text);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -1681,8 +1687,71 @@ body {
   .field:is(.border-0, .border-none):is(:focus-visible, :has(:focus-visible)) {
     box-shadow: none;
   }
+
+  /* The key on a main button (ButtonKey, components/ui/button.tsx): the one
+     spot of accent on an ink button, drawn only where Enter really presses it.
+     Hovering or focusing the button runs one glint across it. The glint is a
+     highlight passing OVER the accent; the accent itself is never faded. A
+     disabled button fades through opacity-50, and the accent must never be
+     faded through a parent's opacity, so the key goes neutral instead. */
+  [data-slot='button-key'] {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    display: inline-grid;
+    place-items: center;
+    min-width: 18px;
+    height: 18px;
+    margin-right: -5px;
+    padding: 0 4px;
+    border-radius: 4px;
+    background: var(--primary);
+    color: var(--primary-foreground);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 500;
+    line-height: 1;
+  }
+  [data-slot='button-key']::after {
+    content: '';
+    position: absolute;
+    inset-block: -2px;
+    left: -80%;
+    width: 60%;
+    transform: skewX(-20deg);
+    background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.75), transparent);
+    pointer-events: none;
+  }
+  :is(button, a):is(:hover, :focus-visible) > [data-slot='button-key']::after {
+    animation: button-key-glint 700ms ease-out;
+  }
+  /* Dark: the ink button is near-white and the lime chip is pale too, so a
+     lime-ink hairline keeps the key's edge. */
+  .dark [data-slot='button-key'] {
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--primary-foreground) 45%, transparent);
+  }
+  /* Phones have no Enter to teach. */
+  @media (max-width: 639px) {
+    [data-slot='button-key'] {
+      display: none;
+    }
+  }
+  :is(button:disabled, [aria-disabled='true']) > [data-slot='button-key'] {
+    background: color-mix(in oklab, currentColor 16%, transparent);
+    color: inherit;
+  }
+  :is(button:disabled, [aria-disabled='true']) > [data-slot='button-key']::after {
+    display: none;
+  }
+}
+@keyframes button-key-glint {
+  from { left: -80%; }
+  to { left: 130%; }
 }
 @media (prefers-reduced-motion: reduce) {
+  [data-slot='button-key']::after {
+    display: none;
+  }
   .field {
     transition: none;
   }

@@ -10,7 +10,13 @@ import { act, cleanup, render } from '@testing-library/react';
  * a new account's first frame, the tour, and a habit-less account get no streak
  * toast, the streak toast comes once the tour is over and a habit exists, the
  * rituals one takes its turn after it (or alone, with no habit), and a toast
- * already up never sits over the tour or outlives its account.
+ * already up never sits over the tour or outlives its account. The rituals
+ * intro also waits out what the tour's last card can leave on screen: AI setup
+ * (the desktop's column, the phone's setup page), the "It works." a connect
+ * there ends on, and an undo row such as No AI's. Those cases mount closed and
+ * then open, as AppShell does (`tourAnsweredFor` null at mount): the phone's
+ * width is measured in an effect, so a mount with every gate open would read
+ * the desktop's rule on its first frame and fire before the phone's could hold.
  */
 
 const sonner = vi.hoisted(() => ({ toast: vi.fn(), dismiss: vi.fn() }));
@@ -37,6 +43,11 @@ import { useMorningStore } from '@/lib/morning-store';
 import { saveDismissedNudges } from '@/lib/nudges/service';
 import { EXT_STREAKS } from '@/lib/extension-registry';
 import { disableExtensions, enableExtensions } from './support/extensions';
+import { railModeNow, useRailStore } from '@/lib/rail-store';
+import { useMobileNavStore } from '@/lib/mobile-nav-store';
+import { useUndoStripStore } from '@/lib/undo-strip-store';
+import { useAIConnectionStore } from '@/lib/ai-connection-store';
+import { CONNECTED_MODEL, NOTHING_CONNECTED, seedAI } from './helpers/ai-fixtures';
 
 const USER = 'user-1';
 const HABIT = { id: 'h1', type: 'habit', title: 'Stretch' } as never;
@@ -47,6 +58,12 @@ function seed({ habits }: { habits: unknown[] }) {
   useExtensionsStore.setState({ configsLoaded: true });
   useNudgeStore.setState({ dismissed: [], hydratedUserId: USER });
 }
+
+const width = window.innerWidth;
+function setWidth(px: number) {
+  Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: px });
+}
+let cleanupAI: (() => void) | null = null;
 
 beforeEach(() => {
   sonner.toast.mockClear();
@@ -60,9 +77,31 @@ afterEach(() => {
   useMorningStore.setState({ settingsHydratedUserId: null });
   useExtensionsStore.setState({ configsLoaded: false, enabled: {} });
   useNudgeStore.getState().reset();
+  cleanupAI?.();
+  cleanupAI = null;
+  useAIConnectionStore.getState().reset();
+  useRailStore.setState({ summoned: false });
+  useMobileNavStore.setState({ activeTab: 'today' });
+  useUndoStripStore.setState({ entry: null });
+  setWidth(width);
 });
 
 const titles = () => sonner.toast.mock.calls.map((c: unknown[]) => c[0]);
+const RITUALS = 'Two quiet rituals, if you want them';
+
+/** An account the rituals intro is ready for: something planned, no habit, both rituals off. */
+function seedRitualsReady() {
+  seed({ habits: [] });
+  usePlannerStore.setState({ tasks: [TASK] });
+  useMorningStore.setState({ settingsHydratedUserId: USER });
+}
+
+/** Mounted as AppShell mounts it: no answer yet, then the tour's answer with no tour to show. */
+function mountThenAnswer() {
+  const view = render(<FirstRunNudges tourAnsweredFor={null} tourShowing={false} />);
+  view.rerender(<FirstRunNudges tourAnsweredFor={USER} tourShowing={false} />);
+  return view;
+}
 
 describe('the first-run toasts in the shell', () => {
   it('stays quiet while the tour shows, and speaks once it is over', () => {
@@ -166,5 +205,76 @@ describe('the first-run toasts in the shell', () => {
     // The only mounts of either toast are FirstRunNudges' own, fed its gates.
     expect(shell.match(/<OneTimeNudge /g)).toHaveLength(2);
     expect(shell).toMatch(/<OneTimeNudge id=\{NUDGE_STREAKS_ON\} enabled=\{streakNudgeOn\} \/>/);
+  });
+});
+
+describe('the rituals intro waits out what the tour leaves on screen', () => {
+  it('holds while the setup column shows on the desktop, and comes once it parks', () => {
+    // The tour's Set up AI summons setup for this session only.
+    setWidth(1280);
+    cleanupAI = seedAI(NOTHING_CONNECTED);
+    seedRitualsReady();
+    act(() => useRailStore.getState().summon({ persist: false }));
+    expect(railModeNow()).toBe('setup');
+    mountThenAnswer();
+    expect(titles()).not.toContain(RITUALS);
+    act(() => useRailStore.getState().park());
+    expect(titles()).toEqual([RITUALS]);
+  });
+
+  it('holds through the "It works." a connect ends on, until Ask closes', () => {
+    setWidth(1280);
+    cleanupAI = seedAI(NOTHING_CONNECTED);
+    seedRitualsReady();
+    act(() => useRailStore.getState().summon({ persist: false }));
+    mountThenAnswer();
+    // A key that works: the same summon turns setup into Ask home, saying "It works.".
+    act(() => {
+      cleanupAI = seedAI(CONNECTED_MODEL);
+      useAIConnectionStore
+        .getState()
+        .setJustConnected({ provider: 'openai', model: 'gpt-4o-mini', freeTier: false, at: Date.now() });
+    });
+    expect(railModeNow()).toBe('ask');
+    expect(titles()).not.toContain(RITUALS);
+    // Ask closing spends "It works." (lib/rail-store.ts spendJustConnected).
+    act(() => useRailStore.getState().park());
+    expect(useAIConnectionStore.getState().justConnected).toBeNull();
+    expect(titles()).toEqual([RITUALS]);
+  });
+
+  it("holds while the phone's Ask tab shows the setup page, and comes once it is left", () => {
+    setWidth(390);
+    cleanupAI = seedAI(NOTHING_CONNECTED);
+    seedRitualsReady();
+    useMobileNavStore.setState({ activeTab: 'chat' });
+    mountThenAnswer();
+    expect(titles()).not.toContain(RITUALS);
+    act(() => useMobileNavStore.setState({ activeTab: 'today' }));
+    expect(titles()).toEqual([RITUALS]);
+  });
+
+  it("never holds a desktop on a `chat` tab the phone's store kept", () => {
+    // The tab is the phone's: a desktop's setup is the column, not summoned here.
+    setWidth(1280);
+    cleanupAI = seedAI(NOTHING_CONNECTED);
+    seedRitualsReady();
+    useMobileNavStore.setState({ activeTab: 'chat' });
+    mountThenAnswer();
+    expect(titles()).toEqual([RITUALS]);
+  });
+
+  it("holds while an undo row is up, so it never covers No AI's Undo", () => {
+    seedRitualsReady();
+    useUndoStripStore.getState().show({
+      id: 'ai-off-1',
+      label: 'AI is off. dsul won’t bring it up again.',
+      durationMs: 5000,
+      face: 'ui',
+    });
+    mountThenAnswer();
+    expect(titles()).not.toContain(RITUALS);
+    act(() => useUndoStripStore.getState().dismiss('ai-off-1'));
+    expect(titles()).toEqual([RITUALS]);
   });
 });

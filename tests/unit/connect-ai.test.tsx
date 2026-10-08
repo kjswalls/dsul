@@ -1454,9 +1454,9 @@ describe('with a question kept from ?', () => {
     renderConnect('column');
     await paste(box(), GOOGLE);
     expect(screen.getByTestId('connect-submit')).toHaveTextContent('Connect and ask');
-    expect(document.querySelectorAll('[data-ask-setup] [class*="bg-primary"]')).toHaveLength(0);
+    expect(document.querySelectorAll('[data-ask-setup] [class*="bg-primary"], [data-ask-setup] [data-slot="button-key"]')).toHaveLength(0);
     openFold('openrouter');
-    expect(document.querySelectorAll('[data-ask-setup] [class*="bg-primary"]')).toHaveLength(0);
+    expect(document.querySelectorAll('[data-ask-setup] [class*="bg-primary"], [data-ask-setup] [data-slot="button-key"]')).toHaveLength(0);
   });
 });
 
@@ -1507,7 +1507,7 @@ describe('layout phone', () => {
 /* ── The column's rules, and the files' ─────────────────────────────────── */
 
 describe('nothing lime in the column', () => {
-  const lime = () => Array.from(document.querySelectorAll('[data-ask-setup] [class*="bg-primary"]'));
+  const lime = () => Array.from(document.querySelectorAll('[data-ask-setup] [class*="bg-primary"], [data-ask-setup] [data-slot="button-key"]'));
 
   it('whatever is open or said', async () => {
     putReply = () => json({ error: 'unreachable' }, 502);
@@ -1527,8 +1527,8 @@ describe('nothing lime in the column', () => {
   it('while the pane keeps its main action’s fill (the check would see one)', async () => {
     renderConnect('pane');
     await paste(box(), UNKNOWN);
-    expect(screen.getByTestId('connect-submit').className).toMatch(/bg-primary/);
-    expect(screen.getByTestId('connect-openrouter-signin').className).toMatch(/bg-primary/);
+    expect(screen.getByTestId('connect-submit').className).toMatch(/bg-foreground/);
+    expect(screen.getByTestId('connect-openrouter-signin').className).toMatch(/bg-foreground/);
   });
 });
 

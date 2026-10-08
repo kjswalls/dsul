@@ -378,6 +378,7 @@ export function AskOpener({ className }: { className?: string }) {
         ref={ref}
         type="button"
         data-ask-opener=""
+        data-tour="ask-key"
         data-form={plate ? fit : 'icon'}
         data-lit={canChat ? undefined : 'false'}
         onClick={(e) => {

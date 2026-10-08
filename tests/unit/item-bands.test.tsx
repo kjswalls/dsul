@@ -635,7 +635,7 @@ describe('the mobile drawer: Clearing without autosave', () => {
     expect(screen.queryByTestId('item-dialog-type-chip')).toBeNull();
   });
 
-  it('keeps Save Changes in the footer — the layout is universal, the commit is not', () => {
+  it('keeps Save changes in the footer — the layout is universal, the commit is not', () => {
     /**
      * The discriminator is `autosaves` (isPanel && edit), NOT `mode`. This is the
      * fixture that says so: it is mode 'edit' like the panel, but modal like the
@@ -645,7 +645,7 @@ describe('the mobile drawer: Clearing without autosave', () => {
      * that flushes an autosave queue it never fills.
      */
     modalEdit();
-    expect(screen.getByTestId('item-dialog-submit').textContent).toBe('Save Changes');
+    expect(screen.getByTestId('item-dialog-submit').textContent).toBe('Save changes↵');
     cleanup();
     panel(); // same mode, different presentation → the other answer
     expect(screen.getByTestId('item-dialog-submit').textContent).toBe('Done');
