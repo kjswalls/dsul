@@ -302,14 +302,14 @@ export const PREVIEW_GATED_GROUPS: ReadonlySet<CommandGroupId> = new Set<Command
 
 /**
  * Chrome in a gated group: it touches no planner row, so the preview leaves
- * it live. `make.write` only opens Settings → Make with its box focused.
+ * it live. `make.write` and `make.write-mod` only open Settings → Make with its box focused.
  * `ai.setup` and `ai.fix` only open the setup column (the phone's setup page),
  * which is up through the preview as Ctrl+J's column is; the launcher draws
  * the one on offer first in Actions, so Enter at rest would otherwise do
  * nothing for the length of the load. A question kept on the way waits for a
  * loaded planner before it goes anywhere (lib/ask-pending.ts).
  */
-export const PREVIEW_CHROME_IDS: ReadonlySet<string> = new Set(['make.write', 'ai.setup', 'ai.fix']);
+export const PREVIEW_CHROME_IDS: ReadonlySet<string> = new Set(['make.write', 'make.write-mod', 'ai.setup', 'ai.fix']);
 
 /**
  * Data commands in otherwise-chrome groups. ⌘A reads row ids straight out of

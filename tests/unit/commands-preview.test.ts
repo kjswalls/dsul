@@ -106,6 +106,7 @@ const GATED_DURING_PREVIEW: Record<string, boolean> = {
   'ask.history': true,
   // Opens Settings → Make with its box focused: chrome in the 'mods' group (PREVIEW_CHROME_IDS).
   'make.write': false,
+  'make.write-mod': false,
   'rituals.eod': true,
   'workspace.toggleChat': false,
   'workspace.toggleSidebar': false,
@@ -204,10 +205,10 @@ describe('the preview classification of the command registry', () => {
     expect(actual).toEqual(GATED_DURING_PREVIEW);
   });
 
-  it('gates exactly the five data groups plus two ids, less one chrome id', () => {
+  it('gates exactly the five data groups plus two ids, less the chrome ids', () => {
     expect([...PREVIEW_GATED_GROUPS].sort()).toEqual(['create', 'history', 'items', 'mods', 'rituals']);
     expect([...PREVIEW_GATED_IDS].sort()).toEqual(['goto.overdue', 'workspace.selectAll']);
-    expect([...PREVIEW_CHROME_IDS].sort()).toEqual(['ai.fix', 'ai.setup', 'make.write']);
+    expect([...PREVIEW_CHROME_IDS].sort()).toEqual(['ai.fix', 'ai.setup', 'make.write', 'make.write-mod']);
   });
 });
 
