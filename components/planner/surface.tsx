@@ -210,18 +210,6 @@ export const SERIF_TITLE_CLASS =
 export const SERIF_NOTES_CLASS =
   '-mx-1 min-h-0 w-[calc(100%+0.5rem)] resize-none overflow-y-auto border-0 bg-transparent px-1 py-0 font-serif text-sm leading-relaxed shadow-none placeholder:italic focus-visible:ring-0 md:text-sm dark:bg-transparent';
 
-/** The footer's "↵ to add" teaching hint. Hidden on phones, which have no Enter to teach. */
-export function EnterHint({ verb }: { verb: string }) {
-  return (
-    <span className="text-muted-foreground hidden items-center gap-1.5 text-xs sm:flex">
-      <kbd className="border-border text-muted-foreground rounded-xs border px-1 font-mono text-[10px]">
-        ↵
-      </kbd>
-      to {verb}
-    </span>
-  );
-}
-
 // ── The type menu ────────────────────────────────────────────────────────────
 
 /** The organizers in menu order: the aspiration, the two gates, the label. */

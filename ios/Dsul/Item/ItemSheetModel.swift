@@ -1379,7 +1379,7 @@ enum ItemSheetModel {
 
     /// Reset streak's confirm title, in sentence case as `deleteConfirmTitle`
     /// is, matching the verb's own label ("Reset streak", which its buttons
-    /// carry); the web's dialog says "Reset Streak?".
+    /// carry), as the web's dialog does too.
     static let resetConfirmTitle = "Reset streak?"
 
     /// Reset streak's confirm message: the web's

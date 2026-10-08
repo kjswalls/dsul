@@ -386,7 +386,7 @@ describe('a sign-in', () => {
 
 describe('nothing lime', () => {
   it('in any of its states', async () => {
-    const lime = () => Array.from(document.querySelectorAll('[data-ask-setup] [class*="bg-primary"]'));
+    const lime = () => Array.from(document.querySelectorAll('[data-ask-setup] [class*="bg-primary"], [data-ask-setup] [data-slot="button-key"]'));
     putReply = json({ error: 'unreachable' }, 502);
     const { unmount } = renderFix();
     await paste(box(), GOOGLE);
