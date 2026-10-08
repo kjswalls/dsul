@@ -38,7 +38,7 @@ import { useProposalStore } from '@/lib/proposal-store';
 import { useUIStore } from '@/lib/ui-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useViewStore } from '@/lib/view-store';
-import { CONNECTED_MODEL, NOTHING_CONNECTED, seedAI } from './helpers/ai-fixtures';
+import { AI_HIDDEN, CONNECTED_MODEL, KEY_TURNED_DOWN, NOTHING_CONNECTED, seedAI } from './helpers/ai-fixtures';
 
 const rail = () => useRailStore.getState();
 const history: AskView = { kind: 'history' };
@@ -295,7 +295,11 @@ describe('railMode, the one visibility rule', () => {
   const cases = B.flatMap((itemOpen) =>
     B.flatMap((askOpen) =>
       B.flatMap((canChat) =>
-        B.flatMap((overlays) => B.map((summoned) => ({ itemOpen, askOpen, canChat, overlays, summoned })))
+        B.flatMap((overlays) =>
+          B.flatMap((summoned) =>
+            [undefined, false, true].map((invite) => ({ itemOpen, askOpen, canChat, overlays, summoned, invite }))
+          )
+        )
       )
     )
   );
@@ -306,8 +310,15 @@ describe('railMode, the one visibility rule', () => {
       ? 'item'
       : (i.askOpen || i.summoned) && i.canChat && (!i.overlays || i.summoned)
         ? 'ask'
-        : 'hidden';
+        : i.summoned && i.invite && !i.canChat
+          ? 'setup'
+          : 'hidden';
     expect(railMode(i)).toBe(expected);
+  });
+
+  it('shows setup only on a summon: a kept-open Ask never raises it', () => {
+    expect(railMode({ itemOpen: false, askOpen: true, canChat: false, overlays: false, summoned: false, invite: true })).toBe('hidden');
+    expect(railMode({ itemOpen: false, askOpen: false, canChat: false, overlays: true, summoned: true, invite: true })).toBe('setup');
   });
 
   it('an open item is the column, with or without AI', () => {
@@ -460,11 +471,34 @@ describe('summon, park, closeRail', () => {
     expect(railModeNow()).toBe('item');
   });
 
-  it('with nothing to answer the column is only ever the item', () => {
+  it('with nothing to answer the column is the item, or the setup column when one is offered and summoned', () => {
     unseed();
-    unseed = seedAI(NOTHING_CONNECTED);
+    unseed = seedAI(AI_HIDDEN);
     rail().summon();
     expect(railModeNow()).toBe('hidden');
+    for (const offered of [NOTHING_CONNECTED, KEY_TURNED_DOWN]) {
+      unseed();
+      unseed = seedAI(offered);
+      expect(railModeNow()).toBe('setup');
+      // Only while summoned: a kept-open Ask is not setup.
+      rail().park();
+      useSidebarStore.getState().setAskOpen(true);
+      expect(railModeNow()).toBe('hidden');
+      rail().summon({ persist: false });
+      // Summoned at an overlay's width too: it is an explicit open.
+      setNarrow(true);
+      expect(railModeNow()).toBe('setup');
+      setNarrow(false);
+      // An item over it is the column, and the setup column is back when it closes.
+      useUIStore.setState({ activeDialog: { type: 'edit-item', item: { id: 'i1' } as never } });
+      expect(railModeNow()).toBe('item');
+      useUIStore.setState({ activeDialog: null });
+      expect(railModeNow()).toBe('setup');
+    }
+    // Something answers under the same summon: the column is Ask.
+    unseed();
+    unseed = seedAI(CONNECTED_MODEL);
+    expect(railModeNow()).toBe('ask');
   });
 
   it('Zen replaces the shell, so nothing shows there whatever the stores say', () => {

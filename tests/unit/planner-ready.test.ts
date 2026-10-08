@@ -47,6 +47,7 @@ import {
   selectPlannerPending,
   selectPlannerSettled,
   selectPlannerVisible,
+  whenPreviewEnds,
 } from '@/lib/planner-ready';
 
 describe('selectPlannerSettled: truth table', () => {
@@ -235,6 +236,124 @@ describe('settled ⇒ not previewing: the real store', () => {
     expect(selectPlannerSettled(usePlannerStore.getState())).toBe(true);
     expect(isPlannerPreviewing()).toBe(false);
     expect(isPlannerLoaded()).toBe(false);
+  });
+
+  /**
+   * The wait Ask's send and a proposal asked of a model take before they
+   * build the planner as context (lib/conversations-store.ts,
+   * lib/proposal-store.ts). The only things in the app that wait for the
+   * landing instead of refusing, so the exits are pinned here: the load
+   * settling either way (a dropped preview is not one), and the caller's own
+   * abort.
+   */
+  describe('whenPreviewEnds', () => {
+    /** Identify, offer the preview, let it paint; the caller lands or fails the held load. */
+    async function held() {
+      let release!: (rows: unknown[]) => void;
+      let failLoad!: (err: unknown) => void;
+      heldItems = new Promise((resolve, reject) => {
+        release = resolve;
+        failLoad = reject;
+      });
+      usePlannerStore.getState().identifyUser('u1');
+      const loading = usePlannerStore.getState().initializeStore('u1', { preview: () => true });
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+      expect(usePlannerStore.getState().isPreview).toBe(true);
+      return { loading, release, failLoad };
+    }
+    const settle = async () => {
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+    };
+
+    it('resolves at once when nothing is previewing', async () => {
+      let out = false;
+      await whenPreviewEnds().then(() => {
+        out = true;
+      });
+      expect(out).toBe(true);
+    });
+
+    it('holds until the landing', async () => {
+      const load = await held();
+      let out = false;
+      const wait = whenPreviewEnds().then(() => {
+        out = true;
+      });
+      await settle();
+      expect(out).toBe(false);
+      load.release([]);
+      heldItems = null;
+      await load.loading;
+      await wait;
+      expect(out).toBe(true);
+    });
+
+    it('a dropped preview keeps it waiting: dropPreview empties the store while the load is in flight', async () => {
+      const load = await held();
+      let out = false;
+      const wait = whenPreviewEnds().then(() => {
+        out = true;
+      });
+      // PreviewCrashBoundary: a render threw on the cached rows.
+      expect(usePlannerStore.getState().dropPreview()).toBe(true);
+      await settle();
+      const dropped = usePlannerStore.getState();
+      expect(dropped.isPreview).toBe(false);
+      expect(dropped.isLoading).toBe(true);
+      expect(dropped.items).toEqual([]);
+      // Released here, the caller would build its context from an empty planner.
+      expect(out).toBe(false);
+      load.release([{ ...SNAPSHOT.items[0], id: 'fresh', title: 'Fresh' }]);
+      heldItems = null;
+      await load.loading;
+      await wait;
+      expect(out).toBe(true);
+      expect(usePlannerStore.getState().items.map((i) => i.id)).toEqual(['fresh']);
+    });
+
+    it('a sign-out (clearStore) after a dropped preview ends the wait', async () => {
+      const load = await held();
+      const wait = whenPreviewEnds();
+      usePlannerStore.getState().dropPreview();
+      usePlannerStore.getState().clearStore();
+      await wait;
+      expect(usePlannerStore.getState().isLoading).toBe(false);
+      load.release([]);
+      heldItems = null;
+      await load.loading;
+    });
+
+    it('ends on a FAILED load too: nothing can hang on a load that never lands', async () => {
+      const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const load = await held();
+      const wait = whenPreviewEnds();
+      load.failLoad({ message: 'boom' });
+      heldItems = null;
+      await load.loading;
+      await wait;
+      err.mockRestore();
+      expect(usePlannerStore.getState().isPreview).toBe(false);
+    });
+
+    it('an abort ends the wait with the preview still up, and an aborted signal never waits', async () => {
+      const load = await held();
+      const controller = new AbortController();
+      let out = false;
+      const wait = whenPreviewEnds(controller.signal).then(() => {
+        out = true;
+      });
+      await settle();
+      expect(out).toBe(false);
+      controller.abort();
+      await wait;
+      expect(out).toBe(true);
+      expect(usePlannerStore.getState().isPreview).toBe(true);
+      // Asked again with the same signal: no subscription, no wait.
+      await whenPreviewEnds(controller.signal);
+      load.release([]);
+      heldItems = null;
+      await load.loading;
+    });
   });
 
   it('the non-reactive forms answer false, not throw, against a mock with no getState', () => {

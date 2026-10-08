@@ -7,10 +7,10 @@ import {
   DEFAULT_DARK_LOOK,
   DEFAULT_LIGHT_LOOK,
   LOOK_STORAGE_KEYS,
-  isDarkLook,
-  isLightLook,
-  type DarkLook,
-  type LightLook,
+  isDarkPickShape,
+  isLightPickShape,
+  type DarkPick,
+  type LightPick,
 } from '@/lib/theme-looks';
 import {
   DEFAULT_LAYOUT,
@@ -39,10 +39,16 @@ import { APP_ICON_STORAGE_KEY, DEFAULT_APP_ICON, isAppIcon, type AppIcon } from 
  * icon (lib/app-icons.ts), for the same reason.
  */
 interface LookStore {
-  light: LightLook;
-  dark: DarkLook;
-  setLight: (look: LightLook, opts?: { eased?: boolean }) => void;
-  setDark: (look: DarkLook, opts?: { eased?: boolean }) => void;
+  /**
+   * The picks as saved, a user theme's `u-` slug included. What shows is
+   * resolveLightPick / resolveDarkPick of these (supabase-provider stamps it),
+   * so a theme that is off, deleted or held back by safe mode never costs the
+   * saved pick.
+   */
+  light: LightPick;
+  dark: DarkPick;
+  setLight: (look: LightPick, opts?: { eased?: boolean }) => void;
+  setDark: (look: DarkPick, opts?: { eased?: boolean }) => void;
   layout: LayoutTheme;
   setLayout: (layout: LayoutTheme) => void;
   appIcon: AppIcon;
@@ -72,8 +78,8 @@ function stored<T extends string>(key: string, guard: (v: unknown) => v is T, fa
 }
 
 export const useLookStore = create<LookStore>((set) => ({
-  light: stored(LOOK_STORAGE_KEYS.light, isLightLook, DEFAULT_LIGHT_LOOK),
-  dark: stored(LOOK_STORAGE_KEYS.dark, isDarkLook, DEFAULT_DARK_LOOK),
+  light: stored<LightPick>(LOOK_STORAGE_KEYS.light, isLightPickShape, DEFAULT_LIGHT_LOOK),
+  dark: stored<DarkPick>(LOOK_STORAGE_KEYS.dark, isDarkPickShape, DEFAULT_DARK_LOOK),
   layout: stored(LAYOUT_STORAGE_KEY, isLayoutTheme, DEFAULT_LAYOUT),
   appIcon: stored(APP_ICON_STORAGE_KEY, isAppIcon, DEFAULT_APP_ICON),
   appIconKnown: isAppIcon(readStored(APP_ICON_STORAGE_KEY)),

@@ -18,8 +18,26 @@ import { BASE_URL } from './env';
  * it (`gateAnswered`) asserts the fail-closed moment instead of the answer.
  */
 
-/** The model id the stubbed gate reports; the answerer label under Ask's box reads it. */
+/**
+ * The model id the stubbed gate reports. The answerer label under Ask's box
+ * names it from the catalog (lib/ai-model-names.ts): "GPT-4o mini".
+ */
 export const STUB_MODEL = 'gpt-4o-mini';
+
+/**
+ * Keys `stubAIGate` answers without asking anyone, in Google's `AQ.` form so a
+ * paste sends at once (lib/ai-key-prefix.ts). Not keys anyone issued: the
+ * stub goes by the prefix alone, and a spec asserts neither ever lands in the
+ * page's markup.
+ */
+export const STUB_GOOD_KEY = 'AQ.good-e2e-stub-not-a-key';
+export const STUB_BAD_KEY = 'AQ.bad-e2e-stub-not-a-key';
+
+/** The model a key `stubAIGate` accepts connects with, as Google's check would pick it. */
+export const STUB_GEMINI_MODEL = 'gemini-flash-latest';
+
+/** What the stub's check makes of a Gemini key, either of Google's forms: `AQ.good…`, `AIzabad…`. */
+const STUB_VERDICT = /^(?:AQ\.|AIza)(good|bad)/;
 
 /**
  * Answer the gate "a model is connected and working", for every load of this
@@ -47,6 +65,142 @@ export async function stubConnectedModel(page: Page, o: { agent?: boolean } = {}
       }),
     })
   );
+}
+
+/** What `stubAIGate` was asked, and what it now answers. */
+export type GateStub = {
+  /** Every PATCH body the app sent, in order. */
+  patches: Array<Record<string, unknown>>;
+  /**
+   * Every connect (PUT) the app sent, in order: which provider, and whether
+   * the stub took the key. Never the key itself.
+   */
+  connects: Array<{ provider: unknown; accepted: boolean }>;
+  /** The account's "No AI, thanks", as the stub now answers it. */
+  hidden(): boolean;
+};
+
+/**
+ * Answer the gate "nothing answers here, and AI may be offered", for every
+ * load of this page: no OpenClaw at all, and either no model (`model: 'none'`,
+ * the unlit "Set up AI" key) or a saved Gemini key its provider turned down
+ * (`model: 'failing'`, "Fix AI").
+ *
+ * Stateful, because "No AI, thanks" and a connect are account writes: PATCH
+ * `{hidden}` and a PUT are answered here and the next GET says what they
+ * wrote, so a reload sees it. The real route is never reached. The e2e account
+ * is shared by every parallel spec: a real `ai_hidden = true` on it would take
+ * AI away from all of them, and a real connect would save a key to it and
+ * light AI for all of them. `aiHidden` is always sent as a boolean: null (a
+ * server that has not said) invites nobody.
+ *
+ * A connect is checked on the key's prefix alone: `STUB_GOOD_KEY` (any Gemini
+ * key starting `AQ.good` or `AIzagood`) connects `STUB_GEMINI_MODEL`, working;
+ * `STUB_BAD_KEY` (`AQ.bad…`, `AIzabad…`) is turned down as Google turns a
+ * deleted key down (400 `key_rejected`), and the connection stays as it was.
+ * Any other connect is refused as `invalid`.
+ */
+export async function stubAIGate(
+  page: Page,
+  o: { model?: 'none' | 'failing'; aiHidden?: boolean } = {}
+): Promise<GateStub> {
+  let hidden = o.aiHidden ?? false;
+  const patches: GateStub['patches'] = [];
+  const connects: GateStub['connects'] = [];
+  let model: Record<string, unknown> | null =
+    o.model === 'failing'
+      ? {
+          provider: 'gemini',
+          model: STUB_GEMINI_MODEL,
+          baseUrl: null,
+          authMethod: 'key',
+          status: 'failing',
+          problem: 'key_rejected',
+          checkedAt: '2026-10-01T00:00:00.000Z',
+          limitedUntil: null,
+          modelLabel: null,
+        }
+      : null;
+  const json = (status: number, body: unknown) => ({
+    status,
+    contentType: 'application/json',
+    headers: { 'Cache-Control': 'no-store' },
+    body: JSON.stringify(body),
+  });
+  await page.route('**/api/ai/connection', (route) => {
+    const req = route.request();
+    if (req.method() === 'GET') {
+      return route.fulfill(
+        json(200, {
+          available: true,
+          model,
+          openclaw: { gateway: false, pluginChat: false, agent: false, agentId: null },
+          aiHidden: hidden,
+        })
+      );
+    }
+    const body = (req.postDataJSON() ?? {}) as Record<string, unknown>;
+    if (req.method() === 'PUT') {
+      // Read for its prefix and dropped: the key is never kept, not even here.
+      const verdict =
+        body.provider === 'gemini' && typeof body.apiKey === 'string'
+          ? STUB_VERDICT.exec(body.apiKey)?.[1]
+          : undefined;
+      const accepted = verdict === 'good';
+      connects.push({ provider: body.provider, accepted });
+      if (accepted) {
+        model = {
+          provider: 'gemini',
+          model: STUB_GEMINI_MODEL,
+          baseUrl: null,
+          authMethod: 'key',
+          status: 'ok',
+          problem: null,
+          checkedAt: new Date().toISOString(),
+          limitedUntil: null,
+          modelLabel: null,
+        };
+        return route.fulfill(
+          json(200, {
+            connection: model,
+            models: [{ id: STUB_GEMINI_MODEL, label: 'Gemini Flash' }],
+            listed: true,
+          })
+        );
+      }
+      if (verdict === 'bad') return route.fulfill(json(400, { error: 'key_rejected' }));
+      return route.fulfill(json(400, { error: 'invalid' }));
+    }
+    patches.push(body);
+    if (req.method() === 'PATCH' && typeof body.hidden === 'boolean') {
+      hidden = body.hidden;
+      return route.fulfill(json(200, { aiHidden: hidden }));
+    }
+    // A fresh check, as the route answers it: the check was made, so 200,
+    // with the connection as it stands (a key still turned down, still failing).
+    if (req.method() === 'PATCH' && body.recheck === true && model) {
+      return route.fulfill(json(200, { connection: model }));
+    }
+    // Anything else (a model pick, a disconnect) is not this stub's to
+    // answer, and must not reach the real route either.
+    return route.fulfill(json(400, { error: 'invalid' }));
+  });
+  return { patches, connects, hidden: () => hidden };
+}
+
+/**
+ * Paste `text` into a key box, as Ctrl+V does: one `paste` event carrying it
+ * as text/plain, which the box reads (components/ai/connect/key-field.tsx).
+ * Dispatched in the page, so the system clipboard is never touched and no
+ * permission prompt is involved.
+ */
+export async function pasteInto(field: Locator, text: string): Promise<void> {
+  await field.focus();
+  await field.evaluate((el, value) => {
+    const data = new DataTransfer();
+    data.setData('text/plain', value);
+    el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+  }, text);
 }
 
 /** Answer every chat request with `reply`, in one chunk of the app's SSE. */
@@ -114,6 +268,14 @@ export function rail(page: Page): Locator {
 /** The Ask button on the canvas's header row, shown while Ask is closed. */
 export function askButton(page: Page): Locator {
   return page.getByRole('button', { name: 'Open Ask' });
+}
+
+/**
+ * The same key while nothing answers: unlit, and named for what it opens
+ * ("Set up AI", or "Fix AI" for a saved model that stopped working).
+ */
+export function unlitKey(page: Page): Locator {
+  return page.locator('[data-ask-opener][data-lit="false"]');
 }
 
 /**

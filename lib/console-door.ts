@@ -109,16 +109,20 @@ export function consoleHosted(): boolean {
 export function useOpenConsole(): (target?: ConsoleDoorTarget) => void {
   const router = useRouter();
 
-  return useCallback(
-    (target: ConsoleDoorTarget = {}) => {
-      // Armed FIRST in both branches. The slot is what the console reads on
-      // mount, so on the navigating path it has to be set before the push, and
-      // on the hosted path there is nothing to wait for.
-      useUIStore.getState().openDialog({ type: 'organize', ...target });
-      // Read at CLICK time, not at render time: the answer is about what is
-      // mounted now, and a door can outlive the mount that rendered it.
-      if (!consoleHosted()) router.push(CONSOLE_HOME);
-    },
-    [router]
-  );
+  return useCallback((target: ConsoleDoorTarget = {}) => openConsole(target, router.push), [router]);
+}
+
+/**
+ * The same door without a hook, for code that runs outside a component (a
+ * recipe's "open Organize" step, lib/recipes/ui-steps.ts). The caller hands in
+ * its own `navigate`, since only a component can reach the router.
+ */
+export function openConsole(target: ConsoleDoorTarget = {}, navigate: (href: string) => void): void {
+  // Armed FIRST in both branches. The slot is what the console reads on
+  // mount, so on the navigating path it has to be set before the push, and
+  // on the hosted path there is nothing to wait for.
+  useUIStore.getState().openDialog({ type: 'organize', ...target });
+  // Read at CLICK time, not at render time: the answer is about what is
+  // mounted now, and a door can outlive the mount that rendered it.
+  if (!consoleHosted()) navigate(CONSOLE_HOME);
 }

@@ -4,15 +4,16 @@ import Testing
 @testable import Dsul
 
 /// The item sheet's title, notes, Delete, Add a subtask, Reset streak and
-/// chips (priority, times a day, Remind, date, time and repeat) on a signed-in
-/// planner, against PlannerSyncTests' fake server and its Thursday 2026-10-01
-/// payload: each write's optimistic step and the body it sends, the gates
-/// that refuse (sending nothing), an older server's shorter list of writes,
-/// what a delete takes with it and which sheet it closes, a pasted list sent
-/// offline, the Streaks and Habit reminders switches, the stored zone, a
-/// custom type's own words, the banner said once, and the background time a
-/// write asks for. The rebase under a failed write is PlannerSyncTests'; the
-/// sample's steps are SamplePlannerTests'.
+/// chips (priority, times a day, Remind, date, time, repeat, project, and the
+/// routine and season toggles) on a signed-in planner, against
+/// PlannerSyncTests' fake server and its Thursday 2026-10-01 payload: each
+/// write's optimistic step and the body it sends, the gates that refuse
+/// (sending nothing), an older server's shorter list of writes, what a delete
+/// takes with it and which sheet it closes, a pasted list sent offline, the
+/// Streaks and Habit reminders switches, the stored zone, a custom type's own
+/// words, the banner said once, and the background time a write asks for.
+/// The rebase under a failed write is PlannerSyncTests'; the sample's steps
+/// are SamplePlannerTests'.
 @MainActor
 @Suite struct ItemEditTests {
     private let ok = "{\"ok\":true}"
@@ -827,7 +828,9 @@ import Testing
     /// stays read-only and a time edit sends nothing, while the date chip
     /// still moves the item through part 1's `move`, which it takes.
     @Test func anOlderServerTakesTheDateButNotTheTime() async throws {
-        let partTwoC = PlannerJSON.allWrites.filter { $0 != "time" && $0 != "repeat" }
+        let partTwoC = PlannerJSON.allWrites.filter {
+            $0 != "time" && $0 != "repeat" && $0 != "project" && $0 != "collect"
+        }
         #expect(partTwoC.last == "reminder")
         let server = FakeServer()
         await server.on(plannerRoute, .status(200, PlannerJSON.payload(writes: partTwoC)))
@@ -1007,7 +1010,7 @@ import Testing
     /// A server from before 2e lists writes up to `time`: the repeat chip
     /// stays read-only and a repeat edit sends nothing.
     @Test func anOlderServerKeepsTheRepeatReadOnly() async throws {
-        let partTwoD = PlannerJSON.allWrites.filter { $0 != "repeat" }
+        let partTwoD = PlannerJSON.allWrites.filter { $0 != "repeat" && $0 != "project" && $0 != "collect" }
         #expect(partTwoD.last == "time")
         let server = FakeServer()
         await server.on(plannerRoute, .status(200, PlannerJSON.payload(writes: partTwoD)))
@@ -1050,6 +1053,305 @@ import Testing
 
         let sent = await sentText(server, PlannerJSON.plants)
         #expect(sent == ["{\"action\":\"repeat\",\"frequency\":\"none\"}"])
+    }
+
+    // MARK: Project
+
+    /// The project chip's write shows at once and sends the project's id
+    /// alone (the route reads its name): Groceries, in no project, filed
+    /// under Work moves into Work's List section; No project clears the name
+    /// and the id, sent as null, and puts it back with the loose items; No
+    /// project again changes nothing and sends nothing.
+    @Test func aProjectShowsAtOnceAndSendsItsId() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute,
+                        .status(200, PlannerJSON.payload(projects: [PlannerJSON.workJSON, PlannerJSON.healthJSON])))
+        await server.on(itemRoute(PlannerJSON.groceries), .status(200, ok))
+        let planner = await loaded(server)
+        let groceries = PlannerJSON.groceries
+        #expect(planner.projects == ["Work", "Health"])
+        let unfiled = try #require(planner.item(groceries))
+        #expect(unfiled.project == nil)
+        #expect(planner.canEdit("project", unfiled))
+
+        planner.edit(groceries, .project(id: PlannerJSON.work, name: "Work"))
+        let filed = try #require(planner.item(groceries))
+        #expect(filed.project == "Work")
+        #expect(filed.projectId == PlannerJSON.work)
+        let work = try #require(planner.listSections(.all).first { $0.title == "Work" })
+        #expect(work.items.contains { $0.id == groceries })
+        planner.edit(groceries, .project(id: nil, name: nil))
+        let cleared = try #require(planner.item(groceries))
+        #expect(cleared.project == nil)
+        #expect(cleared.projectId == nil)
+        let loose = try #require(planner.listSections(.all).last)
+        #expect(loose.title == ContainerWords.noProject)
+        #expect(loose.items.contains { $0.id == groceries })
+        planner.edit(groceries, .project(id: nil, name: nil))   // already so
+        #expect(planner.item(groceries) == cleared)
+        await drain(planner)
+
+        let sent = await sentText(server, groceries)
+        #expect(sent == ["{\"action\":\"project\",\"projectId\":\"\(PlannerJSON.work)\"}",
+                         "{\"action\":\"project\",\"projectId\":null}"])
+        #expect(planner.banner == nil)
+    }
+
+    /// A task parked in its project's block leaves it when it leaves the
+    /// project, as the web's bulk Move to project releases it: Review PRs,
+    /// parked in Work's block, moved to Health gets its own 14:00 on
+    /// 2026-09-30 back, the stash cleared, and keeps the block's Morning and
+    /// `isScheduled`. One write, the id alone.
+    @Test func aParkedTaskLeavesItsBlock() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(extra: [PlannerJSON.parkedJSON])))
+        await server.on(itemRoute(PlannerJSON.parked), .status(200, ok))
+        let planner = await loaded(server)
+        let parked = try #require(planner.item(PlannerJSON.parked))
+        #expect(parked.inProjectBlock == true)
+        #expect(parked.previousStartTime == "14:00")
+        #expect(parked.previousStartDate == "2026-09-30")
+
+        planner.edit(PlannerJSON.parked, .project(id: PlannerJSON.health, name: "Health"))
+        let released = try #require(planner.item(PlannerJSON.parked))
+        #expect(released.project == "Health")
+        #expect(released.projectId == PlannerJSON.health)
+        #expect(released.inProjectBlock == false)
+        #expect(released.startTime == "14:00")
+        #expect(released.startDate == "2026-09-30")
+        #expect(released.previousStartTime == nil)
+        #expect(released.previousStartDate == nil)
+        #expect(released.timeBucket == "morning")
+        #expect(released.isScheduled == true)
+        await drain(planner)
+
+        let sent = await sentText(server, PlannerJSON.parked)
+        #expect(sent == ["{\"action\":\"project\",\"projectId\":\"\(PlannerJSON.health)\"}"])
+        #expect(planner.banner == nil)
+    }
+
+    /// Standup is filed "work" with Work's id: already Work by its folded
+    /// name and its id, so picking Work changes nothing and sends nothing,
+    /// as the bulk Move to project skips it.
+    @Test func theSameProjectByFoldedNameSendsNothing() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(extra: [PlannerJSON.foldedFilingJSON])))
+        let planner = await loaded(server)
+        let standup = try #require(planner.item(PlannerJSON.foldedFiling))
+        #expect(planner.canEdit("project", standup))
+
+        planner.edit(PlannerJSON.foldedFiling, .project(id: PlannerJSON.work, name: "Work"))
+        #expect(planner.item(PlannerJSON.foldedFiling) == standup)
+        #expect(planner.item(PlannerJSON.foldedFiling)?.project == "work")
+        #expect(planner.sync?.pending == 0)
+        await drain(planner)
+        let posts = await postCount(server)
+        #expect(posts == 0)
+    }
+
+    /// Weekly review is filed "Work" with no project id (a text-only name):
+    /// picking Work links it, the name and the id written, as the bulk Move
+    /// to project repairs a missing link.
+    @Test func aStaleLinkIsRepaired() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(extra: [PlannerJSON.nameOnlyJSON])))
+        await server.on(itemRoute(PlannerJSON.nameOnly), .status(200, ok))
+        let planner = await loaded(server)
+        #expect(planner.item(PlannerJSON.nameOnly)?.projectId == nil)
+
+        planner.edit(PlannerJSON.nameOnly, .project(id: PlannerJSON.work, name: "Work"))
+        let linked = try #require(planner.item(PlannerJSON.nameOnly))
+        #expect(linked.project == "Work")
+        #expect(linked.projectId == PlannerJSON.work)
+        await drain(planner)
+
+        let sent = await sentText(server, PlannerJSON.nameOnly)
+        #expect(sent == ["{\"action\":\"project\",\"projectId\":\"\(PlannerJSON.work)\"}"])
+    }
+
+    /// A subtask shows only in its parent's sheet, so it has no project
+    /// (`not_for_subtask`): the edit changes nothing and sends nothing.
+    @Test func aSubtaskHasNoProject() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(extra: [PlannerJSON.bagsJSON])))
+        let planner = await loaded(server)
+        let bags = try #require(planner.item(PlannerJSON.bags))
+        #expect(!planner.canEdit("project", bags))
+
+        planner.edit(PlannerJSON.bags, .project(id: PlannerJSON.work, name: "Work"))
+        #expect(planner.item(PlannerJSON.bags) == bags)
+        #expect(planner.sync?.pending == 0)
+        await drain(planner)
+        let posts = await postCount(server)
+        #expect(posts == 0)
+    }
+
+    /// A server from before 2f lists writes up to `repeat`: the project chip
+    /// stays read-only and a project edit sends nothing.
+    @Test func anOlderServerKeepsTheProjectReadOnly() async throws {
+        let partTwoE = PlannerJSON.allWrites.filter { $0 != "project" && $0 != "collect" }
+        #expect(partTwoE.last == "repeat")
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(writes: partTwoE)))
+        let planner = await loaded(server)
+        let groceries = try #require(planner.item(PlannerJSON.groceries))
+        #expect(!planner.canEdit("project", groceries))
+        #expect(planner.canEdit("repeat", groceries))
+
+        planner.edit(PlannerJSON.groceries, .project(id: PlannerJSON.work, name: "Work"))
+        #expect(planner.item(PlannerJSON.groceries) == groceries)
+        #expect(planner.sync?.pending == 0)
+        await drain(planner)
+        let posts = await postCount(server)
+        #expect(posts == 0)
+    }
+
+    /// A drop on an hour takes a task out of its project's block and clears
+    /// the stash it was parked with, as lib/item-edit.ts `scheduleTaskPatch`
+    /// writes them, so a later release has nothing stale to put back.
+    @Test func placingClearsTheStash() throws {
+        let item = try PlannerJSON.item(PlannerJSON.parkedJSON)
+        #expect(item.inProjectBlock == true)
+        #expect(item.previousStartTime == "14:00")
+
+        let placed = placing(item, on: PlannerJSON.today, startMin: 9 * 60)
+        #expect(placed.inProjectBlock == false)
+        #expect(placed.previousStartTime == nil)
+        #expect(placed.previousStartDate == nil)
+        #expect(placed.startTime == "09:00")
+        #expect(placed.startDate == PlannerJSON.today)
+    }
+
+    // MARK: Routines and seasons
+
+    /// Morning routine's members as the planner holds them now.
+    private func morning(_ planner: SamplePlanner) -> [UUID]? {
+        return planner.routines.first { $0.id == PlannerJSON.morning }?.itemIds
+    }
+
+    /// Autumn's members as the planner holds them now.
+    private func autumn(_ planner: SamplePlanner) -> [UUID]? {
+        return planner.seasons.first { $0.id == PlannerJSON.autumn }?.itemIds
+    }
+
+    /// A routine toggle shows at once and sends the one membership row:
+    /// Groceries put in Morning routine goes last, after Water and Stretch,
+    /// and reads the routine's name; taken out again, it leaves the list as
+    /// it was. Out again changes nothing and sends nothing.
+    @Test func aToggleShowsAtOnceAndSendsOneRow() async throws {
+        let server = FakeServer()
+        let routine = PlannerJSON.routineJSON(PlannerJSON.morning, "Morning routine",
+                                              [PlannerJSON.water, PlannerJSON.stretch])
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(routines: [routine])))
+        await server.on(itemRoute(PlannerJSON.groceries), .status(200, ok))
+        let planner = await loaded(server)
+        let groceries = PlannerJSON.groceries
+        let item = try #require(planner.item(groceries))
+        #expect(planner.canEdit("collect", item))
+        #expect(planner.routineNames(for: groceries).isEmpty)
+
+        planner.collect(groceries, kind: .routine, containerId: PlannerJSON.morning, member: true)
+        #expect(morning(planner) == [PlannerJSON.water, PlannerJSON.stretch, groceries])
+        #expect(planner.routineNames(for: groceries) == ["Morning routine"])
+        #expect(planner.item(groceries) == item)
+        planner.collect(groceries, kind: .routine, containerId: PlannerJSON.morning, member: false)
+        #expect(morning(planner) == [PlannerJSON.water, PlannerJSON.stretch])
+        #expect(planner.routineNames(for: groceries).isEmpty)
+        planner.collect(groceries, kind: .routine, containerId: PlannerJSON.morning, member: false)   // already so
+        #expect(morning(planner) == [PlannerJSON.water, PlannerJSON.stretch])
+        await drain(planner)
+
+        let sent = await sentText(server, groceries)
+        #expect(sent == [
+            "{\"action\":\"collect\",\"containerId\":\"\(PlannerJSON.morning)\",\"kind\":\"routine\",\"member\":true}",
+            "{\"action\":\"collect\",\"containerId\":\"\(PlannerJSON.morning)\",\"kind\":\"routine\",\"member\":false}",
+        ])
+        #expect(planner.banner == nil)
+    }
+
+    /// A season toggle sends its own kind: Water put in Autumn, then taken
+    /// out.
+    @Test func aSeasonToggleSendsItsKind() async throws {
+        let server = FakeServer()
+        let season = PlannerJSON.seasonJSON(PlannerJSON.autumn, "Autumn", [PlannerJSON.stretch])
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(seasons: [season])))
+        await server.on(itemRoute(PlannerJSON.water), .status(200, ok))
+        let planner = await loaded(server)
+
+        planner.collect(PlannerJSON.water, kind: .season, containerId: PlannerJSON.autumn, member: true)
+        #expect(autumn(planner) == [PlannerJSON.stretch, PlannerJSON.water])
+        #expect(planner.seasonNames(for: PlannerJSON.water) == ["Autumn"])
+        planner.collect(PlannerJSON.water, kind: .season, containerId: PlannerJSON.autumn, member: false)
+        #expect(autumn(planner) == [PlannerJSON.stretch])
+        await drain(planner)
+
+        let sent = await sentText(server, PlannerJSON.water)
+        #expect(sent == [
+            "{\"action\":\"collect\",\"containerId\":\"\(PlannerJSON.autumn)\",\"kind\":\"season\",\"member\":true}",
+            "{\"action\":\"collect\",\"containerId\":\"\(PlannerJSON.autumn)\",\"kind\":\"season\",\"member\":false}",
+        ])
+    }
+
+    /// A subtask shows only in its parent's sheet, so it joins nothing
+    /// (`not_collectible`): the toggle changes nothing and sends nothing.
+    @Test func aSubtaskJoinsNothing() async throws {
+        let server = FakeServer()
+        let routine = PlannerJSON.routineJSON(PlannerJSON.morning, "Morning routine", [PlannerJSON.water])
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(extra: [PlannerJSON.bagsJSON],
+                                                                       routines: [routine])))
+        let planner = await loaded(server)
+        let bags = try #require(planner.item(PlannerJSON.bags))
+        #expect(!planner.canEdit("collect", bags))
+
+        planner.collect(PlannerJSON.bags, kind: .routine, containerId: PlannerJSON.morning, member: true)
+        #expect(morning(planner) == [PlannerJSON.water])
+        #expect(planner.sync?.pending == 0)
+        await drain(planner)
+        let posts = await postCount(server)
+        #expect(posts == 0)
+    }
+
+    /// A routine or season the planner doesn't hold (one the last fetch
+    /// didn't bring, or of the other kind) is never written to: nothing
+    /// changes and nothing is sent.
+    @Test func aContainerThePlannerDoesNotHoldSendsNothing() async throws {
+        let server = FakeServer()
+        let routine = PlannerJSON.routineJSON(PlannerJSON.morning, "Morning routine", [PlannerJSON.water])
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(routines: [routine])))
+        let planner = await loaded(server)
+        let routines = planner.routines
+        let seasons = planner.seasons
+
+        planner.collect(PlannerJSON.groceries, kind: .routine, containerId: "0d000000-0000-4000-8000-0000000000ff",
+                        member: true)
+        planner.collect(PlannerJSON.groceries, kind: .season, containerId: PlannerJSON.morning, member: true)
+        #expect(planner.routines == routines)
+        #expect(planner.seasons == seasons)
+        #expect(planner.sync?.pending == 0)
+        await drain(planner)
+        let posts = await postCount(server)
+        #expect(posts == 0)
+    }
+
+    /// A server from before 2f-b lists writes up to `project`: the routine
+    /// and season chips stay read-only and a toggle sends nothing.
+    @Test func anOlderServerKeepsMembershipReadOnly() async throws {
+        let partTwoF = PlannerJSON.allWrites.filter { $0 != "collect" }
+        #expect(partTwoF.last == "project")
+        let server = FakeServer()
+        let routine = PlannerJSON.routineJSON(PlannerJSON.morning, "Morning routine", [PlannerJSON.water])
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(writes: partTwoF, routines: [routine])))
+        let planner = await loaded(server)
+        let groceries = try #require(planner.item(PlannerJSON.groceries))
+        #expect(!planner.canEdit("collect", groceries))
+        #expect(planner.canEdit("project", groceries))
+
+        planner.collect(PlannerJSON.groceries, kind: .routine, containerId: PlannerJSON.morning, member: true)
+        #expect(morning(planner) == [PlannerJSON.water])
+        #expect(planner.sync?.pending == 0)
+        await drain(planner)
+        let posts = await postCount(server)
+        #expect(posts == 0)
     }
 
     // MARK: The banner

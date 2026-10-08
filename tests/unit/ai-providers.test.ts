@@ -25,6 +25,7 @@ import {
   toProviderError,
   type ProviderErrorKind,
 } from '@/lib/ai-server/errors';
+import { checkConnection } from '@/lib/ai-server/check';
 import { BUILTIN_BASE_URLS, credentialsFor, getAdapter } from '@/lib/ai-server/providers';
 import type { CompletionRequest, ProviderCredentials } from '@/lib/ai-server/providers/types';
 import type { ModelProviderId } from '@/lib/ai-types';
@@ -511,6 +512,8 @@ describe('the error map', () => {
     [401, 'call', 'anthropic', undefined, 'auth'],
     [403, 'verify', 'openai', undefined, 'auth'],
     [403, 'call', 'openai', undefined, 'forbidden'],
+    [403, 'verify', 'openai', 'unsupported_country_region_territory', 'region'],
+    [403, 'call', 'openai', 'unsupported_country_region_territory', 'region'],
     [400, 'verify', 'gemini', undefined, 'auth'],
     [400, 'call', 'gemini', undefined, 'bad_request'],
     [400, 'verify', 'openai', undefined, 'bad_request'],
@@ -547,10 +550,30 @@ describe('the error map', () => {
     expect(toChatErrorCode('model_required')).toBe('bad_model');
     expect(toChatErrorCode('auth')).toBe('auth');
     expect(toChatErrorCode('empty')).toBe('empty');
+    expect(toChatErrorCode('daily_limit')).toBe('daily_limit');
+    expect(toChatErrorCode('region')).toBe('region');
     expect(httpStatusFor('blocked_url')).toBe(400);
     expect(httpStatusFor('model_required')).toBe(400);
     expect(httpStatusFor('timeout')).toBe(504);
+    expect(httpStatusFor('region')).toBe(403);
+    expect(httpStatusFor('daily_limit')).toBe(429);
     expect(httpStatusFor('auth')).toBe(502);
+  });
+
+  it('keeps a reset time it was given, and only a real one', () => {
+    expect(new ProviderError('daily_limit', 429, '2026-10-02T07:00:00Z').resetAt).toBe('2026-10-02T07:00:00.000Z');
+    expect(new ProviderError('daily_limit', 429).resetAt).toBeUndefined();
+    expect(new ProviderError('daily_limit', 429, 'tomorrow').resetAt).toBeUndefined();
+  });
+
+  it('reads Anthropic’s billing error as quota, wherever it arrives', () => {
+    // A 402 says the same; the type carries it on a stream's error event too,
+    // which has no status at all.
+    const billing = Object.assign(new Error('x'), { type: 'billing_error' });
+    expect(toProviderError(billing, 'anthropic', 'call').kind).toBe('quota');
+    expect(toProviderError(Object.assign(new Error('x'), { type: 'billing_error', status: 402 }), 'anthropic', 'call').status).toBe(402);
+    // Only Anthropic's: nobody else sends that type.
+    expect(toProviderError(billing, 'openai', 'call').kind).toBe('upstream');
   });
 
   it('logs only route, provider, kind and status', () => {
@@ -569,12 +592,23 @@ describe('the error map', () => {
 
   // Chat and propose show this copy verbatim, where there is no key, model or
   // address field: each line must say what to do next, and a fix that needs a
-  // field must say it lives in Settings.
+  // field must say it lives in Settings. `daily_limit` is the exception: its
+  // next step is waiting, and the line says when.
   it('every shown message names a next step', () => {
     const NEXT_STEP = /\b(Try|Pick|Check|Change|Reconnect|Enter)\b/;
     for (const [kind, msg] of Object.entries(USER_MESSAGES)) {
-      if (kind === 'aborted') continue;
+      if (kind === 'aborted' || kind === 'daily_limit') continue;
       expect.soft(msg, kind).toMatch(NEXT_STEP);
+    }
+    expect(USER_MESSAGES.daily_limit).toMatch(/\bresets\b/);
+  });
+
+  // A hint thrown from the fetch layer (error-hints.ts) reaches the route as
+  // the error's cause. The OpenAI SDK drops the cause when the rejection reads
+  // like a timeout, so no copy of ours may read like one.
+  it('no message reads as a timeout, which would lose a thrown hint', () => {
+    for (const [kind, msg] of Object.entries(USER_MESSAGES)) {
+      expect.soft(msg, kind).not.toMatch(/timed? ?out/i);
     }
   });
 
@@ -904,6 +938,177 @@ describe('Other (custom) verify and list', () => {
       const err = await rejection(collect(it));
       expect(err.kind).toBe('upstream');
     });
+  });
+});
+
+// ── the check's test question ───────────────────────────────────────────────
+
+describe('ping: one streamed test question, one output token', () => {
+  const signal = () => new AbortController().signal;
+
+  it('OpenAI sends max_completion_tokens, streamed, and reads it to the end', async () => {
+    route = () => openaiSse([delta('o'), delta(null, 'length')]);
+    await getAdapter('openai').ping(creds('openai'), 'gpt-5-mini', signal());
+    expect(seen.map((r) => `${r.method} ${r.url}`)).toEqual(['POST https://api.openai.com/v1/chat/completions']);
+    const body = lastBody();
+    expect(body).toMatchObject({ model: 'gpt-5-mini', stream: true, max_completion_tokens: 1 });
+    expect(body).not.toHaveProperty('max_tokens');
+    expect(body.messages).toEqual([{ role: 'user', content: 'ping' }]);
+  });
+
+  it.each(['gemini', 'openrouter', 'custom'] as const)('%s sends max_tokens', async (id) => {
+    route = () => openaiSse([delta(null, 'length')]);
+    const c = id === 'custom' ? creds('custom', 'https://llm.example.com/v1') : creds(id);
+    await getAdapter(id).ping(c, 'some-model', signal());
+    const body = lastBody();
+    expect(body).toMatchObject({ model: 'some-model', stream: true, max_tokens: 1 });
+    expect(body).not.toHaveProperty('max_completion_tokens');
+  });
+
+  it('a model that only refuses a STREAMED request rejects the ping as bad_request', async () => {
+    // The question Ask asks is streamed, so the check asks it that way too.
+    route = (r) => (JSON.parse(r.body ?? '{}').stream === true ? json({ error: 'unverified org' }, 400, noRetry) : openaiSse([]));
+    expect((await rejection(getAdapter('openai').ping(creds('openai'), 'gpt-5-mini', signal()))).kind).toBe('bad_request');
+  });
+
+  it('the check still passes that key: a stream-only refusal is a bad_request, which is the model’s business', async () => {
+    // Records today's behavior, not a goal: an org OpenAI has not verified to
+    // stream its default model is saved as working, and Ask then fails on
+    // every send. No kind outside the check's pass list reads this 400 yet.
+    route = (r) =>
+      r.method === 'GET'
+        ? openaiModels(['gpt-5-mini'])
+        : json(
+            {
+              error: {
+                message: 'Your organization must be verified to stream this model.',
+                type: 'invalid_request_error',
+                param: 'stream',
+                code: 'unsupported_value',
+              },
+            },
+            400,
+            noRetry
+          );
+    const out = await checkConnection(getAdapter('openai'), creds('openai'), {
+      signal: signal(),
+      deadline: Date.now() + 20_000,
+    });
+    expect(seen.map((r) => r.method)).toEqual(['GET', 'POST']);
+    expect(JSON.parse(seen[1].body ?? '{}').stream).toBe(true);
+    expect(out.model).toBe('gpt-5-mini');
+    expect(out.ping).toEqual({ ok: true });
+  });
+
+  it('a 403 is the model’s or the region’s, never the key’s: the list already proved the key', async () => {
+    route = () => json({ error: 'gated' }, 403, noRetry);
+    expect((await rejection(getAdapter('openai').ping(creds('openai'), 'gpt-5', signal()))).kind).toBe('forbidden');
+    route = () => json({ error: 'no' }, 401, noRetry);
+    expect((await rejection(getAdapter('openai').ping(creds('openai'), 'gpt-5', signal()))).kind).toBe('auth');
+  });
+
+  it('is never retried: one request, whatever the answer', async () => {
+    route = () => json({ error: { message: 'slow down' } }, 429);
+    expect((await rejection(getAdapter('openai').ping(creds('openai'), 'gpt-5', signal()))).kind).toBe('rate_limit');
+    expect(seen).toHaveLength(1);
+  });
+
+  it('a stream that ends because the signal aborted is no answer', async () => {
+    const ac = new AbortController();
+    route = () => {
+      ac.abort();
+      return openaiSse([delta('o')]);
+    };
+    expect((await rejection(getAdapter('openai').ping(creds('openai'), 'gpt-5', ac.signal))).kind).toBe('aborted');
+  });
+
+  it('Anthropic sends one message with max_tokens 1, not streamed', async () => {
+    route = () =>
+      json({ id: 'm', type: 'message', role: 'assistant', model: 'claude-sonnet-4-5', stop_reason: 'max_tokens', content: [{ type: 'text', text: 'p' }], usage: { input_tokens: 1, output_tokens: 1 } });
+    await getAdapter('anthropic').ping(creds('anthropic'), 'claude-sonnet-4-5', signal());
+    expect(seen[0].url).toBe('https://api.anthropic.com/v1/messages');
+    expect(lastBody()).toEqual({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 1,
+      messages: [{ role: 'user', content: 'ping' }],
+    });
+  });
+
+  it('Anthropic: a no-credit 400 arrives as bad_request, for check.ts to judge', async () => {
+    route = () => json({ type: 'error', error: { type: 'invalid_request_error', message: 'credit balance is too low' } }, 400, noRetry);
+    const err = await rejection(getAdapter('anthropic').ping(creds('anthropic'), 'claude-sonnet-4-5', signal()));
+    expect(err.kind).toBe('bad_request');
+    expect(err.message).not.toContain('credit balance');
+  });
+});
+
+// ── error-body hints, through the SDK ───────────────────────────────────────
+
+describe('hints from the error body (gemini, openrouter)', () => {
+  const quota = (quotaId: string, quotaValue = '50') => ({
+    error: {
+      code: 429,
+      status: 'RESOURCE_EXHAUSTED',
+      message: 'Quota exceeded for key AIza-SENTINEL',
+      details: [{ '@type': 'type.googleapis.com/google.rpc.QuotaFailure', violations: [{ quotaId, quotaValue }] }],
+    },
+  });
+
+  it('Gemini: a per-day quota on the check reads as daily_limit, with a reset time of ours', async () => {
+    route = () => json(quota('GenerateRequestsPerDayPerProjectPerModel-FreeTier'), 429, noRetry);
+    const err = await rejection(getAdapter('gemini').ping(creds('gemini'), 'gemini-flash-latest', new AbortController().signal));
+    expect(err.kind).toBe('daily_limit');
+    expect(err.resetAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:00:00\.000Z$/);
+    expect(JSON.stringify(err, Object.getOwnPropertyNames(err))).not.toContain('SENTINEL');
+  });
+
+  it('Gemini: a per-minute quota is still a rate limit', async () => {
+    route = () => json(quota('GenerateRequestsPerMinutePerProjectPerModel'), 429, noRetry);
+    const err = await rejection(getAdapter('gemini').ping(creds('gemini'), 'gemini-flash-latest', new AbortController().signal));
+    expect(err.kind).toBe('rate_limit');
+  });
+
+  it('Gemini: a region refusal on a META call is region, not a bad key', async () => {
+    route = () =>
+      json({ error: { code: 400, status: 'FAILED_PRECONDITION', message: 'User location is not supported' } }, 400, noRetry);
+    const err = await rejection(
+      getAdapter('gemini').verify(creds('gemini'), { signal: new AbortController().signal })
+    );
+    expect(err.kind).toBe('region');
+  });
+
+  it('a chat call is never sent twice for a 400 hint: only the 429 one throws there', async () => {
+    // Throwing from `fetch` makes the SDK retry; the status alone would not.
+    route = () =>
+      json({ error: { code: 400, status: 'FAILED_PRECONDITION', message: 'User location is not supported' } }, 400, noRetry);
+    const err = await rejection(getAdapter('gemini').completeText(creds('gemini'), req()));
+    expect(err.kind).toBe('bad_request');
+    expect(seen).toHaveLength(1);
+  });
+
+  it('OpenRouter: a daily cap hours away is daily_limit; minutes away is not', async () => {
+    const reset = (atMs: number) => ({ error: { code: 429, message: 'rate-limited', metadata: { headers: { 'X-RateLimit-Reset': String(atMs) } } } });
+    const far = Date.now() + 6 * 60 * 60_000;
+    route = () => json(reset(far), 429, noRetry);
+    const err = await rejection(getAdapter('openrouter').ping(creds('openrouter'), 'x/y:free', new AbortController().signal));
+    expect(err.kind).toBe('daily_limit');
+    expect(Date.parse(err.resetAt!)).toBe(far);
+
+    route = () => json(reset(Date.now() + 20_000), 429, noRetry);
+    expect((await rejection(getAdapter('openrouter').ping(creds('openrouter'), 'x/y:free', new AbortController().signal))).kind).toBe('rate_limit');
+  });
+
+  it('OpenRouter: the key check reads a hint too, through the raw fetch', async () => {
+    route = () =>
+      json({ error: { code: 429, metadata: { headers: { 'X-RateLimit-Reset': String(Date.now() + 6 * 60 * 60_000) } } } }, 429, noRetry);
+    const err = await rejection(getAdapter('openrouter').verify(creds('openrouter'), { signal: new AbortController().signal }));
+    expect(err.kind).toBe('daily_limit');
+  });
+
+  it('nothing is read for a provider with no hints of its own', async () => {
+    route = () => json(quota('GenerateRequestsPerDayPerProjectPerModel-FreeTier'), 429, noRetry);
+    const err = await rejection(getAdapter('openai').ping(creds('openai'), 'gpt-5', new AbortController().signal));
+    expect(err.kind).toBe('rate_limit');
   });
 });
 

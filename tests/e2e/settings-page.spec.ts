@@ -65,10 +65,43 @@ test.describe('Settings page', () => {
     await expect(row(page, 'rituals.morningCheck')).toBeVisible();
 
     // …and arriving directly works the same way.
-    await gotoSettings(page, 'beacon');
+    await gotoSettings(page, 'ai');
     await expect(row(page, 'beacon.provider')).toBeVisible();
     // The AI pane opens with the model connection, above its rows.
     await expect(page.getByTestId('model-connection-panel')).toBeVisible();
+  });
+
+  test('the AI pane lives at /settings/ai and keeps that address; /settings/beacon still opens it', async ({
+    page,
+  }) => {
+    // Read-only: nothing here connects, so the real gate is safe to ask.
+    const sections = page.getByRole('navigation', { name: 'Settings sections' });
+    const aiRow = sections.getByRole('button', { name: 'AI', exact: true });
+
+    // The address every link in the app uses: the pane, under the name it wears.
+    await gotoSettings(page, 'ai');
+    await expect(page.getByTestId('model-connection-panel')).toBeVisible();
+    await expect(row(page, 'beacon.provider')).toBeVisible();
+    await expect(aiRow).toHaveAttribute('aria-current', 'true');
+    await expect(page).toHaveURL(/\/settings\/ai$/);
+
+    // The rail goes there by the same name, never by the pane's id.
+    await sections.getByRole('button', { name: 'Rituals', exact: true }).click();
+    await expect(page).toHaveURL(/\/settings\/rituals$/);
+    await aiRow.click();
+    await expect(page).toHaveURL(/\/settings\/ai$/);
+    await expect(page.getByTestId('model-connection-panel')).toBeVisible();
+
+    // A deep link to one of its rows, sent to the wrong pane, routes itself
+    // to the alias too (and the row strips its ?focus= once it has arrived).
+    await page.goto('/settings/day?focus=beacon.provider');
+    await expect(row(page, 'beacon.provider')).toBeVisible({ timeout: 20_000 });
+    await expect(page).toHaveURL(/\/settings\/ai$/);
+
+    // The old address is kept, for links already out there.
+    await gotoSettings(page, 'beacon');
+    await expect(page.getByTestId('model-connection-panel')).toBeVisible();
+    await expect(page).toHaveURL(/\/settings\/beacon$/);
   });
 
   test('search filters across panes, counts out loud, and keeps rows live', async ({ page }) => {

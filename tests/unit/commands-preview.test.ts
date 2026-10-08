@@ -5,15 +5,20 @@ import { useSelectionStore } from '@/lib/selection-store';
 import { useUIStore } from '@/lib/ui-store';
 import {
   STATIC_COMMANDS,
+  PREVIEW_CHROME_IDS,
   PREVIEW_GATED_GROUPS,
   PREVIEW_GATED_IDS,
   gatedDuringPreview,
+  heldByPreview,
   isAvailable,
   resolveCommands,
   type Command,
   type CommandContext,
 } from '@/lib/commands';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useModsStore } from '@/lib/mods-store';
+import { useUndoStripStore } from '@/lib/undo-strip-store';
+import type { UserMod } from '@/lib/mods/schema';
 import { enableGoalsAndOrganize } from './support/extensions';
 import type { Goal, Item, ItemTypeDef, Routine, Season } from '@/lib/planner-types';
 
@@ -90,6 +95,8 @@ const GATED_DURING_PREVIEW: Record<string, boolean> = {
   // Ask's two doors (#382) ride their group, as rituals.chat does.
   'ask.newChat': true,
   'ask.history': true,
+  // Opens Settings → Make with its box focused: chrome in the 'mods' group (PREVIEW_CHROME_IDS).
+  'make.write': false,
   'rituals.eod': true,
   'workspace.toggleChat': false,
   'workspace.toggleSidebar': false,
@@ -108,6 +115,8 @@ const GATED_DURING_PREVIEW: Record<string, boolean> = {
   'settings.animations': false,
   'settings.morningCheck': false,
   'settings.eodReview': false,
+  // Switches off what a person made (user_mods), never a planner row: the safety switch stays live.
+  'settings.modsOff': false,
   'history.undo': true,
   'history.redo': true,
   'app.settings': false,
@@ -162,7 +171,23 @@ beforeEach(() => {
 });
 afterEach(() => {
   usePlannerStore.setState({ isPreview: false, isLoading: false } as never);
+  useModsStore.setState({ available: false, loaded: false, safeMode: false, rows: [] });
+  useUndoStripStore.setState({ entry: null } as never);
 });
+
+/** A switched-on recipe run from ⌘K (lib/commands/registry.ts recipeCommands). */
+const RECIPE: UserMod = {
+  id: 'mod-1',
+  userId: 'u1',
+  kind: 'recipe',
+  slug: 'reset',
+  name: 'Reset',
+  enabled: true,
+  manifest: { version: 1, trigger: { on: 'command' }, filters: {}, steps: [{ do: 'toast', text: 'x' }] },
+  disabledReason: null,
+  createdAt: '2026-03-01T00:00:00Z',
+  updatedAt: '2026-03-01T00:00:00Z',
+} as UserMod;
 
 describe('the preview classification of the command registry', () => {
   it('is frozen for every static command', () => {
@@ -170,9 +195,10 @@ describe('the preview classification of the command registry', () => {
     expect(actual).toEqual(GATED_DURING_PREVIEW);
   });
 
-  it('gates exactly the four data groups plus two ids', () => {
-    expect([...PREVIEW_GATED_GROUPS].sort()).toEqual(['create', 'history', 'items', 'rituals']);
+  it('gates exactly the five data groups plus two ids, less one chrome id', () => {
+    expect([...PREVIEW_GATED_GROUPS].sort()).toEqual(['create', 'history', 'items', 'mods', 'rituals']);
     expect([...PREVIEW_GATED_IDS].sort()).toEqual(['goto.overdue', 'workspace.selectAll']);
+    expect([...PREVIEW_CHROME_IDS]).toEqual(['make.write']);
   });
 });
 
@@ -225,6 +251,36 @@ describe('isAvailable while previewing', () => {
       expect(gatedDuringPreview(command), command.id).toBe(true);
       expect(isAvailable(command, ctx), command.id).toBe(false);
     }
+  });
+
+  it('gates what a person made: "Run recipe: …" writes through the store, so it waits for the landing', () => {
+    // Its engine refuses while the planner has not settled (lib/recipes/engine.ts engineReady), so
+    // ungated it would be a row that silently does nothing.
+    useModsStore.setState({ available: true, loaded: true, safeMode: false, rows: [RECIPE] });
+    seed(true);
+    const recipe = providerCommands().find((c) => c.id === 'mod.reset.run');
+    expect(recipe?.group).toBe('mods');
+    expect(gatedDuringPreview(recipe!)).toBe(true);
+    expect(isAvailable(recipe!, ctx)).toBe(false);
+    // Write a recipe with AI only opens Settings → Make: live through the preview.
+    expect(isAvailable(byId('make.write'), ctx)).toBe(byId('make.write').availableWhen!(ctx));
+    seed(false);
+    expect(isAvailable(recipe!, ctx)).toBe(true);
+  });
+
+  it("keeps Undo live for a strip row with its own take-back, which is not the planner's history", () => {
+    const onUndo = () => {};
+    seed(true);
+    usePlannerStore.setState({ canUndo: true } as never);
+    // The planner's own undo: refused, and its key held.
+    expect(isAvailable(byId('history.undo'), ctx)).toBe(false);
+    expect(heldByPreview(byId('history.undo'), ctx)).toBe(true);
+    // "AI is off" · Undo (lib/no-ai.ts): Ctrl+Z is that row's Undo, preview or not.
+    useUndoStripStore.setState({ entry: { id: 'ai-off-1', label: 'AI is off.', durationMs: 5000, onUndo } } as never);
+    expect(isAvailable(byId('history.undo'), ctx)).toBe(true);
+    expect(heldByPreview(byId('history.undo'), ctx)).toBe(false);
+    // Redo has no such row: still refused.
+    expect(isAvailable(byId('history.redo'), ctx)).toBe(false);
   });
 
   it('gates nothing when not previewing', () => {

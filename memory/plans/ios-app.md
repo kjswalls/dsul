@@ -10,10 +10,12 @@ under `/api/app/*`, Today's rules ported to DsulCore against fixtures the TS
 writes, and three writes (tick, braindump→hour, capture). "Try with sample
 data" on the sign-in screen keeps the PR 2 sample (and the drag spike) one tap
 away. One PR for all three parts, so merging deploys the routes and the app
-together.
+together. Sign in with Apple joins Google and the email link: Apple's button,
+GoTrue's id_token grant, and a sign-out when Apple says the Apple ID was
+revoked or changed.
 Item detail, part 1 adds the item sheet, opened from every surface: what the
 item is (read-only) and its verbs, with three more writes (skip, move, pause)
-on the same route. Part 2 makes it editable, in six PRs; the first (2a) edits
+on the same route. Part 2 makes it editable, in seven PRs; the first (2a) edits
 the title and the notes and adds Delete, with three more writes (title, notes,
 delete), and replaces PlannerSync's slots with a rebase per subject.
 Designs, the stack comparison and the board images live in the project's
@@ -57,7 +59,8 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   (lib/grouping.ts); `ItemToggle.swift` ← `lib/item-toggle.ts` and the store's
   resolution of it; `AuthCore.swift`, the pure half of sign-in (PKCE, the
   GoTrue requests, refresh verdicts, the callback check of
-  app/auth/ios/route.ts).
+  app/auth/ios/route.ts, the Apple nonce, the id_token grant and the name
+  write).
   Item detail adds `ItemVerbs.swift` ← `lib/item-verbs.ts` (each verb's gate,
   label and detail, `drawnState`/`occurrenceOn`) and `occursOn` from
   `lib/reminders/due.ts`; `RowMoves.swift` ← `lib/row-moves.ts` (the carry)
@@ -99,11 +102,19 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   `repeatEditPatch`); `repeatFrequencyOrder`, `repeatFrequencyLabel`,
   `weekdayLabel` and `weekdayOrder` to `Cadence.swift`; the two repeat
   sentences to `EditCopy.swift`; and `allowedFrequencies` to `Registry.swift`.
+  2f adds `.project` and `sameProjectName` to `ItemEdit.swift` (its step
+  ports `projectRefilePatch`), `projectId` and the stash to `Item.swift`,
+  `color` and `emoji` to `Project`, `containerKind` and `containerRequired`
+  to `Registry.swift`, and `ContainerWords` to `EditCopy.swift`, pinned to
+  `CONTAINER_KINDS` through the fixture. 2f-b adds `.collect` to
+  `ItemWriteBody.swift` and `settingMembership` (← the store's
+  `setItemsCollected`) in `Membership.swift`.
   Each cites what it mirrors.
 - `ios/Dsul/App`: `DsulApp` (one `AuthStore`), `AppGate` (sign-in screen,
   sample or the user's planner, keyed on `AuthStore.gateKey`), `AppConfig`.
   `ios/Dsul/Auth`: `AuthStore`, `TokenStore` (Keychain, or memory in tests),
-  `SignInView`. `ios/Dsul/Data`: `APIClient`, `PlannerSync`.
+  `SignInView`, `AppleAuthorization` (AuthenticationServices' half of Apple,
+  kept out of AuthStore). `ios/Dsul/Data`: `APIClient`, `PlannerSync`.
   `ios/Dsul/Item`: the item sheet (`ItemSheet`, `ItemDetail`, `VerbBar`,
   `ChipFlow`, `StreakChip`, `DayPickSheet`, and from part 2 `TitleField`,
   `NotesEditor`, `SubtaskField` and `StreakPopover`, and from 2c `Editors/`:
@@ -257,17 +268,18 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   VoiceOver, the largest text size, the lime).
 
 ## Item detail, part 2
-Six PRs, each shipping its routes with the app: 2a the title, the notes and
+Seven PRs, each shipping its routes with the app: 2a the title, the notes and
 Delete (below); 2b Add a subtask and Reset streak (in the streak chip's
 popover), and the Streaks switch honoured (below); 2c the chips as controls
 and "+ Add property" (priority, times a day, the reminder); 2d date and time;
-2e repeat; 2f project, routines and seasons. An older server's `writes` hides
-any editor it doesn't take, so the deploy order doesn't matter: against one
-without `addSubtask` there is no Add a subtask row, without `resetStreak` the
-streak popover has no Reset, and without `priority`, `timesPerDay`, `reminder`,
-`time` and `repeat` those chips stay read-only; the date chip still edits,
-through `move`, which every server that sends `writes` takes, so Add property
-then holds Date alone, for an undated task.
+2e repeat; 2f in two, the project (2f-a), then routines and seasons (2f-b).
+An older server's `writes` hides any editor it doesn't take, so the deploy
+order doesn't matter: against one without `addSubtask` there is no Add a
+subtask row, without `resetStreak` the streak popover has no Reset, and
+without `priority`, `timesPerDay`, `reminder`, `time`, `repeat`, `project`
+and `collect` those chips stay read-only; the date chip still edits, through
+`move`, which every server that sends `writes` takes, so Add property then
+holds Date alone, for an undated task.
 
 Decided (Kirby, 2026-10-03): part 1's look stays through part 2, and dsul's
 own flavour (square swatches, priority dots, a serif title) comes later as a
@@ -427,6 +439,36 @@ words are fixed on every surface, below.
   new rule left untrue is demoted (lib/goal-roles.ts, moved out of
   lib/agent-api.ts, whose PATCH runs it as before), on the user's client; a
   failure there is logged, and the answer is still `{ok: true}`.
+  2f's `project` (`projectId`, a uuid lowercased, or null for No project;
+  `.strict()`, so a name in the body is 400 `invalid`) goes through the same
+  handler. It reads `project, project_id, previous_start_time,
+  previous_start_date` on top of the shared row (which already has
+  `in_project_block`), and is refused under a subtask (400
+  `not_for_subtask`), on a type with no project axis (400 `no_project`) and,
+  for null, on a type whose container is required (400 `project_required`);
+  no shipped type meets the last two. Then it reads the project under RLS
+  (`id`, the user's, not in the Trash) and answers 409 `project_gone` for no
+  row, and for a foreign-key failure on the write (a project purged in
+  between). The write is `projectRefilePatch`, the bulk Move to project's
+  rule, which the store's `setItemsProject` imports back: the project's own
+  name and id, a parked task's release, `{}` when already there by folded
+  name and id. A habit's NULL project reads as `''`, so its clear always
+  writes (`group` cleared with it by `habitUpdatesToRow`); `group` itself is
+  never read.
+  2f-b's `collect` (`kind`, `routine` or `season`; `containerId`, a uuid
+  lowercased; `member`, a boolean; `.strict()`, so a list in the body is 400
+  `invalid`) reads nothing on top of the shared row, which has the type and
+  the parent `isCollectible` asks. It is refused under a subtask (400
+  `not_collectible`), then reads the routine or season under RLS (`id`, the
+  user's, not in the Trash) and answers 409 `container_gone` for no row, and
+  for a foreign-key failure on the write (one purged in between). The write
+  is one join-table row (lib/db.ts `addContainerMember` /
+  `removeContainerMember`), never the container's list: an add is an insert
+  at the routine's last place plus one (0 for the first; no place where a
+  member has none, so it sorts among those by id), and a member already is
+  the key's 23505, answered 200 with its place kept; a remove deletes that
+  row, and nothing to remove is 200 too. No item row, no event, no webhook,
+  as the browser's membership writes have none.
 - **Add a subtask** (2b). The Subtasks section shows whenever the item has
   subtasks or can take one (`canAddSubtask`: a type with subtasks that isn't
   itself a subtask, and `canWrite("addSubtask")`), headed "Subtasks", still a
@@ -505,8 +547,9 @@ words are fixed on every surface, below.
   the planner's `canEdit`); a menu writes at once, the reminder opens a
   sheet. From 2d the date and time chips edit too (below, with the hints
   "Changes the date" and "Changes the time"), and from 2e the repeat chip
-  (below, with the hint "Changes how it repeats"); the rest stay read-only
-  until 2f. An editable chip keeps
+  (below, with the hint "Changes how it repeats"), and from 2f the project
+  chip ("Changes the project"), and from 2f-b the routine and season chips
+  ("Changes the routines", "Changes the seasons"). An editable chip keeps
   part 1's look and gains a trailing chevron; its words, symbol and chevron
   draw in the label colour (`ChipView(editable: true)`), never lime, and it
   scales when pressed (`PressScaleStyle`) rather than fading. It is hit over
@@ -617,6 +660,33 @@ words are fixed on every surface, below.
   "Mon, Wed"), which Today's rows show, where the web's chip reads "Day 1" and
   "Mon Wed"; so seven days picked read "Daily" on the chip while its menu
   checks Custom days….
+- **Project** (2f). The project chip is a menu: No project (never on a type
+  whose container is required), then the projects in payload order with the
+  phone's dots, the current one checked by folded name; a name with no
+  project checks nothing, and a stored "none" (pre-#373 habits) reads as no
+  project, as the web's dialog reads it. A pick writes at once and No project
+  takes the chip away. Add property's Project ▸ lists the projects, with at
+  least one. Gated as `editAllowed(action: "project")` (not a subtask, a
+  type with the project axis). A task parked in its old project's block
+  leaves it, its own time and day back and the block's part of day kept, as
+  the web's bulk Move to project, and from 2f its item dialog, release it
+  (Q6). The dialog keeps a day or a time the same save set itself, and
+  files such a time where it falls, as before. The stash (`previousStartTime`,
+  `previousStartDate`) now decodes, so the phone's own scheduling steps clear
+  it as `scheduleTaskPatch` does: `editingTime` on a parked task, and a
+  drop's `placing`.
+- **Routines and seasons** (2f-b). Each chip is a menu of toggles, one per
+  routine (season), which stays open as you toggle; then one Remove from row
+  per membership, which writes and closes. Add property's Routine ▸ and
+  Season ▸ list them, with at least one; one pick adds the item and closes.
+  Gated as `editAllowed(action: "collect")` (`isCollectible`: not a
+  subtask). Each toggle is one `collect` write; an add goes last in a
+  routine's order. A toggle reads the membership live when tapped, and the
+  one that would empty the chip closes the menu first
+  (`.menuActionDismissBehavior(.disabled)` on every toggle but that one,
+  which takes `.enabled`; README check 13 confirms both). The sample has a
+  season, Autumn (Journal), and an empty routine, Wind down. No New routine,
+  New season or Organize on the phone.
 - **Labels.** The payload's `itemTypes` is `[{name, label, labelPlural}]`,
   from load_planner or, on the per-table fallback, `fetchItemTypes`, and null
   when the table is unreachable. The planner keeps them as `typeLabels` and
@@ -687,12 +757,28 @@ words are fixed on every surface, below.
   missing, empty, out of order, twice, or out of range), which the phone's
   gate never builds. `copy` gains the two repeat sentences. caps.json's types
   gain `allowedFrequencies`.
+  2f adds the project cases (driven through the bulk Move to project, name
+  and id, the release, the habit's always-written clear) with `projects` and
+  `containers`, the container words. caps.json's types gain `containerKind`
+  and `containerRequired`.
+  2f-b adds the collect cases (driven through the store's
+  `setItemsCollected`, the bulk bar's Add to / Remove from, which writes the
+  same end list as the item panel's chips, item-dialog.tsx `toggleRoutine` /
+  `toggleSeason` through `updateRoutine` / `updateSeason`), whose one key
+  of their own, `member`, holds the container's `itemIds` before and after:
+  an add appended, a remove filtered out, and each no-op, which
+  `settingMembership` must reproduce. The refusals are `not_collectible` (a
+  subtask) and two bodies the schema refuses (a container that isn't a uuid,
+  and a goal).
 - **Unproven on a device:** ios/README.md, "Editing an item" (checks 1-13:
   the title, the notes, the keyboard, Delete, adding subtasks, Reset streak
   and Streaks off, Add property, the chips and the Remind sheet, from 2d the
   Date menu and the Time sheet, from 2e the Repeat menu and sheet (checks 7
-  and 8), offline, VoiceOver, the largest text size, the lime, and the
-  platform behaviours they rest on).
+  and 8), from 2f the project menu and Add property's Project ▸ (checks 7
+  and 8, and the 2f lines of 9-13), from 2f-b the routine and season menus
+  and Add property's Routine ▸ and Season ▸ (likewise, with a stale web tab
+  keeping a phone toggle), offline, VoiceOver, the largest text size, the
+  lime, and the platform behaviours they rest on).
 
 ## CI
 `.github/workflows/ios.yml`, on PRs to main and pushes to main. A `changes`
@@ -740,8 +826,8 @@ and the PR would stall.
   token, inside GoTrue's reuse window (about 10s, from memory).
 - **Sign-out is `scope=local`**, so the web and the desktop stay signed in.
   The local wipe comes first, whatever the call does.
-- Sign in with Apple and universal links wait for a later PR; the email link
-  is the next section.
+- Sign in with Apple has its own section below; universal links wait for a
+  later PR; the email link is the next section.
 
 ## Email link
 "Email me a sign-in link" under Google: the link only. A typed 6-digit code
@@ -789,6 +875,131 @@ needs `{{ .Token }}` in two hosted email templates and waits on Kirby.
   email after a refused resend, and Google still caught by its sheet now that
   the app owns the scheme. ios/README.md lists the checks.
 
+## Sign in with Apple
+"Continue with Apple" under Google: Apple's own button and sheet, then
+GoTrue's id_token grant, with no browser, no redirect and no URL scheme. The
+setup in Apple's and Supabase's dashboards is in
+memory/plans/sign-in-with-apple.md; the phone needs nothing beyond it, since
+`app.dsul.ios` is already among the Apple provider's Client IDs.
+- **The button.** `SignInWithAppleButton(.continue)`, so the title
+  ("Continue with Apple", the web's words), the logo and the VoiceOver label
+  are Apple's. It sits under Google and above the email link, in the same
+  branch, so it shows exactly when Google does. Black in Light Mode, white in
+  Dark Mode (HIG), full width, as tall as Google's button (measured with
+  `onGeometryChange`, never under 44pt), and both are capsules. Its `.id` is
+  the colour scheme, so an appearance switch rebuilds it, but from a tap
+  until the attempt ends the id holds still: a rebuild drops the object
+  Apple's controller reports back to (its delegate is weak), and the attempt
+  would never end. While busy it is disabled and also takes no hits: no
+  source says the UIKit control under it honours `.disabled`, and a tap that
+  got through would open Apple's sheet even when AuthStore refused the
+  attempt. While Apple's sign-in runs, the message line says "Signing in…",
+  and Google's button keeps its own title.
+- **Large text.** Apple's title is 43% of its button's height and can't
+  follow Dynamic Type, so the lower stack stops growing at the first
+  accessibility size and the Google and email titles stay one line; the
+  title block above keeps scaling. The screen is a ScrollView at least as tall
+  as the screen, so it lays out as before and scrolls only when it doesn't
+  fit.
+- **No gate.** The button shows wherever Google does; the phone doesn't ask
+  whether Supabase has Apple on. The web gates so its button could ship
+  ahead of the setup, and the phone ships after it. A gate would need a
+  request on a signed-out launch, which makes none, and /api/app/config is
+  cached (in UserDefaults, and publicly for an hour), so it would lag a
+  switch anyway. A provider that is off answers `provider_disabled`: "Sign in
+  with Apple isn't available right now. Use Google or an email link." A
+  missing `app.dsul.ios` among the Client IDs is GoTrue's audience refusal,
+  with no code, so the phone says "Couldn't sign in. Try again." while the
+  web still signs in. Guideline 4.8 wants a login like Apple's wherever
+  Google is offered.
+- **The nonce.** One per attempt: `beginAppleSignIn()` makes 32 random bytes
+  (base64url, as PKCE's verifier), keeps them in memory only, and hands
+  Apple's request their lowercase hex SHA-256. The grant sends the RAW nonce,
+  which GoTrue hashes and compares with the token's claim (`token_oidc.go`).
+  GoTrue stores no nonce, so a replayed token with its raw nonce works until
+  it expires, and the guard is the phone's: `finishAppleSignIn` clears the
+  nonce first, whatever happens, and a completion with no attempt under way
+  is dropped. Accepted: a second tap that beats `.disabled` can end the live
+  attempt with a line, or reach GoTrue with a nonce-less token it refuses.
+  Nothing signs in wrongly, and the cost is one more tap.
+- **The grant.** `POST /auth/v1/token?grant_type=id_token` with
+  `{id_token, nonce, provider: "apple"}` and no Authorization (a sign-in,
+  never a link). The answer is the PKCE exchange's token response, kept the
+  same way: Keychain first, then signed in, then "Signed in as …" once. No
+  client secret: GoTrue checks the token against Apple's public keys, so the
+  web's six-monthly rotation never touches the phone. A blank `user.email`
+  (GoTrue sends `""` for a user without one) reads as none, for every
+  provider. Nothing retries on its own: a tap is a fresh attempt with a fresh
+  nonce, as a Google code is good once.
+- **The name.** Apple hands it to the app once, on the first consent, and
+  never in the token. After the grant, when Apple gave a name and the account
+  has none (`full_name`, else `name`, as `sessionUserFrom` in
+  lib/session-user-store.ts reads them), one `PUT /auth/v1/user` writes
+  `{data: {full_name, name}}`, the two keys GoTrue's own Apple callback
+  writes. No retry and no message: a failed write loses the name until the
+  user stops using Sign in with Apple for dsul and signs in again. The name
+  is GoTrue's `TrimSpace(first + " " + last)` with control characters
+  dropped, and none at all over 200 UTF-8 bytes, since it rides in every
+  access token. A name the account already has (Google's, or one the web
+  flow stored) stays. The phone shows no name for any provider; the web's
+  user card, profile menu and Ask greeting do.
+- **Credential state.** The session keeps the Apple user id it signed in
+  with (`Session.appleUserId`, in the same Keychain blob, kept across
+  refreshes). At launch, on every return to the front and on Apple's
+  `credentialRevokedNotification`, `checkAppleCredential()` asks
+  `credentialState(forUserID:)` (a local call) and, on `revoked` or
+  `notFound`, signs this phone out as Sign out does, with "You were signed
+  out. Sign in again to see your day." `notFound` is Apple's "the user
+  changed". `authorized`, `transferred` or an error keep the session, and a
+  Google or email session is never asked about. The notification names no
+  user, so it runs the same check rather than a blind sign-out. The web and
+  the desktop stay signed in: no server-to-server notifications are set up.
+- **Errors.** One line, in the message slot Google and the email link use. A
+  cancel says nothing. Any other failure of Apple's sheet: "Apple couldn't
+  sign you in. Try again." No network: "Couldn't reach dsul. Check your
+  connection and try again." Any other refusal: "Couldn't sign in. Try
+  again." A failed name write says nothing.
+- **Hide My Email.** Supabase finds the account by the Apple ID first, then
+  by a matching verified email, so an Apple Account's first sign-in to dsul,
+  on the web or the phone, decides: Hide My Email starts a separate, empty
+  account, and Share My Email opens the account with that address. After
+  that, the same Apple Account opens the same account whatever it shares.
+  The phone says nothing beyond "Signed in as …" (the relay address, for an
+  account Hide My Email made), as the web says nothing.
+- **The entitlement.** project.yml's `entitlements:` has XcodeGen write
+  `Dsul/Dsul.entitlements` (`com.apple.developer.applesignin: [Default]`),
+  gitignored like `Info.plist`, and set `CODE_SIGN_ENTITLEMENTS`. CI builds
+  unsigned, so nothing checks it there. A device build needs the paid team
+  (a Personal Team can't sign Sign in with Apple); a profile without the
+  capability fails Apple's request at once, as "Apple couldn't sign you in".
+- **Where it lives.** DsulCore's `AuthCore.swift`: the nonce and its hash,
+  the grant, the name write, the name rule and `displayName(in:)`.
+  `AppleAuthorization`: the request's scopes and nonce, the button's result
+  as `AppleSignInOutcome`, and the credential state, so AuthStore and its
+  tests need none of AuthenticationServices' types (only the
+  AppleAuthorization suite beside them imports it). `AuthStore`: the
+  attempt, the grant, the name write and the check. `SignInView`: the
+  button. `AppGate`: the check's three triggers, each in an unstructured
+  Task so the view swap a sign-out causes can't cancel its logout.
+- **Unproven on a device:** Apple's sheet and its first consent, the held
+  colour, the large-text layout, Stop Using, and a Hide My Email account
+  made on the web. ios/README.md lists the checks.
+
+**Next: account deletion.** App Store guideline 5.1.1(v) wants it in the
+app, and for an Apple account it means revoking its token with Apple's REST
+API. That PR gets a fresh authorization code at the moment of deletion:
+Delete account runs a new Apple request (Face ID, no scopes), takes the
+credential's `authorizationCode` and sends it at once to a new bearer-auth
+server route, which exchanges it at `https://appleid.apple.com/auth/token`
+(`grant_type=authorization_code`, `client_id=app.dsul.ios`, since a native
+code is issued to the bundle ID, and a client secret minted with
+`scripts/apple-client-secret.mjs --client-id app.dsul.ios`; today's is
+minted for `app.dsul.web`), revokes the refresh token it gets back at
+`https://appleid.apple.com/auth/revoke`, then deletes the account. A code is
+single-use and good for five minutes, which is why this PR keeps none and
+never reads `authorizationCode`. The secret and the `.p8` stay server-side,
+never in `ios/`.
+
 ## Data (PR 3)
 - **Routes, not tables.** `GET /api/app/planner` (items, projects,
   routines, seasons, the user's item types, six settings and the `writes` it
@@ -819,7 +1030,11 @@ needs `{{ .Token }}` in two hosted email templates and waits on Kirby.
   refetches once the queue drains, and the server's answer replaces every
   guess. A payload for another user is never shown.
 - **A revert, if that refetch fails too, is per subject** (an item; from 2f
-  also a routine's or a season's membership). Part 1 rebased the failed
+  also a routine's or a season's membership: a failed toggle puts the
+  membership back, at its old place in a routine's order, unless a later
+  toggle of the same membership landed; several in one revert go back newest
+  first, as deletes do, since each place was measured against the list the
+  earlier ones left). Part 1 rebased the failed
   write's slot, which part 2's writes cross: a repeat edit changes how later
   ticks read, a reset and a tick both move the streak, and a delete or a new
   subtask changes whether an item exists at all. So each subject with a
@@ -966,6 +1181,24 @@ functions:
   tick and `/api/reminders/act` after its own: through `after()` once the
   response is sent, with a service client that scopes the report by user. The
   nightly settlement stays the backstop.
+- **A project edit names the project by id**, and the route files the item
+  under that project's own name (`projectRefilePatch`, the bulk Move to
+  project's rule): nothing when the item is already there by folded name and
+  id, a link repair when only the id is stale, and a parked task released from
+  the block it leaves. A project in the Trash or gone is `project_gone`. Never
+  `group`.
+- **Membership is one row at a time** (`collect`): the route adds or removes
+  the one row (lib/db.ts `addContainerMember`, `removeContainerMember`) and
+  never takes a list, and the web's own whole-list writes carry the list they
+  last knew (`reconcileMembership`'s `known`), so a web tab older than a
+  phone toggle no longer undoes it. One gap is left and stated: a phone
+  removal that lands between a web write's read and its upsert (one round
+  trip) is put back by that upsert. A routine or season in the Trash is
+  `container_gone`. An add goes last in a routine's order, or, where the
+  routine has members with no place, among them by id. The cost of `known`,
+  taken (open question 2 of the 2f brief): a web write that failed is no
+  longer healed by that tab's next write to the same container, so the tab
+  shows the member the database lacks until it reloads.
 
 ## Port order
 recurrence → `isPausedOn` / `isOpenLoopOn` → `isItemActiveOn` →
@@ -1008,24 +1241,25 @@ animations.
 
 ## Not yet
 Week, density (`DensityMetrics`), swipe actions on rows, the zoom transition
-from the bar to the braindump sheet, the rest of item detail part 2
-(project, routines and seasons: 2f), undo or restore after a delete (the
-web's Trash restores it), Change type, Duplicate and Copy link, the rest of
+from the bar to the braindump sheet, creating a project from the phone (the
+web's New Project), creating a routine or season from the phone, the
+Organize console, undo or restore after a delete (the web's Trash restores it),
+Change type, Duplicate and Copy link, the rest of
 the sheet (a routine's or a season's hold, the goal chip once goals are in
 the payload, and any word that a repeat took a goal role away (the web then
 lists the item as a plain member, with no notice), the Beeminder row, the
 Streaks switch, which the
 phone honours, in the sheet and on Today's rows, but can't turn on or off,
-the thread and Ask, Focus), sign-in with Apple,
+the thread and Ask, Focus),
 universal links (the email link uses the custom scheme), unschedule, resize
 and moving existing blocks from the phone, the overdue tray, sinking completed rows,
 filters and `showPausedOnGrid` (the phone uses the defaults), syncing the
 timezone from the phone, notifications, Focus as a Live Activity, a
 local-stack password grant for development, and the web-side work the app
-still needs (a native push channel). Sign in with Apple is live on the web, and
-memory/plans/sign-in-with-apple.md says what the phone's native flow needs. App Store
-review will also want in-app account deletion and consent before sending data
-to a model. Notifications, the timezone write and the native push channel are
+still needs (a native push channel). Account deletion is next (App Store
+review wants it in the app), and for an Apple account it revokes the token
+with Apple (see "Sign in with Apple"). App Store review will also want consent
+before sending data to a model. Notifications, the timezone write and the native push channel are
 planned in [reminders-platforms.md](reminders-platforms.md) (§2.3 and its
 Phase 2: local `UNUserNotificationCenter` triggers computed by a DsulCore port
 of `lib/reminders/plan.ts`; APNs follows in its Phase 3 on the paid team Kirby

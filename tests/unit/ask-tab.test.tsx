@@ -672,7 +672,7 @@ describe("the dock's box", () => {
   });
 
   it.each([
-    ['the model id', CONNECTED_MODEL, 'gpt-4o-mini'],
+    ['the model, by name', CONNECTED_MODEL, 'GPT-4o mini'],
     ['OpenClaw and its agent', OPENCLAW_PLUGIN, 'OpenClaw · kirby-1'],
   ])('names who answers under it, at home and in a conversation: %s', (_, seed, label) => {
     unseed();

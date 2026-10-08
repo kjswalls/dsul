@@ -4,6 +4,7 @@ import * as connection from '@/app/api/ai/connection/route';
 import * as models from '@/app/api/ai/connection/models/route';
 import * as chat from '@/app/api/chat/route';
 import * as propose from '@/app/api/ai/propose/route';
+import * as make from '@/app/api/ai/make/route';
 import * as start from '@/app/api/ai/openrouter/start/route';
 import * as callback from '@/app/api/ai/openrouter/callback/[state]/route';
 import * as conversations from '@/app/api/ai/conversations/route';
@@ -74,8 +75,11 @@ vi.mock('@/lib/ai-server/connections', async (importOriginal) => {
     saveModelConnection: vi.fn(actual.saveModelConnection),
     setConnectionModel: vi.fn(actual.setConnectionModel),
     setConnectionStatus: vi.fn(actual.setConnectionStatus),
+    setConnectionLimit: vi.fn(actual.setConnectionLimit),
     deleteModelConnection: vi.fn(actual.deleteModelConnection),
     readOpenClawStatus: vi.fn(async () => ({ gateway: false, pluginChat: false, agent: false, agentId: null })),
+    readAIHidden: vi.fn(async () => false),
+    writeAIHidden: vi.fn(async () => true),
   };
 });
 
@@ -119,6 +123,7 @@ vi.mock('@/lib/ai-server/rate-limit', () => ({ takeToken: vi.fn(() => true) }));
 const adapter = vi.hoisted(() => ({
   verify: vi.fn(),
   listModels: vi.fn(),
+  ping: vi.fn(async () => {}),
   describeModel: vi.fn(),
   pickDefaultModel: vi.fn(() => 'gpt-4o-mini'),
   openStream: vi.fn(),
@@ -135,6 +140,9 @@ vi.mock('@/lib/ai-server/providers', () => ({
 
 const ORIGIN = 'https://do.dsul.app';
 const SENTINEL_KEY = 'sk-test-SENTINEL-9876';
+/** The same sentinel under Anthropic's own prefix: a key detected as another
+ * company's never reaches an upstream call (lib/ai-key-prefix.ts). */
+const ANTHROPIC_KEY = 'sk-ant-SENTINEL-9876';
 const ENV_KEY = Buffer.alloc(32, 3).toString('base64');
 const ENV_BEFORE = { model: process.env.MODEL_KEYS_ENCRYPTION_KEY, openai: process.env.OPENAI_API_KEY };
 
@@ -158,10 +166,12 @@ const HANDLERS: Array<[string, (headers?: Record<string, string>) => Promise<Res
   ['connection PUT', (hd) => connection.PUT(req('PUT', '/api/ai/connection', { provider: 'openai', apiKey: SENTINEL_KEY }, hd)), 'json'],
   ['connection PATCH model', (hd) => connection.PATCH(req('PATCH', '/api/ai/connection', { provider: 'openai', model: 'gpt-4o' }, hd)), 'json'],
   ['connection PATCH recheck', (hd) => connection.PATCH(req('PATCH', '/api/ai/connection', { recheck: true }, hd)), 'json'],
+  ['connection PATCH hidden', (hd) => connection.PATCH(req('PATCH', '/api/ai/connection', { hidden: true }, hd)), 'json'],
   ['connection DELETE', (hd) => connection.DELETE(req('DELETE', '/api/ai/connection', undefined, hd)), 'json'],
   ['models GET', (hd) => models.GET(req('GET', '/api/ai/connection/models', undefined, hd)), 'json'],
   ['chat POST', (hd) => chat.POST(req('POST', '/api/chat', { messages: [{ role: 'user', content: 'hi' }] }, hd)), 'json'],
   ['propose POST', (hd) => propose.POST(req('POST', '/api/ai/propose', { prompt: 'plan' }, hd)), 'json'],
+  ['make POST', (hd) => make.POST(req('POST', '/api/ai/make', { kind: 'recipe', ask: 'when I tick Run' }, hd)), 'json'],
   ['openrouter start', (hd) => start.GET(req('GET', '/api/ai/openrouter/start', undefined, hd)), 'redirect'],
   [
     'openrouter callback',
@@ -210,9 +220,11 @@ const STATE_CHANGING = HANDLERS.filter(([name]) =>
     'connection PUT',
     'connection PATCH model',
     'connection PATCH recheck',
+    'connection PATCH hidden',
     'connection DELETE',
     'chat POST',
     'propose POST',
+    'make POST',
     // The conversation routes with an origin check. Never 'conversation GET':
     // a read has none, so here it would reach the auth-only mock's .from().
     'conversations search POST',
@@ -225,10 +237,28 @@ const STATE_CHANGING = HANDLERS.filter(([name]) =>
 let fetchSpy: ReturnType<typeof vi.spyOn>;
 let logs: unknown[][];
 
+/**
+ * Everything that writes the account's AI rows. The stand-ins for the
+ * hidden flag never reach createServiceClient, so "no service call" alone
+ * would not see a write of it; these are checked by name.
+ */
+const WRITES = [
+  conn.saveModelConnection,
+  conn.setConnectionModel,
+  conn.setConnectionStatus,
+  conn.setConnectionLimit,
+  conn.deleteModelConnection,
+  conn.writeAIHidden,
+];
+const expectNothingWritten = () => {
+  for (const f of WRITES) expect(f).not.toHaveBeenCalled();
+};
+
 beforeEach(() => {
   h.user = { id: 'user-1' };
   process.env.MODEL_KEYS_ENCRYPTION_KEY = ENV_KEY;
   vi.mocked(createServiceClient).mockClear();
+  for (const f of [...WRITES, conn.readAIHidden]) vi.mocked(f).mockClear();
   fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('no network in unit tests'));
   logs = [];
   for (const level of ['log', 'info', 'warn', 'error', 'debug'] as const) {
@@ -240,6 +270,8 @@ beforeEach(() => {
   adapter.verify.mockResolvedValue({ models: [{ id: 'gpt-4o-mini', label: 'gpt-4o-mini' }], listed: true });
   adapter.listModels.mockReset();
   adapter.listModels.mockResolvedValue({ models: [{ id: 'gpt-4o-mini', label: 'gpt-4o-mini' }], listed: true });
+  adapter.ping.mockReset();
+  adapter.ping.mockResolvedValue(undefined);
   adapter.openStream.mockReset();
   adapter.completeText.mockReset();
   adapter.describeModel.mockReset();
@@ -264,6 +296,7 @@ afterEach(() => {
     'saveModelConnection',
     'setConnectionModel',
     'setConnectionStatus',
+    'setConnectionLimit',
     'deleteModelConnection',
   ] as const) {
     (vi.mocked(conn[name]) as unknown as { mockImplementation(f: unknown): void }).mockImplementation(r[name]);
@@ -282,7 +315,9 @@ describe('no session', () => {
     if (kind === 'json') {
       expect(res.status).toBe(401);
       expect((await res.json()) as object).toMatchObject(
-        _name === 'chat POST' || _name === 'propose POST' ? { code: 'unauthorized' } : { error: 'unauthorized' }
+        _name === 'chat POST' || _name === 'propose POST' || _name === 'make POST'
+          ? { code: 'unauthorized' }
+          : { error: 'unauthorized' }
       );
     } else {
       expect(res.status).toBe(303);
@@ -290,6 +325,8 @@ describe('no session', () => {
     }
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(createServiceClient).not.toHaveBeenCalled();
+    expectNothingWritten();
+    expect(conn.readAIHidden).not.toHaveBeenCalled();
     expect(adapter.verify).not.toHaveBeenCalled();
   });
 });
@@ -308,6 +345,7 @@ describe('cross-site requests', () => {
     }
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(createServiceClient).not.toHaveBeenCalled();
+    expectNothingWritten();
   });
 });
 
@@ -360,6 +398,7 @@ describe('the key never comes back out (real secret-box)', () => {
         status: 'ok',
         last_error: null,
         checked_at: new Date().toISOString(),
+        limited_until: null,
       };
       store.set(userId, row);
       return row;
@@ -375,6 +414,12 @@ describe('the key never comes back out (real secret-box)', () => {
       const row = store.get(userId);
       if (!row || row.key_ciphertext !== expect_) return false;
       store.set(userId, { ...row, status, last_error: problem });
+      return true;
+    });
+    vi.mocked(conn.setConnectionLimit).mockImplementation(async (userId, expect_, until) => {
+      const row = store.get(userId);
+      if (!row || row.key_ciphertext !== expect_) return false;
+      store.set(userId, { ...row, limited_until: until });
       return true;
     });
     vi.mocked(conn.deleteModelConnection).mockImplementation(async (userId) => {
@@ -421,43 +466,69 @@ describe('the key never comes back out (real secret-box)', () => {
       expect(first.status).toBe(200);
       expect(store.get('user-1')?.key_ciphertext).toMatch(/^v1:/);
       expect(store.get('user-1')?.key_ciphertext).not.toContain('SENTINEL');
+      // The view is a closed field list: a cap's end time and a model's name,
+      // and nothing about the key itself, masked or otherwise.
+      const view = (await first.clone().json()).connection as Record<string, unknown>;
+      expect(Object.keys(view).sort()).toEqual([
+        'authMethod',
+        'baseUrl',
+        'checkedAt',
+        'limitedUntil',
+        'model',
+        'modelLabel',
+        'problem',
+        'provider',
+        'status',
+      ]);
+      expect(view.limitedUntil).toBeNull();
 
       await run('GET', connection.GET());
       await run('PATCH model', connection.PATCH(req('PATCH', '/api/ai/connection', { provider: 'openai', model: 'gpt-4o' })));
       await run('PATCH recheck', connection.PATCH(req('PATCH', '/api/ai/connection', { recheck: true })));
+      await run('PATCH hidden', connection.PATCH(req('PATCH', '/api/ai/connection', { hidden: true })));
       await run('models', models.GET(req('GET', '/api/ai/connection/models')));
       await run('chat', chat.POST(req('POST', '/api/chat', { messages: [{ role: 'user', content: 'hi' }] })));
       await run('propose', propose.POST(req('POST', '/api/ai/propose', { prompt: 'plan' })));
+      await run('make', make.POST(req('POST', '/api/ai/make', { kind: 'theme', ask: 'moss' })));
       // A replace whose verify fails with the key in the upstream error.
       adapter.verify.mockRejectedValueOnce(leaky());
       await run('PUT failing', connection.PUT(req('PUT', '/api/ai/connection', { provider: 'openai', apiKey: SENTINEL_KEY })));
+      // And one whose test question fails the same way, after the key itself
+      // passed: a second place an upstream body reaches a response.
+      adapter.ping.mockRejectedValueOnce(leaky401());
+      const unanswered = await run(
+        'PUT ping failing',
+        connection.PUT(req('PUT', '/api/ai/connection', { provider: 'openai', apiKey: SENTINEL_KEY }))
+      );
+      expect(unanswered.status).toBe(400);
+      expect(adapter.ping).toHaveBeenCalled();
       // Anthropic describe, also quoting the key. Connect Anthropic first so the
       // stored key is sealed for it: a row merely relabelled 'anthropic' keeps
       // an OpenAI seal, opens as unreadable, and describe is never asked.
       const anthropic = await run(
         'PUT anthropic',
-        connection.PUT(req('PUT', '/api/ai/connection', { provider: 'anthropic', apiKey: SENTINEL_KEY }))
+        connection.PUT(req('PUT', '/api/ai/connection', { provider: 'anthropic', apiKey: ANTHROPIC_KEY }))
       );
       expect(anthropic.status).toBe(200);
       expect(store.get('user-1')?.provider).toBe('anthropic');
       // A 401 that quotes the key: marked failing, conditionally, and answered in our words.
       const rejected = await run(
         'PATCH anthropic 401',
-        connection.PATCH(req('PATCH', '/api/ai/connection', { provider: 'anthropic', model: 'claude-opus-5-5' }))
+        connection.PATCH(req('PATCH', '/api/ai/connection', { provider: 'anthropic', model: 'claude-sonnet-4-5' }))
       );
       expect(rejected.status).toBe(400);
       expect(store.get('user-1')?.status).toBe('failing');
       // Any other failure that quotes it: the model is stored without effort.
       const described = await run(
         'PATCH anthropic',
-        connection.PATCH(req('PATCH', '/api/ai/connection', { provider: 'anthropic', model: 'claude-opus-5-5' }))
+        connection.PATCH(req('PATCH', '/api/ai/connection', { provider: 'anthropic', model: 'claude-sonnet-4-5' }))
       );
       expect(described.status).toBe(200);
-      expect(store.get('user-1')).toMatchObject({ model: 'claude-opus-5-5', model_meta: {} });
+      expect(store.get('user-1')).toMatchObject({ model: 'claude-sonnet-4-5', model_meta: {} });
       // Both PATCHes really asked, with the opened key, so neither case can go vacuous.
       expect(adapter.describeModel).toHaveBeenCalledTimes(2);
       for (const [creds] of adapter.describeModel.mock.calls) {
-        expect(creds).toMatchObject({ provider: 'anthropic', apiKey: SENTINEL_KEY });
+        expect(creds).toMatchObject({ provider: 'anthropic', apiKey: ANTHROPIC_KEY });
       }
       await run('DELETE', connection.DELETE(req('DELETE', '/api/ai/connection')));
 
@@ -483,12 +554,13 @@ describe('the key never comes back out (real secret-box)', () => {
 });
 
 describe('no app key', () => {
-  it('OPENAI_API_KEY in the environment with no connection: chat and propose are not_connected, nothing fetched', async () => {
+  it('OPENAI_API_KEY in the environment with no connection: chat, propose and make are not_connected, nothing fetched', async () => {
     process.env.OPENAI_API_KEY = 'sk-env-SENTINEL';
     vi.mocked(conn.openModelConnection).mockResolvedValue({ ok: false, reason: 'none' });
     const c = await chat.POST(req('POST', '/api/chat', { provider: 'openai', messages: [{ role: 'user', content: 'hi' }] }));
     const p = await propose.POST(req('POST', '/api/ai/propose', { provider: 'openai', prompt: 'plan' }));
-    for (const res of [c, p]) {
+    const m = await make.POST(req('POST', '/api/ai/make', { provider: 'openai', kind: 'recipe', ask: 'x' }));
+    for (const res of [c, p, m]) {
       expect(res.status).toBe(409);
       expectNoStore(res);
       const text = await res.text();
@@ -518,6 +590,7 @@ describe('a missing or invalid encryption key (real secret-box + connections)', 
       available: false,
       model: null,
       openclaw: { gateway: false, pluginChat: false, agent: false, agentId: null },
+      aiHidden: false,
     });
 
     const put = await connection.PUT(req('PUT', '/api/ai/connection', { provider: 'openai', apiKey: SENTINEL_KEY }));

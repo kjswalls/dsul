@@ -51,6 +51,8 @@ vi.mock('@/lib/ai-server/connections', async (importOriginal) => {
       }
     }),
     readOpenClawStatus: vi.fn(),
+    readAIHidden: vi.fn(async () => false),
+    writeAIHidden: vi.fn(async () => true),
     isReadable: vi.fn(() => true),
     toConnectionView: vi.fn(
       (row: ModelConnectionRow, readable: boolean): ModelConnectionView => ({
@@ -61,11 +63,14 @@ vi.mock('@/lib/ai-server/connections', async (importOriginal) => {
         status: readable ? row.status : 'failing',
         problem: readable ? (row.last_error as ModelConnectionView['problem']) : 'key_unreadable',
         checkedAt: row.checked_at,
+        limitedUntil: null,
+        modelLabel: null,
       })
     ),
     saveModelConnection: vi.fn(),
     setConnectionModel: vi.fn(),
     setConnectionStatus: vi.fn(async () => true),
+    setConnectionLimit: vi.fn(async () => true),
     deleteModelConnection: vi.fn(async () => {}),
     openModelConnection: vi.fn(async () => {
       throw new Error('these routes open the stored key themselves');
@@ -118,6 +123,7 @@ const adapter = vi.hoisted(() => ({
   completeText: vi.fn(),
   verify: vi.fn(),
   listModels: vi.fn(),
+  ping: vi.fn(),
   describeModel: vi.fn(),
   pickDefaultModel: vi.fn(),
 }));
@@ -152,6 +158,7 @@ function rowOf(o: Partial<ModelConnectionRow> = {}): ModelConnectionRow {
     status: 'ok',
     last_error: null,
     checked_at: '2026-10-01T00:00:00.000Z',
+    limited_until: null,
     ...o,
   };
 }
@@ -199,6 +206,10 @@ beforeEach(() => {
   vi.mocked(conn.readModelConnection).mockResolvedValue({ kind: 'row', row: rowOf() });
   vi.mocked(conn.readOpenClawStatus).mockReset();
   vi.mocked(conn.readOpenClawStatus).mockResolvedValue(OPENCLAW);
+  vi.mocked(conn.readAIHidden).mockReset();
+  vi.mocked(conn.readAIHidden).mockResolvedValue(false);
+  vi.mocked(conn.writeAIHidden).mockReset();
+  vi.mocked(conn.writeAIHidden).mockResolvedValue(true);
   vi.mocked(conn.isReadable).mockReset();
   vi.mocked(conn.isReadable).mockReturnValue(true);
   vi.mocked(conn.saveModelConnection).mockReset();
@@ -218,9 +229,13 @@ beforeEach(() => {
   );
   vi.mocked(conn.setConnectionStatus).mockReset();
   vi.mocked(conn.setConnectionStatus).mockResolvedValue(true);
+  vi.mocked(conn.setConnectionLimit).mockReset();
+  vi.mocked(conn.setConnectionLimit).mockResolvedValue(true);
   vi.mocked(conn.deleteModelConnection).mockReset();
   vi.mocked(conn.deleteModelConnection).mockResolvedValue(undefined);
-  for (const fn of [adapter.verify, adapter.listModels, adapter.describeModel, adapter.pickDefaultModel]) fn.mockReset();
+  for (const fn of [adapter.verify, adapter.listModels, adapter.ping, adapter.describeModel, adapter.pickDefaultModel])
+    fn.mockReset();
+  adapter.ping.mockResolvedValue(undefined);
   adapter.verify.mockResolvedValue({ models: LISTED, listed: true });
   adapter.listModels.mockResolvedValue({ models: LISTED, listed: true });
   adapter.pickDefaultModel.mockImplementation((r: { models: Array<{ id: string }> }) => r.models[0]?.id ?? null);
@@ -249,28 +264,31 @@ describe('GET /api/ai/connection', () => {
         status: 'ok',
         problem: null,
         checkedAt: '2026-10-01T00:00:00.000Z',
+        limitedUntil: null,
+        modelLabel: null,
       },
       openclaw: OPENCLAW,
+      aiHidden: false,
     });
     expect(conn.isReadable).toHaveBeenCalledWith(rowOf(), 'user-1');
   });
 
   it('nothing connected answers available with model null', async () => {
     vi.mocked(conn.readModelConnection).mockResolvedValue({ kind: 'none' });
-    expect(await json(await route.GET())).toEqual({ available: true, model: null, openclaw: OPENCLAW });
+    expect(await json(await route.GET())).toEqual({ available: true, model: null, openclaw: OPENCLAW, aiHidden: false });
   });
 
   it('no encryption key: available:false, OpenClaw still answered, the table never read', async () => {
     vi.mocked(loadEncryptionKey).mockReturnValue({ ok: false, reason: 'missing' });
     const res = await route.GET();
     expect(res.status).toBe(200);
-    expect(await json(res)).toEqual({ available: false, model: null, openclaw: OPENCLAW });
+    expect(await json(res)).toEqual({ available: false, model: null, openclaw: OPENCLAW, aiHidden: false });
     expect(conn.readModelConnection).not.toHaveBeenCalled();
   });
 
   it('no table yet: available:false', async () => {
     vi.mocked(conn.readModelConnection).mockResolvedValue({ kind: 'unavailable', reason: 'no_table' });
-    expect(await json(await route.GET())).toEqual({ available: false, model: null, openclaw: OPENCLAW });
+    expect(await json(await route.GET())).toEqual({ available: false, model: null, openclaw: OPENCLAW, aiHidden: false });
   });
 
   it('an unreadable key shows failing/key_unreadable from memory and writes nothing', async () => {
@@ -302,6 +320,70 @@ describe('GET /api/ai/connection', () => {
     await route.GET();
     expect(takeToken).not.toHaveBeenCalled();
     expect(adapter.verify).not.toHaveBeenCalled();
+  });
+
+  it('answers "No AI, thanks" beside the connection, which it leaves as it is', async () => {
+    vi.mocked(conn.readAIHidden).mockResolvedValue(true);
+    const body = await json(await route.GET());
+    expect(body.aiHidden).toBe(true);
+    expect(body.model).toMatchObject({ provider: 'openai', status: 'ok' });
+    expect(body.openclaw).toEqual(OPENCLAW);
+    expect(conn.readAIHidden).toHaveBeenCalledWith('user-1');
+  });
+
+  it('answers null when the database cannot say (060 not applied)', async () => {
+    vi.mocked(conn.readAIHidden).mockResolvedValue(null);
+    expect((await json(await route.GET())).aiHidden).toBeNull();
+  });
+
+  it('a failed read of it fails the whole answer, as the OpenClaw read does', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.mocked(conn.readAIHidden).mockRejectedValue(new conn.AiDbError('hidden', 'PGRST301'));
+    const res = await route.GET();
+    expect(res.status).toBe(503);
+    expect(await json(res)).toEqual({ error: 'server' });
+  });
+});
+
+// ── PATCH {hidden} ───────────────────────────────────────────────────────────
+
+describe('PATCH /api/ai/connection {hidden}', () => {
+  it.each([true, false])('writes %s for the session user and answers it, touching nothing else', async (hidden) => {
+    const res = await patch({ hidden });
+    expect(res.status).toBe(200);
+    expect(await json(res)).toEqual({ aiHidden: hidden });
+    expect(conn.writeAIHidden).toHaveBeenCalledWith('user-1', hidden);
+    expect(conn.deleteModelConnection).not.toHaveBeenCalled();
+    expect(conn.setConnectionStatus).not.toHaveBeenCalled();
+    expect(conn.setConnectionModel).not.toHaveBeenCalled();
+    expect(adapter.verify).not.toHaveBeenCalled();
+    expect(takeToken).not.toHaveBeenCalled();
+  });
+
+  it('a database that cannot keep it says unavailable, never ok', async () => {
+    vi.mocked(conn.writeAIHidden).mockResolvedValue(false);
+    const res = await patch({ hidden: true });
+    expect(res.status).toBe(503);
+    expect(await json(res)).toEqual({ error: 'unavailable' });
+  });
+
+  it('a failed write answers 503 server', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.mocked(conn.writeAIHidden).mockRejectedValue(new conn.AiDbError('hidden', '23514'));
+    const res = await patch({ hidden: true });
+    expect(res.status).toBe(503);
+    expect(await json(res)).toEqual({ error: 'server' });
+  });
+
+  it.each([
+    ['a string', { hidden: 'true' }],
+    ['null', { hidden: null }],
+    ['a second key', { hidden: true, recheck: true }],
+    ['a stowaway', { hidden: true, user_id: 'user-2' }],
+  ])('refuses %s with 400 invalid and writes nothing', async (_label, body) => {
+    const res = await patch(body);
+    expect(res.status).toBe(400);
+    expect(conn.writeAIHidden).not.toHaveBeenCalled();
   });
 });
 
@@ -379,8 +461,10 @@ describe('PUT /api/ai/connection', () => {
 
   it.each([
     ['auth', 400, { error: 'key_rejected' }],
-    ['network', 502, { error: 'unreachable' }],
-    ['timeout', 502, { error: 'unreachable' }],
+    ['quota', 402, { error: 'no_credit' }],
+    ['region', 403, { error: 'region' }],
+    ['network', 502, { error: 'network' }],
+    ['timeout', 502, { error: 'network' }],
     ['upstream', 502, { error: 'unreachable' }],
     ['rate_limit', 502, { error: 'unreachable' }],
     ['blocked_url', 400, { error: 'blocked_url', field: 'baseUrl' }],
@@ -391,9 +475,162 @@ describe('PUT /api/ai/connection', () => {
     const res = await put({ provider: 'openai', apiKey: 'sk-abcdefgh' });
     expect(res.status).toBe(status);
     expect(await json(res)).toEqual(body);
+    expect(adapter.ping).not.toHaveBeenCalled();
     expect(conn.saveModelConnection).not.toHaveBeenCalled();
     expect(conn.setConnectionStatus).not.toHaveBeenCalled();
+    expect(conn.setConnectionLimit).not.toHaveBeenCalled();
     expect(conn.deleteModelConnection).not.toHaveBeenCalled();
+  });
+
+  it('a daily limit on the key check is 409 with the time it lifts', async () => {
+    const at = '2026-10-08T07:00:00.000Z';
+    adapter.verify.mockRejectedValue(new ProviderError('daily_limit', 429, at));
+    const res = await put({ provider: 'gemini', apiKey: 'AIzaabcdefgh' });
+    expect(res.status).toBe(409);
+    expect(await json(res)).toEqual({ error: 'daily_limit', limitedUntil: at });
+    expect(conn.saveModelConnection).not.toHaveBeenCalled();
+  });
+
+  it('a daily limit with no reset time known says only that', async () => {
+    adapter.verify.mockRejectedValue(new ProviderError('daily_limit', 429));
+    const res = await put({ provider: 'gemini', apiKey: 'AIzaabcdefgh' });
+    expect(res.status).toBe(409);
+    expect(await json(res)).toEqual({ error: 'daily_limit' });
+  });
+
+  it('a key for another company is refused before a token is spent or a call is made', async () => {
+    const res = await put({ provider: 'openai', apiKey: 'sk-ant-abcdefghij' });
+    expect(res.status).toBe(400);
+    expect(await json(res)).toEqual({ error: 'wrong_provider', field: 'apiKey', detected: 'anthropic' });
+    expect(takeToken).not.toHaveBeenCalled();
+    expect(adapter.verify).not.toHaveBeenCalled();
+    expect(conn.saveModelConnection).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['anthropic', 'sk-or-v1-abcdefgh', 'openrouter'],
+    ['openrouter', 'AIzaSyAbcdefgh', 'gemini'],
+    ['gemini', 'sk-proj-abcdefgh', 'openai'],
+  ] as const)('%s refuses a %s-shaped key, naming what it saw', async (provider, apiKey, detected) => {
+    const res = await put({ provider, apiKey });
+    expect(res.status).toBe(400);
+    expect(await json(res)).toEqual({ error: 'wrong_provider', field: 'apiKey', detected });
+  });
+
+  it('another service is never second-guessed: any shape goes where it is sent', async () => {
+    adapter.verify.mockResolvedValue({ models: [{ id: 'm', label: 'm' }], listed: true });
+    const res = await put({
+      provider: 'custom',
+      apiKey: 'sk-ant-looks-anthropic',
+      baseUrl: 'https://llm.example.com/v1',
+    });
+    expect(res.status).toBe(200);
+    expect(adapter.verify).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks a model a test question, on the model it is about to save', async () => {
+    const res = await put({ provider: 'openai', apiKey: 'sk-test-abcdefgh' });
+    expect(res.status).toBe(200);
+    const [creds, model, signal] = adapter.ping.mock.calls[0];
+    expect(creds).toEqual({ provider: 'openai', apiKey: 'sk-test-abcdefgh', baseUrl: 'https://api.openai.com/v1' });
+    expect(model).toBe('gpt-4o-mini');
+    expect(signal).toBeInstanceOf(AbortSignal);
+    expect(conn.saveModelConnection).toHaveBeenCalledWith('user-1', expect.objectContaining({ model: 'gpt-4o-mini' }));
+  });
+
+  it('gives the whole check a 20 second budget', async () => {
+    const timeout = vi.spyOn(AbortSignal, 'timeout');
+    await put({ provider: 'openai', apiKey: 'sk-test-abcdefgh' });
+    expect(timeout).toHaveBeenCalledWith(20_000);
+  });
+
+  it.each([
+    ['auth', 400, { error: 'key_rejected' }],
+    ['quota', 402, { error: 'no_credit' }],
+    ['region', 403, { error: 'region' }],
+    ['network', 502, { error: 'network' }],
+    ['upstream', 502, { error: 'unreachable' }],
+    ['aborted', 502, { error: 'unreachable' }],
+  ] as const)('a test question that fails with %s saves nothing', async (kind, status, body) => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    adapter.ping.mockRejectedValue(new ProviderError(kind as ProviderErrorKind));
+    const res = await put({ provider: 'openai', apiKey: 'sk-test-abcdefgh' });
+    expect(res.status).toBe(status);
+    expect(await json(res)).toEqual(body);
+    // "Working" means a model answered: nothing less is kept.
+    expect(conn.saveModelConnection).not.toHaveBeenCalled();
+    expect(conn.setConnectionStatus).not.toHaveBeenCalled();
+    expect(conn.setConnectionLimit).not.toHaveBeenCalled();
+  });
+
+  it('a daily limit on the test question is 409, and the key is not kept', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const at = '2026-10-08T07:00:00.000Z';
+    adapter.ping.mockRejectedValue(new ProviderError('daily_limit', 429, at));
+    const res = await put({ provider: 'gemini', apiKey: 'AIzaabcdefgh' });
+    expect(res.status).toBe(409);
+    expect(await json(res)).toEqual({ error: 'daily_limit', limitedUntil: at });
+    expect(conn.saveModelConnection).not.toHaveBeenCalled();
+  });
+
+  it('a model that balks at the question is still a working key', async () => {
+    // The key answered; what is wrong is the model or the request, which is
+    // the picker's business.
+    adapter.ping.mockRejectedValue(new ProviderError('bad_request', 400));
+    const res = await put({ provider: 'openai', apiKey: 'sk-test-abcdefgh' });
+    expect(res.status).toBe(200);
+    expect(conn.saveModelConnection).toHaveBeenCalledWith('user-1', expect.objectContaining({ model: 'gpt-4o-mini' }));
+  });
+
+  it('nothing to ask means nothing is asked', async () => {
+    adapter.verify.mockResolvedValue({ models: [], listed: true });
+    const res = await put({ provider: 'gemini', apiKey: 'AIzaabcdefgh' });
+    expect(res.status).toBe(200);
+    expect(adapter.ping).not.toHaveBeenCalled();
+    expect(conn.saveModelConnection).toHaveBeenCalledWith('user-1', expect.objectContaining({ model: null }));
+  });
+
+  it('a custom host is not asked twice: its verify already asked its model', async () => {
+    adapter.verify.mockResolvedValue({ models: [], listed: false });
+    const res = await put({
+      provider: 'custom',
+      apiKey: 'gsk_abcdefgh',
+      baseUrl: 'https://llm.example.com/v1',
+      model: 'local-7b',
+    });
+    expect(res.status).toBe(200);
+    expect(adapter.ping).not.toHaveBeenCalled();
+  });
+
+  it('says when the account is on a free tier, and says nothing when it is not', async () => {
+    adapter.verify.mockResolvedValue({ models: [], listed: false, freeTier: true });
+    adapter.listModels.mockResolvedValue({ models: [{ id: 'a:free', label: 'A (free)', free: true }], listed: true });
+    expect((await json(await put({ provider: 'openrouter', apiKey: 'sk-or-abcdefgh' }))).freeTier).toBe(true);
+
+    adapter.verify.mockResolvedValue({ models: [], listed: false, freeTier: false });
+    const paid = await json(await put({ provider: 'openrouter', apiKey: 'sk-or-abcdefgh' }));
+    expect(paid).not.toHaveProperty('freeTier');
+  });
+
+  it('keeps the name a model was listed under, and drops one that only repeats the id', async () => {
+    adapter.verify.mockResolvedValue({
+      models: [{ id: 'meta/llama-3:free', label: 'Llama 3 (free)', free: true }],
+      listed: true,
+    });
+    adapter.listModels.mockResolvedValue({
+      models: [{ id: 'meta/llama-3:free', label: 'Llama 3 (free)', free: true }],
+      listed: true,
+    });
+    await put({ provider: 'openrouter', apiKey: 'sk-or-abcdefgh' });
+    expect(conn.saveModelConnection).toHaveBeenCalledWith(
+      'user-1',
+      expect.objectContaining({ modelMeta: { label: 'Llama 3 (free)' } })
+    );
+
+    vi.mocked(conn.saveModelConnection).mockClear();
+    adapter.verify.mockResolvedValue({ models: [{ id: 'gpt-4o', label: 'gpt-4o' }], listed: true });
+    await put({ provider: 'openai', apiKey: 'sk-test-abcdefgh' });
+    expect(conn.saveModelConnection).toHaveBeenCalledWith('user-1', expect.objectContaining({ modelMeta: {} }));
   });
 
   it('custom: the normalized base URL is checked and stored; a typed model is the hint and the choice', async () => {
@@ -494,7 +731,7 @@ describe('PUT /api/ai/connection', () => {
   it('Anthropic: the listed entry’s effort capability becomes model_meta', async () => {
     adapter.verify.mockResolvedValue({
       models: [
-        { id: 'claude-opus-5-5', label: 'Claude Opus 5.5', effortLow: true },
+        { id: 'claude-sonnet-4-5', label: 'Claude Sonnet 4.5', effortLow: true },
         { id: 'claude-3-haiku', label: 'Claude Haiku 3', effortLow: false },
       ],
       listed: true,
@@ -502,13 +739,13 @@ describe('PUT /api/ai/connection', () => {
     await put({ provider: 'anthropic', apiKey: 'sk-ant-abcdefgh' });
     expect(conn.saveModelConnection).toHaveBeenCalledWith(
       'user-1',
-      expect.objectContaining({ model: 'claude-opus-5-5', modelMeta: { effortLow: true } })
+      expect.objectContaining({ model: 'claude-sonnet-4-5', modelMeta: { effortLow: true, label: 'Claude Sonnet 4.5' } })
     );
     vi.mocked(conn.saveModelConnection).mockClear();
     await put({ provider: 'anthropic', apiKey: 'sk-ant-abcdefgh', model: 'claude-3-haiku' });
     expect(conn.saveModelConnection).toHaveBeenCalledWith(
       'user-1',
-      expect.objectContaining({ model: 'claude-3-haiku', modelMeta: { effortLow: false } })
+      expect.objectContaining({ model: 'claude-3-haiku', modelMeta: { effortLow: false, label: 'Claude Haiku 3' } })
     );
     vi.mocked(conn.saveModelConnection).mockClear();
     await put({ provider: 'anthropic', apiKey: 'sk-ant-abcdefgh', model: 'claude-unlisted' });
@@ -588,15 +825,15 @@ describe('PATCH /api/ai/connection {provider, model}', () => {
 
   it('Anthropic: one describe call, and model_meta.effortLow is stored', async () => {
     vi.mocked(conn.readModelConnection).mockResolvedValue({ kind: 'row', row: rowOf({ provider: 'anthropic' }) });
-    const res = await patch({ provider: 'anthropic', model: 'claude-opus-5-5' });
+    const res = await patch({ provider: 'anthropic', model: 'claude-sonnet-4-5' });
     expect(res.status).toBe(200);
     expect(takeToken).toHaveBeenCalledWith('user-1', 'check');
     expect(conn.openConnectionKey).toHaveBeenCalledWith('user-1');
     const [creds, model, signal] = adapter.describeModel.mock.calls[0];
     expect(creds).toEqual({ provider: 'anthropic', apiKey: 'sk-opened-key', baseUrl: 'https://api.anthropic.com' });
-    expect(model).toBe('claude-opus-5-5');
+    expect(model).toBe('claude-sonnet-4-5');
     expect(signal).toBeInstanceOf(AbortSignal);
-    expect(conn.setConnectionModel).toHaveBeenCalledWith('user-1', 'anthropic', 'claude-opus-5-5', { effortLow: true });
+    expect(conn.setConnectionModel).toHaveBeenCalledWith('user-1', 'anthropic', 'claude-sonnet-4-5', { effortLow: true });
   });
 
   it('Anthropic: an unknown model is 400 invalid on model, and nothing is stored', async () => {
@@ -611,7 +848,7 @@ describe('PATCH /api/ai/connection {provider, model}', () => {
   it('Anthropic: a rejected key is marked failing conditionally and answers key_rejected', async () => {
     vi.mocked(conn.readModelConnection).mockResolvedValue({ kind: 'row', row: rowOf({ provider: 'anthropic' }) });
     adapter.describeModel.mockRejectedValue(new ProviderError('auth', 401));
-    const res = await patch({ provider: 'anthropic', model: 'claude-opus-5-5' });
+    const res = await patch({ provider: 'anthropic', model: 'claude-sonnet-4-5' });
     expect(res.status).toBe(400);
     expect(await json(res)).toEqual({ error: 'key_rejected' });
     expect(conn.setConnectionStatus).toHaveBeenCalledWith('user-1', CIPHER, 'failing', 'key_rejected');
@@ -621,20 +858,20 @@ describe('PATCH /api/ai/connection {provider, model}', () => {
   it('Anthropic: a network failure stores the model with empty meta', async () => {
     vi.mocked(conn.readModelConnection).mockResolvedValue({ kind: 'row', row: rowOf({ provider: 'anthropic' }) });
     adapter.describeModel.mockRejectedValue(new ProviderError('network'));
-    const res = await patch({ provider: 'anthropic', model: 'claude-opus-5-5' });
+    const res = await patch({ provider: 'anthropic', model: 'claude-sonnet-4-5' });
     expect(res.status).toBe(200);
-    expect(conn.setConnectionModel).toHaveBeenCalledWith('user-1', 'anthropic', 'claude-opus-5-5', {});
+    expect(conn.setConnectionModel).toHaveBeenCalledWith('user-1', 'anthropic', 'claude-sonnet-4-5', {});
   });
 
   it('Anthropic: 429 on the check limiter; another provider’s key is never sent to Anthropic', async () => {
     vi.mocked(takeToken).mockReturnValue(false);
-    let res = await patch({ provider: 'anthropic', model: 'claude-opus-5-5' });
+    let res = await patch({ provider: 'anthropic', model: 'claude-sonnet-4-5' });
     expect(res.status).toBe(429);
     expect(await json(res)).toEqual({ error: 'busy' });
 
     vi.mocked(takeToken).mockReturnValue(true);
     vi.mocked(conn.readModelConnection).mockResolvedValue({ kind: 'row', row: rowOf({ provider: 'openai' }) });
-    res = await patch({ provider: 'anthropic', model: 'claude-opus-5-5' });
+    res = await patch({ provider: 'anthropic', model: 'claude-sonnet-4-5' });
     expect(res.status).toBe(409);
     expect(await json(res)).toEqual({ error: 'conflict' });
     expect(adapter.describeModel).not.toHaveBeenCalled();
@@ -661,6 +898,85 @@ describe('PATCH /api/ai/connection {recheck:true}', () => {
     expect(takeToken).toHaveBeenCalledWith('user-1', 'check');
     expect(adapter.verify.mock.calls[0][1].modelHint).toBe('gpt-4o-mini');
     expect(conn.setConnectionStatus).toHaveBeenCalledWith('user-1', CIPHER, 'ok', null);
+    // Whatever cap held is over, or belongs to a key that is gone.
+    expect(conn.setConnectionLimit).toHaveBeenCalledWith('user-1', CIPHER, null);
+  });
+
+  it('asks the stored model, never a fresh default', async () => {
+    vi.mocked(conn.readModelConnection).mockResolvedValue({ kind: 'row', row: rowOf({ model: 'gpt-4o' }) });
+    await patch({ recheck: true });
+    expect(adapter.ping.mock.calls[0][1]).toBe('gpt-4o');
+    expect(adapter.pickDefaultModel).not.toHaveBeenCalled();
+  });
+
+  it('gives the check the same 20 second budget connect has', async () => {
+    const timeout = vi.spyOn(AbortSignal, 'timeout');
+    await patch({ recheck: true });
+    expect(timeout).toHaveBeenCalledWith(20_000);
+  });
+
+  it('a daily limit is a connected key: status ok, with the time it lifts kept beside it', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const at = '2026-10-08T07:00:00.000Z';
+    adapter.ping.mockRejectedValue(new ProviderError('daily_limit', 429, at));
+    const res = await patch({ recheck: true });
+    expect(res.status).toBe(200);
+    expect(await json(res)).toEqual({ connection: expect.objectContaining({ status: 'ok' }) });
+    expect(conn.setConnectionStatus).toHaveBeenCalledWith('user-1', CIPHER, 'ok', null);
+    expect(conn.setConnectionLimit).toHaveBeenCalledWith('user-1', CIPHER, at);
+  });
+
+  it('a daily limit with no reset time known still records the cap', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    adapter.ping.mockRejectedValue(new ProviderError('daily_limit', 429));
+    expect((await patch({ recheck: true })).status).toBe(200);
+    expect(conn.setConnectionLimit).toHaveBeenCalledWith('user-1', CIPHER, null);
+  });
+
+  it('a database without 060 does not spoil the check', async () => {
+    // `setConnectionLimit` answers false, or throws, where the column is
+    // missing; the status it just wrote is still the answer.
+    vi.mocked(conn.setConnectionLimit).mockRejectedValue(new conn.AiDbError('limit', '42703'));
+    const res = await patch({ recheck: true });
+    expect(res.status).toBe(200);
+    expect(await json(res)).toEqual({ connection: expect.objectContaining({ status: 'ok' }) });
+  });
+
+  it('a rejected test question marks the key failing, as a rejected key check does', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.mocked(conn.readModelConnection)
+      .mockResolvedValueOnce({ kind: 'row', row: rowOf() })
+      .mockResolvedValueOnce({ kind: 'row', row: rowOf({ status: 'failing', last_error: 'key_rejected' }) });
+    adapter.ping.mockRejectedValue(new ProviderError('auth', 401));
+    const res = await patch({ recheck: true });
+    expect(res.status).toBe(200);
+    expect(await json(res)).toEqual({
+      connection: expect.objectContaining({ status: 'failing', problem: 'key_rejected' }),
+    });
+    expect(conn.setConnectionStatus).toHaveBeenCalledWith('user-1', CIPHER, 'failing', 'key_rejected');
+    expect(conn.setConnectionLimit).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['quota', 402, { error: 'no_credit' }],
+    ['region', 403, { error: 'region' }],
+    ['network', 502, { error: 'network' }],
+    ['upstream', 502, { error: 'unreachable' }],
+  ] as const)('a %s test question says so and leaves the status as it was', async (kind, status, body) => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    adapter.ping.mockRejectedValue(new ProviderError(kind as ProviderErrorKind));
+    const res = await patch({ recheck: true });
+    expect(res.status).toBe(status);
+    expect(await json(res)).toEqual(body);
+    expect(conn.setConnectionStatus).not.toHaveBeenCalled();
+    expect(conn.setConnectionLimit).not.toHaveBeenCalled();
+  });
+
+  it('a model that balks at the question leaves a working key working', async () => {
+    adapter.ping.mockRejectedValue(new ProviderError('bad_model', 404));
+    const res = await patch({ recheck: true });
+    expect(res.status).toBe(200);
+    expect(conn.setConnectionStatus).toHaveBeenCalledWith('user-1', CIPHER, 'ok', null);
   });
 
   it('works with no model chosen yet', async () => {
@@ -686,7 +1002,7 @@ describe('PATCH /api/ai/connection {recheck:true}', () => {
     adapter.verify.mockRejectedValue(new ProviderError('network'));
     const res = await patch({ recheck: true });
     expect(res.status).toBe(502);
-    expect(await json(res)).toEqual({ error: 'unreachable' });
+    expect(await json(res)).toEqual({ error: 'network' });
     expect(conn.setConnectionStatus).not.toHaveBeenCalled();
   });
 

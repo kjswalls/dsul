@@ -12,6 +12,7 @@ export type CommandGroupId =
   | 'recent'
   | 'create'
   | 'items'
+  | 'mods'
   | 'goto'
   | 'view'
   | 'rituals'
@@ -31,6 +32,7 @@ export const RECENT_HEADING = 'Recently used';
 export const COMMAND_GROUPS: { id: CommandGroupId; heading: string }[] = [
   { id: 'create', heading: 'Create' },
   { id: 'items', heading: 'Items' },
+  { id: 'mods', heading: 'Made by you' },
   { id: 'goto', heading: 'Go to' },
   { id: 'view', heading: 'View' },
   { id: 'rituals', heading: 'Rituals' },
@@ -229,6 +231,13 @@ export interface Command {
   /** Greys the row and blocks execution when false. */
   availableWhen?: (ctx: CommandContext) => boolean;
   /**
+   * A gated command (gatedDuringPreview) that may still run while the planner
+   * is the look-only preview, when this says so: what it would do then touches
+   * no planner row. Only `history.undo` has one, for a strip row with its own
+   * take-back ("AI is off" · Undo), which is not the planner's history.
+   */
+  liveDuringPreview?: (ctx: CommandContext) => boolean;
+  /**
    * Never rendered as a palette row, but still bindable and still listed in
    * the shortcuts modal. For commands that are meaningless from inside the
    * palette (focusing the omnibar you are already typing in) or that would
@@ -267,14 +276,23 @@ export function isHidden(command: Command, ctx: CommandContext): boolean {
 /**
  * The groups whose every command acts on planner rows: creates, item verbs
  * (and the provider-generated routine, season and goal rows, which ride
- * `items`), the rituals that send or snapshot the day, and undo/redo.
+ * `items`), the rituals that send or snapshot the day, undo/redo, and what a
+ * person made ("Run recipe: …" writes through the store's verbs, and a mod's
+ * own commands will too).
  */
 export const PREVIEW_GATED_GROUPS: ReadonlySet<CommandGroupId> = new Set<CommandGroupId>([
   'create',
   'items',
+  'mods',
   'rituals',
   'history',
 ]);
+
+/**
+ * Chrome in a gated group: it touches no planner row, so the preview leaves
+ * it live. `make.write` only opens Settings → Make with its box focused.
+ */
+export const PREVIEW_CHROME_IDS: ReadonlySet<string> = new Set(['make.write']);
 
 /**
  * Data commands in otherwise-chrome groups. ⌘A reads row ids straight out of
@@ -292,10 +310,15 @@ export const PREVIEW_GATED_IDS: ReadonlySet<string> = new Set([
  * The `app.*` console doors stay open — ui-store defers what they open.
  */
 export const gatedDuringPreview = (command: Command): boolean =>
-  PREVIEW_GATED_GROUPS.has(command.group) || PREVIEW_GATED_IDS.has(command.id);
+  (PREVIEW_GATED_GROUPS.has(command.group) && !PREVIEW_CHROME_IDS.has(command.id)) ||
+  PREVIEW_GATED_IDS.has(command.id);
+
+/** Gated, and the preview is up, and nothing about it right now is live (liveDuringPreview). */
+const refusedByPreview = (command: Command, ctx: CommandContext): boolean =>
+  gatedDuringPreview(command) && isPlannerPreviewing() && !command.liveDuringPreview?.(ctx);
 
 export function isAvailable(command: Command, ctx: CommandContext): boolean {
-  if (gatedDuringPreview(command) && isPlannerPreviewing()) return false;
+  if (refusedByPreview(command, ctx)) return false;
   return command.availableWhen ? command.availableWhen(ctx) : true;
 }
 
@@ -307,6 +330,6 @@ export function isAvailable(command: Command, ctx: CommandContext): boolean {
  * the landing.
  */
 export function heldByPreview(command: Command, ctx: CommandContext): boolean {
-  if (!gatedDuringPreview(command) || !isPlannerPreviewing()) return false;
+  if (!refusedByPreview(command, ctx)) return false;
   return command.availableWhen ? command.availableWhen(ctx) : true;
 }

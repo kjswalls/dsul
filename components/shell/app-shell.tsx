@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import {
   DndContext,
@@ -44,17 +45,23 @@ import { milestoneItemIds } from '@/lib/goals';
 import { tourHideAsk, tourShowAsk } from '@/lib/rail-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { openReviewFromLink } from '@/lib/eod-link';
+import { takeConnectReturn } from '@/lib/connect-return';
+import { AI_SETTINGS_PATH } from '@/lib/ai-types';
 import { flushSettings } from '@/lib/settings-service';
 import { useUIStore, openEditFor } from '@/lib/ui-store';
 import { ITEM_TYPES } from '@/lib/item-registry';
 import { useStreaksEnabled } from '@/lib/extension-gates';
 import { useExtensionsStore } from '@/lib/extensions-store';
-import { NUDGE_STREAKS_ON } from '@/lib/nudges/registry';
+import { NUDGE_RITUALS_INTRO, NUDGE_STREAKS_ON, ritualsNudgeReady } from '@/lib/nudges/registry';
+import { streakNudgeEnabled } from '@/lib/nudges/streak-gate';
+import { useMorningStore } from '@/lib/morning-store';
+import { useEODStore } from '@/lib/eod-store';
+import { settingsBelongToUser } from '@/lib/settings/hydration';
 import { adoptLegacyViewPrefs, useViewStore } from '@/lib/view-store';
 import { useDragStore } from '@/lib/drag-store';
 import { useSelectionStore } from '@/lib/selection-store';
 import { hoveredItem } from '@/lib/hovered-item';
-import { listGroupMovers, placementOf, resolveDrop } from '@/lib/dnd/handle-drag-end';
+import { listGroupMovers, parseProjectBlockId, placementOf, resolveDrop } from '@/lib/dnd/handle-drag-end';
 import { sidebarDropPlan } from '@/lib/dnd/sidebar-drop';
 import { toDateStr } from '@/lib/recurrence';
 import { useCommandShortcuts } from '@/hooks/use-command-shortcuts';
@@ -65,6 +72,7 @@ import { useOverdueSweep } from '@/hooks/use-overdue-sweep';
 import { useCompletionFiling } from '@/hooks/use-completion-filing';
 import { useDeferredDialogPromotion } from '@/hooks/use-deferred-dialog';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useOneTimeNudge } from '@/hooks/use-one-time-nudge';
 import { isOnboardingComplete } from '@/lib/user-profile';
 import { watchOnboardingAfterLoad } from '@/lib/onboarding-watch';
 import type { MobileTab } from '@/lib/mobile-nav-store';
@@ -105,6 +113,66 @@ function DragGhost() {
     <DragOverlay>
       {title !== null && <DraggableTaskOverlay title={title} count={groupCount} />}
     </DragOverlay>
+  );
+}
+
+/**
+ * The first-run toasts, "Streaks are on" and the rituals intro, with their own
+ * subscribers like DragGhost, so the stores they wait on never re-render
+ * AppShell. When each may show is streakNudgeEnabled (lib/nudges/streak-gate.ts)
+ * and ritualsNudgeReady (lib/nudges/registry.ts). Exported for
+ * tests/unit/first-run-nudges.test.tsx, which mounts this rather than a copy of
+ * its wiring.
+ */
+export function FirstRunNudges({
+  tourAnsweredFor,
+  tourShowing,
+}: {
+  tourAnsweredFor: string | null;
+  tourShowing: boolean;
+}) {
+  const streaksOn = useStreaksEnabled();
+  const extReady = useExtensionsStore((s) => s.configsLoaded);
+  const userId = usePlannerStore((s) => s.userId);
+  const hasHabit = usePlannerStore((s) => s.habits.length > 0);
+  const hasTasks = usePlannerStore((s) => s.tasks.length > 0);
+  const settingsHydratedUserId = useMorningStore((s) => s.settingsHydratedUserId);
+  const morningCheckEnabled = useMorningStore((s) => s.morningCheckEnabled);
+  const eodReviewEnabled = useEODStore((s) => s.eodReviewEnabled);
+  const streakNudgeOn = streakNudgeEnabled({
+    extReady,
+    streaksOn,
+    userId,
+    tourAnsweredFor,
+    tourShowing,
+    hasHabit,
+  });
+  const ritualsNudgeOn = ritualsNudgeReady({
+    settingsHydrated: settingsBelongToUser(userId, settingsHydratedUserId),
+    tourAnswered: !!userId && tourAnsweredFor === userId,
+    tourShowing,
+    hasTasks,
+    morningCheckEnabled,
+    eodReviewEnabled,
+  });
+  // One first-run toast at a time: while the streak nudge is up (or about to
+  // be), the rituals one waits its turn rather than stacking under it. An
+  // account with no habit gets no streak nudge, so its rituals one never waits.
+  const streaksNudgeUp = useOneTimeNudge(NUDGE_STREAKS_ON).active && streakNudgeOn;
+  // The gates only decide when a toast first shows. One already up, left from
+  // before a Replay tour brought this shell back, would sit over the tour, so
+  // both come down while the tour shows. A programmatic dismiss records
+  // nothing, and the fresh mount's latch lets each fire again after.
+  useEffect(() => {
+    if (!tourShowing) return;
+    toast.dismiss(NUDGE_STREAKS_ON);
+    toast.dismiss(NUDGE_RITUALS_INTRO);
+  }, [tourShowing]);
+  return (
+    <>
+      <OneTimeNudge id={NUDGE_STREAKS_ON} enabled={streakNudgeOn} />
+      <OneTimeNudge id={NUDGE_RITUALS_INTRO} enabled={ritualsNudgeOn && !streaksNudgeUp} />
+    </>
   );
 }
 
@@ -203,13 +271,10 @@ export function AppShell() {
   const [mounted, setMounted] = useState(false);
   const [showTour, setShowTour] = useState(false);
   const [tourUserId, setTourUserId] = useState<string | null>(null);
-  // The streak nudge fires only when streaks are provably ON: `configsLoaded`
-  // means the extensions store has answered, so we never nudge "turn streaks
-  // off" at someone who already did (streaksOn reads its default-true before
-  // hydration), and never at all when the extensions table is undeployed
-  // (configsLoaded stays false — the toggle would be a no-op there anyway).
-  const streaksOn = useStreaksEnabled();
-  const extReady = useExtensionsStore((s) => s.configsLoaded);
+  // Whose onboarding answer has come back, either way. Both first-run toasts
+  // wait for it, so neither can fire in the gap before a brand-new account's
+  // tour opens (FirstRunNudges).
+  const [tourAnsweredFor, setTourAnsweredFor] = useState<string | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -255,6 +320,7 @@ export function AppShell() {
         subscribe: usePlannerStore.subscribe,
         isComplete: isOnboardingComplete,
         onResult: (uid, needed) => {
+          setTourAnsweredFor(uid);
           if (needed) {
             setTourUserId(uid);
             setShowTour(true);
@@ -277,6 +343,24 @@ export function AppShell() {
       getState: usePlannerStore.getState,
       subscribe: usePlannerStore.subscribe,
       clearLink: () => window.history.replaceState({}, '', '/'),
+    });
+  }, []);
+
+  // OpenRouter sign-in's home return: ?connect=<result> says how a sign-in
+  // begun in the setup column ended, once the AI gate has answered, and opens
+  // the column again (lib/connect-return.ts, which says why it waits). Only
+  // this parameter comes off the address bar, at once.
+  useEffect(() => {
+    if (typeof window === 'undefined' || window.location.pathname !== '/') return;
+    return takeConnectReturn(window.location.search, {
+      clearLink: () => {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('connect');
+        window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+      },
+      // useIsMobile's own test (hooks/use-mobile.ts), read when the gate
+      // answers: at mount the hook has not measured yet.
+      isPhone: () => window.innerWidth < 768,
     });
   }, []);
 
@@ -392,8 +476,8 @@ export function AppShell() {
           acted = true;
         }
       } else if (overId.startsWith('projectblock:')) {
-        const proj = overId.slice('projectblock:'.length);
-        const ids = groupIds.filter((id) => tasks.find((t) => t.id === id)?.project === proj);
+        const proj = parseProjectBlockId(overId)?.projectName;
+        const ids = proj ? groupIds.filter((id) => tasks.find((t) => t.id === id)?.project === proj) : [];
         if (ids.length) {
           planner.moveTasksToProjectBlock(ids);
           acted = true;
@@ -693,8 +777,9 @@ export function AppShell() {
           userId={tourUserId}
           onComplete={() => setShowTour(false)}
           // The tour calls handleComplete() before this fires, so navigating
-          // away doesn't abandon it. Beacon is the pane the step is about.
-          onOpenSettings={() => router.push('/settings/beacon')}
+          // away doesn't abandon it. Settings → AI, by its alias, is the pane
+          // the step is about.
+          onOpenSettings={() => router.push(AI_SETTINGS_PATH)}
           // The tour shows Ask for its step and puts it back, never writing
           // `askOpen` (lib/rail-store.ts tourShowAsk, tourHideAsk).
           onExpandChat={tourShowAsk}
@@ -703,9 +788,10 @@ export function AppShell() {
         />
       )}
 
-      {/* First-run orientation, shown once: streaks are on, and how to quiet
-          them. Persistent toast, dismissed forever server-side. */}
-      <OneTimeNudge id={NUDGE_STREAKS_ON} enabled={extReady && streaksOn} />
+      {/* First-run orientation, each shown once: streaks are on and how to
+          quiet them, and the two rituals. Persistent toasts, dismissed forever
+          server-side. */}
+      <FirstRunNudges tourAnsweredFor={tourAnsweredFor} tourShowing={showTour} />
 
       <EODReview />
 

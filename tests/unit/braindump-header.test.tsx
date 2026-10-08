@@ -159,6 +159,20 @@ describe('braindump header: the count', () => {
     expect(count()).toBe('3 undated');
   });
 
+  it('never hides a recurring row under Hide finished (#215)', () => {
+    // A series' scalar status says nothing about any day, and the braindump has
+    // no day to ask about: the row draws open, so the filter must keep it.
+    seed([
+      ...FOUR,
+      task('r', { status: 'completed', repeatFrequency: 'daily', completedDates: ['2026-01-01'] }),
+    ]);
+    useViewStore.setState({ braindumpFilters: { ...EMPTY_VIEW_FILTERS, hideFinished: true } });
+    renderBraindump();
+    expect(screen.getByText('Task r')).toBeInTheDocument();
+    expect(screen.queryByText('Task d')).toBeNull();
+    expect(count()).toBe('4 undated');
+  });
+
   it('ignores a goal clause that resolves to nothing', () => {
     // No live goal named: passesGoalFilter treats it as inert, so "3 of 3"
     // would be a filter the list is not applying.

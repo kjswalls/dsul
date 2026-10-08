@@ -1,7 +1,12 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { POST } from '@/app/api/chat/route';
-import { AiDbError, openModelConnection, setConnectionStatus } from '@/lib/ai-server/connections';
+import {
+  AiDbError,
+  openModelConnection,
+  setConnectionLimit,
+  setConnectionStatus,
+} from '@/lib/ai-server/connections';
 import { ProviderError, USER_MESSAGES, type ProviderErrorKind } from '@/lib/ai-server/errors';
 import { credentialsFor, getAdapter } from '@/lib/ai-server/providers';
 import * as gateway from '@/lib/openclaw-gateway';
@@ -69,6 +74,7 @@ vi.mock('@/lib/ai-server/connections', async (importOriginal) => {
     ...actual,
     openModelConnection: vi.fn(),
     setConnectionStatus: vi.fn(async () => true),
+    setConnectionLimit: vi.fn(async () => true),
   };
 });
 
@@ -82,9 +88,15 @@ vi.mock('@/lib/ai-server/errors', async (importOriginal) => {
     toChatErrorCode: vi.fn((k: ProviderErrorKind) =>
       k === 'aborted' ? 'network' : k === 'model_required' ? 'bad_model' : k
     ),
-    httpStatusFor: vi.fn((k: ProviderErrorKind) =>
-      k === 'blocked_url' || k === 'model_required' ? 400 : k === 'timeout' ? 504 : 502
-    ),
+    // The documented contract (errors.ts): blocked_url and model_required 400,
+    // region 403, daily_limit 429, timeout 504, else 502.
+    httpStatusFor: vi.fn((k: ProviderErrorKind) => {
+      if (k === 'blocked_url' || k === 'model_required') return 400;
+      if (k === 'region') return 403;
+      if (k === 'daily_limit') return 429;
+      if (k === 'timeout') return 504;
+      return 502;
+    }),
     logProviderError: vi.fn(),
   };
 });
@@ -162,6 +174,7 @@ const ROW = {
   status: 'ok' as const,
   last_error: null,
   checked_at: null,
+  limited_until: null,
 };
 const CREDS = { provider: 'openai' as const, apiKey: 'sk-conn', baseUrl: 'https://api.openai.com/v1' };
 const GATEWAY = { baseUrl: 'https://gw.example.ts.net', token: 'tok', agentId: null };
@@ -204,6 +217,7 @@ beforeEach(() => {
   vi.mocked(openModelConnection).mockReset();
   vi.mocked(openModelConnection).mockResolvedValue({ ok: true, row: ROW, creds: CREDS, model: 'gpt-4o-mini' });
   vi.mocked(setConnectionStatus).mockClear();
+  vi.mocked(setConnectionLimit).mockClear();
   adapter.openStream.mockReset();
   adapter.openStream.mockImplementation(async () => deltas('ok'));
   vi.mocked(gateway.getGatewayConfig).mockReset();
@@ -359,6 +373,31 @@ describe('POST /api/chat → the connected model', () => {
     expect(res.status).toBe(502);
     expect(await res.json()).toEqual({ error: USER_MESSAGES.rate_limit, code: 'rate_limit' });
     expect(setConnectionStatus).not.toHaveBeenCalled();
+    expect(setConnectionLimit).not.toHaveBeenCalled();
+  });
+
+  it('a daily limit records when it lifts, and leaves the connection lit', async () => {
+    const at = '2026-10-08T07:00:00.000Z';
+    adapter.openStream.mockRejectedValue(new ProviderError('daily_limit', 429, at));
+    const res = await post(hi);
+    expect(res.status).toBe(429);
+    expect(await res.json()).toEqual({ error: USER_MESSAGES.daily_limit, code: 'daily_limit' });
+    // Conditional on the ciphertext this request read.
+    expect(setConnectionLimit).toHaveBeenCalledWith('user-1', ROW.key_ciphertext, at);
+    expect(setConnectionStatus).not.toHaveBeenCalled();
+  });
+
+  it('a daily limit with no reset time known still records the cap', async () => {
+    adapter.openStream.mockRejectedValue(new ProviderError('daily_limit', 429));
+    await post(hi);
+    expect(setConnectionLimit).toHaveBeenCalledWith('user-1', ROW.key_ciphertext, null);
+  });
+
+  it('a database that cannot record it does not spoil the answer', async () => {
+    vi.mocked(setConnectionLimit).mockRejectedValue(new AiDbError('limit', '42703'));
+    adapter.openStream.mockRejectedValue(new ProviderError('daily_limit', 429));
+    const res = await post(hi);
+    expect(await res.json()).toEqual({ error: USER_MESSAGES.daily_limit, code: 'daily_limit' });
   });
 
   it('an upstream error is never echoed: an unknown throw becomes our upstream copy', async () => {
@@ -380,6 +419,18 @@ describe('POST /api/chat → the connected model', () => {
     adapter.openStream.mockImplementation(async () => deltas('partial', new ProviderError('quota', 429)));
     const out = await frames(await post(hi));
     expect(out).toEqual([{ content: 'partial' }, { error: USER_MESSAGES.quota, code: 'quota' }, '[DONE]']);
+  });
+
+  it('a mid-stream daily limit records it too, in one frame', async () => {
+    const at = '2026-10-08T07:00:00.000Z';
+    adapter.openStream.mockImplementation(async () => deltas('part', new ProviderError('daily_limit', 429, at)));
+    const out = await frames(await post(hi));
+    expect(out).toEqual([
+      { content: 'part' },
+      { error: USER_MESSAGES.daily_limit, code: 'daily_limit' },
+      '[DONE]',
+    ]);
+    expect(setConnectionLimit).toHaveBeenCalledWith('user-1', ROW.key_ciphertext, at);
   });
 
   it('a mid-stream 401 also marks the key failing, conditionally', async () => {

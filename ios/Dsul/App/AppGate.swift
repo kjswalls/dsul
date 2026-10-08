@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 import UIKit
 
@@ -9,6 +10,11 @@ import UIKit
 ///
 /// RootView and everything under it keep reading `SamplePlanner` from the
 /// environment, as they did when the sample was all there was.
+///
+/// A Sign in with Apple session's Apple ID is asked about at launch, on every
+/// return to the front and when Apple says a credential was revoked
+/// (`AuthStore.checkAppleCredential`), so a revoked or changed Apple ID signs
+/// this phone out.
 struct AppGate: View {
     @Environment(AuthStore.self) private var auth
     @Environment(\.scenePhase) private var scenePhase
@@ -26,6 +32,23 @@ struct AppGate: View {
                 guard phase == .active else { return }
                 planner?.refreshIfStale()
                 AppIconSwitcher.shared.follow(planner?.settings.appIcon)
+                let store = auth
+                Task { await store.checkAppleCredential() }
+            }
+            // Sign in with Apple: asked at launch and, above, on every return;
+            // Apple's notification names no user, so it asks too rather than
+            // signing out blind. Unstructured, like the other two: a modifier
+            // on `content` follows its branch, and the swap a sign-out causes
+            // would cancel the logout mid-request. (It may run again on each
+            // swap: one more local ask, and nothing without an Apple session.)
+            .task {
+                let store = auth
+                Task { await store.checkAppleCredential() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: AppleAuthorization.revokedNotification)
+                .receive(on: DispatchQueue.main)) { _ in
+                let store = auth
+                Task { await store.checkAppleCredential() }
             }
             // The home-screen icon follows the App icon pick, which arrives
             // with each fetch. Nil (the sample, or nothing loaded yet) leaves

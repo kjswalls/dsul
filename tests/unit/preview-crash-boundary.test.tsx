@@ -22,6 +22,7 @@ vi.mock('@/lib/planner-snapshot', async (importOriginal) => ({
 }));
 
 import { PreviewCrashBoundary } from '@/components/shell/preview-crash-boundary';
+import { SectionBoundary } from '@/components/primitives/section-boundary';
 import { PlannerSkeleton } from '@/components/primitives/planner-skeleton';
 import { usePlannerStore } from '@/lib/planner-store';
 import { usePlannerVisible } from '@/lib/planner-ready';
@@ -221,6 +222,48 @@ describe('PreviewCrashBoundary', () => {
     render(tree(<AlwaysThrows />));
     expect(screen.getByTestId('parent-fallback')).toBeInTheDocument();
     expect(snapshot.notePreviewThrew).toHaveBeenCalled();
+  });
+
+  /**
+   * The shells wrap the view, the braindump and the rail each in a
+   * SectionBoundary (#74), which sits between a cached row and this boundary.
+   * Kept there, a preview's throw would show the section's error over the
+   * fresh rows once they landed, leave the snapshot that threw on disk, and
+   * keep the crash marker's clean exit, so every reload failed the same way.
+   */
+  it('takes a preview throw a section boundary caught: dropped and deleted, not the section error', () => {
+    previewing();
+    render(
+      tree(
+        <SectionBoundary label="view">
+          <Planner />
+        </SectionBoundary>
+      )
+    );
+    expect(screen.queryByTestId('section-error')).toBeNull();
+    expect(usePlannerStore.getState().isPreview).toBe(false);
+    expect(screen.getByTestId('planner-skeleton')).toBeInTheDocument();
+    expect(snapshot.clearPlannerSnapshot).toHaveBeenCalledTimes(1);
+    expect(snapshot.notePreviewThrew).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('parent-fallback')).toBeNull();
+
+    act(landFresh);
+    expect(screen.getAllByTestId('row').map((r) => r.textContent)).toEqual(['Fresh title', 'Made elsewhere']);
+  });
+
+  it('leaves a throw on fresh rows to the section boundary, as before', () => {
+    landFresh();
+    usePlannerStore.setState({ userId: U, error: null, loadFailedUserId: null });
+    render(
+      tree(
+        <SectionBoundary label="view">
+          <AlwaysThrows />
+        </SectionBoundary>
+      )
+    );
+    expect(screen.getByTestId('section-error')).toHaveTextContent('The view hit a problem');
+    expect(screen.queryByTestId('parent-fallback')).toBeNull();
+    expect(snapshot.clearPlannerSnapshot).not.toHaveBeenCalled();
   });
 
   it('counts a falsy throw as a throw (no render-the-children-again loop on `throw null`)', () => {

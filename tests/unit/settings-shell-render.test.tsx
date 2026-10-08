@@ -368,7 +368,8 @@ describe('the AI pane', () => {
     fireEvent.click(within(row).getByRole('button', { name: 'Set up API key' }));
 
     expect(nav.push).toHaveBeenCalledTimes(1);
-    expect(nav.push).toHaveBeenCalledWith('/settings/beacon?focus=beacon.apiKey');
+    // By the pane's alias: the address bar says "ai", never "beacon".
+    expect(nav.push).toHaveBeenCalledWith('/settings/ai?focus=beacon.apiKey');
     // The query is gone at once, so the pane (and its panel) is what renders, not the results.
     expect(input().value).toBe('');
     expect(document.querySelector('[data-setting-row="beacon.apiKey"]')).toBeNull();
@@ -402,5 +403,34 @@ describe('the AI pane', () => {
     renderShell('day');
     await search('zzqqxxnothing');
     expect(screen.getByRole('link', { name: 'Ask AI' })).toBeInTheDocument();
+  });
+});
+
+describe('the hrefs the surface builds', () => {
+  const railButton = (name: string) => {
+    const rail = screen.getByRole('navigation', { name: 'Settings sections' });
+    const button = Array.from(rail.querySelectorAll('button')).find((b) => b.textContent?.startsWith(name));
+    expect(button, `no rail row named ${name}`).toBeTruthy();
+    return button!;
+  };
+
+  it('the rail goes to the AI pane by its alias, and to every other pane by its id', () => {
+    renderShell('day');
+    fireEvent.click(railButton('AI'));
+    expect(nav.push).toHaveBeenLastCalledWith('/settings/ai');
+    fireEvent.click(railButton('Keyboard'));
+    expect(nav.push).toHaveBeenLastCalledWith('/settings/keyboard');
+    expect(nav.push.mock.calls.flat()).not.toContain('/settings/beacon');
+  });
+
+  it("an extension's parent crumb is a real link to the index", () => {
+    renderShell('extensions/beeminder');
+    const crumbs = screen.getAllByRole('navigation')[0];
+    expect(within(crumbs).getByRole('link', { name: 'Extensions' })).toHaveAttribute('href', '/settings/extensions');
+  });
+
+  it('the AI pane lights its one rail row', () => {
+    renderShell('beacon');
+    expect(railButton('AI')).toHaveAttribute('aria-current', 'true');
   });
 });

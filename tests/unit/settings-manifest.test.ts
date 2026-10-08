@@ -616,11 +616,48 @@ describe('the AI pane', () => {
 
 describe('settings search', () => {
   it('finds the model connection by the words people use for it', () => {
-    for (const term of ['api key', 'openai', 'claude', 'gemini', 'openrouter', 'byok']) {
+    for (const term of ['api key', 'openai', 'claude', 'gemini', 'openrouter', 'byok', 'api']) {
       const hits = searchSettings(term, ctx).settings.map((h) => h.record.id);
       expect(hits, term).toContain('beacon.apiKey');
     }
     expect(searchSettings('model', ctx).settings.map((h) => h.record.id)).toContain('beacon.model');
+  });
+
+  it('puts the model connection first for the verbs of setting it up', () => {
+    // "connect" used to find only "Who answers in chat" and OpenClaw, and "set
+    // up" nothing at all. Each floor is the score only the word's own keyword
+    // reaches (an exact keyword is 1000 x 0.7; a two-word query needs both
+    // words on one keyword), so dropping any of them turns this red.
+    const floor: Record<string, number> = {
+      connect: 700,
+      connection: 700,
+      setup: 700,
+      'set up': 980,
+      'connect ai': 1400,
+      'connect a model': 1750,
+    };
+    for (const [term, min] of Object.entries(floor)) {
+      const { settings } = searchSettings(term, ctx);
+      expect(settings[0]?.record.id, term).toBe('beacon.apiKey');
+      expect(settings[0]!.score, term).toBeGreaterThanOrEqual(min);
+    }
+  });
+
+  it('"ai" lands on the connection as high as on "Who answers in chat"', () => {
+    // Without its own keyword the row matched only inside 'openai' (280),
+    // behind a ritual.
+    const { settings } = searchSettings('ai', ctx);
+    expect(settings.slice(0, 2).map((h) => h.record.id).sort()).toEqual(['beacon.apiKey', 'beacon.provider']);
+  });
+
+  it('"sign" and "sign out" find Sign out, not the AI connection', () => {
+    // The AI pane draws above the account's in the results, so a sign-in
+    // keyword here would put this row over Sign out.
+    for (const term of ['sign', 'sign out']) {
+      const hits = searchSettings(term, ctx).settings.map((h) => h.record.id);
+      expect(hits[0], term).toBe('dsul.signOut');
+      expect(hits, term).not.toContain('beacon.apiKey');
+    }
   });
 
   it('splits and lowercases the query — scoreText only lowercases the text', () => {

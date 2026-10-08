@@ -7,6 +7,7 @@ import {
   bindingKey,
   focusIsInRail,
   railModeNow,
+  spendJustConnected,
   usePanelOverlays,
   useRailMode,
   useRailStore,
@@ -24,7 +25,7 @@ import type { Item, Task } from './planner-types';
 export { bindingKey, type ComposerBinding } from './rail-store';
 
 /** The rail belongs to the desktop shell, which Zen replaces: an answer must never stream into an unmounted rail. */
-function leaveZen(): void {
+export function leaveZen(): void {
   const view = useViewStore.getState();
   if (view.zenOpen) view.setZenOpen(false);
 }
@@ -66,15 +67,26 @@ export function revealChat(isMobile: boolean, o: { boxOnPhone?: boolean } = {}):
 }
 
 /**
- * Ctrl+J (`toggle_right_sidebar`). Hidden, or in Zen: leave Zen and summon Ask
- * with its box focused. Showing: close it, and an item on top with it, through
- * the one flushing close (lib/ui-store.ts closeItemPanel), so a row the click
- * selected lets go and a title typed a moment ago is saved now. Closed stays
- * closed until something opens it again. With nothing to answer it does
- * nothing; the shortcut is consumed before it gets here anyway.
+ * Ctrl+J (`toggle_right_sidebar`), and the Ask key. Hidden, or in Zen: leave
+ * Zen and summon Ask with its box focused. Showing: close it, and an item on
+ * top with it, through the one flushing close (lib/ui-store.ts
+ * closeItemPanel), so a row the click selected lets go and a title typed a
+ * moment ago is saved now. Closed stays closed until something opens it again.
+ *
+ * With nothing to answer but the gate offering setup or a fix (`askInvite`,
+ * `askFix`), the same toggle opens and shuts the setup column instead: a
+ * summon that writes no `askOpen` (setup is never kept open) and asks for no
+ * box (it has none, and a request left waiting would take the caret in the
+ * next box to mount anywhere), and a park that leaves a kept-open Ask's
+ * preference alone. With nothing offered (AI hidden, the gate unknown, chat
+ * Off here) it does nothing; the shortcut is consumed before it gets here.
  */
 export function toggleRail(): void {
-  if (!getAICapabilities().canChat) return;
+  const ai = getAICapabilities();
+  if (!ai.canChat) {
+    if (ai.askInvite || ai.askFix) toggleSetup();
+    return;
+  }
   const mode = railModeNow();
   if (mode === 'hidden') {
     leaveZen();
@@ -83,6 +95,17 @@ export function toggleRail(): void {
   }
   if (mode === 'item') closeItemPanel();
   useRailStore.getState().closeRail();
+}
+
+function toggleSetup(): void {
+  const mode = railModeNow();
+  if (mode === 'hidden') {
+    leaveZen();
+    useRailStore.getState().summon({ persist: false });
+    return;
+  }
+  if (mode === 'item') closeItemPanel();
+  useRailStore.getState().park();
 }
 
 /**
@@ -351,9 +374,14 @@ export function openHistory(
  * previewing and promotion re-resolves against fresh rows, so the cached row
  * is only an address; its reveal is armed only if that held open is the one
  * promoted (revealWhenOpened).
+ *
+ * Either way it spends Ask home's "It works." (and the sign-in's note in its
+ * place): an item opened is no push of a conversation, so rail-store's push
+ * would not see it, and the card would be back when the item closes.
  */
 export function openConversation(id: string, isMobile: boolean, o: { returnFocus?: string } = {}): void {
   if (!getAICapabilities().canChat) return;
+  spendJustConnected();
   const rid = resolveConversationId(id);
   const conversations = useConversationsStore.getState();
   const itemId = conversations.summaries[rid]?.itemId ?? conversations.threads[rid]?.itemId ?? null;

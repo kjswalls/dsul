@@ -1,11 +1,12 @@
 # dsul for iPhone
 
-A native SwiftUI app (iOS 27). It signs in with Google or an emailed link
-and shows your own day from do.dsul.app; a tick, a drop on an hour, a capture,
-the item sheet's Skip, move (Tomorrow, Reschedule) and Pause, an item's title
-and notes, Delete, a new subtask, a streak reset, an item's priority, times
-per day and reminder, and an item's date, part of day, time and length, and
-how it repeats, are saved to the server.
+A native SwiftUI app (iOS 27). It signs in with Google, Apple or an emailed
+link and shows your own day from do.dsul.app; a tick, a drop on an hour, a
+capture, the item sheet's Skip, move (Tomorrow, Reschedule) and Pause, an
+item's title and notes, Delete, a new subtask, a streak reset, an item's
+priority, times per day and reminder, and an item's date, part of day, time
+and length, how it repeats, its project, and the routines and seasons it is
+in, are saved to the server.
 "Try with sample data" on the sign-in screen opens a made-up day instead,
 which needs no account and whose changes last until the app quits.
 
@@ -21,15 +22,16 @@ result) to open its sheet: what it is (its notes, its streak, its chips), its
 verbs in a bar along the bottom (tick, Skip, Tomorrow, Reschedule, Pause,
 Pause until, Resume, whichever apply), and Delete behind ⋯. Tap the title or
 the notes to edit them in place. Tap the priority, date, time, times per day,
-repeat or reminder chip to change it, and Add property (a plus once there are
-chips) to add one; the other chips are read-only for now, and the streak chip
-opens this week and Reset streak. Add a subtask from the Subtasks section, one
-at a time or by pasting a list. A tap on a row's circle still just ticks it.
+repeat, reminder, project, routine or season chip to change it, and Add
+property (a plus once there are chips) to add one. The streak chip opens this
+week and Reset streak. Add a subtask from the Subtasks section, one at a time
+or by pasting a list. A tap on a row's circle still just ticks it.
 
 - `Dsul/` is the app. `DsulTests/` tests it in the simulator.
   - `App/`: the app, `AppGate` (sign-in screen, sample or your planner) and
     `AppConfig` (the server's address).
-  - `Auth/`: Google and email-link sign-in, the tokens and the Keychain.
+  - `Auth/`: Google, Apple and email-link sign-in, the tokens and the
+    Keychain.
   - `Data/`: the calls to `/api/app/*` and `PlannerSync`, which sends your
     changes in order and fetches your day.
   - `Model/`, `Today/`, `Schedule/`: the planner and the screens.
@@ -60,6 +62,12 @@ open Dsul.xcodeproj
 ```
 Then in Xcode: pick the **Dsul** target → Signing & Capabilities → Team =
 your team (once), choose your iPhone as the run destination, and press ⌘R.
+Use the paid team: Sign in with Apple (listed there, from project.yml) can't
+be signed by a Personal Team. The App ID already has the capability
+(memory/plans/sign-in-with-apple.md, setup step 2). If Continue with Apple
+fails at once with "Apple couldn't sign you in. Try again.", check that
+Signing & Capabilities lists Sign in with Apple under the paid team, and that
+the iPhone is signed in to an Apple Account with two-factor authentication.
 
 ## Signing in
 
@@ -69,6 +77,19 @@ so it never signs in as whoever Safari last was). Afterwards the app shows
 app asks `https://do.dsul.app/api/app/config` for the Supabase address and its
 public key the first time you tap the button, and a signed-out launch makes
 no network request at all.
+
+**Continue with Apple** (under Google) opens Apple's own sheet. The first time
+you use Apple for dsul, here or on the web, it asks for your name and whether
+to share or hide your email, then Face ID; after that it shows only Continue
+and Face ID. The app hands Apple's answer to Supabase and shows
+"Signed in as …" once. The first time an Apple Account signs in to dsul, Hide
+My Email starts a separate, empty account, and Share My Email opens the
+account with that address if there is one. After that, the same Apple Account
+always opens the same account. The first time, the app also saves the name
+Apple gives to your account if it has none, so the web shows it. If you stop
+using Sign in with Apple for dsul in Settings, or sign the iPhone in to
+another Apple Account, the app signs this phone out the next time you open
+it; the web stays signed in.
 
 **Email me a sign-in link** asks for your address and sends a link; the
 screen then says "Check your email". Open the email on the same iPhone and tap
@@ -90,6 +111,14 @@ Before the first sign-in on a phone (once, in the Supabase dashboard):
 2. **Auth → Users:** your user should already have a Google identity, or a
    verified Gmail address Google can link to. Otherwise Google signs in to a
    second, empty account.
+3. **Sign in with Apple** (once, memory/plans/sign-in-with-apple.md steps 1
+   to 6), with `app.dsul.ios` among the Apple provider's Client IDs. The
+   web's /login shows Continue with Apple once the provider is on, but only
+   the dashboard shows the Client IDs. With the provider off, the phone's
+   Apple button ends with "Sign in with Apple isn't available right now. Use
+   Google or an email link." Without `app.dsul.ios` among the Client IDs it
+   ends with "Couldn't sign in. Try again." while the web still signs in with
+   Apple: add `app.dsul.ios` to the Apple provider's Client IDs.
 
 The phone talks to production, so it can only sign in once `/auth/ios` and
 `/api/app/*` are deployed.
@@ -129,6 +158,72 @@ The tests can't open Mail or Safari, so these need your iPhone (after Step 0):
    the FIRST email's link: it still signs in.
 6. Continue with Google still signs in now that the app owns its link scheme.
 
+## Checking Sign in with Apple
+
+The tests can't open Apple's sheet, so these need your iPhone, signed in to
+your Apple Account. Which dsul account an Apple Account opens is settled the
+first time it signs in to dsul, on the web or here. If you have used Continue
+with Apple on the web, first open Settings, then your Apple Account, find Sign
+in with Apple, pick dsul and Stop Using, so Apple asks again.
+1. In a private window, do.dsul.app/login shows Continue with Apple. In the
+   Supabase dashboard, Authentication → Sign In / Providers → Apple, the
+   Client IDs read `app.dsul.web,app.dsul.ios`. If either isn't so, finish
+   the setup first (Before the first sign-in, item 3).
+2. The sign-in screen: Continue with Apple sits right under Continue with
+   Google, the same height and the same rounded shape, black in Light Mode
+   and white in Dark Mode. Switch the appearance in Control Center while the
+   screen is up: it follows. VoiceOver reads it as Continue with Apple. Then
+   in Settings → Accessibility → Display & Text Size → Larger Text, turn on
+   Larger Accessibility Sizes and drag the slider to its end. Back in dsul
+   every button is whole and readable on one line, Apple and Google are the
+   same height, and the screen scrolls if it doesn't fit. Open the email form
+   there too: the field and Send link can be scrolled to above the keyboard.
+   Put the text size back.
+3. Tap Continue with Apple. Apple's sheet asks for your name and whether to
+   share or hide your email (if it shows only Continue, this Apple Account
+   has used dsul before: see above). Pick Share My Email, with the address
+   your dsul account uses: "Signed in as" that address, and your own day.
+4. Sign out, then Continue with Apple again: Apple shows only Continue, with
+   no name or email step, and the same account opens.
+5. Sign out. Tap Continue with Apple, then close Apple's sheet: no message,
+   and you can tap again.
+6. Double-tap Continue with Apple quickly: one sheet opens; close it. Then
+   make Sending… last: Settings → Developer → Network Link Conditioner, turn
+   it on with Very Bad Network. In dsul tap Email me a sign-in link, type
+   your address, tap Send link, and while Sending… shows, tap Continue with
+   Apple: nothing opens. Turn the conditioner off. If Check your email shows,
+   tap Use a different email.
+7. With Airplane Mode on, tap Continue with Apple: Apple can't finish (it may
+   show its own alert), and you're back on the sign-in screen with the
+   buttons working and either "Apple couldn't sign you in. Try again." or no
+   line. Turn Airplane Mode off. (The "Couldn't reach dsul" line needs the
+   network to drop between Apple and Supabase; a hosted test covers it.)
+8. Continue with Apple (Apple shows only Continue) so you are signed in.
+   Then in Settings, open your Apple Account, find Sign in with Apple, pick
+   dsul and Stop Using. Back in dsul: the sign-in screen, with "You were
+   signed out. Sign in again to see your day." The web is still signed in.
+9. Continue with Apple again after step 8: Apple asks for your name and email
+   again, and the same account opens whichever email choice you make
+   (Supabase finds the account by your Apple ID before any email). An
+   account that already has a name, such as any account that has used
+   Google, keeps it. One that had none shows the name you gave on the web
+   after its next sign-in there, or within the hour. (Hosted tests cover the
+   name write itself.)
+10. Sign out, then Continue with Google: signed in. In Settings, stop using
+    Sign in with Apple for dsul again, then come back to dsul: still signed
+    in, no message. Sign out, and Email me a sign-in link still signs in.
+11. Sign out, then tap Continue with Apple, and with Apple's sheet up switch
+    the appearance in Control Center, then close the sheet: no message, the
+    button takes the new colour, and you can tap again.
+12. If you have a second Apple Account that has never used dsul, sign in with
+    it on the web, where any Apple Account can sign in: in a private window,
+    Continue with Apple on /login, give a name and pick Hide My Email. You get
+    a new, empty account with a `…@privaterelay.appleid.com` address. Note
+    whether the sidebar shows the name you gave (GoTrue's source says it
+    should; the plan said it wouldn't), and tell the thread which.
+13. Try with sample data still opens the sample, and Leave sample data comes
+    back to both buttons.
+
 ## Trying the drag
 
 On the sign-in screen, tap **Try with sample data**. (It works signed in too,
@@ -163,8 +258,10 @@ sample's habits are Meds and Stretch 10 min (daily, already done today),
 Journal (daily, not done today), Plan tomorrow (weekdays) and Water the
 plants (Sundays and Wednesdays), and its tasks are all one-offs but Pay
 rent, last in the braindump, which repeats monthly on the 1st and has no day.
-Draft Q4 roadmap has two subtasks (Pull the September numbers, done, and
-Write the three bets), and no sample note runs past four lines.
+Its routines are Morning routine (Meds, Stretch 10 min and Journal) and Wind
+down, which is empty, and its one season, Autumn, holds Journal. Draft Q4
+roadmap has two subtasks (Pull the September numbers, done, and Write the
+three bets), and no sample note runs past four lines.
 
 1. **Opening.** A row on List and on Buckets, a block on Schedule, a braindump
    row (the item's sheet stacks on the braindump sheet) and a Search result
@@ -234,12 +331,12 @@ Write the three bets), and no sample note runs past four lines.
 The hosted tests pin what each field sends and what Delete says, but not how
 typing feels. Check on the iPhone, on the sample or signed in once the
 server's `title`, `notes`, `delete`, `addSubtask`, `resetStreak`, `priority`,
-`timesPerDay`, `reminder`, `time` and `repeat` writes are deployed (against
-an older server the title and notes stay text, ⋯ has no Delete, there is no
-Add a subtask row, the streak popover has no Reset, and the chips stay
-read-only, with no chevrons, but for the date chip, which moves the item as
-Reschedule does; Add property then holds Date alone, on an undated task); a
-check that needs one or the other says so.
+`timesPerDay`, `reminder`, `time`, `repeat`, `project` and `collect` writes
+are deployed (against an older server the title and notes stay text, ⋯ has
+no Delete, there is no Add a subtask row, the streak popover has no Reset,
+and the chips stay read-only, with no chevrons, but for the date chip, which
+moves the item as Reschedule does; Add property then holds Date alone, on an
+undated task); a check that needs one or the other says so.
 The sample comes back whole each time the app starts, so relaunch it to undo
 a delete, a reset or a chip.
 
@@ -316,13 +413,15 @@ a delete, a reset or a chip.
    - On Call the bank in the braindump (no date, priority or reminder), the
      only chip reads "Add property". On Groceries it is a plus after the
      project chip. VoiceOver reads both as "Add property".
-   - Tap it on Groceries: Priority, Time…, Repeat and Remind…, and no Times
-     per day (a task has none). On Call the bank: Priority, Date, Repeat and
-     Remind…, and no Time… (it has no day yet). On Journal: Times per day and
-     Remind…, and no Repeat (a habit always shows its repeat chip). On Meds:
-     Times per day alone. On Draft Q4 roadmap's subtask Pull the September
-     numbers (its own page): Priority alone, with no Date, Time…, Repeat or
-     Remind….
+   - Tap it on Groceries: Priority, Time…, Repeat, Remind…, Routine and
+     Season, and no Times per day (a task has none) or Project (it has one).
+     On Call the bank: Priority, Date, Repeat, Remind…, Project, Routine and
+     Season, and no Time… (it has no day yet). On Journal: Times per day,
+     Remind… and Project, and no Repeat (a habit always shows its repeat
+     chip), Routine or Season (it is in Morning routine and Autumn). On Meds:
+     Times per day, Project and Season. On Draft Q4 roadmap's subtask Pull
+     the September numbers (its own page): Priority alone, with no Date,
+     Time…, Repeat, Remind…, Project, Routine or Season.
    - Priority ▸ Low on Groceries: one pick, a "Low" chip with a chevron
      appears, and Priority is gone from Add property.
    - Remind… opens the Remind sheet at once, with the wheel already up.
@@ -333,6 +432,12 @@ a delete, a reset or a chip.
    - Time… opens the Time sheet at once.
    - Repeat ▸ on Groceries: Daily, Weekdays, Weekends, Monthly… and Custom
      days…, and no No repeat.
+   - Project ▸ on Call the bank: Work, Home, Writing, dsul and Health, each
+     with its dot, and no No project. Pick Writing: a "Writing" chip with a
+     chevron and its dot appears, and Project leaves Add property.
+   - Routine ▸ on Groceries: Morning routine and Wind down. Pick Wind down:
+     a "Wind down" chip with a chevron appears, and Routine leaves Add
+     property. Season ▸ on Groceries: Autumn.
    - Once everything it offers is set, there is no Add property.
 8. **The chips.**
    - Priority: on Draft Q4 roadmap, tap "High": None, Low, Medium and High,
@@ -492,9 +597,60 @@ a delete, a reset or a chip.
      today, pick No repeat: the date chip reads that first day, the task
      leaves Today and is in no list on the phone, and Search finds it. The
      web shows it in its past-due bar.
-
-Check 8's other chips (project, routines and seasons) come with the PRs that
-make them editable.
+   - Project: on Groceries, tap "Home": No project, then, under a line,
+     Work, Home, Writing, dsul and Health, each with its dot, Home checked.
+     Pick Work: the chip reads Work at once, with Work's dot. Pick Work
+     again: the menu closes and nothing changes. Pick No project: the chip
+     goes, and Project is back in Add property.
+   - On Standup, tap "work" (filed in lowercase, with no link to Work):
+     Work is checked. Pick Work: the chip reads "Work".
+   - Write the three bets (a subtask) has no Project in Add property.
+   - Signed in, file a task of yours under a name none of your projects
+     has, the Trash's included, through the agent API:
+     `PATCH /api/agent/tasks/:id`, with your OpenClaw API key as the Bearer
+     token and the body `{"project":"Fitness"}`. Pull to refresh and tap its
+     chip, "Fitness", with a gray dot: nothing is checked, and No project
+     and each of your projects can be picked. Then send one of your
+     projects' names in lowercase the same way (`{"project":"work"}` for
+     Work): pull to refresh, and the menu checks that project.
+   - Signed in, on a task of yours timed today (say 2:00 pm) and filed under
+     a project with a block today: on the web's Schedule, drag it onto the
+     block. Pull to refresh here: on Schedule it sits in the block. Pick
+     another project in its chip: at once it is out of the block, at 2:00
+     pm again. Reload the web: it is out of the block there too, at 2:00
+     pm, under the new project.
+   - Signed in, on a habit of yours filed under a project, pick No project
+     here, then reload the web: its item panel shows no project (the
+     server cleared both the project and the old group column, which the
+     web still falls back to).
+   - Signed in, put a project of yours in the Trash on a computer, with the
+     app left in the foreground so no fetch lands, then pick that project
+     here for a task: the chip turns back, with the banner, and once the
+     refresh lands the project is gone from the menu.
+   - Routines: on Meds, tap "Morning routine": Morning routine checked and
+     Wind down not, then, under a line, Remove from Morning routine. Tap
+     Wind down: it checks, the menu stays open, and the chip reads "Morning
+     routine +1". Tap Morning routine: it unchecks, and the menu is still
+     open. Tap outside: the chip reads "Wind down", and List shows Meds under
+     Wind down.
+   - Open the menu again and tap Remove from Wind down: the menu closes, the
+     chip goes, and Routine is back in Add property.
+   - Seasons: on Journal, tap "Autumn": Autumn checked, and Remove from
+     Autumn. Tap Autumn: the menu closes, the chip goes, and Season is back
+     in Add property.
+   - Write the three bets (a subtask) has no Routine or Season in Add
+     property.
+   - Signed in, with the web open on your planner and not reloaded since:
+     add a task of yours to a routine here. Then, on the web, without
+     reloading, add another task to the same routine from its item panel's
+     routine chip. Reload the web: both are in the routine. Then take one
+     out here, and on the web, without reloading again, add a third to the
+     same routine. Reload: the one taken out stays out, and the third is
+     in.
+   - Signed in, put a routine of yours in the Trash on a computer, with the
+     app left in the foreground so no fetch lands, then toggle it here: it
+     turns back, with the banner, and once the refresh lands the routine is
+     gone from the menu.
 
 9. **Offline** (signed in only: the sample sends nothing, so nothing fails).
    With Airplane Mode and Wi-Fi off:
@@ -512,7 +668,10 @@ make them editable.
    - change a priority, a times per day and a reminder: each turns back, with
      the banner;
    - pick a date, and change a time: each turns back, with the banner;
-   - change a repeat: it turns back, with the banner.
+   - change a repeat: it turns back, with the banner;
+   - change a project: it turns back, with the banner;
+   - toggle a routine on, and another off: each turns back, with the banner,
+     and the one taken out comes back at its place in the routine.
 10. **VoiceOver.**
     - The title reads as "Title", a text field and a heading; the notes, and
       "Notes" where there are none, as a button with the hint "Edits the
@@ -532,8 +691,8 @@ make them editable.
     - An editable chip reads its words, "button" and a hint: "High priority,
       button, Changes the priority"; "3 times a day, button, Changes how many
       times a day"; "Reminder: After I pour my coffee, 8:00 am, button,
-      Changes the reminder". A read-only chip (the project, a routine) has
-      no hint.
+      Changes the reminder". A read-only chip (the date chip on a finished
+      task, below) has no hint.
     - "Add property" is a button. Pick None on a priority chip: VoiceOver
       moves to Add property.
     - On Pull the September numbers' page, Add property ▸ Priority ▸ Low: Add
@@ -545,7 +704,22 @@ make them editable.
       reminder, VoiceOver is on Add property. After Done on a new reminder
       from Add property, it is on the new reminder chip.
     - In the times menus, the choices read "3 times a day".
-    - Relaunch the sample first: check 8 moved the roadmap and Meds.
+    - Relaunch the sample first: check 8 moved the roadmap and Meds,
+      unfiled Groceries, relinked Standup, took Meds out of its routines and
+      Journal out of Autumn, and check 7 put Groceries in Wind down.
+    - The project chip on Groceries reads "Project: Home, button, Changes
+      the project". In its menu Home is read as selected, and no dot is
+      read.
+    - Pick No project: VoiceOver is on Add property. Add property ▸ Project
+      ▸ Home: VoiceOver lands on the new chip.
+    - Meds' routine chip reads "Routine: Morning routine, button, Changes
+      the routines". In its menu Morning routine is read as selected. Toggle
+      Wind down: VoiceOver stays in the menu, and Wind down is now read as
+      selected. Remove from Wind down: VoiceOver is on the routine chip.
+    - Open it again and toggle Morning routine off: the menu closes, the
+      chip goes, and VoiceOver is on Add property.
+    - On Groceries, Add property ▸ Routine ▸ Wind down: VoiceOver lands on
+      the new chip, "Routine: Wind down".
     - The date chip reads "Date: Today, button, Changes the date"; the time
       chip "Time: 9:00 to 11:00 am, button, Changes the time". Tick Groceries
       done: its date chip has no hint and is not a button. Tap Not done.
@@ -588,9 +762,11 @@ make them editable.
     words, and the Time sheet scrolls to Duration with every part of day, the
     line under them, the wheel and No specific time on the way. The Custom
     days sheet shows seven rows with the full day names and a check, and the
-    Monthly sheet a list from Day 1 to Day 31; each scrolls to its footer. On
-    Pay rent, pick Day 31 in Monthly… and tap Done, then open Monthly… again:
-    it opens with Day 31 checked and in view. (Check 10 relaunched the
+    Monthly sheet a list from Day 1 to Day 31; each scrolls to its footer.
+    The project, routine and season menus, and Add property's Project ▸,
+    Routine ▸ and Season ▸, open, and the names wrap rather than truncate. On
+    Pay rent, pick Day 31 in Monthly… and tap Done, then open Monthly…
+    again: it opens with Day 31 checked and in view. (Check 10 relaunched the
     sample, so Pay rent is back on the 1st.)
     - At xxxLarge, the largest size below the accessibility sizes (Larger
       Text with Larger Accessibility Sizes off, the slider at its end): the
@@ -629,6 +805,12 @@ make them editable.
       picked keys and the picked day are the system blue with white text, in
       light and dark mode, and the rest gray or the label colour; Cancel and
       Done aren't lime; Select at least one day and Discard are red.
+    - The project chip's words and chevron are the label colour or gray, not
+      lime, at rest and while pressed, and its dot is its colour. The
+      project menu's checks aren't lime.
+    - The routine and season chips' words, symbols and chevrons are the label
+      colour or gray, not lime, at rest and while pressed, and their menus'
+      checks aren't lime.
 13. **What the code assumes of iOS.**
     - Return in the title (a vertical field with a Done key) ends the edit.
     - Return in the subtask field (a vertical field with a Next key) adds
@@ -692,6 +874,22 @@ make them editable.
     - A swipe on a changed Repeat sheet is refused, and the discard confirm
       comes up over the nested sheet.
     - With Increase Contrast on, the picked keys' blue is darker.
+    - In the project menu, and in Add property's Project ▸, each project's
+      dot shows in its colour, not gray (an image drawn as is). If it is
+      gray, the rows drop the dot, and this line says so.
+    - Picking the checked project runs its action (a Toggle's setter runs on
+      every tap): on Standup, filed "work" with no link, the menu checks
+      Work; pick Work and the chip reads "Work". On Draft Q4 roadmap,
+      picking its checked Work closes the menu and changes nothing.
+    - The routine and season menus stay open while you toggle
+      (`.menuActionDismissBehavior(.disabled)`), the checks, the Remove from
+      rows and the chip's +1 following each toggle. If a toggle closes the
+      menu, or the checks or the Remove from rows don't follow it, the
+      toggles drop that modifier, one per visit, and this line says so.
+    - The toggle that would take the last routine off closes the menu
+      first (`.enabled` on that row), then the chip goes. If the menu
+      stays open over a chip that has gone, the toggles drop the modifier
+      as above, and this line says so.
 
 ## Rules
 

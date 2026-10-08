@@ -100,7 +100,7 @@ describe('setItemsCollected', () => {
     collected()(['a', 'b'], 'routine', 'r1', true);
     expect(routineIds()).toEqual(['a', 'b']);
     expect(db.updateRoutine).toHaveBeenCalledTimes(1);
-    expect(db.updateRoutine).toHaveBeenCalledWith(USER, 'r1', { itemIds: ['a', 'b'] });
+    expect(db.updateRoutine).toHaveBeenCalledWith(USER, 'r1', { itemIds: ['a', 'b'] }, undefined, { itemIds: [] });
   });
 
   it('is one undo entry, not one per item', () => {
@@ -137,7 +137,7 @@ describe('setItemsCollected', () => {
   it('routes seasons to the season table', () => {
     collected()(['a'], 'season', 'p1', true);
     expect(seasonIds()).toEqual(['a']);
-    expect(db.updateSeason).toHaveBeenCalledWith(USER, 'p1', { itemIds: ['a'] });
+    expect(db.updateSeason).toHaveBeenCalledWith(USER, 'p1', { itemIds: ['a'] }, undefined, { itemIds: [] });
     expect(db.updateRoutine).not.toHaveBeenCalled();
   });
 

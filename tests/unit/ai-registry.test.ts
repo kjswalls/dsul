@@ -17,6 +17,8 @@ const MODEL_OK: ModelConnectionView = {
   status: 'ok',
   problem: null,
   checkedAt: '2026-10-01T00:00:00.000Z',
+  limitedUntil: null,
+  modelLabel: null,
 };
 
 const NO_OPENCLAW: OpenClawView = { gateway: false, pluginChat: false, agent: false, agentId: null };
@@ -30,6 +32,7 @@ function inputs(over: Partial<AIInputs> = {}): AIInputs {
     model: null,
     openclaw: NO_OPENCLAW,
     choice: 'model',
+    aiHidden: false,
     ...over,
   };
 }
@@ -195,5 +198,158 @@ describe('canDelegate', () => {
   it('carries the agent id through', () => {
     expect(resolveAICapabilities(inputs({ openclaw: PLUGIN })).agentId).toBe('kirby-1');
     expect(resolveAICapabilities(inputs()).agentId).toBeNull();
+  });
+});
+
+describe('"No AI, thanks"', () => {
+  it('turns off everything that answers, and keeps the connection facts true', () => {
+    // A pause, not a delete: the saved key and the pairing stay, so the
+    // Settings pane can still say what is connected.
+    for (const choice of ['model', 'openclaw', 'none'] as ChatTarget[]) {
+      const caps = resolveAICapabilities(
+        inputs({ model: MODEL_OK, openclaw: GATEWAY, choice, aiHidden: true })
+      );
+      expect(caps).toMatchObject({
+        known: true,
+        aiHidden: true,
+        target: 'none',
+        canChat: false,
+        canPropose: false,
+        proposeTarget: null,
+        answererName: null,
+        askInvite: false,
+        askFix: false,
+        modelUsable: true,
+        openclawUsable: true,
+      });
+    }
+  });
+
+  it("leaves the person's own agent its hand-off: the pairing is not dsul's AI", () => {
+    const caps = resolveAICapabilities(inputs({ openclaw: PLUGIN, choice: 'openclaw', aiHidden: true }));
+    expect(caps.canChat).toBe(false);
+    expect(caps.canDelegate).toBe(true);
+  });
+
+  it('an unknown answer (060 not applied) hides nothing', () => {
+    const caps = resolveAICapabilities(inputs({ model: MODEL_OK, aiHidden: null }));
+    expect(caps.canChat).toBe(true);
+    expect(caps.aiHidden).toBe(false);
+  });
+});
+
+describe('the invitation ("Set up AI") and the fix ("Fix AI")', () => {
+  it('invites when nothing at all is connected', () => {
+    const caps = resolveAICapabilities(inputs());
+    expect(caps).toMatchObject({ askInvite: true, askFix: false, canChat: false });
+  });
+
+  it.each<[string, Partial<AIInputs>]>([
+    ['the answer is unknown', { phase: 'unknown' }],
+    ['the status read failed', { phase: 'error' }],
+    ['the server cannot hold a key', { available: false }],
+    ['the account said no', { aiHidden: true }],
+    ['the database cannot keep a no (060 not applied)', { aiHidden: null }],
+    ['chat is Off on this device', { choice: 'none' }],
+    ['a model is connected and working', { model: MODEL_OK }],
+    ['OpenClaw answers through its gateway', { openclaw: GATEWAY }],
+    ['OpenClaw answers through its plugin', { openclaw: PLUGIN }],
+    ['an OpenClaw agent is paired, with no chat', { openclaw: { ...NO_OPENCLAW, agent: true } }],
+    ['OpenClaw has a gateway and no agent key', { openclaw: { ...NO_OPENCLAW, gateway: true } }],
+    ['OpenClaw has a chat URL and no agent key', { openclaw: { ...NO_OPENCLAW, pluginChat: true } }],
+    ['a saved model needs attention', { model: { ...MODEL_OK, status: 'failing', problem: 'key_rejected' } }],
+  ])('never invites when %s', (_why, over) => {
+    expect(resolveAICapabilities(inputs(over)).askInvite).toBe(false);
+  });
+
+  it.each<[string, ModelConnectionView]>([
+    ['the key stopped working', { ...MODEL_OK, status: 'failing', problem: 'key_rejected' }],
+    ['the key cannot be opened here', { ...MODEL_OK, status: 'failing', problem: 'key_unreadable' }],
+    ['no model is picked yet', { ...MODEL_OK, model: null }],
+  ])('offers the fix when %s and nothing else answers', (_why, model) => {
+    const caps = resolveAICapabilities(inputs({ model }));
+    expect(caps).toMatchObject({ askFix: true, askInvite: false, canChat: false, modelNeedsAttention: true });
+  });
+
+  it.each<[string, Partial<AIInputs>]>([
+    ['OpenClaw answers instead', { openclaw: GATEWAY }],
+    ['the account said no', { aiHidden: true }],
+    ['the database cannot keep a no', { aiHidden: null }],
+    ['chat is Off on this device', { choice: 'none' }],
+    ['the answer is unknown', { phase: 'unknown' }],
+    ['the server cannot hold a key', { available: false }],
+  ])('never offers the fix when %s', (_why, over) => {
+    const failing = { ...MODEL_OK, status: 'failing' as const, problem: 'key_rejected' as const };
+    expect(resolveAICapabilities(inputs({ model: failing, ...over })).askFix).toBe(false);
+  });
+
+  it('shows the key under at most one of chat, invite and fix, and none when hidden', () => {
+    const models: (ModelConnectionView | null)[] = [
+      null,
+      MODEL_OK,
+      { ...MODEL_OK, status: 'failing', problem: 'key_rejected' },
+      { ...MODEL_OK, model: null },
+    ];
+    const flags = [false, true];
+    let cases = 0;
+    for (const phase of ['ready', 'unknown', 'error'] as const)
+      for (const available of flags)
+        for (const model of models)
+          for (const gateway of flags)
+            for (const pluginChat of flags)
+              for (const agent of flags)
+                for (const choice of ['model', 'openclaw', 'none'] as const)
+                  for (const aiHidden of [false, true, null]) {
+                    const caps = resolveAICapabilities({
+                      phase,
+                      available,
+                      model,
+                      openclaw: { gateway, pluginChat, agent, agentId: null },
+                      choice,
+                      aiHidden,
+                    });
+                    const shown = [caps.canChat, caps.askInvite, caps.askFix].filter(Boolean).length;
+                    expect(shown).toBeLessThanOrEqual(1);
+                    if (aiHidden === true || phase !== 'ready') expect(shown).toBe(0);
+                    if (aiHidden !== false) expect(caps.askInvite || caps.askFix).toBe(false);
+                    cases += 1;
+                  }
+    expect(cases).toBe(3 * 2 * 4 * 2 * 2 * 2 * 3 * 3);
+  });
+
+  it('a working model is neither invited nor fixed', () => {
+    expect(resolveAICapabilities(inputs({ model: MODEL_OK }))).toMatchObject({
+      askInvite: false,
+      askFix: false,
+      canChat: true,
+    });
+  });
+});
+
+describe('canMake ("Write with AI" in Settings → Make)', () => {
+  it('is the connected model answering on this device, and only that', () => {
+    expect(resolveAICapabilities(inputs({ model: MODEL_OK })).canMake).toBe(true);
+    // OpenClaw only: chat, but no Make (decision 6).
+    const openclawOnly = resolveAICapabilities(inputs({ openclaw: GATEWAY, choice: 'openclaw' }));
+    expect(openclawOnly.canChat).toBe(true);
+    expect(openclawOnly.canMake).toBe(false);
+    expect(resolveAICapabilities(inputs({ openclaw: PLUGIN, choice: 'openclaw' })).canMake).toBe(false);
+    // A working model, but this device chose OpenClaw: the literal rule (D14).
+    expect(resolveAICapabilities(inputs({ model: MODEL_OK, openclaw: GATEWAY, choice: 'openclaw' })).canMake).toBe(false);
+    // Chose OpenClaw, OpenClaw unusable: the model answers, so Make is offered.
+    expect(resolveAICapabilities(inputs({ model: MODEL_OK, choice: 'openclaw' })).canMake).toBe(true);
+  });
+
+  it('is off when hidden, unknown, failed, failing, or chat is Off', () => {
+    expect(resolveAICapabilities(inputs({ model: MODEL_OK, aiHidden: true })).canMake).toBe(false);
+    expect(resolveAICapabilities(inputs({ phase: 'unknown', model: MODEL_OK })).canMake).toBe(false);
+    expect(resolveAICapabilities(inputs({ phase: 'error', model: MODEL_OK })).canMake).toBe(false);
+    expect(
+      resolveAICapabilities(inputs({ model: { ...MODEL_OK, status: 'failing', problem: 'key_rejected' } })).canMake
+    ).toBe(false);
+    expect(resolveAICapabilities(inputs({ model: { ...MODEL_OK, model: null } })).canMake).toBe(false);
+    expect(resolveAICapabilities(inputs({ model: MODEL_OK, available: false })).canMake).toBe(false);
+    expect(resolveAICapabilities(inputs({ model: MODEL_OK, choice: 'none' })).canMake).toBe(false);
+    expect(NO_AI.canMake).toBe(false);
   });
 });

@@ -10,11 +10,16 @@ import {
   cleanupConversations,
   conversationWritten,
   gateAnswered,
+  pasteInto,
   rail,
   stubChatReply,
+  stubAIGate,
   stubConnectedModel,
+  STUB_BAD_KEY,
+  STUB_GOOD_KEY,
   turnSaved,
   uniqueWord,
+  unlitKey,
 } from './helpers/ai';
 
 /**
@@ -340,4 +345,264 @@ test.describe('Ask in the right rail', () => {
       await expect(page.locator('main[inert]')).toHaveCount(0);
     });
   }
+});
+
+/**
+ * The same key and column while nothing answers (memory/plans/ai-vision.md,
+ * AI setup PR 3 and 4): unlit, it reads "Set up AI" (or "Fix AI" for a saved
+ * model that stopped working) and opens the setup column, which says what AI
+ * could do here, takes a key right there, and offers "No AI, thanks". A key
+ * that works turns the column into Ask, which says so once ("It works.").
+ *
+ * The gate is stubbed statefully (helpers/ai.ts `stubAIGate`): the e2e
+ * account is shared by every parallel spec, so neither "No AI, thanks" nor a
+ * connect may reach the real route, and a reload must still see what they
+ * wrote. The keys pasted here are the stub's (`STUB_GOOD_KEY`,
+ * `STUB_BAD_KEY`), answered by prefix, never by a provider.
+ */
+test.describe('Set up AI in the right rail', () => {
+  async function signInWith(page: Page, o: Parameters<typeof stubAIGate>[1] = {}) {
+    // Before the first load: the gate is asked once, at sign-in.
+    const gate = await stubAIGate(page, o);
+    const answered = gateAnswered(page);
+    await loginTestUser(page);
+    await answered;
+    return gate;
+  }
+
+  test('nothing connected: the unlit key opens the setup column, and Ctrl+J, ✕ and a reload close it', async ({
+    page,
+  }) => {
+    await signInWith(page);
+    const key = unlitKey(page);
+    const column = rail(page);
+    const setup = column.locator('[data-ask-setup]');
+
+    // Unlit and named for what it opens; there is no Ask, and nothing is open.
+    await expect(key).toBeVisible();
+    await expect(key).toHaveAccessibleName('Set up AI');
+    await expect(askButton(page)).toHaveCount(0);
+    await expect(setup).toHaveCount(0);
+
+    // The key opens the setup column, never Ask, and focus goes to its heading.
+    await key.click();
+    await expect(setup).toBeVisible();
+    await expect(setup).toHaveAttribute('data-ask-setup', 'invite');
+    await expect(setup.locator('[data-ask-heading]')).toBeFocused();
+    await expect(key).toBeHidden();
+    await expect(column.locator('[data-ask-home]')).toHaveCount(0);
+    await expect(askBox(column)).toHaveCount(0);
+    // The way in is here, not a trip to Settings: Google's free key, pasted in.
+    await expect(setup.getByTestId('connect-ai')).toBeVisible();
+    await expect(setup.getByTestId('connect-key-card').getByLabel('Your Gemini key')).toBeVisible();
+    // Nothing in the column is lime: its buttons are outline or quiet.
+    await expect(setup.locator('.bg-primary')).toHaveCount(0);
+    await expect(setup.locator('[data-ask-setup-foot]')).toContainText(
+      'AI is optional. dsul works fully without it.'
+    );
+
+    // Ctrl+J from inside closes it and hands focus back to the key; again opens it.
+    await page.keyboard.press('ControlOrMeta+j');
+    await expect(setup).toBeHidden();
+    await expect(key).toBeFocused();
+    await page.keyboard.press('ControlOrMeta+j');
+    await expect(setup).toBeVisible();
+
+    // ✕ closes it too.
+    await column.getByTestId('setup-close').click();
+    await expect(setup).toBeHidden();
+    await expect(key).toBeFocused();
+
+    // Never kept open: a reload starts with the key, the column closed.
+    await page.keyboard.press('ControlOrMeta+j');
+    await expect(setup).toBeVisible();
+    const answered = gateAnswered(page);
+    await reloadApp(page);
+    await answered;
+    await expect(key).toBeVisible();
+    await expect(setup).toHaveCount(0);
+  });
+
+  test('No AI, thanks puts the key away for the account, and Undo brings it back', async ({
+    page,
+  }) => {
+    const gate = await signInWith(page);
+    const key = unlitKey(page);
+    const setup = rail(page).locator('[data-ask-setup]');
+    const strip = page.getByTestId('undo-strip');
+    const undo = strip.getByRole('button', { name: 'Undo' });
+
+    await key.click();
+    await setup.getByTestId('no-ai-thanks').click();
+
+    // Said in prose in the strip, focus on its Undo; the column and the key go.
+    await expect(strip).toContainText('AI is off. dsul won’t bring it up again.');
+    await expect(undo).toBeFocused();
+    await expect(setup).toHaveCount(0);
+    await expect(page.locator('[data-ask-opener]')).toHaveCount(0);
+    await expect.poll(() => gate.patches).toEqual([{ hidden: true }]);
+
+    // Undo: the key is back, unlit, with focus on it, and the account says so.
+    await undo.click();
+    await expect(strip).toHaveCount(0);
+    await expect(key).toBeVisible();
+    await expect(key).toBeFocused();
+    await expect.poll(() => gate.patches).toEqual([{ hidden: true }, { hidden: false }]);
+
+    // Said again and left: it holds across a reload, and Ctrl+J offers nothing.
+    await key.click();
+    await setup.getByTestId('no-ai-thanks').click();
+    await expect.poll(() => gate.hidden()).toBe(true);
+    const answered = gateAnswered(page);
+    await reloadApp(page);
+    await answered;
+    // The planner is up and the gate has answered; the key never comes.
+    await expect(page.getByTestId('view-root')).toBeVisible();
+    await expect(page.locator('[data-ask-opener]')).toHaveCount(0);
+    await page.keyboard.press('ControlOrMeta+j');
+    await expect(setup).toHaveCount(0);
+    await expect(rail(page).locator('[data-ask-home]')).toHaveCount(0);
+
+    // Once the strip has gone, Settings → AI is the way back.
+    await page.goto(`${BASE_URL}/settings/ai`);
+    const off = page.getByTestId('mcp-ai-off');
+    await expect(off).toContainText('AI is off');
+    await off.getByRole('button', { name: 'Turn AI back on' }).click();
+    await expect(off).toHaveCount(0);
+    await expect.poll(() => gate.hidden()).toBe(false);
+    await loginTestUser(page);
+    await expect(key).toBeVisible();
+  });
+
+  test('a saved key its provider turned down: the key reads Fix AI, and says what is wrong', async ({
+    page,
+  }) => {
+    const gate = await signInWith(page, { model: 'failing' });
+    const key = unlitKey(page);
+    const setup = rail(page).locator('[data-ask-setup]');
+
+    await expect(key).toHaveAccessibleName('Fix AI');
+    await key.click();
+    await expect(setup).toHaveAttribute('data-ask-setup', 'fix');
+    const fix = setup.getByTestId('setup-fix');
+    await expect(fix).toContainText('Google stopped accepting your key');
+    // A new key goes in right here; Settings → AI is for everything else.
+    await expect(fix.getByLabel('New Gemini key')).toHaveAttribute('data-testid', 'fix-key');
+    await expect(fix).toContainText('Your old key is replaced only once this one works.');
+    await expect(
+      setup.getByTestId('fix-caption').getByRole('link', { name: 'Settings → AI' })
+    ).toHaveAttribute('href', '/settings/ai');
+    await expect(setup.getByTestId('setup-previews')).toHaveCount(0);
+
+    // A fresh check that finds the key still turned down says so.
+    await fix.getByTestId('setup-recheck').click();
+    await expect(fix.getByTestId('fix-status')).toHaveText(
+      'Google still turns it down. A new key above fixes it.'
+    );
+    expect(gate.patches).toEqual([{ recheck: true }]);
+    expect(gate.connects).toEqual([]);
+  });
+
+  test('a key pasted in the column: a refused one stays and says why, a good one turns the column into Ask', async ({
+    page,
+  }) => {
+    const gate = await signInWith(page);
+    const column = rail(page);
+    const setup = column.locator('[data-ask-setup]');
+    const home = column.locator('[data-ask-home]');
+
+    await unlitKey(page).click();
+    await expect(setup).toHaveAttribute('data-ask-setup', 'invite');
+    const card = setup.getByTestId('connect-key-card');
+    const field = card.getByTestId('connect-key');
+
+    // A Google key is checked the moment it lands. Turned down, it stays in
+    // the box (never in a value attribute), and the note says why.
+    await pasteInto(field, STUB_BAD_KEY);
+    const note = card.getByTestId('connect-note');
+    await expect(note).toHaveAttribute('data-code', 'key_rejected');
+    await expect(note.getByRole('alert')).toHaveText(
+      'Google didn’t accept that key. It may be cut short, or it was deleted in AI Studio. It’s still in the box, so you can check it or paste a new one.'
+    );
+    await expect(field).toHaveValue(STUB_BAD_KEY);
+    expect(await field.getAttribute('value')).toBeNull();
+    await expect(setup).toBeVisible();
+    await expect(home).toHaveCount(0);
+    expect(gate.connects).toEqual([{ provider: 'gemini', accepted: false }]);
+
+    // A good one replaces it, and the column becomes Ask, which says it works
+    // and names the model.
+    await pasteInto(field, STUB_GOOD_KEY);
+    await expect(home).toBeVisible();
+    await expect(setup).toBeHidden();
+    const works = home.getByTestId('it-works');
+    await expect(works.getByRole('heading', { name: 'It works.' })).toBeVisible();
+    await expect(works.getByTestId('it-works-line')).toHaveText(
+      'Google Gemini answered a test question. Ask will use Gemini Flash, Google’s quick everyday model.'
+    );
+    await expect(works.getByRole('link', { name: 'Settings → AI' })).toHaveAttribute('href', '/settings/ai');
+    // Today's openers as live rows, standing in for the foot's chips meanwhile.
+    const rows = works.getByTestId('it-works-openers').locator('[data-opener]');
+    await expect(rows.first()).toBeVisible();
+    expect(await rows.count()).toBeLessThanOrEqual(3);
+    await expect(home.getByTestId('chat-openers')).toHaveCount(0);
+    await expect(column.getByTestId('answerer-label')).toHaveText('Gemini Flash');
+    expect(gate.connects).toEqual([
+      { provider: 'gemini', accepted: false },
+      { provider: 'gemini', accepted: true },
+    ]);
+    // Neither key is anywhere in the page.
+    const html = await page.content();
+    expect(html).not.toContain(STUB_GOOD_KEY);
+    expect(html).not.toContain(STUB_BAD_KEY);
+
+    // Said once: closing Ask spends it, and the key is lit Ask now.
+    await page.keyboard.press('ControlOrMeta+j');
+    await expect(home).toBeHidden();
+    await expect(unlitKey(page)).toHaveCount(0);
+    await expect(askButton(page)).toBeVisible();
+    await page.keyboard.press('ControlOrMeta+j');
+    await expect(home).toBeVisible();
+    await expect(home.getByTestId('it-works')).toHaveCount(0);
+
+    // The account kept the connection, and the card was memory: a reload
+    // opens Ask as Ctrl+J left it, lit, with nothing more to say.
+    const answered = gateAnswered(page);
+    await reloadApp(page);
+    await answered;
+    await expect(home).toBeVisible();
+    await expect(home.getByTestId('it-works')).toHaveCount(0);
+    await expect(unlitKey(page)).toHaveCount(0);
+    await expect(column.getByTestId('answerer-label')).toHaveText('Gemini Flash');
+  });
+
+  test('Fix AI takes a new key in place, and one that works lights Ask', async ({ page }) => {
+    const gate = await signInWith(page, { model: 'failing' });
+    const column = rail(page);
+    const setup = column.locator('[data-ask-setup]');
+    const home = column.locator('[data-ask-home]');
+
+    await unlitKey(page).click();
+    const fix = setup.getByTestId('setup-fix');
+    const field = fix.getByTestId('fix-key');
+    await expect(field).toBeVisible();
+
+    // Turned down: the old connection is untouched, the new key stays in the box.
+    await pasteInto(field, STUB_BAD_KEY);
+    await expect(fix.getByTestId('fix-note')).toHaveAttribute('data-code', 'key_rejected');
+    await expect(field).toHaveValue(STUB_BAD_KEY);
+    await expect(setup).toHaveAttribute('data-ask-setup', 'fix');
+
+    // Taken: the column becomes Ask. A fix is no first connection, so there
+    // is no "It works." card to read.
+    await pasteInto(field, STUB_GOOD_KEY);
+    await expect(home).toBeVisible();
+    await expect(setup).toBeHidden();
+    await expect(home.getByTestId('it-works')).toHaveCount(0);
+    await expect(column.getByTestId('answerer-label')).toHaveText('Gemini Flash');
+    expect(gate.connects).toEqual([
+      { provider: 'gemini', accepted: false },
+      { provider: 'gemini', accepted: true },
+    ]);
+  });
 });

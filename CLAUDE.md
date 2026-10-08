@@ -22,7 +22,9 @@ pnpm workspace (Node 24). `packages/types` is `@dsul/types`, and its `dist/` is
 without `pnpm --filter @dsul/types build` is a red build. `openclaw-plugin/` is a
 separate consumer of the agent API; its `dist/` is gitignored and built at publish time,
 so CI does not gate it — a plugin `src` change reaches users only when the npm package
-is republished.
+is republished. Both packages publish from the hand-dispatched `npm publish` workflow
+([npm-publish.yml](.github/workflows/npm-publish.yml), main only, Kirby approves each run);
+bump the version in a PR first, since a version already on npm is skipped.
 
 ## Setting up a new machine
 
@@ -418,15 +420,23 @@ third container role (`aspire`), where milestones and check-ins are ordinary ite
 a membership role. Read it before touching `lib/goals.ts`, the goals store slice, or
 anything that writes an item's `startDate` in bulk: a milestone's start date is a target
 date, and the sweep and the carry verbs are excluded from it on purpose.
+[mods.md](memory/plans/mods.md) is the plan for **mods and recipes** (Kirby's pick,
+2026-10-03; decisions 2026-10-07): private, sandboxed mods (QuickJS-in-WASM behind a
+capability broker, host-drawn UI, never CSS), no-code recipes over `ITEM_VERBS`, and
+user themes and Looks as token values. It reverses plugins-themes-store.md's "skip
+tier (c)" and "skip sidebar-panel slots" for private code only. Build orders 2 to 7 are built (6 is the
+server runner, `lib/recipes/server/`; 7 is "Write with AI" in Make, `/api/ai/make`); read it before adding a mod
+event, a recipe step, or anything that lets user-written code or values into the app.
 [ai-vision.md](memory/plans/ai-vision.md) does the same for the AI: the model connection,
 the capability gate, delegation to OpenClaw, saved conversations and their privacy
 statement, and which earlier decisions steps 1 and 2a superseded. Read it before touching
 `lib/ai-*`, `lib/ai-server/**`, `app/api/ai/**`, `app/api/chat`, the AI settings pane, the
 right rail, or anything under `components/ai/`.
-[sign-in-with-apple.md](memory/plans/sign-in-with-apple.md) holds the Apple provider: why its
-button follows Supabase's own settings, the desktop shell's provider list, the dashboard setup,
-and the client secret that must be re-minted every six months
-(`scripts/apple-client-secret.mjs`) or Apple sign-in stops.
+[sign-in-with-apple.md](memory/plans/sign-in-with-apple.md) holds the Apple provider: why the web's
+button follows Supabase's own settings (the iPhone's is always shown), the desktop shell's provider
+list, the iPhone's native id_token flow, the dashboard setup, and the client secret that must be
+re-minted every six months (`scripts/apple-client-secret.mjs`) or Apple sign-in stops on the web
+and the desktop (the iPhone's id_token grant needs no secret).
 [reminders-platforms.md](memory/plans/reminders-platforms.md) is the plan for reminders on
 every surface (web/PWA, Electron, the iPhone app, Android, Apple Watch): one server authority
 on owed/discharged, a `devices` registry replacing `push_subscriptions`, device-local scheduling

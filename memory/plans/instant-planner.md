@@ -233,10 +233,17 @@ silent no-op, and that nothing decided on cached rows runs after the landing.
   is the one promoted (`revealWhenOpened`): a dropped or replaced open leaves nothing
   armed to scroll the item's next open unasked. `askAboutItem` does the same.
 - **Commands** ([lib/commands/types.ts](../../lib/commands/types.ts)). While previewing,
-  `isAvailable` is false for every command in the `create`, `items`, `rituals` and
-  `history` groups, plus `workspace.selectAll` and `goto.overdue`. It is a group rule
+  `isAvailable` is false for every command in the `create`, `items`, `rituals`, `history`
+  and `mods` groups, plus `workspace.selectAll` and `goto.overdue`. It is a group rule
   because availability defaults to true. The `app.*` console doors stay live; ui-store
-  defers what they open.
+  defers what they open. Two narrow opt-outs, each one line:
+  - `PREVIEW_CHROME_IDS` — a command that only opens a surface and happens to sit in a
+    gated group. `make.write` (Make a recipe) is the one: it opens the builder, which
+    writes a mod row and never a planner row.
+  - `liveDuringPreview(ctx)` — asked per command, after the group rule. `history.undo`
+    answers true while the undo strip holds a row with its own `onUndo` (the AI-off strip,
+    lib/no-ai.ts): that take-back is not the planner's history, so ⌘Z must reach it.
+    Without it the strip would say Undo and ⌘Z would do nothing.
 - **`inert`** on the canvas view-root (both routers), the braindump's row body and paused
   strip, and Zen's `<main>`. Not on the braindump section, its scroller, the notice slot
   or the quick-add, and not on the Zen room, so the exit stays live. `inert` blocks
@@ -276,9 +283,12 @@ silent no-op, and that nothing decided on cached rows runs after the landing.
 
 The unattended writers already gated on settled or `isLoading`. Drag end, `edit_hovered`
 and `delete_hovered` (no drag starts on an inert row, the hovered ref is null, and the
-chokepoints backstop them). The bulk bar (no selection can form). Chat send (proposals are
-re-validated at accept). Settings hydration (this device's preferences paint the
-preview).
+chokepoints backstop them). The bulk bar (no selection can form). Settings hydration (this
+device's preferences paint the preview).
+
+Chat send was on this list ("proposals are re-validated at accept") and no longer is: it
+waits for the landing, and so does a model-backed proposal ("Turn this into a plan",
+breakdown, retry). See "Main's features during the preview" below.
 
 ## Held captures
 
@@ -510,6 +520,14 @@ Two layers, because a cached planner must never be able to break the app.
   wraps AppShell in `app/page.tsx`. A throw while previewing drops the preview and the
   snapshot and renders again; the retry has no preview left to drop, so a second throw is
   rethrown. Any other throw is rethrown to the next boundary up, exactly as before.
+  - **Section boundaries hand a preview throw up to it.**
+    [components/primitives/section-boundary.tsx](../../components/primitives/section-boundary.tsx)
+    keeps one failed section's error inside that section, so the rest of the page lives.
+    While previewing it rethrows instead: a section that cannot render cached rows is a
+    bad snapshot, not a bad section, and the fix is to drop the preview and show the same
+    section on fresh rows — one "Something went wrong" that clears itself, rather than a
+    section stuck on an error until the next reload. It asks `isPlannerPreviewing()` in
+    `render`, so nothing about the preview reaches its `getDerivedStateFromError`.
 - **The marker.** sessionStorage `dsul-preview-pending` (tab-scoped) is absent or `'1'`.
   - **Armed** by `offerPreview` just before the preview `set()`, and again by the writer
     on `visibilitychange` to visible and on `pageshow` while `isPreview`.
@@ -995,6 +1013,46 @@ Terminal Week 13%), counting that hint. Light themes are held by 4.5:1 (their la
 to 3:1). The worst waiting titles in the dark looks are a habit on its bucket card on the
 phone and a project block's name in Day. A muted row's title is 2.1:1 in Paper.
 
+**A user theme's level is derived, because nobody measured it.** A user theme's slug
+replaces `data-look-light` / `data-look-dark`, so none of the blocks above matches it and
+the mode's own level would stand in. That is wrong for a theme built on Dusk, which sits
+ABOVE its mode. So the level is printed as one more declaration of the theme's own rule
+(`shimmerLevelFor`, [lib/mods/theme-grammar.ts](../../lib/mods/theme-grammar.ts); the base
+levels are restated as `shimmerLevel` on `THEME_BASES`, with a drift test against this CSS):
+the base's own measurement while the theme leaves the two inks and the five grounds alone
+(an accent-only theme, a swapped lime, another radius or font — the shimmer never names
+lime). Otherwise the strongest of three: the base's level, its mode's, and the floor solved
+on the theme's own tokens (`tokenShimmerFloor`: the three tests above, with the four paper
+grounds standing in for the measured surfaces) plus the margin by which the base's
+measurement sat above that same solve on the base's own tokens. The solve alone reads under
+every built-in (Paper 25, Studio 13, Sorbet 28, Night 34, Terminal 22, Dusk 39, against the
+measured 30, 13, 30, 45, 24, 51), because the real surfaces a title sits on (a bucket card, a
+project block) are not among the tokens; the margin carries that difference across. The
+first cut took only the first two, which is not enough: a Paper theme with a softer full ink
+(`oklch(0.5 0 0)`, passing every contrast warning) left waiting titles at about 3.7:1 at 30%
+and now prints 69%, and a Night theme with a brighter muted ink put the labels on the page
+above the titles on their cards at 45% and now prints 100%. Capped at 100, which is the
+resting ink itself: there the wait shows only as the light passing. Erring upwards costs a
+little of the difference between waiting and settled, never legibility, since a higher level
+only moves the waiting ink towards the title's resting ink. The theme's root rule is
+(0,4,0), so it beats `:root` and `.dark` whatever order the sheets land in.
+
+Two caveats, one in each direction. Rolling back: a build older than this reads a cached
+theme carrying the new declaration as unprintable and drops that theme's rules for one cold
+paint, until the rows land and the cache is written again. Rolling forward: a cache written
+by a build that printed no level (main's before this merge) holds no declaration for it, so
+on the first cold load after this ships the mode's level would stand in, under the floor
+for a Dusk copy (45% against 51%) and for a theme that moved its inks. The cache reader
+(`entryFromCache`, [lib/user-themes/store.ts](../../lib/user-themes/store.ts)) adds one in
+memory (`shimmerLevelForDecls`): with no manifest it cannot know the base, so it takes the
+strongest any base of the mode could need, the mode's highest measured level or the token
+solve on the entry's own printed inks and grounds plus the largest margin. That is never
+under what the rows will print, so when ThemeInjector's mods hydrate lands and reprints the
+cache (usually inside the wait: it is not gated on the planner) the level can only step
+down, once per browser, in one frame (the level has no transition). The pre-paint boot sheet
+is left as it was: ThemeInjector replaces it in its first layout effect, long before a
+preview can commit, so no shimmer ever reads it.
+
 **The dim.** Past the 300ms delay the ink goes down to the floor over 360ms on
 `--ease-roll` (`SHIMMER.inkMs`; `INK_CURVE` is the same curve, for the ease's computed
 depth), settled 0.66s into the wait. The first cut took 240ms on `--ease-out-soft`, which
@@ -1197,6 +1255,92 @@ The database name is an on-disk contract for that shim. Renaming it is a migrati
 refactor; `tests/e2e/helpers/preview.ts` re-types it rather than importing it so that a
 rename breaks loudly.
 
+## Main's features during the preview
+
+What landed on `main` while this branch was out, and what each does while the planner is a
+look-only preview. Most of it is answered by the rules above; the ones that needed code of
+their own say so.
+
+- **Mod events and recipes** ([lib/mod-events.ts](../../lib/mod-events.ts),
+  [lib/recipes/engine.ts](../../lib/recipes/engine.ts)). The write barrier is the mod-event
+  barrier: every raise site is one of the actions it refuses (`addItem`, `addTask`,
+  `addTasksBulk`, `addHabit`, `toggleTaskStatus`, `setItemsCompleted`, `setItemSkipped`,
+  `toggleHabitStatus`), and a load has never raised anything — so a landing carrying ticks
+  another device made starts no recipe here, and a recipe never fires on a cached row. The
+  engine asks `selectPlannerSettled` as well, which is what shuts a hand-run (⌘K's recipe
+  commands are held by the `mods` group, but the engine is the backstop). A capture held
+  through the preview raises its `item.created` when held-captures files it at the landing:
+  the person did type it. Raised is not heard, though: RecipeHost starts the account's mods
+  hydrate, and the engine itself, only once the planner has settled, so at the landing the
+  engine is not ready (`engineReady` wants this account's mods `loaded`) and drops the event.
+  ThemeInjector hydrates mods earlier when a user theme is picked, but the engine still has
+  to have started by the dispatch, so nothing promises it. An "item created" recipe
+  therefore does not run for a held capture, exactly as on main, where a capture typed
+  during a cold load was raised before the settle and dropped the same way. Hydrating mods
+  during the preview would change that, and is main's call to make, not this branch's. Rows a
+  landing brings back (`refileItems`, `settleLandedRows`) raise nothing — they are not new.
+- **A server recipe's rows** (`mergeServerItems`, read back by
+  [lib/recipes/revert.ts](../../lib/recipes/revert.ts) and the server tick). A merge, not a
+  verb, so the barrier never sees it: it reads `isLoading` itself and returns 0, and the
+  same rows merge after the landing. Folding a server tick into cached rows would also
+  write the person's only record of it into an undo entry the landing then discards.
+- **Ask's send** ([lib/conversations-store.ts](../../lib/conversations-store.ts)). An
+  outward call that WAITS rather than refusing (the proposals below are the other): a
+  question answered against cached rows is answered against yesterday's planner. `send` awaits `whenPreviewEnds(controller.signal)`
+  ([lib/planner-ready.ts](../../lib/planner-ready.ts)) and builds `plannerContext` after it,
+  so the model sees the fresh rows. The wait ends when the load SETTLES, not when `isPreview`
+  goes false: `dropPreview` (the crash recovery) ends the preview by emptying the store while
+  the load is still in flight, and a wait released there would send an empty planner as the
+  context and save the answer to it. The question is already in the transcript with its reply
+  streaming, so the wait shows as a slow answer and the composer stays free. Stop during the
+  wait ends the turn with the question alone: nothing was sent, no provider was charged, and
+  OpenClaw was never marked asked. The wait cannot hang: every `set()` that clears
+  `isLoading` clears `isPreview` with it, a failed load and a sign-out (`clearStore`)
+  included, and an account switch aborts the send through `clearChatState` (run by
+  `adoptLocalState` before `identifyUser` in the tab that signs in, and by the owner-stamp
+  `storage` event in a sibling tab), a release the wait does not need the next account's
+  load for. A send made with no preview up does not wait, a cold load or
+  the skeleton after a drop included: that is main's behaviour, and changing it is a separate
+  call. `isPlannerPreviewing()` is
+  asked BEFORE the `await`, because an await on an already-settled promise still costs a
+  microtask, and in that gap a Stop would take a turn whose request had not gone out yet:
+  with no preview the send must reach the transport in its caller's own tick, exactly as it
+  did (`chat-stop.test.ts` pins that ordering).
+- **Proposals asked of a model** ([lib/proposal-store.ts](../../lib/proposal-store.ts)),
+  which sit in the same transcript: "Turn this into a plan", a breakdown, a retry. Before
+  the merge they went out on cached rows and leaned on accept's re-validation, but the
+  POST still charged the provider for yesterday's planner and, asked of an OpenClaw
+  gateway, told OpenClaw about the conversation. `askModel` takes the same wait as Ask's
+  send, asked before awaiting, with a controller that every newer `claim()` (a new ask,
+  dismiss, the sign-out clear) aborts. The card shows its spinner meanwhile. Catch-up is
+  computed locally, reaches nothing outward, and still runs on the preview; accept waits
+  for loaded as before.
+- **The AI setup column and "No AI, thanks"** ([lib/no-ai.ts](../../lib/no-ai.ts)). The
+  column is up through the preview and through a cold load, so the AI-off strip can be shown
+  while one is in flight. The strip stands until the person edits something — and **a load is
+  not an edit**: the landing restarts the history at its "Session start", as a Retry's
+  opening `set()` does the other way, so the watcher re-marks `historyIndex` across any
+  `set()` with `isLoading` on either side instead of reading those jumps as the user's edit.
+  Otherwise the strip would vanish mid-landing and ⌘Z would stop reaching its Undo. A change
+  of `userId` is checked first and always takes the strip down: `identifyUser`'s account
+  switch is a `set()` with `isLoading` on, and re-marked across it, the last account's Undo
+  would survive into the next and write `ai_hidden` to it.
+- **User themes and Looks** ([lib/user-themes/](../../lib/user-themes/)). A theme paints the
+  preview like every other device preference, from its own localStorage cache, before the
+  rows land; the cache is cleared with the rest of this browser's state on sign-out
+  (`RAW_CLEARERS` in [lib/local-state.ts](../../lib/local-state.ts)). The one thing it could
+  get wrong is the waiting shimmer's level — see "The floor".
+- **⌘K's `mods` group** (`make.write` exempt, `history.undo` live for the AI-off strip): see
+  "Chokepoints" above. **Section boundaries** rethrowing while previewing: see "Crash
+  recovery".
+- **Nothing to do for the rest.** The agent key moving server-side (a route, no store); the
+  push subscription released on a user change (its own table, nothing read from the
+  planner); the braindump's Hide finished (a view filter over whatever is on screen); dated
+  project-block drop ids (the canvas is `inert`, so no drag starts); the rituals nudge
+  (`watchOnboardingAfterLoad` already waits for settled, and the preview is a load in
+  flight); Ask home's "It works." card and the error routes. `SNAPSHOT_FORMAT` does not move:
+  none of it adds a slice to what the snapshot carries.
+
 ## Where the build departs from the design
 
 The design went through three critiques before the build. These are the places the code
@@ -1378,7 +1522,9 @@ chose differently, each for a reason found while building or testing it.
 ## Tests that pin it
 
 - The barrier: `preview-write-guard.test.ts`. The store lifecycle, including capture before
-  commit: `planner-preview-store.test.ts`. The readings: `planner-ready.test.ts`.
+  commit: `planner-preview-store.test.ts`. The readings, and `whenPreviewEnds` (held to the
+  landing and through a `dropPreview`, released by a failed load, a sign-out and an abort):
+  `planner-ready.test.ts`.
 - The snapshot: `planner-snapshot.test.ts` (with `fake-indexeddb`, imported per file so
   every other suite keeps the no-IndexedDB path), `planner-snapshot-no-idb.test.ts`,
   `planner-snapshot-writer.test.ts`, the ledger in `planner-bundle.test.ts`, the audits in
@@ -1386,6 +1532,16 @@ chose differently, each for a reason found while building or testing it.
   `planner-load-by-route.test.tsx`. The marker across a reload, end to end (the real
   snapshot module, writer, store, SettleHost and boundary over `fake-indexeddb`, each page
   a fresh set of modules): `planner-snapshot-reload.test.tsx`.
+- Main's features during the preview: `mod-events-store` (every raise site refused, the
+  landing silent, a held capture's create raised at the landing, brought-back rows silent),
+  `recipes-engine` (nothing by hand either, and a create raised while mods are still loading
+  is dropped), `preview-unattended-writers` (a server
+  recipe's rows), `conversations-store` (the send held to the landing and through a dropped
+  preview, context from the fresh rows, Stop during the wait), `proposal-retry` (a model
+  ask held the same way, a dismiss ending its wait), `ask-setup` (the AI-off strip through
+  a landing, and taken down by a change of account),
+  `preview-crash-boundary` (a SectionBoundary throw handed up), `theme-grammar` and
+  `theme-bases` (the derived shimmer level and its drift against the CSS).
 - The guards: `ui-store-preview` (including the `touchesPlanner: false` opt-out, and a
   row-acting verb's confirm still refused), `commands-preview` (a frozen classification
   of every static command), `held-captures`, `omnibar-capture`, `deep-link-preview`,

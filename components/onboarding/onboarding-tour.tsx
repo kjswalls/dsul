@@ -462,15 +462,16 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
 
   /**
    * Step 4's card. Without anything to answer it says AI is optional and where
-   * to connect one, never that something is missing. With it, how to ask. On
-   * the desktop Ask is up for the tour (sub-step C summoned it) and closes when
-   * the tour ends, since it starts closed (sidebar-store ASK_OPEN_DEFAULT), so
-   * the card names every way back to it: the Ask button, the chord as bound
-   * (chordLabel, so a rebinding reads right), and `?` in the dock. The button
-   * hides while Ask shows, so this card, which shows beside Ask, says when it
-   * is there and where: once Ask is closed, at the end of the date row. On the
-   * phone the step has just switched to the Ask tab, where the dock's bar IS
-   * the box and there is no chord to press.
+   * to connect one, never that something is missing, and only that card offers
+   * Settings: once AI answers there is nothing left to do there. With it, how
+   * to ask. On the desktop Ask is up for the tour (sub-step C summoned it) and
+   * closes when the tour ends, since it starts closed (sidebar-store
+   * ASK_OPEN_DEFAULT), so the card names every way back to it: the Ask button,
+   * the chord as bound (chordLabel, so a rebinding reads right), and `?` in the
+   * dock. The button hides while Ask shows, so this card, which shows beside
+   * Ask, says when it is there and where: once Ask is closed, at the end of the
+   * date row. On the phone the step has just switched to the Ask tab, where the
+   * dock's bar IS the box and there is no chord to press.
    */
   const aiCard = canChat
     ? {
@@ -480,8 +481,8 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
           : `When Ask is closed, open it with the Ask button at the end of the date row or ${chordLabel(askKeys, isMac)}, or type ? in the dock, to ask about your day.`,
       }
     : {
-        title: 'Bring your own AI (optional)',
-        body: 'dsul works without AI. If you want help planning, connect a model you already use, or OpenClaw, in Settings.',
+        title: 'AI, if you want it',
+        body: 'dsul works fine without it. For help planning, connect a model you already use, or OpenClaw, in Settings.',
       };
 
   // ─── Step 1: Welcome ────────────────────────────────────────────────────────
@@ -734,18 +735,20 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
               <div className="flex items-center justify-between">
                 <BackButton onBack={handleBack} />
                 <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      handleComplete();
-                      setTimeout(() => onOpenSettings(), 300);
-                    }}
-                    className="gap-1.5"
-                  >
-                    <Settings className="h-3.5 w-3.5" />
-                    Settings
-                  </Button>
+                  {!canChat && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        handleComplete();
+                        setTimeout(() => onOpenSettings(), 300);
+                      }}
+                      className="gap-1.5"
+                    >
+                      <Settings className="h-3.5 w-3.5" />
+                      Settings
+                    </Button>
+                  )}
                   <Button size="sm" onClick={handleComplete}>
                     Got it →
                   </Button>
@@ -779,18 +782,20 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
             <div className="flex items-center justify-between">
               <BackButton onBack={handleBack} />
               <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    handleComplete();
-                    setTimeout(() => onOpenSettings(), 300);
-                  }}
-                  className="gap-1.5"
-                >
-                  <Settings className="h-3.5 w-3.5" />
-                  Settings
-                </Button>
+                {!canChat && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      handleComplete();
+                      setTimeout(() => onOpenSettings(), 300);
+                    }}
+                    className="gap-1.5"
+                  >
+                    <Settings className="h-3.5 w-3.5" />
+                    Settings
+                  </Button>
+                )}
                 <Button size="sm" onClick={handleComplete}>
                   Got it →
                 </Button>

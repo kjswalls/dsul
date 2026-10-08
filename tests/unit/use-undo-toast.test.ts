@@ -29,3 +29,9 @@ describe('isToastWorthy — the hand-off', () => {
     expect(isToastWorthy({ label: 'Edit task: Book dentist' })).toBe(false);
   });
 });
+
+describe('isToastWorthy — recipes', () => {
+  it('a recipe run offers its one undo', () => {
+    expect(isToastWorthy({ label: 'Recipe: After run' })).toBe(true);
+  });
+});

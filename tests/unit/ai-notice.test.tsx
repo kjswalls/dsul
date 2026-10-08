@@ -116,7 +116,7 @@ describe('the failing-key notice', () => {
     seed(FAILING);
     const { result } = renderHook(() => useAINotice());
     act(() => result.current?.onSelect?.());
-    expect(push).toHaveBeenCalledWith('/settings/beacon');
+    expect(push).toHaveBeenCalledWith('/settings/ai');
   });
 
   it('hides for the rest of the session once dismissed, for that failure only', () => {
@@ -158,7 +158,7 @@ describe('the failing-key notice', () => {
     const row = screen.getByTestId('notice-ai-failing');
     expect(row).toHaveTextContent('AI paused: your key stopped working');
     fireEvent.click(screen.getByText('Fix'));
-    expect(push).toHaveBeenCalledWith('/settings/beacon');
+    expect(push).toHaveBeenCalledWith('/settings/ai');
   });
 });
 
@@ -183,7 +183,7 @@ describe('the failing-key notice while OpenClaw answers', () => {
     expect(row.textContent).not.toMatch(/AI paused/);
     // Still the user's decision to make, and still one tap from fixing it.
     fireEvent.click(screen.getByText('Fix'));
-    expect(push).toHaveBeenCalledWith('/settings/beacon');
+    expect(push).toHaveBeenCalledWith('/settings/ai');
   });
 
   it('says the same on the plugin path, which chats without proposing', () => {
@@ -222,7 +222,7 @@ describe('the legacy notice', () => {
     expect(result.current?.actionLabel).toBe('Connect');
     expect(result.current?.testId).toBe('notice-ai-moved');
     act(() => result.current?.onSelect?.());
-    expect(push).toHaveBeenCalledWith('/settings/beacon');
+    expect(push).toHaveBeenCalledWith('/settings/ai');
   });
 
   it('stays quiet whenever something else explains itself', () => {
@@ -255,5 +255,25 @@ describe('the legacy notice', () => {
     expect(result.current).toBeNull();
     const disk = JSON.parse(localStorage.getItem('dsul-ai-settings') ?? '{}');
     expect(disk.state?.legacyNotice).toBe(false);
+  });
+});
+
+describe('"No AI, thanks"', () => {
+  it('silences both lines, though the key is still failing', () => {
+    for (const s of [
+      { ...FAILING, aiHidden: true },
+      { ...NOTHING_CONNECTED, legacyNotice: true, aiHidden: true },
+    ]) {
+      seed(s);
+      const { result, unmount } = renderHook(() => useAINotice());
+      expect(result.current).toBeNull();
+      unmount();
+    }
+  });
+
+  it('hides nothing while the account cannot say (060 not applied)', () => {
+    seed({ ...FAILING, aiHidden: null });
+    const { result } = renderHook(() => useAINotice());
+    expect(result.current?.id).toBe('ai-failing');
   });
 });

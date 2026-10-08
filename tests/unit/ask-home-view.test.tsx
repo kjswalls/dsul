@@ -557,7 +557,7 @@ describe('the foot', () => {
     const chips = within(screen.getByTestId('chat-openers')).getAllByRole('button');
     expect(chips.map((c) => c.textContent)).toEqual(['Plan my day', "What's been sitting?"]);
     expect(home().querySelector('[data-ask-composer] textarea')).not.toBeNull();
-    expect(within(home()).getByTestId('answerer-label')).toHaveTextContent('gpt-4o-mini');
+    expect(within(home()).getByTestId('answerer-label')).toHaveTextContent('GPT-4o mini');
   });
 
   it('turns to tomorrow in the evening', () => {

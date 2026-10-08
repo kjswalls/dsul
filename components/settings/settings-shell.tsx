@@ -13,6 +13,7 @@ import {
   ALL_PANES,
   PANES,
   paneById,
+  paneHref,
   railPaneFor,
   settingById,
   extensionSlugFromPane,
@@ -37,6 +38,7 @@ import { ExtensionHero } from './extension-hero';
 import { ExtensionBrowse } from '@/components/extensions/extension-browse';
 import { ShortcutsPanel } from './shortcuts-panel';
 import { ModelConnectionPanel } from './model-connection-panel';
+import { MakePane } from './make-pane';
 import { useAICapabilities } from '@/lib/ai-connection-store';
 import { revealChat } from '@/lib/open-chat';
 
@@ -393,7 +395,7 @@ export function SettingsShell({
   const openPanelFor = (record: SettingRecord) => {
     setRawQuery('');
     setQuery('');
-    router.push(`/settings/${record.pane}?focus=${encodeURIComponent(record.id)}`);
+    router.push(`${paneHref(record.pane)}?focus=${encodeURIComponent(record.id)}`);
   };
 
   const setUpAction = (record: SettingRecord) =>
@@ -545,7 +547,7 @@ export function SettingsShell({
         {parentPane && (
           <>
             <span aria-hidden>/</span>
-            <Link href={`/settings/${parentPane.id}`} className="hover:text-foreground transition-colors">
+            <Link href={paneHref(parentPane.id)} className="hover:text-foreground transition-colors">
               {parentPane.name}
             </Link>
           </>
@@ -599,7 +601,7 @@ export function SettingsShell({
                 onClick={() => {
                   setRawQuery('');
                   setQuery('');
-                  router.push(`/settings/${p.id}`);
+                  router.push(paneHref(p.id));
                 }}
                 className={cn(
                   'flex h-8 shrink-0 items-center gap-2.5 rounded-sm px-2 text-sm transition-colors md:w-full',
@@ -817,6 +819,10 @@ export function SettingsShell({
                   mode with its themes under it, and the layouts. Six records
                   (LOOK_PICKER_RECORD_IDS) are drawn there instead of below. */}
               {pane === 'look' && <LookPicker ctx={ctx} isMobile={isMobile} highlightId={highlight} />}
+
+              {/* Make opens with the list of what you made; its one record
+                  (make.allOff) is drawn below by the flat rows. */}
+              {pane === 'make' && <MakePane ctx={ctx} isMobile={isMobile} />}
 
               {pane === 'extensions' && (
                 <>

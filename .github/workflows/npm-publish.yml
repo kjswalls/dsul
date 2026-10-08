@@ -1,0 +1,122 @@
+# Publishes @dsul/types and @dsul/openclaw-context to npm. Runs only when dispatched by hand
+# (issue #134). The plugin's dist/ is gitignored and CI never builds it, so this is the only way
+# a plugin src change reaches the people running it.
+#
+# - Dispatch it from main only. Every job is skipped on any other ref, and the file itself has to
+#   reach main through a normal PR before it can be dispatched at all.
+# - The token lives in the `npm-publish` Environment as NPM_TOKEN (an npm granular access token
+#   with read and write on the @dsul scope; Kirby as required reviewer), so each run waits for
+#   his approval and a dispatch from any other ref gets no token.
+# - A package whose package.json version is already on npm is skipped, not failed, so
+#   re-dispatching after a partial run publishes only what is missing. To ship a change, bump
+#   the version in a PR first.
+# - Order matters: @dsul/types goes first, because the plugin depends on it as workspace:*,
+#   which `pnpm pack` rewrites to the exact types version in the tarball. That version must
+#   already be on npm or the plugin installs broken.
+# - Every tarball is published with npm provenance (the repo is public), so npm shows which
+#   commit and workflow run built it.
+# - Never make this a required check. It runs only on dispatch, so a required check here would
+#   never report on a PR and every auto-merge would stall.
+name: npm publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Which package to publish
+        type: choice
+        options:
+          - both
+          - types
+          - openclaw-context
+        default: both
+
+permissions: {}
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish (${{ inputs.package }})
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: npm-publish
+    permissions:
+      contents: read
+      id-token: write # npm provenance
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Same gate as test.yml: the committed dist/ must match src, so what npm gets is what the
+      # app runs.
+      - name: Build @dsul/types and check dist matches src
+        run: |
+          rm -rf packages/types/dist
+          pnpm --filter @dsul/types build
+          git add -A packages/types/dist
+          git diff --cached --exit-code -- packages/types/dist || {
+            echo '::error::packages/types/dist is stale — run `pnpm --filter @dsul/types build` and commit the result'
+            exit 1
+          }
+
+      - name: Build @dsul/openclaw-context
+        if: inputs.package != 'types'
+        run: pnpm --filter @dsul/openclaw-context build
+
+      - name: Publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          WHICH: ${{ inputs.package }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo '::error::NPM_TOKEN is not set in the npm-publish Environment'
+            exit 1
+          fi
+
+          dirs=()
+          [ "$WHICH" != openclaw-context ] && dirs+=(packages/types)
+          [ "$WHICH" != types ] && dirs+=(openclaw-plugin)
+
+          out="$RUNNER_TEMP/tarballs"
+          mkdir -p "$out"
+
+          for dir in "${dirs[@]}"; do
+            name=$(jq -r .name "$dir/package.json")
+            version=$(jq -r .version "$dir/package.json")
+
+            if npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "::notice::$name@$version is already on npm, skipping"
+              continue
+            fi
+
+            # pnpm pack, not npm publish in place: it rewrites workspace:* to a real version.
+            # prepublishOnly does not run on pack, and both packages were built above.
+            tgz=$(cd "$dir" && pnpm pack --pack-destination "$out" | tail -n 1)
+            echo "Packed $tgz"
+            if tar -xOzf "$tgz" package/package.json | grep -q 'workspace:'; then
+              echo "::error::$name tarball still has a workspace: dependency"
+              exit 1
+            fi
+
+            npm publish "$tgz" --access public --provenance
+            echo "::notice::Published $name@$version"
+          done

@@ -258,7 +258,9 @@ const ITEM_ROWS = [
     order: 6,
   },
   {
-    // Drawn inside its project's block, at the block's time.
+    // Drawn inside its project's block, at the block's time, its own slot
+    // stashed as moveTasksToProjectBlock stashes it (a parked task always has
+    // one), to come back to when it leaves the block.
     ...rowBase(10),
     type: 'task',
     title: 'Inbox zero',
@@ -268,6 +270,8 @@ const ITEM_ROWS = [
     start_date: '2026-10-02',
     time_bucket: 'morning',
     in_project_block: true,
+    previous_start_time: '16:00',
+    previous_start_date: '2026-10-01',
     is_scheduled: true,
     order: 7,
   },
@@ -544,6 +548,8 @@ describe('the payload fixture shared with DsulCore', () => {
       'reminder',
       'time',
       'repeat',
+      'project',
+      'collect',
     ]);
     // The custom type's names, and nothing else of its row.
     expect(generated.itemTypes).toEqual([{ name: 'book', label: 'Book to read', labelPlural: 'Books to read' }]);

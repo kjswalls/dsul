@@ -122,6 +122,15 @@ describe('the AI server boundary', () => {
     'lib/plan-prompt.ts',
     'lib/ask-home.ts',
     'lib/agent-question.ts',
+    'lib/make-ai.ts',
+    'lib/make-draft.ts',
+    'lib/json-extract.ts',
+    'lib/recipes/describe.ts',
+    'lib/ai-key-prefix.ts',
+    'lib/ai-model-names.ts',
+    'lib/connect-flow.ts',
+    'lib/connect-return.ts',
+    'lib/format-chat-timestamp.ts',
   ])('%s is client-safe: no Node builtin, no server module', (rel) => {
     const file = FILES.find((f) => f.rel === rel);
     expect(file, `${rel} exists`).toBeDefined();

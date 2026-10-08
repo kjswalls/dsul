@@ -1,0 +1,35 @@
+import { useExtensionsStore } from '@/lib/extensions-store';
+import { EXT_BEEMINDER } from '@/lib/extension-registry';
+import type { Item } from '@/lib/planner-types';
+import { STAKE_EXTENSION_SLUGS, stakeRefusalWith } from './stake-rule';
+import type { RecipeWriteStep } from './validate';
+
+/**
+ * The stake lock in the browser, read from the extensions store. The rule is
+ * ./stake-rule.ts, shared with the server runner.
+ */
+export { STAKE_EXTENSION_SLUGS } from './stake-rule';
+
+/**
+ * Whether the lock is on. Ignores the stakes master switch on purpose: an
+ * adapter switched on is enough, the stricter reading of "any adapter is on".
+ */
+export function stakeLockOn(): boolean {
+  const ext = useExtensionsStore.getState();
+  // No table: every extension sits at its manifest default, which is off.
+  if (!ext.available) return false;
+  // Not loaded yet: the answer is unknown, so the lock holds.
+  if (!ext.configsLoaded) return true;
+  return STAKE_EXTENSION_SLUGS.some((slug) => ext.isEnabled(slug));
+}
+
+/** 'stake' when the lock refuses this step, else null. */
+export function stakeRefusal(step: RecipeWriteStep, item?: Item): 'stake' | null {
+  const ext = useExtensionsStore.getState();
+  return stakeRefusalWith(step, item, {
+    lockOn: stakeLockOn(),
+    // Without the configs the goal map is unknown, so no create gets through.
+    configsKnown: ext.configsLoaded,
+    beeminder: ext.configs[EXT_BEEMINDER] ?? {},
+  });
+}

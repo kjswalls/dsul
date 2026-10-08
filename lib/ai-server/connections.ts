@@ -42,6 +42,12 @@ export interface ModelConnectionRow {
   status: ConnectionStatus;
   last_error: string | null;
   checked_at: string | null;
+  /**
+   * When a daily cap lifts (060). Null when none holds, and on a database
+   * that has not got the column yet: every read of it is tolerant, so a
+   * deploy landing ahead of 060 reads as "no limit" rather than no AI at all.
+   */
+  limited_until: string | null;
 }
 
 export type RowRead =
@@ -55,7 +61,7 @@ export type RowRead =
  * error, its `.details`, `.message` or `.hint`.
  */
 export class AiDbError extends Error {
-  readonly op: 'read' | 'save' | 'model' | 'status' | 'delete' | 'openclaw';
+  readonly op: 'read' | 'save' | 'model' | 'status' | 'limit' | 'delete' | 'openclaw' | 'hidden';
   /** e.g. '23514', 'PGRST301'; 'unknown' when absent. */
   readonly code: string;
 
@@ -72,6 +78,18 @@ export class AiDbError extends Error {
 const TABLE = 'model_connections';
 const COLUMNS =
   'user_id, provider, base_url, model, model_meta, auth_method, key_ciphertext, status, last_error, checked_at';
+/**
+ * 060's column, asked for separately. `isMissingSchema` reads 42703 and
+ * PGRST204 as "no table", which would turn a deploy ahead of 060 into
+ * `available: false` for everyone, so every statement that names it retries
+ * without it instead.
+ */
+const COLUMNS_WITH_LIMIT = `${COLUMNS}, limited_until`;
+
+function isMissingColumn(error: DbError): boolean {
+  const code = codeOf(error);
+  return code === '42703' || code === 'PGRST204';
+}
 
 type DbError = { code?: unknown } | null | undefined;
 
@@ -102,14 +120,28 @@ function service(op: AiDbError['op']): ReturnType<typeof createServiceClient> {
 
 function cleanMeta(meta: unknown): ModelMeta {
   if (typeof meta !== 'object' || meta === null || Array.isArray(meta)) return {};
-  const effortLow = (meta as Record<string, unknown>).effortLow;
-  return typeof effortLow === 'boolean' ? { effortLow } : {};
+  const raw = meta as Record<string, unknown>;
+  const label = cleanLabel(raw.label);
+  return {
+    ...(typeof raw.effortLow === 'boolean' ? { effortLow: raw.effortLow } : {}),
+    ...(label !== null ? { label } : {}),
+  };
 }
 
 function isoOrNull(v: unknown): string | null {
   if (typeof v !== 'string' || v === '') return null;
   const t = Date.parse(v);
   return Number.isFinite(t) ? new Date(t).toISOString() : null;
+}
+
+/** The model's listed name, as `model_meta` may carry it: printable, trimmed, at most 200. */
+const LABEL_MAX = 200;
+const UNPRINTABLE = /[\u0000-\u001f\u007f]/u;
+
+function cleanLabel(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  const t = v.trim().slice(0, LABEL_MAX);
+  return t !== '' && !UNPRINTABLE.test(t) ? t : null;
 }
 
 /** A row as stored, narrowed field by field; anything off-shape reads as absent. */
@@ -130,6 +162,7 @@ function toRow(data: Record<string, unknown>, op: AiDbError['op']): ModelConnect
     status: data.status === 'failing' ? 'failing' : 'ok',
     last_error: typeof data.last_error === 'string' ? data.last_error : null,
     checked_at: typeof data.checked_at === 'string' ? data.checked_at : null,
+    limited_until: typeof data.limited_until === 'string' ? data.limited_until : null,
   };
 }
 
@@ -143,22 +176,29 @@ function sealContext(userId: string, provider: ModelProviderId, baseUrl: string 
  */
 export async function readModelConnection(userId: string): Promise<RowRead> {
   if (!loadEncryptionKey().ok) return { kind: 'unavailable', reason: 'no_key' };
-  const { data, error } = await service('read')
-    .from(TABLE)
-    .select(COLUMNS)
-    .eq('user_id', userId)
-    .maybeSingle();
+  const svc = service('read');
+  const read = (columns: string) => svc.from(TABLE).select(columns).eq('user_id', userId).maybeSingle();
+  const first = await read(COLUMNS_WITH_LIMIT);
+  // Before 060 the column is not there; the rest of the row still is.
+  const { data, error } = isMissingColumn(first.error) ? await read(COLUMNS) : first;
   if (error) {
     if (isNoSchema(error)) return { kind: 'unavailable', reason: 'no_table' };
     throw new AiDbError('read', codeOf(error));
   }
   if (!data) return { kind: 'none' };
-  return { kind: 'row', row: toRow(data as Record<string, unknown>, 'read') };
+  return { kind: 'row', row: toRow(data as unknown as Record<string, unknown>, 'read') };
 }
 
 /** For GET: opens the key in memory only to decide readability, discards the plaintext, NEVER writes. */
-export function toConnectionView(row: ModelConnectionRow, readable: boolean): ModelConnectionView {
+export function toConnectionView(
+  row: ModelConnectionRow,
+  readable: boolean,
+  now: number = Date.now()
+): ModelConnectionView {
   const failing = !readable || row.status === 'failing';
+  // A limit that has passed is no limit: the view says nothing rather than
+  // asking every reader to compare it with the clock.
+  const limit = row.limited_until === null ? NaN : Date.parse(row.limited_until);
   return {
     provider: row.provider,
     model: row.model,
@@ -169,6 +209,8 @@ export function toConnectionView(row: ModelConnectionRow, readable: boolean): Mo
     // failure ever written is the provider refusing the key.
     problem: !readable ? 'key_unreadable' : row.status === 'failing' ? 'key_rejected' : null,
     checkedAt: isoOrNull(row.checked_at),
+    limitedUntil: Number.isFinite(limit) && limit > now ? new Date(limit).toISOString() : null,
+    modelLabel: row.model === null ? null : (row.model_meta.label ?? null),
   };
 }
 
@@ -225,7 +267,11 @@ export async function openModelConnection(userId: string): Promise<Opened> {
   return { ok: true, row, creds, model: row.model };
 }
 
-/** Seals with AAD (user, provider, baseUrl); upserts on user_id; status 'ok', last_error null, checked_at now(). */
+/**
+ * Seals with AAD (user, provider, baseUrl); upserts on user_id; status 'ok',
+ * last_error null, checked_at now(), limited_until null (a new key never
+ * inherits the old one's daily cap).
+ */
 export async function saveModelConnection(
   userId: string,
   v: {
@@ -254,31 +300,37 @@ export async function saveModelConnection(
   if (!key.ok) throw new AiDbError('save', 'no_key');
   const ciphertext = sealSecret(v.apiKey, sealContext(userId, v.provider, baseUrl), key.key);
 
-  const { data, error } = await service('save')
-    .from(TABLE)
-    .upsert(
-      {
-        user_id: userId,
-        provider: v.provider,
-        base_url: baseUrl,
-        model: v.model,
-        model_meta: cleanMeta(v.modelMeta),
-        auth_method: v.authMethod,
-        key_ciphertext: ciphertext,
-        status: 'ok',
-        last_error: null,
-        checked_at: new Date().toISOString(),
-      },
-      { onConflict: 'user_id' }
-    )
-    .select(COLUMNS)
-    .single();
+  const svc = service('save');
+  const row = {
+    user_id: userId,
+    provider: v.provider,
+    base_url: baseUrl,
+    model: v.model,
+    model_meta: cleanMeta(v.modelMeta),
+    auth_method: v.authMethod,
+    key_ciphertext: ciphertext,
+    status: 'ok' as const,
+    last_error: null,
+    checked_at: new Date().toISOString(),
+  };
+  const save = (withLimit: boolean) =>
+    svc
+      .from(TABLE)
+      .upsert(withLimit ? { ...row, limited_until: null } : row, { onConflict: 'user_id' })
+      .select(withLimit ? COLUMNS_WITH_LIMIT : COLUMNS)
+      .single();
+  const first = await save(true);
+  const { data, error } = isMissingColumn(first.error) ? await save(false) : first;
   if (error) throw new AiDbError('save', codeOf(error));
   if (!data) throw new AiDbError('save', 'no_row');
-  return toRow(data as Record<string, unknown>, 'save');
+  return toRow(data as unknown as Record<string, unknown>, 'save');
 }
 
-/** .eq('user_id').eq('provider', provider); returns null when no row matched (route → 409/404). */
+/**
+ * .eq('user_id').eq('provider', provider); returns null when no row matched
+ * (route → 409/404). The limit is cleared with it: Gemini's daily quota is
+ * per model, so the old model's cap says nothing about the new one.
+ */
 export async function setConnectionModel(
   userId: string,
   provider: ModelProviderId,
@@ -286,15 +338,20 @@ export async function setConnectionModel(
   meta: ModelMeta
 ): Promise<ModelConnectionRow | null> {
   if (!isModelId(model)) throw new AiDbError('model', 'invalid_model');
-  const { data, error } = await service('model')
-    .from(TABLE)
-    .update({ model, model_meta: cleanMeta(meta) })
-    .eq('user_id', userId)
-    .eq('provider', provider)
-    .select(COLUMNS)
-    .maybeSingle();
+  const svc = service('model');
+  const update = { model, model_meta: cleanMeta(meta) };
+  const write = (withLimit: boolean) =>
+    svc
+      .from(TABLE)
+      .update(withLimit ? { ...update, limited_until: null } : update)
+      .eq('user_id', userId)
+      .eq('provider', provider)
+      .select(withLimit ? COLUMNS_WITH_LIMIT : COLUMNS)
+      .maybeSingle();
+  const first = await write(true);
+  const { data, error } = isMissingColumn(first.error) ? await write(false) : first;
   if (error) throw new AiDbError('model', codeOf(error));
-  return data ? toRow(data as Record<string, unknown>, 'model') : null;
+  return data ? toRow(data as unknown as Record<string, unknown>, 'model') : null;
 }
 
 /**
@@ -348,6 +405,36 @@ export async function setConnectionStatus(
   return Array.isArray(data) && data.length > 0;
 }
 
+/**
+ * When a daily cap lifts, written the same conditional way as the status (by
+ * the seal's IV, see `sealedHeadPattern`), so a key replaced in the meantime
+ * never inherits it. `null` clears it.
+ *
+ * Tolerant of 060 not being applied: no column, nothing kept, `false`. The
+ * limit is a nicety (the pill's "back at 7 am"), never the gate, so a
+ * database without it must not fail a request.
+ */
+export async function setConnectionLimit(
+  userId: string,
+  expectCiphertext: string,
+  until: string | null
+): Promise<boolean> {
+  const head = sealedHeadPattern(expectCiphertext);
+  if (head === null) return false;
+  const at = typeof until === 'string' ? Date.parse(until) : NaN;
+  const { data, error } = await service('limit')
+    .from(TABLE)
+    .update({ limited_until: Number.isFinite(at) ? new Date(at).toISOString() : null })
+    .eq('user_id', userId)
+    .like('key_ciphertext', head)
+    .select('user_id');
+  if (error) {
+    if (isMissingColumn(error)) return false;
+    throw new AiDbError('limit', codeOf(error));
+  }
+  return Array.isArray(data) && data.length > 0;
+}
+
 /** Idempotent: no row, or no table yet, is already disconnected. */
 export async function deleteModelConnection(userId: string): Promise<void> {
   const { error } = await service('delete').from(TABLE).delete().eq('user_id', userId);
@@ -359,31 +446,75 @@ function present(v: unknown): boolean {
 }
 
 /**
- * user_settings (openclaw_gateway_url, openclaw_agent_id, openclaw_api_key,
- * openclaw_chat_url) + user_secrets.openclaw_gateway_token via the service
+ * user_settings (openclaw_gateway_url, openclaw_agent_id, openclaw_chat_url)
+ * + user_secrets (openclaw_gateway_token, openclaw_api_key) via the service
  * client. Booleans + agentId only. Missing schema => all false. Other errors
  * THROW.
+ *
+ * The agent key moved to user_secrets in migration 059. Until that is
+ * applied, user_secrets has no such column (the read retries without it) and
+ * the key is still in user_settings.openclaw_api_key, so a key in EITHER
+ * place counts; after 059 the old column is null and CHECKed null.
  */
 export async function readOpenClawStatus(userId: string): Promise<OpenClawView> {
   const svc = service('openclaw');
-  const [settings, secrets] = await Promise.all([
+  const readSecrets = (columns: string) =>
+    svc.from('user_secrets').select(columns).eq('user_id', userId).maybeSingle();
+  const [settings, firstSecrets] = await Promise.all([
     svc
       .from('user_settings')
       .select('openclaw_gateway_url, openclaw_agent_id, openclaw_api_key, openclaw_chat_url')
       .eq('user_id', userId)
       .maybeSingle(),
-    svc.from('user_secrets').select('openclaw_gateway_token').eq('user_id', userId).maybeSingle(),
+    readSecrets('openclaw_gateway_token, openclaw_api_key'),
   ]);
+  const secrets =
+    codeOf(firstSecrets.error) === '42703' ? await readSecrets('openclaw_gateway_token') : firstSecrets;
   if (settings.error && !isNoSchema(settings.error)) throw new AiDbError('openclaw', codeOf(settings.error));
   if (secrets.error && !isNoSchema(secrets.error)) throw new AiDbError('openclaw', codeOf(secrets.error));
 
   const s = (settings.error ? null : settings.data) as Record<string, unknown> | null;
   const sec = (secrets.error ? null : secrets.data) as Record<string, unknown> | null;
-  const apiKey = present(s?.openclaw_api_key);
+  const apiKey = present(sec?.openclaw_api_key) || present(s?.openclaw_api_key);
   return {
     gateway: present(s?.openclaw_gateway_url) && present(sec?.openclaw_gateway_token),
     pluginChat: apiKey && present(s?.openclaw_chat_url),
     agent: apiKey,
     agentId: present(s?.openclaw_agent_id) ? (s?.openclaw_agent_id as string) : null,
   };
+}
+
+/**
+ * user_settings.ai_hidden (060): the account said "No AI, thanks". `null` when
+ * the column is not there yet: an unknown answer, which the gate reads as
+ * "invite nobody" (lib/ai-registry.ts). No row yet is a new account that has
+ * said nothing: false. Other errors THROW.
+ */
+export async function readAIHidden(userId: string): Promise<boolean | null> {
+  const { data, error } = await service('hidden')
+    .from('user_settings')
+    .select('ai_hidden')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (error) {
+    if (isNoSchema(error)) return null;
+    throw new AiDbError('hidden', codeOf(error));
+  }
+  return (data as Record<string, unknown> | null)?.ai_hidden === true;
+}
+
+/**
+ * Writes user_settings.ai_hidden, creating the row for an account that has
+ * none. Answers false when the column is not there yet (nothing written), so
+ * the route can say so instead of pretending the choice was kept.
+ */
+export async function writeAIHidden(userId: string, hidden: boolean): Promise<boolean> {
+  const { error } = await service('hidden')
+    .from('user_settings')
+    .upsert({ user_id: userId, ai_hidden: hidden }, { onConflict: 'user_id' });
+  if (error) {
+    if (isNoSchema(error)) return false;
+    throw new AiDbError('hidden', codeOf(error));
+  }
+  return true;
 }

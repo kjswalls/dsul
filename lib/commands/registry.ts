@@ -26,6 +26,7 @@ import {
   Moon,
   PanelLeft,
   Palette,
+  PowerOff,
   Plus,
   Redo2,
   Rows3,
@@ -53,6 +54,7 @@ import {
   Pause as PauseIcon,
   Play as PlayIcon,
   Target,
+  Workflow,
 } from 'lucide-react';
 import { addDays, subDays } from 'date-fns';
 
@@ -79,10 +81,15 @@ import { useProposalStore } from '../proposal-store';
 import { getAICapabilities } from '../ai-connection-store';
 import { askNew, newChat, openHistory, revealChat, toggleRail } from '../open-chat';
 import { useConversationsStore } from '../conversations-store';
+import { useModsStore } from '../mods-store';
+import { modLabel, type UserMod } from '../mods/schema';
+import { parseRecipe } from '../recipes/validate';
+import { runRecipeCommand } from '../recipes/command-run';
 import { railModeNow, useRailStore } from '../rail-store';
+import { useUndoStripStore } from '../undo-strip-store';
 import { goToDate, stepScope } from '../nav-commands';
 import { resolveCategoryIcon } from '../category-icons';
-import { getItemTypeConfig } from '../item-registry';
+import { getCustomTypeDefs, getItemTypeConfig } from '../item-registry';
 import { selectOverdue } from '../overdue';
 import { inactiveItemIdsOn, isPausedOn, isSeasonActiveOn } from '../active';
 import { seasonStateForSwitch } from '../scope-rail';
@@ -917,6 +924,23 @@ export const STATIC_COMMANDS: Command[] = [
     availableWhen: () => getAICapabilities().canChat && useConversationsStore.getState().saving !== 'off',
     run: (ctx) => openHistory(ctx.isMobile, { reveal: true, focusSearch: true }),
   },
+  // ⌘K hands off to Make (memory/plans/mods.md, "AI writes it"): Write with
+  // AI lives in Settings → Make, gated on canMake (a connected model, never
+  // OpenClaw alone). This only opens it with the Recipe box focused; nothing
+  // is sent until Write is pressed there. Palette only, so no shortcut id.
+  {
+    id: 'make.write',
+    label: 'Write a recipe with AI',
+    group: 'mods',
+    icon: AskMarkIcon,
+    keywords: 'ai make recipe theme look write automate when',
+    hidden: () => !getAICapabilities().canMake,
+    availableWhen: () => getAICapabilities().canMake,
+    run: (ctx) => {
+      if (ctx.navigate) ctx.navigate('/settings/make?write=recipe');
+      else if (typeof window !== 'undefined') window.location.assign('/settings/make?write=recipe');
+    },
+  },
   {
     id: 'rituals.eod',
     label: 'Start end-of-day review',
@@ -944,12 +968,23 @@ export const STATIC_COMMANDS: Command[] = [
       allowInInput: true,
       context: 'Desktop only. On the phone, Ask is a tab.',
     },
-    // The phone's Ask is a tab, not the rail. And with nothing to answer there
-    // is no Ask to open: the rail is only the item's panel then, and the chord
-    // stays consumed and inert (`availableWhen`; hooks/use-command-shortcuts.ts),
-    // so the browser's own Ctrl+J never opens either.
+    // The phone's Ask is a tab, not the rail. With nothing to answer but the
+    // gate offering setup or a fix, the chord opens the setup column, as the
+    // unlit key does (lib/open-chat.ts toggleRail); the palette row stays
+    // hidden then, since "Open or close Ask" is not what it opens. With
+    // nothing offered (AI hidden, the gate unknown) the rail is only the
+    // item's panel, and the chord stays consumed and inert (`availableWhen`;
+    // hooks/use-command-shortcuts.ts), so the browser's own Ctrl+J never opens
+    // either.
+    // The setup column is the desktop rail's, so on the phone shell the chord
+    // offers it nothing: there it would only arm a summon nothing draws, to
+    // spring the column open unasked once the window widens (toggle_zen's
+    // reason, above).
     hidden: (ctx) => ctx.isMobile || !getAICapabilities().canChat,
-    availableWhen: () => getAICapabilities().canChat,
+    availableWhen: (ctx) => {
+      const ai = getAICapabilities();
+      return ai.canChat || (!ctx.isMobile && (ai.askInvite || ai.askFix));
+    },
     run: () => toggleRail(),
   },
   {
@@ -1213,6 +1248,20 @@ export const STATIC_COMMANDS: Command[] = [
       store.setEodReviewEnabled(!store.eodReviewEnabled);
     },
   },
+  {
+    // mods.md, "Faults": the off switch for everything a person made that runs.
+    // Same write as Settings → Make's make.allOff. No shortcut: ids are frozen.
+    id: 'settings.modsOff',
+    label: 'Turn all mods off',
+    description: 'Switches off every recipe and mod you made.',
+    group: 'settings',
+    icon: PowerOff,
+    keywords: 'mods recipes make disable off safe',
+    availableWhen: () => useModsStore.getState().available,
+    run: (ctx) => {
+      if (ctx.userId) void useModsStore.getState().turnAllOff(ctx.userId);
+    },
+  },
 
   /* ── History ────────────────────────────────────────────────────────── */
   {
@@ -1222,8 +1271,23 @@ export const STATIC_COMMANDS: Command[] = [
     icon: Undo2,
     keywords: 'undo revert back mistake',
     shortcut: { id: 'undo', keys: ['ctrl', 'z'], repeatable: true },
-    availableWhen: () => planner().canUndo,
-    run: () => planner().undo(),
+    // The strip's row and Ctrl+Z are one offer. A row with its own take-back
+    // ("AI is off" · Undo, lib/no-ai.ts) is what Ctrl+Z takes back while it
+    // shows, never the planner's last action from before it.
+    availableWhen: () => planner().canUndo || !!useUndoStripStore.getState().entry?.onUndo,
+    // That row is not the planner's history, so the look-only preview leaves
+    // it live; the planner's own undo stays refused there (lib/commands/types.ts).
+    liveDuringPreview: () => !!useUndoStripStore.getState().entry?.onUndo,
+    run: () => {
+      const strip = useUndoStripStore.getState();
+      const own = strip.entry;
+      if (own?.onUndo) {
+        strip.dismiss(own.id);
+        own.onUndo();
+        return;
+      }
+      planner().undo();
+    },
   },
   {
     id: 'history.redo',
@@ -1635,11 +1699,61 @@ const goalCommands: CommandProvider = () => {
   return cachedGoalCommands;
 };
 
+let cachedRecipeRows: readonly UserMod[] | null = null;
+let cachedRecipeTypes: readonly unknown[] | null = null;
+let cachedRecipeCommands: Command[] = [];
+
+/**
+ * "Run recipe: Morning reset", one per switched-on recipe whose trigger is
+ * ⌘K (memory/plans/mods.md, "Commands"). Ids `mod.<slug>.run`; the slug is
+ * unique across every kind a person makes (lib/mods-store.ts createRecipe), and
+ * a duplicate is dropped anyway, first one wins.
+ *
+ * No shortcut (only STATIC_COMMANDS may own a binding) and no alias: a recipe's
+ * name is free text, for the reason spelled out above routineCommands. The
+ * label always starts "Run recipe:", host chrome the name cannot remove.
+ *
+ * Memoised on the rows array's identity, which every write replaces, and on
+ * the hydrated custom types', which parseRecipe asks (a recipe that adds an
+ * Errand is invalid until the Errand type has loaded).
+ */
+const recipeCommands: CommandProvider = () => {
+  const { rows, available, safeMode } = useModsStore.getState();
+  if (!available || safeMode) return [];
+  const types = getCustomTypeDefs();
+  if (rows === cachedRecipeRows && types === cachedRecipeTypes) return cachedRecipeCommands;
+
+  cachedRecipeRows = rows;
+  cachedRecipeTypes = types;
+  const seen = new Set<string>();
+  cachedRecipeCommands = [];
+  for (const row of rows) {
+    if (row.kind !== 'recipe' || !row.enabled) continue;
+    if (parseRecipe(row)?.trigger.on !== 'command') continue;
+    const id = `mod.${row.slug}.run`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const label = modLabel(row);
+    cachedRecipeCommands.push({
+      id,
+      label: `Run recipe: ${label}`,
+      group: 'mods',
+      icon: Workflow,
+      keywords: `recipe ${label} run`,
+      availableWhen: () =>
+        useModsStore.getState().rows.some((r) => r.id === row.id && r.enabled),
+      run: () => runRecipeCommand(row.id),
+    });
+  }
+  return cachedRecipeCommands;
+};
+
 const PROVIDERS: CommandProvider[] = [
   customTypeCommands,
   routineCommands,
   seasonCommands,
   goalCommands,
+  recipeCommands,
 ];
 
 /**

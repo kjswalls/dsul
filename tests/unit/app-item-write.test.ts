@@ -51,12 +51,30 @@ import path from 'path';
  * replays from the fixture too; the demotion is pinned here, since the
  * fixture's store holds no goals.
  *
+ * `project` is the panel's project chip, written as the bulk Move to project
+ * writes it (lib/item-edit.ts projectRefilePatch) for the project the route
+ * reads first, under RLS: its own name and id, a parked task released from
+ * the block it leaves, nothing when it is already there by folded name and
+ * id, and 409 `project_gone` for a project missing, trashed or another
+ * user's. It replays from the fixture too, whose store files the item by the
+ * name the route reads here.
+ *
+ * `collect` is the routine and season chips' toggle (the store's
+ * setItemsCollected) for one item, written as ONE join-table row (lib/db.ts
+ * addContainerMember / removeContainerMember), never the container's list: an
+ * add goes last in a routine's order, a member already is a 23505 answered
+ * 200, and a routine or season missing, trashed or another user's is 409
+ * `container_gone`. No item row, no event. It replays from the fixture too,
+ * whose `member` lists are the store's.
+ *
  * And nothing here reaches the OpenClaw webhook, which the browser never does.
  */
 
 const USER = '6f1c2a9e-3b4d-4e5f-8a6b-7c8d9e0f1a2b';
 const ITEM = '0b7e4a52-9c1d-4f3e-8a2b-5d6c7e8f9a0b';
 const PARENT = '5d4c3b2a-1f0e-4d9c-8b7a-6f5e4d3c2b1a';
+const PROJECT = '3c9e1d7a-5b2f-4e8c-9a1d-2f4b6c8e0a13';
+const ROUTINE = '9e4b2c6a-1d3f-4a5b-8c7d-0e2f4a6b8c1d';
 const DATE = '2026-10-02';
 const TOMORROW = '2026-10-03';
 /**
@@ -77,6 +95,7 @@ const h = vi.hoisted(() => ({
   after: vi.fn(),
   reportLiveCompletion: vi.fn(),
   serviceClient: { service: true },
+  afterItemWrite: vi.fn(),
 }));
 
 vi.mock('@supabase/supabase-js', async (importOriginal) => ({
@@ -94,6 +113,9 @@ vi.mock('next/server', async (importOriginal) => ({
   after: h.after,
 }));
 vi.mock('@/lib/stakes/live', () => ({ reportLiveCompletion: h.reportLiveCompletion }));
+// The recipe runner's one door (lib/recipes/server). Its own tests run it; here
+// it is only the listener the route hands the handler.
+vi.mock('@/lib/recipes/server', () => ({ afterItemWrite: h.afterItemWrite }));
 vi.mock('@/lib/supabase-service', () => ({
   createServiceClient: () => h.serviceClient,
   resolveUserIdFromApiKey: vi.fn(),
@@ -128,7 +150,7 @@ function from(table: string) {
 }
 
 const called = (q: Query, method: string) => q.calls.filter(([m]) => m === method).map(([, args]) => args);
-const op = (q: Query) => (['insert', 'update', 'select'] as const).find((m) => called(q, m).length > 0);
+const op = (q: Query) => (['insert', 'update', 'delete', 'select'] as const).find((m) => called(q, m).length > 0);
 const writes = (table: string, method: 'insert' | 'update') =>
   queries.filter((q) => q.table === table && op(q) === method).map((q) => called(q, method)[0][0] as Record<string, unknown>);
 
@@ -137,6 +159,7 @@ const token = () =>
   [b64({ alg: 'HS256' }), b64({ sub: USER, role: 'authenticated', exp: Date.now() / 1000 + 3600 }), 'sig'].join('.');
 
 import { POST } from '@/app/api/app/items/[id]/route';
+import { postItemWrite } from '@/lib/app-api';
 import { updatesToRow } from '@/lib/db';
 import { itemTypeName } from '@/lib/item-registry';
 import type { Item } from '@/lib/planner-types';
@@ -203,6 +226,16 @@ let updateResult: Result;
 let settingsResult: Result;
 /** What every goal_items query answers: the demotion's select of held roles, and its update. */
 let goalItemsResult: Result;
+/** What the project edit's read of `projects` answers. */
+let projectsResult: Result;
+/** What a collect's read of its routine or season answers. */
+let containerResult: Result;
+/** What a collect's insert into routine_items or season_items answers. */
+let insertResult: Result;
+/** What a routine add's read of the last place answers. */
+let lastOrderResult: Result;
+/** What a collect's delete from routine_items or season_items answers. */
+let memberDeleteResult: Result;
 
 beforeAll(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
@@ -222,12 +255,24 @@ beforeEach(() => {
   updateResult = { data: null, error: null };
   settingsResult = { data: { timezone: 'America/Los_Angeles' }, error: null };
   goalItemsResult = { data: [], error: null };
+  projectsResult = { data: { id: PROJECT, name: 'Work' }, error: null };
+  containerResult = { data: { id: ROUTINE }, error: null };
+  insertResult = { data: null, error: null };
+  lastOrderResult = { data: [{ sort_order: 3 }], error: null };
+  memberDeleteResult = { data: null, error: null };
   rpc = vi.fn(async () => ({ data: null, error: null }));
   h.reportLiveCompletion.mockResolvedValue({ ok: true, skipped: true });
   respond = (q) => {
     if (q.table === 'item_events') return { data: null, error: null };
     if (q.table === 'user_settings') return settingsResult;
     if (q.table === 'goal_items') return goalItemsResult;
+    if (q.table === 'projects') return projectsResult;
+    if (q.table === 'routines' || q.table === 'seasons') return containerResult;
+    if (q.table === 'routine_items' || q.table === 'season_items') {
+      if (op(q) === 'insert') return insertResult;
+      if (op(q) === 'delete') return memberDeleteResult;
+      return lastOrderResult;
+    }
     if (q.table !== 'items') return { data: null, error: { code: 'XX000', message: `unexpected ${q.table}` } };
     if (op(q) === 'update') return updateResult;
     return { data: row, error: null };
@@ -275,6 +320,8 @@ describe('reading the row first', () => {
     ['reminder', { action: 'reminder', time: '08:00' }],
     ['time', { action: 'time', duration: 45 }],
     ['repeat', { action: 'repeat', frequency: 'daily' }],
+    ['project', { action: 'project', projectId: PROJECT }],
+    ['collect', { action: 'collect', kind: 'routine', containerId: ROUTINE, member: true }],
   ])('404s another user’s id for %s, invisible under RLS, and writes nothing', async (_, body) => {
     // Load-bearing: set_item_completion, set_item_skip and updateItem filter
     // on id and type only, so without this read a foreign (or deleted) id
@@ -312,9 +359,17 @@ describe('reading the row first', () => {
     ['time', { action: 'time', duration: 45 }, `${BASE_COLUMNS}, start_time, is_scheduled, duration`],
     // repeat_frequency is in every read.
     ['repeat', { action: 'repeat', frequency: 'daily' }, `${BASE_COLUMNS}, repeat_days, repeat_month_day`],
+    // in_project_block is in every read.
+    [
+      'project',
+      { action: 'project', projectId: PROJECT },
+      `${BASE_COLUMNS}, project, project_id, previous_start_time, previous_start_date`,
+    ],
     ['complete', { action: 'complete', date: DATE, done: true }, BASE_COLUMNS],
     // The type and the parent decide it, and both are in every read.
     ['addSubtask', { action: 'addSubtask', id: '22222222-2222-4222-8222-222222222222', title: 'Eggs' }, BASE_COLUMNS],
+    // isCollectible asks the type and the parent too.
+    ['collect', { action: 'collect', kind: 'routine', containerId: ROUTINE, member: true }, BASE_COLUMNS],
   ])('reads for %s only the column it decides on', async (_, body, columns) => {
     // A tick never reads the notes, which can run to 200,000 characters.
     row = {
@@ -326,6 +381,10 @@ describe('reading the row first', () => {
       duration: null,
       repeat_days: [],
       repeat_month_day: null,
+      project: null,
+      project_id: null,
+      previous_start_time: null,
+      previous_start_date: null,
     };
     await write(body);
     expect(called(queries[0], 'select')).toEqual([[columns]]);
@@ -1010,11 +1069,13 @@ type EditCase = {
   updates: Record<string, unknown> | null;
   removed: string[];
   created: Item | null;
+  /** A collect case's container, its `itemIds` before and after the store's toggle. */
+  member?: { kind: 'routine' | 'season'; containerId: string; before: string[]; after: string[] };
 };
 
 const EDIT_WRITES = JSON.parse(
   readFileSync(path.resolve(__dirname, '../fixtures/day/edit-writes.json'), 'utf8'),
-) as { cases: EditCase[] };
+) as { projects: { id: string; name: string }[]; cases: EditCase[] };
 
 /**
  * The row the route reads for `item`: every WRITE_ROW_COLUMNS key plus the
@@ -1048,6 +1109,11 @@ function rowFor(item: Item): Record<string, unknown> {
     duration: i.duration ?? null,
     repeat_days: i.repeatDays ?? null,
     repeat_month_day: i.repeatMonthDay ?? null,
+    // An unfiled habit is '' in the store and NULL in the row.
+    project: i.project || null,
+    project_id: i.projectId ?? null,
+    previous_start_time: i.previousStartTime ?? null,
+    previous_start_date: i.previousStartDate ?? null,
   };
 }
 
@@ -1103,6 +1169,19 @@ describe('the web’s own edits, replayed through the route (edit-writes.json)',
         (i) => i.type !== 'habit' && !(i as { parentItemId?: string }).parentItemId,
       ).length;
       parentId = c.item.id;
+      // The project a project edit names, as the route reads it: the one the store filed under.
+      if (c.edit.action === 'project' && typeof c.edit.projectId === 'string') {
+        const project = EDIT_WRITES.projects.find((p) => p.id === c.edit.projectId);
+        projectsResult = { data: project ?? null, error: null };
+      }
+      // A collect's container as the store held it: live, its members at places 0 to n-1, and
+      // the join table's key refusing an add of one that is in it already.
+      if (c.member) {
+        containerResult = { data: { id: c.member.containerId }, error: null };
+        const { before } = c.member;
+        lastOrderResult = { data: before.length > 0 ? [{ sort_order: before.length - 1 }] : [], error: null };
+        if (before.includes(c.item.id)) insertResult = { data: null, error: { code: '23505', message: 'duplicate key' } };
+      }
       const res = await write(c.edit, c.item.id);
       await settle();
 
@@ -1116,6 +1195,7 @@ describe('the web’s own edits, replayed through the route (edit-writes.json)',
         expect((await res.json()).error).toBe(c.refusal);
         expect(writes('items', 'update')).toEqual([]);
         expect(writes('items', 'insert')).toEqual([]);
+        expect(queries.filter((q) => q.table === 'routine_items' || q.table === 'season_items')).toEqual([]);
         return;
       }
 
@@ -1145,6 +1225,39 @@ describe('the web’s own edits, replayed through the route (edit-writes.json)',
       }
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({ ok: true });
+
+      if (c.edit.action === 'collect') {
+        // One join-table row, the store's change to the list: an add inserted at the place the
+        // store's list puts it (a member already answered by the key, then nothing else), a
+        // remove deleted. The item row is never written, and no event.
+        const { kind, containerId, before, after } = c.member!;
+        const table = kind === 'routine' ? 'routine_items' : 'season_items';
+        const owner = kind === 'routine' ? 'routine_id' : 'season_id';
+        const joins = queries.filter((q) => q.table === table && op(q) !== 'select');
+        expect(joins, c.name).toHaveLength(1);
+        if (c.edit.member) {
+          // The next place, which is where the store's list puts a new member.
+          if (!before.includes(c.item.id)) expect(after.indexOf(c.item.id), c.name).toBe(before.length);
+          expect(op(joins[0]), c.name).toBe('insert');
+          expect(called(joins[0], 'insert')[0][0], c.name).toEqual({
+            [owner]: containerId,
+            item_id: c.item.id,
+            user_id: USER,
+            ...(kind === 'routine' ? { sort_order: before.length } : {}),
+          });
+        } else {
+          expect(op(joins[0]), c.name).toBe('delete');
+          expect(joins[0].calls, c.name).toEqual([
+            ['delete', []],
+            ['eq', [owner, containerId]],
+            ['eq', ['item_id', c.item.id]],
+            ['eq', ['user_id', USER]],
+          ]);
+        }
+        expect(writes('items', 'update')).toEqual([]);
+        expect(writes('item_events', 'insert')).toEqual([]);
+        return;
+      }
 
       if (c.edit.action === 'delete') {
         // One deleted_at stamp and one 'delete' event per id, in the store's order.
@@ -2079,6 +2192,290 @@ describe('repeat', () => {
   });
 });
 
+describe('project', () => {
+  /** A one-off with the project chip's columns read: unfiled, and in no block. */
+  const UNFILED = { ...ONE_OFF, project: null, project_id: null, previous_start_time: null, previous_start_date: null };
+  /** Another project's id: Health, where a parked task sits before it is moved to Work. */
+  const HEALTH = '7d2a4f6c-8e1b-4c3d-9f5a-1b3c5d7e9f20';
+  const projectReads = () => queries.filter((q) => q.table === 'projects');
+
+  beforeEach(() => {
+    row = UNFILED;
+  });
+
+  it('files it under the project it reads, by that project’s own name, with the web’s event', async () => {
+    const res = await write({ action: 'project', projectId: PROJECT });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    await settle();
+    // Read live, as the user: one live project of theirs, by id.
+    expect(projectReads()).toHaveLength(1);
+    const read = projectReads()[0];
+    expect(called(read, 'select')).toEqual([['id, name']]);
+    expect(read.calls).toEqual(
+      expect.arrayContaining([
+        ['eq', ['id', PROJECT]],
+        ['eq', ['user_id', USER]],
+        ['is', ['deleted_at', null]],
+      ]),
+    );
+    expect(writes('items', 'update')).toEqual([{ project: 'Work', project_id: PROJECT }]);
+    expect(writes('item_events', 'insert')).toEqual([
+      { item_id: ITEM, item_type: 'task', action: 'update', payload: { project: 'Work', projectId: PROJECT } },
+    ]);
+  });
+
+  it('reads an uppercase id as the lowercase project', async () => {
+    expect((await write({ action: 'project', projectId: PROJECT.toUpperCase() })).status).toBe(200);
+    expect(projectReads()[0].calls).toContainEqual(['eq', ['id', PROJECT]]);
+    expect(writes('items', 'update')).toEqual([{ project: 'Work', project_id: PROJECT }]);
+  });
+
+  it('writes nothing when the item is already there by folded name and id', async () => {
+    row = { ...UNFILED, project: 'work', project_id: PROJECT };
+    const res = await write({ action: 'project', projectId: PROJECT });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    await settle();
+    expect(writes('items', 'update')).toEqual([]);
+    expect(writes('item_events', 'insert')).toEqual([]);
+  });
+
+  it('links a text-only name to its project', async () => {
+    row = { ...UNFILED, project: 'Work', project_id: null };
+    expect((await write({ action: 'project', projectId: PROJECT })).status).toBe(200);
+    expect(writes('items', 'update')).toEqual([{ project: 'Work', project_id: PROJECT }]);
+  });
+
+  it('takes a parked task out of the block it leaves, its own slot back and its part of day kept', async () => {
+    row = {
+      ...UNFILED,
+      project: 'Health',
+      project_id: HEALTH,
+      time_bucket: 'morning',
+      in_project_block: true,
+      previous_start_time: '14:00',
+      previous_start_date: '2026-09-30',
+    };
+    expect((await write({ action: 'project', projectId: PROJECT })).status).toBe(200);
+    const [update] = writes('items', 'update');
+    expect(update).toEqual({
+      project: 'Work',
+      project_id: PROJECT,
+      in_project_block: false,
+      start_time: '14:00',
+      start_date: '2026-09-30',
+      previous_start_time: null,
+      previous_start_date: null,
+    });
+    expect(update).not.toHaveProperty('time_bucket');
+  });
+
+  it('clears both for No project, and reads no project', async () => {
+    row = { ...UNFILED, project: 'Work', project_id: PROJECT };
+    expect((await write({ action: 'project', projectId: null })).status).toBe(200);
+    expect(projectReads()).toEqual([]);
+    expect(writes('items', 'update')).toEqual([{ project: null, project_id: null }]);
+  });
+
+  it('writes a habit’s clear even when it is unfiled, the frozen group with it, as the web’s always does', async () => {
+    row = { ...HABIT, project: null, project_id: null, previous_start_time: null, previous_start_date: null };
+    expect((await write({ action: 'project', projectId: null })).status).toBe(200);
+    await settle();
+    expect(writes('items', 'update')).toEqual([{ project: null, group: null, project_id: null }]);
+    expect(writes('item_events', 'insert')).toHaveLength(1);
+  });
+
+  it('409s a project that is missing, in the Trash or another user’s, which all read as no row', async () => {
+    projectsResult = { data: null, error: null };
+    const res = await write({ action: 'project', projectId: PROJECT });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'project_gone' });
+    await settle();
+    expect(writes('items', 'update')).toEqual([]);
+    expect(writes('item_events', 'insert')).toEqual([]);
+  });
+
+  it('409s a project purged between the read and the write', async () => {
+    updateResult = { data: null, error: { code: '23503', message: 'violates foreign key constraint' } };
+    const res = await write({ action: 'project', projectId: PROJECT });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'project_gone' });
+  });
+
+  it('500s a failed read of the project, as any read error', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    projectsResult = { data: null, error: { code: '57014', message: 'timeout' } };
+    const res = await write({ action: 'project', projectId: PROJECT });
+    expect(res.status).toBe(500);
+    expect(writes('items', 'update')).toEqual([]);
+    spy.mockRestore();
+  });
+
+  it('400s a subtask, and reads no project', async () => {
+    row = { ...UNFILED, parent_item_id: PARENT };
+    const res = await write({ action: 'project', projectId: PROJECT });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'not_for_subtask' });
+    expect(projectReads()).toEqual([]);
+    expect(writes('items', 'update')).toEqual([]);
+  });
+});
+
+describe('collect', () => {
+  const SEASON = '4a6c8e0b-2d4f-4b6a-9c8e-1f3a5c7e9b2d';
+  const reads = (table: string) => queries.filter((q) => q.table === table);
+  const joins = (table: string) => queries.filter((q) => q.table === table && op(q) !== 'select');
+
+  beforeEach(() => {
+    row = ONE_OFF;
+  });
+
+  it('adds it last in the routine it reads, one row, and writes nothing else', async () => {
+    const res = await write({ action: 'collect', kind: 'routine', containerId: ROUTINE, member: true });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    await settle();
+    // Read live, as the user: one live routine of theirs, by id.
+    expect(reads('routines')).toHaveLength(1);
+    expect(reads('routines')[0].calls).toEqual([
+      ['select', ['id']],
+      ['eq', ['id', ROUTINE]],
+      ['eq', ['user_id', USER]],
+      ['is', ['deleted_at', null]],
+      ['maybeSingle', []],
+    ]);
+    // The last place, nulls first, then one insert after it.
+    const [place, insert] = reads('routine_items');
+    expect(place.calls).toEqual([
+      ['select', ['sort_order']],
+      ['eq', ['routine_id', ROUTINE]],
+      ['eq', ['user_id', USER]],
+      ['order', ['sort_order', { ascending: false, nullsFirst: true }]],
+      ['limit', [1]],
+    ]);
+    expect(insert.calls).toEqual([
+      ['insert', [{ routine_id: ROUTINE, item_id: ITEM, user_id: USER, sort_order: 4 }]],
+    ]);
+    expect(reads('routine_items')).toHaveLength(2);
+    expect(writes('items', 'update')).toEqual([]);
+    expect(writes('item_events', 'insert')).toEqual([]);
+  });
+
+  it('reads an uppercase id as the lowercase routine', async () => {
+    const res = await write({ action: 'collect', kind: 'routine', containerId: ROUTINE.toUpperCase(), member: true });
+    expect(res.status).toBe(200);
+    expect(reads('routines')[0].calls).toContainEqual(['eq', ['id', ROUTINE]]);
+    expect(called(joins('routine_items')[0], 'insert')[0][0]).toMatchObject({ routine_id: ROUTINE });
+  });
+
+  it('is first, at 0, in an empty routine, and takes no place where a member has none', async () => {
+    lastOrderResult = { data: [], error: null };
+    expect((await write({ action: 'collect', kind: 'routine', containerId: ROUTINE, member: true })).status).toBe(200);
+    expect(called(joins('routine_items')[0], 'insert')[0][0]).toEqual({
+      routine_id: ROUTINE,
+      item_id: ITEM,
+      user_id: USER,
+      sort_order: 0,
+    });
+
+    queries = [];
+    lastOrderResult = { data: [{ sort_order: null }], error: null };
+    expect((await write({ action: 'collect', kind: 'routine', containerId: ROUTINE, member: true })).status).toBe(200);
+    expect(called(joins('routine_items')[0], 'insert')[0][0]).toEqual({
+      routine_id: ROUTINE,
+      item_id: ITEM,
+      user_id: USER,
+      sort_order: null,
+    });
+  });
+
+  it('answers 200 for a member already, and writes nothing else', async () => {
+    insertResult = { data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint' } };
+    const res = await write({ action: 'collect', kind: 'routine', containerId: ROUTINE, member: true });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    await settle();
+    expect(joins('routine_items')).toHaveLength(1);
+    expect(writes('items', 'update')).toEqual([]);
+    expect(writes('item_events', 'insert')).toEqual([]);
+  });
+
+  it('takes it out with one delete of that row, and reads no place', async () => {
+    const res = await write({ action: 'collect', kind: 'routine', containerId: ROUTINE, member: false });
+    expect(res.status).toBe(200);
+    expect(reads('routine_items')).toHaveLength(1);
+    expect(reads('routine_items')[0].calls).toEqual([
+      ['delete', []],
+      ['eq', ['routine_id', ROUTINE]],
+      ['eq', ['item_id', ITEM]],
+      ['eq', ['user_id', USER]],
+    ]);
+    expect(writes('items', 'update')).toEqual([]);
+  });
+
+  it('adds it to a season with no sort_order, and reads no place', async () => {
+    containerResult = { data: { id: SEASON }, error: null };
+    const res = await write({ action: 'collect', kind: 'season', containerId: SEASON, member: true });
+    expect(res.status).toBe(200);
+    expect(reads('seasons')).toHaveLength(1);
+    expect(reads('seasons')[0].calls).toContainEqual(['eq', ['id', SEASON]]);
+    expect(reads('routines')).toEqual([]);
+    expect(reads('season_items')).toHaveLength(1);
+    expect(reads('season_items')[0].calls).toEqual([
+      ['insert', [{ season_id: SEASON, item_id: ITEM, user_id: USER }]],
+    ]);
+    expect(reads('routine_items')).toEqual([]);
+  });
+
+  it('409s a routine missing, in the Trash or another user’s, which all read as no row', async () => {
+    containerResult = { data: null, error: null };
+    const res = await write({ action: 'collect', kind: 'routine', containerId: ROUTINE, member: true });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'container_gone' });
+    expect(reads('routine_items')).toEqual([]);
+  });
+
+  it.each([
+    ['the insert', true],
+    ['the delete', false],
+  ])('409s a container purged between the read and %s', async (_, member) => {
+    const purged = { data: null, error: { code: '23503', message: 'violates foreign key constraint' } };
+    if (member) insertResult = purged;
+    else memberDeleteResult = purged;
+    const res = await write({ action: 'collect', kind: 'routine', containerId: ROUTINE, member });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'container_gone' });
+  });
+
+  it('500s a failed read of the container, as any read error', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    containerResult = { data: null, error: { code: '57014', message: 'timeout' } };
+    const res = await write({ action: 'collect', kind: 'routine', containerId: ROUTINE, member: true });
+    expect(res.status).toBe(500);
+    expect(reads('routine_items')).toEqual([]);
+    spy.mockRestore();
+  });
+
+  it('400s a subtask, and reads no container', async () => {
+    row = { ...ONE_OFF, parent_item_id: PARENT };
+    const res = await write({ action: 'collect', kind: 'routine', containerId: ROUTINE, member: true });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'not_collectible' });
+    expect(reads('routines')).toEqual([]);
+    expect(reads('routine_items')).toEqual([]);
+  });
+
+  it('takes a habit and a custom item, as the web’s chips do', async () => {
+    for (const r of [HABIT, { ...ONE_OFF, type: 'errand' }]) {
+      queries = [];
+      row = r;
+      expect((await write({ action: 'collect', kind: 'routine', containerId: ROUTINE, member: true })).status).toBe(200);
+      expect(joins('routine_items')).toHaveLength(1);
+    }
+  });
+});
+
 describe('validation', () => {
   it.each([
     ['invalid JSON', '{'],
@@ -2166,6 +2563,16 @@ describe('validation', () => {
     ['a day of the month as a string', { action: 'repeat', frequency: 'monthly', monthDay: '1' }],
     ['a day of the month of 0', { action: 'repeat', frequency: 'monthly', monthDay: 0 }],
     ['a repeat with a date in it', { action: 'repeat', frequency: 'daily', startDate: DATE }],
+    ['a project edit with no projectId, which is not a clear', { action: 'project' }],
+    ['a project named, not by its id', { action: 'project', projectId: 'work' }],
+    ['a project id that is a number', { action: 'project', projectId: 5 }],
+    ['a project edit with a name in it', { action: 'project', projectId: PROJECT, name: 'Work' }],
+    ['a goal, which the phone never collects into', { action: 'collect', kind: 'goal', containerId: ROUTINE, member: true }],
+    ['a project, which is a field, not a membership', { action: 'collect', kind: 'project', containerId: ROUTINE, member: true }],
+    ['a container named, not by its id', { action: 'collect', kind: 'routine', containerId: 'morning', member: true }],
+    ['member as a string', { action: 'collect', kind: 'routine', containerId: ROUTINE, member: 'yes' }],
+    ['a collect with no member', { action: 'collect', kind: 'routine', containerId: ROUTINE }],
+    ['a collect with a list in it', { action: 'collect', kind: 'routine', containerId: ROUTINE, member: true, itemIds: [ITEM] }],
   ])('400s %s before touching the row', async (_, body) => {
     const res = await write(body);
     expect(res.status).toBe(400);
@@ -2231,6 +2638,11 @@ describe('webhooks', () => {
       [ONE_OFF, { action: 'reminder', time: '08:00' }],
       [{ ...ONE_OFF, start_time: null, is_scheduled: true, duration: null }, { action: 'time', duration: 45 }],
       [{ ...ONE_OFF, repeat_days: null, repeat_month_day: null }, { action: 'repeat', frequency: 'daily' }],
+      [
+        { ...ONE_OFF, project: null, project_id: null, previous_start_time: null, previous_start_date: null },
+        { action: 'project', projectId: PROJECT },
+      ],
+      [ONE_OFF, { action: 'collect', kind: 'routine', containerId: ROUTINE, member: true }],
     ] as const) {
       row = r;
       // A new subtask is a created row: 201, as a capture is.
@@ -2238,5 +2650,148 @@ describe('webhooks', () => {
     }
     await settle();
     expect(h.notifyPlugins).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Recipes for a phone tick (memory/plans/mods.md, build order 6). The route
+ * hands the handler a listener, and the handler calls it once per REAL
+ * transition, after the write committed, as the web's store raises
+ * (lib/mod-events.ts): never for a repeat `done`, an unskip, a move or a
+ * schedule. Whether the day was done is read before the write, and only when
+ * a listener is passed.
+ */
+describe('item events for recipes', () => {
+  /** What the one-date read of completed_dates answers. */
+  let doneBefore: boolean;
+  beforeEach(() => {
+    doneBefore = false;
+    const base = respond;
+    respond = (q) =>
+      q.table === 'items' && called(q, 'contains').length > 0
+        ? { data: doneBefore ? { id: ITEM } : null, error: null }
+        : base(q);
+  });
+
+  const events = () => h.afterItemWrite.mock.calls.map(([e]) => e);
+  const containsReads = () => queries.filter((q) => called(q, 'contains').length > 0);
+
+  it('a habit ticked on a day not done raises item.completed, with the user, after the write', async () => {
+    expect((await write({ action: 'complete', date: DATE, done: true })).status).toBe(200);
+    expect(events()).toEqual([{ kind: 'item.completed', userId: USER, itemId: ITEM, type: 'habit', date: DATE }]);
+    expect(h.afterItemWrite.mock.invocationCallOrder[0]).toBeGreaterThan(rpc.mock.invocationCallOrder[0]);
+    // The day asked about, as the user, before the RPC.
+    expect(containsReads()).toHaveLength(1);
+    expect(containsReads()[0].calls).toEqual(
+      expect.arrayContaining([
+        ['eq', ['user_id', USER]],
+        ['contains', ['completed_dates', [DATE]]],
+      ]),
+    );
+  });
+
+  it('a repeat done (a retry, a stale phone) raises nothing', async () => {
+    doneBefore = true;
+    expect((await write({ action: 'complete', date: DATE, done: true })).status).toBe(200);
+    expect(events()).toEqual([]);
+  });
+
+  it('an untick of a done day raises item.uncompleted; an untick of an open one, nothing', async () => {
+    doneBefore = true;
+    await write({ action: 'complete', date: DATE, done: false });
+    expect(events()).toEqual([{ kind: 'item.uncompleted', userId: USER, itemId: ITEM, type: 'habit', date: DATE }]);
+    h.afterItemWrite.mockClear();
+    doneBefore = false;
+    await write({ action: 'complete', date: DATE, done: false });
+    expect(events()).toEqual([]);
+  });
+
+  it('a recurring task: the same, by its stored slug', async () => {
+    row = { ...RECURRING_TASK, type: 'book' };
+    await write({ action: 'complete', date: DATE, done: true });
+    expect(events()).toEqual([{ kind: 'item.completed', userId: USER, itemId: ITEM, type: 'book', date: DATE }]);
+  });
+
+  it('a one-off decides on its status, with no extra read, and its date is its own day', async () => {
+    row = ONE_OFF;
+    await write({ action: 'complete', date: TOMORROW, done: true });
+    expect(events()).toEqual([{ kind: 'item.completed', userId: USER, itemId: ITEM, type: 'task', date: DATE }]);
+    expect(containsReads()).toEqual([]);
+    h.afterItemWrite.mockClear();
+    row = { ...ONE_OFF, status: 'completed' };
+    await write({ action: 'complete', date: DATE, done: true });
+    expect(events()).toEqual([]);
+  });
+
+  it('a refused tick raises nothing and reads nothing more', async () => {
+    row = { ...HABIT, skipped_dates: [DATE] };
+    expect((await write({ action: 'complete', date: DATE, done: true })).status).toBe(409);
+    expect(events()).toEqual([]);
+    expect(containsReads()).toEqual([]);
+  });
+
+  it('a skip that changed the day raises item.skipped; a repeat skip and an unskip raise nothing', async () => {
+    await write({ action: 'skip', date: DATE, skipped: true });
+    expect(events()).toEqual([{ kind: 'item.skipped', userId: USER, itemId: ITEM, type: 'habit', date: DATE }]);
+    h.afterItemWrite.mockClear();
+    row = { ...HABIT, skipped_dates: [DATE] };
+    await write({ action: 'skip', date: DATE, skipped: true });
+    await write({ action: 'skip', date: DATE, skipped: false });
+    expect(events()).toEqual([]);
+  });
+
+  it.each([
+    ['move', ONE_OFF, { action: 'move', date: TOMORROW }],
+    ['schedule', ONE_OFF, { action: 'schedule', date: DATE, startTime: '09:15' }],
+    ['title', ONE_OFF, { action: 'title', title: 'Renamed' }],
+  ])('%s raises nothing, as on the web', async (_, r, body) => {
+    row = { ...r, title: 'Call the bank' };
+    expect((await write(body)).status).toBe(200);
+    expect(events()).toEqual([]);
+  });
+
+  it('a 404 raises nothing', async () => {
+    row = null;
+    await write({ action: 'complete', date: DATE, done: true });
+    expect(events()).toEqual([]);
+  });
+
+  it('a listener that throws still answers 200, the write kept', async () => {
+    h.afterItemWrite.mockImplementation(() => {
+      throw new Error('recipes down');
+    });
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const res = await write({ action: 'complete', date: DATE, done: true });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(rpc).toHaveBeenCalledTimes(1);
+    error.mockRestore();
+    h.afterItemWrite.mockReset();
+  });
+
+  it('a failed read of the day answers 200, keeps the write, and raises nothing either way', async () => {
+    const base = respond;
+    respond = (q) =>
+      q.table === 'items' && called(q, 'contains').length > 0 ? { data: null, error: { message: 'timeout' } } : base(q);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const done = await write({ action: 'complete', date: DATE, done: true });
+    expect(done.status).toBe(200);
+    expect(rpc).toHaveBeenCalledTimes(1);
+    const undone = await write({ action: 'complete', date: DATE, done: false });
+    expect(undone.status).toBe(200);
+    expect(rpc).toHaveBeenCalledTimes(2);
+    expect(events()).toEqual([]);
+    error.mockRestore();
+  });
+
+  it('without a listener the call sequence is the one it always was: no extra read', async () => {
+    const req = new Request(`https://do.dsul.app/api/app/items/${ITEM}`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token()}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'complete', date: DATE, done: true }),
+    });
+    expect((await postItemWrite(req, ITEM)).status).toBe(200);
+    expect(containsReads()).toEqual([]);
+    expect(queries.filter((q) => q.table === 'items').map(op)).toEqual(['select', 'update']);
   });
 });

@@ -78,14 +78,17 @@ struct PlannerBanner: Identifiable, Equatable, Sendable {
 /// lib/grouping.ts), a tick is lib/item-toggle.ts, the item sheet's verbs are
 /// lib/item-verbs.ts (their gates) and the store actions they run (DsulCore
 /// VerbWrites.swift), and its title, notes, priority, times a day, reminder,
-/// time, repeat and Delete are lib/item-edit.ts and the store's `deleteTask` /
-/// `deleteHabit` (the time as the dialog's `commitEdit` saves it; the date is
-/// Reschedule's `move`), Add a subtask the store's `addTask` and Reset streak
-/// its `resetHabitStreak` (DsulCore ItemEdit.swift), so the phone and the web
-/// agree on the same data. Every change here is optimistic and immediate; when
-/// signed in, `sync` then sends it to the server (PlannerSync). A verb or an
-/// edit re-reads its item and asks its gate again before it writes, whatever
-/// the sheet drew; a refusal changes nothing and sends nothing.
+/// time, repeat, project and Delete are lib/item-edit.ts and the store's
+/// `deleteTask` / `deleteHabit` (the time as the dialog's `commitEdit` saves
+/// it; the date is Reschedule's `move`; the project as the bulk Move to
+/// project files it), Add a subtask the store's `addTask`, Reset streak its
+/// `resetHabitStreak` (DsulCore ItemEdit.swift) and the routine and season
+/// toggles its `setItemsCollected` (DsulCore Membership.swift), so the phone
+/// and the web agree on the same data. Every change here is optimistic and
+/// immediate; when signed in, `sync` then sends it to the server
+/// (PlannerSync). A verb or an edit re-reads its item and asks its gate again
+/// before it writes, whatever the sheet drew; a refusal changes nothing and
+/// sends nothing.
 @Observable @MainActor
 final class SamplePlanner {
     /// Every item, braindump and subtasks included, as the server sent them
@@ -97,6 +100,8 @@ final class SamplePlanner {
     /// In the server's order (sort_order), which is the order a routine claims
     /// an item in when two hold it (lib/grouping.ts).
     private(set) var routines: [Routine]
+    /// In the server's order. An item in a season is hidden on a day the
+    /// season isn't live (`inactiveItemIdsOn`).
     private(set) var seasons: [Season]
     private(set) var settings: PlannerSettings
     /// The user's day now. Moves at midnight and on returning to the app
@@ -164,7 +169,7 @@ final class SamplePlanner {
         items = sample.items
         projectRecords = sample.projects
         routines = sample.routines
-        seasons = []
+        seasons = sample.seasons
         settings = PlannerSettings()
         hasLoaded = true
         userId = nil
@@ -323,8 +328,9 @@ final class SamplePlanner {
     /// dropped on an hour (or VoiceOver's "Schedule at 9:00"), or a block
     /// moved. The web's hour drop (`placing`, lib/dnd/handle-drag-end.ts →
     /// `scheduleTask`): scheduled, the hour's bucket, the time, out of any
-    /// project block, and anchored to the day it was dropped on. Also ends the
-    /// drag's hold on fetched data: the drop has landed.
+    /// project block (its stash cleared), and anchored to the day it was
+    /// dropped on. Also ends the drag's hold on fetched data: the drop has
+    /// landed.
     func schedule(_ id: UUID, startMin: Int) {
         DragHold.shared.releaseNow()
         guard let i = items.firstIndex(where: { $0.id == id }) else { return }
@@ -413,9 +419,11 @@ final class SamplePlanner {
     /// (`canWrite`) and the item's type has the field (DsulCore
     /// `editAllowed(action:on:caps:)`, lib/item-edit.ts `editRefusal`'s type
     /// gate: a habit has no priority, a task no count, a subtask no reminder,
-    /// no time and no repeat, and a task no time until it has a date). The
-    /// sheet asks it for a chip before it has a value to send, and `edit`
-    /// asks the typed gate below before it writes.
+    /// no time, no repeat and no project, a task no time until it has a date,
+    /// and a project only on a type with the project axis; and for `collect`,
+    /// `isCollectible`: a subtask joins no routine or season). The sheet asks
+    /// it for a chip before it has a value to send, and `edit` asks the typed
+    /// gate below before it writes, as `collect` asks this one.
     func canEdit(_ action: String, _ item: SampleItem) -> Bool {
         return canWrite(action) && editAllowed(action: action, on: item, caps: caps(for: item))
     }
@@ -423,12 +431,13 @@ final class SamplePlanner {
     /// May `item` take `edit` itself? `canEdit(edit.action, item)`, and the
     /// body's own rules (DsulCore `editAllowed(_:on:caps:)`): the ones a time
     /// edit carries (no key at all, a time beside Anytime or none, a length
-    /// out of range or on a type with none) and the ones a repeat edit
-    /// carries (a frequency its type doesn't offer, days or a day beside the
-    /// wrong frequency, days out of order) are refused here, before any step,
-    /// as the route refuses them. The row's rule, a time that would land
-    /// beside a stored Anytime, is the sheet's to keep
-    /// (`ItemSheetModel.timeCommit`).
+    /// out of range or on a type with none), the ones a repeat edit carries
+    /// (a frequency its type doesn't offer, days or a day beside the wrong
+    /// frequency, days out of order) and the ones a project edit carries (an
+    /// id without its name, No project on a type whose container is
+    /// required) are refused here, before any step, as the route refuses
+    /// them. The row's rule, a time that would land beside a stored Anytime,
+    /// is the sheet's to keep (`ItemSheetModel.timeCommit`).
     func canEdit(_ edit: ItemEdit, _ item: SampleItem) -> Bool {
         return canWrite(edit.action) && editAllowed(edit, on: item, caps: caps(for: item))
     }
@@ -579,14 +588,16 @@ final class SamplePlanner {
     /// the server does), or off with both cleared; a part of day, a specific
     /// time and a length, only the keys that changed
     /// (`ItemSheetModel.timeCommit`), stepped as the server writes them
-    /// (DsulCore `editing`, the dialog's `commitEdit`); or a repeat, its three
+    /// (DsulCore `editing`, the dialog's `commitEdit`); a repeat, its three
     /// keys together (`ItemSheetModel.repeatCommit`, or a menu pick), and
-    /// nothing when the item already says it. The sheet sends only
-    /// what changed, already cleaned and within its growth cap
-    /// (`ItemSheetModel.commit`, `reminderCommit`). Behind `canEdit(edit,
-    /// item)`: the server's list, its type gate and the body's own rules. A
-    /// title that trims to nothing, or an edit that changes nothing, writes
-    /// nothing.
+    /// nothing when the item already says it; or a project, by its id and
+    /// name, which also releases a task parked in its old project's block
+    /// (`projectRefilePatch`), and nothing when the item is already there by
+    /// folded name and id. The sheet sends only what changed, already cleaned
+    /// and within its growth cap (`ItemSheetModel.commit`, `reminderCommit`).
+    /// Behind `canEdit(edit, item)`: the server's list, its type gate and the
+    /// body's own rules. A title that trims to nothing, or an edit that
+    /// changes nothing, writes nothing.
     func edit(_ id: UUID, _ edit: ItemEdit) {
         guard let i = items.firstIndex(where: { $0.id == id }) else { return }
         let before = items[i]
@@ -595,6 +606,59 @@ final class SamplePlanner {
         guard after != before else { return }
         items[i] = after
         sync?.enqueue(.edit(id: id, edit), snapshot: before)
+    }
+
+    /// Join or leave one routine or season (the routine and season chips, and
+    /// Add property's Routine ▸ and Season ▸), at once: lib/planner-store.ts
+    /// `setItemsCollected` for one item (DsulCore `settingMembership`), an add
+    /// appended last as the server's is. Behind `canEdit("collect", item)`:
+    /// the server's list, and DsulCore's `editAllowed` (`isCollectible`:
+    /// never a subtask). A container the planner doesn't hold, and a change
+    /// that changes nothing, send nothing. The write is the one membership
+    /// row, never the list, and its revert puts the item back where it stood
+    /// in the list (`restoreMembership`).
+    func collect(_ id: UUID, kind: ContainerKind, containerId: String, member: Bool) {
+        guard let current = item(id), canEdit("collect", current),
+              let before = members(kind, containerId)
+        else { return }
+        let after = settingMembership(before, item: id, member: member)
+        guard after != before else { return }
+        setMembers(kind, containerId, after)
+        sync?.enqueue(.collect(id: id, kind: kind, containerId: containerId, member: member),
+                      before: [.member(kind, containerId: containerId, item: id):
+                                .member(index: before.firstIndex(of: id))])
+    }
+
+    /// Puts one membership back as PlannerSync's rebase found the server
+    /// holds it: `item` in the container's `itemIds` at `index` (clamped;
+    /// last when nil, and left where it is when it is in already and no
+    /// index is given), or out. A container the planner no longer holds
+    /// changes nothing.
+    func restoreMembership(_ kind: ContainerKind, _ containerId: String, item: UUID, member: Bool, at index: Int?) {
+        guard let ids = members(kind, containerId) else { return }
+        let next = settingMembership(ids, item: item, member: member, at: member ? index : nil)
+        guard next != ids else { return }
+        setMembers(kind, containerId, next)
+    }
+
+    /// The `itemIds` of the routine or season `containerId` names; nil when
+    /// the planner holds none.
+    private func members(_ kind: ContainerKind, _ containerId: String) -> [UUID]? {
+        switch kind {
+        case .routine: return routines.first { $0.id == containerId }?.itemIds
+        case .season: return seasons.first { $0.id == containerId }?.itemIds
+        }
+    }
+
+    private func setMembers(_ kind: ContainerKind, _ containerId: String, _ ids: [UUID]) {
+        switch kind {
+        case .routine:
+            guard let i = routines.firstIndex(where: { $0.id == containerId }) else { return }
+            routines[i].itemIds = ids
+        case .season:
+            guard let i = seasons.firstIndex(where: { $0.id == containerId }) else { return }
+            seasons[i].itemIds = ids
+        }
     }
 
     /// Delete: takes `id` out, and, unless it is a habit, its subtasks with it
@@ -773,7 +837,7 @@ final class SamplePlanner {
         let known = Set(projects.map { $0.lowercased() })
         let loose = rest.filter { item in item.project.map { !known.contains($0.lowercased()) } ?? true }
         if !loose.isEmpty {
-            sections.append(section(id: "loose", title: "No project", kind: .loose, items: loose))
+            sections.append(section(id: "loose", title: ContainerWords.noProject, kind: .loose, items: loose))
         }
         return sections
     }
@@ -910,6 +974,8 @@ final class SamplePlanner {
     /// delete that did). One that is gone (a delete that never landed) comes
     /// back at `place`, through DsulCore `reinserting`: after the item it
     /// followed when that is here, else at its index; at the end without one.
+    /// A membership comes back through `restoreMembership` instead, so one
+    /// does nothing here.
     func restore(_ subject: PlannerSync.Subject, to item: SampleItem?, place: Place?) {
         switch subject {
         case .item(let id):
@@ -919,6 +985,8 @@ final class SamplePlanner {
             } else {
                 items.removeAll { $0.id == id }
             }
+        case .member:
+            return
         }
         closeSheetIfItsItemIsGone()
     }

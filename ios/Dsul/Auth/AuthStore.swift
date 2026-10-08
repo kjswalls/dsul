@@ -31,6 +31,20 @@ enum AuthError: Error, Equatable, Sendable {
     case send(status: Int, code: String?)
 }
 
+/// What SignInWithAppleButton's completion came to, without AuthenticationServices.
+enum AppleSignInOutcome: Sendable, Equatable {
+    case credential(AppleCredential)
+    /// ASAuthorizationError.canceled: silent.
+    case cancelled
+    /// Any other error, or a credential that isn't an Apple ID one.
+    case failed
+}
+
+/// ASAuthorizationAppleIDProvider.CredentialState, plus a failed ask.
+enum AppleIDCredentialState: Sendable, Equatable {
+    case authorized, revoked, notFound, transferred, unknown
+}
+
 /// Sign-in, the tokens and their refresh: Supabase Auth (GoTrue) spoken
 /// directly, with the pure half in DsulCore's AuthCore.swift.
 ///
@@ -42,6 +56,17 @@ enum AuthError: Error, Equatable, Sendable {
 ///   record in the token store from before the request until a link signs in,
 ///   with a nonce that the link brings back; a callback without it moves
 ///   nothing (memory/plans/ios-app.md, "Email link").
+/// - Apple, through Apple's own sheet (SignInWithAppleButton) and GoTrue's
+///   id_token grant, with no redirect. `beginAppleSignIn` makes a nonce for
+///   one attempt, held in memory only, and gives Apple's request its hash;
+///   `finishAppleSignIn` takes it back first, whatever happened, and sends
+///   the RAW nonce with Apple's identity token (token_oidc.go IdTokenGrant).
+///   Apple gives the name once, on the first consent, and it is written to
+///   the account (`PUT /auth/v1/user`) only when the account has none. The
+///   session keeps the Apple user id it signed in with, and
+///   `checkAppleCredential` signs this phone out when Apple says that id was
+///   revoked or isn't the phone's Apple Account any more
+///   (memory/plans/ios-app.md, "Sign in with Apple").
 /// - Tokens are saved BEFORE the app counts itself signed in, and every
 ///   refreshed pair before it is handed out. A failed save keeps the pair in
 ///   memory and tries the save again on the next token request.
@@ -81,6 +106,16 @@ final class AuthStore {
     /// only when needed, so a signed-out launch reads nothing.
     @ObservationIgnored private var pending: EmailSignIn? = nil
     @ObservationIgnored private var pendingLoaded = false
+    /// True from `beginAppleSignIn` until the attempt signs in, fails or is
+    /// cancelled. It goes false in the same step as the state leaves
+    /// `.signingIn`, before the name write, never later.
+    private(set) var isSigningInWithApple = false
+    /// The raw nonce of the Apple attempt under way: never saved, never
+    /// logged, and cleared before anything else when the attempt ends.
+    @ObservationIgnored private var appleNonce: String? = nil
+    /// Asks Apple about an Apple ID (`AppleAuthorization` in the app); nil
+    /// asks nothing.
+    private let appleCredentialState: (@Sendable (String) async -> AppleIDCredentialState)?
 
     /// The waits between refresh attempts that failed for want of a server:
     /// three tries within about three seconds, well inside the reuse window.
@@ -88,12 +123,14 @@ final class AuthStore {
 
     init(tokenStore: any TokenStore, configStore: SupabaseConfigStore, transport: @escaping Transport,
          now: @escaping @Sendable () -> Date = { Date() },
-         sleep: @escaping @Sendable (Duration) async throws -> Void = { duration in try await Task.sleep(for: duration) }) {
+         sleep: @escaping @Sendable (Duration) async throws -> Void = { duration in try await Task.sleep(for: duration) },
+         appleCredentialState: (@Sendable (String) async -> AppleIDCredentialState)? = nil) {
         self.tokenStore = tokenStore
         self.configStore = configStore
         self.transport = transport
         self.now = now
         self.sleep = sleep
+        self.appleCredentialState = appleCredentialState
         if let saved = tokenStore.load() {
             state = .signedIn(saved)
         } else {
@@ -102,9 +139,9 @@ final class AuthStore {
     }
 
     /// The app's store: the Keychain, the production origin (or a Debug
-    /// override) and URLSession. As a test host the app keeps tokens in
-    /// memory, so the hosted tests never read a Keychain a developer signed
-    /// in to on the same simulator.
+    /// override), URLSession and Apple's credential state. As a test host the
+    /// app keeps tokens in memory, so the hosted tests never read a Keychain a
+    /// developer signed in to on the same simulator.
     static func makeLive() -> AuthStore {
         let defaults = UserDefaults.standard
         let store: any TokenStore
@@ -114,7 +151,8 @@ final class AuthStore {
             store = KeychainTokenStore(defaults: defaults, keychain: SystemKeychain())
         }
         let config = SupabaseConfigStore(origin: AppConfig.apiOrigin, defaults: defaults, transport: HTTP.live)
-        return AuthStore(tokenStore: store, configStore: config, transport: HTTP.live)
+        return AuthStore(tokenStore: store, configStore: config, transport: HTTP.live,
+                         appleCredentialState: { await AppleAuthorization.credentialState(forUserID: $0) })
     }
 
     var session: AuthSession? {
@@ -187,6 +225,117 @@ final class AuthStore {
             throw AuthError.exchange(status: result.status, code: GoTrue.errorCode(in: result.data))
         }
         return try AuthSession.decode(result.data, receivedAt: self.now())
+    }
+
+    // MARK: Sign in with Apple
+
+    /// SignInWithAppleButton's onRequest: starts an attempt (a fresh nonce, state
+    /// .signingIn, message cleared) and returns the hash Apple's request carries.
+    /// Nil, and nothing changes, unless signed out with no send under way.
+    ///
+    /// The hash is the lowercase hex SHA-256 GoTrue computes from the raw nonce
+    /// it is sent (token_oidc.go), so the token's claim matches it.
+    func beginAppleSignIn() -> String? {
+        guard state == .signedOut, !isSendingEmail else { return nil }
+        let raw = AppleSignIn.makeNonce()
+        appleNonce = raw
+        isSigningInWithApple = true
+        state = .signingIn
+        message = nil
+        return AppleSignIn.hashedNonce(raw) { data in Data(SHA256.hash(data: data)) }
+    }
+
+    /// SignInWithAppleButton's onCompletion: ends the attempt (its nonce is cleared
+    /// first, whatever happens), and on a credential runs the id_token grant with
+    /// the raw nonce. Dropped when no attempt is under way.
+    ///
+    /// A completion can't say which request it answers, so one that meets no
+    /// attempt (none begun, or the last already ended) is dropped, and a nonce
+    /// goes to at most one grant. Nothing is retried: a tap is a new attempt
+    /// with a new nonce. `isSigningInWithApple` goes false in the same step as
+    /// the state leaves `.signingIn` on every path, so a slow name write can't
+    /// hold "Signing in…" up after a sign-out, or end a later attempt's flag.
+    func finishAppleSignIn(_ outcome: AppleSignInOutcome) async {
+        guard let raw = appleNonce, state == .signingIn else { return }
+        appleNonce = nil
+        let credential: AppleCredential
+        switch outcome {
+        case .cancelled:
+            isSigningInWithApple = false
+            state = .signedOut
+            return
+        case .failed:
+            isSigningInWithApple = false
+            state = .signedOut
+            message = Self.appleFailedMessage
+            return
+        case .credential(let value):
+            credential = value
+        }
+        // No token, nothing to send: not even the config is asked for.
+        guard let idToken = credential.identityToken, !idToken.isEmpty else {
+            isSigningInWithApple = false
+            state = .signedOut
+            message = Self.appleFailedMessage
+            return
+        }
+        let signedIn: AuthSession
+        let tokenBody: Data
+        do {
+            let result = try await goTrue { config in
+                GoTrue.idTokenRequest(config: config, idToken: idToken, nonce: raw)
+            }
+            guard result.isSuccess else {
+                throw AuthError.exchange(status: result.status, code: GoTrue.errorCode(in: result.data))
+            }
+            var decoded = try AuthSession.decode(result.data, receivedAt: self.now())
+            decoded.appleUserId = credential.user
+            signedIn = decoded
+            tokenBody = result.data
+        } catch {
+            isSigningInWithApple = false
+            state = .signedOut
+            message = Self.appleMessage(for: error)
+            return
+        }
+        persist(signedIn)
+        // Signed in another way: an email link still out has nothing to finish.
+        if storedPending() != nil { dropPending() }
+        emailSent = nil
+        welcome = signedIn.email ?? ""
+        isSigningInWithApple = false
+        state = .signedIn(signedIn)
+
+        // Apple gives the name only on a first consent and never in the token,
+        // so it is saved to the account now or never: GoTrue's own keys
+        // (provider_apple.go ParseUser), and only when the account has no name
+        // (a Google one, or one the web flow stored, stays). One try, nothing
+        // said either way.
+        guard let name = AppleSignIn.fullName(given: credential.givenName, family: credential.familyName),
+              GoTrue.displayName(in: tokenBody) == nil
+        else { return }
+        _ = try? await goTrue { config in
+            GoTrue.userNameRequest(config: config, accessToken: signedIn.accessToken, fullName: name)
+        }
+    }
+
+    /// Asks Apple about the session's Apple ID and signs out on revoked or notFound.
+    /// Nothing without a session or an appleUserId, or without the closure.
+    ///
+    /// `revoked` is Apple's "should be signed out"; `notFound` is how Apple says
+    /// the phone's Apple Account changed ("Verifying a user"), and its sample
+    /// signs out on both. An answer that comes back after the session changed
+    /// moves nothing. Apple's call is local and cheap, so the app asks at
+    /// launch, on every return to the front and on Apple's revoked notification
+    /// (AppGate). Google and email-link sessions have no Apple ID and are never
+    /// asked about.
+    func checkAppleCredential() async {
+        guard let check = appleCredentialState, let asked = session, let appleID = asked.appleUserId else { return }
+        let answer = await check(appleID)
+        guard answer == .revoked || answer == .notFound,
+              session?.userId == asked.userId, session?.appleUserId == appleID
+        else { return }
+        await signOut(message: "You were signed out. Sign in again to see your day.")
     }
 
     // MARK: The email link
@@ -373,7 +522,9 @@ final class AuthStore {
             guard session?.userId == current.userId else { throw AuthError.signedOut }
             if let result {
                 if result.isSuccess {
-                    let fresh = try AuthSession.decode(result.data, receivedAt: self.now())
+                    var fresh = try AuthSession.decode(result.data, receivedAt: self.now())
+                    // A refresh answers with the user, not how they signed in.
+                    fresh.appleUserId = current.appleUserId
                     persist(fresh)
                     state = .signedIn(fresh)
                     return fresh
@@ -410,15 +561,16 @@ final class AuthStore {
     // MARK: Signing out
 
     /// Ends this phone's session only. The wipe comes first, so a failed or
-    /// slow call can't leave the app signed in.
-    func signOut() async {
+    /// slow call can't leave the app signed in. `message` is what the sign-in
+    /// screen then says (nil for the user's own Sign out).
+    func signOut(message: String? = nil) async {
         guard let ending = session else {
             leaveSample()
             return
         }
         refreshTask?.cancel()
         refreshTask = nil
-        endSession(message: nil)
+        endSession(message: message)
         _ = try? await goTrue { config in
             GoTrue.logoutRequest(config: config, accessToken: ending.accessToken)
         }
@@ -466,6 +618,24 @@ final class AuthStore {
         if let authError = error as? AuthError, case .provider(let code) = authError {
             if code == "access_denied" { return "Google sign-in was cancelled." }
             return "Google couldn't sign you in (\(code)). Try again."
+        }
+        if isOffline(error) {
+            return "Couldn't reach dsul. Check your connection and try again."
+        }
+        return "Couldn't sign in. Try again."
+    }
+
+    /// Apple's sheet failed, or handed back no identity token. No code: Apple's
+    /// are numbers.
+    static let appleFailedMessage = "Apple couldn't sign you in. Try again."
+
+    /// A grant that didn't sign in. GoTrue's audience, nonce and bad-token
+    /// refusals are OAuth errors with no code (token_oidc.go), so only the
+    /// provider being off has words of its own.
+    static func appleMessage(for error: Error) -> String {
+        if let authError = error as? AuthError, case .exchange(_, let code) = authError,
+           code == "provider_disabled" {
+            return "Sign in with Apple isn't available right now. Use Google or an email link."
         }
         if isOffline(error) {
             return "Couldn't reach dsul. Check your connection and try again."

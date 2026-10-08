@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase-server'
+import { readAgentKey } from '@/lib/supabase-service'
 
 export type OpenclawConnectionState = 'not-connected' | 'pull-only' | 'connected'
 
@@ -21,7 +22,8 @@ export interface OpenclawStatusResponse {
  *
  * Connection status for the OpenClaw integration, as shown in Settings.
  *
- * The authorization signal is `user_settings.openclaw_api_key`: it is written
+ * The authorization signal is the agent key (`user_secrets.openclaw_api_key`,
+ * read through `readAgentKey`): it is written
  * only by the device-auth flow (`/api/agent/connect/authorize`) and it is the
  * exact credential `resolveUserIdFromApiKey` matches on, under a unique index.
  * A row that has one is, by construction, a key that authenticates.
@@ -40,15 +42,18 @@ export async function GET() {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { data, error } = await supabase
-      .from('user_settings')
-      .select('openclaw_api_key, openclaw_chat_url, openclaw_agent_id')
-      .eq('user_id', user.id)
-      .maybeSingle()
+    const [{ data, error }, apiKey] = await Promise.all([
+      supabase
+        .from('user_settings')
+        .select('openclaw_chat_url, openclaw_agent_id')
+        .eq('user_id', user.id)
+        .maybeSingle(),
+      readAgentKey(user.id),
+    ])
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    const hasApiKey = typeof data?.openclaw_api_key === 'string' && data.openclaw_api_key.length > 0
+    const hasApiKey = apiKey !== null
     const hasChatUrl = typeof data?.openclaw_chat_url === 'string' && data.openclaw_chat_url.length > 0
 
     const state: OpenclawConnectionState = !hasApiKey

@@ -6,6 +6,9 @@ import { SupabaseProvider } from '@/components/providers/supabase-provider'
 import { ConsoleSlotGuard } from '@/components/providers/console-slot-guard'
 import { DesktopBridge } from '@/components/providers/desktop-bridge'
 import { FaviconSync } from '@/components/providers/favicon-sync'
+import { RecipeHost } from '@/components/recipes/recipe-host'
+import { ThemeInjector } from '@/components/providers/theme-injector'
+import { USER_THEME_PREPAINT } from '@/lib/user-themes/prepaint'
 import { Toaster } from '@/components/ui/sonner'
 import { ICON_REV } from '@/lib/app-icons'
 import './globals.css'
@@ -150,6 +153,12 @@ export default function RootLayout({
               "try{var r=document.documentElement,S=/^[a-z][a-z0-9-]{0,31}$/,K=[['dsul-look-light','data-look-light'],['dsul-look-dark','data-look-dark']],i,v;if(/[?&]reset-theme\\b/.test(location.search)){localStorage.removeItem('dsul-palette');localStorage.removeItem('dsul-layout');for(i=0;i<K.length;i++)localStorage.removeItem(K[i][0]);sessionStorage.setItem('dsul-palette-reset','1')}else{var p=localStorage.getItem('dsul-palette');if(p&&p!=='default'&&S.test(p)){r.dataset.theme=p}for(i=0;i<K.length;i++){v=localStorage.getItem(K[i][0]);if(v&&S.test(v))r.setAttribute(K[i][1],v)}}}catch(e){}",
           }}
         />
+        {/* Your own themes (lib/user-themes/prepaint.ts): after the stamp above,
+            check a `u-` pick against the localStorage cache, every value against
+            the grammar's table, and write the live rules before first paint; or
+            remove the attribute so the default paints. Built from the modules
+            the app uses, so it is imported, not a literal. */}
+        <script dangerouslySetInnerHTML={{ __html: USER_THEME_PREPAINT }} />
         {/* No `disableTransitionOnChange`: it injected `transition: none` across
             the document and repainted every colour in one frame, which reads as
             a page reload. lib/theme-transition.ts + the `data-theme-changing`
@@ -165,6 +174,11 @@ export default function RootLayout({
             {/* The tab's icon: the picked one, or Lime once today is done.
                 See the component. */}
             <FaviconSync />
+            {/* Your recipes, once the planner has loaded on this route. Nothing
+                on a route that never loads it. See the component. */}
+            <RecipeHost />
+            {/* Your themes as one stylesheet, on every route. See the component. */}
+            <ThemeInjector />
             {children}
           </SupabaseProvider>
           {/* Bottom-left, above the sidebar history controls. Exact placement

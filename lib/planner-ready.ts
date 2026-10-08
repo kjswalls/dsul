@@ -94,3 +94,48 @@ export const isPlannerLoaded = (): boolean => {
   const s = usePlannerStore.getState?.();
   return !!s && selectPlannerLoaded(s);
 };
+
+/**
+ * Resolves when a look-only preview's load has SETTLED — the landing, or the
+ * failure that takes its place — and at once when nothing is previewing. For
+ * what must not run on cached rows yet cannot be hidden: an OUTWARD call that
+ * carries the planner as context (Ask's send, lib/conversations-store.ts, and
+ * a proposal asked of a model, lib/proposal-store.ts). A surface that only
+ * paints asks `selectPlannerVisible`; a surface that writes is refused by the
+ * barrier (lib/preview-write-guard.ts) and has nothing to wait for.
+ *
+ * Settled, not merely "no longer previewing": `dropPreview` (the crash
+ * recovery, components/shell/preview-crash-boundary.tsx) ends the preview by
+ * emptying the store while the load is still in flight, `isLoading` still
+ * true. A wait that ended there would build the caller's context from an
+ * empty planner. So once a preview has been seen, only `isLoading` clearing
+ * ends the wait.
+ *
+ * It cannot hang on a load that never lands: every set() that clears
+ * `isLoading` clears `isPreview` with it, a failed load and a sign-out
+ * (clearStore) included. An account switch reaches the caller's signal:
+ * clearChatState aborts every send, run by adoptLocalState before
+ * identifyUser in the tab that signs in and by the owner stamp's `storage`
+ * event in a sibling tab. The optional signal (a Stop, an unmount, that
+ * clear) resolves it early instead of rejecting, so the caller reads the
+ * abort itself and decides what the turn becomes.
+ */
+export function whenPreviewEnds(signal?: AbortSignal): Promise<void> {
+  const subscribe = usePlannerStore.subscribe;
+  if (!isPlannerPreviewing() || signal?.aborted || typeof subscribe !== 'function') return Promise.resolve();
+  const over = (s: Readiness | undefined): boolean => !s || (!s.isPreview && !s.isLoading);
+  return new Promise<void>((resolve) => {
+    let stop: (() => void) | null = null;
+    const done = () => {
+      stop?.();
+      signal?.removeEventListener('abort', done);
+      resolve();
+    };
+    stop = subscribe((s: Readiness) => {
+      if (over(s)) done();
+    });
+    signal?.addEventListener('abort', done);
+    // Landed (or aborted) between the question above and the subscribe.
+    if (over(usePlannerStore.getState?.()) || signal?.aborted) done();
+  });
+}

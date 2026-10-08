@@ -49,6 +49,21 @@ cleared on a stale "Queued". Both writes are named history entries with the undo
 The item panel's "Assign to OpenClaw" / "Unassign" is unchanged for now (it still offers
 finished and paused tasks); naming the AI across the rest of the app is parked.
 
+**Note 2026-10-07: connecting asks one test question (AI setup PR 4).** Every connect,
+recheck and OpenRouter sign-in lists the models and then asks the chosen one a 1-token
+question (`lib/ai-server/check.ts`), so "connected" means a model answered. The answers are
+typed: key_rejected, wrong_provider (a key whose prefix names another company is refused
+before anything is sent, `lib/ai-key-prefix.ts`), no_credit, daily_limit, region, network.
+A free key's daily cap is read from Google's and OpenRouter's error bodies by fixed fields
+only (`lib/ai-server/error-hints.ts`), written to `model_connections.limited_until` (060),
+and the chat note says when it resets. Connecting lives in one card, `ConnectAI`
+(`components/ai/connect/`), in the setup column and in Settings → AI; a free Google key
+leads, pasting a sure key checks it at once, and the key field is uncontrolled so a key is
+never in a `value` attribute. The pane's address is `/settings/ai` (an alias of the
+permanent `beacon` id), and an OpenRouter sign-in returns to the pane or home (`r`, sealed
+in the PKCE cookie). Open: a model that refuses only streamed requests (an unverified
+OpenAI org) still passes the check; the rate limit is still per-instance memory.
+
 **Status (2026-10-01): step 1, "Honest setup", SHIPPED (#355).** dsul ships no AI of
 its own any more: `process.env.OPENAI_API_KEY` is never read. Each user connects their own
 model in Settings → AI: OpenAI, Anthropic, Google Gemini, OpenRouter (sign-in or key) or any
@@ -157,6 +172,9 @@ inside dsul (tool loop, task queue, background workers). **Do not branch on prov
 strings in the UI.** The house pattern is already established: do what
 [lib/item-registry.ts](../../lib/item-registry.ts) does and ask a capability question
 (`canDelegate()`, `canPropose()`, …). Adding the hosted tier must be config, not code paths.
+`canMake` (2026-10-07, mods.md "AI writes it") is Settings → Make's "Write with AI": true only
+for `target === 'model'`, so an OpenClaw-only account, or a device that chose OpenClaw, gets no
+Write, and "No AI, thanks" hides it with everything else.
 
 ## Trust model
 
@@ -210,6 +228,16 @@ memory under the no-TTL default.
 directly to the gateway ([lib/chat-store.ts](../../lib/chat-store.ts), deleted in step 2a;
 [app/api/agent/chat-url/route.ts](../../app/api/agent/chat-url/route.ts)). After this, the
 browser talks only to dsul.
+
+*Narrowed 2026-10-07 (#123, #142, migration 059), for accounts still on the plugin path:* the
+browser no longer holds the agent key. `/api/agent/chat-url` hands it a plugin chat token, an
+HMAC of the key ([lib/plugin-chat-token.ts](../../lib/plugin-chat-token.ts), mirrored in
+`openclaw-plugin/src/chat-token.ts`), which the plugin's chat route accepts and dsul's agent API
+does not. The key itself moved from `user_settings` (browser-readable under RLS) to
+`user_secrets` (service role only), read and written only through the helpers in
+[lib/supabase-service.ts](../../lib/supabase-service.ts); the old column is CHECKed null. The
+plugin path stays browser-direct because a plugin on a tailnet is reachable from the user's
+browser and not from Vercel, so a server proxy would break it.
 
 **2. Delegation → `POST /hooks/agent`,** with the agent reporting results back through the
 dsul items tools the plugin already registers. Because announce is best-effort,
@@ -959,7 +987,10 @@ conversation is saved to the account.
   - your custom instructions;
   - proposal cards;
   - error text (only a short error code);
-  - your model key (which never leaves the server's sealed store, as before).
+  - your model key (which never leaves the server's sealed store, as before);
+  - "Write with AI" in Settings → Make (mods build order 7): neither the ask nor the reply. Only what
+    you install is saved, switched off, as anything made in Make is. The model is sent the ask and
+    the names of your projects, types, themes and Looks, never your items, notes or conversations.
 - *Who can read it:*
   - you, on any device you sign in on;
   - the database's operators.

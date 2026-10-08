@@ -28,6 +28,8 @@
         "monthly",
         "custom"
       ],
+      "containerKind": "projects",
+      "containerRequired": false,
       "titlePlaceholder": "What needs to be done?",
       "deleteTitle": "Delete task?",
       "deleteDescriptions": [
@@ -68,6 +70,8 @@
         "monthly",
         "custom"
       ],
+      "containerKind": "projects",
+      "containerRequired": false,
       "titlePlaceholder": "What habit to track?",
       "deleteTitle": "Delete habit?",
       "deleteDescriptions": [
@@ -109,6 +113,8 @@
         "monthly",
         "custom"
       ],
+      "containerKind": "projects",
+      "containerRequired": false,
       "titlePlaceholder": "Add a errand…",
       "deleteTitle": "Delete errand?",
       "deleteDescriptions": [
@@ -150,6 +156,8 @@
         "monthly",
         "custom"
       ],
+      "containerKind": "projects",
+      "containerRequired": false,
       "titlePlaceholder": "Add a side-quest…",
       "deleteTitle": "Delete side-quest?",
       "deleteDescriptions": [
@@ -191,6 +199,8 @@
         "monthly",
         "custom"
       ],
+      "containerKind": "projects",
+      "containerRequired": false,
       "titlePlaceholder": "Add a book_club…",
       "deleteTitle": "Delete book_club?",
       "deleteDescriptions": [
@@ -232,6 +242,8 @@
         "monthly",
         "custom"
       ],
+      "containerKind": "projects",
+      "containerRequired": false,
       "titlePlaceholder": "Add a x…",
       "deleteTitle": "Delete x?",
       "deleteDescriptions": [

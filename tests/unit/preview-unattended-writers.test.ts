@@ -52,7 +52,7 @@ vi.mock('@/lib/planner-snapshot', async () => {
 
 import * as db from '@/lib/db';
 import { readPlannerSnapshot, type PlannerSnapshotData } from '@/lib/planner-snapshot';
-import { usePlannerStore } from '@/lib/planner-store';
+import { mergeServerItems, usePlannerStore } from '@/lib/planner-store';
 import { useMorningStore } from '@/lib/morning-store';
 import { useOverdueSweep } from '@/hooks/use-overdue-sweep';
 import { useCompletionFiling } from '@/hooks/use-completion-filing';
@@ -171,6 +171,32 @@ describe('unattended writers while the planner is a look-only preview', () => {
     expect(store().items.find((i) => i.id === 't-stale')).not.toHaveProperty('startDate', daysAgo(60));
     expect(useMorningStore.getState().getAutoAgeLastRunDate(A)).toBe(toDateStr(new Date(), TZ));
     expect(vi.mocked(db.fetchCompletedAt)).toHaveBeenCalledWith(['t-done']);
+  });
+
+  /**
+   * What a SERVER recipe run did, read back by this tab (lib/recipes/revert.ts,
+   * the server tick). It is a merge, not a verb, so the write barrier never
+   * sees it: `mergeServerItems` has to notice the load itself. Against the
+   * preview it would fold a server tick into cached rows that the landing then
+   * throws away, and the undo entry it writes would be the person's only
+   * record of it.
+   */
+  it('a server recipe’s rows merge at the landing, never into the preview', async () => {
+    const { loading } = await previewing();
+    const ticked = { ...stale(), status: 'completed', completedDates: [daysAgo(0)] } as Item;
+
+    expect(mergeServerItems([ticked])).toBe(0);
+    expect(store().items.find((i) => i.id === 't-stale')).toMatchObject({ status: 'pending' });
+    expect(store().canUndo).toBe(false);
+
+    await act(async () => {
+      pendingLoads.shift()!.resolve(rows());
+      await loading;
+      await flush();
+    });
+
+    expect(mergeServerItems([ticked])).toBe(1);
+    expect(store().items.find((i) => i.id === 't-stale')).toMatchObject({ status: 'completed' });
   });
 
   it('the first-run seed reads the preview as a load still in flight, then decides on the landing', async () => {

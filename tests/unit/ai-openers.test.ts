@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { format, subDays, addDays } from 'date-fns';
 import {
   buildChatOpeners,
+  buildOpenerPreviews,
   BUSY_DAY_THRESHOLD,
+  PREVIEW_TITLE_MAX,
   EVENING_FROM_MIN,
   HOME_OPENERS,
   NEW_CHAT_OPENERS,
@@ -205,6 +207,90 @@ describe('buildChatOpeners', () => {
         }
       }
     }
+  });
+});
+
+/**
+ * The setup column's previews (components/ai/rail/ask-setup.tsx): what Ask's
+ * chips would be today, quoted, each with a line on what it does, for someone
+ * with nothing connected yet. They are the chips, so they follow the chips'
+ * rules; the line under each is held to the same copy contract.
+ */
+describe('buildOpenerPreviews', () => {
+  const busy = Array.from({ length: BUSY_DAY_THRESHOLD }, (_, i) => task(`t${i}`, TODAY));
+
+  it("is buildChatOpeners' list, in its order, without \"Help me start…\"", () => {
+    for (const items of [[], [task('old', past(5))], busy, [...busy, task('old', past(30))]]) {
+      for (const minutesNow of [0, MORNING, EVENING_FROM_MIN, EVENING]) {
+        const previews = buildOpenerPreviews(ctx(items), { max: 3, minutesNow });
+        const chips = buildChatOpeners(ctx(items), { max: 3, minutesNow });
+        expect(previews.map((p) => [p.id, p.label])).toEqual(chips.map((c) => [c.id, c.label]));
+        expect(previews.map((p) => p.id)).not.toContain('start');
+      }
+    }
+  });
+
+  it('describes every opener it can offer, under the copy contract', () => {
+    const forbidden = /overdue|late|behind|missed|failed|should have|neglect/i;
+    const seen = new Set<string>();
+    for (const items of [[], [task('old', past(5))], busy, [...busy, task('old', past(30))]]) {
+      for (const minutesNow of [0, MORNING, EVENING_FROM_MIN, EVENING]) {
+        for (const p of buildOpenerPreviews(ctx(items), { max: 9, minutesNow })) {
+          seen.add(p.id);
+          expect(p.description.length, p.id).toBeGreaterThan(20);
+          expect(p.description).not.toMatch(forbidden);
+          // No em dashes in copy (CLAUDE.md), and it ends as a sentence.
+          expect(p.description).not.toMatch(/—/);
+          expect(p.description).toMatch(/\.$/);
+        }
+      }
+    }
+    // Every id buildChatOpeners can produce, but the prefill.
+    expect([...seen].sort()).toEqual(['let-go', 'plan', 'plan-tomorrow', 'reflect', 'review', 'triage']);
+  });
+
+  it("says the evening three in the spec's words", () => {
+    const previews = buildOpenerPreviews(ctx([task('Fix the squeaky door', past(5))]), { max: 3, minutesNow: EVENING });
+    expect(previews).toEqual([
+      {
+        id: 'plan-tomorrow',
+        label: 'Plan tomorrow',
+        description: "Drafts tomorrow from what's on it and your braindump. You keep, move or drop each line.",
+      },
+      {
+        id: 'let-go',
+        label: "What's been sitting?",
+        description:
+          'Goes through things that have waited a while, like “Fix the squeaky door”, and helps you keep them or let them go.',
+      },
+      {
+        id: 'review',
+        label: 'Review today',
+        description: "Looks back at today with you: what got done, and what you'd carry into tomorrow.",
+      },
+    ]);
+  });
+
+  it("quotes the first thing that's been sitting, as selectOverdue orders them, cut at a word when long", () => {
+    // The recent cohort first, newest first: three days beats five.
+    const two = buildOpenerPreviews(ctx([task('Older one', past(5)), task('Newer one', past(3))]), {
+      max: 3,
+      minutesNow: MORNING,
+    });
+    expect(two.find((p) => p.id === 'let-go')?.description).toContain('like “Newer one”');
+
+    const long = 'Call the insurance company about the claim from the spring storm';
+    const [cut] = buildOpenerPreviews(ctx([task(long, past(2))]), { max: 3, minutesNow: MORNING })
+      .filter((p) => p.id === 'let-go')
+      .map((p) => /like “(.*)”/.exec(p.description)?.[1]);
+    expect(cut).toBe('Call the insurance company about the…');
+    expect((cut ?? '').length).toBeLessThanOrEqual(PREVIEW_TITLE_MAX + 1);
+
+    // A title with nothing to quote drops the example rather than quoting nothing.
+    const blank = buildOpenerPreviews(ctx([task('   ', past(2))]), { max: 3, minutesNow: MORNING });
+    expect(blank.find((p) => p.id === 'let-go')?.description).toBe(
+      'Goes through things that have waited a while, and helps you keep them or let them go.'
+    );
   });
 });
 

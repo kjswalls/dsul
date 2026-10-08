@@ -27,6 +27,8 @@ export interface SeedAI {
   model?: Partial<ModelConnectionView> | null;
   openclaw?: Partial<OpenClawView>;
   choice?: ChatTarget;
+  /** "No AI, thanks" on the account. Defaults to false: the answer said nothing was hidden. */
+  aiHidden?: boolean | null;
   legacyNotice?: boolean;
 }
 
@@ -41,6 +43,8 @@ const MODEL_DEFAULTS: ModelConnectionView = {
   status: 'ok',
   problem: null,
   checkedAt: '2026-10-01T00:00:00.000Z',
+  limitedUntil: null,
+  modelLabel: null,
 };
 
 const OPENCLAW_DEFAULTS: OpenClawView = {
@@ -56,6 +60,7 @@ interface ResolvedSeed {
   model: ModelConnectionView | null;
   openclaw: OpenClawView;
   choice: ChatTarget;
+  aiHidden: boolean | null;
   legacyNotice: boolean;
 }
 
@@ -66,6 +71,7 @@ function resolveSeed(o: SeedAI = {}): ResolvedSeed {
     model: o.model ? { ...MODEL_DEFAULTS, ...o.model } : null,
     openclaw: { ...OPENCLAW_DEFAULTS, ...o.openclaw },
     choice: o.choice ?? 'model',
+    aiHidden: o.aiHidden === undefined ? false : o.aiHidden,
     legacyNotice: o.legacyNotice ?? false,
   };
 }
@@ -88,11 +94,23 @@ export const OPENCLAW_PLUGIN: SeedAI = Object.freeze<SeedAI>({
   choice: 'openclaw',
 });
 
-/** Phase ready, available, no model, OpenClaw all false. */
+/** Phase ready, available, no model, OpenClaw all false: the gate invites (`askInvite`). */
 export const NOTHING_CONNECTED: SeedAI = Object.freeze<SeedAI>({
   phase: 'ready',
   available: true,
   model: null,
+  openclaw: {},
+  choice: 'model',
+});
+
+/** NOTHING_CONNECTED on an account that said "No AI, thanks": nothing offered at all. */
+export const AI_HIDDEN: SeedAI = Object.freeze<SeedAI>({ ...NOTHING_CONNECTED, aiHidden: true });
+
+/** Google Gemini saved, its key turned down, nothing else answering: the gate offers the fix (`askFix`). */
+export const KEY_TURNED_DOWN: SeedAI = Object.freeze<SeedAI>({
+  phase: 'ready',
+  available: true,
+  model: { provider: 'gemini', model: 'gemini-flash-latest', status: 'failing', problem: 'key_rejected' },
   openclaw: {},
   choice: 'model',
 });
@@ -111,6 +129,7 @@ export function capsFor(o?: SeedAI): AICapabilities {
     model: s.model,
     openclaw: s.openclaw,
     choice: s.choice,
+    aiHidden: s.aiHidden,
   });
 }
 
@@ -140,6 +159,7 @@ export function seedAI(o?: SeedAI): () => void {
     available: s.available,
     model: s.model,
     openclaw: s.openclaw,
+    aiHidden: s.aiHidden,
     models: null,
     modelsListed: false,
     modelsStatus: 'idle',

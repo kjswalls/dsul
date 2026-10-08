@@ -5,6 +5,7 @@ import {
   Command,
   Zap,
   Blocks,
+  Hammer,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -20,6 +21,7 @@ import { getAICapabilities, useAIConnectionStore } from '@/lib/ai-connection-sto
 import { chooseChatTarget } from '@/lib/chat-target';
 import { PROVIDER_META, type ChatTarget } from '@/lib/ai-types';
 import { useExtensionsStore } from '@/lib/extensions-store';
+import { useModsStore } from '@/lib/mods-store';
 import {
   EXT_COMPLETION_CONFETTI,
   EXT_GOALS,
@@ -41,21 +43,27 @@ import {
   DEFAULT_DARK_LOOK,
   DEFAULT_LIGHT_LOOK,
   LIGHT_LOOKS,
-  isDarkLook,
-  isLightLook,
+  isDarkPick,
+  isLightPick,
   darkLookDef,
   lightLookDef,
+  resolveDarkPick,
+  resolveLightPick,
+  type DarkPick,
+  type LightPick,
 } from '@/lib/theme-looks';
 import {
   DEFAULT_LAYOUT,
   LAYOUTS,
   LAYOUT_FAMILIES,
   isLayoutTheme,
+  type LayoutTheme,
   layoutDef,
   layoutStyles,
 } from '@/lib/layout-themes';
 import { APP_ICONS, DEFAULT_APP_ICON, isAppIcon } from '@/lib/app-icons';
 import { lookChanges, type LookPreset } from '@/lib/looks';
+import { userLookChanges, type UserLook } from '@/lib/user-looks';
 import { toast } from 'sonner';
 import { saveSettings } from '@/lib/settings-service';
 import {
@@ -94,7 +102,7 @@ import type { TimeBucket } from '@/lib/planner-types';
  * back once the feature behind them exists.
  *
  * PANES ARE TWO LEVELS, and only under Extensions. The rail is the map and it
- * stays at seven entries; an extension gets a pane of its OWN below it, at
+ * stays at eight entries; an extension gets a pane of its OWN below it, at
  * `extensions/<slug>`. Every one of those is generated from the catalog in
  * lib/extension-registry.ts — there is no hand-written pane per extension and
  * there must never be one, because the whole promise of the extension surface
@@ -109,6 +117,7 @@ export type RootPaneId =
   | 'beacon'
   | 'keyboard'
   | 'extensions'
+  | 'make'
   | 'dsul';
 
 /**
@@ -194,6 +203,14 @@ export const PANES: SettingsPane[] = [
     // stopped being the place the switches are and became the place they are
     // listed from.
     blurb: 'Optional pieces of dsul, on when you want them. Open one to set it up.',
+  },
+  {
+    // Your own recipes, mods, themes and Looks (memory/plans/mods.md). Never
+    // in OFFICIAL_EXTENSIONS: nothing here is listed, shared or reviewed.
+    id: 'make',
+    name: 'Make',
+    icon: Hammer,
+    blurb: 'Your own recipes, mods, themes and Looks.',
   },
   {
     id: 'dsul',
@@ -395,6 +412,7 @@ const reminders = () => useReminderStore.getState();
 const ai = () => useAISettingsStore.getState();
 const aiConn = () => useAIConnectionStore.getState();
 const ext = () => useExtensionsStore.getState();
+const mods = () => useModsStore.getState();
 const channelSecrets = () => useChannelSecretsStore.getState();
 const gateway = () => useGatewayStore.getState();
 const palette = () => usePaletteStore.getState();
@@ -833,10 +851,15 @@ export const SETTINGS: SettingRecord[] = [
     options: LIGHT_LOOKS.map((l) => ({ value: l.value, label: l.label })),
     keywords: ['theme', 'look', 'style', 'skin', 'appearance', 'paper', 'studio', 'sorbet'],
     read: () => look().light,
+    // A user theme's `u-` slug reads back as its own name; the options stay
+    // the built-ins, which is what search indexes.
+    display: (v) => lightLookDef(String(v) as LightPick).label,
     // Paired write, same rule as look.theme and look.palette: the store setter
-    // is localStorage + DOM only (supabase-provider's sync effect).
+    // is localStorage + DOM only (supabase-provider's sync effect). A user
+    // theme is taken only while it is on and loaded, so a recipe step naming
+    // one that is off or deleted does nothing.
     write: (v, ctx) => {
-      if (!isLightLook(v)) return;
+      if (!isLightPick(v)) return;
       look().setLight(v, { eased: true });
       if (ctx.userId) saveSettings(ctx.userId, { theme_light: v });
     },
@@ -852,8 +875,9 @@ export const SETTINGS: SettingRecord[] = [
     options: DARK_LOOKS.map((l) => ({ value: l.value, label: l.label })),
     keywords: ['theme', 'look', 'style', 'skin', 'appearance', 'night', 'terminal', 'dusk'],
     read: () => look().dark,
+    display: (v) => darkLookDef(String(v) as DarkPick).label,
     write: (v, ctx) => {
-      if (!isDarkLook(v)) return;
+      if (!isDarkPick(v)) return;
       look().setDark(v, { eased: true });
       if (ctx.userId) saveSettings(ctx.userId, { theme_dark: v });
     },
@@ -959,8 +983,10 @@ export const SETTINGS: SettingRecord[] = [
     // The other themes design their ground with their accent, so a tint has
     // nothing to act on there. Stated, not hidden: the stored value stands and
     // comes back the moment either default theme is picked again.
+    // What shows, not the raw pick: a pick for one of your themes that is off,
+    // gone or held back by safe mode shows the default, which takes a tint.
     unavailable: () =>
-      look().light === DEFAULT_LIGHT_LOOK || look().dark === DEFAULT_DARK_LOOK
+      resolveLightPick(look().light) === DEFAULT_LIGHT_LOOK || resolveDarkPick(look().dark) === DEFAULT_DARK_LOOK
         ? null
         : 'Only Paper and Night take a tint.',
     control: 'enum',
@@ -1416,8 +1442,30 @@ export const SETTINGS: SettingRecord[] = [
     description: 'Stored encrypted on the server. Never shown again.',
     control: 'info',
     // Never 'api key': that is the label, which is indexed already, and the
-    // manifest's own rule forbids restating it.
-    keywords: ['key', 'token', 'byok', 'openai', 'chatgpt', 'anthropic', 'claude', 'gemini', 'openrouter', 'llm'],
+    // manifest's own rule forbids restating it. The verbs are how people look
+    // for the form: "connect" used to land only on "Who answers in chat" and
+    // OpenClaw, and "set up" on nothing; 'model' makes the app's own words for
+    // it, "Connect a model", land here too. Never 'sign in': the AI pane draws
+    // above the account's in the results, so "sign" would put this row over
+    // Sign out, and "openrouter" already finds OpenRouter's sign-in.
+    keywords: [
+      'connect',
+      'connection',
+      'set up',
+      'setup',
+      'model',
+      'ai',
+      'key',
+      'token',
+      'byok',
+      'openai',
+      'chatgpt',
+      'anthropic',
+      'claude',
+      'gemini',
+      'openrouter',
+      'llm',
+    ],
     read: () => {
       const conn = aiConn();
       if (conn.phase === 'unknown') return 'Checking…';
@@ -1451,6 +1499,38 @@ export const SETTINGS: SettingRecord[] = [
      which meant the bindings themselves were unsearchable, undeep-linkable and
      visible only from inside a dialog. */
   ...SHORTCUT_RECORDS,
+
+  /* ── Make ───────────────────────────────────────────────────────────────
+     The pane's list is MakePane (components/settings/make-pane.tsx), drawn
+     above this one row. The row is what search finds the pane by. */
+  {
+    id: 'make.allOff',
+    pane: 'make',
+    label: 'Turn all mods off',
+    description: 'Switches off every recipe and mod you made, on every device.',
+    control: 'action',
+    keywords: [
+      'mods',
+      'mod',
+      'recipes',
+      'recipe',
+      'make',
+      'automation',
+      'workflow',
+      'script',
+      'plugin',
+      'disable',
+      'off',
+      'safe mode',
+      'custom',
+    ],
+    unavailable: () => (mods().available ? null : 'Needs a database update that has not landed here yet.'),
+    read: () => 'Turn off',
+    write: (_v, ctx) => {
+      if (ctx.userId) void mods().turnAllOff(ctx.userId);
+    },
+    defaultValue: 'Turn off',
+  },
 
   /* ── dsul ───────────────────────────────────────────────────────────── */
   {
@@ -1748,12 +1828,12 @@ export function pickLayoutFamily(v: string | boolean, ctx: SettingCtx): boolean 
 }
 
 /**
- * Applies a Look (lib/looks.ts): its exact layout, style included, and the
- * theme for each mode it pairs with, as one settings patch. The mode is left
- * alone, so following the device keeps following it.
+ * Writes a Look's picks: the layout, and each theme given that differs from
+ * the store's, as one settings patch. The mode is left alone, so following
+ * the device keeps following it. Shared by built-in and user Looks.
  */
-export function applyLook(preset: LookPreset, ctx: SettingCtx): void {
-  const { layout, light, dark } = lookChanges(preset);
+function applyPicks(picks: { layout: LayoutTheme; light?: LightPick; dark?: DarkPick }, ctx: SettingCtx): void {
+  const { layout, light, dark } = picks;
   look().setLayout(layout);
   if (light && look().light !== light) look().setLight(light, { eased: true });
   if (dark && look().dark !== dark) look().setDark(dark, { eased: true });
@@ -1764,6 +1844,27 @@ export function applyLook(preset: LookPreset, ctx: SettingCtx): void {
       ...(dark && { theme_dark: dark }),
     });
   }
+}
+
+/**
+ * Applies a Look (lib/looks.ts): its exact layout, style included, and the
+ * theme for each mode it pairs with, as one settings patch. The mode is left
+ * alone, so following the device keeps following it.
+ */
+export function applyLook(preset: LookPreset, ctx: SettingCtx): void {
+  applyPicks(lookChanges(preset), ctx);
+}
+
+/**
+ * Applies one of your own Looks (lib/user-looks.ts): all three parts, each
+ * theme by its pick (userLookChanges), so one of yours that is off is saved
+ * as itself and shows the default until it is on again, and a side already
+ * holding that pick is left as it is. On a phone the layout is written too
+ * (it is the account's) and only the colours show there. Nothing in safe mode.
+ */
+export function applyUserLook(look: UserLook, ctx: SettingCtx): void {
+  if (useModsStore.getState().safeMode) return;
+  applyPicks(userLookChanges(look), ctx);
 }
 
 /* ---------------------------------------------------------------- lookups */
@@ -1787,6 +1888,39 @@ export function paneById(id: string): SettingsPane | undefined {
  */
 export function isPaneId(value: string): value is PaneId {
   return ALL_PANES.some((p) => p.id === value);
+}
+
+/**
+ * A pane's user-facing path, where it differs from its id: the AI pane's id
+ * stays 'beacon' (the route every old link and the `beacon.*` records name,
+ * permanent), but the address bar says what the rail says. Never in PANES or
+ * ALL_PANES: an alias is a second way to the same pane, not a pane, so the
+ * rail, search and every pane lookup still see one AI pane.
+ */
+export const PANE_ALIASES: Readonly<Record<string, RootPaneId>> = Object.freeze({ ai: 'beacon' });
+
+/** The other direction: the path a pane is linked by. Only the panes with an alias are here. */
+export const PANE_PATHS: Readonly<Partial<Record<PaneId, string>>> = Object.freeze({ beacon: 'ai' });
+
+/**
+ * The pane a `/settings/<path>` names: its id, or the pane its alias stands
+ * for (`ai` → 'beacon'). Null for anything else. Own keys only, so a path of
+ * `constructor` is no pane.
+ */
+export function resolvePaneSlug(path: string | undefined): PaneId | null {
+  if (!path) return null;
+  if (isPaneId(path)) return path;
+  return Object.hasOwn(PANE_ALIASES, path) ? PANE_ALIASES[path] : null;
+}
+
+/**
+ * Where the app links a pane: `/settings/ai` for the AI pane, `/settings/<id>`
+ * for every other. Every href and push the settings surface builds goes
+ * through here, so the address bar never shows "beacon" for a link dsul made
+ * (`/settings/beacon` itself keeps working).
+ */
+export function paneHref(id: PaneId): string {
+  return `/settings/${PANE_PATHS[id] ?? id}`;
 }
 
 /** The value as the user sees it — chip copy, and what search echoes back. */

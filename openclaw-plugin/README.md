@@ -110,6 +110,8 @@ Config lives in `openclaw.json` under `plugins.entries.dsul-context.config.dsul-
 | `agentId` | Optional | OpenClaw agent that answers in dsul's Ask (default: `main`) |
 | `cacheTtlMs` | Optional | Max cache age before re-fetch (default: `300000` = 5 min) |
 
+The chat route (`/plugins/dsul/chat`) does not accept `apiKey` itself. dsul's browser sends a chat token derived from it (an HMAC, `dsulchat_…`), so the key that reaches dsul's agent API is never in a web page. Plugin versions before this change accepted only the raw key, and dsul no longer sends it: update the plugin to keep chat from Ask working.
+
 ## Requirements
 
 - OpenClaw ≥ 2026.0.0

@@ -1,11 +1,12 @@
 'use client';
 
-import { useId, type ReactNode } from 'react';
+import { useEffect, useId, type ComponentProps, type ReactNode } from 'react';
 import { useTheme } from 'next-themes';
 import { Switch } from '@/components/ui/switch';
 import { LookMini, themeScope } from './look-mini';
 import {
   applyLook,
+  applyUserLook,
   pickLayoutFamily,
   settingById,
   type SettingCtx,
@@ -21,10 +22,15 @@ import {
   LIGHT_LOOKS,
   darkLookDef,
   lightLookDef,
-  type DarkLook,
-  type LightLook,
+  resolveDarkPick,
+  resolveLightPick,
+  type DarkPick,
+  type LightPick,
   type LookMode,
 } from '@/lib/theme-looks';
+import { useUserThemes, type UserThemeDef } from '@/lib/user-themes/store';
+import { isUserThemeSlug } from '@/lib/user-themes/css';
+import { useModsStore } from '@/lib/mods-store';
 import { THEME_PALETTES, paletteDef, type ThemePalette } from '@/lib/theme-palettes';
 import {
   LAYOUT_FAMILIES,
@@ -33,13 +39,21 @@ import {
   type LayoutDef,
   type LayoutTheme,
 } from '@/lib/layout-themes';
-import { LOOKS, lookBlurb, lookColours, lookHasOwnColours, lookState } from '@/lib/looks';
+import { LOOKS, lookBlurb, lookColours, lookHasOwnColours, lookState, type LookState } from '@/lib/looks';
+import {
+  useUserLooks,
+  userLookBlurb,
+  userLookFallbackNote,
+  userLookShows,
+  userLookState,
+} from '@/lib/user-looks';
 import { cn } from '@/lib/utils';
 
 /**
  * Settings → Look's top half: the six look records drawn as pictures you tap.
  *
- *   Looks           a layout with the colours it was made with, one tap each
+ *   Looks           a layout with the colours it was made with, one tap each,
+ *                   then your own Looks (lib/user-looks.ts) under Yours
  *   Light | Dark    a live preview per mode; tapping one keeps dsul in that
  *                   mode. Under each, that mode's themes, and the tint dots
  *                   under Paper and Night, the only two a tint acts on
@@ -129,14 +143,30 @@ export function LookPicker({
   isMobile: boolean;
   highlightId: string | null;
 }) {
-  const light = useLookStore((s) => s.light);
-  const dark = useLookStore((s) => s.dark);
+  // The saved picks, and what shows: a user theme that is off, deleted or held
+  // back by safe mode shows the default without losing the pick.
+  const lightPick = useLookStore((s) => s.light);
+  const darkPick = useLookStore((s) => s.dark);
+  const userThemes = useUserThemes((s) => s.themes);
+  const safeMode = useModsStore((s) => s.safeMode);
+  const hasThemeRows = useModsStore((s) => s.rows.some((r) => r.kind === 'theme'));
+  const hasLookRows = useModsStore((s) => s.rows.some((r) => r.kind === 'look'));
+  // Enabled and parsed; none in safe mode.
+  const yoursLooks = useUserLooks();
+  const light = resolveLightPick(lightPick);
+  const dark = resolveDarkPick(darkPick);
   const layout = useLookStore((s) => s.layout);
   const tint = usePaletteStore((s) => s.palette);
   const bucketStyle = useViewStore((s) => s.bucketStyle);
   const typeMode = useViewStore((s) => s.typeMode);
   const showCompleted = usePlannerStore((s) => s.showCompletedTasks);
   const { resolvedTheme, systemTheme, setTheme: setThemeNow } = useTheme();
+
+  // /settings never loads the planner, so your themes' rows load here for
+  // "Yours" (the injector loads them too, but only while a pick names one).
+  useEffect(() => {
+    if (ctx.userId) void useModsStore.getState().hydrate(ctx.userId);
+  }, [ctx.userId]);
 
   // The mode as the record reads it, so this, the search row and a test's
   // hand-built ctx all agree.
@@ -177,13 +207,23 @@ export function LookPicker({
   const tintAnchorSide: LookMode = light === DEFAULT_LIGHT_LOOK || dark !== DEFAULT_DARK_LOOK ? 'light' : 'dark';
 
   const picks = { light, dark, tint };
+  const current = { layout, light, dark };
+  // Your Looks compare the picks as saved, a theme of yours that is off included.
+  const saved = { layout, light: lightPick, dark: darkPick };
+  // While one of your Looks is on, a built-in sharing its layout rests as off
+  // rather than "Edited": nothing of the built-in's was changed.
+  const anyUserOn = yoursLooks.some((l) => userLookState(l, saved) === 'on');
+  const miniProps = { tint, bucketStyle, typeMode, showCompleted };
   const previewDef = isMobile ? layoutDef('classic') : def;
 
   const side = (mode: LookMode) => {
     const pinned = !following && theme === mode;
     const isShowing = showing === mode;
     const current = mode === 'light' ? light : dark;
+    const saved = mode === 'light' ? lightPick : darkPick;
     const options = mode === 'light' ? LIGHT_LOOKS : DARK_LOOKS;
+    const yours = Object.values(userThemes).filter((t) => t.mode === mode);
+    const ownShowing = isUserThemeSlug(current);
     const plain = mode === 'light' ? light === DEFAULT_LIGHT_LOOK : dark === DEFAULT_DARK_LOOK;
     const currentLabel = mode === 'light' ? lightLookDef(light).label : darkLookDef(dark).label;
     // The theme this layout was made with for this mode, marked on its swatch.
@@ -263,8 +303,8 @@ export function LookPicker({
             const mark = madeFor === o.value ? def.label : null;
             const chipPicks =
               mode === 'light'
-                ? { ...picks, light: o.value as LightLook }
-                : { ...picks, dark: o.value as DarkLook };
+                ? { ...picks, light: o.value as LightPick }
+                : { ...picks, dark: o.value as DarkPick };
             return (
               <button
                 key={o.value}
@@ -273,7 +313,9 @@ export function LookPicker({
                 data-testid={`look-swatch-${o.value}`}
                 title={o.description}
                 onClick={() => {
-                  if (!pressed) write(mode === 'light' ? 'look.lightTheme' : 'look.darkTheme', o.value);
+                  // Against the SAVED pick: with a deleted theme saved, the
+                  // default shows pressed and a tap on it still writes.
+                  if (saved !== o.value) write(mode === 'light' ? 'look.lightTheme' : 'look.darkTheme', o.value);
                 }}
                 className={cn(
                   'relative flex min-w-0 flex-col gap-1.5 rounded-[10px] border p-1.5 text-left text-xs transition-colors',
@@ -303,8 +345,20 @@ export function LookPicker({
           })}
         </div>
 
+        {yours.length > 0 && (
+          <YoursGroup
+            mode={mode}
+            themes={yours}
+            current={current}
+            saved={saved}
+            picks={picks}
+            onPick={(slug) => write(mode === 'light' ? 'look.lightTheme' : 'look.darkTheme', slug)}
+          />
+        )}
+
         <TintLine
           plain={plain}
+          own={ownShowing}
           themeLabel={currentLabel}
           tint={tint}
           anchorProps={tintAnchorSide === mode ? anchor('look.palette') : undefined}
@@ -330,7 +384,8 @@ export function LookPicker({
           </div>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             {LOOKS.map((look) => {
-              const state = lookState(look, { layout, light, dark });
+              const raw = lookState(look, current);
+              const state: LookState = anyUserOn && raw === 'edited' ? 'off' : raw;
               const colours = lookColours(look);
               // Drawn in the mode it was made for, so its own colours show.
               const mode: LookMode = lookHasOwnColours(look)
@@ -341,59 +396,49 @@ export function LookPicker({
                     ? 'dark'
                     : showing;
               return (
-                <div
+                <LookCard
                   key={look.id}
-                  data-look-state={state}
-                  className={cn(
-                    'relative flex min-w-0 flex-col gap-2 rounded-[12px] border p-2 transition-colors',
-                    state === 'on'
-                      ? 'border-foreground shadow-[inset_0_0_0_1px_var(--foreground)]'
-                      : state === 'edited'
-                        ? 'border-muted-foreground border-dashed'
-                        : 'border-border hover:bg-accent'
-                  )}
-                >
-                  <LookMini
-                    def={layoutDef(look.layout)}
-                    mode={mode}
-                    light={colours.light ?? light}
-                    dark={colours.dark ?? dark}
-                    tint={tint}
-                    bucketStyle={bucketStyle}
-                    typeMode={typeMode}
-                    showCompleted={showCompleted}
-                    className="border-border rounded-[6px] border"
-                  />
-                  <button
-                    type="button"
-                    aria-pressed={state === 'on'}
-                    data-testid={`look-card-${look.id}`}
-                    onClick={() => {
-                      if (state !== 'on') applyLook(look, ctx);
-                    }}
-                    className={cn(
-                      'flex min-w-0 flex-col items-start px-0.5 text-left',
-                      "after:absolute after:inset-0 after:rounded-[12px] after:content-['']",
-                      'focus-visible:outline-none focus-visible:after:ring-ring focus-visible:after:ring-2'
-                    )}
-                  >
-                    <span className="text-foreground text-sm font-medium">{look.label}</span>
-                    <span className={QUIET}>{lookBlurb(look)}</span>
-                    {state === 'on' && (
-                      <span className="text-success-text mt-1 font-mono text-[10px] tracking-wider uppercase">
-                        On
-                      </span>
-                    )}
-                    {state === 'edited' && (
-                      <span className="text-muted-foreground mt-1 font-mono text-[10px] tracking-wider uppercase">
-                        Edited · tap to put back
-                      </span>
-                    )}
-                  </button>
-                </div>
+                  testId={`look-card-${look.id}`}
+                  state={state}
+                  label={look.label}
+                  blurb={lookBlurb(look)}
+                  def={layoutDef(look.layout)}
+                  mode={mode}
+                  light={colours.light ?? light}
+                  dark={colours.dark ?? dark}
+                  mini={miniProps}
+                  onApply={() => applyLook(look, ctx)}
+                />
               );
             })}
           </div>
+          {yoursLooks.length > 0 && (
+            <div className="flex flex-col gap-1.5" data-testid="look-yours-looks">
+              <span className="text-muted-foreground text-xs">Yours</span>
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                {yoursLooks.map((look) => {
+                  const shows = userLookShows(look);
+                  const own = layoutDef(look.layout).slots.skin !== 'theme';
+                  return (
+                    <LookCard
+                      key={look.ref}
+                      testId={`look-card-${look.ref}`}
+                      state={userLookState(look, saved)}
+                      label={look.label}
+                      blurb={userLookBlurb(look)}
+                      note={userLookFallbackNote(look)}
+                      def={layoutDef(look.layout)}
+                      mode={own ? 'light' : showing}
+                      light={shows.light}
+                      dark={shows.dark}
+                      mini={miniProps}
+                      onApply={() => applyUserLook(look, ctx)}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          )}
           <div className="text-muted-foreground mt-2 flex items-center gap-3 text-xs font-medium">
             <span>Make it yours</span>
             <span aria-hidden className="bg-border h-px flex-1" />
@@ -405,6 +450,12 @@ export function LookPicker({
         {side('light')}
         {side('dark')}
       </div>
+
+      {safeMode && (hasThemeRows || hasLookRows || isUserThemeSlug(lightPick) || isUserThemeSlug(darkPick)) && (
+        <p className={cn(QUIET, '-mt-2')} data-testid="look-safe-mode">
+          {safeModeLine(hasThemeRows || isUserThemeSlug(lightPick) || isUserThemeSlug(darkPick), hasLookRows)}
+        </p>
+      )}
 
       {!isMobile && ownColours && (
         <p className={cn(QUIET, '-mt-2')} data-testid="look-own-colours">
@@ -451,13 +502,109 @@ export function LookPicker({
   );
 }
 
+function safeModeLine(themes: boolean, looks: boolean): string {
+  const what = themes && looks ? 'themes and Looks' : looks ? 'Looks' : 'themes';
+  return `Your ${what} are off in this tab (safe mode).`;
+}
+
+/**
+ * One Look's card: a miniature in its layout and colours, its name and line.
+ * The built-ins and yours draw the same card; only yours carry a note, and
+ * only the built-ins can be 'edited'.
+ */
+function LookCard({
+  testId,
+  state,
+  label,
+  blurb,
+  note,
+  def,
+  mode,
+  light,
+  dark,
+  mini,
+  onApply,
+}: {
+  testId: string;
+  state: LookState;
+  label: string;
+  blurb: string;
+  note?: string | null;
+  def: LayoutDef;
+  mode: LookMode;
+  light: LightPick;
+  dark: DarkPick;
+  mini: {
+    tint: ThemePalette;
+    bucketStyle: ComponentProps<typeof LookMini>['bucketStyle'];
+    typeMode: ComponentProps<typeof LookMini>['typeMode'];
+    showCompleted: boolean;
+  };
+  onApply: () => void;
+}) {
+  return (
+    <div
+      data-look-state={state}
+      className={cn(
+        'relative flex min-w-0 flex-col gap-2 rounded-[12px] border p-2 transition-colors',
+        state === 'on'
+          ? 'border-foreground shadow-[inset_0_0_0_1px_var(--foreground)]'
+          : state === 'edited'
+            ? 'border-muted-foreground border-dashed'
+            : 'border-border hover:bg-accent'
+      )}
+    >
+      <LookMini
+        def={def}
+        mode={mode}
+        light={light}
+        dark={dark}
+        tint={mini.tint}
+        bucketStyle={mini.bucketStyle}
+        typeMode={mini.typeMode}
+        showCompleted={mini.showCompleted}
+        className="border-border rounded-[6px] border"
+      />
+      <button
+        type="button"
+        aria-pressed={state === 'on'}
+        data-testid={testId}
+        onClick={() => {
+          if (state !== 'on') onApply();
+        }}
+        className={cn(
+          'flex min-w-0 flex-col items-start px-0.5 text-left',
+          "after:absolute after:inset-0 after:rounded-[12px] after:content-['']",
+          'focus-visible:outline-none focus-visible:after:ring-ring focus-visible:after:ring-2'
+        )}
+      >
+        <span className="text-foreground text-sm font-medium">{label}</span>
+        <span className={QUIET}>{blurb}</span>
+        {note && (
+          <span className={cn(QUIET, 'mt-0.5')} data-testid="look-card-note">
+            {note}
+          </span>
+        )}
+        {state === 'on' && (
+          <span className="text-success-text mt-1 font-mono text-[10px] tracking-wider uppercase">On</span>
+        )}
+        {state === 'edited' && (
+          <span className="text-muted-foreground mt-1 font-mono text-[10px] tracking-wider uppercase">
+            Edited · tap to put back
+          </span>
+        )}
+      </button>
+    </div>
+  );
+}
+
 /** A swatch's chip: the theme itself, in miniature: its ground, its ink, its accent. */
 function ThemeChip({
   mode,
   picks,
 }: {
   mode: LookMode;
-  picks: { light: LightLook; dark: DarkLook; tint: ThemePalette };
+  picks: { light: LightPick; dark: DarkPick; tint: ThemePalette };
 }) {
   return (
     <span
@@ -477,14 +624,73 @@ function ThemeChip({
   );
 }
 
+/**
+ * Your own themes for this mode, under the built-ins: the same swatch, the same
+ * record write. Only enabled themes reach the registry, so only they show.
+ */
+function YoursGroup({
+  mode,
+  themes,
+  current,
+  saved,
+  picks,
+  onPick,
+}: {
+  mode: LookMode;
+  themes: UserThemeDef[];
+  current: string;
+  saved: string;
+  picks: { light: LightPick; dark: DarkPick; tint: ThemePalette };
+  onPick: (slug: string) => void;
+}) {
+  const modeLabel = mode === 'light' ? 'light' : 'dark';
+  return (
+    <div className="flex flex-col gap-1.5" data-testid={`look-yours-${mode}`}>
+      <span className="text-muted-foreground text-xs">Yours</span>
+      <div role="group" aria-label={`Your ${modeLabel} themes`} className="grid grid-cols-3 gap-2">
+        {themes.map((t) => {
+          const pressed = current === t.slug;
+          const chipPicks =
+            mode === 'light' ? { ...picks, light: t.slug as LightPick } : { ...picks, dark: t.slug as DarkPick };
+          return (
+            <button
+              key={t.slug}
+              type="button"
+              aria-pressed={pressed}
+              data-testid={`look-swatch-${t.slug}`}
+              title={t.label}
+              onClick={() => {
+                if (saved !== t.slug) onPick(t.slug);
+              }}
+              className={cn(
+                'relative flex min-w-0 flex-col gap-1.5 rounded-[10px] border p-1.5 text-left text-xs transition-colors',
+                'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
+                pressed
+                  ? 'border-foreground text-foreground shadow-[inset_0_0_0_1px_var(--foreground)]'
+                  : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground'
+              )}
+            >
+              <ThemeChip mode={mode} picks={chipPicks} />
+              <span className="truncate">{t.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function TintLine({
   plain,
+  own,
   themeLabel,
   tint,
   anchorProps,
   onPick,
 }: {
   plain: boolean;
+  /** A theme you made is showing: tints rest under it. */
+  own: boolean;
   themeLabel: string;
   tint: ThemePalette;
   anchorProps?: Record<string, unknown>;
@@ -499,7 +705,7 @@ function TintLine({
     >
       {/* The variant hangs off its theme, the way the tree reads. */}
       <span aria-hidden className="border-border -mt-2 h-3 w-2 flex-none rounded-bl-[3px] border-b border-l" />
-      <span className="text-muted-foreground">{themeLabel}</span>
+      <span className="text-muted-foreground">{themeLabel}</span>{' '}
       {plain ? (
         <>
           <span className="flex items-center gap-2">
@@ -529,6 +735,10 @@ function TintLine({
           </span>
           <span className="text-foreground">{paletteDef(tint).label}</span>
         </>
+      ) : own ? (
+        <span className="text-muted-foreground" data-testid="look-tint-rest">
+          has its own colours, so tints rest
+        </span>
       ) : (
         <span className="text-muted-foreground">has no tints</span>
       )}

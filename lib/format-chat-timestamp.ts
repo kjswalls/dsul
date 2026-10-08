@@ -26,3 +26,31 @@ export function clockTime(at: number, timeZone: string | null | undefined, timeF
   const minute = parts.find((p) => p.type === 'minute')?.value ?? ''
   return `${hour}:${minute}`
 }
+
+/**
+ * When a limit lifts, as a sentence says it: "7 am", "5:52 pm", "midnight",
+ * or "07:00" under the 24-hour setting, in the user's zone. Unlike
+ * `clockTime` it keeps am/pm: it stands alone in a line of copy, where "7:00"
+ * could be either.
+ */
+export function resetClock(at: number, timeZone: string | null | undefined, timeFormat: '12h' | '24h'): string {
+  const zone = typeof timeZone === 'string' && timeZone.trim() ? timeZone : undefined
+  const options: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit', hourCycle: 'h23' }
+  let format: Intl.DateTimeFormat
+  try {
+    format = new Intl.DateTimeFormat('en-US', { ...options, timeZone: zone })
+  } catch {
+    format = new Intl.DateTimeFormat('en-US', options)
+  }
+  const parts = format.formatToParts(new Date(at))
+  const hour = Number(parts.find((p) => p.type === 'hour')?.value ?? NaN) % 24
+  const minute = Number(parts.find((p) => p.type === 'minute')?.value ?? NaN)
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return ''
+  const mm = String(minute).padStart(2, '0')
+  if (timeFormat === '24h') return `${String(hour).padStart(2, '0')}:${mm}`
+  if (hour === 0 && minute === 0) return 'midnight'
+  if (hour === 12 && minute === 0) return 'noon'
+  const h12 = hour % 12 === 0 ? 12 : hour % 12
+  const suffix = hour < 12 ? 'am' : 'pm'
+  return minute === 0 ? `${h12} ${suffix}` : `${h12}:${mm} ${suffix}`
+}

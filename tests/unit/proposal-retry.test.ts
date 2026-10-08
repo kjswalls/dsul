@@ -25,7 +25,13 @@ const existingChild = { ...parent, id: 'child-1', title: 'Pull the numbers', par
 const unrelated = { ...parent, id: 'other-1', title: 'Book the dentist', notes: undefined };
 
 /** The planner's load state as planner-ready reads it; loaded unless a test says otherwise. */
-const planner = vi.hoisted(() => ({ isLoading: false, error: null as string | null }));
+const planner = vi.hoisted(() => ({
+  isLoading: false,
+  error: null as string | null,
+  /** The look-only preview: cached rows painted while the load is in flight. */
+  isPreview: false,
+  listeners: new Set<(s: unknown, prev: unknown) => void>(),
+}));
 
 vi.mock('@/lib/planner-store', () => ({
   usePlannerStore: {
@@ -41,12 +47,24 @@ vi.mock('@/lib/planner-store', () => ({
       // A LOADED planner: accept refuses before landing now (lib/planner-ready.ts isPlannerLoaded).
       userId: 'u1',
       isLoading: planner.isLoading,
+      isPreview: planner.isPreview,
       error: planner.error,
       loadFailedUserId: planner.error ? 'u1' : null,
       applyProposal,
     }),
+    subscribe: (fn: (s: unknown, prev: unknown) => void) => {
+      planner.listeners.add(fn);
+      return () => planner.listeners.delete(fn);
+    },
   },
 }));
+
+/** A planner change, told to whoever is waiting on it (lib/planner-ready.ts whenPreviewEnds). */
+async function plannerNow(patch: Partial<Pick<typeof planner, 'isLoading' | 'isPreview'>>) {
+  Object.assign(planner, patch);
+  for (const fn of [...planner.listeners]) fn({ ...planner, userId: 'u1' }, {});
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+}
 
 vi.mock('@/lib/ai-settings-store', () => ({
   useAISettingsStore: {
@@ -199,6 +217,46 @@ describe('retry', () => {
 
     expect(bodies[2].prompt).toBe('a different question');
     expect(useProposalStore.getState().rejected).toEqual([]);
+  });
+});
+
+describe('asking during the look-only preview', () => {
+  afterEach(() => {
+    planner.isLoading = false;
+    planner.isPreview = false;
+    planner.listeners.clear();
+  });
+
+  it('waits for the load to settle before anything goes out, a dropped preview included', async () => {
+    const bodies = mockPropose(draft('Plan A', 2));
+    planner.isLoading = true;
+    planner.isPreview = true;
+    const asked = useProposalStore.getState().request('ask', 'sort out my week');
+    await plannerNow({});
+    expect(bodies).toHaveLength(0);
+    expect(useProposalStore.getState().status).toBe('loading');
+    // The crash recovery: the preview ends, the load is still in flight.
+    await plannerNow({ isPreview: false });
+    expect(bodies).toHaveLength(0);
+    await plannerNow({ isLoading: false });
+    await asked;
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0].prompt).toBe('sort out my week');
+    expect(useProposalStore.getState().status).toBe('ready');
+  });
+
+  it('a dismiss while it waits sends nothing, ever', async () => {
+    const bodies = mockPropose(draft('Plan A', 2));
+    planner.isLoading = true;
+    planner.isPreview = true;
+    const asked = useProposalStore.getState().request('ask', 'sort out my week');
+    await plannerNow({});
+    useProposalStore.getState().dismiss();
+    await asked;
+    expect(planner.listeners.size).toBe(0);
+    await plannerNow({ isPreview: false, isLoading: false });
+    expect(bodies).toHaveLength(0);
+    expect(useProposalStore.getState().status).toBe('idle');
   });
 });
 

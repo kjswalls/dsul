@@ -1,5 +1,6 @@
 import type { ChatErrorCode } from './ai-types';
 import type { Answerer } from './conversation-types';
+import { resetClock } from './format-chat-timestamp';
 
 /**
  * A failed reply's code, in our words. The one copy.
@@ -41,12 +42,15 @@ export type ModelErrorCode = Extract<
   | 'blocked_url'
   | 'empty'
   | 'refused'
+  | 'daily_limit'
+  | 'region'
 >;
 
 /**
  * A provider's failure. No em dashes. Each line names a next step, and one that
  * needs a field says it is in Settings: the chat surface has no key, model or
- * address field of its own.
+ * address field of its own. `daily_limit` is the one whose next step is
+ * waiting; `chatErrorCopy` adds when, if it knows.
  */
 export const MODEL_ERROR_COPY: Readonly<Record<ModelErrorCode, string>> = Object.freeze({
   auth: 'Your AI key stopped working. Reconnect it in Settings.',
@@ -62,7 +66,13 @@ export const MODEL_ERROR_COPY: Readonly<Record<ModelErrorCode, string>> = Object
   empty:
     "The model ran out of room before it answered. Try a shorter message, or pick a model that doesn't reason first.",
   refused: 'The model declined to answer that. Try rephrasing it.',
+  // Static and time-free: a saved reply re-renders from its code alone.
+  daily_limit: "That's today's free limit. AI is back when it resets.",
+  region: "Your provider won't answer requests from where dsul's server is. Try a different service in Settings.",
 });
+
+/** `MODEL_ERROR_COPY.daily_limit`, with the time it lifts. */
+const dailyLimitAt = (clock: string) => `That's today's free limit. AI is back when it resets at ${clock}.`;
 
 /**
  * What /api/chat says itself, before any provider is asked (app/api/chat/route.ts).
@@ -101,6 +111,8 @@ const CHAT_CODES: ReadonlySet<string> = new Set<ChatErrorCode>([
   'blocked_url',
   'empty',
   'refused',
+  'daily_limit',
+  'region',
   'not_connected',
   'unauthorized',
   'invalid',
@@ -125,10 +137,31 @@ export function replyErrorCode(v: unknown): ReplyErrorCode {
   return isReplyErrorCode(v) ? v : 'client';
 }
 
+/** What the transcript knows about a daily limit still holding, to say when it lifts. */
+export interface ChatErrorContext {
+  /** The connection's `limitedUntil` (ISO). Used only while it is in the future. */
+  resetAt?: string | null;
+  timeZone?: string | null;
+  timeFormat?: '12h' | '24h';
+  /** For tests. */
+  now?: number;
+}
+
 /** The words for a failed reply, by its code and who was asked. Never empty. */
-export function chatErrorCopy(code: string | null | undefined, answerer: Answerer | null): string {
+export function chatErrorCopy(
+  code: string | null | undefined,
+  answerer: Answerer | null,
+  context?: ChatErrorContext
+): string {
   const c = replyErrorCode(code);
   switch (c) {
+    case 'daily_limit': {
+      const at = typeof context?.resetAt === 'string' ? Date.parse(context.resetAt) : NaN;
+      const now = context?.now ?? Date.now();
+      if (!Number.isFinite(at) || at <= now) return MODEL_ERROR_COPY.daily_limit;
+      const clock = resetClock(at, context?.timeZone, context?.timeFormat ?? '12h');
+      return clock ? dailyLimitAt(clock) : MODEL_ERROR_COPY.daily_limit;
+    }
     case 'not_connected':
       return answerer === 'openclaw' ? ROUTE_ERROR_COPY.notConnectedGateway : ROUTE_ERROR_COPY.notConnectedModel;
     case 'upstream':

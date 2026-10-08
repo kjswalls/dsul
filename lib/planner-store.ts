@@ -33,7 +33,7 @@ import { PRIORITY_LABELS } from './planner-types';
 // The time → bucket rules live in a plain module so a route can share them.
 import { autoCorrectBucket } from './time-bucket';
 // The schedule actions' patches live in lib/item-edit.ts, so the iPhone's routes write the same ones.
-import { scheduleHabitPatch, scheduleTaskPatch, UNSCHEDULE_TASK_PATCH } from './item-edit';
+import { projectRefilePatch, scheduleHabitPatch, scheduleTaskPatch, UNSCHEDULE_TASK_PATCH } from './item-edit';
 import { validateProposalOperations } from './proposal';
 import {
   addDaysToDateStr,
@@ -92,6 +92,7 @@ import { celebrateCompletion } from './completion-confetti';
 import { useExtensionsStore } from './extensions-store';
 import { markPreviewPending, readPlannerSnapshot, type PlannerSnapshotData } from './planner-snapshot';
 import { guardPreviewWrites } from './preview-write-guard';
+import { raiseModEvent, raiseModEvents, isModEventsSuppressed, type ModEvent } from './mod-events';
 import type { CommitResult, SeedPlan } from './seed-containers';
 import { ITEM_TYPES, getItemTypeConfig, itemTypeName, isSkippable, isPausable, isCollectible, hydrateCustomTypes } from './item-registry';
 import {
@@ -842,14 +843,24 @@ function persistNewItem(
     .then(() =>
       Promise.all([
         // Re-read in both loops: the optimistic set() already appended, and
-        // these are the arrays the reconciler diffs against.
+        // these are the arrays the reconciler diffs against. `known` is the
+        // same list without the new item, so the one change this write makes
+        // is the add (lib/db.ts reconcileMembership).
         ...routineIds.map((rid) => {
           const routine = get().routines.find((r) => r.id === rid);
-          return routine ? dbUpdateRoutine(userId, rid, { itemIds: routine.itemIds }) : undefined;
+          return routine
+            ? dbUpdateRoutine(userId, rid, { itemIds: routine.itemIds }, undefined, {
+                itemIds: routine.itemIds.filter((x) => x !== row.id),
+              })
+            : undefined;
         }),
         ...seasonIds.map((pid) => {
           const season = get().seasons.find((p) => p.id === pid);
-          return season ? dbUpdateSeason(userId, pid, { itemIds: season.itemIds }) : undefined;
+          return season
+            ? dbUpdateSeason(userId, pid, { itemIds: season.itemIds }, undefined, {
+                itemIds: season.itemIds.filter((x) => x !== row.id),
+              })
+            : undefined;
         }),
         // All three role arrays, even though only one of them changed: the
         // reconcile diffs whichever roles it is given, so sending the whole
@@ -1085,10 +1096,12 @@ let quietDepth = 0;
 let batchCompleted = false;
 let deferredAchievementIds: string[] = [];
 let deferredCheckins: { item: Item; dateStr: string }[] = [];
+let deferredModEvents: ModEvent[] = [];
 type BatchEffects = {
   completed: boolean;
   achievementIds: string[];
   checkins: { item: Item; dateStr: string }[];
+  modEvents: ModEvent[];
 };
 // Assigned inside the store creator, where the offer helpers live.
 let flushBatchEffects: (e: BatchEffects) => void = () => {};
@@ -2267,7 +2280,15 @@ export const usePlannerStore = create<PlannerStore>()(
         if (quietDepth > 0) deferredAchievementIds.push(itemId);
         else offerAchievementFor(itemId);
       };
-      flushBatchEffects = ({ completed, achievementIds, checkins }) => {
+      // The user's own transitions, for recipes and mods (lib/mod-events.ts).
+      // Checked for suppression HERE, at the raise: a recipe's quiet batch
+      // must not queue anything for the flush to send later.
+      const emit = (e: ModEvent) => {
+        if (isModEventsSuppressed()) return;
+        if (quietDepth > 0) deferredModEvents.push(e);
+        else raiseModEvent(e);
+      };
+      flushBatchEffects = ({ completed, achievementIds, checkins, modEvents }) => {
         // Fired after the batch's history entry exists, so the confetti aims at
         // the undo strip that entry raises (except when a quiet batch nests in a
         // loud one: see batchHistory).
@@ -2275,6 +2296,7 @@ export const usePlannerStore = create<PlannerStore>()(
         const offered = new Set<string>();
         for (const id of new Set(achievementIds)) offerAchievementFor(id, offered);
         if (checkins.length) offerCheckinSummary(checkins);
+        raiseModEvents(modEvents);
       };
 
       const updateItemAction = (id: string, type: ItemType, updates: Partial<Task> | Partial<HabitItem>) => {
@@ -2574,7 +2596,15 @@ export const usePlannerStore = create<PlannerStore>()(
           set({ routines: get().routines.map((r) => (r.id === id ? { ...r, ...updates } : r)) });
         if (updates.itemIds) withReleaseGrace(run);
         else run();
-        if (userId) dbUpdateRoutine(userId, id, updates).catch(console.error);
+        // A membership write names the list this tab held before it (`routine`,
+        // read before the set()), so lib/db.ts reconcileMembership writes only
+        // this change and keeps another device's toggles.
+        if (userId) {
+          (updates.itemIds
+            ? dbUpdateRoutine(userId, id, updates, undefined, { itemIds: routine.itemIds })
+            : dbUpdateRoutine(userId, id, updates)
+          ).catch(console.error);
+        }
       },
       removeRoutine: (id) => {
         const userId = get().userId;
@@ -2694,7 +2724,14 @@ export const usePlannerStore = create<PlannerStore>()(
         } else {
           run();
         }
-        if (userId) dbUpdateSeason(userId, id, updates).catch(console.error);
+        // As updateRoutine: the item list this tab held, for reconcileMembership.
+        // `routineIds` take none (the iPhone never writes season_routines).
+        if (userId) {
+          (updates.itemIds
+            ? dbUpdateSeason(userId, id, updates, undefined, { itemIds: season.itemIds })
+            : dbUpdateSeason(userId, id, updates)
+          ).catch(console.error);
+        }
       },
       removeSeason: (id) => {
         const userId = get().userId;
@@ -3203,6 +3240,7 @@ export const usePlannerStore = create<PlannerStore>()(
           goals: withGoalMembership(state.goals, item.id, memberships?.goalIds, memberships?.goalRole),
           seasons: withMembership(state.seasons, item.id, memberships?.seasonIds),
         }));
+        emit({ kind: 'item.created', itemId: item.id, type: customType, date: item.startDate });
 
         const userId = get().userId;
         if (userId) persistNewItem(userId, item, memberships, get);
@@ -3237,6 +3275,7 @@ export const usePlannerStore = create<PlannerStore>()(
           goals: withGoalMembership(state.goals, task.id, memberships?.goalIds, memberships?.goalRole),
           seasons: withMembership(state.seasons, task.id, memberships?.seasonIds),
         }));
+        emit({ kind: 'item.created', itemId: task.id, type: 'task', date: task.startDate });
 
         const userId = get().userId;
         if (userId) persistNewItem(userId, task, memberships, get);
@@ -3291,6 +3330,10 @@ export const usePlannerStore = create<PlannerStore>()(
 
         // ONE set() for the whole paste: one history entry, one ⌘Z.
         set((state) => projectItems([...state.items, ...rows]));
+        // Multi-row path only: the one-row path above delegates, and raises there.
+        rows.forEach((row, i) =>
+          emit({ kind: 'item.created', itemId: row.id, type: itemTypeName(row), date: itemsData[i].startDate }),
+        );
 
         // Tasks: one INSERT statement, not N createItem calls — all-or-nothing
         // on the wire, and the undo-races-insert window stays as narrow as a
@@ -3427,8 +3470,16 @@ export const usePlannerStore = create<PlannerStore>()(
         );
 
         const newUpdates = { ...updates };
-        // Auto-correct bucket if start time changes
-        if (updates.startTime && task) {
+        // Auto-correct bucket if start time changes, unless the patch releases a project block with
+        // the stash's own time and names no part of day: that goes back beside the block's part of
+        // day, as setItemsProject and moveTaskOutOfProjectBlock write it (open question 4 of the 2f
+        // brief). A time the same save set itself comes with the part of day beside it (the item
+        // dialog's, beside its release), so it is filed where it falls, as ever, even when it
+        // equals the stash.
+        const stashedTime = (task as Partial<TaskItem> | undefined)?.previousStartTime;
+        const releasesStash =
+          updates.inProjectBlock === false && !('timeBucket' in updates) && updates.startTime === stashedTime;
+        if (updates.startTime && task && !releasesStash) {
           const bucket = updates.timeBucket || task.timeBucket;
           const corrected = autoCorrectBucket(updates.startTime, bucket);
           if (corrected !== bucket) newUpdates.timeBucket = corrected;
@@ -3528,6 +3579,12 @@ export const usePlannerStore = create<PlannerStore>()(
           set((state) => projectItems(
             state.items.map(i => i.id === id && i.type === found.type ? { ...i, completedDates: newCompletedDates } : i),
           ));
+          emit({
+            kind: alreadyDone ? 'item.uncompleted' : 'item.completed',
+            itemId: id,
+            date: dateStr,
+            type: itemTypeName(task),
+          });
           dbSetItemCompletion(id, dbTypeOf(found), dateStr, !alreadyDone).catch(console.error);
           if (!alreadyDone) {
             celebrate();
@@ -3543,6 +3600,17 @@ export const usePlannerStore = create<PlannerStore>()(
           if (newStatus === 'completed' && task.status !== 'completed') {
             celebrate();
             offerAchievement(id);
+          }
+          // A one-off keeps no per-date record. Its one occurrence is its
+          // startDate (callers pass no date for a one-off, so selectedDate
+          // would be the week's anchor, not the column ticked); the day acted
+          // on only when it has none.
+          const kind = newStatus === 'completed' && task.status !== 'completed' ? 'item.completed'
+            : task.status === 'completed' && newStatus !== 'completed' ? 'item.uncompleted'
+            : null;
+          if (kind) {
+            const on = date ? resolveDateStr(date) : (task.startDate ?? resolveDateStr());
+            emit({ kind, itemId: id, date: on, type: itemTypeName(task) });
           }
         }
       },
@@ -4123,6 +4191,16 @@ export const usePlannerStore = create<PlannerStore>()(
             })
           )
         );
+        // patchById holds only the items that changed.
+        for (const item of targets) {
+          if (!patchById.has(item.id)) continue;
+          emit({
+            kind: completed ? 'item.completed' : 'item.uncompleted',
+            itemId: item.id,
+            date: dateStr,
+            type: itemTypeName(item),
+          });
+        }
 
         dbWrites.forEach((w) => w());
       },
@@ -4202,10 +4280,13 @@ export const usePlannerStore = create<PlannerStore>()(
         );
 
         if (userId) {
+          // The list before this change, so the write is this change alone
+          // (lib/db.ts reconcileMembership's `known`).
+          const known = { itemIds: container.itemIds };
           const write =
             kind === 'routine'
-              ? dbUpdateRoutine(userId, containerId, { itemIds: nextIds })
-              : dbUpdateSeason(userId, containerId, { itemIds: nextIds });
+              ? dbUpdateRoutine(userId, containerId, { itemIds: nextIds }, undefined, known)
+              : dbUpdateSeason(userId, containerId, { itemIds: nextIds }, undefined, known);
           write.catch(console.error);
         }
       },
@@ -4254,12 +4335,19 @@ export const usePlannerStore = create<PlannerStore>()(
        * updateTask/updateHabit — resolved ONCE here, since every item is going
        * to the same place.
        *
+       * Name AND id: a folded match whose id is stale (or missing, from before
+       * 027) is still worth the write — it repairs the link.
+       *
        * An item sitting in its old project's time block has to come out of it.
        * `inProjectBlock` parks it inside the block with its own time stashed in
        * previousStartTime/Date (moveTasksToProjectBlock), and the block it is
        * parked in is the one it no longer belongs to — left alone, it would
        * render in no block at all and vanish from the day. So the release is
        * moveTaskOutOfProjectBlock's, folded into the same patch.
+       *
+       * The rule lives in lib/item-edit.ts as projectRefilePatch, so the
+       * iPhone's `project` route writes what this writes; the item dialog's
+       * project change shares its release (projectBlockRelease).
        */
       setItemsProject: (ids, name) => {
         const idSet = new Set(ids);
@@ -4268,24 +4356,10 @@ export const usePlannerStore = create<PlannerStore>()(
         for (const item of get().items) {
           if (!idSet.has(item.id)) continue;
           if (name ? !canBulkSetProject(item) : !canBulkClearProject(item)) continue;
-          const current = item.project;
-          const sameName = name
-            ? current != null && sameContainerName('project', current, name)
-            : current == null;
-          // Name AND id: a folded match whose id is stale (or missing, from
-          // before 027) is still worth the write — it repairs the link.
-          if (sameName && item.projectId === projectId) continue;
-
-          const patch: Partial<Task> = { project: name, projectId };
-          const parked = item as Partial<TaskItem>;
-          if (parked.inProjectBlock && !sameName) {
-            patch.inProjectBlock = false;
-            patch.startTime = parked.previousStartTime;
-            patch.startDate = parked.previousStartDate;
-            patch.previousStartTime = undefined;
-            patch.previousStartDate = undefined;
-          }
-          patchById.set(item.id, patch);
+          // The bulk Move to project's rule (lib/item-edit.ts projectRefilePatch, which the iPhone's
+          // route runs too): name AND id, and the release of a parked item.
+          const patch = projectRefilePatch(item, name, projectId);
+          if (patch) patchById.set(item.id, patch);
         }
         if (patchById.size === 0) return;
 
@@ -4554,6 +4628,10 @@ export const usePlannerStore = create<PlannerStore>()(
         set((state) => projectItems(
           state.items.map((i) => (i.id === id && i.type === item.type ? { ...i, ...optimistic } as Item : i)),
         ));
+        // The habit path above raises in toggleHabitStatus; the non-habit
+        // unskip raises nothing. A skip that cleared the day's completion is
+        // only a skip (see ModEvent).
+        if (skipped) emit({ kind: 'item.skipped', itemId: id, date: dateStr, type: itemTypeName(item) });
 
         if (clearCompletion) {
           dbSetItemCompletion(id, dbTypeOf(item), dateStr, false).catch(console.error);
@@ -4642,6 +4720,8 @@ export const usePlannerStore = create<PlannerStore>()(
           goals: withGoalMembership(state.goals, habit.id, memberships?.goalIds, memberships?.goalRole),
           seasons: withMembership(state.seasons, habit.id, memberships?.seasonIds),
         }));
+        // No date: habits are date-blind.
+        emit({ kind: 'item.created', itemId: habit.id, type: 'habit' });
 
         const userId = get().userId;
         if (userId) persistNewItem(userId, habit, memberships, get);
@@ -4727,6 +4807,13 @@ export const usePlannerStore = create<PlannerStore>()(
         set((state) => projectItems(
           state.items.map((i) => (i.id === id && i.type === 'habit' ? { ...i, ...optimistic } as Item : i)),
         ));
+        // At most one event: a count-only update, a repeat done or an unskip
+        // raises nothing, and done → skipped is only a skip.
+        const habitEvent = status === 'done' && !wasCompleted ? 'item.completed'
+          : status === 'skipped' && !wasSkipped ? 'item.skipped'
+          : status === 'pending' && wasCompleted ? 'item.uncompleted'
+          : null;
+        if (habitEvent) emit({ kind: habitEvent, itemId: id, date: dateStr, type: 'habit' });
 
         dbSetItemCompletion(id, 'habit', dateStr, status === 'done').catch(console.error);
         // skippedDates joins completedDates and streak in the exclusion list:
@@ -5651,21 +5738,31 @@ function applyHistoryState(
   // reconciliation: ROUTINE_FIELDS includes `itemIds`, so a membership undo
   // arrives here as an {itemIds} patch and dbUpdateRoutine turns it into
   // inserts/deletes. A column-mapper-style callback would drop it silently and
-  // membership undo would never reach the DB.
+  // membership undo would never reach the DB. The list the store held before
+  // the undo (`cur`) goes with it as reconcileMembership's `known`, so the undo
+  // also leaves alone what another device changed. A routine the undo brings
+  // back from the Trash has no `cur`, and its full restored list is written.
   syncContainers(
     currentState.routines, restoredRoutines, ROUTINE_FIELDS,
     (id) => dbRestoreRoutine(userId, id),
-    (id, patch) => dbUpdateRoutine(userId, id, patch),
+    (id, patch, cur) =>
+      patch.itemIds && cur
+        ? dbUpdateRoutine(userId, id, patch, undefined, { itemIds: cur.itemIds })
+        : dbUpdateRoutine(userId, id, patch),
     (id) => dbDeleteRoutine(userId, id),
   );
   // Seasons carry TWO member arrays (itemIds and routineIds), both in
   // SEASON_FIELDS and both reconciled by dbUpdateSeason against their own
   // join table. Undoing "added Morning to Summer" therefore arrives here as a
-  // {routineIds} patch and deletes exactly that one join row.
+  // {routineIds} patch and deletes exactly that one join row. `known` as the
+  // routines', for the item list alone.
   syncContainers(
     currentState.seasons, restoredSeasons, SEASON_FIELDS,
     (id) => dbRestoreSeason(userId, id),
-    (id, patch) => dbUpdateSeason(userId, id, patch),
+    (id, patch, cur) =>
+      patch.itemIds && cur
+        ? dbUpdateSeason(userId, id, patch, undefined, { itemIds: cur.itemIds })
+        : dbUpdateSeason(userId, id, patch),
     (id) => dbDeleteSeason(userId, id),
   );
   // Goals carry THREE member arrays, all in GOAL_FIELDS, and dbUpdateGoal
@@ -5683,12 +5780,17 @@ function applyHistoryState(
   );
 }
 
+/**
+ * `update`'s third argument is the container as the store holds it now, before
+ * the undo or redo: undefined on the restore path, where the container is back
+ * from the Trash and its full restored shape is pushed.
+ */
 function syncContainers<T extends { id: string }>(
   current: T[],
   restored: T[],
   fields: readonly (keyof T & string)[],
   restore: (id: string) => Promise<void>,
-  update: (id: string, patch: Partial<T>) => Promise<void>,
+  update: (id: string, patch: Partial<T>, cur?: T) => Promise<void>,
   remove: (id: string) => Promise<void>,
 ) {
   const currentById = new Map(current.map((c) => [c.id, c]));
@@ -5709,7 +5811,7 @@ function syncContainers<T extends { id: string }>(
       if (field === 'id') continue;
       if (JSON.stringify(cur[field]) !== JSON.stringify(r[field])) patch[field] = r[field];
     }
-    if (Object.keys(patch).length > 0) update(r.id, patch).catch(console.error);
+    if (Object.keys(patch).length > 0) update(r.id, patch, cur).catch(console.error);
   });
   current.forEach((c) => {
     if (!restoredById.has(c.id)) remove(c.id).catch(console.error);
@@ -5811,6 +5913,92 @@ const sameAgentFields = (a: AgentFields, b: AgentFields) =>
   (a.aiStatus ?? null) === (b.aiStatus ?? null) &&
   (a.aiResult ?? null) === (b.aiResult ?? null) &&
   (a.aiStatusAt ?? null) === (b.aiStatusAt ?? null);
+
+/** The fields a server run (lib/recipes/server/) writes on an existing item. */
+const SERVER_RUN_FIELDS = [
+  'status',
+  'completedDates',
+  'skippedDates',
+  'dailyCounts',
+  'currentDayCount',
+  'streak',
+  'startDate',
+  'timeBucket',
+  'isScheduled',
+] as const;
+
+const serverRunFieldsOf = (item: Item): string =>
+  JSON.stringify(SERVER_RUN_FIELDS.map((k) => (item as unknown as Record<string, unknown>)[k] ?? null));
+
+/**
+ * Fold items a server run wrote (a timed or phone-started recipe,
+ * lib/recipes/server/) into the store, so Revert in Make (lib/recipes/revert.ts)
+ * asks the rows as they are, not as this tab loaded them. Only the fields a
+ * server run writes are taken for an item the store has (a local edit to
+ * anything else is never overwritten); an item it lacks (one the run added)
+ * comes in whole.
+ *
+ * The server's news, not a user action, so it is folded the way
+ * mergeAgentStates folds agent state: one set(), no undo entry, no write-back,
+ * every snapshot that still held the store's pre-merge fields rewritten to the
+ * merged ones (and an added item added to each), as if the server's value had
+ * been there all along, so an undo of an unrelated edit never writes the stale
+ * value back. Skipped while a load is in flight, which brings fresh rows of
+ * its own. Returns how many items changed.
+ */
+export function mergeServerItems(rows: readonly Item[]): number {
+  const state = usePlannerStore.getState();
+  if (state.isLoading || rows.length === 0) return 0;
+  const byId = new Map(state.items.map((item) => [item.id, item]));
+  const changes = new Map<string, { before: string | null; row: Item }>();
+  for (const row of rows) {
+    const item = byId.get(row.id);
+    if (!item) {
+      // An item the tab once held and no longer does was deleted here; a
+      // server read that still finds it is behind that delete, not ahead.
+      if (!historyStack.some((snap) => snap.items.some((i) => i.id === row.id))) {
+        changes.set(row.id, { before: null, row });
+      }
+    }
+    else if (item.type === row.type && serverRunFieldsOf(item) !== serverRunFieldsOf(row)) {
+      changes.set(row.id, { before: serverRunFieldsOf(item), row });
+    }
+  }
+  if (changes.size === 0) return 0;
+
+  const overlay = (item: Item, row: Item): Item => {
+    const next = { ...item } as unknown as Record<string, unknown>;
+    for (const k of SERVER_RUN_FIELDS) {
+      const v = (row as unknown as Record<string, unknown>)[k];
+      if (v === undefined) delete next[k];
+      else next[k] = v;
+    }
+    return next as unknown as Item;
+  };
+  const fold = (items: Item[]): Item[] => {
+    const seen = new Set<string>();
+    const out = items.map((item) => {
+      const change = changes.get(item.id);
+      if (!change) return item;
+      seen.add(item.id);
+      if (change.before === null || serverRunFieldsOf(item) !== change.before) return item;
+      return overlay(item, change.row);
+    });
+    for (const [id, change] of changes) if (change.before === null && !seen.has(id)) out.push(change.row);
+    return out;
+  };
+
+  const wasSuppressed = isUpdatingUndoRedo;
+  isUpdatingUndoRedo = true;
+  try {
+    usePlannerStore.setState((s) => projectItems(fold(s.items)));
+    historyStack = historyStack.map((snapshot) => ({ ...snapshot, items: fold(snapshot.items) }));
+    updatePrevStateBaseline(historySlice(usePlannerStore.getState()));
+  } finally {
+    isUpdatingUndoRedo = wasSuppressed;
+  }
+  return changes.size;
+}
 
 /**
  * Fold the agent columns read back from the server (lib/db.ts
@@ -6018,6 +6206,7 @@ export function batchHistory(
     batchCompleted = false;
     deferredAchievementIds = [];
     deferredCheckins = [];
+    deferredModEvents = [];
   }
 
   const recordsHistory = !(isUndoRedoAction || isUpdatingUndoRedo);
@@ -6050,11 +6239,16 @@ export function batchHistory(
         completed: batchCompleted,
         achievementIds: deferredAchievementIds,
         checkins: deferredCheckins,
+        modEvents: deferredModEvents,
       };
       batchCompleted = false;
       deferredAchievementIds = [];
       deferredCheckins = [];
+      deferredModEvents = [];
       if (!failed) flushBatchEffects(effects);
+      // The writes a failed batch applied are in its entry and on the wire,
+      // so recipes still hear of them; only the cosmetic effects drop.
+      else raiseModEvents(effects.modEvents);
     }
   }
 }

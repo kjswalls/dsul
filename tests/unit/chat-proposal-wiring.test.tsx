@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { act, render, screen, fireEvent, cleanup } from '@testing-library/react';
 import {
   seedAI,
   CONNECTED_MODEL,
@@ -104,6 +104,7 @@ import { chatTransport } from '@/lib/chat-transport';
 import { chatErrorCopy } from '@/lib/chat-errors';
 import { buildPlanPrompt } from '@/lib/plan-prompt';
 import { useRailStore } from '@/lib/rail-store';
+import { useAIConnectionStore } from '@/lib/ai-connection-store';
 import { fakeApi, fakeTransport, flush, hangs, type FakeTransport } from './helpers/conversations-fakes';
 
 const PLAN_BUTTON = 'chat-make-plan';
@@ -402,6 +403,30 @@ describe('how a saved turn reads', () => {
     renderChat();
     expect(screen.getByText('Half an answer')).toBeInTheDocument();
     expect(screen.getByTestId('chat-error-note').textContent).toBe(chatErrorCopy('rate_limit', 'model'));
+  });
+
+  it("a daily limit says when it lifts, on the planner's clock, while the connection says one holds", () => {
+    seed({ ...CONNECTED_MODEL, model: { ...CONNECTED_MODEL.model, limitedUntil: '2099-01-01T07:00:00.000Z' } });
+    setThread([msg('user', 'a'), msg('assistant', '', { status: 'error', errorCode: 'daily_limit' })]);
+    renderChat();
+    // The planner's zone here is UTC, its format the 12-hour default.
+    expect(screen.getByTestId('chat-error-note').textContent).toBe(
+      "That's today's free limit. AI is back when it resets at 7 am."
+    );
+
+    // The limit lifted (the next status read carries none): the line keeps no stale time.
+    act(() =>
+      useAIConnectionStore.setState((st) => ({ model: st.model ? { ...st.model, limitedUntil: null } : null }))
+    );
+    expect(screen.getByTestId('chat-error-note').textContent).toBe(chatErrorCopy('daily_limit', 'model'));
+  });
+
+  it('a daily limit with no time to give is the time-free line', () => {
+    setThread([msg('user', 'a'), msg('assistant', '', { status: 'error', errorCode: 'daily_limit' })]);
+    renderChat();
+    expect(screen.getByTestId('chat-error-note').textContent).toBe(
+      "That's today's free limit. AI is back when it resets."
+    );
   });
 
   it('a failed reply with nothing in it is only the note, worded for who was asked', () => {
