@@ -601,6 +601,9 @@ describe('a mod', () => {
     fireEvent.click(screen.getByTestId('make-draft-edit'));
     expect(screen.getByTestId('mod-editor')).toBeTruthy();
     expect(screen.getByTestId('make-write').hidden).toBe(true);
+    // Prefilled with the draft, never the template.
+    expect((screen.getByTestId('mod-name') as HTMLInputElement).value).toBe('Six glasses');
+    expect((screen.getByTestId('mod-source') as HTMLTextAreaElement).value).toBe(SOURCE);
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(screen.getByTestId('make-write').hidden).toBe(false);
     expect(screen.getByTestId('make-draft-name').textContent).toBe('Six glasses');

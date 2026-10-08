@@ -11,6 +11,7 @@ import {
   isModLabel,
   isModName,
   parseModManifest,
+  surfaceMessage,
   type ModManifest,
   type ModUse,
   type UserMod,
@@ -20,14 +21,15 @@ import { modSandbox } from '@/lib/mods/sandbox-host';
 import { activeModRuntime } from '@/lib/mods/runtime-manager';
 import { MOD_TEMPLATE, MOD_TEMPLATE_NAME, MOD_TEMPLATE_USES } from '@/lib/mods/template';
 import { panelsInWords, usesInWords } from '@/lib/mods/words';
+import { draftChecks } from '@/lib/make-draft';
 
 /** Moved to lib/mods/words.ts (build order 10), so the server's prompt can read them too. */
 export { MOD_USE_WORDS, panelsInWords, usesInWords } from '@/lib/mods/words';
 
 /**
  * Settings → Make's mod editor (memory/plans/mods.md, build order 8): a name
- * and the code, plain text. No AI here (that is build order 10) and no
- * syntax colouring: a textarea the browser already makes accessible.
+ * and the code, plain text. No syntax colouring: a textarea the browser
+ * already makes accessible.
  *
  * Save runs the code once in a throwaway sandbox worker with no `$` and no
  * hook (modSandbox.scratch), reads the manifest the code declares, and saves
@@ -38,6 +40,14 @@ export { MOD_USE_WORDS, panelsInWords, usesInWords } from '@/lib/mods/words';
  * A switched-on mod stays on across a save and hot reloads in this tab
  * (activeModRuntime().saved). One whose code now asks for more than before is
  * saved switched off: switching it back on is the consent.
+ *
+ * A "Write with AI" draft opened in Edit (build order 10) arrives as
+ * `initial`: its name, its code and the manifest its scratch run read, never
+ * the template's. One marked `fromAI` is held to the draft's own checks
+ * (draftChecks in lib/make-draft.ts) on every Save of this editor's session,
+ * however it was edited, so Edit then Save cannot step around them. A
+ * fault's message, or a manifest issue, is the code's own words and is shown
+ * only through surfaceMessage, for every mod.
  */
 
 const encoder = new TextEncoder();
@@ -50,6 +60,8 @@ const SANDBOX_WORDS = {
 
 interface Problem {
   text: string;
+  /** Each thing that holds Save, for an AI draft's checks. */
+  list?: string[];
   /** The code's own words (an error message), shown apart from the app's. */
   detail?: string;
   reload?: boolean;
@@ -66,28 +78,45 @@ function Field({ label, htmlFor, children }: { label: string; htmlFor: string; c
   );
 }
 
+/** A new mod's starting point: a "Write with AI" draft opened in Edit (./make-write.tsx). */
+export interface ModEditorInitial {
+  name: string;
+  source: string;
+  /** What its scratch run read; null when it would not load, so nothing is known yet. */
+  manifest: ModManifest | null;
+  fromAI?: boolean;
+}
+
 export function ModEditor({
   userId,
   editing,
+  initial,
   onDone,
   onCancel,
 }: {
   userId: string;
   /** The mod being edited, or null for a new one. */
   editing: UserMod | null;
+  /** A new mod's name and code, in place of the template's. Ignored when editing. */
+  initial?: ModEditorInitial;
   onDone: (message: string) => void;
   onCancel: () => void;
 }) {
-  const [name, setName] = useState(editing ? editing.name : MOD_TEMPLATE_NAME);
+  const seed = editing ? undefined : initial;
+  const [name, setName] = useState(editing ? editing.name : (seed?.name ?? MOD_TEMPLATE_NAME));
   /** null while an existing mod's code loads; the list never selects it. */
-  const [source, setSource] = useState<string | null>(editing ? null : MOD_TEMPLATE);
+  const [source, setSource] = useState<string | null>(editing ? null : (seed?.source ?? MOD_TEMPLATE));
   const [loadFailed, setLoadFailed] = useState(false);
   const [uses, setUses] = useState<ModUse[]>(() =>
-    editing ? (parseModManifest(editing)?.uses ?? []) : MOD_TEMPLATE_USES
+    editing ? (parseModManifest(editing)?.uses ?? []) : seed ? (seed.manifest?.uses ?? []) : MOD_TEMPLATE_USES
   );
+  /** True until a save reads what a draft that would not load asks for. */
+  const [unread, setUnread] = useState(() => !!seed && !seed.manifest);
+  /** Held for the whole session: an edit never clears it. */
+  const [fromAI] = useState(() => seed?.fromAI === true);
   /** The panels and settings line, from the stored manifest until a save reads the code's own. */
   const [drawsWords, setDrawsWords] = useState(() => {
-    const m = editing ? parseModManifest(editing) : null;
+    const m = editing ? parseModManifest(editing) : (seed?.manifest ?? null);
     return m ? panelsInWords(m) : '';
   });
   const [problem, setProblem] = useState<Problem | null>(() => {
@@ -129,7 +158,10 @@ export function ModEditor({
         if ('status' in result) {
           return setProblem({ text: SANDBOX_WORDS[result.status], reload: result.status === 'outdated' });
         }
-        return setProblem({ text: `${faultCodeWords(result.fault.code)}.`, detail: result.fault.message });
+        return setProblem({
+          text: `${faultCodeWords(result.fault.code)}.`,
+          detail: result.fault.message.trim() ? surfaceMessage(result.fault.message) : undefined,
+        });
       }
       let manifest: ModManifest;
       try {
@@ -138,7 +170,7 @@ export function ModEditor({
           const issue = parsed.error.issues[0];
           return setProblem({
             text: 'Its manifest is not valid.',
-            detail: issue ? `${issue.path.join('.') || 'manifest'}: ${issue.message}` : undefined,
+            detail: issue ? surfaceMessage(`${issue.path.join('.') || 'manifest'}: ${issue.message}`) : undefined,
           });
         }
         manifest = parsed.data;
@@ -146,7 +178,12 @@ export function ModEditor({
         return setProblem({ text: 'Its manifest is not valid.' });
       }
       setUses(manifest.uses);
+      setUnread(false);
       setDrawsWords(panelsInWords(manifest));
+      if (fromAI) {
+        const held = draftChecks(source, manifest, result.hooks);
+        if (held.length > 0) return setProblem({ text: 'Fix these before saving.', list: held });
+      }
 
       const store = useModsStore.getState();
       if (editing) {
@@ -206,8 +243,8 @@ export function ModEditor({
         </Field>
         <div className="mt-1 flex flex-wrap items-baseline justify-between gap-2 text-xs">
           <p data-testid="mod-uses" className="text-muted-foreground">
-            {usesInWords(uses)}
-            {drawsWords && <span data-testid="mod-draws"> {drawsWords}</span>}
+            {unread ? 'Not read yet: save to check it.' : usesInWords(uses)}
+            {!unread && drawsWords && <span data-testid="mod-draws"> {drawsWords}</span>}
           </p>
           <p
             data-testid="mod-bytes"
@@ -221,6 +258,13 @@ export function ModEditor({
       {problem && (
         <div data-testid="mod-editor-error" role="alert" className="space-y-1 text-xs">
           <p className="text-destructive">{problem.text}</p>
+          {problem.list && (
+            <ul data-testid="mod-editor-checks" className="text-destructive list-disc space-y-0.5 pl-4">
+              {problem.list.map((p) => (
+                <li key={p}>{p}</li>
+              ))}
+            </ul>
+          )}
           {problem.detail && (
             <p className="text-muted-foreground">
               The code said: <span className="font-mono break-words">{problem.detail}</span>

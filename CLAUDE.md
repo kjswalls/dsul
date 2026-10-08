@@ -429,11 +429,12 @@ date, and the sweep and the carry verbs are excluded from it on purpose.
 2026-10-03; decisions 2026-10-07): private, sandboxed mods (QuickJS-in-WASM behind a
 capability broker, host-drawn UI, never CSS), no-code recipes over `ITEM_VERBS`, and
 user themes and Looks as token values. It reverses plugins-themes-store.md's "skip
-tier (c)" and "skip sidebar-panel slots" for private code only. Build orders 2 to 9 are built (6 is the
+tier (c)" and "skip sidebar-panel slots" for private code only. Build orders 2 to 10 are built (6 is the
 server runner, `lib/recipes/server/`; 7 is "Write with AI" in Make, `/api/ai/make`; 8 is the mod runtime,
 `lib/mods/`: sandbox frame, broker, ⌘K commands, faults, Make's source editor; 9 is the mod UI, `lib/mods/ui/`
 and `components/mods/`: the element tree, the rail's mod mode, the braindump card, the phone sheet and Make's
-settings form); read it before adding a mod
+settings form; 10 is the AI writing mods, the same Write box with a scratch run before the card, and `$` still
+has no AI); read it before adding a mod
 event, a recipe step, a `$` method, or anything that lets user-written code or values into the app. The mod
 runtime's worker, wasm and frame page are GENERATED: `scripts/build-mod-runtime.mjs` runs on `postinstall` and
 `prebuild` and writes `lib/mods/sandbox/generated/` (gitignored), served at `/mods/sandbox/<version>`, where the

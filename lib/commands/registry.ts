@@ -1001,6 +1001,22 @@ export const STATIC_COMMANDS: Command[] = [
       else if (typeof window !== 'undefined') window.location.assign('/settings/make?write=recipe');
     },
   },
+  // The same door with the Mod box (build order 10). It shares make.write's
+  // gate and sends nothing either; Make boots the sandbox when the kind is a
+  // mod, since a draft is checked there before its card shows.
+  {
+    id: 'make.write-mod',
+    label: 'Write a mod with AI',
+    group: 'mods',
+    icon: AskMarkIcon,
+    keywords: 'ai make mod panel card command counter write code',
+    hidden: () => !getAICapabilities().canMake,
+    availableWhen: () => getAICapabilities().canMake,
+    run: (ctx) => {
+      if (ctx.navigate) ctx.navigate('/settings/make?write=mod');
+      else if (typeof window !== 'undefined') window.location.assign('/settings/make?write=mod');
+    },
+  },
   {
     id: 'rituals.eod',
     label: 'Start end-of-day review',

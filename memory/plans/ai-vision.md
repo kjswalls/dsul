@@ -1041,9 +1041,11 @@ conversation is saved to the account.
   - proposal cards;
   - error text (only a short error code);
   - your model key (which never leaves the server's sealed store, as before);
-  - "Write with AI" in Settings → Make (mods build order 7): neither the ask nor the reply. Only what
-    you install is saved, switched off, as anything made in Make is. The model is sent the ask and
-    the names of your projects, types, themes and Looks, never your items, notes or conversations.
+  - "Write with AI" in Settings → Make (mods build orders 7 and 10): neither the ask nor the reply.
+    Only what you install is saved, switched off, as anything made in Make is. The model is sent the
+    ask and the names of your projects, types, themes and Looks (for a mod, only types, themes and
+    Looks; project names are not even read), never your items, notes or conversations. A mod it
+    writes has no AI of its own.
 - *Who can read it:*
   - you, on any device you sign in on;
   - the database's operators.
