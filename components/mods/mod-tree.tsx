@@ -114,7 +114,11 @@ function shownValue(kind: AtomKind, stored: AtomValue | undefined): AtomValue | 
 }
 
 export function ModTree(props: ModTreeProps) {
-  return <ModNodeView node={props.tree} path={[]} ctx={props} />;
+  return (
+    <div data-mod-tree="" className="relative min-w-0">
+      <ModNodeView node={props.tree} path={[]} ctx={props} />
+    </div>
+  );
 }
 
 function ModNodeView({ node, path, ctx }: { node: ModNode; path: (string | number)[]; ctx: ModTreeProps }): ReactNode {

@@ -3,16 +3,18 @@
 import { useCallback, useLayoutEffect, useRef } from 'react';
 import { MOD_CLICK_SETTLE_MS } from '@/lib/mods/limits';
 
-/** Where an element sits in the page's layout, scrolling aside. */
+/**
+ * Where an element sits inside its mod tree. Measured from the tree's own
+ * root, so a window resize or a braindump drag (which moves the whole tree)
+ * does not restart the clock; a node the mod inserts above this one does.
+ */
 function layoutBox(el: HTMLElement | null): string {
   if (!el) return '';
-  let x = 0;
-  let y = 0;
-  for (let n: HTMLElement | null = el; n; n = n.offsetParent as HTMLElement | null) {
-    x += n.offsetLeft;
-    y += n.offsetTop;
-  }
-  return `${x},${y},${el.offsetWidth},${el.offsetHeight}`;
+  const root = el.closest<HTMLElement>('[data-mod-tree]');
+  if (!root) return '';
+  const a = el.getBoundingClientRect();
+  const b = root.getBoundingClientRect();
+  return `${Math.round(a.left - b.left)},${Math.round(a.top - b.top)}`;
 }
 
 /**
