@@ -528,6 +528,8 @@ function modSection(): string {
     'Rules:',
     '- Declare in "uses" only what the code calls, and call only what "uses" declares.',
     `- Command, panel, setting, action and atom ids are plain ASCII matching ${MOD_SLUG_RE.source}.`,
+    // ModCommandSchema's refine, which zodWords cannot print.
+    '- A command id is never "run": the app keeps that id for its own.',
     '- Item ids come only from events, $.items.query or $.items.get.',
     '- Never put a name from the next part in the code, except type slugs and theme or Look refs.',
     '- Project names come from the ask, or from $.containers.list() while the mod runs.',

@@ -62,6 +62,7 @@ import {
   MOD_TREE_NODES_MAX,
 } from '@/lib/mods/limits';
 import { HookEventSchema, MOD_EVENT_KINDS, MOD_METHODS } from '@/lib/mods/protocol';
+import { ModCommandSchema } from '@/lib/mods/schema';
 import { ModNodeSchema, type ModNodeType } from '@/lib/mods/ui/tree';
 import { MOD_ICON_NAMES } from '@/lib/mods/ui/icons-list';
 import { MOD_TEMPLATE } from '@/lib/mods/template';
@@ -287,6 +288,12 @@ describe('the mod prompt', () => {
     expect(mod).toContain(`at most ${MOD_TREE_NODES_MAX} nodes, nested at most ${MOD_TREE_DEPTH_MAX} deep, and ${MOD_TREE_MAX_BYTES} bytes`);
     expect(mod).toContain(`at most ${MOD_ATOMS_MAX} atoms`);
     expect(mod).toContain('Panels need "ui" in "uses"');
+  });
+
+  it('says what the command id rule refuses beyond its pattern', () => {
+    // zodWords prints the regex only; the refine against "run" is a line of its own.
+    expect(ModCommandSchema.safeParse({ id: 'run', label: 'Go' }).success).toBe(false);
+    expect(mod).toContain('A command id is never "run"');
   });
 
   it('teaches the module shape, and that $ has no AI', () => {

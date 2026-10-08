@@ -71,6 +71,9 @@ export const WRITE_SANDBOX_WORDS = {
   outdated: 'dsul was updated; reload to write mods.',
 } as const;
 
+/** A sandbox that failed this once (a slow fetch, a stopped boot): the next press boots it again. */
+export const WRITE_SANDBOX_RETRY_COPY = 'Mods did not start this time, so AI can’t check one yet. Try again.';
+
 const PRIVACY: Record<'mod' | 'rest', string> = {
   rest: 'Your model sees what you write here and the names of your projects, types, themes and Looks. Never your items, notes or conversations.',
   mod: 'Your model sees what you write here and the names of your types, themes and Looks, never your projects’ names, items, notes or conversations. A mod it writes cannot use AI.',
@@ -78,6 +81,22 @@ const PRIVACY: Record<'mod' | 'rest', string> = {
 
 const sandboxDown = (s: SandboxStatus | null): s is 'unavailable' | 'outdated' =>
   s === 'unavailable' || s === 'outdated';
+
+/**
+ * What Write keeps of an answer: `unavailable` and `outdated` only when the
+ * sandbox has latched them for the session. A frame fetch that ran out, a boot
+ * that remove() cut short or a post that found no frame answers `unavailable`
+ * once and leaves the sandbox `idle`, so Write stays open and the next press
+ * boots it again.
+ */
+const keptStatus = (s: SandboxStatus): SandboxStatus =>
+  sandboxDown(s) && modSandbox.status() !== s ? 'idle' : s;
+
+/** The failure for a sandbox answer that holds Write: latched words, or a retry. */
+const sandboxFailure = (s: 'unavailable' | 'outdated') =>
+  keptStatus(s) === s
+    ? { at: 'failed' as const, message: WRITE_SANDBOX_WORDS[s], reload: s === 'outdated' }
+    : { at: 'failed' as const, message: WRITE_SANDBOX_RETRY_COPY };
 
 const selectClass =
   'field dark:bg-input/30 h-9 min-w-0 border bg-transparent px-2 py-1 text-sm outline-none';
@@ -180,7 +199,7 @@ export function MakeWrite({
     if (kind !== 'mod' || !canMake) return;
     let live = true;
     void modSandbox.ensure().then((s) => {
-      if (live) setSandbox(s);
+      if (live) setSandbox(keptStatus(s));
     });
     return () => {
       live = false;
@@ -212,9 +231,9 @@ export function MakeWrite({
         // No sandbox, no way to check the code: no model call either.
         const s = await modSandbox.ensure();
         if (controller.signal.aborted) return;
-        setSandbox(s);
+        setSandbox(keptStatus(s));
         if (sandboxDown(s)) {
-          setPhase({ at: 'failed', message: WRITE_SANDBOX_WORDS[s], reload: s === 'outdated' });
+          setPhase(sandboxFailure(s));
           return;
         }
       }
@@ -240,8 +259,8 @@ export function MakeWrite({
         const scratch = await modSandbox.scratch(result.source);
         if (controller.signal.aborted) return;
         if ('status' in scratch) {
-          setSandbox(scratch.status);
-          setPhase({ at: 'failed', message: WRITE_SANDBOX_WORDS[scratch.status], reload: scratch.status === 'outdated' });
+          setSandbox(keptStatus(scratch.status));
+          setPhase(sandboxFailure(scratch.status));
           return;
         }
         const done = finishModDraft(result, scratch);

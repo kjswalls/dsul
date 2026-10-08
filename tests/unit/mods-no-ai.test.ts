@@ -65,7 +65,7 @@ function resolveSpec(from: string, spec: string): string | null {
   return null;
 }
 
-/** lib/open-chat is not walked: only these names may come out of it. */
+/** Only these names may come out of lib/open-chat into a mod's own file. */
 const OPEN_CHAT_ALLOWED = new Set(['leaveZen']);
 /** Never reached, however far the imports go. */
 const NEVER_REACHED = [/^lib\/make-ai\.ts$/, /^lib\/ai-server\//];
@@ -93,10 +93,9 @@ function walk(entries: string[]): Graph {
       const target = resolveSpec(file, spec);
       if (!target) continue;
       if (own) modEdges.push({ from: rel(file), to: rel(target) });
-      if (rel(target) === 'lib/open-chat.ts') {
-        if (own) openChatNames.set(rel(file), names);
-        continue;
-      }
+      // The names are held at this edge; the walk still goes on through
+      // open-chat, so nothing past it may reach NEVER_REACHED either.
+      if (own && rel(target) === 'lib/open-chat.ts') openChatNames.set(rel(file), names);
       stack.push(target);
     }
   }
@@ -141,10 +140,12 @@ describe('$ has no AI', () => {
   ].map((p) => join(ROOT, p));
   const { reached, modEdges, openChatNames } = walk(entries);
 
-  it('walks a real graph', () => {
+  it('walks a real graph, through lib/open-chat too', () => {
     expect(entries.length).toBeGreaterThan(8);
     expect(reached.size).toBeGreaterThan(30);
-    expect([...reached].map(rel)).toEqual(expect.arrayContaining(['lib/mods/protocol.ts', 'lib/mods/schema.ts']));
+    expect([...reached].map(rel)).toEqual(
+      expect.arrayContaining(['lib/mods/protocol.ts', 'lib/mods/schema.ts', 'lib/open-chat.ts'])
+    );
   });
 
   it('what a mod runs never reaches the Make call or the server\'s AI', () => {

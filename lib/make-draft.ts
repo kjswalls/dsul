@@ -118,8 +118,9 @@ function draftName(raw: unknown, kind: MakeKind): string {
   if (typeof raw !== 'string') return FALLBACK_NAME[kind];
   const name = Array.from(raw.trim()).slice(0, MOD_NAME_MAX).join('').trim();
   // A mod's name is shown in the command bar ("Your mod · <name>: ..."), so
-  // it takes the label rule the store will hold it to.
-  const ok = isModName(name) && (kind !== 'mod' || isModLabel(name));
+  // it takes the label rule the store will hold it to, and the surface rule
+  // its command labels take, since the two halves share one row.
+  const ok = isModName(name) && (kind !== 'mod' || (isModLabel(name) && passesSurfaceRule(name)));
   return ok ? name : FALLBACK_NAME[kind];
 }
 

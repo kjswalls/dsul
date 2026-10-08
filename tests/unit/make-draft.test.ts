@@ -305,6 +305,10 @@ describe('mods', () => {
     it('a mod name must pass the label rule; a recipe name need not', () => {
       expect(parseMakeDraft(mod(SOURCE, 'AI helper'), 'mod', ENV)).toMatchObject({ ok: 'scratch', name: 'New mod' });
       expect(parseMakeDraft(mod(SOURCE, 'Card rhythm'), 'mod', ENV)).toMatchObject({ name: 'New mod' });
+      // The surface words a command label may not use hold for the name it sits beside.
+      expect(parseMakeDraft(mod(SOURCE, 'Chat'), 'mod', ENV)).toMatchObject({ name: 'New mod' });
+      expect(parseMakeDraft(mod(SOURCE, 'Ask assistant'), 'mod', ENV)).toMatchObject({ name: 'New mod' });
+      expect(parseMakeDraft(mod(SOURCE, 'Pages read'), 'mod', ENV)).toMatchObject({ name: 'Pages read' });
       expect(parseMakeDraft(recipe(GOOD_RECIPE, 'Card rhythm'), 'recipe', ENV)).toMatchObject({
         ok: true,
         draft: { name: 'Card rhythm' },

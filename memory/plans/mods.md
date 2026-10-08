@@ -373,8 +373,10 @@ and the card never words it as one. Where it departs from the body:
 - **A mod costs two from the `make` bucket.** `takeToken` takes a `cost`, refusing without recording anything when
   fewer are left, so an hour's output ceiling stays at build order 7's 60,000 tokens. The bucket stays in memory
   per instance.
-- **The name rule is stricter for a mod only.** `draftName` also requires `isModLabel` for a mod; recipes, themes
-  and Looks keep `ModNameSchema` alone, so "Card rhythm" stays a recipe's name.
+- **The name rule is stricter for a mod only.** `draftName` also requires `isModLabel` and `passesSurfaceRule` for
+  a mod (its name shares the command bar row with a command label, so "Chat" falls back to "New mod" as a label
+  would be held); recipes, themes and Looks keep `ModNameSchema` alone, so "Card rhythm" stays a recipe's name. A
+  name the person types in the editor is their own and is not held to the surface rule.
 - **Scratch on the Write press can trip the 6s host backstop,** which removes the frame and stops every running mod
   in the tab (they reload lazily). Accepted; scratch never calls `$`.
 - **The hooks the card shows are "as written now".** `register(on)` is ordinary code and may branch on
@@ -404,7 +406,7 @@ and the card never words it as one. Where it departs from the body:
   `ui/open-panel.ts` reach app-wide stores that import chat for the app's own Ask, so the test checks that nothing
   reachable reaches `lib/make-ai` or `lib/ai-server/**`, that no file under `lib/mods/` imports
   `conversations-store`, `chat-target`, `make-ai` or `ai-server` directly, and that from `lib/open-chat` they take
-  only `leaveZen`.
+  only `leaveZen` (the walk still goes on through `open-chat`, so nothing past it reaches `make-ai` either).
 - **⌘K's "Write a mod with AI"** (`make.write-mod`, the same group, glyph and `canMake` gate as `make.write`, no
   shortcut) opens `/settings/make?write=mod`; Make boots the sandbox when the kind becomes a mod and holds Write
   until it answers, saying why when it cannot run ("Mods can't run in this browser, so AI can't check one here.").

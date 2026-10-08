@@ -71,7 +71,13 @@ vi.mock('next/navigation', () => ({
 }));
 
 import { MakePane } from '@/components/settings/make-pane';
-import { CUT_SHORT_COPY, MakeWrite, UNREADABLE_COPY, WRITE_SANDBOX_WORDS } from '@/components/settings/make-write';
+import {
+  CUT_SHORT_COPY,
+  MakeWrite,
+  UNREADABLE_COPY,
+  WRITE_SANDBOX_RETRY_COPY,
+  WRITE_SANDBOX_WORDS,
+} from '@/components/settings/make-write';
 import { useModsStore } from '@/lib/mods-store';
 import { useUserThemes } from '@/lib/user-themes/store';
 import { DRAFT_SLUG } from '@/lib/user-themes/css';
@@ -506,6 +512,7 @@ describe('a mod', () => {
   });
 
   it.each(['unavailable', 'outdated'] as const)('a sandbox that is %s holds Write, says why, and sends nothing', async (status) => {
+    h.sandbox.status = status;
     h.sandbox.ensure = vi.fn(async () => status);
     write();
     asMod();
@@ -546,7 +553,29 @@ describe('a mod', () => {
     expect(JSON.parse(fetchSpy.mock.calls[0][1].body)).toEqual({ kind: 'mod', ask: 'A water counter' });
   });
 
+  it('an unavailable the sandbox did not latch leaves Write open, and the next press boots it again', async () => {
+    // A frame fetch that ran out answers unavailable once and leaves the sandbox idle.
+    h.sandbox.ensure = vi.fn(async () => 'unavailable');
+    write();
+    asMod();
+    ask('A water counter');
+    await waitFor(() => expect(h.sandbox.ensure).toHaveBeenCalledTimes(1));
+    expect(screen.queryByTestId('make-write-sandbox')).toBeNull();
+    expect(screen.getByTestId('make-write-go').hasAttribute('disabled')).toBe(false);
+    press();
+    expect((await screen.findByTestId('make-write-error')).textContent).toContain(WRITE_SANDBOX_RETRY_COPY);
+    expect(screen.queryByTestId('make-write-reload')).toBeNull();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    h.sandbox.ensure = vi.fn(async () => 'ready');
+    h.sandbox.scratch = vi.fn(async () => ran());
+    reply();
+    fireEvent.click(screen.getByTestId('make-write-retry'));
+    expect(await screen.findByTestId('make-draft')).toBeTruthy();
+    expect(h.sandbox.ensure).toHaveBeenCalled();
+  });
+
   it.each(['unavailable', 'outdated'] as const)('a scratch run that answers %s shows Write\'s words and no card', async (status) => {
+    h.sandbox.status = status;
     h.sandbox.scratch = vi.fn(async () => ({ ok: false, status }));
     write();
     asMod();
