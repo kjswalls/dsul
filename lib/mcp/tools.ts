@@ -63,6 +63,24 @@ const PRIORITY = { type: 'string', enum: ['low', 'medium', 'high'] }
 const TIME_BUCKET = { type: 'string', enum: ['anytime', 'morning', 'afternoon', 'evening'] }
 const DATE = str('Date as yyyy-MM-dd.')
 const TIME = str('Time of day as HH:mm, 24-hour.')
+const DURATION = {
+  type: 'number',
+  description: 'Minutes it takes. Sizes its block on the schedule; treat a time cap as this.',
+}
+const REMINDER_TIME = str(
+  'HH:mm, 24-hour: when to send this item\'s reminder on each day it is due. ' +
+    'On an update, send null to turn the reminder off.'
+)
+const REPEAT_FREQUENCY = {
+  type: 'string',
+  enum: ['none', 'daily', 'weekdays', 'weekends', 'monthly', 'custom'],
+  description: "How the task repeats. 'custom' needs repeatDays. Omit for a one-off.",
+}
+const REPEAT_DAYS = {
+  type: 'array',
+  items: { type: 'number' },
+  description: 'Required when repeatFrequency is custom. 0 = Sunday … 6 = Saturday.',
+}
 
 const requireString = (
   args: Record<string, unknown>,
@@ -85,6 +103,7 @@ const pick = (args: Record<string, unknown>, keys: string[]): Record<string, unk
 const TASK_WRITE_KEYS = [
   'title', 'status', 'startDate', 'startTime', 'timeBucket', 'priority', 'project',
   'notes', 'duration', 'parentItemId', 'repeatFrequency', 'repeatDays', 'completedDates',
+  'reminderTime',
   // Delegation. These are how a background worker says what it is doing —
   // without them an agent can see its assignments and has no way to report on
   // them, which is the difference between delegation and a wish.
@@ -93,8 +112,10 @@ const TASK_WRITE_KEYS = [
 
 const HABIT_WRITE_KEYS = [
   'title', 'group', 'repeatFrequency', 'repeatDays', 'timeBucket', 'startTime',
-  'notes', 'timesPerDay', 'completedDates', 'skippedDates',
+  'notes', 'timesPerDay', 'completedDates', 'skippedDates', 'duration', 'reminderTime',
 ]
+
+const PROJECT_WRITE_KEYS = ['name', 'emoji', 'color', 'notes']
 
 const COLLECTION_PATHS: Record<string, string> = {
   routine: 'routines',
@@ -489,8 +510,11 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'dsul_create_task',
     description:
-      'Create a one-off task. Use the project NAME, not an id. Omit startDate to leave ' +
-      'it in the Braindump rather than guessing a day for it.',
+      'Create a task. Use the project NAME, not an id, and create a new project with ' +
+      'dsul_create_project first: a name with no project behind it files the task loose. ' +
+      'Omit startDate to leave it in the Braindump rather than guessing a day for it. ' +
+      'Give repeatFrequency only for a chore that repeats (practice with a streak is a habit), ' +
+      'and give it a startDate: a repeating task with no start never comes round.',
     inputSchema: obj(
       {
         title: str('What the task is, in the user\'s own words where possible.'),
@@ -500,14 +524,23 @@ export const MCP_TOOLS: McpTool[] = [
         priority: PRIORITY,
         project: str('Project NAME, e.g. "Work". Not an id.'),
         notes: str('Longer detail that does not belong in the title.'),
-        duration: { type: 'number', description: 'Minutes the task is expected to take.' },
+        duration: DURATION,
         parentItemId: str('Make this a subtask of that item. Subtasks cannot nest.'),
+        repeatFrequency: REPEAT_FREQUENCY,
+        repeatDays: REPEAT_DAYS,
+        reminderTime: REMINDER_TIME,
       },
       ['title']
     ),
     plan: (args) => {
       const title = requireString(args, 'title')
       if (typeof title !== 'string') return title
+      // Tasks are date-anchored: a series with no start has no occurrences, so
+      // it would sit in the Braindump and never come round, behind a 201.
+      const repeats = args.repeatFrequency !== undefined && args.repeatFrequency !== 'none'
+      if (repeats && (typeof args.startDate !== 'string' || args.startDate === '')) {
+        return { error: 'A repeating task needs a startDate (its first day), or it never comes round.' }
+      }
       return { method: 'POST', path: '/api/agent/tasks', body: pick(args, TASK_WRITE_KEYS) }
     },
   },
@@ -528,7 +561,10 @@ export const MCP_TOOLS: McpTool[] = [
         priority: PRIORITY,
         project: str('Project NAME, e.g. "Work". Not an id.'),
         notes: str('Longer detail.'),
-        duration: { type: 'number', description: 'Minutes.' },
+        duration: DURATION,
+        repeatFrequency: REPEAT_FREQUENCY,
+        repeatDays: REPEAT_DAYS,
+        reminderTime: REMINDER_TIME,
         completedDates: {
           type: 'array',
           items: { type: 'string' },
@@ -558,13 +594,14 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'dsul_create_habit',
     description:
-      'Create a recurring habit. A habit belongs to a group (by NAME) and repeats by ' +
+      'Create a recurring habit. Its group is a project NAME (the same projects tasks use; ' +
+      'create a new one with dsul_create_project first). A habit repeats by ' +
       "definition, so there is no 'none' frequency. Use custom with repeatDays for " +
       'specific weekdays (0 = Sunday).',
     inputSchema: obj(
       {
         title: str('What the habit is.'),
-        group: str('Group NAME, e.g. "Health". Not an id.'),
+        group: str('Project NAME, e.g. "Health". Not an id. It must already exist.'),
         repeatFrequency: {
           type: 'string',
           enum: ['daily', 'weekdays', 'weekends', 'monthly', 'custom'],
@@ -577,6 +614,8 @@ export const MCP_TOOLS: McpTool[] = [
         timeBucket: TIME_BUCKET,
         startTime: TIME,
         timesPerDay: { type: 'number', description: 'For counted habits, e.g. 3 glasses of water.' },
+        duration: DURATION,
+        reminderTime: REMINDER_TIME,
         notes: str('Longer detail.'),
       },
       ['title']
@@ -597,7 +636,7 @@ export const MCP_TOOLS: McpTool[] = [
       {
         id: ID,
         title: str('New title.'),
-        group: str('Group NAME. Not an id.'),
+        group: str('Project NAME. Not an id. It must already exist.'),
         repeatFrequency: {
           type: 'string',
           enum: ['daily', 'weekdays', 'weekends', 'monthly', 'custom'],
@@ -608,6 +647,8 @@ export const MCP_TOOLS: McpTool[] = [
         timesPerDay: { type: 'number' },
         completedDates: { type: 'array', items: { type: 'string' }, description: 'yyyy-MM-dd dates done.' },
         skippedDates: { type: 'array', items: { type: 'string' }, description: 'yyyy-MM-dd dates deliberately skipped.' },
+        duration: DURATION,
+        reminderTime: REMINDER_TIME,
         notes: str('Longer detail.'),
       },
       ['id']
@@ -666,6 +707,53 @@ export const MCP_TOOLS: McpTool[] = [
           ...(args.until !== undefined ? { pausedUntil: args.until } : {}),
         },
       }
+    },
+  },
+  {
+    name: 'dsul_create_project',
+    description:
+      'Create a project, the one group each task and habit files under (by NAME). ' +
+      'Check get_context first: names fold case, so "work" IS an existing "Work", and ' +
+      'creating it again is refused with the existing project in the response.',
+    inputSchema: obj(
+      {
+        name: str('What to call it, e.g. "YouTube".'),
+        emoji: str('An icon token like "icon:Sparkles". Omit for no icon.'),
+        color: str('A colour token.'),
+        notes: str('What the project is for, or standing rules that apply to all of it.'),
+      },
+      ['name']
+    ),
+    plan: (args) => {
+      const name = requireString(args, 'name')
+      if (typeof name !== 'string') return name
+      return { method: 'POST', path: '/api/agent/projects', body: pick(args, PROJECT_WRITE_KEYS) }
+    },
+  },
+  {
+    name: 'dsul_update_project',
+    description:
+      'Rename a project or change its icon, colour or notes. A rename carries every task ' +
+      'and habit in it along, so never re-file items by hand to rename one.',
+    inputSchema: obj(
+      {
+        id: str('The project id, exactly as it appears in get_context.'),
+        name: str('New name.'),
+        emoji: str('An icon token like "icon:Sparkles".'),
+        color: str('A colour token.'),
+        notes: str('New notes. Whole-text replacement.'),
+      },
+      ['id']
+    ),
+    plan: (args) => {
+      const id = requireString(args, 'id')
+      if (typeof id !== 'string') return id
+      const body = pick(args, PROJECT_WRITE_KEYS)
+      if (Object.keys(body).length === 0) return { error: 'Send at least one of: name, emoji, color, notes.' }
+      if ('name' in body && (typeof body.name !== 'string' || body.name.trim() === '')) {
+        return { error: 'name must be a non-empty string' }
+      }
+      return { method: 'PATCH', path: `/api/agent/projects/${id}`, body }
     },
   },
   {

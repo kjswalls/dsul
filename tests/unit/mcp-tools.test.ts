@@ -98,6 +98,69 @@ describe('items', () => {
   });
 });
 
+describe('the schema and the body agree', () => {
+  // A key the schema lists but the plan drops is a field the model believes it
+  // set (habit duration and reminderTime were exactly this). A key the plan
+  // sends but the schema hides is one no strict client will ever send (task
+  // repeatFrequency was). Fill every property and compare.
+  const WRITE_TOOLS = [
+    'dsul_create_task', 'dsul_update_task', 'dsul_create_habit', 'dsul_update_habit',
+    'dsul_create_project', 'dsul_update_project',
+  ];
+  for (const name of WRITE_TOOLS) {
+    it(name, () => {
+      const props = Object.keys(
+        (toolByName(name)!.inputSchema as { properties: Record<string, unknown> }).properties
+      );
+      const args = Object.fromEntries(props.map((k) => [k, 'x']));
+      const result = plan(name, args) as { body: Record<string, unknown> };
+      expect(Object.keys(result.body).sort()).toEqual(props.filter((k) => k !== 'id').sort());
+    });
+  }
+});
+
+describe('projects', () => {
+  it('creates a project by name', () => {
+    expect(plan('dsul_create_project', { name: 'YouTube', notes: 'Weekly devlog' })).toEqual({
+      method: 'POST',
+      path: '/api/agent/projects',
+      body: { name: 'YouTube', notes: 'Weekly devlog' },
+    });
+  });
+
+  it('refuses a repeating task with no start day, which would never come round', () => {
+    expect(plan('dsul_create_task', { title: 'Bins', repeatFrequency: 'custom', repeatDays: [1] })).toMatchObject({
+      error: expect.stringContaining('startDate'),
+    });
+    expect(
+      plan('dsul_create_task', { title: 'Bins', repeatFrequency: 'custom', repeatDays: [1], startDate: '2026-10-12' })
+    ).toMatchObject({ method: 'POST' });
+    expect(plan('dsul_create_task', { title: 'Once', repeatFrequency: 'none' })).toMatchObject({ method: 'POST' });
+  });
+
+  it('refuses a create with no name', () => {
+    expect(plan('dsul_create_project', { name: ' ' })).toMatchObject({ error: expect.any(String) });
+  });
+
+  it('updates by id, in the path', () => {
+    expect(plan('dsul_update_project', { id: 'p1', name: 'Sunday Softworks' })).toEqual({
+      method: 'PATCH',
+      path: '/api/agent/projects/p1',
+      body: { name: 'Sunday Softworks' },
+    });
+  });
+
+  it('refuses an update that changes nothing, or blanks the name', () => {
+    expect(plan('dsul_update_project', { id: 'p1' })).toMatchObject({ error: expect.any(String) });
+    expect(plan('dsul_update_project', { id: 'p1', name: '' })).toMatchObject({ error: expect.any(String) });
+  });
+
+  it('tells the model to create a new project before filing under it', () => {
+    expect(toolByName('dsul_create_task')!.description).toMatch(/dsul_create_project/);
+    expect(toolByName('dsul_create_habit')!.description).toMatch(/dsul_create_project/);
+  });
+});
+
 describe('pause', () => {
   it('pauses with an exclusive return date', () => {
     expect(plan('dsul_pause', { kind: 'habit', id: 'h1', paused: true, until: '2026-08-10' })).toEqual({

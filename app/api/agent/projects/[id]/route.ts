@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient, resolveUserIdFromApiKey } from '@/lib/supabase-service'
-import { updateProject, deleteProject, renameContainerMembers } from '@/lib/db'
+import { updateProject, deleteProject, renameContainerMembers, findLiveProjectByName } from '@/lib/db'
 import type { Project } from '@/lib/planner-types'
 
 /**
@@ -41,7 +41,40 @@ export async function PATCH(
   }
 
   try {
-    const updates: Partial<Project> = await req.json()
+    let updates: Partial<Project>
+    try {
+      const parsed = await req.json()
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('not an object')
+      updates = parsed as Partial<Project>
+    } catch {
+      return NextResponse.json({ error: 'Body must be a JSON object.' }, { status: 400 })
+    }
+    // emoji is NOT NULL; colour and notes clear with null.
+    if ('emoji' in updates && typeof updates.emoji !== 'string') {
+      return NextResponse.json({ error: 'emoji must be a string' }, { status: 400 })
+    }
+    for (const key of ['color', 'notes'] as const) {
+      if (key in updates && updates[key] !== null && typeof updates[key] !== 'string') {
+        return NextResponse.json({ error: `${key} must be a string or null` }, { status: 400 })
+      }
+    }
+    if ('name' in updates) {
+      if (typeof updates.name !== 'string' || !updates.name.trim()) {
+        return NextResponse.json({ error: 'name must be a non-empty string' }, { status: 400 })
+      }
+      updates.name = updates.name.trim()
+      // The index is exact-case; the app folds case. Renaming onto another
+      // live project's name in a different case would leave two rows the app
+      // reads as one container. Renaming a project to its own name in a new
+      // case is fine, hence the exception.
+      const clash = await findLiveProjectByName(userId, updates.name, serviceClient, id)
+      if (clash) {
+        return NextResponse.json(
+          { error: `A project called "${clash.name}" already exists.` },
+          { status: 409 }
+        )
+      }
+    }
     await updateProject(userId, id, updates, serviceClient)
     // A rename has to reach the members' name column too (migration 027).
     // Without this the endpoint renames the container and leaves every item
