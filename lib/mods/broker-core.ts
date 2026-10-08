@@ -290,7 +290,12 @@ const StoreKey = z
   .refine((k) => !k.startsWith('@'), { message: 'Keys starting with @ are the app\'s.' });
 const Verb = z.enum(RECIPE_VERBS);
 
-const ARGS = {
+/**
+ * Each method's arguments, parsed strict at every call. Exported so the
+ * prompt "Write with AI" sends (make-prompt.ts, server-side) prints them as
+ * they are.
+ */
+export const METHOD_ARGS = {
   today: NoArgs,
   log: z.object({ level: z.enum(['info', 'warn']), text: z.string().max(500) }).strict(),
   after: z
@@ -360,7 +365,7 @@ const ARGS = {
   'settings.get': NoArgs,
 } satisfies Record<ModMethod, z.ZodTypeAny>;
 
-type Args<M extends ModMethod> = z.infer<(typeof ARGS)[M]>;
+type Args<M extends ModMethod> = z.infer<(typeof METHOD_ARGS)[M]>;
 
 /** Which `uses` each method needs. `today`, `log` and `after` need none. */
 export const METHOD_USES: Readonly<Record<ModMethod, ModUse | null>> = {
@@ -470,7 +475,7 @@ export function brokerCall(env: BrokerEnv, live: HookState | null, msg: CallMess
   } catch {
     return error('arguments are not JSON');
   }
-  const parsed = ARGS[msg.method].safeParse(raw);
+  const parsed = METHOD_ARGS[msg.method].safeParse(raw);
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
     return error(`bad arguments${issue ? `: ${issue.path.join('.') || 'value'} ${issue.message}` : ''}`);

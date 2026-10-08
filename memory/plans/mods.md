@@ -238,7 +238,8 @@ Where it departs from the body:
 - **⌘K:** one provider (`modCommands`), ids `mod.<slug>.<id>`, labelled `Your mod · <name>: <label>` in the
   "Made by you" group, no shortcut and no alias. `run` is a reserved command id, so a mod's command never takes a
   recipe's `mod.<slug>.run`. A command loads its mod on demand through ModHost's slot (`lib/mods/command-run.ts`).
-- **Make's editor** is a name and a plain monospace textarea, no syntax colouring and no AI (build order 10). A new
+- **Make's editor** is a name and a plain monospace textarea, no syntax colouring and no AI of its own (a mod is
+  written by AI only through Write with AI, build order 10, which opens this editor on the draft). A new
   mod starts from a Water counter (`lib/mods/template.ts`, which the QuickJS core test runs). The line under the
   code says what the manifest may do in plain words, from the stored manifest (or the template's) until a save has
   read the code. When the sandbox cannot run in this browser the editor says so and does not save; a mod name must
@@ -331,6 +332,87 @@ the Radix primitives, since the shared trigger's chevron fades through an opacit
 shows, since a panel stays open (saying it is off) after its mod is switched off. The end-to-end
 (`tests/e2e/mods-panels.spec.ts`) runs in Chromium and the phone project, under the same "can't run here" rule as
 build order 8's.
+
+**Build order 10, AI writes mods, is built** (a fourth Make kind, `'mod'`, through build order 7's pipeline:
+`lib/ai-limits.ts`'s `MAKE_CAPS`, `app/api/ai/make/route.ts`, `lib/ai-server/make-prompt.ts`'s `modSection()`,
+`make-context.ts`, `lib/make-draft.ts`'s mod reader, `draftChecks` and `finishModDraft`, `lib/mods/words.ts`,
+`components/settings/make-write.tsx`, `make-pane.tsx` and `mod-editor.tsx`, and ⌘K's `make.write-mod`; no new
+package, no migration, no new table, no new endpoint). Between reading the reply and showing the card, the client
+runs the code once in the sandbox (`modSandbox.scratch`: no `$`, no handler runs), and the card reads the manifest
+that run declared, never one the reply wrote apart from the code. Decision 6 holds: the gate is `canMake`, a mod
+gets 4,000 output tokens, and `$` has no AI, ever (`tests/unit/mods-no-ai.test.ts` locks `MOD_METHODS` and the
+import graph).
+
+What the safety rests on: Install saves switched off (`createMod` writes `enabled: false`); the runtime refuses
+code whose manifest differs from the stored one (`manifestsEqual`); consent is re-checked; the broker gates every
+call on `METHOD_USES` and `z.enum(MOD_METHODS)`. Everything the draft reader adds on top (the label rules, the
+literal scan, the `$.x(` scan, hook and manifest agreement) is a quality and copy guard, not a security boundary,
+and the card never words it as one. Where it departs from the body:
+
+- **The route's deadline is 120s.** `maxDuration` on `/api/ai/make` went from 60 to 120: a mod gets 110s, recipes,
+  themes and Looks keep 50s, since at 40 to 80 tokens a second a 4,000-token reply takes 50 to 100s. `vercel.json`
+  is `{}`, so 120s depends on the Vercel plan, which Kirby confirms on the preview; if it is not allowed, the
+  fallback is 60/50 and more "cut short" replies. A reasoning model spends part of the 4,000 on reasoning, so
+  "cut short" is more common for it.
+- **No project names for a mod, and none are even read.** `buildMakeContext(db, userId, kind)` skips the
+  `projects` select for a mod. Projects are agent-writable, so their names may carry instructions, and an
+  agent-writable name never reaches a prompt that writes code. Type labels and theme and Look names are owner-only
+  and are still sent. The prompt says project names come from the ask or from `$.containers.list()` at run time.
+  This is narrower than build order 7's privacy line (ai-vision.md, "Not stored", says so).
+- **An AI draft meets stricter rules than a hand-written mod, in the editor too.** Command labels and keywords must
+  also pass `passesSurfaceRule`, and a string literal shaped like a link (`URL_RE`) or a secret
+  (`SECRET_SHAPED_RE`) holds Install. `BARE_DOMAIN_RE` is not used on source: it matches every dotted event name,
+  `'ui.resolve'` included. These are `draftChecks()` in `lib/make-draft.ts`, and the mod editor runs them on every
+  Save of a session opened from a draft (`fromAI`, which an edit never clears), so Edit then Save cannot step
+  around them. A problem names a command by position and never repeats the model's text, except the `$.x` of an
+  unknown call (identifier characters only, at most 40).
+- **Panel trees are not checked before Install.** Scratch runs no hooks, so a bad `ui.resolve` tree shows later as
+  a panel fault; under build order 9 a resolve fault never switches a mod off by itself.
+- **One example in the prompt,** the Water template (`MOD_TEMPLATE`), the only mod the QuickJS test already runs.
+  A reply whose source is the template (compared trimmed) is refused as an echo.
+- **A mod costs two from the `make` bucket.** `takeToken` takes a `cost`, refusing without recording anything when
+  fewer are left, so an hour's output ceiling stays at build order 7's 60,000 tokens. The bucket stays in memory
+  per instance.
+- **The name rule is stricter for a mod only.** `draftName` also requires `isModLabel` and `passesSurfaceRule` for
+  a mod (its name shares the command bar row with a command label, so "Chat" falls back to "New mod" as a label
+  would be held); recipes, themes and Looks keep `ModNameSchema` alone, so "Card rhythm" stays a recipe's name. A
+  name the person types in the editor is their own and is not held to the surface rule.
+- **Scratch on the Write press can trip the 6s host backstop,** which removes the frame and stops every running mod
+  in the tab (they reload lazily). Accepted; scratch never calls `$`.
+- **The hooks the card shows are "as written now".** `register(on)` is ordinary code and may branch on
+  `Date.now()`; the runtime compares manifests, never hooks. So the card's warnings come from the manifest ("It can
+  change items when its code runs, including on its own." for `items:write`), and hooks only add detail.
+- **An indirect AI path, noted.** A mod with `items:write` writes item titles, and `/api/chat` sends titles to the
+  person's model. The chat context's "data, not instructions" framing is the backstop; the prompt adds that titles
+  a mod writes are fixed short words, never text meant for a reader to follow.
+- **A `$` call while loading does not always fault.** The prelude defines `$` as a global and the core refuses any
+  call made while loading, so an un-awaited `$.items.create(...)` at the top level or in `register` loads without a
+  fault. What always holds is that no call reaches the host; an awaited one, a missing global and top-level await
+  all fault (`tests/unit/make-mod-roundtrip.test.ts`).
+- **The reader repairs raw control characters for a mod only.** A raw newline, carriage return or tab inside a
+  JSON string becomes its escape (other control characters `\u00XX`), since `json: true` has no effect for
+  Anthropic and OpenRouter. An object left open at the end is "cut short" even after an earlier one closed, so an
+  echoed example followed by a truncated draft never installs the example. A recipe keeps the old rules.
+- **What the card and the editor show of the model's words.** A fault reads "It would not load." (or "It would not
+  load: it hit an error." and the like), and its message only through `surfaceMessage` under "Your mod reported:";
+  a manifest the schema refuses shows only the path, never Zod's message, which can quote the model's values. The
+  editor passes every fault message and manifest issue through `surfaceMessage`, for every mod, not only AI ones.
+- **A draft that would not load opens the editor with nothing read** ("Not read yet: save to check it."), never the
+  template's uses or words.
+- **Words shared by the card and the prompt are neutral** (`lib/mods/words.ts`: "when an item is ticked", not
+  "when you tick an item"), since the same table speaks to the person and to the model. The tree size cap is
+  printed as a raw byte count so a test can match it to the constant, and the icon list is printed once.
+- **The import-graph test is split** (`tests/unit/mods-no-ai.test.ts`). Followed all the way, `broker.ts` and
+  `ui/open-panel.ts` reach app-wide stores that import chat for the app's own Ask, so the test checks that nothing
+  reachable reaches `lib/make-ai` or `lib/ai-server/**`, that no file under `lib/mods/` imports
+  `conversations-store`, `chat-target`, `make-ai` or `ai-server` directly, and that from `lib/open-chat` they take
+  only `leaveZen` (the walk still goes on through `open-chat`, so nothing past it reaches `make-ai` either).
+- **⌘K's "Write a mod with AI"** (`make.write-mod`, the same group, glyph and `canMake` gate as `make.write`, no
+  shortcut) opens `/settings/make?write=mod`; Make boots the sandbox when the kind becomes a mod and holds Write
+  until it answers, saying why when it cannot run ("Mods can't run in this browser, so AI can't check one here.").
+  No chip on Ask home. Safe mode changes nothing: scratch and Install work, and the mod saves switched off.
+- **The end-to-end** (`tests/e2e/make-write-mod.spec.ts`) answers `/api/ai/make` with canned frames, so nothing
+  leaves the machine, and runs under build order 8's "can't run here" rule.
 
 **This amends [plugins-themes-store.md](plugins-themes-store.md)** in two places,
 both in its Project B item 6 ("Skip indefinitely"): the tier (c) sandboxed

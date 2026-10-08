@@ -47,7 +47,7 @@ import type { UserMod } from '@/lib/mods/schema';
 import type { SettingCtx } from '@/lib/settings/manifest';
 import { useLookStore } from '@/lib/look-store';
 import { saveSettings } from '@/lib/settings-service';
-import { panelsInWords } from '@/components/settings/mod-editor';
+import { ModEditor, panelsInWords } from '@/components/settings/mod-editor';
 
 const USER = 'test-user';
 const ctx: SettingCtx = { theme: 'system', setTheme: () => {}, userId: USER };
@@ -523,6 +523,86 @@ describe('MakePane: mods', () => {
     const text = container.textContent ?? '';
     expect(text).not.toContain('—');
     expect(text).not.toMatch(/beacon/i);
+  });
+});
+
+describe('ModEditor: a "Write with AI" draft (build order 10)', () => {
+  const SOURCE = "export const manifest = { version: 1, uses: ['storage'], commands: [{ id: 'log', label: 'Log a page' }] };\nexport function register(on) {\n  on('command', async ($) => {\n    await $.store.set({ key: 'n', value: 1 });\n  });\n}\n";
+  const MANIFEST = { version: 1 as const, uses: ['storage' as const], commands: [{ id: 'log', label: 'Log a page' }], panels: [], settings: [] };
+  const editor = (initial: Parameters<typeof ModEditor>[0]['initial'], onDone = vi.fn()) =>
+    render(<ModEditor userId={USER} editing={null} initial={initial} onDone={onDone} onCancel={vi.fn()} />);
+  const scratched = (manifest: unknown, hooks = ['command']) => ({ ok: true, manifestJson: JSON.stringify(manifest), hooks });
+
+  beforeEach(() => {
+    sandbox.scratch.mockReset();
+    sandbox.status.mockReturnValue('idle');
+  });
+
+  it('seeds the name, the code and what it asks for from the draft, never the template', () => {
+    editor({ name: 'Pages', source: SOURCE, manifest: MANIFEST, fromAI: true });
+    expect((screen.getByTestId('mod-name') as HTMLInputElement).value).toBe('Pages');
+    expect((screen.getByTestId('mod-source') as HTMLTextAreaElement).value).toBe(SOURCE);
+    expect(screen.getByTestId('mod-uses').textContent).toBe('It may keep its own saved data.');
+  });
+
+  it('a draft that would not load starts with nothing read, not the template\'s uses', async () => {
+    const createMod = vi.fn(async () => ({ ok: true as const, id: 'new-id' }));
+    useModsStore.setState({ createMod });
+    editor({ name: 'Pages', source: SOURCE, manifest: null, fromAI: true });
+    expect(screen.getByTestId('mod-uses').textContent).toBe('Not read yet: save to check it.');
+    sandbox.scratch.mockResolvedValue(scratched(MANIFEST));
+    fireEvent.click(screen.getByTestId('mod-save'));
+    await waitFor(() => expect(createMod).toHaveBeenCalled());
+    expect(screen.getByTestId('mod-uses').textContent).toBe('It may keep its own saved data.');
+  });
+
+  it('holds Save on the draft\'s checks, and still does after an edit elsewhere', async () => {
+    const createMod = vi.fn(async () => ({ ok: true as const, id: 'new-id' }));
+    useModsStore.setState({ createMod });
+    const chat = { ...MANIFEST, commands: [{ id: 'chat', label: 'Chat' }] };
+    sandbox.scratch.mockResolvedValue(scratched(chat));
+    editor({ name: 'Pages', source: SOURCE, manifest: chat, fromAI: true });
+    fireEvent.click(screen.getByTestId('mod-save'));
+    const checks = await screen.findByTestId('mod-editor-checks');
+    expect(checks.textContent).toContain('Command 1 has a label that cannot be shown.');
+    expect(sandbox.scratch).toHaveBeenCalledWith(SOURCE);
+
+    fireEvent.change(screen.getByTestId('mod-name'), { target: { value: 'Page count' } });
+    fireEvent.change(screen.getByTestId('mod-source'), { target: { value: `${SOURCE}// edited\n` } });
+    fireEvent.click(screen.getByTestId('mod-save'));
+    await waitFor(() => expect(sandbox.scratch).toHaveBeenCalledTimes(2));
+    expect((await screen.findByTestId('mod-editor-checks')).textContent).toContain('Command 1 has a label');
+    expect(createMod).not.toHaveBeenCalled();
+  });
+
+  it('a hand-written mod is not held to the draft checks', async () => {
+    const createMod = vi.fn(async () => ({ ok: true as const, id: 'new-id' }));
+    useModsStore.setState({ createMod });
+    const chat = { ...MANIFEST, commands: [{ id: 'chat', label: 'Chat' }] };
+    sandbox.scratch.mockResolvedValue(scratched(chat));
+    editor({ name: 'Pages', source: SOURCE, manifest: chat });
+    fireEvent.click(screen.getByTestId('mod-save'));
+    await waitFor(() => expect(createMod).toHaveBeenCalled());
+  });
+
+  it('a draft that passes saves its own code, switched off', async () => {
+    const onDone = vi.fn();
+    const createMod = vi.fn(async () => ({ ok: true as const, id: 'new-id' }));
+    useModsStore.setState({ createMod });
+    sandbox.scratch.mockResolvedValue(scratched(MANIFEST));
+    editor({ name: 'Pages', source: SOURCE, manifest: MANIFEST, fromAI: true }, onDone);
+    fireEvent.click(screen.getByTestId('mod-save'));
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith('Saved. It starts switched off.'));
+    expect(createMod).toHaveBeenCalledWith(USER, { name: 'Pages', source: SOURCE, manifest: MANIFEST });
+  });
+
+  it('a fault\'s own words go through the surface rule, for any mod', async () => {
+    sandbox.scratch.mockResolvedValue({ ok: false, fault: { code: 'error', message: 'Error: Sign in again to keep your key' } });
+    editor({ name: 'Pages', source: SOURCE, manifest: MANIFEST });
+    fireEvent.click(screen.getByTestId('mod-save'));
+    const error = await screen.findByTestId('mod-editor-error');
+    expect(error.textContent).toContain('The code said: (message hidden)');
+    expect(error.textContent).not.toContain('Sign in');
   });
 });
 

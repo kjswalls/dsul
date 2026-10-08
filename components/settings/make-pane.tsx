@@ -20,7 +20,7 @@ import { LookBuilder } from './look-builder';
 import { ModEditor } from './mod-editor';
 import { ModSettingsForm } from './mod-settings-form';
 import { MOD_REPORTED, ModProblems } from './mod-problems';
-import { MakeWrite } from './make-write';
+import { MakeWrite, type MakeEditRequest } from './make-write';
 import { isMakeKind } from '@/lib/ai-limits';
 import { releaseUserTheme } from '@/lib/user-themes/release';
 
@@ -51,17 +51,19 @@ import { releaseUserTheme } from '@/lib/user-themes/release';
  * "Write with AI" (./make-write.tsx) sits above the New buttons and gates
  * itself on the AI gate's `canMake`. Its Edit opens the builder for a new row,
  * prefilled with the draft (`initial`); the Write box stays mounted, hidden,
- * so Cancel returns to the same card, and saving from the builder clears it. `?write=recipe|theme|look` picks the
- * kind and puts the caret in its box (⌘K's "Write a recipe with AI"); the ask
- * is never read from the URL, and nothing is sent until Write is pressed.
+ * so Cancel returns to the same card, and saving from the builder clears it.
+ * A mod draft opens the mod editor with its code (build order 10), marked as
+ * written by AI so the editor holds it to the draft's checks on Save.
+ * `?write=recipe|theme|look|mod` picks the kind and puts the caret in its box
+ * (⌘K's "Write a recipe with AI" and "Write a mod with AI"); the ask is never
+ * read from the URL, and nothing is sent until Write is pressed.
  */
 
-interface Editing {
-  kind: 'recipe' | 'theme' | 'look' | 'mod';
-  id: 'new' | string;
-  /** A new row's starting point: a "Write with AI" draft opened in Edit. */
-  initial?: { name: string; manifest: unknown };
-}
+/** The form in the list's place: one kind, a row or a new one, and a draft's starting point when Write opened it. */
+type Editing = { id: 'new' | string } & (
+  | { kind: Exclude<ModKind, 'mod'>; initial?: Exclude<MakeEditRequest, { kind: 'mod' }>['initial'] }
+  | { kind: 'mod'; initial?: Extract<MakeEditRequest, { kind: 'mod' }>['initial'] }
+);
 
 const SECTION: Record<ModKind, string> = {
   recipe: 'Recipes',
@@ -151,6 +153,7 @@ export function MakePane({ ctx, isMobile = false }: { ctx: SettingCtx; isMobile?
             key={editing.id}
             userId={ctx.userId}
             editing={editingRow}
+            initial={editing.initial}
             onCancel={() => setEditing(null)}
             onDone={done}
           />
@@ -225,7 +228,7 @@ export function MakePane({ ctx, isMobile = false }: { ctx: SettingCtx; isMobile?
           focus={writeKind !== null}
           hidden={editing !== null}
           settled={draftSettled}
-          onEdit={(r) => open({ kind: r.kind, id: 'new', initial: r.initial })}
+          onEdit={(r) => open({ ...r, id: 'new' })}
         />
       )}
 

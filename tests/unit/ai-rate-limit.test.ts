@@ -78,6 +78,20 @@ describe('takeToken', () => {
     expect(takeToken('u1', 'connect', T0 + HOUR)).toBe(true);
   });
 
+  it('a cost takes that many tokens at once, or none', () => {
+    take(29, 'u1', 'make', T0);
+    // One left: a cost of 2 is refused and records nothing.
+    expect(takeToken('u1', 'make', T0, 2)).toBe(false);
+    expect(takeToken('u1', 'make', T0)).toBe(true);
+    expect(takeToken('u1', 'make', T0)).toBe(false);
+    // An hour on, both of a cost-2 call's tokens free up together.
+    expect(takeToken('u2', 'make', T0, 2)).toBe(true);
+    take(28, 'u2', 'make', T0 + 1000);
+    expect(takeToken('u2', 'make', T0 + 1000)).toBe(false);
+    expect(takeToken('u2', 'make', T0 + HOUR, 2)).toBe(true);
+    expect(takeToken('u2', 'make', T0 + HOUR)).toBe(false);
+  });
+
   it('survives far more users than the key cap', () => {
     for (let i = 0; i < 6_000; i++) expect(takeToken(`user-${i}`, 'check', T0)).toBe(true);
     // The most recent users are still tracked.

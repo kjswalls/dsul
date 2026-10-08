@@ -995,6 +995,46 @@ describe('make.write: "Write a recipe with AI"', () => {
   });
 });
 
+describe('make.write-mod: "Write a mod with AI"', () => {
+  const write = () => commandById('make.write-mod');
+
+  it('shares make.write\'s gate: a connected model only', () => {
+    for (const [seed, shown] of [
+      [CONNECTED_MODEL, true],
+      [OPENCLAW_PLUGIN, false],
+      [KEY_TURNED_DOWN, false],
+      [AI_HIDDEN, false],
+      [undefined, false],
+    ] as const) {
+      const unseed = seedAI(seed);
+      try {
+        expect(write().availableWhen!(ctx)).toBe(shown);
+        expect((write().hidden as (c: CommandContext) => boolean)(ctx)).toBe(!shown);
+      } finally {
+        unseed();
+      }
+    }
+  });
+
+  it('opens Make with the Mod box, and sends nothing; no shortcut id; make.write is unchanged', () => {
+    expect(write().label).toBe('Write a mod with AI');
+    expect(write().group).toBe(commandById('make.write').group);
+    expect(write().shortcut).toBeUndefined();
+    expect(commandById('make.write').label).toBe('Write a recipe with AI');
+    const navigate = vi.fn();
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const unseed = seedAI(CONNECTED_MODEL);
+    try {
+      write().run({ ...ctx, navigate });
+      expect(navigate).toHaveBeenCalledWith('/settings/make?write=mod');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      unseed();
+      fetchSpy.mockRestore();
+    }
+  });
+});
+
 /* ── the doors into setup (AI setup PR 5) ──────────────────────────────── */
 
 // Ask AI's place while nothing answers: "Set up AI" while the gate invites,
