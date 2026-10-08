@@ -19,6 +19,10 @@ import { faultCodeWords } from '@/lib/mods/faults';
 import { modSandbox } from '@/lib/mods/sandbox-host';
 import { activeModRuntime } from '@/lib/mods/runtime-manager';
 import { MOD_TEMPLATE, MOD_TEMPLATE_NAME, MOD_TEMPLATE_USES } from '@/lib/mods/template';
+import { panelsInWords, usesInWords } from '@/lib/mods/words';
+
+/** Moved to lib/mods/words.ts (build order 10), so the server's prompt can read them too. */
+export { MOD_USE_WORDS, panelsInWords, usesInWords } from '@/lib/mods/words';
 
 /**
  * Settings → Make's mod editor (memory/plans/mods.md, build order 8): a name
@@ -36,45 +40,8 @@ import { MOD_TEMPLATE, MOD_TEMPLATE_NAME, MOD_TEMPLATE_USES } from '@/lib/mods/t
  * saved switched off: switching it back on is the consent.
  */
 
-/** What a mod may do, in the words the editor uses under the code. */
-export const MOD_USE_WORDS: Record<ModUse, string> = {
-  'items:read': 'see your items and container names',
-  'items:write': 'add and change items',
-  ui: 'show short messages, and open items and views from its commands',
-  storage: 'keep its own saved data',
-  look: 'change your theme or Look from its commands',
-};
-
 const encoder = new TextEncoder();
 const bytesOf = (s: string) => encoder.encode(s).length;
-
-/** "It may keep its own saved data and show short messages." */
-export function usesInWords(uses: readonly ModUse[]): string {
-  if (uses.length === 0) return 'It asks for nothing: it can read the date and time, and log.';
-  const words = uses.map((u) => MOD_USE_WORDS[u]);
-  const list = words.length === 1 ? words[0] : `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`;
-  return `It may ${list}.`;
-}
-
-/**
- * What a mod draws and asks of the person, in plain words (build order 9):
- * its panels and where they show, its settings, and that a panel can show
- * the titles of items it links to when it may read items. Empty for a mod
- * with neither panels nor settings.
- */
-export function panelsInWords(m: Pick<ModManifest, 'uses' | 'panels' | 'settings'>): string {
-  const parts: string[] = [];
-  const n = m.panels.length;
-  if (n > 0) {
-    const card = m.panels.some((p) => p.card);
-    const what = `Draws ${n} panel${n === 1 ? '' : 's'}`;
-    parts.push(card ? `${what}, ${n === 1 ? '' : 'one '}shown under the braindump.` : `${what}.`);
-    if (m.uses.includes('items:read')) parts.push('Shows titles of items you link to.');
-  }
-  const k = m.settings.length;
-  if (k > 0) parts.push(`Has ${k} setting${k === 1 ? '' : 's'} you set in Make.`);
-  return parts.join(' ');
-}
 
 const SANDBOX_WORDS = {
   unavailable: 'Mods can’t run in this browser yet, so it was not saved.',

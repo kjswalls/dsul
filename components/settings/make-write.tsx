@@ -46,12 +46,13 @@ export interface MakeEditRequest {
   initial: { name: string; manifest: unknown };
 }
 
-const KIND_LABEL: Record<MakeKind, string> = { recipe: 'Recipe', theme: 'Theme', look: 'Look' };
-const KIND_NOUN: Record<MakeKind, string> = { recipe: 'a recipe', theme: 'a theme', look: 'a Look' };
+const KIND_LABEL: Record<MakeKind, string> = { recipe: 'Recipe', theme: 'Theme', look: 'Look', mod: 'Mod' };
+const KIND_NOUN: Record<MakeKind, string> = { recipe: 'a recipe', theme: 'a theme', look: 'a Look', mod: 'a mod' };
 const PLACEHOLDER: Record<MakeKind, string> = {
   recipe: 'When I tick Run, add Stretch 10 min to this evening',
   theme: 'A calm green paper theme with warm ink',
   look: 'Notebook by day, Night after dark',
+  mod: 'A card that counts the pages I read today, with a +10 button',
 };
 
 export const UNREADABLE_COPY = 'That did not come back as something Make can use.';

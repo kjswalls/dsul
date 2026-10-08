@@ -23,6 +23,8 @@
  * conv_search: 300/h.
  * make: "Write with AI" in Settings → Make (/api/ai/make), 30/h. One press is
  * one call on the person's own key; this bounds a runaway client, not them.
+ * A mod's call costs 2 (MAKE_CAPS in lib/ai-limits.ts), since it may write
+ * twice the tokens.
  */
 export type Bucket = 'connect' | 'check' | 'conv_write' | 'conv_read' | 'conv_search' | 'make';
 
@@ -50,14 +52,18 @@ function touch(key: string, list: number[]): void {
   }
 }
 
-export function takeToken(userId: string, bucket: Bucket, now: number = Date.now()): boolean {
+/**
+ * Takes `cost` tokens at once, or none: a call with fewer left than it costs
+ * is refused and records nothing.
+ */
+export function takeToken(userId: string, bucket: Bucket, now: number = Date.now(), cost = 1): boolean {
   const key = `${bucket}:${userId}`;
   const list = (hits.get(key) ?? []).filter((t) => now - t < WINDOW_MS);
-  if (list.length >= LIMITS[bucket]) {
+  if (list.length + cost > LIMITS[bucket]) {
     touch(key, list);
     return false;
   }
-  list.push(now);
+  for (let i = 0; i < cost; i++) list.push(now);
   touch(key, list);
   return true;
 }

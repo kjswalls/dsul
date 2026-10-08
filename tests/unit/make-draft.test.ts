@@ -81,7 +81,13 @@ describe('finding the JSON', () => {
       suggest: 'recipe',
     });
     expect(parseMakeDraft('{"kind":"none","suggest":null}', 'theme', ENV)).toEqual({ ok: false, reason: 'not_this_kind' });
-    expect(parseMakeDraft('{"kind":"none","suggest":"mod"}', 'theme', ENV)).toEqual({ ok: false, reason: 'not_this_kind' });
+    // A mod is a kind Write makes now (build order 10), so it is offered.
+    expect(parseMakeDraft('{"kind":"none","suggest":"mod"}', 'theme', ENV)).toEqual({
+      ok: false,
+      reason: 'not_this_kind',
+      suggest: 'mod',
+    });
+    expect(parseMakeDraft('{"kind":"none","suggest":"plugin"}', 'theme', ENV)).toEqual({ ok: false, reason: 'not_this_kind' });
   });
 });
 

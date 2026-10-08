@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { MakeKind } from '@/lib/ai-limits';
 import { DRAFT_SLUG, USER_THEME_SLUG_RE, themeSlugForId } from '@/lib/user-themes/css';
 
 /**
@@ -20,6 +21,13 @@ import { DRAFT_SLUG, USER_THEME_SLUG_RE, themeSlugForId } from '@/lib/user-theme
  *
  * A failed read (a table missing on an older database, anything else) is an
  * empty list and one log line: Write still works without names.
+ *
+ * A mod (build order 10) gets no project names, and they are not even read.
+ * Projects are agent-writable, so a name may carry instructions, and nothing
+ * an agent can write reaches a prompt that writes code. Type labels and theme
+ * and Look names are the owner's own (no agent route writes `item_types` or
+ * `user_mods`), so a mod still gets those. A mod finds its projects while it
+ * runs, through `$.containers.list()`.
  */
 
 export interface MakeContext {
@@ -71,17 +79,19 @@ async function read(table: string, run: () => PromiseLike<{ data: unknown; error
   }
 }
 
-export async function buildMakeContext(db: SupabaseClient, userId: string): Promise<MakeContext> {
+export async function buildMakeContext(db: SupabaseClient, userId: string, kind: MakeKind): Promise<MakeContext> {
   const [projectRows, typeRows, modRows] = await Promise.all([
-    read('projects', () =>
-      db
-        .from('projects')
-        .select('name')
-        .eq('user_id', userId)
-        .is('deleted_at', null)
-        .order('created_at', { ascending: true })
-        .limit(MAX_PROJECTS)
-    ),
+    kind === 'mod'
+      ? Promise.resolve<Rows>([])
+      : read('projects', () =>
+          db
+            .from('projects')
+            .select('name')
+            .eq('user_id', userId)
+            .is('deleted_at', null)
+            .order('created_at', { ascending: true })
+            .limit(MAX_PROJECTS)
+        ),
     read('item_types', () =>
       db
         .from('item_types')

@@ -60,6 +60,7 @@ export const FALLBACK_NAME: Record<MakeKind, string> = {
   recipe: 'New recipe',
   theme: 'New theme',
   look: 'New Look',
+  mod: 'New mod',
 };
 
 export const CONTRAST_PROBLEM = 'Some colours are hard to read. Open it in Edit to check them.';
@@ -182,5 +183,8 @@ export function parseMakeDraft(raw: string, kind: MakeKind, env: DraftEnv): Draf
       if (!parsed.success) return { ok: false, reason: 'unreadable' };
       return { ok: true, draft: { kind, name, manifest: parsed.data }, problems: lookRefProblems(parsed.data, env.rows) };
     }
+    case 'mod':
+      // The mod reader comes with the Write card (build order 10, part 2).
+      return { ok: false, reason: 'unreadable' };
   }
 }
