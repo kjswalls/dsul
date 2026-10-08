@@ -18,3 +18,17 @@ export function cardPanelOf(rows: readonly UserMod[]): (ModPanelRef & { panel: M
   }
   return best;
 }
+
+/**
+ * Every panel a switched-on mod's stored manifest declares, in the rows'
+ * order: what the header opener (components/mods/mod-opener.tsx) lists and
+ * ⌘K offers to open. Pure.
+ */
+export function openablePanelsOf(rows: readonly UserMod[]): (ModPanelRef & { panel: ModPanel; row: UserMod })[] {
+  const out: (ModPanelRef & { panel: ModPanel; row: UserMod })[] = [];
+  for (const row of rows) {
+    if (row.kind !== 'mod' || !row.enabled) continue;
+    for (const panel of parseModManifest(row)?.panels ?? []) out.push({ modId: row.id, panelId: panel.id, panel, row });
+  }
+  return out;
+}

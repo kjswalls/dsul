@@ -11,7 +11,7 @@ three adversarial reviews) is in Kirby's project files, not the repo
 
 **Built so far:** build order 2 (raise sites), 3 (storage, Make, safe mode),
 4 (browser recipes, `lib/recipes/`), 5a (user themes), 5b (user Looks), 6 (the
-server runner), 7 (AI writes recipes, themes and Looks) and 8 (the mod runtime), each below. Where PR 4's code departs from the body:
+server runner), 7 (AI writes recipes, themes and Looks), 8 (the mod runtime) and 9 (the mod UI), each below. Where PR 4's code departs from the body:
 a clock run writes TWO `mod_runs` rows, the claim `<key>` and its result
 `<key>:done`, because 061 grants no UPDATE; an event or ⌘K run writes one,
 `run:<uuid>`, and the run log reads only `summary.kind === 'run'`. The ⌘K
@@ -251,6 +251,86 @@ Where it departs from the body:
 - **Electron needed no release.** `/mods/sandbox/<v>` is an app URL, so `guardSubframe` passes it; the preload
   does not run in subframes. The permission handler's `isApp` matches the frame too; refusing permissions to
   subframes is recorded in [desktop-app.md](desktop-app.md) for the next shell release.
+
+**Build order 9, the mod UI, is built** (`lib/mods/ui/`: `tree.ts`, `icons-list.ts`, `icons.tsx`,
+`panel-store.ts`, `panel-run.ts`, `surface-state.ts`, `card.ts`, `open-panel.ts`, `sheet-store.ts`;
+`components/mods/`: `mod-tree.tsx`, `mod-surface.tsx`, `mod-item-ref.tsx`, `mod-rail.tsx`, `mod-opener.tsx`,
+`mod-card.tsx`, `mod-sheet.tsx`; `components/settings/mod-settings-form.tsx`; the shadcn-shaped `checkbox`,
+`progress` and `separator` wrappers; rail-store's `'mod'` mode; no migration, no new package). A mod declares
+`panels[]` (at most 4, at most one `card: true`) and `settings[]` (at most 10); a `ui.resolve` hook returns an
+element tree the host parses (UTF-8 size, an iterative walk against the caps, then Zod, never throwing) and draws
+with its own components under its own chrome. Where it departs from the body:
+
+- **The person's own hooks and the resolves are off the hook rate.** `ui.resolve` has its own coalescing (one in
+  flight per panel, 250ms apart) and a cap of 60 a minute per mod, over which the last tree stays with "Paused,
+  redrawing too often". `ui.action` and `atom.changed` have a budget of 60 a minute per mod, over which a press is
+  dropped with "Slow down a little", never faulted. CPU, wall-clock and call caps and the fault counter still apply.
+  `command`, `timer` and item events keep the 30 a minute and 1,000 a day switch-off. A fault never starts a resolve:
+  while a panel shows its error only Try again, a save or a settings save draws it again, so a throwing panel cannot
+  trip the 3-fault switch-off by itself.
+- **`ui.action` and `atom.changed` writes skip the history window** (10 entries per 10 minutes), as the person's own
+  gestures, like their own tick; a checklist panel would otherwise trip the switch-off. Commands keep it. Their
+  history labels are `Mod: <name> · <panel label>` and `Mod: <name> · <atom key>`.
+- **The rail reserve is the same 432px** (`RAIL_RESERVE_PX`) and the column the same 420px. "Its own share" is read
+  as "it reserves while docked": a narrower column would make an item opened over the panel jump in width.
+- **The `'mod'` mode is its own summon.** rail-store's `modPanel` is memory only and set only by an explicit open
+  (the header key, ⌘K, a held `$.ui.open`, all through `lib/mods/ui/open-panel.ts`). It shows at any width, docked
+  or as an overlay, with or without AI, and never writes Ask's `summoned` or `askOpen`. Precedence is
+  `item > mod > ask > setup > hidden`: opening a panel closes an open item first, an item opened over the panel
+  wears "‹ Your mod · <name>" (Back shows the panel, ✕ closes both), and Ask's summon replaces the panel. Closing
+  the panel leaves a kept-open Ask as it was (docked, it shows again). An overlay's click-away, Escape there and a
+  window narrowing into one go through `parkOverlay()`, which closes the panel and then parks. Ctrl+J
+  (`toggleRail`) closes a panel before anything else; with no AI, where Ctrl+J is consumed before the toggle,
+  ⌘K's "Close your mod's panel" (`mod.close-panel`) is the keyboard's way out.
+- **`look.set` is allowed in `ui.action`** as well as `command`. `ui.open`, `ui.openItem`, `nav.go`,
+  `nav.organize` and `look.set` are the `USER_ACTED` set: refused unless the hook is `command` or `ui.action`.
+  While drawing (`ui.resolve`) a mod may only read (`RESOLVE_ALLOWED`, an allow-list, so a future method is refused
+  there by default).
+- **`atom.changed` may write items and the store but never navigate.** Atoms are the panel's UI state, mod-wide
+  (no panel id), memory only, never persisted. The person's input sets them, and so does a mod's `$.atom.set`
+  (never in `ui.resolve`); a mod's own writes fire no `atom.changed`. Every value is checked against the node that
+  shows it, and the renderer shows the node's `initial` for one that does not fit.
+- **Settings live in `store['@settings']`** (no migration), written by the existing `mod_store_set` from Make's
+  form ("Set by your mod <name>"), and read by the mod only through `$.settings.get()`. `@`-prefixed store keys
+  are unreachable to a mod's `$.store` (and left out of `store.keys`); a PR 8 mod that wrote one loses it, accepted
+  rather than a migration. A settings save reaches a loaded mod in memory (`settingsChanged`), with no reload.
+- **The braindump card picks the earliest-created switched-on mod with a card panel,** on the desktop only, in
+  every layout, mounted only while the braindump is open (never in a hover peek); Make says which card is showing.
+  A mod's first card panel needs re-consent: a save that adds one saves the mod switched off (`consentWidened`).
+- **A stricter surface rule** (`passesSurfaceRule`, `lib/mods/labels.ts`) applies to every string PR 9 draws:
+  the label rule's words plus sign-in, session, model and chat words, and a wider secret-shape test
+  (`SECRET_SHAPED_RE`). What the person types is refused only when shaped like a secret (`isSafeTypedValue`, so
+  "chat with mom" is fine). Fault text that fails it shows as "(message hidden)". Both are new functions, so PR 8's
+  label rule, and the manifests stored under it, are unchanged.
+- **`ui.resolve` carries no `presentation`.** There is one tree per panel, whatever mounts it; the rail, the card
+  and the sheet share its cache and its atoms.
+- **`itemRef` needs `items:read`,** and draws the item from the planner as it is now (title, type glyph, time),
+  never from anything the mod sent but the id.
+- **New method names:** `ui.open`, `atom.get`, `atom.set` and `settings.get`, appended to `MOD_METHODS`.
+- **New UI wrappers** for checkbox, progress and separator, over Radix packages already installed. No new package.
+- **A maximal manifest exceeds 8KB** (20 commands, 10 settings and 4 panels come to about 15KB). The cap stays, and
+  the scratch run reports "manifest too large"; a realistic one (5 commands, 4 panels, 10 short settings) fits.
+- **Clicks go only to what the person saw:** a press counts when the tree's sequence number is the one at
+  pointerdown or keydown, the button has been unchanged for 500ms, and `(action, arg)` is unique in the tree. The
+  manager checks a press against the host's cached tree and its sequence, never the runtime generation, so an idle
+  unload or a reload never swallows a click.
+- **The phone has no card and no rail.** A panel opens there in a vaul sheet (`components/mods/mod-sheet.tsx`,
+  hosted by the phone shell through `setModSheetHost()`, a count), with nothing focused on open. An `itemRef` row,
+  a held `openItem` or a held nav step closes the sheet first, so two drawers never stack.
+
+Where the code departs from its own spec (the PR's three parts): `onPanelsStale(modId, why)` carries the reason
+(`hook`, `saved`, `enabled`, `changed`, `settings`), which is how an errored panel tells a save from a hook; a tree
+the host refuses becomes a counted fault through the manager's `panelFault`; `runAction` takes the press's sequence
+and checks it through an injected `PanelBridge`, so the manager never imports the panel store; `atom.set` is allowed
+in timer and item hooks too (only `ui.resolve` refuses it). The panel store keeps plain records rather than Maps,
+draws once after a throttled minute ends, and holds a request for a hidden panel until it next mounts. The card's
+chrome always wears the host's Puzzle glyph (the rail and sheet wear the panel's icon). A mod's Select is built from
+the Radix primitives, since the shared trigger's chevron fades through an opacity the lime rule refuses.
+`ModPanelRef` lives in `lib/rail-store.ts` (re-exported by `open-panel.ts`). The rail's mod panel never wears
+`data-rail-view`, which means Ask. `mod.close-panel` is in the mods provider whenever any mod exists, hidden unless a panel
+shows, since a panel stays open (saying it is off) after its mod is switched off. The end-to-end
+(`tests/e2e/mods-panels.spec.ts`) runs in Chromium and the phone project, under the same "can't run here" rule as
+build order 8's.
 
 **This amends [plugins-themes-store.md](plugins-themes-store.md)** in two places,
 both in its Project B item 6 ("Skip indefinitely"): the tier (c) sandboxed

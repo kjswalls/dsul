@@ -10,6 +10,8 @@ import { MobileViewRouter } from '@/components/mobile/mobile-view-router';
 import { AskTab } from '@/components/mobile/ask-tab';
 import { SetupTab } from '@/components/mobile/setup-tab';
 import { ScheduleSheet } from '@/components/mobile/schedule-sheet';
+import { ModSheet } from '@/components/mods/mod-sheet';
+import { setModSheetHost } from '@/lib/mods/ui/open-panel';
 import { Braindump } from '@/components/sidebar/braindump';
 import {
   chatOffered,
@@ -135,6 +137,10 @@ export const MobileShell = memo(function MobileShell() {
 
   // Close any open row swipe-actions when switching tabs.
   useEffect(() => closeAllRowSwipes(), [activeTab]);
+
+  // A mod's panel opens in this shell's sheet while it is mounted, never in
+  // the desktop rail (lib/mods/ui/open-panel.ts).
+  useEffect(() => setModSheetHost(), []);
 
   const swipeHandlers = useSwipeable({
     onSwipedLeft: (e?: SwipeEventData) => {
@@ -288,6 +294,7 @@ export const MobileShell = memo(function MobileShell() {
       <MobileBottomDock />
 
       <ScheduleSheet />
+      <ModSheet />
     </div>
   );
 });

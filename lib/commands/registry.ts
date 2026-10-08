@@ -87,6 +87,8 @@ import { modDisplayLabel, modLabel, parseModManifest, type UserMod } from '../mo
 import { parseRecipe } from '../recipes/validate';
 import { runRecipeCommand } from '../recipes/command-run';
 import { runModCommand } from '../mods/command-run';
+import { openablePanelsOf } from '../mods/ui/card';
+import { openModPanel } from '../mods/ui/open-panel';
 import { railModeNow, useRailStore } from '../rail-store';
 import { useUndoStripStore } from '../undo-strip-store';
 import { goToDate, stepScope } from '../nav-commands';
@@ -1821,6 +1823,13 @@ let cachedModCommands: Command[] = [];
  * No shortcut and no alias, for recipeCommands' reasons. No loaded runtime
  * needed: runModCommand goes through ModHost's slot, which loads the mod
  * lazily; an empty slot (a lean route) does nothing.
+ *
+ * Build order 9 adds "Your mod · Water: Open Water", one per panel, with ids
+ * `mod.<slug>.open.<panelId>`: a mod's command id has no `.`, so none can
+ * collide. They open through the one router (lib/mods/ui/open-panel.ts), the
+ * rail on the desktop and the sheet on the phone. And `mod.close-panel`, while
+ * a panel shows in the rail: the keyboard's way out with no AI, where Ctrl+J
+ * is consumed before it reaches the toggle.
  */
 const modCommands: CommandProvider = () => {
   const { rows, available, safeMode } = useModsStore.getState();
@@ -1852,7 +1861,38 @@ const modCommands: CommandProvider = () => {
       });
     }
   }
+  for (const p of openablePanelsOf(rows)) {
+    const id = `mod.${p.row.slug}.open.${p.panelId}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const name = modDisplayLabel(p.row);
+    cachedModCommands.push({
+      id,
+      label: `Your mod · ${name}: Open ${p.panel.label}`,
+      description: 'Your mod',
+      group: 'mods',
+      icon: Puzzle,
+      keywords: 'panel open',
+      availableWhen: () => useModsStore.getState().rows.some((r) => r.id === p.modId && r.enabled),
+      run: () => openModPanel({ modId: p.modId, panelId: p.panelId }),
+    });
+  }
+  // Offered with any mod at all (shown only while a panel is in the rail): a
+  // panel stays open, saying it is off, after its mod is switched off.
+  if (rows.some((r) => r.kind === 'mod')) cachedModCommands.push(CLOSE_MOD_PANEL);
   return cachedModCommands;
+};
+
+/** "Close your mod's panel", while one shows in the rail (modCommands). */
+const CLOSE_MOD_PANEL: Command = {
+  id: 'mod.close-panel',
+  label: "Close your mod's panel",
+  group: 'mods',
+  icon: Puzzle,
+  keywords: 'mod panel close hide',
+  hidden: () => railModeNow() !== 'mod',
+  availableWhen: () => railModeNow() === 'mod',
+  run: () => useRailStore.getState().closeModPanel(),
 };
 
 const PROVIDERS: CommandProvider[] = [
