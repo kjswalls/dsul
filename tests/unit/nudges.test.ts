@@ -150,6 +150,7 @@ describe('the rituals nudge (#86)', () => {
     hasTasks: true,
     morningCheckEnabled: false,
     eodReviewEnabled: false,
+    setupOrUndoUp: false,
   };
 
   it('deep-links to the Rituals pane, which turns nothing on by itself', () => {
@@ -167,6 +168,9 @@ describe('the rituals nudge (#86)', () => {
     ['nothing is planned yet', { hasTasks: false }],
     ['the morning check is already on', { morningCheckEnabled: true }],
     ['the review is already on', { eodReviewEnabled: true }],
+    // The tour's Set up AI ends with no toast: the intro waits out setup, the
+    // "It works." it ends on, and an undo row such as No AI's.
+    ['AI setup, "It works." or an undo row is up', { setupOrUndoUp: true }],
   ])('waits while %s', (_why, patch) => {
     expect(ritualsNudgeReady({ ...READY, ...patch })).toBe(false);
   });

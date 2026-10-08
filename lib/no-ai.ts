@@ -9,7 +9,7 @@ import { useUndoStripStore } from './undo-strip-store';
 
 /**
  * "No AI, thanks", said from a surface that offered AI (the setup column's
- * foot now; the tour's AI card later), and its Undo.
+ * foot, the phone's setup page and the tour's AI card), and its Undo.
  *
  * It writes the account's answer (`setAIHidden(true)`, applied at once, so
  * the key, the setup column and every invitation go in the same frame) and

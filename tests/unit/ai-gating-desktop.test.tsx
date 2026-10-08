@@ -417,7 +417,8 @@ describe.each(NO_CHAT)('with no chat (%s)', (_label, state, offered) => {
     useSidebarStore.setState({ askOpen: true });
     renderDockAndRail();
     // The column is only the item host: closed, with nothing in it, and not
-    // the tour's Ask target. The tour points at the dock instead.
+    // the tour's Ask target. The tour's 3C points at the dock, and its last
+    // card at the key while invited, or the dock while AI is off.
     expect(askRail()).toBeNull();
     expect(document.querySelector('[data-ask-setup]')).toBeNull();
     expect(screen.queryByTestId('rail-close')).toBeNull();
@@ -440,7 +441,8 @@ describe.each(NO_CHAT)('with no chat (%s)', (_label, state, offered) => {
       expect(document.querySelector('[data-ask-setup]')).toBeNull();
       expect(column.className).toMatch(/\bw-0\b/);
     }
-    // Not the tour's Ask target either way (PR 6 points the tour at the key).
+    // Not the tour's Ask target either way: while invited the tour points at
+    // the key, and while AI is off at the dock.
     expect(column).not.toHaveAttribute('data-tour');
   });
 });
