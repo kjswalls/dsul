@@ -214,7 +214,6 @@ const askChord = (keys = DEFAULT_SHORTCUTS.find((b) => b.id === 'toggle_right_si
   chordLabel(keys, false);
 
 /** The switch form's key box ("Use a different service"). */
-const keyInput = () => screen.getByTestId('mcp-key') as HTMLInputElement;
 /** The connect card's free-key box (the not-connected state). */
 const geminiInput = () => screen.getByTestId('connect-key') as HTMLInputElement;
 
@@ -512,263 +511,54 @@ describe('connecting from the connect card', () => {
 });
 
 describe('connecting from the switch form', () => {
-  function acceptPut(connection: ModelConnectionView, models: ModelOption[] = []) {
-    server.put = () => json({ connection, models, listed: true });
-    server.status = { available: true, model: connection, openclaw: CLAW_OFF, aiHidden: false };
-  }
-  /** Connected to Anthropic, so the switch form preselects OpenAI. */
-  const anthropic = { provider: 'anthropic', model: 'claude-sonnet-4-5' } as const;
+  /** Connected to OpenAI; the switch form is the connect card's own folds. */
+  const ANTHROPIC_SENTINEL = 'sk-ant-api03-SENTINEL-9876';
+  const anyKey = () => screen.getByTestId('connect-any-key') as HTMLInputElement;
 
-  it('offers OpenRouter sign-in, back to this pane, and a key form', () => {
-    const panel = openSwitch(anthropic);
-    expect(
-      within(panel).getByText('One account for hundreds of models, including free ones. Nothing to copy or paste.')
-    ).toBeInTheDocument();
-    const signIn = within(panel).getByTestId('mcp-openrouter-signin');
-    expect(signIn).toHaveAttribute('href', '/api/ai/openrouter/start?r=settings');
-    expect(within(panel).getByText('Or paste a key')).toBeInTheDocument();
-
-    const group = within(panel).getByRole('radiogroup', { name: 'Service' });
-    expect(within(group).getAllByRole('radio').map((r) => r.textContent)).toEqual([
-      'OpenAI',
-      'Anthropic',
-      'Google Gemini',
-      'OpenRouter',
-      'Other',
-    ]);
-    expect(within(group).getByRole('radio', { name: 'OpenAI' })).toHaveAttribute('aria-checked', 'true');
-
-    const key = keyInput();
-    expect(key.type).toBe('password');
-    expect(key.name).toBe('model-api-key');
-    expect(key.autocomplete).toBe('off');
-    expect(key).toHaveAttribute('spellcheck', 'false');
-    expect(key).toHaveAttribute('autocapitalize', 'none');
-    expect(key).toHaveAttribute('data-1p-ignore');
-    expect(key).toHaveAttribute('data-lpignore', 'true');
-    expect(key.placeholder).toBe('sk-…');
-    expect(screen.getByLabelText('API key')).toBe(key);
-
-    const help = within(panel).getByRole('link', { name: /Get a key from OpenAI/ });
-    expect(help).toHaveAttribute('href', 'https://platform.openai.com/api-keys');
-    expect(help).toHaveAttribute('target', '_blank');
-    expect(help).toHaveAttribute('rel', 'noopener noreferrer');
-    expect(screen.getByTestId('mcp-connect')).toBeDisabled();
+  it('is the connect card’s folds, "I already use…" open, without the free-key card', () => {
+    const panel = openSwitch();
+    expect(within(panel).getByText('Switch service')).toBeInTheDocument();
+    expect(within(panel).getByText('Connecting a different service replaces this one.')).toBeInTheDocument();
+    expect(within(panel).getByTestId('connect-fold-any')).toHaveAttribute('aria-expanded', 'true');
+    expect(within(panel).getByTestId('connect-fold-openrouter')).toHaveAttribute('aria-expanded', 'false');
+    expect(within(panel).queryByTestId('connect-key')).toBeNull();
+    expect(within(panel).getByTestId('connect-custom-toggle')).toBeInTheDocument();
+    expect(anyKey().type).toBe('password');
   });
 
-  it('the provider chips are a radio group the arrow keys move through', () => {
-    openSwitch(anthropic);
-    const openai = screen.getByRole('radio', { name: 'OpenAI' });
-    expect(openai).toHaveAttribute('tabindex', '0');
-    expect(screen.getByRole('radio', { name: 'Anthropic' })).toHaveAttribute('tabindex', '-1');
-    openai.focus();
-    fireEvent.keyDown(openai, { key: 'ArrowRight' });
-    const anth = screen.getByRole('radio', { name: 'Anthropic' });
-    expect(anth).toHaveAttribute('aria-checked', 'true');
-    expect(document.activeElement).toBe(anth);
-    expect(keyInput().placeholder).toBe('sk-ant-…');
-    fireEvent.keyDown(anth, { key: 'ArrowLeft' });
-    fireEvent.keyDown(screen.getByRole('radio', { name: 'OpenAI' }), { key: 'ArrowLeft' });
-    expect(screen.getByRole('radio', { name: 'Other' })).toHaveAttribute('aria-checked', 'true');
+  it('the sign-in comes back to this pane', () => {
+    const panel = openSwitch();
+    fireEvent.click(within(panel).getByTestId('connect-fold-openrouter'));
+    expect(within(panel).getByTestId('connect-openrouter-signin')).toHaveAttribute(
+      'href',
+      '/api/ai/openrouter/start?r=settings'
+    );
   });
 
-  it('a provider change empties the box', () => {
-    openSwitch(anthropic);
-    fireEvent.change(keyInput(), { target: { value: SENTINEL } });
-    expect(keyInput().value).toBe(SENTINEL);
-    expect(screen.getByTestId('mcp-connect')).toBeEnabled();
-    fireEvent.click(screen.getByRole('radio', { name: 'Google Gemini' }));
-    expect(keyInput().value).toBe('');
-    expect(keyInput().placeholder).toBe('AQ.…');
-    expect(screen.getByTestId('mcp-connect')).toBeDisabled();
-  });
-
-  it('Other asks for a base URL and an optional model, and has no key link', () => {
-    openSwitch(anthropic);
-    fireEvent.click(screen.getByRole('radio', { name: 'Other' }));
-    expect(screen.queryByRole('link', { name: /Get a key/ })).toBeNull();
-    expect(keyInput().placeholder).toBe('Your API key');
-    const url = screen.getByLabelText('Base URL') as HTMLInputElement;
-    expect(url.placeholder).toBe('https://api.example.com/v1');
-    expect(screen.getByText('Any OpenAI-compatible service. Public https addresses only.')).toBeInTheDocument();
-    expect(screen.getByLabelText('Model (optional)')).toBeInTheDocument();
-    expect(screen.getByText('Only needed if the service doesn’t list its models.')).toBeInTheDocument();
-
-    // Key alone is not enough for Other.
-    fireEvent.change(keyInput(), { target: { value: 'gsk_abcdefgh' } });
-    expect(screen.getByTestId('mcp-connect')).toBeDisabled();
-    fireEvent.change(url, { target: { value: 'https://api.groq.com/openai/v1' } });
-    expect(screen.getByTestId('mcp-connect')).toBeEnabled();
-    // A model name with a space is refused before it is sent.
-    fireEvent.change(screen.getByLabelText('Model (optional)'), { target: { value: 'llama 3' } });
-    expect(screen.getByText('Model names can’t contain spaces.')).toBeInTheDocument();
-    expect(screen.getByTestId('mcp-connect')).toBeDisabled();
-  });
-
-  it('sends exactly {provider, apiKey}, empties the box once it works, and never shows the key', async () => {
-    openSwitch(anthropic);
-    acceptPut(view(), [{ id: 'gpt-4o-mini', label: 'gpt-4o-mini' }]);
-    fireEvent.change(keyInput(), { target: { value: `  ${SENTINEL}  ` } });
-    fireEvent.click(screen.getByTestId('mcp-connect'));
-    await waitFor(() => expect(screen.getByTestId('mcp-provider')).toHaveTextContent('OpenAI'));
-    expect(calls.filter((c) => c.method === 'PUT').map((c) => c.body)).toEqual([{ provider: 'openai', apiKey: SENTINEL }]);
-    // The panel closes on its own render, which can land after the label's.
+  it('a pasted key is placed by its prefix and sent as exactly {provider, apiKey}, and the saved one stays until it works', async () => {
+    openSwitch();
+    const working = view({ provider: 'anthropic', model: 'claude-sonnet-4-5' });
+    server.put = () => json({ connection: working, models: [], listed: true });
+    server.status = { available: true, model: working, openclaw: CLAW_OFF, aiHidden: false };
+    paste(anyKey(), ANTHROPIC_SENTINEL);
+    await waitFor(() => expect(screen.getByTestId('mcp-provider')).toHaveTextContent('Anthropic'));
+    const puts = calls.filter((c) => c.method === 'PUT');
+    expect(puts).toHaveLength(1);
+    expect(puts[0].body).toEqual({ provider: 'anthropic', apiKey: ANTHROPIC_SENTINEL });
     await waitFor(() => expect(screen.queryByTestId('mcp-switch-panel')).toBeNull());
     expectNoKeyInMarkup('SENTINEL');
-    for (const input of Array.from(document.querySelectorAll('input'))) {
-      expect(input.value).not.toContain('SENTINEL');
-    }
-    expect(await screen.findByTestId('mcp-just-connected')).toBeInTheDocument();
   });
 
-  it('Enter in the box sends it too', async () => {
-    openSwitch(anthropic);
-    acceptPut(view());
-    fireEvent.change(keyInput(), { target: { value: SENTINEL } });
-    fireEvent.keyDown(keyInput(), { key: 'Enter' });
-    await waitFor(() => expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(1));
-  });
-
-  it('sends the base URL and the typed model for Other', async () => {
-    openSwitch(anthropic);
-    acceptPut(view({ provider: 'custom', baseUrl: 'https://api.groq.com/openai/v1', model: 'llama-3.1-8b-instant' }));
-    fireEvent.click(screen.getByRole('radio', { name: 'Other' }));
-    fireEvent.change(keyInput(), { target: { value: SENTINEL } });
-    fireEvent.change(screen.getByLabelText('Base URL'), {
-      target: { value: ' https://api.groq.com/openai/v1 ' },
-    });
-    fireEvent.change(screen.getByLabelText('Model (optional)'), {
-      target: { value: 'llama-3.1-8b-instant' },
-    });
-    fireEvent.click(screen.getByTestId('mcp-connect'));
-    await waitFor(() => expect(calls.some((c) => c.method === 'PUT')).toBe(true));
-    expect(calls.find((c) => c.method === 'PUT')!.body).toEqual({
-      provider: 'custom',
-      apiKey: SENTINEL,
-      baseUrl: 'https://api.groq.com/openai/v1',
-      model: 'llama-3.1-8b-instant',
-    });
-    // A custom host is named by its hostname, not "Other".
-    await waitFor(() => expect(screen.getByTestId('mcp-provider')).toHaveTextContent('Other · api.groq.com'));
-  });
-
-  it('on a refusal: our words, the key kept in its box, and nowhere else', async () => {
-    openSwitch(anthropic);
+  it('a refused key stays in its box, the saved connection untouched', async () => {
+    openSwitch();
     server.put = () => json({ error: 'key_rejected' }, 400);
-    fireEvent.change(keyInput(), { target: { value: SENTINEL } });
-    fireEvent.click(screen.getByTestId('mcp-connect'));
-    const alert = await screen.findByTestId('mcp-error');
-    expect(alert).toHaveAttribute('role', 'alert');
-    expect(alert).toHaveTextContent('OpenAI didn’t accept that key. Check that you copied all of it.');
-    // Kept, to be fixed: in the box's value, never in its markup.
-    expect(keyInput().value).toBe(SENTINEL);
-    expect(keyInput().type).toBe('password');
-    expect(keyInput()).not.toHaveAttribute('value');
+    paste(anyKey(), ANTHROPIC_SENTINEL);
+    const note = await screen.findByTestId('connect-note');
+    expect(note).toHaveAttribute('data-code', 'key_rejected');
+    expect(anyKey().value).toBe(ANTHROPIC_SENTINEL);
+    expect(screen.getByTestId('mcp-provider')).toHaveTextContent('OpenAI');
+    expect(screen.getByTestId('mcp-switch-panel')).toBeInTheDocument();
     expectNoKeyInMarkup('SENTINEL');
-  });
-
-  it('refuses what can’t be a key, or another company’s key, before anything is sent', async () => {
-    openSwitch(anthropic);
-    fireEvent.change(keyInput(), { target: { value: 'sk-ant-api03-SENTINEL-9876' } });
-    fireEvent.click(screen.getByTestId('mcp-connect'));
-    expect(await screen.findByTestId('mcp-error')).toHaveTextContent('That looks like an Anthropic key, not an OpenAI one.');
-    fireEvent.change(keyInput(), { target: { value: 'sk-ab' } });
-    fireEvent.click(screen.getByTestId('mcp-connect'));
-    await waitFor(() =>
-      expect(screen.getByTestId('mcp-error')).toHaveTextContent(
-        'That doesn’t look like a whole key. Check that you copied all of it, and nothing else.'
-      )
-    );
-    expect(calls.some((c) => c.method === 'PUT')).toBe(false);
-  });
-
-  it('says what the route read a key as, and when a used-up limit resets', async () => {
-    usePlannerStore.setState({ userTimezone: 'UTC', timeFormat: '12h' } as never);
-    openSwitch(anthropic);
-    const answers = [
-      json({ error: 'wrong_provider', detected: 'openrouter' }, 400),
-      json({ error: 'daily_limit', limitedUntil: '2026-10-08T07:00:00.000Z' }, 429),
-      json({ error: 'no_credit' }, 402),
-      json({ error: 'region' }, 403),
-    ];
-    server.put = () => answers.shift()!;
-    const submit = async (expected: string) => {
-      fireEvent.change(keyInput(), { target: { value: `${SENTINEL}-${answers.length}` } });
-      fireEvent.click(screen.getByTestId('mcp-connect'));
-      await waitFor(() => expect(screen.getByTestId('mcp-error')).toHaveTextContent(expected));
-    };
-    await submit('That looks like an OpenRouter key, not an OpenAI one.');
-    await submit(
-      'OpenAI accepted the key, but today’s limit on it is used up. It resets at 7 am. Try again then, or use another key.'
-    );
-    await submit('OpenAI accepted the key, but the account behind it has no credit. Add credit there, then try again.');
-    await submit('OpenAI won’t answer from where dsul’s server is right now. A different provider works instead.');
-    expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(4);
-  });
-
-  it('Other with a base URL missing its /v1: both answers point at the URL', async () => {
-    // The host 404s at {base}/models (read as "doesn't list its models"), then
-    // at the 1-token ping once a model is typed (bad_model → invalid on model).
-    openSwitch(anthropic);
-    server.put = (body) =>
-      (body as { model?: string }).model
-        ? json({ error: 'invalid', field: 'model' }, 400)
-        : json({ error: 'model_required' }, 400);
-    fireEvent.click(screen.getByRole('radio', { name: 'Other' }));
-    fireEvent.change(screen.getByLabelText('Base URL'), { target: { value: 'https://api.mistral.ai' } });
-    fireEvent.change(keyInput(), { target: { value: SENTINEL } });
-    fireEvent.click(screen.getByTestId('mcp-connect'));
-    expect(await screen.findByTestId('mcp-error')).toHaveTextContent(
-      /Check the base URL \(it usually ends in \/v1\), or add a model name above/
-    );
-
-    fireEvent.change(screen.getByLabelText('Model (optional)'), { target: { value: 'mistral-small-latest' } });
-    fireEvent.click(screen.getByTestId('mcp-connect'));
-    await waitFor(() => expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(2));
-    // The field the route named (`model`) reaches the copy.
-    await waitFor(() =>
-      expect(screen.getByTestId('mcp-error')).toHaveTextContent(
-        'Nothing answered for that model at that address. Check the base URL (it usually ends in /v1) and the model name.'
-      )
-    );
-    expect(screen.getByTestId('mcp-error').textContent).not.toMatch(/add a model name above|the fields/);
-  });
-
-  it('a refusal the route pins on one field names that field', async () => {
-    openSwitch(anthropic);
-    const answers = [
-      json({ error: 'invalid', field: 'model' }, 400),
-      json({ error: 'invalid', field: 'apiKey' }, 400),
-      json({ error: 'invalid' }, 400),
-    ];
-    server.put = () => answers.shift()!;
-    const submit = async (expected: string) => {
-      fireEvent.change(keyInput(), { target: { value: `${SENTINEL}-${answers.length}` } });
-      fireEvent.click(screen.getByTestId('mcp-connect'));
-      await waitFor(() => expect(screen.getByTestId('mcp-error')).toHaveTextContent(expected));
-    };
-    await submit('Check the model name and try again.');
-    await submit('That doesn’t look like a whole key. Check that you copied all of it, and nothing else.');
-    await submit('Check the fields and try again.');
-    expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(3);
-  });
-
-  it('shows "Checking key…" while the key is being verified, the box read-only, never disabled', async () => {
-    openSwitch(anthropic);
-    let release: (r: Response) => void = () => {};
-    server.put = () => new Promise<Response>((resolve) => (release = resolve));
-    fireEvent.change(keyInput(), { target: { value: SENTINEL } });
-    fireEvent.click(screen.getByTestId('mcp-connect'));
-    await waitFor(() => expect(screen.getByTestId('mcp-connect')).toHaveTextContent('Checking key…'));
-    expect(screen.getByTestId('mcp-connect-form')).toHaveAttribute('aria-busy', 'true');
-    expect(keyInput()).not.toBeDisabled();
-    expect(keyInput()).toHaveAttribute('readonly');
-    expect(keyInput()).toHaveAttribute('aria-busy', 'true');
-    expect(document.activeElement).toBe(keyInput());
-    await act(async () => release(json({ error: 'unreachable' }, 502)));
-    expect(await screen.findByTestId('mcp-error')).toHaveTextContent('Couldn’t reach OpenAI. Try again in a moment.');
-    expect(screen.getByTestId('mcp-connect-form')).not.toHaveAttribute('aria-busy');
-    expect(keyInput()).not.toHaveAttribute('readonly');
   });
 });
 
@@ -986,14 +776,13 @@ describe('connected', () => {
     expectNoKeyInMarkup('SENTINEL');
   });
 
-  it('Use a different service opens the connect form, without the current one preselected', () => {
+  it('Use a different service opens the switch form', () => {
     given(CONNECTED_MODEL, view());
     renderPanel();
     fireEvent.click(screen.getByText('Use a different service'));
     const panel = screen.getByTestId('mcp-switch-panel');
     expect(within(panel).getByText('Switch service')).toBeInTheDocument();
-    expect(within(panel).getByText('Connecting a different service replaces this one.')).toBeInTheDocument();
-    expect(within(panel).getByRole('radio', { name: 'Anthropic' })).toHaveAttribute('aria-checked', 'true');
+    expect(within(panel).getByTestId('connect-switch')).toBeInTheDocument();
   });
 
   it('with no model yet: needs attention, asks for one, with the picker already open', async () => {
@@ -1200,13 +989,11 @@ describe('needs attention (a key turned down)', () => {
     expect(swap).toHaveTextContent('Use a different service');
     fireEvent.click(swap);
     const panel = screen.getByTestId('mcp-switch-panel');
-    expect(within(panel).getByRole('radio', { name: 'Anthropic' })).toHaveAttribute('aria-checked', 'true');
 
     const working = view({ provider: 'anthropic', model: 'claude-sonnet-4-5' });
     server.put = () => json({ connection: working, models: [], listed: true });
     server.status = { available: true, model: working, openclaw: CLAW_OFF, aiHidden: false };
-    fireEvent.change(keyInput(), { target: { value: 'sk-ant-api03-SENTINEL-9876' } });
-    fireEvent.click(screen.getByTestId('mcp-connect'));
+    paste(within(panel).getByTestId('connect-any-key'), 'sk-ant-api03-SENTINEL-9876');
     await waitFor(() => expect(screen.getByTestId('mcp-status')).toHaveTextContent('Working'));
     expect(screen.getByTestId('mcp-provider')).toHaveTextContent('Anthropic');
     // As above: the panel closes on its own render, which can land after the card's.
@@ -1261,14 +1048,12 @@ describe('in the desktop app', () => {
     expect(screen.getByTestId('connect-fold-openrouter')).toHaveAttribute('aria-expanded', 'false');
   });
 
-  it('the switch form offers the key form only, and says sign-in works from the browser', () => {
-    openSwitch();
-    expect(screen.queryByTestId('mcp-openrouter-signin')).toBeNull();
-    expect(screen.queryByText('Or paste a key')).toBeNull();
-    expect(screen.getByTestId('mcp-openrouter-browser')).toHaveTextContent(
-      'To sign in with OpenRouter instead of pasting a key, connect from dsul in your browser. The connection works here too.'
-    );
-    expect(screen.getByTestId('mcp-connect-form')).toBeInTheDocument();
+  it('the switch form offers a link to copy instead of the sign-in', () => {
+    const panel = openSwitch();
+    fireEvent.click(within(panel).getByTestId('connect-fold-openrouter'));
+    expect(within(panel).queryByTestId('connect-openrouter-signin')).toBeNull();
+    expect(within(panel).getByTestId('connect-copy-link')).toBeInTheDocument();
+    expect(within(panel).getByTestId('connect-any-key')).toBeInTheDocument();
   });
 
   it('a rejected sign-in is replaced with a pasted OpenRouter key, not signed in again', async () => {
@@ -1321,13 +1106,6 @@ describe('in the desktop app', () => {
     expect(statusGets()).toBe(2);
   });
 
-  it('Use a different service: the key form, without the sign-in', () => {
-    given(CONNECTED_MODEL, view());
-    renderPanel();
-    fireEvent.click(screen.getByTestId('mcp-switch'));
-    expect(screen.getByTestId('mcp-connect-switch')).toBeInTheDocument();
-    expect(screen.queryByTestId('mcp-openrouter-signin')).toBeNull();
-  });
 });
 
 describe('the ?connect= notice', () => {

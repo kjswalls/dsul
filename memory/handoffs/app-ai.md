@@ -84,8 +84,8 @@ was deleted on GitHub after #443 merged. Restart it from `main` for the next PR.
 1. ~~Phase 2, "Break it down"~~: built 2026-10-09 (see ai-vision.md's note of that date),
    with the Fix card's model fix.
 2. Small follow-ups left by the setup round:
-   - "Use a different service" in the pane still holds the old `ConnectForm`; swap in the
-     connect card's "I already use…" body.
+   - ~~"Use a different service" holds the old `ConnectForm`~~: it is the connect card's
+     folds now (`SwitchService`, 2026-10-09).
    - Stream-only refusals pass the connect test; the connect rate limit is in memory, not
      durable.
    - CLAUDE.md says `chooseChatTarget()` is "the one path allowed to wipe transcripts"; it

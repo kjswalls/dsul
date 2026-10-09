@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ArrowUpRight, Moon } from 'lucide-react';
 
-import { ConnectAI, GoodToKnowConnected } from '@/components/ai/connect/connect-ai';
+import { ConnectAI, GoodToKnowConnected, SwitchService } from '@/components/ai/connect/connect-ai';
 import { ConnectFix } from '@/components/ai/connect/connect-fix';
 import {
   ANCHOR_CLASS,
@@ -25,8 +25,7 @@ import {
 } from '@/components/ai/connect/connect-shared';
 import { HoneyNote, KeyPageLink } from '@/components/ai/connect/key-check';
 import { KeyField, type KeyFieldHandle } from '@/components/ai/connect/key-field';
-import { Button, buttonVariants } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { useDisconnect } from './disconnect';
 import { ModelPicker } from './model-picker';
 import { StatusPill } from './status-pill';
@@ -48,9 +47,7 @@ import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
 import { useMinuteClock } from '@/lib/use-now-minutes';
 import {
   AI_SETTINGS_PATH,
-  MODEL_PROVIDERS,
   PROVIDER_META,
-  isModelId,
   type ConnectRequest,
   type ModelConnectionView,
   type ModelProviderId,
@@ -444,68 +441,7 @@ function UnavailableCard({ highlightId }: { highlightId: string | null }) {
   );
 }
 
-/* ── Connect form ───────────────────────────────────────────────────────── */
-
-function ProviderChips({
-  value,
-  onChange,
-  disabled,
-}: {
-  value: ModelProviderId;
-  onChange: (next: ModelProviderId) => void;
-  disabled?: boolean;
-}) {
-  const refs = useRef<(HTMLButtonElement | null)[]>([]);
-
-  // A radiogroup moves with the arrow keys, and only the checked radio is in
-  // the tab order (WAI-ARIA radio group pattern).
-  const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>, index: number) => {
-    const n = MODEL_PROVIDERS.length;
-    let next: number | null = null;
-    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = (index + 1) % n;
-    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = (index - 1 + n) % n;
-    else if (e.key === 'Home') next = 0;
-    else if (e.key === 'End') next = n - 1;
-    if (next === null) return;
-    e.preventDefault();
-    onChange(MODEL_PROVIDERS[next]);
-    refs.current[next]?.focus();
-  };
-
-  return (
-    <div role="radiogroup" aria-label="Service" className="flex flex-wrap gap-1.5" data-testid="mcp-providers">
-      {MODEL_PROVIDERS.map((p, i) => {
-        const checked = p === value;
-        return (
-          <Button
-            key={p}
-            ref={(el) => {
-              refs.current[i] = el;
-            }}
-            type="button"
-            role="radio"
-            aria-checked={checked}
-            tabIndex={checked ? 0 : -1}
-            variant="outline"
-            size="sm"
-            disabled={disabled}
-            data-provider={p}
-            onClick={() => onChange(p)}
-            onKeyDown={(e) => onKeyDown(e, i)}
-            className={cn(
-              'h-7 px-2.5 text-xs font-normal',
-              checked
-                ? 'border-foreground/25 bg-secondary text-foreground dark:bg-secondary font-medium'
-                : 'text-muted-foreground'
-            )}
-          >
-            {PROVIDER_META[p].label}
-          </Button>
-        );
-      })}
-    </div>
-  );
-}
+/* ── Key form pieces ──────────────────────────────────────────────────── */
 
 function FieldLabel({ htmlFor, children }: { htmlFor: string; children: React.ReactNode }) {
   return (
@@ -546,209 +482,6 @@ function FormError({ error }: { error: FormFailure }) {
         resetsAt: resetsAtOf(error.limitedUntil),
       })}
     </p>
-  );
-}
-
-/**
- * The form inside "Use a different service": a provider's key, or
- * OpenRouter's sign-in, in place of the connection there is. The
- * not-connected state is the connect card instead (ConnectAI).
- */
-function ConnectForm({
-  exclude,
-  onConnected,
-}: {
-  /** The provider already connected, so it is not preselected. */
-  exclude: ModelProviderId;
-  onConnected: () => void;
-}) {
-  const uid = useId();
-  const busy = useAIConnectionStore((s) => s.busy === 'connect');
-  const inDesktopApp = useInDesktopApp();
-  const field = useRef<KeyFieldHandle>(null);
-  const [provider, setProvider] = useState<ModelProviderId>(
-    () => MODEL_PROVIDERS.find((p) => p !== exclude) ?? 'openai'
-  );
-  // Whether the box holds a key, never the key: the box itself holds that.
-  const [hasKey, setHasKey] = useState(false);
-  const [baseUrl, setBaseUrl] = useState('');
-  const [modelName, setModelName] = useState('');
-  const [error, setError] = useState<FormFailure | null>(null);
-
-  const custom = provider === 'custom';
-  const meta = PROVIDER_META[provider];
-  const typedModel = modelName.trim();
-  const modelOk = typedModel === '' || isModelId(typedModel);
-  const ready = hasKey && (!custom || baseUrl.trim() !== '') && (!custom || modelOk) && !busy;
-
-  const choose = (next: ModelProviderId) => {
-    if (next === provider) return;
-    setProvider(next);
-    // A key pasted for one provider never rides along to the next.
-    field.current?.clear();
-    setError(null);
-  };
-
-  const submit = async (e?: FormEvent) => {
-    e?.preventDefault();
-    if (!ready) return;
-    // Back in the box, which stays focusable (readOnly) while its key is out.
-    field.current?.focus();
-    const key = field.current?.read() ?? '';
-    const req: ConnectRequest = { provider, apiKey: key };
-    if (custom) {
-      req.baseUrl = baseUrl.trim();
-      if (typedModel) req.model = typedModel;
-    }
-    const name = labelName(provider, req.baseUrl);
-    setError(null);
-    const refused = refuseHere(provider, key);
-    if (refused) {
-      setError({ ...refused, name, custom });
-      return;
-    }
-    const result = await useAIConnectionStore.getState().connect(req);
-    // A key that works leaves the box at once; one that fails stays to be fixed.
-    if (result.ok) {
-      field.current?.clear();
-      onConnected();
-    } else {
-      const { code, field: named, detected, limitedUntil } = result;
-      setError({ code, field: named, detected, limitedUntil, name, custom });
-    }
-  };
-
-  const keyId = `${uid}-key`;
-  const urlId = `${uid}-url`;
-  const modelId = `${uid}-model`;
-
-  return (
-    <div className="flex flex-col gap-4" data-testid="mcp-connect-switch">
-      {inDesktopApp ? (
-        <p
-          className="text-muted-foreground max-w-[60ch] text-xs leading-relaxed"
-          data-testid="mcp-openrouter-browser"
-        >
-          To sign in with OpenRouter instead of pasting a key, connect from dsul in your browser.
-          The connection works here too.
-        </p>
-      ) : (
-        <>
-          <div className="bg-secondary/60 flex flex-col gap-3 rounded-[6px] p-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0">
-              <p className="text-foreground text-sm font-medium">Sign in with OpenRouter</p>
-              <p className="text-muted-foreground text-xs">
-                One account for hundreds of models, including free ones. Nothing to copy or paste.
-              </p>
-            </div>
-            <a
-              href={openRouterStartHref('settings')}
-              data-testid="mcp-openrouter-signin"
-              className={cn(buttonVariants({ size: 'sm' }), 'shrink-0 self-start sm:self-auto')}
-            >
-              Sign in with OpenRouter
-            </a>
-          </div>
-
-          <div className="flex items-center gap-3" aria-hidden>
-            <span className="bg-border h-px flex-1" />
-            <span className="text-muted-foreground text-[10px] font-medium tracking-wider uppercase">
-              Or paste a key
-            </span>
-            <span className="bg-border h-px flex-1" />
-          </div>
-        </>
-      )}
-
-      <form
-        onSubmit={submit}
-        aria-busy={busy || undefined}
-        aria-label="Connect with an API key"
-        className="flex flex-col gap-4"
-        data-testid="mcp-connect-form"
-      >
-        <ProviderChips value={provider} onChange={choose} disabled={busy} />
-
-        <div className="flex flex-col gap-1.5">
-          <FieldLabel htmlFor={keyId}>API key</FieldLabel>
-          <KeyField
-            ref={field}
-            id={keyId}
-            placeholder={meta.keyPlaceholder}
-            checking={busy}
-            testId="mcp-key"
-            className="max-w-[360px]"
-            onChange={(key) => setHasKey(key !== '')}
-            onPaste={() => setHasKey(true)}
-            onEnter={() => void submit()}
-          />
-          {meta.keyHelpUrl && (
-            <a
-              href={meta.keyHelpUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={cn(QUIET_LINK, 'inline-flex items-center gap-1 self-start')}
-            >
-              Get a key from {meta.label}
-              <ArrowUpRight className="size-3" aria-hidden />
-            </a>
-          )}
-        </div>
-
-        {custom && (
-          <>
-            <div className="flex flex-col gap-1.5">
-              <FieldLabel htmlFor={urlId}>Base URL</FieldLabel>
-              <Input
-                id={urlId}
-                type="url"
-                inputMode="url"
-                value={baseUrl}
-                onChange={(e) => setBaseUrl(e.target.value)}
-                placeholder="https://api.example.com/v1"
-                autoComplete="off"
-                spellCheck={false}
-                disabled={busy}
-                aria-describedby={`${urlId}-help`}
-                data-testid="mcp-base-url"
-                className="h-8 max-w-[360px] text-xs"
-              />
-              <p id={`${urlId}-help`} className="text-muted-foreground text-[11px]">
-                Any OpenAI-compatible service. Public https addresses only.
-              </p>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <FieldLabel htmlFor={modelId}>Model (optional)</FieldLabel>
-              <Input
-                id={modelId}
-                value={modelName}
-                onChange={(e) => setModelName(e.target.value)}
-                autoComplete="off"
-                spellCheck={false}
-                disabled={busy}
-                aria-describedby={`${modelId}-help`}
-                aria-invalid={!modelOk || undefined}
-                data-testid="mcp-model-name"
-                className="h-8 max-w-[360px] text-xs"
-              />
-              <p id={`${modelId}-help`} className="text-muted-foreground text-[11px]">
-                {modelOk
-                  ? 'Only needed if the service doesn’t list its models.'
-                  : 'Model names can’t contain spaces.'}
-              </p>
-            </div>
-          </>
-        )}
-
-        {error && <FormError error={error} />}
-
-        <div>
-          <Button type="submit" size="sm" disabled={!ready} data-testid="mcp-connect">
-            {busy ? 'Checking key…' : 'Connect'}
-          </Button>
-        </div>
-      </form>
-    </div>
   );
 }
 
@@ -970,17 +703,19 @@ function ActionsBand({
 }
 
 /**
- * "Use a different service": a provider's key, or OpenRouter's sign-in, in
- * place of the connection there is. The saved one stays until the new one works.
+ * "Use a different service": the connect card's own folds (SwitchService,
+ * components/ai/connect/connect-ai.tsx), a key from anyone placed by its
+ * prefix, another service, or OpenRouter's sign-in, in place of the connection
+ * there is. The saved one stays until the new one works.
  */
-function SwitchPanel({ exclude, onConnected }: { exclude: ModelProviderId; onConnected: () => void }) {
+function SwitchPanel({ onConnected }: { onConnected: () => void }) {
   return (
     <div className="border-border flex flex-col gap-3 border-t pt-4" data-testid="mcp-switch-panel">
       <div>
         <p className="text-foreground text-sm font-medium">Switch service</p>
         <p className="text-muted-foreground text-xs">Connecting a different service replaces this one.</p>
       </div>
-      <ConnectForm exclude={exclude} onConnected={onConnected} />
+      <SwitchService onConnected={onConnected} />
     </div>
   );
 }
@@ -1075,7 +810,6 @@ function WorkingCard({
 
       {mode === 'switch' && (
         <SwitchPanel
-          exclude={model.provider}
           onConnected={() => {
             setMode('idle');
             onConnected();
@@ -1131,7 +865,6 @@ function LimitCard({
       </div>
       {switching && (
         <SwitchPanel
-          exclude={model.provider}
           onConnected={() => {
             setSwitching(false);
             onConnected();
@@ -1179,7 +912,6 @@ function FixCard({
       />
       {switching && (
         <SwitchPanel
-          exclude={model.provider}
           onConnected={() => {
             setSwitching(false);
             onConnected();
