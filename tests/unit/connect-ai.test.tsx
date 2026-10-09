@@ -568,6 +568,9 @@ describe('the key card', () => {
       expect(checkFailureCopy('region', 'gemini', { elsewhere: 'settings' })).toBe(
         'Google won’t answer from where dsul’s server is right now. A key from another service works instead, in Settings → AI.'
       );
+      expect(checkFailureCopy('stream_refused', 'openai')).toBe(
+        'OpenAI accepted the key, but won’t stream answers until your organization is verified. Verify it with OpenAI, then check again, or use another key.'
+      );
       expect(checkFailureCopy('key_rejected', 'custom', { baseUrl: 'https://llm.example.com/v1' })).toBe(
         'llm.example.com didn’t accept that key. Check that you copied all of it.'
       );

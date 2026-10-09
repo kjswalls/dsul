@@ -204,6 +204,8 @@ function checkFailure(kind: ProviderErrorKind, resetAt?: string): NextResponse {
       return jsonError(400, 'model_required')
     case 'bad_model':
       return jsonError(400, 'invalid', { field: 'model' })
+    case 'stream_refused':
+      return jsonError(400, 'stream_refused')
     default:
       return jsonError(502, 'unreachable')
   }

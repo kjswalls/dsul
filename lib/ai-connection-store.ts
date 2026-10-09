@@ -346,6 +346,7 @@ const API_ERROR_CODES: readonly ApiErrorCode[] = [
   'no_credit',
   'daily_limit',
   'region',
+  'stream_refused',
   'network',
   'unreachable',
   'blocked_url',

@@ -145,6 +145,8 @@ export type ApiErrorCode =
   | 'daily_limit'
   /** The provider won't serve requests from where dsul's server is. */
   | 'region'
+  /** The key authenticated, but the model won't stream for this account (OpenAI's unverified organizations). */
+  | 'stream_refused'
   /** The provider could not be reached, or did not answer in time. */
   | 'network'
   | 'unreachable'
