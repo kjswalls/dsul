@@ -1305,20 +1305,29 @@ import Testing
         #expect(editing(reworded, edit).reminderAnchor == "I brew tea")
     }
 
-    /// The settings lines: signed in alone; Habit reminders off, then no time
-    /// zone, in that order; an unknown switch says nothing.
-    @Test func theSettingsLinesShowWhenAReminderCannotFire() {
+    /// The settings lines: signed in alone; Habit reminders off, then
+    /// notifications off on this iPhone, then (while it can ring here) what
+    /// can quiet it or let it ring late, then the last call; an unknown
+    /// switch says nothing of its own.
+    @Test func theSettingsLinesSayWhatThisIPhoneCanRing() {
         let off = ItemSheetModel.remindersOffLine
-        let zone = ItemSheetModel.noZoneLine
-        #expect(ItemSheetModel.reminderSettingsLines(remindersEnabled: false, hasStoredZone: true, live: true) == [off])
-        #expect(ItemSheetModel.reminderSettingsLines(remindersEnabled: nil, hasStoredZone: true, live: true).isEmpty)
-        #expect(ItemSheetModel.reminderSettingsLines(remindersEnabled: true, hasStoredZone: true, live: true).isEmpty)
-        #expect(ItemSheetModel.reminderSettingsLines(remindersEnabled: true, hasStoredZone: false, live: true)
-                == [zone])
-        #expect(ItemSheetModel.reminderSettingsLines(remindersEnabled: false, hasStoredZone: false, live: true)
-                == [off, zone])
-        #expect(ItemSheetModel.reminderSettingsLines(remindersEnabled: false, hasStoredZone: false, live: false)
-                .isEmpty)
+        let denied = ItemSheetModel.notificationsOffLine
+        let caveats = [ItemSheetModel.quietUntilOpenedLine, ItemSheetModel.ringsAfterElsewhereLine]
+        let lastCall = ItemSheetModel.noLastCallLine
+        func lines(_ enabled: Bool?, _ permission: NotificationPermission?, _ lastCallOn: Bool? = nil,
+                   live: Bool = true) -> [String] {
+            return ItemSheetModel.reminderSettingsLines(remindersEnabled: enabled, permission: permission,
+                                                        lastCallEnabled: lastCallOn, live: live)
+        }
+        #expect(lines(false, .allowed) == [off])
+        #expect(lines(nil, .allowed) == caveats)
+        #expect(lines(true, nil) == caveats)
+        #expect(lines(true, .notDetermined) == caveats)
+        #expect(lines(true, .denied) == [denied])
+        #expect(lines(false, .denied) == [off, denied])
+        #expect(lines(true, .allowed, true) == caveats + [lastCall])
+        #expect(lines(true, .allowed, false) == caveats)
+        #expect(lines(false, .denied, true, live: false).isEmpty)
     }
 
     /// A dated type with no date gets the needs-a-date note; a dated task and
@@ -1365,8 +1374,14 @@ import Testing
         #expect(ItemSheetModel.reminderNeedsDateNote == EditCopy.reminderNeedsDate)
         #expect(ItemSheetModel.remindersOffLine
                 == "Habit reminders are off in dsul's settings on the web, under Rituals, so this won't fire.")
-        #expect(ItemSheetModel.noZoneLine
-                == "Reminders need your time zone, which dsul picks up when you open it on the web.")
+        #expect(ItemSheetModel.notificationsOffLine
+                == "Notifications for dsul are off in this iPhone's Settings, so this won't ring here.")
+        #expect(ItemSheetModel.quietUntilOpenedLine
+                == "Ticking early, a pause, a season, or a cue in the hour the clocks change can quiet this "
+                    + "iPhone's cue until dsul next opens.")
+        #expect(ItemSheetModel.ringsAfterElsewhereLine
+                == "A habit ticked elsewhere may still ring here until dsul opens.")
+        #expect(ItemSheetModel.noLastCallLine == "This iPhone has no last call until push arrives.")
         #expect(ItemSheetModel.discardTitle == "Discard changes?")
         #expect(ItemSheetModel.discardAction == "Discard")
         #expect(ItemSheetModel.keepEditing == "Keep editing")
@@ -1375,7 +1390,8 @@ import Testing
             ItemSheetModel.reminderTitle, ItemSheetModel.reminderTimeHeader, ItemSheetModel.reminderTimeLabel,
             ItemSheetModel.reminderAnchorHeader, ItemSheetModel.reminderAnchorPlaceholder,
             ItemSheetModel.reminderAnchorHint, ItemSheetModel.reminderNeedsDateNote, ItemSheetModel.noReminder,
-            ItemSheetModel.remindersOffLine, ItemSheetModel.noZoneLine, ItemSheetModel.discardTitle,
+            ItemSheetModel.remindersOffLine, ItemSheetModel.notificationsOffLine, ItemSheetModel.quietUntilOpenedLine,
+            ItemSheetModel.ringsAfterElsewhereLine, ItemSheetModel.noLastCallLine, ItemSheetModel.discardTitle,
             ItemSheetModel.discardAction, ItemSheetModel.keepEditing, ItemSheetModel.seedSpoken,
         ]
         let dashed = all.filter { $0.contains("\u{2014}") }

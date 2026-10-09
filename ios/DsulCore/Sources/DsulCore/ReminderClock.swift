@@ -116,7 +116,7 @@ func wallClock(_ ms: Int, _ zone: TimeZone) -> (day: DayString, minutes: Int) {
 
 /// `new Date(ms).toISOString()`: UTC to the millisecond with a `Z`, spelled
 /// from the integer, so no floating-point step can move the last digit.
-func isoString(ms: Int) -> String {
+public func isoString(ms: Int) -> String {
     let civil = civilFromDays(floorDiv(ms, msPerDay))
     let inDay = floorMod(ms, msPerDay)
     let hours = inDay / 3_600_000
@@ -137,7 +137,7 @@ func epochMs(_ date: Date) -> Int {
 /// below the millisecond dropped, as a JavaScript Date drops it. Nil for what
 /// `parseTimestamp` refuses, where the web's answer is NaN (or, for a time
 /// with no zone, the runtime's own zone, which nothing here can match).
-func parseEpochMs(_ stamp: String) -> Int? {
+public func parseEpochMs(_ stamp: String) -> Int? {
     guard let date = parseTimestamp(stamp) else { return nil }
     // Round to the microsecond first, so a fraction like .123 that Double holds
     // as .12299999… still floors to 123.

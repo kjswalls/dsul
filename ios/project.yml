@@ -40,6 +40,14 @@ targets:
           - CFBundleURLName: app.dsul.ios.auth
             CFBundleURLSchemes:
               - app.dsul.ios
+        # Phase 2c (memory/plans/reminders-platforms.md §5.3): a background
+        # refresh re-plans the iPhone's notifications while dsul isn't
+        # opened (BackgroundRefresh.swift). No `remote-notification` and no
+        # aps-environment until push (Phase 3); CI stays unsigned.
+        UIBackgroundModes:
+          - fetch
+        BGTaskSchedulerPermittedIdentifiers:
+          - app.dsul.ios.reconcile
         UTExportedTypeDeclarations:
           - UTTypeIdentifier: app.dsul.item-ref
             UTTypeDescription: dsul item reference

@@ -82,7 +82,8 @@ final class PlannerSync {
     /// (tick, braindump row to an hour, Skip/Unskip today, Tomorrow and
     /// Reschedule, Pause/Pause until/Resume, the item sheet's title, notes,
     /// priority, times a day, reminder, time, repeat and project, Delete, Add
-    /// a subtask, Reset streak, and its routine and season toggles).
+    /// a subtask, Reset streak, and its routine and season toggles), and a
+    /// notification's Snooze.
     enum Write: Sendable, Hashable {
         case complete(id: UUID, date: String, done: Bool, count: Int?)
         case schedule(id: UUID, date: String, startTime: String)
@@ -111,6 +112,11 @@ final class PlannerSync {
         /// (2f-b) Join (`member`) or leave one routine or season: one
         /// membership row. Changes no item field.
         case collect(id: UUID, kind: ContainerKind, containerId: String, member: Bool)
+        /// A notification's Snooze: rings again in `minutes`, on `date` only
+        /// (read in `timeZone` when the account stores no zone). Writes the
+        /// snooze columns, which the planner doesn't hold, so it changes
+        /// nothing on screen and has nothing to revert.
+        case snooze(id: UUID, date: String, minutes: Int, timeZone: String?)
 
         /// The item the write is about: for a new subtask the subtask, not
         /// the parent whose route it goes to.
@@ -118,7 +124,8 @@ final class PlannerSync {
             switch self {
             case .complete(let id, _, _, _), .schedule(let id, _, _), .capture(let id, _), .skip(let id, _, _),
                  .move(let id, _), .pause(let id, _, _, _), .edit(let id, _), .delete(let id, _, _),
-                 .addSubtask(let id, _, _), .resetStreak(let id), .collect(let id, _, _, _):
+                 .addSubtask(let id, _, _), .resetStreak(let id), .collect(let id, _, _, _),
+                 .snooze(let id, _, _, _):
                 return id
             }
         }
@@ -134,6 +141,8 @@ final class PlannerSync {
                 return named
             case .collect(let id, let kind, let containerId, _):
                 return [.member(kind, containerId: containerId, item: id)]
+            case .snooze:
+                return []
             case .complete, .schedule, .capture, .skip, .move, .pause, .edit, .addSubtask, .resetStreak:
                 return [.item(itemId)]
             }
@@ -150,7 +159,7 @@ final class PlannerSync {
                 return [.item(parent)]
             case .collect(let id, _, _, _):
                 return [.item(id)]
-            case .complete, .schedule, .capture, .skip, .move, .pause, .edit, .delete, .resetStreak:
+            case .complete, .schedule, .capture, .skip, .move, .pause, .edit, .delete, .resetStreak, .snooze:
                 return []
             }
         }
@@ -246,6 +255,19 @@ final class PlannerSync {
         case applied, raced, failed, waitingForDrag
     }
 
+    /// How a write ended, for a caller that asked (`enqueue`'s `settled`):
+    /// the notification outbox, which keeps a tap until the server has it.
+    enum Settled: Sendable, Equatable {
+        /// The server took it.
+        case landed
+        /// The server said no (a 4xx, or an answer that couldn't be read):
+        /// sending it again would get the same.
+        case refused
+        /// It never reached the server, or no one can tell: offline, signed
+        /// out, cancelled, or the sync stopped first. Worth sending again.
+        case unsent
+    }
+
     /// Returning to the app fetches at most this often.
     static let foregroundInterval: TimeInterval = 60
     /// The longest pause between fetches that writes keep racing.
@@ -279,6 +301,8 @@ final class PlannerSync {
     private var dragWaiter: Task<Void, Never>?
     /// Writes queued or in flight, by every subject each names or proves.
     private var queuedBySubject: [Subject: Int] = [:]
+    /// Who asked to hear how each write ended, by its sequence number.
+    private var settlers: [Int: @MainActor (Settled) -> Void] = [:]
     /// Deletes queued or in flight that cascade, by the item deleted: a
     /// subtask one of them may take holds its revert back too.
     private var queuedCascades: [UUID: Int] = [:]
@@ -309,11 +333,16 @@ final class PlannerSync {
 
     /// Queues `write` behind every earlier one. `before` is each subject the
     /// write touches as it was before the planner's optimistic step, for the
-    /// revert.
-    func enqueue(_ write: Write, before: [Subject: Before]) {
-        guard !stopped else { return }
+    /// revert. `settled`, when given, hears how it ended, once.
+    func enqueue(_ write: Write, before: [Subject: Before], settled: (@MainActor (Settled) -> Void)? = nil) {
+        guard !stopped else {
+            settled?(.unsent)
+            return
+        }
         writeGeneration += 1
         let seq = writeGeneration
+        if let settled { settlers[seq] = settled }
+        planner?.noteChanged()
         for subject in write.subjects.union(write.proves) {
             queuedBySubject[subject, default: 0] += 1
         }
@@ -333,10 +362,10 @@ final class PlannerSync {
     /// capture, delete and a new subtask): `snapshot` is the item before the
     /// planner's step, at its place in the list now, which the step didn't
     /// move.
-    func enqueue(_ write: Write, snapshot: Item) {
+    func enqueue(_ write: Write, snapshot: Item, settled: (@MainActor (Settled) -> Void)? = nil) {
         let items = planner?.items ?? []
         let place = Place(of: snapshot.id, in: items) ?? Place(index: items.count, after: items.last?.id)
-        enqueue(write, before: [.item(snapshot.id): .item(snapshot, place)])
+        enqueue(write, before: [.item(snapshot.id): .item(snapshot, place)], settled: settled)
     }
 
     /// Waits until every queued write has been sent and any fetch they set off
@@ -356,16 +385,21 @@ final class PlannerSync {
     /// the drain that would give it back.
     func stop() {
         stopped = true
+        let waiting = settlers
+        settlers = [:]
+        for seq in waiting.keys.sorted() { waiting[seq]?(.unsent) }
         dragWaiter?.cancel()
         dragWaiter = nil
         endBackgroundTime()
     }
 
     private func run(_ write: Write, before: [Subject: Before], seq: Int) async {
+        var outcome = Settled.unsent
         if !stopped {
             let sentAt = now()
             do {
                 try await perform(write)
+                outcome = .landed
                 if !failures.isEmpty {
                     landed.append(Landed(seq: seq, write: write, subjects: write.subjects, proves: write.proves,
                                          sentAt: sentAt))
@@ -373,9 +407,15 @@ final class PlannerSync {
             } catch is CancellationError {
                 // Signed out while it was out: nothing to say.
             } catch {
-                failed(before: before, seq: seq, error: error)
+                outcome = Self.settled(error)
+                // A snooze changed nothing on screen, so there is nothing to
+                // revert or to say: the phone's own copy rings regardless.
+                if case .snooze = write {} else {
+                    failed(before: before, seq: seq, error: error)
+                }
             }
         }
+        settlers.removeValue(forKey: seq)?(outcome)
         for subject in write.subjects.union(write.proves) {
             let left = (queuedBySubject[subject] ?? 1) - 1
             queuedBySubject[subject] = left > 0 ? left : nil
@@ -424,6 +464,19 @@ final class PlannerSync {
             try await api.resetStreak(id: id)
         case .collect(let id, let kind, let containerId, let member):
             try await api.collect(id: id, kind: kind, containerId: containerId, member: member)
+        case .snooze(let id, let date, let minutes, let timeZone):
+            _ = try await api.snooze(id: id, date: date, minutes: minutes, timeZone: timeZone)
+        }
+    }
+
+    /// A failed write's end, for its settler: a refusal is final, anything
+    /// that may never have reached the server is not.
+    static func settled(_ error: Error) -> Settled {
+        switch error as? APIError {
+        case .rejected?, .badResponse?:
+            return .refused
+        case .signedOut?, .unauthorized?, .unavailable?, nil:
+            return .unsent
         }
     }
 
@@ -785,9 +838,9 @@ final class PlannerSync {
             // It made the item, so there is nothing to play: a rebase already
             // starts from what it made (`created`).
             return item
-        case .collect:
-            // Never asked: a toggle names a membership, not its item, and it
-            // changes no field of the item if it were.
+        case .collect, .snooze:
+            // Never asked: a toggle names a membership, not its item, and a
+            // snooze names nothing; neither changes a field of the item.
             return item
         }
     }

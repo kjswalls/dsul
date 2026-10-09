@@ -1518,17 +1518,29 @@ enum ItemSheetModel {
         return editing(stored, edit) == stored ? nil : edit
     }
 
-    /// The lines under the Remind sheet's fields saying a reminder can't fire,
-    /// in this order: Habit reminders off on the web (`remindersEnabled`
-    /// false; unknown, from an older server or a database behind on its
-    /// migrations, says nothing), and no stored time zone (the reminder scan
-    /// skips an account without one). Signed in only: the sample has neither,
-    /// and its reminders were never going to fire (design Q9 a).
-    static func reminderSettingsLines(remindersEnabled: Bool?, hasStoredZone: Bool, live: Bool) -> [String] {
+    /// The lines under the Remind sheet's fields, signed in only (the
+    /// sample's reminders never fire, design Q9 a), in this order:
+    /// - Habit reminders off on the web (`remindersEnabled` false; unknown,
+    ///   from an older server or a database behind on its migrations, says
+    ///   nothing);
+    /// - notifications off for dsul in this iPhone's Settings;
+    /// - while it can ring here, the two ways this iPhone's own plan falls
+    ///   short until dsul next opens (memory/plans/reminders-platforms.md,
+    ///   the 2a addendum's item 3 and §6's risk 1);
+    /// - the last call switched on, which this iPhone can't ring before push.
+    ///
+    /// The time zone line is gone: the phone stores its own zone now.
+    static func reminderSettingsLines(remindersEnabled: Bool?, permission: NotificationPermission?,
+                                      lastCallEnabled: Bool?, live: Bool) -> [String] {
         guard live else { return [] }
         var lines: [String] = []
         if remindersEnabled == false { lines.append(remindersOffLine) }
-        if !hasStoredZone { lines.append(noZoneLine) }
+        if permission == .denied { lines.append(notificationsOffLine) }
+        if remindersEnabled != false && permission != .denied {
+            lines.append(quietUntilOpenedLine)
+            lines.append(ringsAfterElsewhereLine)
+        }
+        if lastCallEnabled == true { lines.append(noLastCallLine) }
         return lines
     }
 
@@ -1563,9 +1575,22 @@ enum ItemSheetModel {
     static let remindersOffLine =
         "Habit reminders are off in dsul's settings on the web, under Rituals, so this won't fire."
 
-    /// No stored time zone. The phone reads `user_settings.timezone` and
-    /// never writes it; the web does, when it is opened.
-    static let noZoneLine = "Reminders need your time zone, which dsul picks up when you open it on the web."
+    /// This iPhone won't let dsul notify (denied in Settings → Notifications).
+    static let notificationsOffLine =
+        "Notifications for dsul are off in this iPhone's Settings, so this won't ring here."
+
+    /// What the phone's own plan can't see coming (ReminderPlan.swift's "What
+    /// is left"): it goes quiet rather than ring on a wrong day.
+    static let quietUntilOpenedLine =
+        "Ticking early, a pause, a season, or a cue in the hour the clocks change can quiet this iPhone's cue "
+        + "until dsul next opens."
+
+    /// The stale cue (§6's risk 1): a tick on the Mac reaches this iPhone's
+    /// plan only when dsul opens or refreshes here.
+    static let ringsAfterElsewhereLine = "A habit ticked elsewhere may still ring here until dsul opens."
+
+    /// The last call is the server's, and reaches the phone only by push.
+    static let noLastCallLine = "This iPhone has no last call until push arrives."
 
     /// Cancel on a changed sheet asks this, with Discard and Keep editing.
     static let discardTitle = "Discard changes?"
