@@ -12,7 +12,7 @@ import {
   type PlanInput,
   type PlannedRequest,
 } from '@/lib/reminders/plan';
-import { addDays, instantOf, localClock, weekdayOf } from '@/lib/reminders/clock';
+import { addDays, changeoverMinutes, inMinuteRun, instantOf, localClock, weekdayOf } from '@/lib/reminders/clock';
 import { reminderCopy, EOD_COPY } from '@/lib/reminders/copy';
 import { occursOn, wantsDoingOn } from '@/lib/reminders/due';
 import type { Item, Routine, Season } from '@dsul/types';
@@ -123,6 +123,31 @@ describe('instantOf', () => {
     expect(instantOf('2026-11-01', 120, LA)).toBe(Date.parse('2026-11-01T10:00:00Z'));
   });
 
+  // The minutes a changeover skips or plays twice, which no repeating
+  // trigger may sit on (plan.ts).
+  it('finds the minutes a zone\'s changeovers touch, and none where the clocks never change', () => {
+    const from = Date.parse('2026-10-05T12:00:00Z');
+    expect(changeoverMinutes(NY, from, 400)).toEqual([{ start: 60, length: 60 }, { start: 120, length: 60 }]);
+    expect(changeoverMinutes('Europe/London', from, 400)).toEqual([{ start: 60, length: 60 }]);
+    expect(changeoverMinutes('America/Santiago', from, 400)).toEqual([{ start: 0, length: 60 }, { start: 1380, length: 60 }]);
+    expect(changeoverMinutes('Australia/Lord_Howe', from, 400)).toEqual([{ start: 90, length: 30 }, { start: 120, length: 30 }]);
+    for (const zone of ['Asia/Kolkata', 'UTC', 'Asia/Tokyo']) expect(changeoverMinutes(zone, from, 400), zone).toEqual([]);
+    // Only what lies ahead: from the day after the spring-forward, a year of
+    // days reaches November's but not the next March's.
+    expect(changeoverMinutes(LA, Date.parse('2026-03-09T12:00:00Z'), 366)).toEqual([{ start: 60, length: 60 }]);
+    expect(changeoverMinutes(LA, Date.parse('2026-03-09T12:00:00Z'), 400)).toEqual([{ start: 60, length: 60 }, { start: 120, length: 60 }]);
+  });
+
+  it('reads a run of minutes across midnight', () => {
+    expect(inMinuteRun(1380, { start: 1380, length: 60 })).toBe(true);
+    expect(inMinuteRun(1439, { start: 1380, length: 60 })).toBe(true);
+    expect(inMinuteRun(0, { start: 1380, length: 60 })).toBe(false);
+    expect(inMinuteRun(10, { start: 1410, length: 60 })).toBe(true);
+    expect(inMinuteRun(30, { start: 1410, length: 60 })).toBe(false);
+    expect(inMinuteRun(119, { start: 60, length: 60 })).toBe(true);
+    expect(inMinuteRun(120, { start: 60, length: 60 })).toBe(false);
+  });
+
   it('does day arithmetic on labels', () => {
     expect(addDays('2026-12-31', 1)).toBe('2027-01-01');
     expect(addDays('2026-03-01', -1)).toBe('2026-02-28');
@@ -192,13 +217,50 @@ describe('planNotifications: standing triggers', () => {
   });
 
   // A calendar trigger on the 31st matches no day in a 30-day month, where
-  // occursOn clamps to the 30th. So the 29th–31st are one-offs, worked out
-  // by the clamp itself.
-  it('a monthly day after the 28th is a one-off, then the clamped next', () => {
+  // occursOn clamps to the 30th. So it stands in the long months, and the
+  // next clamped day is a one-off beside it, worked out by the clamp itself.
+  it('a monthly day after the 28th stands in the long months, the next short one a one-off', () => {
     const p = plan({ items: [habit('h1', { repeatFrequency: 'monthly', repeatMonthDay: 31 })] });
-    expect(p.requests.map((r) => [r.id, r.trigger, r.dateStr])).toEqual([
-      ['dsul-item-h1', { type: 'at', dateStr: '2026-10-31', hhmm: '07:30' }, '2026-10-31'],
+    expect(p.requests.map((r) => [r.id, r.trigger, r.dateStr ?? null])).toEqual([
+      ['dsul-item-h1', calendar(7, 30, { day: 31 }), null],
       ['dsul-item-h1#next', { type: 'at', dateStr: '2026-11-30', hhmm: '07:30' }, '2026-11-30'],
+    ]);
+    expect(p.requests[0].firesAt).toBe(wall('2026-10-31', '07:30'));
+    // In November the clamped day comes first, and the trigger rings in December.
+    const nov = plan({ items: [habit('h1', { repeatFrequency: 'monthly', repeatMonthDay: 31 })], at: wall('2026-11-05', '06:00') });
+    expect(nov.requests.map((r) => [r.id, r.trigger.type, r.firesAt])).toEqual([
+      ['dsul-item-h1#next', 'at', wall('2026-11-30', '07:30')],
+      ['dsul-item-h1', 'calendar', wall('2026-12-31', '07:30')],
+    ]);
+    // The 29th: only February is short, and the trigger never rings off its days.
+    const p29 = plan({ items: [habit('h1', { repeatFrequency: 'monthly', repeatMonthDay: 29 })], at: wall('2027-01-30', '06:00') });
+    expect(p29.requests.map((r) => [r.id, r.trigger, r.dateStr ?? null])).toEqual([
+      ['dsul-item-h1#next', atDay('2027-02-28'), '2027-02-28'],
+      ['dsul-item-h1', calendar(7, 30, { day: 29 }), null],
+    ]);
+    // With room for one, the soonest.
+    const tight = plan({ items: [habit('h1', { repeatFrequency: 'monthly', repeatMonthDay: 31 })], budget: 1 });
+    expect(tight.requests.map((r) => r.id)).toEqual(['dsul-item-h1']);
+    expect(tight.notes).toEqual([]);
+  });
+
+  // A trigger on the 31st rings again two months on after a short month, so
+  // that ring holds it too; and when a season leaves no 31st, the clamped day
+  // is the whole series.
+  it('a day after the 28th in a season: held by its ring past a short month, the clamped day alone', () => {
+    const m31 = habit('h1', { repeatFrequency: 'monthly', repeatMonthDay: 31 });
+    const until = (endsOn: string) => [{ id: 's1', name: 'Autumn', state: 'auto', endsOn, itemIds: ['h1'], routineIds: [] } as Season];
+    const shape = (p: NotificationPlan) => p.requests.map((r) => [r.id, r.trigger]);
+    // October's 31st is wanted, December's is past the end: October once.
+    expect(shape(plan({ items: [m31], seasons: until('2026-11-29') }))).toEqual([['dsul-item-h1', atDay('2026-10-31')]]);
+    // Through January's 31st, it stands, with November's clamped 30th beside it.
+    expect(shape(plan({ items: [m31], seasons: until('2027-01-31') }))).toEqual([
+      ['dsul-item-h1', calendar(7, 30, { day: 31 })],
+      ['dsul-item-h1#next', atDay('2026-11-30')],
+    ]);
+    // In February with the season over before March's 31st: the 28th alone.
+    expect(shape(plan({ items: [m31], seasons: until('2027-03-04'), at: wall('2027-02-27', '06:00') }))).toEqual([
+      ['dsul-item-h1', atDay('2027-02-28')],
     ]);
   });
 
@@ -257,14 +319,47 @@ describe('planNotifications: one-offs', () => {
     expect(plan({ items: [task('t1', { repeatFrequency: 'daily' })] }).requests).toEqual([]);
   });
 
-  it('a cue time in 01:00–03:59 is one-offs whatever its cadence', () => {
-    const p = plan({ items: [habit('h1', { reminderTime: '03:15' })], at: wall('2026-08-10', '12:00') });
+  // New York changes at 02:00: 02:00–02:59 is skipped in March and
+  // 01:00–01:59 played twice in November.
+  it('a cue in the zone\'s changeover minutes is one-offs whatever its cadence', () => {
+    const p = plan({ items: [habit('h1', { reminderTime: '02:15' })], at: wall('2026-08-10', '12:00') });
     expect(p.requests.map((r) => [r.id, r.trigger])).toEqual([
-      ['dsul-item-h1', { type: 'at', dateStr: '2026-08-11', hhmm: '03:15' }],
-      ['dsul-item-h1#next', { type: 'at', dateStr: '2026-08-12', hhmm: '03:15' }],
+      ['dsul-item-h1', { type: 'at', dateStr: '2026-08-11', hhmm: '02:15' }],
+      ['dsul-item-h1#next', { type: 'at', dateStr: '2026-08-12', hhmm: '02:15' }],
     ]);
-    expect(only(plan({ items: [habit('h1', { reminderTime: '04:00' })] })).trigger.type).toBe('calendar');
-    expect(only(plan({ items: [habit('h1', { reminderTime: '00:59' })] })).trigger.type).toBe('calendar');
+    expect(plan({ items: [habit('h1', { reminderTime: '01:00' })] }).requests.map((r) => r.trigger.type)).toEqual(['at', 'at']);
+    for (const time of ['00:59', '03:00', '03:15', '04:00']) {
+      expect(only(plan({ items: [habit('h1', { reminderTime: time })] })).trigger.type, time).toBe('calendar');
+    }
+  });
+
+  // Most of the world never changes its clocks, and a one-off there avoids
+  // nothing: it only goes quiet after two rings.
+  it('a zone with no changeover stands at any hour; one changing at midnight does not', () => {
+    for (const zone of ['Asia/Kolkata', 'UTC', 'Asia/Tokyo']) {
+      const p = plan({ timezone: zone, items: [habit('h1', { reminderTime: '02:30' })], at: Date.parse('2026-10-05T00:00:00Z') });
+      expect(only(p).trigger, zone).toEqual(calendar(2, 30));
+    }
+    const santiago = plan({ timezone: 'America/Santiago', items: [habit('h1', { reminderTime: '00:30' })], at: wall('2026-08-10', '12:00', 'America/Santiago') });
+    expect(santiago.requests.map((r) => r.trigger.type)).toEqual(['at', 'at']);
+    const santiagoLate = plan({ timezone: 'America/Santiago', items: [habit('h1', { reminderTime: '23:30' })], at: wall('2026-08-10', '12:00', 'America/Santiago') });
+    expect(santiagoLate.requests.map((r) => r.trigger.type)).toEqual(['at', 'at']);
+    const santiagoDay = plan({ timezone: 'America/Santiago', items: [habit('h1', { reminderTime: '02:30' })], at: wall('2026-08-10', '12:00', 'America/Santiago') });
+    expect(only(santiagoDay).trigger.type).toBe('calendar');
+  });
+
+  // A start day off the rule counts (anchoredSeriesOn) and no calendar
+  // trigger rings it; a start on a repeat day is just the first ring.
+  it('a recurring task starting today or later stands when it starts on a repeat day', () => {
+    const today = task('t1', { repeatFrequency: 'daily', startDate: MON });
+    expect(only(plan({ items: [today] })).trigger).toEqual(calendar(7, 30));
+    const tomorrow = plan({ items: [task('t1', { repeatFrequency: 'daily', startDate: TUE })] });
+    expect(tomorrow.requests.map((r) => `${r.id.slice('dsul-item-t1'.length)}:${r.trigger.type}`)).toEqual([
+      '#3:calendar', '#4:calendar', '#5:calendar', '#6:calendar', '#7:calendar', '#1:calendar', '#2:at',
+    ]);
+    expect(tomorrow.requests[0].firesAt).toBe(wall(TUE, '07:30'));
+    const weekly = task('t1', { repeatFrequency: 'custom', repeatDays: [5], startDate: '2026-10-09' }); // a Friday
+    expect(only(plan({ items: [weekly] }))).toMatchObject({ trigger: calendar(7, 30, { weekday: 6 }), firesAt: wall('2026-10-09', '07:30') });
   });
 });
 
@@ -290,13 +385,27 @@ describe('planNotifications: handled today (decision 23)', () => {
     expect(p.notes).toEqual([]);
   });
 
-  it('without room for its seven: tomorrow and the day after as one-offs, and a note', () => {
+  // The soonest of its seven ring at the same instants a one-off pair would,
+  // and keep ringing weekly after it.
+  it('without room for its seven: the soonest of them, standing, and a note', () => {
     const p = plan({ items: [habit('h1', { completedDates: [MON] })], budget: 2 });
-    expect(p.requests.map((r) => [r.id, r.trigger, r.dateStr])).toEqual([
-      ['dsul-item-h1', atDay(TUE), TUE],
-      ['dsul-item-h1#next', atDay('2026-10-07'), '2026-10-07'],
+    expect(p.requests.map((r) => [r.id, r.trigger, r.firesAt])).toEqual([
+      ['dsul-item-h1#3', calendar(7, 30, { weekday: 3 }), tomorrow],
+      ['dsul-item-h1#4', calendar(7, 30, { weekday: 4 }), wall('2026-10-07', '07:30')],
     ]);
     expect(p.notes).toEqual([{ code: 'over-budget', itemId: 'h1', kept: 2 }]);
+  });
+
+  // Ten held dailies in twenty places: each its next two days, in the order
+  // they ring, rather than three their whole week and the rest one day.
+  it('a short budget is shared out by when each slot rings, not item by item', () => {
+    const items = Array.from({ length: 10 }, (_, i) => habit(`h${i}`, { completedDates: [MON] }));
+    const p = plan({ items, budget: 20 });
+    expect(p.requests).toHaveLength(20);
+    for (const item of items) {
+      expect(p.requests.filter((r) => r.itemId === item.id).map((r) => r.id.split('#')[1]), item.id).toEqual(['3', '4']);
+    }
+    expect(p.notes).toEqual(items.map((item) => ({ code: 'over-budget', itemId: item.id, kept: 2 })));
   });
 
   it('the first plan after today\'s cue time restores the one calendar trigger', () => {
@@ -380,25 +489,69 @@ describe('planNotifications: handled today (decision 23)', () => {
     expect(only(plan({ items: [habit('h1', { repeatFrequency: 'monthly', repeatMonthDay: 15, completedDates: ['2026-10-15'] })], at: wall('2026-10-15', '06:00'), budget: 1 })).id).toBe('dsul-item-h1');
   });
 
-  it('withdraws every delivered identifier of an item handled today, and nothing of one not due', () => {
-    const p = plan({ items: [habit('h1', { completedDates: [MON] }), habit('h2', { repeatFrequency: 'weekends' })] });
-    expect(p.withdraw).toEqual(identifiers('h1').sort());
+  // A season's last day, a skip entered for a later day, or a tick ahead of
+  // time: a standing trigger cannot be told to stop, so the slot that would
+  // ring on that day is held now, and nothing rings on the day the grid hides.
+  it('holds a slot whose later rings meet a day already known to be unwanted', () => {
+    const shape = (p: NotificationPlan) => p.requests.map((r) => `${r.id.slice('dsul-item-h1'.length)}:${r.trigger.type}:${r.dateStr ?? ''}`);
+    const ends = { id: 's1', name: 'Autumn', state: 'auto', endsOn: '2026-10-08', itemIds: ['h1'], routineIds: [] } as Season;
+    expect(shape(plan({ items: [habit('h1')], seasons: [ends] }))).toEqual([
+      '#2:at:2026-10-05', '#3:at:2026-10-06', '#4:at:2026-10-07', '#5:at:2026-10-08',
+    ]);
+    // A skip on Wednesday: Wednesday's weekday is held, the rest stand.
+    expect(shape(plan({ items: [habit('h1', { skippedDates: ['2026-10-07'] })] }))).toEqual([
+      '#2:calendar:', '#3:calendar:', '#5:calendar:', '#6:calendar:', '#7:calendar:', '#1:calendar:', '#4:at:2026-10-14',
+    ]);
+    // Ticked ahead for Friday the 16th: Friday's slot rings this Friday once.
+    expect(shape(plan({ items: [habit('h1', { completedDates: ['2026-10-16'] })] }))).toEqual([
+      '#2:calendar:', '#3:calendar:', '#4:calendar:', '#5:calendar:', '#6:at:2026-10-09', '#7:calendar:', '#1:calendar:',
+    ]);
+    // A lone weekday whose season ends before its third ring: the series.
+    const weekly = habit('h1', { repeatFrequency: 'weekly', repeatDays: [1] });
+    const later = { ...ends, endsOn: '2026-10-20' } as Season;
+    expect(shape(plan({ items: [weekly], seasons: [later] }))).toEqual([':at:2026-10-05', '#next:at:2026-10-12']);
+  });
+
+  // LAPSE_DAYS: a month. An unwanted day further out is left to a plan in
+  // between, so a season ending in the spring does not hold its habits now.
+  it('trusts an unwanted day more than a month past the next ring to a later plan', () => {
+    const spring = { id: 's1', name: 'Winter', state: 'auto', endsOn: '2026-11-05', itemIds: ['h1'], routineIds: [] } as Season;
+    expect(only(plan({ items: [habit('h1')], seasons: [spring] })).trigger).toEqual(calendar(7, 30));
+    // A day sooner and the daily slot's month reaches it: the weekdays whose
+    // fifth ring is past the end are held, the others stand a while yet.
+    const sooner = { ...spring, endsOn: '2026-11-04' } as Season;
+    expect(plan({ items: [habit('h1')], seasons: [sooner] }).requests.map((r) => `${r.id.slice('dsul-item-h1'.length)}:${r.trigger.type}`)).toEqual(
+      ['#2:calendar', '#3:calendar', '#4:calendar', '#5:at', '#6:at', '#7:at', '#1:at'],
+    );
   });
 
   // The review's findings, as rings: a 21:00 cue ticked at 08:00 once made a
-  // 37-hour interval that rang Tuesday 21:00, Thursday 10:00, Friday 23:00.
+  // 37-hour interval that rang Tuesday 21:00, Thursday 10:00, Friday 23:00;
+  // and a standing trigger kept ringing past a season's last day, on a
+  // skipped Wednesday, on a Friday ticked a week ahead.
   it('every ring of every request lands on its own minute, on a day it is wanted', () => {
     const horizon = wall('2026-12-31', '23:59');
     const eod = { enabled: true, time: '21:00', lastReviewDate: MON };
+    const autumn = (endsOn: string, startsOn?: string) =>
+      ({ id: 's1', name: 'Autumn', state: 'auto', endsOn, ...(startsOn ? { startsOn } : {}), itemIds: ['h1'], routineIds: [] }) as Season;
     const worlds: { name: string; input: Partial<PlanInput> & { at?: number } }[] = [
       { name: 'a 21:00 daily ticked at 08:00', input: { items: [habit('h1', { reminderTime: '21:00', completedDates: [MON] })], at: wall(MON, '08:00') } },
       { name: 'M/W/F done Monday at 06:00, cue 21:00', input: { items: [habit('h1', { reminderTime: '21:00', repeatFrequency: 'custom', repeatDays: [1, 3, 5], completedDates: [MON] })] } },
       { name: 'paused ten days', input: { items: [habit('h1', { pausedAt: '2026-10-01T12:00:00Z', pausedUntil: '2026-10-15' })] } },
       { name: 'monthly done today', input: { items: [habit('h1', { repeatFrequency: 'monthly', repeatMonthDay: 15, completedDates: ['2026-10-15'] })], at: wall('2026-10-15', '06:00') } },
       { name: 'reviewed at 08:00', input: { eod, at: wall(MON, '08:00') } },
+      { name: 'a season ending Thursday', input: { items: [habit('h1')], seasons: [autumn('2026-10-08')] } },
+      { name: 'a season from Thursday to the next Thursday, done today', input: { items: [habit('h1', { reminderTime: '23:59', completedDates: [MON] })], seasons: [autumn('2026-10-15', '2026-10-08')] } },
+      { name: 'three weekdays in a season ending Saturday', input: { items: [habit('h1', { repeatFrequency: 'custom', repeatDays: [1, 3, 5] })], seasons: [autumn('2026-10-10')] } },
+      { name: 'a skip next Monday', input: { items: [habit('h1', { repeatFrequency: 'custom', repeatDays: [1, 3, 5], skippedDates: ['2026-10-12'] })] } },
+      { name: 'a tick for Wednesday', input: { items: [habit('h1', { completedDates: ['2026-10-07'] })] } },
+      { name: 'the 31st', input: { items: [habit('h1', { repeatFrequency: 'monthly', repeatMonthDay: 31 })] } },
+      { name: 'the 31st in a season ending before December\'s', input: { items: [habit('h1', { repeatFrequency: 'monthly', repeatMonthDay: 31 })], seasons: [autumn('2026-11-29')] } },
+      { name: 'a recurring task from tomorrow', input: { items: [task('h1', { repeatFrequency: 'daily', startDate: TUE })] } },
     ];
     for (const { name, input } of worlds) {
       const p = plan(input);
+      const ctx = { userTimezone: NY, seasons: input.seasons };
       const item = input.items?.[0];
       expect(p.requests.length, name).toBeGreaterThan(0);
       for (const r of p.requests) {
@@ -411,7 +564,7 @@ describe('planNotifications: handled today (decision 23)', () => {
             const [h, m] = (item as { reminderTime: string }).reminderTime.split(':').map(Number);
             expect(minutes, where).toBe(h * 60 + m);
             expect(occursOn(item, ring.dateStr, NY), where).toBe(true);
-            expect(wantsDoingOn(item, ring.dateStr, { userTimezone: NY }), where).toBe(true);
+            expect(wantsDoingOn(item, ring.dateStr, ctx), where).toBe(true);
           } else {
             expect(minutes, where).toBe(21 * 60);
             expect(ring.dateStr, where).not.toBe(MON);
@@ -428,7 +581,13 @@ describe('planNotifications: snoozes', () => {
 
   it('arms a one-off under #snooze beside the standing trigger, and withdraws the cue it replaces', () => {
     const h = habit('h1');
-    const p = plan({ items: [h], at: now, snoozes: [{ itemId: 'h1', until, date: MON }], localSentKeys: [`${MON}T07:30`] });
+    const p = plan({
+      items: [h],
+      at: now,
+      snoozes: [{ itemId: 'h1', until, date: MON }],
+      localSentKeys: [`${MON}T07:30`],
+      delivered: [{ id: 'dsul-item-h1', deliveredAtMs: wall(MON, '07:30') }],
+    });
     expect(p.requests.map((r) => r.id)).toEqual(['dsul-item-h1#snooze', 'dsul-item-h1']);
     expect(p.requests[0]).toMatchObject({
       kind: 'snoozed',
@@ -438,8 +597,7 @@ describe('planNotifications: snoozes', () => {
       body: '7:30 am',
       userInfo: { kind: 'snoozed', itemId: 'h1', dateStr: MON, at: '07:30' },
     });
-    expect(p.withdraw).toContain('dsul-item-h1');
-    expect(p.withdraw).not.toContain('dsul-item-h1#snooze');
+    expect(p.withdraw).toEqual(['dsul-item-h1']);
   });
 
   it('honours a snooze on an item with no cue of its own (tapped on a last call)', () => {
@@ -460,9 +618,10 @@ describe('planNotifications: snoozes', () => {
       items: [habit('h1', { completedDates: [MON] })],
       at: now,
       snoozes: [{ itemId: 'h1', until, date: MON }],
+      delivered: [{ id: 'dsul-item-h1#snooze', deliveredAtMs: wall(MON, '07:20'), dateStr: MON }],
     });
     expect(done.requests.some((r) => r.kind === 'snoozed')).toBe(false);
-    expect(done.withdraw).toContain('dsul-item-h1#snooze');
+    expect(done.withdraw).toEqual(['dsul-item-h1#snooze']);
   });
 
   // habit-reminders.md decision 8 and §3.5's Snooze row: past local midnight
@@ -547,7 +706,11 @@ describe('planNotifications: the review', () => {
   });
 
   it('reviewed today before its hour: never absent, standing on the other six days, the invitation withdrawn', () => {
-    const p = plan({ eod: { ...eod, lastReviewDate: MON }, at: wall(MON, '20:00') });
+    const p = plan({
+      eod: { ...eod, lastReviewDate: MON },
+      at: wall(MON, '20:00'),
+      delivered: [{ id: 'dsul-eod', deliveredAtMs: wall('2026-10-04', '21:00') }],
+    });
     expect(p.requests.map((r) => [r.id, r.trigger, r.dateStr ?? null])).toEqual([
       ['dsul-eod#3', calendar(21, 0, { weekday: 3 }), null],
       ['dsul-eod#4', calendar(21, 0, { weekday: 4 }), null],
@@ -558,13 +721,13 @@ describe('planNotifications: the review', () => {
       ['dsul-eod#2', atDay('2026-10-12', '21:00'), '2026-10-12'],
     ]);
     expect(p.requests.every((r) => r.kind === 'eod')).toBe(true);
-    expect(p.withdraw).toEqual([...eodIdentifiers()].sort());
+    expect(p.withdraw).toEqual(['dsul-eod']);
   });
 
-  it('held without room for its seven: tomorrow\'s one-off first of all, and a note', () => {
+  it('held without room for its seven: tomorrow\'s weekday, standing, first of all, and a note', () => {
     const p = plan({ eod: { ...eod, lastReviewDate: MON }, at: wall(MON, '20:00'), items: [habit('h1')], budget: 1 });
     expect(p.requests.map((r) => [r.id, r.trigger, r.userInfo])).toEqual([
-      ['dsul-eod', atDay(TUE, '21:00'), { kind: 'eod', dateStr: TUE }],
+      ['dsul-eod#3', calendar(21, 0, { weekday: 3 }), { kind: 'eod' }],
     ]);
     expect(p.notes).toEqual([
       { code: 'over-budget', kept: 1 },
@@ -594,6 +757,96 @@ describe('planNotifications: the review', () => {
       ['dsul-eod', { type: 'at', dateStr: TUE, hhmm: '01:30' }, { kind: 'eod', dateStr: TUE }],
       ['dsul-eod#next', { type: 'at', dateStr: '2026-10-07', hhmm: '01:30' }, { kind: 'eod', dateStr: '2026-10-07' }],
     ]);
+  });
+});
+
+describe('planNotifications: the shade', () => {
+  const rang = (id: string, day: string, hhmm = '07:30', dateStr?: string) =>
+    ({ id, deliveredAtMs: wall(day, hhmm), ...(dateStr ? { dateStr } : {}) });
+  const tueMorning = wall(TUE, '06:00');
+  const WED = '2026-10-07';
+
+  // §3.5: "Completion elsewhere after delivery → removeDeliveredNotifications
+  // on next reconcile". Monday's 07:30 rang, the Mac ticked it at 22:00, and
+  // the phone plans next on Tuesday at 06:00.
+  it('withdraws a cue done elsewhere after it rang, whichever day it rang on', () => {
+    const daily = plan({ items: [habit('h1', { completedDates: [MON] })], at: tueMorning, delivered: [rang('dsul-item-h1', MON)] });
+    expect(daily.withdraw).toEqual(['dsul-item-h1']);
+    const weekly = habit('h1', { repeatFrequency: 'weekly', repeatDays: [1], completedDates: [MON] });
+    expect(plan({ items: [weekly], at: tueMorning, delivered: [rang('dsul-item-h1', MON)] }).withdraw).toEqual(['dsul-item-h1']);
+    const split = habit('h1', { repeatFrequency: 'custom', repeatDays: [1, 3, 5], completedDates: [MON] });
+    expect(plan({ items: [split], at: tueMorning, delivered: [rang('dsul-item-h1#2', MON)] }).withdraw).toEqual(['dsul-item-h1#2']);
+    // Still open on Monday, it stays; and nothing in the shade, nothing to take.
+    expect(plan({ items: [habit('h1')], at: tueMorning, delivered: [rang('dsul-item-h1', MON)] }).withdraw).toEqual([]);
+    expect(plan({ items: [habit('h1', { completedDates: [MON] })], at: wall(MON, '09:00') }).withdraw).toEqual([]);
+  });
+
+  it('leaves a day still open in the shade when a later one is ticked', () => {
+    const h = habit('h1', { repeatFrequency: 'custom', repeatDays: [1, 3, 5], completedDates: [WED] });
+    const p = plan({ items: [h], at: wall(WED, '12:00'), delivered: [rang('dsul-item-h1#2', MON), rang('dsul-item-h1#4', WED)] });
+    expect(p.withdraw).toEqual(['dsul-item-h1#4']);
+  });
+
+  it('reads the day a notification is about from its own dateStr, else from when it rang', () => {
+    // A catch-up for Monday that iOS delivered a minute past midnight.
+    const h = habit('h1', { reminderTime: '23:50', completedDates: [MON] });
+    const late = { id: 'dsul-item-h1#now', deliveredAtMs: wall(TUE, '00:01'), dateStr: MON };
+    expect(plan({ items: [h], at: wall(TUE, '06:00'), delivered: [late] }).withdraw).toEqual(['dsul-item-h1#now']);
+    expect(plan({ items: [h], at: wall(TUE, '06:00'), delivered: [{ ...late, dateStr: undefined }] }).withdraw).toEqual([]);
+  });
+
+  it('withdraws every cue of an item gone, one that no longer reminds, or all of them with reminders off', () => {
+    const delivered = [rang('dsul-item-h1', MON), rang('dsul-item-h2#now', MON, '07:40', MON)];
+    expect(plan({ items: [habit('h2')], at: tueMorning, delivered }).withdraw).toEqual(['dsul-item-h1']);
+    expect(plan({ items: [habit('h1'), habit('h2')], at: tueMorning, delivered, remindersEnabled: false }).withdraw).toEqual(
+      ['dsul-item-h1', 'dsul-item-h2#now'],
+    );
+    const sub = task('h1', { startDate: MON, parentItemId: 'p' });
+    expect(plan({ items: [sub, habit('h2')], at: tueMorning, delivered }).withdraw).toEqual(['dsul-item-h1']);
+  });
+
+  it('leaves alone what is not dsul\'s, and what it cannot place', () => {
+    const p = plan({
+      items: [habit('h1', { completedDates: [MON] })],
+      at: wall(MON, '09:00'),
+      delivered: [
+        { id: 'another-app', deliveredAtMs: wall(MON, '07:00') },
+        { id: 'dsul-item-h1#9', deliveredAtMs: wall(MON, '07:30') },
+        { id: 'dsul-item-', deliveredAtMs: wall(MON, '07:30') },
+        { id: 'dsul-item-h1', deliveredAtMs: Number.NaN },
+        { id: 'dsul-item-h1#2', deliveredAtMs: Number.NaN, dateStr: MON },
+      ],
+    });
+    expect(p.withdraw).toEqual(['dsul-item-h1#2']);
+  });
+
+  // lib/eod.ts reviewedDay files a review finished after midnight under the
+  // night it was for, so the invitation it answered is that night's.
+  it('withdraws the review\'s invitation once its night is reviewed, after midnight too', () => {
+    const late = { enabled: true, time: '23:30', lastReviewDate: MON };
+    const shade = [rang('dsul-eod', MON, '23:30')];
+    const after = (eod: typeof late) => plan({ eod, remindersEnabled: false, at: wall(TUE, '00:15'), delivered: shade });
+    expect(after(late).withdraw).toEqual(['dsul-eod']);
+    expect(after({ ...late, lastReviewDate: '2026-10-04' }).withdraw).toEqual([]);
+    expect(after({ ...late, enabled: false }).withdraw).toEqual(['dsul-eod']);
+    // Answered on the web at 23:00 and reconciled the next morning.
+    const web = { enabled: true, time: '21:00', lastReviewDate: MON };
+    expect(plan({ eod: web, at: wall(TUE, '07:00'), delivered: [rang('dsul-eod', MON, '21:00')] }).withdraw).toEqual(['dsul-eod']);
+    // No review settings at all: nothing is assumed.
+    expect(plan({ eod: null, at: wall(TUE, '07:00'), delivered: [rang('dsul-eod', MON, '21:00')] }).withdraw).toEqual([]);
+  });
+
+  it('a snooze replaces that day\'s cue in the shade, not another day\'s', () => {
+    const h = habit('h1', { repeatFrequency: 'custom', repeatDays: [1, 3, 5] });
+    const until = new Date(wall(WED, '07:50')).toISOString();
+    const p = plan({
+      items: [h],
+      at: wall(WED, '07:35'),
+      localSentKeys: [`${WED}T07:30`],
+      snoozes: [{ itemId: 'h1', until, date: WED }],
+      delivered: [rang('dsul-item-h1#2', MON), rang('dsul-item-h1#4', WED)],
+    });
+    expect(p.withdraw).toEqual(['dsul-item-h1#4']);
   });
 });
 
@@ -644,16 +897,18 @@ describe('planNotifications: the budget', () => {
     expect(p.notes).toEqual([{ code: 'over-budget', itemId: 'h60', kept: 0 }]);
   });
 
-  it('gives every item its next cue before any weekday set gets its slots', () => {
+  it('gives every item its next cue before any weekday set gets its other slots', () => {
     const split = habit('a-split', { repeatFrequency: 'custom', repeatDays: [1, 3, 5] });
     const p = plan({ items: [split, habit('b1'), habit('b2')], budget: 4 });
     expect(p.requests.map((r) => [r.id, r.trigger.type])).toEqual([
-      ['dsul-item-a-split', 'at'],
+      ['dsul-item-a-split#2', 'calendar'],
       ['dsul-item-b1', 'calendar'],
       ['dsul-item-b2', 'calendar'],
-      ['dsul-item-a-split#next', 'at'],
+      ['dsul-item-a-split#4', 'calendar'],
     ]);
     expect(p.notes).toEqual([{ code: 'over-budget', itemId: 'a-split', kept: 2 }]);
+    const tight = plan({ items: [split, habit('b1'), habit('b2')], budget: 2 });
+    expect(ids(tight)).toEqual(['dsul-item-a-split#2', 'dsul-item-b1']);
     // With room, the same set stands on its three weekdays.
     expect(ids(plan({ items: [split, habit('b1'), habit('b2')], budget: 5 }))).toEqual([
       'dsul-item-a-split#2', 'dsul-item-a-split#4', 'dsul-item-a-split#6', 'dsul-item-b1', 'dsul-item-b2',
@@ -670,7 +925,7 @@ describe('planNotifications: the budget', () => {
     expect(p.notes).toEqual([{ code: 'over-budget', itemId: 'late', kept: 0 }]);
   });
 
-  it('puts a snooze before a catch-up, whatever their items', () => {
+  it('puts a snooze before any item\'s cue, and a catch-up, never pending, costs nothing', () => {
     const now = wall(MON, '07:40');
     const until = new Date(wall(MON, '07:55')).toISOString();
     const p = plan({
@@ -680,11 +935,25 @@ describe('planNotifications: the budget', () => {
       snoozes: [{ itemId: 'z', until, date: MON }],
       budget: 1,
     });
-    expect(ids(p)).toEqual(['dsul-item-z#snooze']);
+    expect(ids(p)).toEqual(['dsul-item-a#now', 'dsul-item-z#snooze']);
     expect(p.notes).toEqual([
       { code: 'over-budget', itemId: 'a', kept: 0 },
       { code: 'over-budget', itemId: 'z', kept: 0 },
     ]);
+  });
+
+  // Thirty cues caught up at 07:35 and twenty-nine Wednesday habits: the
+  // catch-ups are delivered at once, so every item still gets its trigger.
+  it('counts only what waits pending against the budget', () => {
+    const items = [
+      ...Array.from({ length: 30 }, (_, i) => habit(`c${String(i).padStart(2, '0')}`)),
+      ...Array.from({ length: 29 }, (_, i) => habit(`w${String(i).padStart(2, '0')}`, { repeatFrequency: 'weekly', repeatDays: [3] })),
+    ];
+    const p = plan({ items, at: wall(MON, '07:35'), eod: { enabled: true, time: '21:00', lastReviewDate: null } });
+    expect(p.requests.filter((r) => r.trigger.type === 'now')).toHaveLength(30);
+    expect(p.requests.filter((r) => r.trigger.type !== 'now')).toHaveLength(NOTIFICATION_BUDGET);
+    expect(new Set(p.requests.map((r) => r.itemId ?? 'eod')).size).toBe(60);
+    expect(p.notes).toEqual([]);
   });
 });
 

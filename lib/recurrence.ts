@@ -86,7 +86,25 @@ export function firstRepeatDayFrom(
  * Format a Date to a YYYY-MM-DD string in the given IANA timezone.
  */
 export function toDateStr(date: Date, userTimezone: string): string {
-  return Intl.DateTimeFormat('en-CA', { timeZone: userTimezone }).format(date);
+  return dayFormatter(userTimezone).format(date);
+}
+
+/**
+ * One formatter per zone. Building an Intl.DateTimeFormat costs about a
+ * hundred times what formatting with one does, and toDateStr sits under
+ * isPausedOn, which the reminder plan asks once per item per day for a year
+ * ahead: uncached, sixty paused habits took seconds to plan. A zone the
+ * runtime does not know throws on every call, as it did uncached.
+ */
+const dayFormatters = new Map<string, Intl.DateTimeFormat>();
+
+function dayFormatter(userTimezone: string): Intl.DateTimeFormat {
+  let f = dayFormatters.get(userTimezone);
+  if (!f) {
+    f = Intl.DateTimeFormat('en-CA', { timeZone: userTimezone });
+    dayFormatters.set(userTimezone, f);
+  }
+  return f;
 }
 
 /**

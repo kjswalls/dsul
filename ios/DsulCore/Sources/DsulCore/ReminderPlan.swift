@@ -11,10 +11,10 @@ import Foundation
 // On the phone the per-item cue, its snooze and the end-of-day review are
 // LOCAL notifications (memory/plans/reminders-platforms.md §2.3, Phase 2).
 // `planNotifications` decides the set: given the planner as the phone last saw
-// it and one instant, which UNNotificationRequests should be pending, under
-// which identifiers, with which triggers and words, and which delivered ones
-// are stale. The hosted scheduler diffs that against what is pending and
-// delivered; it decides nothing itself.
+// it, what is in its shade, and one instant, which UNNotificationRequests
+// should be pending, under which identifiers, with which triggers and words,
+// and which delivered ones are stale. The hosted scheduler diffs that against
+// what is pending and delivered; it decides nothing itself.
 //
 // It never decides whether an item wants doing (that is `wantsDoingOn`,
 // ReminderDue.swift, asked once per candidate day), never writes a sentence
@@ -22,62 +22,80 @@ import Foundation
 // (design decision 24: a list worked out at the last plan can name a habit
 // done elsewhere since, the one scold the copy contract cannot send).
 //
-// THE SHAPES. Two rules bind them: a phone left alone must not fall silent
-// (decision 23: a one-off fires once and does not launch the app), and every
-// ring lands on its own minute, on a day the item occurs.
-// - a calendar cadence (daily; one weekday; a day of the month up to the
-//   28th) is ONE repeating calendar trigger under `dsul-item-<id>`;
+// THE SHAPES (plan.ts's header has the whole argument). Two rules bind them: a
+// phone left alone must not fall silent (decision 23: a one-off fires once and
+// does not launch the app), and every ring lands on its own minute, on a day
+// the item occurs and, as far as the plan can see, still wants doing. A
+// repeating trigger cannot be told when to stop, so where the two meet the
+// second wins and the phone goes quiet instead.
+// - a calendar cadence (daily; one weekday; a day of the month) is ONE
+//   repeating calendar trigger under `dsul-item-<id>`. A day of the month after
+//   the 28th rings in the long months, and the next shorter month's clamped
+//   last day is a one-off beside it under `#next`;
 // - two to six weekdays are one calendar trigger per weekday,
 //   `dsul-item-<id>#<weekday>` (1 = Sunday … 7 = Saturday);
-// - a slot whose own next ring is not the next WANTED cue on its days is HELD
-//   (today handled before its cue, or a pause or season over its next ring).
-//   A held weekday of a split is a one-off at that weekday's next wanted cue,
+// - a slot STANDS only while its own next ring is the next wanted cue on its
+//   days AND every ring it makes in the `lapseDays` after that one, and the
+//   ring after it however far off, wants doing too. Otherwise it is HELD (today
+//   handled before its cue; a pause or a season not yet begun over its next
+//   ring; a season's end, a skip or a tick ahead the plan can already see). A
+//   held weekday of a split is a one-off at that weekday's next wanted cue,
 //   under the same `#<weekday>`. A held daily slot splits into `#1` … `#7` by
-//   the same rule, so six days keep standing and today's weekday is a one-off
-//   a week out. A held lone weekday or day of the month is the one-off series
-//   below. The first plan after the held day puts the calendar trigger back;
+//   the same rule. A held lone weekday or day of the month is the one-off
+//   series below;
 // - NO repeating interval trigger (where the web departs from decision 23's
 //   letter): UNTimeIntervalNotificationTrigger has no start date, so a
 //   repeating one first rings `seconds` after it is added and then every
 //   `seconds`, and cannot both start at the next wanted cue and repeat on the
-//   cadence. Anchored, its later rings drift off the minute and onto days the
-//   item does not occur, where a Done credits the wrong day;
-// - one-offs where no cadence stands: a dated task, a series not yet begun, a
-//   day of the month after the 28th, a cue time in 01:00–03:59 (no repeating
-//   trigger on a daylight-saving boundary), a held lone weekday or month day,
-//   and a weekday set or a held daily's seven that the budget cannot hold;
-//   each the next wanted cue under `dsul-item-<id>` and, while the budget
-//   allows, the one after under `#next`;
-// - a snooze is a one-off under `#snooze`, beside the standing trigger, and
-//   withdraws the delivered cue it replaces. It belongs to its day: one that
-//   would ring past that day's local midnight has expired (`ringsOnDay`,
-//   ReminderSnooze.swift), as it has on the server;
+//   cadence;
+// - one-offs where no cadence stands: a dated task; a series whose start,
+//   today or later, is off its own rule; a cue time in the zone's changeover
+//   minutes (`changeoverMinutes`, ReminderClock.swift: 01:00–02:59 in New
+//   York, none in Kolkata); a held lone weekday or month day. Each is the next
+//   wanted cue under `dsul-item-<id>` and the one after under `#next`;
+// - a snooze is a one-off under `#snooze`, beside the standing trigger. It
+//   belongs to its day: one that would ring past that day's local midnight
+//   has expired (`ringsOnDay`, ReminderSnooze.swift), as it has on the server;
 // - a cue armed inside its own window rings now (`#now`), once per device,
 //   never while a snooze from today is pending (armed, or expired at midnight);
-// - the review is a standing daily trigger under `dsul-eod`, never removed
-//   while it is on; reviewed today before its hour it is held as a daily cue
-//   is (a one-off at tomorrow's hour under `dsul-eod`, `#next` the day after,
-//   splitting into `dsul-eod#1` … `#7` while the budget allows); in
-//   01:00–03:59, one-offs (`dsul-eod`, `dsul-eod#next`). No catch-up.
+// - the review is a standing daily trigger under `dsul-eod`, held as a daily
+//   cue is (reviewed today before its hour, it splits into `dsul-eod#1` …
+//   `#7`); in the changeover minutes, one-offs (`dsul-eod`, `dsul-eod#next`).
+//   No catch-up.
 //
-// What is left: a held lone weekday rings twice, a week apart, and a held
-// month day twice, a month apart, then waits for dsul to open; a held daily
-// without room for its seven rings tomorrow and the day after; with its seven,
-// only today's weekday waits, and only from a week on.
+// THE SHADE. A delivered notification is withdrawn when the day it is about
+// (its own dateStr, or the local day it was delivered on) no longer wants
+// doing, its item is gone or no longer reminds, reminders are off on this
+// iPhone, a snooze armed for that day replaces it, or, for the review, that
+// day is reviewed or the review is off. Nothing else is touched.
 //
-// The budget: 60 requests (of the OS's 64 pending), spent in passes: the
-// review's one request, live snoozes, then catch-ups; then ONE request per
-// item, soonest first; then each split its slots (the review's first, then in
-// the order the first requests were placed) while they fit; then the second
-// one-offs of what was not split. An item, or the review, that loses anything
-// but its second one-off gets an over-budget note.
+// What is left, each until dsul next plans: a held weekday of a split rings
+// once, at its next wanted cue (a daily ticked before its cue is quiet on that
+// weekday from two weeks on; a pause, or a season not yet begun, holds every
+// weekday whose next ring it covers, so a pause of a week or more quiets the
+// whole item from a week after it ends); a held lone weekday or month day,
+// and a series not yet begun from an off-rule start, ring twice; a cue in the
+// changeover minutes rings twice, a day apart; a day of the month after the
+// 28th misses the short months after the next one; an unwanted day further
+// than `lapseDays` past a slot's next ring (and past the ring after it) is
+// left to a plan in between; a split the budget cut short stands on the
+// weekdays it kept.
+//
+// The budget: 60 PENDING requests (of the OS's 64); a catch-up is delivered at
+// once and never counted. Spent in passes: the review's soonest; live
+// snoozes; catch-ups; ONE request per item, soonest first; then everyone's
+// others, the review's among them, one at a time in the order they ring. An
+// item, or the review, that loses anything but a second one-off (`#next`)
+// gets an over-budget note.
 //
 // Swift shapes: instants are epoch milliseconds (`Int`), item ids are `UUID`s
 // written lower-case in identifiers and orderings (as the server writes them;
 // the web orders the same strings by code unit), and the trigger and the
 // note are enums where the web has tagged objects. Nothing reads the clock.
 
-/// lib/reminders/plan.ts `NOTIFICATION_BUDGET`: 60 of the OS's 64 pending.
+/// lib/reminders/plan.ts `NOTIFICATION_BUDGET`: how many PENDING requests a
+/// plan may hold, 60 of the OS's 64. A catch-up (`now`) is delivered the moment
+/// it is added and never sits pending, so it is not counted.
 public let notificationBudget = 60
 /// `CUE_THREAD`: the thread a cue and its snooze stack under.
 public let cueThread = "dsul.cues"
@@ -92,11 +110,14 @@ public let eodIdentifier = "dsul-eod"
 /// `RELEVANCE_FULL_STREAK`: the streak at which a cue's relevance reaches 1.
 public let relevanceFullStreak = 30
 
-/// Cue times in [01:00, 04:00) are planned as one-offs.
-let dstBandStart = 60
-let dstBandEnd = 240
-/// How far ahead a next wanted cue is looked for: a year.
+/// `HORIZON_DAYS`: how far ahead a next wanted cue is looked for, a year.
 let planHorizonDays = 366
+/// `LAPSE_DAYS`: how far past a slot's next ring its later rings must want
+/// doing for it to stand (and its following ring, however far off). Kirby's
+/// to move; see plan.ts.
+let lapseDays = 31
+/// `CHANGEOVER_DAYS`: how far ahead a zone's changeovers are looked for.
+let changeoverDays = 400
 
 /// lib/reminders/plan.ts `PlannedKind`. The raw values are the web's.
 public enum PlannedKind: String, Sendable, Hashable, CaseIterable {
@@ -111,7 +132,7 @@ public enum PlannedKind: String, Sendable, Hashable, CaseIterable {
 ///   (year, month, day from `dateStr`, hour and minute from `hhmm`);
 /// - `afterMs`: a one-off UNTimeIntervalNotificationTrigger, `ms` after the
 ///   plan's instant (added later, `firesAt` minus the moment of adding);
-/// - `now`: no trigger; delivered at once.
+/// - `now`: no trigger; delivered at once, and never pending.
 ///
 /// There is no repeating interval: see the header for why it cannot be both
 /// anchored at a cue and periodic.
@@ -230,8 +251,10 @@ public struct PlannedRequest: Sendable, Hashable {
 /// - `badZone`: the zone is not one Foundation knows; nothing planned.
 /// - `badTime`: a cue time (or, with no item, the review's hour) is not a time.
 /// - `dstGap`: that day's cue falls in the hour a spring-forward skips.
-/// - `overBudget`: the item (no item: the review) lost requests to the
-///   budget; `kept` is how many of its cue requests remain.
+/// - `overBudget`: the item (no item: the review) lost a request to the
+///   budget other than a second one-off (`#next`): its first, its snooze, or
+///   a weekday of its split. `kept` is how many of its cue requests remain
+///   (the review's own, for the review).
 public enum PlanNote: Sendable, Hashable {
     case badZone(value: String)
     case badTime(itemId: UUID?, value: String)
@@ -280,6 +303,24 @@ public struct PlanEod: Sendable, Hashable {
     }
 }
 
+/// lib/reminders/plan.ts `PlanDelivered`: one notification in the shade, as
+/// getDeliveredNotifications reports it. Any app's identifiers may be passed;
+/// only dsul's are ever withdrawn.
+public struct PlanDelivered: Sendable, Hashable {
+    /// The request's identifier.
+    public var id: String
+    /// UNNotification.date, epoch ms: when it was delivered.
+    public var deliveredAtMs: Int
+    /// Its userInfo's dateStr, when it carried one.
+    public var dateStr: String?
+
+    public init(id: String, deliveredAtMs: Int, dateStr: String? = nil) {
+        self.id = id
+        self.deliveredAtMs = deliveredAtMs
+        self.dateStr = dateStr
+    }
+}
+
 /// lib/reminders/plan.ts `PlanInput`, with the web's defaults filled in.
 public struct PlanInput: Sendable, Hashable {
     /// The instant of this plan, epoch milliseconds.
@@ -293,13 +334,16 @@ public struct PlanInput: Sendable, Hashable {
     public var seasons: [Season]
     public var timeFormat: TimeFormat
     /// habit_reminders_enabled AND this device's own switch. Off plans no cue,
-    /// no snooze and no catch-up; the review has its own switch.
+    /// no snooze and no catch-up, and withdraws every cue in the shade; the
+    /// review has its own switch.
     public var remindersEnabled: Bool
     public var eod: PlanEod?
     public var snoozes: [PlanSnooze]
     /// `sentKeyFor(day, at)` of every cue this device has rung or had armed at
     /// its minute. The scheduler adds a catch-up's key the moment it adds it.
     public var localSentKeys: Set<String>
+    /// What is in the shade now. Empty, nothing is withdrawn.
+    public var delivered: [PlanDelivered]
     public var graceMinutes: Int
     public var budget: Int
 
@@ -314,6 +358,7 @@ public struct PlanInput: Sendable, Hashable {
         eod: PlanEod? = nil,
         snoozes: [PlanSnooze] = [],
         localSentKeys: Set<String> = [],
+        delivered: [PlanDelivered] = [],
         graceMinutes: Int = reminderGraceMinutes,
         budget: Int = notificationBudget
     ) {
@@ -327,6 +372,7 @@ public struct PlanInput: Sendable, Hashable {
         self.eod = eod
         self.snoozes = snoozes
         self.localSentKeys = localSentKeys
+        self.delivered = delivered
         self.graceMinutes = graceMinutes
         self.budget = budget
     }
@@ -334,9 +380,11 @@ public struct PlanInput: Sendable, Hashable {
 
 /// lib/reminders/plan.ts `NotificationPlan`.
 public struct NotificationPlan: Sendable, Hashable {
-    /// Every request that should be pending, ordered by firesAt, then id.
+    /// Every request that should be pending (or, `now`, delivered), ordered
+    /// by firesAt, then id.
     public var requests: [PlannedRequest]
-    /// Identifiers to remove from the DELIVERED notifications, sorted. Pending
+    /// Identifiers to remove from the DELIVERED notifications, sorted: each one
+    /// of `delivered` that is stale (see the header's THE SHADE). Pending
     /// requests are the diff's business, never this.
     public var withdraw: [String]
     public var notes: [PlanNote]
@@ -393,6 +441,7 @@ public func eodMinutesOfDay(_ hhmm: String) -> Int? {
     return hours * 60 + minutes
 }
 
+
 // MARK: - Internals
 
 /// One cue: the day, and the instant (epoch ms).
@@ -415,41 +464,11 @@ private enum CueCadence {
     case slots([Slot])
 }
 
-/// What one item, or the review, asks of the budget: the one-off series (the
-/// next wanted cue, and the one after it) or a lone calendar trigger, and the
-/// split that replaces the primary while the budget allows.
+/// What one item, or the review, asks of the budget: its requests, soonest first.
 private struct Ask {
     /// The item's id; nil for the review.
     var itemId: UUID?
-    /// The one request it must have to ring at all.
-    let primary: PlannedRequest
-    /// The one-off after the primary, while the budget allows.
-    var secondary: PlannedRequest?
-    /// Its weekday slots, which replace the primary while the budget allows.
-    var upgrade: [PlannedRequest]?
-}
-
-/// Whose spring-forward gap a cue search reports, if anyone's.
-private enum GapReport {
-    case silent
-    case review
-    case item(UUID)
-}
-
-/// lib/reminders/plan.ts `cadence`'s arguments: how one cadence, an item's or
-/// the review's, is planned. `once` makes its one-off for a cue and `standing`
-/// its calendar trigger for a slot; the rest is the same for both.
-private struct CadenceRules {
-    let base: String
-    let minutes: Int
-    let gaps: GapReport
-    let wanted: (DayString) -> Bool
-    let once: (String, PlannedCue) -> PlannedRequest
-    let standing: (Slot, Int) -> PlannedRequest
-}
-
-private func inDstBand(_ minutes: Int) -> Bool {
-    return minutes >= dstBandStart && minutes < dstBandEnd
+    var requests: [PlannedRequest]
 }
 
 /// Minutes since midnight as "HH:mm".
@@ -489,16 +508,62 @@ private func dailySlot(_ base: String) -> Slot {
     return Slot(id: base, weekday: nil, day: nil, rings: { _ in true })
 }
 
+/// lib/reminders/plan.ts `itemIdOf`: the item a dsul identifier belongs to,
+/// as the string it was written with, or nil for one that is not an item's.
+private func itemIdOf(_ id: String) -> String? {
+    let prefix = "dsul-item-"
+    guard id.hasPrefix(prefix) else { return nil }
+    let rest = id.dropFirst(prefix.count)
+    let itemId = String(rest.firstIndex(of: "#").map { rest[..<$0] } ?? rest)
+    guard !itemId.isEmpty else { return nil }
+    let base = prefix + itemId
+    let own = [base] + (1...7).map { "\(base)#\($0)" } + ["\(base)#next", "\(base)#now", "\(base)#snooze"]
+    return own.contains(id) ? itemId : nil
+}
+
+/// The first cue at `minutes`, on a day from `start` on (within `days` days)
+/// that `accept` takes, that is still to come. A day whose minute does not
+/// exist (spring forward) is passed over and reported to `onGap`; nothing is
+/// moved to another minute.
+private func nextCue(
+    from start: DayString, _ minutes: Int, _ zone: TimeZone, _ nowMs: Int,
+    days: Int = planHorizonDays,
+    accept: (DayString) -> Bool,
+    onGap: ((DayString) -> Void)? = nil
+) -> PlannedCue? {
+    var day = start
+    var i = 0
+    while i < days {
+        if i > 0 { day = day.adding(days: 1) }
+        i += 1
+        if !accept(day) { continue }
+        guard let at = instantOf(day, minutes, zone) else {
+            onGap?(day)
+            continue
+        }
+        if at > nowMs { return PlannedCue(day: day, at: at) }
+    }
+    return nil
+}
+
 /// lib/reminders/plan.ts `slotsOf`: the standing slots an item's cadence can
 /// stand on, or `.oneOffs` when it has none. An empty list is a cadence that
 /// rings on no day (custom with no days): no request, as `occursOn`.
-private func slotsOf(_ item: Item, minutes: Int, today: DayString) -> CueCadence {
-    if inDstBand(minutes) { return .oneOffs }
+private func slotsOf(_ item: Item, today: DayString) -> CueCadence {
     if !isRecurring(item.rule) { return .oneOffs }
-    let startDate = truthyText(item.startDate).map(toDateOnly)
     if caps(item.typeName).dateAnchored {
-        // A series not yet begun: its start day need not be a repeat day.
-        guard let startDate, startDate < today.description else { return .oneOffs }
+        // Undated occurs on no day (the one-offs find none); a start still to
+        // come off the rule is a day no calendar trigger rings.
+        guard let startDate = truthyText(item.startDate).map(toDateOnly), !startDate.isEmpty else {
+            return .oneOffs
+        }
+        if !codeUnitLess(startDate, today.description) {
+            // lib/recurrence.ts `shouldShowOnDate` on the start; a start that is
+            // no day is on no rule but the daily one, as the web reads it.
+            let onRule = DayString(startDate).map { shouldShowOnDate(item.rule, on: $0) }
+                ?? (item.rule.frequency == "daily")
+            if !onRule { return .oneOffs }
+        }
     }
 
     let base = itemIdentifier(item.id)
@@ -522,9 +587,7 @@ private func slotsOf(_ item: Item, minutes: Int, today: DayString) -> CueCadence
     case "weekly", "custom":
         return .slots(weekdays(item.repeatDays))
     case "monthly":
-        // A calendar trigger on the 31st skips every shorter month, where
-        // occursOn clamps to the last day: past the 28th, one-offs.
-        if let monthDay = item.repeatMonthDay, (1...28).contains(monthDay) {
+        if let monthDay = item.repeatMonthDay, (1...31).contains(monthDay) {
             return .slots([Slot(id: base, weekday: nil, day: monthDay, rings: { $0.day == monthDay })])
         }
         return .oneOffs
@@ -533,11 +596,143 @@ private func slotsOf(_ item: Item, minutes: Int, today: DayString) -> CueCadence
     }
 }
 
+/// lib/reminders/plan.ts `cadence`: how one cadence, an item's or the
+/// review's, asks the budget. `once` makes its one-off for a cue and
+/// `standing` its calendar trigger for a slot; the rest is the same for both.
+private final class Cadence {
+    let base: String
+    let minutes: Int
+    let today: DayString
+    let zone: TimeZone
+    let nowMs: Int
+    let wanted: (DayString) -> Bool
+    let gap: (DayString) -> Void
+    let once: (String, PlannedCue) -> PlannedRequest
+    let standing: (Slot, Int) -> PlannedRequest
+    /// `unwantedDays`: nil until asked, then the lead-in (nil inside: none
+    /// within the horizon wants doing).
+    private var unwantedDays: Int??
+
+    init(
+        base: String, minutes: Int, today: DayString, zone: TimeZone, nowMs: Int,
+        wanted: @escaping (DayString) -> Bool,
+        gap: @escaping (DayString) -> Void,
+        once: @escaping (String, PlannedCue) -> PlannedRequest,
+        standing: @escaping (Slot, Int) -> PlannedRequest
+    ) {
+        self.base = base
+        self.minutes = minutes
+        self.today = today
+        self.zone = zone
+        self.nowMs = nowMs
+        self.wanted = wanted
+        self.gap = gap
+        self.once = once
+        self.standing = standing
+    }
+
+    /// How many days from today none wants doing, or nil when none does within
+    /// the horizon. Every search for a wanted cue starts there, so an item
+    /// paused for months is walked through once, not once per slot.
+    private func leadIn() -> Int? {
+        if let known = unwantedDays { return known }
+        var found: Int?
+        var day = today
+        for i in 0..<planHorizonDays {
+            if i > 0 { day = day.adding(days: 1) }
+            if wanted(day) {
+                found = i
+                break
+            }
+        }
+        unwantedDays = .some(found)
+        return found
+    }
+
+    /// The next cue `accept` takes on a day that wants doing, searched as from today.
+    func nextWanted(_ accept: (DayString) -> Bool) -> PlannedCue? {
+        guard let skip = leadIn() else { return nil }
+        return nextCue(
+            from: today.adding(days: skip), minutes, zone, nowMs, days: planHorizonDays - skip,
+            accept: { accept($0) && self.wanted($0) }, onGap: gap
+        )
+    }
+
+    /// The next wanted cue under `base` and, when there is one, the one after under `#next`.
+    func series() -> [PlannedRequest] {
+        guard let first = nextWanted({ _ in true }) else { return [] }
+        guard let second = nextCue(from: first.day.adding(days: 1), minutes, zone, nowMs, accept: wanted, onGap: gap)
+        else { return [once(base, first)] }
+        return [once(base, first), once("\(base)#next", second)]
+    }
+
+    /// Does every ring `s` makes in the `lapseDays` after `from` want doing,
+    /// and its following ring too when that is further off (a trigger on the
+    /// 31st rings again two months on when the next month is short)?
+    private func keepsWanting(_ s: Slot, from: DayString) -> Bool {
+        var rang = false
+        var day = from
+        var i = 1
+        while i <= planHorizonDays && (i <= lapseDays || !rang) {
+            day = day.adding(days: 1)
+            i += 1
+            if !s.rings(day) { continue }
+            if !wanted(day) { return false }
+            rang = true
+        }
+        return true
+    }
+
+    /// One slot: its calendar trigger while that trigger's own next ring is the
+    /// next wanted cue on its days and its rings after it want doing too; else
+    /// (held) a one-off at that cue under the slot's own identifier; else
+    /// nothing (no wanted cue within the horizon: paused with no end, a season
+    /// over for good).
+    func slot(_ s: Slot) -> PlannedRequest? {
+        guard let next = nextWanted(s.rings) else { return nil }
+        if let rings = nextCue(from: today, minutes, zone, nowMs, accept: s.rings),
+           rings.day == next.day, keepsWanting(s, from: next.day) {
+            return standing(s, rings.at)
+        }
+        return once(s.id, next)
+    }
+
+    /// What standing `slots` ask: one request per slot, a held daily's seven, or the series.
+    func stand(_ slots: [Slot]) -> [PlannedRequest] {
+        if slots.count != 1 { return slots.compactMap { slot($0) } }
+        let only = slots[0]
+        guard let own = slot(only) else {
+            // A day of the month after the 28th with none of its own days
+            // wanted can still have a clamped one, which the series finds.
+            if let day = only.day, day > 28 { return series() }
+            return []
+        }
+        guard case .calendar = own.trigger else {
+            // A lone weekday or day of the month has no other day to stand on.
+            if only.weekday != nil || only.day != nil { return series() }
+            // A daily slot splits, so the days that still want it keep standing.
+            return weekdaySlots(base, Array(0...6)).compactMap { slot($0) }
+        }
+        if let day = only.day, day > 28,
+           // The shorter months' clamped day, which a trigger on the 31st never rings.
+           let clamped = nextWanted({ !only.rings($0) }) {
+            return [own, once("\(base)#next", clamped)]
+        }
+        return [own]
+    }
+}
+
 // MARK: - The plan
 
 /// lib/reminders/plan.ts `planNotifications`: the requests that should be
 /// pending at `input.nowMs`, the delivered identifiers to withdraw, and notes
 /// on what could not be planned. Pure; see the header for the rules.
+///
+/// Every item, and the review, asks for its requests, soonest first, and the
+/// budget is spent in passes: the review's soonest request, then live snoozes,
+/// then catch-ups (free: never pending); then ONE request per item, soonest
+/// first; then everyone's others, the review's among them, one at a time in
+/// the order they ring.
 public func planNotifications(_ input: PlanInput) -> NotificationPlan {
     let nowMs = input.nowMs
     guard let zone = TimeZone(identifier: input.timeZone) else {
@@ -549,83 +744,27 @@ public func planNotifications(_ input: PlanInput) -> NotificationPlan {
     let ctx = ActivationContext(timeZone: input.timeZone, routines: input.routines, seasons: input.seasons)
     let budget = input.budget
 
+    // The minutes no repeating trigger may sit on here: those the zone's
+    // daylight-saving changeovers skip or play twice.
+    let changeovers = changeoverMinutes(zone, fromMs: nowMs, days: changeoverDays)
+    func onChangeover(_ minutes: Int) -> Bool {
+        return changeovers.contains { inMinuteRun(minutes, $0) }
+    }
+
     var notes: [PlanNote] = []
     var fixed: [PlannedRequest] = []
     var asks: [Ask] = []
-    var reviewAsk: Ask?
-    var withdraw = Set<String>()
+    var reviewAsk: [PlannedRequest] = []
     var gapsSeen = Set<String>()
 
     /// Report a skipped spring-forward minute once, and only if it was still to come.
-    func reportGap(_ day: DayString, _ minutes: Int, _ itemId: UUID?) {
-        if day == today && minutes <= nowMinutes { return }
-        let key = "\(itemId.map(idString) ?? "")|\(day)"
-        guard gapsSeen.insert(key).inserted else { return }
-        notes.append(.dstGap(itemId: itemId, dateStr: day.description, at: clockText(minutes)))
-    }
-
-    /// The first cue at `minutes`, on a day from `start` on that `accept`
-    /// takes, that is still to come. A day whose minute does not exist is
-    /// passed over (and reported, when asked); nothing moves to another minute.
-    func nextCue(from start: DayString, _ minutes: Int, _ gaps: GapReport, accept: (DayString) -> Bool) -> PlannedCue? {
-        var day = start
-        for i in 0..<planHorizonDays {
-            if i > 0 { day = day.adding(days: 1) }
-            if !accept(day) { continue }
-            guard let at = instantOf(day, minutes, zone) else {
-                switch gaps {
-                case .silent: break
-                case .review: reportGap(day, minutes, nil)
-                case .item(let id): reportGap(day, minutes, id)
-                }
-                continue
-            }
-            if at > nowMs { return PlannedCue(day: day, at: at) }
+    func gapReporter(_ minutes: Int, _ itemId: UUID?) -> (DayString) -> Void {
+        return { day in
+            if day == today && minutes <= nowMinutes { return }
+            let key = "\(itemId.map(idString) ?? "")|\(day)"
+            guard gapsSeen.insert(key).inserted else { return }
+            notes.append(.dstGap(itemId: itemId, dateStr: day.description, at: clockText(minutes)))
         }
-        return nil
-    }
-
-    /// The next wanted cue under the base identifier and, when there is one,
-    /// the one after under `#next`.
-    func series(_ c: CadenceRules) -> Ask? {
-        guard let first = nextCue(from: today, c.minutes, c.gaps, accept: c.wanted) else { return nil }
-        let second = nextCue(from: first.day.adding(days: 1), c.minutes, c.gaps, accept: c.wanted)
-        return Ask(itemId: nil, primary: c.once(c.base, first), secondary: second.map { c.once("\(c.base)#next", $0) })
-    }
-
-    /// One slot: its calendar trigger when that trigger's own next ring is the
-    /// next wanted cue on its days, else (held) a one-off at that cue under the
-    /// slot's own identifier, else nothing (no wanted cue within the horizon:
-    /// paused with no end, a season over for good).
-    func slot(_ s: Slot, _ c: CadenceRules) -> PlannedRequest? {
-        let rings = nextCue(from: today, c.minutes, .silent, accept: s.rings)
-        guard let next = nextCue(from: today, c.minutes, c.gaps, accept: { s.rings($0) && c.wanted($0) }) else {
-            return nil
-        }
-        if let rings, rings.day == next.day { return c.standing(s, rings.at) }
-        return c.once(s.id, next)
-    }
-
-    /// What standing `slots` ask: the calendar trigger alone, or the series
-    /// with a split to upgrade to.
-    func stand(_ slots: [Slot], _ c: CadenceRules) -> Ask? {
-        if slots.count == 1 {
-            let only = slots[0]
-            guard let own = slot(only, c) else { return nil }
-            if case .calendar = own.trigger { return Ask(itemId: nil, primary: own) }
-            guard var held = series(c) else { return nil }
-            // A lone weekday or day of the month has no other day to stand on.
-            if only.weekday != nil || only.day != nil { return held }
-            // A daily slot splits, so the other six days keep standing.
-            held.upgrade = weekdaySlots(c.base, Array(0...6)).compactMap { slot($0, c) }
-            return held
-        }
-        // A weekday set rides the budget as one one-off until its slots fit.
-        let planned = slots.compactMap { slot($0, c) }
-        if planned.isEmpty { return nil }
-        guard var held = series(c) else { return nil }
-        held.upgrade = planned
-        return held
     }
 
     // MARK: The review
@@ -640,27 +779,29 @@ public func planNotifications(_ input: PlanInput) -> NotificationPlan {
                     userInfo: PlannedUserInfo(kind: .eod, dateStr: dateStr)
                 )
             }
-            let rules = CadenceRules(
-                base: eodIdentifier,
-                minutes: minutes,
-                gaps: .review,
-                // Owed is any day not already recorded as reviewed (lib/eod.ts
-                // isEodOwed, minus the hour). Only today can be.
-                wanted: { $0.description != eod.lastReviewDate },
+            let lastReviewDate = eod.lastReviewDate
+            let plan = Cadence(
+                base: eodIdentifier, minutes: minutes, today: today, zone: zone, nowMs: nowMs,
+                // Owed is lib/eod.ts's isEodOwed, minus the hour: any day not
+                // already recorded as reviewed.
+                wanted: { $0.description != lastReviewDate },
+                gap: gapReporter(minutes, nil),
                 once: { id, next in
                     review(id, .at(dateStr: next.day.description, hhmm: clockText(minutes)), next.at, next.day.description)
                 },
                 standing: { slot, at in review(slot.id, calendarTrigger(minutes, weekday: slot.weekday), at) }
             )
-            reviewAsk = inDstBand(minutes) ? series(rules) : stand([dailySlot(eodIdentifier)], rules)
-            // Done today: the invitation in the shade has been answered.
-            if eod.lastReviewDate == todayStr { withdraw.formUnion(eodIdentifiers()) }
+            reviewAsk = (onChangeover(minutes) ? plan.series() : plan.stand([dailySlot(eodIdentifier)]))
+                .sorted(by: byFireThenId)
         } else {
             notes.append(.badTime(itemId: nil, value: eod.time))
         }
     }
 
     // MARK: The items
+
+    /// The day each item's armed snooze belongs to: it replaces that day's cue in the shade.
+    var snoozedDay: [UUID: String] = [:]
 
     if input.remindersEnabled {
         var snoozeOf: [UUID: PlanSnooze] = [:]
@@ -679,18 +820,21 @@ public func planNotifications(_ input: PlanInput) -> NotificationPlan {
             let minutes = minutesOfDay(at)
             if minutes == nil, let at, !at.isEmpty { notes.append(.badTime(itemId: item.id, value: at)) }
 
+            // One plan asks about the same days many times over (the series,
+            // each slot, each slot's later rings), and an item under a pause
+            // asks about every day of a year: wantsDoingOn once per day.
+            var answers: [DayString: Bool] = [:]
+            let wanted: (DayString) -> Bool = { day in
+                if let answer = answers[day] { return answer }
+                let answer = wantsDoingOn(item, on: day, ctx)
+                answers[day] = answer
+                return answer
+            }
+
             let snooze = snoozeOf[item.id]
-            let wantedToday = wantsDoingOn(item, on: today, ctx)
-            let own = identifiers(for: item.id)
+            let wantedToday = wanted(today)
             let base = itemIdentifier(item.id)
             let snoozeId = "\(base)#snooze"
-
-            // Handled today (done, skipped, tallied, paused, season-inactive):
-            // what is in the shade about it asks for something already answered.
-            if (minutes != nil || snooze != nil)
-                && occursOn(item, on: todayStr, timeZone: input.timeZone) && !wantedToday {
-                withdraw.formUnion(own)
-            }
 
             let anchor = truthyText(item.reminderAnchor)
             let streak = streakOf(item)
@@ -730,8 +874,7 @@ public func planNotifications(_ input: PlanInput) -> NotificationPlan {
             if pending, wantedToday, let snooze, let untilMs,
                ringsOnDay(fireMs: untilMs, zone: input.timeZone, dayStr: snooze.date) {
                 fixed.append(cue(snoozeId, .snoozed, .afterMs(untilMs - nowMs), untilMs, snooze.date))
-                // The snooze replaces whichever of the item's cues is in the shade.
-                for id in own where id != snoozeId { withdraw.insert(id) }
+                snoozedDay[item.id] = snooze.date
             }
 
             guard let minutes, let at else { continue }
@@ -745,11 +888,10 @@ public func planNotifications(_ input: PlanInput) -> NotificationPlan {
                 fixed.append(cue("\(base)#now", .catchUp, .now, nowMs, todayStr))
             }
 
-            let rules = CadenceRules(
-                base: base,
-                minutes: minutes,
-                gaps: .item(item.id),
-                wanted: { wantsDoingOn(item, on: $0, ctx) },
+            let plan = Cadence(
+                base: base, minutes: minutes, today: today, zone: zone, nowMs: nowMs,
+                wanted: wanted,
+                gap: gapReporter(minutes, item.id),
                 once: { id, next in
                     let day = next.day.description
                     return cue(id, .cue, .at(dateStr: day, hhmm: at), next.at, day)
@@ -758,35 +900,43 @@ public func planNotifications(_ input: PlanInput) -> NotificationPlan {
                     cue(slot.id, .cue, calendarTrigger(minutes, weekday: slot.weekday, day: slot.day), firesAt)
                 }
             )
-            let ask: Ask?
-            switch slotsOf(item, minutes: minutes, today: today) {
-            case .oneOffs: ask = series(rules)
-            case .slots(let slots): ask = stand(slots, rules)
+            let requests: [PlannedRequest]
+            switch onChangeover(minutes) ? CueCadence.oneOffs : slotsOf(item, today: today) {
+            case .oneOffs: requests = plan.series()
+            case .slots(let slots): requests = plan.stand(slots)
             }
-            if var ask {
-                ask.itemId = item.id
-                asks.append(ask)
-            }
+            if !requests.isEmpty { asks.append(Ask(itemId: item.id, requests: requests.sorted(by: byFireThenId))) }
         }
     }
 
     // MARK: The budget
 
     var taken: [PlannedRequest] = []
-    var placed: [Ask] = []
+    var pendingCount = 0
     var short = Set<UUID>()
     var reviewShort = false
+    /// Take `request` if it fits; a catch-up always does, since it is never pending.
     func take(_ request: PlannedRequest) -> Bool {
-        guard taken.count < budget else { return false }
+        if case .now = request.trigger {} else {
+            if pendingCount >= budget { return false }
+            pendingCount += 1
+        }
         taken.append(request)
         return true
     }
-
-    // The review first (it is never removed), then snoozes (the user asked for
-    // each by name), then catch-ups; each by when it rings.
-    if let reviewAsk {
-        if take(reviewAsk.primary) { placed.append(reviewAsk) } else { reviewShort = true }
+    /// Take `request`, or note its owner short unless it was only a second one-off.
+    func place(_ request: PlannedRequest) {
+        if take(request) || request.id.hasSuffix("#next") { return }
+        if request.kind == .eod {
+            reviewShort = true
+        } else if let itemId = request.itemId {
+            short.insert(itemId)
+        }
     }
+
+    // The review's soonest first (it is never absent), then snoozes (the user
+    // asked for each one by name), then catch-ups; each by when it rings.
+    if let first = reviewAsk.first { place(first) }
     func rank(_ kind: PlannedKind) -> Int {
         switch kind {
         case .eod: return 0
@@ -798,43 +948,66 @@ public func planNotifications(_ input: PlanInput) -> NotificationPlan {
     fixed.sort { a, b in
         rank(a.kind) != rank(b.kind) ? rank(a.kind) < rank(b.kind) : byFireThenId(a, b)
     }
-    for request in fixed {
-        if !take(request), let itemId = request.itemId { short.insert(itemId) }
-    }
+    for request in fixed { place(request) }
 
     // One request per item, soonest first.
-    asks.sort { byFireThenId($0.primary, $1.primary) }
-    for ask in asks {
-        if take(ask.primary) {
-            placed.append(ask)
-        } else if let itemId = ask.itemId {
-            short.insert(itemId)
-        }
-    }
+    asks.sort { byFireThenId($0.requests[0], $1.requests[0]) }
+    for ask in asks { place(ask.requests[0]) }
 
-    // Each split its slots, in the order the first requests were placed.
-    var upgraded = Set<Int>()
-    for (index, ask) in placed.enumerated() {
-        guard let upgrade = ask.upgrade, !upgrade.isEmpty else { continue }
-        if taken.count - 1 + upgrade.count <= budget,
-           let at = taken.firstIndex(where: { $0.id == ask.primary.id }) {
-            taken.replaceSubrange(at...at, with: upgrade)
-            upgraded.insert(index)
-        } else if let itemId = ask.itemId {
-            short.insert(itemId)
-        } else {
-            reviewShort = true
-        }
-    }
-
-    // Then the second one-offs of what was not split.
-    let seconds = placed.enumerated().compactMap { index, ask in upgraded.contains(index) ? nil : ask.secondary }
-    for request in seconds.sorted(by: byFireThenId) { _ = take(request) }
+    // Then everyone's others, the review's among them, in the order they ring.
+    let others = ([reviewAsk] + asks.map(\.requests)).flatMap { $0.dropFirst() }
+    for request in others.sorted(by: byFireThenId) { place(request) }
 
     if reviewShort { notes.append(.overBudget(itemId: nil, kept: taken.filter { $0.kind == .eod }.count)) }
     for itemId in short.sorted(by: { codeUnitLess(idString($0), idString($1)) }) {
         let kept = taken.filter { $0.itemId == itemId && $0.kind == .cue }.count
         notes.append(.overBudget(itemId: itemId, kept: kept))
+    }
+
+    // MARK: The shade
+
+    var withdraw = Set<String>()
+    let eodIds = Set(eodIdentifiers())
+    // The item a delivered identifier names, by the string the web compares:
+    // the lower-case id, as the server writes it.
+    var itemById: [String: Item] = [:]
+    for item in input.items { itemById[idString(item.id)] = item }
+    /// JavaScript's Date range: an instant past it is no day at all.
+    let maxDateMs = 8_640_000_000_000_000
+    for delivered in input.delivered {
+        // The day it is about: its own, or the local day it rang on.
+        let day: String
+        if let own = delivered.dateStr, isDayShaped(own) {
+            day = own
+        } else if abs(delivered.deliveredAtMs) <= maxDateMs {
+            day = wallClock(delivered.deliveredAtMs, zone).day.description
+        } else {
+            continue
+        }
+
+        if eodIds.contains(delivered.id) {
+            // Answered: the review recorded for that day or a later one
+            // (lib/eod.ts reviewedDay files a review finished after midnight
+            // under the night it was for, so the invitation it answered is
+            // that night's).
+            if let eod = input.eod {
+                let reviewed = eod.lastReviewDate.map { !codeUnitLess($0, day) } ?? false
+                if !eod.enabled || reviewed { withdraw.insert(delivered.id) }
+            }
+            continue
+        }
+
+        guard let itemId = itemIdOf(delivered.id) else { continue }
+        let stale: Bool
+        if !input.remindersEnabled {
+            stale = true
+        } else if let item = itemById[itemId] {
+            let snoozedThatDay = snoozedDay[item.id] == day && delivered.id != "\(itemIdentifier(item.id))#snooze"
+            stale = !isRemindable(item) || !wantsDoingOn(item, on: day, ctx) || snoozedThatDay
+        } else {
+            stale = true
+        }
+        if stale { withdraw.insert(delivered.id) }
     }
 
     return NotificationPlan(

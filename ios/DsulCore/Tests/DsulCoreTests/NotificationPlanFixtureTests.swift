@@ -5,10 +5,14 @@ import DsulCore
 // The web's own plans for lib/reminders/plan.ts, checked against
 // ReminderPlan.swift: for every case, the whole plan (requests in order with
 // their triggers, words, threads and userInfo; withdrawals sorted; notes in
-// order), plus the identifiers. Over every case this also asserts what the
-// TS side asserts of its own output: no more requests than the budget (60 by
-// default), no duplicate identifiers, each from its owner's identifiers, and
-// every body ReminderCopy.swift's own words, inside the copy contract.
+// order), plus the identifiers and lib/reminders/clock.ts `changeoverMinutes`
+// (ReminderClock.swift). Over every case this also asserts what the TS side
+// asserts of its own output: no more PENDING requests than the budget (60 by
+// default; a catch-up is delivered at once), no duplicate identifiers, each
+// from its owner's identifiers, every withdrawal one of what was delivered, no
+// spring-forward gap noted twice, every body ReminderCopy.swift's own words
+// inside the copy contract, and every ring on its own minute, on a day its
+// item occurs and wants doing.
 // tests/unit/notification-plan-fixtures.test.ts writes
 // tests/fixtures/day/notification-plan.json; never edit it by hand
 // (UPDATE_FIXTURES=1). SnoozeFixtureTests reads the same file's snooze cases.
@@ -19,6 +23,12 @@ private struct SnoozeInput: Decodable, Sendable {
     let itemId: String
     let until: String
     let date: String
+}
+
+private struct DeliveredInput: Decodable, Sendable {
+    let id: String
+    let deliveredAtMs: Int
+    let dateStr: String?
 }
 
 private struct EodInput: Decodable, Sendable {
@@ -40,6 +50,7 @@ private struct InputFixture: Decodable, Sendable {
     let eod: EodInput?
     let snoozes: [SnoozeInput]?
     let localSentKeys: [String]?
+    let delivered: [DeliveredInput]?
     let graceMinutes: Int?
     let budget: Int?
 }
@@ -125,8 +136,22 @@ private struct IdentifiersCase: Decodable, Sendable {
     let expected: [String]
 }
 
+private struct RunFixture: Decodable, Sendable, Equatable {
+    let start: Int
+    let length: Int
+}
+
+private struct ChangeoverCase: Decodable, Sendable {
+    let name: String
+    let timeZone: String
+    let fromMs: Int
+    let days: Int
+    let expected: [RunFixture]
+}
+
 private struct Fixture: Decodable, Sendable {
     let identifiers: [IdentifiersCase]
+    let changeoverMinutes: [ChangeoverCase]
     let plans: [PlanCase]
 }
 
@@ -201,6 +226,7 @@ private func planInput(_ f: InputFixture, _ name: String) throws -> PlanInput {
         eod: f.eod.map { PlanEod(enabled: $0.enabled, time: $0.time, lastReviewDate: $0.lastReviewDate) },
         snoozes: snoozes,
         localSentKeys: Set(f.localSentKeys ?? []),
+        delivered: (f.delivered ?? []).map { PlanDelivered(id: $0.id, deliveredAtMs: $0.deliveredAtMs, dateStr: $0.dateStr) },
         graceMinutes: f.graceMinutes ?? reminderGraceMinutes,
         budget: f.budget ?? notificationBudget
     )
@@ -275,6 +301,21 @@ private func fixture(_ n: PlanNote) -> NoteFixture {
         }
     }
 
+    @Test func changeoverMinutesMatchTheWeb() throws {
+        let cases = try loadFixture().changeoverMinutes
+        #expect(cases.contains { $0.expected.isEmpty })
+        #expect(cases.contains { !$0.expected.isEmpty })
+        for c in cases {
+            let got = try #require(changeoverMinutes(timeZone: c.timeZone, fromMs: c.fromMs, days: c.days), "\(c.name)")
+            #expect(got.map { RunFixture(start: $0.start, length: $0.length) } == c.expected, "\(c.name)")
+        }
+        #expect(changeoverMinutes(timeZone: "Not/AZone", fromMs: 0, days: 1) == nil)
+        // A run that wraps past midnight holds the minutes on both sides of it.
+        let wrap = MinuteRun(start: 1410, length: 60)
+        #expect(inMinuteRun(1439, wrap) && inMinuteRun(0, wrap) && inMinuteRun(29, wrap))
+        #expect(!inMinuteRun(30, wrap) && !inMinuteRun(1409, wrap))
+    }
+
     @Test func everyPlanMatchesTheWeb() throws {
         let cases = try loadFixture().plans
         #expect(cases.count > 0)
@@ -291,16 +332,21 @@ private func fixture(_ n: PlanNote) -> NoteFixture {
     }
 
     /// What the TS side asserts of its own plans, asserted of the Swift ones:
-    /// the budget holds, each identifier is used once, and each belongs to the
-    /// request's owner.
+    /// the budget holds for what sits pending, each identifier is used once
+    /// and belongs to the request's owner, every withdrawal was delivered, and
+    /// no spring-forward gap is noted twice.
     @Test func everyPlanHoldsTheInvariants() throws {
         for c in try loadFixture().plans {
             let input = try planInput(c.input, c.name)
             let plan = planNotifications(input)
             let ids = plan.requests.map(\.id)
-            #expect(ids.count <= input.budget, "\(c.name)")
-            #expect(ids.count <= notificationBudget, "\(c.name)")
+            let pending = plan.requests.filter { $0.trigger != .now }
+            #expect(pending.count <= input.budget, "\(c.name)")
             #expect(Set(ids).count == ids.count, "\(c.name): duplicate identifiers")
+            let delivered = Set(input.delivered.map(\.id))
+            for id in plan.withdraw { #expect(delivered.contains(id), "\(c.name): \(id)") }
+            let gaps = plan.notes.filter { $0.code == "dst-gap" }
+            #expect(Set(gaps).count == gaps.count, "\(c.name): a gap noted twice")
             for r in plan.requests {
                 let owned = r.itemId.map { identifiers(for: $0) } ?? eodIdentifiers()
                 #expect(owned.contains(r.id), "\(c.name): \(r.id)")
@@ -359,29 +405,33 @@ private func fixture(_ n: PlanNote) -> NoteFixture {
         #expect(requests.contains { $0.id.hasSuffix("#now") })
     }
 
-    /// §5.3's named rows, by name: 61 daily habits are 60 and a note; the
-    /// spring-forward minute is absent with a note; the fall-back minute rings once.
+    /// §5.3's named rows, and the rules the redesign added, by name, as the
+    /// TS side names them ("the cases reach every rule").
     @Test func theNamedRows() throws {
         let plans = try loadFixture().plans
         func plan(_ name: String) throws -> NotificationPlan {
             let c = try #require(plans.first { $0.name == name }, "\(name)")
             return planNotifications(try planInput(c.input, c.name))
         }
+        func types(_ name: String) throws -> [String] {
+            return try plan(name).requests.map(\.trigger.type)
+        }
+        /// The fixture's item n, as notification-plan-fixtures.test.ts `uid` writes it.
+        func uid(_ n: Int) throws -> UUID {
+            let hex = String(n, radix: 16)
+            let raw = "00000000-0000-4000-8000-" + String(repeating: "0", count: 12 - hex.count) + hex
+            return try #require(UUID(uuidString: raw), "\(raw)")
+        }
+        let vitamins = try uid(1001)
 
+        // The budget case is the default budget, full.
         let full = try plan("61 daily habits: 60 and a note")
         #expect(full.requests.count == notificationBudget)
-        #expect(full.notes.count == 1)
-        if case let .overBudget(itemId, kept)? = full.notes.first {
-            #expect(wire(itemId) == "00000000-0000-4000-8000-000000000488")
-            #expect(kept == 0)
-        } else {
-            Issue.record("expected one over-budget note, got \(full.notes)")
-        }
+        #expect(full.notes == [.overBudget(itemId: try uid(1160), kept: 0)])
 
         let spring = try plan("Los Angeles 2026-03-08 02:30: absent, with a note")
         #expect(!spring.requests.contains { $0.dateStr == "2026-03-08" })
         #expect(spring.notes.contains { $0.code == "dst-gap" })
-
         let fall = try plan("Los Angeles 2026-11-01 01:30: exactly one instant")
         #expect(fall.requests.filter { $0.dateStr == "2026-11-01" }.count == 1)
 
@@ -393,17 +443,27 @@ private func fixture(_ n: PlanNote) -> NoteFixture {
         #expect(!(try plan("a ten-minute grace, closed at 07:45: no catch-up").requests.map(\.kind).contains(.catchUp)))
         #expect(try plan("an hour's grace, still open at 08:15: rings now").requests.map(\.kind).contains(.catchUp))
 
-        // A spring-forward gap found by a standing slot's own search, and by
-        // the review's outside the small-hours band.
-        let santiago = try plan("Santiago, a standing 00:30 across its midnight spring-forward: a note")
-        let gym = try #require(UUID(uuidString: "00000000-0000-4000-8000-0000000003e9"))
-        #expect(santiago.notes == [.dstGap(itemId: gym, dateStr: "2026-09-06", at: "00:30")])
-        #expect(santiago.requests.map(\.trigger.type) == ["calendar"])
-        #expect(try plan("Santiago, a review at 0:30 across the same night: a note").notes
+        // A changeover at midnight is a changeover: Santiago's 00:30 is
+        // one-offs, and the night it skips is noted once.
+        let midnight = try plan("Santiago, a 00:30 cue on its midnight changeover: one-offs, and a note")
+        #expect(midnight.notes == [.dstGap(itemId: vitamins, dateStr: "2026-09-06", at: "00:30")])
+        #expect(midnight.requests.map(\.trigger.type) == ["at", "at"])
+        #expect(try plan("Santiago, a review at 0:30 on the same changeover: one-offs, and a note").notes
             == [.dstGap(itemId: nil, dateStr: "2026-09-06", at: "00:30")])
+        #expect(try plan("Santiago, done before a 00:30 cue the night before its changeover: one note").notes
+            == [.dstGap(itemId: vitamins, dateStr: "2026-09-06", at: "00:30")])
+        for name in ["Santiago, its changeover earlier today: no note", "Los Angeles, its spring-forward earlier today: no note"] {
+            #expect(try plan(name).notes.isEmpty, "\(name)")
+        }
 
-        // The band's lower edge, and a next wanted cue past the first two months.
-        #expect(try plan("00:59 is standing: the band starts at 01:00").requests.map(\.trigger.type) == ["calendar"])
+        // The changeover's edges in New York, and zones that never change.
+        #expect(try types("00:59 is standing: New York's changeover starts at 01:00") == ["calendar"])
+        #expect(try types("03:00 is standing: past New York's changeover") == ["calendar"])
+        #expect(try types("a cue in New York's changeover minutes: one-offs") == ["at", "at"])
+        #expect(try types("Kolkata never changes its clocks: a small-hours cue stands") == ["calendar"])
+        #expect(try types("UTC never changes: a small-hours review stands") == ["calendar"])
+
+        // A next wanted cue past the first two months.
         let awayCase = try #require(plans.first { $0.name == "paused until January: the next wanted cue is looked for a year ahead" })
         let away = planNotifications(try planInput(awayCase.input, awayCase.name))
         let firstAway = try #require(away.requests.first)
@@ -413,13 +473,41 @@ private func fixture(_ n: PlanNote) -> NoteFixture {
         #expect(try plan("a streak past a month: relevance stops at 1").requests.map(\.relevance) == [1])
 
         // A held lone day of the month is the one-off series, never a repeat.
-        #expect(try plan("monthly on the 15th, done today: the one-off series").requests.map(\.trigger.type) == ["at", "at"])
+        #expect(try types("monthly on the 15th, done today: the one-off series") == ["at", "at"])
+        // The 31st held by its ring after a short month, and a clamped day alone.
+        #expect(try types("monthly on the 31st, its season ending before December's: October's alone") == ["at"])
+        #expect(try types("monthly on the 31st, its season ending after January's: standing, November's clamped day beside it")
+            == ["calendar", "at"])
+        #expect(try plan("monthly on the 31st, its season ending in March: February's clamped 28th alone").requests.map(\.dateStr)
+            == ["2027-02-28"])
+
+        // A season's end: nothing standing that would ring past it.
+        #expect(try types("a season ending Thursday: one-offs up to Thursday, nothing after") == ["at", "at", "at", "at"])
+        #expect(try types("a season ending more than a month past the next ring: still standing") == ["calendar"])
+
+        // A catch-up is never charged: thirty of them beside sixty pending.
+        let caught = try plan("a catch-up for thirty and twenty-nine Wednesday habits: every item still armed")
+        #expect(caught.requests.filter { $0.trigger == .now }.count == 30)
+        #expect(caught.requests.filter { $0.trigger != .now }.count == notificationBudget)
+        #expect(caught.notes.isEmpty)
+
+        // A held review under a full budget still stands.
+        #expect(try plan("a held review in exactly seven places: all seven, no note").requests.count == 7)
+
+        // The shade: a day ticked elsewhere after its cue rang is withdrawn.
+        let base = itemIdentifier(vitamins)
+        #expect(try plan("done elsewhere after it rang yesterday: withdrawn").withdraw == [base])
+        #expect(try plan("Monday still open when Wednesday is ticked: only Wednesday's withdrawn").withdraw == ["\(base)#4"])
+        #expect(try plan("review answered after midnight: the night it answered withdrawn").withdraw == [eodIdentifier])
     }
 
     /// Every request rings on its item's cue minute (or the review's hour), on
     /// a day the item occurs: what a drifting repeating interval broke. A
     /// calendar trigger rings at its own hour and minute on its own days, so
-    /// holding its first ring and its components here holds every ring.
+    /// holding its first ring and its components here holds every ring. And
+    /// every ring in the month after it (`lapseDays`), and the one after it
+    /// however far off, wants doing: what a calendar trigger left standing past
+    /// a season's end, a skip or a tick ahead broke.
     @Test func everyRequestRingsOnItsOwnMinute() throws {
         for c in try loadFixture().plans {
             let input = try planInput(c.input, c.name)
@@ -457,6 +545,29 @@ private func fixture(_ n: PlanNote) -> NoteFixture {
                     #expect(occursOn(item, on: clock.dateStr, timeZone: input.timeZone), "\(place) on \(clock.dateStr)")
                 }
                 if r.kind == .eod { #expect(clock.dateStr != input.eod?.lastReviewDate, "\(place)") }
+
+                // Its rings in the month after its first, and the one after its
+                // first however far (the 31st's, two months on past a short one).
+                let ctx = ActivationContext(timeZone: input.timeZone, routines: input.routines, seasons: input.seasons)
+                let first = try #require(DayString(clock.dateStr), "\(place)")
+                let monthOn = first.adding(days: 31)
+                var days: [DayString] = [first]
+                if case let .calendar(_, _, weekday, day) = r.trigger {
+                    days = (0..<63).map { first.adding(days: $0) }
+                        .filter { d in
+                            (weekday == nil || d.weekday + 1 == weekday) && (day == nil || d.day == day)
+                        }
+                        .enumerated()
+                        .filter { i, d in i < 2 || d <= monthOn }
+                        .map(\.element)
+                }
+                for d in days {
+                    if let item {
+                        #expect(wantsDoingOn(item, on: d, ctx), "\(place) rings on \(d)")
+                    } else {
+                        #expect(d.description != input.eod?.lastReviewDate, "\(place) rings on \(d)")
+                    }
+                }
             }
         }
     }

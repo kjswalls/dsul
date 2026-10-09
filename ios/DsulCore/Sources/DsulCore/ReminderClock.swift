@@ -5,7 +5,8 @@ import Foundation
 // phone arms a cue at a different instant than the web's plan says. Checked
 // against the web through NotificationPlanFixtureTests and SnoozeFixtureTests
 // (tests/fixtures/day/notification-plan.json), whose every instant passes
-// through here, and pinned directly by ReminderClockTests.
+// through here and whose `changeoverMinutes` section is this file's own, and
+// pinned directly by ReminderClockTests.
 //
 // - `localClock`: what day and minute it is in a zone at an instant (the
 //   scan's question, and the plan's "today").
@@ -14,6 +15,9 @@ import Foundation
 //   the two.
 // - `addDays`, `weekdayOf`: label arithmetic on yyyy-MM-dd, in UTC, never in a
 //   zone (DayString's own calendar).
+// - `changeoverMinutes`, `inMinuteRun`: which minutes of the day a zone's
+//   daylight-saving changeovers skip or play twice, so the plan can keep its
+//   repeating triggers off them (none at all in a zone that never changes).
 //
 // Instants are epoch milliseconds (`Int`), as on the web, so the plan's numbers
 // compare with the fixtures' exactly. The zone's offset comes from
@@ -182,17 +186,82 @@ public func instantOf(_ dateStr: String, minutes: Int, timeZone: String) -> Int?
 
 /// `instantOf` on a day and a zone already in hand: the offsets in force a day
 /// either side of the naive guess (a zone changes its offset at most once in
-/// two days) give the candidates, and only an instant whose wall clock really
-/// reads the time asked for is kept. The earliest of those, or nil.
+/// two days) give the candidates. When the two agree, no changeover is near and
+/// the one offset is the answer; otherwise only an instant whose wall clock
+/// really reads the time asked for is kept, the earliest of those, or nil.
 func instantOf(_ day: DayString, _ minutes: Int, _ zone: TimeZone) -> Int? {
     let naive = daysFromCivil(day.year, day.month, day.day) * msPerDay + minutes * 60_000
-    var offsets: [Int] = []
-    for probe in [naive - msPerDay, naive, naive + msPerDay] {
-        let offset = offsetMs(probe, zone)
-        if !offsets.contains(offset) { offsets.append(offset) }
-    }
-    return offsets
-        .map { naive - $0 }
+    let before = offsetMs(naive - msPerDay, zone)
+    let after = offsetMs(naive + msPerDay, zone)
+    if before == after { return naive - before }
+    return [naive - before, naive - after]
         .filter { $0 + offsetMs($0, zone) == naive }
         .min()
+}
+
+/// lib/reminders/clock.ts `MinuteRun`: `length` wall-clock minutes from
+/// `start` (minutes past midnight), wrapping past midnight when it runs over.
+public struct MinuteRun: Sendable, Hashable {
+    public var start: Int
+    public var length: Int
+
+    public init(start: Int, length: Int) {
+        self.start = start
+        self.length = length
+    }
+}
+
+/// lib/reminders/clock.ts `inMinuteRun`: is `minutes` (past midnight) inside `run`?
+public func inMinuteRun(_ minutes: Int, _ run: MinuteRun) -> Bool {
+    return floorMod(minutes - run.start, minutesPerDay) < run.length
+}
+
+/// lib/reminders/clock.ts `changeoverMinutes`: the wall-clock minutes the
+/// zone's changeovers touch in the `days` days from `fromMs`, one run per
+/// change of offset (the minutes a spring forward skips, or a fall back plays
+/// twice), sorted by start, each once. Empty for a zone whose offset never
+/// changes in that time (Asia/Kolkata, UTC, Asia/Tokyo). New York gives
+/// 01:00–01:59 and 02:00–02:59; Santiago 00:00–00:59 and 23:00–23:59. Nil for
+/// a zone Foundation does not know (the web throws).
+public func changeoverMinutes(timeZone: String, fromMs: Int, days: Int) -> [MinuteRun]? {
+    guard let zone = TimeZone(identifier: timeZone) else { return nil }
+    return changeoverMinutes(zone, fromMs: fromMs, days: days)
+}
+
+/// `changeoverMinutes` on a zone already in hand: the offset read once a day
+/// and, where two readings differ, bisected to the first whole second of the
+/// new one (a zone changes its offset at most once in a day, as `instantOf`
+/// assumes).
+func changeoverMinutes(_ zone: TimeZone, fromMs: Int, days: Int) -> [MinuteRun] {
+    var runs: [MinuteRun] = []
+    var lo = floorDiv(fromMs, 1000) * 1000
+    var before = offsetMs(lo, zone)
+    var i = 1
+    while i <= days {
+        let hi = lo + msPerDay
+        let after = offsetMs(hi, zone)
+        if after != before {
+            // offsetMs(a) is the old offset and offsetMs(b) is not, a whole number of seconds apart.
+            var a = lo
+            var b = hi
+            while b - a > 1000 {
+                let mid = a + max(1, (b - a) / 2000) * 1000
+                if offsetMs(mid, zone) == before { a = mid } else { b = mid }
+            }
+            let changed = offsetMs(b, zone)
+            let low = b + min(before, changed)
+            let high = b + max(before, changed)
+            let lowMinute = floorDiv(low, 60_000)
+            // Math.ceil of a positive quotient.
+            let length = (high - lowMinute * 60_000 + 59_999) / 60_000
+            let run = length >= minutesPerDay
+                ? MinuteRun(start: 0, length: minutesPerDay)
+                : MinuteRun(start: floorMod(lowMinute, minutesPerDay), length: length)
+            if !runs.contains(run) { runs.append(run) }
+        }
+        before = after
+        lo = hi
+        i += 1
+    }
+    return runs.sorted { $0.start != $1.start ? $0.start < $1.start : $0.length < $1.length }
 }

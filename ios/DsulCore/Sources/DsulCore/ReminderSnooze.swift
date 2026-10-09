@@ -60,7 +60,7 @@ public func ringsOnDay(fireMs: Int, zone: String, dayStr: String) -> Bool {
 /// `/^\d{4}-\d{2}-\d{2}$/`: the shape alone, as the web tests it. A shaped
 /// string that is no real day (2026-02-30) passes here and then matches no
 /// zone's day, so it is nil all the same.
-private func isDayShaped(_ s: String) -> Bool {
+func isDayShaped(_ s: String) -> Bool {
     let b = Array(s.utf8)
     guard b.count == 10 else { return false }
     for (i, c) in b.enumerated() {

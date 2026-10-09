@@ -13,7 +13,9 @@
  * so the plan has to cross between the two for every request it makes. It is
  * the one crossing where daylight saving can bite, and it bites in both
  * directions: a spring-forward night has a local half hour that never happens,
- * and a fall-back night has one that happens twice.
+ * and a fall-back night has one that happens twice. `changeoverMinutes` says
+ * which minutes of the day those are in a zone, so the plan can keep its
+ * repeating triggers off them.
  *
  * Pure: nothing here reads the clock; every instant comes in as an argument.
  * Day arithmetic is done on yyyy-MM-dd strings through UTC, never through a
@@ -39,19 +41,35 @@ export interface LocalClock {
  * outside every window. Naming the cycle removes the question.
  */
 export function localClock(now: Date, timezone: string): LocalClock {
-  const hhmm = new Intl.DateTimeFormat('en-GB', {
-    timeZone: timezone,
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  }).format(now)
-  const dateStr = new Intl.DateTimeFormat('en-CA', { timeZone: timezone }).format(now)
+  const { minute, day } = clockFormatters(timezone)
+  const hhmm = minute.format(now)
+  const dateStr = day.format(now)
   return {
     dateStr,
     nowMinutes: minutesOfDay(hhmm) ?? 0,
     nowIso: now.toISOString(),
     nowMs: now.getTime(),
   }
+}
+
+/**
+ * localClock's two formatters, one pair per zone. Building an
+ * Intl.DateTimeFormat costs a hundred times what formatting with one does,
+ * and the plan reads the clock once per delivered notification. A zone the
+ * runtime does not know throws here, every time, as it did uncached.
+ */
+const clockFormatterCache = new Map<string, { minute: Intl.DateTimeFormat; day: Intl.DateTimeFormat }>()
+
+function clockFormatters(timezone: string) {
+  let f = clockFormatterCache.get(timezone)
+  if (!f) {
+    f = {
+      minute: new Intl.DateTimeFormat('en-GB', { timeZone: timezone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }),
+      day: new Intl.DateTimeFormat('en-CA', { timeZone: timezone }),
+    }
+    clockFormatterCache.set(timezone, f)
+  }
+  return f
 }
 
 const DAY_MS = 86_400_000
@@ -124,16 +142,84 @@ function offsetAt(ms: number, timezone: string): number {
  *
  * Found by trying the offsets in force a day either side of the naive guess
  * (each zone changes its offset at most once in two days), and keeping only
- * the instants whose wall clock really reads the time asked for.
+ * the instants whose wall clock really reads the time asked for. When the two
+ * agree, no changeover is near and the one offset is the answer.
  */
 export function instantOf(dateStr: string, minutes: number, timezone: string): number | null {
   const [y, m, d] = dateStr.slice(0, 10).split('-').map(Number)
   const naive = Date.UTC(y, m - 1, d, 0, minutes)
   if (!Number.isFinite(naive)) return null
-  const offsets = new Set([offsetAt(naive - DAY_MS, timezone), offsetAt(naive, timezone), offsetAt(naive + DAY_MS, timezone)])
-  const found = [...offsets]
-    .map((offset) => naive - offset)
+  const before = offsetAt(naive - DAY_MS, timezone)
+  const after = offsetAt(naive + DAY_MS, timezone)
+  if (before === after) return naive - before
+  const found = [naive - before, naive - after]
     .filter((t) => wallAsUtc(t, timezone) === naive)
     .sort((a, b) => a - b)
   return found[0] ?? null
+}
+
+/**
+ * A run of wall-clock minutes of the day: `length` minutes from `start`
+ * (minutes past midnight), wrapping past midnight when it runs over.
+ */
+export interface MinuteRun {
+  start: number
+  length: number
+}
+
+const MINUTES_PER_DAY = 1440
+
+/** Is `minutes` (past midnight) inside `run`? */
+export function inMinuteRun(minutes: number, run: MinuteRun): boolean {
+  return (((minutes - run.start) % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY < run.length
+}
+
+/**
+ * The wall-clock minutes the zone's changeovers touch in the `days` days
+ * from `fromMs`: for each change of offset, the minutes it skips (a spring
+ * forward) or plays twice (a fall back), as runs sorted by start, each once.
+ * Empty for a zone whose offset never changes in that time (Asia/Kolkata,
+ * UTC, Asia/Tokyo), which is most of the world.
+ *
+ * In New York both changeovers fall at 02:00, so the runs are 02:00–02:59
+ * (skipped in March) and 01:00–01:59 (played twice in November). Santiago
+ * changes at midnight, 00:00–00:59 in September and 23:00–23:59 in April;
+ * Lord Howe Island moves half an hour. The plan arms no repeating trigger on
+ * any of these minutes (plan.ts), since what one does with a minute that is
+ * skipped or doubled is not something Apple documents.
+ *
+ * Found by reading the offset once a day and, where two readings differ,
+ * bisecting to the first whole second of the new one. A zone changes its
+ * offset at most once in a day, the same assumption instantOf makes.
+ */
+export function changeoverMinutes(timezone: string, fromMs: number, days: number): MinuteRun[] {
+  const runs = new Map<string, MinuteRun>()
+  let lo = Math.floor(fromMs / 1000) * 1000
+  let before = offsetAt(lo, timezone)
+  for (let i = 1; i <= days; i += 1) {
+    const hi = lo + DAY_MS
+    const after = offsetAt(hi, timezone)
+    if (after !== before) {
+      // offsetAt(a) is the old offset and offsetAt(b) is not, a whole number of seconds apart.
+      let a = lo
+      let b = hi
+      while (b - a > 1000) {
+        const mid = a + Math.max(1, Math.floor((b - a) / 2000)) * 1000
+        if (offsetAt(mid, timezone) === before) a = mid
+        else b = mid
+      }
+      const changed = offsetAt(b, timezone)
+      const low = b + Math.min(before, changed)
+      const high = b + Math.max(before, changed)
+      const lowMinute = Math.floor(low / 60_000)
+      const length = Math.ceil((high - lowMinute * 60_000) / 60_000)
+      const run: MinuteRun = length >= MINUTES_PER_DAY
+        ? { start: 0, length: MINUTES_PER_DAY }
+        : { start: ((lowMinute % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY, length }
+      runs.set(`${run.start}+${run.length}`, run)
+    }
+    before = after
+    lo = hi
+  }
+  return [...runs.values()].sort((x, y) => x.start - y.start || x.length - y.length)
 }
