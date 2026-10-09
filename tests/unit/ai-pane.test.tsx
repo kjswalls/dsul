@@ -50,8 +50,14 @@ vi.mock('@/lib/settings-service', () => ({
   saveSettings: vi.fn(async () => {}),
   flushSettings: vi.fn(async () => {}),
 }));
+vi.mock('@/lib/chat-transport', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/chat-transport')>()),
+  resetPluginTransport: vi.fn(),
+}));
 
 import { AIPane, AIPaneMark } from '@/components/settings/ai-pane';
+import { UNPAIR_FAILED } from '@/components/settings/disconnect';
+import { resetPluginTransport } from '@/lib/chat-transport';
 import { ScopeChip } from '@/components/settings/scope-chip';
 import { __armUserForTests, useAIConnectionStore } from '@/lib/ai-connection-store';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
@@ -62,7 +68,7 @@ import { useUndoStripStore } from '@/lib/undo-strip-store';
 import { chordLabel } from '@/lib/commands/keys';
 import { DEFAULT_SHORTCUTS, useKeyboardShortcutsStore } from '@/lib/keyboard-shortcuts-store';
 import type { SettingCtx, SettingRecord } from '@/lib/settings/manifest';
-import type { AIConnectionResponse, ModelConnectionView, ModelOption } from '@/lib/ai-types';
+import type { AIConnectionResponse, ModelConnectionView, ModelOption, OpenClawView } from '@/lib/ai-types';
 import {
   seedAI,
   paneInputFor,
@@ -120,6 +126,8 @@ interface Server {
   put: (body: unknown) => Response | Promise<Response>;
   patch: (body: unknown) => Response;
   del: () => Response;
+  /** DELETE /api/ai/openclaw */
+  unpair: () => Response;
 }
 
 let server: Server;
@@ -148,6 +156,7 @@ beforeEach(() => {
     put: () => json({ error: 'server' }, 503),
     patch: () => json({ error: 'server' }, 503),
     del: () => json({ ok: true }),
+    unpair: () => unpaired(),
   };
   vi.stubGlobal(
     'fetch',
@@ -161,6 +170,7 @@ beforeEach(() => {
       if (url === '/api/ai/connection' && method === 'PUT') return server.put(body);
       if (url === '/api/ai/connection' && method === 'PATCH') return server.patch(body);
       if (url === '/api/ai/connection' && method === 'DELETE') return server.del();
+      if (url === '/api/ai/openclaw' && method === 'DELETE') return server.unpair();
       return json({ error: 'server' }, 404);
     })
   );
@@ -207,6 +217,16 @@ function givenCheckFailed() {
   cleanupAI = seedAI({ phase: 'error' });
   server.status = () => json({ error: 'server' }, 503);
 }
+
+/** Unpair lands: the agent key goes, a gateway stays, and the server says so from then on. */
+function unpaired(): Response {
+  const now = server.status as AIConnectionResponse;
+  const openclaw: OpenClawView = { gateway: now.openclaw.gateway, pluginChat: false, agent: false, agentId: null };
+  server.status = { ...now, openclaw };
+  return json({ openclaw });
+}
+
+const unpairs = () => calls.filter((c) => c.url === '/api/ai/openclaw' && c.method === 'DELETE').length;
 
 const statusGets = () => calls.filter((c) => c.url === '/api/ai/connection' && c.method === 'GET').length;
 const patches = () => calls.filter((c) => c.method === 'PATCH').map((c) => c.body);
@@ -827,8 +847,9 @@ describe('the AI-off card', () => {
     const paired = screen.getByTestId('ai-off-paired');
     expect(paired).toHaveTextContent('atlas is still paired');
     expect(paired).toHaveTextContent(
-      'OpenClaw reads your planner through its own pairing, which this switch doesn’t touch.'
+      'OpenClaw reads your planner through its own pairing, which this switch doesn’t touch. Unpair it to stop that.'
     );
+    expect(within(paired).getByRole('button', { name: 'Unpair' }).className).toMatch(/text-destructive-text/);
     expect(screen.queryByTestId('ai-off-connected')).toBeNull();
   });
 
@@ -854,10 +875,64 @@ describe('the AI-off card', () => {
     expect(screen.queryByTestId('ai-off-paired')).toBeNull();
   });
 
-  it('offers no Unpair (PR 7b)', async () => {
+  it('Unpair asks first, then unpairs, and focus goes to the card', async () => {
     await mount({ ...AI_OFF_CONNECTED, openclaw: AI_OFF_PAIRED.openclaw });
-    expect(screen.queryByRole('button', { name: /unpair/i })).toBeNull();
-    expect(document.body.textContent).not.toContain('Unpair it to stop that');
+    const button = screen.getByTestId('ai-off-unpair');
+    button.focus();
+    fireEvent.click(button);
+    const request = useUIStore.getState().confirmRequest!;
+    expect(request.testId).toBe('openclaw-unpair-confirm');
+    expect(request.title).toBe('Unpair atlas?');
+    expect(request.description).toBe(
+      'dsul will delete the key OpenClaw uses and stop sending it your changes, so it can no longer read or change your planner. Your saved conversations stay. To pair again, run setup from OpenClaw.'
+    );
+    expect(request.confirmLabel).toBe('Unpair');
+    expect(request.destructive).toBe(true);
+    expect(request.touchesPlanner).toBe(false);
+    expect(typeof request.fallbackFocus).toBe('function');
+    expect(unpairs()).toBe(0);
+    act(() => {
+      useUIStore.setState({ confirmRequest: null });
+      request.onConfirm();
+    });
+    await waitFor(() => expect(screen.queryByTestId('ai-off-paired')).toBeNull());
+    expect(unpairs()).toBe(1);
+    // The model's key is not the agent's: Disconnect's row stays.
+    expect(screen.getByTestId('ai-off-connected')).toBeInTheDocument();
+    expect(calls.filter((c) => c.url === '/api/ai/connection' && c.method === 'DELETE')).toHaveLength(0);
+    expect(document.activeElement).toBe(screen.getByTestId('mcp-ai-off'));
+    expect(resetPluginTransport).toHaveBeenCalled();
+  });
+
+  it('cancel unpairs nothing and moves no focus', async () => {
+    await mount(AI_OFF_PAIRED);
+    const button = screen.getByTestId('ai-off-unpair');
+    button.focus();
+    fireEvent.click(button);
+    act(() => useUIStore.setState({ confirmRequest: null }));
+    await settle();
+    expect(unpairs()).toBe(0);
+    expect(document.activeElement).toBe(button);
+    expect(screen.getByTestId('ai-off-paired')).toBeInTheDocument();
+  });
+
+  it('a refused unpair keeps the row, says so, and asks the server again', async () => {
+    await mount(AI_OFF_PAIRED);
+    vi.mocked(resetPluginTransport).mockClear();
+    server.unpair = () => json({ error: 'server' }, 503);
+    const before = statusGets();
+    fireEvent.click(screen.getByTestId('ai-off-unpair'));
+    const request = useUIStore.getState().confirmRequest!;
+    act(() => {
+      useUIStore.setState({ confirmRequest: null });
+      request.onConfirm();
+    });
+    const error = await screen.findByTestId('ai-off-unpair-error');
+    expect(error).toHaveAttribute('role', 'alert');
+    expect(error).toHaveTextContent(UNPAIR_FAILED);
+    expect(screen.getByTestId('ai-off-paired')).toBeInTheDocument();
+    await waitFor(() => expect(statusGets()).toBeGreaterThan(before));
+    expect(resetPluginTransport).not.toHaveBeenCalled();
   });
 });
 
@@ -1012,10 +1087,65 @@ describe('OpenClaw', () => {
     expect(copy()).toBe('OpenClaw takes on tasks you hand it.');
   });
 
-  it('a gateway alone', async () => {
+  it('a gateway alone, with no Unpair: its own rows clear it', async () => {
     await mount({ ...NOTHING_CONNECTED, openclaw: { gateway: true } });
     expect(pill()).toHaveTextContent('Paired');
     expect(copy()).toBe('OpenClaw can answer in Ask through your gateway.');
+    expect(screen.queryByTestId('openclaw-unpair')).toBeNull();
+  });
+
+  it.each([
+    ['answering', OPENCLAW_PLUGIN],
+    ['pull-only', OPENCLAW_PULL_ONLY],
+  ])('paired (%s): Unpair, in red text', async (_name, seed) => {
+    await mount(seed);
+    const button = within(screen.getByTestId('ai-openclaw')).getByTestId('openclaw-unpair');
+    expect(button).toHaveTextContent('Unpair');
+    expect(button.className).toMatch(/text-destructive-text/);
+  });
+
+  it('Unpair leaves Not paired and the way to pair again, with focus on the section', async () => {
+    await mount(OPENCLAW_PLUGIN);
+    fireEvent.click(screen.getByTestId('openclaw-unpair'));
+    const request = useUIStore.getState().confirmRequest!;
+    expect(request.title).toBe('Unpair kirby-1?');
+    expect(request.description).not.toContain('Gateway');
+    act(() => {
+      useUIStore.setState({ confirmRequest: null });
+      request.onConfirm();
+    });
+    await waitFor(() => expect(pill()).toHaveTextContent('Not paired'));
+    expect(screen.getByTestId('openclaw-pair')).toBeInTheDocument();
+    expect(document.activeElement).toBe(screen.getByTestId('ai-openclaw'));
+  });
+
+  it('with a gateway too, the confirm says it stays, and so does the gateway', async () => {
+    await mount({ ...OPENCLAW_PLUGIN, openclaw: { ...OPENCLAW_PLUGIN.openclaw, gateway: true } });
+    fireEvent.click(screen.getByTestId('openclaw-unpair'));
+    const request = useUIStore.getState().confirmRequest!;
+    expect(request.description).toContain(
+      'Your Gateway URL stays saved under Advanced, so OpenClaw can still answer in Ask. Clear it there to stop that too.'
+    );
+    act(() => {
+      useUIStore.setState({ confirmRequest: null });
+      request.onConfirm();
+    });
+    await waitFor(() => expect(screen.queryByTestId('openclaw-unpair')).toBeNull());
+    expect(pill()).toHaveTextContent('Paired');
+    expect(copy()).toBe('OpenClaw can answer in Ask through your gateway.');
+  });
+
+  it('a refused unpair stays paired and says so', async () => {
+    await mount(OPENCLAW_PULL_ONLY);
+    server.unpair = () => json({ error: 'server' }, 503);
+    fireEvent.click(screen.getByTestId('openclaw-unpair'));
+    const request = useUIStore.getState().confirmRequest!;
+    act(() => {
+      useUIStore.setState({ confirmRequest: null });
+      request.onConfirm();
+    });
+    expect(await screen.findByTestId('openclaw-unpair-error')).toHaveTextContent(UNPAIR_FAILED);
+    expect(pill()).toHaveTextContent('Paired');
   });
 
   it('both section pills sit flush right in their header rows', async () => {

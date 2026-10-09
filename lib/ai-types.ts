@@ -73,6 +73,15 @@ export interface AIConnectionResponse {
   aiHidden: boolean | null;
 }
 
+/**
+ * DELETE /api/ai/openclaw (Unpair): what is still there afterwards, read back
+ * once the writes landed. `null` when that read failed; the unpair itself did
+ * not, and a status read fills it in.
+ */
+export interface UnpairResponse {
+  openclaw: OpenClawView | null;
+}
+
 export interface ModelOption {
   id: string;
   label: string;

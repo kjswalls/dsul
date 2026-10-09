@@ -1,6 +1,6 @@
 /**
- * `model_connections` reads and writes, on the service client, and OpenClaw
- * readiness for the gate.
+ * `model_connections` reads and writes, on the service client, OpenClaw
+ * readiness for the gate, and Unpair.
  *
  * Server-only. Two hard rules (design 1.9):
  *   - A decrypt failure is computed, returned and NEVER written. Only a
@@ -24,7 +24,8 @@ import {
   type ModelProviderId,
   type OpenClawView,
 } from '@/lib/ai-types';
-import { createServiceClient } from '@/lib/supabase-service';
+import { deregisterAllPlugins } from '@/lib/openclaw-registry';
+import { clearAgentKey, createServiceClient } from '@/lib/supabase-service';
 import { ProviderError } from './errors';
 import { credentialsFor } from './providers';
 import type { ModelMeta, ProviderCredentials } from './providers/types';
@@ -61,7 +62,7 @@ export type RowRead =
  * error, its `.details`, `.message` or `.hint`.
  */
 export class AiDbError extends Error {
-  readonly op: 'read' | 'save' | 'model' | 'status' | 'limit' | 'delete' | 'openclaw' | 'hidden';
+  readonly op: 'read' | 'save' | 'model' | 'status' | 'limit' | 'delete' | 'openclaw' | 'unpair' | 'hidden';
   /** e.g. '23514', 'PGRST301'; 'unknown' when absent. */
   readonly code: string;
 
@@ -482,6 +483,51 @@ export async function readOpenClawStatus(userId: string): Promise<OpenClawView> 
     agent: apiKey,
     agentId: present(s?.openclaw_agent_id) ? (s?.openclaw_agent_id as string) : null,
   };
+}
+
+/**
+ * Unpair: take back the access the plugin's device authorization gave
+ * OpenClaw. Idempotent, so a failure part way is fixed by asking again.
+ *
+ *   1. Every webhook registration: dsul stops sending item changes.
+ *   2. The chat URL and agent id the plugin registered.
+ *   3. Any authorized device session still holding a copy of the key, so a
+ *      late poll can't hand it out.
+ *   4. The agent key itself (`clearAgentKey`, either column before 059):
+ *      /api/agent/*, /api/mcp and the context route stop answering it.
+ *   5. The registrations once more: a plugin that registered between 1 and 4
+ *      did it with the key 4 just deleted, and none can follow.
+ *
+ * The key goes LAST because it is what makes OpenClaw read as paired: a
+ * failure before it leaves the Unpair button on screen to try again.
+ * The gateway URL and token are a separate connection (Advanced), and stay.
+ * Throws AiDbError('unpair', code); never a message, which can quote the row.
+ */
+export async function unpairOpenClaw(userId: string): Promise<void> {
+  const svc = service('unpair');
+  const fail = (code: string | undefined): never => {
+    throw new AiDbError('unpair', code);
+  };
+
+  if (!(await deregisterAllPlugins(userId)).ok) fail('registry');
+
+  const settings = await svc
+    .from('user_settings')
+    .update({ openclaw_chat_url: null, openclaw_agent_id: null })
+    .eq('user_id', userId);
+  if (settings.error && !isNoSchema(settings.error)) fail(codeOf(settings.error));
+
+  const sessions = await svc
+    .from('connect_sessions')
+    .update({ status: 'expired', api_key: null })
+    .eq('user_id', userId)
+    .eq('status', 'authorized');
+  if (sessions.error && !isNoSchema(sessions.error)) fail(codeOf(sessions.error));
+
+  const key = await clearAgentKey(userId, svc);
+  if (key.error !== null) fail(key.error);
+
+  if (!(await deregisterAllPlugins(userId)).ok) fail('registry');
 }
 
 /**

@@ -90,7 +90,7 @@ export interface AIConnectionState {
   models: ModelOption[] | null;
   modelsListed: boolean;
   modelsStatus: 'idle' | 'loading' | 'ready' | 'error';
-  busy: null | 'connect' | 'model' | 'recheck' | 'disconnect' | 'hidden';
+  busy: null | 'connect' | 'model' | 'recheck' | 'disconnect' | 'unpair' | 'hidden';
   /** See JustConnected. Cleared by the first send, a new chat, a conversation opened, Ask closing, a model change, a disconnect. */
   justConnected: JustConnected | null;
   /**
@@ -121,6 +121,8 @@ export interface AIConnectionStore extends AIConnectionState {
   recheck(): Promise<ApiResult>;
   /** DELETE; clears models */
   disconnect(): Promise<ApiResult>;
+  /** DELETE /api/ai/openclaw: Unpair. Applies what the route read back, or asks for it. */
+  unpair(): Promise<ApiResult>;
   /**
    * PATCH {hidden}: "No AI, thanks" for the account, or its undo. Applied at
    * once; a failed write goes back to what the server last said and asks it
@@ -160,6 +162,7 @@ const INITIAL: AIConnectionState = {
 };
 
 const CONNECTION_URL = '/api/ai/connection';
+const OPENCLAW_URL = '/api/ai/openclaw';
 const MODELS_URL = '/api/ai/connection/models';
 
 /**
@@ -686,6 +689,23 @@ export const useAIConnectionStore: UseBoundStore<StoreApi<AIConnectionStore>> =
             justConnected: null,
             flowResult: null,
           });
+          return { ok: true };
+        }),
+
+      unpair: () =>
+        enqueueWrite('unpair', async (c) => {
+          const res = await sendJson('DELETE', OPENCLAW_URL);
+          const body = await readBody(res);
+          if (!stillCurrent(c)) return { ok: false, code: 'unauthorized' };
+          if (!res.ok) {
+            // A failure part way may still have changed something: ask.
+            serverMoved();
+            void get().refresh();
+            return { ok: false, code: errorCodeOf(body, res.status) };
+          }
+          serverMoved();
+          if (isObj(body) && isObj(body.openclaw)) set({ openclaw: readOpenClaw(body.openclaw) });
+          else void get().refresh();
           return { ok: true };
         }),
 

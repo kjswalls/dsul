@@ -31,7 +31,7 @@ import { setUseAI } from '@/lib/no-ai';
 import { settingById, type SettingCtx, type SettingRecord } from '@/lib/settings/manifest';
 import { highlightRuns, type MatchRange } from '@/lib/settings/search';
 import { cn } from '@/lib/utils';
-import { useDisconnect } from './disconnect';
+import { useDisconnect, useUnpair } from './disconnect';
 import { ModelConnectionPanel } from './model-connection-panel';
 import { ScopeChip } from './scope-chip';
 import { PendingControl } from './setting-row';
@@ -452,7 +452,7 @@ export function UseAIRow({
 /**
  * Directly under the switch while the account has AI off, with everything
  * else below it hidden: what is still connected (Disconnect deletes it) and
- * what is still paired (this switch leaves a pairing alone). It stands in for
+ * what is still paired (this switch leaves a pairing alone; Unpair ends it). It stands in for
  * every hidden record's anchor, so a deep link lands here.
  */
 function AIOffCard({ active, highlightId }: { active: readonly AliasId[]; highlightId: string | null }) {
@@ -464,6 +464,13 @@ function AIOffCard({ active, highlightId }: { active: readonly AliasId[]; highli
   // DELETE lands before the confirm has finished closing (its opener gone).
   const focusCard = useCallback(() => cardRef.current?.focus({ preventScroll: true }), []);
   const disconnect = useDisconnect(model, {
+    onDone: (ok) => {
+      if (ok) focusCard();
+    },
+    fallbackFocus: focusCard,
+  });
+  // Once unpaired the row goes too, with the same hand-off.
+  const unpair = useUnpair({
     onDone: (ok) => {
       if (ok) focusCard();
     },
@@ -526,11 +533,30 @@ function AIOffCard({ active, highlightId }: { active: readonly AliasId[]; highli
         )}
 
         {openclaw.agent && (
-          <div data-testid="ai-off-paired" className="border-border flex flex-col gap-1 border-t pt-4">
-            <p className="text-foreground text-sm font-medium">{paired.name} is still paired</p>
-            <p className="text-muted-foreground text-xs">
-              OpenClaw reads your planner through its own pairing, which this switch doesn’t touch.
-            </p>
+          <div data-testid="ai-off-paired" className="border-border flex flex-col gap-2 border-t pt-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex min-w-0 flex-col gap-1">
+                <p className="text-foreground text-sm font-medium">{paired.name} is still paired</p>
+                <p className="text-muted-foreground text-xs">
+                  OpenClaw reads your planner through its own pairing, which this switch doesn’t touch. Unpair it to
+                  stop that.
+                </p>
+              </div>
+              <button
+                type="button"
+                className={cn(DANGER_TEXT_ACTION, 'shrink-0')}
+                data-testid="ai-off-unpair"
+                disabled={unpair.pending}
+                onClick={() => unpair.ask()}
+              >
+                {unpair.pending ? 'Unpairing…' : 'Unpair'}
+              </button>
+            </div>
+            {unpair.error && (
+              <p role="alert" data-testid="ai-off-unpair-error" className="text-destructive text-xs">
+                {unpair.error}
+              </p>
+            )}
           </div>
         )}
       </section>
@@ -548,7 +574,8 @@ function recordFor(id: string): SettingRecord {
 
 /**
  * The person's own agent. Pairing is a device-code flow run from OpenClaw's
- * side, so the pane links to the docs rather than starting it. The pill is
+ * side, so the pane links to the docs rather than starting it; Unpair ends
+ * it from here (the gateway rows are their own connection, and stay). The pill is
  * lime by the Working dot's rule: paired, something answers through it, and
  * chat answers on this device. The gateway rows live in a quiet fold here,
  * driven by the shell's own Advanced state, so `?focus=` opens it.
@@ -565,6 +592,16 @@ function OpenClawSection({
   const openclaw = useAIConnectionStore((s) => s.openclaw);
   const { canChat } = useAICapabilities();
   const status = openClawStatus(openclaw);
+  const sectionRef = useRef<HTMLElement>(null);
+  // Unpaired, the card and its button go (or keep only the gateway's line):
+  // focus lands on the section rather than on <body>.
+  const focusSection = useCallback(() => sectionRef.current?.focus({ preventScroll: true }), []);
+  const unpair = useUnpair({
+    onDone: (ok) => {
+      if (ok) focusSection();
+    },
+    fallbackFocus: focusSection,
+  });
   const tone: PillTone = status.paired && canChat && status.answers ? 'lime' : 'grey';
 
   // "Can answer": this device's Who answers in chat may pick the model, or Off.
@@ -577,10 +614,12 @@ function OpenClawSection({
 
   return (
     <section
+      ref={sectionRef}
+      tabIndex={-1}
       data-ai-section="openclaw"
       data-testid="ai-openclaw"
       aria-labelledby="ai-openclaw-title"
-      className="flex flex-col gap-3"
+      className="flex flex-col gap-3 outline-none"
     >
       <div className="flex items-center justify-between gap-4">
         <h3 id="ai-openclaw-title" className="text-foreground text-sm font-medium">
@@ -592,10 +631,28 @@ function OpenClawSection({
       </div>
 
       {status.paired ? (
-        <div className="border-border rounded-[8px] border p-4">
+        <div className="border-border flex flex-col gap-3 rounded-[8px] border p-4">
           <p data-testid="openclaw-copy" className="text-muted-foreground text-xs">
             {copy}
           </p>
+          {status.agent && (
+            <div>
+              <button
+                type="button"
+                className={DANGER_TEXT_ACTION}
+                data-testid="openclaw-unpair"
+                disabled={unpair.pending}
+                onClick={() => unpair.ask()}
+              >
+                {unpair.pending ? 'Unpairing…' : 'Unpair'}
+              </button>
+            </div>
+          )}
+          {unpair.error && (
+            <p role="alert" data-testid="openclaw-unpair-error" className="text-destructive text-xs">
+              {unpair.error}
+            </p>
+          )}
         </div>
       ) : (
         <div className="border-border flex flex-wrap items-center justify-between gap-3 rounded-[8px] border p-4">

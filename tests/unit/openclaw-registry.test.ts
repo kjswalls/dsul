@@ -44,15 +44,26 @@ vi.mock('@/lib/supabase-service', () => ({
         return Promise.resolve({ error: writeError });
       },
       delete: () => ({
-        eq: (_c: string, userId: string) => ({
-          eq: (_c2: string, pluginId: string) => {
-            const i = rows.findIndex(
-              (r) => r.user_id === userId && r.plugin_id === pluginId
-            );
-            if (i >= 0) rows.splice(i, 1);
-            return Promise.resolve({ error: null });
-          },
-        }),
+        eq: (_c: string, userId: string) => {
+          // One plugin (`.eq(plugin_id)` follows), or every one the user has
+          // (awaited as is: Unpair).
+          const one = {
+            eq: (_c2: string, pluginId: string) => {
+              const i = rows.findIndex(
+                (r) => r.user_id === userId && r.plugin_id === pluginId
+              );
+              if (i >= 0) rows.splice(i, 1);
+              return Promise.resolve({ error: null });
+            },
+            then: (resolve: (v: unknown) => void) => {
+              if (!writeError) {
+                for (let i = rows.length - 1; i >= 0; i -= 1) if (rows[i].user_id === userId) rows.splice(i, 1);
+              }
+              resolve({ error: writeError });
+            },
+          };
+          return one;
+        },
       }),
     }),
   }),
@@ -131,6 +142,43 @@ describe('surviving a cold start', () => {
     const instanceB = await load();
     await instanceB.notifyPlugins('u1', 'tasks.updated', {});
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('Unpair: every registration the user has', () => {
+  it('goes from the table and from memory, and no other user\'s does', async () => {
+    const instanceA = await load();
+    await instanceA.registerPlugin(reg());
+    await instanceA.registerPlugin(reg({ pluginId: 'second', webhookUrl: 'https://gateway.example/two' }));
+    await instanceA.registerPlugin(reg({ userId: 'u2' }));
+
+    expect(await instanceA.deregisterAllPlugins('u1')).toEqual({ ok: true, durable: true });
+    expect(rows.map((r) => r.user_id)).toEqual(['u2']);
+    expect([...instanceA.registeredPlugins.values()].map((r) => r.userId)).toEqual(['u2']);
+
+    // This instance re-reads rather than serving its cached answer.
+    await instanceA.notifyPlugins('u1', 'tasks.updated', {});
+    expect(fetchSpy).not.toHaveBeenCalled();
+    await instanceA.notifyPlugins('u2', 'tasks.updated', {});
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('says so when the table refused, and logs the code alone', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const m = await load();
+    await m.registerPlugin(reg());
+    writeError = { code: '57014', message: 'canceling statement SENTINEL' };
+    expect(await m.deregisterAllPlugins('u1')).toEqual({ ok: false, reason: 'deregister failed' });
+    expect(warn).toHaveBeenCalledWith('[openclaw-registry] deregister all failed', '57014');
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('SENTINEL');
+    warn.mockRestore();
+  });
+
+  it('refuses to claim it when the table is not there', async () => {
+    selectError = { code: '42P01', message: 'relation does not exist' };
+    const m = await load();
+    await m.notifyPlugins('u1', 'tasks.updated', {}); // trips the latch
+    expect((await m.deregisterAllPlugins('u1')).ok).toBe(false);
   });
 });
 

@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as connection from '@/app/api/ai/connection/route';
 import * as models from '@/app/api/ai/connection/models/route';
+import * as openclaw from '@/app/api/ai/openclaw/route';
 import * as chat from '@/app/api/chat/route';
 import * as propose from '@/app/api/ai/propose/route';
 import * as make from '@/app/api/ai/make/route';
@@ -45,11 +46,13 @@ vi.mock('@/lib/supabase-server', () => ({
   })),
 }));
 
-vi.mock('@/lib/supabase-service', () => ({
+vi.mock('@/lib/supabase-service', async (importOriginal) => ({
   createServiceClient: vi.fn(() => {
     throw new Error('the service client must not be reached in this case');
   }),
   resolveUserIdFromApiKey: vi.fn(),
+  // Real: it writes only through the client it is handed.
+  clearAgentKey: (await importOriginal<typeof import('@/lib/supabase-service')>()).clearAgentKey,
 }));
 
 vi.mock('@/lib/ai-server/secret-box', async (importOriginal) => {
@@ -168,6 +171,7 @@ const HANDLERS: Array<[string, (headers?: Record<string, string>) => Promise<Res
   ['connection PATCH recheck', (hd) => connection.PATCH(req('PATCH', '/api/ai/connection', { recheck: true }, hd)), 'json'],
   ['connection PATCH hidden', (hd) => connection.PATCH(req('PATCH', '/api/ai/connection', { hidden: true }, hd)), 'json'],
   ['connection DELETE', (hd) => connection.DELETE(req('DELETE', '/api/ai/connection', undefined, hd)), 'json'],
+  ['openclaw DELETE', (hd) => openclaw.DELETE(req('DELETE', '/api/ai/openclaw', undefined, hd)), 'json'],
   ['models GET', (hd) => models.GET(req('GET', '/api/ai/connection/models', undefined, hd)), 'json'],
   ['chat POST', (hd) => chat.POST(req('POST', '/api/chat', { messages: [{ role: 'user', content: 'hi' }] }, hd)), 'json'],
   ['propose POST', (hd) => propose.POST(req('POST', '/api/ai/propose', { prompt: 'plan' }, hd)), 'json'],
@@ -222,6 +226,7 @@ const STATE_CHANGING = HANDLERS.filter(([name]) =>
     'connection PATCH recheck',
     'connection PATCH hidden',
     'connection DELETE',
+    'openclaw DELETE',
     'chat POST',
     'propose POST',
     'make POST',
@@ -651,6 +656,30 @@ describe('a database error that carries the row (real connections.ts)', () => {
     expect(JSON.parse(text)).toEqual({ error: 'server' });
     expect(text).not.toContain('SENTINEL');
     expect(logs).toEqual([['[ai] db', 'save', 'failed', '23514']]);
+    expect(JSON.stringify(logs)).not.toContain('SENTINEL');
+  });
+
+  it('Unpair answers 503 server, and logs nothing a database error said', async () => {
+    failingWrites();
+    // The registry asks for a service key before it writes (lib/openclaw-registry.ts).
+    const had = process.env.SUPABASE_SECRET_KEY;
+    process.env.SUPABASE_SECRET_KEY = 'test-service-key';
+    let res: Response;
+    try {
+      res = await openclaw.DELETE(req('DELETE', '/api/ai/openclaw'));
+    } finally {
+      if (had === undefined) delete process.env.SUPABASE_SECRET_KEY;
+      else process.env.SUPABASE_SECRET_KEY = had;
+    }
+    expect(res.status).toBe(503);
+    expectNoStore(res);
+    const text = await res.text();
+    expect(JSON.parse(text)).toEqual({ error: 'server' });
+    expect(text).not.toContain('SENTINEL');
+    expect(logs).toEqual([
+      ['[openclaw-registry] deregister all failed', '23514'],
+      ['[ai] db', 'unpair', 'failed', 'registry'],
+    ]);
     expect(JSON.stringify(logs)).not.toContain('SENTINEL');
   });
 
