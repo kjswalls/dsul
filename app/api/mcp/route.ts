@@ -11,6 +11,9 @@ import { GET as getContext } from '@/app/api/agent/context/route'
 import { GET as getItemEvents } from '@/app/api/agent/items/[id]/events/route'
 import { POST as askUser } from '@/app/api/agent/items/[id]/ask/route'
 import { POST as reportProgress } from '@/app/api/agent/items/[id]/progress/route'
+import { POST as actOnItem } from '@/app/api/agent/items/[id]/act/route'
+import { POST as createProject } from '@/app/api/agent/projects/route'
+import { PATCH as patchProject, DELETE as deleteProject } from '@/app/api/agent/projects/[id]/route'
 import { createServiceClient, resolveUserIdFromApiKey } from '@/lib/supabase-service'
 import { dispatch, type ToolResult } from '@/lib/mcp/protocol'
 import { TOOL_DESCRIPTORS, toolByName, type ToolPlan } from '@/lib/mcp/tools'
@@ -53,6 +56,7 @@ const COLLECTION: Record<string, { create: Handler; item: { PATCH: Handler; DELE
   routines: { create: makeContainerCreateHandler('routine') as Handler, item: routineItem as never },
   seasons: { create: makeContainerCreateHandler('season') as Handler, item: seasonItem as never },
   goals: { create: makeGoalCreateHandler() as Handler, item: goalItem as never },
+  projects: { create: createProject as Handler, item: { PATCH: patchProject, DELETE: deleteProject } },
 }
 
 /** Rebuilds a request for the in-process handler, carrying auth through. */
@@ -78,13 +82,14 @@ async function runPlan(original: NextRequest, plan: ToolPlan): Promise<Response>
 
   if (collection === 'context') return getContext(proxyRequest(original, plan))
 
-  // /api/agent/items/:id/{events,ask,progress} — the delegation verbs, each
-  // with its own handler rather than a CRUD set: they carry preconditions and
-  // an assignee check that must not be bolted onto every agent write.
+  // /api/agent/items/:id/{events,ask,progress,act} — the delegation verbs and
+  // the one-day verbs, each with its own handler rather than a CRUD set: they
+  // carry preconditions that must not be bolted onto every agent write.
   const ITEM_VERBS: Record<string, (req: NextRequest, ctx: { params: Promise<{ id: string }> }) => Promise<Response>> = {
     events: getItemEvents,
     ask: askUser,
     progress: reportProgress,
+    act: actOnItem,
   }
   if (collection === 'items' && segments[2] && ITEM_VERBS[segments[2]]) {
     if (!id || id.includes('/') || id.includes('..') || id.includes('%')) {

@@ -1328,7 +1328,9 @@ export async function updateItem(
   // and the webhook payload is a pinned external contract — narrowing it to the
   // post-reconcile body would drop completion changes from tasks.updated.
   if (userId) notifyItemChange(userId, type, { action: 'update', id, updates });
-  recordItemEvent(id, type, 'update', updates as Record<string, unknown>, userId, client);
+  // The owner a service-role caller scoped by: item_events.user_id defaults to
+  // auth.uid(), which is NULL on that client, so the feed row needs it named.
+  recordItemEvent(id, type, 'update', updates as Record<string, unknown>, userId ?? opts.ownerId, client);
 }
 
 /**
