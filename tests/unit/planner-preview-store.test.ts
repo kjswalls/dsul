@@ -528,6 +528,139 @@ describe('the read cannot fail the load', () => {
   });
 });
 
+/**
+ * Called is not sent: loadPlannerData's requests wait on the auth lock before
+ * they reach fetch, and a preview set() is a long render that would sit in
+ * front of them. So the preview waits for db.plannerRequestsSent too.
+ */
+describe('the fresh load goes first', () => {
+  const sent = vi.mocked(db.plannerRequestsSent);
+
+  it("asks after the load's requests were made, and paints only once they are sent", async () => {
+    const out = deferred<void>();
+    sent.mockImplementationOnce(() => out.promise);
+    store().identifyUser(A);
+    const snap = holdRead();
+    const loading = store().initializeStore(A, { preview: () => true });
+    expect(loadPlannerData.mock.invocationCallOrder[0]).toBeLessThan(sent.mock.invocationCallOrder[0]);
+
+    snap.resolve(CACHED());
+    await flush();
+    expect(store().isPreview).toBe(false);
+    expect(store().items).toEqual([]);
+
+    out.resolve();
+    await flush();
+    expect(store().isPreview).toBe(true);
+    expect(ids(store().items)).toEqual(CACHED_IDS);
+
+    await landFresh(loading);
+  });
+
+  it('a throw there costs neither the preview nor the load', async () => {
+    sent.mockImplementationOnce(() => {
+      throw new Error('no client');
+    });
+    const { loading } = await previewA();
+    expect(store().isPreview).toBe(true);
+    await landFresh(loading);
+    expect(ids(store().items)).toEqual(FRESH_IDS);
+  });
+});
+
+/**
+ * `<html data-preview-expected>` holds the skeleton's bars back while a
+ * preview can still come (lib/planner-snapshot.ts, expectPreview). Every way
+ * the offer ends must end it, or a load with no preview to show would keep
+ * its bars back for the CSS's whole cap. The writer's own edges are in
+ * planner-snapshot-writer.test.ts; it is not running here.
+ */
+describe('the skeleton hold', () => {
+  const ATTR = 'data-preview-expected';
+  const held = () => document.documentElement.hasAttribute(ATTR);
+
+  beforeEach(() => document.documentElement.setAttribute(ATTR, ''));
+  afterEach(() => document.documentElement.removeAttribute(ATTR));
+
+  it('ends once the preview is up', async () => {
+    const { loading } = await previewA();
+    expect(store().isPreview).toBe(true);
+    expect(held()).toBe(false);
+    await landFresh(loading);
+  });
+
+  it.each([
+    ['comes back with nothing', (snap: Deferred<PlannerSnapshotData | null>) => snap.resolve(null)],
+    ['rejects', (snap: Deferred<PlannerSnapshotData | null>) => snap.reject(new Error('IndexedDB exploded'))],
+  ])('ends when the read %s', async (_, end) => {
+    store().identifyUser(A);
+    const snap = holdRead();
+    const loading = store().initializeStore(A, { preview: () => true });
+    await flush();
+    expect(held()).toBe(true);
+
+    end(snap);
+    await flush();
+    expect(held()).toBe(false);
+    await landFresh(loading);
+  });
+
+  it('ends when the read comes back with nothing, without waiting for the requests to leave', async () => {
+    const out = deferred<void>();
+    vi.mocked(db.plannerRequestsSent).mockImplementationOnce(() => out.promise);
+    store().identifyUser(A);
+    const snap = holdRead();
+    const loading = store().initializeStore(A, { preview: () => true });
+    snap.resolve(null);
+    await flush();
+    expect(held()).toBe(false);
+    out.resolve();
+    await landFresh(loading);
+  });
+
+  it('ends when the read throws before it starts', async () => {
+    read.mockImplementationOnce(() => {
+      throw new Error('IndexedDB exploded');
+    });
+    store().identifyUser(A);
+    const loading = store().initializeStore(A, { preview: () => true });
+    expect(held()).toBe(false);
+    await landFresh(loading);
+  });
+
+  it('ends when allowed() refuses at apply time', async () => {
+    const { loading } = await previewA(() => false);
+    expect(store().isPreview).toBe(false);
+    expect(held()).toBe(false);
+    await landFresh(loading);
+  });
+
+  it('ends when the store already holds something to paint over', async () => {
+    store().identifyUser(A);
+    const snap = holdRead();
+    const loading = store().initializeStore(A, { preview: () => true });
+    usePlannerStore.setState({ items: [task('t-typed', 'Typed during the load')] });
+    snap.resolve(CACHED());
+    await flush();
+    expect(store().isPreview).toBe(false);
+    expect(held()).toBe(false);
+    await landFresh(loading);
+  });
+
+  it('ends when a read that comes back too late is dropped', async () => {
+    store().identifyUser(A);
+    const snap = holdRead();
+    const loading = store().initializeStore(A, { preview: () => true });
+    await landFresh(loading);
+    // Nothing in this file ends it at the landing (that is the writer's), so it is still up.
+    expect(held()).toBe(true);
+    snap.resolve(CACHED());
+    await flush();
+    expect(store().isPreview).toBe(false);
+    expect(held()).toBe(false);
+  });
+});
+
 describe('dropPreview', () => {
   it('empties the data, keeps the load pending, records no history, and the landing renders fresh', async () => {
     const { loading } = await previewA();

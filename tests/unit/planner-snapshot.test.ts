@@ -43,6 +43,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  document.documentElement.removeAttribute('data-preview-expected');
   vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
@@ -105,7 +106,7 @@ const rawPut = (value: unknown, key: string) => raw('readwrite', (s) => s.put(va
 describe('a snapshot', () => {
   it('round-trips for its user', async () => {
     const d = data({ extensionsEnabled: { goals: true } });
-    expect(await write(U, d)).toBe(true);
+    expect(await write(U, d)).toBe('written');
     expect(await snap.readPlannerSnapshot(U)).toEqual(d);
   });
 
@@ -127,7 +128,7 @@ describe('a snapshot', () => {
   it('aborts an uncloneable write and leaves the previous copy', async () => {
     await write(U, data());
     const poisoned = data({ items: [{ ...item('i9'), oops: () => {} } as unknown as Item] });
-    expect(await write(U, poisoned)).toBe(false);
+    expect(await write(U, poisoned)).toBe('failed');
     expect((await snap.readPlannerSnapshot(U))?.items.map((i) => i.id)).toEqual(['i1']);
   });
 });
@@ -271,7 +272,7 @@ describe('a clear asked for while the first open is still pending', () => {
   /** A's record, written by an earlier page; this test's `snap` is the next page. */
   async function previousPageWroteA() {
     const earlier = await freshModule();
-    expect(await earlier.writePlannerSnapshot(U, data(), Date.now(), earlier.getSnapshotEpoch())).toBe(true);
+    expect(await earlier.writePlannerSnapshot(U, data(), Date.now(), earlier.getSnapshotEpoch())).toBe('written');
     snap = await freshModule();
     expect(await rawKeys()).toEqual([U, `${U}#base`]);
   }
@@ -357,14 +358,14 @@ describe('a write with a stale epoch', () => {
   it('is dropped when the clear came before the call', async () => {
     const epoch = snap.getSnapshotEpoch();
     snap.clearPlannerSnapshot();
-    expect(await snap.writePlannerSnapshot(U, data(), Date.now(), epoch)).toBe(false);
+    expect(await snap.writePlannerSnapshot(U, data(), Date.now(), epoch)).toBe('refused');
     expect(await rawKeys()).toEqual([]);
   });
 
   it('is dropped when the clear lands while the database is still opening', async () => {
     const pending = write(U, data());
     snap.clearPlannerSnapshot();
-    expect(await pending).toBe(false);
+    expect(await pending).toBe('refused');
     expect(await rawKeys()).toEqual([]);
   });
 });
@@ -373,7 +374,7 @@ describe('the newer-base refusal', () => {
   it('refuses a write whose base is OLDER than the stored one, and keeps the stored copy', async () => {
     const t = Date.now();
     await write(U, data({ items: [item('fresh')] }), t);
-    expect(await write(U, data({ items: [item('stale')] }), t - 1000)).toBe(false);
+    expect(await write(U, data({ items: [item('stale')] }), t - 1000)).toBe('refused');
     expect((await snap.readPlannerSnapshot(U))?.items.map((i) => i.id)).toEqual(['fresh']);
     expect((await rawRecord(`${U}#base`) as unknown as { baseAt: number }).baseAt).toBe(t);
   });
@@ -381,8 +382,8 @@ describe('the newer-base refusal', () => {
   it('writes an equal base (the same tab saving again) and a newer one', async () => {
     const t = Date.now() - 5000;
     await write(U, data({ items: [item('one')] }), t);
-    expect(await write(U, data({ items: [item('two')] }), t)).toBe(true);
-    expect(await write(U, data({ items: [item('three')] }), t + 1)).toBe(true);
+    expect(await write(U, data({ items: [item('two')] }), t)).toBe('written');
+    expect(await write(U, data({ items: [item('three')] }), t + 1)).toBe('written');
     expect((await snap.readPlannerSnapshot(U))?.items.map((i) => i.id)).toEqual(['three']);
   });
 });
@@ -416,11 +417,69 @@ describe('the prefetch', () => {
     expect((await snap.readPlannerSnapshot(U))?.items.map((i) => i.id)).toEqual(['new']);
   });
 
-  it('touches neither the store nor the DOM — it only reads', async () => {
+  it('writes nothing — it only reads', async () => {
     await write(U, data());
     snap.warmPlannerSnapshot(U);
     snap.warmPlannerSnapshot(null);
     expect(await rawKeys()).toEqual([U, `${U}#base`]);
+  });
+});
+
+/**
+ * `<html data-preview-expected>` holds the skeleton's bars back while a preview
+ * can still come (app/globals.css). Raised where the prefetch starts, before
+ * the skeleton first mounts; ended by a clear here, and by the store's own
+ * edges elsewhere (planner-snapshot-writer.test.ts, planner-preview-store.test.ts).
+ */
+describe('the skeleton hold', () => {
+  const held = () => document.documentElement.hasAttribute(snap.PREVIEW_EXPECTED_ATTR);
+
+  it('is raised by a warm-up that has an owner to read for, and kept while its record is good', async () => {
+    await write(U, data());
+    snap.warmPlannerSnapshot(U);
+    expect(held()).toBe(true);
+    expect(await snap.readPlannerSnapshot(U)).not.toBeNull();
+    expect(held()).toBe(true);
+  });
+
+  it('is ended as soon as the prefetch finds nothing on disk', async () => {
+    snap.warmPlannerSnapshot(U);
+    expect(held()).toBe(true);
+    await vi.waitFor(() => expect(held()).toBe(false));
+  });
+
+  it('is ended as soon as the prefetch finds a record it may not paint', async () => {
+    await write(U, data());
+    await rawPut({ ...(await rawRecord(U)), v: 'an older build' }, U);
+    snap.warmPlannerSnapshot(U);
+    expect(held()).toBe(true);
+    await vi.waitFor(() => expect(held()).toBe(false));
+  });
+
+  it('is not raised with no owner on disk: no preview can come', () => {
+    snap.warmPlannerSnapshot(null);
+    expect(held()).toBe(false);
+  });
+
+  it('is not raised when the crash marker skips this preview', () => {
+    snap.markPreviewPending(true);
+    snap.warmPlannerSnapshot(U);
+    expect(held()).toBe(false);
+  });
+
+  it('is ended by a clear, which leaves every read in flight coming back null', () => {
+    snap.warmPlannerSnapshot(U);
+    snap.clearPlannerSnapshot();
+    expect(held()).toBe(false);
+  });
+
+  it('expectPreview raises and ends it, and ending it twice is harmless', () => {
+    snap.expectPreview(true);
+    snap.expectPreview(true);
+    expect(document.documentElement.getAttribute(snap.PREVIEW_EXPECTED_ATTR)).toBe('');
+    snap.expectPreview(false);
+    snap.expectPreview(false);
+    expect(held()).toBe(false);
   });
 });
 
@@ -515,7 +574,7 @@ describe('an open that fails', () => {
     vi.stubGlobal('indexedDB', { open, deleteDatabase: vi.fn() });
 
     expect(await snap.readPlannerSnapshot(U)).toBeNull();
-    expect(await write(U, data())).toBe(false);
+    expect(await write(U, data())).toBe('failed');
     expect(open).toHaveBeenCalledTimes(2); // a null result is not memoized
   });
 
@@ -576,12 +635,13 @@ describe('off mode', () => {
     expect(snap.getSnapshotEpoch()).toBe(before + 1);
   });
 
-  it('read, write and warm never open it', async () => {
+  it('read, write and warm never open it, and nothing holds the skeleton back', async () => {
     const open = vi.spyOn(indexedDB, 'open');
     expect(snap.snapshotSupported()).toBe(false);
     snap.warmPlannerSnapshot(U);
+    expect(document.documentElement.hasAttribute(snap.PREVIEW_EXPECTED_ATTR)).toBe(false);
     expect(await snap.readPlannerSnapshot(U)).toBeNull();
-    expect(await write(U, data())).toBe(false);
+    expect(await write(U, data())).toBe('refused');
     expect(open).not.toHaveBeenCalled();
   });
 });

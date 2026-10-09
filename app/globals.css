@@ -2696,6 +2696,22 @@ body {
 [data-reduce-motion='true'] .planner-skeleton [data-skeleton-bars] {
   animation: none;
 }
+/* While a preview may still come (<html data-preview-expected>, raised by
+   lib/planner-snapshot.ts expectPreview on a warm reload), the bars wait
+   longer. The cached planner replaces the skeleton in one long render, and
+   the fade-in above runs on the compositor straight through it, so at 250ms
+   the bars used to flash on just before the preview painted.
+
+   1500ms is a cap, not a wait. The attribute goes the moment no preview can
+   come (nothing on disk, the offer declined, the load settled), and a change
+   of animation-delay retimes the running animation, so a skeleton already
+   past 250ms shows its bars at once, as it would have without the hold.
+   After the plain and both vetoed rules, which it outranks or follows, so the
+   hold survives reduced motion as the 250ms delay does. */
+[data-preview-expected] .planner-skeleton,
+[data-preview-expected][data-reduce-motion='true'] .planner-skeleton {
+  animation-delay: 1500ms;
+}
 
 /* ── Planner preview: sync line ──────────────────────────────────────────
    components/shell/planner-sync-line.tsx — the look-only preview's steady

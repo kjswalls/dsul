@@ -50,6 +50,8 @@ const DB_VERSION = 1;
 const BASE_KEY = (userId: string) => `${userId}#base`;
 /** sessionStorage, tab-scoped, holds '1' while a preview is on screen. */
 const CRASH_MARKER = 'dsul-preview-pending';
+/** On <html> while a preview may still come for this page (expectPreview). */
+export const PREVIEW_EXPECTED_ATTR = 'data-preview-expected';
 const OPEN_TIMEOUT_MS = 3000;
 /** A base stamped this far in the future is a skewed clock, not a fresh copy. */
 const FUTURE_SKEW_MS = 5 * 60_000;
@@ -318,6 +320,36 @@ function consumeCrashMarker(): boolean {
   return true;
 }
 
+/**
+ * `<html data-preview-expected>`: a preview may still come for this page, so
+ * PlannerSkeleton holds its bars back past their usual 250ms (app/globals.css,
+ * "Planner skeleton"). On a warm reload the skeleton mounts at the shell's
+ * mount and the cached planner replaces it once the read lands, but that
+ * render is one long task: the bars' fade ran on the compositor through it and
+ * flashed on screen just before the preview painted.
+ *
+ * Set by warmPlannerSnapshot when a preview can come, which is before the
+ * skeleton first mounts (the provider's effect runs in the same flush as
+ * AppShell's mount effect, ahead of the render that effect asks for).
+ * Cleared the moment one can no longer come or is no longer needed: the
+ * prefetch finding nothing usable, a clear (sign-out, account switch, the
+ * crash marker), the offer's end whatever its outcome (nothing on disk,
+ * declined, applied, thrown; offerPreview in lib/planner-store.ts), and the
+ * load settling (the writer). The CSS delay is a cap, so a page that never
+ * clears it (an offline launch whose session never confirms) shows the bars
+ * at 1.5s, not never.
+ */
+export function expectPreview(on: boolean): void {
+  if (typeof document === 'undefined') return;
+  try {
+    const root = document.documentElement;
+    if (on) root.setAttribute(PREVIEW_EXPECTED_ATTR, '');
+    else if (root.hasAttribute(PREVIEW_EXPECTED_ATTR)) root.removeAttribute(PREVIEW_EXPECTED_ATTR);
+  } catch {
+    /* a missing attribute only costs the bars their longer hold */
+  }
+}
+
 export function markPreviewPending(on: boolean): void {
   if (typeof window === 'undefined') return;
   try {
@@ -386,11 +418,28 @@ export function previewRenderedCleanly(): boolean {
  * No hint opens nothing. An unowned browser's adoption clears the snapshot
  * before any read (RAW_CLEARERS), so an early open would buy that read nothing
  * — and would create the database for a visitor who never signs in.
+ *
+ * A hint is also what makes a preview possible, so it raises expectPreview
+ * here, before the skeleton first mounts.
  */
 export function warmPlannerSnapshot(ownerHint: string | null): void {
   try {
     if (!snapshotSupported() || consumeCrashMarker()) return;
-    if (ownerHint) prefetched = { userId: ownerHint, epoch, promise: getRecord(ownerHint) };
+    if (ownerHint) {
+      expectPreview(true);
+      const promise = getRecord(ownerHint);
+      prefetched = { userId: ownerHint, epoch, promise };
+      // Nothing usable on disk (none yet, expired, an older build's): no
+      // preview can come, so the bars go back to their own delay at once,
+      // without waiting for the session and the offer.
+      void promise.then((rec) => {
+        try {
+          if (!isValidSnapshot(rec, ownerHint)) expectPreview(false);
+        } catch {
+          expectPreview(false);
+        }
+      });
+    }
   } catch {
     /* a warm-up is only ever an optimisation */
   }
@@ -429,8 +478,18 @@ function abortQuietly(tx: IDBTransaction): void {
 }
 
 /**
+ * How a write ended, so the writer knows whether trying again can help.
+ * `refused` would meet the same answer again, or was not wanted: no snapshot
+ * support, a clear since the caller read the epoch, or a NEWER base on disk.
+ * `failed` might not: no connection (the open errored, was blocked or timed
+ * out) or a transaction that errored or aborted on its own (a quota, an
+ * uncloneable value).
+ */
+export type SnapshotWriteResult = 'written' | 'refused' | 'failed';
+
+/**
  * Store `data` as `userId`'s snapshot, replacing whatever is on disk. NEVER
- * rejects or throws; resolves whether it committed.
+ * rejects or throws; resolves with how it ended (SnapshotWriteResult).
  *
  * Refused when a clear has happened since the caller read `expectEpoch`, and —
  * in the same readwrite transaction, so two tabs cannot interleave — when the
@@ -442,12 +501,13 @@ export function writePlannerSnapshot(
   data: PlannerSnapshotData,
   baseAt: number,
   expectEpoch: number
-): Promise<boolean> {
+): Promise<SnapshotWriteResult> {
   try {
-    if (!snapshotSupported() || expectEpoch !== epoch) return Promise.resolve(false);
+    if (!snapshotSupported() || expectEpoch !== epoch) return Promise.resolve('refused');
     return openDb()
-      .then((db) => {
-        if (!db || expectEpoch !== epoch) return false;
+      .then((db): SnapshotWriteResult | Promise<SnapshotWriteResult> => {
+        if (!db) return 'failed';
+        if (expectEpoch !== epoch) return 'refused';
         const record: PlannerSnapshotRecord = {
           v: SNAPSHOT_VERSION,
           origin: ORIGIN,
@@ -456,17 +516,20 @@ export function writePlannerSnapshot(
           savedAt: Date.now(),
           data,
         };
-        return new Promise<boolean>((resolve) => {
+        return new Promise<SnapshotWriteResult>((resolve) => {
           let tx: IDBTransaction;
           try {
             tx = db.transaction(SNAPSHOT_STORE, 'readwrite');
           } catch {
-            resolve(false);
+            resolve('failed');
             return;
           }
-          tx.oncomplete = () => resolve(true);
-          tx.onerror = () => resolve(false);
-          tx.onabort = () => resolve(false);
+          // Set before the abort that a newer base asks for, so that abort reads as a refusal.
+          let newerBase = false;
+          const unwritten = () => resolve(newerBase ? 'refused' : 'failed');
+          tx.oncomplete = () => resolve('written');
+          tx.onerror = unwritten;
+          tx.onabort = unwritten;
           try {
             const store = tx.objectStore(SNAPSHOT_STORE);
             const base = store.get(BASE_KEY(userId));
@@ -474,11 +537,12 @@ export function writePlannerSnapshot(
               try {
                 const stored = (base.result as { baseAt?: unknown } | undefined)?.baseAt;
                 if (typeof stored === 'number' && stored > baseAt) {
+                  newerBase = true;
                   abortQuietly(tx); // a newer base wins
                   return;
                 }
                 store.clear(); // one account at most on disk
-                store.put(record, userId); // DataCloneError throws here → abort → false
+                store.put(record, userId); // DataCloneError throws here → abort → 'failed'
                 store.put({ baseAt }, BASE_KEY(userId));
               } catch {
                 abortQuietly(tx);
@@ -489,9 +553,9 @@ export function writePlannerSnapshot(
           }
         });
       })
-      .catch(() => false);
+      .catch((): SnapshotWriteResult => 'failed');
   } catch {
-    return Promise.resolve(false);
+    return Promise.resolve('failed');
   }
 }
 
@@ -517,6 +581,8 @@ export function writePlannerSnapshot(
 export function clearPlannerSnapshot(): void {
   epoch++;
   prefetched = null;
+  // Every read in flight now comes back null, so no preview can follow.
+  expectPreview(false);
   if (PREVIEW_MODE === 'off' || !dbPromise) {
     purgePlannerSnapshotDb();
     return;

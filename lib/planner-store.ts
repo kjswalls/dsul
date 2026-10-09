@@ -72,6 +72,7 @@ import {
   fetchSeasons,
   fetchGoals,
   loadPlannerData,
+  plannerRequestsSent,
   createGoal as dbCreateGoal,
   updateGoal as rawUpdateGoal,
   deleteGoal as rawDeleteGoal,
@@ -90,7 +91,7 @@ import {
 import { celebrateCompletion } from './completion-confetti';
 // Already reached through completion-confetti, so this adds no cycle.
 import { useExtensionsStore } from './extensions-store';
-import { markPreviewPending, readPlannerSnapshot, type PlannerSnapshotData } from './planner-snapshot';
+import { expectPreview, markPreviewPending, readPlannerSnapshot, type PlannerSnapshotData } from './planner-snapshot';
 import { guardPreviewWrites } from './preview-write-guard';
 import { raiseModEvent, raiseModEvents, raiseModOnlyEvents, isModEventsSuppressed, type ModEvent } from './mod-events';
 import { uncompletionsBetween } from './mods/undo-events';
@@ -2347,16 +2348,35 @@ export const usePlannerStore = create<PlannerStore>()(
        * Paint the last session's planner while THIS load is in flight. Fire-and-forget: it can
        * neither delay, fail, nor outlive the load. Never touches userId, isLoading, error,
        * loadFailedUserId, userTimezone or any history field.
+       *
+       * Applied only once the load's request has left (plannerRequestsSent, lib/db.ts): the
+       * preview's render is one long task, and run first it held the fetch back by as long.
+       * Whatever the outcome, the offer ends the skeleton's hold (expectPreview): applied,
+       * declined, nothing on disk or thrown, no preview can come after it.
        */
       const offerPreview = (userId: string, generation: number, allowed: () => boolean): void => {
         let read: Promise<PlannerSnapshotData | null>;
+        let sent: Promise<unknown>;
         try {
           read = readPlannerSnapshot(userId);
         } catch {
+          expectPreview(false);
           return;
         }
-        read
-          .then((snap) => {
+        // Nothing on disk to show: the bars need not wait for the requests as well.
+        read.then(
+          (snap) => {
+            if (!snap) expectPreview(false);
+          },
+          () => expectPreview(false)
+        );
+        try {
+          sent = plannerRequestsSent();
+        } catch {
+          sent = Promise.resolve();
+        }
+        Promise.all([read, sent])
+          .then(([snap]) => {
             // The same ownership questions the landing asks, plus two of its own: the
             // load is still out, and nothing has been put in the store since it began.
             if (!snap || loadGeneration !== generation) return;
@@ -2407,7 +2427,8 @@ export const usePlannerStore = create<PlannerStore>()(
               isUpdatingUndoRedo = was;
             }
           })
-          .catch((err) => console.warn('[preview] skipped', err));
+          .catch((err) => console.warn('[preview] skipped', err))
+          .finally(() => expectPreview(false));
       };
 
       const store: PlannerStore = {
@@ -3046,9 +3067,13 @@ export const usePlannerStore = create<PlannerStore>()(
           // sweep's hydration gate (see loadPlannerTables).
           //
           // CALLED FIRST and synchronously, before the preview is even offered:
-          // the fetchers start in the same frame as this call (loadPlannerData's
-          // contract, which the load-race tests rely on). The cache read races
-          // the fetch and never delays it.
+          // the fetchers are called in the same frame as this call
+          // (loadPlannerData's contract, which the load-race tests rely on).
+          // Called is not sent: each request waits on supabase-js's auth lock,
+          // granted a task or more later, so a long task run first holds it
+          // back. The preview's render is one, which is why offerPreview waits
+          // for the request to leave (plannerRequestsSent) before applying.
+          // The cache read races the fetch and never delays it.
           const dataPromise = loadPlannerData(userId, () => loadPlannerTables(userId));
           if (opts?.preview) offerPreview(userId, generation, opts.preview);
           const {

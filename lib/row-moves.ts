@@ -97,14 +97,17 @@ export function canSendToBraindump(
   return isOpenOn(it, dateStr);
 }
 
+/** Built once: every row with a carry formats its target day on each render. */
+const TARGET_DAY_FORMAT = new Intl.DateTimeFormat('en-US', {
+  weekday: 'short',
+  month: 'short',
+  day: 'numeric',
+  timeZone: 'UTC',
+});
+
 /** "Sat, Sep 27" for a YYYY-MM-DD — the carry tooltip's second line. Formatted
  *  in UTC from the string's own parts, so no timezone can shift it. */
 export function formatTargetDay(dateStr: string): string {
   const [y, m, d] = dateStr.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    timeZone: 'UTC',
-  });
+  return TARGET_DAY_FORMAT.format(new Date(Date.UTC(y, m - 1, d)));
 }
