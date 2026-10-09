@@ -41,7 +41,8 @@ or by pasting a list. A tap on a row's circle still just ticks it.
 - `DsulCore/` is a Swift package with the planner logic ported from the web
   app: which items show on a day, the braindump, routine grouping, what a
   tick means, the item sheet's verbs (when each is offered, what it writes)
-  and the words its chips say, and the sign-in requests. It has no UI, so
+  and the words its chips say, the sign-in requests, and which reminder
+  notifications the phone will arm and in what words. It has no UI, so
   `swift test` runs it on Linux as well as macOS.
 - `project.yml` describes the Xcode project. XcodeGen generates
   `Dsul.xcodeproj` from it; the generated project is never committed.

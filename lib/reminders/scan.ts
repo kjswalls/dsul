@@ -48,39 +48,13 @@ import type { Nudge, NudgeItem } from './nudge'
 import type { ActivationContext } from '../active'
 import type { Item } from '../planner-types'
 import { isMissingColumn, loadChannelState } from './extension-state'
+import { localClock, type LocalClock } from './clock'
 
 type ServiceClient = ReturnType<typeof createServiceClient>
 
-export interface LocalClock {
-  dateStr: string
-  nowMinutes: number
-  nowIso: string
-  nowMs: number
-}
-
-/**
- * The user's own day and minute.
- *
- * `hourCycle: 'h23'` rather than `hour12: false`, which is not the same thing:
- * the latter leaves the cycle to the locale and some ICU builds answer midnight
- * as "24", which parses to 1440 and silently puts every user an entire day
- * outside every window. Naming the cycle removes the question.
- */
-export function localClock(now: Date, timezone: string): LocalClock {
-  const hhmm = new Intl.DateTimeFormat('en-GB', {
-    timeZone: timezone,
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  }).format(now)
-  const dateStr = new Intl.DateTimeFormat('en-CA', { timeZone: timezone }).format(now)
-  return {
-    dateStr,
-    nowMinutes: minutesOfDay(hhmm) ?? 0,
-    nowIso: now.toISOString(),
-    nowMs: now.getTime(),
-  }
-}
+// The clock moved to ./clock (code with no server in reach reads it too); it
+// is re-exported so every existing importer keeps its path.
+export { localClock, type LocalClock } from './clock'
 
 /** Minutes in a day: where every window here stops, rather than wrapping. */
 const MINUTES_PER_DAY = 1440

@@ -41,12 +41,13 @@ jobs:
             echo ios=true >> "$GITHUB_OUTPUT"; exit 0
           fi
           # ios/ (except Markdown), this workflow, the TypeScript files the
-          # Swift port mirrors (each DsulCore file names its own), the item
+          # Swift port mirrors (each DsulCore file names its own in its header;
+          # tests/unit/ios-change-filter.test.ts holds this list to them), the item
           # schema the payload decodes, the app routes the phone decodes, the
           # page that hands sign-ins back to it, and the shared fixtures both
           # sides read, so a web edit re-runs the Swift tests.
           if git diff --name-only "$BASE" "$GITHUB_SHA" \
-             | grep -E '^(ios/|\.github/workflows/ios\.yml$|lib/(recurrence|schedule-constants|day-items|active|item-toggle|grouping|item-registry|braindump-members|planner-store|app-api|app-auth|session-user-store|app-icons|item-verbs|item-edit|bulk-add|bulk-edit|row-moves|goals|goal-roles|cadence|time-bucket|item-bands|item-pause|collections|planner-types|container-schedule|container-registry|overdue|reminders/copy|reminders/due|account-types|account-copy)\.ts$|packages/types/src/schemas\.ts$|components/views/(day-buckets|day-schedule)\.tsx$|tests/fixtures/(recurrence|day|app)/|app/api/app/|app/auth/ios/)' \
+             | grep -E '^(ios/|\.github/workflows/ios\.yml$|lib/(recurrence|schedule-constants|day-items|active|item-toggle|grouping|item-registry|braindump-members|planner-store|app-api|app-auth|session-user-store|app-icons|item-verbs|item-edit|bulk-add|bulk-edit|row-moves|goals|goal-roles|cadence|time-bucket|item-bands|item-pause|collections|planner-types|container-schedule|container-registry|overdue|reminders/copy|reminders/due|reminders/plan|reminders/snooze|reminders/clock|reminders/channels/push|verb-gates|eod|account-types|account-copy)\.ts$|packages/types/src/schemas\.ts$|components/views/(day-buckets|day-schedule)\.tsx$|tests/fixtures/(recurrence|day|app)/|app/api/app/|app/auth/ios/)' \
              | grep -qvE '^ios/.*\.md$'; then
             echo ios=true >> "$GITHUB_OUTPUT"
           else

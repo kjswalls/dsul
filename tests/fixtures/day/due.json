@@ -1,0 +1,1583 @@
+{
+  "graceMinutes": 30,
+  "minutesOfDay": [
+    {
+      "name": "midnight",
+      "input": "00:00",
+      "expected": 0
+    },
+    {
+      "name": "morning",
+      "input": "07:30",
+      "expected": 450
+    },
+    {
+      "name": "last minute",
+      "input": "23:59",
+      "expected": 1439
+    },
+    {
+      "name": "no time",
+      "input": null,
+      "expected": null
+    },
+    {
+      "name": "empty",
+      "input": "",
+      "expected": null
+    },
+    {
+      "name": "one-digit hour",
+      "input": "7:30",
+      "expected": null
+    },
+    {
+      "name": "24:00 is not a time",
+      "input": "24:00",
+      "expected": null
+    },
+    {
+      "name": "minute 60",
+      "input": "12:60",
+      "expected": null
+    },
+    {
+      "name": "seconds are not HH:mm",
+      "input": "07:30:00",
+      "expected": null
+    },
+    {
+      "name": "a word",
+      "input": "noon",
+      "expected": null
+    }
+  ],
+  "isWithinWindow": [
+    {
+      "name": "a minute before",
+      "target": 450,
+      "now": 449,
+      "expected": false
+    },
+    {
+      "name": "at the minute",
+      "target": 450,
+      "now": 450,
+      "expected": true
+    },
+    {
+      "name": "last minute of the grace",
+      "target": 450,
+      "now": 479,
+      "expected": true
+    },
+    {
+      "name": "grace over",
+      "target": 450,
+      "now": 480,
+      "expected": false
+    },
+    {
+      "name": "clamped, inside",
+      "target": 1430,
+      "now": 1439,
+      "expected": true
+    },
+    {
+      "name": "clamped, never wraps past midnight",
+      "target": 1430,
+      "now": 0,
+      "expected": false
+    },
+    {
+      "name": "clamped, five past midnight",
+      "target": 1430,
+      "now": 5,
+      "expected": false
+    },
+    {
+      "name": "a shorter grace, inside",
+      "target": 450,
+      "now": 459,
+      "grace": 10,
+      "expected": true
+    },
+    {
+      "name": "a shorter grace, over",
+      "target": 450,
+      "now": 460,
+      "grace": 10,
+      "expected": false
+    }
+  ],
+  "wantsDoingOn": [
+    {
+      "name": "untouched occurrence",
+      "timeZone": "America/New_York",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "vitamins",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "routines": [],
+      "seasons": [],
+      "dateStr": "2026-08-10",
+      "expected": true
+    },
+    {
+      "name": "done that day",
+      "timeZone": "America/New_York",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "vitamins",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [
+          "2026-08-10"
+        ],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "routines": [],
+      "seasons": [],
+      "dateStr": "2026-08-10",
+      "expected": false
+    },
+    {
+      "name": "skipped that day",
+      "timeZone": "America/New_York",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "vitamins",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [
+          "2026-08-10"
+        ],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "routines": [],
+      "seasons": [],
+      "dateStr": "2026-08-10",
+      "expected": false
+    },
+    {
+      "name": "tallied once with no target",
+      "timeZone": "America/New_York",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "vitamins",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {
+          "2026-08-10": 1
+        },
+        "repeatFrequency": "daily"
+      },
+      "routines": [],
+      "seasons": [],
+      "dateStr": "2026-08-10",
+      "expected": false
+    },
+    {
+      "name": "tallied below its target",
+      "timeZone": "America/New_York",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "water",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {
+          "2026-08-10": 2
+        },
+        "repeatFrequency": "daily",
+        "timesPerDay": 3
+      },
+      "routines": [],
+      "seasons": [],
+      "dateStr": "2026-08-10",
+      "expected": true
+    },
+    {
+      "name": "paused itself",
+      "timeZone": "America/New_York",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "vitamins",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "pausedAt": "2026-08-01T12:00:00Z",
+        "pausedUntil": "2026-09-01"
+      },
+      "routines": [],
+      "seasons": [],
+      "dateStr": "2026-08-10",
+      "expected": false
+    },
+    {
+      "name": "in a paused season",
+      "timeZone": "America/New_York",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "vitamins",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "routines": [],
+      "seasons": [
+        {
+          "id": "s-shelf",
+          "name": "Shelf",
+          "state": "paused",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000385"
+          ],
+          "routineIds": []
+        }
+      ],
+      "dateStr": "2026-08-10",
+      "expected": false
+    },
+    {
+      "name": "a second, live container keeps it",
+      "timeZone": "America/New_York",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "vitamins",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "routines": [
+        {
+          "id": "r-off",
+          "name": "Morning",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000385"
+          ],
+          "pausedAt": "2026-08-01T12:00:00Z"
+        },
+        {
+          "id": "r-on",
+          "name": "Always",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000385"
+          ]
+        }
+      ],
+      "seasons": [],
+      "dateStr": "2026-08-10",
+      "expected": true
+    },
+    {
+      "name": "weekday habit on a Saturday",
+      "timeZone": "America/New_York",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "standup",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "weekdays"
+      },
+      "routines": [],
+      "seasons": [],
+      "dateStr": "2026-08-15",
+      "expected": false
+    },
+    {
+      "name": "anchored recurring task with no start date",
+      "timeZone": "America/New_York",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000386",
+        "title": "water plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "daily"
+      },
+      "routines": [],
+      "seasons": [],
+      "dateStr": "2026-08-10",
+      "expected": false
+    },
+    {
+      "name": "recurring task before its start",
+      "timeZone": "America/New_York",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000386",
+        "title": "water plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "daily",
+        "startDate": "2026-08-11"
+      },
+      "routines": [],
+      "seasons": [],
+      "dateStr": "2026-08-10",
+      "expected": false
+    },
+    {
+      "name": "one-off on its day",
+      "timeZone": "America/New_York",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000387",
+        "title": "file taxes",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-08-10"
+      },
+      "routines": [],
+      "seasons": [],
+      "dateStr": "2026-08-10",
+      "expected": true
+    },
+    {
+      "name": "one-off done",
+      "timeZone": "America/New_York",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000387",
+        "title": "file taxes",
+        "status": "completed",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-08-10"
+      },
+      "routines": [],
+      "seasons": [],
+      "dateStr": "2026-08-10",
+      "expected": false
+    }
+  ],
+  "dueReminders": [
+    {
+      "name": "in its window",
+      "timeZone": "America/New_York",
+      "rows": [
+        {
+          "item": {
+            "type": "habit",
+            "id": "00000000-0000-4000-8000-00000000038f",
+            "title": "vitamins",
+            "streak": 0,
+            "status": "pending",
+            "completedDates": [],
+            "skippedDates": [],
+            "dailyCounts": {},
+            "repeatFrequency": "daily",
+            "reminderTime": "07:30"
+          }
+        }
+      ],
+      "clock": {
+        "dateStr": "2026-08-10",
+        "nowMinutes": 450,
+        "nowIso": "2026-08-10T12:00:00.000Z",
+        "nowMs": 1786363200000
+      },
+      "expected": [
+        {
+          "itemId": "00000000-0000-4000-8000-00000000038f",
+          "at": "07:30",
+          "snoozed": false
+        }
+      ]
+    },
+    {
+      "name": "before its window",
+      "timeZone": "America/New_York",
+      "rows": [
+        {
+          "item": {
+            "type": "habit",
+            "id": "00000000-0000-4000-8000-00000000038f",
+            "title": "vitamins",
+            "streak": 0,
+            "status": "pending",
+            "completedDates": [],
+            "skippedDates": [],
+            "dailyCounts": {},
+            "repeatFrequency": "daily",
+            "reminderTime": "07:30"
+          }
+        }
+      ],
+      "clock": {
+        "dateStr": "2026-08-10",
+        "nowMinutes": 449,
+        "nowIso": "2026-08-10T12:00:00.000Z",
+        "nowMs": 1786363200000
+      },
+      "expected": []
+    },
+    {
+      "name": "after its window",
+      "timeZone": "America/New_York",
+      "rows": [
+        {
+          "item": {
+            "type": "habit",
+            "id": "00000000-0000-4000-8000-00000000038f",
+            "title": "vitamins",
+            "streak": 0,
+            "status": "pending",
+            "completedDates": [],
+            "skippedDates": [],
+            "dailyCounts": {},
+            "repeatFrequency": "daily",
+            "reminderTime": "07:30"
+          }
+        }
+      ],
+      "clock": {
+        "dateStr": "2026-08-10",
+        "nowMinutes": 480,
+        "nowIso": "2026-08-10T12:00:00.000Z",
+        "nowMs": 1786363200000
+      },
+      "expected": []
+    },
+    {
+      "name": "a shorter grace closes sooner",
+      "timeZone": "America/New_York",
+      "rows": [
+        {
+          "item": {
+            "type": "habit",
+            "id": "00000000-0000-4000-8000-00000000038f",
+            "title": "vitamins",
+            "streak": 0,
+            "status": "pending",
+            "completedDates": [],
+            "skippedDates": [],
+            "dailyCounts": {},
+            "repeatFrequency": "daily",
+            "reminderTime": "07:30"
+          }
+        }
+      ],
+      "clock": {
+        "dateStr": "2026-08-10",
+        "nowMinutes": 460,
+        "nowIso": "2026-08-10T12:00:00.000Z",
+        "nowMs": 1786363200000,
+        "graceMinutes": 10
+      },
+      "expected": []
+    },
+    {
+      "name": "no cue set",
+      "timeZone": "America/New_York",
+      "rows": [
+        {
+          "item": {
+            "type": "habit",
+            "id": "00000000-0000-4000-8000-00000000038f",
+            "title": "vitamins",
+            "streak": 0,
+            "status": "pending",
+            "completedDates": [],
+            "skippedDates": [],
+            "dailyCounts": {},
+            "repeatFrequency": "daily"
+          }
+        }
+      ],
+      "clock": {
+        "dateStr": "2026-08-10",
+        "nowMinutes": 450,
+        "nowIso": "2026-08-10T12:00:00.000Z",
+        "nowMs": 1786363200000
+      },
+      "expected": []
+    },
+    {
+      "name": "a cue time that is not HH:mm",
+      "timeZone": "America/New_York",
+      "rows": [
+        {
+          "item": {
+            "type": "habit",
+            "id": "00000000-0000-4000-8000-00000000038f",
+            "title": "vitamins",
+            "streak": 0,
+            "status": "pending",
+            "completedDates": [],
+            "skippedDates": [],
+            "dailyCounts": {},
+            "repeatFrequency": "daily",
+            "reminderTime": "7:30"
+          }
+        }
+      ],
+      "clock": {
+        "dateStr": "2026-08-10",
+        "nowMinutes": 450,
+        "nowIso": "2026-08-10T12:00:00.000Z",
+        "nowMs": 1786363200000
+      },
+      "expected": []
+    },
+    {
+      "name": "a coarse clock opens 23:58 at its last tick",
+      "timeZone": "America/New_York",
+      "rows": [
+        {
+          "item": {
+            "type": "habit",
+            "id": "00000000-0000-4000-8000-00000000038f",
+            "title": "late",
+            "streak": 0,
+            "status": "pending",
+            "completedDates": [],
+            "skippedDates": [],
+            "dailyCounts": {},
+            "repeatFrequency": "daily",
+            "reminderTime": "23:58"
+          }
+        }
+      ],
+      "clock": {
+        "dateStr": "2026-08-10",
+        "nowMinutes": 1435,
+        "nowIso": "2026-08-10T12:00:00.000Z",
+        "nowMs": 1786363200000,
+        "latestOpening": 1435
+      },
+      "expected": [
+        {
+          "itemId": "00000000-0000-4000-8000-00000000038f",
+          "at": "23:58",
+          "snoozed": false
+        }
+      ]
+    },
+    {
+      "name": "a coarse clock, before its last tick",
+      "timeZone": "America/New_York",
+      "rows": [
+        {
+          "item": {
+            "type": "habit",
+            "id": "00000000-0000-4000-8000-00000000038f",
+            "title": "late",
+            "streak": 0,
+            "status": "pending",
+            "completedDates": [],
+            "skippedDates": [],
+            "dailyCounts": {},
+            "repeatFrequency": "daily",
+            "reminderTime": "23:58"
+          }
+        }
+      ],
+      "clock": {
+        "dateStr": "2026-08-10",
+        "nowMinutes": 1430,
+        "nowIso": "2026-08-10T12:00:00.000Z",
+        "nowMs": 1786363200000,
+        "latestOpening": 1435
+      },
+      "expected": []
+    },
+    {
+      "name": "a coarse clock, claimed at 23:55 by its own time",
+      "timeZone": "America/New_York",
+      "rows": [
+        {
+          "item": {
+            "type": "habit",
+            "id": "00000000-0000-4000-8000-00000000038f",
+            "title": "late",
+            "streak": 0,
+            "status": "pending",
+            "completedDates": [],
+            "skippedDates": [],
+            "dailyCounts": {},
+            "repeatFrequency": "daily",
+            "reminderTime": "23:58"
+          },
+          "sentKey": "2026-08-10T23:58"
+        }
+      ],
+      "clock": {
+        "dateStr": "2026-08-10",
+        "nowMinutes": 1438,
+        "nowIso": "2026-08-10T12:00:00.000Z",
+        "nowMs": 1786363200000,
+        "latestOpening": 1435
+      },
+      "expected": []
+    },
+    {
+      "name": "a coarse clock opens an earlier cue at its own minute",
+      "timeZone": "America/New_York",
+      "rows": [
+        {
+          "item": {
+            "type": "habit",
+            "id": "00000000-0000-4000-8000-00000000038f",
+            "title": "late",
+            "streak": 0,
+            "status": "pending",
+            "completedDates": [],
+            "skippedDates": [],
+            "dailyCounts": {},
+            "repeatFrequency": "daily",
+            "reminderTime": "23:50"
+          }
+        }
+      ],
+      "clock": {
+        "dateStr": "2026-08-10",
+        "nowMinutes": 1425,
+        "nowIso": "2026-08-10T12:00:00.000Z",
+        "nowMs": 1786363200000,
+        "latestOpening": 1435
+      },
+      "expected": []
+    },
+    {
+      "name": "a coarse clock, an earlier cue in its window",
+      "timeZone": "America/New_York",
+      "rows": [
+        {
+          "item": {
+            "type": "habit",
+            "id": "00000000-0000-4000-8000-00000000038f",
+            "title": "late",
+            "streak": 0,
+            "status": "pending",
+            "completedDates": [],
+            "skippedDates": [],
+            "dailyCounts": {},
+            "repeatFrequency": "daily",
+            "reminderTime": "23:50"
+          }
+        }
+      ],
+      "clock": {
+        "dateStr": "2026-08-10",
+        "nowMinutes": 1430,
+        "nowIso": "2026-08-10T12:00:00.000Z",
+        "nowMs": 1786363200000,
+        "latestOpening": 1435
+      },
+      "expected": [
+        {
+          "itemId": "00000000-0000-4000-8000-00000000038f",
+          "at": "23:50",
+          "snoozed": false
+        }
+      ]
+    },
+    {
+      "name": "a clock that ticks every minute waits for 23:58",
+      "timeZone": "America/New_York",
+      "rows": [
+        {
+          "item": {
+            "type": "habit",
+            "id": "00000000-0000-4000-8000-00000000038f",
+            "title": "late",
+            "streak": 0,
+            "status": "pending",
+            "completedDates": [],
+            "skippedDates": [],
+            "dailyCounts": {},
+            "repeatFrequency": "daily",
+            "reminderTime": "23:58"
+          }
+        }
+      ],
+      "clock": {
+        "dateStr": "2026-08-10",
+        "nowMinutes": 1435,
+        "nowIso": "2026-08-10T12:00:00.000Z",
+        "nowMs": 1786363200000
+      },
+      "expected": []
+    },
+    {
+      "name": "a clock that ticks every minute, at 23:58",
+      "timeZone": "America/New_York",
+      "rows": [
+        {
+          "item": {
+            "type": "habit",
+            "id": "00000000-0000-4000-8000-00000000038f",
+            "title": "late",
+            "streak": 0,
+            "status": "pending",
+            "completedDates": [],
+            "skippedDates": [],
+            "dailyCounts": {},
+            "repeatFrequency": "daily",
+            "reminderTime": "23:58"
+          }
+        }
+      ],
+      "clock": {
+        "dateStr": "2026-08-10",
+        "nowMinutes": 1438,
+        "nowIso": "2026-08-10T12:00:00.000Z",
+        "nowMs": 1786363200000
+      },
+      "expected": [
+        {
+          "itemId": "00000000-0000-4000-8000-00000000038f",
+          "at": "23:58",
+          "snoozed": false
+        }
+      ]
+    },
+    {
+      "name": "already sent today",
+      "timeZone": "America/New_York",
+      "rows": [
+        {
+          "item": {
+            "type": "habit",
+            "id": "00000000-0000-4000-8000-00000000038f",
+            "title": "vitamins",
+            "streak": 0,
+            "status": "pending",
+            "completedDates": [],
+            "skippedDates": [],
+            "dailyCounts": {},
+            "repeatFrequency": "daily",
+            "reminderTime": "07:30"
+          },
+          "sentKey": "2026-08-10T07:30"
+        }
+      ],
+      "clock": {
+        "dateStr": "2026-08-10",
+        "nowMinutes": 450,
+        "nowIso": "2026-08-10T12:00:00.000Z",
+        "nowMs": 1786363200000
+      },
+      "expected": []
+    },
+    {
+      "name": "sent yesterday",
+      "timeZone": "America/New_York",
+      "rows": [
+        {
+          "item": {
+            "type": "habit",
+            "id": "00000000-0000-4000-8000-00000000038f",
+            "title": "vitamins",
+            "streak": 0,
+            "status": "pending",
+            "completedDates": [],
+            "skippedDates": [],
+            "dailyCounts": {},
+            "repeatFrequency": "daily",
+            "reminderTime": "07:30"
+          },
+          "sentKey": "2026-08-09T07:30"
+        }
+      ],
+      "clock": {
+        "dateStr": "2026-08-10",
+        "nowMinutes": 450,
+        "nowIso": "2026-08-10T12:00:00.000Z",
+        "nowMs": 1786363200000
+      },
+      "expected": [
+        {
+          "itemId": "00000000-0000-4000-8000-00000000038f",
+          "at": "07:30",
+          "snoozed": false
+        }
+      ]
+    },
+    {
+      "name": "retimed the same day re-arms",
+      "timeZone": "America/New_York",
+      "rows": [
+        {
+          "item": {
+            "type": "habit",
+            "id": "00000000-0000-4000-8000-00000000038f",
+            "title": "vitamins",
+            "streak": 0,
+            "status": "pending",
+            "completedDates": [],
+            "skippedDates": [],
+            "dailyCounts": {},
+            "repeatFrequency": "daily",
+            "reminderTime": "18:00"
+          },
+          "sentKey": "2026-08-10T07:30"
+        }
+      ],
+      "clock": {
+        "dateStr": "2026-08-10",
+        "nowMinutes": 1080,
+        "nowIso": "2026-08-10T12:00:00.000Z",
+        "nowMs": 1786363200000
+      },
+      "expected": [
+        {
+          "itemId": "00000000-0000-4000-8000-00000000038f",
+          "at": "18:00",
+          "snoozed": false
+        }
+      ]
+    },
+    {
+      "name": "an unrelated edit does not re-arm",
+      "timeZone": "America/New_York",
+      "rows": [
+        {
+          "item": {
+            "type": "habit",
+            "id": "00000000-0000-4000-8000-00000000038f",
+            "title": "vitamins (renamed)",
+            "streak": 0,
+            "status": "pending",
+            "completedDates": [],
+            "skippedDates": [],
+            "dailyCounts": {},
+            "repeatFrequency": "daily",
+            "reminderTime": "07:30"
+          },
+          "sentKey": "2026-08-10T07:30"
+        }
+      ],
+      "clock": {
+        "dateStr": "2026-08-10",
+        "nowMinutes": 455,
+        "nowIso": "2026-08-10T12:00:00.000Z",
+        "nowMs": 1786363200000
+      },
+      "expected": []
+    },
+    {
+      "name": "done today",
+      "timeZone": "America/New_York",
+      "rows": [
+        {
+          "item": {
+            "type": "habit",
+            "id": "00000000-0000-4000-8000-00000000038f",
+            "title": "vitamins",
+            "streak": 0,
+            "status": "pending",
+            "completedDates": [
+              "2026-08-10"
+            ],
+            "skippedDates": [],
+            "dailyCounts": {},
+            "repeatFrequency": "daily",
+            "reminderTime": "07:30"
+          }
+        }
+      ],
+      "clock": {
+        "dateStr": "2026-08-10",
+        "nowMinutes": 450,
+        "nowIso": "2026-08-10T12:00:00.000Z",
+        "nowMs": 1786363200000
+      },
+      "expected": []
+    },
+    {
+      "name": "paused",
+      "timeZone": "America/New_York",
+      "rows": [
+        {
+          "item": {
+            "type": "habit",
+            "id": "00000000-0000-4000-8000-00000000038f",
+            "title": "vitamins",
+            "streak": 0,
+            "status": "pending",
+            "completedDates": [],
+            "skippedDates": [],
+            "dailyCounts": {},
+            "repeatFrequency": "daily",
+            "reminderTime": "07:30",
+            "pausedAt": "2026-08-01T12:00:00Z"
+          }
+        }
+      ],
+      "clock": {
+        "dateStr": "2026-08-10",
+        "nowMinutes": 450,
+        "nowIso": "2026-08-10T12:00:00.000Z",
+        "nowMs": 1786363200000
+      },
+      "expected": []
+    },
+    {
+      "name": "a matured snooze beats the stamp and the window",
+      "timeZone": "America/New_York",
+      "rows": [
+        {
+          "item": {
+            "type": "habit",
+            "id": "00000000-0000-4000-8000-00000000038f",
+            "title": "vitamins",
+            "streak": 0,
+            "status": "pending",
+            "completedDates": [],
+            "skippedDates": [],
+            "dailyCounts": {},
+            "repeatFrequency": "daily",
+            "reminderTime": "07:30"
+          },
+          "sentKey": "2026-08-10T07:30",
+          "snoozeUntil": "2026-08-10T11:00:00.000Z",
+          "snoozeDate": "2026-08-10"
+        }
+      ],
+      "clock": {
+        "dateStr": "2026-08-10",
+        "nowMinutes": 900,
+        "nowIso": "2026-08-10T12:00:00.000Z",
+        "nowMs": 1786363200000
+      },
+      "expected": [
+        {
+          "itemId": "00000000-0000-4000-8000-00000000038f",
+          "at": "07:30",
+          "snoozed": true
+        }
+      ]
+    },
+    {
+      "name": "a matured snooze in the +00:00 form",
+      "timeZone": "America/New_York",
+      "rows": [
+        {
+          "item": {
+            "type": "habit",
+            "id": "00000000-0000-4000-8000-00000000038f",
+            "title": "vitamins",
+            "streak": 0,
+            "status": "pending",
+            "completedDates": [],
+            "skippedDates": [],
+            "dailyCounts": {},
+            "repeatFrequency": "daily",
+            "reminderTime": "07:30"
+          },
+          "sentKey": "2026-08-10T07:30",
+          "snoozeUntil": "2026-08-10T11:00:00+00:00",
+          "snoozeDate": "2026-08-10"
+        }
+      ],
+      "clock": {
+        "dateStr": "2026-08-10",
+        "nowMinutes": 900,
+        "nowIso": "2026-08-10T12:00:00.000Z",
+        "nowMs": 1786363200000
+      },
+      "expected": [
+        {
+          "itemId": "00000000-0000-4000-8000-00000000038f",
+          "at": "07:30",
+          "snoozed": true
+        }
+      ]
+    },
+    {
+      "name": "a snooze not yet matured",
+      "timeZone": "America/New_York",
+      "rows": [
+        {
+          "item": {
+            "type": "habit",
+            "id": "00000000-0000-4000-8000-00000000038f",
+            "title": "vitamins",
+            "streak": 0,
+            "status": "pending",
+            "completedDates": [],
+            "skippedDates": [],
+            "dailyCounts": {},
+            "repeatFrequency": "daily",
+            "reminderTime": "07:30"
+          },
+          "sentKey": "2026-08-10T07:30",
+          "snoozeUntil": "2026-08-10T13:00:00.000Z",
+          "snoozeDate": "2026-08-10"
+        }
+      ],
+      "clock": {
+        "dateStr": "2026-08-10",
+        "nowMinutes": 900,
+        "nowIso": "2026-08-10T12:00:00.000Z",
+        "nowMs": 1786363200000
+      },
+      "expected": []
+    },
+    {
+      "name": "a snooze for another day never fires",
+      "timeZone": "America/New_York",
+      "rows": [
+        {
+          "item": {
+            "type": "habit",
+            "id": "00000000-0000-4000-8000-00000000038f",
+            "title": "vitamins",
+            "streak": 0,
+            "status": "pending",
+            "completedDates": [],
+            "skippedDates": [],
+            "dailyCounts": {},
+            "repeatFrequency": "daily",
+            "reminderTime": "07:30"
+          },
+          "sentKey": "2026-08-09T07:30",
+          "snoozeUntil": "2026-08-09T12:00:00.000Z",
+          "snoozeDate": "2026-08-09"
+        }
+      ],
+      "clock": {
+        "dateStr": "2026-08-10",
+        "nowMinutes": 5,
+        "nowIso": "2026-08-10T12:00:00.000Z",
+        "nowMs": 1786363200000
+      },
+      "expected": []
+    },
+    {
+      "name": "a snooze on an item with no cue of its own",
+      "timeZone": "America/New_York",
+      "rows": [
+        {
+          "item": {
+            "type": "habit",
+            "id": "00000000-0000-4000-8000-00000000038f",
+            "title": "vitamins",
+            "streak": 0,
+            "status": "pending",
+            "completedDates": [],
+            "skippedDates": [],
+            "dailyCounts": {},
+            "repeatFrequency": "daily"
+          },
+          "snoozeUntil": "2026-08-10T11:00:00.000Z",
+          "snoozeDate": "2026-08-10"
+        }
+      ],
+      "clock": {
+        "dateStr": "2026-08-10",
+        "nowMinutes": 900,
+        "nowIso": "2026-08-10T12:00:00.000Z",
+        "nowMs": 1786363200000
+      },
+      "expected": [
+        {
+          "itemId": "00000000-0000-4000-8000-00000000038f",
+          "at": "",
+          "snoozed": true
+        }
+      ]
+    },
+    {
+      "name": "a snooze does not resurrect what was done meanwhile",
+      "timeZone": "America/New_York",
+      "rows": [
+        {
+          "item": {
+            "type": "habit",
+            "id": "00000000-0000-4000-8000-00000000038f",
+            "title": "vitamins",
+            "streak": 0,
+            "status": "pending",
+            "completedDates": [
+              "2026-08-10"
+            ],
+            "skippedDates": [],
+            "dailyCounts": {},
+            "repeatFrequency": "daily",
+            "reminderTime": "07:30"
+          },
+          "sentKey": "2026-08-10T07:30",
+          "snoozeUntil": "2026-08-10T11:00:00.000Z",
+          "snoozeDate": "2026-08-10"
+        }
+      ],
+      "clock": {
+        "dateStr": "2026-08-10",
+        "nowMinutes": 900,
+        "nowIso": "2026-08-10T12:00:00.000Z",
+        "nowMs": 1786363200000
+      },
+      "expected": []
+    },
+    {
+      "name": "never a subtask",
+      "timeZone": "America/New_York",
+      "rows": [
+        {
+          "item": {
+            "type": "task",
+            "id": "00000000-0000-4000-8000-000000000390",
+            "title": "sub",
+            "status": "pending",
+            "isScheduled": true,
+            "order": 0,
+            "reminderTime": "07:30",
+            "startDate": "2026-08-10",
+            "parentItemId": "00000000-0000-4000-8000-000000000391"
+          }
+        }
+      ],
+      "clock": {
+        "dateStr": "2026-08-10",
+        "nowMinutes": 450,
+        "nowIso": "2026-08-10T12:00:00.000Z",
+        "nowMs": 1786363200000
+      },
+      "expected": []
+    },
+    {
+      "name": "earliest cue first",
+      "timeZone": "America/New_York",
+      "rows": [
+        {
+          "item": {
+            "type": "habit",
+            "id": "00000000-0000-4000-8000-000000000392",
+            "title": "b",
+            "streak": 0,
+            "status": "pending",
+            "completedDates": [],
+            "skippedDates": [],
+            "dailyCounts": {},
+            "repeatFrequency": "daily",
+            "reminderTime": "07:20"
+          }
+        },
+        {
+          "item": {
+            "type": "habit",
+            "id": "00000000-0000-4000-8000-000000000393",
+            "title": "a",
+            "streak": 0,
+            "status": "pending",
+            "completedDates": [],
+            "skippedDates": [],
+            "dailyCounts": {},
+            "repeatFrequency": "daily",
+            "reminderTime": "07:00"
+          }
+        }
+      ],
+      "clock": {
+        "dateStr": "2026-08-10",
+        "nowMinutes": 445,
+        "nowIso": "2026-08-10T12:00:00.000Z",
+        "nowMs": 1786363200000
+      },
+      "expected": [
+        {
+          "itemId": "00000000-0000-4000-8000-000000000393",
+          "at": "07:00",
+          "snoozed": false
+        },
+        {
+          "itemId": "00000000-0000-4000-8000-000000000392",
+          "at": "07:20",
+          "snoozed": false
+        }
+      ]
+    },
+    {
+      "name": "the anchor carried, a blank one dropped",
+      "timeZone": "America/New_York",
+      "rows": [
+        {
+          "item": {
+            "type": "habit",
+            "id": "00000000-0000-4000-8000-000000000394",
+            "title": "with",
+            "streak": 0,
+            "status": "pending",
+            "completedDates": [],
+            "skippedDates": [],
+            "dailyCounts": {},
+            "repeatFrequency": "daily",
+            "reminderTime": "07:30",
+            "reminderAnchor": "I pour my coffee"
+          }
+        },
+        {
+          "item": {
+            "type": "habit",
+            "id": "00000000-0000-4000-8000-000000000395",
+            "title": "blank",
+            "streak": 0,
+            "status": "pending",
+            "completedDates": [],
+            "skippedDates": [],
+            "dailyCounts": {},
+            "repeatFrequency": "daily",
+            "reminderTime": "07:30",
+            "reminderAnchor": ""
+          }
+        }
+      ],
+      "clock": {
+        "dateStr": "2026-08-10",
+        "nowMinutes": 450,
+        "nowIso": "2026-08-10T12:00:00.000Z",
+        "nowMs": 1786363200000
+      },
+      "expected": [
+        {
+          "itemId": "00000000-0000-4000-8000-000000000394",
+          "at": "07:30",
+          "anchor": "I pour my coffee",
+          "snoozed": false
+        },
+        {
+          "itemId": "00000000-0000-4000-8000-000000000395",
+          "at": "07:30",
+          "snoozed": false
+        }
+      ]
+    },
+    {
+      "name": "a one-off task on its day",
+      "timeZone": "America/New_York",
+      "rows": [
+        {
+          "item": {
+            "type": "task",
+            "id": "00000000-0000-4000-8000-000000000396",
+            "title": "file taxes",
+            "status": "pending",
+            "isScheduled": true,
+            "order": 0,
+            "reminderTime": "07:30",
+            "startDate": "2026-08-10"
+          }
+        }
+      ],
+      "clock": {
+        "dateStr": "2026-08-10",
+        "nowMinutes": 450,
+        "nowIso": "2026-08-10T12:00:00.000Z",
+        "nowMs": 1786363200000
+      },
+      "expected": [
+        {
+          "itemId": "00000000-0000-4000-8000-000000000396",
+          "at": "07:30",
+          "snoozed": false
+        }
+      ]
+    }
+  ],
+  "lastCallItems": [
+    {
+      "name": "only what still wants doing",
+      "timeZone": "America/New_York",
+      "items": [
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000399",
+          "title": "open",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-00000000039a",
+          "title": "done",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [
+            "2026-08-10"
+          ],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        }
+      ],
+      "dateStr": "2026-08-10",
+      "expected": [
+        "00000000-0000-4000-8000-000000000399"
+      ]
+    },
+    {
+      "name": "tasks are left out",
+      "timeZone": "America/New_York",
+      "items": [
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-00000000039b",
+          "title": "taxes",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "startDate": "2026-08-10"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-00000000039c",
+          "title": "stretch",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        }
+      ],
+      "dateStr": "2026-08-10",
+      "expected": [
+        "00000000-0000-4000-8000-00000000039c"
+      ]
+    },
+    {
+      "name": "biggest streak first",
+      "timeZone": "America/New_York",
+      "items": [
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-00000000039d",
+          "title": "small",
+          "streak": 2,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-00000000039e",
+          "title": "big",
+          "streak": 40,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-00000000039f",
+          "title": "mid",
+          "streak": 9,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        }
+      ],
+      "dateStr": "2026-08-10",
+      "expected": [
+        "00000000-0000-4000-8000-00000000039e",
+        "00000000-0000-4000-8000-00000000039f",
+        "00000000-0000-4000-8000-00000000039d"
+      ]
+    },
+    {
+      "name": "no cue needed",
+      "timeZone": "America/New_York",
+      "items": [
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-0000000003a0",
+          "title": "read",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        }
+      ],
+      "dateStr": "2026-08-10",
+      "expected": [
+        "00000000-0000-4000-8000-0000000003a0"
+      ]
+    },
+    {
+      "name": "never a paused one",
+      "timeZone": "America/New_York",
+      "items": [
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-0000000003a1",
+          "title": "read",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "pausedAt": "2026-08-01T12:00:00Z"
+        }
+      ],
+      "dateStr": "2026-08-10",
+      "expected": []
+    }
+  ],
+  "streakOf": [
+    {
+      "name": "a task has none",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000003a3",
+        "title": "taxes",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0
+      },
+      "expected": 0
+    },
+    {
+      "name": "a habit at zero",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000003a4",
+        "title": "read",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "expected": 0
+    },
+    {
+      "name": "a habit at twelve",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000003a4",
+        "title": "read",
+        "streak": 12,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "expected": 12
+    }
+  ],
+  "hasMatured": [
+    {
+      "name": "a second ago",
+      "snoozeUntil": "2026-08-10T11:59:59.000Z",
+      "nowMs": 1786363200000,
+      "expected": true
+    },
+    {
+      "name": "a second to go",
+      "snoozeUntil": "2026-08-10T12:00:01.000Z",
+      "nowMs": 1786363200000,
+      "expected": false
+    },
+    {
+      "name": "exactly now",
+      "snoozeUntil": "2026-08-10T12:00:00.000Z",
+      "nowMs": 1786363200000,
+      "expected": true
+    },
+    {
+      "name": "+00:00, matured",
+      "snoozeUntil": "2026-08-10T11:00:00+00:00",
+      "nowMs": 1786363200000,
+      "expected": true
+    },
+    {
+      "name": "+00:00, not yet",
+      "snoozeUntil": "2026-08-10T13:00:00+00:00",
+      "nowMs": 1786363200000,
+      "expected": false
+    },
+    {
+      "name": "+03:00 is earlier than its digits",
+      "snoozeUntil": "2026-08-10T14:00:00+03:00",
+      "nowMs": 1786363200000,
+      "expected": true
+    },
+    {
+      "name": "microseconds",
+      "snoozeUntil": "2026-08-10T11:59:59.999999+00:00",
+      "nowMs": 1786363200000,
+      "expected": true
+    },
+    {
+      "name": "unreadable",
+      "snoozeUntil": "whenever",
+      "nowMs": 1786363200000,
+      "expected": false
+    },
+    {
+      "name": "absent",
+      "nowMs": 1786363200000,
+      "expected": false
+    }
+  ],
+  "sentKeyFor": [
+    {
+      "name": "the day and the time",
+      "dateStr": "2026-08-10",
+      "at": "07:30",
+      "expected": "2026-08-10T07:30"
+    },
+    {
+      "name": "just before midnight",
+      "dateStr": "2026-12-31",
+      "at": "23:59",
+      "expected": "2026-12-31T23:59"
+    }
+  ]
+}

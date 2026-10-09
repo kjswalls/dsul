@@ -111,6 +111,12 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   `setItemsCollected`) in `Membership.swift`. Account deletion adds
   `Account.swift` ← `lib/account-types.ts` (the facts, the answer, the body)
   and `lib/account-copy.ts` (the sheet's words and the rules that pick them).
+  Reminders' Phase 2a adds `ReminderClock.swift` ← `lib/reminders/clock.ts`,
+  `ReminderDue.swift` ← `lib/reminders/due.ts`, `ReminderCopy.swift` ←
+  `lib/reminders/copy.ts`, `ReminderSnooze.swift` ← `lib/reminders/snooze.ts`
+  and `ReminderPlan.swift` ← `lib/reminders/plan.ts` (which local
+  notifications the phone arms and withdraws; nothing schedules one yet, see
+  reminders-platforms.md's 2026-10-09 addendum).
   Each cites what it mirrors.
 - `ios/Dsul/App`: `DsulApp` (one `AuthStore`), `AppGate` (sign-in screen,
   sample or the user's planner, keyed on `AuthStore.gateKey`), `AppConfig`.
