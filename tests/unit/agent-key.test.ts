@@ -117,6 +117,7 @@ const client = {
   from: (table: string) => ({
     select: (...a: unknown[]) => chain(table, 'select', a),
     upsert: (...a: unknown[]) => chain(table, 'upsert', a),
+    update: (...a: unknown[]) => chain(table, 'update', a),
   }),
 };
 
@@ -154,6 +155,30 @@ describe('agent key storage', () => {
     expect(await svc.resolveUserIdFromApiKey(KEY, client as never)).toBe('u1');
     expect(await svc.storeAgentKey('u1', KEY, client as never)).toEqual({ error: null });
     expect(calls.filter((c) => c.op === 'upsert').map((c) => c.table)).toEqual(['user_secrets', 'user_settings']);
+  });
+
+  it('Unpair clears the key in user_secrets, and only there', async () => {
+    const svc = await real();
+    expect(await svc.clearAgentKey('u1', client as never)).toEqual({ error: null });
+    expect(calls.filter((c) => c.op === 'update')).toEqual([
+      { table: 'user_secrets', op: 'update', args: [{ openclaw_api_key: null }] },
+    ]);
+    expect(calls.filter((c) => c.op === 'eq').map((c) => c.args)).toEqual([['user_id', 'u1']]);
+  });
+
+  it('Unpair clears user_settings only while user_secrets has no key column, and says only a code', async () => {
+    const svc = await real();
+    answer = (table) =>
+      table === 'user_secrets'
+        ? { data: null, error: { code: 'PGRST204', message: 'no openclaw_api_key column' } }
+        : { data: null, error: null };
+    expect(await svc.clearAgentKey('u1', client as never)).toEqual({ error: null });
+    expect(calls.filter((c) => c.op === 'update').map((c) => c.table)).toEqual(['user_secrets', 'user_settings']);
+
+    calls.length = 0;
+    answer = () => ({ data: null, error: { code: '23514', message: `row (${KEY})` } });
+    expect(await svc.clearAgentKey('u1', client as never)).toEqual({ error: '23514' });
+    expect(calls.map((c) => c.table)).not.toContain('user_settings');
   });
 
   it('any other error is not a fallback', async () => {

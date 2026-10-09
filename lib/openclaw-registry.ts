@@ -293,6 +293,47 @@ export async function deregisterPlugin(
   }
 }
 
+/**
+ * Forget every registration the user has: Unpair (`unpairOpenClaw`,
+ * lib/ai-server/connections.ts), where the user takes their agent's access
+ * back from dsul's side rather than the plugin's.
+ *
+ * Visible on failure for the same reason as `deregisterPlugin`. Logs the
+ * database's code only. Other instances can serve a cached row for up to
+ * CACHE_TTL_MS more; nothing here can reach their memory.
+ */
+export async function deregisterAllPlugins(userId: string): Promise<RegistryWrite> {
+  for (const [key, reg] of registeredPlugins) {
+    if (reg.userId === userId) registeredPlugins.delete(key)
+  }
+
+  if (!haveServiceKey() || !tableAvailable()) {
+    cache.delete(userId)
+    return { ok: false, reason: 'Could not reach the registration store, so nothing was revoked.' }
+  }
+
+  try {
+    const { createServiceClient } = await import('./supabase-service')
+    const { error } = await createServiceClient().from('plugin_registrations').delete().eq('user_id', userId)
+
+    cache.delete(userId)
+
+    if (error) {
+      if (missingTable(error)) {
+        tableUnavailableUntil = Date.now() + TABLE_RETRY_MS
+        return { ok: false, reason: 'Could not reach the registration store, so nothing was revoked.' }
+      }
+      console.warn('[openclaw-registry] deregister all failed', error.code ?? 'unknown')
+      return { ok: false, reason: 'deregister failed' }
+    }
+    return { ok: true, durable: true }
+  } catch {
+    cache.delete(userId)
+    console.warn('[openclaw-registry] deregister all threw')
+    return { ok: false, reason: 'deregister failed' }
+  }
+}
+
 /** Test seam: drop cached rows so a following read hits the table again. */
 export function clearRegistrationCache(): void {
   cache.clear()

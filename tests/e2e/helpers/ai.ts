@@ -78,6 +78,8 @@ export type GateStub = {
   connects: Array<{ provider: unknown; accepted: boolean }>;
   /** How many disconnects (DELETE) the app sent. */
   deletes: () => number;
+  /** How many Unpairs (DELETE /api/ai/openclaw) the app sent. */
+  unpairs: () => number;
   /** The account's "No AI, thanks", as the stub now answers it. */
   hidden(): boolean;
   /** The saved connection, as the stub now answers it: null once nothing is connected. */
@@ -146,7 +148,10 @@ function stubModel(kind: 'none' | 'failing' | 'ok' | 'limited'): Record<string, 
  * A model pick (`PATCH {provider, model}`) is answered as the real route
  * answers it: 404 `not_connected` with nothing saved, 409 `conflict` with
  * another provider's key saved, else the connection with its new model. A
- * DELETE forgets the connection and answers `{ok: true}`. The model list
+ * DELETE forgets the connection and answers `{ok: true}`. An Unpair (DELETE
+ * /api/ai/openclaw) forgets the agent and keeps a gateway, as the route does;
+ * it must never reach the real route, which would delete the agent key global
+ * setup seeds for every spec. The model list
  * (`/api/ai/connection/models`) is answered here too, so the list a working
  * key prefetches never reaches the real route.
  */
@@ -162,8 +167,10 @@ export async function stubAIGate(
   const patches: GateStub['patches'] = [];
   const connects: GateStub['connects'] = [];
   let deletes = 0;
+  let unpairs = 0;
   let model = stubModel(o.model ?? 'none');
-  const openclaw = STUB_OPENCLAW[o.openclaw ?? 'none'];
+  let openclaw: { gateway: boolean; pluginChat: boolean; agent: boolean; agentId: string | null } =
+    STUB_OPENCLAW[o.openclaw ?? 'none'];
   const json = (status: number, body: unknown) => ({
     status,
     contentType: 'application/json',
@@ -177,6 +184,12 @@ export async function stubAIGate(
     return route.fulfill(
       json(200, { models: [{ id: STUB_GEMINI_MODEL, label: 'Gemini Flash' }], listed: true })
     );
+  });
+  await page.route('**/api/ai/openclaw', (route) => {
+    if (route.request().method() !== 'DELETE') return route.fulfill(json(405, { error: 'invalid' }));
+    unpairs += 1;
+    openclaw = { gateway: openclaw.gateway, pluginChat: false, agent: false, agentId: null };
+    return route.fulfill(json(200, { openclaw }));
   });
   await page.route('**/api/ai/connection', (route) => {
     const req = route.request();
@@ -243,7 +256,14 @@ export async function stubAIGate(
     // real route either.
     return route.fulfill(json(400, { error: 'invalid' }));
   });
-  return { patches, connects, deletes: () => deletes, hidden: () => hidden, model: () => model };
+  return {
+    patches,
+    connects,
+    deletes: () => deletes,
+    unpairs: () => unpairs,
+    hidden: () => hidden,
+    model: () => model,
+  };
 }
 
 /**

@@ -29,7 +29,7 @@ type ServiceClient = ReturnType<typeof createServiceClient>
  * It used to sit in `user_settings`, which RLS lets the user's own browser
  * SELECT, so any script on the page could read a full read+write key (#123).
  *
- * Every read and write of the key goes through the three helpers below. Each
+ * Every read and write of the key goes through the four helpers below. Each
  * falls back to the old `user_settings` column ONLY when `user_secrets` has no
  * such column yet (a build deployed ahead of 059), never on a miss: after 059
  * the old column is null and CHECKed null, so a row a browser could write
@@ -80,6 +80,26 @@ export async function storeAgentKey(
     .from('user_settings')
     .upsert({ user_id: userId, openclaw_api_key: apiKey }, { onConflict: 'user_id' })
   return { error: legacy.error?.message ?? null }
+}
+
+/**
+ * Delete the user's agent key: Unpair (`unpairOpenClaw`,
+ * lib/ai-server/connections.ts). Every bearer route stops resolving it at
+ * once, and a later device authorization mints a new one. Idempotent: no row,
+ * or a null key, is already done.
+ *
+ * Returns the database's error CODE on failure, never its message: an
+ * update's failure can quote the row, and this row holds other secrets.
+ */
+export async function clearAgentKey(userId: string, client: ServiceClient): Promise<{ error: string | null }> {
+  const { error } = await client.from('user_secrets').update({ openclaw_api_key: null }).eq('user_id', userId)
+  if (!isMissingKeyColumn(error)) return { error: error ? codeOrUnknown(error) : null }
+  const legacy = await client.from('user_settings').update({ openclaw_api_key: null }).eq('user_id', userId)
+  return { error: legacy.error ? codeOrUnknown(legacy.error) : null }
+}
+
+function codeOrUnknown(error: { code?: string }): string {
+  return typeof error.code === 'string' && error.code !== '' ? error.code : 'unknown'
 }
 
 /**

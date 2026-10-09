@@ -3,7 +3,9 @@
 import { useState } from 'react';
 import { connectErrorCopy, labelName } from '@/components/ai/connect/connect-shared';
 import { useAIConnectionStore } from '@/lib/ai-connection-store';
+import { openClawStatus } from '@/lib/ai-pane-state';
 import type { ModelConnectionView } from '@/lib/ai-types';
+import { resetPluginTransport } from '@/lib/chat-transport';
 import { useUIStore } from '@/lib/ui-store';
 
 /**
@@ -56,6 +58,64 @@ export function useDisconnect(
           .disconnect()
           .then((result) => {
             if (!result.ok) setError(connectErrorCopy(result.code, name));
+            onDone?.(result.ok);
+          });
+      },
+    });
+  };
+
+  return { ask, pending, error };
+}
+
+export const UNPAIR_FAILED = 'Couldn’t unpair OpenClaw just now. Try again in a moment.';
+
+/**
+ * Unpair OpenClaw, through its one confirm: the OpenClaw section's paired
+ * card and the AI-off card's paired row ask the same question. Confirmed, it
+ * sends DELETE /api/ai/openclaw (lib/ai-connection-store.ts `unpair`), which
+ * deletes the agent key and the plugin's webhooks and leaves a Gateway URL
+ * alone, so the confirm says so when one is saved.
+ *
+ * `onDone` and `fallbackFocus` work as in `useDisconnect`.
+ */
+export function useUnpair(opts?: {
+  onDone?: (ok: boolean) => void;
+  fallbackFocus?: () => void;
+}): {
+  ask(): void;
+  pending: boolean;
+  error: string | null;
+} {
+  const pending = useAIConnectionStore((s) => s.busy === 'unpair');
+  const [error, setError] = useState<string | null>(null);
+
+  const ask = () => {
+    const { openclaw } = useAIConnectionStore.getState();
+    if (!openclaw.agent) return;
+    setError(null);
+    const { name } = openClawStatus(openclaw);
+    const gateway = openclaw.gateway
+      ? ' Your Gateway URL stays saved under Advanced, so OpenClaw can still answer in Ask. Clear it there to stop that too.'
+      : '';
+    const onDone = opts?.onDone;
+    useUIStore.getState().confirm({
+      title: `Unpair ${name}?`,
+      description: `dsul will delete the key OpenClaw uses and stop sending it your changes, so it can no longer read or change your planner. Your saved conversations stay. To pair again, run setup from OpenClaw.${gateway}`,
+      confirmLabel: 'Unpair',
+      destructive: true,
+      testId: 'openclaw-unpair-confirm',
+      // The agent's key and webhooks, never a planner row.
+      touchesPlanner: false,
+      fallbackFocus: opts?.fallbackFocus,
+      onConfirm: () => {
+        void useAIConnectionStore
+          .getState()
+          .unpair()
+          .then((result) => {
+            // The chat token this browser holds is derived from the key
+            // that is gone; a later pairing mints a new one.
+            if (result.ok) resetPluginTransport();
+            else setError(UNPAIR_FAILED);
             onDone?.(result.ok);
           });
       },
