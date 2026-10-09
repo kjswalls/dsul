@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { postAgentItemAction } from '@/lib/app-api'
-import { afterItemWrite } from '@/lib/recipes/server'
 import { createServiceClient, resolveUserIdFromApiKey } from '@/lib/supabase-service'
 
 /**
@@ -12,8 +11,9 @@ import { createServiceClient, resolveUserIdFromApiKey } from '@/lib/supabase-ser
  *   { action: 'collect', kind, containerId, member }  join or leave one routine or season
  *
  * The iPhone's intents (lib/app-api.ts), run by the same code, so a tick here
- * moves the streak, reports to a live stake and starts the user's recipes
- * exactly as the phone's does. The PATCH routes' completedDates, skippedDates
+ * moves the streak and reports to a live stake exactly as the phone's does. It
+ * starts no recipes: the agent surface never reaches lib/recipes/
+ * (tests/unit/mods-boundary.test.ts), as the PATCH routes' ticks never did. The PATCH routes' completedDates, skippedDates
  * and itemIds are whole-set replacements: an agent that sends back a list it
  * read short un-ticks or removes everything it left out. These verbs touch one
  * date or one membership row and nothing else.
@@ -23,7 +23,9 @@ import { createServiceClient, resolveUserIdFromApiKey } from '@/lib/supabase-ser
  * the row's state refused with (skipped, not_skippable, not_movable,
  * not_collectible, container_gone, ...).
  *
- * Auth: Bearer <agent key>. No webhook, as the phone's writes fire none.
+ * Auth: Bearer <agent key>. A write that landed fires tasks.updated or
+ * habits.updated, as the PATCH routes do, with only the item's id: the
+ * OpenClaw plugin reads it as "refetch the context".
  */
 export async function POST(
   req: NextRequest,
@@ -38,5 +40,5 @@ export async function POST(
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { id } = await params
-  return postAgentItemAction(req, id, { userId, client }, { onCommitted: afterItemWrite })
+  return postAgentItemAction(req, id, { userId, client })
 }

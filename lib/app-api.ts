@@ -51,6 +51,7 @@ import { capabilityShape, isPausableRow, resolveItemPause } from './item-pause';
 import { DEFAULT_APP_ICON, isAppIcon, type AppIcon } from './app-icons';
 import { getBucketForTime } from './time-bucket';
 import { reportLiveCompletion } from './stakes/live';
+import { notifyPlugins } from './openclaw-registry';
 import { createServiceClient } from './supabase-service';
 import type { WeekStartDay } from './container-schedule';
 import type { TimeFormat } from './reminders/copy';
@@ -719,7 +720,7 @@ export async function postAgentItemAction(
   if (!(AGENT_ITEM_ACTIONS as readonly string[]).includes(body.action)) {
     return invalid({ formErrors: [`action must be one of: ${AGENT_ITEM_ACTIONS.join(', ')}`], fieldErrors: {} });
   }
-  return runItemWrite({ ...scope, ownerScoped: true }, rawId.toLowerCase(), body, opts);
+  return runItemWrite({ ...scope, ownerScoped: true, webhook: true }, rawId.toLowerCase(), body, opts);
 }
 
 /**
@@ -728,7 +729,7 @@ export async function postAgentItemAction(
  * `user_id` to every row update, since RLS does not scope that client.
  */
 async function runItemWrite(
-  scope: { userId: string; client: Client; ownerScoped?: boolean },
+  scope: { userId: string; client: Client; ownerScoped?: boolean; webhook?: boolean },
   id: string,
   body: ItemWrite,
   opts: AppWriteOptions,
@@ -748,8 +749,22 @@ async function runItemWrite(
 
   // The id as the route was asked, which the row read matched.
   const ctx: WriteContext = { ...writeContextFor(userId, client, row, { ownerScoped: scope.ownerScoped }), id };
-  const raise = opts.onCommitted;
 
+  const res = await dispatchItemWrite(ctx, body, opts);
+  // The agent door's webhook (the PATCH routes' tasks.updated / habits.updated):
+  // the OpenClaw plugin only drops its cached context on it, so the payload
+  // names the item and nothing else. After the response, as other agent writes
+  // fire theirs; never on a refusal, which changed nothing.
+  if (scope.webhook && res.ok) {
+    const event = ctx.config.webhookEvent;
+    after(() => notifyPlugins(userId, event, { action: 'update', id, updates: {} }));
+  }
+  return res;
+}
+
+async function dispatchItemWrite(ctx: WriteContext, body: ItemWrite, opts: AppWriteOptions): Promise<Response> {
+  const { userId, client, id, row } = ctx;
+  const raise = opts.onCommitted;
   try {
     switch (body.action) {
       case 'complete':

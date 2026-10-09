@@ -100,6 +100,13 @@ describe('items', () => {
     expect(toolByName('dsul_update_habit')!.description).toMatch(/completedDates/);
   });
 
+  it('refuses a monthly repeat day outside 1 to 31, which the server would store', () => {
+    for (const bad of [0, 32, 1.5, '1']) {
+      expect(plan('dsul_update_task', { id: 'abc', repeatMonthDay: bad }), String(bad)).toHaveProperty('error');
+      expect(plan('dsul_create_habit', { title: 'Rent', repeatMonthDay: bad }), String(bad)).toHaveProperty('error');
+    }
+  });
+
   it('takes a monthly repeat day on tasks and habits', () => {
     for (const name of ['dsul_create_task', 'dsul_update_task', 'dsul_create_habit', 'dsul_update_habit']) {
       const args = name.startsWith('dsul_create') ? { title: 'Rent', repeatMonthDay: 1 } : { id: 'abc', repeatMonthDay: 1 };
@@ -215,7 +222,8 @@ describe('the schema and the body agree', () => {
       const props = Object.keys(
         (toolByName(name)!.inputSchema as { properties: Record<string, unknown> }).properties
       );
-      const args = Object.fromEntries(props.map((k) => [k, 'x']));
+      // 'x' everywhere but the one key a plan range-checks itself.
+      const args = Object.fromEntries(props.map((k) => [k, k === 'repeatMonthDay' ? 1 : 'x']));
       const result = plan(name, args) as { body: Record<string, unknown> };
       expect(Object.keys(result.body).sort()).toEqual(props.filter((k) => k !== 'id').sort());
     });

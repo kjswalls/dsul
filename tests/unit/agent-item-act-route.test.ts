@@ -7,7 +7,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * tests/unit/app-item-write.test.ts pins what each verb writes. This file pins
  * what is different about the agent's door: the agent key, the service-role
  * client, and therefore `user_id` on every row update; the narrower set of
- * verbs; and that the stake report and the recipe listener still fire.
+ * verbs; that the stake report still fires; and that no recipe starts, since
+ * the agent surface never reaches lib/recipes/.
  */
 
 const USER = '6f1c2a9e-3b4d-4e5f-8a6b-7c8d9e0f1a2b';
@@ -258,7 +259,7 @@ describe('scoped to the key’s user, since the service role skips RLS', () => {
 });
 
 describe('the same side effects as the phone’s tick', () => {
-  it('ticks one date through the streak RPC, reports the stake and starts recipes', async () => {
+  it('ticks one date through the streak RPC and reports the stake, starting no recipe', async () => {
     const res = await act({ action: 'complete', date: DATE, done: true });
     expect(res.status).toBe(200);
     expect(rpc).toHaveBeenCalledWith('set_item_completion', {
@@ -275,14 +276,6 @@ describe('the same side effects as the phone’s tick', () => {
       dateStr: DATE,
       completed: true,
     });
-    expect(h.afterItemWrite).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: 'item.completed', userId: USER, itemId: ITEM, date: DATE }),
-    );
-  });
-
-  it('raises no event for a day already done', async () => {
-    doneBefore = true;
-    await act({ action: 'complete', date: DATE, done: true });
     expect(h.afterItemWrite).not.toHaveBeenCalled();
   });
 
@@ -301,9 +294,30 @@ describe('the same side effects as the phone’s tick', () => {
     expect(await res.json()).toEqual({ error: 'not_skippable' });
   });
 
-  it('reaches no webhook, as the phone’s writes do not', async () => {
+  it('fires the item’s webhook once the write landed, so a plugin refetches', async () => {
     await act({ action: 'complete', date: DATE, done: true });
-    await settle();
+    await runAfter();
+    expect(h.notifyPlugins).toHaveBeenCalledWith(USER, 'habits.updated', { action: 'update', id: ITEM, updates: {} });
+  });
+
+  it('fires tasks.updated for a task', async () => {
+    row = ONE_OFF;
+    await act({ action: 'move', date: '2026-10-05' });
+    await runAfter();
+    expect(h.notifyPlugins).toHaveBeenCalledWith(USER, 'tasks.updated', { action: 'update', id: ITEM, updates: {} });
+  });
+
+  it('fires nothing on a refusal', async () => {
+    row = ONE_OFF;
+    await act({ action: 'skip', date: DATE, skipped: true });
+    await runAfter();
     expect(h.notifyPlugins).not.toHaveBeenCalled();
+  });
+
+  it('records the feed row with the user named, since auth.uid() is NULL on the service role', async () => {
+    await act({ action: 'resetStreak' });
+    await settle();
+    const event = queries.find((q) => q.table === 'item_events' && op(q) === 'insert')!;
+    expect(called(event, 'insert')[0][0]).toEqual(expect.objectContaining({ user_id: USER, item_id: ITEM }));
   });
 });

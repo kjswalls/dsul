@@ -82,8 +82,19 @@ const REPEAT_DAYS = {
   description: 'Required when repeatFrequency is custom. 0 = Sunday … 6 = Saturday.',
 }
 const REPEAT_MONTH_DAY = {
-  type: 'number',
+  type: 'integer',
+  minimum: 1,
+  maximum: 31,
   description: 'For repeatFrequency monthly: the day of the month, 1 to 31. A short month uses its last day.',
+}
+
+/** The server takes any integer here, so the plan holds the 1 to 31 range itself. */
+const monthDayError = (args: Record<string, unknown>): { error: string } | null => {
+  const v = args.repeatMonthDay
+  if (v === undefined || v === null) return null
+  return Number.isInteger(v) && (v as number) >= 1 && (v as number) <= 31
+    ? null
+    : { error: 'repeatMonthDay must be a whole number from 1 to 31' }
 }
 
 /** The one-day verbs' door: lib/app-api.ts postAgentItemAction. */
@@ -543,6 +554,8 @@ export const MCP_TOOLS: McpTool[] = [
       ['title']
     ),
     plan: (args) => {
+      const monthDay = monthDayError(args)
+      if (monthDay) return monthDay
       const title = requireString(args, 'title')
       if (typeof title !== 'string') return title
       // Tasks are date-anchored: a series with no start has no occurrences, so
@@ -587,6 +600,8 @@ export const MCP_TOOLS: McpTool[] = [
       ['id']
     ),
     plan: (args) => {
+      const monthDay = monthDayError(args)
+      if (monthDay) return monthDay
       const id = requireString(args, 'id')
       if (typeof id !== 'string') return id
       return { method: 'PATCH', path: `/api/agent/tasks/${id}`, body: pick(args, TASK_WRITE_KEYS) }
@@ -635,6 +650,8 @@ export const MCP_TOOLS: McpTool[] = [
       ['title']
     ),
     plan: (args) => {
+      const monthDay = monthDayError(args)
+      if (monthDay) return monthDay
       const title = requireString(args, 'title')
       if (typeof title !== 'string') return title
       return { method: 'POST', path: '/api/agent/habits', body: pick(args, HABIT_WRITE_KEYS) }
@@ -669,6 +686,8 @@ export const MCP_TOOLS: McpTool[] = [
       ['id']
     ),
     plan: (args) => {
+      const monthDay = monthDayError(args)
+      if (monthDay) return monthDay
       const id = requireString(args, 'id')
       if (typeof id !== 'string') return id
       return { method: 'PATCH', path: `/api/agent/habits/${id}`, body: pick(args, HABIT_WRITE_KEYS) }
@@ -761,7 +780,8 @@ export const MCP_TOOLS: McpTool[] = [
     name: 'dsul_skip',
     description:
       'Skip ONE occurrence of a recurring task or habit (it is not done, and was meant not to be), ' +
-      'or unskip it (skipped: false). Skipping a day that was ticked unticks it. One-off items ' +
+      'or unskip it (skipped: false). Skipping a day that was ticked unticks it, and on a habit ' +
+      'so does unskipping, so tick it again with dsul_complete if it was done. One-off items ' +
       'and subtasks cannot be skipped (not_skippable): ' +
       'move, cancel or pause them instead.',
     inputSchema: obj(
