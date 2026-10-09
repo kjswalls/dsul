@@ -2752,10 +2752,10 @@ body {
 }
 @keyframes planner-sync-travel {
   0%,
-  14% {
+  5% {
     background-position-x: calc(-2 * var(--planner-shimmer-band) - var(--planner-shimmer-x, 0px));
   }
-  62%,
+  90%,
   100% {
     background-position-x: calc(100vw - var(--planner-shimmer-x, 0px));
   }
@@ -2919,7 +2919,7 @@ body {
   --planner-shimmer-level: 30%;
   /* Half the band: wide on a desktop, a sliver on a phone. */
   --planner-shimmer-band: clamp(32px, 9vw, 140px);
-  --planner-shimmer-period: 1.2s;
+  --planner-shimmer-period: 2.4s;
 }
 .dark {
   /* Night and its Slate, Dune and Iris tints: held by the current bucket's
@@ -2955,10 +2955,10 @@ body {
 }
 @keyframes planner-shimmer-sweep {
   0%,
-  14% {
+  5% {
     background-position-x: calc(-2 * var(--planner-shimmer-band) - var(--planner-shimmer-x, 0px));
   }
-  62%,
+  90%,
   100% {
     background-position-x: calc(100vw - var(--planner-shimmer-x, 0px));
   }

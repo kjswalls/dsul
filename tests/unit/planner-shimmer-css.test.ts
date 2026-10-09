@@ -376,7 +376,7 @@ describe('the shimmer’s timing', () => {
     const stops = (css: string) => [...css.matchAll(/^\s*(\d+%)[,\s]/gm)].map((m) => m[1]);
     const sweep = keyframes(rules, SWEEP_ANIMATION);
     const bar = keyframes(syncRules, SYNC_BAR_ANIMATION);
-    expect(stops(sweep)).toEqual(['0%', '14%', '62%', '100%']);
+    expect(stops(sweep)).toEqual(['0%', '5%', '90%', '100%']);
     // The parked and crossing positions in viewport terms, each offset by the
     // painted box's own left edge (a title's, the track's).
     expect(sweep).toContain('background-position-x: calc(-2 * var(--planner-shimmer-band) - var(--planner-shimmer-x, 0px))');
