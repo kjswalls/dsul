@@ -83,10 +83,27 @@ export function firstRepeatDayFrom(
 }
 
 /**
+ * One en-CA formatter per timezone. Building an Intl.DateTimeFormat is the
+ * expensive part (milliseconds, against microseconds to format), and a row
+ * asks two or three times per render: uncached, this was half of TaskRow's
+ * time in a profile of the preview's render. Only a formatter that was built
+ * is kept, so an invalid zone still throws its RangeError on every call, and
+ * a missing zone is never cached, since it means the runtime's own, which can
+ * change under a long-lived tab.
+ */
+const DATE_STR_FORMATS = new Map<string, Intl.DateTimeFormat>();
+
+/**
  * Format a Date to a YYYY-MM-DD string in the given IANA timezone.
  */
 export function toDateStr(date: Date, userTimezone: string): string {
-  return Intl.DateTimeFormat('en-CA', { timeZone: userTimezone }).format(date);
+  if (!userTimezone) return Intl.DateTimeFormat('en-CA', { timeZone: userTimezone }).format(date);
+  let format = DATE_STR_FORMATS.get(userTimezone);
+  if (!format) {
+    format = Intl.DateTimeFormat('en-CA', { timeZone: userTimezone });
+    DATE_STR_FORMATS.set(userTimezone, format);
+  }
+  return format.format(date);
 }
 
 /**

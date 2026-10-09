@@ -30,6 +30,8 @@ vi.mock('@/lib/db', async () => {
     fetchGoals: async () => [],
     // No RPC: the per-table fallback (the fetchers above).
     loadPlannerData: vi.fn((_u: string, perTable: () => Promise<unknown>) => perTable()),
+    // No auth lock to wait behind: the preview may paint as soon as its read is back.
+    plannerRequestsSent: async () => {},
   };
 });
 

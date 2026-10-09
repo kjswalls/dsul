@@ -10,6 +10,7 @@ import { RecipeHost } from '@/components/recipes/recipe-host'
 import { ModHost } from '@/components/mods/mod-host'
 import { ThemeInjector } from '@/components/providers/theme-injector'
 import { USER_THEME_PREPAINT } from '@/lib/user-themes/prepaint'
+import { SIDEBAR_PREPAINT } from '@/lib/shell-prepaint'
 import { Toaster } from '@/components/ui/sonner'
 import { ICON_REV } from '@/lib/app-icons'
 import './globals.css'
@@ -160,6 +161,10 @@ export default function RootLayout({
             remove the attribute so the default paints. Built from the modules
             the app uses, so it is imported, not a literal. */}
         <script dangerouslySetInnerHTML={{ __html: USER_THEME_PREPAINT }} />
+        {/* The braindump's width (lib/shell-prepaint.ts), so the server shell
+            drawn before hydration puts the canvas's edge where the real one
+            will. After the key migration above, which it reads behind. */}
+        <script dangerouslySetInnerHTML={{ __html: SIDEBAR_PREPAINT }} />
         {/* No `disableTransitionOnChange`: it injected `transition: none` across
             the document and repainted every colour in one frame, which reads as
             a page reload. lib/theme-transition.ts + the `data-theme-changing`

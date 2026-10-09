@@ -47,13 +47,20 @@ It is not:
 2. **Auth effect, before `getSession()`.** On a route that needs items,
    `warmPlannerSnapshot(localStateOwner())` consumes the crash marker if one is present,
    opens the database and prefetches the on-disk owner's record into memory. Nothing is
-   painted: the owner stamp is a hint, not a confirmed session.
+   painted: the owner stamp is a hint, not a confirmed session. With a hint it also raises
+   `<html data-preview-expected>`, which holds the skeleton's bars back (see Follow-up:
+   the first load), and lowers it again if the prefetch finds nothing usable.
 3. **Adoption.** `adoptLocalState(u)` (a new or different account clears the snapshot,
    which bumps the epoch and voids the prefetch), `identifyUser(u)`, then `loadPlanner(u)`
    calls `initializeStore(u, { preview })`. `loadPlannerData` is called first and
-   synchronously, so the fetch starts in the same frame; `offerPreview` then reads the
-   snapshot, reusing the prefetch.
-4. **Preview applied** (about 5 to 80ms). The read must still own the load (same
+   synchronously, but its request leaves a task or more later: supabase-js awaits
+   `getSession()`, which waits on the auth lock. `offerPreview` then reads the snapshot,
+   reusing the prefetch, and waits for `plannerRequestsSent()` (lib/db.ts) too, so the
+   request is on the wire before the preview's long render starts.
+4. **Preview applied**, 5 to 120ms after the `load_planner` request was handed to fetch,
+   and as long after the read as the auth lock takes (local stack, 2026-10-09). The
+   original "about 5 to 80ms" was from the read, with the request still waiting behind
+   the render; see Follow-up: the first load. The read must still own the load (same
    generation and user, still loading, not already previewing, every data slice empty) and
    the apply-time predicate must pass (`pathname === '/'` and no data dialog armed). It
    hydrates the cached custom types, seeds the display-only extension map, sets the crash
@@ -74,7 +81,10 @@ It is not:
    calls `shimmerLandingCommitted()` (each fresh title's rise delayed by its x), then
    `onLandingCommitted()`: measure LAST, plan, then hold, shield or do nothing. The sync
    line sweeps "done" and unmounts.
-7. **About 2s later, at idle,** the writer stores the fresh snapshot.
+7. **About 2s later, at idle,** the writer stores the fresh snapshot: 2s so the settle
+   runs undisturbed. A landing that replaced no preview (a first visit, a crash skip) has
+   no settle, and is stored at the first idle instead, with any change made before that
+   idle (the extensions and the AI gate answer just after the landing).
 
 **Failure:** the catch empties the data slices in the same `set()` as `error`
 (`emptyPlannerData()`, after `hydrateCustomTypes([])`). The empty store is then the undo
@@ -486,8 +496,21 @@ abort it; the epoch cannot be outrun.
 [lib/planner-snapshot-writer.ts](../../lib/planner-snapshot-writer.ts), started once by
 the provider. A new reference on any data slice, or a change to the extension toggles once
 they have loaded, marks it dirty. Two seconds after the last change, at idle
-(`requestIdleCallback`, else a macrotask), it writes the store as it stands then. Hiding
-the tab or `pagehide` flushes at once.
+(`requestIdleCallback`, else a macrotask), it writes the store as it stands then. A
+landing that replaced no preview is written at the first idle, with no 2s: there is no
+settle to keep smooth, and a first visit reloaded inside those 2s found nothing on disk
+(the reload's `pagehide` flush rarely commits before the page goes). A change before that
+idle rides along with it rather than restarting the 2s: the extensions and the AI gate
+answer just after the landing, and with each restarting the wait a reload 1s after a
+first landing found a snapshot 3 times in 10. Hiding the tab or
+`pagehide` flushes at once.
+
+`writePlannerSnapshot` resolves `'written'`, `'refused'` or `'failed'`. A write the
+database failed (no connection, a transaction that errored or aborted, an uncloneable
+value) is tried again up to `WRITE_RETRIES` (3) times, 4s, 8s and 16s after, then left
+dirty for the next change or flush. A refusal (a newer base on disk, a clear since, no
+IndexedDB) is never retried: the same copy would meet the same answer, and retrying it on
+a clock would be a hot loop.
 
 It writes only when `snapshotWritable` holds: loaded, not previewing, this user owns
 local state, `base` belongs to this user, and at most 5000 items. A refused write stays
@@ -1576,6 +1599,76 @@ chose differently, each for a reason found while building or testing it.
 - The sign-out spec answers `/auth/v1/logout` itself. supabase-js signs out with global
   scope, which would revoke the session every other worker shares.
 
+## Follow-up: the first load (2026-10-09)
+
+Measured after the merge on a production build against the local stack (Chromium, 1440px
+at 1x and 390px at 4x CPU; bars judged from captured screen frames). Five things were wrong.
+
+- **Bars flashed on a warm reload.** PlannerSkeleton mounts with the shell and fades in at
+  250ms on the compositor, and the preview's render is one long task, so the fade ran
+  straight through it: bars on screen for a median 1.4s at 300 rows on a desktop, 7.1s on
+  the phone. Now `<html data-preview-expected>` (lib/planner-snapshot.ts `expectPreview`)
+  holds the fade to 1500ms while a preview can still come (app/globals.css, after the
+  reduced-motion rules, which it also covers). `warmPlannerSnapshot` raises it when it has
+  an owner hint, which is before the skeleton first mounts (on every warm run the attribute
+  was already up at the skeleton's first frame). It goes when no preview can come or none
+  is needed: the prefetch finds nothing usable, a clear (sign-out, account switch, the
+  crash marker), the offer ends (nothing on disk, declined, applied, thrown), and the
+  writer's edges (the preview up, the load settled either way). 1500ms is a cap: a change
+  of `animation-delay` retimes the running animation in Chromium (same CSSAnimation,
+  opacity 1 in the next style read when it goes 600ms in, under both reduced-motion
+  switches too), so a skeleton already past 250ms shows its bars at once. No snapshot
+  (a fresh profile, after sign-in) never raises it: bars at 250ms as before.
+- **The preview held the fresh fetch back.** `loadPlannerData` is called first, but its
+  request waits for `getSession()` and the auth lock, a task or more later, and the
+  preview's `set()` rendered before it: `load_planner` left 150ms after the preview's
+  commit at 30 rows and 0.9s after it at 300, and 1.5s after it at 300 on the phone. `offerPreview` now also
+  waits for `plannerRequestsSent()` (lib/db.ts): a `getSession` asked a task later, which
+  the lock answers after the load's own, then one more task; capped at 500ms. The request
+  now leaves 5 to 120ms before the preview's render starts. On the local stack, whose
+  answer comes back in about 40ms, the fresh data sometimes lands first and no preview is
+  shown at all, which is the right outcome (it lands sooner than the preview used to).
+- **The canvas edge jumped at mount.** The pre-JS silhouette's column was `w-80` (320px)
+  against the braindump's 406px: the canvas moved 86px right when the shell mounted, and
+  by more for a stored width or a closed braindump. A pre-paint script in app/layout.tsx
+  (lib/shell-prepaint.ts) now stamps `--boot-sidebar-w` from the sidebar store's own
+  record: 0 when the braindump is closed, else the width the column will render at with
+  nothing docked. A docked Ask still narrows the column after mount, as it always has.
+  The layouts other than Classic draw their own frame and still jump, as before. The
+  phone silhouette needed nothing (header card 106 against 106.5px, by design).
+- **The writer dropped a failed write, and a quick reload found nothing.** See Writing:
+  failed writes are tried again three times, refusals never; a landing with no preview is
+  written at the first idle. A reload 1.0 and 1.8s after a first landing now previews; the
+  profiling pass's run on the earlier build previewed none from 0.2 to 1.8s. At 0.3s the
+  first idle has not come yet.
+- **Rows cost more than they need.** Applied, behaviour unchanged: `toDateStr` keeps one
+  `Intl.DateTimeFormat` per zone (building one was half of TaskRow's render time; an
+  invalid zone still throws on every call) and `formatTargetDay` one formatter;
+  `useIsMobile` is a `useSyncExternalStore` over one shared query, so a phone row no longer
+  mounts as a desktop row and remounts as a SwipeRow a commit later; `useCurrentBucket`
+  answers on the first client render (null only on the server), so the view no longer
+  renders twice for its halo; and the shell's dnd-kit sensor options and measuring config
+  are module constants, since dnd-kit memoizes on their identity and every AppShell render
+  re-rendered every draggable. Not done, as riskier than they are worth: lazy row tooltips
+  or hover controls, a shared context menu, narrowing TaskRow's store subscription, and
+  anything that virtualizes or unmounts rows.
+
+Medians, before and after (ms from navigation; "fetch" is `load_planner`'s fetchStart):
+
+| | bars on screen | preview commit | fresh commit | fetch |
+|---|---|---|---|---|
+| desktop, 30 rows | 0 / 0 | 611 / 561 | 934 / 739 | 769 / 379 |
+| desktop, 300 rows | 1372 / 0 | 1659 / 1197 | 3464 / 2185 | 2584 / 454 |
+| phone 4x, 30 rows | 387 / 0 | 1594 / none | 2328 / 1576 | 1946 / 1214 |
+| phone 4x, 300 rows | 7115 / 550 | 5285 / 2883 | 9389 / 3314 | 6747 / 1383 |
+
+The preview's render itself: 150 to 240ms at 30 rows and 1.2 to 1.3s at 300 on the
+desktop before, 120 to 190ms and 0.7 to 1.0s after; 3.7 to 4.7s at 300 on the phone
+before, 1.5 to 1.9s after. The phone at 300 rows still shows bars: its render (the
+preview's, or the landing's when the local stack wins) runs past the 1500ms cap, and the
+fade starts on the compositor in the middle of it. Raising the cap would cost a session
+that never confirms (an offline launch) a longer blank screen; it was left at 1500ms.
+
 ## Out of scope, and known limits
 
 - **The settings edge.** Layout prefs, `weekStartDay` (which remounts the week views) or a
@@ -1583,6 +1676,9 @@ chose differently, each for a reason found while building or testing it.
 - **Numbers.** Counts, the Organize overview and the notice label going from "Syncing…" to
   "Put back" change without animation.
 - **The first visit.** With no snapshot the skeleton to content reveal is unchanged.
+- **A render longer than the hold.** The skeleton's bars wait at most 1500ms for a
+  preview. A preview or landing render that is still running then (300 rows on a slow
+  phone) shows them for the rest of it.
 - **No exit ghosts.** Removed rows vanish while their neighbours glide shut. A follow-up
   would need placement inside the scope, never a body overlay.
 - **Cross-scope moves.** Braindump to canvas is a vanish plus a type-in. A row paired across
@@ -1634,8 +1730,13 @@ chose differently, each for a reason found while building or testing it.
   landing and through a `dropPreview`, released by a failed load, a sign-out and an abort):
   `planner-ready.test.ts`.
 - The snapshot: `planner-snapshot.test.ts` (with `fake-indexeddb`, imported per file so
-  every other suite keeps the no-IndexedDB path), `planner-snapshot-no-idb.test.ts`,
-  `planner-snapshot-writer.test.ts`, the ledger in `planner-bundle.test.ts`, the audits in
+  every other suite keeps the no-IndexedDB path; the write results and the skeleton hold's
+  raise and prefetch clears), `planner-snapshot-no-idb.test.ts`,
+  `planner-snapshot-writer.test.ts` (the first-idle landing and the changes that ride
+  along with it, retries and refusals, the hold's edges), `planner-requests-sent.test.ts`
+  (the order and the cap), `shell-prepaint.test.ts` (the silhouette's width against
+  `renderedSidebarWidth`), the offer's
+  wait and every clear of the hold in `planner-preview-store.test.ts`, the ledger in `planner-bundle.test.ts`, the audits in
   `local-state.test.ts`. The provider's offer, warm and purges:
   `planner-load-by-route.test.tsx`. The marker across a reload, end to end (the real
   snapshot module, writer, store, SettleHost and boundary over `fake-indexeddb`, each page
@@ -1675,7 +1776,8 @@ chose differently, each for a reason found while building or testing it.
   (a launcher pick or paste over the preview), `display-menu`, `proposal-card` and
   `held-captures`.
 - Rendering: `planner-skeleton.test.tsx` (the amended contract: skeleton iff not visible,
-  `data-loaded` fresh only), `preview-crash-boundary`, `planner-sync-line`,
+  `data-loaded` fresh only), `use-mobile` and `use-current-bucket` (a right answer on the
+  first client render), `preview-crash-boundary`, `planner-sync-line`,
   `planner-preview-css`, and `week-column-hover` (no ancestor of a lime mark carries
   opacity in the preview).
 - The waiting shimmer: `planner-shimmer` (the phases: on mode only, the light, the ease

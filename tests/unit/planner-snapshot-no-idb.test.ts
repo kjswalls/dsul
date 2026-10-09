@@ -36,10 +36,12 @@ describe('with no IndexedDB', () => {
     expect(snapshotSupported()).toBe(false);
   });
 
-  it('read → null, write → false, and nothing throws or rejects', async () => {
+  it('read → null, write → refused, and nothing throws or rejects', async () => {
     expect(() => warmPlannerSnapshot('user-a')).not.toThrow();
+    // No snapshot can come, so the skeleton's bars are not held back for one.
+    expect(document.documentElement.hasAttribute('data-preview-expected')).toBe(false);
     await expect(readPlannerSnapshot('user-a')).resolves.toBeNull();
-    await expect(writePlannerSnapshot('user-a', data, Date.now(), getSnapshotEpoch())).resolves.toBe(false);
+    await expect(writePlannerSnapshot('user-a', data, Date.now(), getSnapshotEpoch())).resolves.toBe('refused');
     expect(() => purgePlannerSnapshotDb()).not.toThrow();
   });
 

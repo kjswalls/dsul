@@ -3234,6 +3234,54 @@ export function loadPlannerData(
   })();
 }
 
+/** How long plannerRequestsSent waits on the auth lock before it lets the caller go anyway. */
+export const REQUESTS_SENT_CAP_MS = 500;
+
+/**
+ * Resolves once the requests a load already asked for have been handed to
+ * fetch. Never rejects; browser only.
+ *
+ * Asking is not sending. supabase-js awaits `auth.getSession()` before each
+ * request, and getSession holds the auth lock (a navigator lock), which is
+ * granted in a later task. So after `loadPlannerData` returns, its request
+ * has not left: anything long that runs first holds it back. The preview's
+ * render is that (lib/planner-store.ts offerPreview), 150 to 250ms at 30 rows
+ * and over a second at 300 on a desktop, about four times that on a slow
+ * phone, and it used to run first, so a reload with a snapshot fetched the
+ * fresh planner later than one without.
+ *
+ * The lock is first come, first served: navigator locks grant in request
+ * order, and a call made while it is held queues behind the last one waiting
+ * (GoTrueClient's pendingInLock). So a getSession asked for AFTER the load's
+ * own is answered after it, and the load's fetch is called in the microtasks
+ * that follow its answer. Three steps, each for a reason:
+ *  - one task first, so the load's own getSession, which starts a few
+ *    microtasks after loadPlannerData returns, is already in the queue;
+ *  - then this getSession, which waits its turn;
+ *  - then one more task, because while the lock is held a queued call can be
+ *    answered before the holder's own caller has resumed.
+ * Usually a few milliseconds in all. A lock held elsewhere (another tab's
+ * token refresh) would hold this too, so it gives up after
+ * REQUESTS_SENT_CAP_MS and the caller goes ahead, as it did before this.
+ */
+export function plannerRequestsSent(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const cap = setTimeout(resolve, REQUESTS_SENT_CAP_MS);
+    const done = () =>
+      setTimeout(() => {
+        clearTimeout(cap);
+        resolve();
+      }, 0);
+    setTimeout(() => {
+      try {
+        void createClient().auth.getSession().then(done, done);
+      } catch {
+        done();
+      }
+    }, 0);
+  });
+}
+
 /**
  * Both event names, for one write (039).
  *
