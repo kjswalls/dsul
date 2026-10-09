@@ -69,7 +69,7 @@ import { getActionLog, usePlannerStore } from '@/lib/planner-store';
 import { resetAgentFreshness } from '@/hooks/use-agent-freshness';
 import { useSelectionStore } from '@/lib/selection-store';
 import { useUIStore } from '@/lib/ui-store';
-import { EXT_ORGANIZE } from '@/lib/extension-registry';
+import { EXT_ORGANIZE, EXT_STREAKS } from '@/lib/extension-registry';
 import { disableExtensions, enableExtensions } from './support/extensions';
 import { ItemContextMenu } from '@/components/planner/item-context-menu';
 import {
@@ -244,6 +244,43 @@ describe('the item right-click menu', () => {
       .find((el) => el.getAttribute('data-value') === 'high')!;
     fireEvent.click(high);
     expect(itemById('once').priority).toBe('high');
+  });
+});
+
+describe('the item menu\'s rare rows', () => {
+  afterEach(() => disableExtensions(EXT_STREAKS));
+
+  it('opens the item in the panel, with no "Open as page" beside it', () => {
+    render(<LiveRow id="once" />);
+    const menu = rightClick(cardOf('once'));
+    expect(within(menu).getByTestId('item-menu-open')).toBeInTheDocument();
+    expect(within(menu).queryByTestId('item-menu-open-page')).toBeNull();
+    expect(within(menu).queryByText('Open as page')).toBeNull();
+  });
+
+  it('keeps Copy link and Copy title under one Copy row', () => {
+    render(<LiveRow id="once" />);
+    const menu = rightClick(cardOf('once'));
+    expect(within(menu).queryByTestId('item-menu-copy-link')).toBeNull();
+    const trigger = within(menu).getByTestId('item-menu-copy');
+    fireEvent.pointerMove(trigger);
+    fireEvent.keyDown(trigger, { key: 'ArrowRight' });
+    const pane = screen.getByTestId('item-menu-copy-content');
+    expect(within(pane).getByTestId('item-menu-copy-link')).toHaveTextContent('Link');
+    expect(within(pane).getByTestId('item-menu-copy-title')).toHaveTextContent('Title');
+  });
+
+  it('puts Reset streak beside Delete, below the line', () => {
+    enableExtensions(EXT_STREAKS);
+    usePlannerStore.setState({
+      items: store().items.map((i) => (i.id === 'daily' ? ({ ...i, type: 'habit', streak: 3, dailyCounts: {} } as unknown as Item) : i)),
+    });
+    render(<LiveRow id="daily" />);
+    const menu = rightClick(cardOf('daily'));
+    const reset = within(menu).getByTestId('item-menu-reset-streak');
+    // Its section is Reset streak and Delete, nothing else.
+    expect(reset.previousElementSibling?.getAttribute('role')).toBe('separator');
+    expect(reset.nextElementSibling).toBe(within(menu).getByTestId('item-menu-delete'));
   });
 });
 
@@ -490,8 +527,8 @@ describe('the right-click that opens a menu (components/ui/context-menu.tsx)', (
     expect(openMenu()).toBeNull();
 
     const again = pressRight(cardOf('once'));
-    releaseRight(within(again).getByTestId('item-menu-open-page'));
-    expect(push).not.toHaveBeenCalled();
+    releaseRight(within(again).getByTestId('item-menu-open'));
+    expect(useUIStore.getState().activeDialog).toBeNull();
     fireEvent.click(within(again).getByTestId('item-menu-next-day'));
     expect(itemById('once').startDate).toBe('2026-07-18');
   });

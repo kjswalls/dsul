@@ -386,10 +386,7 @@ function SingleBody({
       {openHref ? (
         <Row icon={<Maximize2 className="size-3.5" />} label="Open item" testId="item-menu-open-page" onSelect={() => router.push(`/item/${item.id}`)} />
       ) : (
-        <>
-          <Row icon={<PanelRight className="size-3.5" />} label="Open" testId="item-menu-open" onSelect={() => openEditFor(item as unknown as Task, itemType)} />
-          <Row icon={<Maximize2 className="size-3.5" />} label="Open as page" testId="item-menu-open-page" onSelect={() => router.push(`/item/${item.id}`)} />
-        </>
+        <Row icon={<PanelRight className="size-3.5" />} label="Open" testId="item-menu-open" onSelect={() => openEditFor(item as unknown as Task, itemType)} />
       )}
       <AskSection item={item} todayStr={todayStr} tz={tz} page={!!openHref} />
       {status.length > 0 && <ContextMenuSeparator />}
@@ -398,13 +395,24 @@ function SingleBody({
       {when}
       <EditSection edit={edit} />
       <ContextMenuSeparator />
+      <ContextMenuSub>
+        <ContextMenuSubTrigger className={ROW} data-testid="item-menu-copy">
+          <span className="flex size-3.5 shrink-0 items-center justify-center">
+            <Copy className="size-3.5" />
+          </span>
+          <span className="flex-1">Copy</span>
+        </ContextMenuSubTrigger>
+        <ContextMenuSubContent className={PANEL} data-testid="item-menu-copy-content">
+          <Row icon={<Link2 className="size-3.5" />} label="Link" testId="item-menu-copy-link" onSelect={copy(`${window.location.origin}/item/${item.id}`, 'Link')} />
+          <Row icon={<Copy className="size-3.5" />} label="Title" testId="item-menu-copy-title" onSelect={copy(item.title, 'Title')} />
+        </ContextMenuSubContent>
+      </ContextMenuSub>
+      {extra}
+      <ContextMenuSeparator />
+      {/* Destructive and rare, so it waits down here with Delete. */}
       {can('resetStreak') && (
         <Row icon={<Flame className="size-3.5" />} label="Reset streak" testId="item-menu-reset-streak" onSelect={run('resetStreak')} />
       )}
-      <Row icon={<Link2 className="size-3.5" />} label="Copy link" testId="item-menu-copy-link" onSelect={copy(`${window.location.origin}/item/${item.id}`, 'Link')} />
-      <Row icon={<Copy className="size-3.5" />} label="Copy title" testId="item-menu-copy-title" onSelect={copy(item.title, 'Title')} />
-      {extra}
-      <ContextMenuSeparator />
       <Row icon={<Trash2 className="size-3.5" />} label="Delete…" destructive testId="item-menu-delete" onSelect={run('delete')} />
     </>
   );
