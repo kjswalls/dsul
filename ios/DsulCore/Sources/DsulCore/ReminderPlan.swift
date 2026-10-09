@@ -273,8 +273,8 @@ public enum PlanNote: Sendable, Hashable {
 }
 
 /// lib/reminders/plan.ts `PlanSnooze`: a snooze as the planner payload
-/// projects it (`reminder_snooze_until/date`).
-public struct PlanSnooze: Sendable, Hashable {
+/// projects it (`reminder_snooze_until/date`; lib/app-api.ts `AppSnooze`).
+public struct PlanSnooze: Decodable, Sendable, Hashable {
     public var itemId: UUID
     /// An ISO instant.
     public var until: String
@@ -285,6 +285,23 @@ public struct PlanSnooze: Sendable, Hashable {
         self.itemId = itemId
         self.until = until
         self.date = date
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case itemId, until, date
+    }
+
+    /// Strict: a snooze missing a field, or naming no item, can't be armed,
+    /// and the payload's lossy array skips it.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let raw = try c.decode(String.self, forKey: .itemId)
+        guard let itemId = UUID(uuidString: raw) else {
+            throw DecodingError.dataCorruptedError(forKey: .itemId, in: c, debugDescription: "not a uuid: \(raw)")
+        }
+        self.itemId = itemId
+        self.until = try c.decode(String.self, forKey: .until)
+        self.date = try c.decode(String.self, forKey: .date)
     }
 }
 

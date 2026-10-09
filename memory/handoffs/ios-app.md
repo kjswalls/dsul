@@ -29,7 +29,11 @@ How it is built:
 | #424 | Sign in with Apple |
 | #430 | Delete account, iPhone and web (merged as 9e9bb33f, 2026-10-08) |
 
-## In progress: Reminders Phase 2a (pushed, no PR yet)
+## Update (2026-10-09, later)
+- **Reminders Phase 2a merged as #446.** The section below is history.
+- **Phase 2b (server) is in a PR from `claude/project-thread-32mqp1`**, the "iPhone reminders 2b" thread: the `snooze` intent, `complete`'s snooze clear, `POST /api/app/timezone`, and the payload's rituals and `snoozes`. `memory/plans/reminders-platforms.md`'s Phase 2b addendum lists where it departs from the plan. 2c (the phone's scheduler) is next.
+
+## Was in progress: Reminders Phase 2a (merged as #446)
 **Branch:** `claude/ios-app-9p05kw` at `92ebd7b2`, pushed to origin.
 - It has 3 commits on top of 9e9bb33f (#430's merge): `2ae4fc84` (WIP snapshot), `8d049536` (the planner, fixtures and Swift port) and `92ebd7b2` (review round 2's fixes and the plan addendum).
 - main has moved on to `89aa5466` (#442, #443), which is **not merged into the branch yet**.

@@ -41,6 +41,7 @@ import { POST as postCapture } from '@/app/api/app/items/route';
 import { POST as postItem } from '@/app/api/app/items/[id]/route';
 import { GET as getAccount } from '@/app/api/app/account/route';
 import { POST as postAccountDelete } from '@/app/api/app/account/delete/route';
+import { POST as postTimezone } from '@/app/api/app/timezone/route';
 import { ITEM_WRITES } from '@/lib/app-api';
 
 const b64 = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
@@ -280,6 +281,18 @@ describe('every /api/app route is behind it', () => {
     [
       'POST /api/app/items/:id collect',
       itemWrite({ action: 'collect', kind: 'routine', containerId: ROUTINE, member: true }),
+    ],
+    ['POST /api/app/items/:id snooze', itemWrite({ action: 'snooze', date: '2026-10-02' })],
+    [
+      'POST /api/app/timezone',
+      (headers) =>
+        postTimezone(
+          new Request('https://do.dsul.app/api/app/timezone', {
+            method: 'POST',
+            headers: { ...headers, 'content-type': 'application/json' },
+            body: JSON.stringify({ timezone: 'Europe/Paris' }),
+          }),
+        ),
     ],
     ['GET /api/app/account', (headers) => getAccount(new Request('https://do.dsul.app/api/app/account', { headers }))],
     [

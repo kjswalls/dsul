@@ -211,6 +211,47 @@
 >     `reminders/(plan|snooze|clock|channels/push)`, `eod` (the review hour's parser) and
 >     `verb-gates`, which `ItemVerbs.swift` already cited unmatched.
 
+> **Addendum (2026-10-09): what Phase 2b changed on the way in.** Phase 2b is §5.3's server
+> half: the `snooze` intent, `complete`'s snooze clear, `POST /api/app/timezone` and the
+> planner payload's rituals and snoozes (all in `lib/app-api.ts`). The phone still schedules
+> nothing; 2c's hosted scheduler is the first reader. Where it departs from §2.3 and the
+> write-path table:
+>
+> 1. **`snooze` is held to its day on the server too.** `{ action: 'snooze', date, minutes?,
+>    timeZone? }` writes `reminder_snooze_until` = the request's instant plus `minutes`
+>    (`SNOOZE_MINUTES` when absent; 1 to 240) and `reminder_snooze_date` = `date`, but only
+>    when `snoozeFireInstant` says that instant is still on `date` in the stored zone (the
+>    device's when none is stored, as `pause` reads it). Otherwise it writes nothing and
+>    answers `{ ok: true, snoozedUntil: null }`. The web's act route still stores an
+>    ungated snooze for the scan to expire; the phone's never exists, so no device arms a
+>    ring about a day that is over. The gate is the type's `remindable` and not a subtask
+>    (`not_remindable`); no `reminder_time` is needed, since a last call's Snooze asks about
+>    an item with no cue. The instant is the request's, not the tap's, so an action outbox
+>    drained late snoozes from the drain.
+> 2. **`complete` clears a snooze only for the day it ticks.** On a recurring row the clear
+>    filters `reminder_snooze_date = date`, so ticking yesterday late leaves today's snooze
+>    alone; a one-off's goes whatever day it names. Only `done: true` that the row took
+>    clears, the update filters on a live snooze (the common tick writes nothing), and a
+>    failed clear is logged and never fails the tick. The agent door's `complete` runs the
+>    same code and clears too.
+> 3. **The snooze projection is a top-level `snoozes` array, not fields on `Item`.** It is
+>    `PlanSnooze[]` (`itemId`, `until` as Postgres stamps it, `date`), read by its own
+>    query on `items` (live rows with a snooze), rows with no day left out, stale ones sent
+>    for the plan to gate. Null when the columns can't be read; DsulCore's `PlannerPayload`
+>    reads it lossily.
+> 4. **The settings are flat and raw.** `lastCallEnabled` and `lastCallTime` (032's group,
+>    null when unread), `eodReviewEnabled`, `eodReviewTime` and `lastEodReviewDate` (stable,
+>    pre-032) and `reminderGraceMinutes` (the scan's constant). Only `true` is on, as the
+>    scan reads it; times are sent as stored, empty as null. DsulCore's
+>    `PlannerSettings.planEod` folds the review into `PlanEod` (nil while its switch is
+>    unknown; on with no hour reads as off, as the scan does).
+> 5. **`POST /api/app/timezone` shares the web's writer.** `lib/user-timezone.ts`
+>    `saveTimezone` is both doors' write, skip-unchanged included; the web's PATCH keeps
+>    its answers and now 400s a body that isn't JSON instead of throwing.
+> 6. **Not in 2b:** the Swift snooze body (2c, beside the other verb bodies in
+>    `ios/Dsul/Data/APIClient.swift`) and `X-Dsul-Device` on `/api/app` writes (2d, with
+>    the devices registry).
+
 2026-10-05. **Status: plan, decided 2026-10-06 — Kirby took every default in §7; nothing in it has been built yet, nothing was written to prod.** Phase 0 is next. Every code citation is tree-level (`main` at `b8d480c`, 2026-10-04; every cited `file:line` holds at `3200896`, #405, 2026-10-05 — six cited files changed between the two commits, `electron/main.cjs`, `electron/preload.cjs`, `lib/desktop.ts`, `desktop-app.md`, `ios-app.md`, `CLAUDE.md`, but not at the cited lines; `preload.cjs` gained `authProviders`): the live project was read on 2026-10-05, read-only, and the observed values sit at the top of §5.1.1: the organisation is on the **Pro** plan, both ticks are paused exactly as 045 left them, no ritual is enabled by any of the four accounts, and Kirby is the only user, so the runbook's EXPECT lines are now observations and the §5.1 writes have no one to disturb. Kirby also holds a paid Apple Developer Program membership (confirmed 2026-10-05), which removes the purchase gate the brief assumed (decision 5, resolved). Facts taken from search snippets of pages the planning sessions could not open are marked `[S]`; facts no source verified are marked **[unverified]** inline and collected in §6. Sibling plans: [habit-reminders.md](habit-reminders.md) (the reminder model this builds on — read it first), [desktop-app.md](desktop-app.md), [ios-app.md](ios-app.md).
 
 ---

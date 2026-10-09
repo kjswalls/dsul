@@ -429,22 +429,40 @@ const SETTINGS_ROW = {
   time_format: '24h',
   app_icon: 'lime',
   habit_reminders_enabled: true,
+  // The last call and the review on, at hours no default gives.
+  habit_last_call_enabled: true,
+  habit_last_call_time: '20:45',
+  eod_review_enabled: true,
+  eod_review_time: '21:30',
+  last_eod_review_date: '2026-10-01',
   openclaw_api_key: `dsul_${'ab'.repeat(32)}`,
   openclaw_webhook_url: 'https://hooks.example.com',
 };
 
 /**
- * Answers each table from `tables`, and anything else as an error. The one
- * quiet default is user_extensions, which every load reads: no rows, the
- * manifest's defaults. A test that wants that read to fail names it.
+ * Answers each table from `tables`, and anything else as an error. The quiet
+ * defaults are user_extensions and items (the snooze read), which every load
+ * reads: no rows, the manifest's defaults and no snoozes. A test that wants
+ * either read to fail names it.
  */
 function respondWith(tables: Record<string, Result>) {
   respond = (q) =>
     tables[q.table] ??
-    (q.table === 'user_extensions'
+    (q.table === 'user_extensions' || q.table === 'items'
       ? { data: [], error: null }
       : { data: null, error: { code: 'XX000', message: `unexpected ${q.table}` } });
 }
+
+/**
+ * The items read for snoozes: a habit snoozed this afternoon, as Postgres
+ * stamps a timestamptz, and a row with no day, which the plan couldn't gate
+ * and the route leaves out.
+ */
+const SNOOZE_ROWS = [
+  { id: id(1), reminder_snooze_until: '2026-10-02T15:19:05.123456+00:00', reminder_snooze_date: '2026-10-02' },
+  { id: id(3), reminder_snooze_until: '2026-10-02T15:30:00+00:00', reminder_snooze_date: null },
+];
+const SNOOZES: Result = { data: SNOOZE_ROWS, error: null };
 
 /** The user turned Streaks off on the web (Settings → Extensions). */
 const STREAKS_OFF: Result = { data: [{ slug: 'streaks', enabled: false }], error: null };
@@ -479,7 +497,7 @@ function setUp() {
   vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'anon-key');
   queries = [];
   rpc = vi.fn(async () => ({ data: BUNDLE, error: null }));
-  respondWith({ user_settings: { data: SETTINGS_ROW, error: null }, user_extensions: STREAKS_OFF });
+  respondWith({ user_settings: { data: SETTINGS_ROW, error: null }, user_extensions: STREAKS_OFF, items: SNOOZES });
   h.createClient.mockImplementation(() => ({
     auth: { getUser: vi.fn(async () => ({ data: { user: { id: USER } }, error: null })) },
     from,
@@ -516,7 +534,7 @@ describe('the payload fixture shared with DsulCore', () => {
 
   it('has the documented top-level shape', () => {
     expect(Object.keys(generated).sort()).toEqual(
-      ['fetchedAt', 'itemTypes', 'items', 'projects', 'routines', 'seasons', 'settings', 'userId', 'v', 'writes'].sort(),
+      ['fetchedAt', 'itemTypes', 'items', 'projects', 'routines', 'seasons', 'settings', 'snoozes', 'userId', 'v', 'writes'].sort(),
     );
     expect(generated.v).toBe(1);
     expect(generated.userId).toBe(USER);
@@ -529,7 +547,16 @@ describe('the payload fixture shared with DsulCore', () => {
       appIcon: 'lime',
       streaksEnabled: false,
       remindersEnabled: true,
+      lastCallEnabled: true,
+      lastCallTime: '20:45',
+      eodReviewEnabled: true,
+      eodReviewTime: '21:30',
+      lastEodReviewDate: '2026-10-01',
+      reminderGraceMinutes: 30,
     });
+    // Each live snooze as plan.ts's PlanSnooze, the instant as Postgres wrote it;
+    // the row with no day is left out.
+    expect(generated.snoozes).toEqual([{ itemId: id(1), until: '2026-10-02T15:19:05.123456+00:00', date: '2026-10-02' }]);
     // The intents the item route takes. Additive: an older server sends no
     // list, which the phone reads as ['complete', 'schedule'].
     expect(generated.writes).toEqual([
@@ -550,6 +577,7 @@ describe('the payload fixture shared with DsulCore', () => {
       'repeat',
       'project',
       'collect',
+      'snooze',
     ]);
     // The custom type's names, and nothing else of its row.
     expect(generated.itemTypes).toEqual([{ name: 'book', label: 'Book to read', labelPlural: 'Books to read' }]);
@@ -631,7 +659,10 @@ describe('GET /api/app/planner', () => {
     expect(settings).toHaveLength(1);
     expect(settings[0].calls).toContainEqual([
       'select',
-      ['timezone, show_completed_tasks, week_start_day, time_format, app_icon, habit_reminders_enabled'],
+      [
+        'timezone, show_completed_tasks, week_start_day, time_format, eod_review_enabled, eod_review_time, ' +
+          'last_eod_review_date, app_icon, habit_reminders_enabled, habit_last_call_enabled, habit_last_call_time',
+      ],
     ]);
     expect(settings[0].calls).toContainEqual(['eq', ['user_id', USER]]);
     // The Streaks switch, by its two columns, as the user.
@@ -641,8 +672,18 @@ describe('GET /api/app/planner', () => {
       ['select', ['slug, enabled']],
       ['eq', ['user_id', USER]],
     ]);
+    // The snoozes, by the columns that say them, live rows only, as the user.
+    const snoozes = queries.filter((q) => q.table === 'items');
+    expect(snoozes.map((q) => q.calls)).toEqual([
+      [
+        ['select', ['id, reminder_snooze_until, reminder_snooze_date']],
+        ['eq', ['user_id', USER]],
+        ['is', ['deleted_at', null]],
+        ['not', ['reminder_snooze_until', 'is', null]],
+      ],
+    ]);
     // Nothing else is read: no per-table burst on top of the RPC.
-    expect(queries.map((q) => q.table)).toEqual(['user_settings', 'user_extensions']);
+    expect(queries.map((q) => q.table)).toEqual(['user_settings', 'user_extensions', 'items']);
   });
 
   it('falls back to the web’s defaults when there is no settings row', async () => {
@@ -658,6 +699,12 @@ describe('GET /api/app/planner', () => {
       streaksEnabled: true,
       // The column's default, and what the reminder scan reads a missing row as.
       remindersEnabled: false,
+      lastCallEnabled: false,
+      lastCallTime: null,
+      eodReviewEnabled: false,
+      eodReviewTime: null,
+      lastEodReviewDate: null,
+      reminderGraceMinutes: 30,
     });
   });
 
@@ -680,7 +727,15 @@ describe('GET /api/app/planner', () => {
       return columns.includes('app_icon')
         ? { data: null, error: { code: '42703', message: 'column user_settings.app_icon does not exist' } }
         : {
-            data: { timezone: 'Europe/Paris', show_completed_tasks: false, week_start_day: 'monday', time_format: '24h' },
+            data: {
+              timezone: 'Europe/Paris',
+              show_completed_tasks: false,
+              week_start_day: 'monday',
+              time_format: '24h',
+              eod_review_enabled: true,
+              eod_review_time: '9:15',
+              last_eod_review_date: null,
+            },
             error: null,
           };
     };
@@ -695,11 +750,20 @@ describe('GET /api/app/planner', () => {
       streaksEnabled: true,
       // Unread, so unknown: the phone says nothing rather than "off".
       remindersEnabled: null,
+      lastCallEnabled: null,
+      lastCallTime: null,
+      // The review's columns are older than 032, so they are read on the retry.
+      eodReviewEnabled: true,
+      eodReviewTime: '9:15',
+      lastEodReviewDate: null,
+      reminderGraceMinutes: 30,
     });
     const selects = queries.filter((q) => q.table === 'user_settings').map((q) => q.calls.find(([m]) => m === 'select')?.[1][0]);
+    const stable =
+      'timezone, show_completed_tasks, week_start_day, time_format, eod_review_enabled, eod_review_time, last_eod_review_date';
     expect(selects).toEqual([
-      'timezone, show_completed_tasks, week_start_day, time_format, app_icon, habit_reminders_enabled',
-      'timezone, show_completed_tasks, week_start_day, time_format',
+      `${stable}, app_icon, habit_reminders_enabled, habit_last_call_enabled, habit_last_call_time`,
+      stable,
     ]);
   });
 
@@ -799,6 +863,57 @@ describe('GET /api/app/planner', () => {
     });
   });
 
+  describe('snoozes', () => {
+    it('is an empty list when nothing is snoozed', async () => {
+      respondWith({ user_settings: { data: SETTINGS_ROW, error: null }, items: { data: [], error: null } });
+      expect((await (await get()).json()).snoozes).toEqual([]);
+    });
+
+    it('is null on a database without migration 032, quietly, and the planner still loads', async () => {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      respondWith({
+        user_settings: { data: SETTINGS_ROW, error: null },
+        items: { data: null, error: { code: '42703', message: 'column items.reminder_snooze_until does not exist' } },
+      });
+      const res = await get();
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.snoozes).toBeNull();
+      expect(body.items).toHaveLength(ITEM_ROWS.length);
+      expect(error).not.toHaveBeenCalled();
+      error.mockRestore();
+    });
+
+    it('is null, logged, on any other failed read, and the planner still loads', async () => {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      respondWith({
+        user_settings: { data: SETTINGS_ROW, error: null },
+        items: { data: null, error: { code: '57014', message: 'canceling statement due to statement timeout' } },
+      });
+      const res = await get();
+      expect(res.status).toBe(200);
+      expect((await res.json()).snoozes).toBeNull();
+      expect(error).toHaveBeenCalledWith('[app/planner] snooze read failed:', 'canceling statement due to statement timeout');
+      error.mockRestore();
+    });
+  });
+
+  it('answers the last call and the review off as the scan reads them: only true is on', async () => {
+    respondWith({
+      user_settings: {
+        data: { ...SETTINGS_ROW, habit_last_call_enabled: null, eod_review_enabled: null, eod_review_time: '', habit_last_call_time: '' },
+        error: null,
+      },
+    });
+    const settings = (await (await get()).json()).settings;
+    expect(settings).toMatchObject({
+      lastCallEnabled: false,
+      lastCallTime: null,
+      eodReviewEnabled: false,
+      eodReviewTime: null,
+    });
+  });
+
   it('401s a JWT PostgREST rejects, so the phone refreshes', async () => {
     rpc.mockResolvedValue({ data: null, error: { code: 'PGRST301', message: 'JWT expired' } });
     expect((await get()).status).toBe(401);
@@ -832,6 +947,7 @@ describe('GET /api/app/planner', () => {
   const PER_TABLE: Record<string, Result> = {
     user_settings: { data: SETTINGS_ROW, error: null },
     user_extensions: STREAKS_OFF,
+    items: SNOOZES,
     items_windowed: { data: ITEM_ROWS, error: null },
     projects: { data: PROJECT_ROWS, error: null },
     item_types: { data: ITEM_TYPE_ROWS, error: null },

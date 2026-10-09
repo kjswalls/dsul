@@ -53,6 +53,10 @@ import { getBucketForTime } from './time-bucket';
 import { reportLiveCompletion } from './stakes/live';
 import { notifyPlugins } from './openclaw-registry';
 import { createServiceClient } from './supabase-service';
+import { SNOOZE_MINUTES } from './reminders/channels/push';
+import { REMINDER_GRACE_MINUTES } from './reminders/due';
+import { snoozeFireInstant } from './reminders/snooze';
+import { saveTimezone } from './user-timezone';
 import type { WeekStartDay } from './container-schedule';
 import type { TimeFormat } from './reminders/copy';
 import type { Item, Project, Routine, Season, Task, TaskItem } from './planner-types';
@@ -119,6 +123,12 @@ const DateStrSchema = z
   .refine(isCalendarDate, 'not a calendar date');
 
 const TimeStrSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'expected HH:mm');
+
+/**
+ * The longest snooze a request may ask for. The buttons promise SNOOZE_MINUTES;
+ * this only bounds a body, and the day gate cuts any snooze at local midnight.
+ */
+export const SNOOZE_MAX_MINUTES = 240;
 
 /** POST /api/app/items. The id is the phone's own, so a retry is the same row. */
 export const CaptureSchema = z.object({
@@ -260,6 +270,20 @@ const ItemWriteActions = z.discriminatedUnion('action', [
       member: z.boolean(),
     })
     .strict(),
+  // A notification's Snooze on the phone (reminders Phase 2): the web's
+  // /api/reminders/act snooze, behind the bearer, with the day gate the web's
+  // lacks. Its Done is `complete`, which clears the snooze.
+  z
+    .object({
+      action: z.literal('snooze'),
+      /** The day the notification was about, which the snooze belongs to (habit-reminders.md decision 8). */
+      date: DateStrSchema,
+      /** Absent is SNOOZE_MINUTES, the length the button promises. */
+      minutes: z.number().int().min(1).max(SNOOZE_MAX_MINUTES).optional(),
+      /** The device's zone, used only when the account has no usable one stored. */
+      timeZone: z.string().max(100).optional(),
+    })
+    .strict(),
 ]);
 
 export const ItemWriteSchema = ItemWriteActions.superRefine((body, ctx) => {
@@ -364,7 +388,36 @@ export interface AppPlannerPayload {
      * older server, means the same.
      */
     remindersEnabled: boolean | null;
+    /**
+     * The last call (habit_last_call_enabled, migration 032), as the scan reads
+     * it: only true is on. Null when unread, as remindersEnabled is. The phone
+     * never rings it (server-only until APNs, reminders-platforms.md §2.3); it
+     * reads it to say so.
+     */
+    lastCallEnabled: boolean | null;
+    /** habit_last_call_time, 'HH:mm', as stored; null when unset or unread. */
+    lastCallTime: string | null;
+    /** The end-of-day review's switch (eod_review_enabled): only true is on, as the scan reads it. */
+    eodReviewEnabled: boolean;
+    /** eod_review_time as stored, 'HH:mm' or the looser 'H:mm' lib/eod.ts reads; null when unset. */
+    eodReviewTime: string | null;
+    /** last_eod_review_date: the day the last review was FOR (lib/eod.ts reviewedDay). */
+    lastEodReviewDate: string | null;
+    /**
+     * How long after its minute a missed cue may still ring (the scan's
+     * REMINDER_GRACE_MINUTES): the phone's catch-up window, so the two agree.
+     */
+    reminderGraceMinutes: number;
   };
+  /**
+   * Every pending snooze on a live item (reminder_snooze_until/date, migration
+   * 032), as lib/reminders/plan.ts's PlanSnooze: the phone arms each one that
+   * still rings on its own day (ringsOnDay). Stale ones are sent as stored;
+   * the plan gates them, as the scan does. Null when the columns couldn't be
+   * read (a database behind on its migrations), which the phone reads as
+   * none. Absent, from an older server, means the same.
+   */
+  snoozes: AppSnooze[] | null;
   /**
    * The item-write intents this server takes (ITEM_WRITES). The phone hides
    * a verb whose write is not listed, so a build that reaches users before
@@ -386,6 +439,15 @@ export interface AppPlannerPayload {
   itemTypes: AppItemType[] | null;
 }
 
+/** A pending snooze: lib/reminders/plan.ts PlanSnooze. */
+export interface AppSnooze {
+  itemId: string;
+  /** reminder_snooze_until: an ISO instant. */
+  until: string;
+  /** reminder_snooze_date: the local day the snooze belongs to, yyyy-MM-dd. */
+  date: string;
+}
+
 /** One custom type's names, and nothing of its config: the phone's capabilities come from the registry port. */
 export interface AppItemType {
   name: string;
@@ -398,16 +460,19 @@ export interface AppItemType {
  * read all of it. It held the plaintext agent key until migration 059 moved it
  * to user_secrets; the habit stays.
  *
- * The week start and the time format are migration 008, and stable.
+ * The week start and the time format are migration 008, and the review's
+ * three columns 002/010, all stable.
  */
-const STABLE_SETTINGS_COLUMNS = 'timezone, show_completed_tasks, week_start_day, time_format';
+const STABLE_SETTINGS_COLUMNS =
+  'timezone, show_completed_tasks, week_start_day, time_format, eod_review_enabled, eod_review_time, last_eod_review_date';
 /**
- * `app_icon` is migration 056 and `habit_reminders_enabled` 032; both sit in
+ * `app_icon` is migration 056 and the three reminder switches 032; all sit in
  * lib/settings-service.ts PENDING_SCHEMA_COLUMNS. PostgREST refuses the whole
  * select over one unknown column, so a missing one is read again without
- * either (`full` is then false).
+ * any of them (`full` is then false).
  */
-const SETTINGS_COLUMNS = `${STABLE_SETTINGS_COLUMNS}, app_icon, habit_reminders_enabled`;
+const SETTINGS_COLUMNS =
+  `${STABLE_SETTINGS_COLUMNS}, app_icon, habit_reminders_enabled, habit_last_call_enabled, habit_last_call_time`;
 
 interface SettingsRow {
   timezone?: string | null;
@@ -416,6 +481,11 @@ interface SettingsRow {
   time_format?: string | null;
   app_icon?: string | null;
   habit_reminders_enabled?: boolean | null;
+  habit_last_call_enabled?: boolean | null;
+  habit_last_call_time?: string | null;
+  eod_review_enabled?: boolean | null;
+  eod_review_time?: string | null;
+  last_eod_review_date?: string | null;
 }
 
 interface SettingsRead {
@@ -451,6 +521,35 @@ async function readStreaksEnabled(userId: string, client: Client): Promise<boole
     console.error('[app/planner] extensions read failed:', err instanceof Error ? err.message : err);
     return resolveEnabled({}, EXT_STREAKS); // the manifest default, true
   }
+}
+
+/**
+ * Every live item's pending snooze, by the three columns that say it. Sparse:
+ * a snooze lives fifteen minutes, and the scan sweeps the stale ones. A row
+ * with no day is left out, since the plan can't gate it ("an unreadable
+ * snooze is no snooze"). Null on a database without migration 032's columns,
+ * and on any other failed read, logged: a snooze the phone misses rings on
+ * the web's push all the same, and the planner must still load.
+ */
+async function readSnoozes(userId: string, client: Client): Promise<AppSnooze[] | null> {
+  const { data, error } = await client
+    .from('items')
+    .select('id, reminder_snooze_until, reminder_snooze_date')
+    .eq('user_id', userId)
+    .is('deleted_at', null)
+    .not('reminder_snooze_until', 'is', null);
+  if (error) {
+    if (!isMissingColumnError(error)) {
+      console.error('[app/planner] snooze read failed:', error.message ?? error);
+    }
+    return null;
+  }
+  const rows = (data ?? []) as { id: string; reminder_snooze_until: string | null; reminder_snooze_date: string | null }[];
+  return rows.flatMap((row) =>
+    row.reminder_snooze_until && row.reminder_snooze_date
+      ? [{ itemId: row.id, until: row.reminder_snooze_until, date: row.reminder_snooze_date }]
+      : [],
+  );
 }
 
 /** The web's rule (migration 056): an unknown slug is Aurora, null is unchosen. */
@@ -498,10 +597,11 @@ export async function getPlanner(req: Request): Promise<Response> {
     // 400-day completion window) and cannot drift from what the web shows. It
     // falls back to the per-table read rather than answering 503 on a missing
     // RPC, so its module-level latch can slow an instance but never fail one.
-    const [data, { row: settings, full }, streaksEnabled] = await Promise.all([
+    const [data, { row: settings, full }, streaksEnabled, snoozes] = await Promise.all([
       loadPlannerData(userId, () => perTable(userId, client), client),
       readSettings(userId, client),
       readStreaksEnabled(userId, client),
+      readSnoozes(userId, client),
     ]);
 
     const payload: AppPlannerPayload = {
@@ -519,7 +619,14 @@ export async function getPlanner(req: Request): Promise<Response> {
         // Only true lets a reminder through (the scan's own test), so a missing
         // row or a null column is off. Unread is unknown, never off.
         remindersEnabled: full ? settings?.habit_reminders_enabled === true : null,
+        lastCallEnabled: full ? settings?.habit_last_call_enabled === true : null,
+        lastCallTime: (full && settings?.habit_last_call_time) || null,
+        eodReviewEnabled: settings?.eod_review_enabled === true,
+        eodReviewTime: settings?.eod_review_time || null,
+        lastEodReviewDate: settings?.last_eod_review_date || null,
+        reminderGraceMinutes: REMINDER_GRACE_MINUTES,
       },
+      snoozes,
       writes: ITEM_WRITES,
       items: data.items,
       projects: data.projects,
@@ -531,6 +638,36 @@ export async function getPlanner(req: Request): Promise<Response> {
     return NextResponse.json(payload, { headers: { 'Cache-Control': 'no-store' } });
   } catch (err) {
     return dbErrorResponse(err, 'app/planner');
+  }
+}
+
+// ── POST /api/app/timezone ───────────────────────────────────────────────────
+
+/**
+ * The phone's zone, stored as the account's (lib/user-timezone.ts, the web's
+ * PATCH /api/user/timezone's own write): the scan reads the day and the
+ * minute of every cue, last call and review in it, so a phone that travels
+ * keeps the server's pushes on the phone's clock. Already so is 200 with
+ * `unchanged: true` and no write. Body: `{ timezone }`, an IANA name.
+ */
+export async function postTimezone(req: Request): Promise<Response> {
+  const auth = await authenticateAppRequest(req);
+  if (auth instanceof Response) return auth;
+  const { userId, client } = auth;
+
+  let raw: unknown;
+  try {
+    raw = await req.json();
+  } catch {
+    return invalid();
+  }
+  const timezone = raw && typeof raw === 'object' ? (raw as { timezone?: unknown }).timezone : undefined;
+  try {
+    const result = await saveTimezone(client, userId, timezone);
+    if ('invalid' in result) return invalid({ formErrors: [], fieldErrors: { timezone: [result.invalid] } });
+    return NextResponse.json(result.unchanged ? { ok: true, unchanged: true } : { ok: true });
+  } catch (err) {
+    return dbErrorResponse(err, 'app/timezone');
   }
 }
 
@@ -667,6 +804,7 @@ function reportStake(userId: string, itemId: string, dateStr: string, completed:
  *                projectRefilePatch), leaving a project block it no longer belongs to
  *   collect      join or leave one routine or season: one membership row
  *                (addContainerMember / removeContainerMember)
+ *   snooze       a notification's Snooze (/api/reminders/act's snooze), held to its day
  *
  * The row is read first, under RLS, and a missing one is a 404. That read is
  * load-bearing, not politeness: set_item_completion, set_item_skip,
@@ -794,6 +932,8 @@ async function dispatchItemWrite(ctx: WriteContext, body: ItemWrite, opts: AppWr
         return await resetStreak(ctx);
       case 'collect':
         return await collect(ctx, body);
+      case 'snooze':
+        return await snooze(ctx, body);
     }
   } catch (err) {
     return dbErrorResponse(err, 'app/items/:id');
@@ -871,6 +1011,7 @@ async function complete(
       },
     }),
   });
+  if ('ok' in result && body.done) await clearSnooze(ctx, body.date);
   if (onCommitted && 'ok' in result && wasDone !== undefined && body.done !== wasDone) {
     committed(
       { onCommitted },
@@ -884,6 +1025,67 @@ async function complete(
     );
   }
   return answer(result);
+}
+
+/**
+ * A done day must not be asked about again by a snooze armed before it, as
+ * /api/reminders/act clears it after its own Done. A recurring row's snooze is
+ * cleared only when it belongs to the day ticked: ticking yesterday late must
+ * not silence the snooze tapped on today's cue. A one-off has one occurrence,
+ * so its snooze goes whatever day it names. The filter on a live snooze makes
+ * the common tick, with none, match no row and write nothing.
+ *
+ * Never fatal: the tick has landed, and a snooze left behind is about a done
+ * day, which the scan's open-loop check and the phone's plan both pass over.
+ */
+async function clearSnooze(ctx: WriteContext, date: string): Promise<void> {
+  let query = ctx.client
+    .from('items')
+    .update({ reminder_snooze_until: null, reminder_snooze_date: null })
+    .eq('id', ctx.id)
+    .eq('user_id', ctx.userId)
+    .not('reminder_snooze_until', 'is', null);
+  if (ctx.recurring) query = query.eq('reminder_snooze_date', date);
+  try {
+    const { error } = await query;
+    if (error) console.error('[app/items] snooze clear failed:', error.message);
+  } catch (err) {
+    console.error('[app/items] snooze clear failed:', err instanceof Error ? err.message : err);
+  }
+}
+
+/**
+ * `snooze`: a notification's Snooze, the write /api/reminders/act makes for
+ * the web's: `reminder_snooze_until` at the tap plus the button's minutes, and
+ * `reminder_snooze_date`, the day the notification was about, never the day
+ * it matures on (habit-reminders.md decision 8). The scan rings it on the
+ * first tick after it matures, and the phone's plan arms it as `#snooze`.
+ *
+ * Held to its day, as the phone's own snooze is (lib/reminders/snooze.ts): a
+ * snooze that would ring past that day's local midnight, in the zone the scan
+ * reads (the stored one, else the device's), writes nothing and answers
+ * `snoozedUntil: null`. The web's stores it anyway and the scan expires it at
+ * maturity; here it never exists, so no device arms a ring about a day that is
+ * over. A notification left in the shade from yesterday snoozes to nothing.
+ *
+ * Gate: a type that takes reminders, and never a subtask (editRefusal's
+ * `reminder` rule). No `reminder_time` is needed: a last call's Snooze asks
+ * again about an item with no cue of its own (lib/reminders/scan.ts).
+ */
+async function snooze(ctx: WriteContext, body: IntentBody<'snooze'>): Promise<Response> {
+  const { client, userId, id, config, row } = ctx;
+  if (!config.remindable || row.parent_item_id) return refused('not_remindable', 400);
+  const zone = await pauseZone(client, userId, body.timeZone);
+  const fireMs = snoozeFireInstant(Date.now(), body.minutes ?? SNOOZE_MINUTES, zone, body.date);
+  if (fireMs === null) return NextResponse.json({ ok: true, snoozedUntil: null });
+  const until = new Date(fireMs).toISOString();
+  const { error } = await client
+    .from('items')
+    .update({ reminder_snooze_until: until, reminder_snooze_date: body.date })
+    .eq('id', id)
+    .eq('user_id', userId);
+  if (error) throw error;
+  return NextResponse.json({ ok: true, snoozedUntil: until });
 }
 
 /**
@@ -1263,10 +1465,11 @@ function isTimeZone(zone: string): boolean {
 }
 
 /**
- * The zone a pause resolves "today" in: the user's stored zone, else the
- * device's, else UTC. That is the rule the phone uses to say "today", so the
- * resume day it shows is the one written. Each candidate counts only if Intl
- * knows it, so a junk value falls through rather than throwing mid-write.
+ * The zone a pause resolves "today" in, and a snooze's day gate is held in:
+ * the user's stored zone, else the device's, else UTC. That is the rule the
+ * phone uses to say "today", so the resume day it shows is the one written.
+ * Each candidate counts only if Intl knows it, so a junk value falls through
+ * rather than throwing mid-write.
  *
  * A failed read throws, unlike the agent API's silent UTC: the phone retries a
  * failed write, and a pause resolved in the wrong zone is a wrong write.
