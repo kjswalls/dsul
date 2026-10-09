@@ -2886,7 +2886,7 @@ body {
    one scrolled back into view or mounted mid-wait is put on it before it
    paints, so it never shows full ink while its neighbours wait.
 
-   The cap: three passes (3.9s), then the band stops and the ink holds at the
+   The cap: three passes (7.5s), then the band stops and the ink holds at the
    waiting level while the sync line goes on saying syncing.
 
    The landing. The attribute turns to 'land' inside the landing set(), before

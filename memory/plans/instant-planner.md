@@ -1133,7 +1133,7 @@ about 0.95s, so a 0.6 to 1.1s load sees it cross the canvas titles. Filmed on th
 1800 at 1.07s. `background-attachment: fixed` would draw the same picture with no
 measuring, but it re-rasters the planner at about 11 frames a second.
 
-**The cap.** Three passes (`3 both`, done 3.9s after the preview commits), then the band
+**The cap.** Three passes (`3 both`, done 7.5s after the preview commits), then the band
 stops and the ink holds at the waiting level while the sync line goes on syncing.
 
 **Away.** A waiting title outside the viewport is marked `data-shimmer-away` by the
