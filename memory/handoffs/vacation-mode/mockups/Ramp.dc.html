@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Easing back waves</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#3b4a1c}a:hover{color:#1e1e22}
+</style>
+</helmet>
+<div style="width: 880px; height: 660px; box-sizing: border-box; background: #EEEDED; padding: 36px; font-family: Inter, system-ui, sans-serif; color: #1e1e22; display: flex; justify-content: center; align-items: flex-start;">
+<div style="width: 808px; background: #ffffff; border: 1px solid #dcdde1; border-radius: 14px; padding: 26px; display: flex; flex-direction: column; gap: 18px; box-shadow: 0 12px 40px rgba(20,20,40,0.10);">
+
+<div style="display: flex; flex-direction: column; gap: 4px;">
+<h1 style="margin: 0; font-size: 20px; font-weight: 600;">Easing back in</h1>
+<p style="margin: 0; font-size: 14px; color: #5e6175;">We spread your habits over a week, easiest first. Drag one to another day if you like.</p>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px;">
+
+<div style="display: flex; flex-direction: column; gap: 8px; background: #f6faea; border: 1px solid #dde9bd; border-radius: 10px; padding: 12px;">
+<div style="display: flex; flex-direction: column; gap: 1px;"><span style="font-size: 13px; font-weight: 600;">Tue, Oct 20</span><span style="font-size: 12px; color: #3b4a1c;">Day 1, today</span></div>
+<div style="background: #fff; border: 1px solid #ececef; border-radius: 8px; padding: 9px 10px; font-size: 13px; font-weight: 500;">Morning pages</div>
+<div style="font-size: 12px; color: #6b6e80;">Plus what you kept</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 8px; background: #fafafb; border: 1px solid #ececef; border-radius: 10px; padding: 12px;">
+<div style="display: flex; flex-direction: column; gap: 1px;"><span style="font-size: 13px; font-weight: 600;">Thu, Oct 22</span><span style="font-size: 12px; color: #6b6e80;">Day 3</span></div>
+<div style="background: #fff; border: 1px solid #ececef; border-radius: 8px; padding: 9px 10px; font-size: 13px;">Stretch</div>
+<div style="background: #fff; border: 1px solid #ececef; border-radius: 8px; padding: 9px 10px; font-size: 13px;">Read 20 min</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 8px; background: #fafafb; border: 1px solid #ececef; border-radius: 10px; padding: 12px;">
+<div style="display: flex; flex-direction: column; gap: 1px;"><span style="font-size: 13px; font-weight: 600;">Sat, Oct 24</span><span style="font-size: 12px; color: #6b6e80;">Day 5</span></div>
+<div style="background: #fff; border: 1px solid #ececef; border-radius: 8px; padding: 9px 10px; font-size: 13px;">Morning routine</div>
+<div style="background: #fff; border: 1px solid #ececef; border-radius: 8px; padding: 9px 10px; font-size: 13px;">Spanish</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 8px; background: #fafafb; border: 1px solid #ececef; border-radius: 10px; padding: 12px;">
+<div style="display: flex; flex-direction: column; gap: 1px;"><span style="font-size: 13px; font-weight: 600;">Mon, Oct 26</span><span style="font-size: 12px; color: #6b6e80;">Day 7, all back</span></div>
+<div style="background: #fff; border: 1px solid #ececef; border-radius: 8px; padding: 9px 10px; font-size: 13px;">Gym</div>
+<div style="background: #fff; border: 1px solid #ececef; border-radius: 8px; padding: 9px 10px; font-size: 13px;">Inbox zero</div>
+<div style="background: #fff; border: 1px solid #ececef; border-radius: 8px; padding: 9px 10px; font-size: 13px;">Work project</div>
+</div>
+
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 8px; border-top: 1px solid #f0f0f2; padding-top: 14px;">
+<h2 style="margin: 0; font-size: 13px; font-weight: 600;">While you're easing back</h2>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; font-size: 13px; color: #5e6175; line-height: 1.45;">
+<div>A habit gets no last-call nudge until it has been back two days.</div>
+<div>The end-of-day review is one line: How did it go?</div>
+<div>A day you don't tick a returning habit is just a day. Nothing turns red.</div>
+</div>
+</div>
+
+<div style="display: flex; justify-content: flex-end; gap: 10px;">
+<button style="border: 1px solid #dcdde1; background: #fff; border-radius: 8px; padding: 9px 14px; font: inherit; font-size: 14px; cursor: pointer;">All at once instead</button>
+<button style="display: inline-flex; align-items: center; gap: 10px; border: 0; background: #1e1e22; color: #ffffff; font: inherit; font-size: 14px; font-weight: 500; padding: 9px 12px 9px 16px; border-radius: 8px; cursor: pointer;">Done<span style="background: #c3e04b; color: #1e1e22; border-radius: 4px; font-size: 11px; font-weight: 600; padding: 2px 5px;">↵</span></button>
+</div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":880,"height":660}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

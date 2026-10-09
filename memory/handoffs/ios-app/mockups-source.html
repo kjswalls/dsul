@@ -1,0 +1,544 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link href="fonts.css" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Inter,system-ui,sans-serif;background:#e9e8e4;color:#1e1e22;-webkit-font-smoothing:antialiased;font-feature-settings:"cv11","ss01"}
+.board{padding:56px 64px 64px;width:max-content}
+.board.darkbg{background:#15161a;color:#eee}
+.board h1{font-size:30px;font-weight:700;letter-spacing:-.02em}
+.board .sub{font-size:16px;color:#6b6d78;margin-top:6px;max-width:1300px;line-height:1.45}
+.board.darkbg .sub{color:#9a9ca6}
+.row{display:flex;gap:56px;margin-top:36px;align-items:flex-start}
+.cap{width:402px;margin-top:18px;font-size:14.5px;line-height:1.45;color:#55575f}
+.board.darkbg .cap{color:#a3a5ad}
+.cap b{color:#1e1e22;font-weight:600}
+.board.darkbg .cap b{color:#f1f1f3}
+
+/* ---------- phone ---------- */
+.phone{--bg:#f6f5f2;--card:#fff;--well:#eeedea;--ink0:#1c1c20;--ink1:#6c6e7a;--ink2:#a4a7b4;--hair:rgba(60,60,67,.14);
+  --lime:oklch(0.86 0.17 125);--limeink:oklch(0.32 0.07 130);--limetint:oklch(0.95 0.05 125);
+  --honey:oklch(0.84 0.11 85);--honeyink:oklch(0.38 0.08 75);--honeytint:oklch(0.96 0.035 85);
+  --coral:oklch(0.72 0.14 30);--teal:oklch(0.68 0.1 190);--indigo:oklch(0.62 0.11 265);--plum:oklch(0.66 0.11 320);--moss:oklch(0.68 0.11 140);
+  --glass:rgba(255,255,255,.62);--glassline:rgba(255,255,255,.75);--glassshadow:0 10px 30px rgba(20,20,30,.13),0 1px 3px rgba(20,20,30,.08);
+  width:402px;height:874px;border-radius:58px;overflow:hidden;position:relative;background:var(--bg);color:var(--ink0);
+  box-shadow:0 0 0 11px #1b1b1d,0 0 0 12.5px #3a3a3e,0 30px 60px rgba(0,0,0,.28);flex:none}
+.phone.dark{--bg:#0e0f12;--card:#1a1b1f;--well:#222328;--ink0:#f2f2f4;--ink1:#a6a8b2;--ink2:#6f727d;--hair:rgba(255,255,255,.09);
+  --lime:oklch(0.87 0.19 125);--limeink:oklch(0.26 0.06 130);--limetint:oklch(0.32 0.05 125);
+  --honey:oklch(0.78 0.1 85);--honeytint:oklch(0.3 0.04 85);
+  --glass:rgba(40,41,48,.6);--glassline:rgba(255,255,255,.12);--glassshadow:0 10px 30px rgba(0,0,0,.5)}
+.sb{position:absolute;top:0;left:0;right:0;height:54px;display:flex;justify-content:space-between;align-items:center;padding:6px 34px 0 50px;font-weight:600;font-size:17px;z-index:50}
+.sb .r{display:flex;gap:7px;align-items:center}
+.island{position:absolute;top:11px;left:50%;transform:translateX(-50%);width:124px;height:36px;border-radius:20px;background:#000;z-index:60}
+.homeind{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);width:140px;height:5px;border-radius:3px;background:var(--ink0);opacity:.85;z-index:60}
+.scroll{position:absolute;inset:0;overflow:hidden}
+svg.i{width:var(--s,22px);height:var(--s,22px);flex:none;stroke:currentColor;fill:none;stroke-width:var(--w,1.8);stroke-linecap:round;stroke-linejoin:round}
+
+/* glass */
+.glass{background:var(--glass);backdrop-filter:blur(22px) saturate(190%);-webkit-backdrop-filter:blur(22px) saturate(190%);box-shadow:var(--glassshadow),inset 0 0.5px 0 var(--glassline),inset 0 0 0 0.5px var(--glassline)}
+.gbtn{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;color:var(--ink0)}
+.tabbar{position:absolute;bottom:26px;left:20px;height:64px;border-radius:32px;display:flex;align-items:center;padding:0 6px;z-index:40}
+.tab{width:66px;height:54px;border-radius:27px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:10.5px;font-weight:600;color:var(--ink0)}
+.tab.on{background:rgba(120,120,128,.14);color:var(--limeink)}
+.dark .tab.on{background:rgba(255,255,255,.1);color:var(--lime)}
+.tabside{position:absolute;bottom:26px;right:20px;width:64px;height:64px;border-radius:50%;display:grid;place-items:center;z-index:40}
+
+/* shared list bits */
+.check{width:22px;height:22px;border-radius:50%;border:1.6px solid var(--ink2);flex:none;display:grid;place-items:center}
+.check.done{background:var(--lime);border-color:var(--lime);color:var(--limeink)}
+.sq{width:21px;height:21px;border-radius:6px;border:1.6px solid var(--ink2);flex:none;display:grid;place-items:center}
+.sq.done{background:var(--lime);border-color:var(--lime);color:var(--limeink)}
+.dot{width:8px;height:8px;border-radius:50%;flex:none}
+.pri{display:inline-flex;gap:2px;align-items:flex-end;height:12px}
+.pri i{width:3px;border-radius:1px;background:var(--ink2);opacity:.35;display:block}
+.pri i:nth-child(1){height:5px}.pri i:nth-child(2){height:8px}.pri i:nth-child(3){height:12px}
+.pri.h i{background:var(--coral);opacity:1}.pri.m i:nth-child(-n+2){background:var(--honey);opacity:1}.pri.l i:nth-child(1){background:var(--lime);opacity:1}
+.chip{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:500;color:var(--ink1);padding:3px 8px;border-radius:7px;background:var(--well)}
+.serif{font-family:"Source Serif 4",Georgia,serif;font-style:italic}
+
+/* ===== A: native ===== */
+.A .top{position:absolute;top:54px;left:0;right:0;padding:0 20px;display:flex;justify-content:space-between;align-items:center;height:52px;z-index:30}
+.A .lt{font-size:34px;font-weight:700;letter-spacing:-.025em;padding:2px 20px 0}
+.A .ltsub{font-size:15px;color:var(--ink1);padding:0 20px;margin-top:2px;font-weight:500}
+.week{display:flex;justify-content:space-between;padding:14px 16px 6px}
+.wd{width:46px;display:flex;flex-direction:column;align-items:center;gap:5px}
+.wd .l{font-size:11.5px;font-weight:600;color:var(--ink2)}
+.wd .n{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-size:17px;font-weight:600;color:var(--ink1)}
+.wd.today .l{color:var(--limeink)}
+.wd.today .n{background:var(--lime);color:var(--limeink)}
+.dark .wd.today .l{color:var(--lime)}
+.wd .pips{display:flex;gap:2px;height:4px}.wd .pips i{width:4px;height:4px;border-radius:50%;background:var(--ink2);opacity:.5}
+.sech{display:flex;align-items:center;justify-content:space-between;padding:18px 36px 7px;font-size:13px;font-weight:600;color:var(--ink1);text-transform:none}
+.sech .t{display:flex;align-items:center;gap:7px;font-size:15px;color:var(--ink0);font-weight:650}
+.group{margin:0 16px;background:var(--card);border-radius:22px;overflow:hidden}
+.li{display:flex;align-items:center;gap:13px;padding:0 16px;min-height:50px;position:relative}
+.li+.li:after{content:"";position:absolute;top:0;left:51px;right:0;height:.5px;background:var(--hair)}
+.li .tx{flex:1;font-size:16.5px;letter-spacing:-.01em;padding:13px 0;min-width:0}
+.li .tx .m{font-size:13px;color:var(--ink1);margin-top:2px;display:flex;gap:8px;align-items:center}
+.li.doneli .tx{color:var(--ink2);text-decoration:line-through;text-decoration-color:var(--ink2)}
+.li .meta{display:flex;align-items:center;gap:10px;color:var(--ink2);font-size:13.5px}
+.streak{font-size:12.5px;font-weight:600;color:var(--ink1);display:flex;gap:3px;align-items:center}
+.ring{width:22px;height:22px;flex:none}
+
+/* sheet */
+.dim{position:absolute;inset:0;background:rgba(0,0,0,.28);z-index:70}
+.sheet{position:absolute;left:8px;right:8px;bottom:8px;border-radius:40px;z-index:80;background:var(--card);box-shadow:0 -10px 40px rgba(0,0,0,.18)}
+.grab{width:38px;height:5px;border-radius:3px;background:var(--ink2);opacity:.5;margin:8px auto 0}
+.fieldgrp{margin:0 16px;background:var(--well);border-radius:18px;overflow:hidden}
+.dark .fieldgrp{background:#24252b}
+.fr{display:flex;align-items:center;gap:12px;padding:0 16px;height:48px;position:relative;font-size:16px}
+.fr+.fr:after{content:"";position:absolute;top:0;left:48px;right:0;height:.5px;background:var(--hair)}
+.fr .fk{flex:1}
+.fr .v{color:var(--ink1);display:flex;gap:6px;align-items:center}
+.fr .ic{width:22px;display:grid;place-items:center;color:var(--ink1)}
+
+/* keyboard */
+.kb{position:absolute;left:0;right:0;bottom:0;height:336px;background:#d3d5db;z-index:90;padding:8px 3px 0}
+.dark .kb{background:#2b2c31}
+.kb .sug{height:40px;display:flex;justify-content:space-around;align-items:center;font-size:16px;color:#333}
+.dark .kb .sug{color:#ddd}
+.kr{display:flex;justify-content:center;gap:6px;margin-top:11px}
+.k{width:34px;height:43px;border-radius:6px;background:#fff;box-shadow:0 1px 0 rgba(0,0,0,.3);display:grid;place-items:center;font-size:22px;font-weight:400;color:#111}
+.dark .k{background:#6b6c72;color:#fff}
+.k.w{width:46px;background:#abb0ba}.dark .k.w{background:#46474d}
+.k.sp{width:188px;font-size:16px}.k.ret{width:92px;font-size:16px;background:#abb0ba}
+.dark .k.ret{background:#46474d}
+
+/* ===== B: linear ===== */
+.B .hdr{position:absolute;top:54px;left:0;right:0;height:48px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;z-index:30}
+.B .ttl{font-size:17px;font-weight:650;display:flex;align-items:center;gap:8px}
+.bl{display:flex;align-items:center;gap:11px;height:44px;padding:0 18px;font-size:15px;letter-spacing:-.005em;position:relative}
+.bl .tx{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bl .r{display:flex;align-items:center;gap:9px;color:var(--ink2);font-size:12.5px}
+.bgh{display:flex;align-items:center;gap:8px;padding:0 18px;height:36px;font-size:13px;font-weight:600;color:var(--ink1);background:rgba(255,255,255,.025);margin-top:6px}
+.bgh .n{color:var(--ink2);font-weight:500}
+.stat{width:16px;height:16px;border-radius:50%;border:1.6px solid var(--ink2);flex:none;display:grid;place-items:center}
+.stat.prog{border-color:var(--honey);background:conic-gradient(var(--honey) 0 50%,transparent 50%);background-clip:content-box;padding:2px}
+.stat.done{border:none;background:var(--lime);color:var(--limeink)}
+.stat.hab{border-style:dashed}
+.avatar{width:20px;height:20px;border-radius:50%;font-size:9.5px;font-weight:700;display:grid;place-items:center;color:#fff}
+.fchips{display:flex;gap:6px;padding:4px 16px 8px;overflow:hidden}
+.fchip{display:inline-flex;gap:5px;align-items:center;height:30px;padding:0 11px;border-radius:15px;background:var(--well);font-size:13px;font-weight:550;color:var(--ink1);white-space:nowrap}
+.fchip.on{background:var(--ink0);color:var(--bg)}
+.swipe{position:relative;height:56px;overflow:hidden}
+.swipe .acts{position:absolute;inset:0;display:flex;justify-content:flex-end}
+.swipe .act{width:78px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:11px;font-weight:600;color:#fff}
+.swipe .fg{position:absolute;top:0;bottom:0;left:156px;right:-156px;background:var(--bg);overflow:hidden;display:flex;align-items:center;gap:11px;padding:0 18px;font-size:15px}
+.kbd{font-size:11px;color:var(--ink2);border:1px solid var(--hair);border-radius:5px;padding:1px 5px}
+.cmd{position:absolute;left:10px;right:10px;top:62px;border-radius:26px;z-index:80;overflow:hidden}
+.cmdrow{display:flex;align-items:center;gap:12px;height:46px;padding:0 16px;font-size:15.5px}
+.cmdrow.sel{background:rgba(255,255,255,.07)}
+.cmdrow .h{margin-left:auto;font-size:12.5px;color:var(--ink2)}
+.cmdsec{font-size:12px;font-weight:600;color:var(--ink2);padding:12px 16px 4px;letter-spacing:.02em}
+
+/* ===== C: timeline ===== */
+.C .top{position:absolute;top:54px;left:0;right:0;padding:0 16px;height:50px;display:flex;align-items:center;justify-content:space-between;z-index:30}
+.grid{position:absolute;left:0;right:0;top:168px;bottom:0}
+.hr{position:absolute;left:0;right:0;height:0;border-top:.5px solid var(--hair)}
+.hr span{position:absolute;left:-44px;top:-8px;font-size:11.5px;font-weight:500;color:var(--ink2);background:var(--bg);padding-right:6px}
+.blk{position:absolute;z-index:2;left:62px;right:14px;border-radius:6px 12px 12px 6px;padding:8px 11px;font-size:14px;font-weight:600;overflow:hidden}
+.blk .s{font-size:12px;font-weight:500;opacity:.75;margin-top:2px}
+.now{position:absolute;left:52px;right:0;height:0;border-top:1.5px solid var(--coral);z-index:1}
+.now:before{content:"";position:absolute;left:-4px;top:-5px;width:9px;height:9px;border-radius:50%;background:var(--coral)}
+.nowlbl{position:absolute;left:8px;font-size:11.5px;font-weight:700;color:var(--coral);z-index:6;background:var(--bg);padding:0 3px}
+.bsheet{position:absolute;left:8px;right:8px;border-radius:34px;z-index:40;overflow:hidden;background:rgba(252,251,249,.94)!important}
+.pill{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 13px;border-radius:16px;font-size:14px;font-weight:600}
+.card3{position:absolute;left:22px;right:22px;border-radius:30px;background:var(--card)}
+</style></head>
+<body>
+
+<!-- ======================= A ======================= -->
+<section class="board" id="board-A">
+  <h1>A · Native, Liquid Glass</h1>
+  <p class="sub">Plays it the way Apple's own apps do in iOS 26: large titles, inset grouped lists, a floating glass tab bar, and sheets with detents for anything you open. Lime becomes the app's tint. The most "it's just an iPhone app" option, and the cheapest to build well, since almost every part is a stock control.</p>
+  <div class="row">
+   <div>
+    <div class="phone A" id="A1">
+      <div class="island"></div>
+      <div class="sb"><span>9:41</span><span class="r"><i data-i="signal" style="--s:18px"></i><i data-i="wifi" style="--s:18px"></i><i data-i="batt" style="--s:26px"></i></span></div>
+      <div class="scroll" style="top:0">
+        <div class="top"><div></div><div style="display:flex;gap:10px"><div class="gbtn glass"><i data-i="sparkle" style="color:var(--honeyink)"></i></div><div class="gbtn glass" style="font-size:14px;font-weight:650;color:var(--ink1)">KI</div></div></div>
+        <div style="height:108px"></div>
+        <div class="lt">Today</div>
+        <div class="ltsub">Tuesday, September 29</div>
+        <div class="week">
+          <div class="wd"><span class="l">S</span><span class="n">27</span><span class="pips"><i></i></span></div>
+          <div class="wd"><span class="l">M</span><span class="n">28</span><span class="pips"><i></i><i></i></span></div>
+          <div class="wd today"><span class="l">T</span><span class="n">29</span><span class="pips"></span></div>
+          <div class="wd"><span class="l">W</span><span class="n">30</span><span class="pips"><i></i></span></div>
+          <div class="wd"><span class="l">T</span><span class="n">1</span><span class="pips"></span></div>
+          <div class="wd"><span class="l">F</span><span class="n">2</span><span class="pips"><i></i><i></i><i></i></span></div>
+          <div class="wd"><span class="l">S</span><span class="n">3</span><span class="pips"></span></div>
+        </div>
+        <div class="sech"><span class="t"><i data-i="sunrise" style="--s:18px;color:var(--honey)"></i>Morning routine</span><span>2 of 3</span></div>
+        <div class="group">
+          <div class="li doneli"><span class="check done"><i data-i="check" style="--s:14px;--w:2.6"></i></span><div class="tx">Meds</div><span class="streak"><i data-i="flame" style="--s:15px;color:#ff9500"></i>41</span></div>
+          <div class="li doneli"><span class="check done"><i data-i="check" style="--s:14px;--w:2.6"></i></span><div class="tx">Stretch 10 min</div><span class="streak"><i data-i="flame" style="--s:15px;color:#ff9500"></i>12</span></div>
+          <div class="li"><span class="check"></span><div class="tx">Journal</div><span class="streak" style="color:var(--ink2)"><i data-i="flame" style="--s:15px;color:var(--ink2)"></i>3</span></div>
+        </div>
+        <div class="sech"><span class="t"><span class="dot" style="background:var(--indigo)"></span>Work</span><span>3</span></div>
+        <div class="group">
+          <div class="li"><span class="check"></span><div class="tx">Draft Q4 roadmap<div class="m"><span style="display:flex;gap:4px;align-items:center"><i data-i="clock" style="--s:13px"></i>9:00 – 11:00</span></div></div><span class="pri h"><i></i><i></i><i></i></span></div>
+          <div class="li"><span class="check"></span><div class="tx">Reply to Avery about pricing</div><span class="pri m"><i></i><i></i><i></i></span></div>
+          <div class="li"><span class="check"></span><div class="tx">Review design PR</div><span class="pri l"><i></i><i></i><i></i></span></div>
+        </div>
+        <div class="sech"><span class="t"><span class="dot" style="background:var(--teal)"></span>Home</span><span>2</span></div>
+        <div class="group">
+          <div class="li"><span class="check"></span><div class="tx">Call the dentist<div class="m">3:00 PM</div></div><span class="pri m"><i></i><i></i><i></i></span></div>
+          <div class="li"><span class="check"></span><div class="tx">Groceries</div><span class="pri l"><i></i><i></i><i></i></span></div>
+        </div>
+      </div>
+      <div class="tabbar glass">
+        <div class="tab on"><i data-i="sun" style="--s:24px"></i>Today</div>
+        <div class="tab"><i data-i="tray" style="--s:24px"></i>Braindump</div>
+        <div class="tab"><i data-i="cal" style="--s:24px"></i>Schedule</div>
+        <div class="tab"><i data-i="stack" style="--s:24px"></i>Organize</div>
+      </div>
+      <div class="glass" style="position:absolute;left:20px;right:20px;bottom:100px;height:48px;border-radius:24px;z-index:40;display:flex;align-items:center;gap:10px;padding:0 6px 0 16px;font-size:16px;color:var(--ink1)"><i data-i="plus" style="--s:19px;color:var(--limeink);--w:2.2"></i>Get it out of your head<span style="margin-left:auto;width:36px;height:36px;border-radius:50%;display:grid;place-items:center"><i data-i="mic" style="--s:19px"></i></span></div>
+      <div class="tabside glass"><i data-i="search" style="--s:24px"></i></div>
+      <div class="homeind"></div>
+    </div>
+    <p class="cap"><b>Today.</b> Large title that collapses into the bar on scroll, the week strip underneath, then the routine's checklist and tasks by project. Four tabs float in one glass capsule, with Search in the separate circle as iOS 26 does it. The capture bar rides above the tabs on every screen, the way Music's mini player does.</p>
+   </div>
+
+   <div>
+    <div class="phone A" id="A2">
+      <div class="island"></div>
+      <div class="sb" style="color:#fff"><span>9:41</span><span class="r"><i data-i="signal" style="--s:18px"></i><i data-i="wifi" style="--s:18px"></i><i data-i="batt" style="--s:26px"></i></span></div>
+      <div class="scroll" style="transform:scale(.93) translateY(10px);border-radius:40px;filter:brightness(.72);background:var(--bg)">
+        <div style="height:120px"></div><div class="lt">Today</div><div class="ltsub">Tuesday, September 29</div>
+        <div class="sech" style="margin-top:80px"><span class="t">Work</span></div>
+        <div class="group"><div class="li"><span class="check"></span><div class="tx">Draft Q4 roadmap</div></div><div class="li"><span class="check"></span><div class="tx">Reply to Avery about pricing</div></div></div>
+      </div>
+      <div class="sheet" style="top:92px">
+        <div class="grab"></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px 0">
+          <div class="gbtn" style="background:var(--well)"><i data-i="x" style="--s:18px"></i></div>
+          <div style="display:flex;gap:10px"><div class="gbtn" style="background:var(--well)"><i data-i="ellipsis" style="--s:20px"></i></div></div>
+        </div>
+        <div style="padding:14px 22px 4px;display:flex;gap:12px;align-items:flex-start">
+          <span class="check" style="margin-top:6px;width:26px;height:26px"></span>
+          <div style="font-size:26px;font-weight:700;letter-spacing:-.02em;line-height:1.15">Reply to Avery about pricing</div>
+        </div>
+        <div style="padding:6px 22px 16px 60px;font-size:15.5px;color:var(--ink1);line-height:1.45">They asked whether the team plan is per seat. Check the sheet from Friday first.</div>
+        <div class="fieldgrp">
+          <div class="fr"><span class="ic"><i data-i="folder" style="--s:19px"></i></span><span class="fk">Project</span><span class="v"><span class="dot" style="background:var(--indigo)"></span>Work<i data-i="chevud" style="--s:14px"></i></span></div>
+          <div class="fr"><span class="ic"><i data-i="cal" style="--s:19px"></i></span><span class="fk">Date</span><span class="v">Today<i data-i="chevud" style="--s:14px"></i></span></div>
+          <div class="fr"><span class="ic"><i data-i="clock" style="--s:19px"></i></span><span class="fk">Time</span><span class="v">Anytime<i data-i="chevud" style="--s:14px"></i></span></div>
+          <div class="fr"><span class="ic"><i data-i="flag" style="--s:19px"></i></span><span class="fk">Priority</span><span class="v"><span class="pri m"><i></i><i></i><i></i></span>Medium<i data-i="chevud" style="--s:14px"></i></span></div>
+        </div>
+        <div class="fieldgrp" style="margin-top:14px">
+          <div class="fr"><span class="ic"><i data-i="repeat" style="--s:19px"></i></span><span class="fk">Repeat</span><span class="v">Never<i data-i="chevr" style="--s:14px"></i></span></div>
+          <div class="fr"><span class="ic"><i data-i="target" style="--s:19px"></i></span><span class="fk">Goal</span><span class="v">None<i data-i="chevr" style="--s:14px"></i></span></div>
+        </div>
+        <div style="margin:18px 16px 0;display:flex;gap:10px">
+          <div style="flex:1;height:48px;border-radius:24px;background:var(--well);display:flex;align-items:center;justify-content:center;gap:7px;font-weight:600;font-size:15px"><i data-i="arrowr" style="--s:18px"></i>Tomorrow</div>
+          <div style="flex:1;height:48px;border-radius:24px;background:var(--honeytint);color:var(--honeyink);display:flex;align-items:center;justify-content:center;gap:7px;font-weight:600;font-size:15px"><i data-i="sparkle" style="--s:18px"></i>Help me start</div>
+        </div>
+      </div>
+      <div class="homeind"></div>
+    </div>
+    <p class="cap"><b>An item, opened.</b> A sheet at the large detent, with the screen behind it shrinking back like Mail's compose. Fields are native menus (tap Project and a pull-down list appears in place), and edits save as you go, so there's no Done button. The two big buttons are the verbs you reach for most; everything else lives in the ••• menu.</p>
+   </div>
+
+   <div>
+    <div class="phone A" id="A3">
+      <div class="island"></div>
+      <div class="sb"><span>9:41</span><span class="r"><i data-i="signal" style="--s:18px"></i><i data-i="wifi" style="--s:18px"></i><i data-i="batt" style="--s:26px"></i></span></div>
+      <div class="scroll">
+        <div class="top"><div></div><div class="gbtn glass"><i data-i="ellipsis"></i></div></div>
+        <div style="height:108px"></div>
+        <div class="lt">Braindump</div>
+        <div class="ltsub">6 things, nothing scheduled</div>
+        <div class="group" style="margin-top:18px">
+          <div class="li"><span class="check"></span><div class="tx">Birthday present for Mom</div><span class="chip">Home</span></div>
+          <div class="li"><span class="check"></span><div class="tx">Cancel the old gym membership</div></div>
+          <div class="li"><span class="check"></span><div class="tx">Idea: weekly review template</div><span class="chip">Work</span></div>
+          <div class="li"><span class="check"></span><div class="tx">Look into a standing desk</div></div>
+          <div class="li"><span class="check"></span><div class="tx">Renew passport</div><span class="chip">Home</span></div>
+          <div class="li"><span class="check"></span><div class="tx">Learn the Figma variables thing</div></div>
+        </div>
+      </div>
+      <div class="dim" style="background:rgba(0,0,0,.12)"></div>
+      <div style="position:absolute;left:10px;right:10px;bottom:346px;z-index:95;border-radius:26px;background:var(--card);box-shadow:0 8px 30px rgba(0,0,0,.18);padding:14px 16px 12px">
+        <div style="font-size:17px;display:flex;align-items:center;gap:1px">Book flights for Thanksgiving<span style="width:2px;height:22px;background:var(--limeink);display:inline-block;margin-left:1px"></span></div>
+        <div style="display:flex;gap:7px;margin-top:12px;align-items:center">
+          <span class="chip"><i data-i="cal" style="--s:13px"></i>Date</span>
+          <span class="chip"><i data-i="folder" style="--s:13px"></i>Project</span>
+          <span style="margin-left:auto;width:34px;height:34px;border-radius:50%;background:var(--lime);color:var(--limeink);display:grid;place-items:center"><i data-i="arrowu" style="--s:18px;--w:2.4"></i></span>
+        </div>
+      </div>
+      <div class="kb">
+        <div class="sug"><span>Thanksgiving</span><span style="color:#999">|</span><span>the</span><span style="color:#999">|</span><span>tomorrow</span></div>
+        <div class="kr"><span class="k">q</span><span class="k">w</span><span class="k">e</span><span class="k">r</span><span class="k">t</span><span class="k">y</span><span class="k">u</span><span class="k">i</span><span class="k">o</span><span class="k">p</span></div>
+        <div class="kr"><span class="k">a</span><span class="k">s</span><span class="k">d</span><span class="k">f</span><span class="k">g</span><span class="k">h</span><span class="k">j</span><span class="k">k</span><span class="k">l</span></div>
+        <div class="kr"><span class="k w"><i data-i="shift" style="--s:20px"></i></span><span class="k">z</span><span class="k">x</span><span class="k">c</span><span class="k">v</span><span class="k">b</span><span class="k">n</span><span class="k">m</span><span class="k w"><i data-i="del" style="--s:20px"></i></span></div>
+        <div class="kr"><span class="k w" style="font-size:16px">123</span><span class="k w"><i data-i="smile" style="--s:20px"></i></span><span class="k sp">space</span><span class="k ret">return</span></div>
+      </div>
+    </div>
+    <p class="cap"><b>Capture from anywhere.</b> Tap the capture bar and it lifts above the keyboard, on any tab. Return saves to the braindump and keeps the field open for the next thought; the chips set a date or project without leaving the keyboard.</p>
+   </div>
+  </div>
+</section>
+
+<!-- ======================= B ======================= -->
+<section class="board darkbg" id="board-B">
+  <h1>B · Linear-style, dense and dark</h1>
+  <p class="sub">Borrows Linear's iOS app: dark first, compact header instead of a large title, tight 44pt rows with small status circles, filters as chips, swipe to act, and a command sheet behind the search button for anything else. More on screen, and it feels fast. Light mode exists but dark is the one it's tuned for.</p>
+  <div class="row">
+   <div>
+    <div class="phone B dark" id="B1">
+      <div class="island"></div>
+      <div class="sb"><span>9:41</span><span class="r"><i data-i="signal" style="--s:18px"></i><i data-i="wifi" style="--s:18px"></i><i data-i="batt" style="--s:26px"></i></span></div>
+      <div class="hdr"><div class="ttl">Today <span style="color:var(--ink2);font-weight:500;font-size:14px">Tue 29</span></div><div style="display:flex;gap:18px;color:var(--ink1)"><i data-i="filter" style="--s:21px"></i><i data-i="compose" style="--s:21px"></i></div></div>
+      <div style="position:absolute;top:104px;left:0;right:0">
+        <div class="fchips"><span class="fchip on">All 8</span><span class="fchip">Tasks 5</span><span class="fchip">Habits 3</span><span class="fchip"><span class="dot" style="background:var(--indigo)"></span>Work</span><span class="fchip"><span class="dot" style="background:var(--teal)"></span>Home</span></div>
+        <div class="bgh"><i data-i="chevd" style="--s:14px"></i>Morning routine <span class="n">2/3</span></div>
+        <div class="bl"><span class="stat done"><i data-i="check" style="--s:11px;--w:3"></i></span><span class="tx" style="color:var(--ink2)">Meds</span><span class="r"><i data-i="flame" style="--s:14px;color:#ff9500"></i>41</span></div>
+        <div class="bl"><span class="stat done"><i data-i="check" style="--s:11px;--w:3"></i></span><span class="tx" style="color:var(--ink2)">Stretch 10 min</span><span class="r"><i data-i="flame" style="--s:14px;color:#ff9500"></i>12</span></div>
+        <div class="bl"><span class="stat hab"></span><span class="tx">Journal</span><span class="r"><i data-i="flame" style="--s:14px;color:var(--ink2)"></i>3</span></div>
+        <div class="bgh"><i data-i="chevd" style="--s:14px"></i><span class="dot" style="background:var(--indigo)"></span>Work <span class="n">3</span></div>
+        <div class="bl"><span class="stat"></span><span class="tx">Draft Q4 roadmap</span><span class="r"><span style="color:var(--lime);font-weight:600">Now · 9–11</span><span class="pri h"><i></i><i></i><i></i></span></span></div>
+        <div class="bl"><span class="stat"></span><span class="tx">Reply to Avery about pricing</span><span class="r"><span class="pri m"><i></i><i></i><i></i></span></span></div>
+        <div class="bl"><span class="stat"></span><span class="tx">Review design PR</span><span class="r"><span class="avatar" style="background:#6c5ce7">OC</span><span class="pri l"><i></i><i></i><i></i></span></span></div>
+        <div class="bgh"><i data-i="chevd" style="--s:14px"></i><span class="dot" style="background:var(--teal)"></span>Home <span class="n">2</span></div>
+        <div class="bl"><span class="stat"></span><span class="tx">Call the dentist</span><span class="r"><span>3 PM</span><span class="pri m"><i></i><i></i><i></i></span></span></div>
+        <div class="bl"><span class="stat"></span><span class="tx">Groceries</span><span class="r"><span class="pri l"><i></i><i></i><i></i></span></span></div>
+      </div>
+      <div class="tabbar glass" style="left:20px;right:96px;justify-content:space-around">
+        <div class="tab" style="width:70px"><i data-i="tray" style="--s:23px"></i>Braindump</div>
+        <div class="tab on" style="width:70px"><i data-i="sun" style="--s:23px"></i>Today</div>
+        <div class="tab" style="width:70px"><i data-i="cal" style="--s:23px"></i>Schedule</div>
+        <div class="tab" style="width:70px"><i data-i="stack" style="--s:23px"></i>Organize</div>
+      </div>
+      <div class="tabside glass"><i data-i="search" style="--s:24px"></i></div>
+      <div class="homeind"></div>
+    </div>
+    <p class="cap"><b>Today, dense.</b> Everything fits without scrolling. Groups collapse, the item happening now gets a lime time, filter chips replace the web app's "Grouped by / Showing" line, and an agent working an item shows as its avatar (OC is OpenClaw). Search sits in the glass circle; compose is in the header.</p>
+   </div>
+
+   <div>
+    <div class="phone B dark" id="B2">
+      <div class="island"></div>
+      <div class="sb"><span>9:41</span><span class="r"><i data-i="signal" style="--s:18px"></i><i data-i="wifi" style="--s:18px"></i><i data-i="batt" style="--s:26px"></i></span></div>
+      <div class="hdr"><div class="ttl">Braindump <span style="color:var(--ink2);font-weight:500;font-size:14px">7</span></div><div style="display:flex;gap:18px;color:var(--ink1)"><i data-i="sort" style="--s:21px"></i><i data-i="compose" style="--s:21px"></i></div></div>
+      <div style="position:absolute;top:110px;left:0;right:0">
+        <div class="bgh" style="margin-top:0">This week</div>
+        <div class="bl" style="height:56px"><span class="stat"></span><span class="tx">Book flights for Thanksgiving</span><span class="r">2m</span></div>
+        <div class="swipe">
+          <div class="acts" style="justify-content:flex-start"><div class="act" style="background:var(--lime);color:var(--limeink)"><i data-i="sun" style="--s:20px;--w:2.2"></i>Today</div><div class="act" style="background:oklch(0.55 0.1 265)"><i data-i="cal" style="--s:20px"></i>Schedule</div></div>
+          <div class="fg" style="background:#1a1b20"><span class="stat"></span><span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Birthday present for Mom</span></div>
+        </div>
+        <div class="bl" style="height:56px"><span class="stat"></span><span class="tx">Cancel the old gym membership</span><span class="r">1d</span></div>
+        <div class="bgh">Older</div>
+        <div class="bl" style="height:56px"><span class="stat"></span><span class="tx">Idea: weekly review template</span><span class="r"><span class="dot" style="background:var(--indigo)"></span>6d</span></div>
+        <div class="bl" style="height:56px"><span class="stat"></span><span class="tx">Look into a standing desk</span><span class="r">2w</span></div>
+        <div class="bl" style="height:56px"><span class="stat"></span><span class="tx">Renew passport</span><span class="r"><span class="dot" style="background:var(--teal)"></span>3w</span></div>
+        <div class="bl" style="height:56px"><span class="stat"></span><span class="tx">Learn the Figma variables thing</span><span class="r">1mo</span></div>
+        <div style="margin:22px 16px 0;border-radius:18px;background:var(--honeytint);padding:14px 16px;display:flex;gap:12px;align-items:flex-start">
+          <i data-i="sparkle" style="--s:20px;color:var(--honey);margin-top:1px"></i>
+          <div style="font-size:14px;line-height:1.45;color:var(--ink0)">Three of these are two weeks old or more. <span style="color:var(--honey);font-weight:600">Sort them with me</span></div>
+        </div>
+      </div>
+      <div class="tabbar glass" style="left:20px;right:96px;justify-content:space-around">
+        <div class="tab on" style="width:70px"><i data-i="tray" style="--s:23px"></i>Braindump</div>
+        <div class="tab" style="width:70px"><i data-i="sun" style="--s:23px"></i>Today</div>
+        <div class="tab" style="width:70px"><i data-i="cal" style="--s:23px"></i>Schedule</div>
+        <div class="tab" style="width:70px"><i data-i="stack" style="--s:23px"></i>Organize</div>
+      </div>
+      <div class="tabside glass"><i data-i="search" style="--s:24px"></i></div>
+      <div class="homeind"></div>
+    </div>
+    <p class="cap"><b>Braindump as an inbox.</b> Swipe right for Today or Schedule; swipe left for Project or Delete. Ages on the right, like Linear's. The honey card is the AI speaking, only when there is something worth saying.</p>
+   </div>
+
+   <div>
+    <div class="phone B dark" id="B3">
+      <div class="island"></div>
+      <div class="sb"><span>9:41</span><span class="r"><i data-i="signal" style="--s:18px"></i><i data-i="wifi" style="--s:18px"></i><i data-i="batt" style="--s:26px"></i></span></div>
+      <div style="position:absolute;inset:0;filter:blur(3px) brightness(.5)">
+        <div style="position:absolute;top:104px;left:0;right:0">
+          <div class="bgh">Morning routine</div><div class="bl"><span class="stat done"></span><span class="tx">Meds</span></div><div class="bl"><span class="stat"></span><span class="tx">Journal</span></div><div class="bgh">Work</div><div class="bl"><span class="stat"></span><span class="tx">Draft Q4 roadmap</span></div><div class="bl"><span class="stat"></span><span class="tx">Reply to Avery</span></div>
+        </div>
+      </div>
+      <div class="cmd glass" style="background:rgba(30,31,37,.82)">
+        <div style="display:flex;align-items:center;gap:10px;height:54px;padding:0 16px;border-bottom:.5px solid var(--hair)">
+          <i data-i="search" style="--s:19px;color:var(--ink2)"></i><span style="font-size:17px">rev</span><span style="width:2px;height:22px;background:var(--lime);margin-left:-8px"></span><span style="margin-left:auto;font-size:13px;color:var(--ink2)">Cancel</span>
+        </div>
+        <div class="cmdsec">ITEMS</div>
+        <div class="cmdrow sel"><span class="stat"></span><span><b style="font-weight:700">Rev</b>iew design PR</span><span class="h">Work · Today</span></div>
+        <div class="cmdrow"><span class="stat"></span><span>Idea: weekly <b style="font-weight:700">rev</b>iew template</span><span class="h">Braindump</span></div>
+        <div class="cmdsec">DO</div>
+        <div class="cmdrow"><i data-i="moon" style="--s:19px;color:var(--ink1)"></i><span>Start end-of-day <b style="font-weight:700">rev</b>iew</span></div>
+        <div class="cmdrow"><i data-i="arrowr" style="--s:19px;color:var(--ink1)"></i>Carry unfinished to tomorrow</div>
+        <div class="cmdrow"><i data-i="sparkle" style="--s:19px;color:var(--honey)"></i><span>Ask: "what should I <b style="font-weight:700">rev</b>iew first?"</span></div>
+        <div class="cmdsec">GO TO</div>
+        <div class="cmdrow"><i data-i="stack" style="--s:19px;color:var(--ink1)"></i>Morning routine</div>
+        <div class="cmdrow" style="margin-bottom:6px"><i data-i="target" style="--s:19px;color:var(--ink1)"></i>Run a half marathon<span class="h">Goal</span></div>
+      </div>
+      <div class="kb" style="height:300px">
+        <div class="sug"><span>review</span><span style="color:#666">|</span><span>revisit</span><span style="color:#666">|</span><span>rev</span></div>
+        <div class="kr"><span class="k">q</span><span class="k">w</span><span class="k">e</span><span class="k">r</span><span class="k">t</span><span class="k">y</span><span class="k">u</span><span class="k">i</span><span class="k">o</span><span class="k">p</span></div>
+        <div class="kr"><span class="k">a</span><span class="k">s</span><span class="k">d</span><span class="k">f</span><span class="k">g</span><span class="k">h</span><span class="k">j</span><span class="k">k</span><span class="k">l</span></div>
+        <div class="kr"><span class="k w"><i data-i="shift" style="--s:20px"></i></span><span class="k">z</span><span class="k">x</span><span class="k">c</span><span class="k">v</span><span class="k">b</span><span class="k">n</span><span class="k">m</span><span class="k w"><i data-i="del" style="--s:20px"></i></span></div>
+        <div class="kr"><span class="k w" style="font-size:16px">123</span><span class="k w"><i data-i="smile" style="--s:20px"></i></span><span class="k sp">space</span><span class="k ret" style="background:#0a84ff;color:#fff">search</span></div>
+      </div>
+    </div>
+    <p class="cap"><b>The launcher, on a phone.</b> Tap the search circle and the web app's ⌘K comes along: find an item, run a verb, jump to a routine or goal, or ask the AI. One place for everything that doesn't earn a button.</p>
+   </div>
+  </div>
+</section>
+
+<!-- ======================= C ======================= -->
+<section class="board" id="board-C">
+  <h1>C · Timeline first, braindump as a sheet</h1>
+  <p class="sub">Leads with the schedule grid, which is what makes dsul different from a to-do list. The braindump rides in a pull-up sheet like Apple Maps' search card, so you drag a thought straight onto an hour. The end-of-day review becomes a stack of cards you swipe through.</p>
+  <div class="row">
+   <div>
+    <div class="phone C" id="C1">
+      <div class="island"></div>
+      <div class="sb"><span>9:41</span><span class="r"><i data-i="signal" style="--s:18px"></i><i data-i="wifi" style="--s:18px"></i><i data-i="batt" style="--s:26px"></i></span></div>
+      <div class="top"><div style="font-size:28px;font-weight:700;letter-spacing:-.02em">Tue <span style="color:var(--ink2);font-weight:600">29</span></div><div style="display:flex;gap:10px"><div class="gbtn glass"><i data-i="cal" style="--s:20px"></i></div><div class="gbtn glass"><i data-i="sparkle" style="--s:20px;color:var(--honeyink)"></i></div></div></div>
+      <div class="week" style="position:absolute;top:104px;left:0;right:0;padding-top:4px">
+        <div class="wd"><span class="l">S</span><span class="n" style="width:32px;height:32px;font-size:15px">27</span></div><div class="wd"><span class="l">M</span><span class="n" style="width:32px;height:32px;font-size:15px">28</span></div><div class="wd today"><span class="l">T</span><span class="n" style="width:32px;height:32px;font-size:15px">29</span></div><div class="wd"><span class="l">W</span><span class="n" style="width:32px;height:32px;font-size:15px">30</span></div><div class="wd"><span class="l">T</span><span class="n" style="width:32px;height:32px;font-size:15px">1</span></div><div class="wd"><span class="l">F</span><span class="n" style="width:32px;height:32px;font-size:15px">2</span></div><div class="wd"><span class="l">S</span><span class="n" style="width:32px;height:32px;font-size:15px">3</span></div>
+      </div>
+      <div class="grid" id="gridC1"></div>
+      <div class="bsheet glass" style="bottom:8px;height:128px">
+        <div class="grab" style="margin-top:7px"></div>
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 16px 0">
+          <div style="flex:1;height:44px;border-radius:22px;background:rgba(120,120,128,.14);display:flex;align-items:center;gap:8px;padding:0 14px;color:var(--ink1);font-size:16px"><i data-i="plus" style="--s:18px"></i>Get it out of your head</div>
+          <div class="gbtn" style="background:rgba(120,120,128,.14);font-size:13px;font-weight:650;color:var(--ink1)">KI</div>
+        </div>
+        <div style="display:flex;gap:8px;padding:12px 16px 0;align-items:center;font-size:13.5px;color:var(--ink1)"><i data-i="tray" style="--s:16px"></i><b style="color:var(--ink0);font-weight:600">Braindump · 7</b><span>·</span><span>2 routines</span><span>·</span><span>3 goals</span></div>
+      </div>
+      <div class="homeind"></div>
+    </div>
+    <p class="cap"><b>The day as a timeline.</b> The hour gutter, blocks colored by project, a now line, and unscheduled tasks in the "Anytime" band at the top. No tab bar at all: the sheet at the bottom is the capture field and the doorway to everything else.</p>
+   </div>
+
+   <div>
+    <div class="phone C" id="C2">
+      <div class="island"></div>
+      <div class="sb"><span>9:41</span><span class="r"><i data-i="signal" style="--s:18px"></i><i data-i="wifi" style="--s:18px"></i><i data-i="batt" style="--s:26px"></i></span></div>
+      <div class="top"><div style="font-size:28px;font-weight:700;letter-spacing:-.02em">Tue <span style="color:var(--ink2);font-weight:600">29</span></div><div style="display:flex;gap:10px"><div class="gbtn glass"><i data-i="cal" style="--s:20px"></i></div><div class="gbtn glass"><i data-i="sparkle" style="--s:20px;color:var(--honeyink)"></i></div></div></div>
+      <div class="week" style="position:absolute;top:104px;left:0;right:0;padding-top:4px">
+        <div class="wd"><span class="l">S</span><span class="n" style="width:32px;height:32px;font-size:15px">27</span></div><div class="wd"><span class="l">M</span><span class="n" style="width:32px;height:32px;font-size:15px">28</span></div><div class="wd today"><span class="l">T</span><span class="n" style="width:32px;height:32px;font-size:15px">29</span></div><div class="wd"><span class="l">W</span><span class="n" style="width:32px;height:32px;font-size:15px">30</span></div><div class="wd"><span class="l">T</span><span class="n" style="width:32px;height:32px;font-size:15px">1</span></div><div class="wd"><span class="l">F</span><span class="n" style="width:32px;height:32px;font-size:15px">2</span></div><div class="wd"><span class="l">S</span><span class="n" style="width:32px;height:32px;font-size:15px">3</span></div>
+      </div>
+      <div class="grid" id="gridC2"></div>
+      <!-- lifted item -->
+      <div style="position:absolute;left:74px;right:30px;top:488px;height:48px;border-radius:12px;background:var(--limetint);border:1.5px dashed var(--limeink);z-index:35;opacity:.9"></div>
+      <div style="position:absolute;left:88px;right:18px;top:462px;height:52px;border-radius:14px;background:var(--card);box-shadow:0 16px 36px rgba(0,0,0,.22),0 0 0 .5px var(--hair);z-index:36;transform:rotate(-2.5deg);display:flex;align-items:center;gap:10px;padding:0 14px;font-size:15px;font-weight:600"><span class="check"></span>Book flights for Thanksgiving<span style="margin-left:auto;font-size:12.5px;color:var(--limeink);font-weight:700">11:00</span></div>
+      <div class="bsheet glass" style="top:560px;bottom:8px">
+        <div class="grab" style="margin-top:7px"></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 20px 6px"><span style="font-size:20px;font-weight:700;letter-spacing:-.01em">Braindump</span><span style="font-size:14px;color:var(--ink1)">Drag onto an hour</span></div>
+        <div class="li" style="min-height:46px;opacity:.35"><span class="check"></span><div class="tx" style="padding:10px 0;font-size:16px">Book flights for Thanksgiving</div></div>
+        <div class="li" style="min-height:46px"><span class="check"></span><div class="tx" style="padding:10px 0;font-size:16px">Birthday present for Mom</div><span class="chip">Home</span></div>
+        <div class="li" style="min-height:46px"><span class="check"></span><div class="tx" style="padding:10px 0;font-size:16px">Cancel the old gym membership</div></div>
+        <div class="li" style="min-height:46px"><span class="check"></span><div class="tx" style="padding:10px 0;font-size:16px">Idea: weekly review template</div></div>
+      </div>
+      <div class="homeind"></div>
+    </div>
+    <p class="cap"><b>Drag a thought onto the day.</b> Pull the sheet to its middle detent, long-press a braindump item and it lifts off with a haptic tick; the grid shows where it will land and snaps to 15 minutes. The same gesture moves a block that's already on the grid.</p>
+   </div>
+
+   <div>
+    <div class="phone C dark" id="C3">
+      <div class="island"></div>
+      <div class="sb"><span>9:41</span><span class="r"><i data-i="signal" style="--s:18px"></i><i data-i="wifi" style="--s:18px"></i><i data-i="batt" style="--s:26px"></i></span></div>
+      <div style="position:absolute;top:64px;left:0;right:0;padding:0 20px;display:flex;justify-content:space-between;align-items:center">
+        <div class="gbtn glass"><i data-i="x" style="--s:18px"></i></div>
+        <div style="font-size:15px;font-weight:600;color:var(--ink1)">End of day · 3 of 5</div>
+        <div style="width:44px"></div>
+      </div>
+      <div style="position:absolute;top:122px;left:20px;right:20px;height:4px;border-radius:2px;background:var(--well)"><div style="width:60%;height:100%;border-radius:2px;background:var(--lime)"></div></div>
+      <div style="position:absolute;top:156px;left:24px;right:24px">
+        <div class="serif" style="font-size:25px;line-height:1.3;color:var(--ink0)">You got the roadmap draft out. What about the rest?</div>
+      </div>
+      <div class="card3" style="top:300px;height:330px;transform:scale(.9) translateY(-40px);opacity:.35"></div>
+      <div class="card3" style="top:300px;height:330px;transform:scale(.95) translateY(-20px);opacity:.6"></div>
+      <div class="card3" style="top:300px;height:330px;padding:24px;box-shadow:0 20px 50px rgba(0,0,0,.45)">
+        <div style="display:flex;justify-content:space-between;align-items:center"><span class="chip"><span class="dot" style="background:var(--indigo)"></span>Work</span><span style="font-size:13px;color:var(--ink2)">Swipe → tomorrow · ← drop</span></div>
+        <div style="font-size:26px;font-weight:700;letter-spacing:-.02em;margin-top:28px;line-height:1.2">Reply to Avery about pricing</div>
+        <div style="font-size:14.5px;color:var(--ink1);margin-top:10px">Carried once already · Medium priority</div>
+        <div style="position:absolute;left:24px;right:24px;bottom:24px;display:flex;gap:8px;color:var(--ink1);font-size:13px"><i data-i="sparkle" style="--s:16px;color:var(--honey)"></i>Try it first thing: you answer email fastest before 10.</div>
+      </div>
+      <div style="position:absolute;bottom:56px;left:0;right:0;display:flex;justify-content:center;gap:22px">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:7px;font-size:12.5px;color:var(--ink1);font-weight:600"><div class="gbtn glass" style="width:60px;height:60px"><i data-i="trash" style="--s:24px"></i></div>Drop</div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:7px;font-size:12.5px;color:var(--ink1);font-weight:600"><div class="gbtn glass" style="width:60px;height:60px"><i data-i="tray" style="--s:24px"></i></div>Braindump</div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:7px;font-size:12.5px;color:var(--ink1);font-weight:600"><div class="gbtn glass" style="width:60px;height:60px"><i data-i="check" style="--s:24px;--w:2.2"></i></div>Did it</div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:7px;font-size:12.5px;color:var(--lime);font-weight:600"><div class="gbtn" style="width:60px;height:60px;background:var(--lime);color:var(--limeink)"><i data-i="arrowr" style="--s:24px;--w:2.2"></i></div>Tomorrow</div>
+      </div>
+      <div class="homeind"></div>
+    </div>
+    <p class="cap"><b>End of day, one card at a time.</b> Each unfinished item gets its own card: swipe right to carry to tomorrow, left to drop (with an undo), or tap one of the four. Shown in dark, since it's an evening screen. Works the same in A or B.</p>
+   </div>
+  </div>
+</section>
+
+<script>
+const P={
+signal:'<path d="M3 17h2v3H3zM8 13h2v7H8zM13 9h2v11h-2zM18 5h2v15h-2z" fill="currentColor" stroke="none"/>',
+wifi:'<path d="M2.5 9a14 14 0 0 1 19 0M5.5 12.5a9.5 9.5 0 0 1 13 0M8.7 16a5 5 0 0 1 6.6 0" stroke-width="2.2"/><circle cx="12" cy="19.2" r="1.3" fill="currentColor" stroke="none"/>',
+batt:'<rect x="2" y="7" width="18" height="10" rx="3" stroke-width="1.2" opacity=".5"/><rect x="3.6" y="8.6" width="13" height="6.8" rx="1.6" fill="currentColor" stroke="none"/><path d="M21.5 10.5v3" stroke-width="1.6" opacity=".5"/>',
+sidebar:'<rect x="3" y="4.5" width="18" height="15" rx="3.5"/><path d="M9.5 4.5v15"/>',
+sparkle:'<path d="M12 3.5l1.9 5.1 5.1 1.9-5.1 1.9L12 17.5l-1.9-5.1L5 10.5l5.1-1.9z" fill="currentColor" stroke="none"/><path d="M18.5 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z" fill="currentColor" stroke="none"/>',
+sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4L6 18M18 6l1.4-1.4"/>',
+sunrise:'<path d="M5 17a7 7 0 0 1 14 0M12 4v4M4.2 9.2l1.8 1.3M19.8 9.2l-1.8 1.3M2.5 20h19"/>',
+tray:'<path d="M3.5 13.5l2.4-7.2A2 2 0 0 1 7.8 5h8.4a2 2 0 0 1 1.9 1.3l2.4 7.2V18a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/><path d="M3.5 13.5h4.5l1.5 2.5h5l1.5-2.5h4.5"/>',
+cal:'<rect x="3.5" y="5" width="17" height="15.5" rx="3.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
+stack:'<rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/>',
+plus:'<path d="M12 5v14M5 12h14"/>',
+check:'<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+flame:'<path d="M12 21c-3.9 0-6.5-2.6-6.5-6.2 0-3.8 3-5.8 4-9.3 2.6 1.6 3.7 3.9 3.8 6 .8-.6 1.4-1.6 1.6-2.8 2 1.6 3.6 4 3.6 6.4 0 3.5-2.6 5.9-6.5 5.9z" fill="currentColor" stroke="none"/>',
+clock:'<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+x:'<path d="M6 6l12 12M18 6L6 18"/>',
+ellipsis:'<circle cx="5.5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="18.5" cy="12" r="1.6" fill="currentColor" stroke="none"/>',
+folder:'<path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2.2h7a2 2 0 0 1 2 2v7.8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>',
+chevud:'<path d="M8 9.5l4-4 4 4M8 14.5l4 4 4-4"/>',
+chevr:'<path d="M9.5 5.5l6.5 6.5-6.5 6.5"/>',
+chevd:'<path d="M5.5 9.5l6.5 6.5 6.5-6.5"/>',
+flag:'<path d="M5.5 21V4.5M5.5 4.5h11l-2 4 2 4h-11"/>',
+repeat:'<path d="M4 11V9.5A3.5 3.5 0 0 1 7.5 6H19l-3-3M20 13v1.5a3.5 3.5 0 0 1-3.5 3.5H5l3 3"/>',
+target:'<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1" fill="currentColor"/>',
+arrowr:'<path d="M5 12h14M13 6l6 6-6 6"/>',
+arrowu:'<path d="M12 19V5M6 11l6-6 6 6"/>',
+shift:'<path d="M12 4l7.5 8H15v7H9v-7H4.5z"/>',
+del:'<path d="M9 5h10.5a1.5 1.5 0 0 1 1.5 1.5v11a1.5 1.5 0 0 1-1.5 1.5H9l-6-7z"/><path d="M12 9.5l5 5M17 9.5l-5 5"/>',
+smile:'<circle cx="12" cy="12" r="8.5"/><path d="M8.5 14a4.5 4.5 0 0 0 7 0"/><circle cx="9" cy="10" r=".9" fill="currentColor"/><circle cx="15" cy="10" r=".9" fill="currentColor"/>',
+search:'<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>',
+filter:'<path d="M4 7h16M7 12h10M10 17h4"/>',
+compose:'<path d="M12 4.5H6.5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V12"/><path d="M17.5 3.5l3 3-8 8H9.5v-3z"/>',
+sort:'<path d="M7 4v16M4 17l3 3 3-3M17 20V4M14 7l3-3 3 3"/>',
+mic:'<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>',trash:'<path d="M4.5 6.5h15M9.5 6.5V4.5h5v2M6.5 6.5l1 13a1.5 1.5 0 0 0 1.5 1.4h6a1.5 1.5 0 0 0 1.5-1.4l1-13M10 10.5v6M14 10.5v6"/>',moon:'<path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10z"/>',
+};
+document.querySelectorAll('i[data-i]').forEach(el=>{
+  const s=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  s.setAttribute('viewBox','0 0 24 24');s.setAttribute('class','i');s.setAttribute('style',el.getAttribute('style')||'');
+  s.innerHTML=P[el.dataset.i]||'';el.replaceWith(s);
+});
+// timeline grids
+function grid(id,opts){
+  const g=document.getElementById(id);const start=7,H=58,top=86;
+  let h='';
+  // anytime band
+  h+=`<div style="position:absolute;left:0;right:0;top:0;height:${top-10}px;padding:6px 14px 0 14px">
+    <div style="font-size:11.5px;font-weight:600;color:var(--ink2);margin-bottom:6px">ANYTIME</div>
+    <div style="display:flex;gap:6px;flex-wrap:nowrap;overflow:hidden">
+      <span class="pill" style="background:var(--card);box-shadow:0 0 0 .5px var(--hair)"><span class="check" style="width:17px;height:17px"></span>Groceries</span>
+      <span class="pill" style="background:var(--card);box-shadow:0 0 0 .5px var(--hair)"><span class="check" style="width:17px;height:17px"></span>Reply to Avery</span>
+      <span class="pill" style="background:var(--well);color:var(--ink1)">+1</span>
+    </div></div>`;
+  for(let i=0;i<10;i++){const hr=start+i;const lab=hr===12?'Noon':(hr>12?hr-12:hr)+(hr<12?' AM':' PM');
+    h+=`<div class="hr" style="top:${top+i*H}px;left:56px"><span>${lab}</span></div>`}
+  const B=(s,e,t,sub,col,tint,ink)=>`<div class="blk" style="top:${top+(s-start)*H+2}px;height:${(e-s)*H-4}px;background:${tint};color:${ink};border-left:3.5px solid ${col}">${t}${sub?`<div class="s">${sub}</div>`:''}</div>`;
+  h+=B(7,7.5,'Morning routine','Meds · Stretch · Journal','var(--honey)','var(--honeytint)','var(--honeyink)');
+  h+=B(9,11,'Draft Q4 roadmap','Work · Deep work','var(--indigo)','color-mix(in oklab,var(--indigo) 14%,var(--bg))','oklch(0.35 0.09 265)');
+  h+=B(12.5,13.5,'Lunch with Sam','','var(--moss)','color-mix(in oklab,var(--moss) 16%,var(--bg))','oklch(0.36 0.08 140)');
+  if(!opts.hideLater){h+=B(15,15.5,'Call the dentist','Home','var(--teal)','color-mix(in oklab,var(--teal) 14%,var(--bg))','oklch(0.36 0.07 190)');}
+  const now=9.68;
+  h+=`<div class="now" style="top:${top+(now-start)*H}px"></div><div class="nowlbl" style="top:${top+(now-start)*H-8}px">9:41</div>`;
+  g.innerHTML=h;
+}
+grid('gridC1',{});grid('gridC2',{});
+</script>
+</body></html>

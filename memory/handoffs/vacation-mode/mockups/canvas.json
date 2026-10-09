@@ -1,0 +1,16 @@
+{"v":3,"createdOnFiles":{"v":1,"at":"2026-10-08T20:20:00Z"},"title":"Vacation mode mockups","launch":{"view":"canvas"},"pages":[],
+"boards":{
+"Main.dc.html":{"x":0,"y":0,"w":880,"h":880,"title":"1. Going away: the trip sheet"},
+"Away.dc.html":{"x":960,"y":0,"w":1180,"h":720,"title":"2. While you're away: Today"},
+"Welcome.dc.html":{"x":0,"y":1260,"w":960,"h":940,"title":"3. Coming back: welcome back (day 1)"},
+"Ramp.dc.html":{"x":1040,"y":1260,"w":880,"h":660,"title":"4. Easing back: the waves, editable"},
+"Phone.dc.html":{"x":2000,"y":1260,"w":390,"h":844,"title":"5. Coming back on the phone"},
+"Easing.dc.html":{"x":0,"y":2560,"w":1180,"h":720,"title":"6. Day 3 of easing back: Today"}
+},
+"order":["Main.dc.html","Away.dc.html","Welcome.dc.html","Ramp.dc.html","Phone.dc.html","Easing.dc.html"],
+"notes":{
+"t1":{"x":0,"y":-300,"text":"Before you go","kind":"title1","maxW":2140},
+"t2":{"x":0,"y":960,"text":"Coming back","kind":"title1","maxW":2390},
+"t3":{"x":0,"y":2260,"text":"The first week back","kind":"title1","maxW":1180}
+},
+"designSystems":[]}

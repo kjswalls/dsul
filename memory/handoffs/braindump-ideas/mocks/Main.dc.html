@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Weekly sweep</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:'Inter',system-ui,sans-serif;color:#1f2029}
+a{color:#3b4a1c}a:hover{color:#1f2a0c}
+button{font-family:inherit;cursor:pointer}
+</style>
+</helmet>
+<div style="width: 420px; height: 900px; box-sizing: border-box; background: #fbfbfb; padding: 24px 20px; display: flex; flex-direction: column; gap: 20px; font-family: 'Inter', system-ui, sans-serif; color: #1f2029">
+  <div style="display: flex; align-items: center; gap: 6px; padding-left: 8px; font-weight: 700; font-size: 22px">dsul<span style="width: 7px; height: 7px; border-radius: 50%; background: #a8d64a; margin-top: 4px"></span></div>
+
+  <div style="background: #eeeded; border-radius: 22px; padding: 8px">
+    <div style="background: #ffffff; border-radius: 16px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 1px 3px rgba(20,20,40,0.08)">
+      <div style="display: flex; align-items: center; justify-content: space-between">
+        <div style="font-size: 16px; font-weight: 600">braindump sweep</div>
+        <div style="font-size: 14px; color: #6b6f80">{{progressLabel}}</div>
+      </div>
+      <div style="height: 6px; border-radius: 3px; background: #eeeded; overflow: hidden">
+        <div style="height: 6px; border-radius: 3px; background: #a8d64a; width: {{progressPct}}"></div>
+      </div>
+    </div>
+  </div>
+
+  <sc-if value="{{notDone}}" hint-placeholder-val="{{ true }}">
+    <div style="display: flex; flex-direction: column; gap: 16px">
+      <div style="font-size: 13px; color: #6b6f80; padding: 0 8px">oldest first. one at a time. no wrong answers.</div>
+
+      <div style="background: #ffffff; border: 1px solid #dcdde1; border-radius: 18px; padding: 28px 22px; display: flex; flex-direction: column; gap: 10px; min-height: 150px; justify-content: center">
+        <div style="font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #8a8ea0">sitting for {{current.age}}</div>
+        <div style="font-size: 24px; font-weight: 600; line-height: 1.25">{{current.title}}</div>
+      </div>
+
+      <sc-if value="{{pickingDay}}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; flex-direction: column; gap: 10px">
+          <div style="font-size: 14px; color: #6b6f80; padding: 0 4px">which day?</div>
+          <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px">
+            <sc-for list="{{days}}" as="d" hint-placeholder-count="7">
+              <button type="button" onClick="{{d.pick}}" style="height: 48px; border-radius: 14px; border: 1px solid #dcdde1; background: #ffffff; font-size: 14px; font-weight: 500; color: #1f2029">{{d.label}}</button>
+            </sc-for>
+            <button type="button" onClick="{{cancelDay}}" style="height: 48px; border-radius: 14px; border: none; background: transparent; font-size: 14px; color: #6b6f80">back</button>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{choosing}}" hint-placeholder-val="{{ true }}">
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+          <button type="button" onClick="{{thisWeek}}" style="height: 72px; border-radius: 16px; border: none; background: #b9e05a; color: #2c3a12; font-size: 15px; font-weight: 600; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px">this week<span style="font-size: 12px; font-weight: 500; opacity: 0.8">pick a day</span></button>
+          <button type="button" onClick="{{advance}}" style="height: 72px; border-radius: 16px; border: 1px solid #dcdde1; background: #ffffff; color: #1f2029; font-size: 15px; font-weight: 600; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px">someday<span style="font-size: 12px; font-weight: 500; color: #6b6f80">out of sight, kept</span></button>
+          <button type="button" onClick="{{advance}}" style="height: 72px; border-radius: 16px; border: 1px solid #dcdde1; background: #ffffff; color: #1f2029; font-size: 15px; font-weight: 600; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px">break it down<span style="font-size: 12px; font-weight: 500; color: #6b6f80">add first steps</span></button>
+          <button type="button" onClick="{{advance}}" style="height: 72px; border-radius: 16px; border: 1px solid #dcdde1; background: #ffffff; color: #1f2029; font-size: 15px; font-weight: 600; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px">let it go<span style="font-size: 12px; font-weight: 500; color: #6b6f80">to the Trash</span></button>
+        </div>
+      </sc-if>
+
+      <div style="display: flex; justify-content: space-between; padding: 0 6px">
+        <button type="button" onClick="{{advance}}" style="border: none; background: transparent; font-size: 14px; color: #6b6f80; padding: 12px 6px">skip, ask me next week</button>
+        <button type="button" onClick="{{finish}}" style="border: none; background: transparent; font-size: 14px; color: #6b6f80; padding: 12px 6px">done for now</button>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{done}}" hint-placeholder-val="{{ false }}">
+    <div style="background: #ffffff; border: 1px solid #dcdde1; border-radius: 18px; padding: 32px 22px; display: flex; flex-direction: column; gap: 10px; align-items: flex-start">
+      <div style="width: 40px; height: 40px; border-radius: 50%; background: #b9e05a; display: flex; align-items: center; justify-content: center">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2c3a12" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"></path></svg>
+      </div>
+      <div style="font-size: 22px; font-weight: 600">swept!</div>
+      <div style="font-size: 15px; color: #4d5162; line-height: 1.5">{{summary}}</div>
+      <button type="button" onClick="{{restart}}" style="margin-top: 8px; height: 44px; padding: 0 18px; border-radius: 14px; border: 1px solid #dcdde1; background: #ffffff; font-size: 14px; color: #1f2029">start over (mockup)</button>
+    </div>
+  </sc-if>
+
+  <div style="margin-top: auto; background: #f4f4f2; border-radius: 14px; padding: 12px 14px; font-size: 13px; color: #6b6f80; line-height: 1.5">opens from a nudge in the braindump once a week, or as the last step of the end-of-day review on the day you pick in Settings.</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":420,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { i: 0, pickingDay: false, done: false, placed: 0 };
+  }
+  renderVals() {
+    const items = [
+      { title: 'Figure out CPAP machine', age: '7 weeks' },
+      { title: 'budgets?', age: '6 weeks' },
+      { title: 'plan trip to europe', age: '6 weeks' },
+      { title: 'cancel subscriptions', age: '5 weeks' },
+      { title: 'make a dentist appointment', age: '5 weeks' },
+      { title: 'Smog the Honda, sell to Cass', age: '4 weeks' },
+      { title: 'schedule MRI appointment', age: '4 weeks' },
+      { title: 'email ICA', age: '3 weeks' },
+      { title: "get sammy's license", age: '3 weeks' },
+      { title: "check sammy's insurance", age: '3 weeks' },
+      { title: 'make china trip video', age: '2 weeks' },
+      { title: 'hang up trip map', age: '2 weeks' },
+      { title: "clean spencer's room", age: '10 days' },
+      { title: 'ask mom and the sibs about NJ trip', age: '6 days' },
+      { title: 'plan trip to China', age: '3 days' }
+    ];
+    const s = this.state;
+    const total = items.length;
+    const done = s.done || s.i >= total;
+    const advance = () => {
+      if (s.i + 1 >= total) this.setState({ i: total, done: true, pickingDay: false });
+      else this.setState({ i: s.i + 1, pickingDay: false });
+    };
+    const dayNames = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+    return {
+      current: items[Math.min(s.i, total - 1)],
+      progressLabel: done ? total + ' of ' + total : (s.i + 1) + ' of ' + total,
+      progressPct: Math.round(((done ? total : s.i) / total) * 100) + '%',
+      notDone: !done,
+      done: done,
+      pickingDay: !done && s.pickingDay,
+      choosing: !done && !s.pickingDay,
+      thisWeek: () => this.setState({ pickingDay: true }),
+      cancelDay: () => this.setState({ pickingDay: false }),
+      days: dayNames.map((label) => ({ label: label, pick: () => { this.setState({ placed: s.placed + 1 }); advance(); } })),
+      advance: advance,
+      finish: () => this.setState({ done: true }),
+      restart: () => this.setState({ i: 0, pickingDay: false, done: false, placed: 0 }),
+      summary: s.placed + (s.placed === 1 ? ' thing' : ' things') + ' on this week, the rest sorted. see you next week.'
+    };
+  }
+}
+</script>
+</body>
+</html>

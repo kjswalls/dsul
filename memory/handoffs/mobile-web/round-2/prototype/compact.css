@@ -1,0 +1,4 @@
+[data-density="compact"] [data-testid="item-card"]{padding-top:1px!important;padding-bottom:1px!important;min-height:30px}
+[data-density="compact"] .rounded-\[14px\]{background:transparent!important;box-shadow:none!important;padding:8px 2px 4px!important;border-radius:0!important;border-top:1px solid var(--border)}
+[data-density="compact"] .space-y-5>:not(:last-child){margin-bottom:8px!important}
+[data-density="compact"] .space-y-2>:not(:last-child){margin-bottom:2px!important}

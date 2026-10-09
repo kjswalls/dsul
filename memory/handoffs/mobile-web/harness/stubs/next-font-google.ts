@@ -1,0 +1,12 @@
+const font = () => ({ className: '', variable: '', style: { fontFamily: 'Inter' } });
+export const Bungee = font;
+export const Fredoka = font;
+export const Instrument_Serif = font;
+export const JetBrains_Mono = font;
+export const Permanent_Marker = font;
+export const Rubik_Bubbles = font;
+export const Silkscreen = font;
+export const Space_Mono = font;
+export const Tilt_Neon = font;
+export const Inter = font;
+export const Source_Serif_4 = font;

@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en" style="--font-inter: 'Inter'">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>fit-ro harness</title>
+    <script>
+      window.process = { env: { NODE_ENV: 'development', NEXT_PUBLIC_SUPABASE_URL: 'http://127.0.0.1:1', NEXT_PUBLIC_SUPABASE_ANON_KEY: 'x' } };
+      (function () {
+        const q = new URLSearchParams(location.search);
+        if (q.get('dark') === '1') document.documentElement.classList.add('dark');
+        // Fonts: injected here so a script can pick font-display (block|swap) and the harness can
+        // delay the woff2 responses. fd=none leaves Inter out entirely (fallback face only).
+        const fd = q.get('fd') ?? 'block';
+        if (fd !== 'none') {
+          const st = document.createElement('style');
+          st.textContent =
+            "@font-face { font-family: 'Inter'; font-style: normal; font-weight: 100 900; font-display: " + fd + "; src: url(./fonts/inter-latin.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }" +
+            "@font-face { font-family: 'Inter'; font-style: normal; font-weight: 100 900; font-display: " + fd + "; src: url(./fonts/inter-latin-ext.woff2) format('woff2'); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }";
+          document.head.appendChild(st);
+        }
+        // Every window error, the "ResizeObserver loop" ones included, with the frame it landed in.
+        window.__errors = [];
+        window.__frame = 0;
+        window.addEventListener('error', (e) => window.__errors.push({ f: window.__frame, m: String(e.message) }));
+        // A frame counter, ticking first in each frame's rAF phase.
+        const tick = () => { window.__frame++; requestAnimationFrame(tick); };
+        requestAnimationFrame(tick);
+        // Every delivery to an observer that watches a shelf probe or sample, with its frame.
+        window.__deliveries = [];
+        const RO = window.ResizeObserver;
+        // Live observers watching a shelf probe or sample (StrictMode must not leave two per shelf).
+        window.__liveShelfObservers = new Set();
+        window.ResizeObserver = class extends RO {
+          observe(el, opts) {
+            window.__allObs = window.__allObs || [];
+            window.__allObs.push({ o: this, el, stack: (new Error().stack || '').split('\n').slice(2, 7).map((l) => l.trim().replace(/\(?http[^ ]*\/assets\//, '').replace(/\)$/, '')).join(' < ') });
+            if (el.hasAttribute && (el.hasAttribute('data-shelf-probe') || el.hasAttribute('data-shelf-sample'))) {
+              this.__watch = this.__watch || new Set();
+              this.__watch.add(el);
+              window.__liveShelfObservers.add(this);
+            }
+            return super.observe(el, opts);
+          }
+          unobserve(el) {
+            if (this.__watch) { this.__watch.delete(el); if (!this.__watch.size) window.__liveShelfObservers.delete(this); }
+            return super.unobserve(el);
+          }
+          disconnect() {
+            if (this.__watch) { this.__watch.clear(); window.__liveShelfObservers.delete(this); }
+            return super.disconnect();
+          }
+          constructor(cb) {
+            super((entries, obs) => {
+              const shelfEntries = entries.filter((e) => e.target.hasAttribute && (e.target.hasAttribute('data-shelf-probe') || e.target.hasAttribute('data-shelf-sample')));
+              if (shelfEntries.length) {
+                const shelf = shelfEntries[0].target.parentElement;
+                window.__deliveries.push({
+                  f: window.__frame,
+                  shelf: shelf && shelf.getAttribute('data-testid'),
+                  e: shelfEntries.map((e) => [e.target.hasAttribute('data-shelf-probe') ? 'probe' : 'sample', Math.round(e.contentRect.width * 100) / 100]),
+                });
+                if (window.__deliveries.length > 5000) window.__deliveries.splice(0, 1000);
+              }
+              const prev = window.__inShelfRO;
+              window.__inShelfRO = shelfEntries.length ? shelfEntries[0].target.parentElement : null;
+              try { return cb(entries, obs); } finally { window.__inShelfRO = prev; }
+            });
+          }
+        };
+        // Frames the shelf's observer asks for: whether each ran, and on a shelf still in the page.
+        window.__shelfFrames = [];
+        const rAF = window.requestAnimationFrame.bind(window);
+        const cAF = window.cancelAnimationFrame.bind(window);
+        window.requestAnimationFrame = (cb) => {
+          const root = window.__inShelfRO;
+          if (!root) return rAF(cb);
+          const rec = { asked: window.__frame, shelf: root.getAttribute('data-testid'), ran: null, connected: null, cancelled: false };
+          window.__shelfFrames.push(rec);
+          const h = rAF((t) => { rec.ran = window.__frame; rec.connected = root.isConnected; return cb(t); });
+          rec.h = h;
+          return h;
+        };
+        window.cancelAnimationFrame = (h) => {
+          const rec = window.__shelfFrames.find((r) => r.h === h && r.ran === null);
+          if (rec) rec.cancelled = true;
+          return cAF(h);
+        };
+        // Every data-fit write, with its frame (MutationObserver records arrive in a microtask).
+        window.__fitWrites = [];
+        const onFit = (recs) => {
+          for (const r of recs) {
+            if (r.attributeName !== 'data-fit') continue;
+            window.__fitWrites.push({ f: window.__frame, shelf: r.target.getAttribute('data-testid'), from: r.oldValue, to: r.target.getAttribute('data-fit') });
+            if (window.__fitWrites.length > 5000) window.__fitWrites.splice(0, 1000);
+          }
+        };
+        const mo = new MutationObserver(onFit);
+        mo.observe(document, { subtree: true, attributes: true, attributeFilter: ['data-fit'], attributeOldValue: true });
+        window.__observerCount = () => {
+          const byShelf = {};
+          for (const o of window.__liveShelfObservers) {
+            for (const el of o.__watch) {
+              const id = (el.parentElement && el.parentElement.getAttribute('data-testid')) + (el.isConnected ? '' : ' (detached)');
+              byShelf[id] = byShelf[id] || new Set();
+              byShelf[id].add(o);
+            }
+          }
+          return Object.fromEntries(Object.entries(byShelf).map(([k, v]) => [k, v.size]));
+        };
+        // The one-line width and the lines box, read by forcing the one line and putting the fit back,
+        // synchronously, so nothing is painted or observed in between; its own writes are dropped.
+        window.__truth = (testid) => {
+          const shelf = document.querySelector('[data-testid="' + testid + '"]');
+          if (!shelf) return null;
+          onFit(mo.takeRecords());
+          const lines = shelf.querySelector('[data-shelf-lines]');
+          const had = shelf.getAttribute('data-fit');
+          const rows = [...lines.children].filter((e) => e.hasAttribute('data-line'));
+          const boxNow = lines.getBoundingClientRect();
+          const lastNow = rows[rows.length - 1].getBoundingClientRect();
+          shelf.dataset.fit = 'line';
+          const lineW = rows[rows.length - 1].getBoundingClientRect().right - rows[0].getBoundingClientRect().left;
+          const boxW = lines.getBoundingClientRect().width;
+          if (had === null) shelf.removeAttribute('data-fit'); else shelf.setAttribute('data-fit', had);
+          mo.takeRecords();
+          const want = lineW > boxW + 1 / 64 ? 'stack' : 'line';
+          const r2 = (n) => Math.round(n * 100) / 100;
+          return {
+            fit: had, want, ok: (had ?? 'line') === want,
+            lineW: r2(lineW), boxW: r2(boxW), rootW: r2(shelf.getBoundingClientRect().width),
+            // In the one-line fit, how far the last line runs past the box: > 0 is a clipped line.
+            overrun: (had ?? 'line') === 'line' ? r2(lastNow.right - boxNow.right) : null,
+            h: r2(shelf.getBoundingClientRect().height),
+          };
+        };
+      })();
+    </script>
+  </head>
+  <body class="font-sans antialiased bg-background text-foreground">
+    <div id="app"></div>
+    <script type="module" src="./entry.tsx"></script>
+  </body>
+</html>

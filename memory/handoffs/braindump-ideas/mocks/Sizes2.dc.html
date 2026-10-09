@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sizes at rest</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:'Inter',system-ui,sans-serif;color:#1f2029}
+a{color:#3b4a1c}a:hover{color:#1f2a0c}
+button{font-family:inherit;cursor:pointer}
+</style>
+</helmet>
+<div style="width: 420px; height: 900px; box-sizing: border-box; background: #fbfbfb; padding: 24px 20px; display: flex; flex-direction: column; gap: 18px; font-family: 'Inter', system-ui, sans-serif; color: #1f2029">
+  <div style="display: flex; align-items: center; gap: 6px; padding-left: 8px; font-weight: 700; font-size: 22px">dsul<span style="width: 7px; height: 7px; border-radius: 50%; background: #a8d64a; margin-top: 4px"></span></div>
+
+  <div style="background: #eeeded; border-radius: 22px; padding: 6px; display: flex; flex-direction: column; gap: 6px">
+    <div style="background: #ffffff; border-radius: 16px; padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 1px 3px rgba(20,20,40,0.08)">
+      <div style="font-size: 16px"><span style="font-weight: 600">{{countNum}}</span> <span style="color: #8a8ea0">{{countWord}}</span></div>
+      <div style="display: flex; gap: 14px; color: #8a8ea0">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8M16 5v4M10 15v4"></path></svg>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"></path></svg>
+      </div>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 2px">
+      <sc-for list="{{lenses}}" as="l" hint-placeholder-count="5">
+        <button type="button" onClick="{{l.pick}}" aria-pressed="{{l.pressed}}" style="height: 36px; border-radius: 12px; border: none; background: {{l.bg}}; box-shadow: {{l.shadow}}; color: {{l.ink}}; font-size: 13px; font-weight: {{l.weight}}; display: flex; align-items: center; justify-content: center; gap: 5px">{{l.label}}<span style="font-size: 12px; color: #a0a4b4; font-weight: 400">{{l.count}}</span></button>
+      </sc-for>
+    </div>
+  </div>
+
+  <sc-if value="{{isQuick}}" hint-placeholder-val="{{ false }}">
+    <div style="display: flex; align-items: center; justify-content: space-between; padding: 0 8px">
+      <div style="font-size: 14px; color: #4d5162">{{quickLine}}</div>
+      <div style="display: flex; gap: 4px">
+        <sc-for list="{{dots}}" as="d" hint-placeholder-count="6">
+          <span style="width: 8px; height: 8px; border-radius: 50%; background: {{d.bg}}"></span>
+        </sc-for>
+      </div>
+    </div>
+  </sc-if>
+
+  <div style="display: flex; flex-direction: column; gap: 18px">
+    <sc-for list="{{groups}}" as="g" hint-placeholder-count="4">
+      <div style="display: flex; flex-direction: column">
+        <sc-if value="{{g.showHead}}" hint-placeholder-val="{{ true }}">
+          <div style="display: flex; align-items: center; gap: 8px; padding: 0 8px 6px; color: #8a8ea0">
+            <sc-if value="{{g.isQuick}}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8"></circle><path d="M12 8v4l2.5 2"></path></svg></sc-if>
+            <sc-if value="{{g.isErrand}}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 21s-6.5-6-6.5-11a6.5 6.5 0 0113 0c0 5-6.5 11-6.5 11z"></path><circle cx="12" cy="10" r="2.2"></circle></svg></sc-if>
+            <sc-if value="{{g.isBig}}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 4l9 5-9 5-9-5z"></path><path d="M3 14l9 5 9-5"></path></svg></sc-if>
+            <sc-if value="{{g.isFuzzy}}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 10c2-3 4-3 6 0s4 3 6 0 3-2 4-1"></path><path d="M4 16c2-3 4-3 6 0s4 3 6 0 3-2 4-1"></path></svg></sc-if>
+            <span style="font-size: 13px; font-weight: 600; color: #4d5162">{{g.label}}</span>
+            <span style="font-size: 13px">{{g.count}}</span>
+            <span style="margin-left: auto; font-size: 12px">{{g.hint}}</span>
+          </div>
+        </sc-if>
+        <sc-for list="{{g.rows}}" as="r" hint-placeholder-count="3">
+          <div style="display: flex; align-items: center; gap: 12px; padding: 6px 8px; border-radius: 12px">
+            <button type="button" onClick="{{r.toggle}}" aria-label="{{r.aria}}" style="width: 20px; height: 20px; border-radius: 6px; border: {{r.boxBorder}}; background: {{r.boxBg}}; flex: none; padding: 0; display: flex; align-items: center; justify-content: center">
+              <sc-if value="{{r.done}}" hint-placeholder-val="{{ false }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#2c3a12" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"></path></svg></sc-if>
+            </button>
+            <span style="flex: 1; font-size: 15px; color: {{r.ink}}; text-decoration: {{r.strike}}">{{r.title}}</span>
+          </div>
+        </sc-for>
+      </div>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":420,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { lens: 'all', done: {} };
+  }
+  renderVals() {
+    const data = [
+      { key: 'quick', label: 'quick', hint: 'about 45 min', rows: ['make a dentist appointment', 'schedule MRI appointment', 'email ICA', "check sammy's insurance", 'ask mom and the sibs about NJ trip', 'hang up trip map'] },
+      { key: 'errand', label: 'errands', hint: 'next time you are out', rows: ['Smog the Honda, sell to Cass', "get sammy's license"] },
+      { key: 'big', label: 'big', hint: 'needs a block', rows: ["clean spencer's room", 'cancel subscriptions', 'plan trip to europe', 'plan trip to China', 'make china trip video'] },
+      { key: 'fuzzy', label: 'fuzzy', hint: 'find a first step', rows: ['budgets?', 'Figure out CPAP machine'] }
+    ];
+    const s = this.state;
+    const lens = s.lens;
+    const toggleFor = (t) => () => { const d = Object.assign({}, s.done); d[t] = !d[t]; this.setState({ done: d }); };
+    const lensDefs = [{ key: 'all', label: 'all', count: '' }].concat(data.map((g) => ({ key: g.key, label: g.label, count: String(g.rows.length) })));
+    const lenses = lensDefs.map((l) => {
+      const on = l.key === lens;
+      return {
+        label: l.label,
+        count: l.count,
+        pressed: on ? 'true' : 'false',
+        bg: on ? '#ffffff' : 'transparent',
+        shadow: on ? '0 1px 3px rgba(20,20,40,0.10)' : 'none',
+        ink: on ? '#1f2029' : '#6b6f80',
+        weight: on ? '600' : '500',
+        pick: () => this.setState({ lens: l.key })
+      };
+    });
+    const shown = lens === 'all' ? data : data.filter((g) => g.key === lens);
+    const groups = shown.map((g) => ({
+      label: g.label,
+      count: String(g.rows.length),
+      hint: lens === 'all' ? g.hint : '',
+      showHead: lens === 'all',
+      isQuick: g.key === 'quick', isErrand: g.key === 'errand', isBig: g.key === 'big', isFuzzy: g.key === 'fuzzy',
+      rows: g.rows.map((t) => {
+        const d = !!s.done[t];
+        return { title: t, done: d, toggle: toggleFor(t), aria: (d ? 'untick ' : 'tick ') + t, boxBg: d ? '#b9e05a' : '#f4f4f6', boxBorder: d ? '1.5px solid #b9e05a' : '1.5px solid #c9cbd3', ink: d ? '#a0a4b4' : '#1f2029', strike: d ? 'line-through' : 'none' };
+      })
+    }));
+    const quickRows = data[0].rows;
+    const quickDone = quickRows.filter((t) => s.done[t]).length;
+    const current = shown.reduce((n, g) => n + g.rows.length, 0);
+    return {
+      lenses: lenses,
+      groups: groups,
+      isQuick: lens === 'quick',
+      quickLine: quickDone === 0 ? 'about 45 minutes, any order' : quickDone === quickRows.length ? 'all six. look at you.' : quickDone + ' down, ' + (quickRows.length - quickDone) + ' to go',
+      dots: quickRows.map((t) => ({ bg: s.done[t] ? '#a8d64a' : '#dcdde1' })),
+      countNum: lens === 'all' ? '15' : String(current),
+      countWord: lens === 'all' ? 'undated' : 'of 15'
+    };
+  }
+}
+</script>
+</body>
+</html>
