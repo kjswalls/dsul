@@ -340,8 +340,8 @@ export function WeekBuckets({ activeId }: { activeId: string | null }) {
   const { colPx, ref: weekColsRef } = useWeekColumns('buckets');
   // ONE clock for the whole grid, unscoped — each column gates it with isToday
   // below. Seven columns × four cells calling this themselves would be 28
-  // intervals for one wall clock. No `mounted` flag: the hook already returns
-  // null on the first render, which is the hydration guard.
+  // intervals for one wall clock. No `mounted` flag: the hook already answers
+  // null on the server pass, which is the hydration guard.
   const currentBucket = useCurrentBucket();
   const bucketStyle = useViewStore((s) => s.bucketStyle);
 

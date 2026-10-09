@@ -134,9 +134,24 @@ says one of `Checking…`, `Not set up`, `Working`, `Needs attention` or `Daily 
 (`Saved ({provider})` for Working, and no time on the limit). The frames'
 data clauses that no column backs are dropped: no "Free key" (no provider gives a tier signal),
 no "today’s limit reached at {t}" (no `limited_at`), and no "back tomorrow" (a daily limit
-always carries its reset). Unpair, with its route and the AI-off card's "Unpair it to stop
-that.", is deferred to PR 7b. The header mark lights only with `canChat`, so F20's mark is
-unlit by rule while the frame draws it lit.
+always carries its reset). Unpair shipped in PR 7b (below). The header mark lights only with
+`canChat`, so F20's mark is unlit by rule while the frame draws it lit.
+
+**Note 2026-10-09: Unpair (AI setup PR 7b).** Pairing still starts on OpenClaw's side (the
+device code); Unpair ends it from Settings → AI, on the OpenClaw section's paired card and on
+the AI-off card's "{name} is still paired · … Unpair it to stop that." row, both through one
+confirm (`useUnpair`, `components/settings/disconnect.ts`). It is `DELETE /api/ai/openclaw`
+(session and same origin, `app/api/ai/openclaw/route.ts`) running `unpairOpenClaw`
+(`lib/ai-server/connections.ts`) in this order: every `plugin_registrations` row
+(`deregisterAllPlugins`), `openclaw_chat_url` and `openclaw_agent_id`, any authorized
+`connect_sessions` row still holding a copy of the key (expired, key nulled), the agent key
+itself (`clearAgentKey`, `lib/supabase-service.ts`, in either column before 059), then the
+registrations once more. The key goes last because it is what reads as paired: a failure part
+way answers 503 with the Unpair button still on screen, and every step is idempotent. The
+gateway URL and token are a separate connection and stay; the confirm says so when one is
+saved. Other instances can keep a cached registration for up to a minute
+(`CACHE_TTL_MS`). The browser's plugin chat token is dropped (`resetPluginTransport`), since it
+derives from the deleted key. Pairing again mints a new key.
 
 **Status (2026-10-01): step 1, "Honest setup", SHIPPED (#355).** dsul ships no AI of
 its own any more: `process.env.OPENAI_API_KEY` is never read. Each user connects their own
@@ -1084,8 +1099,8 @@ conversation is saved to the account.
   counts both when they happened in this browser; across devices it knows only of a saved
   OpenClaw reply (`openclaw_seen`, which a turn with no reply never sets).
 - *Disconnecting* a model or OpenClaw deletes no conversation (the model's disconnect
-  confirm says so; OpenClaw has no disconnect step in dsul, and clearing the Gateway URL or
-  unpairing the plugin deletes none). *Changing who answers* deletes nothing either.
+  confirm says so, and so does Unpair's; clearing the Gateway URL deletes none either).
+  *Changing who answers* deletes nothing either.
 - *History, and deleting from it,* is reachable only while a model or OpenClaw can answer.
   To delete conversations after disconnecting, reconnect first.
 - *Device-local, as before:* who answers in chat and your custom instructions.

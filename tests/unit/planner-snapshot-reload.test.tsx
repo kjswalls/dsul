@@ -105,7 +105,7 @@ async function nextPageSnapshot(): Promise<Page['snap']> {
 /** Last session left A's planner on disk. */
 async function lastSessionWrote(data = cached()) {
   const earlier = await nextPageSnapshot();
-  expect(await earlier.writePlannerSnapshot(A, data, Date.now(), earlier.getSnapshotEpoch())).toBe(true);
+  expect(await earlier.writePlannerSnapshot(A, data, Date.now(), earlier.getSnapshotEpoch())).toBe('written');
 }
 
 /** Sign-in on `/`: the warm-up, then the first load offering the preview, until it paints. */

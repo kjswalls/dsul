@@ -131,6 +131,17 @@ export default function OpenClawDocsPage() {
           </p>
         </div>
 
+        <div className="space-y-3 rounded-lg border border-border bg-card p-4">
+          <p className="text-sm font-medium text-foreground">Unpairing</p>
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            Unpair under Settings → AI. dsul deletes the key the plugin uses and stops
+            sending it your changes, so your agent can no longer read or change your
+            planner. The plugin stops working until you run the setup wizard again, which
+            pairs it with a new key. Your saved conversations stay, and so does a Gateway
+            URL saved under Advanced: clear that there if you want OpenClaw out of Ask too.
+          </p>
+        </div>
+
         <a
           href={PLUGIN_DOCS_URL}
           target="_blank"

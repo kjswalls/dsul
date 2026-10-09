@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Daily pick</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:'Inter',system-ui,sans-serif;color:#1f2029}
+a{color:#3b4a1c}a:hover{color:#1f2a0c}
+button{font-family:inherit;cursor:pointer}
+</style>
+</helmet>
+<div style="width: 420px; height: 900px; box-sizing: border-box; background: #fbfbfb; padding: 24px 20px; display: flex; flex-direction: column; gap: 16px; font-family: 'Inter', system-ui, sans-serif; color: #1f2029">
+  <div style="display: flex; align-items: center; gap: 6px; padding-left: 8px; font-weight: 700; font-size: 22px">dsul<span style="width: 7px; height: 7px; border-radius: 50%; background: #a8d64a; margin-top: 4px"></span></div>
+
+  <div style="background: #eeeded; border-radius: 22px; padding: 8px">
+    <div style="background: #ffffff; border-radius: 16px; padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 1px 3px rgba(20,20,40,0.08)">
+      <div style="font-size: 16px"><span style="font-weight: 600">{{left}}</span> <span style="color: #8a8ea0">undated</span></div>
+      <div style="display: flex; gap: 14px; color: #8a8ea0">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8M16 5v4M10 15v4"></path></svg>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"></path></svg>
+      </div>
+    </div>
+  </div>
+
+  <div style="background: #ffffff; border: 1px solid #dcdde1; border-radius: 18px; padding: 16px; display: flex; flex-direction: column; gap: 12px">
+    <div style="display: flex; align-items: baseline; justify-content: space-between">
+      <div style="font-size: 16px; font-weight: 600">today's pick</div>
+      <div style="font-size: 12px; color: #8a8ea0">one quick, one old, one wildcard</div>
+    </div>
+    <sc-for list="{{picks}}" as="p" hint-placeholder-count="3">
+      <div style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; background: {{p.bg}}">
+        <div style="flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0">
+          <span style="font-size: 15px; font-weight: 500">{{p.title}}</span>
+          <span style="font-size: 12px; color: #6b6f80">{{p.why}}</span>
+        </div>
+        <sc-if value="{{p.open}}" hint-placeholder-val="{{ true }}">
+          <button type="button" onClick="{{p.skip}}" aria-label="not today" style="height: 36px; padding: 0 10px; border-radius: 10px; border: none; background: transparent; font-size: 13px; color: #6b6f80">not today</button>
+          <button type="button" onClick="{{p.add}}" style="height: 36px; padding: 0 14px; border-radius: 10px; border: none; background: #b9e05a; color: #2c3a12; font-size: 13px; font-weight: 600">today</button>
+        </sc-if>
+        <sc-if value="{{p.added}}" hint-placeholder-val="{{ false }}">
+          <span style="font-size: 13px; font-weight: 600; color: #3b4a1c; display: flex; align-items: center; gap: 6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"></path></svg>on today</span>
+        </sc-if>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 2px">
+    <sc-for list="{{rest}}" as="r" hint-placeholder-count="5">
+      <div style="display: flex; align-items: center; gap: 12px; padding: 7px 8px">
+        <span style="width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid #c9cbd3; background: #f4f4f6; flex: none"></span>
+        <span style="font-size: 15px; color: #4d5162">{{r.title}}</span>
+      </div>
+    </sc-for>
+    <div style="padding: 8px 8px 0 40px; font-size: 14px; color: #8a8ea0">{{moreLabel}}</div>
+  </div>
+
+  <div style="margin-top: auto; background: #f4f4f6; border-radius: 14px; padding: 12px 14px; font-size: 13px; color: #6b6f80; line-height: 1.5">the card shows up once a day and folds away once you've picked or passed. "not today" brings the next one in, and nothing gets moved unless you tap.</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":420,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { slots: [0, 1, 2], next: 3, added: {} };
+  }
+  renderVals() {
+    const pool = [
+      { title: 'make a dentist appointment', why: 'quick, about 5 minutes' },
+      { title: 'Figure out CPAP machine', why: 'oldest, sitting 7 weeks' },
+      { title: 'hang up trip map', why: 'wildcard, about 10 minutes' },
+      { title: 'schedule MRI appointment', why: 'quick, about 5 minutes' },
+      { title: 'budgets?', why: 'sitting 6 weeks' },
+      { title: 'email ICA', why: 'quick, about 5 minutes' },
+      { title: "check sammy's insurance", why: 'quick, one call' }
+    ];
+    const s = this.state;
+    const picks = s.slots.map((idx, slot) => {
+      const item = pool[idx % pool.length];
+      const isAdded = !!s.added[idx];
+      return {
+        title: item.title,
+        why: item.why,
+        open: !isAdded,
+        added: isAdded,
+        bg: isAdded ? '#eef6d8' : '#f7f7f8',
+        add: () => { const a = Object.assign({}, s.added); a[idx] = true; this.setState({ added: a }); },
+        skip: () => { const sl = s.slots.slice(); sl[slot] = s.next; this.setState({ slots: sl, next: s.next + 1 }); }
+      };
+    });
+    const addedCount = Object.keys(s.added).length;
+    return {
+      picks: picks,
+      left: String(15 - addedCount),
+      rest: [{ title: 'Smog the Honda, sell to Cass' }, { title: 'make china trip video' }, { title: 'ask mom and the sibs about NJ trip' }, { title: 'plan trip to europe' }],
+      moreLabel: 'and 8 more'
+    };
+  }
+}
+</script>
+</body>
+</html>

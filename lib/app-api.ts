@@ -51,6 +51,7 @@ import { capabilityShape, isPausableRow, resolveItemPause } from './item-pause';
 import { DEFAULT_APP_ICON, isAppIcon, type AppIcon } from './app-icons';
 import { getBucketForTime } from './time-bucket';
 import { reportLiveCompletion } from './stakes/live';
+import { notifyPlugins } from './openclaw-registry';
 import { createServiceClient } from './supabase-service';
 import type { WeekStartDay } from './container-schedule';
 import type { TimeFormat } from './reminders/copy';
@@ -681,15 +682,59 @@ function reportStake(userId: string, itemId: string, dateStr: string, completed:
 export async function postItemWrite(req: Request, rawId: string, opts: AppWriteOptions = {}): Promise<Response> {
   const auth = await authenticateAppRequest(req);
   if (auth instanceof Response) return auth;
-  const { userId, client } = auth;
 
   // Not a uuid, so not an item: answered before Postgres rejects the cast.
   if (!UUID.test(rawId)) return notFound();
-  const id = rawId.toLowerCase();
 
   const body = await parseBody(req, ItemWriteSchema);
   if (body instanceof Response) return body;
 
+  return runItemWrite({ userId: auth.userId, client: auth.client }, rawId.toLowerCase(), body, opts);
+}
+
+/**
+ * The intents an agent may send (POST /api/agent/items/:id/act). The verbs
+ * whose absolute-array or whole-list form is the only one the agent API's
+ * PATCH has: a tick or skip for ONE day, a carry, a streak reset, and one
+ * routine or season membership. Everything else the phone sends one key at a
+ * time, the agent PATCH already takes as a key.
+ */
+export const AGENT_ITEM_ACTIONS = ['complete', 'skip', 'move', 'resetStreak', 'collect'] as const satisfies readonly ItemWriteAction[];
+
+/**
+ * POST /api/agent/items/:id/act: one of the phone's intents, sent by an agent,
+ * through the very code the phone's door runs (runItemWrite), so an agent's
+ * tick is the phone's tick, which is the web's. The caller has resolved the
+ * agent key; the client is the service role, so every write is owner-scoped
+ * (WriteContext.ownerScoped) and every read filters on the user.
+ */
+export async function postAgentItemAction(
+  req: Request,
+  rawId: string,
+  scope: { userId: string; client: Client },
+  opts: AppWriteOptions = {},
+): Promise<Response> {
+  if (!UUID.test(rawId)) return notFound();
+  const body = await parseBody(req, ItemWriteSchema);
+  if (body instanceof Response) return body;
+  if (!(AGENT_ITEM_ACTIONS as readonly string[]).includes(body.action)) {
+    return invalid({ formErrors: [`action must be one of: ${AGENT_ITEM_ACTIONS.join(', ')}`], fieldErrors: {} });
+  }
+  return runItemWrite({ ...scope, ownerScoped: true, webhook: true }, rawId.toLowerCase(), body, opts);
+}
+
+/**
+ * One intent on one item, once the caller is known and the body parsed. A
+ * service-role caller (the agent door) passes `ownerScoped`, which adds
+ * `user_id` to every row update, since RLS does not scope that client.
+ */
+async function runItemWrite(
+  scope: { userId: string; client: Client; ownerScoped?: boolean; webhook?: boolean },
+  id: string,
+  body: ItemWrite,
+  opts: AppWriteOptions,
+): Promise<Response> {
+  const { userId, client } = scope;
   const extra = EDIT_COLUMNS[body.action];
   const { data, error } = await client
     .from('items')
@@ -703,9 +748,23 @@ export async function postItemWrite(req: Request, rawId: string, opts: AppWriteO
   if (!row) return body.action === 'delete' ? deleteTrashed(client, userId, id) : notFound();
 
   // The id as the route was asked, which the row read matched.
-  const ctx: WriteContext = { ...writeContextFor(userId, client, row), id };
-  const raise = opts.onCommitted;
+  const ctx: WriteContext = { ...writeContextFor(userId, client, row, { ownerScoped: scope.ownerScoped }), id };
 
+  const res = await dispatchItemWrite(ctx, body, opts);
+  // The agent door's webhook (the PATCH routes' tasks.updated / habits.updated):
+  // the OpenClaw plugin only drops its cached context on it, so the payload
+  // names the item and nothing else. After the response, as other agent writes
+  // fire theirs; never on a refusal, which changed nothing.
+  if (scope.webhook && res.ok) {
+    const event = ctx.config.webhookEvent;
+    after(() => notifyPlugins(userId, event, { action: 'update', id, updates: {} }));
+  }
+  return res;
+}
+
+async function dispatchItemWrite(ctx: WriteContext, body: ItemWrite, opts: AppWriteOptions): Promise<Response> {
+  const { userId, client, id, row } = ctx;
+  const raise = opts.onCommitted;
   try {
     switch (body.action) {
       case 'complete':
@@ -1078,7 +1137,7 @@ async function resetStreak(ctx: WriteContext): Promise<Response> {
   if (refusal) return refused(refusal.code, refusal.status);
   const patch = resetStreakPatch(editShapeFromRow(row));
   if (Object.keys(patch).length === 0) return ok();
-  await updateItem(id, type, patch, undefined, client);
+  await updateItem(id, type, patch, undefined, client, ctx.ownerScoped ? { ownerId: ctx.userId } : undefined);
   return ok();
 }
 

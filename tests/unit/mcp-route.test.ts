@@ -78,6 +78,9 @@ vi.mock('@/app/api/agent/items/[id]/events/route', () => ({
     return Response.json({ itemId: id, events: [{ action: 'agent_reply', payload: { text: 'the one on King St' } }] });
   },
 }));
+vi.mock('@/app/api/agent/items/[id]/act/route', () => ({ POST: fake('act') }));
+vi.mock('@/app/api/agent/projects/route', () => ({ POST: fake('create:project') }));
+vi.mock('@/app/api/agent/projects/[id]/route', () => ({ PATCH: fake('patch:project'), DELETE: fake('delete:project') }));
 vi.mock('@/app/api/agent/context/route', () => ({
   GET: async (req: Request) => {
     calls.push({ handler: 'context', url: req.url, method: req.method, auth: req.headers.get('authorization') });
@@ -99,6 +102,7 @@ vi.mock('@/lib/supabase-service', () => ({
 }));
 
 import { POST } from '@/app/api/mcp/route';
+import { MCP_TOOLS } from '@/lib/mcp/tools';
 import { NextRequest } from 'next/server';
 
 const AUTH = 'Bearer dsul_testkey';
@@ -369,6 +373,66 @@ describe('the delegation loop, end to end through the route', () => {
   it('forwards the caller auth to the ask handler, like every other route', async () => {
     await POST(call('dsul_ask_user', { id: 'a', question: 'Which one?' }));
     expect(calls[0].auth).toBe('Bearer dsul_testkey');
+  });
+});
+
+describe('every tool reaches a handler', () => {
+  // A tool whose plan names a path the dispatcher has no entry for fails on
+  // every call ("Unroutable path"), and tools.ts's own tests cannot see it:
+  // they stop at the plan. So call each tool with arguments it accepts.
+  const ARGS: Record<string, Record<string, unknown>> = {
+    dsul_my_work: {},
+    dsul_item_activity: { id: 'i1' },
+    dsul_ask_user: { id: 'i1', question: 'Which one?' },
+    dsul_report_progress: { id: 'i1', status: 'working' },
+    dsul_get_context: {},
+    dsul_create_task: { title: 'T' },
+    dsul_update_task: { id: 'i1', title: 'T' },
+    dsul_delete_task: { id: 'i1' },
+    dsul_create_habit: { title: 'H' },
+    dsul_update_habit: { id: 'i1', title: 'H' },
+    dsul_delete_habit: { id: 'i1' },
+    dsul_pause: { kind: 'task', id: 'i1', paused: true },
+    dsul_complete: { id: 'i1', date: '2026-10-08' },
+    dsul_skip: { id: 'i1', date: '2026-10-08' },
+    dsul_move: { id: 'i1', date: '2026-10-09' },
+    dsul_reset_streak: { id: 'i1' },
+    dsul_set_membership: { id: 'i1', kind: 'routine', collectionId: 'r1' },
+    dsul_create_project: { name: 'P' },
+    dsul_update_project: { id: 'p1', name: 'P' },
+    dsul_delete_project: { id: 'p1' },
+    dsul_create_collection: { kind: 'routine', name: 'R' },
+    dsul_update_collection: { kind: 'routine', id: 'r1', name: 'R' },
+    dsul_delete_collection: { kind: 'routine', id: 'r1' },
+  };
+
+  it('has arguments here for every tool, so a new one cannot skip this check', () => {
+    expect(Object.keys(ARGS).sort()).toEqual(MCP_TOOLS.map((t) => t.name).sort());
+  });
+
+  it.each(Object.entries(ARGS))('%s', async (name, args) => {
+    const res = await POST(call(name, args));
+    const { result } = await res.json();
+    expect(result.isError, JSON.stringify(result)).toBeFalsy();
+    expect(calls).toHaveLength(1);
+  });
+
+  it('sends the one-day verbs to the act handler with the id as a route param', async () => {
+    await POST(call('dsul_complete', { id: 'i7', date: '2026-10-08' }));
+    expect(calls[0]).toMatchObject({
+      handler: 'act',
+      method: 'POST',
+      id: 'i7',
+      auth: AUTH,
+      body: { action: 'complete', date: '2026-10-08', done: true },
+    });
+  });
+
+  it('sends project writes to the project handlers', async () => {
+    await POST(call('dsul_create_project', { name: 'YouTube' }));
+    await POST(call('dsul_update_project', { id: 'p1', name: 'Videos' }));
+    await POST(call('dsul_delete_project', { id: 'p1' }));
+    expect(calls.map((c) => c.handler)).toEqual(['create:project', 'patch:project', 'delete:project']);
   });
 });
 

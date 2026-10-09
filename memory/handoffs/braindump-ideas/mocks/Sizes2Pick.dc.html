@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sizing an item</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:'Inter',system-ui,sans-serif;color:#1f2029}
+a{color:#3b4a1c}a:hover{color:#1f2a0c}
+button{font-family:inherit;cursor:pointer}
+</style>
+</helmet>
+<div style="width: 420px; height: 900px; box-sizing: border-box; background: #fbfbfb; padding: 24px 20px; display: flex; flex-direction: column; gap: 18px; font-family: 'Inter', system-ui, sans-serif; color: #1f2029">
+  <div style="display: flex; align-items: center; gap: 6px; padding-left: 8px; font-weight: 700; font-size: 22px">dsul<span style="width: 7px; height: 7px; border-radius: 50%; background: #a8d64a; margin-top: 4px"></span></div>
+
+  <div style="background: #eeeded; border-radius: 22px; padding: 6px; display: flex; flex-direction: column; gap: 6px">
+    <div style="background: #ffffff; border-radius: 16px; padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 1px 3px rgba(20,20,40,0.08)">
+      <div style="font-size: 16px"><span style="font-weight: 600">18</span> <span style="color: #8a8ea0">undated</span></div>
+      <div style="display: flex; gap: 14px; color: #8a8ea0">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8M16 5v4M10 15v4"></path></svg>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"></path></svg>
+      </div>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 2px">
+      <button type="button" aria-pressed="true" style="height: 36px; border-radius: 12px; border: none; background: #ffffff; box-shadow: 0 1px 3px rgba(20,20,40,0.10); color: #1f2029; font-size: 13px; font-weight: 600">all</button>
+      <button type="button" style="height: 36px; border-radius: 12px; border: none; background: transparent; color: #6b6f80; font-size: 13px; font-weight: 500">quick <span style="font-size: 12px; color: #a0a4b4; font-weight: 400">6</span></button>
+      <button type="button" style="height: 36px; border-radius: 12px; border: none; background: transparent; color: #6b6f80; font-size: 13px; font-weight: 500">errands <span style="font-size: 12px; color: #a0a4b4; font-weight: 400">2</span></button>
+      <button type="button" style="height: 36px; border-radius: 12px; border: none; background: transparent; color: #6b6f80; font-size: 13px; font-weight: 500">big <span style="font-size: 12px; color: #a0a4b4; font-weight: 400">5</span></button>
+      <button type="button" style="height: 36px; border-radius: 12px; border: none; background: transparent; color: #6b6f80; font-size: 13px; font-weight: 500">fuzzy <span style="font-size: 12px; color: #a0a4b4; font-weight: 400">2</span></button>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column">
+    <div style="display: flex; align-items: center; gap: 8px; padding: 0 8px 6px; color: #8a8ea0">
+      <span style="font-size: 13px; font-weight: 600; color: #4d5162">not sized yet</span>
+      <span style="font-size: 13px">3</span>
+      <button type="button" style="margin-left: auto; border: none; background: transparent; font-size: 12px; color: #3b4a1c; font-weight: 600; padding: 4px 0">keep the guesses</button>
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 12px; padding: 6px 8px">
+      <span style="width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid #c9cbd3; background: #f4f4f6; flex: none"></span>
+      <span style="flex: 1; font-size: 15px">return library books</span>
+      <span style="display: flex; align-items: center; gap: 4px; font-size: 12px; color: #a0a4b4; border: 1px dashed #c9cbd3; border-radius: 999px; padding: 2px 8px">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 21s-6.5-6-6.5-11a6.5 6.5 0 0113 0c0 5-6.5 11-6.5 11z"></path><circle cx="12" cy="10" r="2.2"></circle></svg>errand?
+      </span>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 6px">
+      <div style="display: flex; align-items: center; gap: 12px; padding: 6px 8px; border-radius: 12px; background: rgba(30,32,48,0.04)">
+        <span style="width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid #c9cbd3; background: #f4f4f6; flex: none"></span>
+        <span style="flex: 1; font-size: 15px">fix the squeaky door</span>
+        <span style="display: flex; align-items: center; gap: 4px; font-size: 12px; color: #1f2029; border: 1px solid #c9cbd3; background: #ffffff; border-radius: 999px; padding: 2px 8px">size</span>
+      </div>
+      <div style="margin-left: 40px; background: #ffffff; border-radius: 16px; box-shadow: 0 8px 28px rgba(20,20,40,0.14), 0 0 0 1px rgba(20,20,40,0.06); padding: 6px; display: flex; flex-direction: column">
+        <div style="font-size: 12px; color: #8a8ea0; padding: 8px 10px 6px">how big is it?</div>
+        <button type="button" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border: none; border-radius: 10px; background: rgba(30,32,48,0.05); text-align: left; color: #1f2029">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8"></circle><path d="M12 8v4l2.5 2"></path></svg>
+          <span style="flex: 1; display: flex; flex-direction: column"><span style="font-size: 14px; font-weight: 500">quick</span><span style="font-size: 12px; color: #8a8ea0">under 15 minutes</span></span>
+          <span style="font-size: 11px; color: #8a8ea0; border: 1px solid #dcdde1; border-radius: 5px; padding: 1px 6px">1</span>
+        </button>
+        <button type="button" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border: none; border-radius: 10px; background: transparent; text-align: left; color: #1f2029">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 21s-6.5-6-6.5-11a6.5 6.5 0 0113 0c0 5-6.5 11-6.5 11z"></path><circle cx="12" cy="10" r="2.2"></circle></svg>
+          <span style="flex: 1; display: flex; flex-direction: column"><span style="font-size: 14px; font-weight: 500">errand</span><span style="font-size: 12px; color: #8a8ea0">means going somewhere</span></span>
+          <span style="font-size: 11px; color: #8a8ea0; border: 1px solid #dcdde1; border-radius: 5px; padding: 1px 6px">2</span>
+        </button>
+        <button type="button" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border: none; border-radius: 10px; background: transparent; text-align: left; color: #1f2029">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 4l9 5-9 5-9-5z"></path><path d="M3 14l9 5 9-5"></path></svg>
+          <span style="flex: 1; display: flex; flex-direction: column"><span style="font-size: 14px; font-weight: 500">big</span><span style="font-size: 12px; color: #8a8ea0">needs a real block of time</span></span>
+          <span style="font-size: 11px; color: #8a8ea0; border: 1px solid #dcdde1; border-radius: 5px; padding: 1px 6px">3</span>
+        </button>
+        <button type="button" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border: none; border-radius: 10px; background: transparent; text-align: left; color: #1f2029">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 10c2-3 4-3 6 0s4 3 6 0 3-2 4-1"></path><path d="M4 16c2-3 4-3 6 0s4 3 6 0 3-2 4-1"></path></svg>
+          <span style="flex: 1; display: flex; flex-direction: column"><span style="font-size: 14px; font-weight: 500">fuzzy</span><span style="font-size: 12px; color: #8a8ea0">not sure where to start</span></span>
+          <span style="font-size: 11px; color: #8a8ea0; border: 1px solid #dcdde1; border-radius: 5px; padding: 1px 6px">4</span>
+        </button>
+      </div>
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 12px; padding: 6px 8px">
+      <span style="width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid #c9cbd3; background: #f4f4f6; flex: none"></span>
+      <span style="flex: 1; font-size: 15px">call grandma back</span>
+      <span style="display: flex; align-items: center; gap: 4px; font-size: 12px; color: #a0a4b4; border: 1px dashed #c9cbd3; border-radius: 999px; padding: 2px 8px">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8"></circle><path d="M12 8v4l2.5 2"></path></svg>quick?
+      </span>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column">
+    <div style="display: flex; align-items: center; gap: 8px; padding: 0 8px 6px; color: #8a8ea0">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8"></circle><path d="M12 8v4l2.5 2"></path></svg>
+      <span style="font-size: 13px; font-weight: 600; color: #4d5162">quick</span>
+      <span style="font-size: 13px">6</span>
+      <span style="margin-left: auto; font-size: 12px">about 45 min</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 12px; padding: 6px 8px"><span style="width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid #c9cbd3; background: #f4f4f6; flex: none"></span><span style="font-size: 15px">make a dentist appointment</span></div>
+    <div style="display: flex; align-items: center; gap: 12px; padding: 6px 8px"><span style="width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid #c9cbd3; background: #f4f4f6; flex: none"></span><span style="font-size: 15px">schedule MRI appointment</span></div>
+    <div style="display: flex; align-items: center; gap: 12px; padding: 6px 8px"><span style="width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid #c9cbd3; background: #f4f4f6; flex: none"></span><span style="font-size: 15px">email ICA</span></div>
+    <div style="padding: 4px 8px 0 40px; font-size: 14px; color: #a0a4b4">and 3 more</div>
+  </div>
+
+  <div style="margin-top: auto; background: #f4f4f6; border-radius: 14px; padding: 12px 14px; font-size: 13px; color: #6b6f80; line-height: 1.5">hover a row and press 1 to 4, or click its size. dashed sizes are guesses (from AI if connected, else from words like "call" or "pick up") until you keep them.</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":420,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

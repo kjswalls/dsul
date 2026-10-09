@@ -57,12 +57,13 @@ vi.mock('@/lib/planner-snapshot', async () => {
     readPlannerSnapshot: vi.fn(async () => null),
     markPreviewPending: vi.fn(),
     previewRenderedCleanly: vi.fn(() => false),
-    writePlannerSnapshot: vi.fn(async () => true),
+    writePlannerSnapshot: vi.fn(async (): Promise<SnapshotWriteResult> => 'written'),
     purgePlannerSnapshotDb: vi.fn(),
   };
 });
 
 import {
+  PREVIEW_EXPECTED_ATTR,
   clearPlannerSnapshot,
   getSnapshotEpoch,
   markPreviewPending,
@@ -72,10 +73,12 @@ import {
   snapshotSupported,
   writePlannerSnapshot,
   type PlannerSnapshotData,
+  type SnapshotWriteResult,
 } from '@/lib/planner-snapshot';
 import {
   SNAPSHOT_MAX_ITEMS,
   SNAPSHOT_WRITE_DEBOUNCE_MS,
+  WRITE_RETRIES,
   snapshotWritable,
   startPlannerSnapshotWriter,
 } from '@/lib/planner-snapshot-writer';
@@ -207,7 +210,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   supported.mockImplementation(() => true);
   read.mockImplementation(async () => null);
-  write.mockImplementation(async () => true);
+  write.mockImplementation(async () => 'written');
   marker.mockImplementation(() => {});
   cleanly.mockImplementation(() => false);
   setOwner(A);
@@ -268,7 +271,7 @@ describe('snapshotWritable', () => {
 });
 
 describe('writing', () => {
-  it('writes the fresh load 2s after it lands, at idle, with the landing as its base', async () => {
+  it('writes a landing that replaced no preview at the first idle, with the landing as its base', async () => {
     start();
     store().identifyUser(A);
     const loading = store().initializeStore(A);
@@ -276,10 +279,9 @@ describe('writing', () => {
     vi.setSystemTime(T0 + 700);
     await landFresh(loading);
 
-    vi.advanceTimersByTime(SNAPSHOT_WRITE_DEBOUNCE_MS - 1);
+    // No settle to keep smooth, so no 2s: only the idle (setTimeout 0 without rIC).
     expect(write).not.toHaveBeenCalled();
-    // The debounce is up; the write itself then waits for idle (setTimeout 0 without rIC).
-    vi.advanceTimersByTime(2);
+    vi.advanceTimersByTime(1);
     expect(write).toHaveBeenCalledTimes(1);
 
     const s = store();
@@ -298,16 +300,57 @@ describe('writing', () => {
     expect(ids(written().items)).toEqual(FRESH_IDS);
   });
 
+  it('takes a change made before the first idle along with the landing, rather than waiting 2s more', async () => {
+    start();
+    store().identifyUser(A);
+    const loading = store().initializeStore(A);
+    await landFresh(loading);
+
+    // The answers that follow a landing (extensions, the AI gate, a goal
+    // slice) arrive before the idle. They must not put the first save off.
+    usePlannerStore.setState({ items: [...store().items, task('t-after', 'After')] });
+    expect(write).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(ids(written().items)).toEqual(expect.arrayContaining([...FRESH_IDS, 't-after']));
+
+    // After that write, changes are trailing again.
+    write.mockClear();
+    usePlannerStore.setState({ items: [...store().items, task('t-later', 'Later')] });
+    vi.advanceTimersByTime(SNAPSHOT_WRITE_DEBOUNCE_MS - 1);
+    expect(write).not.toHaveBeenCalled();
+    settle();
+    expect(write).toHaveBeenCalledTimes(1);
+  });
+
+  it('writes a landing that replaced a preview 2s after, at idle: the settle runs in those 2s', async () => {
+    start();
+    const { loading } = await previewA();
+    await landFresh(loading);
+
+    vi.advanceTimersByTime(SNAPSHOT_WRITE_DEBOUNCE_MS - 1);
+    expect(write).not.toHaveBeenCalled();
+    // The debounce is up; the write itself then waits for idle (setTimeout 0 without rIC).
+    vi.advanceTimersByTime(2);
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(ids(written().items)).toEqual(FRESH_IDS);
+  });
+
   it('is trailing: a burst of edits is one write, 2s after the last', async () => {
     start();
     await land(A);
+    vi.advanceTimersByTime(1);
+    expect(write).toHaveBeenCalledTimes(1); // the landing's
+    write.mockClear();
+
+    usePlannerStore.setState({ items: [...store().items, task('t-early', 'Early')] });
     vi.advanceTimersByTime(1500);
     usePlannerStore.setState({ items: [...store().items, task('t-typed', 'Typed')] });
     vi.advanceTimersByTime(1500);
     expect(write).not.toHaveBeenCalled();
     settle();
     expect(write).toHaveBeenCalledTimes(1);
-    expect(ids(written().items)).toContain('t-typed');
+    expect(ids(written().items)).toEqual(expect.arrayContaining(['t-early', 't-typed']));
   });
 
   it('keeps the base of the landing: a later edit is not a fresher fetch', async () => {
@@ -349,25 +392,186 @@ describe('writing', () => {
     Object.assign(window, { requestIdleCallback: ric, cancelIdleCallback: cancelIdle });
     try {
       start();
+      // The landing's write asks for idle at once.
       await land(A);
-      vi.advanceTimersByTime(SNAPSHOT_WRITE_DEBOUNCE_MS);
       expect(ric).toHaveBeenCalledWith(expect.any(Function), { timeout: 2000 });
       vi.advanceTimersByTime(10_000);
       expect(write).not.toHaveBeenCalled();
 
-      // A change while it waits starts the 2s again.
+      // A change while it waits rides along: the wait is not started again.
       usePlannerStore.setState({ items: [] });
-      expect(cancelIdle).toHaveBeenCalledWith(1);
-      vi.advanceTimersByTime(SNAPSHOT_WRITE_DEBOUNCE_MS);
-      expect(ric).toHaveBeenCalledTimes(2);
-
-      callbacks[1]({ didTimeout: false, timeRemaining: () => 50 });
+      expect(cancelIdle).not.toHaveBeenCalled();
+      callbacks[0]({ didTimeout: false, timeRemaining: () => 50 });
       expect(write).toHaveBeenCalledTimes(1);
       expect(written().items).toEqual([]);
+
+      // After it, an edit waits 2s and then for idle, and an edit while that
+      // waits starts the 2s again.
+      usePlannerStore.setState({ items: [task('t-one', 'One')] });
+      vi.advanceTimersByTime(SNAPSHOT_WRITE_DEBOUNCE_MS);
+      expect(ric).toHaveBeenCalledTimes(2);
+      usePlannerStore.setState({ items: [] });
+      expect(cancelIdle).toHaveBeenCalledWith(2);
+      vi.advanceTimersByTime(SNAPSHOT_WRITE_DEBOUNCE_MS);
+      expect(ric).toHaveBeenCalledTimes(3);
+
+      callbacks[2]({ didTimeout: false, timeRemaining: () => 50 });
+      expect(write).toHaveBeenCalledTimes(2);
+      expect(written(1).items).toEqual([]);
     } finally {
       delete (window as { requestIdleCallback?: unknown }).requestIdleCallback;
       delete (window as { cancelIdleCallback?: unknown }).cancelIdleCallback;
     }
+  });
+});
+
+/**
+ * A write the database failed (no connection, a transaction error) is tried
+ * again, a few times, each wait twice the last. One it refused is not: the same
+ * copy would meet the same answer, and a refusal retried on a clock is a hot loop.
+ */
+describe('a write that did not land', () => {
+  /** Lets the write's promise settle, so the writer hears how it ended. */
+  const heard = () => flush();
+
+  it(`tries a failed write again at most ${WRITE_RETRIES} times, each wait twice the last`, async () => {
+    write.mockImplementation(async () => 'failed');
+    start();
+    await land(A);
+    vi.advanceTimersByTime(1);
+    expect(write).toHaveBeenCalledTimes(1);
+
+    for (let n = 1; n <= WRITE_RETRIES; n++) {
+      await heard();
+      const wait = SNAPSHOT_WRITE_DEBOUNCE_MS * 2 ** n;
+      vi.advanceTimersByTime(wait - 1);
+      expect(write).toHaveBeenCalledTimes(n);
+      vi.advanceTimersByTime(2);
+      expect(write).toHaveBeenCalledTimes(n + 1);
+    }
+
+    await heard();
+    vi.advanceTimersByTime(10 * 60_000);
+    expect(write).toHaveBeenCalledTimes(WRITE_RETRIES + 1);
+    expect(vi.getTimerCount()).toBe(0);
+    // Still unwritten, so the next chance takes it.
+    pagehide();
+    expect(write).toHaveBeenCalledTimes(WRITE_RETRIES + 2);
+  });
+
+  it('a new change after the retries ran out gets its own', async () => {
+    write.mockImplementation(async () => 'failed');
+    start();
+    await land(A);
+    vi.advanceTimersByTime(1);
+    for (let n = 1; n <= WRITE_RETRIES; n++) {
+      await heard();
+      vi.advanceTimersByTime(SNAPSHOT_WRITE_DEBOUNCE_MS * 2 ** n + 1);
+    }
+    await heard();
+    write.mockClear();
+
+    usePlannerStore.setState({ items: [] });
+    settle();
+    expect(write).toHaveBeenCalledTimes(1);
+    await heard();
+    vi.advanceTimersByTime(SNAPSHOT_WRITE_DEBOUNCE_MS * 2 + 1);
+    expect(write).toHaveBeenCalledTimes(2);
+  });
+
+  it('never tries a refused write again (a newer base on disk, a clear)', async () => {
+    write.mockImplementation(async () => 'refused');
+    start();
+    await land(A);
+    vi.advanceTimersByTime(1);
+    expect(write).toHaveBeenCalledTimes(1);
+    await heard();
+    vi.advanceTimersByTime(10 * 60_000);
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+    // Nor is it left dirty for a flush to send the same copy again.
+    pagehide();
+    expect(write).toHaveBeenCalledTimes(1);
+  });
+
+  it('a retry is folded into a change that already has a write coming', async () => {
+    const out = deferred<SnapshotWriteResult>();
+    write.mockImplementationOnce(() => out.promise);
+    start();
+    await land(A);
+    vi.advanceTimersByTime(1);
+    usePlannerStore.setState({ items: [] });
+
+    out.resolve('failed');
+    await heard();
+    settle();
+    expect(write).toHaveBeenCalledTimes(2);
+    expect(written(1).items).toEqual([]);
+    vi.advanceTimersByTime(10 * 60_000);
+    expect(write).toHaveBeenCalledTimes(2);
+  });
+
+  it('a write that fails after stop() plans nothing', async () => {
+    const out = deferred<SnapshotWriteResult>();
+    write.mockImplementationOnce(() => out.promise);
+    start();
+    await land(A);
+    vi.advanceTimersByTime(1);
+    stop();
+    out.resolve('failed');
+    await heard();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+/**
+ * The skeleton's hold (lib/planner-snapshot.ts's expectPreview). offerPreview
+ * ends it on every way the offer ends; the writer ends it on the store's own
+ * edges, which also cover an offer whose read is still out when the load lands.
+ */
+describe('the skeleton hold', () => {
+  const held = () => document.documentElement.hasAttribute(PREVIEW_EXPECTED_ATTR);
+
+  beforeEach(() => document.documentElement.setAttribute(PREVIEW_EXPECTED_ATTR, ''));
+  afterEach(() => document.documentElement.removeAttribute(PREVIEW_EXPECTED_ATTR));
+
+  it('ends when the preview goes up', async () => {
+    start();
+    store().identifyUser(A);
+    const snap = deferred<PlannerSnapshotData | null>();
+    read.mockImplementationOnce(() => snap.promise);
+    void store().initializeStore(A, { preview: () => true });
+    expect(held()).toBe(true);
+    // Read inside the preview's own set(), after the writer's listener and
+    // before offerPreview's own clear, so only the writer's edge counts here.
+    let heldAsItWentUp: boolean | null = null;
+    const look = usePlannerStore.subscribe((s, prev) => {
+      if (s.isPreview && !prev.isPreview) heldAsItWentUp = held();
+    });
+    try {
+      snap.resolve(CACHED());
+      await flush();
+    } finally {
+      look();
+    }
+    expect(store().isPreview).toBe(true);
+    expect(heldAsItWentUp).toBe(false);
+    expect(held()).toBe(false);
+  });
+
+  it.each([
+    ['lands', landFresh],
+    ['fails', failLoad],
+  ])('ends when the load %s with the read still out', async (_, end) => {
+    start();
+    store().identifyUser(A);
+    read.mockImplementationOnce(() => new Promise(() => {}));
+    const loading = store().initializeStore(A, { preview: () => true });
+    await flush();
+    expect(held()).toBe(true);
+
+    await end(loading);
+    expect(held()).toBe(false);
   });
 });
 

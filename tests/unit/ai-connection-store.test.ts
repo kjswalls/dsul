@@ -576,6 +576,63 @@ describe('writes', () => {
   });
 });
 
+describe('unpair', () => {
+  const UNPAIR = '/api/ai/openclaw';
+  const PAIRED: AIConnectionResponse = {
+    ...CONNECTED,
+    openclaw: { gateway: true, pluginChat: true, agent: true, agentId: 'atlas' },
+  };
+  const LEFT = { gateway: true, pluginChat: false, agent: false, agentId: null };
+
+  it('applies what the route read back, and touches nothing else', async () => {
+    await hydrated(A, PAIRED);
+    const p = store().unpair();
+    await tick();
+    expect(store().busy).toBe('unpair');
+    expect(calls.at(-1)).toMatchObject({ url: UNPAIR, init: { method: 'DELETE' } });
+    await answerFor('DELETE', UNPAIR, { openclaw: LEFT });
+
+    await expect(p).resolves.toEqual({ ok: true });
+    expect(store().openclaw).toEqual(LEFT);
+    expect(store().model).toEqual(MODEL_OK);
+    expect(store().busy).toBeNull();
+    expect(gets()).toHaveLength(1);
+    expect(getAICapabilities().canDelegate).toBe(false);
+  });
+
+  it('asks for the status when the route could not read it back', async () => {
+    await hydrated(A, PAIRED);
+    const p = store().unpair();
+    await tick();
+    await answerFor('DELETE', UNPAIR, { openclaw: null });
+    await expect(p).resolves.toEqual({ ok: true });
+    expect(gets()).toHaveLength(2);
+    await answerGet({ ...PAIRED, openclaw: LEFT });
+    expect(store().openclaw).toEqual(LEFT);
+  });
+
+  it('a failure says so, and asks the server what is left', async () => {
+    await hydrated(A, PAIRED);
+    const p = store().unpair();
+    await tick();
+    await answerFor('DELETE', UNPAIR, { error: 'server' }, 503);
+    await expect(p).resolves.toEqual({ ok: false, code: 'server' });
+    expect(store().openclaw).toEqual(PAIRED.openclaw);
+    expect(gets()).toHaveLength(2);
+  });
+
+  it('is not undone on screen by a status read that was already out', async () => {
+    await hydrated(A, PAIRED);
+    void store().refresh();
+    const p = store().unpair();
+    await tick();
+    await answerFor('DELETE', UNPAIR, { openclaw: LEFT });
+    await expect(p).resolves.toEqual({ ok: true });
+    await answerGet(PAIRED);
+    expect(store().openclaw).toEqual(LEFT);
+  });
+});
+
 describe('the legacy notice goes once a model has been seen, by any road', () => {
   // "AI now uses your own model" explains a move. A model connected through
   // the OpenRouter sign-in (its callback saves server-side; the panel only

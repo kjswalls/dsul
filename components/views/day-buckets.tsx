@@ -384,7 +384,7 @@ export function DayBuckets({ activeId }: { activeId: string | null }) {
     selectedDate,
     userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
   );
-  // No `mounted` flag — useCurrentBucket returns null on the first render,
+  // No `mounted` flag — useCurrentBucket answers null on the server pass,
   // which is the hydration guard the flag used to duplicate.
   const currentBucket = useCurrentBucket(selectedDate);
   const bucketStyle = useViewStore((s) => s.bucketStyle);

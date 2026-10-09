@@ -78,6 +78,7 @@ import { useOneTimeNudge } from '@/hooks/use-one-time-nudge';
 import { isOnboardingComplete } from '@/lib/user-profile';
 import { watchOnboardingAfterLoad } from '@/lib/onboarding-watch';
 import type { MobileTab } from '@/lib/mobile-nav-store';
+import { BOOT_SIDEBAR_VAR } from '@/lib/shell-prepaint';
 
 function DraggableTaskOverlay({ title, count = 0 }: { title: string; count?: number }) {
   return (
@@ -212,17 +213,33 @@ export function FirstRunNudges({
  */
 export function useShellSensors() {
   return useSensors(
-    useSensor(NonTouchPointerSensor, {
-      activationConstraint: { distance: POINTER_ACTIVATION_DISTANCE_PX },
-    }),
-    useSensor(TouchSensor, {
-      activationConstraint: {
-        delay: TOUCH_ACTIVATION_DELAY_MS,
-        tolerance: TOUCH_ACTIVATION_TOLERANCE_PX,
-      },
-    })
+    useSensor(NonTouchPointerSensor, POINTER_SENSOR_OPTIONS),
+    useSensor(TouchSensor, TOUCH_SENSOR_OPTIONS)
   );
 }
+
+/*
+ * The sensors' options, and the shell's measuring config below, live at module
+ * scope because dnd-kit memoizes on their IDENTITY. Written inline, every
+ * AppShell render minted new objects, so new sensors, new activators and a new
+ * DndContext value, which re-rendered every draggable and droppable on the
+ * page: two full passes over every row on a warm load, as the AI gate and the
+ * extensions answered. The values are the same constants as ever.
+ */
+const POINTER_SENSOR_OPTIONS = {
+  activationConstraint: { distance: POINTER_ACTIVATION_DISTANCE_PX },
+};
+const TOUCH_SENSOR_OPTIONS = {
+  activationConstraint: {
+    delay: TOUCH_ACTIVATION_DELAY_MS,
+    tolerance: TOUCH_ACTIVATION_TOLERANCE_PX,
+  },
+};
+const SHELL_MEASURING = {
+  droppable: {
+    strategy: MeasuringStrategy.Always,
+  },
+};
 
 /**
  * Drag start: the two facts the rest of the app reads off a live drag.
@@ -680,9 +697,15 @@ export function AppShell() {
   if (!mounted) {
     return (
       <>
-        {/* Desktop skeleton */}
+        {/* Desktop skeleton. The column is as wide as the braindump will be,
+            0 when it is closed (lib/shell-prepaint.ts stamps it before
+            paint; --sidebar-w's default if storage could not be read), so
+            the canvas's left edge does not jump when the shell mounts. */}
         <div className="hidden h-[100dvh] gap-3 bg-surface-0 p-3 md:flex">
-          <div className="w-80 rounded-panel bg-sidebar" />
+          <div
+            className="rounded-panel bg-sidebar"
+            style={{ width: `var(${BOOT_SIDEBAR_VAR}, var(--sidebar-w))` }}
+          />
           <main className="flex-1 rounded-panel bg-canvas" />
         </div>
         {/* Mobile skeleton — the redesigned silhouette: one header card, content
@@ -726,11 +749,7 @@ export function AppShell() {
       // there, so a cancelled drag can never leave one gesture's input beside
       // another's id.
       onDragCancel={() => useDragStore.getState().endDrag()}
-      measuring={{
-        droppable: {
-          strategy: MeasuringStrategy.Always,
-        },
-      }}
+      measuring={SHELL_MEASURING}
     >
       {/* One shell mounts at a time (post-hydration) so the shared view
           components don't register duplicate dnd-kit droppable ids across the

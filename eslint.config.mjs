@@ -11,6 +11,7 @@ export default defineConfig([
     'openclaw-plugin/**',
     'electron/**',
     'ios/**',
+    'memory/**',
     'playwright-report/**',
     'test-results/**',
     'push-test.js',

@@ -81,6 +81,26 @@ const REPEAT_DAYS = {
   items: { type: 'number' },
   description: 'Required when repeatFrequency is custom. 0 = Sunday … 6 = Saturday.',
 }
+const REPEAT_MONTH_DAY = {
+  type: 'integer',
+  minimum: 1,
+  maximum: 31,
+  description: 'For repeatFrequency monthly: the day of the month, 1 to 31. A short month uses its last day.',
+}
+
+/** The server takes any integer here, so the plan holds the 1 to 31 range itself. */
+const monthDayError = (args: Record<string, unknown>): { error: string } | null => {
+  const v = args.repeatMonthDay
+  if (v === undefined || v === null) return null
+  return Number.isInteger(v) && (v as number) >= 1 && (v as number) <= 31
+    ? null
+    : { error: 'repeatMonthDay must be a whole number from 1 to 31' }
+}
+
+/** The one-day verbs' door: lib/app-api.ts postAgentItemAction. */
+const actPath = (id: string) => `/api/agent/items/${id}/act`
+const isDateStr = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)
+const ONE_DAY = str("The day it applies to, yyyy-MM-dd, on the user's calendar (get_context gives userTimezone).")
 
 const requireString = (
   args: Record<string, unknown>,
@@ -102,8 +122,8 @@ const pick = (args: Record<string, unknown>, keys: string[]): Record<string, unk
 
 const TASK_WRITE_KEYS = [
   'title', 'status', 'startDate', 'startTime', 'timeBucket', 'priority', 'project',
-  'notes', 'duration', 'parentItemId', 'repeatFrequency', 'repeatDays', 'completedDates',
-  'reminderTime',
+  'notes', 'duration', 'parentItemId', 'repeatFrequency', 'repeatDays', 'repeatMonthDay',
+  'completedDates', 'reminderTime',
   // Delegation. These are how a background worker says what it is doing —
   // without them an agent can see its assignments and has no way to report on
   // them, which is the difference between delegation and a wish.
@@ -111,7 +131,7 @@ const TASK_WRITE_KEYS = [
 ]
 
 const HABIT_WRITE_KEYS = [
-  'title', 'group', 'repeatFrequency', 'repeatDays', 'timeBucket', 'startTime',
+  'title', 'group', 'repeatFrequency', 'repeatDays', 'repeatMonthDay', 'timeBucket', 'startTime',
   'notes', 'timesPerDay', 'completedDates', 'skippedDates', 'duration', 'reminderTime',
 ]
 
@@ -528,11 +548,14 @@ export const MCP_TOOLS: McpTool[] = [
         parentItemId: str('Make this a subtask of that item. Subtasks cannot nest.'),
         repeatFrequency: REPEAT_FREQUENCY,
         repeatDays: REPEAT_DAYS,
+        repeatMonthDay: REPEAT_MONTH_DAY,
         reminderTime: REMINDER_TIME,
       },
       ['title']
     ),
     plan: (args) => {
+      const monthDay = monthDayError(args)
+      if (monthDay) return monthDay
       const title = requireString(args, 'title')
       if (typeof title !== 'string') return title
       // Tasks are date-anchored: a series with no start has no occurrences, so
@@ -547,9 +570,9 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'dsul_update_task',
     description:
-      'Change an existing task. Send only the fields you are changing. To complete one, ' +
-      "set status to 'completed'. For a RECURRING task use completedDates instead, " +
-      'because status would end the whole series rather than today.',
+      'Change an existing task. Send only the fields you are changing. To tick a task off, ' +
+      'use dsul_complete: on a RECURRING task status would end the whole series rather than ' +
+      'today, and completedDates replaces every completed date at once.',
     inputSchema: obj(
       {
         id: ID,
@@ -564,16 +587,21 @@ export const MCP_TOOLS: McpTool[] = [
         duration: DURATION,
         repeatFrequency: REPEAT_FREQUENCY,
         repeatDays: REPEAT_DAYS,
+        repeatMonthDay: REPEAT_MONTH_DAY,
         reminderTime: REMINDER_TIME,
         completedDates: {
           type: 'array',
           items: { type: 'string' },
-          description: 'For recurring tasks: the yyyy-MM-dd dates completed. Whole-set replacement.',
+          description:
+            'For recurring tasks: EVERY yyyy-MM-dd date completed, as a whole-set replacement that ' +
+            'un-ticks any date left out. To tick or untick one day use dsul_complete instead.',
         },
       },
       ['id']
     ),
     plan: (args) => {
+      const monthDay = monthDayError(args)
+      if (monthDay) return monthDay
       const id = requireString(args, 'id')
       if (typeof id !== 'string') return id
       return { method: 'PATCH', path: `/api/agent/tasks/${id}`, body: pick(args, TASK_WRITE_KEYS) }
@@ -611,6 +639,7 @@ export const MCP_TOOLS: McpTool[] = [
           items: { type: 'number' },
           description: 'Required when repeatFrequency is custom. 0 = Sunday … 6 = Saturday.',
         },
+        repeatMonthDay: REPEAT_MONTH_DAY,
         timeBucket: TIME_BUCKET,
         startTime: TIME,
         timesPerDay: { type: 'number', description: 'For counted habits, e.g. 3 glasses of water.' },
@@ -621,6 +650,8 @@ export const MCP_TOOLS: McpTool[] = [
       ['title']
     ),
     plan: (args) => {
+      const monthDay = monthDayError(args)
+      if (monthDay) return monthDay
       const title = requireString(args, 'title')
       if (typeof title !== 'string') return title
       return { method: 'POST', path: '/api/agent/habits', body: pick(args, HABIT_WRITE_KEYS) }
@@ -629,9 +660,9 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'dsul_update_habit',
     description:
-      'Change an existing habit. To mark one done for a day, add that date to ' +
-      'completedDates. Habits are never completed by status. completedDates and ' +
-      'skippedDates are whole-set replacements, so send the full list.',
+      'Change an existing habit. To mark it done or skipped for a day use dsul_complete or ' +
+      'dsul_skip, never this: habits are not completed by status, and completedDates and ' +
+      'skippedDates here are whole-set replacements that undo every date left out.',
     inputSchema: obj(
       {
         id: ID,
@@ -642,11 +673,12 @@ export const MCP_TOOLS: McpTool[] = [
           enum: ['daily', 'weekdays', 'weekends', 'monthly', 'custom'],
         },
         repeatDays: { type: 'array', items: { type: 'number' } },
+        repeatMonthDay: REPEAT_MONTH_DAY,
         timeBucket: TIME_BUCKET,
         startTime: TIME,
         timesPerDay: { type: 'number' },
-        completedDates: { type: 'array', items: { type: 'string' }, description: 'yyyy-MM-dd dates done.' },
-        skippedDates: { type: 'array', items: { type: 'string' }, description: 'yyyy-MM-dd dates deliberately skipped.' },
+        completedDates: { type: 'array', items: { type: 'string' }, description: 'EVERY yyyy-MM-dd date done (whole set). Prefer dsul_complete.' },
+        skippedDates: { type: 'array', items: { type: 'string' }, description: 'EVERY yyyy-MM-dd date skipped (whole set). Prefer dsul_skip.' },
         duration: DURATION,
         reminderTime: REMINDER_TIME,
         notes: str('Longer detail.'),
@@ -654,6 +686,8 @@ export const MCP_TOOLS: McpTool[] = [
       ['id']
     ),
     plan: (args) => {
+      const monthDay = monthDayError(args)
+      if (monthDay) return monthDay
       const id = requireString(args, 'id')
       if (typeof id !== 'string') return id
       return { method: 'PATCH', path: `/api/agent/habits/${id}`, body: pick(args, HABIT_WRITE_KEYS) }
@@ -710,6 +744,128 @@ export const MCP_TOOLS: McpTool[] = [
     },
   },
   {
+    name: 'dsul_complete',
+    description:
+      'Tick an item off for ONE day, or untick it (done: false). The right verb for a task or a ' +
+      'habit, one-off or recurring: it touches only that date, moves a habit\'s streak and keeps ' +
+      'the rest of the history. A day the user skipped is refused (skipped); unskip it with ' +
+      'dsul_skip first. For a habit with a daily target, count is how many it reached that day.',
+    inputSchema: obj(
+      {
+        id: ID,
+        date: ONE_DAY,
+        done: { type: 'boolean', description: 'true ticks it (the default), false unticks it.' },
+        count: { type: 'number', description: 'Habits with a daily target only: the tally for that day.' },
+      },
+      ['id', 'date']
+    ),
+    plan: (args) => {
+      const id = requireString(args, 'id')
+      if (typeof id !== 'string') return id
+      if (!isDateStr(args.date)) return { error: 'date is required as yyyy-MM-dd' }
+      if (args.done !== undefined && typeof args.done !== 'boolean') return { error: 'done must be a boolean' }
+      return {
+        method: 'POST',
+        path: actPath(id),
+        body: {
+          action: 'complete',
+          date: args.date,
+          done: args.done ?? true,
+          ...(args.count !== undefined ? { count: args.count } : {}),
+        },
+      }
+    },
+  },
+  {
+    name: 'dsul_skip',
+    description:
+      'Skip ONE occurrence of a recurring task or habit (it is not done, and was meant not to be), ' +
+      'or unskip it (skipped: false). Skipping a day that was ticked unticks it, and on a habit ' +
+      'so does unskipping, so tick it again with dsul_complete if it was done. One-off items ' +
+      'and subtasks cannot be skipped (not_skippable): ' +
+      'move, cancel or pause them instead.',
+    inputSchema: obj(
+      {
+        id: ID,
+        date: ONE_DAY,
+        skipped: { type: 'boolean', description: 'true skips the day (the default), false unskips it.' },
+      },
+      ['id', 'date']
+    ),
+    plan: (args) => {
+      const id = requireString(args, 'id')
+      if (typeof id !== 'string') return id
+      if (!isDateStr(args.date)) return { error: 'date is required as yyyy-MM-dd' }
+      if (args.skipped !== undefined && typeof args.skipped !== 'boolean') {
+        return { error: 'skipped must be a boolean' }
+      }
+      return {
+        method: 'POST',
+        path: actPath(id),
+        body: { action: 'skip', date: args.date, skipped: args.skipped ?? true },
+      }
+    },
+  },
+  {
+    name: 'dsul_move',
+    description:
+      'Carry a task to another day, as the app\'s Tomorrow and Reschedule do. It keeps its time; ' +
+      'an undated task lands in that day\'s Anytime. On a recurring task the day becomes the ' +
+      'series\' first day. Refused (not_movable) for a habit, a subtask, a finished task or one ' +
+      'parked inside a project block.',
+    inputSchema: obj({ id: ID, date: str('The day to move it to, yyyy-MM-dd.') }, ['id', 'date']),
+    plan: (args) => {
+      const id = requireString(args, 'id')
+      if (typeof id !== 'string') return id
+      if (!isDateStr(args.date)) return { error: 'date is required as yyyy-MM-dd' }
+      return { method: 'POST', path: actPath(id), body: { action: 'move', date: args.date } }
+    },
+  },
+  {
+    name: 'dsul_reset_streak',
+    description:
+      'Set a habit\'s streak back to 0. Its completion history is kept. Only when the user asks ' +
+      'for it: a streak is theirs, and it is never recomputed from the history.',
+    inputSchema: obj({ id: ID }, ['id']),
+    plan: (args) => {
+      const id = requireString(args, 'id')
+      if (typeof id !== 'string') return id
+      return { method: 'POST', path: actPath(id), body: { action: 'resetStreak' } }
+    },
+  },
+  {
+    name: 'dsul_set_membership',
+    description:
+      'Add ONE item to a routine or season, or take it out (member: false), leaving every other ' +
+      'member as it is. An item added to a routine goes last in its order. Prefer this to ' +
+      'dsul_update_collection\'s itemIds, which replaces the whole list. Goals take their ' +
+      'members through dsul_update_collection.',
+    inputSchema: obj(
+      {
+        id: ID,
+        kind: { type: 'string', enum: ['routine', 'season'] },
+        collectionId: str('The routine or season id, exactly as it appears in get_context.'),
+        member: { type: 'boolean', description: 'true adds it (the default), false takes it out.' },
+      },
+      ['id', 'kind', 'collectionId']
+    ),
+    plan: (args) => {
+      const id = requireString(args, 'id')
+      if (typeof id !== 'string') return id
+      if (args.kind !== 'routine' && args.kind !== 'season') return { error: 'kind must be routine or season' }
+      const collectionId = requireString(args, 'collectionId')
+      if (typeof collectionId !== 'string') return collectionId
+      if (args.member !== undefined && typeof args.member !== 'boolean') {
+        return { error: 'member must be a boolean' }
+      }
+      return {
+        method: 'POST',
+        path: actPath(id),
+        body: { action: 'collect', kind: args.kind, containerId: collectionId, member: args.member ?? true },
+      }
+    },
+  },
+  {
     name: 'dsul_create_project',
     description:
       'Create a project, the one group each task and habit files under (by NAME). ' +
@@ -754,6 +910,19 @@ export const MCP_TOOLS: McpTool[] = [
         return { error: 'name must be a non-empty string' }
       }
       return { method: 'PATCH', path: `/api/agent/projects/${id}`, body }
+    },
+  },
+  {
+    name: 'dsul_delete_project',
+    description:
+      'Delete a project. It goes to trash for 30 days and keeps its name taken until then. Its ' +
+      'tasks and habits are NOT deleted. Only when the user asks: to rename one, use ' +
+      'dsul_update_project, which carries every item along.',
+    inputSchema: obj({ id: str('The project id, exactly as it appears in get_context.') }, ['id']),
+    plan: (args) => {
+      const id = requireString(args, 'id')
+      if (typeof id !== 'string') return id
+      return { method: 'DELETE', path: `/api/agent/projects/${id}` }
     },
   },
   {

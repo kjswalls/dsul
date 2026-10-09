@@ -240,18 +240,32 @@ test.describe('Settings page', () => {
     expect(gate.patches).toEqual([]);
   });
 
-  test('AI off with OpenClaw paired: the card names it, and offers no Unpair', async ({ page }) => {
+  test('AI off with OpenClaw paired: the card names it, and Unpair ends it', async ({ page }) => {
+    // Stubbed: a real Unpair would delete the agent key global setup seeds.
     const gate = await gotoAIPane(page, { aiHidden: true, openclaw: 'paired' });
     const off = page.getByTestId('mcp-ai-off');
     const paired = off.getByTestId('ai-off-paired');
 
     await expect(paired).toContainText('atlas is still paired');
     await expect(paired).toContainText(
-      'OpenClaw reads your planner through its own pairing, which this switch doesn’t touch.'
+      'OpenClaw reads your planner through its own pairing, which this switch doesn’t touch. Unpair it to stop that.'
     );
     await expect(off.getByTestId('ai-off-connected')).toHaveCount(0);
-    await expect(page.getByRole('button', { name: /unpair/i })).toHaveCount(0);
+
+    await paired.getByTestId('ai-off-unpair').click();
+    await expect(page.getByTestId('confirm-dialog')).toContainText('Unpair atlas?');
+    await page.getByTestId('openclaw-unpair-confirm').click();
+
+    // The row goes once the DELETE lands; the card stays, since AI is still off.
+    await expect(paired).toHaveCount(0);
+    await expect(off).toBeVisible();
+    expect(gate.unpairs()).toBe(1);
     expect(gate.patches).toEqual([]);
+
+    // And it stays unpaired once AI is back on.
+    await useAISwitch(page).click();
+    await expect(page.getByTestId('openclaw-status')).toHaveText('Not paired');
+    await expect(page.getByTestId('openclaw-pair')).toBeVisible();
   });
 
   test('search filters across panes, counts out loud, and keeps rows live', async ({ page }) => {
