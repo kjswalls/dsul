@@ -151,8 +151,16 @@ function from(table: string) {
 
 const called = (q: Query, method: string) => q.calls.filter(([m]) => m === method).map(([, args]) => args);
 const op = (q: Query) => (['insert', 'update', 'delete', 'select'] as const).find((m) => called(q, m).length > 0);
+/** complete's snooze clear (clearSnooze), which `writes` leaves out: its own describe pins it. */
+const isSnoozeClear = (q: Query) =>
+  q.table === 'items' &&
+  op(q) === 'update' &&
+  JSON.stringify(called(q, 'update')[0][0]) === JSON.stringify({ reminder_snooze_until: null, reminder_snooze_date: null });
+const snoozeClears = () => queries.filter(isSnoozeClear);
 const writes = (table: string, method: 'insert' | 'update') =>
-  queries.filter((q) => q.table === table && op(q) === method).map((q) => called(q, method)[0][0] as Record<string, unknown>);
+  queries
+    .filter((q) => q.table === table && op(q) === method && !isSnoozeClear(q))
+    .map((q) => called(q, method)[0][0] as Record<string, unknown>);
 
 const b64 = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
 const token = () =>
@@ -570,6 +578,140 @@ describe('complete, on a one-off', () => {
     const update = queries.find((q) => op(q) === 'update')!;
     expect(called(update, 'update')).toEqual([[{ status: 'completed' }]]);
     expect(update.calls).toContainEqual(['eq', ['type', 'book']]);
+  });
+});
+
+describe('complete clears a snooze', () => {
+  it('on a habit, the snooze belonging to the day ticked, by owner, only where one is set', async () => {
+    await write({ action: 'complete', date: DATE, done: true });
+    const [clear] = snoozeClears();
+    expect(clear.calls).toEqual([
+      ['update', [{ reminder_snooze_until: null, reminder_snooze_date: null }]],
+      ['eq', ['id', ITEM]],
+      ['eq', ['user_id', USER]],
+      ['not', ['reminder_snooze_until', 'is', null]],
+      ['eq', ['reminder_snooze_date', DATE]],
+    ]);
+    expect(snoozeClears()).toHaveLength(1);
+  });
+
+  it('on a recurring task, likewise only the day ticked', async () => {
+    row = RECURRING_TASK;
+    await write({ action: 'complete', date: DATE, done: true });
+    expect(snoozeClears()[0].calls).toContainEqual(['eq', ['reminder_snooze_date', DATE]]);
+  });
+
+  it('on a one-off, whatever day it names: it has one occurrence', async () => {
+    row = ONE_OFF;
+    await write({ action: 'complete', date: TOMORROW, done: true });
+    expect(snoozeClears()).toHaveLength(1);
+    expect(called(snoozeClears()[0], 'eq')).toEqual([
+      ['id', ITEM],
+      ['user_id', USER],
+    ]);
+  });
+
+  it('not on an untick, nor on a refused tick', async () => {
+    await write({ action: 'complete', date: DATE, done: false });
+    await write({ action: 'complete', date: '2026-09-30', done: true });
+    expect(snoozeClears()).toEqual([]);
+  });
+
+  it('a failed clear is logged and the tick still answers 200', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    respond = ((base) => (q: Query) =>
+      isSnoozeClear(q) ? { data: null, error: { code: 'XX000', message: 'boom' } } : base(q))(respond);
+    const res = await write({ action: 'complete', date: DATE, done: true });
+    expect(res.status).toBe(200);
+    expect(error).toHaveBeenCalledWith('[app/items] snooze clear failed:', 'boom');
+    error.mockRestore();
+  });
+});
+
+describe('snooze', () => {
+  // NOW is 20:00 on Oct 2 in Los Angeles, the stored zone.
+  const snoozeWrites = () =>
+    queries.filter((q) => q.table === 'items' && op(q) === 'update').map((q) => q.calls);
+
+  it('writes the tap plus fifteen minutes, and the day the notification was about', async () => {
+    const res = await write({ action: 'snooze', date: DATE });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, snoozedUntil: '2026-10-03T03:15:00.000Z' });
+    expect(snoozeWrites()).toEqual([
+      [
+        ['update', [{ reminder_snooze_until: '2026-10-03T03:15:00.000Z', reminder_snooze_date: DATE }]],
+        ['eq', ['id', ITEM]],
+        ['eq', ['user_id', USER]],
+      ],
+    ]);
+    // A snooze is no completion: no stake, no event.
+    expect(rpc).not.toHaveBeenCalled();
+    expect(h.after).not.toHaveBeenCalled();
+    await settle();
+    expect(writes('item_events', 'insert')).toEqual([]);
+  });
+
+  it('takes the minutes asked for', async () => {
+    const res = await write({ action: 'snooze', date: DATE, minutes: 60 });
+    expect((await res.json()).snoozedUntil).toBe('2026-10-03T04:00:00.000Z');
+  });
+
+  it('writes nothing past the day’s local midnight, and answers snoozedUntil null', async () => {
+    // 20:00 plus four hours is past midnight in Los Angeles.
+    const res = await write({ action: 'snooze', date: DATE, minutes: 240 });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, snoozedUntil: null });
+    expect(snoozeWrites()).toEqual([]);
+  });
+
+  it('writes nothing for a notification about another day, still in the shade', async () => {
+    const res = await write({ action: 'snooze', date: '2026-10-01' });
+    expect(await res.json()).toEqual({ ok: true, snoozedUntil: null });
+    expect(snoozeWrites()).toEqual([]);
+  });
+
+  it('holds the day in the stored zone, not UTC, where it is already Oct 3', async () => {
+    expect((await (await write({ action: 'snooze', date: TOMORROW })).json()).snoozedUntil).toBeNull();
+  });
+
+  it('uses the device’s zone only when the account has none', async () => {
+    settingsResult = { data: { timezone: null }, error: null };
+    // Oct 3, 05:00 in Paris.
+    const res = await write({ action: 'snooze', date: TOMORROW, timeZone: 'Europe/Paris' });
+    expect((await res.json()).snoozedUntil).toBe('2026-10-03T03:15:00.000Z');
+  });
+
+  it('snoozes a task with no cue of its own, as a last call’s Snooze does', async () => {
+    row = ONE_OFF;
+    expect((await (await write({ action: 'snooze', date: DATE })).json()).snoozedUntil).not.toBeNull();
+  });
+
+  it('refuses a subtask, which takes no reminder', async () => {
+    row = { ...ONE_OFF, parent_item_id: PARENT };
+    const res = await write({ action: 'snooze', date: DATE });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'not_remindable' });
+    expect(snoozeWrites()).toEqual([]);
+  });
+
+  it('400s minutes out of bounds, a bad day, or a key it does not know', async () => {
+    for (const body of [
+      { action: 'snooze', date: DATE, minutes: 0 },
+      { action: 'snooze', date: DATE, minutes: 241 },
+      { action: 'snooze', date: DATE, minutes: 1.5 },
+      { action: 'snooze', date: '2026-02-31' },
+      { action: 'snooze' },
+      { action: 'snooze', date: DATE, until: '2026-10-03T03:15:00.000Z' },
+    ]) {
+      expect((await write(body)).status, JSON.stringify(body)).toBe(400);
+    }
+    expect(snoozeWrites()).toEqual([]);
+  });
+
+  it('404s an item that is not the user’s', async () => {
+    row = null;
+    expect((await write({ action: 'snooze', date: DATE })).status).toBe(404);
+    expect(snoozeWrites()).toEqual([]);
   });
 });
 
@@ -2792,6 +2934,7 @@ describe('item events for recipes', () => {
     });
     expect((await postItemWrite(req, ITEM)).status).toBe(200);
     expect(containsReads()).toEqual([]);
-    expect(queries.filter((q) => q.table === 'items').map(op)).toEqual(['select', 'update']);
+    // The row, the status snapshot, and the snooze clear (which matches no row without a snooze).
+    expect(queries.filter((q) => q.table === 'items').map(op)).toEqual(['select', 'update', 'update']);
   });
 });
