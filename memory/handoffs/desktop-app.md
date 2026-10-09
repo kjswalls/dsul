@@ -43,7 +43,9 @@ These merged after the 0.1.2 build, which was made from 6960d41. A 0.1.3 release
 - **#380 and #392.** New `build/icon.ico` and tray PNGs, to match the updated favicon.
 - **#434.** A comment in `guardSubframe` only. The mod sandbox iframe already loads in every shell, because it is an app URL.
 
-`electron/package.json` on main still says 0.1.2.
+- **0.1.3's own change.** Both permission handlers refuse every subframe, so the mod sandbox frame can never hold `notifications`.
+
+`electron/package.json` says 0.1.3 (the bump PR, 2026-10-09). No 0.1.3 build has been dispatched yet.
 
 ## Releases
 

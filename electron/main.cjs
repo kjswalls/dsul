@@ -903,11 +903,22 @@ function openOutside(url) {
 
 function configureSession(ses) {
   const allowed = new Set(['clipboard-sanitized-write', 'notifications']);
+  // A subframe is refused outright: the mod sandbox frame is an app URL, so isApp alone would
+  // let it hold `notifications`. Only an explicit false refuses, so a check Electron makes with
+  // no frame at all still answers by the URL.
   ses.setPermissionRequestHandler((contents, permission, callback, details) => {
-    callback(allowed.has(permission) && isApp(details.requestingUrl || contents.getURL()));
+    callback(
+      details.isMainFrame !== false &&
+        allowed.has(permission) &&
+        isApp(details.requestingUrl || contents.getURL()),
+    );
   });
   ses.setPermissionCheckHandler((_contents, permission, requestingOrigin, details) => {
-    return allowed.has(permission) && isApp(details.requestingUrl || requestingOrigin);
+    return (
+      details.isMainFrame !== false &&
+      allowed.has(permission) &&
+      isApp(details.requestingUrl || requestingOrigin)
+    );
   });
 }
 

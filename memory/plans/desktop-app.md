@@ -139,7 +139,7 @@ electron/
   - nothing otherwise.
 
   The app's own Radix menus cancel the DOM event, so they never reach this handler.
-- **Permissions.** The request and check handlers allow `clipboard-sanitized-write` and `notifications` for app URLs only, and deny everything else. `isApp` matches the mod sandbox frame too (an app URL), so it could be granted `notifications`. It never asks: the worker's LOCKDOWN removes `Notification` and the frame script never calls it. Refusing permissions to anything but the main frame waits for the next shell release (Later); the shell loads the live site, so the mod runtime needed no release.
+- **Permissions.** The request and check handlers allow `clipboard-sanitized-write` and `notifications` for app URLs only, and deny everything else. `isApp` matches the mod sandbox frame too (an app URL), so it could be granted `notifications`. It never asks: the worker's LOCKDOWN removes `Notification` and the frame script never calls it. From 0.1.3 both handlers also refuse any request or check whose `details.isMainFrame` is `false`, so no subframe can hold a permission even if it asked (`tests/unit/electron-permissions.test.ts`). Only an explicit `false` refuses, so a check Electron makes with no frame still answers by the URL. Shells up to 0.1.2 lack this; the shell loads the live site, so the mod runtime needed no release.
 - **Offline.**
   - On a main-frame `did-fail-load` (ignore `-3`, ABORTED), call `loadFile('offline.html')`. Its only script is `location.replace('https://do.dsul.app/')` when the `online` event fires.
   - Main retries too, because `online` never fires if `navigator.onLine` was already true when the load failed (a wake from sleep while DNS or Wi-Fi settles, or the site briefly down). While the window shows the offline page it reloads the start URL after 5s, 15s, 30s, then every 60s, and stops once an app URL commits. A reveal (the shortcut, a relaunch, the tray, the Dock) retries at once, and `powerMonitor` `resume` restarts the backoff. offline.html and its pinned CSP hash are unchanged.
@@ -724,7 +724,6 @@ Also in v1: the push-row copy, the app icons, the CLAUDE.md layout line and the 
 - Placing the Mac buttons before a slow first commit: keep the last zoom factor in userData and set the position before the first show, so a launch past the 4s fallback doesn't show them move.
 - Notebook in the Mac app: its desk padding is 20px, not 12, so even at 100% the buttons sit about 8px above its wordmark row and the word starts about 22px past them. **[unverified: read, not rendered]**
 - Windows arm64.
-- Refuse every permission to a subframe (`details.isMainFrame === false`), so the mod sandbox frame could never be granted `notifications` even if it asked.
 - The `reloadOnOnline` decision.
 
 ## Open assumptions (not verified in this pass)
