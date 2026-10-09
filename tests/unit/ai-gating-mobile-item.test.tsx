@@ -46,6 +46,13 @@ vi.mock('@/lib/db', async (importOriginal) => ({
   getItemEventsAvailable: () => true,
 }));
 vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}) }));
+const nudgeSaves = vi.hoisted(() => ({ calls: [] as string[][] }));
+vi.mock('@/lib/nudges/service', () => ({
+  loadDismissedNudges: vi.fn(async () => null),
+  saveDismissedNudges: vi.fn(async (_user: string, ids: string[]) => {
+    nudgeSaves.calls.push(ids);
+  }),
+}));
 vi.mock('@/lib/supabase', () => ({
   createClient: vi.fn(() => ({
     auth: {
@@ -98,6 +105,8 @@ import { useAIConnectionStore } from '@/lib/ai-connection-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useProposalStore } from '@/lib/proposal-store';
 import { useRailStore } from '@/lib/rail-store';
+import { useNudgeStore } from '@/lib/nudge-store';
+import { NUDGE_BREAK_IT_DOWN_OFFER } from '@/lib/nudges/registry';
 import type { TaskItem } from '@/lib/planner-types';
 import {
   AI_HIDDEN,
@@ -569,6 +578,88 @@ describe('the item panel', () => {
     );
     expect(screen.getByTestId('break-it-down')).toBeInTheDocument();
     expect(screen.queryByTestId('assign-agent')).toBeNull();
+  });
+
+  describe('the Break it down offer before AI is set up', () => {
+    const renderPanel = (item: TaskItem = TASK) => {
+      usePlannerStore.setState({ items: [item] });
+      return render(<ItemDetailSections item={item} conversation="inline" offerSetup />);
+    };
+    const hydrateNudges = (dismissed: string[] = []) =>
+      useNudgeStore.setState({ dismissed, hydratedUserId: 'user-1' });
+
+    beforeEach(() => {
+      useNudgeStore.getState().reset();
+      nudgeSaves.calls = [];
+    });
+
+    it('is offered unlit while the gate invites, and opens setup instead of asking', () => {
+      seed(NOTHING_CONNECTED);
+      hydrateNudges();
+      renderPanel();
+
+      expect(screen.queryByTestId('break-it-down')).toBeNull();
+      const offer = screen.getByTestId('break-it-down-offer');
+      // Nothing is lime while nothing answers.
+      expect(offer.innerHTML).not.toMatch(/text-ai|lime|accent/);
+
+      fireEvent.click(screen.getByTestId('break-it-down-setup'));
+      expect(useRailStore.getState().summoned).toBe(true);
+      expect(useProposalStore.getState().status).toBe('idle');
+    });
+
+    it('closes for good with its ✕, as a one-time nudge', () => {
+      seed(NOTHING_CONNECTED);
+      hydrateNudges(['streaks-on']);
+      renderPanel();
+
+      fireEvent.click(screen.getByTestId('break-it-down-offer-close'));
+      expect(screen.queryByTestId('break-it-down-offer')).toBeNull();
+      expect(nudgeSaves.calls).toEqual([['streaks-on', NUDGE_BREAK_IT_DOWN_OFFER]]);
+    });
+
+    it('stays away until the dismissals load, once closed, and after No AI', () => {
+      seed(NOTHING_CONNECTED);
+      renderPanel();
+      expect(screen.queryByTestId('break-it-down-offer')).toBeNull();
+      cleanup();
+
+      hydrateNudges([NUDGE_BREAK_IT_DOWN_OFFER]);
+      renderPanel();
+      expect(screen.queryByTestId('break-it-down-offer')).toBeNull();
+      cleanup();
+      unseed();
+
+      seed(AI_HIDDEN);
+      hydrateNudges();
+      renderPanel();
+      expect(screen.queryByTestId('break-it-down-offer')).toBeNull();
+    });
+
+    it('gives way to the real button once something answers, and is never on /item/[id]', () => {
+      seed(CONNECTED_MODEL);
+      hydrateNudges();
+      renderPanel();
+      expect(screen.getByTestId('break-it-down')).toBeInTheDocument();
+      expect(screen.queryByTestId('break-it-down-offer')).toBeNull();
+      cleanup();
+      unseed();
+
+      seed(NOTHING_CONNECTED);
+      renderSections();
+      expect(screen.queryByTestId('break-it-down-offer')).toBeNull();
+    });
+
+    it('follows the real button\'s item rule: no offer on a subtask or a finished task', () => {
+      seed(NOTHING_CONNECTED);
+      hydrateNudges();
+      renderPanel({ ...TASK, parentItemId: 'parent-1' } as TaskItem);
+      expect(screen.queryByTestId('break-it-down-offer')).toBeNull();
+      cleanup();
+
+      renderPanel({ ...TASK, status: 'completed' } as TaskItem);
+      expect(screen.queryByTestId('break-it-down-offer')).toBeNull();
+    });
   });
 
   it('assigns to OpenClaw, and only to OpenClaw, when an agent is paired', () => {

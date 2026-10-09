@@ -191,13 +191,10 @@ export function ConnectFix({
 
   const send = () => {
     setLine(null);
-    // Same provider and host. On the pane the saved model rides along for
-    // every provider, as Replace key's does, so a new key never swaps the
-    // user's pick for the provider's default. The column sends it only for a
-    // custom service, whose list may not name one.
-    if (pane || provider === 'custom') {
-      void check.send(provider, { baseUrl: baseUrl ?? undefined, model: model.model ?? undefined });
-    } else void check.send(provider);
+    // Same provider and host, and the saved model rides along on both hosts,
+    // as Replace key's does, so a new key never swaps the user's pick for the
+    // provider's default.
+    void check.send(provider, { baseUrl: baseUrl ?? undefined, model: model.model ?? undefined });
   };
 
   const onPaste = (key: string) => {

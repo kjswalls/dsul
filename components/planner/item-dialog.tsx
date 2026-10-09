@@ -3543,7 +3543,7 @@ function ItemDialogInner({
                   growth plan. Live data (subtasks/agent state read the store),
                   while the property draft above stays snapshot-based. */}
               {withDetailSections && mode === 'edit' && editItem && (
-                <ItemDetailSections item={editItem} conversation={conversation} withActivity={!autosaves} />
+                <ItemDetailSections item={editItem} conversation={conversation} withActivity={!autosaves} offerSetup />
               )}
 
               {/* An autosaving surface has no moment of commitment, so its

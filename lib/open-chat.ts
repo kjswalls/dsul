@@ -137,25 +137,29 @@ function toggleSetup(): void {
 }
 
 /**
- * Open setup (or the fix home) from a door: `?` in the dock or Ctrl+K, and
- * Ctrl+K's "Set up AI" and "Fix AI". Open only, never a toggle, so a door
- * pressed with setup already showing leaves it showing. Desktop: an item on
- * top closes through the one flushing close (a toggle would close it and
- * show nothing), and one held for the landing is let go, so it never opens
- * over the setup asked for after it; then out of Zen and a summon that
- * writes no `askOpen`, as Ctrl+J's does. Phone: the Ask tab, which shows the
- * setup page while the gate offers it; never a summon there, which would arm
- * the desktop column to spring open on a wider window. True when it opened
- * something; false with neither setup nor a fix on offer.
+ * Open setup (or the fix home) from a door: `?` in the dock or Ctrl+K,
+ * Ctrl+K's "Set up AI" and "Fix AI", and the item panel's "Break it down"
+ * offer. Open only, never a toggle, so a door pressed with setup already
+ * showing leaves it showing. An item on top closes through the one flushing
+ * close on both shells (a toggle would close it and show nothing). Desktop:
+ * one held for the landing is let go, so it never opens over the setup asked
+ * for after it; then out of Zen and a summon that writes no `askOpen`, as
+ * Ctrl+J's does. Phone: the Ask tab, which shows the setup page while the
+ * gate offers it; never a summon there, which would arm the desktop column
+ * to spring open on a wider window. True when it opened something; false
+ * with neither setup nor a fix on offer.
  */
 export function openSetup(isMobile: boolean): boolean {
   const ai = getAICapabilities();
   if (!ai.askInvite && !ai.askFix) return false;
+  // An item on top closes through the one flushing close, on both shells: on
+  // the phone it is a drawer over the tabs (the setup page holds no item
+  // interceptor), and the Ask tab switched to under it would show nothing.
+  closeItemPanel();
   if (isMobile) {
     showAskTab();
     return true;
   }
-  if (useUIStore.getState().activeDialog?.type === 'edit-item') closeItemPanel();
   // Over the preview an item asked for is held, not open (lib/ui-store.ts
   // deferredDialog), and would open on top of setup at the landing. The door
   // is the later ask, so it lets the held item go as it closes an open one.

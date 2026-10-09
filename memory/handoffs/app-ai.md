@@ -81,11 +81,9 @@ was deleted on GitHub after #443 merged. Restart it from `main` for the next PR.
 
 ## Next steps
 
-1. **Phase 2, "Break it down"** (spec §4 item 8): a moment's Break it down offer, gated on
-   `askInvite`, with one ✕ stored as a nudge id. Ask Kirby before starting.
+1. ~~Phase 2, "Break it down"~~: built 2026-10-09 (see ai-vision.md's note of that date),
+   with the Fix card's model fix.
 2. Small follow-ups left by the setup round:
-   - The setup column's Fix card still resets the saved model on a new key (the pane's no
-     longer does).
    - "Use a different service" in the pane still holds the old `ConnectForm`; swap in the
      connect card's "I already use…" body.
    - Stream-only refusals pass the connect test; the connect rate limit is in memory, not
