@@ -31,7 +31,8 @@ How it is built:
 
 ## Update (2026-10-09, later)
 - **Reminders Phase 2a merged as #446.** The section below is history.
-- **Phase 2b (server) is in a PR from `claude/project-thread-32mqp1`**, the "iPhone reminders 2b" thread: the `snooze` intent, `complete`'s snooze clear, `POST /api/app/timezone`, and the payload's rituals and `snoozes`. `memory/plans/reminders-platforms.md`'s Phase 2b addendum lists where it departs from the plan. 2c (the phone's scheduler) is next.
+- **Phase 2b (server) merged as #450.**
+- **Phase 2c (the phone's own notifications) is in a PR from `claude/project-thread-32mqp1`**: `ios/Dsul/Notifications/`, the AppDelegate, the background refresh and the Remind sheet's lines. The plan's Phase 2c addendum lists where it departs (no `PlannerCache` yet). Its device checks are `ios/README.md`'s "Checking reminders". 2d (device registry) needs Phase 1 first.
 
 ## Was in progress: Reminders Phase 2a (merged as #446)
 **Branch:** `claude/ios-app-9p05kw` at `92ebd7b2`, pushed to origin.

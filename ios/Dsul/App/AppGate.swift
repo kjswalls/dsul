@@ -29,8 +29,16 @@ struct AppGate: View {
             // old (PlannerSync). RootView moves `today` on the same change.
             // The icon is asked again too, in case iOS refused it last time.
             .onChange(of: scenePhase) { _, phase in
+                if phase == .background {
+                    BackgroundRefresh.schedule()
+                    return
+                }
                 guard phase == .active else { return }
                 planner?.refreshIfStale()
+                Task {
+                    await LiveNotificationCenter.clearBadge()
+                    await NotificationHub.shared.foreground()
+                }
                 AppIconSwitcher.shared.follow(planner?.settings.appIcon)
                 let store = auth
                 Task { await store.checkAppleCredential() }
@@ -75,11 +83,16 @@ struct AppGate: View {
         }
     }
 
-    /// Builds, keeps or drops the planner to match the auth state.
+    /// Builds, keeps or drops the planner to match the auth state, and hands
+    /// the signed-in one to the notification hub. Signing out, switching
+    /// user or trying the sample clears every dsul notification on this
+    /// iPhone, and the taps still waiting in the outbox.
     private func reconcile() {
+        let hub = NotificationHub.shared
         switch auth.state {
         case .signedIn(let session):
             if let current = planner, current.userId == session.userId { return }
+            let switching = planner?.isLive == true
             planner?.stopSync()
             let api = APIClient(origin: AppConfig.apiOrigin, tokens: auth, transport: HTTP.live)
             let live = SamplePlanner(userId: session.userId, api: api, isDragging: { DragHold.shared.isHeld },
@@ -88,14 +101,23 @@ struct AppGate: View {
                 live.show(email.isEmpty ? "Signed in" : "Signed in as \(email)", isError: false)
             }
             planner = live
+            Task {
+                if switching { await hub.detach() }
+                hub.attach(live)
+            }
             Task { await live.refresh() }
         case .sample:
             if let current = planner, !current.isLive { return }
             planner?.stopSync()
             planner = SamplePlanner()
+            Task { await hub.detach() }
         case .signedOut, .signingIn:
+            let wasLive = planner?.isLive == true
             planner?.stopSync()
             planner = nil
+            if wasLive || auth.state == .signedOut {
+                Task { await hub.detach() }
+            }
         }
     }
 }

@@ -38,6 +38,11 @@ or by pasting a list. A tap on a row's circle still just ticks it.
   - `Model/`, `Today/`, `Schedule/`: the planner and the screens.
   - `Item/`: the item sheet. `ItemSheetModel` decides what it says and
     offers, apart from the views, so the hosted tests pin it.
+  - `Notifications/`: the phone's own reminders. `NotificationScheduler`
+    arms what DsulCore's plan says, `NotificationHub` runs it (Done and
+    Snooze through the `ActionOutbox`, the delegate's questions, the
+    background refresh), and `LiveNotificationCenter` is the only file that
+    talks to UserNotifications.
 - `DsulCore/` is a Swift package with the planner logic ported from the web
   app: which items show on a day, the braindump, routine grouping, what a
   tick means, the item sheet's verbs (when each is offered, what it writes)
@@ -573,10 +578,14 @@ a delete, a reset or a chip.
      pull to refresh: "Habit reminders are off in dsul's settings on the web,
      under Rituals, so this won't fire." Turn it on and refresh: the line
      goes. On the sample, neither line shows.
-   - Signed in, on an account first signed in on the phone and never opened on
-     the web (the phone never stores a time zone): "Reminders need your time
-     zone, which dsul picks up when you open it on the web." Open dsul on the
-     web once, then pull to refresh: the line goes.
+   - Signed in, with Habit reminders on: two lines, "Ticking early, a pause, a
+     season, or a cue in the hour the clocks change can quiet this iPhone's
+     cue until dsul next opens." and "A habit ticked elsewhere may still ring
+     here until dsul opens." With the last call on as well (Settings →
+     Rituals on the web): "This iPhone has no last call until push arrives."
+     With dsul's notifications off in the phone's Settings: "Notifications for
+     dsul are off in this iPhone's Settings, so this won't ring here." and
+     neither of the first two.
    - Signed in, on a habit of your own with a reminder and cue words: open its
      Remind sheet on the phone and leave it up. On the web, change its cue
      words. Without refreshing the phone (leave the app in the foreground, so
@@ -985,6 +994,46 @@ a delete, a reset or a chip.
       first (`.enabled` on that row), then the chip goes. If the menu
       stays open over a chip that has gone, the toggles drop the modifier
       as above, and this line says so.
+
+## Checking reminders
+
+Signed in, on an account with Habit reminders on (Settings → Rituals on the
+web). The phone plans its own notifications (`Notifications/`); nothing comes
+by push yet.
+
+1. Permission: a fresh install asks nothing at launch. Set a reminder on a
+   habit and tap Done in the Remind sheet: iOS asks once, for alerts and
+   sounds. Allow it. Done on another reminder asks nothing.
+2. A cue: set a habit's reminder two minutes from now and lock the phone. It
+   rings at that minute, with the cue words, and Done and Snooze 15m under a
+   long press, without unlocking.
+3. Done from the lock screen: the habit is ticked on the web after a
+   refresh, with its streak moved by one, and the notification goes. Done on
+   a habit already ticked on the web changes nothing.
+4. Snooze 15m: it rings again fifteen minutes later, also with the phone in
+   flight mode from the tap on. Snooze at 23:50 rings nothing tonight.
+5. Ticked elsewhere: tick a habit on the web before its cue, then open dsul on
+   the phone: the cue doesn't ring today. Without opening it, it may.
+6. Catch-up: with a cue at 9:00 that hasn't rung (the phone was off), open
+   dsul at 9:10: it rings once, now. Open it again at 9:20: nothing.
+7. In front: with dsul open, tick the habit on the web just before its cue
+   (no refresh on the phone). The banner doesn't show.
+8. The review: with the end-of-day review on, it rings at its hour; reviewed
+   on the web before then and dsul opened, it doesn't.
+9. Signing out takes every pending dsul notification and every one in
+   Notification Center with it.
+10. Over a few days without opening dsul (Background App Refresh on): a habit
+    ticked on the web early is quiet that day; held weekdays come back.
+11. The time zone: travel (or set the phone's zone in Settings → General →
+    Date & Time) and open dsul: the web's stored zone becomes the phone's,
+    and cues ring at their hour in the new zone.
+12. The 64 cap: with more than sixty habits with reminders, nothing errors,
+    and the soonest ring.
+13. Daylight saving, at the next change: a cue at 02:30 on the spring-forward
+    night doesn't ring that night; one at 01:30 on the fall-back night rings
+    once.
+14. On an Apple Watch paired to the phone, a cue arrives on the wrist with
+    Done and Snooze 15m, and Done there (or a Double Tap) ticks it.
 
 ## Rules
 

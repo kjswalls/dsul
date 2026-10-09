@@ -179,6 +179,28 @@ final class APIClient {
         _ = try await send("POST", Self.itemPath(id), body: try Self.encode(body))
     }
 
+    /// POST /api/app/items/:id `snooze`: a notification's Snooze, ringing
+    /// again `minutes` from now, held to `date` in the stored zone, or in
+    /// `timeZone` when the account stores none (lib/app-api.ts). The route
+    /// answers the instant it stored, or null when that instant would be
+    /// past `date`'s midnight and it stored nothing; a body that doesn't say
+    /// is nil too.
+    func snooze(id: UUID, date: String, minutes: Int, timeZone: String?) async throws -> String? {
+        let body = SnoozeBody(date: date, minutes: minutes, timeZone: timeZone)
+        let result = try await send("POST", Self.itemPath(id), body: try Self.encode(body))
+        guard let object = try? JSONSerialization.jsonObject(with: result.data, options: []),
+              let json = object as? [String: Any]
+        else { return nil }
+        return json["snoozedUntil"] as? String
+    }
+
+    /// POST /api/app/timezone: this iPhone's IANA zone, stored as the
+    /// account's when it differs (the web's PATCH /api/user/timezone does
+    /// the same for a browser).
+    func saveTimeZone(_ timeZone: String) async throws {
+        _ = try await send("POST", "/api/app/timezone", body: try Self.encode(TimeZoneBody(timezone: timeZone)))
+    }
+
     /// POST /api/app/items: a capture, under the phone's own id, so a retry
     /// after a lost response is answered 200 for the same row.
     func capture(id: UUID, title: String) async throws {
@@ -325,4 +347,18 @@ private struct PauseBody: Encodable {
     var paused: Bool
     var pausedUntil: String?
     var timeZone: String?
+}
+
+/// `{"action":"snooze","date":…,"minutes":…,"timeZone"?:…}`. A nil zone is
+/// left out, not sent as null.
+private struct SnoozeBody: Encodable {
+    var action = "snooze"
+    var date: String
+    var minutes: Int
+    var timeZone: String?
+}
+
+/// `{"timezone":…}`.
+private struct TimeZoneBody: Encodable {
+    var timezone: String
 }

@@ -252,6 +252,58 @@
 >    `ios/Dsul/Data/APIClient.swift`) and `X-Dsul-Device` on `/api/app` writes (2d, with
 >    the devices registry).
 
+> **Addendum (2026-10-09): what Phase 2c changed on the way in.** Phase 2c is §5.3's hosted
+> half: the phone now arms its own notifications. `ios/Dsul/Notifications/` holds
+> `NotificationCenterPort`, `NotificationScheduler`, `ActionOutbox`, `NotificationHub`,
+> `LiveNotificationCenter`, `NotificationDelegate`, `NotificationCategories` and
+> `BackgroundRefresh`, with `ios/Dsul/App/AppDelegate.swift` and project.yml's `fetch` mode
+> and `app.dsul.ios.reconcile`. Where it departs from §5.3:
+>
+> 1. **No `PlannerCache` yet** (decision 10 said yes). A background refresh fetches the
+>    planner with the Keychain's token and plans from the answer; with no network it plans
+>    nothing and the standing triggers keep ringing. `APIClient`'s "nothing it fetches
+>    outlives the session on disk" still holds. The cache comes with the widget, which needs
+>    it in the App Group anyway.
+> 2. **`NotificationHub` is the glue the plan didn't name.** Everything that decides
+>    something (the diff, the outbox, willPresent, the headless path) is Foundation-only and
+>    runs in the Linux shim (`NotificationTests`, 26 tests, against a fake center and
+>    `FakeServer`); the UIKit and UserNotifications files only translate.
+> 3. **One hook, `SamplePlanner.onChange(fetched:)`**, for §5.3's `didApplyFetch` and
+>    `didQueueWrite`. Every change re-plans; only a fetch drains the outbox. Draining on a
+>    revert sent an unsent Done again at once, into the same failure, for as long as the
+>    phone was offline.
+> 4. **Done is the web's act route's Done.** The day is marked done (a counted habit at its
+>    full tally) only while it still wants doing as the phone holds it; otherwise nothing is
+>    sent, so a stale banner's Done never unticks. Through the planner it is the row tick's
+>    optimistic step and `complete` write. With no planner (a lock-screen tap that launched
+>    no window) the hub fetches, sends `complete` and `snooze` straight to the item route,
+>    and plans from the fetched planner with the ticks on it. PlannerSync gained a `snooze`
+>    write (no subjects, nothing to revert, no banner) and a `settled` callback, which is
+>    how a tap leaves the outbox: landed or refused, never unsent.
+> 5. **A Snooze rings here at once,** from the tapped notification's own words, before any
+>    plan, and is remembered locally until it rings (`localSnoozes`, merged with the
+>    payload's, the later ring winning on the same day). The server is sent the minutes
+>    left, so a late drain still names the promised minute. Past its day's midnight a
+>    snooze is nothing, on the phone as on the server.
+> 6. **`localSentKeys`** are this iPhone's shade (each dsul cue's day and time) plus the
+>    cues armed at the last plan whose next ring has passed, and today's ring of a slot
+>    that kept repeating; the last three days' are kept.
+> 7. **Permission is asked from the Remind sheet's Done only.** The phone has no Rituals
+>    screen, so there is no "Remind me on this iPhone" switch: iOS's own notification
+>    setting is the per-device switch, and with it off nothing is planned or removed.
+> 8. **The phone stores its zone.** When the account's stored zone differs from the
+>    device's, the hub sends the device's to `POST /api/app/timezone` once a launch, as the
+>    web's `useTimezoneSync` does for a browser. The Remind sheet's time zone line is gone;
+>    it says instead what can quiet this iPhone's cue, that a habit ticked elsewhere may
+>    still ring, notifications off in Settings, and, with the last call on, that this iPhone
+>    has none until push.
+> 9. **`summaryArgument` is not set:** iOS 15 stopped reading it. Grouping is the thread's.
+> 10. **Signing out, switching user or trying the sample** removes every dsul request and
+>     notification, the outbox and the remembered state.
+> 11. **Not in 2c:** `RealNotificationCenterTests` (a test host can't grant permission;
+>     the README's "Checking reminders" list is the device check), and the devices registry
+>     with `X-Dsul-Device` (2d).
+
 2026-10-05. **Status: plan, decided 2026-10-06 — Kirby took every default in §7; nothing in it has been built yet, nothing was written to prod.** Phase 0 is next. Every code citation is tree-level (`main` at `b8d480c`, 2026-10-04; every cited `file:line` holds at `3200896`, #405, 2026-10-05 — six cited files changed between the two commits, `electron/main.cjs`, `electron/preload.cjs`, `lib/desktop.ts`, `desktop-app.md`, `ios-app.md`, `CLAUDE.md`, but not at the cited lines; `preload.cjs` gained `authProviders`): the live project was read on 2026-10-05, read-only, and the observed values sit at the top of §5.1.1: the organisation is on the **Pro** plan, both ticks are paused exactly as 045 left them, no ritual is enabled by any of the four accounts, and Kirby is the only user, so the runbook's EXPECT lines are now observations and the §5.1 writes have no one to disturb. Kirby also holds a paid Apple Developer Program membership (confirmed 2026-10-05), which removes the purchase gate the brief assumed (decision 5, resolved). Facts taken from search snippets of pages the planning sessions could not open are marked `[S]`; facts no source verified are marked **[unverified]** inline and collected in §6. Sibling plans: [habit-reminders.md](habit-reminders.md) (the reminder model this builds on — read it first), [desktop-app.md](desktop-app.md), [ios-app.md](ios-app.md).
 
 ---

@@ -139,6 +139,15 @@ final class SamplePlanner {
     /// Sends this planner's writes and fetches its data. Nil for the sample,
     /// whose changes last until the app quits.
     @ObservationIgnored private(set) var sync: PlannerSync? = nil
+    /// The server's snoozes (`PlannerPayload.snoozes`): what this iPhone's
+    /// notification plan arms besides the cues. Empty for the sample, and
+    /// when the server couldn't read them.
+    private(set) var snoozes: [PlanSnooze] = []
+    /// Told whenever what the notification plan reads may have moved: a
+    /// fetch applied (`fetched` true), or a write queued (after its
+    /// optimistic step) or a revert (false). NotificationHub listens (AppGate
+    /// attaches it); nil for the sample.
+    @ObservationIgnored var onChange: (@MainActor (_ fetched: Bool) -> Void)? = nil
 
     /// What RootView presents: the sheet, unless the braindump sheet is up,
     /// since a view can't present over a sheet its own subtree put up.
@@ -231,9 +240,9 @@ final class SamplePlanner {
     }
 
     /// Does the account store a usable time zone? The reminder scan skips an
-    /// account whose zone is null or unusable (lib/reminders/scan.ts), so the
-    /// Remind sheet says so. The phone reads the zone and never writes it;
-    /// the web stores it when opened.
+    /// account whose zone is null or unusable (lib/reminders/scan.ts). Since
+    /// 2c the phone stores its own when it differs (NotificationHub, through
+    /// POST /api/app/timezone), as the web does when opened.
     var hasStoredZone: Bool {
         return Self.storedZone(settings.timezone) != nil
     }
@@ -644,6 +653,7 @@ final class SamplePlanner {
         let next = settingMembership(ids, item: item, member: member, at: member ? index : nil)
         guard next != ids else { return }
         setMembers(kind, containerId, next)
+        noteChanged()
     }
 
     /// The `itemIds` of the routine or season `containerId` names; nil when
@@ -963,6 +973,7 @@ final class SamplePlanner {
         routines = payload.routines
         seasons = payload.seasons
         settings = payload.settings
+        snoozes = payload.snoozes ?? []
         writes = payload.writes
         typeLabels = Dictionary((payload.itemTypes ?? []).map { ($0.name, $0) },
                                 uniquingKeysWith: { first, _ in first })
@@ -970,6 +981,43 @@ final class SamplePlanner {
         loadError = nil
         if zoneChanged { refreshToday() }
         closeSheetIfItsItemIsGone()
+        noteChanged(fetched: true)
+    }
+
+    /// Says the notification plan's inputs may have moved (`onChange`).
+    func noteChanged(fetched: Bool = false) {
+        onChange?(fetched)
+    }
+
+    // MARK: Notification buttons (signed in only)
+
+    /// A notification's Done, on `dateStr`: ticks the item there if it still
+    /// wants doing (`notificationDoneIntent`), through the same optimistic
+    /// step and write as a row's tick. Answers false, sending nothing, when
+    /// there is nothing to do: no sync, no such item, or already done,
+    /// skipped or paused there. `settled` hears how a sent write ended.
+    func notificationDone(_ id: UUID, on dateStr: String, timeZone: String,
+                          settled: @escaping @MainActor (PlannerSync.Settled) -> Void) -> Bool {
+        guard let sync, let day = DayString(dateStr), let i = items.firstIndex(where: { $0.id == id }) else {
+            return false
+        }
+        let before = items[i]
+        let ctx = ActivationContext(timeZone: timeZone, routines: routines, seasons: seasons)
+        guard let intent = notificationDoneIntent(before, on: day, ctx) else { return false }
+        items[i] = applying(intent, to: before, on: day)
+        sync.enqueue(.complete(id: id, date: dateStr, done: intent.done, count: intent.count), snapshot: before,
+                     settled: settled)
+        return true
+    }
+
+    /// A notification's Snooze: the `snooze` write, which changes nothing
+    /// here. False, sending nothing, with no sync or no such item.
+    func notificationSnooze(_ id: UUID, on dateStr: String, minutes: Int, timeZone: String,
+                            settled: @escaping @MainActor (PlannerSync.Settled) -> Void) -> Bool {
+        guard let sync, item(id) != nil else { return false }
+        sync.enqueue(.snooze(id: id, date: dateStr, minutes: minutes, timeZone: timeZone), before: [:],
+                     settled: settled)
+        return true
     }
 
     /// Puts one subject back as PlannerSync's rebase found the server holds
@@ -994,6 +1042,7 @@ final class SamplePlanner {
             return
         }
         closeSheetIfItsItemIsGone()
+        noteChanged()
     }
 
     /// The first fetch failed: what the empty state says, with a retry.
