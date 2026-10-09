@@ -12,7 +12,7 @@ import { createServiceClient, resolveUserIdFromApiKey } from '@/lib/supabase-ser
  *
  * The iPhone's intents (lib/app-api.ts), run by the same code, so a tick here
  * moves the streak and reports to a live stake exactly as the phone's does. It
- * starts no recipes: the agent surface never reaches lib/recipes/
+ * starts no recipes: the agent surface never reaches the recipe runner
  * (tests/unit/mods-boundary.test.ts), as the PATCH routes' ticks never did. The PATCH routes' completedDates, skippedDates
  * and itemIds are whole-set replacements: an agent that sends back a list it
  * read short un-ticks or removes everything it left out. These verbs touch one
