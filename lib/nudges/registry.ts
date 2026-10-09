@@ -15,6 +15,14 @@ import { Flame, Sunrise, type LucideIcon } from 'lucide-react';
  */
 export const NUDGE_STREAKS_ON = 'streaks-on';
 export const NUDGE_RITUALS_INTRO = 'rituals-intro';
+/**
+ * The item panel's "Break it down" offer while AI is not set up (AI setup
+ * phase 2, lib/item-asks.ts `canOfferBreakDown`). Not a toast, so it has no
+ * row in NUDGES: it is the ✕ beside the offer, and closing it once hides the
+ * offer on every item and every device. Setting AI up shows the real button
+ * whatever this says.
+ */
+export const NUDGE_BREAK_IT_DOWN_OFFER = 'break-it-down-offer';
 
 export interface NudgeDef {
   /** Permanent id — the dismissed-set key and the stored value. Slug-shaped. */

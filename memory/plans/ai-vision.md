@@ -153,6 +153,20 @@ saved. Other instances can keep a cached registration for up to a minute
 (`CACHE_TTL_MS`). The browser's plugin chat token is dropped (`resetPluginTransport`), since it
 derives from the deleted key. Pairing again mints a new key.
 
+**Note 2026-10-09: Break it down before AI is set up (AI setup phase 2).** While the gate
+invites (`askInvite`), the item panel's Subtasks heading offers the same "Break it down" an
+item would get once something answers, unlit (a grey Split, nothing lime), and its press opens
+setup through `openSetup` instead of asking. Which items is `canOfferBreakDown`
+(`lib/item-asks.ts`), the real button's own item rule, so the two never disagree. Its ✕ is
+the one-time nudge `break-it-down-offer` (`lib/nudges/registry.ts`, no toast row): closed
+once, it is gone on every item and device, and it never shows before this account's
+dismissals have loaded. It shows only in the item panel (`offerSetup` on
+`ItemDetailSections`, passed by ItemDialog), never on `/item/[id]`, where no column or Ask
+tab can open. `openSetup` now closes an open item on the phone too: the item there is a
+drawer over the tabs, and the setup page switched to under it showed nothing. The setup
+column's Fix card now sends the saved model with a new key, as the pane's does. Open: after a
+connect the item is not reopened, so the real button is one tap back.
+
 **Status (2026-10-01): step 1, "Honest setup", SHIPPED (#355).** dsul ships no AI of
 its own any more: `process.env.OPENAI_API_KEY` is never read. Each user connects their own
 model in Settings → AI: OpenAI, Anthropic, Google Gemini, OpenRouter (sign-in or key) or any

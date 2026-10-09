@@ -1531,6 +1531,13 @@ describe('openSetup', () => {
       expect(railModeNow()).toBe('setup');
     });
 
+    it('phone: an item drawer on top closes, so the setup page is what shows', () => {
+      openItem();
+      expect(openSetup(true)).toBe(true);
+      expect(useUIStore.getState().activeDialog).toBeNull();
+      expect(useMobileNavStore.getState().activeTab).toBe('chat');
+    });
+
     it('phone: the Ask tab, which shows the setup page, and never a summon', () => {
       expect(openSetup(true)).toBe(true);
       expect(useMobileNavStore.getState().activeTab).toBe('chat');

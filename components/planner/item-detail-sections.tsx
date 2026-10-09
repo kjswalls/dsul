@@ -13,7 +13,11 @@ import { useAgentQuestion } from '@/hooks/use-agent-question';
 import { useAICapabilities } from '@/lib/ai-connection-store';
 import { assigneeLabel } from '@/lib/chat-utils';
 import { useProposalStore } from '@/lib/proposal-store';
-import { canBreakDown } from '@/lib/item-asks';
+import { canBreakDown, canOfferBreakDown } from '@/lib/item-asks';
+import { openSetup } from '@/lib/open-chat';
+import { NUDGE_BREAK_IT_DOWN_OFFER } from '@/lib/nudges/registry';
+import { useOneTimeNudge } from '@/hooks/use-one-time-nudge';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { ProposalCard } from '@/components/ai/proposal-card';
 import { ItemConversation } from '@/components/ai/item-conversation';
 import { useExtensionsStore } from '@/lib/extensions-store';
@@ -53,11 +57,13 @@ const SectionLabel = BandLabel;
 
 // ── Subtasks ─────────────────────────────────────────────────────────────────
 
-function SubtasksSection({ item }: { item: Item }) {
+function SubtasksSection({ item, offerSetup }: { item: Item; offerSetup: boolean }) {
   const { items, addTask, addTasksBulk, deleteTask, toggleTaskStatus } = usePlannerStore();
   const [title, setTitle] = useState('');
 
-  const { canPropose } = useAICapabilities();
+  const { canPropose, askInvite } = useAICapabilities();
+  const offerNudge = useOneTimeNudge(NUDGE_BREAK_IT_DOWN_OFFER);
+  const isMobile = useIsMobile();
   const requestProposal = useProposalStore((s) => s.request);
   // Scoped to THIS item, not global. The spinner renders on the surface that
   // asked, so a breakdown loading for another item must not grey out this
@@ -111,6 +117,18 @@ function SubtasksSection({ item }: { item: Item }) {
    */
   const breakable = canBreakDown(item, canPropose);
 
+  /**
+   * The same moment before any AI is set up: while the gate invites, the
+   * button is offered unlit and opens setup (the column, or the phone's setup
+   * page) instead of asking. Nothing in it is lime, since nothing answers yet.
+   * Its ✕ is a one-time nudge, so closing it once hides it on every item and
+   * device; `active` stays false until this account's dismissals have loaded,
+   * so it never flashes for someone who already closed it. Only where the
+   * column or the Ask tab can open (the item panel), never on /item/[id].
+   */
+  const offered =
+    offerSetup && !breakable && offerNudge.active && canOfferBreakDown(item, askInvite);
+
   return (
     <div ref={sectionRef} className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between gap-2">
@@ -127,6 +145,32 @@ function SubtasksSection({ item }: { item: Item }) {
             <Split className="h-2.5 w-2.5 text-ai" />
             Break it down
           </button>
+        )}
+        {offered && (
+          <span
+            data-testid="break-it-down-offer"
+            className="inline-flex items-center rounded-full border border-border text-[10px] font-medium text-muted-foreground"
+          >
+            <button
+              type="button"
+              onClick={() => openSetup(isMobile)}
+              data-testid="break-it-down-setup"
+              title="Set up AI to break this into small steps"
+              className="inline-flex items-center gap-1 rounded-l-full py-0.5 pr-1 pl-2 transition-colors hover:text-foreground"
+            >
+              <Split className="h-2.5 w-2.5" />
+              Break it down
+            </button>
+            <button
+              type="button"
+              onClick={offerNudge.dismiss}
+              data-testid="break-it-down-offer-close"
+              aria-label="Hide Break it down"
+              className="inline-flex items-center rounded-r-full py-0.5 pr-1.5 pl-0.5 transition-colors hover:text-foreground"
+            >
+              <X className="h-2.5 w-2.5" />
+            </button>
+          </span>
         )}
       </div>
 
@@ -742,8 +786,12 @@ export function ItemDetailSections({
   // Clearing folds Activity into a footer disclosure (ClearingFooter), so the
   // body stack omits it to avoid rendering the same feed twice.
   withActivity = true,
+  offerSetup = false,
 }: {
   item: Item;
+  /** True where AI setup can open from here (the item panel, on both shells),
+   *  so an item that could be broken down offers it before AI is set up. */
+  offerSetup?: boolean;
   /** ItemDialog's `conversation` prop: 'pinned' and 'transcript' draw the
    *  transcript only (the box is the host's), 'inline' brings its own box. */
   conversation?: 'pinned' | 'transcript' | 'inline' | 'none';
@@ -759,7 +807,7 @@ export function ItemDetailSections({
     // (subtask toggles, assign/unassign, send) — handles its own Enter. Without
     // this, Enter on a focused subtask checkbox saves-and-closes the panel.
     <div className="flex flex-col gap-4" data-sub-input>
-      {config.subtasks && <SubtasksSection item={item} />}
+      {config.subtasks && <SubtasksSection item={item} offerSetup={offerSetup} />}
       {config.agentAssignable && <AgentSection item={item} />}
       {heatmapOn && config.counters.streak && <HeatmapSection item={item} />}
       {withActivity && <ActivitySection itemId={item.id} />}

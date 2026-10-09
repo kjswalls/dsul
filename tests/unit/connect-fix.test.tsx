@@ -164,11 +164,10 @@ const works = (over: Partial<ModelConnectionView> = {}) => (body: Record<string,
 
 describe.each(['column', 'pane'] as const)('the mechanics, on the %s host', (host) => {
   /**
-   * What a new key for the saved Gemini connection sends: the column leaves the
-   * model to the route; the pane carries the saved one, so a fix never resets it.
+   * What a new key for the saved Gemini connection sends: the saved model, on
+   * both hosts, so a fix never resets it.
    */
-  const toGemini = (apiKey: string) =>
-    host === 'pane' ? { provider: 'gemini', apiKey, model: 'gemini-flash-latest' } : { provider: 'gemini', apiKey };
+  const toGemini = (apiKey: string) => ({ provider: 'gemini', apiKey, model: 'gemini-flash-latest' });
 
   it('a sure paste of the saved provider’s key checks itself, and fixes it in place', async () => {
     let release: (r: Response) => void = () => {};
@@ -438,7 +437,8 @@ describe('the column', () => {
 
       expect(screen.getByLabelText('New OpenRouter key')).toBe(box());
       await paste(box(), OPENROUTER);
-      expect(puts).toEqual([{ provider: 'openrouter', apiKey: OPENROUTER }]);
+      // The saved model rides along, as on the pane.
+      expect(puts).toEqual([{ provider: 'openrouter', apiKey: OPENROUTER, model: 'openai/gpt-4o-mini' }]);
       expect(useAIConnectionStore.getState().justConnected).toBeNull();
     });
   });
