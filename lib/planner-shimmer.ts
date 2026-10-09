@@ -74,8 +74,12 @@ export const SHIMMER = {
    * and the plain ease up is a small step, not a dip and a pop.
    */
   inkMs: 360,
-  /** One pass of the band, shared with the sync line's bar. */
-  periodMs: 1200,
+  /**
+   * One pass of the band, shared with the sync line's bar. The band crosses
+   * the viewport in 85% of it (the sweep's 5% to 90% keyframes), about 2s:
+   * Kirby found the 1.2s pass, which crossed in 0.58s, too quick (2026-10-09).
+   */
+  periodMs: 2400,
   /** Passes before the band stops and the ink holds at the waiting level. */
   passes: 3,
   /** The landing's light, crossing the viewport left to right. */

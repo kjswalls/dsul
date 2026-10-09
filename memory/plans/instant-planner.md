@@ -969,7 +969,7 @@ shimmer below), and it is `aria-hidden` (SettleHost makes the one announcement).
 - Done ends on the `planner-sync-done` `animationend`. A 420ms timer, started two frames
   after the landing, is only the backstop.
 - Its travelling bar is the shimmer's band: the same keyframe stops in viewport terms, the
-  same 1.2s period, linear, from the same 300ms start, as wide as the band, offset by the
+  same 2.4s period, linear, from the same 300ms start, as wide as the band, offset by the
   track's own left edge (`--planner-shimmer-x`, measured in a layout effect and on resize).
   It crosses the canvas under the light crossing the titles, and goes on alone once the
   shimmer's three passes are spent.
@@ -1097,7 +1097,7 @@ the light, now has the ease.
 `clamp(32px, 9vw, 140px)`: wide on a desktop, a sliver on a phone) offset by
 `--planner-shimmer-x`, the title's own left edge in the viewport, which the module writes
 when the title's sweep starts and again on a resize or a scroll. So every title is a
-window onto one band, and the sync line's bar is another: one clock, one period (1.2s,
+window onto one band, and the sync line's bar is another: one clock, one period (2.4s since 2026-10-09, was 1.2s;
 linear). The bar is painted the titles' way, a full-track box whose background is the
 band, moved by the same `background-position` keyframes (`planner-sync-travel` and
 `planner-shimmer-sweep` have the same body) offset by the track's own
@@ -1133,7 +1133,7 @@ about 0.95s, so a 0.6 to 1.1s load sees it cross the canvas titles. Filmed on th
 1800 at 1.07s. `background-attachment: fixed` would draw the same picture with no
 measuring, but it re-rasters the planner at about 11 frames a second.
 
-**The cap.** Three passes (`3 both`, done 3.9s after the preview commits), then the band
+**The cap.** Three passes (`3 both`, done 7.5s after the preview commits), then the band
 stops and the ink holds at the waiting level while the sync line goes on syncing.
 
 **Away.** A waiting title outside the viewport is marked `data-shimmer-away` by the
