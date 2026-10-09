@@ -465,3 +465,27 @@ describe('checkConnection: OpenRouter free models', () => {
     expect(paid.asked).toEqual(['a:free', 'a:free']);
   });
 });
+
+describe('a model that won’t stream for this account', () => {
+  it('fails, after asking the next default once when it was the default', async () => {
+    const s = stub({ verify: listResult(['new', 'old']), pings: ['stream_refused', 'stream_refused'] });
+    const out = await checkConnection(s.adapter, creds(), opts());
+    expect(s.asked).toEqual(['new', 'old']);
+    expect(out.ping.ok).toBe(false);
+    expect(!out.ping.ok && out.ping.error.kind).toBe('stream_refused');
+  });
+
+  it('saves the next default when it answers', async () => {
+    const s = stub({ verify: listResult(['new', 'old']), pings: ['stream_refused', null] });
+    const out = await checkConnection(s.adapter, creds(), opts());
+    expect(s.asked).toEqual(['new', 'old']);
+    expect(out).toMatchObject({ model: 'old', ping: { ok: true } });
+  });
+
+  it('a model the person picked fails at once, with no second ask', async () => {
+    const s = stub({ verify: listResult(['new', 'old']), pings: ['stream_refused'] });
+    const out = await checkConnection(s.adapter, creds(), opts({ modelHint: 'old' }));
+    expect(s.asked).toEqual(['old']);
+    expect(!out.ping.ok && out.ping.error.kind).toBe('stream_refused');
+  });
+});

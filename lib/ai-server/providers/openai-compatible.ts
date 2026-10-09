@@ -23,7 +23,7 @@ import type {
 } from 'openai/resources/chat/completions';
 import { isModelId, type ModelProviderId } from '@/lib/ai-types';
 import { hintingFetch } from '../error-hints';
-import { ProviderError, classifyStatus, isDeadlineAbort, toProviderErrorFor } from '../errors';
+import { ProviderError, classifyStatus, isDeadlineAbort, isStreamRefusal, toProviderErrorFor } from '../errors';
 import { readCappedJson } from '../stream';
 import { CUSTOM_RESPONSE_CAPS, guardedFetch } from '../url-policy';
 import type {
@@ -425,11 +425,11 @@ export function createOpenAICompatibleAdapter(id: OpenAICompatibleProviderId): P
 
   /**
    * The check's test question (lib/ai-server/check.ts): streamed, as Ask
-   * streams, so it exercises the request shape Ask sends. It does not make
-   * the check fail a model that only refuses a streamed request: that 400
-   * reads as `bad_request`, which the check passes as the model's business,
-   * not the key's. One output token, under the same token parameter chat
-   * sends, and read to the end, since a stream can still fail after it starts.
+   * streams, so it exercises the request shape Ask sends. A model that only
+   * refuses a streamed request rejects as `stream_refused` (isStreamRefusal),
+   * which the check does not pass: Ask would fail on every send. One output
+   * token, under the same token parameter chat sends, and read to the end,
+   * since a stream can still fail after it starts.
    */
   async function ping(creds: ProviderCredentials, model: string, signal: AbortSignal): Promise<void> {
     const client = makeClient(creds, META);
@@ -443,6 +443,7 @@ export function createOpenAICompatibleAdapter(id: OpenAICompatibleProviderId): P
       const stream = await client.chat.completions.create(params, { signal });
       for await (const chunk of stream) void chunk;
     } catch (err) {
+      if (isStreamRefusal(err)) throw new ProviderError('stream_refused', 400);
       throw fail(err, 'call', signal);
     }
     // The SDK ends a stream quietly when its signal aborts: that is no answer.

@@ -46,7 +46,13 @@ export type ProviderErrorKind =
   /** A daily quota is used up (error-hints.ts); `resetAt` says when it lifts, when known. */
   | 'daily_limit'
   /** The provider won't serve requests from where dsul's server is. */
-  | 'region';
+  | 'region'
+  /**
+   * The model answers, but not as a stream, which is how Ask asks: OpenAI's
+   * newer models refuse to stream for an organization it has not verified.
+   * Read only from the check's test question (isStreamRefusal).
+   */
+  | 'stream_refused';
 
 /**
  * Our copy for each kind. No em dashes. `aborted` is never shown.
@@ -69,6 +75,7 @@ export type ProviderErrorKind =
 export const USER_MESSAGES: Record<ProviderErrorKind, string> = {
   ...MODEL_ERROR_COPY,
   model_required: "This server doesn't list its models. Enter the model name to use.",
+  stream_refused: "Your provider won't stream answers from this model for your account. Pick another model in Settings.",
   aborted: '',
 };
 
@@ -122,13 +129,23 @@ export function classifyStatus(
   return 'upstream';
 }
 
-function field(err: unknown, key: 'status' | 'code' | 'type' | 'name' | 'cause'): unknown {
+function field(err: unknown, key: 'status' | 'code' | 'type' | 'name' | 'cause' | 'param'): unknown {
   if (typeof err !== 'object' || err === null) return undefined;
   try {
     return (err as Record<string, unknown>)[key];
   } catch {
     return undefined;
   }
+}
+
+/**
+ * A 400 that names `stream` as the parameter it refused: the model would
+ * answer, but not as a stream (OpenAI says so for an organization it has not
+ * verified, on its newer models). Read from the error's fixed `.status` and
+ * `.param` fields only, never its message.
+ */
+export function isStreamRefusal(err: unknown): boolean {
+  return field(err, 'status') === 400 && field(err, 'param') === 'stream';
 }
 
 /** A ProviderError given directly, or carried as `.cause` (a few levels deep). */
@@ -229,12 +246,13 @@ export function toProviderErrorFor(
   return e;
 }
 
-/** 'aborted' → 'network', 'model_required' → 'bad_model'. */
+/** 'aborted' → 'network', 'model_required' and 'stream_refused' → 'bad_model'. */
 export function toChatErrorCode(kind: ProviderErrorKind): ChatErrorCode {
   switch (kind) {
     case 'aborted':
       return 'network';
     case 'model_required':
+    case 'stream_refused':
       return 'bad_model';
     default:
       return kind;
