@@ -2,10 +2,10 @@ import Foundation
 import Testing
 import DsulCore
 
-// The web's own answers for lib/reminders/snooze.ts `snoozeFireInstant`,
-// checked against ReminderSnooze.swift: the snooze's day gate (23:40 rings the
-// same day, 23:50 is past midnight and rings never), the zone's own day, and
-// what it cannot place. tests/unit/notification-plan-fixtures.test.ts writes
+// The web's own answers for lib/reminders/snooze.ts `snoozeFireInstant` and
+// `ringsOnDay`, checked against ReminderSnooze.swift: the snooze's day gate
+// (23:40 rings the same day, 23:50 is past midnight and rings never), the
+// zone's own day, and what it cannot place. tests/unit/notification-plan-fixtures.test.ts writes
 // tests/fixtures/day/notification-plan.json, whose `snoozeFireInstant` section
 // this reads; never edit it by hand (UPDATE_FIXTURES=1).
 //
@@ -69,6 +69,29 @@ private func loadFixture(_ here: String = #filePath) throws -> Fixture {
             snoozeFireInstant(nowMs: early.nowMs, minutes: early.minutes, zone: early.timeZone, dayStr: early.dayStr)
                 == early.nowMs + early.minutes * 60_000
         )
+    }
+
+    /// lib/reminders/snooze.ts `ringsOnDay`, the same gate for an instant
+    /// already chosen (a snooze the planner payload carries): the web's own
+    /// unit cases (tests/unit/reminders-snooze.test.ts).
+    @Test func ringsOnDayIsTheSameGate() throws {
+        let ny = "America/New_York"
+        func at(_ iso: String) throws -> Int {
+            let date = try #require(ISO8601DateFormatter().date(from: iso), "\(iso)")
+            return Int(date.timeIntervalSince1970) * 1000
+        }
+        #expect(ringsOnDay(fireMs: try at("2026-08-11T03:59:00Z"), zone: ny, dayStr: "2026-08-10"))  // 23:59
+        #expect(!ringsOnDay(fireMs: try at("2026-08-11T04:00:00Z"), zone: ny, dayStr: "2026-08-10"))  // midnight
+        #expect(!ringsOnDay(fireMs: try at("2026-08-11T04:10:00Z"), zone: ny, dayStr: "2026-08-10"))  // 00:10
+        #expect(ringsOnDay(fireMs: try at("2026-08-11T04:10:00Z"), zone: ny, dayStr: "2026-08-11"))
+        // What it cannot place.
+        #expect(!ringsOnDay(fireMs: try at("2026-08-10T12:00:00Z"), zone: "Not/AZone", dayStr: "2026-08-10"))
+        #expect(!ringsOnDay(fireMs: try at("2026-08-10T12:00:00Z"), zone: ny, dayStr: "2026-8-10"))
+        // snoozeFireInstant is the length, then this gate.
+        for c in try loadFixture().snoozeFireInstant where c.minutes > 0 {
+            let fire = c.nowMs + c.minutes * 60_000
+            #expect((ringsOnDay(fireMs: fire, zone: c.timeZone, dayStr: c.dayStr) ? fire : nil) == c.expected, "\(c.name)")
+        }
     }
 
     /// What Swift's Int could do that the web's number can't: overflow. It is

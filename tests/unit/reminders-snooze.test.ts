@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { snoozeFireInstant } from '@/lib/reminders/snooze';
+import { ringsOnDay, snoozeFireInstant } from '@/lib/reminders/snooze';
 import { SNOOZE_MINUTES } from '@/lib/reminders/channels/push';
 
 const NY = 'America/New_York';
@@ -52,5 +52,22 @@ describe('snoozeFireInstant', () => {
     expect(snoozeFireInstant(tap, 0, NY, '2026-08-10')).toBeNull();
     expect(snoozeFireInstant(tap, -5, NY, '2026-08-10')).toBeNull();
     expect(snoozeFireInstant(Number.NaN, SNOOZE_MINUTES, NY, '2026-08-10')).toBeNull();
+  });
+});
+
+// The same gate for a snooze whose instant is already fixed: one the planner
+// payload carries, written by the web's Snooze with no gate of its own.
+describe('ringsOnDay', () => {
+  it('is snoozeFireInstant\'s day gate, for an instant already chosen', () => {
+    expect(ringsOnDay(at('2026-08-11T03:59:00Z'), NY, '2026-08-10')).toBe(true); // 23:59
+    expect(ringsOnDay(at('2026-08-11T04:00:00Z'), NY, '2026-08-10')).toBe(false); // midnight
+    expect(ringsOnDay(at('2026-08-11T04:10:00Z'), NY, '2026-08-10')).toBe(false); // 00:10, the 23:55 tap
+    expect(ringsOnDay(at('2026-08-11T04:10:00Z'), NY, '2026-08-11')).toBe(true);
+  });
+
+  it('answers false for what it cannot place', () => {
+    expect(ringsOnDay(Number.NaN, NY, '2026-08-10')).toBe(false);
+    expect(ringsOnDay(at('2026-08-10T12:00:00Z'), 'Not/AZone', '2026-08-10')).toBe(false);
+    expect(ringsOnDay(at('2026-08-10T12:00:00Z'), NY, '2026-8-10')).toBe(false);
   });
 });

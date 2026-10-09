@@ -10,8 +10,9 @@ import {
   type PlanInput,
 } from '@/lib/reminders/plan';
 import { snoozeFireInstant } from '@/lib/reminders/snooze';
-import { instantOf } from '@/lib/reminders/clock';
+import { instantOf, localClock, weekdayOf } from '@/lib/reminders/clock';
 import { EOD_COPY, reminderCopy } from '@/lib/reminders/copy';
+import { occursOn } from '@/lib/reminders/due';
 import { SNOOZE_MINUTES } from '@/lib/reminders/channels/push';
 import type { Item, Routine, Season } from '@/lib/planner-types';
 import { NEVER_SCOLDS } from './support/copy-contract';
@@ -67,6 +68,8 @@ const task = (n: number, title: string, over: Record<string, unknown> = {}): Ite
 
 const NY = 'America/New_York';
 const LA = 'America/Los_Angeles';
+/** Chile springs forward at local midnight, outside the 01:00–03:59 band: 2026-09-06 has no 00:30. */
+const SANTIAGO = 'America/Santiago';
 /** 2026-10-05 is a Monday. */
 const MON = '2026-10-05';
 
@@ -140,6 +143,7 @@ function buildPlans(): PlanCase[] {
   return [
     // Standing triggers.
     make('daily: one standing calendar trigger', { items: [vitamins({ streak: 12 })] }),
+    make('a streak past a month: relevance stops at 1', { items: [vitamins({ streak: 45 })] }),
     make('a cue already past today rings first tomorrow', { items: [vitamins()], nowMs: wall(MON, '09:00') }),
     make('legacy weekly: one weekday', { items: [vitamins({ repeatFrequency: 'weekly', repeatDays: [2] })] }),
     make('custom three weekdays: one slot each', { items: [vitamins({ repeatFrequency: 'custom', repeatDays: [5, 1, 3] })] }),
@@ -165,9 +169,22 @@ function buildPlans(): PlanCase[] {
     }),
     make('a cue time in 01:00–03:59: one-offs', { items: [vitamins({ reminderTime: '03:15' })], nowMs: wall('2026-08-10', '12:00') }),
     make('04:00 is standing again', { items: [vitamins({ reminderTime: '04:00' })] }),
+    make('00:59 is standing: the band starts at 01:00', { items: [vitamins({ reminderTime: '00:59' })] }),
 
-    // Handled today (decision 23).
-    make('done before its cue: an interval at the next wanted cue', { items: [vitamins({ completedDates: [MON] })] }),
+    // Handled today (decision 23): held slots. No repeating interval: one
+    // cannot first ring at the cue and then every day, so a held daily stands
+    // on its other six weekdays, and a lone weekday or month day is one-offs.
+    make('done before its cue: six weekdays standing, today\'s a one-off a week out', {
+      items: [vitamins({ completedDates: [MON] })],
+    }),
+    make('done at 08:00 before a 21:00 cue: every ring on its minute', {
+      items: [vitamins({ reminderTime: '21:00', streak: 12, completedDates: [MON] })],
+      nowMs: wall(MON, '08:00'),
+    }),
+    make('done before its cue without room for the seven: tomorrow and the day after', {
+      items: [vitamins({ completedDates: [MON] })],
+      budget: 2,
+    }),
     make('done, planned after its cue: the calendar restored', {
       items: [vitamins({ completedDates: [MON] })],
       nowMs: wall(MON, '07:31'),
@@ -175,11 +192,14 @@ function buildPlans(): PlanCase[] {
     make('skipped before its cue', { items: [vitamins({ skippedDates: [MON] })] }),
     make('tallied to its target', { items: [vitamins({ timesPerDay: 2, dailyCounts: { [MON]: 2 } })] }),
     make('tallied below its target: standing', { items: [vitamins({ timesPerDay: 2, dailyCounts: { [MON]: 1 } })] }),
-    make('paused until Thursday: an interval at its return', {
+    make('paused until Thursday: standing from its return, one-offs a week on for the rest', {
       items: [vitamins({ pausedAt: '2026-10-01T12:00:00Z', pausedUntil: '2026-10-08' })],
     }),
+    make('paused until January: the next wanted cue is looked for a year ahead', {
+      items: [vitamins({ pausedAt: '2026-10-01T12:00:00Z', pausedUntil: '2027-01-03' })],
+    }),
     make('paused with no end: nothing', { items: [vitamins({ pausedAt: '2026-10-01T12:00:00Z' })] }),
-    make('a season starting Wednesday: an interval at its start', {
+    make('a season starting Wednesday: standing from its start', {
       items: [vitamins()],
       seasons: [season('later', { startsOn: '2026-10-07', itemIds: [uid(1001)] })],
     }),
@@ -194,10 +214,24 @@ function buildPlans(): PlanCase[] {
     make('a split, today handled: that weekday a week out', {
       items: [vitamins({ repeatFrequency: 'custom', repeatDays: [1, 3], completedDates: [MON] })],
     }),
+    make('Mon, Wed and Fri, done Monday at 06:00 before a 21:00 cue', {
+      items: [vitamins({ repeatFrequency: 'custom', repeatDays: [1, 3, 5], reminderTime: '21:00', completedDates: [MON] })],
+    }),
+    make('one weekday, done today: next week and the week after', {
+      items: [vitamins({ repeatFrequency: 'weekly', repeatDays: [1], completedDates: [MON] })],
+    }),
+    make('monthly on the 15th, done today: the one-off series', {
+      items: [vitamins({ repeatFrequency: 'monthly', repeatMonthDay: 15, completedDates: ['2026-10-15'] })],
+      nowMs: wall('2026-10-15', '06:00'),
+    }),
+    make('monthly on the 15th, done today, room for one', {
+      items: [vitamins({ repeatFrequency: 'monthly', repeatMonthDay: 15, completedDates: ['2026-10-15'] })],
+      nowMs: wall('2026-10-15', '06:00'),
+      budget: 1,
+    }),
     make('done today: its delivered cues withdrawn, an off day left alone', {
       items: [vitamins({ completedDates: [MON] }), habit(1004, 'Long run', { repeatFrequency: 'weekends' })],
     }),
-    make('the interval rounds up to whole seconds', { items: [vitamins({ completedDates: [MON] })], nowMs: at6 + 400 }),
 
     // Snoozes.
     make('a snooze beside the standing trigger, its cue withdrawn', {
@@ -229,6 +263,16 @@ function buildPlans(): PlanCase[] {
       snoozes: [{ itemId: uid(1001), until: '2026-10-05T11:50:00+00:00', date: MON }],
       localSentKeys: [`${MON}T07:30`],
     }),
+    make('a snooze maturing past midnight: nothing', {
+      items: [vitamins({ reminderTime: '23:30' })],
+      nowMs: wall(MON, '23:56'),
+      snoozes: [{ itemId: uid(1001), until: iso(wall('2026-10-06', '00:10')), date: MON }],
+    }),
+    make('a snooze ringing at 23:59: armed', {
+      items: [vitamins({ reminderTime: '23:30' })],
+      nowMs: wall(MON, '23:50'),
+      snoozes: [{ itemId: uid(1001), until: until('23:59'), date: MON }],
+    }),
     make('a snooze on something done meanwhile: ignored and withdrawn', {
       items: [vitamins({ completedDates: [MON] })],
       nowMs: wall(MON, '07:35'),
@@ -243,6 +287,8 @@ function buildPlans(): PlanCase[] {
       localSentKeys: [`${MON}T07:30`],
     }),
     make('the window closed: no catch-up', { items: [vitamins()], nowMs: wall(MON, '08:00') }),
+    make('a ten-minute grace, closed at 07:45: no catch-up', { items: [vitamins()], nowMs: wall(MON, '07:45'), graceMinutes: 10 }),
+    make('an hour\'s grace, still open at 08:15: rings now', { items: [vitamins()], nowMs: wall(MON, '08:15'), graceMinutes: 60 }),
     make('handled: no catch-up', { items: [vitamins({ completedDates: [MON] })], nowMs: wall(MON, '07:40') }),
     make('never beside a live snooze', {
       items: [vitamins()],
@@ -252,9 +298,19 @@ function buildPlans(): PlanCase[] {
 
     // The review.
     make('review: one standing trigger', { eod, remindersEnabled: false }),
-    make('review done before its hour: an interval, never absent', {
+    make('review done before its hour: standing on the other six days, never absent', {
       eod: { ...eod, lastReviewDate: MON },
       nowMs: wall(MON, '20:00'),
+    }),
+    make('review done at 08:00 before its hour: every ring at the hour', {
+      eod: { ...eod, lastReviewDate: MON },
+      nowMs: wall(MON, '08:00'),
+    }),
+    make('review done before its hour, room for one: tomorrow\'s one-off and a note', {
+      eod: { ...eod, lastReviewDate: MON },
+      nowMs: wall(MON, '20:00'),
+      items: [vitamins()],
+      budget: 1,
     }),
     make('review done after its hour: the calendar, first ringing tomorrow', {
       eod: { ...eod, lastReviewDate: MON },
@@ -289,6 +345,17 @@ function buildPlans(): PlanCase[] {
       timezone: LA,
       items: [vitamins({ reminderTime: '07:30' })],
       nowMs: wall('2026-03-07', '22:00', LA),
+    }),
+    make('Santiago, a standing 00:30 across its midnight spring-forward: a note', {
+      timezone: SANTIAGO,
+      items: [vitamins({ reminderTime: '00:30' })],
+      nowMs: wall('2026-09-05', '12:00', SANTIAGO),
+    }),
+    make('Santiago, a review at 0:30 across the same night: a note', {
+      timezone: SANTIAGO,
+      eod: { ...eod, time: '0:30' },
+      remindersEnabled: false,
+      nowMs: wall('2026-09-05', '12:00', SANTIAGO),
     }),
     make('Tokyo: the day is Tokyo\'s', {
       timezone: 'Asia/Tokyo',
@@ -414,7 +481,7 @@ describe('notification plan fixtures shared with DsulCore', () => {
   it('the cases reach every rule', () => {
     const requests = fixture.plans.flatMap((c) => c.expected.requests);
     expect(new Set(requests.map((r) => r.kind))).toEqual(new Set(['cue', 'snoozed', 'catchUp', 'eod']));
-    expect(new Set(requests.map((r) => r.trigger.type))).toEqual(new Set(['calendar', 'interval', 'at', 'afterMs', 'now']));
+    expect(new Set(requests.map((r) => r.trigger.type))).toEqual(new Set(['calendar', 'at', 'afterMs', 'now']));
     const notes = fixture.plans.flatMap((c) => c.expected.notes);
     expect(new Set(notes.map((n) => n.code))).toEqual(new Set(['bad-zone', 'bad-time', 'dst-gap', 'over-budget']));
     expect(fixture.plans.some((c) => c.expected.withdraw.length > 0)).toBe(true);
@@ -425,9 +492,62 @@ describe('notification plan fixtures shared with DsulCore', () => {
     const full = fixture.plans.find((c) => c.name === '61 daily habits: 60 and a note')!;
     expect(full.expected.requests).toHaveLength(NOTIFICATION_BUDGET);
     expect(full.expected.notes).toEqual([{ code: 'over-budget', itemId: uid(1160), kept: 0 }]);
-    // The snooze day gate, both ways.
+    // The snooze day gate, both ways, and the same gate on a snooze the
+    // payload carries.
     const gate = (n: string) => fixture.snoozeFireInstant.find((c) => c.name === n)!.expected;
     expect(gate('23:50 is past midnight: null')).toBeNull();
     expect(gate('23:40 rings the same day')).not.toBeNull();
+    const byName = (n: string) => fixture.plans.find((c) => c.name === n)!;
+    const kinds = (n: string) => byName(n).expected.requests.map((r) => r.kind);
+    expect(kinds('a snooze maturing past midnight: nothing')).toEqual(['cue']);
+    expect(kinds('a snooze ringing at 23:59: armed')).toContain('snoozed');
+    // A grace other than the default, closing the window and keeping it open.
+    expect(kinds('a ten-minute grace, closed at 07:45: no catch-up')).not.toContain('catchUp');
+    expect(kinds('an hour\'s grace, still open at 08:15: rings now')).toContain('catchUp');
+    // A spring-forward gap found by a standing slot's own search, and by the
+    // review's outside the small-hours band, not only by a one-off's.
+    const standingGap = byName('Santiago, a standing 00:30 across its midnight spring-forward: a note').expected;
+    expect(standingGap.notes).toEqual([{ code: 'dst-gap', itemId: uid(1001), dateStr: '2026-09-06', at: '00:30' }]);
+    expect(standingGap.requests.map((r) => r.trigger.type)).toEqual(['calendar']);
+    expect(byName('Santiago, a review at 0:30 across the same night: a note').expected.notes).toEqual([
+      { code: 'dst-gap', dateStr: '2026-09-06', at: '00:30' },
+    ]);
+    // The band's lower edge, and a next wanted cue past the first two months.
+    expect(byName('00:59 is standing: the band starts at 01:00').expected.requests.map((r) => r.trigger.type)).toEqual(['calendar']);
+    const away = byName('paused until January: the next wanted cue is looked for a year ahead');
+    expect(away.expected.requests.length).toBeGreaterThan(0);
+    expect(away.expected.requests[0].firesAt - away.input.nowMs).toBeGreaterThan(60 * 86_400_000);
+    // The relevance clamp: a streak past RELEVANCE_FULL_STREAK still scores 1.
+    expect(byName('a streak past a month: relevance stops at 1').expected.requests.map((r) => r.relevance)).toEqual([1]);
+    // A held lone day of the month is the one-off series, never a repeat.
+    expect(byName('monthly on the 15th, done today: the one-off series').expected.requests.map((r) => r.trigger.type)).toEqual(['at', 'at']);
+  });
+
+  // Every request rings on its item's cue minute (or the review's hour), on a
+  // day the item occurs: what a drifting repeating interval broke. A calendar
+  // trigger rings at its own hour and minute on its own days, so holding its
+  // first ring and its components here holds every ring.
+  it('every request rings at its own minute, on a day its item occurs', () => {
+    for (const { name, input, expected } of fixture.plans) {
+      for (const r of expected.requests) {
+        if (r.trigger.type === 'afterMs' || r.trigger.type === 'now') continue;
+        const where = `${name}: ${r.id}`;
+        const item = input.items.find((i) => i.id === r.itemId);
+        const at = item && 'reminderTime' in item ? item.reminderTime : undefined;
+        const want = r.kind === 'eod' ? input.eod!.time.padStart(5, '0') : at;
+        const got = r.trigger.type === 'at'
+          ? r.trigger.hhmm
+          : `${String(r.trigger.hour).padStart(2, '0')}:${String(r.trigger.minute).padStart(2, '0')}`;
+        expect(got, where).toBe(want);
+        const clock = localClock(new Date(r.firesAt), input.timezone);
+        expect(clock.nowMinutes, where).toBe(Number(got.slice(0, 2)) * 60 + Number(got.slice(3)));
+        if (r.trigger.type === 'at') expect(r.trigger.dateStr, where).toBe(clock.dateStr);
+        if (r.trigger.type === 'calendar' && r.trigger.weekday !== undefined) {
+          expect(weekdayOf(clock.dateStr) + 1, where).toBe(r.trigger.weekday);
+        }
+        if (item) expect(occursOn(item, clock.dateStr, input.timezone), `${where} on ${clock.dateStr}`).toBe(true);
+        if (r.kind === 'eod') expect(clock.dateStr, where).not.toBe(input.eod!.lastReviewDate);
+      }
+    }
   });
 });

@@ -39,13 +39,28 @@ export function snoozeFireInstant(
   dayStr: string,
 ): number | null {
   if (!Number.isFinite(nowMs) || !Number.isFinite(minutes) || minutes <= 0) return null
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dayStr)) return null
   const fireMs = nowMs + minutes * 60_000
-  let fireDay: string
+  return ringsOnDay(fireMs, zone, dayStr) ? fireMs : null
+}
+
+/**
+ * Does a snooze that rings at `fireMs` still ring on `dayStr` in `zone`?
+ *
+ * The day gate alone, for a snooze whose instant is already fixed: one the
+ * planner payload carries (`reminder_snooze_until/date`, written by the web's
+ * Snooze or another device's), which plan.ts arms on this phone. That instant
+ * is the tap plus SNOOZE_MINUTES with no gate of its own (/api/reminders/act
+ * stores it as is), so a web Snooze tapped at 23:55 arrives as 00:10 the next
+ * day and must expire here exactly as snoozeFireInstant's would. False for
+ * anything it cannot place: an instant that is not finite, a zone the runtime
+ * does not know, or a day not shaped yyyy-MM-dd.
+ */
+export function ringsOnDay(fireMs: number, zone: string, dayStr: string): boolean {
+  if (!Number.isFinite(fireMs)) return false
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dayStr)) return false
   try {
-    fireDay = localClock(new Date(fireMs), zone).dateStr
+    return localClock(new Date(fireMs), zone).dateStr === dayStr
   } catch {
-    return null
+    return false
   }
-  return fireDay === dayStr ? fireMs : null
 }

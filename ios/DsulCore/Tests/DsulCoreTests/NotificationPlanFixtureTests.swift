@@ -52,8 +52,6 @@ private struct TriggerFixture: Decodable, Sendable, Equatable, CustomStringConve
     var weekday: Int?
     var day: Int?
     var repeats: Bool?
-    var seconds: Int?
-    var anchorAt: Int?
     var dateStr: String?
     var hhmm: String?
     var ms: Int?
@@ -61,7 +59,7 @@ private struct TriggerFixture: Decodable, Sendable, Equatable, CustomStringConve
     var description: String {
         let keys: [(String, Any?)] = [
             ("hour", hour), ("minute", minute), ("weekday", weekday), ("day", day), ("repeats", repeats),
-            ("seconds", seconds), ("anchorAt", anchorAt), ("dateStr", dateStr), ("hhmm", hhmm), ("ms", ms),
+            ("dateStr", dateStr), ("hhmm", hhmm), ("ms", ms),
         ]
         return type + "(" + keys.compactMap { k, v in v.map { "\(k): \($0)" } }.joined(separator: ", ") + ")"
     }
@@ -217,10 +215,6 @@ private func fixture(_ t: PlannedTrigger) -> TriggerFixture {
         out.weekday = weekday
         out.day = day
         out.repeats = true
-    case let .interval(seconds, anchorAt):
-        out.seconds = seconds
-        out.repeats = true
-        out.anchorAt = anchorAt
     case let .at(dateStr, hhmm):
         out.dateStr = dateStr
         out.hhmm = hhmm
@@ -355,7 +349,7 @@ private func fixture(_ n: PlanNote) -> NoteFixture {
         let plans = try loadFixture().plans
         let requests = plans.flatMap(\.expected.requests)
         #expect(Set(requests.map(\.kind)) == Set(PlannedKind.allCases.map(\.rawValue)))
-        #expect(Set(requests.map(\.trigger.type)) == ["calendar", "interval", "at", "afterMs", "now"])
+        #expect(Set(requests.map(\.trigger.type)) == ["calendar", "at", "afterMs", "now"])
         #expect(Set(plans.flatMap(\.expected.notes).map(\.code)) == ["bad-zone", "bad-time", "dst-gap", "over-budget"])
         #expect(plans.contains { !$0.expected.withdraw.isEmpty })
         #expect(requests.contains { $0.trigger.type == "calendar" && $0.trigger.weekday != nil })
@@ -390,6 +384,81 @@ private func fixture(_ n: PlanNote) -> NoteFixture {
 
         let fall = try plan("Los Angeles 2026-11-01 01:30: exactly one instant")
         #expect(fall.requests.filter { $0.dateStr == "2026-11-01" }.count == 1)
+
+        // The snooze day gate on a snooze the payload carries, both ways.
+        #expect(try plan("a snooze maturing past midnight: nothing").requests.map(\.kind) == [.cue])
+        #expect(try plan("a snooze ringing at 23:59: armed").requests.map(\.kind).contains(.snoozed))
+
+        // A grace other than the default, closing the window and keeping it open.
+        #expect(!(try plan("a ten-minute grace, closed at 07:45: no catch-up").requests.map(\.kind).contains(.catchUp)))
+        #expect(try plan("an hour's grace, still open at 08:15: rings now").requests.map(\.kind).contains(.catchUp))
+
+        // A spring-forward gap found by a standing slot's own search, and by
+        // the review's outside the small-hours band.
+        let santiago = try plan("Santiago, a standing 00:30 across its midnight spring-forward: a note")
+        let gym = try #require(UUID(uuidString: "00000000-0000-4000-8000-0000000003e9"))
+        #expect(santiago.notes == [.dstGap(itemId: gym, dateStr: "2026-09-06", at: "00:30")])
+        #expect(santiago.requests.map(\.trigger.type) == ["calendar"])
+        #expect(try plan("Santiago, a review at 0:30 across the same night: a note").notes
+            == [.dstGap(itemId: nil, dateStr: "2026-09-06", at: "00:30")])
+
+        // The band's lower edge, and a next wanted cue past the first two months.
+        #expect(try plan("00:59 is standing: the band starts at 01:00").requests.map(\.trigger.type) == ["calendar"])
+        let awayCase = try #require(plans.first { $0.name == "paused until January: the next wanted cue is looked for a year ahead" })
+        let away = planNotifications(try planInput(awayCase.input, awayCase.name))
+        let firstAway = try #require(away.requests.first)
+        #expect(firstAway.firesAt - awayCase.input.nowMs > 60 * 86_400_000)
+
+        // The relevance clamp: a streak past relevanceFullStreak still scores 1.
+        #expect(try plan("a streak past a month: relevance stops at 1").requests.map(\.relevance) == [1])
+
+        // A held lone day of the month is the one-off series, never a repeat.
+        #expect(try plan("monthly on the 15th, done today: the one-off series").requests.map(\.trigger.type) == ["at", "at"])
+    }
+
+    /// Every request rings on its item's cue minute (or the review's hour), on
+    /// a day the item occurs: what a drifting repeating interval broke. A
+    /// calendar trigger rings at its own hour and minute on its own days, so
+    /// holding its first ring and its components here holds every ring.
+    @Test func everyRequestRingsOnItsOwnMinute() throws {
+        for c in try loadFixture().plans {
+            let input = try planInput(c.input, c.name)
+            for r in planNotifications(input).requests {
+                let hhmm: String
+                switch r.trigger {
+                case .afterMs, .now:
+                    continue
+                case let .at(_, at):
+                    hhmm = at
+                case let .calendar(hour, minute, _, _):
+                    hhmm = String(format: "%02d:%02d", hour, minute)
+                }
+                let place = "\(c.name): \(r.id)"
+                let item = input.items.first { $0.id == r.itemId }
+                let want: String?
+                if r.kind == .eod {
+                    let time = try #require(input.eod?.time, "\(place)")
+                    want = String(repeating: "0", count: max(0, 5 - time.count)) + time
+                } else {
+                    want = item?.reminderTime
+                }
+                #expect(hhmm == want, "\(place)")
+                let clock = try #require(localClock(nowMs: r.firesAt, timeZone: input.timeZone), "\(place)")
+                let parts = hhmm.split(separator: ":").compactMap { Int($0) }
+                #expect(parts.count == 2 && clock.nowMinutes == parts[0] * 60 + parts[1], "\(place)")
+                if case let .at(dateStr, _) = r.trigger { #expect(dateStr == clock.dateStr, "\(place)") }
+                if case let .calendar(_, _, weekday?, _) = r.trigger {
+                    #expect(weekdayOf(clock.dateStr).map { $0 + 1 } == weekday, "\(place)")
+                }
+                if case let .calendar(_, _, _, day?) = r.trigger {
+                    #expect(Int(clock.dateStr.suffix(2)) == day, "\(place)")
+                }
+                if let item {
+                    #expect(occursOn(item, on: clock.dateStr, timeZone: input.timeZone), "\(place) on \(clock.dateStr)")
+                }
+                if r.kind == .eod { #expect(clock.dateStr != input.eod?.lastReviewDate, "\(place)") }
+            }
+        }
     }
 
     @Test func userInfoTravelsAsStrings() {
