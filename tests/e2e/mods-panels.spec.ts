@@ -147,8 +147,14 @@ test.describe('Mod panels', () => {
     const back = page.getByTestId('item-dialog').getByTestId('rail-back');
     await expect(back).toContainText(`Your mod · ${name}`);
     await expect(modRail(page)).toBeHidden();
-    await back.click();
-    await expect(modRail(page)).toBeVisible();
+    // The opener's click holds the rail header for RAIL_HEADER_HOLD_MS
+    // (lib/rail-store.ts), and on a fast runner everything above lands inside
+    // it, so a single click on ‹ could be swallowed. Retry the click until the
+    // panel is back rather than racing the hold.
+    await expect(async () => {
+      if (await back.isVisible()) await back.click();
+      await expect(modRail(page)).toBeVisible({ timeout: 1_000 });
+    }).toPass({ timeout: 10_000 });
 
     await modRail(page).getByTestId('mod-rail-close').click();
     await expect(modRail(page)).toHaveCount(0, { timeout: 5_000 });
