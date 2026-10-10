@@ -4,7 +4,9 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ArrowUp, Mic, Plus, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { useAICapabilities } from '@/lib/ai-connection-store';
+import { useAICapabilities, useAIConnectionStore } from '@/lib/ai-connection-store';
+import { ModelPicker } from '@/components/settings/model-picker';
+import { connectErrorCopy, labelName } from '@/components/ai/connect/connect-shared';
 import { resolveConversationId, useConversationsStore, type ConversationsState } from '@/lib/conversations-store';
 import { bindingKey, sendFrom, type ComposerBinding } from '@/lib/open-chat';
 import type { AskSurface } from '@/lib/rail-store';
@@ -387,16 +389,19 @@ export function ChatComposer({
         readOnly={isLoading}
         aria-busy={isLoading || undefined}
       />
-      <div className="flex items-center justify-between px-2 pb-2">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 rounded-full text-muted-foreground"
-          disabled
-          title="Attach files (coming soon)"
-        >
-          <Plus className="h-4 w-4" />
-        </Button>
+      <div className="flex items-center justify-between gap-2 px-2 pb-2">
+        <div className="flex min-w-0 items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 shrink-0 rounded-full text-muted-foreground"
+            disabled
+            title="Attach files (coming soon)"
+          >
+            <Plus className="h-4 w-4" />
+          </Button>
+          {target === 'model' && <ChatModelChip disabled={isLoading} />}
+        </div>
         {isLoading ? (
           <Button
             size="icon"
@@ -430,6 +435,25 @@ export function ChatComposer({
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Which model answers, at the foot of the box while the connected model is the
+ * one answering (never for OpenClaw, which picks its own). The same chip and
+ * setting as Settings → AI's: a pick here is the account's model, from the
+ * next message on. Held still while a reply is arriving.
+ */
+function ChatModelChip({ disabled }: { disabled: boolean }) {
+  const model = useAIConnectionStore((s) => s.model);
+  if (!model?.model) return null;
+  const name = labelName(model.provider, model.baseUrl);
+  return (
+    <ModelPicker
+      variant="chat"
+      disabled={disabled}
+      errorCopy={(code, field) => connectErrorCopy(code, name, { during: 'model', field })}
+    />
   );
 }
 

@@ -9,10 +9,13 @@ import { useAIConnectionStore, type ApiResult } from '@/lib/ai-connection-store'
 import { modelName } from '@/lib/ai-model-names';
 import { isModelId, type ApiErrorCode, type ModelOption } from '@/lib/ai-types';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
 /**
- * The model chip on Settings → AI's Connection card: which of the provider's
- * models answers.
+ * The model chip on Settings → AI's Connection card, and at the foot of the
+ * chat box (`variant="chat"`): which of the provider's models answers. It is
+ * one setting either way, the account's model, so a pick in chat is a pick in
+ * Settings, and it applies from the next message.
  *
  * The list is the provider's own, fetched live through the server (the key
  * never leaves it), so it is as long as the provider makes it: OpenRouter lists
@@ -31,8 +34,14 @@ export function ModelPicker({
   disabled,
   defaultOpen,
   errorCopy,
+  variant = 'settings',
 }: {
   disabled?: boolean;
+  /**
+   * 'chat' sits quietly in the chat box's foot rail: no wash until hovered,
+   * and a refused pick is a toast, since a line under it would shove the box.
+   */
+  variant?: 'settings' | 'chat';
   defaultOpen?: boolean;
   /**
    * A refused pick in the panel's words (connectErrorCopy), from the route's
@@ -69,21 +78,25 @@ export function ModelPicker({
       result = { ok: false, code: 'server' };
     }
     setOptimistic(null);
-    if (!result.ok) setError(errorCopy(result.code, result.field ?? null));
+    if (result.ok) return;
+    const copy = errorCopy(result.code, result.field ?? null);
+    if (variant === 'chat') toast.error(copy);
+    else setError(copy);
   };
 
+  const chat = variant === 'chat';
   return (
-    <div className="flex min-w-0 flex-col items-end gap-1">
+    <div className={cn('flex min-w-0 flex-col gap-1', chat ? 'items-start' : 'items-end')}>
       <PropertyChip
         label="Model"
         ariaLabel={current ? `Model: ${shown}` : 'Choose a model'}
         value={shown}
         alwaysChevron
-        align="end"
+        align={chat ? 'start' : 'end'}
         disabled={disabled || busy === 'model' || !model}
         defaultOpen={defaultOpen}
-        testId="model-picker"
-        className="max-w-full"
+        testId={chat ? 'chat-model-chip' : 'model-picker'}
+        className={chat ? 'max-w-[14rem] bg-transparent text-muted-foreground hover:text-foreground' : 'max-w-full'}
         contentClassName="w-[min(22rem,var(--radix-popover-content-available-width))] p-0"
       >
         {(close) => (
