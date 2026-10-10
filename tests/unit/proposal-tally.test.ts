@@ -215,7 +215,7 @@ describe('an accepted card is counted on its conversation', () => {
     expect(proposals().accept()).toBe(3);
     await conversationsSettled();
 
-    const taken = PLAN.filter((op) => op.kind === 'create' || op.itemId !== 'task-2');
+    const taken = PLAN.filter((op) => op.kind === 'create' || ('itemId' in op && op.itemId !== 'task-2'));
     expect(tallies()).toEqual([{ id: CONV, patch: { addChanges: tallyOperations(taken) } }]);
     expect(tallyOperations(taken)).toEqual({ added: 1, steps: 1, moved: 1, changed: 0 });
     expect(useConversationsStore.getState().summaries[CONV].changes).toEqual({ added: 1, steps: 1, moved: 1, changed: 0 });

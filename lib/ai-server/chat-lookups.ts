@@ -185,7 +185,14 @@ export function makeLookups(source: LookupSource) {
   };
   const items = once(() => source.items());
   const projects = once(() => source.projects());
-  const proposeChanges = makeChangeOffer({ items, goals: () => source.goals(), itemTypes: () => source.itemTypes() });
+  const proposeChanges = makeChangeOffer({
+    items,
+    projects,
+    routines: () => source.routines(),
+    seasons: () => source.seasons(),
+    goals: () => source.goals(),
+    itemTypes: () => source.itemTypes(),
+  });
 
   async function findItems(args: Record<string, unknown>): Promise<LookupResult> {
     const query = str(args.query);

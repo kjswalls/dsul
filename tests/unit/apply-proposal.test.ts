@@ -557,7 +557,7 @@ describe('onAccepted: what the plan actually took', () => {
     );
     expect(applied).toBe(2);
     expect(heard).toHaveLength(1);
-    expect(heard[0].map((op) => (op.kind === 'create' ? op.title : op.itemId))).toEqual(['task-1', 'Book dentist']);
+    expect(heard[0].map((op) => (op.kind === 'create' ? op.title : 'itemId' in op ? op.itemId : op.kind))).toEqual(['task-1', 'Book dentist']);
     // Called before the write: the planner still held the three fixtures.
     expect(itemsWhenHeard).toBe(3);
     expect(store().items).toHaveLength(4);
@@ -659,5 +659,93 @@ describe('applyProposal: habits', () => {
     const until = format(addDays(new Date(), 7), 'yyyy-MM-dd');
     store().applyProposal(proposalOf({ kind: 'verb', verb: 'pause', itemId: 'habit-1', until }));
     expect(store().items.find((i) => i.id === 'habit-1')).toMatchObject({ pausedUntil: until });
+  });
+});
+
+describe('applyProposal: containers', () => {
+  it('makes a routine with its members in order, and one undo takes it back', () => {
+    const applied = store().applyProposal(
+      proposalOf({ kind: 'container', container: 'routine', name: 'Morning', usualTime: '07:00', itemIds: ['habit-1', 'task-1'] }),
+    );
+    expect(applied).toBe(1);
+    expect(store().routines).toEqual([
+      expect.objectContaining({ name: 'Morning', usualTime: '07:00', itemIds: ['habit-1', 'task-1'] }),
+    ]);
+    expect(db.createRoutine).toHaveBeenCalledTimes(1);
+    store().undo();
+    expect(store().routines).toEqual([]);
+  });
+
+  it('makes a project and files its items under it', () => {
+    store().applyProposal(proposalOf({ kind: 'container', container: 'project', name: 'Admin', itemIds: ['task-2'] }));
+    const project = store().projects.find((p) => p.name === 'Admin');
+    expect(project).toBeDefined();
+    expect(store().items.find((i) => i.id === 'task-2')).toMatchObject({ project: 'Admin', projectId: project!.id });
+  });
+
+  it('puts items into a season and a goal, and renames a goal, as one undo', () => {
+    const season = store().addSeason({ name: 'Summer', state: 'auto', itemIds: [], routineIds: [] });
+    const goal = store().addGoal({ name: 'Fit', state: 'active', memberIds: [], milestoneIds: [], checkinIds: [] });
+    store().applyProposal(
+      proposalOf(
+        { kind: 'membership', itemId: 'task-1', container: 'season', containerId: season },
+        { kind: 'membership', itemId: 'habit-1', container: 'goal', containerId: goal },
+        { kind: 'container', container: 'goal', containerId: goal, name: 'Get fit', why: 'Feel strong' },
+      ),
+    );
+    expect(store().seasons.find((s) => s.id === season)?.itemIds).toEqual(['task-1']);
+    expect(store().goals.find((g) => g.id === goal)).toMatchObject({ name: 'Get fit', why: 'Feel strong', memberIds: ['habit-1'] });
+    store().undo();
+    expect(store().seasons.find((s) => s.id === season)?.itemIds).toEqual([]);
+    expect(store().goals.find((g) => g.id === goal)).toMatchObject({ name: 'Fit', memberIds: [] });
+  });
+
+  it('takes an item out of its project', () => {
+    store().addProject('Admin', '');
+    store().setItemsProject(['task-1'], 'Admin');
+    const id = store().projects.find((p) => p.name === 'Admin')!.id;
+    store().applyProposal(proposalOf({ kind: 'membership', itemId: 'task-1', container: 'project', containerId: id, member: false }));
+    expect(store().items.find((i) => i.id === 'task-1')?.project).toBeUndefined();
+  });
+
+  it('refuses a second project of the same name', () => {
+    store().addProject('Admin', '');
+    expect(store().applyProposal(proposalOf({ kind: 'container', container: 'project', name: 'admin' }))).toBe(0);
+    expect(store().projects.filter((p) => p.name.toLowerCase() === 'admin')).toHaveLength(1);
+  });
+});
+
+describe('applyProposal: deletes and streak resets', () => {
+  it('deletes an item, and one undo brings it back', () => {
+    expect(store().applyProposal(proposalOf({ kind: 'delete', what: 'item', id: 'task-1' }))).toBe(1);
+    expect(store().items.find((i) => i.id === 'task-1')).toBeUndefined();
+    expect(db.deleteItem).toHaveBeenCalledWith('task-1', 'task');
+    store().undo();
+    expect(store().items.find((i) => i.id === 'task-1')).toBeDefined();
+  });
+
+  it('resets a streak and keeps the history', () => {
+    store().toggleHabitStatus('habit-1', 'done');
+    const before = store().items.find((i) => i.id === 'habit-1') as Item & { streak: number; completedDates: string[] };
+    expect(store().applyProposal(proposalOf({ kind: 'resetStreak', itemId: 'habit-1' }))).toBe(1);
+    const after = store().items.find((i) => i.id === 'habit-1') as Item & { streak: number; completedDates: string[] };
+    expect(after.streak).toBe(0);
+    expect(after.completedDates).toEqual(before.completedDates);
+  });
+
+  it('deletes a routine but not its items', () => {
+    const id = store().addRoutine({ name: 'Morning', itemIds: ['habit-1'] });
+    store().applyProposal(proposalOf({ kind: 'delete', what: 'routine', id }));
+    expect(store().routines).toEqual([]);
+    expect(store().items.find((i) => i.id === 'habit-1')).toBeDefined();
+  });
+
+  it('applies nothing destructive beside other changes', () => {
+    expect(
+      store().applyProposal(
+        proposalOf({ kind: 'delete', what: 'item', id: 'task-1' }, { kind: 'update', itemId: 'task-2', priority: 'high' }),
+      ),
+    ).toBe(1);
+    expect(store().items.find((i) => i.id === 'task-1')).toBeDefined();
   });
 });

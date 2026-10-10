@@ -13,8 +13,26 @@
  */
 
 import { format } from 'date-fns'
-import type { Item, Proposal, ProposalDraft, ProposalOperation, ProposalVerbOp } from './planner-types'
-import { getItemTypeConfig, isPausable, isSkippable, itemTypeName } from './item-registry'
+import type {
+  Goal,
+  Item,
+  Project,
+  Proposal,
+  ProposalContainer,
+  ProposalContainerOp,
+  ProposalDeleteOp,
+  ProposalDraft,
+  ProposalMembershipOp,
+  ProposalOperation,
+  ProposalResetStreakOp,
+  ProposalVerbOp,
+  Routine,
+  Season,
+} from './planner-types'
+import { CONTAINER_KINDS, sameContainerName } from './container-registry'
+import { canBulkClearProject, canBulkSetProject } from './bulk-edit'
+import { goalItemIds } from './goals'
+import { getItemTypeConfig, isCollectible, isPausable, isSkippable, itemTypeName } from './item-registry'
 import { selectOverdue, splitOverdueCohorts } from './overdue'
 import { isRecurring } from './recurrence'
 import { VERB_GATES, isHabit, occurrenceOn, type VerbContext } from './verb-gates'
@@ -52,6 +70,31 @@ export interface ProposalContext {
    */
   todayStr?: string
   tz?: string
+  /**
+   * The user's containers, for the container and membership operations.
+   * Without it every one of those is refused, since there is nothing to check
+   * a name or an id against.
+   */
+  containers?: ProposalContainers
+  /**
+   * False when the Streaks extension is off: a reset would change a number the
+   * user cannot see. Like goalsEnabled, the browser knows and the server does not.
+   */
+  streaksEnabled?: boolean
+}
+
+export interface ProposalContainers {
+  projects: Project[]
+  /** Null when the kind cannot be read (its table missing, or a read failed). */
+  routines: Routine[] | null
+  seasons: Season[] | null
+  goals: Goal[] | null
+  /**
+   * False when the Goals extension is off: a goal made then would be one the
+   * user cannot see. The browser knows; the server leaves it out, and the
+   * browser's check is the one that counts.
+   */
+  goalsEnabled?: boolean
 }
 
 export interface RejectedOperation {
@@ -230,6 +273,27 @@ export function validateProposalOperations(
       continue
     }
 
+    if (operation.kind === 'container') {
+      const checked = checkContainerOp(operation, ctx)
+      if (typeof checked === 'string') reject(operation, checked)
+      else accepted.push(checked)
+      continue
+    }
+
+    if (operation.kind === 'membership') {
+      const why = membershipRefusal(operation, ctx)
+      if (why) reject(operation, why)
+      else accepted.push(operation)
+      continue
+    }
+
+    if (operation.kind === 'delete' || operation.kind === 'resetStreak') {
+      const why = operation.kind === 'delete' ? deleteRefusal(operation, ctx) : resetStreakRefusal(operation, ctx)
+      if (why) reject(operation, why)
+      else accepted.push(operation)
+      continue
+    }
+
     const target = ctx.items.find((i) => i.id === operation.itemId)
     if (!target) {
       reject(operation, 'item no longer exists')
@@ -336,7 +400,22 @@ export function validateProposalOperations(
     accepted.push(next)
   }
 
+  // A delete or a streak reset is never one tap among others (the design's
+  // safety rule 6): it stands only as the card's one change. Asked of what
+  // survived, so a delete beside a change that was refused anyway still goes.
+  if (accepted.length > 1 && accepted.some(isDestructive)) {
+    for (const op of accepted.filter(isDestructive)) {
+      reject(op, `${op.kind === 'delete' ? 'a delete' : 'a streak reset'} goes on a card of its own`)
+    }
+    return { accepted: accepted.filter((op) => !isDestructive(op)), rejected }
+  }
+
   return { accepted, rejected }
+}
+
+/** A change that takes something away: a delete, or a streak back to 0. */
+export function isDestructive(op: ProposalOperation): op is ProposalDeleteOp | ProposalResetStreakOp {
+  return op.kind === 'delete' || op.kind === 'resetStreak'
 }
 
 const VERB_WORDS: Record<ProposalVerbOp['verb'], string> = {
@@ -385,6 +464,270 @@ function verbRefusal(op: ProposalVerbOp, ctx: ProposalContext): string | null {
   return isRecurring(item) && vctx.occurrence === 'absent'
     ? `it does not fall on ${dateStr}`
     : `it cannot be ${VERB_WORDS[op.verb]} ${op.verb === 'pause' || op.verb === 'resume' ? 'now' : `on ${dateStr}`}`
+}
+
+// ── Containers ────────────────────────────────────────────────────────────────
+
+/** Which of the op's own fields each kind keeps. */
+const CONTAINER_FIELDS: Record<ProposalContainer, readonly ContainerField[]> = {
+  project: ['notes'],
+  routine: ['notes', 'usualTime'],
+  season: ['notes', 'startsOn', 'endsOn'],
+  goal: ['why', 'startsOn', 'targetOn'],
+}
+type ContainerField = 'notes' | 'why' | 'usualTime' | 'startsOn' | 'endsOn' | 'targetOn'
+const ALL_CONTAINER_FIELDS: readonly ContainerField[] = ['notes', 'why', 'usualTime', 'startsOn', 'endsOn', 'targetOn']
+
+type AnyContainer = Project | Routine | Season | Goal
+
+/**
+ * The planner store's containers as a ProposalContext wants them: a kind whose
+ * table is not there yet (`collectionsAvailable`, `goalsAvailable`) reads as
+ * unreachable, so a card never offers a write that would vanish on reload.
+ */
+export function proposalContainersOf(
+  state: {
+    projects: Project[]
+    routines: Routine[]
+    seasons: Season[]
+    goals: Goal[]
+    collectionsAvailable: boolean
+    goalsAvailable: boolean
+  },
+  goalsEnabled?: boolean,
+): ProposalContainers {
+  return {
+    projects: state.projects,
+    routines: state.collectionsAvailable ? state.routines : null,
+    seasons: state.collectionsAvailable ? state.seasons : null,
+    goals: state.goalsAvailable ? state.goals : null,
+    goalsEnabled,
+  }
+}
+
+const kindWord = (kind: ProposalContainer) => CONTAINER_KINDS[kind].label.toLowerCase()
+
+/** The kind's list, or why it cannot be had. */
+function containerList(kind: ProposalContainer, ctx: ProposalContext): AnyContainer[] | string {
+  const c = ctx.containers
+  if (!c) return `${kindWord(kind)}s cannot be checked here`
+  if (kind === 'goal' && c.goalsEnabled === false) return 'goals are turned off in Settings'
+  const list = kind === 'project' ? c.projects : kind === 'routine' ? c.routines : kind === 'season' ? c.seasons : c.goals
+  return list ?? `${kindWord(kind)}s cannot be reached just now`
+}
+
+const sameName = (kind: ProposalContainer, a: string, b: string) =>
+  kind === 'project' ? sameContainerName('project', a, b) : a.trim().toLowerCase() === b.trim().toLowerCase()
+
+/**
+ * May this item go into (or come out of) this kind? The same questions the
+ * multiselect bar's Move to project and Add to ask (lib/bulk-edit.ts), so a
+ * card offers nothing the store would quietly skip.
+ */
+function joinable(kind: ProposalContainer, item: Item, member = true): boolean {
+  if (kind === 'project') return member ? canBulkSetProject(item) : canBulkClearProject(item)
+  return isCollectible(item)
+}
+
+function holds(kind: ProposalContainer, container: AnyContainer, item: Item): boolean {
+  if (kind === 'project') {
+    return item.projectId === container.id || (!!item.project && sameContainerName('project', item.project, container.name))
+  }
+  if (kind === 'goal') return goalItemIds(container as Goal).includes(item.id)
+  return (container as Routine | Season).itemIds.includes(item.id)
+}
+
+/**
+ * The op as it may be applied, or why it cannot. A field the kind does not
+ * keep is dropped rather than refused, like an item's, with one kindness: a
+ * goal's free text is its `why` and everything else's is `notes`, so a model
+ * that wrote the other one has it moved across rather than lost.
+ */
+function checkContainerOp(op: ProposalContainerOp, ctx: ProposalContext): ProposalContainerOp | string {
+  const kind = op.container
+  const list = containerList(kind, ctx)
+  if (typeof list === 'string') return list
+  const next: ProposalContainerOp = { ...op }
+  if (kind === 'goal' && next.why === undefined && next.notes !== undefined) next.why = next.notes
+  if (kind !== 'goal' && next.notes === undefined && next.why !== undefined) next.notes = next.why
+  const keeps = new Set(CONTAINER_FIELDS[kind])
+  for (const field of ALL_CONTAINER_FIELDS) if (!keeps.has(field)) delete next[field]
+  if (next.name !== undefined) next.name = next.name.trim()
+  if (next.name === '') return 'a name cannot be blank'
+
+  const existing = next.containerId ? list.find((c) => c.id === next.containerId) : undefined
+  if (next.containerId && !existing) return `no ${kindWord(kind)} has that id`
+  if (existing && next.itemIds) {
+    return `an existing ${kindWord(kind)}'s members change one at a time, with membership changes`
+  }
+  if (!existing && !next.name) return `a new ${kindWord(kind)} needs a name`
+  if (existing && !next.name && !ALL_CONTAINER_FIELDS.some((f) => next[f] !== undefined)) return 'there is nothing to change'
+
+  if (next.name) {
+    const clash = list.find((c) => c.id !== existing?.id && sameName(kind, c.name, next.name!))
+    if (clash) return `there is already a ${kindWord(kind)} called "${clash.name}"`
+  }
+
+  if (next.usualTime !== undefined) {
+    const [h, m] = next.usualTime.split(':').map(Number)
+    if (!(h <= 23 && m <= 59)) return 'a usual time is HH:mm on a 24-hour clock'
+  }
+  const was = existing as Partial<Season & Goal> | undefined
+  const startsOn = next.startsOn ?? was?.startsOn
+  const endsOn = kind === 'season' ? (next.endsOn ?? was?.endsOn) : kind === 'goal' ? (next.targetOn ?? was?.targetOn) : undefined
+  if (startsOn && endsOn && endsOn < startsOn) {
+    return kind === 'season' ? 'a season cannot end before it starts' : 'a goal cannot be aimed at a day before it starts'
+  }
+
+  if (next.itemIds) {
+    const ids = [...new Set(next.itemIds)]
+    for (const id of ids) {
+      const item = ctx.items.find((i) => i.id === id)
+      if (!item) return 'an item it would start with no longer exists'
+      if (!joinable(kind, item)) return `"${item.title}" cannot be in a ${kindWord(kind)}`
+    }
+    next.itemIds = ids
+  }
+  return next
+}
+
+function membershipRefusal(op: ProposalMembershipOp, ctx: ProposalContext): string | null {
+  const list = containerList(op.container, ctx)
+  if (typeof list === 'string') return list
+  const container = list.find((c) => c.id === op.containerId)
+  if (!container) return `no ${kindWord(op.container)} has that id`
+  const item = ctx.items.find((i) => i.id === op.itemId)
+  if (!item) return 'item no longer exists'
+  if (!joinable(op.container, item, op.member !== false)) {
+    return op.member === false ? `it has to stay in a ${kindWord(op.container)}` : `it cannot be in a ${kindWord(op.container)}`
+  }
+  const isIn = holds(op.container, container, item)
+  if (op.member !== false && isIn) return `it is already in ${container.name}`
+  if (op.member === false && !isIn) return `it is not in ${container.name}`
+  return null
+}
+
+/** The container an op names, for its card line. */
+function containerNamed(kind: ProposalContainer, id: string | undefined, ctx: ProposalContext): AnyContainer | undefined {
+  if (!id) return undefined
+  const list = containerList(kind, ctx)
+  return typeof list === 'string' ? undefined : list.find((c) => c.id === id)
+}
+
+function joinNames(names: string[]): string {
+  if (names.length <= 1) return names[0] ?? ''
+  if (names.length > 3) return `${names.slice(0, 2).join(', ')} and ${names.length - 2} more`
+  return `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`
+}
+
+function describeContainerOp(op: ProposalContainerOp, ctx: ProposalContext): string {
+  const word = kindWord(op.container)
+  const extras: string[] = []
+  if (op.usualTime) extras.push(`usually at ${op.usualTime}`)
+  if (op.startsOn && op.endsOn) extras.push(`${friendlyDate(op.startsOn)} to ${friendlyDate(op.endsOn)}`)
+  else if (op.startsOn) extras.push(`from ${friendlyDate(op.startsOn)}`)
+  else if (op.endsOn) extras.push(`until ${friendlyDate(op.endsOn)}`)
+  if (op.targetOn) extras.push(`by ${friendlyDate(op.targetOn)}`)
+
+  const existing = containerNamed(op.container, op.containerId, ctx)
+  if (!op.containerId) {
+    const members = (op.itemIds ?? []).map((id) => ctx.items.find((i) => i.id === id)?.title).filter((t): t is string => !!t)
+    if (members.length) extras.push(`with ${joinNames(members)}`)
+    return `New ${word}: ${op.name ?? ''}${extras.length ? `, ${extras.join(', ')}` : ''}`
+  }
+  const parts: string[] = []
+  if (op.name && op.name !== existing?.name) parts.push(`rename to "${op.name}"`)
+  parts.push(...extras)
+  if (op.notes !== undefined) parts.push('new notes')
+  if (op.why !== undefined) parts.push('new reason why')
+  const title = existing ? `${existing.name} (${word})` : `This ${word}`
+  return parts.length ? `${title}: ${parts.join(', ')}` : title
+}
+
+function describeMembershipOp(op: ProposalMembershipOp, ctx: ProposalContext): string {
+  const item = ctx.items.find((i) => i.id === op.itemId)
+  const container = containerNamed(op.container, op.containerId, ctx)
+  const where = container ? `${container.name}` : `the ${kindWord(op.container)}`
+  const title = item?.title ?? 'This item'
+  if (op.member === false) return `${title}: take out of ${where}`
+  return op.container === 'project' ? `${title}: file under ${where}` : `${title}: add to ${where}`
+}
+
+// ── Deletes and streak resets ─────────────────────────────────────────────────
+
+const isStep = (item: Item) => 'parentItemId' in item && !!item.parentItemId
+
+function deleteRefusal(op: ProposalDeleteOp, ctx: ProposalContext): string | null {
+  if (op.what === 'item') {
+    const item = ctx.items.find((i) => i.id === op.id)
+    if (!item) return 'item no longer exists'
+    // A step is deleted where it lives, in its task's panel.
+    if (isStep(item)) return 'a step is deleted inside its task'
+    return null
+  }
+  const list = containerList(op.what, ctx)
+  if (typeof list === 'string') return list
+  return list.some((c) => c.id === op.id) ? null : `no ${kindWord(op.what)} has that id`
+}
+
+function resetStreakRefusal(op: ProposalResetStreakOp, ctx: ProposalContext): string | null {
+  const item = ctx.items.find((i) => i.id === op.itemId)
+  if (!item) return 'item no longer exists'
+  // The store's reset is the habit's: registry-asked, so a type that keeps no
+  // streak is refused by what it is, not by name.
+  if (item.type !== 'habit' || !getItemTypeConfig(itemTypeName(item)).counters.streak) return 'only a habit keeps a streak'
+  if (ctx.streaksEnabled === false) return 'streaks are turned off in Settings'
+  if (!item.streak) return 'its streak is already 0'
+  return null
+}
+
+const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
+
+/** The members a container holds, for the consequence line. */
+function memberCount(kind: ProposalContainer, container: AnyContainer, ctx: ProposalContext): number {
+  if (kind === 'project') return ctx.items.filter((i) => !isStep(i) && holds('project', container, i)).length
+  if (kind === 'goal') return goalItemIds(container as Goal).length
+  return (container as Routine | Season).itemIds.length
+}
+
+/**
+ * A delete's line says what goes with it and what stays, the way each
+ * Organize pane words its own delete: a card the user taps on trust has to
+ * carry the consequence itself.
+ */
+function describeDeleteOp(op: ProposalDeleteOp, ctx: ProposalContext): string {
+  const trash = 'It goes to the trash for 30 days.'
+  if (op.what === 'item') {
+    const item = ctx.items.find((i) => i.id === op.id)
+    if (!item) return `Delete this item. ${trash}`
+    if (item.type === 'habit') {
+      const streak = item.streak ? `, its ${item.streak}-day streak` : ''
+      return `Delete the habit "${item.title}"${streak} and its history. ${trash}`
+    }
+    const steps = ctx.items.filter((i) => 'parentItemId' in i && i.parentItemId === item.id).length
+    return `Delete "${item.title}"${steps ? ` and its ${count(steps, 'step')}` : ''}. ${trash}`
+  }
+  const container = containerNamed(op.what, op.id, ctx)
+  const word = kindWord(op.what)
+  if (!container) return `Delete this ${word}. ${trash}`
+  const n = memberCount(op.what, container, ctx)
+  const stays =
+    n === 0
+      ? ''
+      : op.what === 'project'
+        ? ` Its ${count(n, 'item')} ${n === 1 ? 'stays' : 'stay'}, in no project.`
+        : op.what === 'season'
+          ? ` Its ${count(n, 'item')} ${n === 1 ? 'stays' : 'stay'}, no longer waiting on the season.`
+          : op.what === 'routine'
+            ? ` Its ${count(n, 'item')} ${n === 1 ? 'stays' : 'stay'}, no longer paused together.`
+            : ` Its ${count(n, 'item')} ${n === 1 ? 'stays' : 'stay'}.`
+  return `Delete the ${word} "${container.name}".${stays} ${trash}`
+}
+
+function describeResetStreakOp(op: ProposalResetStreakOp, ctx: ProposalContext): string {
+  const item = ctx.items.find((i) => i.id === op.itemId)
+  const from = item && 'streak' in item && item.streak ? ` from ${count(item.streak, 'day')}` : ''
+  return `Reset the streak on "${item?.title ?? 'this habit'}"${from} to 0. Its history stays: days already ticked stay ticked.`
 }
 
 /** Convenience wrapper returning a proposal with only its viable operations. */
@@ -521,6 +864,10 @@ function ordinal(n: number): string {
  * heading in item-registry.ts and BarCopy in components/ai/morning-check.tsx.
  */
 export function describeOperation(operation: ProposalOperation, ctx: ProposalContext): string {
+  if (operation.kind === 'container') return describeContainerOp(operation, ctx)
+  if (operation.kind === 'membership') return describeMembershipOp(operation, ctx)
+  if (operation.kind === 'delete') return describeDeleteOp(operation, ctx)
+  if (operation.kind === 'resetStreak') return describeResetStreakOp(operation, ctx)
   if (operation.kind === 'create') {
     if (operation.parentItemId) {
       const parent = ctx.items.find((i) => i.id === operation.parentItemId)

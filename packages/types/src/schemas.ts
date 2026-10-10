@@ -1203,10 +1203,83 @@ export const ProposalVerbOpSchema = z.object({
   until: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 })
 
+/**
+ * The containers a card may make, change and fill: the one CLASSIFY kind
+ * (project) and the routine, season and goal (lib/container-registry.ts).
+ */
+export const PROPOSAL_CONTAINERS = ['project', 'routine', 'season', 'goal'] as const
+
+const proposalDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+
+/**
+ * Make a container (no `containerId`) or change one. Which fields a kind keeps
+ * is checked app-side (lib/proposal.ts): `notes` for a project, routine or
+ * season; `why`, `startsOn` and `targetOn` for a goal; `usualTime` for a
+ * routine; `startsOn` and `endsOn` for a season. `itemIds` only on a create:
+ * the members it starts with (a routine's in the order they are done; a
+ * project's are re-filed under it). An existing container's members change one
+ * at a time through a membership op, never as a whole list, so a card can
+ * never drop the members it did not name.
+ */
+export const ProposalContainerOpSchema = z.object({
+  kind: z.literal('container'),
+  container: z.enum(PROPOSAL_CONTAINERS),
+  containerId: z.string().min(1).max(200).optional(),
+  name: z.string().min(1).max(200).optional(),
+  notes: z.string().max(10_000).optional(),
+  why: z.string().max(2_000).optional(),
+  usualTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  startsOn: proposalDay.optional(),
+  endsOn: proposalDay.optional(),
+  targetOn: proposalDay.optional(),
+  itemIds: z.array(z.string().min(1).max(200)).min(1).max(50).optional(),
+})
+
+/**
+ * Put ONE existing item in an existing container, or take it out (`member:
+ * false`). For a project that is re-filing it (an item is in one project at
+ * most); for a goal, joining as a plain member, and leaving in whatever role it
+ * held.
+ */
+export const ProposalMembershipOpSchema = z.object({
+  kind: z.literal('membership'),
+  itemId: z.string().min(1).max(200),
+  container: z.enum(PROPOSAL_CONTAINERS),
+  containerId: z.string().min(1).max(200),
+  member: z.boolean().optional(),
+})
+
+/**
+ * Delete one item or container. Never one tap among others: validation lets a
+ * delete through only as the card's ONE change, and the card spells out what
+ * goes with it (lib/proposal.ts). Everything deleted goes to the trash for 30
+ * days, and the accept is one undo.
+ */
+export const PROPOSAL_DELETABLE = ['item', 'project', 'routine', 'season', 'goal'] as const
+
+export const ProposalDeleteOpSchema = z.object({
+  kind: z.literal('delete'),
+  what: z.enum(PROPOSAL_DELETABLE),
+  id: z.string().min(1).max(200),
+})
+
+/**
+ * Set a habit's streak back to 0, keeping its history. Alone on its card, like
+ * a delete: a streak is the user's own, and is never recomputed.
+ */
+export const ProposalResetStreakOpSchema = z.object({
+  kind: z.literal('resetStreak'),
+  itemId: z.string().min(1).max(200),
+})
+
 export const ProposalOperationSchema = z.discriminatedUnion('kind', [
   ProposalCreateOpSchema,
   ProposalUpdateOpSchema,
   ProposalVerbOpSchema,
+  ProposalContainerOpSchema,
+  ProposalMembershipOpSchema,
+  ProposalDeleteOpSchema,
+  ProposalResetStreakOpSchema,
 ])
 
 export const ProposalSchema = z.object({

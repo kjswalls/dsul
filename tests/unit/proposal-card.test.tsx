@@ -86,6 +86,7 @@ vi.mock('@/lib/planner-store', () => ({
 // the assertions about which operations survive rather than how they read.
 vi.mock('@/lib/proposal', () => ({
   describeOperation: (op: { title?: string }) => op.title ?? 'a change',
+  isDestructive: (op: { kind: string }) => op.kind === 'delete' || op.kind === 'resetStreak',
 }));
 
 import { ProposalCard } from '@/components/ai/proposal-card';
@@ -188,6 +189,15 @@ describe('dropping individual lines', () => {
     proposal = makeProposal('only one');
     render(<ProposalCard />);
     expect(acceptButton().textContent).toContain('Do it');
+  });
+
+  it('says what a delete or a streak reset does on its button', () => {
+    proposal = { ...makeProposal('x'), operations: [{ kind: 'delete', what: 'item', id: 'gone' }] } as Proposal;
+    const { rerender } = render(<ProposalCard />);
+    expect(acceptButton().textContent).toBe('Delete');
+    proposal = { ...makeProposal('x'), id: 'p3', operations: [{ kind: 'resetStreak', itemId: 'h' }] } as Proposal;
+    rerender(<ProposalCard />);
+    expect(acceptButton().textContent).toBe('Reset streak');
   });
 
   it('clears the selection when a new proposal arrives', () => {
