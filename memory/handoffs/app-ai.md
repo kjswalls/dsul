@@ -64,9 +64,9 @@ was deleted on GitHub after #443 merged. Restart it from `main` for the next PR.
 
 - ~~Migration 059 on prod~~: Kirby applied it 2026-10-09 (verified: 0 keys left in
   `user_settings`, ledger row 059 recorded).
-- **Migration 064 on prod** (the shared AI rate-limit count). Nothing breaks without it. Kirby
-  pastes `supabase/migrations/064_ai_rate_limits.sql` plus the ledger insert for 064. Note 063
-  is not in the prod ledger either; leave that to Kirby.
+- ~~Migration 064 on prod~~: applied 2026-10-10 through the Supabase connector's
+  `execute_sql` on Kirby's typed go, ledger row 064 included (`apply_migration` would write a
+  timestamp version instead of 064). 063 is not in the prod ledger; leave that to Kirby.
 - **The old OpenAI key**: unused since #355, but live until Kirby revokes it at OpenAI and
   deletes `OPENAI_API_KEY` from Vercel.
 - **Defaults to confirm** (none blocks anything):
@@ -89,12 +89,12 @@ was deleted on GitHub after #443 merged. Restart it from `main` for the next PR.
      folds now (`SwitchService`, 2026-10-09).
    - ~~Stream-only refusals pass the connect test~~: `stream_refused` (#454, 2026-10-09).
    - ~~The connect rate limit is in memory, not durable~~: connect and check also count in
-     the database (migration 064, `takeSharedToken`). Waits on Kirby applying 064; until
-     then the routes fall back to the memory count.
+     the database (migration 064, `takeSharedToken`). Applied on prod 2026-10-10
+     (ledger row 064).
    - CLAUDE.md says `chooseChatTarget()` is "the one path allowed to wipe transcripts"; it
      deletes nothing. Raise with Kirby rather than editing CLAUDE.md.
-3. The older build order from the vision (each its own PR): step 2b (edit, retry, Undo,
-   "Something else" in chat), 2c (@, /, images, open wide), 3 item timeline pane
+3. The older build order from the vision (each its own PR): step 2b (edit, ~~retry~~ (Try
+   again, 2026-10-10), Undo, "Something else" in chat), 2c (@, /, images, open wide), 3 item timeline pane
    (https://claude.ai/artifact/3siWGNjqgVmPcjmmr7mucz), 4 attachments, 5 the OpenClaw loop with
    per-agent keys, a read-only key, OAuth for `/api/mcp` and a real-client probe (#261),
    6 ClawBoy's `[clawboy-options]` card format.
