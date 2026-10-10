@@ -55,7 +55,7 @@ beforeEach(() => {
   transport = fakeTransport();
   configureConversations({ api: fakeApi().api, transport: transport.transport });
   clearChatState();
-  unseed = seedAI({ model: CONNECTED_MODEL });
+  unseed = seedAI(CONNECTED_MODEL);
   usePlannerStore.setState({ ...pristine, items: [DENTIST], tasks: [DENTIST], selectedDate: new Date() });
   useUIStore.setState({ activeDialog: null });
 });
