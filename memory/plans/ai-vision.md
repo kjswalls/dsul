@@ -27,7 +27,10 @@ turn; the old question and its reply stay, saved and in what the model hears, si
 to keep history append-only over replacing the pair), retry (built 2026-10-10: Try again under the latest reply when it was stopped or failed
 in a way asking again might get past, `isRetryableReplyError`; the same question goes again as
 a new turn, so nothing saved is rewritten), action lines, receipts with Undo (built
-2026-10-10, below), a typed answer on every card) and 2c
+2026-10-10, below), a typed answer on every card (built 2026-10-10: a card chat offered has
+"Something else", a line under its buttons whose words go to that card's conversation as the
+user's next message, verbatim, through sendFrom; the card goes once the send is taken, and a send
+refused keeps both; a card asked for keeps its retry)) and 2c
 (reach: @ items, / commands, the model chip, attachments, open wide). The section "Step 2a —
 Move and save" below has what shipped and the privacy statement.
 
