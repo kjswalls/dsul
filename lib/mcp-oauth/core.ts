@@ -5,7 +5,6 @@
  * unit-tested directly; lib/mcp-oauth/store.ts holds the writes.
  */
 
-import { createHash, randomBytes } from 'node:crypto';
 import { SCOPES, type Scope } from './scopes';
 
 export { SCOPES, SCOPE_WORDS, type Scope } from './scopes';
@@ -26,23 +25,36 @@ export const REFRESH_TTL_S = 90 * 24 * 60 * 60;
 export const CODE_TTL_S = 10 * 60;
 
 /** Prefixes, so a leaked token says what it is and the agent key never collides. */
-export const ACCESS_PREFIX = 'dsul_at_';
+export { ACCESS_PREFIX } from './scopes';
 export const REFRESH_PREFIX = 'dsul_rt_';
 export const CLIENT_PREFIX = 'dsul_client_';
 
 export function mint(prefix: string): string {
-  return `${prefix}${randomBytes(32).toString('base64url')}`;
+  return `${prefix}${base64url(crypto.getRandomValues(new Uint8Array(32)))}`;
 }
 
 /** What is stored in place of a token or code. */
-export function hashSecret(secret: string): string {
-  return createHash('sha256').update(secret).digest('hex');
+export async function hashSecret(secret: string): Promise<string> {
+  return Buffer.from(await sha256(secret)).toString('hex');
 }
 
 /** RFC 7636 S256: base64url(sha256(verifier)) === challenge. */
-export function pkceMatches(verifier: string, challenge: string): boolean {
+export async function pkceMatches(verifier: string, challenge: string): Promise<boolean> {
   if (!/^[A-Za-z0-9\-._~]{43,128}$/.test(verifier)) return false;
-  return createHash('sha256').update(verifier).digest('base64url') === challenge;
+  return base64url(await sha256(verifier)) === challenge;
+}
+
+/*
+ * Web Crypto, never node:crypto: lib/supabase-service.ts reaches this module
+ * and is in the browser bundle's import graph (lib/db.ts → openclaw-registry),
+ * where webpack cannot resolve a node: import and the build fails.
+ */
+async function sha256(text: string): Promise<Uint8Array> {
+  return new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)));
+}
+
+function base64url(bytes: Uint8Array): string {
+  return Buffer.from(bytes).toString('base64url');
 }
 
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);

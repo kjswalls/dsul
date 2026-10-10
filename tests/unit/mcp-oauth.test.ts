@@ -35,10 +35,10 @@ const VERIFIER = 'dBjftJeZ4CVP-mB92K1uhbUJU1p1r_wW1gFWFOEjXk0';
 const CHALLENGE = createHash('sha256').update(VERIFIER).digest('base64url');
 
 describe('the rules', () => {
-  it('checks PKCE S256, and nothing else', () => {
-    expect(pkceMatches(VERIFIER, CHALLENGE)).toBe(true);
-    expect(pkceMatches(`${VERIFIER}x`, CHALLENGE)).toBe(false);
-    expect(pkceMatches('short', createHash('sha256').update('short').digest('base64url'))).toBe(false);
+  it('checks PKCE S256, and nothing else', async () => {
+    expect(await pkceMatches(VERIFIER, CHALLENGE)).toBe(true);
+    expect(await pkceMatches(`${VERIFIER}x`, CHALLENGE)).toBe(false);
+    expect(await pkceMatches('short', createHash('sha256').update('short').digest('base64url'))).toBe(false);
   });
 
   it('reads an absent or unknown scope as full access, and only planner:read alone as read-only', () => {

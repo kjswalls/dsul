@@ -16,3 +16,10 @@ export const SCOPE_WORDS: Record<Scope, string> = {
 export function isScope(s: unknown): s is Scope {
   return typeof s === 'string' && (SCOPES as readonly string[]).includes(s);
 }
+
+/**
+ * An access token's prefix, here rather than in core.ts because
+ * lib/supabase-service.ts reads it and is in the browser bundle's import graph
+ * (through lib/db.ts), where core.ts's node:crypto cannot go.
+ */
+export const ACCESS_PREFIX = 'dsul_at_';

@@ -95,7 +95,7 @@ export async function issueCode(db: Db, req: CodeRequest, now = new Date()): Pro
 
   const code = mint('dsul_code_');
   const { error } = await db.from('mcp_oauth_codes').insert({
-    code_hash: hashSecret(code),
+    code_hash: await hashSecret(code),
     user_id: req.userId,
     client_id: req.clientId,
     grant_id: grantId,
@@ -128,7 +128,7 @@ async function issueTokens(
   const refresh = mint(REFRESH_PREFIX);
   const { error } = await db.from('mcp_oauth_tokens').insert([
     {
-      token_hash: hashSecret(access),
+      token_hash: await hashSecret(access),
       user_id: grant.userId,
       grant_id: grant.id,
       kind: 'access',
@@ -136,7 +136,7 @@ async function issueTokens(
       expires_at: inSeconds(ACCESS_TTL_S, now),
     },
     {
-      token_hash: hashSecret(refresh),
+      token_hash: await hashSecret(refresh),
       user_id: grant.userId,
       grant_id: grant.id,
       kind: 'refresh',
@@ -168,7 +168,7 @@ export async function redeemCode(
   const { data, error } = await db
     .from('mcp_oauth_codes')
     .update({ used_at: now.toISOString() })
-    .eq('code_hash', hashSecret(args.code))
+    .eq('code_hash', await hashSecret(args.code))
     .is('used_at', null)
     .gt('expires_at', now.toISOString())
     .select('user_id, client_id, grant_id, redirect_uri, code_challenge')
@@ -180,7 +180,7 @@ export async function redeemCode(
     const spent = await db
       .from('mcp_oauth_codes')
       .select('grant_id, used_at')
-      .eq('code_hash', hashSecret(args.code))
+      .eq('code_hash', await hashSecret(args.code))
       .maybeSingle();
     if (spent.data?.used_at) await revokeGrantById(db, spent.data.grant_id, now);
     return 'invalid_grant';
@@ -188,7 +188,7 @@ export async function redeemCode(
   if (data.client_id !== args.clientId) return 'invalid_grant';
   // Exact, as RFC 6749 §4.1.3 asks: the loopback port leeway is for authorize.
   if (args.redirectUri !== data.redirect_uri) return 'invalid_grant';
-  if (!pkceMatches(args.verifier, data.code_challenge)) return 'invalid_grant';
+  if (!(await pkceMatches(args.verifier, data.code_challenge))) return 'invalid_grant';
 
   const grant = await liveGrant(db, data.grant_id, args.clientId);
   if (!grant) return 'invalid_grant';
@@ -205,7 +205,7 @@ export async function refresh(
   const { data, error } = await db
     .from('mcp_oauth_tokens')
     .update({ revoked_at: now.toISOString() })
-    .eq('token_hash', hashSecret(args.refreshToken))
+    .eq('token_hash', await hashSecret(args.refreshToken))
     .eq('kind', 'refresh')
     .is('revoked_at', null)
     .gt('expires_at', now.toISOString())
@@ -219,7 +219,7 @@ export async function refresh(
     const spent = await db
       .from('mcp_oauth_tokens')
       .select('grant_id, revoked_at')
-      .eq('token_hash', hashSecret(args.refreshToken))
+      .eq('token_hash', await hashSecret(args.refreshToken))
       .eq('kind', 'refresh')
       .maybeSingle();
     if (spent.data?.revoked_at) await revokeGrantById(db, spent.data.grant_id, now);
@@ -242,7 +242,7 @@ export async function resolveAccessToken(db: Db, token: string, now = new Date()
   const { data, error } = await db
     .from('mcp_oauth_tokens')
     .select('user_id, grant_id, scope, expires_at, revoked_at, mcp_oauth_grants!inner(revoked_at, last_used_at)')
-    .eq('token_hash', hashSecret(token))
+    .eq('token_hash', await hashSecret(token))
     .eq('kind', 'access')
     .maybeSingle();
   if (error || !data || data.revoked_at || !isScope(data.scope)) return null;
@@ -272,7 +272,7 @@ export async function revokeToken(db: Db, token: string, now = new Date()): Prom
   const { data } = await db
     .from('mcp_oauth_tokens')
     .select('grant_id')
-    .eq('token_hash', hashSecret(token))
+    .eq('token_hash', await hashSecret(token))
     .maybeSingle();
   if (!data) return;
   await revokeGrantById(db, data.grant_id, now);
