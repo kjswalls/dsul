@@ -41,6 +41,14 @@ export {
   ProposalOperationSchema,
   ProposalSchema,
   ProposalDraftSchema,
+  DevicePlatformSchema,
+  DeviceTransportSchema,
+  DeviceDeliverySchema,
+  DeviceFormSchema,
+  DeviceSendKindSchema,
+  DevicePrefsSchema,
+  DeviceRegistrationSchema,
+  DeviceSchema,
 } from './schemas.js'
 
 // Schema-derived field lists (values, not types)
@@ -87,6 +95,14 @@ import {
   ProposalOperationSchema,
   ProposalSchema,
   ProposalDraftSchema,
+  DevicePlatformSchema,
+  DeviceTransportSchema,
+  DeviceDeliverySchema,
+  DeviceFormSchema,
+  DeviceSendKindSchema,
+  DevicePrefsSchema,
+  DeviceRegistrationSchema,
+  DeviceSchema,
 } from './schemas.js'
 
 export type Priority         = z.infer<typeof PrioritySchema>
@@ -124,3 +140,11 @@ export type ProposalUpdateOp      = z.infer<typeof ProposalUpdateOpSchema>
 export type ProposalOperation     = z.infer<typeof ProposalOperationSchema>
 export type Proposal              = z.infer<typeof ProposalSchema>
 export type ProposalDraft         = z.infer<typeof ProposalDraftSchema>
+export type DevicePlatform        = z.infer<typeof DevicePlatformSchema>
+export type DeviceTransport       = z.infer<typeof DeviceTransportSchema>
+export type DeviceDelivery        = z.infer<typeof DeviceDeliverySchema>
+export type DeviceForm            = z.infer<typeof DeviceFormSchema>
+export type DeviceSendKind        = z.infer<typeof DeviceSendKindSchema>
+export type DevicePrefs           = z.infer<typeof DevicePrefsSchema>
+export type DeviceRegistration    = z.infer<typeof DeviceRegistrationSchema>
+export type Device                = z.infer<typeof DeviceSchema>

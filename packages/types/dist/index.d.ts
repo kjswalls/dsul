@@ -1,7 +1,7 @@
-export { PrioritySchema, ItemSizeSchema, TimeBucketSchema, TimeOfDaySchema, TaskStatusSchema, HabitStatusSchema, RepeatFrequencySchema, RecurrenceFieldsSchema, ProjectSchema, HabitGroupSchema, SeasonStateSchema, RoutineSchema, SeasonSchema, GoalStateSchema, GoalRoleSchema, GoalSchema, TaskSchema, HabitSchema, TaskItemSchema, HabitItemSchema, CustomItemSchema, ItemSchema, ItemTypeDefSchema, TaskCreateSchema, HabitCreateSchema, TaskUpdateSchema, HabitUpdateSchema, RoutineCreateSchema, RoutineUpdateSchema, SeasonCreateSchema, SeasonUpdateSchema, GoalCreateSchema, GoalUpdateSchema, DsulContextResponseSchema, DsulChangeEventSchema, AiStatusSchema, ProposalCreateOpSchema, ProposalUpdateOpSchema, ProposalOperationSchema, ProposalSchema, ProposalDraftSchema, } from './schemas.js';
+export { PrioritySchema, ItemSizeSchema, TimeBucketSchema, TimeOfDaySchema, TaskStatusSchema, HabitStatusSchema, RepeatFrequencySchema, RecurrenceFieldsSchema, ProjectSchema, HabitGroupSchema, SeasonStateSchema, RoutineSchema, SeasonSchema, GoalStateSchema, GoalRoleSchema, GoalSchema, TaskSchema, HabitSchema, TaskItemSchema, HabitItemSchema, CustomItemSchema, ItemSchema, ItemTypeDefSchema, TaskCreateSchema, HabitCreateSchema, TaskUpdateSchema, HabitUpdateSchema, RoutineCreateSchema, RoutineUpdateSchema, SeasonCreateSchema, SeasonUpdateSchema, GoalCreateSchema, GoalUpdateSchema, DsulContextResponseSchema, DsulChangeEventSchema, AiStatusSchema, ProposalCreateOpSchema, ProposalUpdateOpSchema, ProposalOperationSchema, ProposalSchema, ProposalDraftSchema, DevicePlatformSchema, DeviceTransportSchema, DeviceDeliverySchema, DeviceFormSchema, DeviceSendKindSchema, DevicePrefsSchema, DeviceRegistrationSchema, DeviceSchema, } from './schemas.js';
 export { TASK_FIELDS, HABIT_FIELDS, PROJECT_FIELDS, HABIT_GROUP_FIELDS, ROUTINE_FIELDS, SEASON_FIELDS, GOAL_FIELDS, } from './schemas.js';
 import { z } from 'zod';
-import { PrioritySchema, ItemSizeSchema, TimeBucketSchema, TaskStatusSchema, HabitStatusSchema, RepeatFrequencySchema, RecurrenceFieldsSchema, ProjectSchema, HabitGroupSchema, SeasonStateSchema, RoutineSchema, SeasonSchema, GoalStateSchema, GoalRoleSchema, GoalSchema, TaskSchema, HabitSchema, TaskItemSchema, HabitItemSchema, CustomItemSchema, ItemSchema, ItemTypeDefSchema, DsulContextResponseSchema, DsulChangeEventSchema, AiStatusSchema, ProposalCreateOpSchema, ProposalUpdateOpSchema, ProposalOperationSchema, ProposalSchema, ProposalDraftSchema } from './schemas.js';
+import { PrioritySchema, ItemSizeSchema, TimeBucketSchema, TaskStatusSchema, HabitStatusSchema, RepeatFrequencySchema, RecurrenceFieldsSchema, ProjectSchema, HabitGroupSchema, SeasonStateSchema, RoutineSchema, SeasonSchema, GoalStateSchema, GoalRoleSchema, GoalSchema, TaskSchema, HabitSchema, TaskItemSchema, HabitItemSchema, CustomItemSchema, ItemSchema, ItemTypeDefSchema, DsulContextResponseSchema, DsulChangeEventSchema, AiStatusSchema, ProposalCreateOpSchema, ProposalUpdateOpSchema, ProposalOperationSchema, ProposalSchema, ProposalDraftSchema, DevicePlatformSchema, DeviceTransportSchema, DeviceDeliverySchema, DeviceFormSchema, DeviceSendKindSchema, DevicePrefsSchema, DeviceRegistrationSchema, DeviceSchema } from './schemas.js';
 export type Priority = z.infer<typeof PrioritySchema>;
 export type ItemSize = z.infer<typeof ItemSizeSchema>;
 export type TimeBucket = z.infer<typeof TimeBucketSchema>;
@@ -37,4 +37,12 @@ export type ProposalUpdateOp = z.infer<typeof ProposalUpdateOpSchema>;
 export type ProposalOperation = z.infer<typeof ProposalOperationSchema>;
 export type Proposal = z.infer<typeof ProposalSchema>;
 export type ProposalDraft = z.infer<typeof ProposalDraftSchema>;
+export type DevicePlatform = z.infer<typeof DevicePlatformSchema>;
+export type DeviceTransport = z.infer<typeof DeviceTransportSchema>;
+export type DeviceDelivery = z.infer<typeof DeviceDeliverySchema>;
+export type DeviceForm = z.infer<typeof DeviceFormSchema>;
+export type DeviceSendKind = z.infer<typeof DeviceSendKindSchema>;
+export type DevicePrefs = z.infer<typeof DevicePrefsSchema>;
+export type DeviceRegistration = z.infer<typeof DeviceRegistrationSchema>;
+export type Device = z.infer<typeof DeviceSchema>;
 //# sourceMappingURL=index.d.ts.map

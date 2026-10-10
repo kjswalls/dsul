@@ -1210,3 +1210,86 @@ export const DsulChangeEventSchema = z.object({
   data: z.unknown(),
   timestamp: z.string(),
 })
+
+// ── Devices (reminders Phase 1, migration 065) ─────────────────────────────────
+//
+// Every device dsul can reach: one `devices` row per device per account. Not
+// agent data: nothing here reaches /api/agent/context, and schemaVersion does
+// not move. The shapes mirror 065's CHECKs, so a body that would fail one is a
+// 400 at the route rather than a 500 at Postgres.
+
+export const DevicePlatformSchema = z.enum(['web', 'ios', 'watchos', 'android', 'wearos', 'electron'])
+export const DeviceTransportSchema = z.enum(['webpush', 'apns', 'fcm', 'none'])
+/** Who schedules this device's cues: the server ('push') or the device itself ('local'). Never both. */
+export const DeviceDeliverySchema = z.enum(['push', 'local'])
+export const DeviceFormSchema = z.enum(['phone', 'tablet', 'desktop', 'watch'])
+/** What a send is about, for a device's per-kind switches. `other` is a push with no kind (/api/push/send). */
+export const DeviceSendKindSchema = z.enum(['cue', 'snooze', 'last-call', 'eod', 'pledge', 'other'])
+
+const DEVICE_ID = /^[A-Za-z0-9:._-]{8,128}$/
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/
+
+/**
+ * A device's own switches, edited by its owner (065 grants UPDATE on `prefs`
+ * and `label` and nothing else). Every key is optional: an absent kind is ON,
+ * so a device registered before a kind existed still gets it.
+ */
+export const DevicePrefsSchema = z.object({
+  kinds: z.record(DeviceSendKindSchema, z.boolean()).optional(),
+  quiet: z.object({ start: z.string().regex(HHMM), end: z.string().regex(HHMM) }).nullable().optional(),
+  muted: z.boolean().optional(),
+  claimsLocally: z.boolean().optional(),
+})
+
+/**
+ * POST /api/devices. Strict: an unknown key is a 400, never ignored. The token
+ * rules are 065's: `none` carries no token, `webpush` carries its keys, and
+ * nothing else does.
+ */
+export const DeviceRegistrationSchema = z
+  .object({
+    deviceId: z.string().regex(DEVICE_ID),
+    platform: DevicePlatformSchema,
+    transport: DeviceTransportSchema,
+    delivery: DeviceDeliverySchema.optional(),
+    os: z.string().regex(/^[a-z]{2,16}$/).optional(),
+    form: DeviceFormSchema.optional(),
+    token: z.string().min(16).max(2048).regex(/^[^\s\x00-\x1f\x7f]+$/).optional(),
+    keys: z.object({ p256dh: z.string().min(1).max(200), auth: z.string().min(1).max(100) }).strict().optional(),
+    apnsEnvironment: z.enum(['production', 'sandbox']).optional(),
+    parentDeviceId: z.string().regex(DEVICE_ID).optional(),
+    label: z.string().min(1).max(80).regex(/^[^\x00-\x1f\x7f]+$/).optional(),
+    appVersion: z.string().max(64).optional(),
+    osVersion: z.string().max(64).optional(),
+    timezone: z.string().min(1).max(64).optional(),
+  })
+  .strict()
+  .superRefine((d, ctx) => {
+    if ((d.transport === 'none') !== (d.token === undefined)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['token'], message: 'a token goes with every transport but none' })
+    }
+    if ((d.transport === 'webpush') !== (d.keys !== undefined)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['keys'], message: 'keys go with webpush and nothing else' })
+    }
+    if ((d.transport === 'apns') !== (d.apnsEnvironment !== undefined)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['apnsEnvironment'], message: 'an APNs environment goes with apns and nothing else' })
+    }
+  })
+
+/** A row of the owner's roster: what 065 grants `authenticated`. Never `token` or `keys`. */
+export const DeviceSchema = z.object({
+  id: z.string(),
+  deviceId: z.string(),
+  platform: DevicePlatformSchema,
+  transport: DeviceTransportSchema,
+  delivery: DeviceDeliverySchema,
+  os: z.string().nullable(),
+  form: DeviceFormSchema.nullable(),
+  label: z.string().nullable(),
+  timezone: z.string().nullable(),
+  prefs: DevicePrefsSchema,
+  registeredAt: z.string(),
+  lastSeenAt: z.string(),
+  lastSentAt: z.string().nullable(),
+  lastFailure: z.string().nullable(),
+})

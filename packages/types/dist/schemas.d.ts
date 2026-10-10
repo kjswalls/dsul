@@ -5419,4 +5419,242 @@ export declare const DsulChangeEventSchema: z.ZodObject<{
     timestamp: string;
     data?: unknown;
 }>;
+export declare const DevicePlatformSchema: z.ZodEnum<["web", "ios", "watchos", "android", "wearos", "electron"]>;
+export declare const DeviceTransportSchema: z.ZodEnum<["webpush", "apns", "fcm", "none"]>;
+/** Who schedules this device's cues: the server ('push') or the device itself ('local'). Never both. */
+export declare const DeviceDeliverySchema: z.ZodEnum<["push", "local"]>;
+export declare const DeviceFormSchema: z.ZodEnum<["phone", "tablet", "desktop", "watch"]>;
+/** What a send is about, for a device's per-kind switches. `other` is a push with no kind (/api/push/send). */
+export declare const DeviceSendKindSchema: z.ZodEnum<["cue", "snooze", "last-call", "eod", "pledge", "other"]>;
+/**
+ * A device's own switches, edited by its owner (065 grants UPDATE on `prefs`
+ * and `label` and nothing else). Every key is optional: an absent kind is ON,
+ * so a device registered before a kind existed still gets it.
+ */
+export declare const DevicePrefsSchema: z.ZodObject<{
+    kinds: z.ZodOptional<z.ZodRecord<z.ZodEnum<["cue", "snooze", "last-call", "eod", "pledge", "other"]>, z.ZodBoolean>>;
+    quiet: z.ZodOptional<z.ZodNullable<z.ZodObject<{
+        start: z.ZodString;
+        end: z.ZodString;
+    }, "strip", z.ZodTypeAny, {
+        start: string;
+        end: string;
+    }, {
+        start: string;
+        end: string;
+    }>>>;
+    muted: z.ZodOptional<z.ZodBoolean>;
+    claimsLocally: z.ZodOptional<z.ZodBoolean>;
+}, "strip", z.ZodTypeAny, {
+    kinds?: Partial<Record<"cue" | "snooze" | "last-call" | "eod" | "pledge" | "other", boolean>> | undefined;
+    quiet?: {
+        start: string;
+        end: string;
+    } | null | undefined;
+    muted?: boolean | undefined;
+    claimsLocally?: boolean | undefined;
+}, {
+    kinds?: Partial<Record<"cue" | "snooze" | "last-call" | "eod" | "pledge" | "other", boolean>> | undefined;
+    quiet?: {
+        start: string;
+        end: string;
+    } | null | undefined;
+    muted?: boolean | undefined;
+    claimsLocally?: boolean | undefined;
+}>;
+/**
+ * POST /api/devices. Strict: an unknown key is a 400, never ignored. The token
+ * rules are 065's: `none` carries no token, `webpush` carries its keys, and
+ * nothing else does.
+ */
+export declare const DeviceRegistrationSchema: z.ZodEffects<z.ZodObject<{
+    deviceId: z.ZodString;
+    platform: z.ZodEnum<["web", "ios", "watchos", "android", "wearos", "electron"]>;
+    transport: z.ZodEnum<["webpush", "apns", "fcm", "none"]>;
+    delivery: z.ZodOptional<z.ZodEnum<["push", "local"]>>;
+    os: z.ZodOptional<z.ZodString>;
+    form: z.ZodOptional<z.ZodEnum<["phone", "tablet", "desktop", "watch"]>>;
+    token: z.ZodOptional<z.ZodString>;
+    keys: z.ZodOptional<z.ZodObject<{
+        p256dh: z.ZodString;
+        auth: z.ZodString;
+    }, "strict", z.ZodTypeAny, {
+        p256dh: string;
+        auth: string;
+    }, {
+        p256dh: string;
+        auth: string;
+    }>>;
+    apnsEnvironment: z.ZodOptional<z.ZodEnum<["production", "sandbox"]>>;
+    parentDeviceId: z.ZodOptional<z.ZodString>;
+    label: z.ZodOptional<z.ZodString>;
+    appVersion: z.ZodOptional<z.ZodString>;
+    osVersion: z.ZodOptional<z.ZodString>;
+    timezone: z.ZodOptional<z.ZodString>;
+}, "strict", z.ZodTypeAny, {
+    deviceId: string;
+    platform: "web" | "ios" | "watchos" | "android" | "wearos" | "electron";
+    transport: "none" | "webpush" | "apns" | "fcm";
+    keys?: {
+        p256dh: string;
+        auth: string;
+    } | undefined;
+    label?: string | undefined;
+    delivery?: "push" | "local" | undefined;
+    os?: string | undefined;
+    form?: "phone" | "tablet" | "desktop" | "watch" | undefined;
+    token?: string | undefined;
+    apnsEnvironment?: "production" | "sandbox" | undefined;
+    parentDeviceId?: string | undefined;
+    appVersion?: string | undefined;
+    osVersion?: string | undefined;
+    timezone?: string | undefined;
+}, {
+    deviceId: string;
+    platform: "web" | "ios" | "watchos" | "android" | "wearos" | "electron";
+    transport: "none" | "webpush" | "apns" | "fcm";
+    keys?: {
+        p256dh: string;
+        auth: string;
+    } | undefined;
+    label?: string | undefined;
+    delivery?: "push" | "local" | undefined;
+    os?: string | undefined;
+    form?: "phone" | "tablet" | "desktop" | "watch" | undefined;
+    token?: string | undefined;
+    apnsEnvironment?: "production" | "sandbox" | undefined;
+    parentDeviceId?: string | undefined;
+    appVersion?: string | undefined;
+    osVersion?: string | undefined;
+    timezone?: string | undefined;
+}>, {
+    deviceId: string;
+    platform: "web" | "ios" | "watchos" | "android" | "wearos" | "electron";
+    transport: "none" | "webpush" | "apns" | "fcm";
+    keys?: {
+        p256dh: string;
+        auth: string;
+    } | undefined;
+    label?: string | undefined;
+    delivery?: "push" | "local" | undefined;
+    os?: string | undefined;
+    form?: "phone" | "tablet" | "desktop" | "watch" | undefined;
+    token?: string | undefined;
+    apnsEnvironment?: "production" | "sandbox" | undefined;
+    parentDeviceId?: string | undefined;
+    appVersion?: string | undefined;
+    osVersion?: string | undefined;
+    timezone?: string | undefined;
+}, {
+    deviceId: string;
+    platform: "web" | "ios" | "watchos" | "android" | "wearos" | "electron";
+    transport: "none" | "webpush" | "apns" | "fcm";
+    keys?: {
+        p256dh: string;
+        auth: string;
+    } | undefined;
+    label?: string | undefined;
+    delivery?: "push" | "local" | undefined;
+    os?: string | undefined;
+    form?: "phone" | "tablet" | "desktop" | "watch" | undefined;
+    token?: string | undefined;
+    apnsEnvironment?: "production" | "sandbox" | undefined;
+    parentDeviceId?: string | undefined;
+    appVersion?: string | undefined;
+    osVersion?: string | undefined;
+    timezone?: string | undefined;
+}>;
+/** A row of the owner's roster: what 065 grants `authenticated`. Never `token` or `keys`. */
+export declare const DeviceSchema: z.ZodObject<{
+    id: z.ZodString;
+    deviceId: z.ZodString;
+    platform: z.ZodEnum<["web", "ios", "watchos", "android", "wearos", "electron"]>;
+    transport: z.ZodEnum<["webpush", "apns", "fcm", "none"]>;
+    delivery: z.ZodEnum<["push", "local"]>;
+    os: z.ZodNullable<z.ZodString>;
+    form: z.ZodNullable<z.ZodEnum<["phone", "tablet", "desktop", "watch"]>>;
+    label: z.ZodNullable<z.ZodString>;
+    timezone: z.ZodNullable<z.ZodString>;
+    prefs: z.ZodObject<{
+        kinds: z.ZodOptional<z.ZodRecord<z.ZodEnum<["cue", "snooze", "last-call", "eod", "pledge", "other"]>, z.ZodBoolean>>;
+        quiet: z.ZodOptional<z.ZodNullable<z.ZodObject<{
+            start: z.ZodString;
+            end: z.ZodString;
+        }, "strip", z.ZodTypeAny, {
+            start: string;
+            end: string;
+        }, {
+            start: string;
+            end: string;
+        }>>>;
+        muted: z.ZodOptional<z.ZodBoolean>;
+        claimsLocally: z.ZodOptional<z.ZodBoolean>;
+    }, "strip", z.ZodTypeAny, {
+        kinds?: Partial<Record<"cue" | "snooze" | "last-call" | "eod" | "pledge" | "other", boolean>> | undefined;
+        quiet?: {
+            start: string;
+            end: string;
+        } | null | undefined;
+        muted?: boolean | undefined;
+        claimsLocally?: boolean | undefined;
+    }, {
+        kinds?: Partial<Record<"cue" | "snooze" | "last-call" | "eod" | "pledge" | "other", boolean>> | undefined;
+        quiet?: {
+            start: string;
+            end: string;
+        } | null | undefined;
+        muted?: boolean | undefined;
+        claimsLocally?: boolean | undefined;
+    }>;
+    registeredAt: z.ZodString;
+    lastSeenAt: z.ZodString;
+    lastSentAt: z.ZodNullable<z.ZodString>;
+    lastFailure: z.ZodNullable<z.ZodString>;
+}, "strip", z.ZodTypeAny, {
+    id: string;
+    label: string | null;
+    deviceId: string;
+    platform: "web" | "ios" | "watchos" | "android" | "wearos" | "electron";
+    transport: "none" | "webpush" | "apns" | "fcm";
+    delivery: "push" | "local";
+    os: string | null;
+    form: "phone" | "tablet" | "desktop" | "watch" | null;
+    timezone: string | null;
+    prefs: {
+        kinds?: Partial<Record<"cue" | "snooze" | "last-call" | "eod" | "pledge" | "other", boolean>> | undefined;
+        quiet?: {
+            start: string;
+            end: string;
+        } | null | undefined;
+        muted?: boolean | undefined;
+        claimsLocally?: boolean | undefined;
+    };
+    registeredAt: string;
+    lastSeenAt: string;
+    lastSentAt: string | null;
+    lastFailure: string | null;
+}, {
+    id: string;
+    label: string | null;
+    deviceId: string;
+    platform: "web" | "ios" | "watchos" | "android" | "wearos" | "electron";
+    transport: "none" | "webpush" | "apns" | "fcm";
+    delivery: "push" | "local";
+    os: string | null;
+    form: "phone" | "tablet" | "desktop" | "watch" | null;
+    timezone: string | null;
+    prefs: {
+        kinds?: Partial<Record<"cue" | "snooze" | "last-call" | "eod" | "pledge" | "other", boolean>> | undefined;
+        quiet?: {
+            start: string;
+            end: string;
+        } | null | undefined;
+        muted?: boolean | undefined;
+        claimsLocally?: boolean | undefined;
+    };
+    registeredAt: string;
+    lastSeenAt: string;
+    lastSentAt: string | null;
+    lastFailure: string | null;
+}>;
 //# sourceMappingURL=schemas.d.ts.map

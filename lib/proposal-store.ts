@@ -2,7 +2,7 @@
 
 import { create } from 'zustand';
 import { format } from 'date-fns';
-import { usePlannerStore } from './planner-store';
+import { getHistoryInfo, usePlannerStore } from './planner-store';
 import { isPlannerLoaded, isPlannerPreviewing, whenPreviewEnds } from './planner-ready';
 import { inactiveItemIdsOn } from './active';
 import { milestoneItemIds } from './goals';
@@ -12,6 +12,7 @@ import type { ChatErrorCode } from './ai-types';
 import { buildCatchUpProposal, buildProposalContext, validateProposal } from './proposal';
 import { noteOpenclawAsked, useConversationsStore } from './conversations-store';
 import { tallyOperations } from './conversation-summary';
+import { useChatReceipts } from './chat-receipts';
 import type { Proposal, ProposalOperation } from './planner-types';
 
 /**
@@ -233,14 +234,37 @@ const NO_SELECTION: ProposalStore['selection'] = { proposalId: null, dropped: ne
  * or the item's one conversation for an `item:` card. None (the catch-up card,
  * or an item nobody has chatted about) means there is no row to count on.
  */
-function noteAccepted(surface: ProposalSurface | undefined, accepted: readonly ProposalOperation[]): void {
-  if (!surface || surface === 'chat') return;
+function conversationFor(surface: ProposalSurface | undefined): string | null {
+  if (!surface || surface === 'chat') return null;
   const conversations = useConversationsStore.getState();
   const id = surface.startsWith('conv:')
     ? surface.slice('conv:'.length)
     : conversations.itemIndex[surface.slice('item:'.length)];
-  if (typeof id !== 'string' || !id) return;
-  conversations.noteChanges(id, tallyOperations(accepted));
+  return typeof id === 'string' && id ? id : null;
+}
+
+function noteAccepted(surface: ProposalSurface | undefined, accepted: readonly ProposalOperation[]): void {
+  const id = conversationFor(surface);
+  if (id) useConversationsStore.getState().noteChanges(id, tallyOperations(accepted));
+}
+
+/**
+ * The accept's receipt, in the conversation that asked (lib/chat-receipts.ts):
+ * what the planner actually took, and the history entry it wrote, which is the
+ * newest one the moment applyProposal returns.
+ */
+function receiptFor(surface: ProposalSurface | undefined, accepted: readonly ProposalOperation[]): void {
+  const id = conversationFor(surface);
+  if (!id || accepted.length === 0) return;
+  const actionId = getHistoryInfo().actionLog[0]?.id;
+  if (!actionId) return;
+  const messages = useConversationsStore.getState().threads[id]?.messages;
+  useChatReceipts.getState().add(id, {
+    actionId,
+    afterMessageId: messages?.at(-1)?.id ?? null,
+    tally: tallyOperations(accepted),
+    undone: false,
+  });
 }
 
 /**
@@ -517,9 +541,12 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
       // What the planner actually took (it re-validates), counted on the
       // conversation that asked: History's second line.
       const surface = lastRequest?.surface;
-      const applied = usePlannerStore
-        .getState()
-        .applyProposal({ ...proposal, operations: chosen }, (accepted) => noteAccepted(surface, accepted));
+      let took: readonly ProposalOperation[] = [];
+      const applied = usePlannerStore.getState().applyProposal({ ...proposal, operations: chosen }, (accepted) => {
+        took = accepted;
+        noteAccepted(surface, accepted);
+      });
+      if (applied > 0) receiptFor(surface, took);
 
       claim();
       if (applied === 0) {

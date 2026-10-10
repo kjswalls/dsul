@@ -24,6 +24,18 @@ vi.mock('@/lib/push-send', () => ({
   isPushConfigured: () => true,
 }));
 
+// The pledge notice sends through the device registry. Stood in for by the
+// PushResult-shaped mock above, called with the notice's payload.
+vi.mock('@/lib/devices/send', async () => {
+  const { sendPushToUser } = await import('@/lib/push-send');
+  return {
+    sendToUser: async (service: unknown, userId: string, message: { payload: unknown }) => {
+      const r = await (sendPushToUser as unknown as (...a: unknown[]) => Promise<{ devices: number; sent: number; expired: number; failed: number; detail?: string }>)(service, userId, message.payload);
+      return { devices: r.devices, eligible: r.devices, accepted: r.sent, failed: r.failed, pruned: r.expired, held: 0, perDevice: [], ...(r.detail ? { detail: r.detail } : {}) };
+    },
+  };
+});
+
 const TZ = 'America/New_York';
 const ctx: ActivationContext = { userTimezone: TZ };
 const DAY = '2026-08-10';
