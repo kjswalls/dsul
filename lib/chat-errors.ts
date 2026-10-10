@@ -137,6 +137,28 @@ export function replyErrorCode(v: unknown): ReplyErrorCode {
   return isReplyErrorCode(v) ? v : 'client';
 }
 
+/**
+ * The failures the same question might get past by asking again: the provider
+ * or the path to it was busy, slow or briefly gone. The rest need something
+ * changed first (a key, a model, a plan, the wording), so a Try again under
+ * them would be a button that lies (ai-vision.md, "Something else").
+ */
+const RETRYABLE: ReadonlySet<ReplyErrorCode> = new Set<ReplyErrorCode>([
+  'rate_limit',
+  'upstream',
+  'timeout',
+  'network',
+  'server',
+  'plugin_unreachable',
+  'plugin_error',
+  'no_response',
+  'client',
+]);
+
+export function isRetryableReplyError(code: unknown): boolean {
+  return RETRYABLE.has(replyErrorCode(code));
+}
+
 /** What the transcript knows about a daily limit still holding, to say when it lifts. */
 export interface ChatErrorContext {
   /** The connection's `limitedUntil` (ISO). Used only while it is in the future. */

@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ArrowDown, Check, Copy, Wand2 } from 'lucide-react';
+import { ArrowDown, Check, Copy, RotateCcw, Wand2 } from 'lucide-react';
 import ReactMarkdown, { type Components, type ExtraProps } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ProposalCard } from '@/components/ai/proposal-card';
@@ -11,7 +11,9 @@ import { useAICapabilities, useAIConnectionStore } from '@/lib/ai-connection-sto
 import { usePlannerStore } from '@/lib/planner-store';
 import { useProposalStore } from '@/lib/proposal-store';
 import { buildPlanPrompt } from '@/lib/plan-prompt';
-import { chatErrorCopy } from '@/lib/chat-errors';
+import { chatErrorCopy, isRetryableReplyError } from '@/lib/chat-errors';
+import { sendFrom } from '@/lib/open-chat';
+import type { ComposerBinding } from '@/lib/rail-store';
 import { chatAssistantName, stripReasoningTags } from '@/lib/chat-utils';
 import { clockTime } from '@/lib/format-chat-timestamp';
 import { prefersReducedMotion } from '@/lib/zen-transition';
@@ -33,6 +35,11 @@ import type { Answerer } from '@/lib/conversation-types';
  *    partial text; a failed reply's words by its CODE (lib/chat-errors.ts,
  *    never the stored text, which holds none); "Not saved" once per turn the
  *    account will never hold.
+ *  - TRY AGAIN under the latest reply when it was stopped, or failed in a way
+ *    asking again might get past (`isRetryableReplyError`): the same question
+ *    sent again as a new turn, so nothing saved is rewritten. The failed turn
+ *    stays; the model never hears it (chat-transport.ts drops a question an
+ *    error answered).
  *  - A DIVIDER where who answers changes between replies: each message records
  *    its answerer, and a conversation may be continued under the other one.
  *  - TO A SCREEN READER: the transcript is a log that does not read the stream
@@ -76,25 +83,47 @@ function endsUnsavedTurn(messages: readonly ChatMessage[], i: number): boolean {
 }
 
 /**
+ * The question to ask again under the latest reply, or null when there is no
+ * Try again: the reply is not the last message, still arriving, finished
+ * fine, or failed in a way the same words would fail again.
+ */
+export function retryQuestion(messages: readonly ChatMessage[]): string | null {
+  const m = messages.at(-1);
+  if (!m || m.role !== 'assistant') return null;
+  if (m.status !== 'stopped' && !(m.status === 'error' && isRetryableReplyError(m.errorCode))) return null;
+  let q: ChatMessage | undefined;
+  for (let i = messages.length - 2; i >= 0 && !q; i--) {
+    const c = messages[i];
+    if (c.role === 'user' && (!m.replyTo || c.id === m.replyTo)) q = c;
+  }
+  return q?.content.trim() ? q.content : null;
+}
+
+/**
  * The messages alone, with no scroller of their own.
  *
  * `planFor` is the conversation the latest reply's "Turn this into a plan"
  * answers on (`conv:<id>`); without it there is no such offer (an item's
  * conversation, whose item has its own Break-into-steps). `busy` hides it
- * while a reply is still arriving.
+ * while a reply is still arriving. `retryVia` is where Try again sends
+ * (the composer binding this conversation's own box uses); without it there
+ * is no Try again.
  */
 export function TranscriptMessages({
   messages,
   typing,
   busy,
   planFor,
+  retryVia,
 }: {
   messages: readonly ChatMessage[];
   typing: boolean;
   busy: boolean;
   planFor?: string;
+  retryVia?: ComposerBinding;
 }) {
   const dividers = answererDividers(messages);
+  const again = retryVia && !busy ? retryQuestion(messages) : null;
   return (
     <>
       {messages.map((m, i) => (
@@ -111,6 +140,7 @@ export function TranscriptMessages({
               typing={typing && m.status === 'streaming'}
               notSaved={endsUnsavedTurn(messages, i)}
               planFrom={planFor && i === messages.length - 1 && !busy ? { conversationId: planFor, messages } : undefined}
+              retry={again && retryVia && i === messages.length - 1 ? { via: retryVia, text: again } : undefined}
             />
           )}
         </Fragment>
@@ -206,14 +236,17 @@ const Reply = memo(function Reply({
   typing,
   notSaved,
   planFrom,
+  retry,
 }: {
   m: ChatMessage;
   typing: boolean;
   notSaved: boolean;
   /** Set on the latest reply only, once it has finished. */
   planFrom?: { conversationId: string; messages: readonly ChatMessage[] };
+  /** Set on the latest reply only, when it can be asked again (retryQuestion). */
+  retry?: { via: ComposerBinding; text: string };
 }) {
-  const { canPropose, openclawTransport } = useAICapabilities();
+  const { canChat, canPropose, openclawTransport } = useAICapabilities();
   const userTimezone = usePlannerStore((s) => s.userTimezone);
   const timeFormat = usePlannerStore((s) => s.timeFormat);
   // When today's limit lifts, while one holds: the server's word, read with
@@ -265,6 +298,9 @@ const Reply = memo(function Reply({
         </div>
       )}
       {notSaved && <NotSaved />}
+      {/* Outside the hover-faded row, as the plan offer is: a dead end has to
+          show its way out without being looked for. */}
+      {retry && canChat && <RetryButton via={retry.via} text={retry.text} />}
       {/* Latest reply only: one offer at the foot of the thread. Outside the
           hover-faded row above on purpose: it is the one control that has to be
           findable without knowing it is there. */}
@@ -305,6 +341,25 @@ function PlanButton({
     >
       <Wand2 className="size-3 text-ai" aria-hidden />
       Turn this into a plan
+    </button>
+  );
+}
+
+/**
+ * Ask the same question again, as a new turn through the conversation's own
+ * binding (sendFrom, the one place a send is decided). The button goes as the
+ * new turn lands, since it is no longer the latest reply's.
+ */
+function RetryButton({ via, text }: { via: ComposerBinding; text: string }) {
+  return (
+    <button
+      type="button"
+      onClick={() => void sendFrom(via, text)}
+      data-testid="chat-retry"
+      className="mt-1 inline-flex w-fit items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-2xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+    >
+      <RotateCcw className="size-3" aria-hidden />
+      Try again
     </button>
   );
 }
@@ -628,7 +683,13 @@ export function ChatTranscript({ id }: { id: string }) {
               {loadingEarlier ? 'Loading…' : 'Load earlier'}
             </button>
           )}
-          <TranscriptMessages messages={messages} typing={typing} busy={busy} planFor={id} />
+          <TranscriptMessages
+            messages={messages}
+            typing={typing}
+            busy={busy}
+            planFor={id}
+            retryVia={{ kind: 'conversation', id }}
+          />
           {/* The conversation's plan card, inline after the last message; it
               outlives this view unmounting (rail-store drops it once the
               conversation has left both Ask stacks). */}
