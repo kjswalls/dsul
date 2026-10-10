@@ -15,6 +15,7 @@ import { parseSseFrames } from './sse';
 import { ProposalDraftSchema } from '@dsul/types';
 import type { ProposalDraft } from './planner-types';
 import type { MessageStatus } from './conversation-types';
+import type { ChatImage } from './chat-images';
 
 /**
  * One chat turn, on whichever transport answers it, and nothing about storage.
@@ -49,6 +50,11 @@ export interface TurnInput {
   message: string;
   /** The transcript for /api/chat, ending with `message` (see `outgoingTurns`). */
   turns: ChatTurn[];
+  /**
+   * Pictures for the new message (lib/chat-images.ts): the model path only, for
+   * this turn only. Never on OpenClaw's transports.
+   */
+  images?: ChatImage[];
   /** The planner context, already built (and any continuity note folded in). */
   context: string;
   /** Custom-type nouns, for the server's prompt. */
@@ -314,6 +320,8 @@ async function viaChatRoute(input: TurnInput): Promise<TurnOutcome> {
         // can't address another user's session or a reserved namespace.
         // Ignored on the model path.
         conversationId: input.conversationId,
+        // Sent once, with the message they were attached to, and only to the model.
+        ...(input.target === 'model' && input.images?.length ? { images: input.images } : {}),
       }),
     });
 

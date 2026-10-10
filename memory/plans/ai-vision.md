@@ -31,7 +31,7 @@ a new turn, so nothing saved is rewritten), action lines, receipts with Undo (bu
 "Something else", a line under its buttons whose words go to that card's conversation as the
 user's next message, verbatim, through sendFrom; the card goes once the send is taken, and a send
 refused keeps both; a card asked for keeps its retry)) and 2c
-(reach: @ items, / commands, the model chip and open wide (all built 2026-10-10, below), and attachments). The section "Step 2a —
+(reach: @ items, / commands, the model chip, open wide and pictures (all built 2026-10-10, below)). The section "Step 2a —
 Move and save" below has what shipped and the privacy statement.
 
 **Note 2026-10-10: @ items.** Typing @ in any chat box (the rail's, an item's, the phone's dock) lists
@@ -70,6 +70,19 @@ Ask's own gate (nothing shown and nothing fetched while no model or OpenClaw ans
 conversation found deleted shows the gone notice with no box, since a send from it would start a
 conversation in a rail that page does not have. Not on the phone, whose Ask is already the whole
 screen, and not on an item's conversation, whose wide form is the item's own page.
+
+**Note 2026-10-10: pictures.** The panel's + (and a paste into the box) attaches up to three pictures
+while the connected model answers; never for OpenClaw, whose transports carry words, and not in the
+phone's one-row dock bar. SENT, NEVER STORED (lib/chat-images.ts): the browser shrinks each to 1568px
+on its long edge and re-encodes it as JPEG over white (components/ai/chat-image-attach.ts, which also
+drops a photo's metadata), they ride `/api/chat` as `images` beside the newest message for that one
+turn (checked by `sanitizeChatImages` on both sides: a malformed one is a 400, not a quiet drop; the
+body cap rose to 4.4 MB, under Vercel's 4.5), and each adapter puts them on that user turn (Anthropic
+image blocks before the words, OpenAI-compatible `image_url` data URLs after them, in the lookup loop
+too). The saved turn is the words alone; the transcript says "1 image, not saved" under the message
+for as long as the page holds it (`ChatMessage.imageCount`, memory only). A later turn, Try again and
+Edit send words only. A model that cannot see pictures answers with its provider's own refusal, which
+reaches the user as the usual error line.
 
 **Note 2026-10-10: what the chat can see, and its words.** Kirby tried free OpenRouter models and
 the chat could not find tasks they named, and answered "break this into subtasks" with "make a
@@ -1263,6 +1276,8 @@ conversation is saved to the account.
   - the planner context sent with each message;
   - your custom instructions;
   - proposal cards;
+  - pictures attached to a message (sent to your model with it, then gone; the transcript notes
+    "1 image, not saved" until the page reloads);
   - error text (only a short error code);
   - your model key (which never leaves the server's sealed store, as before);
   - "Write with AI" in Settings → Make (mods build orders 7 and 10): neither the ask nor the reply.

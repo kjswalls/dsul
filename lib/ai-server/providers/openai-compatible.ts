@@ -27,6 +27,7 @@ import { ProviderError, classifyStatus, isDeadlineAbort, isStreamRefusal, toProv
 import { readCappedJson } from '../stream';
 import { CUSTOM_RESPONSE_CAPS, guardedFetch } from '../url-policy';
 import { parseToolArgs } from './tool-args';
+import { imageDataUrl, type ChatImage } from '@/lib/chat-images';
 import type {
   CompletionRequest,
   ListedModel,
@@ -157,7 +158,9 @@ function baseParams(p: OpenAICompatibleProviderId, req: CompletionRequest) {
     ...limitParams(p, req),
     messages: [
       ...systemMessage(req),
-      ...req.messages.map((t): ChatCompletionMessageParam => ({ role: t.role, content: t.content })),
+      ...req.messages.map((t): ChatCompletionMessageParam =>
+        t.role === 'user' ? userMessage(t.content, t.images) : { role: t.role, content: t.content }
+      ),
     ],
     ...(req.json && (p === 'openai' || p === 'gemini')
       ? { response_format: { type: 'json_object' as const } }
@@ -186,8 +189,21 @@ function toolMessages(turns: readonly ToolTurn[]): ChatCompletionMessageParam[] 
         })),
       };
     }
+    if (t.role === 'user') return userMessage(t.content, t.images);
     return { role: t.role, content: t.content };
   });
+}
+
+/** A user turn, with its pictures as `image_url` parts after the words when it has any. */
+function userMessage(content: string, images: readonly ChatImage[] | undefined): ChatCompletionMessageParam {
+  if (!images?.length) return { role: 'user', content };
+  return {
+    role: 'user',
+    content: [
+      { type: 'text', text: content },
+      ...images.map((image) => ({ type: 'image_url' as const, image_url: { url: imageDataUrl(image) } })),
+    ],
+  };
 }
 
 function toolParams(p: OpenAICompatibleProviderId, req: ToolRequest): ChatCompletionCreateParamsNonStreaming {

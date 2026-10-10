@@ -8,10 +8,13 @@
  */
 
 import type { ModelOption, ModelProviderId } from '@/lib/ai-types';
+import type { ChatImage } from '@/lib/chat-images';
 
 export interface ChatTurn {
   role: 'user' | 'assistant';
   content: string;
+  /** A user turn's pictures (lib/chat-images.ts): only ever the newest message's. */
+  images?: ChatImage[];
 }
 
 /** baseUrl is always set: a built-in provider's constant, or the checked custom URL. */
@@ -94,7 +97,7 @@ export interface ToolCall {
 
 /** A turn in a conversation with tools: the plain turns, plus the calls and their results. */
 export type ToolTurn =
-  | { role: 'user'; content: string }
+  | { role: 'user'; content: string; images?: ChatImage[] }
   | { role: 'assistant'; content: string; toolCalls?: ToolCall[] }
   | { role: 'tool'; callId: string; name: string; content: string };
 

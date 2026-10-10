@@ -31,6 +31,7 @@ import type {
 } from '@anthropic-ai/sdk/resources/messages';
 import type { ModelInfo } from '@anthropic-ai/sdk/resources/models';
 import { isModelId } from '@/lib/ai-types';
+import type { ChatImage } from '@/lib/chat-images';
 import { ProviderError, isDeadlineAbort, toProviderErrorFor } from '../errors';
 import { guardedFetch } from '../url-policy';
 import { parseToolArgs } from './tool-args';
@@ -82,12 +83,23 @@ function makeClient(creds: ProviderCredentials, limits: { timeout: number; maxRe
 function normalizeTurns(turns: readonly ChatTurn[]): MessageParam[] {
   const out: MessageParam[] = [];
   for (const t of turns) {
-    if (typeof t?.content !== 'string' || t.content.trim() === '') continue;
+    if (typeof t?.content !== 'string') continue;
     if (t.role !== 'user' && t.role !== 'assistant') continue;
+    const pictures = t.role === 'user' ? (t.images ?? []) : [];
+    if (t.content.trim() === '' && pictures.length === 0) continue;
     if (out.length === 0 && t.role === 'assistant') continue;
     const last = out[out.length - 1];
-    if (last && last.role === t.role) {
-      last.content = `${last.content as string}\n\n${t.content}`;
+    if (pictures.length > 0) {
+      // Pictures first, then the words about them: Anthropic's own advice.
+      const blocks: ContentBlockParam[] = [...pictures.map(imageBlock)];
+      if (t.content.trim() !== '') blocks.push({ type: 'text', text: t.content });
+      if (last && last.role === 'user') last.content = [...asBlocks(last.content), ...blocks];
+      else out.push({ role: 'user', content: blocks });
+    } else if (last && last.role === t.role) {
+      last.content =
+        typeof last.content === 'string'
+          ? `${last.content}\n\n${t.content}`
+          : [...last.content, { type: 'text', text: t.content }];
     } else {
       out.push({ role: t.role, content: t.content });
     }
@@ -95,6 +107,14 @@ function normalizeTurns(turns: readonly ChatTurn[]): MessageParam[] {
   while (out.length > 0 && out[out.length - 1].role === 'assistant') out.pop();
   if (out.length === 0) throw new ProviderError('bad_request');
   return out;
+}
+
+function imageBlock(image: ChatImage): ContentBlockParam {
+  return { type: 'image', source: { type: 'base64', media_type: image.mediaType, data: image.data } };
+}
+
+function asBlocks(content: MessageParam['content']): ContentBlockParam[] {
+  return typeof content === 'string' ? (content.trim() ? [{ type: 'text', text: content }] : []) : content;
 }
 
 function baseParams(req: CompletionRequest) {
@@ -123,6 +143,7 @@ function normalizeToolTurns(turns: readonly ToolTurn[]): MessageParam[] {
     if (t.role === 'tool') {
       blocks.push({ type: 'tool_result', tool_use_id: t.callId, content: t.content });
     } else {
+      if (t.role === 'user') blocks.push(...(t.images ?? []).map(imageBlock));
       if (typeof t.content === 'string' && t.content.trim() !== '') blocks.push({ type: 'text', text: t.content });
       if (t.role === 'assistant') {
         for (const c of t.toolCalls ?? []) {

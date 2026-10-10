@@ -24,6 +24,7 @@ import {
 } from '@/lib/ai-limits';
 import { BEACON_SYSTEM_PROMPT } from '@/lib/beacon-system-prompt';
 import { TOOLS_PROMPT, withToolsPrompt } from '@/lib/ai-server/chat-loop';
+import { MAX_CHAT_IMAGES, MAX_IMAGE_DATA_CHARS } from '@/lib/chat-images';
 
 /**
  * POST /api/chat, the rewrite: the user's own model or their own OpenClaw
@@ -375,6 +376,47 @@ describe('POST /api/chat → the connected model', () => {
     expect(JSON.stringify(adapter.openStream.mock.calls)).not.toContain('SENTINEL');
   });
 
+  it('hands the pictures to the newest message only, and to no other turn', async () => {
+    const image = { mediaType: 'image/png', data: 'iVBORw0KGgo=' };
+    await (
+      await post({
+        messages: [
+          { role: 'user', content: 'earlier' },
+          { role: 'assistant', content: 'ok' },
+          { role: 'user', content: 'what is in this?' },
+        ],
+        images: [image],
+      })
+    ).text();
+    const [, req] = adapter.openStream.mock.calls[0];
+    expect(req.messages.at(-1)).toEqual({ role: 'user', content: 'what is in this?', images: [image] });
+    expect(req.messages.slice(0, -1).every((m: { images?: unknown }) => m.images === undefined)).toBe(true);
+  });
+
+  it('refuses malformed pictures rather than sending the words without them', async () => {
+    for (const images of [
+      'x',
+      [{ mediaType: 'image/svg+xml', data: 'PHN2Zz4=' }],
+      [{ mediaType: 'image/png', data: 'not base64!' }],
+      [{ mediaType: 'image/png', data: 'A'.repeat(MAX_IMAGE_DATA_CHARS + 4) }],
+      Array.from({ length: MAX_CHAT_IMAGES + 1 }, () => ({ mediaType: 'image/png', data: 'AAAA' })),
+    ]) {
+      const res = await post({ ...hi, images });
+      expect(res.status).toBe(400);
+      expect((await res.json()).code).toBe('invalid');
+    }
+    expect(adapter.openStream).not.toHaveBeenCalled();
+  });
+
+  it('carries the pictures into a lookup conversation too', async () => {
+    toolsOn.value = true;
+    adapter.completeWithTools.mockResolvedValueOnce({ text: 'A cat.', toolCalls: [] });
+    const image = { mediaType: 'image/jpeg', data: '/9j/4AAQ' };
+    await (await post({ ...hi, images: [image] })).text();
+    const [, req] = adapter.completeWithTools.mock.calls[0];
+    expect(req.messages.at(-1)).toEqual({ role: 'user', content: 'plan my day', images: [image] });
+  });
+
   it('passes the request’s own abort signal upstream', async () => {
     const ac = new AbortController();
     await post(hi, { signal: ac.signal });
@@ -681,17 +723,18 @@ describe('guards (all JSON, before any stream)', () => {
     expect((await res.json()).code).toBe('forbidden');
   });
 
-  it('a body over 2 MB → 413 too_large', async () => {
-    const res = await post({ messages: [{ role: 'user', content: 'x'.repeat(2_100_000) }] });
+  it('a body over its cap (4.4 MB, under the platform’s 4.5) → 413 too_large', async () => {
+    const res = await post({ messages: [{ role: 'user', content: 'x'.repeat(4_500_000) }] });
     expect(res.status).toBe(413);
     expect(res.headers.get('cache-control')).toBe('no-store');
     expect((await res.json()).code).toBe('too_large');
     expect(openModelConnection).not.toHaveBeenCalled();
   });
 
-  it('a body just under 2 MB is accepted (40 long turns plus a full context fit)', async () => {
+  it('40 long turns, a full context and three pictures at their cap all fit', async () => {
     const turns = Array.from({ length: 40 }, () => ({ role: 'user', content: 'é'.repeat(8_000) }));
-    const res = await post({ messages: turns, context: 'é'.repeat(60_000) });
+    const images = Array.from({ length: MAX_CHAT_IMAGES }, () => ({ mediaType: 'image/jpeg', data: 'A'.repeat(MAX_IMAGE_DATA_CHARS) }));
+    const res = await post({ messages: turns, context: 'é'.repeat(60_000), images });
     expect(res.status).toBe(200);
     await res.text();
   });
@@ -821,5 +864,13 @@ describe('POST /api/chat → a model that takes tools', () => {
   it('the gateway path never offers tools', async () => {
     await (await post({ ...hi, target: 'openclaw', conversationId: CONV })).text();
     expect(adapter.completeWithTools).not.toHaveBeenCalled();
+  });
+
+  it('the gateway is never handed a picture', async () => {
+    await (
+      await post({ ...hi, target: 'openclaw', conversationId: CONV, images: [{ mediaType: 'image/png', data: 'AAAA' }] })
+    ).text();
+    const [arg] = vi.mocked(gateway.streamGatewayChat).mock.calls[0];
+    expect(JSON.stringify(arg.messages)).not.toContain('AAAA');
   });
 });

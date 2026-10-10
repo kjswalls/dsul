@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { ArrowUp, Mic, Plus, Square } from 'lucide-react';
+import { ArrowUp, Mic, Plus, Square, X } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useAICapabilities, useAIConnectionStore } from '@/lib/ai-connection-store';
@@ -17,6 +18,8 @@ import { SlashCommands, type SlashCommandsHandle } from './chat-slash-commands';
 import { usePlannerStore } from '@/lib/planner-store';
 import type { Item } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
+import { MAX_CHAT_IMAGES, imageDataUrl, type ChatImage } from '@/lib/chat-images';
+import { ATTACH_COPY, readChatImage } from './chat-image-attach';
 
 /** Auto-grow ceiling, past which the field scrolls instead of pushing further. */
 const MAX_HEIGHT_PX = 120;
@@ -177,11 +180,39 @@ export function ChatComposer({
     ta.style.height = Math.min(ta.scrollHeight, MAX_HEIGHT_PX) + 'px';
   }, [input, awake]);
 
+  // Pictures (lib/chat-images.ts): the panel's attach button or a paste, only
+  // while the connected model answers, and sent with the next message only.
+  // Held here, not in rail-store: a half-typed message outlives its view, a
+  // picture does not.
+  const canAttach = variant === 'panel' && target === 'model';
+  const [pictures, setPictures] = useState<{ id: string; image: ChatImage }[]>([]);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const attach = async (files: readonly File[]) => {
+    if (!canAttach || files.length === 0) return;
+    const room = MAX_CHAT_IMAGES - pictures.length;
+    if (files.length > room) toast.error(ATTACH_COPY.tooMany(MAX_CHAT_IMAGES));
+    const read = await Promise.all(files.slice(0, Math.max(0, room)).map(readChatImage));
+    const added = read.flatMap((r) => (r.ok ? [{ id: crypto.randomUUID(), image: r.image }] : []));
+    const failed = read.find((r) => !r.ok);
+    if (failed && !failed.ok) toast.error(failed.reason);
+    if (added.length) setPictures((cur) => [...cur, ...added].slice(0, MAX_CHAT_IMAGES));
+  };
+  const onPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    if (!canAttach) return;
+    const files = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith('image/'));
+    if (files.length === 0) return;
+    // A picture alone is taken here; words pasted with it still land in the box.
+    if (!e.clipboardData.getData('text/plain')) e.preventDefault();
+    void attach(files);
+  };
+
   const handleSend = () => {
     const text = input.trim();
     if (!text || isLoading) return;
     setInput('');
-    void sendFrom(binding, text, { surface });
+    const images = canAttach ? pictures.map((p) => p.image) : [];
+    setPictures([]);
+    void sendFrom(binding, text, { surface, ...(images.length ? { images } : {}) });
   };
 
   const refocus = useRef(false);
@@ -360,6 +391,32 @@ export function ChatComposer({
   return (
     <div className="relative rounded-2xl border border-border bg-muted/30 transition-colors focus-within:bg-muted/50">
       {list}
+      {canAttach && pictures.length > 0 && (
+        <ul className="flex flex-wrap gap-2 px-3 pt-3" aria-label="Attached pictures" data-testid="chat-attachments">
+          {pictures.map((p, i) => (
+            <li key={p.id} className="relative" data-testid="chat-attachment">
+              {/* eslint-disable-next-line @next/next/no-img-element -- a data: URL in memory, nothing to optimise */}
+              <img
+                src={imageDataUrl(p.image)}
+                alt={`Picture ${i + 1}`}
+                className="size-14 rounded-lg border border-border object-cover"
+              />
+              <button
+                type="button"
+                aria-label={`Remove picture ${i + 1}`}
+                data-testid="chat-attachment-remove"
+                onClick={() => {
+                  setPictures((cur) => cur.filter((x) => x.id !== p.id));
+                  textareaRef.current?.focus();
+                }}
+                className="absolute -top-1.5 -right-1.5 flex size-5 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm hover:text-foreground"
+              >
+                <X className="size-3" aria-hidden />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
       <Textarea
         ref={textareaRef}
         value={input}
@@ -371,6 +428,7 @@ export function ChatComposer({
         onSelect={(e) => readCaret(e.currentTarget)}
         onBlur={() => setCaret(null)}
         onKeyDown={onKeyDown}
+        onPaste={onPaste}
         {...comboProps}
         placeholder={placeholder}
         rows={1}
@@ -395,11 +453,27 @@ export function ChatComposer({
             variant="ghost"
             size="icon"
             className="h-8 w-8 shrink-0 rounded-full text-muted-foreground"
-            disabled
-            title="Attach files (coming soon)"
+            disabled={!canAttach || isLoading || pictures.length >= MAX_CHAT_IMAGES}
+            onClick={() => fileRef.current?.click()}
+            aria-label="Attach pictures"
+            title={canAttach ? 'Attach pictures' : 'Pictures go to a connected model only'}
+            data-testid="chat-attach"
           >
             <Plus className="h-4 w-4" />
           </Button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            multiple
+            hidden
+            data-testid="chat-attach-input"
+            onChange={(e) => {
+              const files = Array.from(e.target.files ?? []);
+              e.target.value = '';
+              void attach(files);
+            }}
+          />
           {target === 'model' && <ChatModelChip disabled={isLoading} />}
         </div>
         {isLoading ? (
