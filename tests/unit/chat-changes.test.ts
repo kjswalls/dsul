@@ -76,7 +76,7 @@ describe('propose_changes', () => {
         { kind: 'update', itemId: 't4', status: 'completed' },
         { kind: 'update', itemId: 'm1', clear: ['startDate'] },
         { kind: 'update', itemId: 't2', status: 'done' },
-        { kind: 'create', itemType: 'habit', title: 'Stretch' },
+        { kind: 'create', itemType: 'ritual', title: 'Stretch' },
       ],
     });
     expect(r.proposal?.operations).toEqual([{ kind: 'update', itemId: 't1', status: 'completed' }]);
@@ -86,7 +86,7 @@ describe('propose_changes', () => {
       'recurring items are completed per-date',
       'a goal milestone keeps its target date',
       '"done" is not a valid status',
-      'cannot create items of type "habit"',
+      'cannot create items of type "ritual"',
     ]) {
       expect(r.content).toContain(reason);
     }

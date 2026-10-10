@@ -91,14 +91,37 @@ describe('validateProposalOperations — creates', () => {
     expect(rejected[0].reason).toMatch(/cannot create/);
   });
 
-  it('rejects habit creation — habits require a group the AI cannot pick', () => {
+  it('creates a habit, daily unless told otherwise, and drops what a habit does not keep', () => {
     const { accepted, rejected } = validate({
       kind: 'create',
       itemType: 'habit',
-      title: 'Meditate daily',
+      title: 'Meditate',
+      priority: 'high',
+      startDate: '2026-08-06',
     });
-    expect(accepted).toHaveLength(0);
-    expect(rejected).toHaveLength(1);
+    expect(rejected).toEqual([]);
+    expect(accepted).toEqual([{ kind: 'create', itemType: 'habit', title: 'Meditate', repeatFrequency: 'daily' }]);
+  });
+
+  it('asks the registry which repeats a type takes', () => {
+    const reason = (op: Record<string, unknown>) =>
+      validate({ kind: 'create', title: 'x', ...op } as ProposalOperation).rejected.map((r) => r.reason)
+    expect(reason({ itemType: 'habit', repeatFrequency: 'none' })).toEqual(['a habit always repeats']);
+    expect(reason({ itemType: 'habit', repeatFrequency: 'custom' })).toEqual(['a custom repeat needs its days']);
+    expect(reason({ itemType: 'habit', repeatFrequency: 'custom', repeatDays: [1, 4] })).toEqual([]);
+    // A repeating task is anchored on its first day.
+    expect(reason({ itemType: 'task', repeatFrequency: 'weekdays' })).toEqual(['a repeating item needs a first day']);
+    expect(reason({ itemType: 'task', repeatFrequency: 'weekdays', startDate: '2026-08-06' })).toEqual([]);
+  });
+
+  it('keeps only the repeat fields the frequency reads, and a daily count only on a habit', () => {
+    const { accepted } = validate(
+      { kind: 'create', itemType: 'task', title: 'Bins', startDate: '2026-08-06', repeatFrequency: 'daily', repeatDays: [1], timesPerDay: 3 },
+      { kind: 'create', itemType: 'habit', title: 'Water', timesPerDay: 8 },
+    );
+    expect(accepted[0]).not.toHaveProperty('repeatDays');
+    expect(accepted[0]).not.toHaveProperty('timesPerDay');
+    expect(accepted[1]).toMatchObject({ timesPerDay: 8, repeatFrequency: 'daily' });
   });
 });
 
@@ -632,5 +655,47 @@ describe('verb operations (tick, skip, pause)', () => {
     expect(describeOperation(verb('skip', 'habit-1', '2026-08-27'), day)).toMatch(/^Stretch: skip on /);
     expect(describeOperation(verb('complete', 'task-1'), day)).toBe('Email Dana: mark done');
     expect(describeOperation(verb('pause', 'habit-1'), day)).toBe('Stretch: pause');
+  });
+});
+
+describe('repeats on an update, and a pause with an end', () => {
+  const day = { ...ctx, todayStr: '2026-08-26', tz: 'UTC' };
+  const reasons = (op: Record<string, unknown>, c: ProposalContext = day) =>
+    validateProposalOperations([op as ProposalOperation], c).rejected.map((r) => r.reason);
+
+  it("changes a habit's days, and never stops it repeating", () => {
+    expect(reasons({ kind: 'update', itemId: 'habit-1', repeatFrequency: 'custom', repeatDays: [1, 3] })).toEqual([]);
+    expect(reasons({ kind: 'update', itemId: 'habit-1', repeatFrequency: 'none' })).toEqual(['a habit always repeats']);
+  });
+
+  it('makes a task repeat only from a first day', () => {
+    expect(reasons({ kind: 'update', itemId: 'task-1', repeatFrequency: 'daily' })).toEqual(['a repeating item needs a first day']);
+    expect(reasons({ kind: 'update', itemId: 'task-1', repeatFrequency: 'daily', startDate: '2026-08-27' })).toEqual([]);
+  });
+
+  it('pauses until a day still to come, and only a pause has an end', () => {
+    expect(reasons({ kind: 'verb', verb: 'pause', itemId: 'habit-1', until: '2026-09-01' })).toEqual([]);
+    expect(reasons({ kind: 'verb', verb: 'pause', itemId: 'habit-1', until: '2026-08-26' })).toEqual([
+      'a pause has to end on a day still to come',
+    ]);
+    expect(reasons({ kind: 'verb', verb: 'skip', itemId: 'habit-1', until: '2026-09-01' })).toEqual([
+      'only a pause has a day it ends',
+    ]);
+  });
+
+  it('says the repeat in words on the card', () => {
+    const d = (op: Record<string, unknown>) => describeOperation(op as ProposalOperation, day);
+    expect(d({ kind: 'create', itemType: 'habit', title: 'Stretch', repeatFrequency: 'daily' })).toBe('New habit: Stretch, daily');
+    expect(d({ kind: 'create', itemType: 'habit', title: 'Gym', repeatFrequency: 'custom', repeatDays: [4, 1] })).toBe(
+      'New habit: Gym, every Mon and Thu',
+    );
+    expect(d({ kind: 'create', itemType: 'habit', title: 'Water', repeatFrequency: 'daily', timesPerDay: 8 })).toBe(
+      'New habit: Water, daily, 8 times a day',
+    );
+    expect(d({ kind: 'update', itemId: 'habit-1', repeatFrequency: 'monthly', repeatMonthDay: 22 })).toBe(
+      'Stretch: repeat monthly on the 22nd',
+    );
+    expect(d({ kind: 'update', itemId: 'task-1', repeatFrequency: 'none' })).toBe('Email Dana: stop repeating');
+    expect(d({ kind: 'verb', verb: 'pause', itemId: 'habit-1', until: '2026-09-01' })).toMatch(/^Stretch: pause until /);
   });
 });

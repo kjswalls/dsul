@@ -4980,10 +4980,24 @@ export declare const ProposalCreateOpSchema: z.ZodObject<{
     startTime: z.ZodOptional<z.ZodString>;
     priority: z.ZodOptional<z.ZodEnum<["low", "medium", "high"]>>;
     notes: z.ZodOptional<z.ZodString>;
+    /**
+     * How it repeats. Which frequencies a type takes (a habit never 'none') is
+     * the registry's `allowedFrequencies`, checked app-side like status.
+     */
+    repeatFrequency: z.ZodOptional<z.ZodEnum<["none", "daily", "weekdays", "weekends", "monthly", "custom"]>>;
+    /** For 'custom': 0 = Sunday … 6 = Saturday. */
+    repeatDays: z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>;
+    /** For 'monthly': the day of the month. */
+    repeatMonthDay: z.ZodOptional<z.ZodNumber>;
+    /** Counted habits only (registry `counters.dailyCounts`): the daily target. */
+    timesPerDay: z.ZodOptional<z.ZodNumber>;
 }, "strip", z.ZodTypeAny, {
     title: string;
     kind: "create";
     itemType: string;
+    repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+    repeatDays?: number[] | undefined;
+    repeatMonthDay?: number | undefined;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     notes?: string | undefined;
@@ -4991,10 +5005,14 @@ export declare const ProposalCreateOpSchema: z.ZodObject<{
     project?: string | undefined;
     startDate?: string | undefined;
     parentItemId?: string | undefined;
+    timesPerDay?: number | undefined;
 }, {
     title: string;
     kind: "create";
     itemType: string;
+    repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+    repeatDays?: number[] | undefined;
+    repeatMonthDay?: number | undefined;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     notes?: string | undefined;
@@ -5002,6 +5020,7 @@ export declare const ProposalCreateOpSchema: z.ZodObject<{
     project?: string | undefined;
     startDate?: string | undefined;
     parentItemId?: string | undefined;
+    timesPerDay?: number | undefined;
 }>;
 export declare const ProposalUpdateOpSchema: z.ZodObject<{
     kind: z.ZodLiteral<"update">;
@@ -5014,26 +5033,45 @@ export declare const ProposalUpdateOpSchema: z.ZodObject<{
     status: z.ZodOptional<z.ZodString>;
     title: z.ZodOptional<z.ZodString>;
     notes: z.ZodOptional<z.ZodString>;
+    /**
+     * How it repeats. Which frequencies a type takes (a habit never 'none') is
+     * the registry's `allowedFrequencies`, checked app-side like status.
+     */
+    repeatFrequency: z.ZodOptional<z.ZodEnum<["none", "daily", "weekdays", "weekends", "monthly", "custom"]>>;
+    /** For 'custom': 0 = Sunday … 6 = Saturday. */
+    repeatDays: z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>;
+    /** For 'monthly': the day of the month. */
+    repeatMonthDay: z.ZodOptional<z.ZodNumber>;
+    /** Counted habits only (registry `counters.dailyCounts`): the daily target. */
+    timesPerDay: z.ZodOptional<z.ZodNumber>;
 }, "strip", z.ZodTypeAny, {
     kind: "update";
     itemId: string;
     status?: string | undefined;
+    repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+    repeatDays?: number[] | undefined;
+    repeatMonthDay?: number | undefined;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
     startTime?: string | null | undefined;
     notes?: string | undefined;
     title?: string | undefined;
     priority?: "low" | "medium" | "high" | null | undefined;
     startDate?: string | null | undefined;
+    timesPerDay?: number | undefined;
 }, {
     kind: "update";
     itemId: string;
     status?: string | undefined;
+    repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+    repeatDays?: number[] | undefined;
+    repeatMonthDay?: number | undefined;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
     startTime?: string | null | undefined;
     notes?: string | undefined;
     title?: string | undefined;
     priority?: "low" | "medium" | "high" | null | undefined;
     startDate?: string | null | undefined;
+    timesPerDay?: number | undefined;
 }>;
 /**
  * One of the item verbs (lib/item-verbs.ts) on one item and day: what a tick,
@@ -5049,16 +5087,20 @@ export declare const ProposalVerbOpSchema: z.ZodObject<{
     itemId: z.ZodString;
     /** The day it acts on, yyyy-MM-dd; today when absent. Pause and resume ignore it. */
     date: z.ZodOptional<z.ZodString>;
+    /** Pause only: the day it comes back, yyyy-MM-dd. Absent pauses until resumed. */
+    until: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     kind: "verb";
     itemId: string;
     verb: "complete" | "skip" | "unskip" | "pause" | "resume";
     date?: string | undefined;
+    until?: string | undefined;
 }, {
     kind: "verb";
     itemId: string;
     verb: "complete" | "skip" | "unskip" | "pause" | "resume";
     date?: string | undefined;
+    until?: string | undefined;
 }>;
 export declare const ProposalOperationSchema: z.ZodDiscriminatedUnion<"kind", [z.ZodObject<{
     kind: z.ZodLiteral<"create">;
@@ -5083,10 +5125,24 @@ export declare const ProposalOperationSchema: z.ZodDiscriminatedUnion<"kind", [z
     startTime: z.ZodOptional<z.ZodString>;
     priority: z.ZodOptional<z.ZodEnum<["low", "medium", "high"]>>;
     notes: z.ZodOptional<z.ZodString>;
+    /**
+     * How it repeats. Which frequencies a type takes (a habit never 'none') is
+     * the registry's `allowedFrequencies`, checked app-side like status.
+     */
+    repeatFrequency: z.ZodOptional<z.ZodEnum<["none", "daily", "weekdays", "weekends", "monthly", "custom"]>>;
+    /** For 'custom': 0 = Sunday … 6 = Saturday. */
+    repeatDays: z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>;
+    /** For 'monthly': the day of the month. */
+    repeatMonthDay: z.ZodOptional<z.ZodNumber>;
+    /** Counted habits only (registry `counters.dailyCounts`): the daily target. */
+    timesPerDay: z.ZodOptional<z.ZodNumber>;
 }, "strip", z.ZodTypeAny, {
     title: string;
     kind: "create";
     itemType: string;
+    repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+    repeatDays?: number[] | undefined;
+    repeatMonthDay?: number | undefined;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     notes?: string | undefined;
@@ -5094,10 +5150,14 @@ export declare const ProposalOperationSchema: z.ZodDiscriminatedUnion<"kind", [z
     project?: string | undefined;
     startDate?: string | undefined;
     parentItemId?: string | undefined;
+    timesPerDay?: number | undefined;
 }, {
     title: string;
     kind: "create";
     itemType: string;
+    repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+    repeatDays?: number[] | undefined;
+    repeatMonthDay?: number | undefined;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     notes?: string | undefined;
@@ -5105,6 +5165,7 @@ export declare const ProposalOperationSchema: z.ZodDiscriminatedUnion<"kind", [z
     project?: string | undefined;
     startDate?: string | undefined;
     parentItemId?: string | undefined;
+    timesPerDay?: number | undefined;
 }>, z.ZodObject<{
     kind: z.ZodLiteral<"update">;
     itemId: z.ZodString;
@@ -5116,42 +5177,65 @@ export declare const ProposalOperationSchema: z.ZodDiscriminatedUnion<"kind", [z
     status: z.ZodOptional<z.ZodString>;
     title: z.ZodOptional<z.ZodString>;
     notes: z.ZodOptional<z.ZodString>;
+    /**
+     * How it repeats. Which frequencies a type takes (a habit never 'none') is
+     * the registry's `allowedFrequencies`, checked app-side like status.
+     */
+    repeatFrequency: z.ZodOptional<z.ZodEnum<["none", "daily", "weekdays", "weekends", "monthly", "custom"]>>;
+    /** For 'custom': 0 = Sunday … 6 = Saturday. */
+    repeatDays: z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>;
+    /** For 'monthly': the day of the month. */
+    repeatMonthDay: z.ZodOptional<z.ZodNumber>;
+    /** Counted habits only (registry `counters.dailyCounts`): the daily target. */
+    timesPerDay: z.ZodOptional<z.ZodNumber>;
 }, "strip", z.ZodTypeAny, {
     kind: "update";
     itemId: string;
     status?: string | undefined;
+    repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+    repeatDays?: number[] | undefined;
+    repeatMonthDay?: number | undefined;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
     startTime?: string | null | undefined;
     notes?: string | undefined;
     title?: string | undefined;
     priority?: "low" | "medium" | "high" | null | undefined;
     startDate?: string | null | undefined;
+    timesPerDay?: number | undefined;
 }, {
     kind: "update";
     itemId: string;
     status?: string | undefined;
+    repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+    repeatDays?: number[] | undefined;
+    repeatMonthDay?: number | undefined;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
     startTime?: string | null | undefined;
     notes?: string | undefined;
     title?: string | undefined;
     priority?: "low" | "medium" | "high" | null | undefined;
     startDate?: string | null | undefined;
+    timesPerDay?: number | undefined;
 }>, z.ZodObject<{
     kind: z.ZodLiteral<"verb">;
     verb: z.ZodEnum<["complete", "skip", "unskip", "pause", "resume"]>;
     itemId: z.ZodString;
     /** The day it acts on, yyyy-MM-dd; today when absent. Pause and resume ignore it. */
     date: z.ZodOptional<z.ZodString>;
+    /** Pause only: the day it comes back, yyyy-MM-dd. Absent pauses until resumed. */
+    until: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     kind: "verb";
     itemId: string;
     verb: "complete" | "skip" | "unskip" | "pause" | "resume";
     date?: string | undefined;
+    until?: string | undefined;
 }, {
     kind: "verb";
     itemId: string;
     verb: "complete" | "skip" | "unskip" | "pause" | "resume";
     date?: string | undefined;
+    until?: string | undefined;
 }>]>;
 export declare const ProposalSchema: z.ZodObject<{
     id: z.ZodString;
@@ -5190,10 +5274,24 @@ export declare const ProposalSchema: z.ZodObject<{
         startTime: z.ZodOptional<z.ZodString>;
         priority: z.ZodOptional<z.ZodEnum<["low", "medium", "high"]>>;
         notes: z.ZodOptional<z.ZodString>;
+        /**
+         * How it repeats. Which frequencies a type takes (a habit never 'none') is
+         * the registry's `allowedFrequencies`, checked app-side like status.
+         */
+        repeatFrequency: z.ZodOptional<z.ZodEnum<["none", "daily", "weekdays", "weekends", "monthly", "custom"]>>;
+        /** For 'custom': 0 = Sunday … 6 = Saturday. */
+        repeatDays: z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>;
+        /** For 'monthly': the day of the month. */
+        repeatMonthDay: z.ZodOptional<z.ZodNumber>;
+        /** Counted habits only (registry `counters.dailyCounts`): the daily target. */
+        timesPerDay: z.ZodOptional<z.ZodNumber>;
     }, "strip", z.ZodTypeAny, {
         title: string;
         kind: "create";
         itemType: string;
+        repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+        repeatDays?: number[] | undefined;
+        repeatMonthDay?: number | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         notes?: string | undefined;
@@ -5201,10 +5299,14 @@ export declare const ProposalSchema: z.ZodObject<{
         project?: string | undefined;
         startDate?: string | undefined;
         parentItemId?: string | undefined;
+        timesPerDay?: number | undefined;
     }, {
         title: string;
         kind: "create";
         itemType: string;
+        repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+        repeatDays?: number[] | undefined;
+        repeatMonthDay?: number | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         notes?: string | undefined;
@@ -5212,6 +5314,7 @@ export declare const ProposalSchema: z.ZodObject<{
         project?: string | undefined;
         startDate?: string | undefined;
         parentItemId?: string | undefined;
+        timesPerDay?: number | undefined;
     }>, z.ZodObject<{
         kind: z.ZodLiteral<"update">;
         itemId: z.ZodString;
@@ -5223,42 +5326,65 @@ export declare const ProposalSchema: z.ZodObject<{
         status: z.ZodOptional<z.ZodString>;
         title: z.ZodOptional<z.ZodString>;
         notes: z.ZodOptional<z.ZodString>;
+        /**
+         * How it repeats. Which frequencies a type takes (a habit never 'none') is
+         * the registry's `allowedFrequencies`, checked app-side like status.
+         */
+        repeatFrequency: z.ZodOptional<z.ZodEnum<["none", "daily", "weekdays", "weekends", "monthly", "custom"]>>;
+        /** For 'custom': 0 = Sunday … 6 = Saturday. */
+        repeatDays: z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>;
+        /** For 'monthly': the day of the month. */
+        repeatMonthDay: z.ZodOptional<z.ZodNumber>;
+        /** Counted habits only (registry `counters.dailyCounts`): the daily target. */
+        timesPerDay: z.ZodOptional<z.ZodNumber>;
     }, "strip", z.ZodTypeAny, {
         kind: "update";
         itemId: string;
         status?: string | undefined;
+        repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+        repeatDays?: number[] | undefined;
+        repeatMonthDay?: number | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
         startTime?: string | null | undefined;
         notes?: string | undefined;
         title?: string | undefined;
         priority?: "low" | "medium" | "high" | null | undefined;
         startDate?: string | null | undefined;
+        timesPerDay?: number | undefined;
     }, {
         kind: "update";
         itemId: string;
         status?: string | undefined;
+        repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+        repeatDays?: number[] | undefined;
+        repeatMonthDay?: number | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
         startTime?: string | null | undefined;
         notes?: string | undefined;
         title?: string | undefined;
         priority?: "low" | "medium" | "high" | null | undefined;
         startDate?: string | null | undefined;
+        timesPerDay?: number | undefined;
     }>, z.ZodObject<{
         kind: z.ZodLiteral<"verb">;
         verb: z.ZodEnum<["complete", "skip", "unskip", "pause", "resume"]>;
         itemId: z.ZodString;
         /** The day it acts on, yyyy-MM-dd; today when absent. Pause and resume ignore it. */
         date: z.ZodOptional<z.ZodString>;
+        /** Pause only: the day it comes back, yyyy-MM-dd. Absent pauses until resumed. */
+        until: z.ZodOptional<z.ZodString>;
     }, "strip", z.ZodTypeAny, {
         kind: "verb";
         itemId: string;
         verb: "complete" | "skip" | "unskip" | "pause" | "resume";
         date?: string | undefined;
+        until?: string | undefined;
     }, {
         kind: "verb";
         itemId: string;
         verb: "complete" | "skip" | "unskip" | "pause" | "resume";
         date?: string | undefined;
+        until?: string | undefined;
     }>]>, "many">;
     createdAt: z.ZodString;
 }, "strip", z.ZodTypeAny, {
@@ -5268,6 +5394,9 @@ export declare const ProposalSchema: z.ZodObject<{
         title: string;
         kind: "create";
         itemType: string;
+        repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+        repeatDays?: number[] | undefined;
+        repeatMonthDay?: number | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         notes?: string | undefined;
@@ -5275,21 +5404,27 @@ export declare const ProposalSchema: z.ZodObject<{
         project?: string | undefined;
         startDate?: string | undefined;
         parentItemId?: string | undefined;
+        timesPerDay?: number | undefined;
     } | {
         kind: "update";
         itemId: string;
         status?: string | undefined;
+        repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+        repeatDays?: number[] | undefined;
+        repeatMonthDay?: number | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
         startTime?: string | null | undefined;
         notes?: string | undefined;
         title?: string | undefined;
         priority?: "low" | "medium" | "high" | null | undefined;
         startDate?: string | null | undefined;
+        timesPerDay?: number | undefined;
     } | {
         kind: "verb";
         itemId: string;
         verb: "complete" | "skip" | "unskip" | "pause" | "resume";
         date?: string | undefined;
+        until?: string | undefined;
     })[];
     createdAt: string;
     rationale?: string | undefined;
@@ -5300,6 +5435,9 @@ export declare const ProposalSchema: z.ZodObject<{
         title: string;
         kind: "create";
         itemType: string;
+        repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+        repeatDays?: number[] | undefined;
+        repeatMonthDay?: number | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         notes?: string | undefined;
@@ -5307,21 +5445,27 @@ export declare const ProposalSchema: z.ZodObject<{
         project?: string | undefined;
         startDate?: string | undefined;
         parentItemId?: string | undefined;
+        timesPerDay?: number | undefined;
     } | {
         kind: "update";
         itemId: string;
         status?: string | undefined;
+        repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+        repeatDays?: number[] | undefined;
+        repeatMonthDay?: number | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
         startTime?: string | null | undefined;
         notes?: string | undefined;
         title?: string | undefined;
         priority?: "low" | "medium" | "high" | null | undefined;
         startDate?: string | null | undefined;
+        timesPerDay?: number | undefined;
     } | {
         kind: "verb";
         itemId: string;
         verb: "complete" | "skip" | "unskip" | "pause" | "resume";
         date?: string | undefined;
+        until?: string | undefined;
     })[];
     createdAt: string;
     rationale?: string | undefined;
@@ -5364,10 +5508,24 @@ export declare const ProposalDraftSchema: z.ZodObject<Omit<{
         startTime: z.ZodOptional<z.ZodString>;
         priority: z.ZodOptional<z.ZodEnum<["low", "medium", "high"]>>;
         notes: z.ZodOptional<z.ZodString>;
+        /**
+         * How it repeats. Which frequencies a type takes (a habit never 'none') is
+         * the registry's `allowedFrequencies`, checked app-side like status.
+         */
+        repeatFrequency: z.ZodOptional<z.ZodEnum<["none", "daily", "weekdays", "weekends", "monthly", "custom"]>>;
+        /** For 'custom': 0 = Sunday … 6 = Saturday. */
+        repeatDays: z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>;
+        /** For 'monthly': the day of the month. */
+        repeatMonthDay: z.ZodOptional<z.ZodNumber>;
+        /** Counted habits only (registry `counters.dailyCounts`): the daily target. */
+        timesPerDay: z.ZodOptional<z.ZodNumber>;
     }, "strip", z.ZodTypeAny, {
         title: string;
         kind: "create";
         itemType: string;
+        repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+        repeatDays?: number[] | undefined;
+        repeatMonthDay?: number | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         notes?: string | undefined;
@@ -5375,10 +5533,14 @@ export declare const ProposalDraftSchema: z.ZodObject<Omit<{
         project?: string | undefined;
         startDate?: string | undefined;
         parentItemId?: string | undefined;
+        timesPerDay?: number | undefined;
     }, {
         title: string;
         kind: "create";
         itemType: string;
+        repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+        repeatDays?: number[] | undefined;
+        repeatMonthDay?: number | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         notes?: string | undefined;
@@ -5386,6 +5548,7 @@ export declare const ProposalDraftSchema: z.ZodObject<Omit<{
         project?: string | undefined;
         startDate?: string | undefined;
         parentItemId?: string | undefined;
+        timesPerDay?: number | undefined;
     }>, z.ZodObject<{
         kind: z.ZodLiteral<"update">;
         itemId: z.ZodString;
@@ -5397,42 +5560,65 @@ export declare const ProposalDraftSchema: z.ZodObject<Omit<{
         status: z.ZodOptional<z.ZodString>;
         title: z.ZodOptional<z.ZodString>;
         notes: z.ZodOptional<z.ZodString>;
+        /**
+         * How it repeats. Which frequencies a type takes (a habit never 'none') is
+         * the registry's `allowedFrequencies`, checked app-side like status.
+         */
+        repeatFrequency: z.ZodOptional<z.ZodEnum<["none", "daily", "weekdays", "weekends", "monthly", "custom"]>>;
+        /** For 'custom': 0 = Sunday … 6 = Saturday. */
+        repeatDays: z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>;
+        /** For 'monthly': the day of the month. */
+        repeatMonthDay: z.ZodOptional<z.ZodNumber>;
+        /** Counted habits only (registry `counters.dailyCounts`): the daily target. */
+        timesPerDay: z.ZodOptional<z.ZodNumber>;
     }, "strip", z.ZodTypeAny, {
         kind: "update";
         itemId: string;
         status?: string | undefined;
+        repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+        repeatDays?: number[] | undefined;
+        repeatMonthDay?: number | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
         startTime?: string | null | undefined;
         notes?: string | undefined;
         title?: string | undefined;
         priority?: "low" | "medium" | "high" | null | undefined;
         startDate?: string | null | undefined;
+        timesPerDay?: number | undefined;
     }, {
         kind: "update";
         itemId: string;
         status?: string | undefined;
+        repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+        repeatDays?: number[] | undefined;
+        repeatMonthDay?: number | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
         startTime?: string | null | undefined;
         notes?: string | undefined;
         title?: string | undefined;
         priority?: "low" | "medium" | "high" | null | undefined;
         startDate?: string | null | undefined;
+        timesPerDay?: number | undefined;
     }>, z.ZodObject<{
         kind: z.ZodLiteral<"verb">;
         verb: z.ZodEnum<["complete", "skip", "unskip", "pause", "resume"]>;
         itemId: z.ZodString;
         /** The day it acts on, yyyy-MM-dd; today when absent. Pause and resume ignore it. */
         date: z.ZodOptional<z.ZodString>;
+        /** Pause only: the day it comes back, yyyy-MM-dd. Absent pauses until resumed. */
+        until: z.ZodOptional<z.ZodString>;
     }, "strip", z.ZodTypeAny, {
         kind: "verb";
         itemId: string;
         verb: "complete" | "skip" | "unskip" | "pause" | "resume";
         date?: string | undefined;
+        until?: string | undefined;
     }, {
         kind: "verb";
         itemId: string;
         verb: "complete" | "skip" | "unskip" | "pause" | "resume";
         date?: string | undefined;
+        until?: string | undefined;
     }>]>, "many">;
     createdAt: z.ZodString;
 }, "id" | "createdAt">, "strip", z.ZodTypeAny, {
@@ -5441,6 +5627,9 @@ export declare const ProposalDraftSchema: z.ZodObject<Omit<{
         title: string;
         kind: "create";
         itemType: string;
+        repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+        repeatDays?: number[] | undefined;
+        repeatMonthDay?: number | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         notes?: string | undefined;
@@ -5448,21 +5637,27 @@ export declare const ProposalDraftSchema: z.ZodObject<Omit<{
         project?: string | undefined;
         startDate?: string | undefined;
         parentItemId?: string | undefined;
+        timesPerDay?: number | undefined;
     } | {
         kind: "update";
         itemId: string;
         status?: string | undefined;
+        repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+        repeatDays?: number[] | undefined;
+        repeatMonthDay?: number | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
         startTime?: string | null | undefined;
         notes?: string | undefined;
         title?: string | undefined;
         priority?: "low" | "medium" | "high" | null | undefined;
         startDate?: string | null | undefined;
+        timesPerDay?: number | undefined;
     } | {
         kind: "verb";
         itemId: string;
         verb: "complete" | "skip" | "unskip" | "pause" | "resume";
         date?: string | undefined;
+        until?: string | undefined;
     })[];
     rationale?: string | undefined;
 }, {
@@ -5471,6 +5666,9 @@ export declare const ProposalDraftSchema: z.ZodObject<Omit<{
         title: string;
         kind: "create";
         itemType: string;
+        repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+        repeatDays?: number[] | undefined;
+        repeatMonthDay?: number | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         notes?: string | undefined;
@@ -5478,21 +5676,27 @@ export declare const ProposalDraftSchema: z.ZodObject<Omit<{
         project?: string | undefined;
         startDate?: string | undefined;
         parentItemId?: string | undefined;
+        timesPerDay?: number | undefined;
     } | {
         kind: "update";
         itemId: string;
         status?: string | undefined;
+        repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+        repeatDays?: number[] | undefined;
+        repeatMonthDay?: number | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
         startTime?: string | null | undefined;
         notes?: string | undefined;
         title?: string | undefined;
         priority?: "low" | "medium" | "high" | null | undefined;
         startDate?: string | null | undefined;
+        timesPerDay?: number | undefined;
     } | {
         kind: "verb";
         itemId: string;
         verb: "complete" | "skip" | "unskip" | "pause" | "resume";
         date?: string | undefined;
+        until?: string | undefined;
     })[];
     rationale?: string | undefined;
 }>;

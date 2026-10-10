@@ -32,9 +32,9 @@ export const PROPOSE_TOOL: ToolDef = {
   description:
     'Offer the user changes to their planner as a card they accept with one tap. Nothing changes until they ' +
     'accept, so call this whenever they ask you to add, move, reschedule, rename, finish, cancel or break down ' +
-    'something, or to tick off, skip, pause or resume a habit or a repeating item. An existing item is named by ' +
-    `its id, so find it with find_items first. One card per message, at most ${MAX_CARD_CHANGES} changes. Not for ` +
-    'creating or editing habits, projects, or deleting anything.',
+    'something, to start a habit or change how something repeats, or to tick off, skip, pause or resume a habit ' +
+    'or a repeating item. An existing item is named by its id, so find it with find_items first. One card per ' +
+    `message, at most ${MAX_CARD_CHANGES} changes. Not for projects, routines, seasons, goals, or deleting anything.`,
   parameters: {
     type: 'object',
     properties: {
@@ -65,7 +65,16 @@ export const PROPOSE_TOOL: ToolDef = {
               type: 'string',
               description: 'verb: the day it is for, YYYY-MM-DD; today when left out. Never a day still to come for complete.',
             },
-            itemType: { type: 'string', description: 'create: "task" (the default) or the name of one of their own types.' },
+            until: {
+              type: 'string',
+              description: 'pause only: the day it comes back, YYYY-MM-DD. Leave out to pause until they resume it.',
+            },
+            itemType: {
+              type: 'string',
+              description:
+                'create: "task" (the default), "habit" for something done again and again that keeps a streak, or ' +
+                'the name of one of their own types.',
+            },
             parentItemId: {
               type: 'string',
               description: "create: the id of a task this is a step of. Steps take no day or time.",
@@ -83,6 +92,20 @@ export const PROPOSE_TOOL: ToolDef = {
                 'and drops the time, priority stops flagging it.',
             },
             notes: { type: 'string', description: 'Notes, replacing any there were.' },
+            repeatFrequency: {
+              type: 'string',
+              enum: ['none', 'daily', 'weekdays', 'weekends', 'monthly', 'custom'],
+              description:
+                'How it repeats. A habit always repeats (daily when left out). A repeating task needs a startDate, ' +
+                'its first day. custom needs repeatDays; none stops a task repeating.',
+            },
+            repeatDays: {
+              type: 'array',
+              items: { type: 'integer', minimum: 0, maximum: 6 },
+              description: 'For custom: the days, 0 = Sunday … 6 = Saturday.',
+            },
+            repeatMonthDay: { type: 'integer', minimum: 1, maximum: 31, description: 'For monthly: the day of the month.' },
+            timesPerDay: { type: 'integer', minimum: 1, description: 'Habits only: how many times a day, e.g. 8 glasses of water.' },
             project: { type: 'string', description: 'create: the project to put it in, by name.' },
             status: {
               type: 'string',
