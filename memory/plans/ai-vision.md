@@ -31,6 +31,18 @@ a new turn, so nothing saved is rewritten), action lines, receipts with Undo (bu
 (reach: @ items, / commands, the model chip, attachments, open wide). The section "Step 2a —
 Move and save" below has what shipped and the privacy statement.
 
+**Note 2026-10-10: what the chat can see, and its words.** Kirby tried free OpenRouter models and
+the chat could not find tasks they named, and answered "break this into subtasks" with "make a
+project". Two causes on dsul's side: `buildDsulContext` (lib/ai-context.ts) only rendered today,
+overdue, habits and project names, while the prompt claimed "full visibility"; and the prompt never
+said what a subtask or a project is, nor that chat cannot change anything. The context now adds
+"Coming up" (open, dated, not subtasks, the next 14 days) and "Braindump" (open, undated, unbucketed:
+the braindump's own membership rule), each capped at 40 with a count; the prompt says what the
+snapshot holds, to say so rather than guess, the two nouns, and where the two acting buttons are.
+Next, by Kirby's direction ("do anything in the app, like the MCP capabilities"): give chat the MCP
+tool set, reads run at once and every write arrives as an accept card with Undo, gated on a model
+that supports tool calling. Design first, for Kirby to look at.
+
 **Note 2026-10-04: "Ask AI" on the item's right-click menu.** One row, a submenu of at
 most four asks, declared in `lib/item-asks.ts` (gate, label, wording) and run by
 `lib/open-chat.ts` (`askAboutItem`, `breakDownItem`, `proposeForItem`): Ask about this… /
