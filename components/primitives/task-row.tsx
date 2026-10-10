@@ -648,6 +648,8 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
               // The waiting shimmer's mark (lib/planner-shimmer.ts): an open
               // title takes the muted ink and the band while the preview is up;
               // a muted one keeps its own ink, so it never outshines an open row.
+              // Also where tests/e2e/helpers/dnd.ts presses to drag the row: the
+              // row's centre is under the hover cluster, which stops pointerdown.
               data-row-title={suppressed || (completed && !suppressCompletedLook) ? 'muted' : 'open'}
               className={cn(
                 // Content typeface via tokens: sans = Inter Regular 11.5,

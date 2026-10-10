@@ -134,13 +134,12 @@ jobs:
       # stack's file. The webServer (`pnpm build && pnpm start`) inherits the
       # values from the Playwright process.
 
-      # Advisory until the suite is reliably green: its failures do not fail the
-      # workflow, but a broken stack above still does.
-      # Its own timeout, under the job's: a step that times out is a step
-      # failure (absorbed by continue-on-error), a job that does is a red job.
-      # ~20m locally with 4 workers; CI runs 1 worker with 2 retries.
+      # A gate, not advice. It ran with continue-on-error until 2026-10, and six
+      # specs rotted red for over a month behind a green check (#274, #257).
+      # A red suite now fails this job. CI runs 1 worker with 2 retries, so a
+      # test that passes on retry reports as flaky in the summary, not red.
+      # The step timeout sits under the job's so a hang still uploads the report.
       - name: Run E2E tests
-        continue-on-error: true
         timeout-minutes: 45
         run: pnpm run e2e
 

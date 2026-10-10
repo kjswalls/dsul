@@ -10,7 +10,7 @@ const WEEK_STOP_COUNT = 6;
  * The week scale control — the slider that sets how wide a day column is.
  *
  * The arithmetic is unit-tested (tests/unit/week-columns.test.ts), because CI
- * gates every push on `test:unit` and runs e2e with continue-on-error. What only
+ * runs `test:unit` on every push and e2e only on pull requests. What only
  * a browser can confirm is here: that the derived number reaches the DOM, that
  * all seven columns move together, that the choice persists, and that the canvas
  * really does give up its 1100px cap in week scope while staying aligned with
@@ -302,7 +302,7 @@ test.describe('week scale', () => {
     const probe = await page
       .locator('[data-tour="timeline"] [data-slot="scroll-area-viewport"]')
       .evaluate(async (vp: HTMLElement) => {
-        const gutter = vp.querySelector('.canvas-container > div') as HTMLElement;
+        const gutter = vp.querySelector('[data-testid="week-hour-gutter"]') as HTMLElement;
         const vpLeft = vp.getBoundingClientRect().left;
         const max = vp.scrollWidth - vp.clientWidth;
         const xs: number[] = [];
@@ -342,7 +342,7 @@ test.describe('week scale', () => {
     await page.waitForTimeout(700);
 
     const x = await viewport.evaluate((vp: HTMLElement) => {
-      const gutter = vp.querySelector('.canvas-container > div') as HTMLElement;
+      const gutter = vp.querySelector('[data-testid="week-hour-gutter"]') as HTMLElement;
       return Math.round(gutter.getBoundingClientRect().left - vp.getBoundingClientRect().left);
     });
     expect(x).toBe(0);

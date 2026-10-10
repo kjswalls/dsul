@@ -140,12 +140,21 @@ test.describe('Mod panels', () => {
     // Docked: the planner stays usable beside it.
     await expect(page.locator('main')).not.toHaveAttribute('inert', '');
 
-    await itemCard(page, itemId).click();
+    // On the title's start, not the row's centre: with the mod rail docked the
+    // canvas narrows, and the centre lands under the row's hover cluster,
+    // which swallows the click so the item never opens.
+    await itemCard(page, itemId).locator('[data-row-title]').first().click({ position: { x: 4, y: 6 } });
     const back = page.getByTestId('item-dialog').getByTestId('rail-back');
     await expect(back).toContainText(`Your mod · ${name}`);
     await expect(modRail(page)).toBeHidden();
-    await back.click();
-    await expect(modRail(page)).toBeVisible();
+    // The opener's click holds the rail header for RAIL_HEADER_HOLD_MS
+    // (lib/rail-store.ts), and on a fast runner everything above lands inside
+    // it, so a single click on ‹ could be swallowed. Retry the click until the
+    // panel is back rather than racing the hold.
+    await expect(async () => {
+      if (await back.isVisible()) await back.click();
+      await expect(modRail(page)).toBeVisible({ timeout: 1_000 });
+    }).toPass({ timeout: 10_000 });
 
     await modRail(page).getByTestId('mod-rail-close').click();
     await expect(modRail(page)).toHaveCount(0, { timeout: 5_000 });

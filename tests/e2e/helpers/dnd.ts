@@ -90,6 +90,23 @@ const centre = (b: { x: number; y: number; width: number; height: number }) => (
 });
 
 /**
+ * Where to press to drag a row: its title's leading edge, not its centre.
+ *
+ * Moving the pointer onto a row reveals its hover cluster (task-row), which sits
+ * over the middle of a wide row and stops pointerdown so its buttons work. A
+ * press there never starts a drag, and the release clicks whichever control is
+ * under it (a task moved to tomorrow, a habit paused). The title's start is
+ * never covered. Draggables without a row title fall back to `fallback`'s centre.
+ */
+export async function pressPoint(root: Locator, fallback: Locator = root) {
+  const title = root.locator('[data-row-title]').first();
+  const titleBox = (await title.count()) > 0 ? await title.boundingBox() : null;
+  return titleBox
+    ? { x: titleBox.x + Math.min(8, titleBox.width / 2), y: titleBox.y + titleBox.height / 2 }
+    : centre(await box(fallback, 'source'));
+}
+
+/**
  * Drag `source` onto `target`.
  *
  * `source` may be any element inside the draggable (a title, say) — the helper
@@ -117,8 +134,7 @@ export async function dragTo(
   const hasDraggable = (await draggable.count()) > 0;
   const root = hasDraggable ? draggable : source;
 
-  const pressBox = await box(source, 'source');
-  const press = centre(pressBox);
+  const press = await pressPoint(root, source);
   const rootBefore = await box(root, 'draggable root');
 
   const viewport = page.viewportSize();
