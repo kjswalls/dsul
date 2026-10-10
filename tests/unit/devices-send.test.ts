@@ -152,7 +152,7 @@ describe('sendToUser', () => {
     expect(thrown.detail).toBe('read failed: fetch failed');
   });
 
-  // Deploy leads migration: the build ships before 064 is applied.
+  // Deploy leads migration: the build ships before 065 is applied.
   it.each(['42P01', 'PGRST205'])('falls back to push_subscriptions while the table is missing (%s)', async (code) => {
     const fake = makeServiceFake({
       'devices.select': { error: { code, message: 'no devices' } },

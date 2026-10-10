@@ -9,7 +9,7 @@ import { createServiceClient } from '@/lib/supabase-service';
  *
  * Body: { endpoint, p256dh, auth }. A page loaded from a build before the
  * device registry still posts here; it becomes a registration under the same
- * placeholder device id 064's backfill gives an endpoint, and the page's next
+ * placeholder device id 065's backfill gives an endpoint, and the page's next
  * boot on the new build moves the row to its real id. New code posts to
  * /api/devices.
  */

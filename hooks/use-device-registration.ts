@@ -9,7 +9,7 @@ import { usePlannerStore } from '@/lib/planner-store';
  * account per app load, a browser that holds a push subscription registers it
  * again (lib/devices/web-client.ts).
  *
- * It is what moves a row 064's backfill made (a placeholder id per endpoint)
+ * It is what moves a row 065's backfill made (a placeholder id per endpoint)
  * onto this browser's real id, what keeps `last_seen_at` fresh for the nightly
  * prune, and what heals an endpoint the browser rotated while no page was open
  * to hear it. The server writes nothing for an unchanged registration seen in

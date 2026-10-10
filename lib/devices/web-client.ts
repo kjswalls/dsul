@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * This browser as a device (migration 064; memory/plans/reminders-platforms.md §3.2).
+ * This browser as a device (migration 065; memory/plans/reminders-platforms.md §3.2).
  *
  * A browser has one stable id, `dsul-device-id` in localStorage, made once and
  * never cleared: it is a property of the browser, like the sidebar width, and
@@ -10,7 +10,7 @@
  * the device's switches and its name across a rotation.
  *
  * The browser registers whenever it holds a push subscription: when push is
- * turned on, and again on every boot (AppShell), which moves a row 064's
+ * turned on, and again on every boot (AppShell), which moves a row 065's
  * backfill made onto this real id and keeps `last_seen_at` fresh. The server
  * writes nothing for an unchanged registration seen in the last 12 hours.
  * Without a subscription nothing is registered: this PR's devices are the

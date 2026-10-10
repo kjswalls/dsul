@@ -9,7 +9,7 @@ import { createServiceClient } from '@/lib/supabase-service';
  * POST /api/devices — register (or touch) this device for the signed-in user.
  *
  * Cookie session only. The body is DeviceRegistrationSchema (@dsul/types),
- * strict. The write is the service role's register_device() (migration 064),
+ * strict. The write is the service role's register_device() (migration 065),
  * which retires any row holding the same token under another account: the
  * token decides ownership (#254). That is a cross-tenant write, so it happens
  * only after the session has said who is asking.

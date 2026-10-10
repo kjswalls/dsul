@@ -623,12 +623,12 @@ describe('062_recipe_tick', () => {
 });
 
 /**
- * 064 is the device registry (memory/plans/reminders-platforms.md §4.2, the
- * plan's "059_devices.sql", renumbered). scripts/verify-064.sh replays it on a
+ * 065 is the device registry (memory/plans/reminders-platforms.md §4.2, the
+ * plan's "059_devices.sql", renumbered). scripts/verify-065.sh replays it on a
  * real Postgres; these hold its text to the TypeScript that depends on it.
  */
-describe('064_devices', () => {
-  const file = RULED.find((f) => f.name === '064_devices.sql');
+describe('065_devices', () => {
+  const file = RULED.find((f) => f.name === '065_devices.sql');
   const sql = code(file?.text ?? '');
   const flat = sql.replace(/\s+/g, ' ');
 

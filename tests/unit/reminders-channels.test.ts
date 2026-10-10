@@ -468,7 +468,7 @@ describe('the EOD review is push only', () => {
 
 /* ── Push ─────────────────────────────────────────────────────────────────── */
 
-/** A browser in the device registry (migration 064), seen just now by whatever clock the test runs. */
+/** A browser in the device registry (migration 065), seen just now by whatever clock the test runs. */
 const webDevice = (n: number, extra: Record<string, unknown> = {}) => ({
   id: `row-${n}`,
   user_id: 'u1',
@@ -574,8 +574,8 @@ describe('the push channel says what became of the push', () => {
     expect(result.detail).toBe('push sent=1/1 expired=0 failed=0 held=1');
   });
 
-  // Deploy leads migration: until 064 is applied, push goes where it went before.
-  it('before 064, it pushes to push_subscriptions as it always did', async () => {
+  // Deploy leads migration: until 065 is applied, push goes where it went before.
+  it('before 065, it pushes to push_subscriptions as it always did', async () => {
     sendNotification.mockResolvedValue({ statusCode: 201, body: '', headers: {} });
     const { service } = makeServiceFake({
       'devices.select': { error: { code: 'PGRST205', message: 'no devices' } },

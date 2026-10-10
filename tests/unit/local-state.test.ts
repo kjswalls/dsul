@@ -799,7 +799,7 @@ describe('nothing persists per-user state outside the registry', () => {
       // one again. Nothing about anyone, so nothing clears it.
       'lib/ask-pending.ts',
       // `dsul-device-id`: this browser's id in the device registry (migration
-      // 064), made once and never cleared. A property of the browser, like the
+      // 065), made once and never cleared. A property of the browser, like the
       // sidebar width: it says nothing about who is signed in, and the
       // registry's token rule, not this id, decides whose device it is.
       'lib/devices/web-client.ts',

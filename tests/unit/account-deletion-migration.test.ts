@@ -27,7 +27,7 @@ import { join } from 'node:path';
  *      after a deletion, and a service-role write in flight (the reminder scan,
  *      the agent API) could even add rows for an account that is gone: only a
  *      foreign key refuses a row whose user no longer exists. That is the shape
- *      a new table would most easily take (064's `devices` cascades).
+ *      a new table would most easily take (065's `devices` cascades).
  *
  * TEXT, NOT A DATABASE, like tests/unit/migration-text.test.ts. Comments and
  * string literals are stripped first, so a header that discusses a clause is

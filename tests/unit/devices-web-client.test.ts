@@ -41,7 +41,7 @@ describe('uaHints', () => {
 describe('thisDeviceId', () => {
   beforeEach(() => localStorage.clear());
 
-  it('makes one id, keeps it, and it passes 064’s device_id check', () => {
+  it('makes one id, keeps it, and it passes 065’s device_id check', () => {
     const id = thisDeviceId();
     expect(id).toMatch(/^[A-Za-z0-9:._-]{8,128}$/);
     expect(thisDeviceId()).toBe(id);
@@ -49,7 +49,7 @@ describe('thisDeviceId', () => {
     expect(storedDeviceId()).toBe(id);
   });
 
-  it('replaces a stored value 064 would refuse', () => {
+  it('replaces a stored value 065 would refuse', () => {
     localStorage.setItem(DEVICE_ID_KEY, 'no');
     expect(thisDeviceId()).not.toBe('no');
   });

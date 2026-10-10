@@ -135,7 +135,7 @@ describe('registerDevice', () => {
     expect(rpc).toHaveBeenCalledTimes(1);
   });
 
-  it('before 064, a web push registration is the old push_subscriptions upsert', async () => {
+  it('before 065, a web push registration is the old push_subscriptions upsert', async () => {
     respond = (c) => (c.table === 'devices' ? { error: { code: 'PGRST205', message: 'missing' } } : undefined);
     expect(await registerDevice(service(), 'u1', REG, NOW)).toEqual({ ok: true, written: true, legacy: true });
     expect(fake.writes()).toEqual([
@@ -148,7 +148,7 @@ describe('registerDevice', () => {
     ]);
   });
 
-  it('before 064, a tokenless device is unavailable', async () => {
+  it('before 065, a tokenless device is unavailable', async () => {
     respond = () => ({ error: { code: '42P01', message: 'missing' } });
     const result = await registerDevice(service(), 'u1', { deviceId: REG.deviceId, platform: 'electron', transport: 'none' }, NOW);
     expect(result).toEqual({ ok: false, code: 'unavailable' });
@@ -246,7 +246,7 @@ describe('POST /api/devices/rotate', () => {
 });
 
 describe('POST /api/push/subscribe, the alias', () => {
-  it('registers the endpoint under the placeholder id 064 backfills it with', async () => {
+  it('registers the endpoint under the placeholder id 065 backfills it with', async () => {
     const res = await post(postSubscribe, { endpoint: ENDPOINT, p256dh: 'BPk', auth: 'au' });
     expect(res.status).toBe(200);
     expect(rpc.mock.calls[0][1]).toMatchObject({

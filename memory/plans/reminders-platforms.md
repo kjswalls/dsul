@@ -305,17 +305,17 @@
 >     with `X-Dsul-Device` (2d).
 
 > **Addendum (2026-10-10): what Phase 1a changed on the way in.** PR-1a (§5.2) is the device
-> registry: `supabase/migrations/064_devices.sql`, `lib/devices/`, `POST /api/devices`,
+> registry: `supabase/migrations/065_devices.sql`, `lib/devices/`, `POST /api/devices`,
 > `/release` and `/rotate`, the boot re-post (`hooks/use-device-registration.ts`), the
 > service worker's `pushsubscriptionchange`, and Rituals → Devices
 > (`components/settings/devices-list.tsx`). Where it departs from §4.2 and §5.2:
 >
-> 1. **The migration is 064, not 059.** 059 to 063 were taken first. Its body is §4.2's,
->    plus a backfill guard: a `push_subscriptions` row that would fail one of 064's CHECKs
+> 1. **The migration is 065, not 059.** 059 to 065 were taken first. Its body is §4.2's,
+>    plus a backfill guard: a `push_subscriptions` row that would fail one of 065's CHECKs
 >    (009 checked nothing) stays in the ballast rather than aborting the migration.
->    `scripts/verify-064.sh` is the replay §4.2 describes, plus the owner's grants and an
+>    `scripts/verify-065.sh` is the replay §4.2 describes, plus the owner's grants and an
 >    account deletion; the plan's `verify-059.sh` is that file.
-> 2. **The fallback writes as well as reads.** Until 064 is applied, a web push
+> 2. **The fallback writes as well as reads.** Until 065 is applied, a web push
 >    registration is the old upsert into `push_subscriptions` (service role) and a release
 >    deletes from it, so a browser that turns push on between the deploy and the migration
 >    is not lost. Only a tokenless registration answers 503 `unavailable`.
@@ -337,7 +337,7 @@
 >    the switch and its copy.
 > 8. **Tests are named for what they hold:** `devices-select`, `devices-send`,
 >    `devices-registry` (the routes included), `devices-web-client` (the roster's words
->    included), `push-release` (both release forms) and a `064_devices` block in
+>    included), `push-release` (both release forms) and a `065_devices` block in
 >    `migration-text.test.ts`.
 
 2026-10-05. **Status: plan, decided 2026-10-06 — Kirby took every default in §7; nothing in it has been built yet, nothing was written to prod.** Phase 0 is next. Every code citation is tree-level (`main` at `b8d480c`, 2026-10-04; every cited `file:line` holds at `3200896`, #405, 2026-10-05 — six cited files changed between the two commits, `electron/main.cjs`, `electron/preload.cjs`, `lib/desktop.ts`, `desktop-app.md`, `ios-app.md`, `CLAUDE.md`, but not at the cited lines; `preload.cjs` gained `authProviders`): the live project was read on 2026-10-05, read-only, and the observed values sit at the top of §5.1.1: the organisation is on the **Pro** plan, both ticks are paused exactly as 045 left them, no ritual is enabled by any of the four accounts, and Kirby is the only user, so the runbook's EXPECT lines are now observations and the §5.1 writes have no one to disturb. Kirby also holds a paid Apple Developer Program membership (confirmed 2026-10-05), which removes the purchase gate the brief assumed (decision 5, resolved). Facts taken from search snippets of pages the planning sessions could not open are marked `[S]`; facts no source verified are marked **[unverified]** inline and collected in §6. Sibling plans: [habit-reminders.md](habit-reminders.md) (the reminder model this builds on — read it first), [desktop-app.md](desktop-app.md), [ios-app.md](ios-app.md).

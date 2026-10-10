@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
-# verify-064.sh — replay the real migrations onto a bare Postgres, then 064
+# verify-065.sh — replay the real migrations onto a bare Postgres, then 065
 # (the device registry) twice, and hold it to the reminders plan's #254 fixture.
 #
-# WHY THIS EXISTS. 064 is the first migration to make a cross-tenant write the
+# WHY THIS EXISTS. 065 is the first migration to make a cross-tenant write the
 # design depends on: register_device() deletes another account's row when it
 # holds the same push token (memory/plans/reminders-platforms.md §3.2), and the
 # owner's read is a COLUMN grant that must never reach `token` or `keys`.
@@ -14,10 +14,10 @@
 # bare cluster on a Unix socket, the same stand-ins for what Supabase provides.
 #
 # WHAT IT CHECKS
-#   1. 000..063, then push_subscriptions rows to backfill: accounts A and B both
+#   1. 000..064, then push_subscriptions rows to backfill: accounts A and B both
 #      holding one endpoint (#254, B's newer), A's endpoint subscribed 400 days
 #      ago, and a malformed endpoint 009 never checked.
-#   2. 064 applied: one row per endpoint, the shared one B's; the old one
+#   2. 065 applied: one row per endpoint, the shared one B's; the old one
 #      `last_seen_at` now (not born stale) with `registered_at` kept; the
 #      malformed one left in the ballast; `prune-devices` scheduled at 03:41.
 #      Applied again: rows, constraints, grants, policies and jobs identical.
@@ -31,9 +31,9 @@
 #   5. Deleting A's auth user deletes A's devices.
 #
 # NOT WIRED INTO CI, for the reason verify-058.sh gives: CI has no Postgres
-# binary outside the Supabase stack. Run it by hand before 064 is applied:
+# binary outside the Supabase stack. Run it by hand before 065 is applied:
 #
-#     sudo ./scripts/verify-064.sh       # or PGBIN=/path/to/pg/bin
+#     sudo ./scripts/verify-065.sh       # or PGBIN=/path/to/pg/bin
 #
 # It needs no Supabase credentials and cannot reach a remote database: the
 # server listens on a Unix socket in its own scratch directory and nowhere else.
@@ -44,7 +44,7 @@ PGBIN=${PGBIN:-/usr/lib/postgresql/16/bin}
 PORT=${PORT:-55464}
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 MIGRATIONS="$ROOT/supabase/migrations"
-TARGET="$MIGRATIONS/064_devices.sql"
+TARGET="$MIGRATIONS/065_devices.sql"
 
 if [ ! -x "$PGBIN/initdb" ] || [ ! -x "$PGBIN/pg_config" ]; then
   echo "no Postgres at $PGBIN; set PGBIN=/path/to/postgres/bin" >&2
@@ -53,7 +53,7 @@ fi
 [ -f "$TARGET" ] || { echo "no $TARGET" >&2; exit 1; }
 
 EXTDIR="$("$PGBIN/pg_config" --sharedir)/extension"
-STUB_MARK='dsul verify-064 stub'
+STUB_MARK='dsul verify-065 stub'
 # Either script's leftover stub is a stub; anything else is a real extension.
 ANY_STUB='dsul verify-0[0-9][0-9] stub'
 STUB_FILES=(pg_cron.control pg_cron--1.6.sql pg_net.control pg_net--0.14.sql)
@@ -74,7 +74,7 @@ RUNAS=""
 if [ "$(id -u)" = 0 ]; then
   RUNAS=postgres
   [ -d /var/lib/postgresql ] || install -d -o postgres -g postgres /var/lib/postgresql
-  WORK="$(mktemp -d /var/lib/postgresql/verify-064.XXXXXX)"
+  WORK="$(mktemp -d /var/lib/postgresql/verify-065.XXXXXX)"
   chown postgres:postgres "$WORK"
 else
   WORK="$(mktemp -d)"
@@ -91,16 +91,16 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# ── 1. the stub extensions (verify-058.sh's, as far as 000..064 use them) ─────
+# ── 1. the stub extensions (verify-058.sh's, as far as 000..065 use them) ─────
 cat > "$EXTDIR/pg_cron.control" <<EOF
-# $STUB_MARK — NOT pg_cron. Written and removed by scripts/verify-064.sh.
+# $STUB_MARK — NOT pg_cron. Written and removed by scripts/verify-065.sh.
 comment = '$STUB_MARK: pg_cron signatures, no scheduler'
 default_version = '1.6'
 relocatable = false
 superuser = true
 EOF
 cat > "$EXTDIR/pg_cron--1.6.sql" <<EOF
--- $STUB_MARK — NOT pg_cron. Written and removed by scripts/verify-064.sh.
+-- $STUB_MARK — NOT pg_cron. Written and removed by scripts/verify-065.sh.
 create schema cron;
 
 create table cron.job (
@@ -182,14 +182,14 @@ end\$\$;
 EOF
 
 cat > "$EXTDIR/pg_net.control" <<EOF
-# $STUB_MARK — NOT pg_net. Written and removed by scripts/verify-064.sh.
+# $STUB_MARK — NOT pg_net. Written and removed by scripts/verify-065.sh.
 comment = '$STUB_MARK: pg_net signatures, no worker'
 default_version = '0.14'
 relocatable = false
 superuser = true
 EOF
 cat > "$EXTDIR/pg_net--0.14.sql" <<EOF
--- $STUB_MARK — NOT pg_net. Written and removed by scripts/verify-064.sh.
+-- $STUB_MARK — NOT pg_net. Written and removed by scripts/verify-065.sh.
 create schema net;
 
 create table net.http_request_queue (
@@ -346,7 +346,7 @@ apply() {
         values ('$version', '$name') on conflict (version) do nothing"
 }
 
-# A fresh database with every migration before 064 replayed into it.
+# A fresh database with every migration before 065 replayed into it.
 build() {
   DB=postgres
   q -c "create database $1"
@@ -427,8 +427,8 @@ snapshot() {
   qa -c "select proname, prosecdef, proconfig::text, proacl::text from pg_proc where proname = 'register_device'"
 }
 
-# ── 4. 064 on a database with subscriptions to backfill ──────────────────────
-echo "── 064 applied twice ──"
+# ── 4. 065 on a database with subscriptions to backfill ──────────────────────
+echo "── 065 applied twice ──"
 build devices
 q >/dev/null <<SQL
 insert into auth.users (id, email) values ('$A', 'a@verify.test'), ('$B', 'b@verify.test');
@@ -452,13 +452,13 @@ check "…and keeps its first registration" \
       "$(qa -c "select registered_at < now() - interval '399 days' from public.devices where token = '$E2'")" t
 check "009 is kept as ballast" "$(qa -c "select count(*) from public.push_subscriptions")" 4
 check "prune-devices runs at 03:41" "$(qa -c "select schedule from cron.job where jobname = 'prune-devices'")" "41 3 * * *"
-check "ledger row 064" "$(qa -c "select name from supabase_migrations.schema_migrations where version = '064'")" devices
+check "ledger row 065" "$(qa -c "select name from supabase_migrations.schema_migrations where version = '065'")" devices
 apply "$TARGET"
 snapshot > "$WORK/s2"
 if diff -q "$WORK/s1" "$WORK/s2" >/dev/null; then
   echo "  ok    a second run changes nothing ($(wc -l < "$WORK/s1") lines of state)"
 else
-  echo "  FAIL  re-running 064 changed the state:" >&2
+  echo "  FAIL  re-running 065 changed the state:" >&2
   diff "$WORK/s1" "$WORK/s2" >&2 || true
   FAILS=$((FAILS + 1))
 fi
@@ -516,4 +516,4 @@ if [ "$FAILS" -gt 0 ]; then
   echo "$FAILS check(s) failed." >&2
   exit 1
 fi
-echo "064 verified against PostgreSQL $("$PGBIN/postgres" --version | awk '{print $3}')."
+echo "065 verified against PostgreSQL $("$PGBIN/postgres" --version | awk '{print $3}')."

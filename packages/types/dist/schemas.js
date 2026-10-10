@@ -1096,11 +1096,11 @@ export const DsulChangeEventSchema = z.object({
     data: z.unknown(),
     timestamp: z.string(),
 });
-// ── Devices (reminders Phase 1, migration 064) ─────────────────────────────────
+// ── Devices (reminders Phase 1, migration 065) ─────────────────────────────────
 //
 // Every device dsul can reach: one `devices` row per device per account. Not
 // agent data: nothing here reaches /api/agent/context, and schemaVersion does
-// not move. The shapes mirror 064's CHECKs, so a body that would fail one is a
+// not move. The shapes mirror 065's CHECKs, so a body that would fail one is a
 // 400 at the route rather than a 500 at Postgres.
 export const DevicePlatformSchema = z.enum(['web', 'ios', 'watchos', 'android', 'wearos', 'electron']);
 export const DeviceTransportSchema = z.enum(['webpush', 'apns', 'fcm', 'none']);
@@ -1112,7 +1112,7 @@ export const DeviceSendKindSchema = z.enum(['cue', 'snooze', 'last-call', 'eod',
 const DEVICE_ID = /^[A-Za-z0-9:._-]{8,128}$/;
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 /**
- * A device's own switches, edited by its owner (064 grants UPDATE on `prefs`
+ * A device's own switches, edited by its owner (065 grants UPDATE on `prefs`
  * and `label` and nothing else). Every key is optional: an absent kind is ON,
  * so a device registered before a kind existed still gets it.
  */
@@ -1124,7 +1124,7 @@ export const DevicePrefsSchema = z.object({
 });
 /**
  * POST /api/devices. Strict: an unknown key is a 400, never ignored. The token
- * rules are 064's: `none` carries no token, `webpush` carries its keys, and
+ * rules are 065's: `none` carries no token, `webpush` carries its keys, and
  * nothing else does.
  */
 export const DeviceRegistrationSchema = z
@@ -1156,7 +1156,7 @@ export const DeviceRegistrationSchema = z
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['apnsEnvironment'], message: 'an APNs environment goes with apns and nothing else' });
     }
 });
-/** A row of the owner's roster: what 064 grants `authenticated`. Never `token` or `keys`. */
+/** A row of the owner's roster: what 065 grants `authenticated`. Never `token` or `keys`. */
 export const DeviceSchema = z.object({
     id: z.string(),
     deviceId: z.string(),

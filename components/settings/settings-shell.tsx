@@ -909,7 +909,7 @@ export function SettingsShell({
               )}
 
               {/* Rituals ends with the devices those rituals reach, and which
-                  reminders each one takes (lib/devices, migration 064). */}
+                  reminders each one takes (lib/devices, migration 065). */}
               {pane === 'rituals' && <DevicesList />}
 
               {advanced.length > 0 && (

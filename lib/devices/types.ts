@@ -1,5 +1,5 @@
 /**
- * lib/devices — every device dsul can reach (migration 064,
+ * lib/devices — every device dsul can reach (migration 065,
  * memory/plans/reminders-platforms.md §3.2).
  *
  * The wire shapes live in @dsul/types; these are the server's own: a row as
@@ -32,7 +32,7 @@ export interface DeviceRow {
   token: string | null
   keys: { p256dh: string; auth: string } | null
   timezone: string | null
-  /** Read leniently: the owner writes it through PostgREST, and 064 checks only that it is an object. */
+  /** Read leniently: the owner writes it through PostgREST, and 065 checks only that it is an object. */
   prefs: unknown
   registered_at: string
   last_seen_at: string
@@ -52,7 +52,7 @@ export interface DeviceMessage {
  *   · terminal — the token is gone for good (web 404/410); the row is pruned.
  *   · otherwise the row stays, with `code` as its last failure.
  *
- * `code` matches 064's `last_failure` CHECK, `^[a-z0-9_]{1,64}$`: a short
+ * `code` matches 065's `last_failure` CHECK, `^[a-z0-9_]{1,64}$`: a short
  * code, never a provider's body.
  */
 export type TransportOutcome = { ok: true } | { ok: false; terminal: boolean; code: string }
@@ -94,7 +94,7 @@ export interface SendReport {
   /** Set ONLY when the rows could not be read; every count is then 0. */
   detail?: string
   /**
-   * True while 064 is not applied: the send went through push_subscriptions
+   * True while 065 is not applied: the send went through push_subscriptions
    * (009) instead, as it did before the registry. For one release only.
    */
   legacy?: boolean

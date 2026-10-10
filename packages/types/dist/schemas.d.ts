@@ -5311,7 +5311,7 @@ export declare const DeviceFormSchema: z.ZodEnum<["phone", "tablet", "desktop", 
 /** What a send is about, for a device's per-kind switches. `other` is a push with no kind (/api/push/send). */
 export declare const DeviceSendKindSchema: z.ZodEnum<["cue", "snooze", "last-call", "eod", "pledge", "other"]>;
 /**
- * A device's own switches, edited by its owner (064 grants UPDATE on `prefs`
+ * A device's own switches, edited by its owner (065 grants UPDATE on `prefs`
  * and `label` and nothing else). Every key is optional: an absent kind is ON,
  * so a device registered before a kind existed still gets it.
  */
@@ -5348,7 +5348,7 @@ export declare const DevicePrefsSchema: z.ZodObject<{
 }>;
 /**
  * POST /api/devices. Strict: an unknown key is a 400, never ignored. The token
- * rules are 064's: `none` carries no token, `webpush` carries its keys, and
+ * rules are 065's: `none` carries no token, `webpush` carries its keys, and
  * nothing else does.
  */
 export declare const DeviceRegistrationSchema: z.ZodEffects<z.ZodObject<{
@@ -5448,7 +5448,7 @@ export declare const DeviceRegistrationSchema: z.ZodEffects<z.ZodObject<{
     osVersion?: string | undefined;
     timezone?: string | undefined;
 }>;
-/** A row of the owner's roster: what 064 grants `authenticated`. Never `token` or `keys`. */
+/** A row of the owner's roster: what 065 grants `authenticated`. Never `token` or `keys`. */
 export declare const DeviceSchema: z.ZodObject<{
     id: z.ZodString;
     deviceId: z.ZodString;

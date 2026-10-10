@@ -5,7 +5,7 @@
  * (#254).
  *
  * The subscription lives outside localStorage — in the service worker's
- * PushManager and in a `devices` row (migration 064; `push_subscriptions`
+ * PushManager and in a `devices` row (migration 065; `push_subscriptions`
  * before it) — so lib/local-state.ts's
  * clear never reached it, and the previous account's reminders, titles and
  * all, kept arriving in a browser now signed in as someone else.

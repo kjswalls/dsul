@@ -6,7 +6,7 @@ import type { NextRequest } from 'next/server';
  * changes. Three layers, each pinned here:
  *
  *   - the route deletes by ENDPOINT alone, with no session, and the row is gone
- *     (the devices row since migration 064, push_subscriptions before it);
+ *     (the devices row since migration 065, push_subscriptions before it);
  *   - the client helper releases the row BEFORE it unsubscribes, unsubscribes
  *     even when the release fails, and never throws;
  *   - lib/local-state.ts calls it on every known user change (sign-out, a stamp
@@ -18,7 +18,7 @@ import type { NextRequest } from 'next/server';
 type Row = Record<string, unknown>;
 let tables: Record<string, Row[]> = {};
 let deleteError: { message: string; code?: string } | null = null;
-/** 064 not applied yet: every `devices` statement answers PostgREST's "no such table". */
+/** 065 not applied yet: every `devices` statement answers PostgREST's "no such table". */
 let registryMissing = false;
 const filters: Array<[string, string, unknown]> = [];
 
@@ -69,7 +69,7 @@ const postTo = (handler: typeof pushRelease, url: string) => (body: unknown) =>
 const seed = () => {
   tables = {
     devices: [
-      // One endpoint has one owner since 064, whoever registered it last.
+      // One endpoint has one owner since 065, whoever registered it last.
       { user_id: 'user-b', device_id: 'web-b-0001', transport: 'webpush', token: ENDPOINT },
       { user_id: 'user-a', device_id: 'web-a-0001', transport: 'webpush', token: 'https://web.push.apple.com/other-device' },
       { user_id: 'user-a', device_id: 'desk-a-001', transport: 'none', token: null },
@@ -108,7 +108,7 @@ describe.each([
     expect(getUser).not.toHaveBeenCalled();
   });
 
-  it('before 064, deletes every push_subscriptions row holding it instead', async () => {
+  it('before 065, deletes every push_subscriptions row holding it instead', async () => {
     registryMissing = true;
     const res = await post(ENDPOINT);
     expect(res.status).toBe(200);

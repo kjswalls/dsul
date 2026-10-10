@@ -18,9 +18,9 @@ import type { DeviceSendKind } from '@dsul/types';
 
 /**
  * Rituals → Devices: every device dsul can reach for this account, and which
- * of the reminders each one takes (migration 064).
+ * of the reminders each one takes (migration 065).
  *
- * Read through the session client, under 064's column grant: the roster never
+ * Read through the session client, under 065's column grant: the roster never
  * includes a device's token or keys. A switch writes `prefs` through PostgREST,
  * the one column besides `label` the owner may change. Shows nothing at all
  * while the registry is not there yet (a build ahead of the migration), or

@@ -281,7 +281,7 @@ function nothingSent(detail?: string): PushResult {
  *
  * THE PRE-REGISTRY SEND, kept for one release. Every caller now goes through
  * lib/devices/send.ts's sendToUser, which reads the `devices` table (migration
- * 064) and comes here only while that table is missing: a build that landed
+ * 065) and comes here only while that table is missing: a build that landed
  * ahead of the migration.
  *
  * Requires a SERVICE client: push_subscriptions is RLS'd to the owner, and the

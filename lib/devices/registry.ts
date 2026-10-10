@@ -4,14 +4,14 @@
  * bearer in Phase 2d) — or, for the one no-session form, that the caller holds
  * the web push endpoint itself.
  *
- * register_device() (064) is the only writer of a row. It retires any row
+ * register_device() (065) is the only writer of a row. It retires any row
  * holding the same (transport, token) under another (user, device) — the
  * token decides ownership, which is what closes #254 — then upserts on
  * (user_id, device_id). This file adds the 12-hour touch throttle in front of
  * it: a browser re-registers on every boot, and an unchanged registration seen
  * within the last 12 hours writes nothing.
  *
- * DEPLOY LEADS MIGRATION. Until 064 is applied, a web push registration is the
+ * DEPLOY LEADS MIGRATION. Until 065 is applied, a web push registration is the
  * pre-registry upsert into push_subscriptions (009) and a release deletes from
  * it, for one release; anything else answers `unavailable`.
  */
@@ -106,7 +106,7 @@ export function registerArgs(userId: string, reg: DeviceRegistration, label: str
  *
  * `label` is written only for a NEW row: register_device keeps an existing
  * label when it is passed null, and the label is the owner's to rename
- * (064's UPDATE grant). A browser's suggested name ("Chrome on Mac") sent on
+ * (065's UPDATE grant). A browser's suggested name ("Chrome on Mac") sent on
  * every boot would otherwise undo the rename each time.
  */
 export async function registerDevice(

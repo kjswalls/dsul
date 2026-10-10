@@ -291,7 +291,7 @@ export function AppShell() {
   useUndoToast();
   useTimezoneSync();
   // This browser re-registers its push subscription once per account per load
-  // (the device registry, migration 064).
+  // (the device registry, migration 065).
   useDeviceRegistration();
   // Opt-in past-due decay (off by default). Mounted here, above the
   // desktop/mobile split, so the once-per-day sweep runs on every platform and

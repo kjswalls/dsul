@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- 064_devices.sql — every device dsul can reach, one row per device per account
+-- 065_devices.sql — every device dsul can reach, one row per device per account
 --
 -- The reminders plan's "059_devices.sql" (memory/plans/reminders-platforms.md
 -- §4.2), renumbered: 059 went to agent_key_to_secrets before this was written.
@@ -32,8 +32,8 @@
 -- DEPLOY ORDER. The build that reads this table ships FIRST and tolerates its
 -- absence (42P01/PGRST205): the sender falls back to push_subscriptions and
 -- the registration routes write there, for one release. Apply to prod only on
--- Kirby's typed OK; if applied out-of-band, record ledger version 064.
--- scripts/verify-064.sh replays 000..063, then this file twice.
+-- Kirby's typed OK; if applied out-of-band, record ledger version 065.
+-- scripts/verify-065.sh replays 000..065, then this file twice.
 --
 -- Idempotent; replays onto an empty database; pg_cron guarded like 058.
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -268,9 +268,9 @@ grant execute on function public.register_device(uuid, text, text, text, text, t
 -- EOD subscriber's phone, which may only ever receive. registered_at keeps
 -- created_at (nothing compares it for webpush).
 --
--- 009 always precedes 064 and is never dropped; this INSERT depends on that
+-- 009 always precedes 065 and is never dropped; this INSERT depends on that
 -- ordering and does not guard it (a to_regclass test in a WHERE cannot guard a
--- FROM — the relation is resolved at parse time). scripts/verify-064.sh must
+-- FROM — the relation is resolved at parse time). scripts/verify-065.sh must
 -- create push_subscriptions before applying this file.
 insert into public.devices (user_id, device_id, platform, transport, delivery, token, keys, registered_at, last_seen_at, created_at)
 select s.user_id,

@@ -19,7 +19,7 @@
  * NEVER THROWS. A read that fails is answered with zeros and a `detail`, the
  * contract lib/push-send.ts's sendPushToUser kept before it.
  *
- * DEPLOY LEADS MIGRATION. Until 064 is applied the table is missing (42P01 /
+ * DEPLOY LEADS MIGRATION. Until 065 is applied the table is missing (42P01 /
  * PGRST205), and the send goes through push_subscriptions as it did before the
  * registry: sendPushToUser, reported with `legacy: true`. For one release.
  */
@@ -172,7 +172,7 @@ async function stamp(
   await Promise.allSettled(writes.map((w) => Promise.resolve(w)))
 }
 
-/** 064 not applied yet: the pre-registry send, in the registry's terms. */
+/** 065 not applied yet: the pre-registry send, in the registry's terms. */
 async function legacySend(service: ServiceClient, userId: string, message: DeviceMessage): Promise<SendReport> {
   try {
     const r = await sendPushToUser(service, userId, message.payload)

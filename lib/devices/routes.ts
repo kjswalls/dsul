@@ -34,7 +34,7 @@ export function isWebPushEndpoint(value: unknown): value is string {
 
 /**
  * The device id an endpoint stands in for when its sender has none: the
- * /api/push aliases (a build from before the registry) and 064's backfill,
+ * /api/push aliases (a build from before the registry) and 065's backfill,
  * which use the same `web:` + sha256 so the two land on one row. The browser's
  * next boot re-registers with its real id, and register_device moves the row
  * there.
@@ -53,7 +53,7 @@ export async function readJson(req: Request): Promise<{ ok: true; body: unknown 
 
 export const badRequest = (error: string) => NextResponse.json({ error }, { status: 400 })
 
-/** A registry result as an HTTP answer. 503 `unavailable` is a build ahead of 064 asked for something 009 cannot hold. */
+/** A registry result as an HTTP answer. 503 `unavailable` is a build ahead of 065 asked for something 009 cannot hold. */
 export function answer(result: RegistryResult, tag: string): NextResponse {
   if (result.ok) return NextResponse.json({ ok: true })
   if (result.code === 'unavailable') return NextResponse.json({ error: 'unavailable' }, { status: 503 })
