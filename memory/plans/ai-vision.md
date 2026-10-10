@@ -126,9 +126,8 @@ is refused (case folded), as is a change that changes nothing, a member that is 
 of order, a kind whose table is missing, and a goal while the Goals extension is off (checked at offer, in
 the browser). Accepting runs each through the store's own action (addRoutine, updateGoal,
 setItemsCollected, setItemsGoal, setItemsProject, …) inside the plan's one `batchHistory`, after the item
-writes, so the card is still one undo. Pausing a routine, a season's or goal's state, a goal member's role
-(milestone, check-in) and deletes are not on a card yet; the receipt counts a new container as an added
-item. The evals gained routine-add and new-routine.
+writes, so the card is still one undo. (Deletes came in 5d; states and roles in 5e.) The receipt counts a
+new container as an added item. The evals gained routine-add and new-routine.
 Step 5d is built: a card can delete one item or container (`{kind:'delete', what, id}`) or reset a habit's
 streak (`{kind:'resetStreak', itemId}`). Each stands ALONE on its card: validation refuses a delete or a
 reset beside any other surviving change ("a delete goes on a card of its own"; `isDestructive`), so it is
@@ -139,6 +138,17 @@ button reads Delete or Reset streak in the destructive style. A step is deleted 
 Accepting runs the row's own action (deleteItems, removeProject/Routine/Season/Goal, resetHabitStreak), so
 it is one undo and everything deleted is in the trash. The receipt counts either as a change (its counters
 are stored columns). The evals gained reset-streak.
+Step 5e is built: a card can pause or resume a routine, move a season or a goal between its states, and give
+a goal's member a role. A container change on an existing one takes `state` (a routine `active` or `paused`,
+with `until` for the day it comes back; a season `auto`, `active` or `paused`; a goal `active`, `achieved` or
+`abandoned`, which the card calls "set aside"; a project none), and a goal membership takes `role` (member,
+milestone, check-in), which on an item already in the goal moves it to that role rather than holding it
+twice. A milestone must be a one-off and a check-in must repeat (the goal pane's own isMilestoneEligible and
+isCheckinEligible). A state change that changes nothing is refused; for a routine that is asked of
+`isPausedOn` in the browser only, since the server knows no zone (planner_overview's "paused" for a routine
+reads the UTC day, as a hint). Accepting runs setRoutinePaused, setSeasonState and setGoalState, so the action
+log and `achievedAt` behave as by hand, and a role change is the goal pane's own all-three-lists updateGoal.
+None of these is destructive: each is one undo away. The evals gained pause-routine.
 
 **Note 2026-10-04: "Ask AI" on the item's right-click menu.** One row, a submenu of at
 most four asks, declared in `lib/item-asks.ts` (gate, label, wording) and run by

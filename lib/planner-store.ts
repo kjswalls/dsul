@@ -6374,33 +6374,51 @@ function runProposalContainer(op: ProposalContainerOp): void {
   if (op.containerId) {
     const id = op.containerId;
     const name = op.name ? { name: op.name } : {};
+    // A bare state change writes no fields: only the state's own action runs,
+    // so the action log reads "Paused …", not an empty edit.
+    const some = <T extends object>(updates: T) => Object.keys(updates).length > 0;
     switch (op.container) {
-      case 'project':
-        store.updateProject(id, { ...name, ...(op.notes !== undefined && { notes: op.notes }) });
+      case 'project': {
+        const updates = { ...name, ...(op.notes !== undefined && { notes: op.notes }) };
+        if (some(updates)) store.updateProject(id, updates);
         return;
-      case 'routine':
-        store.updateRoutine(id, {
+      }
+      case 'routine': {
+        const updates = {
           ...name,
           ...(op.notes !== undefined && { notes: op.notes }),
           ...(op.usualTime !== undefined && { usualTime: op.usualTime }),
-        });
+        };
+        if (some(updates)) store.updateRoutine(id, updates);
+        if (op.state) usePlannerStore.getState().setRoutinePaused(id, op.state === 'paused', op.until);
         return;
-      case 'season':
-        store.updateSeason(id, {
+      }
+      case 'season': {
+        const updates = {
           ...name,
           ...(op.notes !== undefined && { notes: op.notes }),
           ...(op.startsOn !== undefined && { startsOn: op.startsOn }),
           ...(op.endsOn !== undefined && { endsOn: op.endsOn }),
-        });
+        };
+        if (some(updates)) store.updateSeason(id, updates);
+        if (op.state === 'auto' || op.state === 'active' || op.state === 'paused') {
+          usePlannerStore.getState().setSeasonState(id, op.state);
+        }
         return;
-      case 'goal':
-        store.updateGoal(id, {
+      }
+      case 'goal': {
+        const updates = {
           ...name,
           ...(op.why !== undefined && { why: op.why }),
           ...(op.startsOn !== undefined && { startsOn: op.startsOn }),
           ...(op.targetOn !== undefined && { targetOn: op.targetOn }),
-        });
+        };
+        if (some(updates)) store.updateGoal(id, updates);
+        if (op.state === 'active' || op.state === 'achieved' || op.state === 'abandoned') {
+          usePlannerStore.getState().setGoalState(id, op.state);
+        }
         return;
+      }
     }
   }
   const name = op.name ?? '';
@@ -6447,9 +6465,23 @@ function runProposalMembership(op: ProposalMembershipOp): void {
     case 'season':
       store.setItemsCollected([op.itemId], op.container, op.containerId, member);
       return;
-    case 'goal':
-      store.setItemsGoal([op.itemId], op.containerId, member);
+    case 'goal': {
+      const goal = store.goals.find((g) => g.id === op.containerId);
+      if (!member || !op.role || !goal) {
+        store.setItemsGoal([op.itemId], op.containerId, member);
+        return;
+      }
+      // A role is the membership's, so it is the goal pane's own write: all
+      // three lists, the item taken out of whichever it held and put in one.
+      const lists = { memberIds: goal.memberIds, milestoneIds: goal.milestoneIds, checkinIds: goal.checkinIds };
+      const key = op.role === 'milestone' ? 'milestoneIds' : op.role === 'checkin' ? 'checkinIds' : 'memberIds';
+      const next = Object.fromEntries(
+        Object.entries(lists).map(([k, ids]) => [k, ids.filter((x) => x !== op.itemId)]),
+      ) as typeof lists;
+      next[key] = [...next[key], op.itemId];
+      store.updateGoal(goal.id, next);
       return;
+    }
   }
 }
 

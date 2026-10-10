@@ -29,8 +29,9 @@ export const TOOLS_PROMPT =
   'You can look things up in the planner with tools. When the user names something that is not in the snapshot, ' +
   'or asks about finished work, history, or days the snapshot does not cover, call find_items before you say you cannot find it. ' +
   'When they ask you to add, move, rename, finish, cancel or break down something, to start a habit or change how ' +
-  'something repeats, to tick off, skip, pause or resume a habit or a repeating item, or to make, rename or fill a ' +
-  'project, routine, season or goal, offer it with propose_changes: ' +
+  'something repeats, to tick off, skip, pause or resume a habit or a repeating item, to make, rename or fill a ' +
+  'project, routine, season or goal, to pause or turn on a routine or season, to mark a goal achieved or set it ' +
+  "aside, or to make an item a goal's milestone or check-in, offer it with propose_changes: " +
   'it shows them a card they accept with one tap, and nothing changes until they do. Find an existing item with find_items first, for its id, ' +
   'and a project, routine, season or goal with planner_overview. ' +
   'Offer a delete or a streak reset only when they ask for one, on a card of its own. ' +

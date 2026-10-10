@@ -15,6 +15,7 @@
 import { format } from 'date-fns'
 import type {
   Goal,
+  GoalRole,
   Item,
   Project,
   Proposal,
@@ -31,8 +32,17 @@ import type {
 } from './planner-types'
 import { CONTAINER_KINDS, sameContainerName } from './container-registry'
 import { canBulkClearProject, canBulkSetProject } from './bulk-edit'
-import { goalItemIds } from './goals'
-import { getItemTypeConfig, isCollectible, isPausable, isSkippable, itemTypeName } from './item-registry'
+import { isPausedOn } from './active'
+import { goalItemIds, goalRoleEntries } from './goals'
+import {
+  getItemTypeConfig,
+  isCheckinEligible,
+  isCollectible,
+  isMilestoneEligible,
+  isPausable,
+  isSkippable,
+  itemTypeName,
+} from './item-registry'
 import { selectOverdue, splitOverdueCohorts } from './overdue'
 import { isRecurring } from './recurrence'
 import { VERB_GATES, isHabit, occurrenceOn, type VerbContext } from './verb-gates'
@@ -480,6 +490,43 @@ const ALL_CONTAINER_FIELDS: readonly ContainerField[] = ['notes', 'why', 'usualT
 
 type AnyContainer = Project | Routine | Season | Goal
 
+/** The states each kind moves between, as its own pane offers them. A project has none. */
+const CONTAINER_STATES: Record<ProposalContainer, readonly NonNullable<ProposalContainerOp['state']>[]> = {
+  project: [],
+  routine: ['active', 'paused'],
+  season: ['auto', 'active', 'paused'],
+  goal: ['active', 'achieved', 'abandoned'],
+}
+
+/** "active or paused", "auto, active or paused". */
+const orList = (words: readonly string[]) =>
+  words.length <= 1 ? (words[0] ?? '') : `${words.slice(0, -1).join(', ')} or ${words.at(-1)}`
+
+/**
+ * Why a state change cannot be made, or null. A routine's pause is today's
+ * question (lib/active.ts), so whether it is paused now is asked only where the
+ * day and zone are known, the browser; the server checks the rest.
+ */
+function stateRefusal(op: ProposalContainerOp, existing: AnyContainer | undefined, ctx: ProposalContext): string | null {
+  const kind = op.container
+  if (op.until !== undefined && !(kind === 'routine' && op.state === 'paused')) return 'only a routine being paused has a day it comes back'
+  if (op.state === undefined) return null
+  const word = kindWord(kind)
+  if (!CONTAINER_STATES[kind].length) return `a ${word} has no state to change`
+  if (!CONTAINER_STATES[kind].includes(op.state)) return `a ${word} is ${orList(CONTAINER_STATES[kind])}`
+  if (!existing) return `a new ${word} starts on; change its state once it exists`
+  if (kind === 'routine') {
+    if (!ctx.todayStr || !ctx.tz) return null
+    if (op.until !== undefined && op.until <= ctx.todayStr) return 'a pause has to end on a day still to come'
+    const pausedNow = isPausedOn(existing as Routine, ctx.todayStr, ctx.tz)
+    if (op.state === 'active' && !pausedNow) return `${existing.name} is not paused`
+    if (op.state === 'paused' && pausedNow && op.until === undefined) return `${existing.name} is already paused`
+    return null
+  }
+  if ((existing as Season | Goal).state === op.state) return `${existing.name} is already ${op.state}`
+  return null
+}
+
 /**
  * The planner store's containers as a ProposalContext wants them: a kind whose
  * table is not there yet (`collectionsAvailable`, `goalsAvailable`) reads as
@@ -561,7 +608,11 @@ function checkContainerOp(op: ProposalContainerOp, ctx: ProposalContext): Propos
     return `an existing ${kindWord(kind)}'s members change one at a time, with membership changes`
   }
   if (!existing && !next.name) return `a new ${kindWord(kind)} needs a name`
-  if (existing && !next.name && !ALL_CONTAINER_FIELDS.some((f) => next[f] !== undefined)) return 'there is nothing to change'
+  const stateWhy = stateRefusal(next, existing, ctx)
+  if (stateWhy) return stateWhy
+  if (existing && !next.name && next.state === undefined && !ALL_CONTAINER_FIELDS.some((f) => next[f] !== undefined)) {
+    return 'there is nothing to change'
+  }
 
   if (next.name) {
     const clash = list.find((c) => c.id !== existing?.id && sameName(kind, c.name, next.name!))
@@ -602,9 +653,26 @@ function membershipRefusal(op: ProposalMembershipOp, ctx: ProposalContext): stri
     return op.member === false ? `it has to stay in a ${kindWord(op.container)}` : `it cannot be in a ${kindWord(op.container)}`
   }
   const isIn = holds(op.container, container, item)
+  if (op.role !== undefined) {
+    if (op.container !== 'goal') return 'only a goal gives its members a role'
+    if (op.member === false) return 'an item taken out of a goal holds no role there'
+    // The goal pane's own pickers: a milestone is a one-shot item (its day is
+    // the target date), a check-in a repeating one.
+    if (op.role === 'milestone' && !isMilestoneEligible(item)) return 'a milestone has to be a one-off item'
+    if (op.role === 'checkin' && !isCheckinEligible(item)) return 'a check-in has to be an item that repeats'
+    if (isIn && roleIn(container as Goal, item.id) === op.role) return `it is already ${ROLE_PHRASE[op.role]} of ${container.name}`
+    return null
+  }
   if (op.member !== false && isIn) return `it is already in ${container.name}`
   if (op.member === false && !isIn) return `it is not in ${container.name}`
   return null
+}
+
+const ROLE_PHRASE: Record<GoalRole, string> = { member: 'a member', milestone: 'a milestone', checkin: 'a check-in' }
+
+/** The role an item holds in one goal, or undefined when it is not in it. */
+function roleIn(goal: Goal, itemId: string): GoalRole | undefined {
+  return goalRoleEntries(goal).find((e) => e.itemId === itemId)?.role
 }
 
 /** The container an op names, for its card line. */
@@ -640,8 +708,27 @@ function describeContainerOp(op: ProposalContainerOp, ctx: ProposalContext): str
   parts.push(...extras)
   if (op.notes !== undefined) parts.push('new notes')
   if (op.why !== undefined) parts.push('new reason why')
+  if (op.state !== undefined) parts.push(stateWords(op))
   const title = existing ? `${existing.name} (${word})` : `This ${word}`
   return parts.length ? `${title}: ${parts.join(', ')}` : title
+}
+
+/** A state change as a card line's phrase: "pause until Fri, Oct 16", "mark achieved". */
+function stateWords(op: ProposalContainerOp): string {
+  switch (op.state) {
+    case 'paused':
+      return op.until ? `pause until ${friendlyDate(op.until)}` : 'pause until you resume it'
+    case 'active':
+      return op.container === 'routine' ? 'resume' : op.container === 'season' ? 'turn on' : 'make active again'
+    case 'auto':
+      return 'follow its dates'
+    case 'achieved':
+      return 'mark achieved'
+    case 'abandoned':
+      return 'set aside'
+    default:
+      return ''
+  }
 }
 
 function describeMembershipOp(op: ProposalMembershipOp, ctx: ProposalContext): string {
@@ -650,6 +737,10 @@ function describeMembershipOp(op: ProposalMembershipOp, ctx: ProposalContext): s
   const where = container ? `${container.name}` : `the ${kindWord(op.container)}`
   const title = item?.title ?? 'This item'
   if (op.member === false) return `${title}: take out of ${where}`
+  if (op.role !== undefined) {
+    const held = container && op.container === 'goal' ? roleIn(container as Goal, op.itemId) : undefined
+    return held ? `${title}: make ${ROLE_PHRASE[op.role]} of ${where}` : `${title}: add to ${where} as ${ROLE_PHRASE[op.role]}`
+  }
   return op.container === 'project' ? `${title}: file under ${where}` : `${title}: add to ${where}`
 }
 

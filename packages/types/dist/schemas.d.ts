@@ -5107,6 +5107,8 @@ export declare const ProposalVerbOpSchema: z.ZodObject<{
  * (project) and the routine, season and goal (lib/container-registry.ts).
  */
 export declare const PROPOSAL_CONTAINERS: readonly ["project", "routine", "season", "goal"];
+/** Every state a card may move a container to; which ones a kind takes is checked app-side. */
+export declare const PROPOSAL_CONTAINER_STATES: readonly ["active", "paused", "auto", "achieved", "abandoned"];
 /**
  * Make a container (no `containerId`) or change one. Which fields a kind keeps
  * is checked app-side (lib/proposal.ts): `notes` for a project, routine or
@@ -5129,6 +5131,14 @@ export declare const ProposalContainerOpSchema: z.ZodObject<{
     endsOn: z.ZodOptional<z.ZodString>;
     targetOn: z.ZodOptional<z.ZodString>;
     itemIds: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+    /**
+     * An existing container's state: a routine is `active` or `paused`; a season
+     * `auto`, `active` or `paused`; a goal `active`, `achieved` or `abandoned`.
+     * A project has none. Checked per kind app-side.
+     */
+    state: z.ZodOptional<z.ZodEnum<["active", "paused", "auto", "achieved", "abandoned"]>>;
+    /** A routine's pause only: the day it comes back. Absent pauses until resumed. */
+    until: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     kind: "container";
     container: "project" | "routine" | "season" | "goal";
@@ -5136,10 +5146,12 @@ export declare const ProposalContainerOpSchema: z.ZodObject<{
     notes?: string | undefined;
     usualTime?: string | undefined;
     itemIds?: string[] | undefined;
+    state?: "auto" | "active" | "paused" | "achieved" | "abandoned" | undefined;
     startsOn?: string | undefined;
     endsOn?: string | undefined;
     why?: string | undefined;
     targetOn?: string | undefined;
+    until?: string | undefined;
     containerId?: string | undefined;
 }, {
     kind: "container";
@@ -5148,10 +5160,12 @@ export declare const ProposalContainerOpSchema: z.ZodObject<{
     notes?: string | undefined;
     usualTime?: string | undefined;
     itemIds?: string[] | undefined;
+    state?: "auto" | "active" | "paused" | "achieved" | "abandoned" | undefined;
     startsOn?: string | undefined;
     endsOn?: string | undefined;
     why?: string | undefined;
     targetOn?: string | undefined;
+    until?: string | undefined;
     containerId?: string | undefined;
 }>;
 /**
@@ -5166,18 +5180,25 @@ export declare const ProposalMembershipOpSchema: z.ZodObject<{
     container: z.ZodEnum<["project", "routine", "season", "goal"]>;
     containerId: z.ZodString;
     member: z.ZodOptional<z.ZodBoolean>;
+    /**
+     * A goal only: the role the item holds there. On an item already in the goal
+     * it changes the role; absent, a new member joins as a plain member.
+     */
+    role: z.ZodOptional<z.ZodEnum<["member", "milestone", "checkin"]>>;
 }, "strip", z.ZodTypeAny, {
     kind: "membership";
     itemId: string;
     container: "project" | "routine" | "season" | "goal";
     containerId: string;
     member?: boolean | undefined;
+    role?: "member" | "milestone" | "checkin" | undefined;
 }, {
     kind: "membership";
     itemId: string;
     container: "project" | "routine" | "season" | "goal";
     containerId: string;
     member?: boolean | undefined;
+    role?: "member" | "milestone" | "checkin" | undefined;
 }>;
 /**
  * Delete one item or container. Never one tap among others: validation lets a
@@ -5359,6 +5380,14 @@ export declare const ProposalOperationSchema: z.ZodDiscriminatedUnion<"kind", [z
     endsOn: z.ZodOptional<z.ZodString>;
     targetOn: z.ZodOptional<z.ZodString>;
     itemIds: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+    /**
+     * An existing container's state: a routine is `active` or `paused`; a season
+     * `auto`, `active` or `paused`; a goal `active`, `achieved` or `abandoned`.
+     * A project has none. Checked per kind app-side.
+     */
+    state: z.ZodOptional<z.ZodEnum<["active", "paused", "auto", "achieved", "abandoned"]>>;
+    /** A routine's pause only: the day it comes back. Absent pauses until resumed. */
+    until: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     kind: "container";
     container: "project" | "routine" | "season" | "goal";
@@ -5366,10 +5395,12 @@ export declare const ProposalOperationSchema: z.ZodDiscriminatedUnion<"kind", [z
     notes?: string | undefined;
     usualTime?: string | undefined;
     itemIds?: string[] | undefined;
+    state?: "auto" | "active" | "paused" | "achieved" | "abandoned" | undefined;
     startsOn?: string | undefined;
     endsOn?: string | undefined;
     why?: string | undefined;
     targetOn?: string | undefined;
+    until?: string | undefined;
     containerId?: string | undefined;
 }, {
     kind: "container";
@@ -5378,10 +5409,12 @@ export declare const ProposalOperationSchema: z.ZodDiscriminatedUnion<"kind", [z
     notes?: string | undefined;
     usualTime?: string | undefined;
     itemIds?: string[] | undefined;
+    state?: "auto" | "active" | "paused" | "achieved" | "abandoned" | undefined;
     startsOn?: string | undefined;
     endsOn?: string | undefined;
     why?: string | undefined;
     targetOn?: string | undefined;
+    until?: string | undefined;
     containerId?: string | undefined;
 }>, z.ZodObject<{
     kind: z.ZodLiteral<"membership">;
@@ -5389,18 +5422,25 @@ export declare const ProposalOperationSchema: z.ZodDiscriminatedUnion<"kind", [z
     container: z.ZodEnum<["project", "routine", "season", "goal"]>;
     containerId: z.ZodString;
     member: z.ZodOptional<z.ZodBoolean>;
+    /**
+     * A goal only: the role the item holds there. On an item already in the goal
+     * it changes the role; absent, a new member joins as a plain member.
+     */
+    role: z.ZodOptional<z.ZodEnum<["member", "milestone", "checkin"]>>;
 }, "strip", z.ZodTypeAny, {
     kind: "membership";
     itemId: string;
     container: "project" | "routine" | "season" | "goal";
     containerId: string;
     member?: boolean | undefined;
+    role?: "member" | "milestone" | "checkin" | undefined;
 }, {
     kind: "membership";
     itemId: string;
     container: "project" | "routine" | "season" | "goal";
     containerId: string;
     member?: boolean | undefined;
+    role?: "member" | "milestone" | "checkin" | undefined;
 }>, z.ZodObject<{
     kind: z.ZodLiteral<"delete">;
     what: z.ZodEnum<["item", "project", "routine", "season", "goal"]>;
@@ -5583,6 +5623,14 @@ export declare const ProposalSchema: z.ZodObject<{
         endsOn: z.ZodOptional<z.ZodString>;
         targetOn: z.ZodOptional<z.ZodString>;
         itemIds: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+        /**
+         * An existing container's state: a routine is `active` or `paused`; a season
+         * `auto`, `active` or `paused`; a goal `active`, `achieved` or `abandoned`.
+         * A project has none. Checked per kind app-side.
+         */
+        state: z.ZodOptional<z.ZodEnum<["active", "paused", "auto", "achieved", "abandoned"]>>;
+        /** A routine's pause only: the day it comes back. Absent pauses until resumed. */
+        until: z.ZodOptional<z.ZodString>;
     }, "strip", z.ZodTypeAny, {
         kind: "container";
         container: "project" | "routine" | "season" | "goal";
@@ -5590,10 +5638,12 @@ export declare const ProposalSchema: z.ZodObject<{
         notes?: string | undefined;
         usualTime?: string | undefined;
         itemIds?: string[] | undefined;
+        state?: "auto" | "active" | "paused" | "achieved" | "abandoned" | undefined;
         startsOn?: string | undefined;
         endsOn?: string | undefined;
         why?: string | undefined;
         targetOn?: string | undefined;
+        until?: string | undefined;
         containerId?: string | undefined;
     }, {
         kind: "container";
@@ -5602,10 +5652,12 @@ export declare const ProposalSchema: z.ZodObject<{
         notes?: string | undefined;
         usualTime?: string | undefined;
         itemIds?: string[] | undefined;
+        state?: "auto" | "active" | "paused" | "achieved" | "abandoned" | undefined;
         startsOn?: string | undefined;
         endsOn?: string | undefined;
         why?: string | undefined;
         targetOn?: string | undefined;
+        until?: string | undefined;
         containerId?: string | undefined;
     }>, z.ZodObject<{
         kind: z.ZodLiteral<"membership">;
@@ -5613,18 +5665,25 @@ export declare const ProposalSchema: z.ZodObject<{
         container: z.ZodEnum<["project", "routine", "season", "goal"]>;
         containerId: z.ZodString;
         member: z.ZodOptional<z.ZodBoolean>;
+        /**
+         * A goal only: the role the item holds there. On an item already in the goal
+         * it changes the role; absent, a new member joins as a plain member.
+         */
+        role: z.ZodOptional<z.ZodEnum<["member", "milestone", "checkin"]>>;
     }, "strip", z.ZodTypeAny, {
         kind: "membership";
         itemId: string;
         container: "project" | "routine" | "season" | "goal";
         containerId: string;
         member?: boolean | undefined;
+        role?: "member" | "milestone" | "checkin" | undefined;
     }, {
         kind: "membership";
         itemId: string;
         container: "project" | "routine" | "season" | "goal";
         containerId: string;
         member?: boolean | undefined;
+        role?: "member" | "milestone" | "checkin" | undefined;
     }>, z.ZodObject<{
         kind: z.ZodLiteral<"delete">;
         what: z.ZodEnum<["item", "project", "routine", "season", "goal"]>;
@@ -5693,10 +5752,12 @@ export declare const ProposalSchema: z.ZodObject<{
         notes?: string | undefined;
         usualTime?: string | undefined;
         itemIds?: string[] | undefined;
+        state?: "auto" | "active" | "paused" | "achieved" | "abandoned" | undefined;
         startsOn?: string | undefined;
         endsOn?: string | undefined;
         why?: string | undefined;
         targetOn?: string | undefined;
+        until?: string | undefined;
         containerId?: string | undefined;
     } | {
         kind: "membership";
@@ -5704,6 +5765,7 @@ export declare const ProposalSchema: z.ZodObject<{
         container: "project" | "routine" | "season" | "goal";
         containerId: string;
         member?: boolean | undefined;
+        role?: "member" | "milestone" | "checkin" | undefined;
     } | {
         id: string;
         kind: "delete";
@@ -5759,10 +5821,12 @@ export declare const ProposalSchema: z.ZodObject<{
         notes?: string | undefined;
         usualTime?: string | undefined;
         itemIds?: string[] | undefined;
+        state?: "auto" | "active" | "paused" | "achieved" | "abandoned" | undefined;
         startsOn?: string | undefined;
         endsOn?: string | undefined;
         why?: string | undefined;
         targetOn?: string | undefined;
+        until?: string | undefined;
         containerId?: string | undefined;
     } | {
         kind: "membership";
@@ -5770,6 +5834,7 @@ export declare const ProposalSchema: z.ZodObject<{
         container: "project" | "routine" | "season" | "goal";
         containerId: string;
         member?: boolean | undefined;
+        role?: "member" | "milestone" | "checkin" | undefined;
     } | {
         id: string;
         kind: "delete";
@@ -5942,6 +6007,14 @@ export declare const ProposalDraftSchema: z.ZodObject<Omit<{
         endsOn: z.ZodOptional<z.ZodString>;
         targetOn: z.ZodOptional<z.ZodString>;
         itemIds: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+        /**
+         * An existing container's state: a routine is `active` or `paused`; a season
+         * `auto`, `active` or `paused`; a goal `active`, `achieved` or `abandoned`.
+         * A project has none. Checked per kind app-side.
+         */
+        state: z.ZodOptional<z.ZodEnum<["active", "paused", "auto", "achieved", "abandoned"]>>;
+        /** A routine's pause only: the day it comes back. Absent pauses until resumed. */
+        until: z.ZodOptional<z.ZodString>;
     }, "strip", z.ZodTypeAny, {
         kind: "container";
         container: "project" | "routine" | "season" | "goal";
@@ -5949,10 +6022,12 @@ export declare const ProposalDraftSchema: z.ZodObject<Omit<{
         notes?: string | undefined;
         usualTime?: string | undefined;
         itemIds?: string[] | undefined;
+        state?: "auto" | "active" | "paused" | "achieved" | "abandoned" | undefined;
         startsOn?: string | undefined;
         endsOn?: string | undefined;
         why?: string | undefined;
         targetOn?: string | undefined;
+        until?: string | undefined;
         containerId?: string | undefined;
     }, {
         kind: "container";
@@ -5961,10 +6036,12 @@ export declare const ProposalDraftSchema: z.ZodObject<Omit<{
         notes?: string | undefined;
         usualTime?: string | undefined;
         itemIds?: string[] | undefined;
+        state?: "auto" | "active" | "paused" | "achieved" | "abandoned" | undefined;
         startsOn?: string | undefined;
         endsOn?: string | undefined;
         why?: string | undefined;
         targetOn?: string | undefined;
+        until?: string | undefined;
         containerId?: string | undefined;
     }>, z.ZodObject<{
         kind: z.ZodLiteral<"membership">;
@@ -5972,18 +6049,25 @@ export declare const ProposalDraftSchema: z.ZodObject<Omit<{
         container: z.ZodEnum<["project", "routine", "season", "goal"]>;
         containerId: z.ZodString;
         member: z.ZodOptional<z.ZodBoolean>;
+        /**
+         * A goal only: the role the item holds there. On an item already in the goal
+         * it changes the role; absent, a new member joins as a plain member.
+         */
+        role: z.ZodOptional<z.ZodEnum<["member", "milestone", "checkin"]>>;
     }, "strip", z.ZodTypeAny, {
         kind: "membership";
         itemId: string;
         container: "project" | "routine" | "season" | "goal";
         containerId: string;
         member?: boolean | undefined;
+        role?: "member" | "milestone" | "checkin" | undefined;
     }, {
         kind: "membership";
         itemId: string;
         container: "project" | "routine" | "season" | "goal";
         containerId: string;
         member?: boolean | undefined;
+        role?: "member" | "milestone" | "checkin" | undefined;
     }>, z.ZodObject<{
         kind: z.ZodLiteral<"delete">;
         what: z.ZodEnum<["item", "project", "routine", "season", "goal"]>;
@@ -6051,10 +6135,12 @@ export declare const ProposalDraftSchema: z.ZodObject<Omit<{
         notes?: string | undefined;
         usualTime?: string | undefined;
         itemIds?: string[] | undefined;
+        state?: "auto" | "active" | "paused" | "achieved" | "abandoned" | undefined;
         startsOn?: string | undefined;
         endsOn?: string | undefined;
         why?: string | undefined;
         targetOn?: string | undefined;
+        until?: string | undefined;
         containerId?: string | undefined;
     } | {
         kind: "membership";
@@ -6062,6 +6148,7 @@ export declare const ProposalDraftSchema: z.ZodObject<Omit<{
         container: "project" | "routine" | "season" | "goal";
         containerId: string;
         member?: boolean | undefined;
+        role?: "member" | "milestone" | "checkin" | undefined;
     } | {
         id: string;
         kind: "delete";
@@ -6115,10 +6202,12 @@ export declare const ProposalDraftSchema: z.ZodObject<Omit<{
         notes?: string | undefined;
         usualTime?: string | undefined;
         itemIds?: string[] | undefined;
+        state?: "auto" | "active" | "paused" | "achieved" | "abandoned" | undefined;
         startsOn?: string | undefined;
         endsOn?: string | undefined;
         why?: string | undefined;
         targetOn?: string | undefined;
+        until?: string | undefined;
         containerId?: string | undefined;
     } | {
         kind: "membership";
@@ -6126,6 +6215,7 @@ export declare const ProposalDraftSchema: z.ZodObject<Omit<{
         container: "project" | "routine" | "season" | "goal";
         containerId: string;
         member?: boolean | undefined;
+        role?: "member" | "milestone" | "checkin" | undefined;
     } | {
         id: string;
         kind: "delete";

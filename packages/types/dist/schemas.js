@@ -1106,6 +1106,8 @@ export const ProposalVerbOpSchema = z.object({
  */
 export const PROPOSAL_CONTAINERS = ['project', 'routine', 'season', 'goal'];
 const proposalDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+/** Every state a card may move a container to; which ones a kind takes is checked app-side. */
+export const PROPOSAL_CONTAINER_STATES = ['active', 'paused', 'auto', 'achieved', 'abandoned'];
 /**
  * Make a container (no `containerId`) or change one. Which fields a kind keeps
  * is checked app-side (lib/proposal.ts): `notes` for a project, routine or
@@ -1128,6 +1130,14 @@ export const ProposalContainerOpSchema = z.object({
     endsOn: proposalDay.optional(),
     targetOn: proposalDay.optional(),
     itemIds: z.array(z.string().min(1).max(200)).min(1).max(50).optional(),
+    /**
+     * An existing container's state: a routine is `active` or `paused`; a season
+     * `auto`, `active` or `paused`; a goal `active`, `achieved` or `abandoned`.
+     * A project has none. Checked per kind app-side.
+     */
+    state: z.enum(PROPOSAL_CONTAINER_STATES).optional(),
+    /** A routine's pause only: the day it comes back. Absent pauses until resumed. */
+    until: proposalDay.optional(),
 });
 /**
  * Put ONE existing item in an existing container, or take it out (`member:
@@ -1141,6 +1151,11 @@ export const ProposalMembershipOpSchema = z.object({
     container: z.enum(PROPOSAL_CONTAINERS),
     containerId: z.string().min(1).max(200),
     member: z.boolean().optional(),
+    /**
+     * A goal only: the role the item holds there. On an item already in the goal
+     * it changes the role; absent, a new member joins as a plain member.
+     */
+    role: GoalRoleSchema.optional(),
 });
 /**
  * Delete one item or container. Never one tap among others: validation lets a
