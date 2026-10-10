@@ -31,7 +31,7 @@ a new turn, so nothing saved is rewritten), action lines, receipts with Undo (bu
 "Something else", a line under its buttons whose words go to that card's conversation as the
 user's next message, verbatim, through sendFrom; the card goes once the send is taken, and a send
 refused keeps both; a card asked for keeps its retry)) and 2c
-(reach: @ items and / commands (both built 2026-10-10, below), the model chip, attachments, open wide). The section "Step 2a —
+(reach: @ items, / commands, the model chip and open wide (all built 2026-10-10, below), and attachments). The section "Step 2a —
 Move and save" below has what shipped and the privacy statement.
 
 **Note 2026-10-10: @ items.** Typing @ in any chat box (the rail's, an item's, the phone's dock) lists
@@ -54,6 +54,22 @@ command already picked (ui-store's launcher slot carries `commandId`; the omniba
 state), so there is one picker per kind of value, ⌘K's. Escape closes the list until the "/" is gone,
 and then Enter sends the words as a message. Nothing matching: no list, and Enter sends. The list
 mounts only while a "/" is typed, so the command context (the router) is built only then.
+
+**Note 2026-10-10: the model chip.** While the connected model answers, the chat box's foot rail
+(beside the attach button; not the phone's one-row dock bar) carries Settings → AI's own model chip
+(`ModelPicker variant="chat"`): the model's name, and a click opens the same searchable list. It is
+the one account setting, not a per-conversation one, so a pick in chat is a pick in Settings and
+applies from the next message; a refused pick is a toast there, not a line that shoves the box. It
+holds still while a reply arrives, and is absent while OpenClaw answers (OpenClaw picks its own).
+
+**Note 2026-10-10: open wide.** A saved conversation's title ⌄ in the desktop rail has "Open wide", a
+link (so ⌘-click opens a tab) to `/chat/<id>` (app/chat/[id]/page.tsx): the same `ConversationView`
+at reading width on a page of its own, deep-linkable as the item page is. It reads the transcript
+itself once the gate has answered for the signed-in account (a cold load has no History), behind
+Ask's own gate (nothing shown and nothing fetched while no model or OpenClaw answers), and a
+conversation found deleted shows the gone notice with no box, since a send from it would start a
+conversation in a rail that page does not have. Not on the phone, whose Ask is already the whole
+screen, and not on an item's conversation, whose wide form is the item's own page.
 
 **Note 2026-10-10: what the chat can see, and its words.** Kirby tried free OpenRouter models and
 the chat could not find tasks they named, and answered "break this into subtasks" with "make a

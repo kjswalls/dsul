@@ -179,7 +179,7 @@ export function AskTab({ headerAccessory }: { headerAccessory?: ReactNode }) {
         icon={<BackButton label={backTo} titled />}
         title={
           <Heading>
-            {conversationHeader === 'saved' ? <ConversationTitleMenu key={id} id={id} title={title} /> : title}
+            {conversationHeader === 'saved' ? <ConversationTitleMenu key={id} id={id} title={title} wide={false} /> : title}
           </Heading>
         }
         className="mx-[10px]"

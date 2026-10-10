@@ -809,7 +809,9 @@ describe("a conversation's ⌄", () => {
     expect(screen.getByTestId('conversation-rename')).toHaveTextContent('Rename');
     expect(screen.getByTestId('conversation-star')).toHaveTextContent('Star');
     expect(screen.getByTestId('conversation-delete')).toHaveTextContent('Delete…');
-    expect(screen.queryByText(/open wide/i)).toBeNull();
+    // A link, so ⌘-click opens the wide page in a new tab.
+    expect(screen.getByTestId('conversation-open-wide')).toHaveTextContent('Open wide');
+    expect(screen.getByTestId('conversation-open-wide')).toHaveAttribute('href', '/chat/c1');
   });
 
   it('renames in place: Enter saves the trimmed text', async () => {

@@ -24,16 +24,22 @@ vi.mock('@/lib/supabase', () => ({
     auth: { getUser: async () => ({ data: { user: null } }) },
   }),
 }));
+const toasts = vi.hoisted(() => ({ error: vi.fn() }));
+vi.mock('sonner', () => ({
+  toast: Object.assign(() => 'id', { error: toasts.error, dismiss: vi.fn(), success: vi.fn() }),
+}));
 vi.mock('@/lib/settings-service', () => ({
   saveSettings: vi.fn(async () => {}),
   flushSettings: vi.fn(async () => {}),
 }));
 
 import { ModelPicker } from '@/components/settings/model-picker';
+import { ChatComposer } from '@/components/ai/chat-composer';
+import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { connectErrorCopy } from '@/components/settings/model-connection-panel';
 import { useAIConnectionStore } from '@/lib/ai-connection-store';
 import { modelName } from '@/lib/ai-model-names';
-import { CONNECTED_MODEL, GEMINI_WORKING, seedAI } from './helpers/ai-fixtures';
+import { CONNECTED_MODEL, GEMINI_WORKING, OPENCLAW_PLUGIN, seedAI } from './helpers/ai-fixtures';
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -46,6 +52,7 @@ let patch: () => Response;
 let cleanupAI: (() => void) | null = null;
 
 beforeEach(() => {
+  toasts.error.mockClear();
   patch = () => json({ error: 'server' }, 503);
   vi.stubGlobal(
     'fetch',
@@ -159,5 +166,45 @@ describe('the chip', () => {
     seedWithoutList({ ...CONNECTED_MODEL, model: { provider: 'openai', model: null } });
     render(<ModelPicker errorCopy={() => ''} />);
     expect(screen.getByRole('button', { name: 'Choose a model' })).toBeInTheDocument();
+  });
+});
+
+describe('in the chat box', () => {
+  it('sits at the foot of the box while the model answers, and a pick there is the account’s model', async () => {
+    let sent: unknown = null;
+    patch = () => json({ model: { ...useAIConnectionStore.getState().model!, model: 'claude-sonnet-4-5-20250929' } });
+    const fetchMock = vi.mocked(globalThis.fetch);
+    render(<ChatComposer variant="panel" binding={{ kind: 'home' }} />);
+    const chip = screen.getByTestId('chat-model-chip');
+    expect(chip).toHaveTextContent('Claude Opus 5.5');
+    fireEvent.click(chip);
+    fireEvent.click(document.querySelector('[data-model-id="claude-sonnet-4-5-20250929"]')!);
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([, init]) => init?.method === 'PATCH');
+      sent = call ? JSON.parse(String(call[1]!.body)) : null;
+      expect(sent).toMatchObject({ model: 'claude-sonnet-4-5-20250929' });
+    });
+  });
+
+  it('says a refused pick in a toast, so the box does not move', async () => {
+    patch = () => json({ error: 'invalid', field: 'model' }, 400);
+    render(<ChatComposer variant="panel" binding={{ kind: 'home' }} />);
+    fireEvent.click(screen.getByTestId('chat-model-chip'));
+    fireEvent.click(document.querySelector('[data-model-id="claude-sonnet-4-5-20250929"]')!);
+    await waitFor(() =>
+      expect(toasts.error).toHaveBeenCalledWith('That model isn’t available to your key. Pick another.')
+    );
+    expect(screen.queryByTestId('model-picker-error')).toBeNull();
+  });
+
+  it('is not there while OpenClaw answers, nor in the phone’s dock bar', () => {
+    const { unmount } = render(<ChatComposer variant="dock" binding={{ kind: 'home' }} />);
+    expect(screen.queryByTestId('chat-model-chip')).toBeNull();
+    unmount();
+    cleanupAI?.();
+    cleanupAI = seedAI({ ...OPENCLAW_PLUGIN, choice: 'openclaw' });
+    render(<ChatComposer variant="panel" binding={{ kind: 'home' }} />);
+    expect(useAISettingsStore.getState().chatTarget).toBe('openclaw');
+    expect(screen.queryByTestId('chat-model-chip')).toBeNull();
   });
 });
