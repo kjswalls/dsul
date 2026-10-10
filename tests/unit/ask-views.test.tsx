@@ -1409,6 +1409,40 @@ describe('the transcript', () => {
     expect(document.activeElement).toBe(field);
   });
 
+  it('@ offers items, Enter picks one, and the send carries it to the model as context', async () => {
+    await openSaved(ROW);
+    fireEvent.change(askBox(), { target: { value: 'move @dent' } });
+    const options = screen.getAllByTestId('chat-mention-option');
+    expect(options.map((o) => o.textContent)).toEqual(['Book the dentist']);
+    expect(askBox()).toHaveAttribute('aria-activedescendant', options[0].id);
+    fireEvent.keyDown(askBox(), { key: 'Enter' });
+    expect(askBox().value).toBe('move @Book the dentist ');
+    expect(transport.inputs).toHaveLength(0);
+    expect(screen.queryByTestId('chat-mention-list')).toBeNull();
+
+    fireEvent.change(askBox(), { target: { value: 'move @Book the dentist to Monday' } });
+    fireEvent.keyDown(askBox(), { key: 'Enter' });
+    await settle();
+    expect(transport.inputs[0].message).toBe('move @Book the dentist to Monday');
+    expect(transport.inputs[0].context).toContain('### Items named in this message');
+    expect(transport.inputs[0].context).toContain('- Book the dentist [id: t1]');
+  });
+
+  it("Escape closes the @ list without closing the rail, and a send names nothing it did not pick", async () => {
+    await openSaved(ROW);
+    fireEvent.change(askBox(), { target: { value: '@zz' } });
+    expect(screen.queryByTestId('chat-mention-list')).toBeNull();
+    fireEvent.change(askBox(), { target: { value: '@' } });
+    expect(screen.getByTestId('chat-mention-list')).toBeInTheDocument();
+    fireEvent.keyDown(askBox(), { key: 'Escape' });
+    expect(screen.queryByTestId('chat-mention-list')).toBeNull();
+    expect(view()).toBeInTheDocument();
+    fireEvent.change(askBox(), { target: { value: 'hello' } });
+    fireEvent.keyDown(askBox(), { key: 'Enter' });
+    await settle();
+    expect(transport.inputs[0].context).not.toContain('### Items named in this message');
+  });
+
   it('names the panel box as the dock names its own', async () => {
     await openSaved(ROW);
     expect(askBox()).toHaveAttribute('aria-label', 'Message AI');

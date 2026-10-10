@@ -527,7 +527,9 @@ export async function resolveSendTarget(
  * or a summon's request is still pending, or focus was in the rail or lost.
  * A send from the canvas's own controls never moves it.
  *
- * `contextItemIds` is the 2c seam (several items as context); unread for now.
+ * `contextItemIds` is unread: @ items (lib/chat-mentions.ts) travel in the
+ * text itself and are found again where the turn's context is built, so every
+ * send path (a retry, an edit, a typed answer) carries them without asking.
  *
  * Resolves once the answer is done: true when the store's send took the text
  * (the thread streaming right after the call, or already holding more

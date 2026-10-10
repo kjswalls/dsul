@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ArrowUp, Mic, Plus, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -9,6 +9,9 @@ import { resolveConversationId, useConversationsStore, type ConversationsState }
 import { bindingKey, sendFrom, type ComposerBinding } from '@/lib/open-chat';
 import type { AskSurface } from '@/lib/rail-store';
 import { chatAssistantName, chatPlaceholder, itemChatPlaceholder } from '@/lib/chat-utils';
+import { activeMention, insertMention, mentionChoices } from '@/lib/chat-mentions';
+import { usePlannerStore } from '@/lib/planner-store';
+import type { Item } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
 /** Auto-grow ceiling, past which the field scrolls instead of pushing further. */
@@ -101,6 +104,43 @@ export function ChatComposer({
   };
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // @ items (lib/chat-mentions.ts): the caret says whether an @ is being
+  // typed, and the planner's items are what it can pick. Escape closes the
+  // list for that one @, which a new @ (or a move away and back) reopens.
+  const items = usePlannerStore((s) => s.items);
+  const [caret, setCaret] = useState<number | null>(null);
+  const [highlight, setHighlight] = useState(0);
+  const [closedAt, setClosedAt] = useState<number | null>(null);
+  const mention = caret === null ? null : activeMention(input, caret);
+  const choices = useMemo(
+    () => (mention && mention.start !== closedAt ? mentionChoices(items, mention.query) : []),
+    [mention?.start, mention?.query, closedAt, items] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const listOpen = choices.length > 0 && !isLoading;
+  const listId = useId();
+  const active = listOpen ? Math.min(highlight, choices.length - 1) : -1;
+  const readCaret = (ta: HTMLTextAreaElement) => {
+    const at = ta.selectionStart === ta.selectionEnd ? ta.selectionStart : null;
+    setCaret(at);
+    if (at === null || !activeMention(ta.value, at)) setClosedAt(null);
+  };
+  const pick = (item: Item) => {
+    if (!mention) return;
+    const next = insertMention(input, mention, item.title);
+    setInput(next.text);
+    setHighlight(0);
+    // Picked: this @ is done, even though its words still match the item.
+    setClosedAt(mention.start);
+    setCaret(next.caret);
+    // The value lands on the next render; the caret goes after it.
+    requestAnimationFrame(() => {
+      const ta = textareaRef.current;
+      if (!ta) return;
+      ta.focus();
+      ta.setSelectionRange(next.caret, next.caret);
+    });
+  };
+
   const displayName = chatAssistantName(target);
   // A box bound to an item says so: it looks like every other box.
   const placeholder =
@@ -152,6 +192,26 @@ export function ChatComposer({
   }, [isLoading]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (listOpen && !e.nativeEvent.isComposing) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const step = e.key === 'ArrowDown' ? 1 : -1;
+        setHighlight((active + step + choices.length) % choices.length);
+        return;
+      }
+      if ((e.key === 'Enter' && !e.shiftKey) || e.key === 'Tab') {
+        e.preventDefault();
+        pick(choices[active]);
+        return;
+      }
+      if (e.key === 'Escape') {
+        // The list's own Escape: the rail (or the phone's sheet) must not close too.
+        e.preventDefault();
+        e.stopPropagation();
+        setClosedAt(mention?.start ?? null);
+        return;
+      }
+    }
     // isComposing: Enter is how an IME COMMITS a candidate, so without this a
     // Japanese/Chinese/Korean user confirming 「こんにちは」 sends the half-built
     // string instead and loses the rest. This bar is the only field the phone's
@@ -161,6 +221,18 @@ export function ChatComposer({
       handleSend();
     }
   };
+
+  // A textbox that suggests, as GitHub's comment box does: it stays a textbox
+  // (role combobox on a multi-line field is not one a reader expects), and
+  // the list it controls and the option in hand are named while it is open.
+  const comboProps = {
+    'aria-autocomplete': 'list' as const,
+    'aria-controls': listOpen ? listId : undefined,
+    'aria-activedescendant': listOpen ? `${listId}-${active}` : undefined,
+  };
+  const list = listOpen ? (
+    <MentionList id={listId} choices={choices} active={active} onPick={pick} onHover={setHighlight} />
+  ) : null;
 
   if (variant === 'dock') {
     return (
@@ -175,16 +247,24 @@ export function ChatComposer({
           textareaRef.current?.focus();
         }}
         className={cn(
-          'flex min-h-[48px] w-full items-end gap-2 rounded-[10px] bg-surface-2 py-[13px]',
+          'relative flex min-h-[48px] w-full items-end gap-2 rounded-[10px] bg-surface-2 py-[13px]',
           'shadow-[var(--shadow-key-rest)] transition-[padding] duration-150',
           hasText ? 'pl-[22px] pr-2' : 'px-[22px]'
         )}
       >
+        {list}
         <Textarea
           ref={textareaRef}
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => {
+            setInput(e.target.value);
+            setHighlight(0);
+            readCaret(e.target);
+          }}
+          onSelect={(e) => readCaret(e.currentTarget)}
+          onBlur={() => setCaret(null)}
           onKeyDown={onKeyDown}
+          {...comboProps}
           placeholder={placeholder}
           rows={1}
           data-testid="chat-dock-input"
@@ -236,12 +316,20 @@ export function ChatComposer({
   }
 
   return (
-    <div className="rounded-2xl border border-border bg-muted/30 transition-colors focus-within:bg-muted/50">
+    <div className="relative rounded-2xl border border-border bg-muted/30 transition-colors focus-within:bg-muted/50">
+      {list}
       <Textarea
         ref={textareaRef}
         value={input}
-        onChange={(e) => setInput(e.target.value)}
+        onChange={(e) => {
+          setInput(e.target.value);
+          setHighlight(0);
+          readCaret(e.target);
+        }}
+        onSelect={(e) => readCaret(e.currentTarget)}
+        onBlur={() => setCaret(null)}
         onKeyDown={onKeyDown}
+        {...comboProps}
         placeholder={placeholder}
         rows={1}
         // dark:bg-transparent for the same reason as the dock's field above —
@@ -302,5 +390,59 @@ export function ChatComposer({
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * The items an @ can pick, above the box. Pointer picks keep the focus in the
+ * box (mousedown is cancelled), so typing carries on where it was.
+ */
+function MentionList({
+  id,
+  choices,
+  active,
+  onPick,
+  onHover,
+}: {
+  id: string;
+  choices: Item[];
+  active: number;
+  onPick: (item: Item) => void;
+  onHover: (index: number) => void;
+}) {
+  return (
+    <ul
+      id={id}
+      role="listbox"
+      aria-label="Items"
+      data-testid="chat-mention-list"
+      className="absolute inset-x-0 bottom-full z-20 mb-2 max-h-60 overflow-y-auto rounded-xl border border-border bg-popover p-1 shadow-soft-md"
+    >
+      {choices.map((item, i) => {
+        const step = 'parentItemId' in item && !!item.parentItemId;
+        const project = 'project' in item ? item.project : undefined;
+        return (
+          <li
+            key={item.id}
+            id={`${id}-${i}`}
+            role="option"
+            aria-selected={i === active}
+            data-testid="chat-mention-option"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => onPick(item)}
+            onMouseEnter={() => onHover(i)}
+            className={cn(
+              'flex cursor-pointer items-baseline gap-2 rounded-lg px-2.5 py-1.5 text-sm text-foreground',
+              i === active && 'bg-accent'
+            )}
+          >
+            <span className="min-w-0 flex-1 truncate">{item.title}</span>
+            {(step || project) && (
+              <span className="shrink-0 text-2xs text-muted-foreground">{step ? 'step' : project}</span>
+            )}
+          </li>
+        );
+      })}
+    </ul>
   );
 }
