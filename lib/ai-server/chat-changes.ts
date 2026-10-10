@@ -20,7 +20,7 @@
 
 import { ProposalDraftSchema } from '@dsul/types';
 import { milestoneItemIds } from '@/lib/goals';
-import type { Goal, Item, ProposalDraft, ProposalOperation } from '@/lib/planner-types';
+import type { Goal, Item, Project, ProposalDraft, ProposalOperation, Routine, Season } from '@/lib/planner-types';
 import { describeOperation, validateProposalOperations } from '@/lib/proposal';
 import type { ToolDef } from './providers';
 
@@ -32,9 +32,10 @@ export const PROPOSE_TOOL: ToolDef = {
   description:
     'Offer the user changes to their planner as a card they accept with one tap. Nothing changes until they ' +
     'accept, so call this whenever they ask you to add, move, reschedule, rename, finish, cancel or break down ' +
-    'something, to start a habit or change how something repeats, or to tick off, skip, pause or resume a habit ' +
-    'or a repeating item. An existing item is named by its id, so find it with find_items first. One card per ' +
-    `message, at most ${MAX_CARD_CHANGES} changes. Not for projects, routines, seasons, goals, or deleting anything.`,
+    'something, to start a habit or change how something repeats, to tick off, skip, pause or resume a habit ' +
+    'or a repeating item, or to make, rename or fill a project, routine, season or goal. An existing item is named ' +
+    'by its id, so find it with find_items first; a container by the id planner_overview gives. One card per ' +
+    `message, at most ${MAX_CARD_CHANGES} changes. Not for deleting anything.`,
   parameters: {
     type: 'object',
     properties: {
@@ -48,11 +49,43 @@ export const PROPOSE_TOOL: ToolDef = {
           properties: {
             kind: {
               type: 'string',
-              enum: ['create', 'update', 'verb'],
+              enum: ['create', 'update', 'verb', 'container', 'membership'],
               description:
                 'create a new item, update an existing one, or verb: tick off, skip, pause or resume one. A habit or ' +
-                'a repeating item is only ever ticked or skipped with verb, one day at a time.',
+                'a repeating item is only ever ticked or skipped with verb, one day at a time. container makes a ' +
+                'project, routine, season or goal (no containerId), or changes one (with containerId). membership ' +
+                'puts one existing item in an existing container, or takes it out.',
             },
+            container: {
+              type: 'string',
+              enum: ['project', 'routine', 'season', 'goal'],
+              description:
+                'container and membership: which kind. A project is the one group an item files under. A routine is ' +
+                'things done regularly, together and in order (a morning, a workout week), which pause as one. A ' +
+                'season is a stretch of life, optionally dated, whose items show only while it is on. A goal is ' +
+                'something being worked towards.',
+            },
+            containerId: {
+              type: 'string',
+              description: 'container: the one to change (leave out to make a new one). membership: the one to put it in or take it out of.',
+            },
+            name: { type: 'string', description: 'container: what to call it. Required for a new one.' },
+            member: {
+              type: 'boolean',
+              description: 'membership: true puts the item in (the default), false takes it out. An item is in one project at most, so putting it in a project moves it.',
+            },
+            itemIds: {
+              type: 'array',
+              items: { type: 'string' },
+              description:
+                'container, new ones only: the existing items it starts with (a routine\'s in the order they are done). ' +
+                'To add to or take from one that exists, use one membership change per item.',
+            },
+            why: { type: 'string', description: 'container, goals only: why it matters to them, in their words.' },
+            usualTime: { type: 'string', description: 'container, routines only: when it usually happens, HH:mm. Only a label: members keep their own times.' },
+            startsOn: { type: 'string', description: 'container, seasons and goals: the first day, YYYY-MM-DD.' },
+            endsOn: { type: 'string', description: 'container, seasons only: the last day, YYYY-MM-DD.' },
+            targetOn: { type: 'string', description: 'container, goals only: the day being aimed at, YYYY-MM-DD.' },
             itemId: { type: 'string', description: 'update and verb: the id of the item, copied exactly.' },
             verb: {
               type: 'string',
@@ -91,7 +124,7 @@ export const PROPOSE_TOOL: ToolDef = {
                 'update: fields to empty. startDate moves it to the braindump (no day), startTime keeps the day ' +
                 'and drops the time, priority stops flagging it.',
             },
-            notes: { type: 'string', description: 'Notes, replacing any there were.' },
+            notes: { type: 'string', description: 'Notes, replacing any there were. Also a project, routine or season\'s notes.' },
             repeatFrequency: {
               type: 'string',
               enum: ['none', 'daily', 'weekdays', 'weekends', 'monthly', 'custom'],
@@ -123,6 +156,10 @@ export const PROPOSE_TOOL: ToolDef = {
 
 export interface ChangeSource {
   items(): Promise<Item[]>;
+  projects(): Promise<Project[]>;
+  /** Null when the kind cannot be read: its changes are then refused, never guessed at. */
+  routines(): Promise<Routine[] | null>;
+  seasons(): Promise<Season[] | null>;
   goals(): Promise<Goal[] | null>;
   /** The user's own type names; null when they cannot be read. */
   itemTypes(): Promise<string[] | null>;
@@ -192,8 +229,24 @@ export function makeChangeOffer(source: ChangeSource) {
       return failed(`at most ${MAX_CARD_CHANGES} changes on one card. Offer the most useful ones.`);
     }
 
-    const [items, goals, types] = await Promise.all([source.items(), source.goals(), source.itemTypes()]);
-    const ctx = { items, customTypeNames: types ?? [], milestoneIds: milestoneItemIds(goals ?? []) };
+    // Containers are read only when the card names one: most cards are items alone.
+    const wantsContainers = draft.operations.some((op) => op.kind === 'container' || op.kind === 'membership');
+    const [items, goals, types, containers] = await Promise.all([
+      source.items(),
+      source.goals(),
+      source.itemTypes(),
+      wantsContainers
+        ? Promise.all([source.projects(), source.routines(), source.seasons()])
+        : Promise.resolve(null),
+    ]);
+    const ctx = {
+      items,
+      customTypeNames: types ?? [],
+      milestoneIds: milestoneItemIds(goals ?? []),
+      ...(containers && {
+        containers: { projects: containers[0], routines: containers[1], seasons: containers[2], goals },
+      }),
+    };
     const { accepted, rejected } = validateProposalOperations(draft.operations as ProposalOperation[], ctx);
     const refusedLines = rejected.map((r) => `- ${describeOperation(r.operation, ctx)}: ${r.reason}`);
 

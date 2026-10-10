@@ -5102,6 +5102,83 @@ export declare const ProposalVerbOpSchema: z.ZodObject<{
     date?: string | undefined;
     until?: string | undefined;
 }>;
+/**
+ * The containers a card may make, change and fill: the one CLASSIFY kind
+ * (project) and the routine, season and goal (lib/container-registry.ts).
+ */
+export declare const PROPOSAL_CONTAINERS: readonly ["project", "routine", "season", "goal"];
+/**
+ * Make a container (no `containerId`) or change one. Which fields a kind keeps
+ * is checked app-side (lib/proposal.ts): `notes` for a project, routine or
+ * season; `why`, `startsOn` and `targetOn` for a goal; `usualTime` for a
+ * routine; `startsOn` and `endsOn` for a season. `itemIds` only on a create:
+ * the members it starts with (a routine's in the order they are done; a
+ * project's are re-filed under it). An existing container's members change one
+ * at a time through a membership op, never as a whole list, so a card can
+ * never drop the members it did not name.
+ */
+export declare const ProposalContainerOpSchema: z.ZodObject<{
+    kind: z.ZodLiteral<"container">;
+    container: z.ZodEnum<["project", "routine", "season", "goal"]>;
+    containerId: z.ZodOptional<z.ZodString>;
+    name: z.ZodOptional<z.ZodString>;
+    notes: z.ZodOptional<z.ZodString>;
+    why: z.ZodOptional<z.ZodString>;
+    usualTime: z.ZodOptional<z.ZodString>;
+    startsOn: z.ZodOptional<z.ZodString>;
+    endsOn: z.ZodOptional<z.ZodString>;
+    targetOn: z.ZodOptional<z.ZodString>;
+    itemIds: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+}, "strip", z.ZodTypeAny, {
+    kind: "container";
+    container: "project" | "routine" | "season" | "goal";
+    name?: string | undefined;
+    notes?: string | undefined;
+    usualTime?: string | undefined;
+    itemIds?: string[] | undefined;
+    startsOn?: string | undefined;
+    endsOn?: string | undefined;
+    why?: string | undefined;
+    targetOn?: string | undefined;
+    containerId?: string | undefined;
+}, {
+    kind: "container";
+    container: "project" | "routine" | "season" | "goal";
+    name?: string | undefined;
+    notes?: string | undefined;
+    usualTime?: string | undefined;
+    itemIds?: string[] | undefined;
+    startsOn?: string | undefined;
+    endsOn?: string | undefined;
+    why?: string | undefined;
+    targetOn?: string | undefined;
+    containerId?: string | undefined;
+}>;
+/**
+ * Put ONE existing item in an existing container, or take it out (`member:
+ * false`). For a project that is re-filing it (an item is in one project at
+ * most); for a goal, joining as a plain member, and leaving in whatever role it
+ * held.
+ */
+export declare const ProposalMembershipOpSchema: z.ZodObject<{
+    kind: z.ZodLiteral<"membership">;
+    itemId: z.ZodString;
+    container: z.ZodEnum<["project", "routine", "season", "goal"]>;
+    containerId: z.ZodString;
+    member: z.ZodOptional<z.ZodBoolean>;
+}, "strip", z.ZodTypeAny, {
+    kind: "membership";
+    itemId: string;
+    container: "project" | "routine" | "season" | "goal";
+    containerId: string;
+    member?: boolean | undefined;
+}, {
+    kind: "membership";
+    itemId: string;
+    container: "project" | "routine" | "season" | "goal";
+    containerId: string;
+    member?: boolean | undefined;
+}>;
 export declare const ProposalOperationSchema: z.ZodDiscriminatedUnion<"kind", [z.ZodObject<{
     kind: z.ZodLiteral<"create">;
     /** Registry type name: 'task', 'habit', or a user-defined slug. */
@@ -5236,6 +5313,60 @@ export declare const ProposalOperationSchema: z.ZodDiscriminatedUnion<"kind", [z
     verb: "complete" | "skip" | "unskip" | "pause" | "resume";
     date?: string | undefined;
     until?: string | undefined;
+}>, z.ZodObject<{
+    kind: z.ZodLiteral<"container">;
+    container: z.ZodEnum<["project", "routine", "season", "goal"]>;
+    containerId: z.ZodOptional<z.ZodString>;
+    name: z.ZodOptional<z.ZodString>;
+    notes: z.ZodOptional<z.ZodString>;
+    why: z.ZodOptional<z.ZodString>;
+    usualTime: z.ZodOptional<z.ZodString>;
+    startsOn: z.ZodOptional<z.ZodString>;
+    endsOn: z.ZodOptional<z.ZodString>;
+    targetOn: z.ZodOptional<z.ZodString>;
+    itemIds: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+}, "strip", z.ZodTypeAny, {
+    kind: "container";
+    container: "project" | "routine" | "season" | "goal";
+    name?: string | undefined;
+    notes?: string | undefined;
+    usualTime?: string | undefined;
+    itemIds?: string[] | undefined;
+    startsOn?: string | undefined;
+    endsOn?: string | undefined;
+    why?: string | undefined;
+    targetOn?: string | undefined;
+    containerId?: string | undefined;
+}, {
+    kind: "container";
+    container: "project" | "routine" | "season" | "goal";
+    name?: string | undefined;
+    notes?: string | undefined;
+    usualTime?: string | undefined;
+    itemIds?: string[] | undefined;
+    startsOn?: string | undefined;
+    endsOn?: string | undefined;
+    why?: string | undefined;
+    targetOn?: string | undefined;
+    containerId?: string | undefined;
+}>, z.ZodObject<{
+    kind: z.ZodLiteral<"membership">;
+    itemId: z.ZodString;
+    container: z.ZodEnum<["project", "routine", "season", "goal"]>;
+    containerId: z.ZodString;
+    member: z.ZodOptional<z.ZodBoolean>;
+}, "strip", z.ZodTypeAny, {
+    kind: "membership";
+    itemId: string;
+    container: "project" | "routine" | "season" | "goal";
+    containerId: string;
+    member?: boolean | undefined;
+}, {
+    kind: "membership";
+    itemId: string;
+    container: "project" | "routine" | "season" | "goal";
+    containerId: string;
+    member?: boolean | undefined;
 }>]>;
 export declare const ProposalSchema: z.ZodObject<{
     id: z.ZodString;
@@ -5385,6 +5516,60 @@ export declare const ProposalSchema: z.ZodObject<{
         verb: "complete" | "skip" | "unskip" | "pause" | "resume";
         date?: string | undefined;
         until?: string | undefined;
+    }>, z.ZodObject<{
+        kind: z.ZodLiteral<"container">;
+        container: z.ZodEnum<["project", "routine", "season", "goal"]>;
+        containerId: z.ZodOptional<z.ZodString>;
+        name: z.ZodOptional<z.ZodString>;
+        notes: z.ZodOptional<z.ZodString>;
+        why: z.ZodOptional<z.ZodString>;
+        usualTime: z.ZodOptional<z.ZodString>;
+        startsOn: z.ZodOptional<z.ZodString>;
+        endsOn: z.ZodOptional<z.ZodString>;
+        targetOn: z.ZodOptional<z.ZodString>;
+        itemIds: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+    }, "strip", z.ZodTypeAny, {
+        kind: "container";
+        container: "project" | "routine" | "season" | "goal";
+        name?: string | undefined;
+        notes?: string | undefined;
+        usualTime?: string | undefined;
+        itemIds?: string[] | undefined;
+        startsOn?: string | undefined;
+        endsOn?: string | undefined;
+        why?: string | undefined;
+        targetOn?: string | undefined;
+        containerId?: string | undefined;
+    }, {
+        kind: "container";
+        container: "project" | "routine" | "season" | "goal";
+        name?: string | undefined;
+        notes?: string | undefined;
+        usualTime?: string | undefined;
+        itemIds?: string[] | undefined;
+        startsOn?: string | undefined;
+        endsOn?: string | undefined;
+        why?: string | undefined;
+        targetOn?: string | undefined;
+        containerId?: string | undefined;
+    }>, z.ZodObject<{
+        kind: z.ZodLiteral<"membership">;
+        itemId: z.ZodString;
+        container: z.ZodEnum<["project", "routine", "season", "goal"]>;
+        containerId: z.ZodString;
+        member: z.ZodOptional<z.ZodBoolean>;
+    }, "strip", z.ZodTypeAny, {
+        kind: "membership";
+        itemId: string;
+        container: "project" | "routine" | "season" | "goal";
+        containerId: string;
+        member?: boolean | undefined;
+    }, {
+        kind: "membership";
+        itemId: string;
+        container: "project" | "routine" | "season" | "goal";
+        containerId: string;
+        member?: boolean | undefined;
     }>]>, "many">;
     createdAt: z.ZodString;
 }, "strip", z.ZodTypeAny, {
@@ -5425,6 +5610,24 @@ export declare const ProposalSchema: z.ZodObject<{
         verb: "complete" | "skip" | "unskip" | "pause" | "resume";
         date?: string | undefined;
         until?: string | undefined;
+    } | {
+        kind: "container";
+        container: "project" | "routine" | "season" | "goal";
+        name?: string | undefined;
+        notes?: string | undefined;
+        usualTime?: string | undefined;
+        itemIds?: string[] | undefined;
+        startsOn?: string | undefined;
+        endsOn?: string | undefined;
+        why?: string | undefined;
+        targetOn?: string | undefined;
+        containerId?: string | undefined;
+    } | {
+        kind: "membership";
+        itemId: string;
+        container: "project" | "routine" | "season" | "goal";
+        containerId: string;
+        member?: boolean | undefined;
     })[];
     createdAt: string;
     rationale?: string | undefined;
@@ -5466,6 +5669,24 @@ export declare const ProposalSchema: z.ZodObject<{
         verb: "complete" | "skip" | "unskip" | "pause" | "resume";
         date?: string | undefined;
         until?: string | undefined;
+    } | {
+        kind: "container";
+        container: "project" | "routine" | "season" | "goal";
+        name?: string | undefined;
+        notes?: string | undefined;
+        usualTime?: string | undefined;
+        itemIds?: string[] | undefined;
+        startsOn?: string | undefined;
+        endsOn?: string | undefined;
+        why?: string | undefined;
+        targetOn?: string | undefined;
+        containerId?: string | undefined;
+    } | {
+        kind: "membership";
+        itemId: string;
+        container: "project" | "routine" | "season" | "goal";
+        containerId: string;
+        member?: boolean | undefined;
     })[];
     createdAt: string;
     rationale?: string | undefined;
@@ -5619,6 +5840,60 @@ export declare const ProposalDraftSchema: z.ZodObject<Omit<{
         verb: "complete" | "skip" | "unskip" | "pause" | "resume";
         date?: string | undefined;
         until?: string | undefined;
+    }>, z.ZodObject<{
+        kind: z.ZodLiteral<"container">;
+        container: z.ZodEnum<["project", "routine", "season", "goal"]>;
+        containerId: z.ZodOptional<z.ZodString>;
+        name: z.ZodOptional<z.ZodString>;
+        notes: z.ZodOptional<z.ZodString>;
+        why: z.ZodOptional<z.ZodString>;
+        usualTime: z.ZodOptional<z.ZodString>;
+        startsOn: z.ZodOptional<z.ZodString>;
+        endsOn: z.ZodOptional<z.ZodString>;
+        targetOn: z.ZodOptional<z.ZodString>;
+        itemIds: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+    }, "strip", z.ZodTypeAny, {
+        kind: "container";
+        container: "project" | "routine" | "season" | "goal";
+        name?: string | undefined;
+        notes?: string | undefined;
+        usualTime?: string | undefined;
+        itemIds?: string[] | undefined;
+        startsOn?: string | undefined;
+        endsOn?: string | undefined;
+        why?: string | undefined;
+        targetOn?: string | undefined;
+        containerId?: string | undefined;
+    }, {
+        kind: "container";
+        container: "project" | "routine" | "season" | "goal";
+        name?: string | undefined;
+        notes?: string | undefined;
+        usualTime?: string | undefined;
+        itemIds?: string[] | undefined;
+        startsOn?: string | undefined;
+        endsOn?: string | undefined;
+        why?: string | undefined;
+        targetOn?: string | undefined;
+        containerId?: string | undefined;
+    }>, z.ZodObject<{
+        kind: z.ZodLiteral<"membership">;
+        itemId: z.ZodString;
+        container: z.ZodEnum<["project", "routine", "season", "goal"]>;
+        containerId: z.ZodString;
+        member: z.ZodOptional<z.ZodBoolean>;
+    }, "strip", z.ZodTypeAny, {
+        kind: "membership";
+        itemId: string;
+        container: "project" | "routine" | "season" | "goal";
+        containerId: string;
+        member?: boolean | undefined;
+    }, {
+        kind: "membership";
+        itemId: string;
+        container: "project" | "routine" | "season" | "goal";
+        containerId: string;
+        member?: boolean | undefined;
     }>]>, "many">;
     createdAt: z.ZodString;
 }, "id" | "createdAt">, "strip", z.ZodTypeAny, {
@@ -5658,6 +5933,24 @@ export declare const ProposalDraftSchema: z.ZodObject<Omit<{
         verb: "complete" | "skip" | "unskip" | "pause" | "resume";
         date?: string | undefined;
         until?: string | undefined;
+    } | {
+        kind: "container";
+        container: "project" | "routine" | "season" | "goal";
+        name?: string | undefined;
+        notes?: string | undefined;
+        usualTime?: string | undefined;
+        itemIds?: string[] | undefined;
+        startsOn?: string | undefined;
+        endsOn?: string | undefined;
+        why?: string | undefined;
+        targetOn?: string | undefined;
+        containerId?: string | undefined;
+    } | {
+        kind: "membership";
+        itemId: string;
+        container: "project" | "routine" | "season" | "goal";
+        containerId: string;
+        member?: boolean | undefined;
     })[];
     rationale?: string | undefined;
 }, {
@@ -5697,6 +5990,24 @@ export declare const ProposalDraftSchema: z.ZodObject<Omit<{
         verb: "complete" | "skip" | "unskip" | "pause" | "resume";
         date?: string | undefined;
         until?: string | undefined;
+    } | {
+        kind: "container";
+        container: "project" | "routine" | "season" | "goal";
+        name?: string | undefined;
+        notes?: string | undefined;
+        usualTime?: string | undefined;
+        itemIds?: string[] | undefined;
+        startsOn?: string | undefined;
+        endsOn?: string | undefined;
+        why?: string | undefined;
+        targetOn?: string | undefined;
+        containerId?: string | undefined;
+    } | {
+        kind: "membership";
+        itemId: string;
+        container: "project" | "routine" | "season" | "goal";
+        containerId: string;
+        member?: boolean | undefined;
     })[];
     rationale?: string | undefined;
 }>;

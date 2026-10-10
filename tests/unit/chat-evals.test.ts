@@ -74,6 +74,14 @@ const IDEAL: Record<string, { found?: RegExp[]; reply: string }> = {
     found: [/Floss: skip today/],
     reply: "Of course. The card skips tonight's floss, and your streak stays as it is.",
   },
+  'routine-add': {
+    found: [/Floss: add to Morning/],
+    reply: 'The card below adds flossing to your Morning routine, after the meditation.',
+  },
+  'new-routine': {
+    found: [/New routine: Evening, with Floss and Read 20 pages/],
+    reply: 'Here is an Evening routine with flossing, then reading. Accept it below if it looks right.',
+  },
 };
 
 /** A model that makes each case's example calls, then gives its ideal reply. */

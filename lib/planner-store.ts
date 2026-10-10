@@ -29,6 +29,8 @@ import type {
   Proposal,
   ProposalOperation,
   ProposalVerbOp,
+  ProposalContainerOp,
+  ProposalMembershipOp,
 } from './planner-types';
 import { PRIORITY_LABELS } from './planner-types';
 import type { ItemSize } from './item-size';
@@ -36,7 +38,8 @@ import type { ItemSize } from './item-size';
 import { autoCorrectBucket, getBucketForTime } from './time-bucket';
 // The schedule actions' patches live in lib/item-edit.ts, so the iPhone's routes write the same ones.
 import { projectRefilePatch, scheduleHabitPatch, scheduleTaskPatch, UNSCHEDULE_TASK_PATCH } from './item-edit';
-import { validateProposalOperations } from './proposal';
+import { proposalContainersOf, validateProposalOperations } from './proposal';
+import { makeIconToken } from './category-icons';
 import {
   addDaysToDateStr,
   goalItemIds,
@@ -3797,6 +3800,9 @@ export const usePlannerStore = create<PlannerStore>()(
           // since the card was rendered — and an item can BECOME a milestone in
           // that window.
           milestoneIds: milestoneItemIds(state.goals),
+          // Goals' on-or-off is the offer's check (proposal-store), made where
+          // the extension gates live; here only whether the containers still are.
+          containers: proposalContainersOf(state),
         });
         if (accepted.length === 0) return 0;
         // A tally is bookkeeping about the plan, never a reason to lose it.
@@ -3812,6 +3818,12 @@ export const usePlannerStore = create<PlannerStore>()(
         // one set() are folded into ONE history entry, so a card is still one
         // undo whatever it holds.
         const verbOps = accepted.filter((op): op is ProposalVerbOp => op.kind === 'verb');
+        // Containers the same way: each runs the store's own action (addRoutine,
+        // updateGoal, setItemsCollected, …), the one the Organize console runs,
+        // so ordering, release grace and the database's write order stay theirs.
+        // Made and changed first, so a membership on the same card finds them.
+        const containerOps = accepted.filter((op): op is ProposalContainerOp => op.kind === 'container');
+        const membershipOps = accepted.filter((op): op is ProposalMembershipOp => op.kind === 'membership');
         const writePlan = () => {
           // Armed before the set(), like every other labelled action — the label
           // is consumed by the NEXT history save.
@@ -3855,7 +3867,7 @@ export const usePlannerStore = create<PlannerStore>()(
           };
 
           for (const op of accepted) {
-            if (op.kind === 'verb') continue;
+            if (op.kind === 'verb' || op.kind === 'container' || op.kind === 'membership') continue;
             if (op.kind === 'create') {
               // A day with no bucket is no day at all: day views list only
               // bucketed items, and the Braindump takes anything unbucketed, so
@@ -4003,8 +4015,10 @@ export const usePlannerStore = create<PlannerStore>()(
             if (item) dbUpdateItem(id, dbTypeOf(item), updates).catch(console.error);
           });
           for (const op of verbOps) runProposalVerb(op, today, tz);
+          for (const op of containerOps) runProposalContainer(op);
+          for (const op of membershipOps) runProposalMembership(op);
         };
-        if (verbOps.length === 0) writePlan();
+        if (verbOps.length + containerOps.length + membershipOps.length === 0) writePlan();
         else batchHistory(`Accept plan: ${proposal.summary}`, accepted.length, writePlan, { quiet: true });
 
         return accepted.length;
@@ -6330,6 +6344,105 @@ function runProposalVerb(op: ProposalVerbOp, today: string, tz: string): void {
     case 'pause':
     case 'resume':
       store.setItemPaused(item.id, op.verb === 'pause', op.until);
+      return;
+  }
+}
+
+/** The icon a container made from a card wears: the one its own "new" picker starts on. */
+const PROPOSAL_CONTAINER_ICON: Record<ProposalContainerOp['container'], string> = {
+  project: makeIconToken('Briefcase'),
+  routine: makeIconToken('Repeat'),
+  season: makeIconToken('CalendarRange'),
+  goal: makeIconToken('Target'),
+};
+
+/**
+ * Makes or changes one container through the store's own action. Validation
+ * (lib/proposal.ts) has already dropped the fields the kind does not keep,
+ * checked the name is free and the members can join.
+ */
+function runProposalContainer(op: ProposalContainerOp): void {
+  const store = usePlannerStore.getState();
+  const icon = PROPOSAL_CONTAINER_ICON[op.container];
+  const itemIds = op.itemIds ?? [];
+  if (op.containerId) {
+    const id = op.containerId;
+    const name = op.name ? { name: op.name } : {};
+    switch (op.container) {
+      case 'project':
+        store.updateProject(id, { ...name, ...(op.notes !== undefined && { notes: op.notes }) });
+        return;
+      case 'routine':
+        store.updateRoutine(id, {
+          ...name,
+          ...(op.notes !== undefined && { notes: op.notes }),
+          ...(op.usualTime !== undefined && { usualTime: op.usualTime }),
+        });
+        return;
+      case 'season':
+        store.updateSeason(id, {
+          ...name,
+          ...(op.notes !== undefined && { notes: op.notes }),
+          ...(op.startsOn !== undefined && { startsOn: op.startsOn }),
+          ...(op.endsOn !== undefined && { endsOn: op.endsOn }),
+        });
+        return;
+      case 'goal':
+        store.updateGoal(id, {
+          ...name,
+          ...(op.why !== undefined && { why: op.why }),
+          ...(op.startsOn !== undefined && { startsOn: op.startsOn }),
+          ...(op.targetOn !== undefined && { targetOn: op.targetOn }),
+        });
+        return;
+    }
+  }
+  const name = op.name ?? '';
+  switch (op.container) {
+    case 'project': {
+      const id = store.addProject(name, icon, op.notes ? { notes: op.notes } : undefined);
+      if (id && itemIds.length) usePlannerStore.getState().setItemsProject(itemIds, name);
+      return;
+    }
+    case 'routine':
+      store.addRoutine({ name, icon, notes: op.notes, usualTime: op.usualTime, itemIds });
+      return;
+    case 'season':
+      // 'auto', as the item panel's "new season" makes one: on while its dates
+      // say so, and always on when it has none.
+      store.addSeason({ name, icon, notes: op.notes, state: 'auto', startsOn: op.startsOn, endsOn: op.endsOn, itemIds, routineIds: [] });
+      return;
+    case 'goal':
+      store.addGoal({
+        name,
+        icon,
+        why: op.why,
+        startsOn: op.startsOn,
+        targetOn: op.targetOn,
+        state: 'active',
+        memberIds: itemIds,
+        milestoneIds: [],
+        checkinIds: [],
+      });
+      return;
+  }
+}
+
+function runProposalMembership(op: ProposalMembershipOp): void {
+  const store = usePlannerStore.getState();
+  const member = op.member !== false;
+  switch (op.container) {
+    case 'project': {
+      const project = store.projects.find((p) => p.id === op.containerId);
+      if (project) store.setItemsProject([op.itemId], member ? project.name : undefined);
+      return;
+    }
+    case 'routine':
+    case 'season':
+      store.setItemsCollected([op.itemId], op.container, op.containerId, member);
+      return;
+    case 'goal':
+      store.setItemsGoal([op.itemId], op.containerId, member);
       return;
   }
 }

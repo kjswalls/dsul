@@ -64,6 +64,10 @@ export function ProposalCard({
   const items = usePlannerStore((s) => s.items);
   const itemTypes = usePlannerStore((s) => s.itemTypes);
   const userTimezone = usePlannerStore((s) => s.userTimezone);
+  const projects = usePlannerStore((s) => s.projects);
+  const routines = usePlannerStore((s) => s.routines);
+  const seasons = usePlannerStore((s) => s.seasons);
+  const goals = usePlannerStore((s) => s.goals);
   /**
    * Accept writes to the planner, so it waits for the planner's load: the
    * store's accept refuses before then and keeps the card (lib/proposal-store.ts),
@@ -131,12 +135,15 @@ export function ProposalCard({
     if (!proposal) return [];
     // Today, so a tick reads "done today" rather than naming today's date.
     const todayStr = toDateStr(new Date(), userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
-    const ctx = { items, customTypeNames: itemTypes.map((t) => t.name), todayStr };
+    // The containers only name things on the line ("add to Morning"), so
+    // availability does not matter here: the offer already checked it.
+    const containers = { projects, routines, seasons, goals };
+    const ctx = { items, customTypeNames: itemTypes.map((t) => t.name), todayStr, containers };
     return proposal.operations.map((operation, index) => ({
       key: `${index}`,
       text: describeOperation(operation, ctx),
     }));
-  }, [proposal, items, itemTypes, userTimezone]);
+  }, [proposal, items, itemTypes, userTimezone, projects, routines, seasons, goals]);
 
   if (status === 'idle') return null;
   // Not this mount's card. Checked after the hooks and before every visual

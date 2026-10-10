@@ -114,6 +114,21 @@ the AI does anything, each change behind a tap). Which repeats a type takes is t
 day; fields a type does not keep (a habit's priority and day, a task's daily count) are dropped, not
 refused. A new habit is built as addHabit builds one (fresh streak and history), on `anytime` when
 no part of the day is given, since an unbucketed repeating habit shows nowhere.
+Step 5c is built: a card can make, change and fill projects, routines, seasons and goals. Two operations
+(`ProposalContainerOpSchema`, `ProposalMembershipOpSchema`): `{kind:'container', container, containerId?,
+name?, notes?, why?, usualTime?, startsOn?, endsOn?, targetOn?, itemIds?}` makes one (no id) or changes one,
+and `{kind:'membership', itemId, container, containerId, member?}` puts ONE existing item in or takes it out.
+`itemIds` is for a new container only: an existing one's members change one at a time, so a card can never
+drop the members it did not name (the MCP tool's whole-list replace is the trap this avoids). A field the
+kind does not keep is dropped, except that a goal's `notes` become its `why` and a routine's `why` its
+notes. Validation (lib/proposal.ts) needs `ctx.containers` (`proposalContainersOf`): a name already taken
+is refused (case folded), as is a change that changes nothing, a member that is a step or gone, dates out
+of order, a kind whose table is missing, and a goal while the Goals extension is off (checked at offer, in
+the browser). Accepting runs each through the store's own action (addRoutine, updateGoal,
+setItemsCollected, setItemsGoal, setItemsProject, …) inside the plan's one `batchHistory`, after the item
+writes, so the card is still one undo. Pausing a routine, a season's or goal's state, a goal member's role
+(milestone, check-in) and deletes are not on a card yet; the receipt counts a new container as an added
+item. The evals gained routine-add and new-routine.
 
 **Note 2026-10-04: "Ask AI" on the item's right-click menu.** One row, a submenu of at
 most four asks, declared in `lib/item-asks.ts` (gate, label, wording) and run by

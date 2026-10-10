@@ -326,4 +326,45 @@ export const CASES: EvalCase[] = [
     saysNot: [/should|try to|make sure/i],
     why: 'Offers the skip for today, which keeps the streak, and does not lecture.',
   },
+  {
+    id: 'routine-add',
+    ask: 'Add flossing to my morning routine.',
+    lookups: [
+      { tool: 'planner_overview', example: {} },
+      { tool: 'find_items', accepts: mentions('floss'), example: { query: 'floss' } },
+      proposes({
+        summary: 'Floss joins Morning',
+        operations: [{ kind: 'membership', itemId: 'itm_floss', container: 'routine', containerId: 'rtn_0' }],
+      }),
+    ],
+    card: {
+      accepts: (d) =>
+        ops(d).some(
+          (o) => o.kind === 'membership' && o.itemId === 'itm_floss' && o.containerId === 'rtn_0' && o.member !== false
+        ),
+    },
+    why: 'Adds the one habit to the routine it already has, rather than making a new routine or listing every member.',
+  },
+  {
+    id: 'new-routine',
+    ask: 'Make me an evening routine: floss, then read.',
+    lookups: [
+      { tool: 'find_items', accepts: mentions('floss', 'read'), example: { query: 'floss' } },
+      proposes({
+        summary: 'An evening routine',
+        operations: [{ kind: 'container', container: 'routine', name: 'Evening', itemIds: ['itm_floss', 'itm_read'] }],
+      }),
+    ],
+    card: {
+      accepts: (d) =>
+        ops(d).some(
+          (o) =>
+            o.kind === 'container' &&
+            o.container === 'routine' &&
+            !o.containerId &&
+            JSON.stringify(o.itemIds) === JSON.stringify(['itm_floss', 'itm_read'])
+        ),
+    },
+    why: 'Makes a new routine holding the two habits, in the order asked.',
+  },
 ];

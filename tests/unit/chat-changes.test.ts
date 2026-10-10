@@ -4,7 +4,7 @@ import { MAX_CARD_CHANGES, PROPOSE_TOOL, makeChangeOffer, type ChangeSource } fr
 import { CHAT_TOOLS, makeLookups } from '@/lib/ai-server/chat-lookups';
 import { TOOLS_PROMPT, withToolsPrompt } from '@/lib/ai-server/chat-loop';
 import { BEACON_SYSTEM_PROMPT, NO_CHANGES_SENTENCE } from '@/lib/beacon-system-prompt';
-import type { Goal, Item } from '@/lib/planner-types';
+import type { Goal, Item, Project, Routine } from '@/lib/planner-types';
 
 /**
  * Chat's one changing tool (AI step 3, build step 4): propose_changes draws a
@@ -22,9 +22,15 @@ const ITEMS: Item[] = [
   task({ id: 'm1', title: 'Beta ships', startDate: '2026-11-01' }),
 ];
 
+const PROJECTS = [{ id: 'p1', name: 'Work', emoji: '' }] as Project[];
+const ROUTINES = [{ id: 'r1', name: 'Morning', itemIds: ['t1'] }] as Routine[];
+
 function source(over: Partial<ChangeSource> = {}): ChangeSource {
   return {
     items: async () => ITEMS,
+    projects: async () => PROJECTS,
+    routines: async () => ROUTINES,
+    seasons: async () => [],
     goals: async () => [{ id: 'g', name: 'Launch', state: 'active', memberIds: [], milestoneIds: ['m1'], checkinIds: [] } as unknown as Goal],
     itemTypes: async () => ['errand'],
     ...over,
@@ -139,6 +145,37 @@ describe('propose_changes', () => {
     expect(r.proposal?.operations).toEqual([{ kind: 'verb', verb: 'complete', itemId: 't4', date: '2026-10-17' }]);
     expect(r.content).toContain('Newsletter: done on');
     expect(r.content).toMatch(/Dentist: skip today: .*cannot be skipped/);
+  });
+
+  it('offers a container change against the containers it reads, and leaves off one that changes nothing', async () => {
+    const r = await makeChangeOffer(source())({
+      summary: 'Report joins Morning',
+      operations: [
+        { kind: 'membership', itemId: 't2', container: 'routine', containerId: 'r1' },
+        { kind: 'membership', itemId: 't1', container: 'routine', containerId: 'r1' },
+        { kind: 'container', container: 'project', name: 'Home' },
+      ],
+    });
+    expect(r.proposal?.operations).toEqual([
+      { kind: 'membership', itemId: 't2', container: 'routine', containerId: 'r1' },
+      { kind: 'container', container: 'project', name: 'Home' },
+    ]);
+    expect(r.content).toContain('- Report: add to Morning');
+    expect(r.content).toContain('- New project: Home');
+    expect(r.content).toMatch(/Dentist: add to Morning: it is already in Morning/);
+  });
+
+  it('reads no containers for a card of items alone', async () => {
+    let read = 0;
+    const counted = async () => {
+      read++;
+      return [];
+    };
+    await makeChangeOffer(source({ projects: counted, routines: counted, seasons: counted }))({
+      summary: 'S',
+      operations: [{ kind: 'create', title: 'A' }],
+    });
+    expect(read).toBe(0);
   });
 
   it('is offered beside the lookups, and runs through them', async () => {

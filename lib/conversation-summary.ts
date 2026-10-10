@@ -40,9 +40,17 @@ export function tallyOperations(ops: readonly ProposalOperation[]): Conversation
       else added += 1;
       continue;
     }
-    // A tick, a skip or a pause changes the item, not its place.
-    if (op.kind === 'verb') {
+    // A tick, a skip or a pause changes the item, not its place; so does
+    // putting it in a container or taking it out.
+    if (op.kind === 'verb' || op.kind === 'membership') {
       changed.add(op.itemId);
+      continue;
+    }
+    // A new project, routine, season or goal is something added; a changed
+    // one is a change, counted once whatever the card did to it.
+    if (op.kind === 'container') {
+      if (op.containerId) changed.add(`container:${op.containerId}`);
+      else added += 1;
       continue;
     }
     const touchesSchedule = MOVE_FIELDS.some((f) => op[f] !== undefined);

@@ -1100,10 +1100,54 @@ export const ProposalVerbOpSchema = z.object({
     /** Pause only: the day it comes back, yyyy-MM-dd. Absent pauses until resumed. */
     until: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
+/**
+ * The containers a card may make, change and fill: the one CLASSIFY kind
+ * (project) and the routine, season and goal (lib/container-registry.ts).
+ */
+export const PROPOSAL_CONTAINERS = ['project', 'routine', 'season', 'goal'];
+const proposalDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+/**
+ * Make a container (no `containerId`) or change one. Which fields a kind keeps
+ * is checked app-side (lib/proposal.ts): `notes` for a project, routine or
+ * season; `why`, `startsOn` and `targetOn` for a goal; `usualTime` for a
+ * routine; `startsOn` and `endsOn` for a season. `itemIds` only on a create:
+ * the members it starts with (a routine's in the order they are done; a
+ * project's are re-filed under it). An existing container's members change one
+ * at a time through a membership op, never as a whole list, so a card can
+ * never drop the members it did not name.
+ */
+export const ProposalContainerOpSchema = z.object({
+    kind: z.literal('container'),
+    container: z.enum(PROPOSAL_CONTAINERS),
+    containerId: z.string().min(1).max(200).optional(),
+    name: z.string().min(1).max(200).optional(),
+    notes: z.string().max(10_000).optional(),
+    why: z.string().max(2_000).optional(),
+    usualTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+    startsOn: proposalDay.optional(),
+    endsOn: proposalDay.optional(),
+    targetOn: proposalDay.optional(),
+    itemIds: z.array(z.string().min(1).max(200)).min(1).max(50).optional(),
+});
+/**
+ * Put ONE existing item in an existing container, or take it out (`member:
+ * false`). For a project that is re-filing it (an item is in one project at
+ * most); for a goal, joining as a plain member, and leaving in whatever role it
+ * held.
+ */
+export const ProposalMembershipOpSchema = z.object({
+    kind: z.literal('membership'),
+    itemId: z.string().min(1).max(200),
+    container: z.enum(PROPOSAL_CONTAINERS),
+    containerId: z.string().min(1).max(200),
+    member: z.boolean().optional(),
+});
 export const ProposalOperationSchema = z.discriminatedUnion('kind', [
     ProposalCreateOpSchema,
     ProposalUpdateOpSchema,
     ProposalVerbOpSchema,
+    ProposalContainerOpSchema,
+    ProposalMembershipOpSchema,
 ]);
 export const ProposalSchema = z.object({
     id: z.string(),
