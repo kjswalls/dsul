@@ -113,14 +113,17 @@ interface AgentAuth {
   serviceClient: DbClient
 }
 
-/** Bearer openclaw_api_key auth. Returns a 401 response when it fails. */
+/**
+ * Bearer openclaw_api_key auth, or an OAuth app's access token with the full
+ * `planner` scope (every handler here writes). Returns a 401 response when it fails.
+ */
 async function authenticateAgent(req: NextRequest): Promise<AgentAuth | NextResponse> {
   const authHeader = req.headers.get('authorization')
   if (!authHeader?.startsWith('Bearer ')) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
   const serviceClient = createServiceClient()
-  const userId = await resolveUserIdFromApiKey(authHeader.slice(7), serviceClient)
+  const userId = await resolveUserIdFromApiKey(authHeader.slice(7), serviceClient, 'write')
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

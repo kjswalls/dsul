@@ -1017,3 +1017,11 @@ export const toolByName = (name: string): McpTool | undefined =>
 export const TOOL_DESCRIPTORS: McpToolDescriptor[] = MCP_TOOLS.map(
   ({ name, description, inputSchema }) => ({ name, description, inputSchema })
 )
+
+/**
+ * The tools an app connected with the read-only scope sees (`planner:read`,
+ * lib/mcp-oauth/scopes.ts). Each one only ever plans a GET; a test holds that.
+ */
+export const READ_TOOL_NAMES: ReadonlySet<string> = new Set(['dsul_get_context', 'dsul_my_work', 'dsul_item_activity'])
+
+export const READ_TOOL_DESCRIPTORS: McpToolDescriptor[] = TOOL_DESCRIPTORS.filter((t) => READ_TOOL_NAMES.has(t.name))

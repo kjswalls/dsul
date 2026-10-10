@@ -1,4 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
+import { ACCESS_PREFIX } from './mcp-oauth/core'
+import { resolveAccessToken } from './mcp-oauth/store'
 
 /**
  * Service-role Supabase client — bypasses RLS.
@@ -103,15 +105,36 @@ function codeOrUnknown(error: { code?: string }): string {
 }
 
 /**
- * Resolve a userId from an OpenClaw API key.
+ * What a route lets in besides the OpenClaw key (memory/plans/mcp-oauth.md):
+ *
+ *   - 'key'   the OpenClaw agent key only. The default, so a route opts IN to
+ *             OAuth apps: registering a gateway or a webhook is OpenClaw's
+ *             alone, and an app a user connected must never become one.
+ *   - 'read'  also an OAuth access token of either scope (the context, an
+ *             item's history).
+ *   - 'write' also an OAuth access token with the full `planner` scope.
+ */
+export type AgentAccess = 'key' | 'read' | 'write'
+
+/**
+ * Resolve a userId from an OpenClaw API key, or, where `access` allows, an
+ * OAuth access token issued to an app (lib/mcp-oauth/store.ts).
  * Returns null if the key doesn't exist.
  * Pass an existing service client to avoid creating a second one per request.
  */
 export async function resolveUserIdFromApiKey(
   apiKey: string,
-  client?: ServiceClient
+  client?: ServiceClient,
+  access: AgentAccess = 'key'
 ): Promise<string | null> {
   const service = client ?? createServiceClient()
+  if (apiKey.startsWith(ACCESS_PREFIX)) {
+    if (access === 'key') return null
+    const caller = await resolveAccessToken(service, apiKey)
+    if (!caller) return null
+    if (access === 'write' && caller.scope !== 'planner') return null
+    return caller.userId
+  }
   const secrets = await service
     .from('user_secrets')
     .select('user_id')

@@ -17,7 +17,9 @@ import { safeNext } from './safe-next';
  * makes; proxy.ts reads this predicate, so the two cannot drift).
  */
 export function isSignedOutPath(pathname: string): boolean {
-  return pathname === '/login' || pathname.startsWith('/auth');
+  // /.well-known/ holds the OAuth metadata an MCP client reads before it has
+  // any session (lib/mcp-oauth/core.ts); a redirect to /login there ends its sign-in.
+  return pathname === '/login' || pathname.startsWith('/auth') || pathname.startsWith('/.well-known/');
 }
 
 /**

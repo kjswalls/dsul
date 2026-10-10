@@ -462,6 +462,10 @@ the capability gate, delegation to OpenClaw, saved conversations and their priva
 statement, and which earlier decisions steps 1 and 2a superseded. Read it before touching
 `lib/ai-*`, `lib/ai-server/**`, `app/api/ai/**`, `app/api/chat`, the AI settings pane, the
 right rail, or anything under `components/ai/`.
+[mcp-oauth.md](memory/plans/mcp-oauth.md) holds how Claude, Cursor and other MCP clients sign in to
+`/api/mcp` with OAuth (migration 069, `lib/mcp-oauth/`, `app/api/oauth/**`, the consent page at
+`/oauth/authorize`, Connected apps in Settings) beside the untouched OpenClaw key; routes opt in to its
+tokens through `resolveUserIdFromApiKey`'s `access` argument. Read it before touching any of those.
 [sign-in-with-apple.md](memory/plans/sign-in-with-apple.md) holds the Apple provider: why the web's
 button follows Supabase's own settings (the iPhone's is always shown), the desktop shell's provider
 list, the iPhone's native id_token flow, the dashboard setup, and the client secret that must be
