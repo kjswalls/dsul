@@ -106,7 +106,8 @@ export default async function globalSetup() {
   // (lib/extension-registry.ts). goals.spec.ts and organize.spec.ts drive both,
   // and half a dozen other specs reach the console through a door, so without
   // these two rows the suite tests a correctly-gated app and reads as a
-  // regression in every feature at once.
+  // regression in every feature at once. Streaks ships off too (2026-10-10),
+  // and habits.spec.ts reads the streak badge.
   //
   // Seeded here rather than per spec for the same reason the settings above are:
   // it is shared-account setup, and a spec that flipped a toggle would race
@@ -128,6 +129,7 @@ export default async function globalSetup() {
     body: JSON.stringify([
       { user_id: userId, slug: 'goals', enabled: true },
       { user_id: userId, slug: 'organize', enabled: true },
+      { user_id: userId, slug: 'streaks', enabled: true },
     ]),
   });
   if (!extRes.ok) {

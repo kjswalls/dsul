@@ -66,6 +66,9 @@ function setWidth(px: number) {
 let cleanupAI: (() => void) | null = null;
 
 beforeEach(() => {
+  // Streaks ship off, so the toast that says they are on is for someone who
+  // switched them on; these tests are about when it speaks.
+  enableExtensions(EXT_STREAKS);
   sonner.toast.mockClear();
   sonner.dismiss.mockClear();
   vi.mocked(saveDismissedNudges).mockClear();

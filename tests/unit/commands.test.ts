@@ -14,6 +14,8 @@ import {
   type CommandContext,
 } from '@/lib/commands';
 import { DEFAULT_SHORTCUTS } from '@/lib/keyboard-shortcuts-store';
+import { EXT_STREAKS } from '@/lib/extension-registry';
+import { enableExtensions } from './support/extensions';
 import { getActionLog, usePlannerStore } from '@/lib/planner-store';
 import { registerItemPanelFlush, useUIStore } from '@/lib/ui-store';
 import { useRailStore } from '@/lib/rail-store';
@@ -90,7 +92,11 @@ function commandById(id: string): Command {
   return command;
 }
 
-beforeEach(() => seedStore([]));
+// Streaks ship off; the streak commands here are about the feature, not the gate.
+beforeEach(() => {
+  seedStore([]);
+  enableExtensions(EXT_STREAKS);
+});
 
 /** Minimal stand-in — pressedKeys only reads these five fields. */
 function keyEvent(

@@ -114,9 +114,9 @@ describe('adoption figures', () => {
   });
 
   it('counts accounts with no saved row as ON for a default-on extension', () => {
-    // 100 people, 10 switched Streaks off, nobody else touched it: 90% have it.
-    const stats = computeAdoption([row(EXT_STREAKS, { rows_off: 10 })]);
-    expect(stats[EXT_STREAKS].hasItOn).toBe(0.9);
+    // 100 people, 10 switched Organize off, nobody else touched it: 90% have it.
+    const stats = computeAdoption([row(EXT_ORGANIZE, { rows_off: 10 })]);
+    expect(stats[EXT_ORGANIZE].hasItOn).toBe(0.9);
     // …and a slug with no row at all is still resolved off the default.
     expect(computeAdoption([row(EXT_BEEMINDER, {})])[EXT_ORGANIZE].hasItOn).toBeNull();
   });

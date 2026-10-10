@@ -39,7 +39,20 @@ export interface ExtensionManifest {
   description: string;
   icon: LucideIcon;
   category: 'habits' | 'views' | 'integrations' | 'fun' | 'planning';
-  /** What a user who never touched the toggle gets. Extensions are opt-in. */
+  /**
+   * What a user who never touched the toggle gets. Extensions are opt-in.
+   *
+   * THE DEFAULT-ON RULE (Kirby, 2026-10-10). `true` is allowed only for an
+   * extension that passes both halves:
+   *   1. QUIET UNTIL USED — a fresh account's screen looks exactly as it would
+   *      with the extension off, until the user does the thing it is for.
+   *   2. NO NEW IDEA — it brings in no concept a new user has to learn first.
+   * And never for anything that reaches out of the app or can cost money.
+   * The load on a new (often ND) user is what is on screen and what must be
+   * decided, so every default-on feature is weight carried by everyone who
+   * never asked for it. tests/unit/extension-defaults.test.ts freezes the
+   * list; adding to it means writing down how the new entry passes.
+   */
   defaultEnabled: boolean;
 
   /* ── The store's copy (/extensions, and the header of each extension pane) ──
@@ -96,15 +109,18 @@ export const EXT_GOALS = 'goals';
 export const EXT_ORGANIZE = 'organize';
 
 /**
- * Streaks (default ON) — the one entry that ships enabled, and the reason the
- * `safeEnabled` fallback in lib/extension-gates.ts bothers to tell the manifest
- * default apart from a hard `false`.
+ * Streaks (default OFF since 2026-10-10) — a flame and a count on every habit
+ * with a streak.
  *
- * It defaults ON because it is not a new idea a fresh account has to grow into;
- * it is a core habit mechanic that has always been visible, and defaulting it
- * off would silently strip the flame from every account that already reads one.
- * So this toggle ADDS an off switch rather than gating a feature in: turn it off
- * and every flame, streak count and reset control disappears, while the counter
+ * It used to ship on, as a core habit mechanic that had always been visible.
+ * Kirby turned it off by default on 2026-10-10: a chain on screen is the one
+ * default that can read as guilt (break it and the number you were protecting
+ * is gone), which is what dsul promises not to do, and it fails the default-on
+ * rule below because it draws on every habit row whether or not you asked.
+ * The fallback is per read, so the flip reaches every account with no saved
+ * row for it; anyone who turned it on, or back on, keeps it.
+ *
+ * Off hides every flame, streak count and reset control, while the counter
  * itself keeps moving — reminders and stakes read `counters.streak`, not this,
  * so a streak-at-risk call still rings and a Beeminder datapoint still posts.
  * What stops is only what dsul SHOWS you — the same browser-only asymmetry the
@@ -236,7 +252,7 @@ export const OFFICIAL_EXTENSIONS: ExtensionManifest[] = [
       'Flame badges and streak counts across the app. Turn it off to hide them. Your streaks keep counting for reminders and stakes.',
     icon: Flame,
     category: 'habits',
-    defaultEnabled: true,
+    defaultEnabled: false,
     tagline: 'Keep the chain visible',
     shelf: 'habits',
     whatChanges: [
