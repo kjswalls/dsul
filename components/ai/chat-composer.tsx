@@ -10,6 +10,8 @@ import { bindingKey, sendFrom, type ComposerBinding } from '@/lib/open-chat';
 import type { AskSurface } from '@/lib/rail-store';
 import { chatAssistantName, chatPlaceholder, itemChatPlaceholder } from '@/lib/chat-utils';
 import { activeMention, insertMention, mentionChoices } from '@/lib/chat-mentions';
+import { activeSlash } from '@/lib/chat-slash';
+import { SlashCommands, type SlashCommandsHandle } from './chat-slash-commands';
 import { usePlannerStore } from '@/lib/planner-store';
 import type { Item } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
@@ -119,10 +121,21 @@ export function ChatComposer({
   const listOpen = choices.length > 0 && !isLoading;
   const listId = useId();
   const active = listOpen ? Math.min(highlight, choices.length - 1) : -1;
+
+  // / commands (lib/chat-slash.ts): a message that starts with "/" offers the
+  // ⌘K commands that match it. Escape closes the list until the "/" is gone.
+  const slashRef = useRef<SlashCommandsHandle>(null);
+  const [slashClosed, setSlashClosed] = useState(false);
+  const slash = caret === null || mention ? null : activeSlash(input, caret);
+  const slashOpen = !!slash && !slashClosed && !isLoading;
+  // Named by the list itself, which alone knows whether anything matched.
+  const [slashActive, setSlashActive] = useState<string | undefined>(undefined);
+
   const readCaret = (ta: HTMLTextAreaElement) => {
     const at = ta.selectionStart === ta.selectionEnd ? ta.selectionStart : null;
     setCaret(at);
     if (at === null || !activeMention(ta.value, at)) setClosedAt(null);
+    if (!ta.value.startsWith('/')) setSlashClosed(false);
   };
   const pick = (item: Item) => {
     if (!mention) return;
@@ -192,6 +205,19 @@ export function ChatComposer({
   }, [isLoading]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (slashOpen && !e.nativeEvent.isComposing) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        setSlashClosed(true);
+        return;
+      }
+      const taken = (e.key !== 'Enter' || !e.shiftKey) && slashRef.current?.key(e.key);
+      if (taken) {
+        e.preventDefault();
+        return;
+      }
+    }
     if (listOpen && !e.nativeEvent.isComposing) {
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
@@ -227,11 +253,25 @@ export function ChatComposer({
   // the list it controls and the option in hand are named while it is open.
   const comboProps = {
     'aria-autocomplete': 'list' as const,
-    'aria-controls': listOpen ? listId : undefined,
-    'aria-activedescendant': listOpen ? `${listId}-${active}` : undefined,
+    'aria-controls': listOpen || (slashOpen && slashActive) ? listId : undefined,
+    'aria-activedescendant': listOpen ? `${listId}-${active}` : slashOpen ? slashActive : undefined,
   };
   const list = listOpen ? (
     <MentionList id={listId} choices={choices} active={active} onPick={pick} onHover={setHighlight} />
+  ) : slashOpen && slash ? (
+    <SlashCommands
+      ref={slashRef}
+      id={listId}
+      query={slash.query}
+      highlight={highlight}
+      onHighlight={setHighlight}
+      onActive={setSlashActive}
+      onRan={() => {
+        setInput('');
+        setHighlight(0);
+        setCaret(null);
+      }}
+    />
   ) : null;
 
   if (variant === 'dock') {

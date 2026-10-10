@@ -127,6 +127,9 @@ function PanelShell({ isLauncher, children }: { isLauncher: boolean; children: R
  *   both are mounted.
  * @param initialQuery seeds the input on mount (launcher only) — e.g. the `/`
  *   binding opens the launcher already in command mode.
+ * @param initialCommandId opens the launcher with that command already picked
+ *   (the chip state), when it takes a value and can run. The chat box's / list
+ *   hands such a command over here, where its picker lives.
  * @param onAskBeacon overrides where "Ask AI" opens the chat. By default it
  *   summons Ask in the right rail on desktop, and switches to the Chat tab on
  *   mobile. Either way the omnibar only calls it while the AI gate says
@@ -155,6 +158,7 @@ function PanelShell({ isLauncher, children }: { isLauncher: boolean; children: R
 export function Omnibar({
   variant = 'dock',
   initialQuery,
+  initialCommandId,
   onAskBeacon,
   onFocusChange,
   onPulse,
@@ -163,6 +167,7 @@ export function Omnibar({
 }: {
   variant?: OmnibarVariant;
   initialQuery?: string;
+  initialCommandId?: string;
   onAskBeacon?: () => void;
   onFocusChange?: (focused: boolean) => void;
   onPulse?: () => void;
@@ -250,6 +255,14 @@ export function Omnibar({
   );
 
   const ctx = useCommandContext({ openChat: onAskBeacon });
+  // A summon with a command already picked lands in its chip state, once, on
+  // mount (set during render, React's pattern for state derived from a prop).
+  const [seeded, setSeeded] = useState(!initialCommandId);
+  if (!seeded) {
+    setSeeded(true);
+    const seed = findCommand(initialCommandId!, ctx);
+    if (seed?.argument && isAvailable(seed, ctx)) setActiveCommand(seed);
+  }
   // The AI gate (lib/ai-registry.ts). Every chat affordance below — the `?`
   // prefix, the Ask rows, the `? chat` hint, ⌘Enter, the launcher's copy and
   // footer — exists only while something can answer. Fails closed: while the

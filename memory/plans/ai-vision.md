@@ -31,7 +31,7 @@ a new turn, so nothing saved is rewritten), action lines, receipts with Undo (bu
 "Something else", a line under its buttons whose words go to that card's conversation as the
 user's next message, verbatim, through sendFrom; the card goes once the send is taken, and a send
 refused keeps both; a card asked for keeps its retry)) and 2c
-(reach: @ items (built 2026-10-10, below), / commands, the model chip, attachments, open wide). The section "Step 2a —
+(reach: @ items and / commands (both built 2026-10-10, below), the model chip, attachments, open wide). The section "Step 2a —
 Move and save" below has what shipped and the privacy statement.
 
 **Note 2026-10-10: @ items.** Typing @ in any chat box (the rail's, an item's, the phone's dock) lists
@@ -45,6 +45,15 @@ and the stored message is exactly what was typed. The items found go to the mode
 as "### Items named in this message" in the context, each with the focused item's own detail
 (`itemDetail`, lib/ai-context.ts); the base context without one is byte-identical. OpenClaw gets the
 same context. Nothing new is stored.
+
+**Note 2026-10-10: / commands.** A message that starts with "/" lists the ⌘K commands that match
+what follows it (`matchCommands`, usage-ranked, the ones that can run, at most six), over any chat
+box; keys as for @. A command that runs in one step runs from the box, as ⌘K would run it, and the
+box clears; nothing is sent. One that needs a value (an item, an option, words) opens ⌘K with that
+command already picked (ui-store's launcher slot carries `commandId`; the omnibar starts in its chip
+state), so there is one picker per kind of value, ⌘K's. Escape closes the list until the "/" is gone,
+and then Enter sends the words as a message. Nothing matching: no list, and Enter sends. The list
+mounts only while a "/" is typed, so the command context (the router) is built only then.
 
 **Note 2026-10-10: what the chat can see, and its words.** Kirby tried free OpenRouter models and
 the chat could not find tasks they named, and answered "break this into subtasks" with "make a
