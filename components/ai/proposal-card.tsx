@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useId, useMemo } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { Loader2, Check, RotateCcw } from 'lucide-react';
 import { AskMark } from '@/components/ai/ask-mark';
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,8 @@ import { useProposalStore, type ProposalSurface } from '@/lib/proposal-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { selectPlannerLoaded, selectPlannerSettled } from '@/lib/planner-ready';
 import { useAICapabilities } from '@/lib/ai-connection-store';
+import { useConversationsStore } from '@/lib/conversations-store';
+import { sendFrom } from '@/lib/open-chat';
 import { describeOperation, isDestructive } from '@/lib/proposal';
 import { toDateStr } from '@/lib/recurrence';
 import { cn } from '@/lib/utils';
@@ -56,9 +58,16 @@ export function ProposalCard({
   // by the dock's host once chat is gone. A retry then reaches no model, and
   // the store would swap the accurate error for "Connect a model in Settings",
   // which is wrong for a model that is connected and failing.
-  const { canPropose } = useAICapabilities();
+  const { canPropose, canChat } = useAICapabilities();
   const canRetry = modelBacked && canPropose;
   const requestSurface = useProposalStore((s) => s.lastRequest?.surface);
+  // An offer drawn mid-reply is answered in words instead: the conversation it
+  // came from, while chat can still answer.
+  const offerFrom = useProposalStore((s) =>
+    s.lastRequest?.intent === 'offer' && s.lastRequest.surface.startsWith('conv:')
+      ? s.lastRequest.surface.slice('conv:'.length)
+      : null
+  );
   const refused = useProposalStore((s) => s.refused);
 
   const items = usePlannerStore((s) => s.items);
@@ -356,6 +365,7 @@ export function ProposalCard({
             Something else
           </Button>
         )}
+        {offerFrom && canChat && <SomethingElse conversationId={offerFrom} onSent={dismiss} />}
         <Button
           variant="ghost"
           size="sm"
@@ -366,5 +376,78 @@ export function ProposalCard({
         </Button>
       </div>
     </div>
+  );
+}
+
+/**
+ * The typed answer on a card chat offered: "Something else" opens a line under
+ * the buttons, and what is typed there goes to the card's own conversation as
+ * the user's next message, word for word, through sendFrom (the one place a
+ * send is decided). The card goes once the message is on its way, since the
+ * reply will bring its own; a send refused (a reply still arriving) keeps both
+ * the card and the words.
+ */
+function SomethingElse({ conversationId, onSent }: { conversationId: string; onSent: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
+  const streaming = useConversationsStore((s) => !!s.threads[conversationId]?.streaming);
+  if (!open) {
+    return (
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-7 gap-1 px-2 text-xs text-muted-foreground"
+        onClick={() => setOpen(true)}
+        data-testid="proposal-something-else"
+      >
+        <RotateCcw className="h-3 w-3" />
+        Something else
+      </Button>
+    );
+  }
+  const send = async () => {
+    const words = text.trim();
+    if (!words || streaming || sending) return;
+    setSending(true);
+    try {
+      if (await sendFrom({ kind: 'conversation', id: conversationId }, words)) onSent();
+    } finally {
+      setSending(false);
+    }
+  };
+  return (
+    <form
+      className="order-last flex w-full items-center gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void send();
+      }}
+    >
+      <input
+        autoFocus
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            e.stopPropagation();
+            setOpen(false);
+          }
+        }}
+        placeholder="What should change?"
+        aria-label="What should change?"
+        data-testid="proposal-answer"
+        className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2.5 text-xs text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
+      />
+      <Button
+        type="submit"
+        size="sm"
+        className="h-7 px-3 text-xs"
+        disabled={!text.trim() || streaming || sending}
+        data-testid="proposal-answer-send"
+      >
+        Send
+      </Button>
+    </form>
   );
 }

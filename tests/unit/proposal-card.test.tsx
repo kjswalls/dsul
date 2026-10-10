@@ -89,6 +89,16 @@ vi.mock('@/lib/proposal', () => ({
   isDestructive: (op: { kind: string }) => op.kind === 'delete' || op.kind === 'resetStreak',
 }));
 
+// The typed answer sends through the one send path; a reply still arriving
+// in that conversation holds it.
+const sendFrom = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => true));
+vi.mock('@/lib/open-chat', () => ({ sendFrom }));
+const streamingThreads = vi.hoisted(() => ({ ids: new Set<string>() }));
+vi.mock('@/lib/conversations-store', () => ({
+  useConversationsStore: (sel: (s: unknown) => unknown) =>
+    sel({ threads: Object.fromEntries([...streamingThreads.ids].map((id) => [id, { streaming: true }])) }),
+}));
+
 import { ProposalCard } from '@/components/ai/proposal-card';
 import {
   seedAI,
@@ -484,5 +494,56 @@ describe('retry needs something to answer it', () => {
     render(<ProposalCard />);
     fireEvent.click(screen.getByTestId('proposal-retry'));
     expect(retry).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('a card chat offered: answered in words', () => {
+  beforeEach(() => {
+    intent = 'offer';
+    surface = 'conv:c1';
+    sendFrom.mockClear();
+    sendFrom.mockResolvedValue(true);
+    streamingThreads.ids.clear();
+  });
+
+  it('sends what is typed to its conversation, word for word, and the card goes', async () => {
+    render(<ProposalCard surface="conv:c1" />);
+    expect(screen.queryByTestId('proposal-retry')).toBeNull();
+    fireEvent.click(screen.getByTestId('proposal-something-else'));
+    fireEvent.change(screen.getByTestId('proposal-answer'), { target: { value: '  Make it Tuesday instead ' } });
+    fireEvent.click(screen.getByTestId('proposal-answer-send'));
+    await vi.waitFor(() => expect(dismiss).toHaveBeenCalledTimes(1));
+    expect(sendFrom).toHaveBeenCalledWith({ kind: 'conversation', id: 'c1' }, 'Make it Tuesday instead');
+  });
+
+  it('keeps the card when the send is refused', async () => {
+    sendFrom.mockResolvedValue(false);
+    render(<ProposalCard surface="conv:c1" />);
+    fireEvent.click(screen.getByTestId('proposal-something-else'));
+    fireEvent.change(screen.getByTestId('proposal-answer'), { target: { value: 'Later' } });
+    fireEvent.click(screen.getByTestId('proposal-answer-send'));
+    await vi.waitFor(() => expect(sendFrom).toHaveBeenCalledTimes(1));
+    expect(dismiss).not.toHaveBeenCalled();
+    expect((screen.getByTestId('proposal-answer') as HTMLInputElement).value).toBe('Later');
+  });
+
+  it('holds the send while a reply is still arriving there', () => {
+    streamingThreads.ids.add('c1');
+    render(<ProposalCard surface="conv:c1" />);
+    fireEvent.click(screen.getByTestId('proposal-something-else'));
+    fireEvent.change(screen.getByTestId('proposal-answer'), { target: { value: 'Later' } });
+    expect((screen.getByTestId('proposal-answer-send') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('is not offered when chat cannot answer, or on a card that was asked for', () => {
+    seed(NOTHING_CONNECTED);
+    const { unmount } = render(<ProposalCard surface="conv:c1" />);
+    expect(screen.queryByTestId('proposal-something-else')).toBeNull();
+    unmount();
+    seed(CONNECTED_MODEL);
+    intent = 'ask';
+    render(<ProposalCard surface="conv:c1" />);
+    expect(screen.queryByTestId('proposal-something-else')).toBeNull();
+    expect(screen.getByTestId('proposal-retry')).toBeInTheDocument();
   });
 });
