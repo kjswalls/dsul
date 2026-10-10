@@ -43,17 +43,23 @@ export function DevicesList() {
   useEffect(() => {
     let live = true;
     void (async () => {
-      const { data, error } = await createClient()
-        .from('devices')
-        .select(DEVICE_ROSTER_COLUMNS)
-        .order('created_at', { ascending: true });
-      if (!live) return;
-      if (error) {
-        if (!isMissingRegistry(error)) setFailed(true);
-        setRows([]);
-        return;
+      try {
+        const { data, error } = await createClient()
+          .from('devices')
+          .select(DEVICE_ROSTER_COLUMNS)
+          .order('created_at', { ascending: true });
+        if (!live) return;
+        if (error) {
+          if (!isMissingRegistry(error)) setFailed(true);
+          setRows([]);
+          return;
+        }
+        setRows((data ?? []) as unknown as RosterRow[]);
+      } catch {
+        // The network, or no client at all. Say nothing rather than a list
+        // that may be wrong.
+        if (live) setRows([]);
       }
-      setRows((data ?? []) as unknown as RosterRow[]);
     })();
     return () => {
       live = false;
@@ -63,7 +69,14 @@ export function DevicesList() {
   const toggle = useCallback(async (row: RosterRow, kind: DeviceSendKind, on: boolean) => {
     const prefs = withKind(row.prefs, kind, on);
     setRows((rs) => rs?.map((r) => (r.id === row.id ? { ...r, prefs } : r)) ?? rs);
-    const { error } = await createClient().from('devices').update({ prefs }).eq('id', row.id);
+    const { error } = await createClient()
+      .from('devices')
+      .update({ prefs })
+      .eq('id', row.id)
+      .then(
+        (r) => r,
+        (err: unknown) => ({ error: err })
+      );
     if (error) {
       // Put it back: the switch must show what the server holds.
       setRows((rs) => rs?.map((r) => (r.id === row.id ? { ...r, prefs: row.prefs } : r)) ?? rs);
