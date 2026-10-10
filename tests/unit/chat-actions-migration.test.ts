@@ -18,10 +18,12 @@ const SQL = FILE.split('\n')
 const FLAT = SQL.replace(/\s+/g, ' ');
 
 describe('068_chat_actions', () => {
-  it('grants authenticated INSERT on meta and nothing else', () => {
-    const grants = FLAT.match(/grant [^;]+;/g) ?? [];
+  it('grants authenticated INSERT on meta and nothing else, revoking that one column first', () => {
+    const grants = FLAT.match(/\bgrant [^;]+;/g) ?? [];
     expect(grants).toEqual(['grant insert (meta) on public.chat_messages to authenticated;']);
-    expect(FLAT).not.toMatch(/\brevoke\b/);
+    const revokes = FLAT.match(/\brevoke [^;]+;/g) ?? [];
+    expect(revokes).toEqual(['revoke insert (meta) on public.chat_messages from authenticated;']);
+    expect(FLAT.indexOf('revoke insert')).toBeLessThan(FLAT.indexOf('grant insert'));
   });
 
   it('replaces chat_append with the same signature, invoker, empty search_path', () => {

@@ -26,9 +26,12 @@
 -- this PR. Apply to prod only on Kirby's typed OK; if applied out-of-band, record ledger
 -- version 068.
 --
--- Idempotent and replayable onto an empty database: CREATE OR REPLACE and a GRANT, both
--- safe to re-run.
+-- Idempotent and replayable onto an empty database: CREATE OR REPLACE, and a column
+-- REVOKE then GRANT, all safe to re-run. Re-running 057 itself after this would drop the
+-- meta grant (057 revokes ALL and re-grants its own list); re-run 068 after it.
 
+-- Revoked first (this repo's rule: a re-run lands in the same state), then granted.
+revoke insert (meta) on public.chat_messages from authenticated;
 grant insert (meta) on public.chat_messages to authenticated;
 
 create or replace function public.chat_append(
