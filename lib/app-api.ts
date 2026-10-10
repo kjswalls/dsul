@@ -374,8 +374,8 @@ export interface AppPlannerPayload {
      */
     appIcon: AppIcon | null;
     /**
-     * The Streaks extension (lib/extension-registry.ts EXT_STREAKS, on unless
-     * the user turned it off): off hides the sheet's streak chip and the flame
+     * The Streaks extension (lib/extension-registry.ts EXT_STREAKS, off unless
+     * the user turned it on): off hides the sheet's streak chip and the flame
      * on Today's rows. Absent, from an older server, reads as on.
      */
     streaksEnabled: boolean;
@@ -511,15 +511,15 @@ async function readSettings(userId: string, client: Client): Promise<SettingsRea
  * Whether the Streaks extension is on, as the web's gate reads it
  * (lib/extension-gates.ts streaksEnabled): the user's row, else the manifest's
  * default. fetchUserExtensions answers null for a missing table and rethrows
- * anything else, which is caught here: a flame shown by mistake costs less
- * than a planner that won't load.
+ * anything else, which is caught here: a missing flame costs less than a
+ * planner that won't load.
  */
 async function readStreaksEnabled(userId: string, client: Client): Promise<boolean> {
   try {
     return resolveEnabled((await fetchUserExtensions(userId, client)) ?? {}, EXT_STREAKS);
   } catch (err) {
     console.error('[app/planner] extensions read failed:', err instanceof Error ? err.message : err);
-    return resolveEnabled({}, EXT_STREAKS); // the manifest default, true
+    return resolveEnabled({}, EXT_STREAKS); // the manifest default, false
   }
 }
 

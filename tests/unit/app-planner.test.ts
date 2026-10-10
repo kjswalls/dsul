@@ -24,8 +24,8 @@ import path from 'path';
  * And what the item sheet shows: notes with a line break, priorities, a
  * reminder with an anchor and one without, and the custom type's own label
  * (item_types), which the sheet words that item by. The user has turned
- * Streaks off (user_extensions), the one value of `streaksEnabled` the
- * default can't produce, and Habit reminders on, the one value of
+ * Streaks off (user_extensions), a saved row rather than the default, and
+ * Habit reminders on, the one value of
  * `remindersEnabled` no default can (a missing row is false, a retry null).
  */
 
@@ -696,7 +696,7 @@ describe('GET /api/app/planner', () => {
       timeFormat: '12h',
       appIcon: null,
       // No extension rows either: the manifest's default.
-      streaksEnabled: true,
+      streaksEnabled: false,
       // The column's default, and what the reminder scan reads a missing row as.
       remindersEnabled: false,
       lastCallEnabled: false,
@@ -747,7 +747,7 @@ describe('GET /api/app/planner', () => {
       weekStartDay: 'monday',
       timeFormat: '24h',
       appIcon: null,
-      streaksEnabled: true,
+      streaksEnabled: false,
       // Unread, so unknown: the phone says nothing rather than "off".
       remindersEnabled: null,
       lastCallEnabled: null,
@@ -784,9 +784,9 @@ describe('GET /api/app/planner', () => {
       return (await res.json()).settings.streaksEnabled;
     };
 
-    it('is on with no extension rows, the manifest’s default', async () => {
+    it('is off with no extension rows, the manifest’s default', async () => {
       respondWith({ user_settings: settings, user_extensions: { data: [], error: null } });
-      expect(await streaksEnabled()).toBe(true);
+      expect(await streaksEnabled()).toBe(false);
     });
 
     it('is off for a streaks row turned off, and on for one turned on', async () => {
@@ -805,19 +805,19 @@ describe('GET /api/app/planner', () => {
       expect(await streaksEnabled()).toBe(true);
     });
 
-    it('is on, the default, without the user_extensions table (migration 026)', async () => {
+    it('is off, the default, without the user_extensions table (migration 026)', async () => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
       respondWith({
         user_settings: settings,
         user_extensions: { data: null, error: { code: '42P01', message: 'relation "user_extensions" does not exist' } },
       });
-      expect(await streaksEnabled()).toBe(true);
+      expect(await streaksEnabled()).toBe(false);
       expect(warn).toHaveBeenCalled();
       warn.mockRestore();
     });
 
-    it('is on, the default, when the read fails, and the payload still answers', async () => {
-      // A flame shown by mistake costs less than a planner that won't load.
+    it('is off, the default, when the read fails, and the payload still answers', async () => {
+      // A missing flame costs less than a planner that won't load.
       const error = vi.spyOn(console, 'error').mockImplementation(() => {});
       respondWith({
         user_settings: settings,
@@ -826,7 +826,7 @@ describe('GET /api/app/planner', () => {
       const res = await get();
       expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.settings.streaksEnabled).toBe(true);
+      expect(body.settings.streaksEnabled).toBe(false);
       expect(body.items).toHaveLength(ITEM_ROWS.length);
       expect(error).toHaveBeenCalled();
       error.mockRestore();

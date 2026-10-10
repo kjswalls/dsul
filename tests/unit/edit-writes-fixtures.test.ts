@@ -206,6 +206,8 @@ import {
 } from '@/lib/item-edit';
 import { MAX_BULK_ITEMS, isBulkPaste, splitBulkLinesWithMeta } from '@/lib/bulk-add';
 import { ITEM_VERBS, type VerbContext } from '@/lib/item-verbs';
+import { EXT_STREAKS } from '@/lib/extension-registry';
+import { disableExtensions, enableExtensions } from './support/extensions';
 import { getItemTypeConfig, isCollectible, itemTypeName } from '@/lib/item-registry';
 import { capabilityShape } from '@/lib/item-pause';
 import { BUCKET_START_TIMES, autoCorrectBucket, getBucketForTime } from '@/lib/time-bucket';
@@ -623,10 +625,12 @@ const VERB_CTX: VerbContext = {
 async function resetCase(name: string, item: Item, refusal: string | null = null): Promise<EditCase> {
   const base = { name, item, children: [], edit: { action: 'resetStreak' }, refusal, removed: [], created: null };
   if (refusal) return { ...base, updates: null, after: item };
+  // The phone offers Reset only with Streaks on, and Streaks ship off.
+  enableExtensions(EXT_STREAKS);
   const { after, calls } = await run([item], () => {
     const live = store().items.find((i) => i.id === item.id)!;
     if (ITEM_VERBS.resetStreak.eligible(live, VERB_CTX)) ITEM_VERBS.resetStreak.run(live, VERB_CTX);
-  });
+  }).finally(() => disableExtensions(EXT_STREAKS));
   if (calls.some((c) => c.fn !== 'updateItem')) throw new Error(`${name}: a reset wrote more than the item`);
   return { ...base, updates: merged(calls), after };
 }

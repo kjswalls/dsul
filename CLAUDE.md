@@ -408,6 +408,14 @@ rather than taking the flag.
   a bare `park()`.
 - **Design source of truth is the Figma file, not the mockup PNGs in the repo.** Pull
   specs live via the Figma MCP; the checked-in PNGs drift.
+- **An extension starts on only if it is quiet until used and brings no new idea.** A fresh
+  account's screen must look exactly as it would with the extension off until the user does
+  the thing it is for, and nothing that reaches out of the app or costs money ever starts on
+  (Kirby, 2026-10-10: what is on screen and what must be decided is the load on a new, often
+  ND, user). Today that is Organize and Do stuff; Streaks starts off because a chain on screen
+  can read as guilt. `tests/unit/extension-defaults.test.ts` freezes the list, so adding one
+  means writing down how it passes. The rule is spelled out on `defaultEnabled` in
+  [lib/extension-registry.ts](lib/extension-registry.ts).
 - Some settings persist but are read by no view. That's deliberate — leave them alone
   rather than surfacing or deleting them.
 - Recurring items track completion per-date in `completedDates`, never via scalar

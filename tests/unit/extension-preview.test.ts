@@ -33,7 +33,7 @@ import {
   useExtensionEnabled,
   useExtensionPredicate,
 } from '@/lib/extension-gates';
-import { EXT_GOALS, EXT_ORGANIZE, EXT_STREAKS } from '@/lib/extension-registry';
+import { EXT_GOALS, EXT_ORGANIZE } from '@/lib/extension-registry';
 import { CANVAS_GROUP_BY_OPTIONS } from '@/lib/view-options';
 import { useViewStore } from '@/lib/view-store';
 
@@ -119,10 +119,10 @@ describe('a goal-grouped snapshot previews grouped by goal', () => {
 describe('isEnabled() ignores previewEnabled', () => {
   it('answers from server truth (or the manifest) and nothing else', () => {
     hydrateHeld(U);
-    store().seedPreviewEnabled(U, { [EXT_GOALS]: true, [EXT_STREAKS]: false });
+    store().seedPreviewEnabled(U, { [EXT_GOALS]: true, [EXT_ORGANIZE]: false });
 
     expect(store().isEnabled(EXT_GOALS)).toBe(false);
-    expect(store().isEnabled(EXT_STREAKS)).toBe(true);
+    expect(store().isEnabled(EXT_ORGANIZE)).toBe(true);
     // And the seed never lands in `enabled`, where hydrate would merge it OVER the server rows.
     expect(store().enabled).toEqual({});
   });
