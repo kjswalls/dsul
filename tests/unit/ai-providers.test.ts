@@ -27,7 +27,9 @@ import {
 } from '@/lib/ai-server/errors';
 import { checkConnection } from '@/lib/ai-server/check';
 import { BUILTIN_BASE_URLS, credentialsFor, getAdapter } from '@/lib/ai-server/providers';
-import type { CompletionRequest, ProviderCredentials } from '@/lib/ai-server/providers/types';
+import type { CompletionRequest, ProviderCredentials, ToolRequest } from '@/lib/ai-server/providers/types';
+import { parseToolArgs } from '@/lib/ai-server/providers/tool-args';
+import { CATALOG_TTL_MS, resetToolSupportCache, supportsTools } from '@/lib/ai-server/tool-support';
 import type { ModelProviderId } from '@/lib/ai-types';
 
 // ── the recording fetch ─────────────────────────────────────────────────────
@@ -1194,5 +1196,308 @@ describe('Anthropic verify, list and describe', () => {
     expect(await adapter.describeModel!(creds('anthropic'), 'claude-3-haiku', new AbortController().signal)).toEqual({ effortLow: false });
     route = () => json({ type: 'error', error: { type: 'not_found_error', message: 'model: nope' } }, 404);
     expect((await rejection(adapter.describeModel!(creds('anthropic'), 'nope', new AbortController().signal))).kind).toBe('bad_model');
+  });
+});
+
+// ── tool calling (chat tools, step 1) ───────────────────────────────────────
+
+const FIND_ITEMS = {
+  name: 'find_items',
+  description: 'Search the planner by title.',
+  parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
+};
+
+function toolReq(over: Partial<ToolRequest> = {}): ToolRequest {
+  return {
+    model: 'gpt-4o-mini',
+    modelMeta: {},
+    system: ['You are the planning assistant.'],
+    messages: [{ role: 'user', content: 'Where is my dentist task?' }],
+    tools: [FIND_ITEMS],
+    maxOutputTokens: 2000,
+    signal: new AbortController().signal,
+    ...over,
+  };
+}
+
+const completion = (message: Record<string, unknown>, finish = 'stop') => ({
+  id: 'c1',
+  object: 'chat.completion',
+  created: 1,
+  model: 'm',
+  choices: [{ index: 0, message: { role: 'assistant', content: null, ...message }, finish_reason: finish }],
+});
+
+const anthropicMessage = (content: unknown[], stop = 'end_turn') => ({
+  id: 'm1',
+  type: 'message',
+  role: 'assistant',
+  model: 'claude-opus-5-5',
+  content,
+  stop_reason: stop,
+  stop_sequence: null,
+  usage: { input_tokens: 1, output_tokens: 1 },
+});
+
+/** A finished step: the model asked for find_items, and the result came back. */
+const afterOneCall: ToolRequest['messages'] = [
+  { role: 'user', content: 'Where is my dentist task?' },
+  { role: 'assistant', content: 'Let me look.', toolCalls: [{ id: 'call_a', name: 'find_items', args: { query: 'dentist' } }] },
+  { role: 'tool', callId: 'call_a', name: 'find_items', content: '[{"title":"Book dentist"}]' },
+];
+
+describe('parseToolArgs', () => {
+  it('reads a JSON object, or an object already parsed', () => {
+    expect(parseToolArgs('{"query":"dentist"}')).toEqual({ query: 'dentist' });
+    expect(parseToolArgs({ query: 'x' })).toEqual({ query: 'x' });
+  });
+  it('an empty string is no arguments', () => {
+    expect(parseToolArgs('')).toEqual({});
+    expect(parseToolArgs('  ')).toEqual({});
+  });
+  it('anything that is not an object is null', () => {
+    for (const bad of ['{"query":', '[1,2]', '"text"', '42', 'null', [], null, undefined, 7]) {
+      expect(parseToolArgs(bad)).toBeNull();
+    }
+    expect(parseToolArgs(`{"q":"${'x'.repeat(30_000)}"}`)).toBeNull();
+  });
+});
+
+describe('completeWithTools: OpenAI-compatible', () => {
+  it('sends the tools as functions with the system message, the output cap and no stream', async () => {
+    route = () => json(completion({ content: 'Nothing found.' }));
+    const step = await getAdapter('openai').completeWithTools(creds('openai'), toolReq({ model: 'gpt-5-mini' }));
+    expect(step).toEqual({ text: 'Nothing found.', toolCalls: [] });
+    const body = lastBody();
+    expect(seen[0].url).toBe('https://api.openai.com/v1/chat/completions');
+    expect(body.tools).toEqual([{ type: 'function', function: FIND_ITEMS }]);
+    expect(body.messages[0]).toEqual({ role: 'system', content: 'You are the planning assistant.' });
+    expect(body.max_completion_tokens).toBe(2000);
+    expect(body.reasoning_effort).toBe('low');
+    expect(body).not.toHaveProperty('stream');
+    expect(body).not.toHaveProperty('response_format');
+  });
+
+  it('other hosts get max_tokens', async () => {
+    route = () => json(completion({ content: 'ok' }));
+    await getAdapter('openrouter').completeWithTools(creds('openrouter'), toolReq({ model: 'openai/gpt-5' }));
+    expect(lastBody().max_tokens).toBe(2000);
+    expect(lastBody()).not.toHaveProperty('max_completion_tokens');
+  });
+
+  it('reads the calls, parsing each one\'s arguments; malformed ones are null', async () => {
+    route = () =>
+      json(
+        completion(
+          {
+            content: '<think>which tool?</think>Looking.',
+            tool_calls: [
+              { id: 'call_a', type: 'function', function: { name: 'find_items', arguments: '{"query":"dentist"}' } },
+              { id: 'call_b', type: 'function', function: { name: 'find_items', arguments: '{"query":' } },
+            ],
+          },
+          'tool_calls'
+        )
+      );
+    const step = await getAdapter('gemini').completeWithTools(creds('gemini'), toolReq({ model: 'gemini-flash-latest' }));
+    expect(step).toEqual({
+      text: 'Looking.',
+      toolCalls: [
+        { id: 'call_a', name: 'find_items', args: { query: 'dentist' } },
+        { id: 'call_b', name: 'find_items', args: null },
+      ],
+    });
+  });
+
+  it('makes up an id for a call that has none', async () => {
+    route = () => json(completion({ tool_calls: [{ type: 'function', function: { name: 'find_items', arguments: '' } }] }, 'tool_calls'));
+    const step = await getAdapter('openrouter').completeWithTools(creds('openrouter'), toolReq());
+    expect(step.toolCalls).toEqual([{ id: 'call_0', name: 'find_items', args: {} }]);
+  });
+
+  it('sends earlier calls as tool_calls and results as tool messages', async () => {
+    route = () => json(completion({ content: 'It is on Thursday.' }));
+    await getAdapter('openai').completeWithTools(creds('openai'), toolReq({ messages: afterOneCall }));
+    expect(lastBody().messages.slice(1)).toEqual([
+      { role: 'user', content: 'Where is my dentist task?' },
+      {
+        role: 'assistant',
+        content: 'Let me look.',
+        tool_calls: [{ id: 'call_a', type: 'function', function: { name: 'find_items', arguments: '{"query":"dentist"}' } }],
+      },
+      { role: 'tool', tool_call_id: 'call_a', content: '[{"title":"Book dentist"}]' },
+    ]);
+  });
+
+  it('a call with malformed arguments is echoed back with {}', async () => {
+    route = () => json(completion({ content: 'ok' }));
+    await getAdapter('openai').completeWithTools(
+      creds('openai'),
+      toolReq({
+        messages: [
+          { role: 'user', content: 'x' },
+          { role: 'assistant', content: '', toolCalls: [{ id: 'c', name: 'find_items', args: null }] },
+          { role: 'tool', callId: 'c', name: 'find_items', content: 'error: bad arguments' },
+        ],
+      })
+    );
+    expect(lastBody().messages[2]).toEqual({
+      role: 'assistant',
+      content: null,
+      tool_calls: [{ id: 'c', type: 'function', function: { name: 'find_items', arguments: '{}' } }],
+    });
+  });
+
+  it('neither text nor calls: empty, or refused when filtered', async () => {
+    route = () => json(completion({ content: '' }));
+    expect((await rejection(getAdapter('openai').completeWithTools(creds('openai'), toolReq()))).kind).toBe('empty');
+    route = () => json(completion({ content: null }, 'content_filter'));
+    expect((await rejection(getAdapter('openai').completeWithTools(creds('openai'), toolReq()))).kind).toBe('refused');
+  });
+
+  it('a provider error is classified as a call', async () => {
+    route = () => json({ error: { message: 'bad key' } }, 401, noRetry);
+    expect((await rejection(getAdapter('openai').completeWithTools(creds('openai'), toolReq()))).kind).toBe('auth');
+  });
+});
+
+describe('completeWithTools: Anthropic', () => {
+  it('sends tools with input_schema, the system string and no stream', async () => {
+    route = () => json(anthropicMessage([{ type: 'text', text: 'Nothing found.' }]));
+    const step = await getAdapter('anthropic').completeWithTools(
+      creds('anthropic'),
+      toolReq({ model: 'claude-opus-5-5', modelMeta: { effortLow: true } })
+    );
+    expect(step).toEqual({ text: 'Nothing found.', toolCalls: [] });
+    const body = lastBody();
+    expect(seen[0].url).toBe('https://api.anthropic.com/v1/messages');
+    expect(body.tools).toEqual([
+      { name: 'find_items', description: 'Search the planner by title.', input_schema: FIND_ITEMS.parameters },
+    ]);
+    expect(body.system).toBe('You are the planning assistant.');
+    expect(body.output_config).toEqual({ effort: 'low' });
+    expect(body).not.toHaveProperty('stream');
+  });
+
+  it('reads tool_use blocks', async () => {
+    route = () =>
+      json(
+        anthropicMessage(
+          [
+            { type: 'text', text: 'Looking.' },
+            { type: 'tool_use', id: 'toolu_1', name: 'find_items', input: { query: 'dentist' } },
+          ],
+          'tool_use'
+        )
+      );
+    const step = await getAdapter('anthropic').completeWithTools(creds('anthropic'), toolReq({ model: 'claude-opus-5-5' }));
+    expect(step).toEqual({ text: 'Looking.', toolCalls: [{ id: 'toolu_1', name: 'find_items', args: { query: 'dentist' } }] });
+  });
+
+  it('sends calls as tool_use and results as tool_result, several results in one user turn', async () => {
+    route = () => json(anthropicMessage([{ type: 'text', text: 'Both found.' }]));
+    await getAdapter('anthropic').completeWithTools(
+      creds('anthropic'),
+      toolReq({
+        model: 'claude-opus-5-5',
+        messages: [
+          { role: 'assistant', content: 'Hi! How can I help?' },
+          { role: 'user', content: 'Find dentist and gym' },
+          {
+            role: 'assistant',
+            content: '',
+            toolCalls: [
+              { id: 't1', name: 'find_items', args: { query: 'dentist' } },
+              { id: 't2', name: 'find_items', args: null },
+            ],
+          },
+          { role: 'tool', callId: 't1', name: 'find_items', content: 'one' },
+          { role: 'tool', callId: 't2', name: 'find_items', content: 'error: bad arguments' },
+        ],
+      })
+    );
+    expect(lastBody().messages).toEqual([
+      { role: 'user', content: [{ type: 'text', text: 'Find dentist and gym' }] },
+      {
+        role: 'assistant',
+        content: [
+          { type: 'tool_use', id: 't1', name: 'find_items', input: { query: 'dentist' } },
+          { type: 'tool_use', id: 't2', name: 'find_items', input: {} },
+        ],
+      },
+      {
+        role: 'user',
+        content: [
+          { type: 'tool_result', tool_use_id: 't1', content: 'one' },
+          { type: 'tool_result', tool_use_id: 't2', content: 'error: bad arguments' },
+        ],
+      },
+    ]);
+  });
+
+  it('refusal and empty', async () => {
+    route = () => json(anthropicMessage([], 'refusal'));
+    expect((await rejection(getAdapter('anthropic').completeWithTools(creds('anthropic'), toolReq()))).kind).toBe('refused');
+    route = () => json(anthropicMessage([]));
+    expect((await rejection(getAdapter('anthropic').completeWithTools(creds('anthropic'), toolReq()))).kind).toBe('empty');
+  });
+});
+
+describe('supportsTools', () => {
+  const signal = () => new AbortController().signal;
+  const catalog = () =>
+    json({
+      data: [
+        { id: 'openai/gpt-5', name: 'GPT-5', architecture: { output_modalities: ['text'] }, supported_parameters: ['tools', 'max_tokens'] },
+        { id: 'tiny/model:free', name: 'Tiny', architecture: { output_modalities: ['text'] }, supported_parameters: ['max_tokens'] },
+        { id: 'old/model', name: 'Old', architecture: { output_modalities: ['text'] } },
+      ],
+    });
+
+  beforeEach(() => resetToolSupportCache());
+
+  it('the built-in providers say yes and a custom host says no, without asking anyone', async () => {
+    route = () => {
+      throw new Error('no request expected');
+    };
+    for (const p of ['openai', 'gemini', 'anthropic'] as const) {
+      expect(await supportsTools(p, 'any-model', creds(p), signal())).toBe(true);
+    }
+    expect(await supportsTools('custom', 'llama', creds('custom', 'https://llm.example.com/v1'), signal())).toBe(false);
+    expect(seen).toHaveLength(0);
+  });
+
+  it('OpenRouter follows the catalog, and lists the flag on each model', async () => {
+    route = catalog;
+    const list = await getAdapter('openrouter').listModels(creds('openrouter'), signal());
+    expect(Object.fromEntries(list.models.map((m) => [m.id, m.tools]))).toEqual({
+      'openai/gpt-5': true,
+      'tiny/model:free': false,
+      'old/model': undefined,
+    });
+    seen = [];
+    expect(await supportsTools('openrouter', 'openai/gpt-5', creds('openrouter'), signal())).toBe(true);
+    expect(await supportsTools('openrouter', 'tiny/model:free', creds('openrouter'), signal())).toBe(false);
+    expect(await supportsTools('openrouter', 'old/model', creds('openrouter'), signal())).toBe(false);
+    expect(await supportsTools('openrouter', 'not/listed', creds('openrouter'), signal())).toBe(false);
+    expect(await supportsTools('openrouter', 'openrouter/auto', creds('openrouter'), signal())).toBe(false);
+    expect(seen).toHaveLength(1);
+  });
+
+  it('reads the catalog again after an hour', async () => {
+    route = catalog;
+    const t0 = Date.now();
+    await supportsTools('openrouter', 'openai/gpt-5', creds('openrouter'), signal(), t0);
+    await supportsTools('openrouter', 'openai/gpt-5', creds('openrouter'), signal(), t0 + CATALOG_TTL_MS - 1);
+    expect(seen).toHaveLength(1);
+    await supportsTools('openrouter', 'openai/gpt-5', creds('openrouter'), signal(), Date.now() + CATALOG_TTL_MS + 1);
+    expect(seen).toHaveLength(2);
+  });
+
+  it('a catalog that cannot be read is a no, and is not cached', async () => {
+    route = () => json({ error: 'down' }, 503, noRetry);
+    expect(await supportsTools('openrouter', 'openai/gpt-5', creds('openrouter'), signal())).toBe(false);
+    route = catalog;
+    expect(await supportsTools('openrouter', 'openai/gpt-5', creds('openrouter'), signal())).toBe(true);
   });
 });

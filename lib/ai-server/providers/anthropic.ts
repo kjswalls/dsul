@@ -25,6 +25,7 @@ import type {
   Message,
   MessageCreateParamsNonStreaming,
   MessageCreateParamsStreaming,
+  ContentBlockParam,
   MessageParam,
   RawMessageStreamEvent,
 } from '@anthropic-ai/sdk/resources/messages';
@@ -32,7 +33,18 @@ import type { ModelInfo } from '@anthropic-ai/sdk/resources/models';
 import { isModelId } from '@/lib/ai-types';
 import { ProviderError, isDeadlineAbort, toProviderErrorFor } from '../errors';
 import { guardedFetch } from '../url-policy';
-import type { ChatTurn, CompletionRequest, ListedModel, ModelMeta, ProviderAdapter, ProviderCredentials } from './types';
+import { parseToolArgs } from './tool-args';
+import type {
+  ChatTurn,
+  CompletionRequest,
+  ListedModel,
+  ModelMeta,
+  ProviderAdapter,
+  ProviderCredentials,
+  ToolCall,
+  ToolRequest,
+  ToolTurn,
+} from './types';
 
 const ANTHROPIC_ORIGIN = 'https://api.anthropic.com';
 const DEFAULT_MODEL = 'claude-opus-5-5';
@@ -94,6 +106,53 @@ function baseParams(req: CompletionRequest) {
     messages: normalizeTurns(req.messages),
     ...(req.modelMeta?.effortLow ? { output_config: { effort: 'low' as const } } : {}),
   };
+}
+
+/**
+ * A conversation with tools, in the Messages shape: an assistant turn's calls
+ * are `tool_use` blocks after its text, and results go back as `tool_result`
+ * blocks in a user turn. Turns are merged and trimmed as `normalizeTurns`
+ * does, so the results of several calls land in one user turn, and a call
+ * whose arguments were malformed is echoed with `{}`.
+ */
+function normalizeToolTurns(turns: readonly ToolTurn[]): MessageParam[] {
+  const out: { role: 'user' | 'assistant'; content: ContentBlockParam[] }[] = [];
+  for (const t of turns) {
+    const role = t.role === 'assistant' ? 'assistant' : 'user';
+    const blocks: ContentBlockParam[] = [];
+    if (t.role === 'tool') {
+      blocks.push({ type: 'tool_result', tool_use_id: t.callId, content: t.content });
+    } else {
+      if (typeof t.content === 'string' && t.content.trim() !== '') blocks.push({ type: 'text', text: t.content });
+      if (t.role === 'assistant') {
+        for (const c of t.toolCalls ?? []) {
+          blocks.push({ type: 'tool_use', id: c.id, name: c.name, input: c.args ?? {} });
+        }
+      }
+    }
+    if (blocks.length === 0) continue;
+    if (out.length === 0 && role === 'assistant') continue;
+    const last = out[out.length - 1];
+    if (last && last.role === role) last.content.push(...blocks);
+    else out.push({ role, content: blocks });
+  }
+  while (out.length > 0 && out[out.length - 1].role === 'assistant') out.pop();
+  if (out.length === 0) throw new ProviderError('bad_request');
+  // A tool_result must come before any text in its user turn.
+  for (const m of out) {
+    if (m.role === 'user') {
+      m.content.sort((a, b) => Number(b.type === 'tool_result') - Number(a.type === 'tool_result'));
+    }
+  }
+  return out;
+}
+
+function readToolCalls(message: Message): ToolCall[] {
+  const calls: ToolCall[] = [];
+  for (const b of message.content) {
+    if (b.type === 'tool_use') calls.push({ id: b.id, name: b.name, args: parseToolArgs(b.input) });
+  }
+  return calls;
 }
 
 function listed(m: ModelInfo): ListedModel {
@@ -183,6 +242,37 @@ export function createAnthropicAdapter(): ProviderAdapter {
         .trim();
       if (!text) throw new ProviderError('empty');
       return text;
+    },
+
+    async completeWithTools(creds, req: ToolRequest) {
+      const client = makeClient(creds, CALL);
+      const system = req.system.filter((s) => s.trim() !== '').join('\n\n');
+      const params: MessageCreateParamsNonStreaming = {
+        model: req.model,
+        max_tokens: req.maxOutputTokens,
+        ...(system ? { system } : {}),
+        messages: normalizeToolTurns(req.messages),
+        tools: req.tools.map((t) => ({
+          name: t.name,
+          description: t.description,
+          input_schema: { ...t.parameters, type: 'object' as const },
+        })),
+        ...(req.modelMeta?.effortLow ? { output_config: { effort: 'low' as const } } : {}),
+      };
+      let message: Message;
+      try {
+        message = await client.messages.create(params, { signal: req.signal });
+      } catch (err) {
+        throw fail(err, 'call', req.signal);
+      }
+      if (message.stop_reason === 'refusal') throw new ProviderError('refused');
+      const text = message.content
+        .map((b) => (b.type === 'text' ? b.text : ''))
+        .join('')
+        .trim();
+      const toolCalls = readToolCalls(message);
+      if (!text && toolCalls.length === 0) throw new ProviderError('empty');
+      return { text, toolCalls };
     },
 
     // The model list is free and answers 401 for a bad key: it IS the check.

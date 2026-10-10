@@ -22,6 +22,11 @@ export type {
   ModelMeta,
   ProviderAdapter,
   ProviderCredentials,
+  ToolCall,
+  ToolDef,
+  ToolRequest,
+  ToolStep,
+  ToolTurn,
   VerifyResult,
 } from './types';
 

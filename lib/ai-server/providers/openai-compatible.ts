@@ -26,12 +26,16 @@ import { hintingFetch } from '../error-hints';
 import { ProviderError, classifyStatus, isDeadlineAbort, isStreamRefusal, toProviderErrorFor } from '../errors';
 import { readCappedJson } from '../stream';
 import { CUSTOM_RESPONSE_CAPS, guardedFetch } from '../url-policy';
+import { parseToolArgs } from './tool-args';
 import type {
   CompletionRequest,
   ListedModel,
   ModelList,
   ProviderAdapter,
   ProviderCredentials,
+  ToolCall,
+  ToolRequest,
+  ToolTurn,
   VerifyResult,
 } from './types';
 
@@ -132,23 +136,85 @@ function wantsLowReasoning(p: OpenAICompatibleProviderId, model: string): boolea
   return false;
 }
 
-function baseParams(p: OpenAICompatibleProviderId, req: CompletionRequest) {
-  const system = req.system.filter((s) => s.trim() !== '').join('\n\n');
-  const messages: ChatCompletionMessageParam[] = [
-    ...(system ? [{ role: 'system' as const, content: system }] : []),
-    ...req.messages.map((t) => ({ role: t.role, content: t.content })),
-  ];
+/** The output cap and reasoning effort every call sends, with or without tools. */
+function limitParams(p: OpenAICompatibleProviderId, req: Pick<CompletionRequest, 'model' | 'maxOutputTokens'>) {
   return {
     model: req.model,
-    messages,
     ...(p === 'openai'
       ? { max_completion_tokens: req.maxOutputTokens }
       : { max_tokens: req.maxOutputTokens }),
     ...(wantsLowReasoning(p, req.model) ? { reasoning_effort: 'low' as const } : {}),
+  };
+}
+
+function systemMessage(req: Pick<CompletionRequest, 'system'>): ChatCompletionMessageParam[] {
+  const system = req.system.filter((s) => s.trim() !== '').join('\n\n');
+  return system ? [{ role: 'system', content: system }] : [];
+}
+
+function baseParams(p: OpenAICompatibleProviderId, req: CompletionRequest) {
+  return {
+    ...limitParams(p, req),
+    messages: [
+      ...systemMessage(req),
+      ...req.messages.map((t): ChatCompletionMessageParam => ({ role: t.role, content: t.content })),
+    ],
     ...(req.json && (p === 'openai' || p === 'gemini')
       ? { response_format: { type: 'json_object' as const } }
       : {}),
   };
+}
+
+/**
+ * A conversation with tools, in the Chat Completions shape: an assistant turn
+ * carries its calls as `tool_calls`, and each result is a `role: 'tool'`
+ * message naming the call it answers. A call whose arguments were malformed
+ * is echoed back with `{}`, since its result already says so.
+ */
+function toolMessages(turns: readonly ToolTurn[]): ChatCompletionMessageParam[] {
+  return turns.map((t): ChatCompletionMessageParam => {
+    if (t.role === 'tool') return { role: 'tool', tool_call_id: t.callId, content: t.content };
+    if (t.role === 'assistant' && t.toolCalls && t.toolCalls.length > 0) {
+      return {
+        role: 'assistant',
+        content: t.content === '' ? null : t.content,
+        tool_calls: t.toolCalls.map((c) => ({
+          id: c.id,
+          type: 'function' as const,
+          function: { name: c.name, arguments: JSON.stringify(c.args ?? {}) },
+        })),
+      };
+    }
+    return { role: t.role, content: t.content };
+  });
+}
+
+function toolParams(p: OpenAICompatibleProviderId, req: ToolRequest): ChatCompletionCreateParamsNonStreaming {
+  return {
+    ...limitParams(p, req),
+    messages: [...systemMessage(req), ...toolMessages(req.messages)],
+    tools: req.tools.map((t) => ({
+      type: 'function' as const,
+      function: { name: t.name, description: t.description, parameters: t.parameters },
+    })),
+  };
+}
+
+/**
+ * The calls in a completion. Some hosts leave out a call's id; one is made up
+ * so its result can still name it on the next step.
+ */
+function readToolCalls(raw: unknown): ToolCall[] {
+  if (!Array.isArray(raw)) return [];
+  const calls: ToolCall[] = [];
+  raw.forEach((c, i) => {
+    const fn = c?.function;
+    if (c?.type !== undefined && c.type !== 'function') return;
+    if (typeof fn?.name !== 'string' || fn.name === '') return;
+    const id = typeof c.id === 'string' && c.id !== '' ? c.id : `call_${i}`;
+    calls.push({ id, name: fn.name, args: parseToolArgs(fn.arguments) });
+  });
+  return calls;
 }
 
 // ── <think> spans ───────────────────────────────────────────────────────────
@@ -335,10 +401,12 @@ function openRouterEntry(raw: unknown): ListedModel | null {
   const context =
     typeof r.context_length === 'number' && Number.isFinite(r.context_length) ? r.context_length : undefined;
   const created = typeof r.created === 'number' && Number.isFinite(r.created) ? r.created : undefined;
+  const params = Array.isArray(r.supported_parameters) ? r.supported_parameters : null;
   return {
     id: r.id,
     label: label(name),
     ...(free ? { free: true } : {}),
+    ...(params ? { tools: params.includes('tools') } : {}),
     ...(context !== undefined ? { contextLength: context } : {}),
     ...(created !== undefined ? { created } : {}),
   };
@@ -528,6 +596,25 @@ export function createOpenAICompatibleAdapter(id: OpenAICompatibleProviderId): P
       const raw = choice?.message?.content;
       const text = typeof raw === 'string' ? stripThink(raw).trim() : '';
       if (text) return text;
+      if (choice?.finish_reason === 'content_filter' || choice?.message?.refusal) {
+        throw new ProviderError('refused');
+      }
+      throw new ProviderError('empty');
+    },
+
+    async completeWithTools(creds, req) {
+      const client = makeClient(creds, CALL);
+      let completion: OpenAI.Chat.Completions.ChatCompletion;
+      try {
+        completion = await client.chat.completions.create(toolParams(id, req), { signal: req.signal });
+      } catch (err) {
+        throw fail(err, 'call', req.signal);
+      }
+      const choice = completion.choices?.[0];
+      const raw = choice?.message?.content;
+      const text = typeof raw === 'string' ? stripThink(raw).trim() : '';
+      const toolCalls = readToolCalls(choice?.message?.tool_calls);
+      if (text || toolCalls.length > 0) return { text, toolCalls };
       if (choice?.finish_reason === 'content_filter' || choice?.message?.refusal) {
         throw new ProviderError('refused');
       }
