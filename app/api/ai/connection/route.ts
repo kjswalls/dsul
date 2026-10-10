@@ -43,7 +43,7 @@ import {
   type ProviderCredentials,
   type VerifyResult,
 } from '@/lib/ai-server/providers'
-import { takeToken } from '@/lib/ai-server/rate-limit'
+import { takeSharedToken } from '@/lib/ai-server/rate-limit'
 import { loadEncryptionKey } from '@/lib/ai-server/secret-box'
 import { anySignal } from '@/lib/ai-server/stream'
 import { checkModelBaseUrl } from '@/lib/ai-server/url-policy'
@@ -258,7 +258,7 @@ export async function PUT(req: Request): Promise<Response> {
     return dbFailure(err, 'connection read')
   }
 
-  if (!takeToken(user.id, 'connect')) return jsonError(429, 'busy')
+  if (!(await takeSharedToken(user.id, 'connect'))) return jsonError(429, 'busy')
 
   let creds: ProviderCredentials
   try {
@@ -339,7 +339,7 @@ async function setModel(
     // One free lookup, so the call path knows whether this model takes a low
     // effort without asking on every chat. Effort is never sent to a model
     // that would reject it.
-    if (!takeToken(userId, 'check')) return jsonError(429, 'busy')
+    if (!(await takeSharedToken(userId, 'check'))) return jsonError(429, 'busy')
     let stored: OpenedKey
     try {
       // Whatever the row's status or model: picking one is how a fresh
@@ -391,7 +391,7 @@ async function setModel(
 }
 
 async function recheck(req: Request, userId: string): Promise<NextResponse> {
-  if (!takeToken(userId, 'check')) return jsonError(429, 'busy')
+  if (!(await takeSharedToken(userId, 'check'))) return jsonError(429, 'busy')
 
   // `openConnectionKey`, not `openModelConnection`: "Check again" exists for a
   // failing key, and a connection with no model yet still has a key to check.

@@ -61,8 +61,11 @@ and the chat note says when it resets. Connecting lives in one card, `ConnectAI`
 leads, pasting a sure key checks it at once, and the key field is uncontrolled so a key is
 never in a `value` attribute. The pane's address is `/settings/ai` (an alias of the
 permanent `beacon` id), and an OpenRouter sign-in returns to the pane or home (`r`, sealed
-in the PKCE cookie). Open: a model that refuses only streamed requests (an unverified
-OpenAI org) still passes the check; the rate limit is still per-instance memory.
+in the PKCE cookie). Both opens are closed (2026-10-09): a model that refuses only streamed
+requests (an unverified OpenAI org) fails the check as `stream_refused`, falling back once to
+the next default when dsul picked the model (#454); and the connect and check buckets also
+take a token from a count every instance shares (migration 064's `take_ai_token`, a fixed
+hour, failing open to the memory answer until 064 is applied).
 
 **Note 2026-10-07: the doors into setup and the kept question (AI setup PR 5).** While
 nothing answers and the gate offers setup, three doors open it besides the unlit key and

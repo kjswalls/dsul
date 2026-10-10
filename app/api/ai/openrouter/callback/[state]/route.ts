@@ -18,7 +18,7 @@ import {
   pkceStateMatches,
 } from '@/lib/ai-server/pkce'
 import { credentialsFor, getAdapter, type ModelMeta, type VerifyResult } from '@/lib/ai-server/providers'
-import { takeToken } from '@/lib/ai-server/rate-limit'
+import { takeSharedToken } from '@/lib/ai-server/rate-limit'
 import { loadEncryptionKey } from '@/lib/ai-server/secret-box'
 import { anySignal } from '@/lib/ai-server/stream'
 
@@ -155,7 +155,7 @@ export async function GET(
   }
 
   // 7: whether this user may spend another connect.
-  if (!takeToken(user.id, 'connect')) return back('busy')
+  if (!(await takeSharedToken(user.id, 'connect'))) return back('busy')
 
   // 8: the exchange, server to server. The key never reaches the browser.
   let apiKey: string

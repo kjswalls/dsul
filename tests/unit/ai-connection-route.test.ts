@@ -7,7 +7,7 @@ import * as conn from '@/lib/ai-server/connections';
 import type { ModelConnectionRow } from '@/lib/ai-server/connections';
 import { ProviderError, type ProviderErrorKind } from '@/lib/ai-server/errors';
 import { credentialsFor, getAdapter } from '@/lib/ai-server/providers';
-import { takeToken } from '@/lib/ai-server/rate-limit';
+import { takeSharedToken } from '@/lib/ai-server/rate-limit';
 import { loadEncryptionKey, openSecret } from '@/lib/ai-server/secret-box';
 
 /**
@@ -93,7 +93,10 @@ vi.mock('@/lib/ai-server/stream', () => ({
   anySignal: vi.fn((signals: AbortSignal[]) => AbortSignal.any(signals)),
 }));
 
-vi.mock('@/lib/ai-server/rate-limit', () => ({ takeToken: vi.fn(() => true) }));
+vi.mock('@/lib/ai-server/rate-limit', () => ({
+  takeToken: vi.fn(() => true),
+  takeSharedToken: vi.fn(async () => true),
+}));
 
 vi.mock('@/lib/ai-server/secret-box', () => ({
   loadEncryptionKey: vi.fn(() => ({ ok: true, key: Buffer.alloc(32, 7) })),
@@ -200,8 +203,8 @@ beforeEach(() => {
   vi.mocked(loadEncryptionKey).mockReturnValue({ ok: true, key: Buffer.alloc(32, 7) });
   vi.mocked(openSecret).mockReset();
   vi.mocked(openSecret).mockReturnValue('sk-opened-key');
-  vi.mocked(takeToken).mockReset();
-  vi.mocked(takeToken).mockReturnValue(true);
+  vi.mocked(takeSharedToken).mockReset();
+  vi.mocked(takeSharedToken).mockResolvedValue(true);
   vi.mocked(conn.readModelConnection).mockReset();
   vi.mocked(conn.readModelConnection).mockResolvedValue({ kind: 'row', row: rowOf() });
   vi.mocked(conn.readOpenClawStatus).mockReset();
@@ -318,7 +321,7 @@ describe('GET /api/ai/connection', () => {
 
   it('makes no upstream call and takes no rate-limit token', async () => {
     await route.GET();
-    expect(takeToken).not.toHaveBeenCalled();
+    expect(takeSharedToken).not.toHaveBeenCalled();
     expect(adapter.verify).not.toHaveBeenCalled();
   });
 
@@ -357,7 +360,7 @@ describe('PATCH /api/ai/connection {hidden}', () => {
     expect(conn.setConnectionStatus).not.toHaveBeenCalled();
     expect(conn.setConnectionModel).not.toHaveBeenCalled();
     expect(adapter.verify).not.toHaveBeenCalled();
-    expect(takeToken).not.toHaveBeenCalled();
+    expect(takeSharedToken).not.toHaveBeenCalled();
   });
 
   it('a database that cannot keep it says unavailable, never ok', async () => {
@@ -406,7 +409,7 @@ describe('PUT /api/ai/connection', () => {
     expect(creds).toEqual({ provider: 'openai', apiKey: 'sk-test-abcdefgh', baseUrl: 'https://api.openai.com/v1' });
     expect(opts.signal).toBeInstanceOf(AbortSignal);
     expect(opts.modelHint).toBeUndefined();
-    expect(takeToken).toHaveBeenCalledWith('user-1', 'connect');
+    expect(takeSharedToken).toHaveBeenCalledWith('user-1', 'connect');
     expect(conn.saveModelConnection).toHaveBeenCalledWith('user-1', {
       provider: 'openai',
       baseUrl: null,
@@ -432,7 +435,7 @@ describe('PUT /api/ai/connection', () => {
     const res = await put(body);
     expect(res.status).toBe(400);
     expect(await json(res)).toEqual({ error, field });
-    expect(takeToken).not.toHaveBeenCalled();
+    expect(takeSharedToken).not.toHaveBeenCalled();
     expect(adapter.verify).not.toHaveBeenCalled();
     expect(conn.saveModelConnection).not.toHaveBeenCalled();
   });
@@ -452,7 +455,7 @@ describe('PUT /api/ai/connection', () => {
   });
 
   it('429 busy on the connect limiter, before any upstream call', async () => {
-    vi.mocked(takeToken).mockReturnValue(false);
+    vi.mocked(takeSharedToken).mockResolvedValue(false);
     const res = await put({ provider: 'openai', apiKey: 'sk-abcdefgh' });
     expect(res.status).toBe(429);
     expect(await json(res)).toEqual({ error: 'busy' });
@@ -502,7 +505,7 @@ describe('PUT /api/ai/connection', () => {
     const res = await put({ provider: 'openai', apiKey: 'sk-ant-abcdefghij' });
     expect(res.status).toBe(400);
     expect(await json(res)).toEqual({ error: 'wrong_provider', field: 'apiKey', detected: 'anthropic' });
-    expect(takeToken).not.toHaveBeenCalled();
+    expect(takeSharedToken).not.toHaveBeenCalled();
     expect(adapter.verify).not.toHaveBeenCalled();
     expect(conn.saveModelConnection).not.toHaveBeenCalled();
   });
@@ -806,7 +809,7 @@ describe('PATCH /api/ai/connection {provider, model}', () => {
     expect(res.status).toBe(200);
     expect(await json(res)).toEqual({ connection: expect.objectContaining({ provider: 'openai', model: 'gpt-4o' }) });
     expect(conn.setConnectionModel).toHaveBeenCalledWith('user-1', 'openai', 'gpt-4o', {});
-    expect(takeToken).not.toHaveBeenCalled();
+    expect(takeSharedToken).not.toHaveBeenCalled();
     expect(adapter.describeModel).not.toHaveBeenCalled();
   });
 
@@ -827,7 +830,7 @@ describe('PATCH /api/ai/connection {provider, model}', () => {
     vi.mocked(conn.readModelConnection).mockResolvedValue({ kind: 'row', row: rowOf({ provider: 'anthropic' }) });
     const res = await patch({ provider: 'anthropic', model: 'claude-sonnet-4-5' });
     expect(res.status).toBe(200);
-    expect(takeToken).toHaveBeenCalledWith('user-1', 'check');
+    expect(takeSharedToken).toHaveBeenCalledWith('user-1', 'check');
     expect(conn.openConnectionKey).toHaveBeenCalledWith('user-1');
     const [creds, model, signal] = adapter.describeModel.mock.calls[0];
     expect(creds).toEqual({ provider: 'anthropic', apiKey: 'sk-opened-key', baseUrl: 'https://api.anthropic.com' });
@@ -864,12 +867,12 @@ describe('PATCH /api/ai/connection {provider, model}', () => {
   });
 
   it('Anthropic: 429 on the check limiter; another provider’s key is never sent to Anthropic', async () => {
-    vi.mocked(takeToken).mockReturnValue(false);
+    vi.mocked(takeSharedToken).mockResolvedValue(false);
     let res = await patch({ provider: 'anthropic', model: 'claude-sonnet-4-5' });
     expect(res.status).toBe(429);
     expect(await json(res)).toEqual({ error: 'busy' });
 
-    vi.mocked(takeToken).mockReturnValue(true);
+    vi.mocked(takeSharedToken).mockResolvedValue(true);
     vi.mocked(conn.readModelConnection).mockResolvedValue({ kind: 'row', row: rowOf({ provider: 'openai' }) });
     res = await patch({ provider: 'anthropic', model: 'claude-sonnet-4-5' });
     expect(res.status).toBe(409);
@@ -895,7 +898,7 @@ describe('PATCH /api/ai/connection {recheck:true}', () => {
     const res = await patch({ recheck: true });
     expect(res.status).toBe(200);
     expect(await json(res)).toEqual({ connection: expect.objectContaining({ status: 'ok', problem: null }) });
-    expect(takeToken).toHaveBeenCalledWith('user-1', 'check');
+    expect(takeSharedToken).toHaveBeenCalledWith('user-1', 'check');
     expect(adapter.verify.mock.calls[0][1].modelHint).toBe('gpt-4o-mini');
     expect(conn.setConnectionStatus).toHaveBeenCalledWith('user-1', CIPHER, 'ok', null);
     // Whatever cap held is over, or belongs to a key that is gone.
@@ -1059,7 +1062,7 @@ describe('PATCH /api/ai/connection {recheck:true}', () => {
     expect(res.status).toBe(503);
     expect(await json(res)).toEqual({ error: 'unavailable', available: false });
 
-    vi.mocked(takeToken).mockReturnValue(false);
+    vi.mocked(takeSharedToken).mockResolvedValue(false);
     res = await patch({ recheck: true });
     expect(res.status).toBe(429);
     expect(await json(res)).toEqual({ error: 'busy' });
@@ -1101,7 +1104,7 @@ describe('GET /api/ai/connection/models', () => {
       ],
       listed: true,
     });
-    expect(takeToken).toHaveBeenCalledWith('user-1', 'check');
+    expect(takeSharedToken).toHaveBeenCalledWith('user-1', 'check');
     expect(adapter.listModels.mock.calls[0][1]).toBeInstanceOf(AbortSignal);
   });
 
@@ -1135,7 +1138,7 @@ describe('GET /api/ai/connection/models', () => {
     expect(res.status).toBe(503);
     expect(await json(res)).toEqual({ error: 'unavailable', available: false });
 
-    vi.mocked(takeToken).mockReturnValue(false);
+    vi.mocked(takeSharedToken).mockResolvedValue(false);
     res = await listModels();
     expect(res.status).toBe(429);
     expect(await json(res)).toEqual({ error: 'busy' });
