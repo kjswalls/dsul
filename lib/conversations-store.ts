@@ -34,6 +34,7 @@ import { addChanges, hasChanges } from './conversation-summary';
 import { spendJustConnected, useRailStore } from './rail-store';
 import { useProposalStore } from './proposal-store';
 import { useChatReceipts } from './chat-receipts';
+import { MAX_CHAT_IMAGES, type ChatImage } from './chat-images';
 
 /**
  * conversations-store.ts — saved AI conversations, as this browser holds them.
@@ -91,6 +92,11 @@ export interface ChatMessage {
    * dsul's words. Saved with the reply (migration 068); never a lookup's results.
    */
   actions?: string[];
+  /**
+   * How many pictures a user message was sent with (lib/chat-images.ts). This
+   * page's memory only: the pictures are never stored, and neither is this.
+   */
+  imageCount?: number;
 }
 
 export interface Thread {
@@ -159,7 +165,8 @@ export interface ConversationsState {
   resolveItemThread(itemId: string): Promise<string>;
   /** A new conversation with no row until its first turn is saved. */
   newDraft(o?: { itemId?: string; title?: string }): string;
-  send(threadId: string, text: string): Promise<void>;
+  /** `images`: pictures for the model with this message only, never stored (lib/chat-images.ts). */
+  send(threadId: string, text: string, images?: ChatImage[]): Promise<void>;
   stop(threadId: string): void;
   rename(id: string, title: string): Promise<boolean>;
   setStarred(id: string, starred: boolean): Promise<boolean>;
@@ -1262,7 +1269,7 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
       return id;
     },
 
-    send: async (rawId, text) => {
+    send: async (rawId, text, images) => {
       // The gate first, before a byte reaches the transcript: with nothing to
       // answer, a sent message would sit under a reply that can never come.
       const caps = getAICapabilities();
@@ -1289,6 +1296,8 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
       const via = answerer === 'openclaw' && caps.openclawTransport === 'plugin' ? 'plugin' : 'chat';
       const connected = ai.model?.model;
       const modelId = answerer === 'model' && isModelId(connected) ? connected : null;
+      // Only a model is shown pictures; OpenClaw's transports carry words.
+      const pictures = answerer === 'model' ? (images ?? []).slice(0, MAX_CHAT_IMAGES) : [];
 
       const summary = get().summaries[id];
       const base = existing ?? blankThread(id, { itemId: summary?.itemId ?? null, saved: !!summary });
@@ -1306,6 +1315,7 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
         createdAt: now,
         pos: null,
         sync: 'pending',
+        ...(pictures.length ? { imageCount: pictures.length } : {}),
       };
       const reply: ChatMessage = {
         id: crypto.randomUUID(),
@@ -1371,6 +1381,7 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
             via,
             message: content,
             turns: outgoingTurns([...prior, user]),
+            ...(pictures.length ? { images: pictures } : {}),
             context: note ? `${context}\n\n${note}` : context,
             typeNouns,
             signal: controller.signal,

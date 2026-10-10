@@ -70,7 +70,9 @@ export interface LoopInput {
 
 export async function* lookupLoop(input: LoopInput): AsyncGenerator<LoopEvent, void, undefined> {
   const { adapter, creds, request, lookups } = input;
-  const turns: ToolTurn[] = input.messages.map((m) => ({ role: m.role, content: m.content }));
+  const turns: ToolTurn[] = input.messages.map((m) =>
+    m.role === 'user' && m.images?.length ? { role: 'user', content: m.content, images: m.images } : { role: m.role, content: m.content }
+  );
 
   for (let round = 1; round <= MAX_ROUNDS; round++) {
     const last = round === MAX_ROUNDS;

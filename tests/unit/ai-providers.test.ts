@@ -281,6 +281,32 @@ describe('OpenAI-compatible request bodies', () => {
     expect(body).not.toHaveProperty('reasoning_effort');
   });
 
+  it('a user turn with pictures sends its words, then each as an image_url data URL', async () => {
+    await collect(
+      await getAdapter('openai').openStream(
+        creds('openai'),
+        req({
+          messages: [
+            { role: 'user', content: 'earlier' },
+            { role: 'assistant', content: 'ok' },
+            { role: 'user', content: 'what is this?', images: [{ mediaType: 'image/jpeg', data: '/9j/4AAQ' }] },
+          ],
+        })
+      )
+    );
+    expect(lastBody().messages.slice(1)).toEqual([
+      { role: 'user', content: 'earlier' },
+      { role: 'assistant', content: 'ok' },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'what is this?' },
+          { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,/9j/4AAQ' } },
+        ],
+      },
+    ]);
+  });
+
   it('omits an empty system message', async () => {
     await collect(await getAdapter('openai').openStream(creds('openai'), req({ system: ['', '  '] })));
     expect(lastBody().messages).toEqual([{ role: 'user', content: 'Plan my day' }]);
@@ -339,6 +365,32 @@ describe('Anthropic request bodies', () => {
       { role: 'user', content: 'one\n\ntwo\n\nthree' },
       { role: 'assistant', content: 'answer' },
       { role: 'user', content: 'four' },
+    ]);
+  });
+
+  it('a user turn with pictures is image blocks, then its words; a merge keeps both', async () => {
+    const image = { mediaType: 'image/png' as const, data: 'iVBORw0KGgo=' };
+    await collect(
+      await getAdapter('anthropic').openStream(
+        creds('anthropic'),
+        req({
+          model: 'claude-opus-5-5',
+          messages: [
+            { role: 'user', content: 'one' },
+            { role: 'user', content: 'what is this?', images: [image] },
+          ],
+        })
+      )
+    );
+    expect(lastBody().messages).toEqual([
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'one' },
+          { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'iVBORw0KGgo=' } },
+          { type: 'text', text: 'what is this?' },
+        ],
+      },
     ]);
   });
 
@@ -1278,6 +1330,21 @@ describe('completeWithTools: OpenAI-compatible', () => {
     expect(body).not.toHaveProperty('response_format');
   });
 
+  it('a question with pictures sends them as image_url parts', async () => {
+    route = () => json(completion({ content: 'A cat.' }));
+    await getAdapter('openai').completeWithTools(
+      creds('openai'),
+      toolReq({ model: 'gpt-5-mini', messages: [{ role: 'user', content: 'what is this?', images: [{ mediaType: 'image/png', data: 'AAAA' }] }] })
+    );
+    expect(lastBody().messages[1]).toEqual({
+      role: 'user',
+      content: [
+        { type: 'text', text: 'what is this?' },
+        { type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } },
+      ],
+    });
+  });
+
   it('other hosts get max_tokens', async () => {
     route = () => json(completion({ content: 'ok' }));
     await getAdapter('openrouter').completeWithTools(creds('openrouter'), toolReq({ model: 'openai/gpt-5' }));
@@ -1404,6 +1471,22 @@ describe('completeWithTools: Anthropic', () => {
     expect(body.system).toBe('You are the planning assistant.');
     expect(body.output_config).toEqual({ effort: 'low' });
     expect(body).not.toHaveProperty('stream');
+  });
+
+  it('a question with pictures keeps them through the rounds, before its words', async () => {
+    route = () => json(anthropicMessage([{ type: 'text', text: 'A cat.' }]));
+    const image = { mediaType: 'image/jpeg' as const, data: '/9j/4AAQ' };
+    await getAdapter('anthropic').completeWithTools(
+      creds('anthropic'),
+      toolReq({ model: 'claude-opus-5-5', messages: [{ role: 'user', content: 'what is this?', images: [image] }, ...afterOneCall.slice(1)] })
+    );
+    expect(lastBody().messages[0]).toEqual({
+      role: 'user',
+      content: [
+        { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: '/9j/4AAQ' } },
+        { type: 'text', text: 'what is this?' },
+      ],
+    });
   });
 
   it('reads tool_use blocks', async () => {

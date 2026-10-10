@@ -21,6 +21,7 @@ import { isPlannerPreviewing, selectPlannerSettled } from './planner-ready';
 import { useViewStore } from './view-store';
 import { chatPlaceholder, itemChatPlaceholder } from './chat-utils';
 import type { Item, Task } from './planner-types';
+import type { ChatImage } from './chat-images';
 
 export { bindingKey, type ComposerBinding } from './rail-store';
 
@@ -543,7 +544,14 @@ export async function resolveSendTarget(
 export async function sendFrom(
   binding: ComposerBinding,
   text: string,
-  o: { surface?: AskSurface; returnTo?: { itemId: string }; focus?: boolean; contextItemIds?: string[] } = {}
+  o: {
+    surface?: AskSurface;
+    returnTo?: { itemId: string };
+    focus?: boolean;
+    contextItemIds?: string[];
+    /** Pictures for the model with this message only (lib/chat-images.ts). */
+    images?: ChatImage[];
+  } = {}
 ): Promise<boolean> {
   if (!getAICapabilities().canChat || typeof text !== 'string' || !text.trim()) return false;
   const store = useConversationsStore.getState();
@@ -574,7 +582,7 @@ export async function sendFrom(
     // streaming before it first awaits; a send whose context build threw
     // before that await has already finished, so the messages it wrote are
     // what say it took.
-    sending = useConversationsStore.getState().send(threadId, text);
+    sending = useConversationsStore.getState().send(threadId, text, o.images);
     const after = useConversationsStore.getState().threads[resolveConversationId(threadId)];
     took = after?.streaming === true || (after?.messages.length ?? 0) > had;
   } catch {

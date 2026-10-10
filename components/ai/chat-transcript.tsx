@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ArrowDown, Check, Copy, Pencil, RotateCcw, Search, Wand2 } from 'lucide-react';
+import { ArrowDown, Check, Copy, Image as ImageIcon, Pencil, RotateCcw, Search, Wand2 } from 'lucide-react';
 import ReactMarkdown, { type Components, type ExtraProps } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ProposalCard } from '@/components/ai/proposal-card';
@@ -21,6 +21,7 @@ import { useUndoStripStore } from '@/lib/undo-strip-store';
 import { useProposalStore } from '@/lib/proposal-store';
 import { buildPlanPrompt } from '@/lib/plan-prompt';
 import { chatErrorCopy, isRetryableReplyError } from '@/lib/chat-errors';
+import { imageCountLabel } from '@/lib/chat-images';
 import { sendFrom } from '@/lib/open-chat';
 import type { ComposerBinding } from '@/lib/rail-store';
 import { chatAssistantName, stripReasoningTags } from '@/lib/chat-utils';
@@ -262,6 +263,14 @@ const UserMessage = memo(function UserMessage({
       <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl bg-secondary px-3 py-2 text-sm leading-relaxed text-foreground">
         {m.content}
       </div>
+      {m.imageCount ? (
+        // The pictures went to the model with this message and were not kept
+        // (lib/chat-images.ts), so this page's memory is all that says so.
+        <p data-testid="chat-message-images" className="flex items-center gap-1 text-2xs text-muted-foreground">
+          <ImageIcon className="size-3" aria-hidden />
+          {imageCountLabel(m.imageCount)}, not saved
+        </p>
+      ) : null}
       {notSaved && <NotSaved />}
       {canEdit && (
         // A tool, so it fades like Copy under a reply; always on a touch screen.

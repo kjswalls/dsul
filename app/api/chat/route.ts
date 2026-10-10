@@ -3,6 +3,7 @@ import { isSameOrigin, NO_STORE, readJson, requireSessionUser } from '@/app/api/
 import type { ChatErrorCode } from '@/lib/ai-types'
 import { ROUTE_ERROR_COPY } from '@/lib/chat-errors'
 import { UUID_RE } from '@/lib/conversation-types'
+import { sanitizeChatImages } from '@/lib/chat-images'
 import {
   clipText,
   composeChatSystem,
@@ -79,8 +80,11 @@ export const maxDuration = 60
  */
 const CHAT_TIMEOUT_MS = 50_000
 
-/** 40 turns of 8k characters plus 60k of context, in UTF-8, with room to spare. */
-const MAX_BODY_BYTES = 2_000_000
+/**
+ * 40 turns of 8k characters plus 60k of context, in UTF-8, and three images
+ * at their cap (lib/chat-images.ts), under the platform's 4.5 MB request limit.
+ */
+const MAX_BODY_BYTES = 4_400_000
 
 function jsonChatError(
   status: number,
@@ -100,6 +104,7 @@ interface ChatBody {
   customInstructions?: unknown
   typeNouns?: unknown
   conversationId?: unknown
+  images?: unknown
 }
 
 export async function POST(req: Request): Promise<Response> {
@@ -130,6 +135,10 @@ export async function POST(req: Request): Promise<Response> {
 
   const messages = sanitizeChatMessages(body.messages)
   if (messages.length === 0) return jsonChatError(400, ROUTE_ERROR_COPY.invalid, 'invalid')
+  // Pictures ride the newest message, and only to the model (lib/chat-images.ts):
+  // malformed ones are refused rather than dropped, since the words are about them.
+  const images = sanitizeChatImages(body.images)
+  if (images === null) return jsonChatError(400, ROUTE_ERROR_COPY.invalid, 'invalid')
   const context = clipText(body.context, MAX_CHAT_CONTEXT_CHARS)
   const system = composeChatSystem({
     typeNouns: body.typeNouns,
@@ -193,6 +202,11 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   const { row, creds, model } = conn
+  const newest = messages.length - 1
+  const turns =
+    images.length > 0 && messages[newest].role === 'user'
+      ? [...messages.slice(0, newest), { ...messages[newest], images }]
+      : messages
   const abort = new AbortController()
   const signal = anySignal([req.signal, abort.signal, AbortSignal.timeout(CHAT_TIMEOUT_MS)])
   const adapter = getAdapter(creds.provider)
@@ -225,7 +239,7 @@ export async function POST(req: Request): Promise<Response> {
       adapter,
       creds,
       request: { ...request, system: withToolsPrompt(system) },
-      messages,
+      messages: turns,
       lookups: makeLookups(sessionSource(user.id, db)),
     })
     // The first round runs before the response exists, so a refused key or a
@@ -264,7 +278,7 @@ export async function POST(req: Request): Promise<Response> {
       model,
       modelMeta: row.model_meta ?? {},
       system,
-      messages,
+      messages: turns,
       maxOutputTokens: MAX_OUTPUT_TOKENS,
       signal,
     })
