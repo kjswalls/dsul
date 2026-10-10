@@ -15,6 +15,7 @@ import {
 import { sendFrom } from '@/lib/open-chat';
 import { bindingKey, useRailStore, type ComposerBinding } from '@/lib/rail-store';
 import { itemChatPlaceholder } from '@/lib/chat-utils';
+import { useConversationReceipts } from '@/lib/chat-receipts';
 import { useAICapabilities } from '@/lib/ai-connection-store';
 import type { Item } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
@@ -93,6 +94,11 @@ export function ItemConversation({
   const isTyping = useConversationsStore((s) => !!(threadId && s.threads[threadId]?.typing));
   const saved = useConversationsStore((s) => !!(threadId && s.summaries[threadId]));
   const gone = useConversationsStore((s) => !!(threadId && s.threads[threadId]?.load === 'gone'));
+  const receiptList = useConversationReceipts(threadId);
+  const receipts = useMemo(
+    () => (threadId && receiptList.length ? { conversationId: threadId, list: receiptList } : undefined),
+    [threadId, receiptList]
+  );
   // Busy from the send's first instant (before the item's conversation is even
   // known) until the reply has finished arriving.
   const isLoading = useConversationsStore(
@@ -177,7 +183,7 @@ export function ItemConversation({
           {saved && threadId && <ItemConversationMenu id={threadId} />}
         </div>
         {gone && <GoneNotice />}
-        <TranscriptMessages messages={messages} typing={isTyping} busy={isLoading} retryVia={retryVia} />
+        <TranscriptMessages messages={messages} typing={isTyping} busy={isLoading} retryVia={retryVia} receipts={receipts} />
         <ReplyStatus messages={messages} />
       </div>
     );
@@ -195,7 +201,7 @@ export function ItemConversation({
       {gone && <GoneNotice />}
       {messages.length > 0 && (
         <div ref={listRef} className="flex max-h-64 min-h-0 flex-col gap-3 overflow-y-auto pr-1">
-          <TranscriptMessages messages={messages} typing={isTyping} busy={isLoading} retryVia={retryVia} />
+          <TranscriptMessages messages={messages} typing={isTyping} busy={isLoading} retryVia={retryVia} receipts={receipts} />
         </div>
       )}
       <ReplyStatus messages={messages} />

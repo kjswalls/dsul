@@ -9,6 +9,15 @@ import { TypingIndicator } from '@/components/ui/typing-indicator';
 import { useConversationsStore, type ChatMessage } from '@/lib/conversations-store';
 import { useAICapabilities, useAIConnectionStore } from '@/lib/ai-connection-store';
 import { usePlannerStore } from '@/lib/planner-store';
+import {
+  canUndoReceipt,
+  placeReceipts,
+  receiptCopy,
+  useChatReceipts,
+  useConversationReceipts,
+  type ChatReceipt,
+} from '@/lib/chat-receipts';
+import { useUndoStripStore } from '@/lib/undo-strip-store';
 import { useProposalStore } from '@/lib/proposal-store';
 import { buildPlanPrompt } from '@/lib/plan-prompt';
 import { chatErrorCopy, isRetryableReplyError } from '@/lib/chat-errors';
@@ -35,6 +44,8 @@ import type { Answerer } from '@/lib/conversation-types';
  *    partial text; a failed reply's words by its CODE (lib/chat-errors.ts,
  *    never the stored text, which holds none); "Not saved" once per turn the
  *    account will never hold.
+ *  - RECEIPTS where a plan was accepted (lib/chat-receipts.ts): what changed,
+ *    with Undo while it is still the last thing done; memory only.
  *  - TRY AGAIN under the latest reply when it was stopped, or failed in a way
  *    asking again might get past (`isRetryableReplyError`): the same question
  *    sent again as a new turn, so nothing saved is rewritten. The failed turn
@@ -115,14 +126,21 @@ export function TranscriptMessages({
   busy,
   planFor,
   retryVia,
+  receipts,
 }: {
   messages: readonly ChatMessage[];
   typing: boolean;
   busy: boolean;
   planFor?: string;
   retryVia?: ComposerBinding;
+  /** This conversation's accepted-plan receipts, and the conversation they belong to. */
+  receipts?: { conversationId: string; list: readonly ChatReceipt[] };
 }) {
   const dividers = answererDividers(messages);
+  const placed = receipts?.list.length ? placeReceipts(messages.map((m) => m.id), receipts.list) : null;
+  const receiptsAt = (i: number) =>
+    receipts &&
+    placed?.get(i)?.map((r) => <ReceiptLine key={r.actionId} conversationId={receipts.conversationId} r={r} />);
   const again = retryVia && !busy ? retryQuestion(messages) : null;
   return (
     <>
@@ -143,9 +161,46 @@ export function TranscriptMessages({
               retry={again && retryVia && i === messages.length - 1 ? { via: retryVia, text: again } : undefined}
             />
           )}
+          {receiptsAt(i)}
         </Fragment>
       ))}
+      {receiptsAt(-1)}
     </>
+  );
+}
+
+/**
+ * One accepted plan, said where it was asked for. Undo shows only while the
+ * accept is still the planner's latest entry (canUndoReceipt), and takes the
+ * undo strip's row for it down too, so the two never offer the same Undo.
+ */
+function ReceiptLine({ conversationId, r }: { conversationId: string; r: ChatReceipt }) {
+  const latest = usePlannerStore((s) => s.actionLog[s.actionLog.length - 1 - s.historyIndex]?.id ?? null);
+  const copy = receiptCopy(r);
+  if (!copy) return null;
+  const undoable = canUndoReceipt(r, latest);
+  return (
+    <div data-testid="chat-receipt" className="flex items-center gap-2 text-xs text-muted-foreground">
+      <Check className="size-3.5 shrink-0" aria-hidden />
+      <span>{copy}</span>
+      {undoable && (
+        <button
+          type="button"
+          data-testid="chat-receipt-undo"
+          onClick={() => {
+            // Re-checked at the press: a change can land between render and click.
+            const p = usePlannerStore.getState();
+            if (!canUndoReceipt(r, p.actionLog[p.actionLog.length - 1 - p.historyIndex]?.id ?? null)) return;
+            p.undo();
+            useChatReceipts.getState().markUndone(conversationId, r.actionId);
+            useUndoStripStore.getState().dismiss(r.actionId);
+          }}
+          className="rounded px-1 font-medium text-foreground underline-offset-2 hover:underline"
+        >
+          Undo
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -496,6 +551,7 @@ export function ChatTranscript({ id }: { id: string }) {
   const hasEarlier = useConversationsStore((s) => !!s.threads[id]?.hasEarlier);
   const busy = useConversationsStore((s) => !!s.sending[`conv:${id}`] || !!s.threads[id]?.streaming);
   const cardUp = useProposalStore((s) => s.status !== 'idle' && s.lastRequest?.surface === `conv:${id}`);
+  const receipts = useConversationReceipts(id);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -689,6 +745,7 @@ export function ChatTranscript({ id }: { id: string }) {
             busy={busy}
             planFor={id}
             retryVia={{ kind: 'conversation', id }}
+            receipts={{ conversationId: id, list: receipts }}
           />
           {/* The conversation's plan card, inline after the last message; it
               outlives this view unmounting (rail-store drops it once the
