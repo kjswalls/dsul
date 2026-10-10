@@ -371,9 +371,10 @@ public struct PlannerSettings: Codable, Sendable, Hashable {
     public var timeFormat: TimeFormat
     /// The Streaks extension (lib/extension-registry.ts `EXT_STREAKS`, read
     /// through `resolveEnabled`): off hides the sheet's streak chip and the
-    /// flame on Today's rows, and Reset streak is never offered. True, the
-    /// extension's default, when missing (a server older than the field) or
-    /// not a bool.
+    /// flame on Today's rows, and Reset streak is never offered. Every current
+    /// server sends it, resolved against the extension's default (off since
+    /// 2026-10-10). True when missing (a server older than the field, which
+    /// only ever had Streaks on) or not a bool.
     public var streaksEnabled: Bool
     /// Habit reminders (the web's Settings, Rituals; `habit_reminders_enabled`,
     /// migration 032), the switch that lets any reminder through: false when

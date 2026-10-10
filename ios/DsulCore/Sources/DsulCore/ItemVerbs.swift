@@ -46,8 +46,10 @@ public struct VerbContext: Sendable, Hashable {
     /// is unknown, and the per-day verbs then gate on the item's own records.
     public var occurrence: Occurrence?
     /// lib/extension-gates.ts `streaksEnabled()`: is the Streaks extension on?
-    /// The payload's `settings.streaksEnabled`; true, the extension's default,
-    /// when nothing says otherwise. Off, Reset streak is never offered.
+    /// The payload's `settings.streaksEnabled`, which every current server
+    /// sends. True when nothing says otherwise: that is a server older than the
+    /// field, which only ever had Streaks on (the web's default is off since
+    /// 2026-10-10). Off, Reset streak is never offered.
     public var streaksEnabled: Bool
 
     public init(
