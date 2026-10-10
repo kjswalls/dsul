@@ -10,6 +10,7 @@ import {
   Speaker,
   Target,
   Users,
+  Zap,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -111,6 +112,22 @@ export const EXT_ORGANIZE = 'organize';
  */
 export const EXT_STREAKS = 'streaks';
 
+/**
+ * Do stuff (default ON) — the braindump sorted by size, walked quick-first.
+ *
+ * An idea rather than a peripheral, like Organize, and on by default for the
+ * same reason Organize is: it costs nothing until it is used. A braindump that
+ * has not grown past a handful of rows, and has nothing sized, draws exactly as
+ * it did before this existed; the one "do stuff" row appears only once the list
+ * is long enough to need it (DO_STUFF_MIN_OPEN in lib/do-stuff.ts), and a size
+ * shows on a row only after the user gave it one.
+ *
+ * Off is inert, as everywhere here: the row, the size dots and the menu go,
+ * the braindump is exactly the old list, and every stored size stays on its
+ * item, so switching back on brings them all back.
+ */
+export const EXT_DO_STUFF = 'do-stuff';
+
 export const EXT_HABIT_HEATMAP = 'habit-heatmap';
 export const EXT_COMPLETION_CONFETTI = 'completion-confetti';
 /**
@@ -188,6 +205,26 @@ export const OFFICIAL_EXTENSIONS: ExtensionManifest[] = [
     ],
     makerNote:
       'It started life as twelve sections of weight, which is why it used to be off. Once every section learned to welcome you, it became the obvious home for the structure you already have.',
+  },
+  {
+    slug: EXT_DO_STUFF,
+    name: 'Do stuff',
+    description:
+      'Sort the braindump by size and walk the quick ones first. A size is your call, made once and kept.',
+    icon: Zap,
+    category: 'planning',
+    // ON by default: see EXT_DO_STUFF above. It adds nothing to a short or
+    // unsized braindump, so there is no weight to opt into.
+    defaultEnabled: true,
+    tagline: 'Get the pile moving',
+    shelf: 'plan',
+    whatChanges: [
+      'A "do stuff" row above the braindump once it gets long.',
+      'Turn it on and the list sorts into quick, errands, big and fuzzy, with the next thing lifted to the top.',
+      'Hover a row to give it a size.',
+    ],
+    makerNote:
+      'Fifteen undated things all look the same weight, so none of them gets picked. Splitting off the quick ones is usually all it takes to start.',
   },
   {
     slug: EXT_STREAKS,

@@ -207,6 +207,15 @@
   --accent-7: oklch(0.6 0.04 250);    /* slate */
   --accent-8: oklch(0.78 0.14 125);   /* lime */
 
+  /* Item sizes (Do stuff, lib/item-size.ts). Colour lives only in 6px dots and
+     a header hairline, the row rail's rule. Quick is the lime itself, so it
+     follows a theme's accent; the other three differ in lightness as well as
+     hue, so they stay apart for colour-blind eyes. */
+  --size-quick: var(--lime-solid);
+  --size-errand: oklch(0.68 0.1 255);
+  --size-big: var(--honey-solid);
+  --size-fuzzy: oklch(0.62 0.1 300);
+
   --chart-1: var(--accent-3);
   --chart-2: var(--accent-2);
   --chart-3: var(--accent-6);
@@ -378,6 +387,9 @@
   --accent-6: oklch(0.72 0.1 85);
   --accent-7: oklch(0.62 0.04 250);
   --accent-8: oklch(0.76 0.13 125);
+
+  --size-errand: oklch(0.74 0.1 255);
+  --size-fuzzy: oklch(0.72 0.1 300);
 
   --chart-1: var(--accent-3);
   --chart-2: var(--accent-2);
@@ -4006,4 +4018,49 @@ body {
   --shadow-elev-md: inset 0 1px 0 oklch(1 0 0 / 9%), 0 2px 4px oklch(0 0 0 / 35%), 0 8px 20px oklch(0 0 0 / 38%);
   --shadow-elev-lg: inset 0 1px 0 oklch(1 0 0 / 10%), 0 4px 8px oklch(0 0 0 / 40%), 0 16px 40px oklch(0 0 0 / 45%);
   --shadow-elev-bar: inset 0 1px 0 oklch(1 0 0 / 7%), 0 1px 2px oklch(0 0 0 / 40%), 0 6px 18px -4px oklch(0 0 0 / 45%);
+}
+
+/* ── Do stuff: the size header's hairline (components/sidebar/do-stuff.tsx) ──
+   The size's colour, solid for the first third and fading to nothing, so the
+   header reads as a quiet rule rather than a band. The fade is a colour mix,
+   never an opacity: quick's colour is the lime. One glint runs along it when
+   the mode opens, staggered down the sections by --rule-delay, and is gone
+   under either motion veto (the global clamp would snap it to its end frame,
+   which is off the right edge, so removing it outright is the same frame). */
+.do-stuff-rule {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(
+    90deg,
+    var(--rule) 0%,
+    var(--rule) 35%,
+    color-mix(in oklab, var(--rule) 0%, transparent) 100%
+  );
+}
+.do-stuff-rule::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 40%,
+    color-mix(in oklab, var(--background) 90%, transparent) 50%,
+    transparent 60%
+  );
+  transform: translateX(-100%);
+  animation: do-stuff-glint 1.1s ease-out var(--rule-delay, 0ms) 1 both;
+  pointer-events: none;
+}
+@keyframes do-stuff-glint {
+  to {
+    transform: translateX(100%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .do-stuff-rule::after {
+    display: none;
+  }
+}
+[data-reduce-motion='true'] .do-stuff-rule::after {
+  display: none;
 }

@@ -1,5 +1,7 @@
 import { z } from 'zod';
 export declare const PrioritySchema: z.ZodEnum<["low", "medium", "high"]>;
+/** How big an undated item is (migration 066's CHECK, in its order). */
+export declare const ItemSizeSchema: z.ZodEnum<["quick", "errand", "big", "fuzzy"]>;
 export declare const TimeBucketSchema: z.ZodEnum<["anytime", "morning", "afternoon", "evening"]>;
 export declare const TaskStatusSchema: z.ZodEnum<["pending", "completed", "cancelled"]>;
 export declare const HabitStatusSchema: z.ZodEnum<["pending", "done", "skipped"]>;
@@ -369,6 +371,14 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
      * projection and the 50-entry undo stack.
      */
     aiStatusAt: z.ZodOptional<z.ZodString>;
+    /**
+     * How big an undated item is (migration 066): one of ItemSizeSchema's
+     * values, or absent for "not sized yet". Set in the braindump by the Do stuff
+     * extension and read nowhere else. A LOOSE string on read for the reason the
+     * agent fields above give: a fifth size must not brick an old plugin's
+     * safeParse. App code narrows it with `itemSizeOf` (lib/item-size.ts).
+     */
+    size: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     status: "pending" | "completed" | "cancelled";
     id: string;
@@ -400,6 +410,7 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
+    size?: string | undefined;
 }, {
     status: "pending" | "completed" | "cancelled";
     id: string;
@@ -431,6 +442,7 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
+    size?: string | undefined;
 }>, {
     status: "pending" | "completed" | "cancelled";
     id: string;
@@ -462,6 +474,7 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
+    size?: string | undefined;
 }, {
     status: "pending" | "completed" | "cancelled";
     id: string;
@@ -493,6 +506,7 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
+    size?: string | undefined;
 }>;
 export declare const HabitSchema: z.ZodEffects<z.ZodObject<{
     group: z.ZodString;
@@ -724,6 +738,14 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
      * projection and the 50-entry undo stack.
      */
     aiStatusAt: z.ZodOptional<z.ZodString>;
+    /**
+     * How big an undated item is (migration 066): one of ItemSizeSchema's
+     * values, or absent for "not sized yet". Set in the braindump by the Do stuff
+     * extension and read nowhere else. A LOOSE string on read for the reason the
+     * agent fields above give: a fifth size must not brick an old plugin's
+     * safeParse. App code narrows it with `itemSizeOf` (lib/item-size.ts).
+     */
+    size: z.ZodOptional<z.ZodString>;
     type: z.ZodLiteral<"task">;
 }, "strip", z.ZodTypeAny, {
     type: "task";
@@ -757,6 +779,7 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
+    size?: string | undefined;
 }, {
     type: "task";
     status: "pending" | "completed" | "cancelled";
@@ -789,6 +812,7 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
+    size?: string | undefined;
 }>, {
     type: "task";
     status: "pending" | "completed" | "cancelled";
@@ -821,6 +845,7 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
+    size?: string | undefined;
 }, {
     type: "task";
     status: "pending" | "completed" | "cancelled";
@@ -853,6 +878,7 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
+    size?: string | undefined;
 }>;
 export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     /**
@@ -1085,6 +1111,14 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
      * projection and the 50-entry undo stack.
      */
     aiStatusAt: z.ZodOptional<z.ZodString>;
+    /**
+     * How big an undated item is (migration 066): one of ItemSizeSchema's
+     * values, or absent for "not sized yet". Set in the braindump by the Do stuff
+     * extension and read nowhere else. A LOOSE string on read for the reason the
+     * agent fields above give: a fifth size must not brick an old plugin's
+     * safeParse. App code narrows it with `itemSizeOf` (lib/item-size.ts).
+     */
+    size: z.ZodOptional<z.ZodString>;
     type: z.ZodLiteral<"custom">;
     /**
      * The user-defined type's machine name (item_types.name), e.g. 'errand'.
@@ -1129,6 +1163,7 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
+    size?: string | undefined;
 }, {
     type: "custom";
     status: "pending" | "completed" | "cancelled";
@@ -1162,6 +1197,7 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
+    size?: string | undefined;
 }>, {
     type: "custom";
     status: "pending" | "completed" | "cancelled";
@@ -1195,6 +1231,7 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
+    size?: string | undefined;
 }, {
     type: "custom";
     status: "pending" | "completed" | "cancelled";
@@ -1228,6 +1265,7 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
+    size?: string | undefined;
 }>;
 export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z.ZodObject<{
     /**
@@ -1309,6 +1347,14 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
      * projection and the 50-entry undo stack.
      */
     aiStatusAt: z.ZodOptional<z.ZodString>;
+    /**
+     * How big an undated item is (migration 066): one of ItemSizeSchema's
+     * values, or absent for "not sized yet". Set in the braindump by the Do stuff
+     * extension and read nowhere else. A LOOSE string on read for the reason the
+     * agent fields above give: a fifth size must not brick an old plugin's
+     * safeParse. App code narrows it with `itemSizeOf` (lib/item-size.ts).
+     */
+    size: z.ZodOptional<z.ZodString>;
     type: z.ZodLiteral<"task">;
 }, "strip", z.ZodTypeAny, {
     type: "task";
@@ -1342,6 +1388,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
+    size?: string | undefined;
 }, {
     type: "task";
     status: "pending" | "completed" | "cancelled";
@@ -1374,6 +1421,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
+    size?: string | undefined;
 }>, z.ZodObject<{
     /**
      * Optional, exactly like the task side's — one CLASSIFY axis means one field
@@ -1556,6 +1604,14 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
      * projection and the 50-entry undo stack.
      */
     aiStatusAt: z.ZodOptional<z.ZodString>;
+    /**
+     * How big an undated item is (migration 066): one of ItemSizeSchema's
+     * values, or absent for "not sized yet". Set in the braindump by the Do stuff
+     * extension and read nowhere else. A LOOSE string on read for the reason the
+     * agent fields above give: a fifth size must not brick an old plugin's
+     * safeParse. App code narrows it with `itemSizeOf` (lib/item-size.ts).
+     */
+    size: z.ZodOptional<z.ZodString>;
     type: z.ZodLiteral<"custom">;
     /**
      * The user-defined type's machine name (item_types.name), e.g. 'errand'.
@@ -1600,6 +1656,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
+    size?: string | undefined;
 }, {
     type: "custom";
     status: "pending" | "completed" | "cancelled";
@@ -1633,6 +1690,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
+    size?: string | undefined;
 }>]>, {
     type: "habit";
     status: "pending" | "done" | "skipped";
@@ -1689,6 +1747,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
+    size?: string | undefined;
 } | {
     type: "custom";
     status: "pending" | "completed" | "cancelled";
@@ -1722,6 +1781,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
+    size?: string | undefined;
 }, {
     type: "habit";
     status: "pending" | "done" | "skipped";
@@ -1778,6 +1838,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
+    size?: string | undefined;
 } | {
     type: "custom";
     status: "pending" | "completed" | "cancelled";
@@ -1811,6 +1872,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
+    size?: string | undefined;
 }>;
 export declare const ItemTypeDefSchema: z.ZodObject<{
     id: z.ZodString;
@@ -1922,6 +1984,14 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
      * projection and the 50-entry undo stack.
      */
     aiStatusAt: z.ZodOptional<z.ZodString>;
+    /**
+     * How big an undated item is (migration 066): one of ItemSizeSchema's
+     * values, or absent for "not sized yet". Set in the braindump by the Do stuff
+     * extension and read nowhere else. A LOOSE string on read for the reason the
+     * agent fields above give: a fifth size must not brick an old plugin's
+     * safeParse. App code narrows it with `itemSizeOf` (lib/item-size.ts).
+     */
+    size: z.ZodOptional<z.ZodString>;
 }, "pausedAt" | "pausedUntil" | "projectId" | "aiStatusAt">, "strip", z.ZodTypeAny, {
     title: string;
     status?: "pending" | "completed" | "cancelled" | undefined;
@@ -1949,6 +2019,7 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     assignee?: string | undefined;
     aiStatus?: "done" | "queued" | "working" | "blocked" | "failed" | undefined;
     aiResult?: string | undefined;
+    size?: string | undefined;
 }, {
     title: string;
     status?: "pending" | "completed" | "cancelled" | undefined;
@@ -1976,6 +2047,7 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     assignee?: string | undefined;
     aiStatus?: "done" | "queued" | "working" | "blocked" | "failed" | undefined;
     aiResult?: string | undefined;
+    size?: string | undefined;
 }>, {
     title: string;
     status?: "pending" | "completed" | "cancelled" | undefined;
@@ -2003,6 +2075,7 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     assignee?: string | undefined;
     aiStatus?: "done" | "queued" | "working" | "blocked" | "failed" | undefined;
     aiResult?: string | undefined;
+    size?: string | undefined;
 }, {
     title: string;
     status?: "pending" | "completed" | "cancelled" | undefined;
@@ -2030,6 +2103,7 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     assignee?: string | undefined;
     aiStatus?: "done" | "queued" | "working" | "blocked" | "failed" | undefined;
     aiResult?: string | undefined;
+    size?: string | undefined;
 }>;
 export declare const HabitCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     id: z.ZodEffects<z.ZodOptional<z.ZodNullable<z.ZodString>>, string | undefined, string | null | undefined>;
@@ -3315,6 +3389,14 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
          * projection and the 50-entry undo stack.
          */
         aiStatusAt: z.ZodOptional<z.ZodString>;
+        /**
+         * How big an undated item is (migration 066): one of ItemSizeSchema's
+         * values, or absent for "not sized yet". Set in the braindump by the Do stuff
+         * extension and read nowhere else. A LOOSE string on read for the reason the
+         * agent fields above give: a fifth size must not brick an old plugin's
+         * safeParse. App code narrows it with `itemSizeOf` (lib/item-size.ts).
+         */
+        size: z.ZodOptional<z.ZodString>;
     }, "strip", z.ZodTypeAny, {
         status: "pending" | "completed" | "cancelled";
         id: string;
@@ -3346,6 +3428,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
+        size?: string | undefined;
     }, {
         status: "pending" | "completed" | "cancelled";
         id: string;
@@ -3377,6 +3460,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
+        size?: string | undefined;
     }>, {
         status: "pending" | "completed" | "cancelled";
         id: string;
@@ -3408,6 +3492,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
+        size?: string | undefined;
     }, {
         status: "pending" | "completed" | "cancelled";
         id: string;
@@ -3439,6 +3524,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
+        size?: string | undefined;
     }>, "many">;
     habits: z.ZodArray<z.ZodEffects<z.ZodObject<{
         group: z.ZodString;
@@ -3718,6 +3804,14 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
          * projection and the 50-entry undo stack.
          */
         aiStatusAt: z.ZodOptional<z.ZodString>;
+        /**
+         * How big an undated item is (migration 066): one of ItemSizeSchema's
+         * values, or absent for "not sized yet". Set in the braindump by the Do stuff
+         * extension and read nowhere else. A LOOSE string on read for the reason the
+         * agent fields above give: a fifth size must not brick an old plugin's
+         * safeParse. App code narrows it with `itemSizeOf` (lib/item-size.ts).
+         */
+        size: z.ZodOptional<z.ZodString>;
         type: z.ZodLiteral<"task">;
     }, "strip", z.ZodTypeAny, {
         type: "task";
@@ -3751,6 +3845,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
+        size?: string | undefined;
     }, {
         type: "task";
         status: "pending" | "completed" | "cancelled";
@@ -3783,6 +3878,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
+        size?: string | undefined;
     }>, z.ZodObject<{
         /**
          * Optional, exactly like the task side's — one CLASSIFY axis means one field
@@ -3965,6 +4061,14 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
          * projection and the 50-entry undo stack.
          */
         aiStatusAt: z.ZodOptional<z.ZodString>;
+        /**
+         * How big an undated item is (migration 066): one of ItemSizeSchema's
+         * values, or absent for "not sized yet". Set in the braindump by the Do stuff
+         * extension and read nowhere else. A LOOSE string on read for the reason the
+         * agent fields above give: a fifth size must not brick an old plugin's
+         * safeParse. App code narrows it with `itemSizeOf` (lib/item-size.ts).
+         */
+        size: z.ZodOptional<z.ZodString>;
         type: z.ZodLiteral<"custom">;
         /**
          * The user-defined type's machine name (item_types.name), e.g. 'errand'.
@@ -4009,6 +4113,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
+        size?: string | undefined;
     }, {
         type: "custom";
         status: "pending" | "completed" | "cancelled";
@@ -4042,6 +4147,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
+        size?: string | undefined;
     }>]>, {
         type: "habit";
         status: "pending" | "done" | "skipped";
@@ -4098,6 +4204,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
+        size?: string | undefined;
     } | {
         type: "custom";
         status: "pending" | "completed" | "cancelled";
@@ -4131,6 +4238,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
+        size?: string | undefined;
     }, {
         type: "habit";
         status: "pending" | "done" | "skipped";
@@ -4187,6 +4295,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
+        size?: string | undefined;
     } | {
         type: "custom";
         status: "pending" | "completed" | "cancelled";
@@ -4220,6 +4329,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
+        size?: string | undefined;
     }>, "many">>;
     routines: z.ZodOptional<z.ZodArray<z.ZodObject<{
         /** A free-text note — what this is for (migration 049). */
@@ -4452,6 +4562,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
+        size?: string | undefined;
     }[];
     habits: {
         status: "pending" | "done" | "skipped";
@@ -4553,6 +4664,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
+        size?: string | undefined;
     } | {
         type: "custom";
         status: "pending" | "completed" | "cancelled";
@@ -4586,6 +4698,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
+        size?: string | undefined;
     })[] | undefined;
     routines?: {
         id: string;
@@ -4663,6 +4776,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
+        size?: string | undefined;
     }[];
     habits: {
         status: "pending" | "done" | "skipped";
@@ -4764,6 +4878,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
+        size?: string | undefined;
     } | {
         type: "custom";
         status: "pending" | "completed" | "cancelled";
@@ -4797,6 +4912,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
+        size?: string | undefined;
     })[] | undefined;
     routines?: {
         id: string;

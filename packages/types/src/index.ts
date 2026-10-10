@@ -1,6 +1,7 @@
 // Schemas (Zod) — use for runtime validation
 export {
   PrioritySchema,
+  ItemSizeSchema,
   TimeBucketSchema,
   TimeOfDaySchema,
   TaskStatusSchema,
@@ -65,6 +66,7 @@ export {
 import { z } from 'zod'
 import {
   PrioritySchema,
+  ItemSizeSchema,
   TimeBucketSchema,
   TaskStatusSchema,
   HabitStatusSchema,
@@ -104,6 +106,7 @@ import {
 } from './schemas.js'
 
 export type Priority         = z.infer<typeof PrioritySchema>
+export type ItemSize         = z.infer<typeof ItemSizeSchema>
 export type TimeBucket       = z.infer<typeof TimeBucketSchema>
 export type TaskStatus       = z.infer<typeof TaskStatusSchema>
 export type HabitStatus      = z.infer<typeof HabitStatusSchema>

@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo } from 'react';
 
-import { EXT_GOALS, EXT_ORGANIZE, EXT_STREAKS, extensionManifest, resolveEnabled } from './extension-registry';
+import { EXT_DO_STUFF, EXT_GOALS, EXT_ORGANIZE, EXT_STREAKS, extensionManifest, resolveEnabled } from './extension-registry';
 import { useExtensionsStore } from './extensions-store';
 import { useViewStore, type BraindumpGroupBy } from './view-store';
 import { goalFilterItemIds } from './goals';
@@ -185,6 +185,8 @@ export const useGoalsEnabled = (): boolean => useExtensionEnabled(EXT_GOALS);
 export const goalsEnabled = (): boolean => extensionEnabled(EXT_GOALS);
 export const useOrganizeEnabled = (): boolean => useExtensionEnabled(EXT_ORGANIZE);
 export const organizeEnabled = (): boolean => extensionEnabled(EXT_ORGANIZE);
+export const useDoStuffEnabled = (): boolean => useExtensionEnabled(EXT_DO_STUFF);
+export const doStuffEnabled = (): boolean => extensionEnabled(EXT_DO_STUFF);
 export const useStreaksEnabled = (): boolean => useExtensionEnabled(EXT_STREAKS);
 export const streaksEnabled = (): boolean => extensionEnabled(EXT_STREAKS);
 

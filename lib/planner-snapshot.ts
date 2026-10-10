@@ -58,7 +58,7 @@ const FUTURE_SKEW_MS = 5 * 60_000;
 
 /** Bump BY HAND when loadPlannerData's output changes meaning — the ledger test in
  *  tests/unit/planner-bundle.test.ts fails until you do. */
-export const SNAPSHOT_FORMAT = 1;
+export const SNAPSHOT_FORMAT = 2;
 
 /** 32-bit FNV-1a over UTF-16 code units, as 8 hex digits. A fingerprint, not a MAC. */
 export function fnv1a(text: string): string {
