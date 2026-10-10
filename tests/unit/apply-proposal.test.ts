@@ -715,6 +715,39 @@ describe('applyProposal: containers', () => {
   });
 });
 
+describe('applyProposal: container states and goal roles', () => {
+  it('pauses a routine until the day given, and one undo resumes it', () => {
+    const id = store().addRoutine({ name: 'Morning', itemIds: [] });
+    const until = format(addDays(new Date(), 7), 'yyyy-MM-dd');
+    expect(store().applyProposal(proposalOf({ kind: 'container', container: 'routine', containerId: id, state: 'paused', until }))).toBe(1);
+    expect(store().routines.find((r) => r.id === id)).toMatchObject({ pausedAt: expect.any(String), pausedUntil: until });
+    store().undo();
+    expect(store().routines.find((r) => r.id === id)?.pausedAt).toBeUndefined();
+  });
+
+  it("moves a season's and a goal's state through their own actions", () => {
+    const season = store().addSeason({ name: 'Summer', state: 'auto', itemIds: [], routineIds: [] });
+    const goal = store().addGoal({ name: 'Fit', state: 'active', memberIds: [], milestoneIds: [], checkinIds: [] });
+    store().applyProposal(proposalOf({ kind: 'container', container: 'season', containerId: season, state: 'paused' }));
+    store().applyProposal(proposalOf({ kind: 'container', container: 'goal', containerId: goal, state: 'achieved' }));
+    expect(store().seasons.find((s) => s.id === season)?.state).toBe('paused');
+    expect(store().goals.find((g) => g.id === goal)).toMatchObject({ state: 'achieved', achievedAt: expect.any(String) });
+    store().undo();
+    expect(store().goals.find((g) => g.id === goal)).toMatchObject({ state: 'active' });
+    expect(store().goals.find((g) => g.id === goal)?.achievedAt).toBeUndefined();
+  });
+
+  it("makes a goal's member a milestone, moving it rather than holding it twice", () => {
+    const goal = store().addGoal({ name: 'Fit', state: 'active', memberIds: ['task-1'], milestoneIds: [], checkinIds: [] });
+    expect(
+      store().applyProposal(proposalOf({ kind: 'membership', itemId: 'task-1', container: 'goal', containerId: goal, role: 'milestone' })),
+    ).toBe(1);
+    expect(store().goals.find((g) => g.id === goal)).toMatchObject({ memberIds: [], milestoneIds: ['task-1'] });
+    store().undo();
+    expect(store().goals.find((g) => g.id === goal)).toMatchObject({ memberIds: ['task-1'], milestoneIds: [] });
+  });
+});
+
 describe('applyProposal: deletes and streak resets', () => {
   it('deletes an item, and one undo brings it back', () => {
     expect(store().applyProposal(proposalOf({ kind: 'delete', what: 'item', id: 'task-1' }))).toBe(1);

@@ -292,7 +292,16 @@ export function makeLookups(source: LookupSource) {
         for (const r of rows) lines.push(`- ${r.name} [id: ${r.id}]${r.state ? ` (${r.state})` : ''}`);
       }
     };
-    named('Routines', routines);
+    // The server knows no zone, so "paused" here is read against the UTC day:
+    // a hint for the model, and the card is checked again in the browser.
+    const utcToday = new Date().toISOString().slice(0, 10);
+    named(
+      'Routines',
+      routines?.map((r) => {
+        const paused = !!r.pausedAt && (!r.pausedUntil || r.pausedUntil > utcToday);
+        return { id: r.id, name: r.name, state: paused ? (r.pausedUntil ? `paused until ${r.pausedUntil}` : 'paused') : undefined };
+      }) ?? null,
+    );
     named('Seasons', seasons);
     named('Goals', goals);
     return { content: capped(lines.join('\n')), action };

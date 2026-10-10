@@ -380,4 +380,21 @@ export const CASES: EvalCase[] = [
     saysNot: [/deleted|history (is|was) (gone|cleared)/i],
     why: 'Offers the reset alone on its card, and does not say the history goes with it.',
   },
+  {
+    id: 'pause-routine',
+    ask: "I'm travelling this week, pause my morning routine.",
+    lookups: [
+      { tool: 'planner_overview', example: {} },
+      proposes({
+        summary: 'Morning paused while you travel',
+        operations: [{ kind: 'container', container: 'routine', containerId: 'rtn_0', state: 'paused' }],
+      }),
+    ],
+    card: {
+      accepts: (d) =>
+        ops(d).some((o) => o.kind === 'container' && o.containerId === 'rtn_0' && o.state === 'paused') &&
+        !ops(d).some((o) => o.kind === 'verb' && o.verb === 'pause'),
+    },
+    why: 'Pauses the routine as one, rather than pausing each of its habits.',
+  },
 ];

@@ -86,6 +86,10 @@ const IDEAL: Record<string, { found?: RegExp[]; reply: string }> = {
     found: [/Reset the streak on "Read 20 pages" from 3 days to 0/],
     reply: 'The card below sets your reading streak back to 0. The days you have read stay ticked.',
   },
+  'pause-routine': {
+    found: [/Morning \(routine\): pause until you resume it/],
+    reply: 'Safe travels. The card below pauses your Morning routine until you resume it.',
+  },
 };
 
 /** A model that makes each case's example calls, then gives its ideal reply. */

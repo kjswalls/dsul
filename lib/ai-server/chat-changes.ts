@@ -95,6 +95,22 @@ export const PROPOSE_TOOL: ToolDef = {
             startsOn: { type: 'string', description: 'container, seasons and goals: the first day, YYYY-MM-DD.' },
             endsOn: { type: 'string', description: 'container, seasons only: the last day, YYYY-MM-DD.' },
             targetOn: { type: 'string', description: 'container, goals only: the day being aimed at, YYYY-MM-DD.' },
+            state: {
+              type: 'string',
+              enum: ['active', 'paused', 'auto', 'achieved', 'abandoned'],
+              description:
+                'container, an existing one only: a routine is active or paused (with until for the day it comes ' +
+                'back); a season is auto (on while its dates say so), active (on) or paused (off); a goal is active, ' +
+                'achieved or abandoned (set aside). A project has no state.',
+            },
+            role: {
+              type: 'string',
+              enum: ['member', 'milestone', 'checkin'],
+              description:
+                'membership, goals only: what the item is to the goal. milestone is a one-off checkpoint (its day ' +
+                'is the target date), checkin a repeating review, member everything else. On an item already in ' +
+                'the goal it changes the role.',
+            },
             itemId: {
               type: 'string',
               description: 'update, verb, membership and resetStreak: the id of the item, copied exactly.',
@@ -112,7 +128,9 @@ export const PROPOSE_TOOL: ToolDef = {
             },
             until: {
               type: 'string',
-              description: 'pause only: the day it comes back, YYYY-MM-DD. Leave out to pause until they resume it.',
+              description:
+                'pause, or a routine\'s container change to paused: the day it comes back, YYYY-MM-DD. Leave out to ' +
+                'pause until they resume it.',
             },
             itemType: {
               type: 'string',
