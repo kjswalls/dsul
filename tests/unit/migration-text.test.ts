@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { DEVICE_ROSTER_COLUMNS } from '@/lib/devices/db';
 import { STALE_DAYS } from '@/lib/devices/prune';
 import { placeholderDeviceId } from '@/lib/devices/routes';
+import { CUE_LOG_KEY, cueKey, dayKey, snoozeKey } from '@/lib/reminders/cue-log';
 
 /**
  * Every migration from 058 on, read as text, against the rules
@@ -669,5 +670,62 @@ describe('065_devices', () => {
 
   it("keeps the browser's id inside the device_id check (lib/devices/web-client.ts)", () => {
     expect(flat).toContain("check (device_id ~ '^[a-za-z0-9:._-]{8,128}$')");
+  });
+});
+
+/**
+ * 067 is the reminders ledger (memory/plans/reminders-platforms.md §4.3, the
+ * plan's "060_cue_log.sql", renumbered), landed with PR-1b's ack route.
+ * scripts/verify-067.sh replays it on a real Postgres; these hold its text to
+ * the posture the plan gives it and to the keys lib/reminders/cue-log.ts writes.
+ */
+describe('067_cue_log', () => {
+  const file = RULED.find((f) => f.name === '067_cue_log.sql');
+  const sql = code(file?.text ?? '');
+  const flat = sql.replace(/\s+/g, ' ');
+
+  it('exists', () => {
+    expect(file).toBeDefined();
+  });
+
+  it('is a ledger: the owner reads, and only the service role writes', () => {
+    expect(flat).toContain('revoke all on table public.cue_log from authenticated;');
+    expect(flat).toContain('grant select on table public.cue_log to authenticated;');
+    expect(flat).not.toMatch(/grant [^;]*(insert|update|delete)[^;]* on table public\.cue_log to (authenticated|anon)/);
+    expect(flat).toContain('grant select, insert, update, delete on table public.cue_log to service_role;');
+    expect(flat).toContain('alter table public.cue_log enable row level security;');
+    expect(flat).toMatch(/create policy "users read their own cue log" on public\.cue_log for select using \(auth\.uid\(\) = user_id\);/);
+    expect(flat).not.toMatch(/create policy [^;]* on public\.cue_log for (insert|update|delete|all)/);
+  });
+
+  it('cascades from the account, and keys a row by (user, key)', () => {
+    expect(flat).toContain('user_id uuid not null references auth.users (id) on delete cascade');
+    expect(flat).toContain('create unique index if not exists cue_log_user_key_idx on public.cue_log (user_id, key);');
+  });
+
+  it('holds the columns the ack route writes, and acked_device inside the device id check', () => {
+    expect(flat).toContain('acked_at timestamptz');
+    expect(flat).toContain('acked_device text');
+    expect(flat).toContain("check (acked_device is null or acked_device ~ '^[a-za-z0-9:._-]{8,128}$')");
+  });
+
+  it('prunes at 03:53 after 180 days, under the cron guard', () => {
+    expect(flat).toContain("'prune-cue-log', '53 3 * * *', $job$delete from public.cue_log where created_at < now() - interval '180 days'$job$");
+  });
+
+  it("every key lib/reminders/cue-log.ts writes passes the ack route's shape and the table's length check", () => {
+    const id = '44444444-4444-4444-8444-444444444444';
+    const keys = [
+      cueKey(id, '2026-10-10', '07:30'),
+      snoozeKey(id, '2026-10-10T11:46:00+00:00'),
+      dayKey('eod', '2026-10-10'),
+      dayKey('last-call', '2026-10-10'),
+    ];
+    expect(keys[1]).toBe(`snooze:${id}:2026-10-10T11:46:00.000Z`);
+    for (const key of keys) {
+      expect(key).toMatch(CUE_LOG_KEY);
+      expect(key!.length).toBeLessThanOrEqual(200);
+    }
+    expect(flat).toContain('check (char_length(key) between 1 and 200)');
   });
 });

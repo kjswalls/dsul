@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 import { called, eqOf, fakeService, op, type FakeQuery, type FakeResult } from './helpers/fake-service';
 
@@ -123,5 +123,110 @@ describe('Done starts the tick recipes, once the response is out', () => {
     const res = await act({ action: 'done', itemId: ITEM, dateStr: DAY });
     expect(res.status).toBe(500);
     expect(h.after).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * lib/reminders/act.ts (extracted, reminders PR-1b): Snooze held to its day
+ * when the account has a zone, and Skip through the phone's own intent.
+ */
+describe('Snooze is held to the day it was about', () => {
+  const TZ = 'America/New_York';
+  let zone: string | null;
+
+  beforeEach(() => {
+    zone = TZ;
+    fake = fakeService((q) => {
+      if (q.table === 'user_settings') return { data: { timezone: zone }, error: null };
+      return respond(q);
+    });
+    h.session = { ...fake.service, auth: { getUser: async () => ({ data: { user: { id: USER } } }) } };
+    vi.useFakeTimers({ toFake: ['Date'] });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const snoozeWrite = () => fake.queries.find((q) => op(q) === 'update');
+
+  it('23:55 in New York: a 15-minute snooze would ring tomorrow, so nothing is written', async () => {
+    vi.setSystemTime(new Date('2026-10-08T03:55:00.000Z')); // 23:55 EDT on the 7th
+    const res = await act({ action: 'snooze', itemId: ITEM, dateStr: DAY });
+    expect(await res.json()).toEqual({ ok: true, snoozedUntil: null });
+    expect(snoozeWrite()).toBeUndefined();
+  });
+
+  it('mid-afternoon: stored with the day it belongs to', async () => {
+    vi.setSystemTime(new Date('2026-10-07T18:00:00.000Z')); // 14:00 EDT
+    const res = await act({ action: 'snooze', itemId: ITEM, dateStr: DAY });
+    expect(await res.json()).toEqual({ ok: true, snoozedUntil: '2026-10-07T18:15:00.000Z' });
+    expect(called(snoozeWrite()!, 'update')[0][0]).toEqual({
+      reminder_snooze_until: '2026-10-07T18:15:00.000Z',
+      reminder_snooze_date: DAY,
+    });
+  });
+
+  it('no stored zone: stored as it always was, for the scan to expire', async () => {
+    zone = null;
+    vi.setSystemTime(new Date('2026-10-08T03:55:00.000Z'));
+    const res = await act({ action: 'snooze', itemId: ITEM, dateStr: DAY });
+    expect((await res.json()).snoozedUntil).toBe('2026-10-08T04:10:00.000Z');
+  });
+});
+
+describe('Skip', () => {
+  beforeEach(() => {
+    row = {
+      id: ITEM,
+      type: 'habit',
+      parent_item_id: null,
+      repeat_frequency: 'daily',
+      status: 'pending',
+      start_date: null,
+      skipped_dates: [],
+      daily_counts: {},
+      current_day_count: 0,
+    };
+  });
+
+  it('clears the day’s completion, then skips it, reports the stake, and starts the skip recipes', async () => {
+    const res = await act({ action: 'skip', itemId: ITEM, dateStr: DAY });
+    expect(await res.json()).toEqual({ ok: true });
+    expect(fake.rpc.mock.calls.map(([name]) => name)).toEqual(['set_item_completion', 'set_item_skip']);
+    expect(fake.rpc.mock.calls[1][1]).toMatchObject({ item_id: ITEM, date_str: DAY, skipped: true });
+    expect(h.reportLiveCompletion).toHaveBeenCalledWith(expect.anything(), {
+      userId: USER,
+      itemId: ITEM,
+      dateStr: DAY,
+      completed: false,
+    });
+    await runAfter();
+    expect(h.runItemEventRecipes).toHaveBeenCalledWith({ service: true }, USER, {
+      kind: 'item.skipped',
+      itemId: ITEM,
+      type: 'habit',
+      date: DAY,
+    });
+  });
+
+  it('a one-off is never skipped (the registry’s gate)', async () => {
+    row = { ...row, type: 'task', repeat_frequency: null };
+    const res = await act({ action: 'skip', itemId: ITEM, dateStr: DAY });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'not_skippable' });
+    expect(fake.rpc).not.toHaveBeenCalled();
+  });
+
+  it('another user’s item finds nothing: 404', async () => {
+    row = null;
+    expect((await act({ action: 'skip', itemId: ITEM, dateStr: DAY })).status).toBe(404);
+  });
+});
+
+describe('the body', () => {
+  it('400 for an action no button has', async () => {
+    expect((await act({ action: 'dismiss', itemId: ITEM, dateStr: DAY })).status).toBe(400);
+    expect((await act({ action: 'done', itemId: ITEM, dateStr: '7 Oct' })).status).toBe(400);
   });
 });

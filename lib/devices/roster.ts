@@ -78,3 +78,32 @@ export function withKind(prefs: unknown, kind: DeviceSendKind, on: boolean): Rec
       : {}
   return { ...base, kinds: { ...kinds, [kind]: on } }
 }
+
+/**
+ * Can this row ring a cue at the desk itself (the page as a device,
+ * reminders PR-1b)? A browser or the desktop app: a screen with dsul open on
+ * it. The iPhone app schedules its own and never claims.
+ */
+export function claimsAtDesk(row: RosterRow): boolean {
+  return row.platform === 'web' || row.platform === 'electron'
+}
+
+/** `prefs.claimsLocally`: absent is on, so every new browser starts with it on. */
+export function claimsLocallyOn(row: RosterRow): boolean {
+  return prefsOf(row.prefs).claimsLocally !== false
+}
+
+/** The prefs blob with `claimsLocally` set, every other key kept. */
+export function withClaimsLocally(prefs: unknown, on: boolean): Record<string, unknown> {
+  const base = prefs && typeof prefs === 'object' && !Array.isArray(prefs) ? (prefs as Record<string, unknown>) : {}
+  return { ...base, claimsLocally: on }
+}
+
+/** The switch's words, and what it costs. Tested in devices-web-client.test.ts. */
+export const CLAIMS_LOCALLY_COPY = {
+  label: 'Ring here while I’m using it',
+  help:
+    'When dsul is open on a screen with “Ring here while I’m using it” on, and you’ve used it in the last five ' +
+    'minutes, a habit’s reminder rings there and nowhere else: not on your phone, and no text or call for it ' +
+    'either. Each browser has its own switch, and a new browser starts with it on.',
+} as const

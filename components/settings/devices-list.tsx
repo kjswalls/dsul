@@ -5,10 +5,14 @@ import { formatDistanceToNowStrict } from 'date-fns';
 import { Switch } from '@/components/ui/switch';
 import { DEVICE_ROSTER_COLUMNS, isMissingRegistry } from '@/lib/devices/db';
 import {
+  CLAIMS_LOCALLY_COPY,
   DEVICE_KIND_SWITCHES,
+  claimsAtDesk,
+  claimsLocallyOn,
   coveredByIphoneApp,
   deviceName,
   kindOn,
+  withClaimsLocally,
   withKind,
   type RosterRow,
 } from '@/lib/devices/roster';
@@ -66,8 +70,7 @@ export function DevicesList() {
     };
   }, []);
 
-  const toggle = useCallback(async (row: RosterRow, kind: DeviceSendKind, on: boolean) => {
-    const prefs = withKind(row.prefs, kind, on);
+  const savePrefs = useCallback(async (row: RosterRow, prefs: Record<string, unknown>) => {
     setRows((rs) => rs?.map((r) => (r.id === row.id ? { ...r, prefs } : r)) ?? rs);
     const { error } = await createClient()
       .from('devices')
@@ -84,6 +87,15 @@ export function DevicesList() {
     }
   }, []);
 
+  const toggle = useCallback(
+    (row: RosterRow, kind: DeviceSendKind, on: boolean) => savePrefs(row, withKind(row.prefs, kind, on)),
+    [savePrefs]
+  );
+  const toggleClaims = useCallback(
+    (row: RosterRow, on: boolean) => savePrefs(row, withClaimsLocally(row.prefs, on)),
+    [savePrefs]
+  );
+
   if (!rows || (rows.length === 0 && !failed)) return null;
 
   return (
@@ -94,6 +106,11 @@ export function DevicesList() {
       <p className="text-muted-foreground mt-1 text-xs">
         Where reminders can reach you. Turn a kind off for one device and the others still get it.
       </p>
+      {rows.some(claimsAtDesk) && (
+        <p className="text-muted-foreground mt-1 text-xs" data-testid="claims-locally-help">
+          {CLAIMS_LOCALLY_COPY.help}
+        </p>
+      )}
       {failed && (
         <p role="status" className="text-muted-foreground mt-2 text-xs">
           Couldn’t load or save your devices. Try again later.
@@ -118,6 +135,16 @@ export function DevicesList() {
                 <p className="text-muted-foreground mt-1 text-xs">Covered by dsul on this iPhone.</p>
               ) : (
                 <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2">
+                  {claimsAtDesk(row) && (
+                    <label htmlFor={`device-${row.id}-claims`} className="flex items-center gap-2 text-xs">
+                      <Switch
+                        id={`device-${row.id}-claims`}
+                        checked={claimsLocallyOn(row)}
+                        onCheckedChange={(on) => void toggleClaims(row, on)}
+                      />
+                      {CLAIMS_LOCALLY_COPY.label}
+                    </label>
+                  )}
                   {DEVICE_KIND_SWITCHES.map(({ kind, label }) => {
                     const id = `device-${row.id}-${kind}`;
                     return (

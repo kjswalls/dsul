@@ -94,15 +94,16 @@ describe('one door', () => {
       const rel = `${dir}/${name}`;
       return statSync(path.join(ROOT, rel)).isDirectory() ? files(rel) : /\.tsx?$/.test(name) ? [rel] : [];
     });
-  const callers = [...files('app/api/app'), 'app/api/reminders/act/route.ts', 'app/api/cron/reminders/route.ts'];
+  // The act route's writes live in lib/reminders/act.ts since reminders PR-1b.
+  const callers = [...files('app/api/app'), 'app/api/reminders/act/route.ts', 'lib/reminders/act.ts', 'app/api/cron/reminders/route.ts'];
 
   it.each(callers.map((c) => [c]))('%s reaches recipes only through @/lib/recipes/server', (rel) => {
     const specs = valueSpecifiers(readFileSync(path.join(ROOT, rel), 'utf8')).filter((s) => s.includes('recipes'));
     for (const s of specs) expect(s, rel).toBe('@/lib/recipes/server');
   });
 
-  it('the item-write routes and the act route use it', () => {
-    for (const rel of ['app/api/app/items/route.ts', 'app/api/app/items/[id]/route.ts', 'app/api/reminders/act/route.ts']) {
+  it('the item-write routes and the act route’s writes (lib/reminders/act.ts) use it', () => {
+    for (const rel of ['app/api/app/items/route.ts', 'app/api/app/items/[id]/route.ts', 'lib/reminders/act.ts']) {
       expect(readFileSync(path.join(ROOT, rel), 'utf8'), rel).toContain("from '@/lib/recipes/server'");
     }
   });

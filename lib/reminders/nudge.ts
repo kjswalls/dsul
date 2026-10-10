@@ -102,4 +102,11 @@ export interface Nudge {
    * nudge cannot reach a channel without someone deciding how long it lasts.
    */
   expiresAtMs: number
+  /**
+   * The nudge's name in cue_log (lib/reminders/cue-log.ts), carried on a push
+   * as `data.key` so the device that shows it can ack it
+   * (POST /api/reminders/ack). Optional: a nudge with none is shown and never
+   * acked.
+   */
+  logKey?: string
 }
