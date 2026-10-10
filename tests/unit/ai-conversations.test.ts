@@ -852,3 +852,56 @@ describe('parseSearch', () => {
     expect(parseSearch({ q: `a${String.fromCharCode(0xd83d)}` })).toBe('a\uFFFD');
   });
 });
+
+describe('action lines (migration 068)', () => {
+  const user = { id: U1, role: 'user', content: 'hi' };
+  const reply = { id: R1, role: 'assistant', content: 'hello', replyTo: U1, answerer: 'model' };
+  const body = (r: Record<string, unknown>, u: Record<string, unknown> = user) => ({ ownerId: USER, messages: [u, r] });
+
+  it('a reply may carry them; they are cleaned, never refused for length', () => {
+    const parsed = parseTurn(body({ ...reply, actions: ['  Looked for "dentist"\n(1 found) ', '', 7, 'x'.repeat(500)] }));
+    expect(parsed?.messages[1].actions).toEqual(['Looked for "dentist" (1 found)', 'x'.repeat(CHAT_LIMITS.actionChars)]);
+    const many = parseTurn(body({ ...reply, actions: Array.from({ length: 30 }, (_, i) => `line ${i}`) }));
+    expect(many?.messages[1].actions).toHaveLength(CHAT_LIMITS.actions);
+    expect(parseTurn(body({ ...reply, actions: [] }))?.messages[1]).not.toHaveProperty('actions');
+  });
+
+  it('a user message with lines, or lines that are not a list, is a 400', () => {
+    expect(parseTurn(body(reply, { ...user, actions: ['x'] }))).toBeNull();
+    expect(parseTurn(body({ ...reply, actions: 'Looked for x' }))).toBeNull();
+  });
+
+  it('appendTurn sends a reply’s lines to chat_append, and nothing for a reply without them', async () => {
+    respond = (call) =>
+      call.rpc === 'chat_append' ? { data: { status: 'ok', inserted: 2, messageCount: 2 }, error: null } : { data: convRow(), error: null };
+    await appendTurn(db, USER, CID, {
+      create: null,
+      messages: [
+        { id: U1, role: 'user', content: 'hi' },
+        { id: R1, role: 'assistant', content: 'yo', replyTo: U1, answerer: 'model', actions: ['Looked over your projects, routines and goals'] },
+      ],
+    });
+    const sent = (calls[0].args as { p_messages: Record<string, unknown>[] }).p_messages;
+    expect(sent[0]).not.toHaveProperty('actions');
+    expect(sent[1].actions).toEqual(['Looked over your projects, routines and goals']);
+
+    calls = [];
+    await appendTurn(db, USER, CID, {
+      create: null,
+      messages: [
+        { id: U1, role: 'user', content: 'hi' },
+        { id: R1, role: 'assistant', content: 'yo', replyTo: U1, answerer: 'model' },
+      ],
+    });
+    expect((calls[0].args as { p_messages: Record<string, unknown>[] }).p_messages[1]).not.toHaveProperty('actions');
+  });
+
+  it('toMessage reads them back from meta, cleaned again, and only on a reply', () => {
+    expect(toMessage(msgRow(2, { meta: { actions: ['Looked for "x" (1 found)', 42, ''] } }))?.actions).toEqual([
+      'Looked for "x" (1 found)',
+    ]);
+    expect(toMessage(msgRow(2, { meta: {} }))).not.toHaveProperty('actions');
+    expect(toMessage(msgRow(2, { meta: { actions: 'nope', other: 'owner-written' } }))).not.toHaveProperty('actions');
+    expect(toMessage(msgRow(1, { meta: { actions: ['x'] } }))).not.toHaveProperty('actions');
+  });
+});

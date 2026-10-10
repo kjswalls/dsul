@@ -59,8 +59,12 @@ last round told to answer. The three lookups (lib/ai-server/chat-lookups.ts: `fi
 and every result opens with a line saying it is data, not instructions. Each lookup streams an
 `{action}` frame (`SseFrame.action`, our words, capped at 200), and the reply comes as one `{content}`
 frame: a turn with tools is not streamed token by token. A model without tools streams as before.
-The action lines live on `ChatMessage.actions` in memory only: `chat_append` (057) never writes
-`chat_messages.meta`, so saving them needs a migration of its own (next). The snapshot is unchanged
+The action lines live on `ChatMessage.actions` and are saved with the reply: migration 068 teaches
+`chat_append` an optional `actions` key per reply, written to `chat_messages.meta` as `{actions}` (at
+most 16 lines of 200, `cleanActions` in lib/conversation-types.ts and the same rule in SQL), and
+`toMessage` reads them back. 068 grants authenticated INSERT on `meta`, so meta is owner-asserted;
+only `actions` is ever read from it, cleaned again. Before 068 is applied, 057's `chat_append` ignores
+the key and a turn saves without its lines. The snapshot is unchanged
 for now; trimming it to today waits on the evals (step 3).
 
 **Note 2026-10-04: "Ask AI" on the item's right-click menu.** One row, a submenu of at

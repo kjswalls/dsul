@@ -52,9 +52,11 @@ export interface StoredMessage {
   /** The connection's model id on the model path; null for OpenClaw. */
   model: string | null;
   createdAt: string;
+  /** A reply's action lines (migration 068's `meta.actions`); absent when it has none. */
+  actions?: string[];
 }
 
-/** What a client sends for one message. `meta` is never accepted in 2a. */
+/** What a client sends for one message. `meta` itself is never accepted. */
 export interface TurnMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -64,6 +66,8 @@ export interface TurnMessage {
   replyTo?: string | null;
   answerer?: Answerer | null;
   model?: string | null;
+  /** A reply only: what the AI looked up, in dsul's words (cleanActions). */
+  actions?: string[];
 }
 
 export interface TurnCreate {
@@ -164,6 +168,13 @@ export const CHAT_LIMITS = {
    * a 5xx may already have landed, so it is dropped, never re-sent.
    */
   changesPerCall: 20,
+  /**
+   * A reply's action lines, at most, and each line's length: the chat loop's
+   * 4 rounds of 4 lookups, and the wire's cap (lib/ai-server/stream.ts).
+   * chat_append (068) cuts to the same.
+   */
+  actions: 16,
+  actionChars: 200,
 } as const;
 
 export const DEFAULT_TITLE = 'New chat';
@@ -245,4 +256,21 @@ export function deriveTitle(text: string): string {
     return `${(space >= WORD_CUT_MIN ? cut.slice(0, space) : cut).trimEnd()}…`;
   }
   return DEFAULT_TITLE;
+}
+
+/**
+ * A reply's action lines as they are kept: strings only, each collapsed to one
+ * line and cut to CHAT_LIMITS.actionChars, blanks dropped, at most
+ * CHAT_LIMITS.actions. Anything that is not an array is no lines. chat_append
+ * (068) applies the same rule in SQL.
+ */
+export function cleanActions(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  for (const a of raw.slice(0, CHAT_LIMITS.actions)) {
+    if (typeof a !== 'string') continue;
+    const line = a.replace(/[\s\p{Cc}]+/gu, ' ').trim().slice(0, CHAT_LIMITS.actionChars);
+    if (line) out.push(line);
+  }
+  return out;
 }

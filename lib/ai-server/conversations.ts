@@ -33,6 +33,7 @@ import {
   DEFAULT_TITLE,
   ERROR_CODE_RE,
   UUID_RE,
+  cleanActions,
   cleanText,
   cleanTitle,
   isAnswerer,
@@ -70,7 +71,7 @@ const CONVERSATIONS = 'chat_conversations';
 const MESSAGES = 'chat_messages';
 const SUMMARY_COLUMNS =
   'id, item_id, title, renamed, starred, answerer, openclaw_seen, added_count, steps_count, moved_count, changed_count, message_count, last_message_at, created_at';
-const MESSAGE_COLUMNS = 'id, pos, role, content, status, error_code, reply_to, answerer, model, created_at';
+const MESSAGE_COLUMNS = 'id, pos, role, content, status, error_code, reply_to, answerer, model, meta, created_at';
 
 /**
  * What the request got wrong, as the database saw it: a value Postgres cannot
@@ -185,7 +186,15 @@ export function toMessage(row: unknown): StoredMessage | null {
     answerer: isAnswerer(row.answerer) ? row.answerer : null,
     model: strOrNull(row.model),
     createdAt: created_at,
+    ...actionsOf(role, row.meta),
   };
+}
+
+/** A reply's action lines from `meta` (068), cleaned again: meta is owner-asserted. */
+function actionsOf(role: string, meta: unknown): { actions?: string[] } {
+  if (role !== 'assistant' || !isObj(meta)) return {};
+  const actions = cleanActions(meta.actions);
+  return actions.length > 0 ? { actions } : {};
 }
 
 function toSearchHit(row: unknown): SearchHit | null {
@@ -270,7 +279,7 @@ export interface ParsedTurn {
 
 const TURN_KEYS = new Set(['ownerId', 'create', 'messages']);
 const CREATE_KEYS = new Set(['itemId', 'title']);
-const MESSAGE_KEYS = new Set(['id', 'role', 'content', 'status', 'errorCode', 'replyTo', 'answerer', 'model']);
+const MESSAGE_KEYS = new Set(['id', 'role', 'content', 'status', 'errorCode', 'replyTo', 'answerer', 'model', 'actions']);
 const PATCH_KEYS = new Set(['title', 'starred', 'addChanges']);
 const CHANGE_KEYS = new Set<keyof ConversationChanges>(['added', 'steps', 'moved', 'changed']);
 const SEARCH_KEYS = new Set(['q']);
@@ -286,7 +295,9 @@ const NOT_BLANK_RE = /[^ \t\r\n]/;
 
 function parseMessage(raw: unknown): TurnMessage | null {
   if (!isObj(raw) || !onlyKeys(raw, MESSAGE_KEYS)) return null;
-  const { id, role, status = 'complete', errorCode, replyTo, answerer, model } = raw;
+  const { id, role, status = 'complete', errorCode, replyTo, answerer, model, actions } = raw;
+  // Only a reply has action lines, and they are a list (each line is clipped, never refused).
+  if (!absent(actions) && (role !== 'assistant' || !Array.isArray(actions))) return null;
   if (typeof id !== 'string' || !UUID_RE.test(id)) return null;
   if (typeof raw.content !== 'string') return null;
   if (!isMessageStatus(status)) return null;
@@ -317,6 +328,7 @@ function parseMessage(raw: unknown): TurnMessage | null {
       replyTo,
       answerer,
       model: isModelId(model) ? model : null,
+      ...(cleanActions(actions).length > 0 ? { actions: cleanActions(actions) } : {}),
     };
   }
   return null;
@@ -561,6 +573,9 @@ export async function appendTurn(
     replyTo: m.replyTo ?? null,
     answerer: m.answerer ?? null,
     model: m.model ?? null,
+    // Sent only when there are some: 057's chat_append ignores the key, so a
+    // turn saved before 068 is applied keeps everything but its lines.
+    ...(m.role === 'assistant' && cleanActions(m.actions).length > 0 ? { actions: cleanActions(m.actions) } : {}),
   }));
   const p_create = turn.create
     ? { itemId: turn.create.itemId, title: cleanTitle(turn.create.title) || DEFAULT_TITLE }
