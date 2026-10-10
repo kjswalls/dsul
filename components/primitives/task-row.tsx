@@ -70,12 +70,19 @@ interface TaskRowProps {
   density?: 'default' | 'compact';
   /** The day this row is rendered for (week columns); defaults to the selected day. */
   date?: Date;
+  /**
+   * The braindump's own trailing control, at the row's right edge after the
+   * hover capsule: the Do stuff size control (components/sidebar/do-stuff.tsx).
+   * Drawn only in the braindump, where the quiet rail is gated off and the
+   * edge is free.
+   */
+  trailing?: React.ReactNode;
 }
 
 /** How long the title's fade runs before the hover controls, in px. */
 const TITLE_FADE_PX = 24;
 
-export function TaskRow({ row, context = 'bucket', density = 'default', date }: TaskRowProps) {
+export function TaskRow({ row, context = 'bucket', density = 'default', date, trailing }: TaskRowProps) {
   const {
     toggleTaskStatus,
     toggleHabitStatus,
@@ -958,6 +965,8 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
               </RowControlGroup>
             </span>
           )}
+
+          {inBraindump && trailing}
 
           {!compact && !inBraindump && (
             <>

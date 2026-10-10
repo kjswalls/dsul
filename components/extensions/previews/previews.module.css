@@ -275,6 +275,19 @@
 }
 .why svg { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width: 2.4; }
 
+/* ── do stuff ──────────────────────────────────────────────────────────── */
+.sizeHead {
+  display: flex;
+  align-items: center;
+  gap: 0.45em;
+  padding: 0.35em 0.4em 0.25em;
+  border-bottom: 0.09em solid color-mix(in oklab, var(--c) 55%, transparent);
+  font-size: 0.88em;
+  font-weight: 600;
+}
+.sizeHead i { width: 0.45em; height: 0.45em; border-radius: 50%; background: var(--c); }
+.sizeHead span { color: var(--muted-foreground); font-weight: 400; }
+
 /* ── organize console ──────────────────────────────────────────────────── */
 .console { display: grid; grid-template-columns: 36% 1fr; gap: 0.6em; width: 100%; max-width: 32em; }
 .rail {

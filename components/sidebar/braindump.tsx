@@ -32,9 +32,12 @@ import { SIDEBAR_MIN_WIDTH } from '@/lib/sidebar-store';
 import { narrowingClauseCount, passesFilters } from '@/lib/filters';
 import {
   useBraindumpGroupBy,
+  useDoStuffEnabled,
   useGoalFilterIds,
   useOrganizeEnabled,
 } from '@/lib/extension-gates';
+import { DoStuffList, DoStuffRow, SizeControl, wantsDoStuffRow } from '@/components/sidebar/do-stuff';
+import { useDoStuffStore } from '@/lib/do-stuff';
 import { groupRows, type RowGroup } from '@/lib/grouping';
 import { isRowCompletedOn, orderRows } from '@/lib/sort-rows';
 import { useSinkHold } from '@/hooks/use-sink-hold';
@@ -421,6 +424,15 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
   // one "No goal" heading. See lib/extension-gates.ts.
   const braindumpGroupBy = useBraindumpGroupBy();
   const organizeOn = useOrganizeEnabled();
+  /**
+   * Do stuff (lib/do-stuff.ts). Switched off, the braindump is exactly the old
+   * list: no row, no size control, and a walk in progress ends.
+   */
+  const doStuffOn = useDoStuffEnabled();
+  const doingStuff = useDoStuffStore((s) => s.on) && doStuffOn;
+  useEffect(() => {
+    if (!doStuffOn && useDoStuffStore.getState().on) useDoStuffStore.getState().stop();
+  }, [doStuffOn]);
   const isMobile = variant === 'mobile';
   // The scroll port — QuickAddRow drops it to the bottom after each add so the
   // new row stays visible above the sticky capture row.
@@ -711,12 +723,26 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
   // The first incoming row scrolls itself into view, so a slot below the fold
   // still shows. Only one: several revealing at once would fight.
   const firstLanding = grouped.flatMap((g) => g.rows).find((r) => landingIds.has(r.item.id))?.item.id;
+  const sizeControl = (row: RowItem) =>
+    doStuffOn && row.itemType === 'task' ? <SizeControl item={row.item} /> : undefined;
   const renderRow = (row: RowItem) =>
     landingIds.has(row.item.id) ? (
       <LandingRow key={row.item.id} title={row.item.title} reveal={row.item.id === firstLanding} />
     ) : (
-      <TaskRow key={row.item.id} row={row} context="braindump" />
+      <TaskRow key={row.item.id} row={row} context="braindump" trailing={sizeControl(row)} />
     );
+
+  /**
+   * The list Do stuff sorts: what the braindump shows, in its order, with the
+   * Display grouping set aside (sizes are the grouping while it runs). Built
+   * from `rows`, not `shownRows`: a drag's landing preview is not something to
+   * walk to.
+   */
+  const doStuffRows = useMemo(
+    () => (doingStuff ? orderRows(rows, braindumpSortBy, null, completedAs) : rows),
+    [doingStuff, rows, braindumpSortBy, completedAs]
+  );
+  const showDoStuffRow = doStuffOn && visible && (doingStuff || wantsDoStuffRow(rows));
 
   const organizeButton = (
     <Button
@@ -884,6 +910,9 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
           falls back to the dock's line by itself. */}
       <NoticeSlot anchor="braindump" className={cn(isMobile ? 'mx-[10px]' : 'px-[6px]')} />
 
+      {/* Do stuff's row: below the header, above the list (design board C). */}
+      {showDoStuffRow && <DoStuffRow rows={doStuffRows} />}
+
       {/* List — sits directly on the paper backdrop, no card. A plain
           overflow-y-auto container, NOT Radix <ScrollArea>: it shrinks (flex) so
           the quick-add card below can pin to the section foot, and its ref drives
@@ -916,6 +945,8 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
         <div className="px-[14px] py-2" inert={previewing}>
           {!visible ? (
             <PlannerSkeleton variant="braindump" />
+          ) : doingStuff ? (
+            <DoStuffList rows={doStuffRows} />
           ) : (
             grouped.map((g) =>
               g.label ? (

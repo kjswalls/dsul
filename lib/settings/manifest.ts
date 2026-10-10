@@ -37,6 +37,7 @@ import {
   EXT_HABIT_HEATMAP,
   EXT_ORGANIZE,
   EXT_STREAKS,
+  EXT_DO_STUFF,
   OFFICIAL_EXTENSIONS,
   extensionManifest,
 } from '@/lib/extension-registry';
@@ -1695,6 +1696,23 @@ export const SETTINGS: SettingRecord[] = [
     // ON by default (see extension-registry). Must track the manifest default, or
     // a fresh account draws the "modified" bar and a per-row reset would write
     // OFF into the user's row — isModified is read() !== defaultValue.
+    defaultValue: true,
+  },
+  {
+    id: 'extensions.doStuff',
+    pane: extensionPaneId(EXT_DO_STUFF),
+    label: 'Do stuff',
+    description:
+      'Sort the braindump by size and walk the quick ones first. Off hides the row and the size dots; every size you set is kept.',
+    control: 'switch',
+    keywords: ['size', 'quick', 'errand', 'braindump', 'stale', 'momentum', 'focus'],
+    unavailable: extUnavailable,
+    // Defaults ON, so extPending matters for the reason the Streaks row gives.
+    pending: extPending,
+    read: () => ext().isEnabled(EXT_DO_STUFF),
+    write: (v, ctx) => {
+      if (ctx.userId) ext().setEnabled(ctx.userId, EXT_DO_STUFF, Boolean(v));
+    },
     defaultValue: true,
   },
   {

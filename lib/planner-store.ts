@@ -30,6 +30,7 @@ import type {
   ProposalOperation,
 } from './planner-types';
 import { PRIORITY_LABELS } from './planner-types';
+import type { ItemSize } from './item-size';
 // The time → bucket rules live in a plain module so a route can share them.
 import { autoCorrectBucket } from './time-bucket';
 // The schedule actions' patches live in lib/item-edit.ts, so the iPhone's routes write the same ones.
@@ -457,6 +458,12 @@ interface PlannerStore {
    */
   /** `undefined` clears. Habits (no priority field) and cancelled items are skipped. */
   setItemsPriority: (ids: string[], priority: Priority | undefined) => void;
+  /**
+   * Sizes several items at once, each to its own size (`undefined` clears), in
+   * one set() and one undo: "keep all guesses" sizes a batch to different
+   * sizes. Habits (no size) and items already at their size are skipped.
+   */
+  setItemsSize: (sizes: ReadonlyMap<string, ItemSize | undefined>) => void;
   /**
    * Re-file under a project by name (`undefined` unfiles). The id is resolved
    * once, case-folded. Unfiling skips types whose container is required.
@@ -4355,6 +4362,33 @@ export const usePlannerStore = create<PlannerStore>()(
         );
         targets.forEach((item) =>
           dbUpdateItem(item.id, dbTypeOf(item), patch).catch(console.error)
+        );
+      },
+
+      setItemsSize: (sizes) => {
+        const targets = get().items.filter(
+          (i) => i.type !== 'habit' && sizes.has(i.id) && i.size !== sizes.get(i.id)
+        );
+        if (targets.length === 0) return;
+        const only = targets.length === 1 ? sizes.get(targets[0].id) : undefined;
+        setNextActionLabel(
+          targets.length === 1
+            ? only
+              ? `Size: ${only} · ${targets[0].title}`
+              : `Clear size · ${targets[0].title}`
+            : `Size ${itemCount(targets.length)}`
+        );
+        // Key present with `undefined` on a clear, as setItemsPriority does it:
+        // the spread erases the field locally and taskUpdatesToRow writes null.
+        const patchOf = (id: string) => ({ size: sizes.get(id) });
+        const targetIds = new Set(targets.map((i) => i.id));
+        set((state) =>
+          projectItems(
+            state.items.map((i) => (targetIds.has(i.id) ? ({ ...i, ...patchOf(i.id) } as Item) : i))
+          )
+        );
+        targets.forEach((item) =>
+          dbUpdateItem(item.id, dbTypeOf(item), patchOf(item.id)).catch(console.error)
         );
       },
 

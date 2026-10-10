@@ -72,6 +72,8 @@ interface ItemRow {
   // reminders (migration 032) — shared by every remindable type
   reminder_time?: string | null;
   reminder_anchor?: string | null;
+  // size (migration 066) — task-shaped types only, read by the braindump
+  size?: string | null;
 }
 
 function itemFromRow(row: ItemRow): Item {
@@ -108,6 +110,7 @@ function itemFromRow(row: ItemRow): Item {
       aiStatus: row.ai_status ?? undefined,
       aiResult: row.ai_result ?? undefined,
       aiStatusAt: row.ai_status_at ?? undefined,
+      size: row.size ?? undefined,
       pausedAt: row.paused_at ?? undefined,
       pausedUntil: row.paused_until ?? undefined,
       reminderTime: row.reminder_time ?? undefined,
@@ -182,6 +185,7 @@ function itemFromRow(row: ItemRow): Item {
     aiStatus: row.ai_status ?? undefined,
     aiResult: row.ai_result ?? undefined,
     aiStatusAt: row.ai_status_at ?? undefined,
+    size: row.size ?? undefined,
     pausedAt: row.paused_at ?? undefined,
     pausedUntil: row.paused_until ?? undefined,
     reminderTime: row.reminder_time ?? undefined,
@@ -257,6 +261,16 @@ function reminderColumns(item: Item): Partial<Pick<ItemRow, 'reminder_time' | 'r
   };
 }
 
+/**
+ * The size, emitted ONLY when set — the same PGRST204 guard as the column
+ * helpers above, for migration 066. Nearly every item is created unsized, so
+ * this keeps a create byte-identical to a pre-066 one.
+ */
+function sizeColumn(item: Item): Partial<Pick<ItemRow, 'size'>> {
+  const size = item.type === 'habit' ? undefined : item.size;
+  return size !== undefined ? { size } : {};
+}
+
 function itemToRow(userId: string, item: Item): ItemRow {
   if (item.type === 'habit') {
     return {
@@ -323,6 +337,7 @@ function itemToRow(userId: string, item: Item): ItemRow {
     ...agentStampColumn(item),
     ...containerColumns(item),
     ...reminderColumns(item),
+    ...sizeColumn(item),
   };
 }
 
@@ -385,6 +400,9 @@ function taskUpdatesToRow(updates: Partial<Task>): Record<string, unknown> {
     row.ai_status_at = explicit ?? new Date().toISOString();
   }
   if ('aiResult' in updates) row.ai_result = updates.aiResult ?? null;
+  // Size (migration 066). Null is "not sized" and a real write: the braindump's
+  // size menu offers it, and undo restores it.
+  if ('size' in updates) row.size = updates.size ?? null;
   // Reminders (migration 032). Nulls pass through and MEAN something here —
   // null is how a reminder is turned off, so a `?? null` guard is the
   // behavior, not a fallback (compare `group` above, where null would corrupt).
@@ -1093,8 +1111,8 @@ async function withResolvedContainer(
 }
 
 /**
- * Columns added by migration 032 that a write may name before the migration has
- * run.
+ * Columns added by later migrations (032's reminder pair, 066's size) that a
+ * write may name before the migration has run.
  *
  * reminderColumns (above) already omits them from an INSERT when no reminder is
  * set, and the update path cannot do even that: the ItemDialog's whole-item
@@ -1106,9 +1124,9 @@ async function withResolvedContainer(
  *
  * The retry both paths use is loadSettings' fallback applied to items: drop the
  * not-yet-migrated columns and try once more, so the write lands and only the
- * reminder half is deferred.
+ * reminder half (or the size) is deferred.
  */
-const REMINDER_WRITE_COLUMNS = ['reminder_time', 'reminder_anchor'] as const;
+const DEFERRABLE_WRITE_COLUMNS = ['reminder_time', 'reminder_anchor', 'size'] as const;
 
 /** True only for "the database doesn't have a column we asked for". */
 export function isMissingColumnError(error: { code?: string; message?: string } | null): boolean {
@@ -1171,7 +1189,7 @@ export async function createItem(
   if (error && isMissingColumnError(error)) {
     const stable = { ...row };
     let dropped = false;
-    for (const column of REMINDER_WRITE_COLUMNS) {
+    for (const column of DEFERRABLE_WRITE_COLUMNS) {
       if (column in stable) {
         delete stable[column];
         dropped = true;
@@ -1180,8 +1198,8 @@ export async function createItem(
     if (dropped) {
       console.warn(
         `[db] items is missing a column this build writes (${error.message}). ` +
-          'Retrying the create without the migration-032 reminder columns — the item is ' +
-          'saved, its reminder is not. Apply supabase/migrations/032_habit_reminders.sql.',
+          'Retrying the create without the reminder and size columns — the item is saved, ' +
+          'its reminder or size is not. Apply the pending migration (032 or 066).',
       );
       ({ error } = await supabase.from('items').insert(stable));
     }
@@ -1233,7 +1251,7 @@ export async function createItems(userId: string, items: Item[], client?: DbClie
     let dropped = false;
     const stable = rows.map((row) => {
       const copy = { ...row };
-      for (const column of REMINDER_WRITE_COLUMNS) {
+      for (const column of DEFERRABLE_WRITE_COLUMNS) {
         if (column in copy) {
           delete copy[column];
           dropped = true;
@@ -1244,8 +1262,8 @@ export async function createItems(userId: string, items: Item[], client?: DbClie
     if (dropped) {
       console.warn(
         `[db] items is missing a column this build writes (${error.message}). ` +
-          'Retrying the batch create without the migration-032 reminder columns — the items ' +
-          'are saved, their reminders are not. Apply supabase/migrations/032_habit_reminders.sql.',
+          'Retrying the batch create without the reminder and size columns — the items are ' +
+          'saved, their reminders or sizes are not. Apply the pending migration (032 or 066).',
       );
       ({ error } = await supabase.from('items').insert(stable));
     }
@@ -1302,7 +1320,7 @@ export async function updateItem(
     if (error && isMissingColumnError(error)) {
       const stable: Record<string, unknown> = { ...row };
       let dropped = false;
-      for (const column of REMINDER_WRITE_COLUMNS) {
+      for (const column of DEFERRABLE_WRITE_COLUMNS) {
         if (column in stable) {
           delete stable[column];
           dropped = true;
@@ -1311,8 +1329,8 @@ export async function updateItem(
       if (dropped) {
         console.warn(
           `[db] items is missing a column this build writes (${error.message}). ` +
-            'Retrying without the migration-032 reminder columns — the reminder was not saved. ' +
-            'Apply supabase/migrations/032_habit_reminders.sql to fix this.',
+            'Retrying without the reminder and size columns — the reminder or size was not ' +
+            'saved. Apply the pending migration (032 or 066) to fix this.',
         );
         if (Object.keys(stable).length > 0) {
           ({ error } = await scoped(supabase.from('items').update(stable).eq('id', id).eq('type', type)));
@@ -1374,7 +1392,7 @@ export async function changeItemType(
   // task → habit switch would keep the orphan project's id on an unfiled task,
   // or a pause the target no longer has. A switch writes the whole shape, so
   // unset means cleared.
-  const clearable = ['project_id', 'paused_at', 'paused_until', 'reminder_time', 'reminder_anchor'];
+  const clearable = ['project_id', 'paused_at', 'paused_until', 'reminder_time', 'reminder_anchor', 'size'];
   if (target.type !== 'habit') clearable.push('ai_status_at');
   for (const column of clearable) if (!(column in row)) row[column] = null;
 
@@ -1387,7 +1405,7 @@ export async function changeItemType(
   if (error && isMissingColumnError(error)) {
     // Same schema-behind fallback as updateItem: only the reminder columns
     // can be dropped, and only they are.
-    for (const column of REMINDER_WRITE_COLUMNS) delete row[column];
+    for (const column of DEFERRABLE_WRITE_COLUMNS) delete row[column];
     ({ data, error } = await supabase
       .from('items')
       .update(row)

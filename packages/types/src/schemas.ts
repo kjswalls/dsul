@@ -3,6 +3,8 @@ import { z } from 'zod'
 // ── Primitives ─────────────────────────────────────────────────────────────────
 
 export const PrioritySchema = z.enum(['low', 'medium', 'high'])
+/** How big an undated item is (migration 066's CHECK, in its order). */
+export const ItemSizeSchema = z.enum(['quick', 'errand', 'big', 'fuzzy'])
 export const TimeBucketSchema = z.enum(['anytime', 'morning', 'afternoon', 'evening'])
 export const TaskStatusSchema = z.enum(['pending', 'completed', 'cancelled'])
 export const HabitStatusSchema = z.enum(['pending', 'done', 'skipped'])
@@ -345,6 +347,14 @@ const taskShape = {
    * projection and the 50-entry undo stack.
    */
   aiStatusAt: z.string().optional(),
+  /**
+   * How big an undated item is (migration 066): one of ItemSizeSchema's
+   * values, or absent for "not sized yet". Set in the braindump by the Do stuff
+   * extension and read nowhere else. A LOOSE string on read for the reason the
+   * agent fields above give: a fifth size must not brick an old plugin's
+   * safeParse. App code narrows it with `itemSizeOf` (lib/item-size.ts).
+   */
+  size: z.string().optional(),
   ...RecurrenceFieldsSchema.shape,
   ...pauseFields,
   ...reminderFields,
