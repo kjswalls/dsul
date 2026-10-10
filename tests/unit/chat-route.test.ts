@@ -126,7 +126,7 @@ vi.mock('@/lib/ai-server/stream', () => ({
               c.close();
               return;
             }
-            c.enqueue(frame({ content: r.value }));
+            c.enqueue(frame(typeof r.value === 'string' ? { content: r.value } : r.value));
           } catch (err) {
             finished = true;
             c.enqueue(frame(await opts.onError(err)));
@@ -142,8 +142,29 @@ vi.mock('@/lib/ai-server/stream', () => ({
   ),
 }));
 
+/** Whether the connected model takes tools: off unless a case turns it on. */
+const toolsOn = vi.hoisted(() => ({ value: false }));
+vi.mock('@/lib/ai-server/tool-support', () => ({ supportsTools: vi.fn(async () => toolsOn.value) }));
+
+const planner = vi.hoisted(() => ({
+  items: [] as unknown[],
+  clients: [] as unknown[],
+}));
+vi.mock('@/lib/db', () => ({
+  fetchItems: vi.fn(async (_uid: string, _type: unknown, client: unknown) => {
+    planner.clients.push(client);
+    return planner.items;
+  }),
+  fetchProjects: vi.fn(async () => []),
+  fetchRoutines: vi.fn(async () => []),
+  fetchSeasons: vi.fn(async () => []),
+  fetchGoals: vi.fn(async () => []),
+  fetchItemEvents: vi.fn(async () => []),
+}));
+
 const adapter = vi.hoisted(() => ({
   openStream: vi.fn(),
+  completeWithTools: vi.fn(),
   completeText: vi.fn(),
   verify: vi.fn(),
   listModels: vi.fn(),
@@ -220,6 +241,10 @@ beforeEach(() => {
   vi.mocked(setConnectionLimit).mockClear();
   adapter.openStream.mockReset();
   adapter.openStream.mockImplementation(async () => deltas('ok'));
+  adapter.completeWithTools.mockReset();
+  toolsOn.value = false;
+  planner.items = [];
+  planner.clients = [];
   vi.mocked(gateway.getGatewayConfig).mockReset();
   vi.mocked(gateway.getGatewayConfig).mockResolvedValue(GATEWAY);
   vi.mocked(gateway.streamGatewayChat).mockReset();
@@ -679,5 +704,90 @@ describe('guards (all JSON, before any stream)', () => {
     const r3 = await post({ messages: [{ role: 'system', content: 'only this' }] });
     expect(r3.status).toBe(400);
     expect((await r3.json()).code).toBe('invalid');
+  });
+});
+
+// ── the lookup path (chat tools, build step 2) ──────────────────────────────
+
+describe('POST /api/chat → a model that takes tools', () => {
+  const DENTIST = {
+    id: 'i-1',
+    type: 'task',
+    title: 'Book dentist',
+    status: 'pending',
+    startDate: '2026-10-15',
+    isScheduled: true,
+    project: 'Health',
+  };
+
+  beforeEach(() => {
+    toolsOn.value = true;
+    planner.items = [DENTIST];
+  });
+
+  it('runs a lookup, sends its action line, then the reply in one piece; never streams', async () => {
+    adapter.completeWithTools
+      .mockResolvedValueOnce({ text: '', toolCalls: [{ id: 'c1', name: 'find_items', args: { query: 'dentist' } }] })
+      .mockResolvedValueOnce({ text: 'It is on Thursday.', toolCalls: [] });
+    const res = await post(hi);
+    expect(res.status).toBe(200);
+    expect(await frames(res)).toEqual([
+      { action: 'Looked for "dentist" (1 found)' },
+      { content: 'It is on Thursday.' },
+      '[DONE]',
+    ]);
+    expect(adapter.openStream).not.toHaveBeenCalled();
+    expect(adapter.completeWithTools).toHaveBeenCalledTimes(2);
+
+    const [, first] = adapter.completeWithTools.mock.calls[0];
+    expect(first.tools.map((t: { name: string }) => t.name)).toEqual(['find_items', 'planner_overview', 'item_activity']);
+    expect(first.system[0]).toBe(BEACON_SYSTEM_PROMPT);
+    expect(first.system[1]).toMatch(/^You can also look things up/);
+    expect(first.maxOutputTokens).toBe(MAX_OUTPUT_TOKENS);
+
+    const [, second] = adapter.completeWithTools.mock.calls[1];
+    const result = second.messages.at(-1);
+    expect(result).toMatchObject({ role: 'tool', callId: 'c1', name: 'find_items' });
+    expect(result.content).toContain('Book dentist [id: i-1]');
+  });
+
+  it('reads the planner through the session client, as the signed-in user', async () => {
+    adapter.completeWithTools
+      .mockResolvedValueOnce({ text: '', toolCalls: [{ id: 'c1', name: 'find_items', args: { query: 'x' } }] })
+      .mockResolvedValueOnce({ text: 'done', toolCalls: [] });
+    await (await post(hi)).text();
+    const { fetchItems } = await import('@/lib/db');
+    expect(vi.mocked(fetchItems).mock.calls.at(-1)?.[0]).toBe('user-1');
+    const session = planner.clients.at(-1) as { auth?: unknown };
+    expect(session?.auth).toBeDefined();
+    expect(h.dbCalls.some((c) => c.startsWith('from:chat_') || c.startsWith('rpc:chat_'))).toBe(false);
+  });
+
+  it('a plain answer with no lookup is one content frame', async () => {
+    adapter.completeWithTools.mockResolvedValueOnce({ text: 'Hello!', toolCalls: [] });
+    expect(await frames(await post(hi))).toEqual([{ content: 'Hello!' }, '[DONE]']);
+  });
+
+  it('a first round that fails answers JSON, and marks a refused key failing', async () => {
+    adapter.completeWithTools.mockRejectedValueOnce(new ProviderError('auth', 401));
+    const res = await post(hi);
+    expect(res.status).toBe(502);
+    expect(await res.json()).toMatchObject({ code: 'auth' });
+    expect(setConnectionStatus).toHaveBeenCalledWith('user-1', ROW.key_ciphertext, 'failing', 'key_rejected');
+  });
+
+  it('a later round that fails is one error frame after the action line', async () => {
+    adapter.completeWithTools
+      .mockResolvedValueOnce({ text: '', toolCalls: [{ id: 'c1', name: 'planner_overview', args: {} }] })
+      .mockRejectedValueOnce(new ProviderError('timeout'));
+    const out = await frames(await post(hi));
+    expect(out[0]).toEqual({ action: 'Looked over your projects, routines and goals' });
+    expect(out[1]).toMatchObject({ code: 'timeout' });
+    expect(out.at(-1)).toBe('[DONE]');
+  });
+
+  it('the gateway path never offers tools', async () => {
+    await (await post({ ...hi, target: 'openclaw', conversationId: CONV })).text();
+    expect(adapter.completeWithTools).not.toHaveBeenCalled();
   });
 });

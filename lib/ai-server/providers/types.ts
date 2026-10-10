@@ -84,6 +84,12 @@ export interface ToolCall {
   id: string;
   name: string;
   args: Record<string, unknown> | null;
+  /**
+   * OpenAI-compatible only: the call's `extra_content`, sent back unchanged on
+   * the next step. Gemini's thinking models put a thought signature there and
+   * refuse a follow-up that drops it. Never read, never shown, never saved.
+   */
+  echo?: Record<string, unknown>;
 }
 
 /** A turn in a conversation with tools: the plain turns, plus the calls and their results. */

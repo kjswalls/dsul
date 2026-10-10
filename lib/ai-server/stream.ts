@@ -41,8 +41,16 @@ export function anySignal(signals: AbortSignal[]): AbortSignal {
 
 const FALLBACK_FRAME: SseFrame = { error: USER_MESSAGES.upstream, code: 'upstream' };
 
+/** An action line's longest form on the wire. */
+const ACTION_MAX_CHARS = 200;
+
+/**
+ * `source` yields text deltas, and on the lookup path action lines as
+ * `{action}`: those are sent as their own frames and never count toward the
+ * reply's characters.
+ */
 export function deltasToSse(
-  source: AsyncIterable<string>,
+  source: AsyncIterable<string | { action: string }>,
   opts: {
     abort: AbortController;
     onError: (err: unknown) => Promise<SseFrame>;
@@ -52,7 +60,7 @@ export function deltasToSse(
 ): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   const maxChars = opts.maxChars ?? DEFAULT_MAX_CHARS;
-  let it: AsyncIterator<string> | null = null;
+  let it: AsyncIterator<string | { action: string }> | null = null;
   let cancelled = false;
   let finished = false;
   let chars = 0;
@@ -109,7 +117,14 @@ export function deltasToSse(
             return;
           }
 
-          const text = r.value;
+          const value = r.value;
+          if (typeof value === 'object' && value !== null) {
+            const action = typeof value.action === 'string' ? value.action.trim().slice(0, ACTION_MAX_CHARS) : '';
+            if (!action) continue;
+            send(sseFrame({ action }));
+            return;
+          }
+          const text = value;
           if (typeof text !== 'string' || text === '') continue;
 
           const room = maxChars - chars;

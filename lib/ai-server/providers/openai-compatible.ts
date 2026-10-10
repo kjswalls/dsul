@@ -182,6 +182,7 @@ function toolMessages(turns: readonly ToolTurn[]): ChatCompletionMessageParam[] 
           id: c.id,
           type: 'function' as const,
           function: { name: c.name, arguments: JSON.stringify(c.args ?? {}) },
+          ...(c.echo ? { extra_content: c.echo } : {}),
         })),
       };
     }
@@ -200,6 +201,9 @@ function toolParams(p: OpenAICompatibleProviderId, req: ToolRequest): ChatComple
   };
 }
 
+/** The largest `extra_content` carried back with a call (a thought signature is a few KB). */
+const ECHO_MAX_CHARS = 64_000;
+
 /**
  * The calls in a completion. Some hosts leave out a call's id; one is made up
  * so its result can still name it on the next step.
@@ -212,7 +216,12 @@ function readToolCalls(raw: unknown): ToolCall[] {
     if (c?.type !== undefined && c.type !== 'function') return;
     if (typeof fn?.name !== 'string' || fn.name === '') return;
     const id = typeof c.id === 'string' && c.id !== '' ? c.id : `call_${i}`;
-    calls.push({ id, name: fn.name, args: parseToolArgs(fn.arguments) });
+    const extra = c.extra_content;
+    const echo =
+      typeof extra === 'object' && extra !== null && !Array.isArray(extra) && JSON.stringify(extra).length <= ECHO_MAX_CHARS
+        ? (extra as Record<string, unknown>)
+        : undefined;
+    calls.push({ id, name: fn.name, args: parseToolArgs(fn.arguments), ...(echo ? { echo } : {}) });
   });
   return calls;
 }

@@ -52,6 +52,16 @@ read as `null`, `tool-args.ts`), and `supportsTools` (lib/ai-server/tool-support
 and never stored: the three built-ins yes, a custom host no until a probe exists, OpenRouter by its
 catalog's `supported_parameters` (an hour's cache; `openrouter/auto` no, since it may route to a model
 without tools). Nothing calls either yet.
+Step 2 is built: on a model `supportsTools` says yes to, `/api/chat` runs `lookupLoop`
+(lib/ai-server/chat-loop.ts): up to 5 non-streamed rounds of `completeWithTools`, 4 calls a round, the
+last round told to answer. The three lookups (lib/ai-server/chat-lookups.ts: `find_items`,
+`planner_overview`, `item_activity`) read through the SESSION client under RLS, each table once a turn,
+and every result opens with a line saying it is data, not instructions. Each lookup streams an
+`{action}` frame (`SseFrame.action`, our words, capped at 200), and the reply comes as one `{content}`
+frame: a turn with tools is not streamed token by token. A model without tools streams as before.
+The action lines live on `ChatMessage.actions` in memory only: `chat_append` (057) never writes
+`chat_messages.meta`, so saving them needs a migration of its own (next). The snapshot is unchanged
+for now; trimming it to today waits on the evals (step 3).
 
 **Note 2026-10-04: "Ask AI" on the item's right-click menu.** One row, a submenu of at
 most four asks, declared in `lib/item-asks.ts` (gate, label, wording) and run by

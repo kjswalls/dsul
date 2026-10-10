@@ -1309,6 +1309,33 @@ describe('completeWithTools: OpenAI-compatible', () => {
     });
   });
 
+  it("carries a call's extra_content (Gemini's thought signature) back unchanged", async () => {
+    const sig = { google: { thought_signature: 'c2lnbmF0dXJl' } };
+    route = () =>
+      json(
+        completion(
+          { tool_calls: [{ id: 'g1', type: 'function', function: { name: 'find_items', arguments: '{}' }, extra_content: sig }] },
+          'tool_calls'
+        )
+      );
+    const step = await getAdapter('gemini').completeWithTools(creds('gemini'), toolReq({ model: 'gemini-flash-latest' }));
+    expect(step.toolCalls).toEqual([{ id: 'g1', name: 'find_items', args: {}, echo: sig }]);
+
+    route = () => json(completion({ content: 'ok' }));
+    await getAdapter('gemini').completeWithTools(
+      creds('gemini'),
+      toolReq({
+        model: 'gemini-flash-latest',
+        messages: [
+          { role: 'user', content: 'x' },
+          { role: 'assistant', content: '', toolCalls: step.toolCalls },
+          { role: 'tool', callId: 'g1', name: 'find_items', content: 'none' },
+        ],
+      })
+    );
+    expect(lastBody().messages[2].tool_calls[0].extra_content).toEqual(sig);
+  });
+
   it('makes up an id for a call that has none', async () => {
     route = () => json(completion({ tool_calls: [{ type: 'function', function: { name: 'find_items', arguments: '' } }] }, 'tool_calls'));
     const step = await getAdapter('openrouter').completeWithTools(creds('openrouter'), toolReq());

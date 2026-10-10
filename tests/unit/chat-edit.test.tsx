@@ -111,3 +111,18 @@ describe('Edit', () => {
     expect(screen.queryByTestId('chat-edit')).toBeNull();
   });
 });
+
+describe('action lines', () => {
+  it('show above a reply, one per lookup, and not on a reply without any', () => {
+    render(
+      <TranscriptMessages
+        messages={[msg('u1', 'user', 'dentist?'), msg('a1', 'assistant', 'Thursday.', { actions: ['Looked for "dentist" (1 found)'] }), msg('u2', 'user', 'thanks'), msg('a2', 'assistant', 'Any time.')]}
+        typing={false}
+        busy={false}
+      />
+    );
+    const lines = screen.getAllByTestId('chat-action');
+    expect(lines.map((l) => l.textContent)).toEqual(['Looked for "dentist" (1 found)']);
+    expect(screen.getByRole('list', { name: 'What the AI looked up' }).closest('[data-message-id]')?.getAttribute('data-message-id')).toBe('a1');
+  });
+});
