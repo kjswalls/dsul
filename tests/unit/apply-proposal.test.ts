@@ -633,3 +633,31 @@ describe('applyProposal: verbs (tick, skip, pause)', () => {
     expect(habit()).toMatchObject({ pausedAt: expect.any(String) });
   });
 });
+
+describe('applyProposal: habits', () => {
+  it('creates a habit with a fresh streak, on the day surfaces, filed in its project', () => {
+    store().applyProposal(
+      proposalOf({ kind: 'create', itemType: 'habit', title: 'Gym', repeatFrequency: 'custom', repeatDays: [1, 4] }),
+    );
+    const gym = store().items.find((i) => i.title === 'Gym');
+    expect(gym).toMatchObject({
+      type: 'habit',
+      repeatFrequency: 'custom',
+      repeatDays: [1, 4],
+      streak: 0,
+      completedDates: [],
+      skippedDates: [],
+      timeBucket: 'anytime',
+    });
+    expect(store().habits.map((h) => h.title)).toContain('Gym');
+    expect(db.createItem).toHaveBeenCalledTimes(1);
+    store().undo();
+    expect(store().items.find((i) => i.title === 'Gym')).toBeUndefined();
+  });
+
+  it('pauses until the day given', () => {
+    const until = format(addDays(new Date(), 7), 'yyyy-MM-dd');
+    store().applyProposal(proposalOf({ kind: 'verb', verb: 'pause', itemId: 'habit-1', until }));
+    expect(store().items.find((i) => i.id === 'habit-1')).toMatchObject({ pausedUntil: until });
+  });
+});

@@ -585,8 +585,8 @@ describe('suggestions validation refused', () => {
     summary,
     rationale: 'because',
     operations: [
-      // A habit create — refused by canCreateType (containerRequired).
-      { kind: 'create', itemType: 'habit', title: 'Meditate' },
+      // A type the user does not have — refused by canProposeType.
+      { kind: 'create', itemType: 'ritual', title: 'Meditate' },
       { kind: 'create', itemType: 'task', title: 'A real one' },
     ],
   });
@@ -612,7 +612,7 @@ describe('suggestions validation refused', () => {
     // reply that suggested plenty.
     mockPropose({
       summary: 'All refused',
-      operations: [{ kind: 'create', itemType: 'habit', title: 'Meditate' }],
+      operations: [{ kind: 'create', itemType: 'ritual', title: 'Meditate' }],
     } as never);
     await useProposalStore.getState().request('ask', 'x');
 
@@ -624,11 +624,11 @@ describe('suggestions validation refused', () => {
 
   it('dedupes reasons, since three identical lines say no more than one', async () => {
     mockPropose({
-      summary: 'Three habits',
+      summary: 'Three rituals',
       operations: [
-        { kind: 'create', itemType: 'habit', title: 'a' },
-        { kind: 'create', itemType: 'habit', title: 'b' },
-        { kind: 'create', itemType: 'habit', title: 'c' },
+        { kind: 'create', itemType: 'ritual', title: 'a' },
+        { kind: 'create', itemType: 'ritual', title: 'b' },
+        { kind: 'create', itemType: 'ritual', title: 'c' },
       ],
     } as never);
     await useProposalStore.getState().request('ask', 'x');

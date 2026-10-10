@@ -296,6 +296,23 @@ export const CASES: EvalCase[] = [
     why: 'Offers the tick for today, as a verb: a habit is never ticked through its status.',
   },
   {
+    id: 'new-habit',
+    ask: 'I want to start stretching every weekday morning.',
+    lookups: [
+      proposes({
+        summary: 'A weekday stretch',
+        operations: [{ kind: 'create', itemType: 'habit', title: 'Stretch', repeatFrequency: 'weekdays', timeBucket: 'morning' }],
+      }),
+    ],
+    card: {
+      accepts: (d) =>
+        ops(d).some(
+          (o) => o.kind === 'create' && o.itemType === 'habit' && /stretch/i.test(o.title) && o.repeatFrequency === 'weekdays'
+        ),
+    },
+    why: 'Offers a new habit on weekdays, not a task, and not daily.',
+  },
+  {
     id: 'habit-skip',
     ask: "I'm not flossing tonight, my gums are sore. Can you skip it so I don't lose my streak?",
     lookups: [

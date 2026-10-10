@@ -135,10 +135,10 @@ describe('creating subtasks', () => {
     expect(accepted[0]).toMatchObject({ notes: 'ask Dana first', priority: 'high' });
   });
 
-  it('still refuses habit creation, parent or no parent', () => {
+  it('refuses a habit as a step: a step has no day, so it cannot repeat', () => {
     const { accepted, rejected } = validate(step({ itemType: 'habit' }));
     expect(accepted).toHaveLength(0);
-    expect(rejected[0].reason).toMatch(/cannot create items of type/);
+    expect(rejected[0].reason).toMatch(/a step cannot be a habit/);
   });
 
   it('leaves ordinary creates untouched', () => {

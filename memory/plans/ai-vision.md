@@ -105,6 +105,15 @@ the gate's "not on a past open day". Accepting runs the store verb itself (`togg
 `toggleTaskStatus`, `setItemSkipped`, `setItemPaused`, each with the op's day, never `selectedDate`), so
 streaks and pause windows move exactly as by hand, and `batchHistory` folds them and the plan's field
 writes into one undo. The evals' habit tick now expects a card, and a habit skip joins it.
+Step 5b is built: a card can start a habit and change how anything repeats. Creates and updates take
+`repeatFrequency`, `repeatDays`, `repeatMonthDay` and `timesPerDay`, and a pause takes `until`. A proposal
+may create any type the user has, habits included (`canProposeType`), while `canCreateType` keeps
+recipes and mods off habits: those write unseen, and a card is read and accepted (Kirby, 2026-10-10:
+the AI does anything, each change behind a tap). Which repeats a type takes is the registry's
+`allowedFrequencies` (a habit never `none`, and never a step); a repeating dated item needs a first
+day; fields a type does not keep (a habit's priority and day, a task's daily count) are dropped, not
+refused. A new habit is built as addHabit builds one (fresh streak and history), on `anytime` when
+no part of the day is given, since an unbucketed repeating habit shows nowhere.
 
 **Note 2026-10-04: "Ask AI" on the item's right-click menu.** One row, a submenu of at
 most four asks, declared in `lib/item-asks.ts` (gate, label, wording) and run by

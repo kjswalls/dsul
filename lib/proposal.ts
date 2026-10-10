@@ -81,6 +81,58 @@ export function canCreateType(typeName: string, ctx: Pick<ProposalContext, 'cust
 }
 
 /**
+ * Types a PROPOSAL may create: any type the user has, habits included. Wider
+ * than canCreateType on purpose: a recipe or a mod writes unseen, while a
+ * proposal is a card the user reads and accepts, so a new daily commitment is
+ * theirs to take or leave (Kirby, 2026-10-10: the AI does anything in the app,
+ * each change behind a tap).
+ */
+export function canProposeType(typeName: string, ctx: Pick<ProposalContext, 'customTypeNames'>): boolean {
+  return KNOWN_BUILTINS.includes(typeName) || ctx.customTypeNames.includes(typeName)
+}
+
+type RepeatFields = Pick<
+  Extract<ProposalOperation, { kind: 'create' }>,
+  'repeatFrequency' | 'repeatDays' | 'repeatMonthDay' | 'timesPerDay'
+>
+
+/**
+ * Why a repeat cannot be written to this type, or null. `merged` is the item
+ * as it would stand (the op over the target), so an update that only names the
+ * days of an already-custom habit passes. Registry-derived: which frequencies a
+ * type takes is `allowedFrequencies` (a habit has no 'none').
+ */
+function repeatRefusal(
+  typeName: string,
+  merged: RepeatFields & { startDate?: string | null },
+): string | null {
+  const config = getItemTypeConfig(typeName)
+  const freq = merged.repeatFrequency
+  if (freq && !config.allowedFrequencies.includes(freq)) {
+    return freq === 'none'
+      ? `a ${config.label.toLowerCase()} always repeats`
+      : `${config.label.toLowerCase()} items cannot repeat ${freq}`
+  }
+  if (freq === 'custom' && !merged.repeatDays?.length) return 'a custom repeat needs its days'
+  // A repeating series is anchored on its first day: with none it lands on no
+  // day at all (the same reason a repeating item cannot go to the Braindump).
+  if (config.dateAnchored && freq && freq !== 'none' && !merged.startDate) {
+    return 'a repeating item needs a first day'
+  }
+  return null
+}
+
+/** Drops the fields this type does not keep, so a stray one never costs the op. */
+function stripForeignFields<T extends Partial<RepeatFields> & { priority?: unknown }>(typeName: string, next: T): void {
+  const config = getItemTypeConfig(typeName)
+  if (!config.fields.includes('priority')) delete next.priority
+  if (!config.counters.dailyCounts) delete next.timesPerDay
+  const freq = next.repeatFrequency
+  if (freq !== undefined && freq !== 'custom') delete next.repeatDays
+  if (freq !== undefined && freq !== 'monthly') delete next.repeatMonthDay
+}
+
+/**
  * Drops operations the registry says are impossible for their target type.
  * Pure — callers pass the current items; nothing here reads a store.
  */
@@ -95,12 +147,13 @@ export function validateProposalOperations(
 
   for (const operation of operations) {
     if (operation.kind === 'create') {
-      if (!canCreateType(operation.itemType, ctx)) {
+      if (!canProposeType(operation.itemType, ctx)) {
         reject(operation, `cannot create items of type "${operation.itemType}"`)
         continue
       }
       const config = getItemTypeConfig(operation.itemType)
       const next = { ...operation }
+      stripForeignFields(operation.itemType, next)
 
       // Trimmed and re-read, not just truthiness-checked. `parentItemId: ""`
       // used to slip the whole branch below — so a "step" was created with a
@@ -115,6 +168,12 @@ export function validateProposalOperations(
       }
 
       if (next.parentItemId) {
+        // Registry-derived: a type that only repeats (allowedFrequencies has no
+        // 'none') has no one-off form to be a step in.
+        if (!config.allowedFrequencies.includes('none')) {
+          reject(operation, `a step cannot be a ${config.label.toLowerCase()}`)
+          continue
+        }
         const parent = ctx.items.find((i) => i.id === next.parentItemId)
         if (!parent) {
           reject(operation, 'the item to break down no longer exists')
@@ -141,12 +200,25 @@ export function validateProposalOperations(
         delete next.startDate
         delete next.startTime
         delete next.timeBucket
+        // A step has no day, so it has no series either.
+        delete next.repeatFrequency
+        delete next.repeatDays
+        delete next.repeatMonthDay
         accepted.push(next)
         continue
       }
 
       // A date on a date-blind type would be silently ignored by the grid.
       if (!config.dateAnchored) delete next.startDate
+      // A type that only repeats starts on its own default (a habit: daily).
+      if (!next.repeatFrequency && !config.allowedFrequencies.includes('none')) {
+        next.repeatFrequency = config.defaultFrequency
+      }
+      const repeat = repeatRefusal(operation.itemType, next)
+      if (repeat) {
+        reject(operation, repeat)
+        continue
+      }
       accepted.push(next)
       continue
     }
@@ -203,6 +275,23 @@ export function validateProposalOperations(
       }
     }
     if (!config.dateAnchored && next.startDate != null) delete next.startDate
+    stripForeignFields(itemTypeName(target), next)
+
+    if (
+      next.repeatFrequency !== undefined ||
+      next.repeatDays !== undefined ||
+      next.repeatMonthDay !== undefined
+    ) {
+      const repeat = repeatRefusal(itemTypeName(target), {
+        repeatFrequency: next.repeatFrequency ?? target.repeatFrequency,
+        repeatDays: next.repeatDays ?? target.repeatDays,
+        startDate: next.startDate === undefined ? ('startDate' in target ? target.startDate : undefined) : next.startDate,
+      })
+      if (repeat) {
+        reject(operation, repeat)
+        continue
+      }
+    }
 
     // CLEARING a field — locked decision 3's first step, and the reason it was
     // held back: "move it back to the Braindump" has real semantics beyond
@@ -274,8 +363,12 @@ function verbRefusal(op: ProposalVerbOp, ctx: ProposalContext): string | null {
   if ((op.verb === 'pause' || op.verb === 'resume') && !isPausable(item)) {
     return `${getItemTypeConfig(itemTypeName(item)).label.toLowerCase()} items cannot be paused`
   }
+  if (op.until !== undefined && op.verb !== 'pause') return 'only a pause has a day it ends'
   if (!ctx.todayStr || !ctx.tz) return null
 
+  // A pause that ends today or earlier is no pause: the row's own picker
+  // offers only days still to come.
+  if (op.until !== undefined && op.until <= ctx.todayStr) return 'a pause has to end on a day still to come'
   const dateStr = op.date ?? ctx.todayStr
   // A day can be put behind you, or skipped ahead of time, but not done ahead
   // of time: a tick on tomorrow is a streak bumped for something not yet done.
@@ -393,6 +486,33 @@ function friendlyDate(dateStr: string): string {
   return Number.isNaN(parsed.getTime()) ? dateStr : format(parsed, 'EEE MMM d')
 }
 
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+/** "daily", "on weekdays", "every Mon and Thu", "monthly on the 5th". */
+function repeatWords(r: { repeatFrequency?: string; repeatDays?: number[]; repeatMonthDay?: number }): string {
+  switch (r.repeatFrequency) {
+    case 'daily':
+      return 'daily'
+    case 'weekdays':
+      return 'on weekdays'
+    case 'weekends':
+      return 'on weekends'
+    case 'monthly':
+      return r.repeatMonthDay ? `monthly on the ${ordinal(r.repeatMonthDay)}` : 'monthly'
+    case 'custom': {
+      const days = [...(r.repeatDays ?? [])].sort((a, b) => a - b).map((d) => DAY_NAMES[d])
+      return days.length ? `every ${days.length > 1 ? `${days.slice(0, -1).join(', ')} and ${days.at(-1)}` : days[0]}` : 'on set days'
+    }
+    default:
+      return 'repeating'
+  }
+}
+
+function ordinal(n: number): string {
+  const tail = n % 100 >= 11 && n % 100 <= 13 ? 'th' : (['th', 'st', 'nd', 'rd'][n % 10] ?? 'th')
+  return `${n}${tail}`
+}
+
 /**
  * One scannable line per operation — the card's whole content.
  *
@@ -410,7 +530,9 @@ export function describeOperation(operation: ProposalOperation, ctx: ProposalCon
     }
     const label = getItemTypeConfig(operation.itemType).label.toLowerCase()
     const when = operation.startDate ? ` for ${friendlyDate(operation.startDate)}` : ''
-    return `New ${label}: ${operation.title}${when}`
+    const repeat = operation.repeatFrequency && operation.repeatFrequency !== 'none' ? `, ${repeatWords(operation)}` : ''
+    const times = operation.timesPerDay && operation.timesPerDay > 1 ? `, ${operation.timesPerDay} times a day` : ''
+    return `New ${label}: ${operation.title}${when}${repeat}${times}`
   }
 
   const target = ctx.items.find((i) => i.id === operation.itemId)
@@ -427,7 +549,7 @@ export function describeOperation(operation: ProposalOperation, ctx: ProposalCon
       case 'unskip':
         return `${title}: unskip${day || ' today'}`
       case 'pause':
-        return `${title}: pause`
+        return operation.until ? `${title}: pause until ${friendlyDate(operation.until)}` : `${title}: pause`
       case 'resume':
         return `${title}: resume`
     }
@@ -441,6 +563,15 @@ export function describeOperation(operation: ProposalOperation, ctx: ProposalCon
   if (operation.startTime === null) parts.push('clear the time')
   else if (operation.startTime) parts.push(`set ${operation.startTime}`)
   if (operation.timeBucket) parts.push(`${operation.timeBucket}`)
+  if (operation.repeatFrequency === 'none') parts.push('stop repeating')
+  else if (operation.repeatFrequency || operation.repeatDays || operation.repeatMonthDay) {
+    parts.push(`repeat ${repeatWords({
+      repeatFrequency: operation.repeatFrequency ?? target?.repeatFrequency,
+      repeatDays: operation.repeatDays ?? target?.repeatDays,
+      repeatMonthDay: operation.repeatMonthDay ?? target?.repeatMonthDay,
+    })}`)
+  }
+  if (operation.timesPerDay) parts.push(`${operation.timesPerDay} times a day`)
   if (operation.priority === null) parts.push('clear priority')
   else if (operation.priority) parts.push(`${operation.priority} priority`)
   if (operation.status) {

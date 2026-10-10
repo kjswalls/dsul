@@ -1040,6 +1040,17 @@ const proposalFields = {
     startTime: z.string().optional(),
     priority: PrioritySchema.optional(),
     notes: z.string().max(10_000).optional(),
+    /**
+     * How it repeats. Which frequencies a type takes (a habit never 'none') is
+     * the registry's `allowedFrequencies`, checked app-side like status.
+     */
+    repeatFrequency: RepeatFrequencySchema.optional(),
+    /** For 'custom': 0 = Sunday … 6 = Saturday. */
+    repeatDays: z.array(z.number().int().min(0).max(6)).min(1).max(7).optional(),
+    /** For 'monthly': the day of the month. */
+    repeatMonthDay: z.number().int().min(1).max(31).optional(),
+    /** Counted habits only (registry `counters.dailyCounts`): the daily target. */
+    timesPerDay: z.number().int().min(1).max(100).optional(),
 };
 export const ProposalCreateOpSchema = z.object({
     ...proposalFields,
@@ -1086,6 +1097,8 @@ export const ProposalVerbOpSchema = z.object({
     itemId: z.string().min(1).max(200),
     /** The day it acts on, yyyy-MM-dd; today when absent. Pause and resume ignore it. */
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    /** Pause only: the day it comes back, yyyy-MM-dd. Absent pauses until resumed. */
+    until: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 export const ProposalOperationSchema = z.discriminatedUnion('kind', [
     ProposalCreateOpSchema,

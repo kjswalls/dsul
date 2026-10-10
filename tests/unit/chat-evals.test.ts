@@ -66,6 +66,10 @@ const IDEAL: Record<string, { found?: RegExp[]; reply: string }> = {
     reply: "That's fine. The card takes it off your calendar and back to the braindump, so it's there when you're ready.",
   },
   'habit-tick': { found: [/Morning run: done today/], reply: 'Nice! Tap Accept on the card to tick off your run.' },
+  'new-habit': {
+    found: [/New habit: Stretch, on weekdays/],
+    reply: "Lovely. Here's a weekday morning stretch as a habit; tap Accept to start it.",
+  },
   'habit-skip': {
     found: [/Floss: skip today/],
     reply: "Of course. The card skips tonight's floss, and your streak stays as it is.",

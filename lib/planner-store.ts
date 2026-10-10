@@ -3885,12 +3885,38 @@ export const usePlannerStore = create<PlannerStore>()(
                 status: 'pending' as const,
                 isScheduled: !!timeBucket,
               };
+              const repeat = {
+                repeatFrequency: op.repeatFrequency,
+                repeatDays: op.repeatDays,
+                repeatMonthDay: op.repeatMonthDay,
+              };
+              if (op.itemType === 'habit') {
+                // The shape addHabit builds: a fresh streak and history. A
+                // habit has no day, so an unbucketed one would sit on no
+                // surface (the Braindump takes no repeating habit): anytime.
+                const { priority: _p, startDate: _d, isScheduled: _s, ...habitFields } = common;
+                void _p; void _d; void _s;
+                created.push({
+                  ...habitFields,
+                  ...repeat,
+                  type: 'habit',
+                  repeatFrequency: op.repeatFrequency ?? 'daily',
+                  timesPerDay: op.timesPerDay,
+                  timeBucket: timeBucket ?? 'anytime',
+                  streak: 0,
+                  completedDates: [],
+                  skippedDates: [],
+                  dailyCounts: {},
+                  currentDayCount: 0,
+                } as Item);
+                continue;
+              }
               const order = op.parentItemId ? nextChildOrder(op.parentItemId) : orderCursor++;
               created.push(
                 op.itemType === 'task'
-                  ? ({ ...common, type: 'task', order } as Item)
+                  ? ({ ...common, ...repeat, type: 'task', order } as Item)
                   : // Custom types aren't manually orderable (created_at sorts).
-                    ({ ...common, type: 'custom', customType: op.itemType, order: 0 } as Item),
+                    ({ ...common, ...repeat, type: 'custom', customType: op.itemType, order: 0 } as Item),
               );
               continue;
             }
@@ -6303,7 +6329,7 @@ function runProposalVerb(op: ProposalVerbOp, today: string, tz: string): void {
       return;
     case 'pause':
     case 'resume':
-      store.setItemPaused(item.id, op.verb === 'pause');
+      store.setItemPaused(item.id, op.verb === 'pause', op.until);
       return;
   }
 }
