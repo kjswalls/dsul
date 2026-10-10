@@ -121,7 +121,10 @@ vi.mock('@/lib/ai-server/stream', () => ({
     }
   ),
 }));
-vi.mock('@/lib/ai-server/rate-limit', () => ({ takeToken: vi.fn(() => true) }));
+vi.mock('@/lib/ai-server/rate-limit', () => ({
+  takeToken: vi.fn(() => true),
+  takeSharedToken: vi.fn(async () => true),
+}));
 
 const adapter = vi.hoisted(() => ({
   verify: vi.fn(),

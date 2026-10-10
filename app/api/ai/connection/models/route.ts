@@ -8,7 +8,7 @@ import {
 } from '@/lib/ai-server/connections'
 import { logProviderError, toProviderError } from '@/lib/ai-server/errors'
 import { getAdapter, type ListedModel } from '@/lib/ai-server/providers'
-import { takeToken } from '@/lib/ai-server/rate-limit'
+import { takeSharedToken } from '@/lib/ai-server/rate-limit'
 import { anySignal } from '@/lib/ai-server/stream'
 
 /**
@@ -34,7 +34,7 @@ function toOption(m: ListedModel): ModelOption {
 export async function GET(req: Request): Promise<Response> {
   const user = await requireSessionUser()
   if (!user) return jsonError(401, 'unauthorized')
-  if (!takeToken(user.id, 'check')) return jsonError(429, 'busy')
+  if (!(await takeSharedToken(user.id, 'check'))) return jsonError(429, 'busy')
 
   // `openConnectionKey`, not `openModelConnection`: the picker opens exactly
   // when no model is chosen yet, and listing must work on a failing key too.

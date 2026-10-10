@@ -965,39 +965,59 @@ describe('ping: one streamed test question, one output token', () => {
     expect(body).not.toHaveProperty('max_completion_tokens');
   });
 
-  it('a model that only refuses a STREAMED request rejects the ping as bad_request', async () => {
+  const unverified = () =>
+    json(
+      {
+        error: {
+          message: 'Your organization must be verified to stream this model.',
+          type: 'invalid_request_error',
+          param: 'stream',
+          code: 'unsupported_value',
+        },
+      },
+      400,
+      noRetry
+    );
+
+  it('a model that only refuses a STREAMED request rejects the ping as stream_refused', async () => {
     // The question Ask asks is streamed, so the check asks it that way too.
-    route = (r) => (JSON.parse(r.body ?? '{}').stream === true ? json({ error: 'unverified org' }, 400, noRetry) : openaiSse([]));
-    expect((await rejection(getAdapter('openai').ping(creds('openai'), 'gpt-5-mini', signal()))).kind).toBe('bad_request');
+    route = (r) => (JSON.parse(r.body ?? '{}').stream === true ? unverified() : openaiSse([]));
+    expect((await rejection(getAdapter('openai').ping(creds('openai'), 'gpt-5-mini', signal()))).kind).toBe(
+      'stream_refused'
+    );
   });
 
-  it('the check still passes that key: a stream-only refusal is a bad_request, which is the model’s business', async () => {
-    // Records today's behavior, not a goal: an org OpenAI has not verified to
-    // stream its default model is saved as working, and Ask then fails on
-    // every send. No kind outside the check's pass list reads this 400 yet.
-    route = (r) =>
-      r.method === 'GET'
-        ? openaiModels(['gpt-5-mini'])
-        : json(
-            {
-              error: {
-                message: 'Your organization must be verified to stream this model.',
-                type: 'invalid_request_error',
-                param: 'stream',
-                code: 'unsupported_value',
-              },
-            },
-            400,
-            noRetry
-          );
+  it('any other 400 is still a bad_request', async () => {
+    route = () => json({ error: { message: 'nope', param: 'messages' } }, 400, noRetry);
+    expect((await rejection(getAdapter('openai').ping(creds('openai'), 'gpt-5-mini', signal()))).kind).toBe(
+      'bad_request'
+    );
+  });
+
+  it('the check fails a default that won’t stream, after asking the next default once', async () => {
+    // An organization OpenAI has not verified to stream its newest models:
+    // the older mini answers, and that one is saved.
+    route = (r) => {
+      if (r.method === 'GET') return openaiModels([['gpt-5-mini', 300], ['gpt-4o-mini', 100]]);
+      return JSON.parse(r.body ?? '{}').model === 'gpt-5-mini' ? unverified() : openaiSse([delta(null, 'length')]);
+    };
     const out = await checkConnection(getAdapter('openai'), creds('openai'), {
       signal: signal(),
       deadline: Date.now() + 20_000,
     });
-    expect(seen.map((r) => r.method)).toEqual(['GET', 'POST']);
-    expect(JSON.parse(seen[1].body ?? '{}').stream).toBe(true);
-    expect(out.model).toBe('gpt-5-mini');
+    expect(seen.map((r) => r.method)).toEqual(['GET', 'POST', 'POST']);
+    expect(out.model).toBe('gpt-4o-mini');
     expect(out.ping).toEqual({ ok: true });
+  });
+
+  it('with no other default that streams, the check fails as stream_refused', async () => {
+    route = (r) => (r.method === 'GET' ? openaiModels(['gpt-5-mini']) : unverified());
+    const out = await checkConnection(getAdapter('openai'), creds('openai'), {
+      signal: signal(),
+      deadline: Date.now() + 20_000,
+    });
+    expect(out.ping.ok).toBe(false);
+    expect(!out.ping.ok && out.ping.error.kind).toBe('stream_refused');
   });
 
   it('a 403 is the model’s or the region’s, never the key’s: the list already proved the key', async () => {

@@ -5,10 +5,10 @@
  * output token. "Working" means a model answered.
  *
  * Server-only. Each check spends one provider request on the test question
- * (two at most, on a retry or a fallback; three only on Anthropic, when a
- * picked model's retry gets a 400 and the default is asked): it counts
- * against a free OpenRouter account's daily free requests and against
- * Gemini's requests per day. The
+ * (two at most, on a retry or a fallback, a default that won't stream among
+ * them; three only on Anthropic, when a picked model's retry gets a 400 and
+ * the default is asked): it counts against a free OpenRouter account's daily
+ * free requests and against Gemini's requests per day. The
  * SDK's own retry is off for it (META, maxRetries 0), because it would obey
  * an uncapped retry-after and retry a hint thrown from the fetch layer; the
  * one retry here waits a fixed, abortable second, inside the caller's
@@ -132,6 +132,23 @@ export async function checkConnection(
   };
   const credit = await noCredit(first);
   if (credit) return credit;
+
+  // A model that won't stream for this account (OpenAI's newer ones, for an
+  // organization it has not verified) would fail Ask on every send, so it
+  // never passes. When it was the adapter's default, not a model the person
+  // picked, the next default is asked once: an older model often streams for
+  // the same account, and the one that answers is the one saved.
+  if (first.kind === 'stream_refused') {
+    if (model === fallback && room()) {
+      const rest = { ...result, models: result.models.filter((m) => m.id !== model) };
+      const next = adapter.pickDefaultModel(rest);
+      if (next !== null && next !== model) {
+        const second = await ask(next);
+        if (second === null) return answered(next);
+      }
+    }
+    return failed(first);
+  }
 
   // OpenRouter throttles its free models one by one: on the free tier, with
   // the default picked (not a model the person kept), the next free default

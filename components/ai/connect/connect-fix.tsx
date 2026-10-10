@@ -102,6 +102,7 @@ const SAYS_SOMETHING: ReadonlySet<ApiErrorCode> = new Set<ApiErrorCode>([
   'no_credit',
   'daily_limit',
   'region',
+  'stream_refused',
   'network',
   'unreachable',
   'busy',

@@ -286,6 +286,8 @@ export function connectErrorCopy(
         : `${name} accepted the key, but today’s limit on it is used up. Try again once it resets, or use another key.`;
     case 'region':
       return `${name} won’t answer from where dsul’s server is right now. A different provider works instead.`;
+    case 'stream_refused':
+      return `${name} accepted the key, but won’t stream answers from this model until your organization is verified. Verify it with ${name}, or pick another model.`;
     case 'network':
       return `Couldn’t reach ${name} just now. Try again in a moment.`;
     case 'unreachable':
@@ -372,6 +374,8 @@ export function checkFailureCopy(
             : '';
       return `${company} won’t answer from where dsul’s server is right now. A key from another service works instead${where}.`;
     }
+    case 'stream_refused':
+      return `${company} accepted the key, but won’t stream answers until your organization is verified. Verify it with ${company}, then check again, or use another key.`;
     case 'network':
       return `Couldn’t reach ${company} just now. Check again in a moment.`;
     case 'unreachable':

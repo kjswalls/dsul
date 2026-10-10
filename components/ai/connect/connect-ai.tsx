@@ -168,6 +168,46 @@ export function ConnectAI({
   return (
     <div data-testid="connect-ai" data-connect-host={host} data-layout={layout} className="flex flex-col gap-5">
       <KeyCard {...forms} highlightId={highlightId} onSay={setSaid} />
+      <ConnectFolds
+        forms={forms}
+        layout={layout}
+        openFold={openFold}
+        onToggle={toggle}
+        signInRef={signInRef}
+        onSay={setSaid}
+      />
+      {afterFolds}
+      <GoodToKnow host={host} />
+      {/* The one live region: there before anything is said into it. */}
+      <p role="status" data-testid="connect-status" className="sr-only">
+        {checking ? checkingCopy(checking.provider, checking.baseUrl) : said}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * The two folds under the key card, one open at a time: Sign in with
+ * OpenRouter, and "I already use…". ConnectAI draws them under its key card;
+ * Settings → AI's "Use a different service" draws them alone (SwitchService).
+ */
+function ConnectFolds({
+  forms,
+  layout,
+  openFold,
+  onToggle,
+  signInRef,
+  onSay,
+}: {
+  forms: FormProps;
+  layout: 'desktop' | 'phone';
+  openFold: FoldId | null;
+  onToggle: (id: FoldId) => void;
+  signInRef: RefObject<HTMLAnchorElement | null>;
+  onSay: Say;
+}) {
+  const { host, asks } = forms;
+  return (
       <div
         data-testid="connect-folds"
         className={cn('flex flex-col divide-y divide-border border border-border', host === 'column' ? 'rounded-xl' : 'rounded-[8px]')}
@@ -177,24 +217,71 @@ export function ConnectAI({
           title="Sign in with OpenRouter"
           sub="Free models on a new, free account. Nothing to copy."
           open={openFold === 'openrouter'}
-          onToggle={() => toggle('openrouter')}
+          onToggle={() => onToggle('openrouter')}
         >
-          <OpenRouterBody host={host} layout={layout} asks={asks} signInRef={signInRef} onSay={setSaid} />
+          <OpenRouterBody host={host} layout={layout} asks={asks} signInRef={signInRef} onSay={onSay} />
         </Fold>
         <Fold
           id="any"
           title="I already use OpenAI, Anthropic, Gemini or another service"
           sub="Paste a key you have, use your own server, or pair OpenClaw."
           open={openFold === 'any'}
-          onToggle={() => toggle('any')}
+          onToggle={() => onToggle('any')}
         >
-          <AnyKeyBody {...forms} onSay={setSaid} />
+          <AnyKeyBody {...forms} onSay={onSay} />
         </Fold>
       </div>
-      {afterFolds}
-      <GoodToKnow host={host} />
-      {/* The one live region: there before anything is said into it. */}
-      <p role="status" data-testid="connect-status" className="sr-only">
+  );
+}
+
+/**
+ * Settings → AI's "Use a different service", on a connection that is saved:
+ * the connect card's two folds without its free-key card, "I already use…"
+ * open. A key is placed by its prefix and checked as on the card; the saved
+ * connection stays until the new one answers, then `onConnected` hands back to
+ * the pane. A question kept from `?` is never sent from here, as everywhere on
+ * the pane.
+ */
+export function SwitchService({ onConnected }: { onConnected: () => void }) {
+  const flowResult = useAIConnectionStore((s) => s.flowResult);
+  const [openFold, setOpenFold] = useState<FoldId | null>(() => (flowResult !== null ? 'openrouter' : 'any'));
+  const [seenFlow, setSeenFlow] = useState(flowResult);
+  if (flowResult !== seenFlow) {
+    setSeenFlow(flowResult);
+    if (flowResult !== null) setOpenFold('openrouter');
+  }
+  const [checking, setChecking] = useState<CheckTarget | null>(null);
+  const [said, setSaid] = useState('');
+  const signInRef = useRef<HTMLAnchorElement>(null);
+  useFlowResultSpentOnLeave();
+
+  const toggle = (id: FoldId) => {
+    spendFlowResult();
+    setOpenFold((open) => (open === id ? null : id));
+  };
+  const onChecking = (target: CheckTarget | null) => {
+    if (target) setSaid('');
+    setChecking(target);
+  };
+  const forms: FormProps = {
+    host: 'pane',
+    busy: checking !== null,
+    onChecking,
+    onOk: () => onConnected(),
+    asks: false,
+  };
+
+  return (
+    <div data-testid="connect-switch" className="flex flex-col gap-3">
+      <ConnectFolds
+        forms={forms}
+        layout="desktop"
+        openFold={openFold}
+        onToggle={toggle}
+        signInRef={signInRef}
+        onSay={setSaid}
+      />
+      <p role="status" data-testid="connect-switch-status" className="sr-only">
         {checking ? checkingCopy(checking.provider, checking.baseUrl) : said}
       </p>
     </div>
