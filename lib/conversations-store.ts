@@ -8,6 +8,7 @@ import { isModelId } from './ai-types';
 import { replyErrorCode } from './chat-errors';
 import {
   CHAT_LIMITS,
+  cleanActions,
   cleanText,
   cleanTitle,
   deriveTitle,
@@ -86,7 +87,7 @@ export interface ChatMessage {
   sync: 'saved' | 'pending' | 'unsaved';
   /**
    * A reply's action lines: the lookups the AI made while answering, in
-   * dsul's words. Memory only for now; a reloaded conversation has none.
+   * dsul's words. Saved with the reply (migration 068); never a lookup's results.
    */
   actions?: string[];
 }
@@ -378,6 +379,7 @@ function fromStored(m: StoredMessage): ChatMessage {
     createdAt: Number.isFinite(t) ? t : 0,
     pos: m.pos,
     sync: 'saved',
+    ...(m.actions?.length ? { actions: m.actions } : {}),
   };
 }
 
@@ -394,6 +396,7 @@ function toTurn(m: ChatMessage): TurnMessage {
     replyTo: m.replyTo,
     answerer: m.answerer,
     model: m.answerer === 'model' && isModelId(m.model) ? m.model : null,
+    ...(m.actions?.length ? { actions: cleanActions(m.actions) } : {}),
   };
 }
 
