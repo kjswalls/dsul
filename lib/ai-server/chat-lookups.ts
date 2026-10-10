@@ -12,6 +12,10 @@
  * line saying so, and nothing in a result can widen what the next call may
  * do: the tool set is fixed for the turn.
  *
+ * Since build step 4 the same set also carries `propose_changes`
+ * (./chat-changes.ts), which reads the same items and never writes: it draws
+ * a card the user accepts.
+ *
  * Each call also yields an ACTION LINE: a short sentence in our words ("Looked
  * for "dentist" (2 found)") that the chat shows above the reply, so the user
  * can see why the AI knows what it knows. The model's own text never reaches
@@ -20,6 +24,8 @@
 
 import type { Goal, Item, Project, Routine, Season } from '@/lib/planner-types';
 import type { ItemEvent } from '@/lib/db';
+import type { ProposalDraft } from '@/lib/planner-types';
+import { PROPOSE_TOOL, makeChangeOffer } from './chat-changes';
 import type { ToolCall, ToolDef } from './providers';
 
 export interface LookupSource {
@@ -30,6 +36,8 @@ export interface LookupSource {
   seasons(): Promise<Season[] | null>;
   goals(): Promise<Goal[] | null>;
   events(itemId: string): Promise<ItemEvent[]>;
+  /** The user's own type names; null when they cannot be read. */
+  itemTypes(): Promise<string[] | null>;
 }
 
 export interface LookupResult {
@@ -37,6 +45,8 @@ export interface LookupResult {
   content: string;
   /** What the user sees above the reply. */
   action: string;
+  /** A card to show under the reply (propose_changes only, ./chat-changes.ts). */
+  proposal?: ProposalDraft;
 }
 
 /** The most rows one find_items answer lists. */
@@ -102,6 +112,9 @@ export const LOOKUP_TOOLS: ToolDef[] = [
   },
 ];
 
+/** Everything chat is offered: the lookups, and the one tool that draws a card. */
+export const CHAT_TOOLS: ToolDef[] = [...LOOKUP_TOOLS, PROPOSE_TOOL];
+
 const FINISHED = new Set(['completed', 'cancelled', 'done']);
 
 function typeOf(item: Item): string {
@@ -123,7 +136,9 @@ function str(v: unknown): string | undefined {
 
 function dayOf(item: Item): string | undefined {
   if (item.type === 'habit') return undefined;
-  return item.startDate && item.isScheduled !== false ? item.startDate : undefined;
+  // The Braindump's own rule (lib/braindump-members.ts): an item is undated
+  // when it is neither scheduled nor bucketed, whatever startDate says.
+  return item.startDate && (item.isScheduled || item.timeBucket) ? item.startDate : undefined;
 }
 
 function isFinished(item: Item): boolean {
@@ -170,6 +185,7 @@ export function makeLookups(source: LookupSource) {
   };
   const items = once(() => source.items());
   const projects = once(() => source.projects());
+  const proposeChanges = makeChangeOffer({ items, goals: () => source.goals(), itemTypes: () => source.itemTypes() });
 
   async function findItems(args: Record<string, unknown>): Promise<LookupResult> {
     const query = str(args.query);
@@ -292,7 +308,7 @@ export function makeLookups(source: LookupSource) {
   }
 
   return {
-    tools: LOOKUP_TOOLS,
+    tools: CHAT_TOOLS,
     /** Never throws: a failure is an `error:` result the model can read. */
     async run(call: ToolCall): Promise<LookupResult> {
       if (call.args === null) return error('the arguments were not a JSON object.', 'Tried a lookup that did not work');
@@ -304,6 +320,8 @@ export function makeLookups(source: LookupSource) {
             return await overview();
           case 'item_activity':
             return await activity(call.args);
+          case PROPOSE_TOOL.name:
+            return await proposeChanges(call.args);
           default:
             return error(`there is no tool called ${quote(call.name)}.`, 'Tried a lookup that does not exist');
         }

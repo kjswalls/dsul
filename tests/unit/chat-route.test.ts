@@ -23,6 +23,7 @@ import {
   sanitizeChatMessages,
 } from '@/lib/ai-limits';
 import { BEACON_SYSTEM_PROMPT } from '@/lib/beacon-system-prompt';
+import { TOOLS_PROMPT, withToolsPrompt } from '@/lib/ai-server/chat-loop';
 
 /**
  * POST /api/chat, the rewrite: the user's own model or their own OpenClaw
@@ -160,6 +161,7 @@ vi.mock('@/lib/db', () => ({
   fetchSeasons: vi.fn(async () => []),
   fetchGoals: vi.fn(async () => []),
   fetchItemEvents: vi.fn(async () => []),
+  fetchItemTypes: vi.fn(async () => []),
 }));
 
 const adapter = vi.hoisted(() => ({
@@ -740,15 +742,45 @@ describe('POST /api/chat → a model that takes tools', () => {
     expect(adapter.completeWithTools).toHaveBeenCalledTimes(2);
 
     const [, first] = adapter.completeWithTools.mock.calls[0];
-    expect(first.tools.map((t: { name: string }) => t.name)).toEqual(['find_items', 'planner_overview', 'item_activity']);
-    expect(first.system[0]).toBe(BEACON_SYSTEM_PROMPT);
-    expect(first.system[1]).toMatch(/^You can also look things up/);
+    expect(first.tools.map((t: { name: string }) => t.name)).toEqual([
+      'find_items',
+      'planner_overview',
+      'item_activity',
+      'propose_changes',
+    ]);
+    // The base prompt, with its "cannot change the planner" swapped for the card.
+    expect(first.system[0]).toBe(withToolsPrompt([BEACON_SYSTEM_PROMPT])[0]);
+    expect(first.system[0]).not.toBe(BEACON_SYSTEM_PROMPT);
+    expect(first.system[1]).toBe(TOOLS_PROMPT);
     expect(first.maxOutputTokens).toBe(MAX_OUTPUT_TOKENS);
 
     const [, second] = adapter.completeWithTools.mock.calls[1];
     const result = second.messages.at(-1);
     expect(result).toMatchObject({ role: 'tool', callId: 'c1', name: 'find_items' });
     expect(result.content).toContain('Book dentist [id: i-1]');
+  });
+
+  it('a change arrives as a card frame, after its action line, and the reply follows', async () => {
+    adapter.completeWithTools
+      .mockResolvedValueOnce({
+        text: '',
+        toolCalls: [
+          {
+            id: 'c1',
+            name: 'propose_changes',
+            args: { summary: 'Dentist to Monday', operations: [{ kind: 'update', itemId: 'i-1', startDate: '2026-10-19' }] },
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ text: 'Accept the card to move it.', toolCalls: [] });
+    expect(await frames(await post(hi))).toEqual([
+      { action: 'Suggested "Dentist to Monday"' },
+      { proposal: { summary: 'Dentist to Monday', operations: [{ kind: 'update', itemId: 'i-1', startDate: '2026-10-19' }] } },
+      { content: 'Accept the card to move it.' },
+      '[DONE]',
+    ]);
+    const [, second] = adapter.completeWithTools.mock.calls[1];
+    expect(second.messages.at(-1).content).toContain('Nothing has changed yet');
   });
 
   it('reads the planner through the session client, as the signed-in user', async () => {

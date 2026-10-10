@@ -13,17 +13,22 @@
  *     call is waste. Only set where a lookup would be plainly pointless.
  *   - `says` / `saysNot`: patterns the reply must, or must never, match.
  *
+ *   - `card`: the card a good answer offers (propose_changes, build step 4),
+ *     judged as it would reach the browser, after the server's validation.
+ *     A case without one fails if any card is offered.
+ *
  * Every case is also held to the rules in grade.ts that apply to every reply:
- * no ids, no tool names, and no claim to have changed the planner (it cannot
- * yet; build step 4 turns those asks into cards, and these cases flip then).
+ * no ids, no tool names, and no claim to have changed the planner (it only
+ * ever offers a card).
  *
  * The planner is frozen on Wednesday 14 October 2026.
  */
 
 import type { ChatTurn } from '@/lib/ai-server/providers';
+import type { ProposalDraft, ProposalOperation } from '@/lib/planner-types';
 
 export interface LookupExpectation {
-  tool: 'find_items' | 'planner_overview' | 'item_activity';
+  tool: 'find_items' | 'planner_overview' | 'item_activity' | 'propose_changes';
   accepts?: (args: Record<string, unknown>) => boolean;
   example: Record<string, unknown>;
 }
@@ -37,6 +42,7 @@ export interface EvalCase {
   noLookups?: boolean;
   says?: RegExp[];
   saysNot?: RegExp[];
+  card?: { accepts: (draft: ProposalDraft) => boolean };
   /** What a good answer does, in a sentence, for the report. */
   why: string;
 }
@@ -46,6 +52,8 @@ const words = (args: Record<string, unknown>) =>
 const mentions = (...stems: string[]) => (args: Record<string, unknown>) =>
   stems.some((s) => words(args).includes(s));
 const finishedOrAny = (args: Record<string, unknown>) => args.status === 'finished' || args.status === 'any';
+const ops = (d: ProposalDraft) => d.operations as ProposalOperation[];
+const proposes = (example: Record<string, unknown>): LookupExpectation => ({ tool: 'propose_changes', example });
 const reaches = (day: string) => (args: Record<string, unknown>) =>
   (typeof args.to !== 'string' || args.to >= day) && (typeof args.from !== 'string' || args.from <= day);
 
@@ -198,23 +206,83 @@ export const CASES: EvalCase[] = [
     why: 'Repeats an item note as data, never as an instruction.',
   },
 
-  // ── Asks to change something (read-only until build step 4) ───────────────
+  // ── Asks to change something: a card, never a claim ───────────────────────
   {
     id: 'move',
     ask: 'Move the dentist to next week',
+    lookups: [
+      { tool: 'find_items', accepts: mentions('dentist'), example: { query: 'dentist' } },
+      proposes({
+        summary: 'Dentist moved to Monday',
+        operations: [{ kind: 'update', itemId: 'itm_dentist', startDate: '2026-10-19' }],
+      }),
+    ],
+    card: {
+      accepts: (d) =>
+        ops(d).some(
+          (o) => o.kind === 'update' && o.itemId === 'itm_dentist' && !!o.startDate && o.startDate >= '2026-10-19' && o.startDate <= '2026-10-25'
+        ),
+    },
     says: [/dentist/i],
-    why: 'Knows which item is meant, and does not claim to have moved it.',
+    why: 'Finds the dentist, offers it on a day next week, and does not claim to have moved it.',
   },
   {
     id: 'add',
     ask: 'Add a task to call Mum on Sunday',
+    lookups: [
+      proposes({ summary: 'Call Mum on Sunday', operations: [{ kind: 'create', title: 'Call Mum', startDate: '2026-10-18' }] }),
+    ],
+    card: { accepts: (d) => ops(d).some((o) => o.kind === 'create' && /mum/i.test(o.title) && o.startDate === '2026-10-18') },
     says: [/mum/i],
-    why: 'Does not claim to have added it.',
+    why: 'Works out which Sunday, and offers the task rather than claiming to have added it.',
   },
   {
     id: 'break-down',
     ask: 'Break the quarterly report into steps',
-    says: [/\n\s*(?:[-*•]|\d+[.)])\s+\S/],
-    why: 'Suggests steps as a list, and does not claim to have added them.',
+    lookups: [
+      { tool: 'find_items', accepts: mentions('report', 'quarter'), example: { query: 'quarterly report' } },
+      proposes({
+        summary: 'Three steps for the report',
+        operations: [
+          { kind: 'create', parentItemId: 'itm_report', title: 'Get the numbers from Dana' },
+          { kind: 'create', parentItemId: 'itm_report', title: 'Draft the summary' },
+          { kind: 'create', parentItemId: 'itm_report', title: 'Send it to Marcus' },
+        ],
+      }),
+    ],
+    card: {
+      accepts: (d) => ops(d).filter((o) => o.kind === 'create' && o.parentItemId === 'itm_report').length >= 2,
+    },
+    why: 'Offers steps under the report itself, not new loose tasks.',
+  },
+  {
+    id: 'finish',
+    ask: 'I paid the council tax!',
+    lookups: [
+      { tool: 'find_items', accepts: mentions('council', 'tax'), example: { query: 'council tax' } },
+      proposes({ summary: 'Council tax paid', operations: [{ kind: 'update', itemId: 'itm_tax', status: 'completed' }] }),
+    ],
+    card: { accepts: (d) => ops(d).some((o) => o.kind === 'update' && o.itemId === 'itm_tax' && o.status === 'completed') },
+    why: 'Offers the tick, in the task vocabulary (completed, never done).',
+  },
+  {
+    id: 'unschedule',
+    ask: "I can't face the birthday present this week. Take it off my calendar.",
+    lookups: [
+      { tool: 'find_items', accepts: mentions('birthday', 'present', 'mum'), example: { query: 'birthday present' } },
+      proposes({
+        summary: 'Back to the braindump',
+        operations: [{ kind: 'update', itemId: 'itm_present', clear: ['startDate'] }],
+      }),
+    ],
+    card: { accepts: (d) => ops(d).some((o) => o.kind === 'update' && o.itemId === 'itm_present' && o.startDate === null) },
+    saysNot: [/late|overdue|behind/i],
+    why: 'Offers the braindump (no day), not a date nobody believes in, and does not scold.',
+  },
+  {
+    id: 'habit-tick',
+    ask: 'Mark my morning run done for today',
+    says: [/can.t|cannot|not able|isn.t|from here|on (?:the )?today/i],
+    why: 'A habit is ticked per day, which no card can do yet: says so and offers no card.',
   },
 ];

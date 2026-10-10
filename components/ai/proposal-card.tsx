@@ -45,7 +45,9 @@ export function ProposalCard({
   // Only a model-backed ask has a different answer in it; catch-up is a pure
   // function of the planner and would return the same items.
   const modelBacked = useProposalStore(
-    (s) => s.lastRequest != null && s.lastRequest.intent !== 'catch-up'
+    // An offer from chat's reply has no ask to repeat: the conversation is
+    // where the user asks for something different.
+    (s) => s.lastRequest != null && s.lastRequest.intent !== 'catch-up' && s.lastRequest.intent !== 'offer'
   );
   // And only while something can still answer it. The card outlives the gate:
   // a key turned down mid-ask (the propose route's 'auth', which marks the

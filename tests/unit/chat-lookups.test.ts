@@ -42,6 +42,7 @@ function source(over: Partial<LookupSource> = {}): LookupSource {
       { id: 'e1', itemId: 't1', itemType: 'task', action: 'update', payload: { startDate: '2026-10-15' }, createdAt: '2026-10-09T10:00:00Z' },
       { id: 'e2', itemId: 't1', itemType: 'task', action: 'create', payload: {}, createdAt: '2026-10-01T10:00:00Z' },
     ]),
+    itemTypes: vi.fn(async () => []),
     ...over,
   };
 }

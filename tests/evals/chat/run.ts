@@ -6,7 +6,7 @@
 
 import { buildDsulContext } from '@/lib/ai-context';
 import { MAX_OUTPUT_TOKENS, composeChatSystem } from '@/lib/ai-limits';
-import { lookupLoop, withLookupsPrompt } from '@/lib/ai-server/chat-loop';
+import { lookupLoop, withToolsPrompt } from '@/lib/ai-server/chat-loop';
 import { makeLookups } from '@/lib/ai-server/chat-lookups';
 import type { ProviderAdapter, ProviderCredentials } from '@/lib/ai-server/providers';
 import type { EvalCase } from './cases';
@@ -23,7 +23,7 @@ export function evalSystem(): string[] {
     goals: GOALS,
     userTimezone: TIMEZONE,
   });
-  return withLookupsPrompt(composeChatSystem({ typeNouns: [], customInstructions: '', context }));
+  return withToolsPrompt(composeChatSystem({ typeNouns: [], customInstructions: '', context }));
 }
 
 export interface RunOptions {
@@ -48,6 +48,7 @@ export async function runCase(c: EvalCase, o: RunOptions): Promise<Transcript> {
   };
 
   const actions: string[] = [];
+  const proposals: Transcript['proposals'] = [];
   let reply = '';
   for await (const ev of lookupLoop({
     adapter,
@@ -57,7 +58,8 @@ export async function runCase(c: EvalCase, o: RunOptions): Promise<Transcript> {
     lookups: recorded,
   })) {
     if ('action' in ev) actions.push(ev.action);
+    else if ('proposal' in ev) proposals.push(ev.proposal);
     else reply += ev.content;
   }
-  return { calls, actions, reply };
+  return { calls, actions, proposals, reply };
 }

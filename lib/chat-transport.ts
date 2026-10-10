@@ -12,6 +12,8 @@ import { isModelId } from './ai-types';
 import { isChatErrorCode, replyErrorCode, type ReplyErrorCode } from './chat-errors';
 import { stripReasoningTags } from './chat-utils';
 import { parseSseFrames } from './sse';
+import { ProposalDraftSchema } from '@dsul/types';
+import type { ProposalDraft } from './planner-types';
 import type { MessageStatus } from './conversation-types';
 
 /**
@@ -56,6 +58,8 @@ export interface TurnInput {
   onDelta: (delta: string) => void;
   /** Each action line (a lookup the AI made), before the reply's text. */
   onAction?: (action: string) => void;
+  /** A card the AI offers, parsed and well formed; the caller validates it against the planner. */
+  onProposal?: (draft: ProposalDraft) => void;
 }
 
 export interface TurnOutcome {
@@ -328,6 +332,12 @@ async function viaChatRoute(input: TurnInput): Promise<TurnOutcome> {
     let errored = false;
     for await (const frame of parseSseFrames(res.body)) {
       if (typeof frame.action === 'string' && frame.action) input.onAction?.(frame.action);
+      if (frame.proposal !== undefined) {
+        // From our own server, but a frame is a frame: a malformed card is
+        // dropped, never half-drawn.
+        const card = ProposalDraftSchema.safeParse(frame.proposal);
+        if (card.success) input.onProposal?.(card.data as ProposalDraft);
+      }
       if (typeof frame.content === 'string' && frame.content) {
         content += frame.content;
         input.onDelta(frame.content);

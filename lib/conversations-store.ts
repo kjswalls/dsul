@@ -1378,6 +1378,12 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
                 ),
               }));
             },
+            onProposal: (draft) => {
+              if (isStale(st)) return;
+              // Under this conversation's transcript, where the receipt lands
+              // when it is accepted.
+              useProposalStore.getState().offer(draft, resolveId(id));
+            },
             onDelta: (delta) => {
               if (isStale(st) || !delta) return;
               updateThread(resolveId(id), (t) => ({

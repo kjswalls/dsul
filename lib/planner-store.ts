@@ -32,7 +32,7 @@ import type {
 import { PRIORITY_LABELS } from './planner-types';
 import type { ItemSize } from './item-size';
 // The time → bucket rules live in a plain module so a route can share them.
-import { autoCorrectBucket } from './time-bucket';
+import { autoCorrectBucket, getBucketForTime } from './time-bucket';
 // The schedule actions' patches live in lib/item-edit.ts, so the iPhone's routes write the same ones.
 import { projectRefilePatch, scheduleHabitPatch, scheduleTaskPatch, UNSCHEDULE_TASK_PATCH } from './item-edit';
 import { validateProposalOperations } from './proposal';
@@ -3844,7 +3844,13 @@ export const usePlannerStore = create<PlannerStore>()(
 
         for (const op of accepted) {
           if (op.kind === 'create') {
-            const timeBucket = autoCorrectBucket(op.startTime, op.timeBucket);
+            // A day with no bucket is no day at all: day views list only
+            // bucketed items, and the Braindump takes anything unbucketed, so
+            // "Call Mum on Sunday" would have landed in the Braindump. Same
+            // fallback moveTaskToDate makes. Steps have no date by now.
+            const timeBucket =
+              autoCorrectBucket(op.startTime, op.timeBucket) ??
+              (op.startDate ? (op.startTime ? getBucketForTime(op.startTime) : 'anytime') : undefined);
             const common = {
               title: op.title,
               notes: op.notes,
@@ -3900,6 +3906,13 @@ export const usePlannerStore = create<PlannerStore>()(
           // The simple clears: no companions, nothing derived from them.
           if (rest.startTime === null) updates.startTime = undefined;
           if (rest.priority === null) updates.priority = undefined;
+          // A new day keeps the item visible on it: the same load-bearing
+          // bucket fallback as moveTaskToDate, or a Braindump item given a
+          // day would stay in the Braindump.
+          if (typeof rest.startDate === 'string' && rest.startDate && !(updates.timeBucket ?? target.timeBucket)) {
+            const time = updates.startTime ?? target.startTime;
+            updates.timeBucket = time ? getBucketForTime(time) : 'anytime';
+          }
 
           // Same reason as the create path: the id has to move with the name.
           if (updates.project !== undefined) {

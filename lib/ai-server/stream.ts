@@ -14,6 +14,7 @@
 import { MAX_ASSISTANT_CHARS } from '@/lib/ai-limits';
 import { SSE_DONE, sseFrame, type SseFrame } from '@/lib/sse';
 import { ProviderError, USER_MESSAGES } from './errors';
+import type { ProposalDraft } from '@/lib/planner-types';
 
 /** The reply cap a saved conversation also clips to: one constant for both. */
 const DEFAULT_MAX_CHARS = MAX_ASSISTANT_CHARS;
@@ -44,13 +45,16 @@ const FALLBACK_FRAME: SseFrame = { error: USER_MESSAGES.upstream, code: 'upstrea
 /** An action line's longest form on the wire. */
 const ACTION_MAX_CHARS = 200;
 
+/** What the tool path yields beside text: an action line, or a card. */
+export type SideFrame = { action: string } | { proposal: ProposalDraft };
+
 /**
- * `source` yields text deltas, and on the lookup path action lines as
- * `{action}`: those are sent as their own frames and never count toward the
- * reply's characters.
+ * `source` yields text deltas, and on the tool path action lines as
+ * `{action}` and cards as `{proposal}`: those are sent as their own frames and
+ * never count toward the reply's characters.
  */
 export function deltasToSse(
-  source: AsyncIterable<string | { action: string }>,
+  source: AsyncIterable<string | SideFrame>,
   opts: {
     abort: AbortController;
     onError: (err: unknown) => Promise<SseFrame>;
@@ -60,7 +64,7 @@ export function deltasToSse(
 ): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   const maxChars = opts.maxChars ?? DEFAULT_MAX_CHARS;
-  let it: AsyncIterator<string | { action: string }> | null = null;
+  let it: AsyncIterator<string | SideFrame> | null = null;
   let cancelled = false;
   let finished = false;
   let chars = 0;
@@ -119,6 +123,13 @@ export function deltasToSse(
 
           const value = r.value;
           if (typeof value === 'object' && value !== null) {
+            if ('proposal' in value) {
+              // Already parsed against ProposalDraftSchema and validated
+              // (./chat-changes.ts); the browser validates it again.
+              if (!value.proposal) continue;
+              send(sseFrame({ proposal: value.proposal }));
+              return;
+            }
             const action = typeof value.action === 'string' ? value.action.trim().slice(0, ACTION_MAX_CHARS) : '';
             if (!action) continue;
             send(sseFrame({ action }));
