@@ -8,7 +8,17 @@ import {
   thisDeviceId,
   uaHints,
 } from '@/lib/devices/web-client';
-import { coveredByIphoneApp, deviceName, kindOn, withKind, type RosterRow } from '@/lib/devices/roster';
+import {
+  CLAIMS_LOCALLY_COPY,
+  claimsAtDesk,
+  claimsLocallyOn,
+  coveredByIphoneApp,
+  deviceName,
+  kindOn,
+  withClaimsLocally,
+  withKind,
+  type RosterRow,
+} from '@/lib/devices/roster';
 
 /** This browser as a device (lib/devices/web-client.ts), and the Devices list's words (lib/devices/roster.ts). */
 
@@ -170,5 +180,35 @@ describe('the Devices list', () => {
     expect(coveredByIphoneApp(pwa, [pwa, app])).toBe(true);
     expect(coveredByIphoneApp(pwa, [pwa])).toBe(false);
     expect(coveredByIphoneApp(roster({ os: 'ios', form: 'tablet' }), [app])).toBe(false);
+  });
+});
+
+describe('Ring here while I’m using it (claimsLocally, reminders PR-1b)', () => {
+  it('belongs to a screen: a browser or the desktop app, never the iPhone app', () => {
+    expect(claimsAtDesk(roster())).toBe(true);
+    expect(claimsAtDesk(roster({ platform: 'electron', transport: 'none' }))).toBe(true);
+    expect(claimsAtDesk(roster({ platform: 'ios', transport: 'none' }))).toBe(false);
+  });
+
+  it('is on until switched off, so every new browser starts with it on', () => {
+    expect(claimsLocallyOn(roster())).toBe(true);
+    expect(claimsLocallyOn(roster({ prefs: { claimsLocally: false } }))).toBe(false);
+    expect(withClaimsLocally({ kinds: { eod: false }, muted: false }, false)).toEqual({
+      kinds: { eod: false },
+      muted: false,
+      claimsLocally: false,
+    });
+    expect(withClaimsLocally(null, true)).toEqual({ claimsLocally: true });
+  });
+
+  it('says what it costs: every channel, texts and calls included; per browser; on in a new one', () => {
+    const help = CLAIMS_LOCALLY_COPY.help;
+    expect(help).toContain(CLAIMS_LOCALLY_COPY.label);
+    expect(help).toMatch(/nowhere else/);
+    expect(help).toMatch(/not on your phone/);
+    expect(help).toMatch(/no text or call/);
+    expect(help).toMatch(/Each browser has its own switch/);
+    expect(help).toMatch(/a new browser starts with it on/);
+    expect(help).toMatch(/five minutes/);
   });
 });

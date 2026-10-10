@@ -472,7 +472,11 @@ on the phone, and a Phase 0 that brings the ticks migration 045 paused back as o
 pg_cron job. Kirby decided its §7 on 2026-10-06; Phase 0 is built (migration 058 resumes the
 tick once Kirby applies it), and its top addendum lists where Phase 0's code departs from the body.
 Phase 1a's device registry is built too (migration 065, `lib/devices/`: every push leaves through
-`sendToUser`, and until Kirby applies 065 it falls back to `push_subscriptions`). Read
-it before touching `lib/reminders/**`, `lib/devices/**`, `lib/push-send.ts`, `app/api/cron/**`,
-`/api/reminders/act`, `/api/devices/**`, `push_subscriptions`, or notification code in `electron/`
-or `ios/`.
+`sendToUser`, and until Kirby applies 065 it falls back to `push_subscriptions`). So is PR-1b,
+the open page as a device: while someone is using it, `hooks/use-local-cue-tick.ts` claims due
+cues through `POST /api/reminders/claim` (the scan's own CAS, re-asked of `dueReminders` on the
+server first) and rings them through the service worker, never `new Notification` (a test), and
+`/api/reminders/ack` writes `cue_log` (migration 067, a ledger: owner SELECT only; until Kirby
+applies it the ack answers 503). Read it before touching `lib/reminders/**`, `lib/devices/**`,
+`lib/sw/**`, `lib/push-send.ts`, `app/api/cron/**`, `/api/reminders/**`, `/api/devices/**`,
+`push_subscriptions`, or notification code in `electron/` or `ios/`.

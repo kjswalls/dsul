@@ -1193,6 +1193,25 @@ describe('expiresAtMs', () => {
     expect(secondsLeft(nudges()[0], AT_0735_NY)).toBe(25 * 60);
   });
 
+  // cue_log's name for each nudge (lib/reminders/cue-log.ts), carried to the
+  // device that shows it so its ack can find the row (reminders PR-1b).
+  it('each nudge carries its cue_log key: the cue by its sent key, the snooze by its held instant', async () => {
+    fetchItems.mockResolvedValue([habit({ reminderTime: '07:30' })]);
+    await runReminderScan(cueService(), { now: AT_0735_NY });
+    expect(nudges()[0].logKey).toBe(`cue:${nudges()[0].itemId}:2026-08-10T07:30`);
+
+    vi.mocked(deliverNudge).mockClear();
+    const { service } = makeServiceFake({
+      'user_settings.select': { data: [USER] },
+      'items.select': {
+        data: [{ ...BOOK_ROW, reminder_snooze_until: '2026-08-10T11:34:00+00:00', reminder_snooze_date: '2026-08-10' }],
+      },
+      'items.update': { data: [{ id: 'h1' }] },
+    });
+    await runReminderScan(service, { now: AT_0735_NY });
+    expect(nudges()[0].logKey).toBe(`snooze:${nudges()[0].itemId}:2026-08-10T11:34:00.000Z`);
+  });
+
   it('a 23:45 cue at 23:50 stops at midnight', async () => {
     fetchItems.mockResolvedValue([habit({ reminderTime: '23:45' })]);
     await runReminderScan(cueService(), { now: AT_2350_NY });
@@ -1224,7 +1243,7 @@ describe('expiresAtMs', () => {
     fetchItems.mockResolvedValue([habit({ title: 'Reading', streak: 12 })]);
     await runReminderScan(lastCallService('23:50'), { now: AT_2350_NY });
 
-    expect(nudges()[0]).toMatchObject({ kind: 'last-call' });
+    expect(nudges()[0]).toMatchObject({ kind: 'last-call', logKey: 'last-call:2026-08-10' });
     expect(secondsLeft(nudges()[0], AT_2350_NY)).toBe(600);
     // …and that is the instant the push carries, beside its urgency and topic.
     const [, , payload] = sendPushToUser.mock.calls[0] as unknown as [unknown, string, Record<string, unknown>];

@@ -49,6 +49,8 @@ import type { ActivationContext } from '../active'
 import type { Item } from '../planner-types'
 import { isMissingColumn, loadChannelState } from './extension-state'
 import { localClock, type LocalClock } from './clock'
+import { claimCue, claimSnooze } from './claim'
+import { cueKey, dayKey, snoozeKey } from './cue-log'
 
 type ServiceClient = ReturnType<typeof createServiceClient>
 
@@ -509,6 +511,7 @@ export async function runReminderScan(
             // Good until the user's own midnight and no further: the review
             // is about today, and tomorrow's invitation is tomorrow's.
             expiresAtMs: expiryAt(clock, MINUTES_PER_DAY),
+            logKey: dayKey('eod', clock.dateStr),
           }
           const reports = await deliverNudge(nudge, base, channelState)
           noteFailures(summary, user.user_id, 'eod', reports)
@@ -616,6 +619,9 @@ export async function runReminderScan(
               items: [toNudgeItem(candidate.item)],
               snoozed: candidate.snoozed,
               expiresAtMs: cueExpiresAt(candidate, clock, grace),
+              logKey: candidate.snoozed
+                ? (snoozeKey(candidate.item.id, book.get(candidate.item.id)?.reminder_snooze_until ?? '') ?? undefined)
+                : cueKey(candidate.item.id, clock.dateStr, candidate.at),
             }
             const reports = await deliverNudge(nudge, base, channelState)
             noteFailures(summary, user.user_id, 'cue', reports)
@@ -664,6 +670,7 @@ export async function runReminderScan(
             // day's state at the minute it was computed, so how long it stays
             // true runs from then.
             expiresAtMs: expiryAt(clock, Math.min(clock.nowMinutes + grace, MINUTES_PER_DAY)),
+            logKey: dayKey('last-call', clock.dateStr),
           }
           const reports = await deliverNudge(nudge, base, channelState)
           noteFailures(summary, user.user_id, 'last-call', reports)
@@ -824,16 +831,9 @@ async function claimCandidates(
   // claimed against contains that row's own reminder time, so a batched update
   // could not express the condition.
   for (const candidate of candidates.filter((c) => !c.snoozed)) {
-    const key = sentKeyFor(dateStr, candidate.at)
-    const { data, error } = await service
-      .from('items')
-      .update({ reminder_sent_key: key })
-      .eq('id', candidate.item.id)
-      .eq('user_id', userId)
-      .or(`reminder_sent_key.is.null,reminder_sent_key.neq.${key}`)
-      .select('id')
-    if (error) return null
-    if ((data ?? []).length > 0) won.push(candidate)
+    const claimed = await claimCue(service, userId, candidate.item.id, sentKeyFor(dateStr, candidate.at))
+    if (claimed === null) return null
+    if (claimed) won.push(candidate)
   }
 
   // One statement each: the CAS value differs per row, so these cannot batch.
@@ -841,15 +841,9 @@ async function claimCandidates(
   for (const candidate of snoozed) {
     const held = book.get(candidate.item.id)?.reminder_snooze_until
     if (!held) continue
-    const { data, error } = await service
-      .from('items')
-      .update({ reminder_snooze_until: null, reminder_snooze_date: null })
-      .eq('id', candidate.item.id)
-      .eq('user_id', userId)
-      .eq('reminder_snooze_until', held)
-      .select('id')
-    if (error) return null
-    if ((data ?? []).length > 0) won.push(candidate)
+    const claimed = await claimSnooze(service, userId, candidate.item.id, held)
+    if (claimed === null) return null
+    if (claimed) won.push(candidate)
   }
 
   return won

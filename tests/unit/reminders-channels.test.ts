@@ -623,6 +623,12 @@ describe('the push channel says how long a push may wait, and how hard to wake f
   // per device: a topic per item, and a morning of six cues to a phone out of
   // signal loses two, every send still a 201. The tag collapses a cue and its
   // snooze in the shade instead.
+  // The ack's handle (cue_log, 067): the worker posts it back once shown.
+  it('a nudge with a cue_log key carries it as data.key', async () => {
+    await pushChannel.deliver(cue({ itemId: UUID, expiresAtMs: TICK + 1800_000, logKey: `cue:${UUID}:2026-08-10T07:30` }), oneDevice());
+    expect(sentAs().body).toMatchObject({ data: { key: `cue:${UUID}:2026-08-10T07:30` } });
+  });
+
   it('a cue: TTL from the nudge, high urgency, and no topic', async () => {
     await pushChannel.deliver(cue({ itemId: UUID, expiresAtMs: TICK + 1800_000 }), oneDevice());
 

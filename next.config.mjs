@@ -44,6 +44,12 @@ const withSerwist = withSerwistInit({
   swSrc: 'app/sw.ts',
   swDest: 'public/sw.js',
   disable: process.env.NODE_ENV === 'development',
+  // Not on every reconnect. The default reloaded the whole page whenever the
+  // connection came back (a laptop waking, a train out of a tunnel), throwing
+  // away any draft, the undo history and the page tick's memory of which cues
+  // it already rang (memory/plans/reminders-platforms.md §5.2, PR-1b).
+  // hooks/use-local-cue-tick.ts listens for `online` instead.
+  reloadOnOnline: false,
 });
 
 export default withSerwist(nextConfig);

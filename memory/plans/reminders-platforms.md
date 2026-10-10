@@ -361,6 +361,65 @@
 > 5. **A registration the server may still take (offline, 503) is tried again at the next
 >    fetch; a 400 is not.**
 
+> **Addendum (2026-10-10): what PR-1b changed on the way in.** PR-1b (§5.2) is the page as a
+> device: `lib/reminders/{act,claim,claim-wire,page-claim,cue-log,local-tick}.ts`,
+> `lib/sw/handlers.ts`, `POST /api/reminders/claim` and `/ack`, `hooks/use-local-cue-tick.ts`
+> (mounted in AppShell beside `useDeviceRegistration`), `reloadOnOnline: false`, the
+> "Ring here while I'm using it" switch in Rituals → Devices, and migration 067. Where it departs
+> from §4.3 and §5.2:
+>
+> 1. **`cue_log` is migration 067 and lands here, not last in the phase (PR-1d).** The ack route
+>    needs a table to write to. 067 is §4.3's body plus two checks (`key` 1–200 chars,
+>    `acked_device` the device-id shape); `scripts/verify-067.sh` replays it twice on a bare
+>    Postgres (grants, the owner's read-only view, the unique key, the first-ack-only update, the
+>    cascade). **Nothing writes a row yet**: the scan's writer and the retry pass are still
+>    PR-1d, so until then every ack answers `{ ok: true, logged: false }`. Before 067 is applied,
+>    the ack answers 503 `unavailable` and nothing else notices.
+> 2. **The claim route does not take the page's word for what is due.** §5.2 says it runs "the
+>    exact `claimCandidates` compare-and-swap". It does (the three CASes now live once, in
+>    `lib/reminders/claim.ts`, and the scan calls them too), but first it re-asks `dueReminders`
+>    for each cue and snooze against the item as the database holds it, the stored zone, the
+>    master switch and the server's clock (`lib/reminders/page-claim.ts`). Nothing pushes a tick
+>    made on the phone into an open page yet, so a page's items can be hours old, and a claim on
+>    that word would silence the server for a habit already done. The cost is three reads per
+>    claim, and a page claims only when something is due.
+> 3. **The answer is `{ won, lost, later }`, not `{ won }`.** `lost` is never asked again;
+>    `later` is a page clock ahead of the server's, a snooze not yet matured on the server, or a
+>    write the database refused, and is asked again next minute.
+> 4. **A page claims only while it is a registered device of this account** (a `devices` row
+>    for its `dsul-device-id`, i.e. push turned on in this browser), with `prefs.claimsLocally`
+>    not false, the `cue` kind not off and the device not muted. A browser that never turned
+>    push on is not on the roster and never silences the phone. So **no `transport 'none'`
+>    browser rows arrive in PR-1b** (Phase 1a addendum, item 3); the desktop's come with PR-1c.
+> 5. **Snoozes reach the tick from the service worker.** After the act route stores a Snooze,
+>    the worker posts `{ type: 'dsul:snoozed', itemId, dateStr, until }` to every open page; the
+>    tick keeps it and claims it at `held`. A snooze tapped on another device is that device's or
+>    the scan's (§3.5's "until Realtime"). One whose instant is past its day's local midnight is
+>    dropped.
+> 6. **The act route's Snooze is held to its day** when the account has a stored zone
+>    (`snoozeFireInstant`, as `/api/app/items/:id` does since 2b): past local midnight it writes
+>    nothing and answers `snoozedUntil: null`. With no zone it stores as before. `skip` runs
+>    `applySkip` (the phone's intent) with its stake report and `item.skipped` recipe; no web
+>    push offers a Skip button yet.
+> 7. **The ack is `{ key, deviceId }` from a page and `{ key, endpoint }` from the worker**,
+>    which has no localStorage; the route looks the endpoint up among the session user's own
+>    devices. The key is `lib/reminders/cue-log.ts`'s, and the scan now puts it on every cue,
+>    snooze, last call and review push as `data.key` (`Nudge.logKey`). A snooze's instant is
+>    normalised through `toISOString`, so PostgREST's `+00:00` and a browser's `Z` are one key.
+> 8. **`lib/sw/handlers.ts` mirrors `SNOOZE_MINUTES`** beside the two action ids, so the page
+>    tick builds the push's own notification without importing `channels/push.ts` (and the
+>    sender behind it); `sw-handlers.test.ts` holds the copies equal. It also reads the
+>    declarative envelope (`web_push: 8030`), which nothing sends yet.
+> 9. **The `online` refetch is narrow.** No light planner refresh exists (`initializeStore`
+>    refuses to reset a loaded account by design), so `online` re-reads this device's switch,
+>    retries a planner load that failed (`loadFailedUserId`, the notice's retry) and ticks. A
+>    planner loaded before going offline is not refetched, where the old reload refetched it.
+> 10. **Not in PR-1b:** every Electron part (the idle probe, `onWake`, the bridge; PR-1c), the
+>     Settings copy's "on the desktop, any use of the Mac" (with PR-1c), `reminders-server-boundary`
+>     (a narrower `no-new-notification.test.ts` holds the tick's modules off the sender), and the
+>     `local-state` allowlist: the tick keeps its shown/lost sets in memory, so nothing new is
+>     stored.
+
 2026-10-05. **Status: plan, decided 2026-10-06 — Kirby took every default in §7; nothing in it has been built yet, nothing was written to prod.** Phase 0 is next. Every code citation is tree-level (`main` at `b8d480c`, 2026-10-04; every cited `file:line` holds at `3200896`, #405, 2026-10-05 — six cited files changed between the two commits, `electron/main.cjs`, `electron/preload.cjs`, `lib/desktop.ts`, `desktop-app.md`, `ios-app.md`, `CLAUDE.md`, but not at the cited lines; `preload.cjs` gained `authProviders`): the live project was read on 2026-10-05, read-only, and the observed values sit at the top of §5.1.1: the organisation is on the **Pro** plan, both ticks are paused exactly as 045 left them, no ritual is enabled by any of the four accounts, and Kirby is the only user, so the runbook's EXPECT lines are now observations and the §5.1 writes have no one to disturb. Kirby also holds a paid Apple Developer Program membership (confirmed 2026-10-05), which removes the purchase gate the brief assumed (decision 5, resolved). Facts taken from search snippets of pages the planning sessions could not open are marked `[S]`; facts no source verified are marked **[unverified]** inline and collected in §6. Sibling plans: [habit-reminders.md](habit-reminders.md) (the reminder model this builds on — read it first), [desktop-app.md](desktop-app.md), [ios-app.md](ios-app.md).
 
 ---

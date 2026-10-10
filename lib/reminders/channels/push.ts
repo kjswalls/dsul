@@ -151,6 +151,8 @@ export const pushChannel: NudgeChannel = {
         itemId: nudge.itemId,
         dateStr: nudge.dateStr,
         kind: nudge.kind,
+        // What the service worker acks once it has shown this (cue_log, 067).
+        ...(nudge.logKey ? { key: nudge.logKey } : {}),
       },
       // Worked out by the scan, which holds the user's clock, and passed on as
       // the instant it is: push-send turns it into a TTL as each device's
