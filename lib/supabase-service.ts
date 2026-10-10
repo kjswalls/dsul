@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { ACCESS_PREFIX } from './mcp-oauth/core'
+import { ACCESS_PREFIX } from './mcp-oauth/scopes'
 import { resolveAccessToken } from './mcp-oauth/store'
 
 /**
