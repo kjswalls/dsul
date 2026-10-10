@@ -54,6 +54,8 @@ export interface TurnInput {
   signal: AbortSignal;
   /** Each streamed delta, in memory only. Never a save. */
   onDelta: (delta: string) => void;
+  /** Each action line (a lookup the AI made), before the reply's text. */
+  onAction?: (action: string) => void;
 }
 
 export interface TurnOutcome {
@@ -325,6 +327,7 @@ async function viaChatRoute(input: TurnInput): Promise<TurnOutcome> {
     let errorCode: unknown = undefined;
     let errored = false;
     for await (const frame of parseSseFrames(res.body)) {
+      if (typeof frame.action === 'string' && frame.action) input.onAction?.(frame.action);
       if (typeof frame.content === 'string' && frame.content) {
         content += frame.content;
         input.onDelta(frame.content);

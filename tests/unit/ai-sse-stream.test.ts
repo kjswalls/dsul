@@ -36,6 +36,29 @@ describe('deltasToSse', () => {
     expect(raw.endsWith('data: [DONE]\n\n')).toBe(true);
   });
 
+  it('sends action lines as their own frames, trimmed and capped, never counted as reply text', async () => {
+    async function* withActions() {
+      yield { action: '  Looked for "dentist" (1 found) ' };
+      yield { action: '' };
+      yield { action: 'x'.repeat(500) };
+      yield 'Thursday.';
+    }
+    const { frames } = await drain(deltasToSse(withActions(), { abort: new AbortController(), onError, maxChars: 9 }));
+    expect(frames).toEqual([
+      { action: 'Looked for "dentist" (1 found)' },
+      { action: 'x'.repeat(200) },
+      { content: 'Thursday.' },
+    ]);
+  });
+
+  it('action lines alone are no reply', async () => {
+    async function* onlyActions() {
+      yield { action: 'Looked over your projects, routines and goals' };
+    }
+    const { frames } = await drain(deltasToSse(onlyActions(), { abort: new AbortController(), onError }));
+    expect(frames.at(-1)).toMatchObject({ code: 'empty' });
+  });
+
   it('a thrown source gives exactly one {error, code} frame, then [DONE]', async () => {
     async function* broken() {
       yield 'partial';

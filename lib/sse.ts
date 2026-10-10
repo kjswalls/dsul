@@ -16,6 +16,12 @@
 
 export interface SseFrame {
   content?: string
+  /**
+   * An action line: one lookup the AI made while answering ("Looked for
+   * "dentist" (2 found)"), in dsul's words, before any `content`. Older
+   * clients skip it.
+   */
+  action?: string
   /** Our copy, never the provider's text. */
   error?: string
   /**

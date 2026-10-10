@@ -125,6 +125,24 @@ describe('nothing can answer', () => {
 });
 
 describe('the model path (/api/chat)', () => {
+  it('keeps action lines on the reply, in order, and never saves them', async () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    stubFetch(() => ({
+      ok: true,
+      body: sse({ action: 'Looked for "dentist" (1 found)' }, { action: 'Read the history of "Book dentist"' }, { content: 'Thursday.' }),
+    }));
+
+    await store().send(id, 'when is the dentist?');
+
+    expect(last(id)).toMatchObject({
+      content: 'Thursday.',
+      status: 'complete',
+      actions: ['Looked for "dentist" (1 found)', 'Read the history of "Book dentist"'],
+    });
+    await conversationsSettled();
+    expect(JSON.stringify(api.turns)).not.toContain('Looked for');
+  });
+
   it('posts exactly the six keys: a target and the conversation, never a key, model or prompt', async () => {
     unseed = seedAI(CONNECTED_MODEL);
     useAISettingsStore.setState({ systemPrompt: 'Keep it short.' });

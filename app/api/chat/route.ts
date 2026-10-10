@@ -34,6 +34,11 @@ import {
 } from '@/lib/ai-server/errors'
 import { getAdapter } from '@/lib/ai-server/providers'
 import { anySignal, deltasToSse } from '@/lib/ai-server/stream'
+import { supportsTools } from '@/lib/ai-server/tool-support'
+import { makeLookups, type LookupSource } from '@/lib/ai-server/chat-lookups'
+import { LOOKUPS_PROMPT, lookupLoop, type LoopEvent } from '@/lib/ai-server/chat-loop'
+import { createClient } from '@/lib/supabase-server'
+import { fetchGoals, fetchItemEvents, fetchItems, fetchProjects, fetchRoutines, fetchSeasons } from '@/lib/db'
 
 /**
  * POST /api/chat: one chat turn, streamed as dsul's own SSE frames
@@ -49,6 +54,13 @@ import { anySignal, deltasToSse } from '@/lib/ai-server/stream'
  * own copy (lib/chat-errors.ts, the one copy the transcript also renders). A
  * provider's text, a database error and the key never reach the response or
  * the logs.
+ *
+ * Lookups (AI step 3, build step 2): when the connected model can take tools
+ * (lib/ai-server/tool-support.ts), it may search the planner while it answers
+ * (lib/ai-server/chat-loop.ts). Each lookup reads through the SESSION client,
+ * so RLS holds it to the user's own rows, and streams an `{action}` frame
+ * before the reply, which then arrives as one `{content}` frame. A model that
+ * cannot take tools streams exactly as before.
  *
  * Stateless: a turn names its saved conversation (`conversationId`) only so
  * the gateway path can key one OpenClaw session per conversation. Nothing here
@@ -199,6 +211,52 @@ export async function POST(req: Request): Promise<Response> {
     return e
   }
 
+  const request = {
+    model,
+    modelMeta: row.model_meta ?? {},
+    system,
+    maxOutputTokens: MAX_OUTPUT_TOKENS,
+    signal,
+  }
+
+  if (await supportsTools(creds.provider, model, creds, signal).catch(() => false)) {
+    const db = await createClient()
+    const events = lookupLoop({
+      adapter,
+      creds,
+      request: { ...request, system: [system[0], LOOKUPS_PROMPT, ...system.slice(1)] },
+      messages,
+      lookups: makeLookups(sessionSource(user.id, db)),
+    })
+    // The first round runs before the response exists, so a refused key or a
+    // bad model answers JSON exactly as the streamed path's first call does.
+    let first: IteratorResult<LoopEvent>
+    try {
+      first = await events.next()
+    } catch (err) {
+      const e = await onFailure(err)
+      if (e.kind === 'aborted') return new Response(null, { status: 204, headers: NO_STORE })
+      return jsonChatError(httpStatusFor(e.kind), e.message, toChatErrorCode(e.kind))
+    }
+    const frames = (async function* () {
+      let r = first
+      while (!r.done) {
+        yield 'action' in r.value ? { action: r.value.action } : r.value.content
+        r = await events.next()
+      }
+    })()
+    return new Response(
+      deltasToSse(frames, {
+        abort,
+        onError: async (err) => {
+          const e = await onFailure(err)
+          return { error: e.message, code: toChatErrorCode(e.kind) }
+        },
+      }),
+      { headers: STREAM_HEADERS }
+    )
+  }
+
   let source: AsyncIterable<string>
   try {
     source = await adapter.openStream(creds, {
@@ -225,4 +283,16 @@ export async function POST(req: Request): Promise<Response> {
     }),
     { headers: STREAM_HEADERS }
   )
+}
+
+/** The planner as the signed-in user sees it: the session client, under RLS. */
+function sessionSource(userId: string, db: Awaited<ReturnType<typeof createClient>>): LookupSource {
+  return {
+    items: () => fetchItems(userId, undefined, db),
+    projects: () => fetchProjects(userId, db),
+    routines: () => fetchRoutines(userId, db),
+    seasons: () => fetchSeasons(userId, db),
+    goals: () => fetchGoals(userId, db),
+    events: (itemId) => fetchItemEvents(itemId, db),
+  }
 }

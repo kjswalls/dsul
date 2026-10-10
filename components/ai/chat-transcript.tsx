@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ArrowDown, Check, Copy, Pencil, RotateCcw, Wand2 } from 'lucide-react';
+import { ArrowDown, Check, Copy, Pencil, RotateCcw, Search, Wand2 } from 'lucide-react';
 import ReactMarkdown, { type Components, type ExtraProps } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ProposalCard } from '@/components/ai/proposal-card';
@@ -428,6 +428,7 @@ const Reply = memo(function Reply({
 
   return (
     <div data-message-role="assistant" data-message-id={m.id} className="group/reply flex flex-col gap-1">
+      {m.actions && m.actions.length > 0 && <ActionLines actions={m.actions} />}
       {text ? (
         <div className={REPLY_PROSE}>
           <ReactMarkdown remarkPlugins={REPLY_REMARK} components={REPLY_COMPONENTS}>
@@ -481,6 +482,24 @@ const Reply = memo(function Reply({
     </div>
   );
 });
+
+/**
+ * What the AI looked up while answering, one quiet line each, above its words:
+ * so the user can see why it knows what it knows. The lines are dsul's own
+ * words for each lookup, never the model's.
+ */
+function ActionLines({ actions }: { actions: readonly string[] }) {
+  return (
+    <ul data-testid="chat-actions" aria-label="What the AI looked up" className="flex flex-col gap-0.5">
+      {actions.map((a, i) => (
+        <li key={i} data-testid="chat-action" className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Search className="size-3 shrink-0" aria-hidden />
+          <span className="min-w-0 truncate">{a}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 /**
  * Hand the exchange to the proposal path, so a conversation can end in

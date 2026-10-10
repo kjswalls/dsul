@@ -84,6 +84,11 @@ export interface ChatMessage {
   pos: number | null;
   /** 'pending' until the save lands; 'unsaved' once it never will ("Not saved"). */
   sync: 'saved' | 'pending' | 'unsaved';
+  /**
+   * A reply's action lines: the lookups the AI made while answering, in
+   * dsul's words. Memory only for now; a reloaded conversation has none.
+   */
+  actions?: string[];
 }
 
 export interface Thread {
@@ -207,6 +212,8 @@ const THREAD_STALE_MS = 30_000;
 const PLUGIN_SESSION_IDLE_MS = 50 * 60_000;
 const CONTINUITY_TURNS = 12;
 const CONTINUITY_CHARS = 8_000;
+/** A reply's action lines, at most: the loop's 4 rounds of 4 lookups. */
+const MAX_ACTIONS = 16;
 
 interface Stamp {
   generation: number;
@@ -1359,6 +1366,15 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
             context: note ? `${context}\n\n${note}` : context,
             typeNouns,
             signal: controller.signal,
+            onAction: (action) => {
+              if (isStale(st) || !action) return;
+              updateThread(resolveId(id), (t) => ({
+                ...t,
+                messages: t.messages.map((m) =>
+                  m.id === reply.id ? { ...m, actions: [...(m.actions ?? []), action].slice(0, MAX_ACTIONS) } : m
+                ),
+              }));
+            },
             onDelta: (delta) => {
               if (isStale(st) || !delta) return;
               updateThread(resolveId(id), (t) => ({
@@ -1384,8 +1400,10 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
       const status = outcome.status;
       // A stop before the first token leaves only the question.
       const dropReply = status !== 'error' && finalContent === '';
+      const actions = get().threads[cur]?.messages.find((m) => m.id === reply.id)?.actions;
       const finished: ChatMessage = {
         ...reply,
+        ...(actions?.length ? { actions } : {}),
         content: finalContent,
         status,
         errorCode: status === 'error' ? replyErrorCode(outcome.errorCode) : null,
