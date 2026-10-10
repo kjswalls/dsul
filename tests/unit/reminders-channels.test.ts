@@ -468,10 +468,29 @@ describe('the EOD review is push only', () => {
 
 /* ── Push ─────────────────────────────────────────────────────────────────── */
 
+/** A browser in the device registry (migration 064), seen just now by whatever clock the test runs. */
+const webDevice = (n: number, extra: Record<string, unknown> = {}) => ({
+  id: `row-${n}`,
+  user_id: 'u1',
+  device_id: `web-device-${n}`,
+  platform: 'web',
+  transport: 'webpush',
+  delivery: 'push',
+  os: null,
+  form: null,
+  token: `https://push.example/${n}`,
+  keys: { p256dh: 'p', auth: 'a' },
+  timezone: null,
+  prefs: {},
+  registered_at: new Date().toISOString(),
+  last_seen_at: new Date().toISOString(),
+  ...extra,
+});
+
 describe('the push channel says what became of the push', () => {
-  const subscription = (n: number) => ({ endpoint: `https://push.example/${n}`, p256dh: 'p', auth: 'a' });
+  const subscription = (n: number, extra?: Record<string, unknown>) => webDevice(n, extra);
   const withRows = (rows: unknown[]) =>
-    ctx({ service: makeServiceFake({ 'push_subscriptions.select': { data: rows } }).service });
+    ctx({ service: makeServiceFake({ 'devices.select': { data: rows } }).service });
 
   beforeEach(() => {
     vi.stubEnv('NEXT_PUBLIC_VAPID_PUBLIC_KEY', 'test-public');
@@ -526,7 +545,7 @@ describe('the push channel says what became of the push', () => {
   });
 
   it('deliverNudge carries unreached into its report', async () => {
-    const { service } = makeServiceFake({ 'push_subscriptions.select': { data: [] } });
+    const { service } = makeServiceFake({ 'devices.select': { data: [] } });
     const reports = await deliverNudge(
       cue(),
       { userId: 'u1', service, timeFormat: '12h', timezone: 'UTC' },
@@ -535,6 +554,36 @@ describe('the push channel says what became of the push', () => {
     expect(reports).toEqual([
       expect.objectContaining({ channel: 'push', ok: true, skipped: false, unreached: true }),
     ]);
+  });
+
+  // A device that has turned this kind off is not a device it went to.
+  it('every device holds this kind back: unreached, and it says so', async () => {
+    const result = await pushChannel.deliver(cue(), withRows([subscription(1, { prefs: { kinds: { cue: false } } })]));
+    expect(result).toMatchObject({ ok: true, unreached: true });
+    expect(result.detail).toBe('push: no device takes cue (held=1)');
+    expect(sendNotification).not.toHaveBeenCalled();
+  });
+
+  it('a held device beside one that took it: a delivery, with the hold counted', async () => {
+    sendNotification.mockResolvedValue({ statusCode: 201, body: '', headers: {} });
+    const result = await pushChannel.deliver(
+      cue(),
+      withRows([subscription(1), subscription(2, { prefs: { muted: true } })]),
+    );
+    expect(result).toMatchObject({ ok: true });
+    expect(result.detail).toBe('push sent=1/1 expired=0 failed=0 held=1');
+  });
+
+  // Deploy leads migration: until 064 is applied, push goes where it went before.
+  it('before 064, it pushes to push_subscriptions as it always did', async () => {
+    sendNotification.mockResolvedValue({ statusCode: 201, body: '', headers: {} });
+    const { service } = makeServiceFake({
+      'devices.select': { error: { code: 'PGRST205', message: 'no devices' } },
+      'push_subscriptions.select': { data: [{ endpoint: 'https://push.example/1', p256dh: 'p', auth: 'a' }] },
+    });
+    const result = await pushChannel.deliver(cue(), ctx({ service }));
+    expect(result).toMatchObject({ ok: true });
+    expect(result.detail).toBe('push sent=1/1 expired=0 failed=0');
   });
 });
 
@@ -547,7 +596,7 @@ describe('the push channel says how long a push may wait, and how hard to wake f
   const oneDevice = () =>
     ctx({
       service: makeServiceFake({
-        'push_subscriptions.select': { data: [{ endpoint: 'https://push.example/1', p256dh: 'p', auth: 'a' }] },
+        'devices.select': { data: [webDevice(1)] },
       }).service,
     });
 

@@ -176,3 +176,55 @@ self.addEventListener('notificationclick', (event) => {
     })(),
   );
 });
+
+/**
+ * The browser replaced this worker's push subscription (an expiry, a key
+ * rotation, a push service's own housekeeping). Without this the device row
+ * keeps the dead endpoint, every push to it answers 410, and the row is pruned:
+ * reminders stop until the app is next opened.
+ *
+ * `newSubscription` is often absent (Chrome has never filled it in), so the
+ * worker re-subscribes with the old subscription's key. Then it tells the
+ * server, with the session cookie: /api/devices/rotate moves the row holding
+ * the old endpoint onto the new one and keeps its id and switches. A rotation
+ * the server cannot place (no old endpoint, a session that has gone) is left to
+ * the app's next boot, which registers whatever subscription it finds
+ * (hooks/use-device-registration.ts). Never throws.
+ */
+interface PushSubscriptionChange {
+  readonly oldSubscription: PushSubscription | null;
+  readonly newSubscription: PushSubscription | null;
+  waitUntil(promise: Promise<unknown>): void;
+}
+
+async function resubscribe(old: PushSubscription | null): Promise<PushSubscription | null> {
+  const key = old?.options?.applicationServerKey;
+  if (!key) return null;
+  const manager: PushManager = self.registration.pushManager;
+  return manager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+}
+
+self.addEventListener('pushsubscriptionchange', (event: Event) => {
+  const change = event as unknown as PushSubscriptionChange;
+  change.waitUntil(
+    (async () => {
+      const old = change.oldSubscription;
+      const next = change.newSubscription ?? (await resubscribe(old));
+      if (!next) return;
+      const json = next.toJSON();
+      if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) return;
+      await fetch('/api/devices/rotate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          oldToken: old?.endpoint ?? null,
+          token: json.endpoint,
+          keys: { p256dh: json.keys.p256dh, auth: json.keys.auth },
+        }),
+      });
+    })().catch(() => {
+      // Offline, or the push service refused. The next boot heals it.
+    }),
+  );
+});

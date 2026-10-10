@@ -70,6 +70,7 @@ import { useCommandShortcuts } from '@/hooks/use-command-shortcuts';
 import { useCommandContext } from '@/hooks/use-command-context';
 import { useUndoToast } from '@/hooks/use-undo-toast';
 import { useTimezoneSync } from '@/hooks/use-timezone-sync';
+import { useDeviceRegistration } from '@/hooks/use-device-registration';
 import { useOverdueSweep } from '@/hooks/use-overdue-sweep';
 import { useCompletionFiling } from '@/hooks/use-completion-filing';
 import { useDeferredDialogPromotion } from '@/hooks/use-deferred-dialog';
@@ -289,6 +290,9 @@ export function AppShell() {
 
   useUndoToast();
   useTimezoneSync();
+  // This browser re-registers its push subscription once per account per load
+  // (the device registry, migration 064).
+  useDeviceRegistration();
   // Opt-in past-due decay (off by default). Mounted here, above the
   // desktop/mobile split, so the once-per-day sweep runs on every platform and
   // survives view changes — and declared AFTER useUndoToast so the batched
