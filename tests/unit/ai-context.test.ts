@@ -119,6 +119,7 @@ describe('buildDsulContext', () => {
         task('b2', 'Done idea', { isScheduled: false, status: 'completed' }),
         task('s1', 'A step', { isScheduled: false, parentItemId: 'b1' }),
         task('bucket', 'Anytime thing', { isScheduled: false, timeBucket: 'anytime' }),
+        task('g1', 'Learn Mandarin', { type: 'custom', customType: 'goal', isScheduled: false }),
       ],
       projects: [],
     });
@@ -132,6 +133,8 @@ describe('buildDsulContext', () => {
     expect(out).not.toContain('Done idea');
     expect(out).not.toContain('A step');
     expect(out.split('### Braindump')[1]).not.toContain('Anytime thing');
+    // A custom type's own section lists every one of them already.
+    expect(out.split('### Braindump')[1]).not.toContain('Learn Mandarin');
   });
 
   it('caps a long braindump with a count', () => {

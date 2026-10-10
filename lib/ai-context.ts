@@ -141,12 +141,13 @@ export function buildDsulContext(state: {
   // The per-type sections above are TODAY's (and overdue): a task dated next
   // week, or one in the braindump with no date at all, appeared nowhere, so
   // asked about one by name the AI could only say it did not exist, or guess.
-  // Both are task-like (custom types in, subtasks and habits out, as the
-  // braindump itself counts them: lib/braindump-members.ts), still open, and
-  // not suppressed. Emitted only when non-empty, like Paused below.
+  // Tasks only, not subtasks, still open and not suppressed. Not custom types:
+  // their own section above is date-blind and already lists every one, so
+  // naming them here too would say each twice. Emitted only when non-empty,
+  // like Paused below.
   const open = state.items.filter(
-    (i): i is Exclude<Item, { type: 'habit' }> =>
-      i.type !== 'habit' &&
+    (i): i is Extract<Item, { type: 'task' }> =>
+      i.type === 'task' &&
       !('parentItemId' in i && i.parentItemId) &&
       i.status === 'pending' &&
       !suppressedIds.has(i.id)
