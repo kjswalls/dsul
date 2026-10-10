@@ -38,6 +38,12 @@ export function buildDsulContext(state: {
    * item titles.
    */
   goals?: Goal[]
+  /**
+   * Items the message names with "@<title>" (lib/chat-mentions.ts), for this
+   * turn only. Each gets the focused item's detail under its own heading;
+   * absent or empty, the output is byte-identical to before.
+   */
+  mentionedItemIds?: string[]
 }): string {
   const today = new Date()
   // tz first: `todayStr` is compared against pause intervals that isPausedOn
@@ -57,54 +63,27 @@ export function buildDsulContext(state: {
   if (state.focusItemId) {
     const focus = state.items.find((i) => i.id === state.focusItemId)
     if (focus) {
-      const config = getItemTypeConfig(itemTypeName(focus))
-      const subtasks = state.items.filter(
-        (i) => i.type !== 'habit' && i.parentItemId === focus.id
-      )
       lines.push('### Focused item')
       lines.push(
         'This conversation is about ONE item. Prioritize it; the rest of the ' +
           'context is background.'
       )
-      lines.push(`- ${focus.title} [id: ${focus.id}] (${config.label}, status: ${focus.status})`)
-      if (focus.type !== 'habit') {
-        const parts: string[] = []
-        if (focus.project) parts.push(`Project: ${focus.project}`)
-        if (focus.startDate) parts.push(`Date: ${focus.startDate}`)
-        if (focus.priority) parts.push(`Priority: ${focus.priority}`)
-        if (focus.assignee) parts.push(`Assigned to: ${focus.assignee} (${focus.aiStatus ?? 'no status'})`)
-        if (parts.length > 0) lines.push(`- ${parts.join(' · ')}`)
-      }
-      // Outside the non-habit branch on purpose: habits carry notes too (they
-      // are in habitShape, and the panel renders the field for them), and a
-      // per-item thread about a habit is exactly where that context is wanted.
-      if (focus.notes) lines.push(`- Notes: ${focus.notes}`)
-      // What this item is FOR, when it serves a goal. A per-item thread about
-      // "HSK 3 exam" that does not know it is the next checkpoint of Learn
-      // Chinese is missing the single most relevant fact about it — and the
-      // base output is unchanged for every item that serves none, so the pinned
-      // no-focus tests stay byte-exact.
-      const roles = goalRolesByItem(state.goals ?? []).get(focus.id) ?? []
-      if (roles.length > 0) {
-        const said = roles
-          .map((r) =>
-            r.role === 'milestone'
-              ? `a milestone of ${r.goalName}`
-              : r.role === 'checkin'
-                ? `the check-in for ${r.goalName}`
-                : `part of ${r.goalName}`
-          )
-          .join(', ')
-        lines.push(`- Serves: ${said}`)
-      }
-      if (subtasks.length > 0) {
-        lines.push('- Subtasks:')
-        subtasks.forEach((s) =>
-          lines.push(`  - [${s.status === 'completed' ? 'x' : ' '}] ${s.title} [id: ${s.id}]`)
-        )
-      }
+      lines.push(...itemDetail(focus, state))
       lines.push('')
     }
+  }
+
+  // Items the user named with @ in this message: the same detail as a focused
+  // item, so "move @Dentist to Monday" needs no lookup to find it.
+  const mentioned = (state.mentionedItemIds ?? [])
+    .filter((id) => id !== state.focusItemId)
+    .map((id) => state.items.find((i) => i.id === id))
+    .filter((i): i is Item => !!i)
+  if (mentioned.length > 0) {
+    lines.push('### Items named in this message')
+    lines.push('The user picked these with @ just now; "@<title>" in their message means this item.')
+    for (const item of mentioned) lines.push(...itemDetail(item, state))
+    lines.push('')
   }
 
   // Suppressed open loops are filtered HERE, before dispatch — one edit covers
@@ -295,4 +274,50 @@ function shortDate(day: string): string {
   const d = new Date(`${day}T00:00:00Z`)
   if (Number.isNaN(d.getTime())) return day
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })
+}
+
+/**
+ * One item's detail lines: the focused item's, and each item a message names
+ * with @. Byte-identical to what the focused-item section always printed.
+ */
+function itemDetail(focus: Item, state: { items: Item[]; goals?: Goal[] }): string[] {
+  const lines: string[] = []
+  const config = getItemTypeConfig(itemTypeName(focus))
+  const subtasks = state.items.filter((i) => i.type !== 'habit' && i.parentItemId === focus.id)
+  lines.push(`- ${focus.title} [id: ${focus.id}] (${config.label}, status: ${focus.status})`)
+  if (focus.type !== 'habit') {
+    const parts: string[] = []
+    if (focus.project) parts.push(`Project: ${focus.project}`)
+    if (focus.startDate) parts.push(`Date: ${focus.startDate}`)
+    if (focus.priority) parts.push(`Priority: ${focus.priority}`)
+    if (focus.assignee) parts.push(`Assigned to: ${focus.assignee} (${focus.aiStatus ?? 'no status'})`)
+    if (parts.length > 0) lines.push(`- ${parts.join(' · ')}`)
+  }
+  // Outside the non-habit branch on purpose: habits carry notes too (they
+  // are in habitShape, and the panel renders the field for them), and a
+  // per-item thread about a habit is exactly where that context is wanted.
+  if (focus.notes) lines.push(`- Notes: ${focus.notes}`)
+  // What this item is FOR, when it serves a goal. A per-item thread about
+  // "HSK 3 exam" that does not know it is the next checkpoint of Learn
+  // Chinese is missing the single most relevant fact about it — and the
+  // base output is unchanged for every item that serves none, so the pinned
+  // no-focus tests stay byte-exact.
+  const roles = goalRolesByItem(state.goals ?? []).get(focus.id) ?? []
+  if (roles.length > 0) {
+    const said = roles
+      .map((r) =>
+        r.role === 'milestone'
+          ? `a milestone of ${r.goalName}`
+          : r.role === 'checkin'
+            ? `the check-in for ${r.goalName}`
+            : `part of ${r.goalName}`
+      )
+      .join(', ')
+    lines.push(`- Serves: ${said}`)
+  }
+  if (subtasks.length > 0) {
+    lines.push('- Subtasks:')
+    subtasks.forEach((s) => lines.push(`  - [${s.status === 'completed' ? 'x' : ' '}] ${s.title} [id: ${s.id}]`))
+  }
+  return lines
 }

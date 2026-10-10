@@ -31,8 +31,20 @@ a new turn, so nothing saved is rewritten), action lines, receipts with Undo (bu
 "Something else", a line under its buttons whose words go to that card's conversation as the
 user's next message, verbatim, through sendFrom; the card goes once the send is taken, and a send
 refused keeps both; a card asked for keeps its retry)) and 2c
-(reach: @ items, / commands, the model chip, attachments, open wide). The section "Step 2a —
+(reach: @ items (built 2026-10-10, below), / commands, the model chip, attachments, open wide). The section "Step 2a —
 Move and save" below has what shipped and the privacy statement.
+
+**Note 2026-10-10: @ items.** Typing @ in any chat box (the rail's, an item's, the phone's dock) lists
+the planner's items under what follows it (open first, a title that starts with it first, steps after
+whole items, at most six); arrows move, Enter or Tab picks, Escape closes the list and nothing else.
+Picking writes "@<title> " into the message and nothing more: a mention is those words, found again
+at send time by `mentionedItemIds` (lib/chat-mentions.ts: longest title first, at a word start and a
+word end, an open item over a finished twin, at most five). So a draft kept in rail-store, an edit, a
+retry and a typed answer on a card all carry their mentions, deleting the words deletes the mention,
+and the stored message is exactly what was typed. The items found go to the model for that turn only,
+as "### Items named in this message" in the context, each with the focused item's own detail
+(`itemDetail`, lib/ai-context.ts); the base context without one is byte-identical. OpenClaw gets the
+same context. Nothing new is stored.
 
 **Note 2026-10-10: what the chat can see, and its words.** Kirby tried free OpenRouter models and
 the chat could not find tasks they named, and answered "break this into subtasks" with "make a

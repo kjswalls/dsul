@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { usePlannerStore } from './planner-store';
 import { getAICapabilities, useAIConnectionStore } from './ai-connection-store';
 import { buildDsulContext } from './ai-context';
+import { mentionedItemIds } from './chat-mentions';
 import { goalsEnabled } from './extension-gates';
 import { isPlannerPreviewing, whenPreviewEnds } from './planner-ready';
 import { isModelId } from './ai-types';
@@ -486,8 +487,11 @@ function withSummaries(
   return { summaries, itemIndex };
 }
 
-/** The planner as context, focused on the conversation's item while it exists. */
-function plannerContext(itemId: string | null): { context: string; typeNouns: string[] } {
+/**
+ * The planner as context, focused on the conversation's item while it exists,
+ * with the items the message names with @ (lib/chat-mentions.ts) in detail.
+ */
+function plannerContext(itemId: string | null, message: string): { context: string; typeNouns: string[] } {
   const { items, projects, itemTypes, routines, seasons, goals, userTimezone } = usePlannerStore.getState();
   const focusItemId = itemId && items.some((i) => i.id === itemId) ? itemId : undefined;
   const context = buildDsulContext({
@@ -499,6 +503,7 @@ function plannerContext(itemId: string | null): { context: string; typeNouns: st
     goals: goalsEnabled() ? goals : [],
     focusItemId,
     userTimezone,
+    mentionedItemIds: mentionedItemIds(message, items),
   });
   return { context, typeNouns: itemTypes.map((t) => t.labelPlural.toLowerCase()) };
 }
@@ -1356,7 +1361,7 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
           // leaving the question — exactly a stop before the first token.
           outcome = { content: '', status: 'stopped', errorCode: null, model: modelId };
         } else {
-          const { context, typeNouns } = plannerContext(base.itemId);
+          const { context, typeNouns } = plannerContext(base.itemId, content);
           const note = continuityNote(prior, answerer, via, now);
           // Whatever comes back, OpenClaw has the message from here on.
           if (answerer === 'openclaw') noteOpenclawAsked(id);
