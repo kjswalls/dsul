@@ -46,7 +46,17 @@ grant and every token under it at once. An app can sign itself out through
   context, my work, item activity; a test holds that each plans only a GET). Asking for another
   tool by name is "Unknown tool", and the agent handlers refuse its token on every write besides.
 - **Only hashes are stored.** Codes and tokens are sha256'd before they reach the database; a
-  code and a refresh token are each spent with a conditional update that succeeds once.
+  code and a refresh token are each spent with a conditional update that succeeds once. A spent
+  code or a rotated-away refresh token coming back is a replay, and it disconnects the whole
+  grant (OAuth 2.1 reuse detection): two holders of one chain means one of them is a thief.
+- **Public clients, whatever they ask for.** Registration answers `token_endpoint_auth_method:
+  none` even to a client that asked for a secret (RFC 7591 lets the server decide), because a
+  secret in a desktop app is no secret and refusing it would turn away a client over a habit.
+- **Exact at the token endpoint.** The loopback-port leeway (RFC 8252) is for authorize; the
+  redirect URI given with the code must be the one the code was issued to, byte for byte.
+- **One resource.** A `resource` (RFC 8707) other than `<origin>/api/mcp` is `invalid_target`.
+- **The name is the app's own claim.** Anyone can register as "Claude", so the consent page shows
+  where it will send you back, prominently, and says why.
 - **069's tables are service-role only**, like user_secrets; Settings reads them through
   `/api/oauth/grants`, which checks the session. Every user column cascades from auth.users.
 
@@ -55,3 +65,5 @@ grant and every token under it at once. An app can sign itself out through
 - A real-client probe (#261): connect Claude to a preview or prod once 069 is applied.
 - Per-agent keys for OpenClaw and retiring the plaintext key: still decision 1, still needs a
   coordinated plugin release.
+- Sweeping spent codes and expired tokens. They are hashes and harmless, only rows; a pg_cron
+  delete beside the reminders tick is the shape when the tables grow enough to matter.

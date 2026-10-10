@@ -86,9 +86,10 @@ describe('the rules', () => {
     expect(readRegistration({ redirect_uris: ['https://x.example/cb'] })).toMatchObject({ client_name: 'An app' });
     expect(readRegistration({ redirect_uris: [] })).toEqual({ error: 'invalid_redirect_uri' });
     expect(readRegistration({ redirect_uris: ['http://evil.example/cb'] })).toEqual({ error: 'invalid_redirect_uri' });
+    // Asked for a secret, it is registered public anyway (the route answers 'none').
     expect(
-      readRegistration({ redirect_uris: ['https://x.example/cb'], token_endpoint_auth_method: 'client_secret_basic' })
-    ).toEqual({ error: 'invalid_client_metadata' });
+      readRegistration({ redirect_uris: ['https://x.example/cb'], token_endpoint_auth_method: 'client_secret_post' })
+    ).toEqual({ client_name: 'An app', redirect_uris: ['https://x.example/cb'] });
   });
 
   it('publishes metadata that points the client at the right endpoints', () => {
@@ -332,5 +333,39 @@ describe('the flow', () => {
       scope: 'planner',
     });
     expect(await listGrants(db, 'user-1')).toEqual([expect.objectContaining({ scope: 'planner' })]);
+  });
+});
+
+describe('replays', () => {
+  const redeem = (db: never, client: { clientId: string }, code: string, redirectUri = 'https://claude.ai/cb') =>
+    redeemCode(db, { code, clientId: client.clientId, redirectUri, verifier: VERIFIER });
+
+  it('disconnects the app when a spent code comes back', async () => {
+    const { db, client, code } = await signIn();
+    const pair = (await redeem(db, client, code)) as TokenPair;
+    expect(await redeem(db, client, code)).toBe('invalid_grant');
+    expect(await resolveAccessToken(db, pair.access_token)).toBeNull();
+  });
+
+  it('disconnects the app when a rotated refresh token comes back', async () => {
+    const { db, client, code } = await signIn();
+    const first = (await redeem(db, client, code)) as TokenPair;
+    const second = (await refresh(db, { refreshToken: first.refresh_token, clientId: client.clientId })) as TokenPair;
+    expect(await refresh(db, { refreshToken: first.refresh_token, clientId: client.clientId })).toBe('invalid_grant');
+    expect(await resolveAccessToken(db, second.access_token)).toBeNull();
+    expect(await refresh(db, { refreshToken: second.refresh_token, clientId: client.clientId })).toBe('invalid_grant');
+  });
+
+  it('wants the exact redirect URI at the token endpoint, port and all', async () => {
+    const { db } = fakeDb();
+    const client = (await registerClient(db, { client_name: 'Claude Code', redirect_uris: ['http://localhost:1234/callback'] }))!;
+    const code = (await issueCode(db, {
+      userId: 'user-1',
+      clientId: client.clientId,
+      redirectUri: 'http://localhost:5555/callback',
+      codeChallenge: CHALLENGE,
+      scope: 'planner',
+    }))!;
+    expect(await redeem(db, client, code, 'http://localhost:6666/callback')).toBe('invalid_grant');
   });
 });

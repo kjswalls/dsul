@@ -106,9 +106,10 @@ export function readRegistration(body: unknown): ClientRegistration | { error: s
   if (!uris.every((u) => typeof u === 'string' && u.length <= 2000 && isAllowedRedirectUri(u))) {
     return { error: 'invalid_redirect_uri' };
   }
-  const auth = b.token_endpoint_auth_method;
-  // Public clients only: PKCE is the proof, and a secret in a desktop app is no secret.
-  if (auth !== undefined && auth !== 'none') return { error: 'invalid_client_metadata' };
+  // Public clients only: PKCE is the proof, and a secret in a desktop app is no
+  // secret. A client asking for another token_endpoint_auth_method is not
+  // refused (some ask for client_secret_post by habit); RFC 7591 §3.2.1 lets the
+  // server answer with what it will do instead, and the route answers 'none'.
   const name = typeof b.client_name === 'string' ? b.client_name.replace(/\s+/g, ' ').trim().slice(0, 80) : '';
   return { client_name: name || 'An app', redirect_uris: uris as string[] };
 }

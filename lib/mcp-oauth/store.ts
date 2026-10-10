@@ -23,7 +23,6 @@ import {
   hashSecret,
   mint,
   pkceMatches,
-  redirectUriMatches,
   type ClientRegistration,
 } from './core';
 import { isScope, type Scope } from './scopes';
@@ -175,9 +174,20 @@ export async function redeemCode(
     .select('user_id, client_id, grant_id, redirect_uri, code_challenge')
     .maybeSingle();
   if (error) return 'server_error';
-  if (!data) return 'invalid_grant';
+  if (!data) {
+    // A code that exists but was already spent is a replay (RFC 6749 §4.1.2):
+    // whoever has it, the tokens it bought are no longer to be trusted.
+    const spent = await db
+      .from('mcp_oauth_codes')
+      .select('grant_id, used_at')
+      .eq('code_hash', hashSecret(args.code))
+      .maybeSingle();
+    if (spent.data?.used_at) await revokeGrantById(db, spent.data.grant_id, now);
+    return 'invalid_grant';
+  }
   if (data.client_id !== args.clientId) return 'invalid_grant';
-  if (!redirectUriMatches(args.redirectUri, [data.redirect_uri])) return 'invalid_grant';
+  // Exact, as RFC 6749 §4.1.3 asks: the loopback port leeway is for authorize.
+  if (args.redirectUri !== data.redirect_uri) return 'invalid_grant';
   if (!pkceMatches(args.verifier, data.code_challenge)) return 'invalid_grant';
 
   const grant = await liveGrant(db, data.grant_id, args.clientId);
@@ -202,7 +212,19 @@ export async function refresh(
     .select('grant_id')
     .maybeSingle();
   if (error) return 'server_error';
-  if (!data) return 'invalid_grant';
+  if (!data) {
+    // A refresh token that was already rotated away coming back means two
+    // holders: the app and someone who copied it. Disconnect the grant, so
+    // neither chain goes on (OAuth 2.1 §4.3.1 reuse detection).
+    const spent = await db
+      .from('mcp_oauth_tokens')
+      .select('grant_id, revoked_at')
+      .eq('token_hash', hashSecret(args.refreshToken))
+      .eq('kind', 'refresh')
+      .maybeSingle();
+    if (spent.data?.revoked_at) await revokeGrantById(db, spent.data.grant_id, now);
+    return 'invalid_grant';
+  }
   const grant = await liveGrant(db, data.grant_id, args.clientId);
   if (!grant) return 'invalid_grant';
   return (await issueTokens(db, grant, now)) ?? 'server_error';

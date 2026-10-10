@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { NO_STORE, isSameOrigin, readJson, requireSession } from '@/app/api/ai/_shared/guard';
-import { redirectUriMatches, redirectWith } from '@/lib/mcp-oauth/core';
+import { originOf, redirectUriMatches, redirectWith } from '@/lib/mcp-oauth/core';
 import { isScope } from '@/lib/mcp-oauth/scopes';
 import { getClient, issueCode } from '@/lib/mcp-oauth/store';
 import { createServiceClient } from '@/lib/supabase-service';
@@ -72,6 +72,11 @@ export async function POST(req: NextRequest) {
       { headers: NO_STORE }
     );
   }
+  // RFC 8707: the only resource this server issues tokens for is its MCP endpoint.
+  const resource = str(b.resource);
+  if (resource !== undefined && resource.replace(/\/$/, '') !== `${originOf(req)}/api/mcp`) {
+    return NextResponse.json({ redirect: redirectWith(redirectUri, { error: 'invalid_target', state }) }, { headers: NO_STORE });
+  }
   const scope = isScope(b.scope) ? b.scope : 'planner';
   const code = await issueCode(db, {
     userId: session.user.id,
@@ -79,7 +84,7 @@ export async function POST(req: NextRequest) {
     redirectUri,
     codeChallenge: challenge,
     scope,
-    resource: str(b.resource),
+    resource,
   });
   if (!code) return NextResponse.json({ error: 'unavailable' }, { status: 503, headers: NO_STORE });
   return NextResponse.json({ redirect: redirectWith(redirectUri, { code, state }) }, { headers: NO_STORE });

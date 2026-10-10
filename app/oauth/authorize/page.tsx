@@ -114,7 +114,12 @@ function AuthorizeInner() {
                 {state.kind === 'ready' ? `Connect ${state.name} to dsul?` : 'Connecting…'}
               </h1>
               {state.kind === 'ready' && (
-                <p className="text-xs text-muted-foreground">It will send you back to {state.returnsTo}.</p>
+                <p className="text-xs text-muted-foreground">
+                  Any app can call itself anything, so check where it sends you back:{' '}
+                  <span className="text-foreground font-medium" data-testid="oauth-returns-to">
+                    {state.returnsTo}
+                  </span>
+                </p>
               )}
             </div>
 
