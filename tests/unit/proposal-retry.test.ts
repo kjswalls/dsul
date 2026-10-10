@@ -692,3 +692,43 @@ describe('the lines the user dropped', () => {
     }
   });
 });
+
+describe("a card chat's own model offered (build step 4)", () => {
+  it('shows it under that conversation, validated against the planner now, with no retry', async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    useProposalStore.getState().offer(
+      {
+        summary: 'Dentist to Monday',
+        operations: [
+          { kind: 'update', itemId: 'other-1', startDate: '2026-10-19' },
+          { kind: 'update', itemId: 'gone', startDate: '2026-10-19' },
+        ],
+      },
+      'conv-1'
+    );
+    const s = useProposalStore.getState();
+    expect(s.status).toBe('ready');
+    expect(s.lastRequest).toEqual({ intent: 'offer', surface: 'conv:conv-1' });
+    expect(s.proposal?.operations).toEqual([{ kind: 'update', itemId: 'other-1', startDate: '2026-10-19' }]);
+    expect(s.refused).toEqual({ count: 1, reasons: ['item no longer exists'] });
+
+    await useProposalStore.getState().retry();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(useProposalStore.getState().proposal?.summary).toBe('Dentist to Monday');
+
+    expect(useProposalStore.getState().accept()).toBe(1);
+    expect(applyProposal).toHaveBeenCalledTimes(1);
+  });
+
+  it('replaces a card that was up, and says so plainly when nothing in it still applies', async () => {
+    mockPropose(draft('Plan A'));
+    await useProposalStore.getState().request('ask', 'sort out my week');
+    useProposalStore.getState().offer({ summary: 'Gone', operations: [{ kind: 'update', itemId: 'gone', title: 'x' }] }, 'conv-2');
+    const s = useProposalStore.getState();
+    expect(s.proposal).toBeNull();
+    expect(s.status).toBe('empty');
+    expect(s.emptyMessage).toBe('None of those would work here. See why below.');
+    expect(s.lastRequest?.surface).toBe('conv:conv-2');
+  });
+});

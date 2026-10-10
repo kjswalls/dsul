@@ -16,10 +16,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
  * what a turn costs on the wire.
  */
 
+const plannerItems = vi.hoisted(() => ({ list: [] as unknown[] }));
 vi.mock('@/lib/planner-store', () => ({
   usePlannerStore: {
     getState: () => ({
-      items: [],
+      items: plannerItems.list,
       projects: [],
       itemTypes: [{ labelPlural: 'Errands' }],
       routines: [],
@@ -44,6 +45,7 @@ import { chatTransport, outgoingTurns, pluginSessionKey, resetPluginTransport } 
 import { chatErrorCopy } from '@/lib/chat-errors';
 import { useAIConnectionStore } from '@/lib/ai-connection-store';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
+import { useProposalStore } from '@/lib/proposal-store';
 import { seedAI, CONNECTED_MODEL, NOTHING_CONNECTED, OPENCLAW_PLUGIN } from './helpers/ai-fixtures';
 import { fakeApi, type FakeApi } from './helpers/conversations-fakes';
 
@@ -142,6 +144,35 @@ describe('the model path (/api/chat)', () => {
     await conversationsSettled();
     const saved = JSON.stringify(api.turns);
     expect(saved).toContain('"actions":["Looked for \\"dentist\\" (1 found)","Read the history of \\"Book dentist\\""]');
+  });
+
+  it('hands a well-formed card to the proposal store, under this conversation; drops a malformed one', async () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    plannerItems.list = [
+      { id: 'i-1', type: 'task', title: 'Dentist', status: 'pending', isScheduled: true, order: 0, startDate: '2026-10-15', completedDates: [] },
+    ];
+    stubFetch(() => ({
+      ok: true,
+      body: sse(
+        { proposal: { summary: 'Broken', operations: 'nope' } },
+        { action: 'Suggested "Dentist to Monday"' },
+        { proposal: { summary: 'Dentist to Monday', operations: [{ kind: 'update', itemId: 'i-1', startDate: '2026-10-19' }] } },
+        { content: 'Tap Accept to move it.' }
+      ),
+    }));
+
+    await store().send(id, 'move the dentist to monday');
+
+    const p = useProposalStore.getState();
+    expect(p.status).toBe('ready');
+    expect(p.proposal).toMatchObject({ summary: 'Dentist to Monday', operations: [{ itemId: 'i-1', startDate: '2026-10-19' }] });
+    expect(p.lastRequest).toEqual({ intent: 'offer', surface: `conv:${id}` });
+    expect(last(id)).toMatchObject({ content: 'Tap Accept to move it.', actions: ['Suggested "Dentist to Monday"'] });
+    // The card is not saved; its action line is.
+    await conversationsSettled();
+    expect(JSON.stringify(api.turns)).not.toContain('"proposal"');
+    useProposalStore.getState().dismiss();
+    plannerItems.list = [];
   });
 
   it('posts exactly the six keys: a target and the conversation, never a key, model or prompt', async () => {

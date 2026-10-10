@@ -22,6 +22,13 @@ export interface SseFrame {
    * clients skip it.
    */
   action?: string
+  /**
+   * A card the AI offers (a ProposalDraft, lib/ai-server/chat-changes.ts):
+   * shown under the reply, applied only on the user's Accept. Unknown here on
+   * purpose: the client parses it against ProposalDraftSchema before use.
+   * Older clients skip it.
+   */
+  proposal?: unknown
   /** Our copy, never the provider's text. */
   error?: string
   /**

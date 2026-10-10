@@ -36,9 +36,9 @@ import { getAdapter } from '@/lib/ai-server/providers'
 import { anySignal, deltasToSse } from '@/lib/ai-server/stream'
 import { supportsTools } from '@/lib/ai-server/tool-support'
 import { makeLookups, type LookupSource } from '@/lib/ai-server/chat-lookups'
-import { lookupLoop, withLookupsPrompt, type LoopEvent } from '@/lib/ai-server/chat-loop'
+import { lookupLoop, withToolsPrompt, type LoopEvent } from '@/lib/ai-server/chat-loop'
 import { createClient } from '@/lib/supabase-server'
-import { fetchGoals, fetchItemEvents, fetchItems, fetchProjects, fetchRoutines, fetchSeasons } from '@/lib/db'
+import { fetchGoals, fetchItemEvents, fetchItems, fetchItemTypes, fetchProjects, fetchRoutines, fetchSeasons } from '@/lib/db'
 
 /**
  * POST /api/chat: one chat turn, streamed as dsul's own SSE frames
@@ -224,7 +224,7 @@ export async function POST(req: Request): Promise<Response> {
     const events = lookupLoop({
       adapter,
       creds,
-      request: { ...request, system: withLookupsPrompt(system) },
+      request: { ...request, system: withToolsPrompt(system) },
       messages,
       lookups: makeLookups(sessionSource(user.id, db)),
     })
@@ -241,7 +241,8 @@ export async function POST(req: Request): Promise<Response> {
     const frames = (async function* () {
       let r = first
       while (!r.done) {
-        yield 'action' in r.value ? { action: r.value.action } : r.value.content
+        const v = r.value
+        yield 'action' in v ? { action: v.action } : 'proposal' in v ? { proposal: v.proposal } : v.content
         r = await events.next()
       }
     })()
@@ -294,5 +295,6 @@ function sessionSource(userId: string, db: Awaited<ReturnType<typeof createClien
     seasons: () => fetchSeasons(userId, db),
     goals: () => fetchGoals(userId, db),
     events: (itemId) => fetchItemEvents(itemId, db),
+    itemTypes: async () => (await fetchItemTypes(userId, db))?.map((t) => t.name) ?? null,
   }
 }

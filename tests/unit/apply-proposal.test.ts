@@ -121,6 +121,26 @@ describe('applyProposal', () => {
     expect(store().tasks.some((t) => t.title === 'Book dentist')).toBe(true);
   });
 
+  it('gives a dated item a bucket, so it shows on its day rather than in the Braindump', () => {
+    store().applyProposal(
+      proposalOf(
+        { kind: 'update', itemId: 'task-1', startDate: '2026-08-06' },
+        { kind: 'update', itemId: 'task-2', startDate: '2026-08-07', startTime: '15:00' },
+        { kind: 'create', itemType: 'task', title: 'Call Mum', startDate: '2026-08-09' },
+        { kind: 'create', itemType: 'task', title: 'Standup', startDate: '2026-08-10', startTime: '09:00' },
+        { kind: 'create', itemType: 'task', title: 'Someday' },
+      ),
+    );
+    const byTitle = new Map(store().items.map((i) => [i.title, i]));
+    expect(byTitle.get('Email Dana')).toMatchObject({ startDate: '2026-08-06', timeBucket: 'anytime' });
+    expect(byTitle.get('Renew passport')).toMatchObject({ startDate: '2026-08-07', timeBucket: 'afternoon' });
+    expect(byTitle.get('Call Mum')).toMatchObject({ startDate: '2026-08-09', timeBucket: 'anytime', isScheduled: true });
+    expect(byTitle.get('Standup')).toMatchObject({ timeBucket: 'morning', isScheduled: true });
+    // No day, no bucket: the Braindump, as before.
+    expect(byTitle.get('Someday')).toMatchObject({ isScheduled: false });
+    expect(byTitle.get('Someday')).not.toHaveProperty('timeBucket', expect.anything());
+  });
+
   it('is ONE undo for the whole plan', () => {
     store().applyProposal(
       proposalOf(

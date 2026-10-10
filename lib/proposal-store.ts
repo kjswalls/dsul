@@ -13,7 +13,7 @@ import { buildCatchUpProposal, buildProposalContext, validateProposal } from './
 import { noteOpenclawAsked, useConversationsStore } from './conversations-store';
 import { tallyOperations } from './conversation-summary';
 import { useChatReceipts } from './chat-receipts';
-import type { Proposal, ProposalOperation } from './planner-types';
+import type { Proposal, ProposalDraft, ProposalOperation } from './planner-types';
 
 /**
  * proposal-store.ts — the AI's pending suggestion, and the user's one tap.
@@ -26,7 +26,12 @@ import type { Proposal, ProposalOperation } from './planner-types';
  * memory/plans/ai-vision.md.
  */
 
-export type ProposalIntent = 'catch-up' | 'ask' | 'breakdown';
+/**
+ * 'offer' is a card chat's own model drew mid-reply (propose_changes,
+ * lib/ai-server/chat-changes.ts): there is no ask to send again, so it has no
+ * retry; the user says what to change in the conversation instead.
+ */
+export type ProposalIntent = 'catch-up' | 'ask' | 'breakdown' | 'offer';
 
 /**
  * Where a card belongs.
@@ -105,6 +110,12 @@ interface ProposalStore {
     itemId?: string,
     o?: { conversationId?: string }
   ) => Promise<void>;
+  /**
+   * Show a card the AI offered in a conversation's reply, validated against
+   * the planner as it is now. It replaces whatever card was up, as a new ask
+   * would.
+   */
+  offer: (draft: ProposalDraft, conversationId: string) => void;
   /**
    * Ask again, telling the model what it already offered.
    *
@@ -485,6 +496,23 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
       );
     },
 
+    offer: (draft, conversationId) => {
+      const token = claim();
+      const { proposal, rejected } = validateProposal(stamp(draft), plannerContext());
+      const refused = summariseRefused(rejected);
+      settle(token, {
+        ...cleared(),
+        lastRequest: { intent: 'offer', surface: `conv:${conversationId}` },
+        refused,
+        ...(proposal.operations.length
+          ? { proposal, status: 'ready' as const }
+          : {
+              status: 'empty' as const,
+              emptyMessage: rejected.length ? 'None of those would work here. See why below.' : 'Those suggestions no longer apply.',
+            }),
+      });
+    },
+
     retry: async () => {
       const { proposal, lastRequest, rejected } = get();
       // Catch-up is a pure function of the planner: asking it again returns the
@@ -493,7 +521,8 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
       // Catch-up is the one intent with nothing to gain: it is a pure function
       // of the planner, so a second call returns the same items in the same
       // order. Ask and breakdown both go to a model and can genuinely differ.
-      if (!lastRequest || lastRequest.intent === 'catch-up') return;
+      // An offer drawn mid-reply has no ask of its own to send again.
+      if (!lastRequest || lastRequest.intent === 'catch-up' || lastRequest.intent === 'offer') return;
       // Nothing can propose any more (the model was disconnected, or chat moved
       // to OpenClaw's plugin, which has no structured proposals). A retry would
       // only swap the card being read for "Connect a model" and spend the

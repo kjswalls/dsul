@@ -7,12 +7,15 @@
  * reward one that is merely worded well.
  */
 
+import type { ProposalDraft } from '@/lib/planner-types';
 import type { EvalCase } from './cases';
 import { ID_PREFIX } from './planner';
 
 export interface Transcript {
   calls: { name: string; args: Record<string, unknown> | null }[];
   actions: string[];
+  /** Cards offered, as they would reach the browser (already validated server-side). */
+  proposals: ProposalDraft[];
   reply: string;
 }
 
@@ -24,9 +27,9 @@ export interface Grade {
 /** Rules every reply is held to, whatever was asked. */
 const ALWAYS: { name: string; bad: RegExp }[] = [
   { name: 'shows an id', bad: new RegExp(`${ID_PREFIX}|\\[id:`, 'i') },
-  { name: 'names a tool', bad: /find_items|planner_overview|item_activity/ },
+  { name: 'names a tool', bad: /find_items|planner_overview|item_activity|propose_changes/ },
   {
-    // Chat cannot change the planner yet, so any of these is untrue.
+    // Chat only ever offers a card, so any of these is untrue.
     name: 'claims a change',
     bad: /\bI(?:'ve|’ve| have)?\s+(?:just\s+|now\s+|also\s+)?(?:moved|rescheduled|added|created|deleted|removed|marked|changed|updated|scheduled|set up|broken)\b/i,
   },
@@ -43,6 +46,14 @@ export function grade(c: EvalCase, t: Transcript): Grade {
   for (const want of c.lookups ?? []) {
     const met = t.calls.some((call) => call.name === want.tool && (!want.accepts || want.accepts(call.args ?? {})));
     if (!met) failures.push(`never made the ${want.tool} call it needed`);
+  }
+
+  const card = t.proposals[0];
+  if (c.card) {
+    if (!card) failures.push('offered no card');
+    else if (!c.card.accepts(card)) failures.push('offered the wrong card');
+  } else if (card) {
+    failures.push('offered a card nobody asked for');
   }
 
   for (const re of c.says ?? []) if (!re.test(reply)) failures.push(`reply misses ${re}`);

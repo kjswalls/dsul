@@ -51,6 +51,17 @@ describe('deltasToSse', () => {
     ]);
   });
 
+  it('sends a card as its own frame, never counted as reply text', async () => {
+    const proposal = { summary: 'Dentist to Monday', operations: [{ kind: 'update' as const, itemId: 'i', startDate: '2026-10-19' }] };
+    async function* withCard() {
+      yield { action: 'Suggested "Dentist to Monday"' };
+      yield { proposal };
+      yield 'Tap Accept.';
+    }
+    const { frames } = await drain(deltasToSse(withCard(), { abort: new AbortController(), onError, maxChars: 11 }));
+    expect(frames).toEqual([{ action: 'Suggested "Dentist to Monday"' }, { proposal }, { content: 'Tap Accept.' }]);
+  });
+
   it('action lines alone are no reply', async () => {
     async function* onlyActions() {
       yield { action: 'Looked over your projects, routines and goals' };

@@ -76,6 +76,25 @@ planner). `tests/unit/chat-evals.test.ts` runs every case against a scripted ide
 eval is the model's and never the harness's. The three change asks (move, add, break down) are graded
 as read-only today and flip to expecting a card in step 4. Building it caught `planner_overview`
 promising an overdue count it never gave; its description no longer does.
+Step 4 is built: the same loop offers `propose_changes` (lib/ai-server/chat-changes.ts), which never
+writes. Its arguments are a ProposalDraft (a create with no type is a task; `clear: [...]` stands in for
+the nulls, since not every provider's schema dialect takes a union type), parsed with
+`ProposalDraftSchema`, capped at 8 changes and run through `validateProposalOperations` against the
+user's own items under RLS, so the model is told what was left off and why and its reply can match the
+card. One card a turn. A card streams as a `{proposal}` frame after its action line ("Suggested
+"…""); the transport parses it again and `proposal-store.offer(draft, conversationId)` validates it
+against the planner as it is then and shows it on that conversation's `conv:` surface, with intent
+`'offer'` (no retry: the conversation is where they ask for something else). Accept is the existing
+path, so it is one undo, counted on History and receipted with Undo. The card is never saved; its action
+line is. With tools the base prompt's `NO_CHANGES_SENTENCE` is swapped for the card (`withToolsPrompt`).
+Covered: create, update (title, day, time, part of day, priority, notes), steps under a task, complete or
+cancel a one-off, and the braindump. Not yet: ticking or skipping one day of a repeating item, and habits
+(step 5). The evals' three change asks now expect the right card, plus three more (finish, braindump,
+and a habit tick that must say no).
+Building it found that `applyProposal` gave a dated create, or a Braindump item moved to a day, no
+bucket, so it stayed in the Braindump (day views list only bucketed items); it now takes moveTaskToDate's
+fallback (`anytime`, or the bucket for its time). `find_items` reads "undated" by the Braindump's own
+rule (neither scheduled nor bucketed).
 
 **Note 2026-10-04: "Ask AI" on the item's right-click menu.** One row, a submenu of at
 most four asks, declared in `lib/item-asks.ts` (gate, label, wording) and run by

@@ -1674,7 +1674,7 @@ describe('the transport input', () => {
     await sendNew('hello');
     const input = tx.inputs[0] as TurnInput;
     expect(Object.keys(input).sort()).toEqual(
-      ['context', 'conversationId', 'message', 'onAction', 'onDelta', 'signal', 'target', 'turns', 'typeNouns', 'via'].sort()
+      ['context', 'conversationId', 'message', 'onAction', 'onDelta', 'onProposal', 'signal', 'target', 'turns', 'typeNouns', 'via'].sort()
     );
     expect(input).toMatchObject({ target: 'model', via: 'chat', message: 'hello', typeNouns: ['errands'] });
   });

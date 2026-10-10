@@ -177,5 +177,6 @@ export function fixtureSource(): LookupSource {
     seasons: async () => [],
     goals: async () => GOALS,
     events: async (itemId) => EVENTS[itemId] ?? [],
+    itemTypes: async () => [],
   };
 }

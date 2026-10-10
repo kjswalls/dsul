@@ -7,6 +7,15 @@ const listOf = (nouns: string[], conjunction: 'and' | 'or'): string => {
   return `${nouns.slice(0, -1).join(', ')}, ${conjunction} ${nouns[nouns.length - 1]}`
 }
 
+/**
+ * The base prompt's one sentence about changing the planner. A model with
+ * tools CAN offer changes (as a card), so the chat route swaps this sentence
+ * for its own (lib/ai-server/chat-loop.ts `withToolsPrompt`); exported so that
+ * swap names the exact text.
+ */
+export const NO_CHANGES_SENTENCE =
+  'You cannot change the planner from this chat: "Break it down" on a task adds its steps, and "Turn this into a plan" under a reply turns what you suggested into changes they can accept. '
+
 const builtinNouns = ALL_ITEM_TYPES.map((t) => ITEM_TYPES[t].labelPlural.toLowerCase())
 
 /**
@@ -25,7 +34,7 @@ export function buildBeaconSystemPrompt(customTypeNouns: string[] = []): string 
     'Finished work and anything further out are not in it. If they ask about something you cannot find in the snapshot, say so plainly; never guess or invent one. ' +
     'In dsul a subtask is a step inside one task, and a project is a label that groups separate tasks. ' +
     'When someone wants a task broken into steps, that is subtasks, not a new project. ' +
-    'You cannot change the planner from this chat: "Break it down" on a task adds its steps, and "Turn this into a plan" under a reply turns what you suggested into changes they can accept. ' +
+    NO_CHANGES_SENTENCE +
     'Help them plan their day, break down overwhelming tasks, celebrate progress, and stay focused. ' +
     `Be concise, warm, and never judgmental. When you reference their ${referenceList}, be specific and use the names they gave them.`
   )
