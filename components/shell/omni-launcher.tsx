@@ -28,6 +28,9 @@ export function OmniLauncher() {
   const initialQuery = useUIStore((s) =>
     s.activeDialog?.type === 'launcher' ? s.activeDialog.query : undefined,
   );
+  const initialCommandId = useUIStore((s) =>
+    s.activeDialog?.type === 'launcher' ? s.activeDialog.commandId : undefined,
+  );
   const closeDialog = useUIStore((s) => s.closeDialog);
   // The screen-reader line says what the omnibar's placeholder says, so it can
   // only offer to ask when something will answer.
@@ -61,7 +64,9 @@ export function OmniLauncher() {
         {/* Render the omnibar only while open so it MOUNTS FRESH each summon —
             its focus + resting-panel effect keys off mount, and this guarantees
             a fresh mount independent of Radix's content mount/unmount timing. */}
-        {isOpen && <Omnibar variant="launcher" initialQuery={initialQuery} />}
+        {isOpen && (
+          <Omnibar variant="launcher" initialQuery={initialQuery} initialCommandId={initialCommandId} />
+        )}
       </DialogContent>
     </Dialog>
   );

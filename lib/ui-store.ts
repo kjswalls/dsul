@@ -82,9 +82,11 @@ export type ActiveDialog =
    * The ⌘K launcher: the summoned command + search modal. It renders the same
    * <Omnibar> the sidebar dock does, in variant="launcher" — one core, two
    * shells. `query` seeds the input so a caller can open it pre-scoped (the `/`
-   * binding opens it already in command mode).
+   * binding opens it already in command mode). `commandId` opens it with that
+   * command already picked, waiting for its value (the chat box's / list hands
+   * over a command that needs one).
    */
-  | { type: 'launcher'; query?: string };
+  | { type: 'launcher'; query?: string; commandId?: string };
 
 /** The organizers the "new" dialog can make. Item types are console-only. */
 export type NewContainerKind = 'goal' | 'routine' | 'season' | 'project';
