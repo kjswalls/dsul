@@ -24,8 +24,8 @@ conversation is saved to the account, once per finished turn, in `chat_conversat
 `chat_messages` (migration 057), kept until the user deletes it. Next: 2b (control: edit and
 resend, retry (built 2026-10-10: Try again under the latest reply when it was stopped or failed
 in a way asking again might get past, `isRetryableReplyError`; the same question goes again as
-a new turn, so nothing saved is rewritten), action lines, receipts with Undo, a typed answer on
-every card) and 2c
+a new turn, so nothing saved is rewritten), action lines, receipts with Undo (built
+2026-10-10, below), a typed answer on every card) and 2c
 (reach: @ items, / commands, the model chip, attachments, open wide). The section "Step 2a —
 Move and save" below has what shipped and the privacy statement.
 
@@ -425,6 +425,13 @@ Folded here from ai-vision-decisions.md, which now carries only what is still op
    accepted proposal is four counters (added, steps, moved, changed) behind History's second
    line: the record that something changed, not the proposal. 2b's receipts with Undo will
    live in `chat_messages.meta`, not in a proposal table.
+
+   *2026-10-10 (step 2b, receipts):* built memory-only instead (`lib/chat-receipts.ts`). A
+   receipt's Undo names a planner history entry, and that history is per tab and gone on
+   reload, so a saved receipt would come back with an Undo that can undo nothing; the
+   counters stay the account's record. Undo shows only while the accept is the planner's
+   latest entry, because the history is one line and undoing past a later change would take
+   that back too. If receipts should outlive the tab, `meta` is still the place, read-only.
 3. **Proposal scope grows in this order: unschedule → subtasks → habits.** Subtasks shipped
    in phase 2e, unschedule in 2h; habits remain out (decision 5 and `containerRequired`).
 

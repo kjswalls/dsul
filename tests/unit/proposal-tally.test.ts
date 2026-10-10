@@ -63,6 +63,7 @@ import {
   useConversationsStore,
 } from '@/lib/conversations-store';
 import { tallyOperations } from '@/lib/conversation-summary';
+import { useChatReceipts } from '@/lib/chat-receipts';
 import type { Item, ProposalOperation } from '@/lib/planner-types';
 import { CONNECTED_MODEL, seedAI } from './helpers/ai-fixtures';
 import { fakeApi, fakeTransport, summary, type FakeApi } from './helpers/conversations-fakes';
@@ -255,5 +256,43 @@ describe('an accepted card is counted on its conversation', () => {
     expect(proposals().accept()).toBe(0);
     await conversationsSettled();
     expect(api.patches).toEqual([]);
+  });
+});
+
+describe('the receipt an accept leaves in its conversation', () => {
+  it('names the history entry the accept wrote, so its Undo takes back exactly that plan', async () => {
+    proposeAnswers(PLAN);
+    await proposals().request('ask', 'make my week lighter', undefined, { conversationId: CONV });
+    expect(proposals().accept()).toBeGreaterThan(0);
+
+    const [r] = useChatReceipts.getState().byConversation[CONV] ?? [];
+    expect(r?.tally).toEqual(tallyOperations(PLAN));
+    const p = usePlannerStore.getState();
+    const latest = p.actionLog[p.actionLog.length - 1 - p.historyIndex];
+    expect(latest?.label).toMatch(/^Accept plan:/);
+    expect(r?.actionId).toBe(latest?.id);
+
+    p.undo();
+    expect(usePlannerStore.getState().items.find((i) => i.title === 'Book the dentist')).toBeUndefined();
+  });
+
+  it('goes to the item’s own conversation for an item card, and none for the catch-up card', async () => {
+    proposeAnswers(PLAN);
+    await proposals().request('breakdown', undefined, 'task-1');
+    proposals().accept();
+    expect(useChatReceipts.getState().byConversation[ITEM_CONV]).toHaveLength(1);
+
+    useChatReceipts.getState().reset();
+    await proposals().request('ask', 'plan it');
+    proposals().accept();
+    expect(useChatReceipts.getState().byConversation).toEqual({});
+  });
+
+  it('is cleared with the rest of the chat on an account switch', async () => {
+    proposeAnswers(PLAN);
+    await proposals().request('ask', 'make my week lighter', undefined, { conversationId: CONV });
+    proposals().accept();
+    clearChatState();
+    expect(useChatReceipts.getState().byConversation).toEqual({});
   });
 });

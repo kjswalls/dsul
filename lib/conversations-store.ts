@@ -31,6 +31,7 @@ import {
 import { addChanges, hasChanges } from './conversation-summary';
 import { spendJustConnected, useRailStore } from './rail-store';
 import { useProposalStore } from './proposal-store';
+import { useChatReceipts } from './chat-receipts';
 
 /**
  * conversations-store.ts — saved AI conversations, as this browser holds them.
@@ -1764,6 +1765,7 @@ export function clearChatState(): void {
   useConversationsStore.getState().reset();
   useRailStore.getState().reset();
   useProposalStore.getState().dismiss();
+  useChatReceipts.getState().reset();
   resetPluginTransport();
   sweepLegacyTranscripts();
 }
