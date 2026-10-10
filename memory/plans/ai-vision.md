@@ -66,6 +66,16 @@ most 16 lines of 200, `cleanActions` in lib/conversation-types.ts and the same r
 only `actions` is ever read from it, cleaned again. Before 068 is applied, 057's `chat_append` ignores
 the key and a turn saves without its lines. The snapshot is unchanged
 for now; trimming it to today waits on the evals (step 3).
+Step 3 is built: `pnpm eval:chat` (tests/evals/chat/, its own vitest config, never in `pnpm test` or CI
+because it spends real keys) asks 20 questions of a frozen planner (Wednesday 2026-10-14) through the
+same prompt, loop and lookups as the route, against the models named in `EVAL_MODELS` with
+`EVAL_KEY_<PROVIDER>` keys, and writes a report to tests/evals/chat/results/ (gitignored). Grading is
+patterns, not a judge model: the lookups a case needs (by tool and arguments), what the reply must and
+must never say, and three rules for every reply (no ids, no tool names, no claim to have changed the
+planner). `tests/unit/chat-evals.test.ts` runs every case against a scripted ideal model in CI, so a red
+eval is the model's and never the harness's. The three change asks (move, add, break down) are graded
+as read-only today and flip to expecting a card in step 4. Building it caught `planner_overview`
+promising an overdue count it never gave; its description no longer does.
 
 **Note 2026-10-04: "Ask AI" on the item's right-click menu.** One row, a submenu of at
 most four asks, declared in `lib/item-asks.ts` (gate, label, wording) and run by

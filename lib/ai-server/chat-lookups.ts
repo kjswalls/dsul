@@ -85,7 +85,7 @@ export const LOOKUP_TOOLS: ToolDef[] = [
     name: 'planner_overview',
     description:
       "The shape of the user's planner: their projects with how many open items each holds, routines, " +
-      'seasons and goals, and how many items are open, undated or overdue. Use it for questions about ' +
+      'seasons and goals, and how many items are open or have no day. Use it for questions about ' +
       'the planner as a whole; use find_items for particular items.',
     parameters: { type: 'object', properties: {} },
   },

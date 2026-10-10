@@ -36,7 +36,7 @@ import { getAdapter } from '@/lib/ai-server/providers'
 import { anySignal, deltasToSse } from '@/lib/ai-server/stream'
 import { supportsTools } from '@/lib/ai-server/tool-support'
 import { makeLookups, type LookupSource } from '@/lib/ai-server/chat-lookups'
-import { LOOKUPS_PROMPT, lookupLoop, type LoopEvent } from '@/lib/ai-server/chat-loop'
+import { lookupLoop, withLookupsPrompt, type LoopEvent } from '@/lib/ai-server/chat-loop'
 import { createClient } from '@/lib/supabase-server'
 import { fetchGoals, fetchItemEvents, fetchItems, fetchProjects, fetchRoutines, fetchSeasons } from '@/lib/db'
 
@@ -224,7 +224,7 @@ export async function POST(req: Request): Promise<Response> {
     const events = lookupLoop({
       adapter,
       creds,
-      request: { ...request, system: [system[0], LOOKUPS_PROMPT, ...system.slice(1)] },
+      request: { ...request, system: withLookupsPrompt(system) },
       messages,
       lookups: makeLookups(sessionSource(user.id, db)),
     })

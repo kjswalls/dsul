@@ -9,6 +9,7 @@
     "start": "next start",
     "lint": "eslint .",
     "test": "vitest run",
+    "eval:chat": "vitest run --config vitest.eval.config.ts",
     "test:unit": "vitest run",
     "test:watch": "vitest",
     "e2e": "playwright test",
