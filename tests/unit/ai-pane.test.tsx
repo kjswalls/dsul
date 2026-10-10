@@ -305,12 +305,12 @@ const lime = () =>
 
 describe('sections, in order', () => {
   it.each([
-    ['F18, nothing connected', NOTHING_CONNECTED, ['explainer', 'use', 'connection', 'openclaw']],
-    ['F18 with chat Off here', { ...NOTHING_CONNECTED, choice: 'none' }, ['explainer', 'use', 'connection', 'openclaw', 'device']],
-    ['no model on this server', { ...NOTHING_CONNECTED, available: false }, ['explainer', 'use', 'connection', 'openclaw']],
-    ['F19, working', GEMINI_WORKING, ['explainer', 'use', 'connection', 'openclaw', 'device']],
-    ['F22, AI off with a model kept', AI_OFF_CONNECTED, ['use', 'ai-off']],
-    ['AI off on a server with no model', { ...AI_HIDDEN, available: false }, ['use', 'ai-off']],
+    ['F18, nothing connected', NOTHING_CONNECTED, ['explainer', 'use', 'connection', 'openclaw', 'connected-apps']],
+    ['F18 with chat Off here', { ...NOTHING_CONNECTED, choice: 'none' }, ['explainer', 'use', 'connection', 'openclaw', 'device', 'connected-apps']],
+    ['no model on this server', { ...NOTHING_CONNECTED, available: false }, ['explainer', 'use', 'connection', 'openclaw', 'connected-apps']],
+    ['F19, working', GEMINI_WORKING, ['explainer', 'use', 'connection', 'openclaw', 'device', 'connected-apps']],
+    ['F22, AI off with a model kept', AI_OFF_CONNECTED, ['use', 'ai-off', 'connected-apps']],
+    ['AI off on a server with no model', { ...AI_HIDDEN, available: false }, ['use', 'ai-off', 'connected-apps']],
   ] as const)('%s', async (_name, seed, order) => {
     await mount(seed as SeedAI);
     expect(sections()).toEqual(order);
@@ -319,21 +319,23 @@ describe('sections, in order', () => {
     }
   });
 
-  it('while the check is out: Use AI and Connection only', async () => {
+  // Connected apps closes every layout: an MCP app is not dsul's own AI, so
+  // its Disconnect is there whether AI is on, off or still being checked.
+  it('while the check is out: Use AI, Connection and Connected apps', async () => {
     await mount('unknown');
-    expect(sections()).toEqual(['use', 'connection']);
+    expect(sections()).toEqual(['use', 'connection', 'connected-apps']);
   });
 
-  it('when the check failed: Use AI and Connection only', async () => {
+  it('when the check failed: Use AI, Connection and Connected apps', async () => {
     await mount('error');
     expect(useAIConnectionStore.getState().phase).toBe('error');
-    expect(sections()).toEqual(['use', 'connection']);
+    expect(sections()).toEqual(['use', 'connection', 'connected-apps']);
   });
 
   it('is one pane root', async () => {
     await mount(NOTHING_CONNECTED);
     const pane = screen.getByTestId('ai-pane');
-    expect(pane.querySelectorAll('[data-ai-section]')).toHaveLength(4);
+    expect(pane.querySelectorAll('[data-ai-section]')).toHaveLength(5);
   });
 });
 

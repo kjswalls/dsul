@@ -16,8 +16,9 @@ That was fine while the only holder was your own gateway. The MCP server does no
 a key can do — it is a second protocol over the same surface — but it does change *who
 plausibly holds one*: the whole point of MCP is that Claude, Cursor or ChatGPT can connect.
 
-**Current state:** unchanged, and the route says so in a comment rather than quietly
-inheriting it.
+**Current state:** the OpenClaw key is unchanged. Third-party runtimes no longer need it:
+since 2026-10-10 they sign in to `/api/mcp` with OAuth instead, getting hashed, expiring,
+revocable tokens scoped to read or read-and-change ([mcp-oauth.md](mcp-oauth.md)).
 **What it would take:** hashed keys with a prefix, multiple named keys per user, a scope
 field (read-only vs read-write), and revocation. `plugins-themes-store.md` already warns
 that migrating off the single plaintext key needs a **dual-read deprecation window with a

@@ -23,6 +23,10 @@ describe('leaveForLoginIfSignedOutPage', () => {
     expect(isSignedOutPath('/auth/callback')).toBe(true);
     expect(isSignedOutPath('/')).toBe(false);
     expect(isSignedOutPath('/settings')).toBe(false);
+    // An MCP client reads the OAuth metadata before it has any session.
+    expect(isSignedOutPath('/.well-known/oauth-protected-resource')).toBe(true);
+    // The consent page is not: signed out, it goes to /login and comes back.
+    expect(isSignedOutPath('/oauth/authorize')).toBe(false);
   });
 
   it('replaces any other page with /login', () => {

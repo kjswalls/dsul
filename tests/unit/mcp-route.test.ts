@@ -101,8 +101,19 @@ vi.mock('@/lib/supabase-service', () => ({
   resolveUserIdFromApiKey: vi.fn(async (key: string) => (key === 'dsul_testkey' ? 'user-1' : null)),
 }));
 
+// OAuth apps (lib/mcp-oauth/): one token per scope.
+vi.mock('@/lib/mcp-oauth/store', () => ({
+  resolveAccessToken: vi.fn(async (_db: unknown, token: string) =>
+    token === 'dsul_at_full'
+      ? { userId: 'user-1', scope: 'planner', grantId: 'g1' }
+      : token === 'dsul_at_read'
+        ? { userId: 'user-1', scope: 'planner:read', grantId: 'g2' }
+        : null
+  ),
+}));
+
 import { POST } from '@/app/api/mcp/route';
-import { MCP_TOOLS } from '@/lib/mcp/tools';
+import { MCP_TOOLS, READ_TOOL_NAMES } from '@/lib/mcp/tools';
 import { NextRequest } from 'next/server';
 
 const AUTH = 'Bearer dsul_testkey';
@@ -139,9 +150,47 @@ describe('auth', () => {
     expect(calls).toHaveLength(0);
   });
 
+  it('answers a 401 with the header that starts an MCP client\'s sign-in', async () => {
+    const res = await POST(rpc({ jsonrpc: '2.0', id: 1, method: 'initialize' }, null));
+    expect(res.headers.get('www-authenticate')).toBe(
+      'Bearer resource_metadata="https://dsul.test/.well-known/oauth-protected-resource"'
+    );
+    const bad = await POST(rpc({ jsonrpc: '2.0', id: 1, method: 'initialize' }, 'Bearer dsul_at_expired'));
+    expect(bad.status).toBe(401);
+    expect(bad.headers.get('www-authenticate')).toMatch(/^Bearer error="invalid_token", resource_metadata=/);
+  });
+
+  it('lets an app signed in with full access use every tool, forwarding its token', async () => {
+    const list = await POST(rpc({ jsonrpc: '2.0', id: 1, method: 'tools/list' }, 'Bearer dsul_at_full'));
+    expect((await list.json()).result.tools).toHaveLength(MCP_TOOLS.length);
+    await POST(rpc({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'dsul_create_task', arguments: { title: 'x' } } }, 'Bearer dsul_at_full'));
+    expect(calls[0]).toMatchObject({ handler: 'create:task', auth: 'Bearer dsul_at_full' });
+  });
+
+  it('shows a read-only app only the tools that read, and refuses the rest by name', async () => {
+    const list = await POST(rpc({ jsonrpc: '2.0', id: 1, method: 'tools/list' }, 'Bearer dsul_at_read'));
+    const names = (await list.json()).result.tools.map((t: { name: string }) => t.name).sort();
+    expect(names).toEqual(['dsul_get_context', 'dsul_item_activity', 'dsul_my_work']);
+    const res = await POST(
+      rpc({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'dsul_create_task', arguments: { title: 'x' } } }, 'Bearer dsul_at_read')
+    );
+    const body = await res.json();
+    expect(body.error.message).toMatch(/Unknown tool/);
+    expect(calls).toHaveLength(0);
+  });
+
   it('forwards the caller\'s bearer token to the agent handler', async () => {
     await POST(call('dsul_get_context'));
     expect(calls[0].auth).toBe(AUTH);
+  });
+});
+
+describe('the read-only tools', () => {
+  it('each only ever plans a GET', () => {
+    for (const tool of MCP_TOOLS.filter((t) => READ_TOOL_NAMES.has(t.name))) {
+      const plan = tool.plan({ id: 'item-1' });
+      expect('error' in plan ? plan : plan.method, tool.name).toBe('GET');
+    }
   });
 });
 

@@ -145,11 +145,12 @@ export async function GET(req: NextRequest) {
 }
 
 async function resolveUserId(req: NextRequest): Promise<{ userId: string | null; isBearer: boolean }> {
-  // 1. Bearer token → look up by openclaw_api_key (plugin / server-to-server)
+  // 1. Bearer token → look up by openclaw_api_key (plugin / server-to-server),
+  // or an OAuth app's access token of either scope: reading is all this does.
   const authHeader = req.headers.get('authorization')
   if (authHeader?.startsWith('Bearer ')) {
     const token = authHeader.slice(7)
-    const userId = await resolveUserIdFromApiKey(token)
+    const userId = await resolveUserIdFromApiKey(token, undefined, 'read')
     return { userId, isBearer: true }
   }
 

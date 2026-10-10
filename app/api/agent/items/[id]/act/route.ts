@@ -36,7 +36,7 @@ export async function POST(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
   const client = createServiceClient()
-  const userId = await resolveUserIdFromApiKey(authHeader.slice(7), client)
+  const userId = await resolveUserIdFromApiKey(authHeader.slice(7), client, 'write')
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { id } = await params

@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
   if (!authHeader?.startsWith('Bearer ')) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  const userId = await resolveUserIdFromApiKey(authHeader.slice(7))
+  const userId = await resolveUserIdFromApiKey(authHeader.slice(7), undefined, 'write')
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

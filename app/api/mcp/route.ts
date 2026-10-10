@@ -16,7 +16,10 @@ import { POST as createProject } from '@/app/api/agent/projects/route'
 import { PATCH as patchProject, DELETE as deleteProject } from '@/app/api/agent/projects/[id]/route'
 import { createServiceClient, resolveUserIdFromApiKey } from '@/lib/supabase-service'
 import { dispatch, type ToolResult } from '@/lib/mcp/protocol'
-import { TOOL_DESCRIPTORS, toolByName, type ToolPlan } from '@/lib/mcp/tools'
+import { READ_TOOL_DESCRIPTORS, READ_TOOL_NAMES, TOOL_DESCRIPTORS, toolByName, type ToolPlan } from '@/lib/mcp/tools'
+import { ACCESS_PREFIX, originOf, wwwAuthenticate } from '@/lib/mcp-oauth/core'
+import { resolveAccessToken } from '@/lib/mcp-oauth/store'
+import type { Scope } from '@/lib/mcp-oauth/scopes'
 
 /**
  * POST /api/mcp — dsul's planner as a remote MCP server.
@@ -27,13 +30,13 @@ import { TOOL_DESCRIPTORS, toolByName, type ToolPlan } from '@/lib/mcp/tools'
  * `mcp.servers.<name>` with `type: "http"`, or Claude, Cursor, ChatGPT — can
  * therefore act on the planner with no per-vendor plugin.
  *
- * Auth is the SAME bearer key the agent API already takes, deliberately: this
- * is a second protocol over one surface, not a second surface. That also means
- * it inherits that key's properties, and they are worth naming — one key per
- * user, plaintext, unscoped, no expiry, full read+write. Acceptable while the
- * only holder is the user's own gateway; it is the thing to fix before handing
- * the key to a third-party runtime, and it is why this route does not widen
- * what a key can reach.
+ * Auth is either of two bearers. The OpenClaw agent key, the same one the agent
+ * API takes: one per user, plaintext, unscoped, no expiry, full read+write, and
+ * held only by the user's own gateway. Or an OAuth access token an app got by
+ * signing in (migration 069, lib/mcp-oauth/, memory/plans/mcp-oauth.md): hashed,
+ * expiring, revocable from Settings, and scoped, so a read-only app is shown and
+ * allowed only the tools that read. A request with neither gets a 401 whose
+ * WWW-Authenticate header starts the client's sign-in.
  *
  * Tool calls are executed IN-PROCESS against the same handler factories the
  * /api/agent routes are built from — not by re-implementing their rules and not
@@ -179,6 +182,31 @@ async function toToolResult(
  */
 const MAX_BATCH = 32
 
+/** Who is calling: the OpenClaw key (everything), or an OAuth app at its scope. */
+type McpCaller = { userId: string; scope: Scope }
+
+async function resolveCaller(token: string): Promise<McpCaller | null> {
+  const service = createServiceClient()
+  if (token.startsWith(ACCESS_PREFIX)) {
+    const caller = await resolveAccessToken(service, token)
+    return caller ? { userId: caller.userId, scope: caller.scope } : null
+  }
+  const userId = await resolveUserIdFromApiKey(token, service)
+  return userId ? { userId, scope: 'planner' } : null
+}
+
+/**
+ * A 401 that starts an MCP client's sign-in: the header names this server's
+ * protected-resource metadata, which names the authorization server
+ * (lib/mcp-oauth/core.ts, memory/plans/mcp-oauth.md).
+ */
+function unauthorized(req: NextRequest, message: string, error?: 'invalid_token') {
+  return NextResponse.json(
+    { jsonrpc: '2.0', id: null, error: { code: -32600, message } },
+    { status: 401, headers: { 'WWW-Authenticate': wwwAuthenticate(originOf(req), error) } }
+  )
+}
+
 export async function POST(req: NextRequest) {
   // The key is RESOLVED here, not merely prefix-checked. A `startsWith('Bearer ')`
   // test costs nothing to satisfy, so it would let an anonymous caller reach the
@@ -186,26 +214,20 @@ export async function POST(req: NextRequest) {
   // handler said 401. The agent handlers still authenticate independently — this
   // is the outer gate, not a replacement for theirs.
   const auth = req.headers.get('authorization')
-  if (!auth?.startsWith('Bearer ')) {
-    return NextResponse.json(
-      { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Missing bearer token' } },
-      { status: 401 }
-    )
-  }
+  if (!auth?.startsWith('Bearer ')) return unauthorized(req, 'Missing bearer token')
+  let caller: McpCaller | null
   try {
-    const userId = await resolveUserIdFromApiKey(auth.slice(7), createServiceClient())
-    if (!userId) {
-      return NextResponse.json(
-        { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Unauthorized' } },
-        { status: 401 }
-      )
-    }
+    caller = await resolveCaller(auth.slice(7))
   } catch {
     return NextResponse.json(
       { jsonrpc: '2.0', id: null, error: { code: -32603, message: 'Auth unavailable' } },
       { status: 503 }
     )
   }
+  if (!caller) return unauthorized(req, 'Unauthorized', 'invalid_token')
+  // A read-only app sees only the tools that read, and is refused the rest even
+  // by name; the agent handlers refuse its token on every write besides.
+  const readOnly = caller.scope === 'planner:read'
 
   let message: unknown
   try {
@@ -243,10 +265,10 @@ export async function POST(req: NextRequest) {
   const responses: unknown[] = []
   for (const one of messages) {
     const response = await dispatch(one, {
-      tools: TOOL_DESCRIPTORS,
+      tools: readOnly ? READ_TOOL_DESCRIPTORS : TOOL_DESCRIPTORS,
       serverInfo: { name: 'dsul', version: '1' },
       callTool: async (name, args) => {
-        const tool = toolByName(name)
+        const tool = readOnly && !READ_TOOL_NAMES.has(name) ? undefined : toolByName(name)
         if (!tool) return { content: [{ type: 'text', text: `Unknown tool: ${name}` }], isError: true }
         const plan = tool.plan(args)
         if ('error' in plan) {
