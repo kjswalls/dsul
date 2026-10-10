@@ -137,6 +137,9 @@ final class AuthStore {
     private let appleCredentialState: (@Sendable (String) async -> AppleIDCredentialState)?
     /// Where Delete account's two routes are: the web app, as for the planner.
     private let apiOrigin: URL
+    /// This install's registry id (DeviceIdentity): released at sign-out,
+    /// and sent on Delete account's writes. Nil releases nothing.
+    private let deviceId: String?
 
     /// The waits between refresh attempts that failed for want of a server:
     /// three tries within about three seconds, well inside the reuse window.
@@ -146,7 +149,7 @@ final class AuthStore {
          now: @escaping @Sendable () -> Date = { Date() },
          sleep: @escaping @Sendable (Duration) async throws -> Void = { duration in try await Task.sleep(for: duration) },
          appleCredentialState: (@Sendable (String) async -> AppleIDCredentialState)? = nil,
-         apiOrigin: URL = AppConfig.apiOrigin) {
+         apiOrigin: URL = AppConfig.apiOrigin, deviceId: String? = nil) {
         self.tokenStore = tokenStore
         self.configStore = configStore
         self.transport = transport
@@ -154,6 +157,7 @@ final class AuthStore {
         self.sleep = sleep
         self.appleCredentialState = appleCredentialState
         self.apiOrigin = apiOrigin
+        self.deviceId = deviceId
         if let saved = tokenStore.load() {
             state = .signedIn(saved)
         } else {
@@ -177,7 +181,7 @@ final class AuthStore {
         let config = SupabaseConfigStore(origin: origin, defaults: defaults, transport: HTTP.live)
         return AuthStore(tokenStore: store, configStore: config, transport: HTTP.live,
                          appleCredentialState: { await AppleAuthorization.credentialState(forUserID: $0) },
-                         apiOrigin: origin)
+                         apiOrigin: origin, deviceId: DeviceIdentity.id(defaults))
     }
 
     var session: AuthSession? {
@@ -587,7 +591,10 @@ final class AuthStore {
 
     /// Ends this phone's session only. The wipe comes first, so a failed or
     /// slow call can't leave the app signed in. `message` is what the sign-in
-    /// screen then says (nil for the user's own Sign out).
+    /// screen then says (nil for the user's own Sign out). Then this iPhone's
+    /// row in the device registry is released with the ending token, before
+    /// the GoTrue logout ends it; offline, the row stays, and as it is never
+    /// sent anything it waits harmlessly for the 180-day prune.
     func signOut(message: String? = nil) async {
         guard let ending = session else {
             leaveSample()
@@ -596,6 +603,11 @@ final class AuthStore {
         refreshTask?.cancel()
         refreshTask = nil
         endSession(message: message)
+        if let deviceId {
+            let api = APIClient(origin: apiOrigin, tokens: EndingSessionToken(ending.accessToken),
+                                transport: transport)
+            try? await api.releaseDevice(deviceId)
+        }
         _ = try? await goTrue { config in
             GoTrue.logoutRequest(config: config, accessToken: ending.accessToken)
         }
@@ -698,7 +710,7 @@ final class AuthStore {
     /// Delete account's own client: never the planner's, since the deletion
     /// drops the planner.
     private func accountAPI() -> APIClient {
-        return APIClient(origin: apiOrigin, tokens: self, transport: transport)
+        return APIClient(origin: apiOrigin, tokens: self, transport: transport, deviceId: deviceId)
     }
 
     // MARK: GoTrue

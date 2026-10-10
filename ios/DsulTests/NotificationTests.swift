@@ -146,14 +146,14 @@ final class FakeAccount: NotificationAccount {
     }
 
     private func makeHub(_ server: FakeServer, clock: TestClock, account: FakeAccount? = FakeAccount(),
-                         outbox: MemoryOutboxStorage = MemoryOutboxStorage())
+                         outbox: MemoryOutboxStorage = MemoryOutboxStorage(), deviceId: String? = nil)
         -> (NotificationHub, FakeNotificationCenter) {
         let (scheduler, center) = makeScheduler(clock)
         let hub = NotificationHub(scheduler: scheduler, outbox: ActionOutbox(storage: outbox),
                                   makeAPI: { [origin] tokens in
                                       APIClient(origin: origin, tokens: tokens, transport: server.transport)
                                   },
-                                  now: { clock.now }, zone: { "UTC" })
+                                  now: { clock.now }, zone: { "UTC" }, deviceId: deviceId)
         hub.account = account
         return (hub, center)
     }
@@ -357,6 +357,71 @@ final class FakeAccount: NotificationAccount {
         reopened.remove([entry.id])
         #expect(storage.data == nil)
         #expect(ActionOutbox(storage: storage).entries.isEmpty)
+    }
+
+    // MARK: The device registry
+
+    private let deviceRoute = "POST /api/app/devices"
+    private let testDevice = "ios:0b7c2f9a-1d3e-4c5b-9a8f-7e6d5c4b3a21"
+
+    /// A signed-in planner registers this iPhone once a launch: a phone that
+    /// arms its own cues, in the zone it rings in, and the write carries the
+    /// device header like every other.
+    @Test func theHubRegistersThisIPhoneOnce() async throws {
+        let server = FakeServer()
+        let clock = TestClock(at("07:00"))
+        await server.on(deviceRoute, .status(200, ok))
+        let planner = await loadedPlanner(server, clock: clock, json: payload())
+        let (hub, _) = makeHub(server, clock: clock, deviceId: testDevice)
+        hub.attach(planner)
+        #expect(await waitUntil { await server.count(deviceRoute) == 1 })
+        hub.plannerChanged()
+        await hub.settle()
+        #expect(await server.count(deviceRoute) == 1)
+
+        let sent = await bodies(server, deviceRoute)
+        let body = try #require(sent.first)
+        #expect(body["deviceId"] as? String == testDevice)
+        #expect(body["platform"] as? String == "ios")
+        #expect(body["transport"] as? String == "none")
+        #expect(body["delivery"] as? String == "local")
+        #expect(body["form"] as? String == "phone")
+        #expect(body["timezone"] as? String == "UTC")
+        #expect(body["token"] == nil)
+        let requests = await server.requests
+        #expect(requests.first { $0.route == deviceRoute }?.headers["authorization"] == "Bearer token-1")
+    }
+
+    /// Offline, the registration is tried again at the next fetch; a refusal
+    /// is not.
+    @Test func aFailedRegistrationIsTriedAgainOnlyWhenTheServerMayTakeIt() async throws {
+        let server = FakeServer()
+        let clock = TestClock(at("07:00"))
+        await server.on(deviceRoute, .offline, .status(400, "{\"error\":\"invalid\"}"))
+        let planner = await loadedPlanner(server, clock: clock, json: payload())
+        let (hub, _) = makeHub(server, clock: clock, deviceId: testDevice)
+        hub.attach(planner)
+        #expect(await waitUntil { await server.count(deviceRoute) == 1 })
+        try await Task.sleep(for: .milliseconds(50))
+        hub.plannerChanged()
+        #expect(await waitUntil { await server.count(deviceRoute) == 2 })
+        try await Task.sleep(for: .milliseconds(50))
+        hub.plannerChanged()
+        await hub.settle()
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(await server.count(deviceRoute) == 2)
+    }
+
+    /// No device id (the sample, a test host) registers nothing.
+    @Test func noDeviceIdRegistersNothing() async throws {
+        let server = FakeServer()
+        let clock = TestClock(at("07:00"))
+        let planner = await loadedPlanner(server, clock: clock, json: payload())
+        let (hub, _) = makeHub(server, clock: clock)
+        hub.attach(planner)
+        await hub.settle()
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(await server.count(deviceRoute) == 0)
     }
 
     // MARK: Done and Snooze through the planner

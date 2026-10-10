@@ -163,10 +163,14 @@ final class LiveNotificationCenter: NotificationCenterPort {
 
 extension NotificationHub {
     /// The app's hub: the real center, state in UserDefaults, the outbox in
-    /// Application Support, and the production API (or a Debug override).
+    /// Application Support, the production API (or a Debug override), and
+    /// this install's device id.
     static let shared = NotificationHub(
         scheduler: NotificationScheduler(center: LiveNotificationCenter(), store: UserDefaultsSchedulerStore()),
         outbox: ActionOutbox(storage: FileOutboxStorage.standard()),
-        makeAPI: { tokens in APIClient(origin: AppConfig.apiOrigin, tokens: tokens, transport: HTTP.live) }
+        makeAPI: { tokens in
+            APIClient(origin: AppConfig.apiOrigin, tokens: tokens, transport: HTTP.live, deviceId: DeviceIdentity.id())
+        },
+        deviceId: DeviceIdentity.id()
     )
 }
