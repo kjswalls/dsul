@@ -93,7 +93,7 @@ was deleted on GitHub after #443 merged. Restart it from `main` for the next PR.
      (ledger row 064).
    - CLAUDE.md says `chooseChatTarget()` is "the one path allowed to wipe transcripts"; it
      deletes nothing. Raise with Kirby rather than editing CLAUDE.md.
-3. The older build order from the vision (each its own PR): step 2b (edit, ~~retry~~ (Try
+3. The older build order from the vision (each its own PR): step 2b (~~edit~~ (Edit and resend, 2026-10-10, keeps both), ~~retry~~ (Try
    again, 2026-10-10), ~~Undo~~ (receipts, 2026-10-10, memory-only), "Something else" in chat), 2c (@, /, images, open wide), 3 item timeline pane
    (https://claude.ai/artifact/3siWGNjqgVmPcjmmr7mucz), 4 attachments, 5 the OpenClaw loop with
    per-agent keys, a read-only key, OAuth for `/api/mcp` and a real-client probe (#261),

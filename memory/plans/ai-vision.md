@@ -22,7 +22,9 @@ Console, whose braindump is the fixed 300px pane), and it goes back to its own w
 the column closes. On the phone the Ask tab is the same home. Every
 conversation is saved to the account, once per finished turn, in `chat_conversations` /
 `chat_messages` (migration 057), kept until the user deletes it. Next: 2b (control: edit and
-resend, retry (built 2026-10-10: Try again under the latest reply when it was stopped or failed
+resend (built 2026-10-10: Edit under your latest question sends the changed words as a new
+turn; the old question and its reply stay, saved and in what the model hears, since Kirby chose
+to keep history append-only over replacing the pair), retry (built 2026-10-10: Try again under the latest reply when it was stopped or failed
 in a way asking again might get past, `isRetryableReplyError`; the same question goes again as
 a new turn, so nothing saved is rewritten), action lines, receipts with Undo (built
 2026-10-10, below), a typed answer on every card) and 2c

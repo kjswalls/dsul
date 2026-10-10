@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ArrowDown, Check, Copy, RotateCcw, Wand2 } from 'lucide-react';
+import { ArrowDown, Check, Copy, Pencil, RotateCcw, Wand2 } from 'lucide-react';
 import ReactMarkdown, { type Components, type ExtraProps } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ProposalCard } from '@/components/ai/proposal-card';
@@ -51,6 +51,10 @@ import type { Answerer } from '@/lib/conversation-types';
  *    sent again as a new turn, so nothing saved is rewritten. The failed turn
  *    stays; the model never hears it (chat-transport.ts drops a question an
  *    error answered).
+ *  - EDIT under your latest question: change the words and send them as a
+ *    new turn after the old pair, which stays, saved and as the model hears
+ *    it (Kirby's call, 2026-10-10: history is only ever added to). The latest
+ *    question only, so the new turn lands right under the one it corrects.
  *  - A DIVIDER where who answers changes between replies: each message records
  *    its answerer, and a conversation may be continued under the other one.
  *  - TO A SCREEN READER: the transcript is a log that does not read the stream
@@ -110,6 +114,12 @@ export function retryQuestion(messages: readonly ChatMessage[]): string | null {
   return q?.content.trim() ? q.content : null;
 }
 
+/** Where Edit goes: the latest question in the thread, or -1 when there is none. */
+export function editableQuestionIndex(messages: readonly ChatMessage[]): number {
+  for (let i = messages.length - 1; i >= 0; i--) if (messages[i].role === 'user') return i;
+  return -1;
+}
+
 /**
  * The messages alone, with no scroller of their own.
  *
@@ -118,7 +128,7 @@ export function retryQuestion(messages: readonly ChatMessage[]): string | null {
  * conversation, whose item has its own Break-into-steps). `busy` hides it
  * while a reply is still arriving. `retryVia` is where Try again sends
  * (the composer binding this conversation's own box uses); without it there
- * is no Try again.
+ * is no Try again. Edit sends through it too, and without it there is no Edit.
  */
 export function TranscriptMessages({
   messages,
@@ -142,13 +152,14 @@ export function TranscriptMessages({
     receipts &&
     placed?.get(i)?.map((r) => <ReceiptLine key={r.actionId} conversationId={receipts.conversationId} r={r} />);
   const again = retryVia && !busy ? retryQuestion(messages) : null;
+  const editAt = retryVia && !busy ? editableQuestionIndex(messages) : -1;
   return (
     <>
       {messages.map((m, i) => (
         <Fragment key={m.id}>
           {dividers.has(i) && <AnswererDivider answerer={dividers.get(i) as Answerer} />}
           {m.role === 'user' ? (
-            <UserMessage m={m} notSaved={endsUnsavedTurn(messages, i)} />
+            <UserMessage m={m} notSaved={endsUnsavedTurn(messages, i)} editVia={i === editAt ? retryVia : undefined} />
           ) : (
             <Reply
               m={m}
@@ -221,16 +232,121 @@ function AnswererDivider({ answerer }: { answerer: Answerer }) {
   );
 }
 
-const UserMessage = memo(function UserMessage({ m, notSaved }: { m: ChatMessage; notSaved: boolean }) {
+const UserMessage = memo(function UserMessage({
+  m,
+  notSaved,
+  editVia,
+}: {
+  m: ChatMessage;
+  notSaved: boolean;
+  /** Set on the latest question only, while nothing is arriving: where an edit is sent. */
+  editVia?: ComposerBinding;
+}) {
+  const { canChat } = useAICapabilities();
+  const [editing, setEditing] = useState(false);
+  const canEdit = !!editVia && canChat;
+  if (editing && canEdit) {
+    return (
+      <EditQuestion
+        m={m}
+        onCancel={() => setEditing(false)}
+        onSend={(text) => {
+          setEditing(false);
+          void sendFrom(editVia, text);
+        }}
+      />
+    );
+  }
   return (
-    <div data-message-role="user" data-message-id={m.id} className="flex flex-col items-end gap-1">
+    <div data-message-role="user" data-message-id={m.id} className="group/question flex flex-col items-end gap-1">
       <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl bg-secondary px-3 py-2 text-sm leading-relaxed text-foreground">
         {m.content}
       </div>
       {notSaved && <NotSaved />}
+      {canEdit && (
+        // A tool, so it fades like Copy under a reply; always on a touch screen.
+        <button
+          type="button"
+          data-testid="chat-edit"
+          onClick={() => setEditing(true)}
+          className="flex items-center gap-1 rounded p-1 text-2xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover/question:opacity-100 [@media(hover:none)]:opacity-100"
+        >
+          <Pencil className="size-3" aria-hidden />
+          <span>Edit</span>
+        </button>
+      )}
     </div>
   );
 });
+
+/**
+ * The latest question, open for editing. Send asks the edited words as a new
+ * turn; the question as it was stays above, with its reply. Enter sends,
+ * Shift+Enter is a new line, Escape puts it back.
+ */
+function EditQuestion({
+  m,
+  onCancel,
+  onSend,
+}: {
+  m: ChatMessage;
+  onCancel: () => void;
+  onSend: (text: string) => void;
+}) {
+  const [text, setText] = useState(m.content);
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+  }, []);
+  const ready = text.trim().length > 0;
+  const send = () => {
+    if (ready) onSend(text);
+  };
+  return (
+    <div data-message-role="user" data-message-id={m.id} data-testid="chat-edit-box" className="flex flex-col items-end gap-1.5">
+      <textarea
+        ref={ref}
+        value={text}
+        aria-label="Edit your question"
+        rows={Math.min(8, Math.max(2, text.split('\n').length))}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+            onCancel();
+          } else if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+            e.preventDefault();
+            send();
+          }
+        }}
+        className="w-full max-w-[85%] resize-none rounded-2xl border border-border bg-background px-3 py-2 text-sm leading-relaxed text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      />
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          data-testid="chat-edit-cancel"
+          onClick={onCancel}
+          className="rounded-full px-2.5 py-1 text-2xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          data-testid="chat-edit-send"
+          disabled={!ready}
+          onClick={send}
+          className="rounded-full border border-border px-2.5 py-1 text-2xs font-medium text-foreground transition-colors hover:bg-secondary disabled:opacity-50"
+        >
+          Send
+        </button>
+      </div>
+    </div>
+  );
+}
 
 /**
  * A reply's markdown, styled by hand: the `prose` utilities need
