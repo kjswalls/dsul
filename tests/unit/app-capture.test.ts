@@ -25,7 +25,10 @@ interface Query {
 const h = vi.hoisted(() => ({
   createClient: vi.fn(),
   notifyPlugins: vi.fn(),
+  afterItemWrite: vi.fn(),
 }));
+// The recipe runner's one door: here only the listener the route passes.
+vi.mock('@/lib/recipes/server', () => ({ afterItemWrite: h.afterItemWrite }));
 
 vi.mock('@supabase/supabase-js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@supabase/supabase-js')>()),
@@ -247,5 +250,35 @@ describe('POST /api/app/items', () => {
 
   it('takes a 500-character title', async () => {
     expect((await capture({ id: ITEM, title: 'x'.repeat(500) })).status).toBe(201);
+  });
+});
+
+/** "I add an item" recipes run on the server for a phone capture (memory/plans/mods.md, build order 6). */
+describe('POST /api/app/items: recipes', () => {
+  it('a capture that made the row raises item.created once, after the insert', async () => {
+    await capture({ id: ITEM, title: 'Buy stamps' });
+    expect(h.afterItemWrite.mock.calls).toEqual([[{ kind: 'item.created', userId: USER, itemId: ITEM, type: 'task' }]]);
+  });
+
+  it('a retry that found the row raises nothing', async () => {
+    insertResult = { data: null, error: { code: '23505', message: 'duplicate' } };
+    existing = { id: ITEM, type: 'task', deleted_at: null };
+    expect((await capture({ id: ITEM, title: 'Buy stamps' })).status).toBe(200);
+    expect(h.afterItemWrite).not.toHaveBeenCalled();
+  });
+
+  it('a failed capture raises nothing', async () => {
+    insertResult = { data: null, error: { code: 'XX000', message: 'nope' } };
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect((await capture({ id: ITEM, title: 'Buy stamps' })).status).toBe(500);
+    expect(h.afterItemWrite).not.toHaveBeenCalled();
+  });
+
+  it('a listener that throws still answers 201', async () => {
+    h.afterItemWrite.mockImplementationOnce(() => {
+      throw new Error('recipes down');
+    });
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect((await capture({ id: ITEM, title: 'Buy stamps' })).status).toBe(201);
   });
 });

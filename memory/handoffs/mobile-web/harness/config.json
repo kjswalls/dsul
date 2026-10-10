@@ -1,0 +1,72 @@
+{
+ "eyebrow": "Round 3 · October 1 · main view, braindump and phone",
+ "title": "When the shelf runs out of room",
+ "lede": "You said the stacked shelf looks a little crazy, and that even three settings look strange. Below are three ways out. Each one is built into the real header and shown on the main view, in the braindump and on the phone. Every caption gives the shelf's height next to today's; on the main view, that height comes out of the hour rows.",
+ "today": {
+  "name": "Today",
+  "copy": "Once the settings stop fitting on one line, each gets a line of its own. There is a × after every phrase and every value, and a lone reset × floats at the top right.",
+  "shots": [
+   {"src": "/tmp/claude-0/-home-claude-dsul/ab30be3b-ab8d-5f59-97ae-7b55d7f2343a/scratchpad/stack/base/canvas-three.png", "file": "r3/today-main-three.png", "alt": "Today: main view header with three settings stacked one per line", "cap": "Main view, three settings", "h": 69},
+   {"src": "/tmp/claude-0/-home-claude-dsul/ab30be3b-ab8d-5f59-97ae-7b55d7f2343a/scratchpad/stack/base/canvas-all.png", "file": "r3/today-main-all.png", "alt": "Today: main view header with every setting on, six lines", "cap": "Main view, everything on", "h": 138},
+   {"src": "/tmp/claude-0/-home-claude-dsul/ab30be3b-ab8d-5f59-97ae-7b55d7f2343a/scratchpad/stack/base/bd406-all.png", "file": "r3/today-braindump-all.png", "alt": "Today: braindump header at 406px with every setting on", "cap": "Braindump, everything on", "h": 121},
+   {"src": "/tmp/claude-0/-home-claude-dsul/ab30be3b-ab8d-5f59-97ae-7b55d7f2343a/scratchpad/stack/base/phone-all.png", "file": "r3/today-phone-all.png", "alt": "Today: phone Today card with every setting on", "cap": "Phone, everything on", "h": 134}
+  ]
+ },
+ "options": [
+  {
+   "key": "A", "name": "Quiet paragraph", "rec": true,
+   "copy": "The settings wrap like a sentence instead of taking a line each, so three settings fit on one line and everything on takes three. With a mouse there are no ×s at rest: point at a setting and its own × appears right after it. A little extra space marks where each filter starts and ends. From four settings up, a small reset arrow ends the last line. On the phone, where nothing can be pointed at, every setting keeps its ×.",
+   "tradeoffs": [["Good:", "half today's height or less, every value still named, so an empty list is still explained, and any single value still comes off in one click"], ["Cost:", "with a mouse you only see a × when you point at its setting, and the phone still shows every ×"]],
+   "shots": [
+    {"src": "/tmp/claude-0/-home-claude-dsul/ab30be3b-ab8d-5f59-97ae-7b55d7f2343a/scratchpad/stack/designs/final-A/shots/canvas-three.png", "file": "r3/a-main-three.png", "alt": "Option A: three settings on one quiet line", "cap": "Main view, three settings", "h": 23, "was": 69},
+    {"src": "/tmp/claude-0/-home-claude-dsul/ab30be3b-ab8d-5f59-97ae-7b55d7f2343a/scratchpad/stack/designs/final-A/shots/canvas-all.png", "file": "r3/a-main-all.png", "alt": "Option A: everything on in three lines with a reset arrow", "cap": "Main view, everything on", "h": 69, "was": 138},
+    {"src": "/tmp/claude-0/-home-claude-dsul/ab30be3b-ab8d-5f59-97ae-7b55d7f2343a/scratchpad/stack/designs/final-A/shots/bd406-all.png", "file": "r3/a-braindump-all.png", "alt": "Option A: braindump with everything on in three lines", "cap": "Braindump, everything on", "h": 75, "was": 121},
+    {"src": "/tmp/claude-0/-home-claude-dsul/ab30be3b-ab8d-5f59-97ae-7b55d7f2343a/scratchpad/stack/designs/final-A/shots/phone-all.png", "file": "r3/a-phone-all.png", "alt": "Option A: phone card with every setting and its x", "cap": "Phone, everything on", "h": 88, "was": 134}
+   ],
+   "moreTitle": "Up close",
+   "more": [
+    {"src": "/tmp/claude-0/-home-claude-dsul/ab30be3b-ab8d-5f59-97ae-7b55d7f2343a/scratchpad/stack/designs/final-A/extras/canvas-all-pointer-on-medium-x-in-the-seam.png", "file": "r3/a-hover.png", "alt": "Option A: pointing at Medium shows its x", "cap": "Pointing at Medium shows its ×"},
+    {"src": "/tmp/claude-0/-home-claude-dsul/ab30be3b-ab8d-5f59-97ae-7b55d7f2343a/scratchpad/stack/designs/final-A/shots-dark/canvas-all-dark.png", "file": "r3/a-main-all-dark.png", "alt": "Option A in dark mode", "cap": "Dark"},
+    {"src": "/tmp/claude-0/-home-claude-dsul/ab30be3b-ab8d-5f59-97ae-7b55d7f2343a/scratchpad/stack/designs/final-A/shots/bd280-all.png", "file": "r3/a-braindump-280.png", "alt": "Option A: narrowest braindump, everything on", "cap": "Braindump at its narrowest", "h": 98, "was": 139},
+    {"src": "/tmp/claude-0/-home-claude-dsul/ab30be3b-ab8d-5f59-97ae-7b55d7f2343a/scratchpad/stack/designs/final-A/shots/phone-three.png", "file": "r3/a-phone-three.png", "alt": "Option A: phone with three settings on one line", "cap": "Phone, three settings", "h": 19, "was": 65}
+   ]
+  },
+  {
+   "key": "B", "name": "Soft chips",
+   "copy": "Each setting becomes a small soft chip, like the chips under your settings, with its × inside. The chips wrap in rows. A filter is one chip, so its × takes the whole filter off. A quiet Reset sits at the top right.",
+   "tradeoffs": [["Good:", "the clearest structure: you can see what each × removes, and nothing waits for hover"], ["Cost:", "more boxes than plain words, three settings still take two rows, and taking off just one value of a filter means opening the menu"]],
+   "shots": [
+    {"src": "/tmp/claude-0/-home-claude-dsul/ab30be3b-ab8d-5f59-97ae-7b55d7f2343a/scratchpad/stack/designs/final-B/shots/canvas-three.png", "file": "r3/b-main-three.png", "alt": "Option B: three settings as soft chips in two rows", "cap": "Main view, three settings", "h": 54, "was": 69},
+    {"src": "/tmp/claude-0/-home-claude-dsul/ab30be3b-ab8d-5f59-97ae-7b55d7f2343a/scratchpad/stack/designs/final-B/shots/canvas-all.png", "file": "r3/b-main-all.png", "alt": "Option B: everything on as three rows of chips", "cap": "Main view, everything on", "h": 82, "was": 138},
+    {"src": "/tmp/claude-0/-home-claude-dsul/ab30be3b-ab8d-5f59-97ae-7b55d7f2343a/scratchpad/stack/designs/final-B/shots/bd406-all.png", "file": "r3/b-braindump-all.png", "alt": "Option B: braindump with chips", "cap": "Braindump, everything on", "h": 88, "was": 121},
+    {"src": "/tmp/claude-0/-home-claude-dsul/ab30be3b-ab8d-5f59-97ae-7b55d7f2343a/scratchpad/stack/designs/final-B/shots/phone-all.png", "file": "r3/b-phone-all.png", "alt": "Option B: phone card with grey chips", "cap": "Phone, everything on", "h": 106, "was": 134}
+   ],
+   "moreTitle": "Up close",
+   "more": [
+    {"src": "/tmp/claude-0/-home-claude-dsul/ab30be3b-ab8d-5f59-97ae-7b55d7f2343a/scratchpad/stack/designs/final-B/extras/hover-filter-chip--canvas-all.png", "file": "r3/b-hover.png", "alt": "Option B: pointing at a filter chip", "cap": "Pointing at a filter chip"},
+    {"src": "/tmp/claude-0/-home-claude-dsul/ab30be3b-ab8d-5f59-97ae-7b55d7f2343a/scratchpad/stack/designs/final-B/shots-dark/canvas-all-dark.png", "file": "r3/b-main-all-dark.png", "alt": "Option B in dark mode", "cap": "Dark"},
+    {"src": "/tmp/claude-0/-home-claude-dsul/ab30be3b-ab8d-5f59-97ae-7b55d7f2343a/scratchpad/stack/designs/final-B/shots/bd280-all.png", "file": "r3/b-braindump-280.png", "alt": "Option B: narrowest braindump", "cap": "Braindump at its narrowest", "h": 116, "was": 139}
+   ]
+  },
+  {
+   "key": "C", "name": "Always one line",
+   "copy": "The shelf never grows past one line. Three settings read in full. When room runs short, filters come first, a long filter is counted (\"2 priorities\"), and whatever is left becomes a quiet +4 that lists the rest when you point at it. If a filter is what emptied the list, that filter always stays on the line. Clicking anything opens Display, and there is no reset on the shelf.",
+   "tradeoffs": [["Good:", "the quietest header, one line on every rail and on the phone, so the hour rows never give up more than one line"], ["Cost:", "with four or more settings part of what's set hides behind +N (the phone has to open the sheet to see it), one × per filter, and the most new logic to build"]],
+   "shots": [
+    {"src": "/tmp/claude-0/-home-claude-dsul/ab30be3b-ab8d-5f59-97ae-7b55d7f2343a/scratchpad/stack/designs/final-C/shots/canvas-three.png", "file": "r3/c-main-three.png", "alt": "Option C: three settings on one line with middle dots", "cap": "Main view, three settings", "h": 23, "was": 69},
+    {"src": "/tmp/claude-0/-home-claude-dsul/ab30be3b-ab8d-5f59-97ae-7b55d7f2343a/scratchpad/stack/designs/final-C/shots/canvas-all.png", "file": "r3/c-main-all.png", "alt": "Option C: everything on folded into one line with +4", "cap": "Main view, everything on", "h": 23, "was": 138},
+    {"src": "/tmp/claude-0/-home-claude-dsul/ab30be3b-ab8d-5f59-97ae-7b55d7f2343a/scratchpad/stack/designs/final-C/shots/bd406-all.png", "file": "r3/c-braindump-all.png", "alt": "Option C: braindump on one line with +3", "cap": "Braindump, everything on", "h": 29, "was": 121},
+    {"src": "/tmp/claude-0/-home-claude-dsul/ab30be3b-ab8d-5f59-97ae-7b55d7f2343a/scratchpad/stack/designs/final-C/shots/phone-all.png", "file": "r3/c-phone-all.png", "alt": "Option C: phone card on one line with +4", "cap": "Phone, everything on", "h": 19, "was": 134}
+   ],
+   "moreTitle": "Up close",
+   "more": [
+    {"src": "/tmp/claude-0/-home-claude-dsul/ab30be3b-ab8d-5f59-97ae-7b55d7f2343a/scratchpad/stack/designs/final-C/extras/bd280-all--plus-n-tooltip-open.png", "file": "r3/c-tooltip.png", "alt": "Option C: pointing at +4 lists the folded settings", "cap": "Pointing at +4 lists the rest"},
+    {"src": "/tmp/claude-0/-home-claude-dsul/ab30be3b-ab8d-5f59-97ae-7b55d7f2343a/scratchpad/stack/designs/final-C/shots-dark/canvas-all-dark.png", "file": "r3/c-main-all-dark.png", "alt": "Option C in dark mode", "cap": "Dark"}
+   ]
+  }
+ ],
+ "notes": [
+  {"h": "True of all three", "items": ["The shelf shows exactly when the Display dot is lit, and clicking its words opens the Display menu, as today.", "The main view, the braindump and the phone share one shelf, so one pick changes all of them.", "No × or reset ever floats on a line of its own."]},
+  {"h": "How these were made", "items": ["Each option is the real header with the shelf swapped in, shot at 1440 × 900 (braindump at 406px, its usual width) and 390 × 844 for the phone.", "Every option was reviewed adversarially, and what the reviews found was fixed before these shots were taken."]}
+ ]
+}

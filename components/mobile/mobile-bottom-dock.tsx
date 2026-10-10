@@ -9,7 +9,7 @@ import { UndoStrip } from '@/components/notices/undo-strip';
 import { ModeSwitcherSheet } from '@/components/mobile/mode-switcher-sheet';
 import { useToastAnchor } from '@/hooks/use-toast-anchor';
 import { useAICapabilities } from '@/lib/ai-connection-store';
-import { useMobileNavStore } from '@/lib/mobile-nav-store';
+import { setupPageShown, useMobileNavStore } from '@/lib/mobile-nav-store';
 import {
   revealChat,
   useChatCardHomeShown,
@@ -28,7 +28,10 @@ import { cn } from '@/lib/utils';
  * — the omnibar's results panel opens upward out of it.
  *
  * The pill is the omnibar everywhere except the Ask tab, where it is the chat
- * composer instead, with the static model label under it. One bar, one address
+ * composer instead, with the static model label under it. While nothing
+ * answers and that tab holds the setup page (or the fix home) instead, it is
+ * the omnibar there too: a page with no conversation has no box of its own,
+ * and capture still belongs to the bar. One bar, one address
  * for typing, whichever surface you are on — which is the same argument that
  * keeps the notice stack mounted here on every tab. On the Ask tab it is the
  * box of whatever the tab shows (lib/open-chat.ts usePhoneComposerBinding):
@@ -53,13 +56,18 @@ export function MobileBottomDock() {
   const activeTab = useMobileNavStore((s) => s.activeTab);
   const dockRef = useRef<HTMLDivElement>(null);
 
-  const { canChat } = useAICapabilities();
+  const caps = useAICapabilities();
+  const { canChat } = caps;
   /**
-   * The chat tab, and only while something can answer. The shell shows Today
-   * for a chat tab that cannot (components/shell/mobile-shell.tsx), so a
-   * composer here would be a field that sends nowhere under the wrong surface.
+   * The chat tab, and only while something can answer. The shell shows the
+   * setup page there while the gate offers it, or Today for a chat tab that
+   * is not offered at all (components/shell/mobile-shell.tsx), so a composer
+   * here would be a field that sends nowhere.
    */
   const chatBar = activeTab === 'chat' && canChat;
+  // The setup page (or the fix home) is what the chat tab shows: read by the
+  // arrival rule below, which must tell arriving on Ask from Ask arriving.
+  const onSetupPage = activeTab === 'chat' && setupPageShown(caps);
   /**
    * The catch-up host. "Pick things back up" is local and needs no model
    * (lib/commands/registry.ts), and its card answers on the chat surface — so
@@ -91,11 +99,21 @@ export function MobileBottomDock() {
   // (rail-store's phoneArrivalFocuses, which the mode sheet's focus return
   // asks too). A request the box consumes, as every Ask focus is; an explicit
   // open (revealChat, `?`, "+") makes its own at any view.
+  //
+  // Not when the setup page or the fix home turns into Ask under the person
+  // (a connect, a fix landing): nobody arrived. The gate lights before the
+  // connect that lit it pops the phone's stack home, so this effect would read
+  // a conversation left there from before and raise the keyboard over "It
+  // works."; and a conversation a fix gives back is to be read before it is
+  // typed into.
+  const wasOnSetupPage = useRef(onSetupPage);
   useEffect(() => {
-    if (!chatBar) return;
+    const inPlace = wasOnSetupPage.current;
+    wasOnSetupPage.current = onSetupPage;
+    if (!chatBar || inPlace) return;
     const rail = useRailStore.getState();
     if (phoneArrivalFocuses(rail.stacks.phone)) rail.focusComposer();
-  }, [chatBar]);
+  }, [chatBar, onSetupPage]);
 
   // Measured, not estimated: app/globals.css pins the mobile toast at
   // `--toast-bottom`, and this dock's height moves with the notice stack, the

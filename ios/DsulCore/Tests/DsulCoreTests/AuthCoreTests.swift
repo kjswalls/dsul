@@ -28,6 +28,15 @@ private func jsonBody(_ request: URLRequest?) -> [String: String]? {
     return dict
 }
 
+/// `jsonBody` without the cast, for a nested body (the name write).
+private func jsonObject(_ request: URLRequest?) -> [String: Any]? {
+    guard let data = request?.httpBody,
+          let object = try? JSONSerialization.jsonObject(with: data, options: []),
+          let dict = object as? [String: Any]
+    else { return nil }
+    return dict
+}
+
 @Suite struct PKCETests {
     // RFC 7636 Appendix B.
     private let appendixBytes: [UInt8] = [
@@ -122,15 +131,45 @@ private func jsonBody(_ request: URLRequest?) -> [String: String]? {
         #expect(queryItems(request.url) == ["scope": "local"])
         #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer at-1")
     }
+
+    @Test func theIdTokenGrantSendsTheTokenTheRawNonceAndApple() throws {
+        let request = try #require(GoTrue.idTokenRequest(config: config, idToken: "eyJ.apple.token", nonce: "raw-nonce-1"))
+        expectGoTrueHeaders(request, "id_token")
+        #expect(request.url?.path == "/auth/v1/token")
+        #expect(queryItems(request.url) == ["grant_type": "id_token"])
+        let c = try #require(request.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) })
+        #expect(c.percentEncodedQuery == "grant_type=id_token")
+        // The RAW nonce, which GoTrue hashes itself. No access_token, client_id,
+        // issuer or link_identity: a sign-in, never a link.
+        #expect(jsonBody(request) == ["id_token": "eyJ.apple.token", "nonce": "raw-nonce-1", "provider": "apple"])
+        #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
+    }
+
+    @Test func theNameWriteIsAPutOfUserMetadata() throws {
+        let request = try #require(GoTrue.userNameRequest(config: config, accessToken: "a1", fullName: "Kirby Fox"))
+        #expect(request.httpMethod == "PUT")
+        #expect(request.url?.path == "/auth/v1/user")
+        #expect(request.url?.query == nil)
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer a1")
+        #expect(request.value(forHTTPHeaderField: "apikey") == "anon-key")
+        #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
+        #expect(request.value(forHTTPHeaderField: "X-Supabase-Api-Version") == "2024-01-01")
+        // Only `data`, with only the two keys GoTrue's Apple callback writes:
+        // user_metadata takes them key by key and keeps the rest.
+        let body = try #require(jsonObject(request))
+        #expect(body.keys.sorted() == ["data"])
+        let data = body["data"] as? [String: String]
+        #expect(data == ["full_name": "Kirby Fox", "name": "Kirby Fox"])
+    }
 }
 
 @Suite struct SessionTests {
     private let received = Date(timeIntervalSince1970: 1_790_000_000)
 
-    private func body(user: String = "6f1c2a9e-3b4d-4e5f-8a6b-7c8d9e0f1a2b") -> Data {
+    private func body(user: String = "6f1c2a9e-3b4d-4e5f-8a6b-7c8d9e0f1a2b", email: String = "kirby@example.com") -> Data {
         let json = """
         {"access_token":"at","token_type":"bearer","expires_in":3600,"expires_at":1790003600,
-         "refresh_token":"rt","user":{"id":"\(user)","email":"kirby@example.com","aud":"authenticated"}}
+         "refresh_token":"rt","user":{"id":"\(user)","email":"\(email)","aud":"authenticated"}}
         """
         return Data(json.utf8)
     }
@@ -162,6 +201,40 @@ private func jsonBody(_ request: URLRequest?) -> [String: String]? {
         let s = try Session.decode(body(), receivedAt: received)
         let blob = try JSONEncoder().encode(s)
         #expect(try JSONDecoder().decode(Session.self, from: blob) == s)
+    }
+
+    @Test func theAppleUserIdRoundTrips() throws {
+        var s = try Session.decode(body(), receivedAt: received)
+        s.appleUserId = "001234.dsul.0001"
+        let blob = try JSONEncoder().encode(s)
+        let back = try JSONDecoder().decode(Session.self, from: blob)
+        #expect(back == s)
+        #expect(back.appleUserId == "001234.dsul.0001")
+    }
+
+    @Test func aBlobSavedBeforeAppleStillLoads() throws {
+        // A session with no Apple id writes the blob it always did: no key.
+        let s = try Session.decode(body(), receivedAt: received)
+        let blob = try JSONEncoder().encode(s)
+        let object = try JSONSerialization.jsonObject(with: blob, options: [])
+        let fields = try #require(object as? [String: Any])
+        #expect(fields.keys.sorted() == ["accessToken", "email", "expiresAt", "refreshToken", "userId"])
+        #expect(try JSONDecoder().decode(Session.self, from: blob) == s)
+        // And a blob as a Keychain holds it today, written out by hand.
+        let saved = #"{"accessToken":"at","refreshToken":"rt","expiresAt":811696400,"userId":"6F1C2A9E-3B4D-4E5F-8A6B-7C8D9E0F1A2B","email":"kirby@example.com"}"#
+        let loaded = try JSONDecoder().decode(Session.self, from: Data(saved.utf8))
+        #expect(loaded.appleUserId == nil)
+        #expect(loaded == s)
+    }
+
+    @Test func aTokenResponseLeavesTheAppleUserIdUnset() throws {
+        #expect(try Session.decode(body(), receivedAt: received).appleUserId == nil)
+    }
+
+    @Test func aBlankEmailIsNoEmail() throws {
+        // GoTrue writes "" for a user it made without an address.
+        #expect(try Session.decode(body(email: ""), receivedAt: received).email == nil)
+        #expect(try Session.decode(body(), receivedAt: received).email == "kirby@example.com")
     }
 }
 
@@ -402,5 +475,154 @@ private func jsonBody(_ request: URLRequest?) -> [String: String]? {
     ])
     func anythingElseIsRefused(_ s: String) {
         #expect(parse(s) == nil)
+    }
+}
+
+@Suite struct AppleNonceTests {
+    @Test func theNonceIsBase64URLOfItsBytes() {
+        let bytes: [UInt8] = Array(0..<32)
+        #expect(AppleSignIn.makeNonce(bytes: bytes) == "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8")
+    }
+
+    @Test func aFreshNonceIs43URLSafeCharacters() {
+        let allowed = Set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
+        let a = AppleSignIn.makeNonce()
+        let b = AppleSignIn.makeNonce()
+        #expect(a.count == 43)
+        #expect(b.count == 43)
+        #expect(a.allSatisfy { allowed.contains($0) })
+        #expect(b.allSatisfy { allowed.contains($0) })
+        #expect(a != b)
+    }
+
+    @Test func theHashIsLowercaseHexOfTheRawNoncesUTF8() {
+        var seen: Data?
+        let hash = AppleSignIn.hashedNonce("abc") { input in
+            seen = input
+            return Data([0x00, 0xAB, 0xFF])
+        }
+        #expect(seen == Data("abc".utf8))
+        #expect(hash == "00abff")
+        // A SHA-256's 32 bytes are Apple's 64 characters.
+        let full = AppleSignIn.hashedNonce("abc") { _ in Data(repeating: 0xA5, count: 32) }
+        #expect(full == String(repeating: "a5", count: 32))
+    }
+
+    #if canImport(CryptoKit)
+    @Test func theHashIsWhatGoTrueComputes() {
+        // fmt.Sprintf("%x", sha256.Sum256([]byte("abc"))), token_oidc.go's check.
+        let hash = AppleSignIn.hashedNonce("abc") { Data(SHA256.hash(data: $0)) }
+        #expect(hash == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+    }
+    #endif
+}
+
+@Suite struct AppleNameTests {
+    @Test func givenAndFamilyJoinAsGoTrueJoinsThem() {
+        #expect(AppleSignIn.fullName(given: "Kirby", family: "Fox") == "Kirby Fox")
+    }
+
+    @Test func eitherHalfIsEnough() {
+        #expect(AppleSignIn.fullName(given: "Kirby", family: nil) == "Kirby")
+        #expect(AppleSignIn.fullName(given: nil, family: "Fox") == "Fox")
+    }
+
+    @Test func nothingIsNoName() {
+        #expect(AppleSignIn.fullName(given: nil, family: nil) == nil)
+        #expect(AppleSignIn.fullName(given: " ", family: "") == nil)
+        #expect(AppleSignIn.fullName(given: "\u{0}", family: "\n") == nil)
+    }
+
+    @Test func controlCharactersGo() {
+        #expect(AppleSignIn.fullName(given: "Kir\u{0}by\u{7}", family: "Fox") == "Kirby Fox")
+        #expect(AppleSignIn.fullName(given: "\u{85}Kir\tby", family: "Fox\u{9F}") == "Kirby Fox")
+        // Only Cc: the joiner inside an emoji (Cf) stays.
+        #expect(AppleSignIn.fullName(given: "Kirby", family: "\u{1F469}\u{200D}\u{1F4BB}")
+            == "Kirby \u{1F469}\u{200D}\u{1F4BB}")
+    }
+
+    @Test func innerSpacesStayAsGoTrueKeepsThem() {
+        #expect(AppleSignIn.fullName(given: " Kirby ", family: " Fox ") == "Kirby   Fox")
+    }
+
+    @Test func aNameOverTheLimitIsNotSaved() {
+        #expect(AppleSignIn.nameLimit == 200)
+        let longest = String(repeating: "a", count: 200)
+        #expect(AppleSignIn.fullName(given: longest, family: nil) == longest)
+        #expect(AppleSignIn.fullName(given: longest + "a", family: nil) == nil)
+        // The limit is the joined name's, after the trim.
+        #expect(AppleSignIn.fullName(given: longest + "  ", family: "") == longest)
+        let half = String(repeating: "a", count: 100)
+        #expect(AppleSignIn.fullName(given: half, family: String(repeating: "b", count: 99)) != nil)
+        #expect(AppleSignIn.fullName(given: half, family: String(repeating: "b", count: 100)) == nil)
+        // One Character of 601 bytes: a count of Characters would let it through.
+        let stacked = "e" + String(repeating: "\u{0301}", count: 300)
+        #expect(stacked.count == 1)
+        #expect(stacked.utf8.count == 601)
+        #expect(AppleSignIn.fullName(given: stacked, family: nil) == nil)
+    }
+
+    @Test func aNameIsMeasuredInBytesNotLetters() {
+        // Four letters of three bytes each, 13 bytes with the space: kept.
+        #expect(AppleSignIn.fullName(given: "\u{5c71}\u{7530}", family: "\u{592a}\u{90ce}")
+            == "\u{5c71}\u{7530} \u{592a}\u{90ce}")
+        // 66 of them are 198 bytes; 67 are 201, though far fewer than 200 letters.
+        let mountain = "\u{5c71}"
+        #expect(AppleSignIn.fullName(given: String(repeating: mountain, count: 66), family: nil) != nil)
+        #expect(AppleSignIn.fullName(given: String(repeating: mountain, count: 67), family: nil) == nil)
+    }
+}
+
+@Suite struct DisplayNameTests {
+    /// A token response whose user has `metadata` as its user_metadata, or no
+    /// such key when nil.
+    private func name(_ metadata: String?) -> String? {
+        let meta = metadata.map { #","user_metadata":"# + $0 } ?? ""
+        let json = #"{"access_token":"at","token_type":"bearer","expires_in":3600,"refresh_token":"rt","#
+            + #""user":{"id":"6f1c2a9e-3b4d-4e5f-8a6b-7c8d9e0f1a2b","email":"kirby@example.com""# + meta + "}}"
+        return GoTrue.displayName(in: Data(json.utf8))
+    }
+
+    @Test func fullNameComesFirst() {
+        #expect(name(#"{"full_name":"Kirby Fox","name":"Kirby"}"#) == "Kirby Fox")
+        #expect(name(#"{"full_name":" Kirby Fox\n","name":"Kirby"}"#) == "Kirby Fox")
+        #expect(name(#"{"name":"Kirby"}"#) == "Kirby")
+    }
+
+    @Test func aBlankFullNameFallsThroughToName() {
+        #expect(name(#"{"full_name":"","name":"Kirby"}"#) == "Kirby")
+        #expect(name(#"{"full_name":" \t","name":"Kirby"}"#) == "Kirby")
+        #expect(name(#"{"full_name":"  ","name":"  "}"#) == nil)
+    }
+
+    @Test func aNonStringFallsThrough() {
+        #expect(name(#"{"full_name":3,"name":" Kirby\n"}"#) == "Kirby")
+        #expect(name(#"{"full_name":null,"name":"Kirby"}"#) == "Kirby")
+        #expect(name(#"{"full_name":["Kirby"],"name":true}"#) == nil)
+    }
+
+    @Test func noMetadataIsNoName() {
+        #expect(name(nil) == nil)
+        #expect(name("null") == nil)
+        #expect(name(#"{"email":"kirby@example.com","email_verified":true}"#) == nil)
+    }
+
+    @Test func aBodyThatIsNotJSONIsNoName() {
+        #expect(GoTrue.displayName(in: Data("<html>Bad gateway</html>".utf8)) == nil)
+        #expect(GoTrue.displayName(in: Data()) == nil)
+        #expect(GoTrue.displayName(in: Data(#"{"code":"unexpected_failure","message":"x"}"#.utf8)) == nil)
+    }
+}
+
+@Suite struct AppleRefusalTests {
+    @Test func appleRefusalsReadTheirCode() {
+        func code(_ json: String) -> String? { GoTrue.errorCode(in: Data(json.utf8)) }
+        // The provider switched off: an HTTPError, with its code under API version 2024-01-01.
+        #expect(code(#"{"code":"provider_disabled","message":"Provider (issuer \"https://appleid.apple.com\") is not enabled"}"#)
+            == "provider_disabled")
+        // The token's own refusals are OAuthErrors, which carry no code.
+        #expect(code(#"{"error":"invalid request","error_description":"Unacceptable audience in id_token: [app.dsul.ios]"}"#) == nil)
+        #expect(code(#"{"error":"invalid nonce","error_description":"Nonces mismatch"}"#) == nil)
+        #expect(code(#"{"error":"invalid request","error_description":"Bad ID token"}"#) == nil)
     }
 }

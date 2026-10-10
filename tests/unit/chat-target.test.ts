@@ -131,7 +131,7 @@ describe('chooseChatTarget', () => {
         return url === '/api/agent/chat-url'
           ? {
               ok: true,
-              json: async () => ({ chatUrl: 'https://claw.example/chat', agentId: null, dsulApiKey: 'k' }),
+              json: async () => ({ chatUrl: 'https://claw.example/chat', agentId: null, chatToken: 'k' }),
             }
           : { ok: true, json: async () => ({ content: 'ok' }) };
       })

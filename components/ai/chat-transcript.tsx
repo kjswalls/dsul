@@ -1,17 +1,28 @@
 'use client';
 
 import { Fragment, createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ArrowDown, Check, Copy, Wand2 } from 'lucide-react';
+import { ArrowDown, Check, Copy, Pencil, RotateCcw, Wand2 } from 'lucide-react';
 import ReactMarkdown, { type Components, type ExtraProps } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ProposalCard } from '@/components/ai/proposal-card';
 import { TypingIndicator } from '@/components/ui/typing-indicator';
 import { useConversationsStore, type ChatMessage } from '@/lib/conversations-store';
-import { useAICapabilities } from '@/lib/ai-connection-store';
+import { useAICapabilities, useAIConnectionStore } from '@/lib/ai-connection-store';
 import { usePlannerStore } from '@/lib/planner-store';
+import {
+  canUndoReceipt,
+  placeReceipts,
+  receiptCopy,
+  useChatReceipts,
+  useConversationReceipts,
+  type ChatReceipt,
+} from '@/lib/chat-receipts';
+import { useUndoStripStore } from '@/lib/undo-strip-store';
 import { useProposalStore } from '@/lib/proposal-store';
 import { buildPlanPrompt } from '@/lib/plan-prompt';
-import { chatErrorCopy } from '@/lib/chat-errors';
+import { chatErrorCopy, isRetryableReplyError } from '@/lib/chat-errors';
+import { sendFrom } from '@/lib/open-chat';
+import type { ComposerBinding } from '@/lib/rail-store';
 import { chatAssistantName, stripReasoningTags } from '@/lib/chat-utils';
 import { clockTime } from '@/lib/format-chat-timestamp';
 import { prefersReducedMotion } from '@/lib/zen-transition';
@@ -33,6 +44,17 @@ import type { Answerer } from '@/lib/conversation-types';
  *    partial text; a failed reply's words by its CODE (lib/chat-errors.ts,
  *    never the stored text, which holds none); "Not saved" once per turn the
  *    account will never hold.
+ *  - RECEIPTS where a plan was accepted (lib/chat-receipts.ts): what changed,
+ *    with Undo while it is still the last thing done; memory only.
+ *  - TRY AGAIN under the latest reply when it was stopped, or failed in a way
+ *    asking again might get past (`isRetryableReplyError`): the same question
+ *    sent again as a new turn, so nothing saved is rewritten. The failed turn
+ *    stays; the model never hears it (chat-transport.ts drops a question an
+ *    error answered).
+ *  - EDIT under your latest question: change the words and send them as a
+ *    new turn after the old pair, which stays, saved and as the model hears
+ *    it (Kirby's call, 2026-10-10: history is only ever added to). The latest
+ *    question only, so the new turn lands right under the one it corrects.
  *  - A DIVIDER where who answers changes between replies: each message records
  *    its answerer, and a conversation may be continued under the other one.
  *  - TO A SCREEN READER: the transcript is a log that does not read the stream
@@ -76,32 +98,68 @@ function endsUnsavedTurn(messages: readonly ChatMessage[], i: number): boolean {
 }
 
 /**
+ * The question to ask again under the latest reply, or null when there is no
+ * Try again: the reply is not the last message, still arriving, finished
+ * fine, or failed in a way the same words would fail again.
+ */
+export function retryQuestion(messages: readonly ChatMessage[]): string | null {
+  const m = messages.at(-1);
+  if (!m || m.role !== 'assistant') return null;
+  if (m.status !== 'stopped' && !(m.status === 'error' && isRetryableReplyError(m.errorCode))) return null;
+  let q: ChatMessage | undefined;
+  for (let i = messages.length - 2; i >= 0 && !q; i--) {
+    const c = messages[i];
+    if (c.role === 'user' && (!m.replyTo || c.id === m.replyTo)) q = c;
+  }
+  return q?.content.trim() ? q.content : null;
+}
+
+/** Where Edit goes: the latest question in the thread, or -1 when there is none. */
+export function editableQuestionIndex(messages: readonly ChatMessage[]): number {
+  for (let i = messages.length - 1; i >= 0; i--) if (messages[i].role === 'user') return i;
+  return -1;
+}
+
+/**
  * The messages alone, with no scroller of their own.
  *
  * `planFor` is the conversation the latest reply's "Turn this into a plan"
  * answers on (`conv:<id>`); without it there is no such offer (an item's
  * conversation, whose item has its own Break-into-steps). `busy` hides it
- * while a reply is still arriving.
+ * while a reply is still arriving. `retryVia` is where Try again sends
+ * (the composer binding this conversation's own box uses); without it there
+ * is no Try again. Edit sends through it too, and without it there is no Edit.
  */
 export function TranscriptMessages({
   messages,
   typing,
   busy,
   planFor,
+  retryVia,
+  receipts,
 }: {
   messages: readonly ChatMessage[];
   typing: boolean;
   busy: boolean;
   planFor?: string;
+  retryVia?: ComposerBinding;
+  /** This conversation's accepted-plan receipts, and the conversation they belong to. */
+  receipts?: { conversationId: string; list: readonly ChatReceipt[] };
 }) {
   const dividers = answererDividers(messages);
+  const placed = receipts?.list.length ? placeReceipts(messages.map((m) => m.id), receipts.list) : null;
+  const receiptsAt = (i: number) =>
+    receipts &&
+    placed?.get(i)?.map((r) => <ReceiptLine key={r.actionId} conversationId={receipts.conversationId} r={r} />);
+  const again = retryVia && !busy ? retryQuestion(messages) : null;
+  const editAt = retryVia && !busy ? editableQuestionIndex(messages) : -1;
   return (
     <>
       {messages.map((m, i) => (
         <Fragment key={m.id}>
           {dividers.has(i) && <AnswererDivider answerer={dividers.get(i) as Answerer} />}
           {m.role === 'user' ? (
-            <UserMessage m={m} notSaved={endsUnsavedTurn(messages, i)} />
+            <UserMessage m={m} notSaved={endsUnsavedTurn(messages, i)} editVia={i === editAt ? retryVia : undefined} />
           ) : (
             <Reply
               m={m}
@@ -111,11 +169,49 @@ export function TranscriptMessages({
               typing={typing && m.status === 'streaming'}
               notSaved={endsUnsavedTurn(messages, i)}
               planFrom={planFor && i === messages.length - 1 && !busy ? { conversationId: planFor, messages } : undefined}
+              retry={again && retryVia && i === messages.length - 1 ? { via: retryVia, text: again } : undefined}
             />
           )}
+          {receiptsAt(i)}
         </Fragment>
       ))}
+      {receiptsAt(-1)}
     </>
+  );
+}
+
+/**
+ * One accepted plan, said where it was asked for. Undo shows only while the
+ * accept is still the planner's latest entry (canUndoReceipt), and takes the
+ * undo strip's row for it down too, so the two never offer the same Undo.
+ */
+function ReceiptLine({ conversationId, r }: { conversationId: string; r: ChatReceipt }) {
+  const latest = usePlannerStore((s) => s.actionLog[s.actionLog.length - 1 - s.historyIndex]?.id ?? null);
+  const copy = receiptCopy(r);
+  if (!copy) return null;
+  const undoable = canUndoReceipt(r, latest);
+  return (
+    <div data-testid="chat-receipt" className="flex items-center gap-2 text-xs text-muted-foreground">
+      <Check className="size-3.5 shrink-0" aria-hidden />
+      <span>{copy}</span>
+      {undoable && (
+        <button
+          type="button"
+          data-testid="chat-receipt-undo"
+          onClick={() => {
+            // Re-checked at the press: a change can land between render and click.
+            const p = usePlannerStore.getState();
+            if (!canUndoReceipt(r, p.actionLog[p.actionLog.length - 1 - p.historyIndex]?.id ?? null)) return;
+            p.undo();
+            useChatReceipts.getState().markUndone(conversationId, r.actionId);
+            useUndoStripStore.getState().dismiss(r.actionId);
+          }}
+          className="rounded px-1 font-medium text-foreground underline-offset-2 hover:underline"
+        >
+          Undo
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -136,16 +232,121 @@ function AnswererDivider({ answerer }: { answerer: Answerer }) {
   );
 }
 
-const UserMessage = memo(function UserMessage({ m, notSaved }: { m: ChatMessage; notSaved: boolean }) {
+const UserMessage = memo(function UserMessage({
+  m,
+  notSaved,
+  editVia,
+}: {
+  m: ChatMessage;
+  notSaved: boolean;
+  /** Set on the latest question only, while nothing is arriving: where an edit is sent. */
+  editVia?: ComposerBinding;
+}) {
+  const { canChat } = useAICapabilities();
+  const [editing, setEditing] = useState(false);
+  const canEdit = !!editVia && canChat;
+  if (editing && canEdit) {
+    return (
+      <EditQuestion
+        m={m}
+        onCancel={() => setEditing(false)}
+        onSend={(text) => {
+          setEditing(false);
+          void sendFrom(editVia, text);
+        }}
+      />
+    );
+  }
   return (
-    <div data-message-role="user" data-message-id={m.id} className="flex flex-col items-end gap-1">
+    <div data-message-role="user" data-message-id={m.id} className="group/question flex flex-col items-end gap-1">
       <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl bg-secondary px-3 py-2 text-sm leading-relaxed text-foreground">
         {m.content}
       </div>
       {notSaved && <NotSaved />}
+      {canEdit && (
+        // A tool, so it fades like Copy under a reply; always on a touch screen.
+        <button
+          type="button"
+          data-testid="chat-edit"
+          onClick={() => setEditing(true)}
+          className="flex items-center gap-1 rounded p-1 text-2xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover/question:opacity-100 [@media(hover:none)]:opacity-100"
+        >
+          <Pencil className="size-3" aria-hidden />
+          <span>Edit</span>
+        </button>
+      )}
     </div>
   );
 });
+
+/**
+ * The latest question, open for editing. Send asks the edited words as a new
+ * turn; the question as it was stays above, with its reply. Enter sends,
+ * Shift+Enter is a new line, Escape puts it back.
+ */
+function EditQuestion({
+  m,
+  onCancel,
+  onSend,
+}: {
+  m: ChatMessage;
+  onCancel: () => void;
+  onSend: (text: string) => void;
+}) {
+  const [text, setText] = useState(m.content);
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+  }, []);
+  const ready = text.trim().length > 0;
+  const send = () => {
+    if (ready) onSend(text);
+  };
+  return (
+    <div data-message-role="user" data-message-id={m.id} data-testid="chat-edit-box" className="flex flex-col items-end gap-1.5">
+      <textarea
+        ref={ref}
+        value={text}
+        aria-label="Edit your question"
+        rows={Math.min(8, Math.max(2, text.split('\n').length))}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+            onCancel();
+          } else if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+            e.preventDefault();
+            send();
+          }
+        }}
+        className="w-full max-w-[85%] resize-none rounded-2xl border border-border bg-background px-3 py-2 text-sm leading-relaxed text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      />
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          data-testid="chat-edit-cancel"
+          onClick={onCancel}
+          className="rounded-full px-2.5 py-1 text-2xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          data-testid="chat-edit-send"
+          disabled={!ready}
+          onClick={send}
+          className="rounded-full border border-border px-2.5 py-1 text-2xs font-medium text-foreground transition-colors hover:bg-secondary disabled:opacity-50"
+        >
+          Send
+        </button>
+      </div>
+    </div>
+  );
+}
 
 /**
  * A reply's markdown, styled by hand: the `prose` utilities need
@@ -206,16 +407,22 @@ const Reply = memo(function Reply({
   typing,
   notSaved,
   planFrom,
+  retry,
 }: {
   m: ChatMessage;
   typing: boolean;
   notSaved: boolean;
   /** Set on the latest reply only, once it has finished. */
   planFrom?: { conversationId: string; messages: readonly ChatMessage[] };
+  /** Set on the latest reply only, when it can be asked again (retryQuestion). */
+  retry?: { via: ComposerBinding; text: string };
 }) {
-  const { canPropose, openclawTransport } = useAICapabilities();
+  const { canChat, canPropose, openclawTransport } = useAICapabilities();
   const userTimezone = usePlannerStore((s) => s.userTimezone);
   const timeFormat = usePlannerStore((s) => s.timeFormat);
+  // When today's limit lifts, while one holds: the server's word, read with
+  // the connection (lib/ai-connection-store.ts `noteCallFailure` re-reads it).
+  const limitedUntil = useAIConnectionStore((s) => s.model?.limitedUntil ?? null);
   const streaming = m.status === 'streaming';
   const text = m.content ? stripReasoningTags(m.content).replace(/^\[\[reply_to[^\]]*\]\]\s*/i, '') : '';
 
@@ -239,10 +446,12 @@ const Reply = memo(function Reply({
       )}
       {/* A failed reply's words are ours, by its code, never its content: they
           were not the AI's to save or to send back to a model. Not a live
-          region of its own: ReplyStatus says it once, for the reply seen failing. */}
+          region of its own: ReplyStatus says it once, for the reply seen failing.
+          A daily limit says when it lifts, on the planner's clock, while the
+          connection says one holds; the saved code alone stays time-free. */}
       {m.status === 'error' && (
         <p data-testid="chat-error-note" className="text-sm text-muted-foreground">
-          {chatErrorCopy(m.errorCode, m.answerer)}
+          {chatErrorCopy(m.errorCode, m.answerer, { resetAt: limitedUntil, timeZone: userTimezone, timeFormat })}
         </p>
       )}
       {!streaming && (
@@ -260,6 +469,9 @@ const Reply = memo(function Reply({
         </div>
       )}
       {notSaved && <NotSaved />}
+      {/* Outside the hover-faded row, as the plan offer is: a dead end has to
+          show its way out without being looked for. */}
+      {retry && canChat && <RetryButton via={retry.via} text={retry.text} />}
       {/* Latest reply only: one offer at the foot of the thread. Outside the
           hover-faded row above on purpose: it is the one control that has to be
           findable without knowing it is there. */}
@@ -300,6 +512,25 @@ function PlanButton({
     >
       <Wand2 className="size-3 text-ai" aria-hidden />
       Turn this into a plan
+    </button>
+  );
+}
+
+/**
+ * Ask the same question again, as a new turn through the conversation's own
+ * binding (sendFrom, the one place a send is decided). The button goes as the
+ * new turn lands, since it is no longer the latest reply's.
+ */
+function RetryButton({ via, text }: { via: ComposerBinding; text: string }) {
+  return (
+    <button
+      type="button"
+      onClick={() => void sendFrom(via, text)}
+      data-testid="chat-retry"
+      className="mt-1 inline-flex w-fit items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-2xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+    >
+      <RotateCcw className="size-3" aria-hidden />
+      Try again
     </button>
   );
 }
@@ -436,6 +667,7 @@ export function ChatTranscript({ id }: { id: string }) {
   const hasEarlier = useConversationsStore((s) => !!s.threads[id]?.hasEarlier);
   const busy = useConversationsStore((s) => !!s.sending[`conv:${id}`] || !!s.threads[id]?.streaming);
   const cardUp = useProposalStore((s) => s.status !== 'idle' && s.lastRequest?.surface === `conv:${id}`);
+  const receipts = useConversationReceipts(id);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -623,7 +855,14 @@ export function ChatTranscript({ id }: { id: string }) {
               {loadingEarlier ? 'Loading…' : 'Load earlier'}
             </button>
           )}
-          <TranscriptMessages messages={messages} typing={typing} busy={busy} planFor={id} />
+          <TranscriptMessages
+            messages={messages}
+            typing={typing}
+            busy={busy}
+            planFor={id}
+            retryVia={{ kind: 'conversation', id }}
+            receipts={{ conversationId: id, list: receipts }}
+          />
           {/* The conversation's plan card, inline after the last message; it
               outlives this view unmounting (rail-store drops it once the
               conversation has left both Ask stacks). */}

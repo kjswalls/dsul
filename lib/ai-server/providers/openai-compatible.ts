@@ -7,7 +7,8 @@
  *
  * The client is always built with an explicit key and base URL,
  * `organization: null`, `project: null`, `webhookSecret: null`,
- * `logLevel: 'off'` and a `guardedFetch`, so none of the SDK's environment
+ * `logLevel: 'off'` and a `guardedFetch` (with the error-body hints for
+ * Gemini and OpenRouter, error-hints.ts), so none of the SDK's environment
  * defaults (its key, base URL, org, project, webhook secret and log-level
  * variables) are ever consulted: a server-wide key in the deployment's env can
  * never answer for a user, and debug logging, which prints request headers,
@@ -21,7 +22,8 @@ import type {
   ChatCompletionMessageParam,
 } from 'openai/resources/chat/completions';
 import { isModelId, type ModelProviderId } from '@/lib/ai-types';
-import { ProviderError, classifyStatus, isDeadlineAbort, toProviderErrorFor } from '../errors';
+import { hintingFetch } from '../error-hints';
+import { ProviderError, classifyStatus, isDeadlineAbort, isStreamRefusal, toProviderErrorFor } from '../errors';
 import { readCappedJson } from '../stream';
 import { CUSTOM_RESPONSE_CAPS, guardedFetch } from '../url-policy';
 import type {
@@ -35,10 +37,21 @@ import type {
 
 export type OpenAICompatibleProviderId = Exclude<ModelProviderId, 'anthropic'>;
 
+interface Limits {
+  timeout: number;
+  maxRetries: number;
+  /** Gemini and OpenRouter: which error-body hints the fetch throws (error-hints.ts). */
+  throwAllHints: boolean;
+}
+
 /** Chat and propose: the route's signal carries the real deadline; this is a backstop per attempt. */
-const CALL = { timeout: 60_000, maxRetries: 1 } as const;
-/** Verify, list: free metadata calls, never retried. */
-const META = { timeout: 10_000, maxRetries: 0 } as const;
+const CALL: Limits = { timeout: 60_000, maxRetries: 1, throwAllHints: false };
+/**
+ * Verify, list and the check's test question: never retried by the SDK (it
+ * would obey an uncapped retry-after, and retry a thrown hint), so every hint
+ * can be thrown.
+ */
+const META: Limits = { timeout: 10_000, maxRetries: 0, throwAllHints: true };
 
 const OPENROUTER_HEADERS = { 'HTTP-Referer': 'https://do.dsul.app', 'X-Title': 'dsul' };
 const OPENROUTER_KEY_MAX_BYTES = 64_000;
@@ -48,7 +61,21 @@ const OPENROUTER_LIST_CAP = 400;
 const CUSTOM_LIST_CAP = 300;
 const LABEL_MAX = 200;
 
-function makeClient(creds: ProviderCredentials, limits: { timeout: number; maxRetries: number }): OpenAI {
+/**
+ * The guarded fetch, and for Gemini and OpenRouter the error-body hints on top
+ * (error-hints.ts): their daily caps and Google's region refusal are told
+ * apart from a minute's rate limit or a bad request only by the body.
+ */
+function providerFetch(
+  provider: ModelProviderId,
+  guarded: typeof fetch,
+  limits: Pick<Limits, 'throwAllHints'>
+): typeof fetch {
+  if (provider !== 'gemini' && provider !== 'openrouter') return guarded;
+  return hintingFetch(guarded, provider, { throwAll: limits.throwAllHints });
+}
+
+function makeClient(creds: ProviderCredentials, limits: Limits): OpenAI {
   const custom = creds.provider === 'custom';
   return new OpenAI({
     apiKey: creds.apiKey,
@@ -59,11 +86,15 @@ function makeClient(creds: ProviderCredentials, limits: { timeout: number; maxRe
     logLevel: 'off',
     timeout: limits.timeout,
     maxRetries: limits.maxRetries,
-    fetch: guardedFetch({
-      origin: new URL(creds.baseUrl).origin,
-      checkDns: custom,
-      maxResponseBytes: custom ? CUSTOM_RESPONSE_CAPS : undefined,
-    }),
+    fetch: providerFetch(
+      creds.provider,
+      guardedFetch({
+        origin: new URL(creds.baseUrl).origin,
+        checkDns: custom,
+        maxResponseBytes: custom ? CUSTOM_RESPONSE_CAPS : undefined,
+      }),
+      limits
+    ),
     defaultHeaders: creds.provider === 'openrouter' ? OPENROUTER_HEADERS : undefined,
   });
 }
@@ -326,7 +357,7 @@ export function createOpenAICompatibleAdapter(id: OpenAICompatibleProviderId): P
     opts: { signal: AbortSignal; withKey: boolean; maxBytes: number }
   ): Promise<unknown> {
     const origin = new URL(creds.baseUrl).origin;
-    const fetchGuarded = guardedFetch({ origin, checkDns: false });
+    const fetchGuarded = providerFetch(id, guardedFetch({ origin, checkDns: false }), META);
     try {
       const res = await fetchGuarded(`${creds.baseUrl}${path}`, {
         method: 'GET',
@@ -390,6 +421,33 @@ export function createOpenAICompatibleAdapter(id: OpenAICompatibleProviderId): P
     } catch (err) {
       throw fail(err, phase, signal);
     }
+  }
+
+  /**
+   * The check's test question (lib/ai-server/check.ts): streamed, as Ask
+   * streams, so it exercises the request shape Ask sends. A model that only
+   * refuses a streamed request rejects as `stream_refused` (isStreamRefusal),
+   * which the check does not pass: Ask would fail on every send. One output
+   * token, under the same token parameter chat sends, and read to the end,
+   * since a stream can still fail after it starts.
+   */
+  async function ping(creds: ProviderCredentials, model: string, signal: AbortSignal): Promise<void> {
+    const client = makeClient(creds, META);
+    const params: ChatCompletionCreateParamsStreaming = {
+      model,
+      messages: [{ role: 'user', content: 'ping' }],
+      ...(id === 'openai' ? { max_completion_tokens: 1 } : { max_tokens: 1 }),
+      stream: true,
+    };
+    try {
+      const stream = await client.chat.completions.create(params, { signal });
+      for await (const chunk of stream) void chunk;
+    } catch (err) {
+      if (isStreamRefusal(err)) throw new ProviderError('stream_refused', 400);
+      throw fail(err, 'call', signal);
+    }
+    // The SDK ends a stream quietly when its signal aborts: that is no answer.
+    if (signal.aborted) throw new ProviderError(isDeadlineAbort(signal) ? 'timeout' : 'aborted');
   }
 
   /** A host that cannot list its models answers one of these to `GET /models`. */
@@ -521,6 +579,8 @@ export function createOpenAICompatibleAdapter(id: OpenAICompatibleProviderId): P
     },
 
     listModels,
+
+    ping,
 
     pickDefaultModel(result) {
       switch (id) {

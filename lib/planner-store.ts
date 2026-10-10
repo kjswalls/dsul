@@ -30,10 +30,11 @@ import type {
   ProposalOperation,
 } from './planner-types';
 import { PRIORITY_LABELS } from './planner-types';
+import type { ItemSize } from './item-size';
 // The time → bucket rules live in a plain module so a route can share them.
 import { autoCorrectBucket } from './time-bucket';
 // The schedule actions' patches live in lib/item-edit.ts, so the iPhone's routes write the same ones.
-import { scheduleHabitPatch, scheduleTaskPatch, UNSCHEDULE_TASK_PATCH } from './item-edit';
+import { projectRefilePatch, scheduleHabitPatch, scheduleTaskPatch, UNSCHEDULE_TASK_PATCH } from './item-edit';
 import { validateProposalOperations } from './proposal';
 import {
   addDaysToDateStr,
@@ -52,12 +53,13 @@ import {
   deleteItemType as dbDeleteItemType,
   createItem as dbCreateItem,
   createItems as dbCreateItems,
-  updateItem as dbUpdateItem,
-  deleteItem as dbDeleteItem,
-  changeItemType as dbChangeItemType,
-  restoreItem as dbRestoreItem,
-  setItemCompletion as dbSetItemCompletion,
-  setItemSkip as dbSetItemSkip,
+  updateItem as rawUpdateItem,
+  deleteItem as rawDeleteItem,
+  changeItemType as rawChangeItemType,
+  restoreItem as rawRestoreItem,
+  setItemCompletion as rawSetItemCompletion,
+  setItemSkip as rawSetItemSkip,
+  fetchItemsAnyState,
   createProject as dbCreateProject,
   updateProject as dbUpdateProject,
   deleteProject as dbDeleteProject,
@@ -71,6 +73,7 @@ import {
   fetchSeasons,
   fetchGoals,
   loadPlannerData,
+  plannerRequestsSent,
   createGoal as dbCreateGoal,
   updateGoal as rawUpdateGoal,
   deleteGoal as rawDeleteGoal,
@@ -87,6 +90,12 @@ import {
   type AgentStateRow,
 } from './db';
 import { celebrateCompletion } from './completion-confetti';
+// Already reached through completion-confetti, so this adds no cycle.
+import { useExtensionsStore } from './extensions-store';
+import { expectPreview, markPreviewPending, readPlannerSnapshot, type PlannerSnapshotData } from './planner-snapshot';
+import { guardPreviewWrites } from './preview-write-guard';
+import { raiseModEvent, raiseModEvents, raiseModOnlyEvents, isModEventsSuppressed, type ModEvent } from './mod-events';
+import { uncompletionsBetween } from './mods/undo-events';
 import type { CommitResult, SeedPlan } from './seed-containers';
 import { ITEM_TYPES, getItemTypeConfig, itemTypeName, isSkippable, isPausable, isCollectible, hydrateCustomTypes } from './item-registry';
 import {
@@ -100,6 +109,7 @@ import {
 import { seasonStateForSwitch } from './scope-rail';
 import { conversionBlock, convertItem, type ConvertRepeat } from './item-convert';
 import { recordReleased } from './sweep-grace';
+import { reportBulkFiled } from './filed-rows';
 // Type-only, so it is erased at compile time and lib/local-state.ts importing
 // this store back does not make a runtime cycle.
 import type { ClearScope } from './local-state';
@@ -189,6 +199,14 @@ interface PlannerStore {
   // Supabase state
   userId: string | null;
   isLoading: boolean;
+  /**
+   * True while the canvas shows THIS BROWSER's copy of the last session (lib/planner-snapshot.ts)
+   * and the fresh load has not landed. Look-only: isLoading stays TRUE for the whole preview, so
+   * every settled/!isLoading gate stays shut, and every data action refuses
+   * (lib/preview-write-guard.ts). Set in the same set() as the cached slices; cleared in the same
+   * set() as the fresh slices, the failure drop, dropPreview, or emptyAccountData. Never persisted.
+   */
+  isPreview: boolean;
   error: string | null;
   /**
    * The account whose most recent load FAILED, or null.
@@ -240,7 +258,15 @@ interface PlannerStore {
    * last load did not fail, so the stamp must not look like a finished load.
    */
   identifyUser: (userId: string) => void;
-  initializeStore: (userId: string) => Promise<void>;
+  /**
+   * `opts.preview` OFFERS the cached planner while this load is in flight — the
+   * provider passes it on the page's first load attempt only, never on a
+   * Retry. It is evaluated at APPLY time and may decline (wrong route, a data
+   * dialog already armed). Omitted, nothing is read.
+   */
+  initializeStore: (userId: string, opts?: { preview?: () => boolean }) => Promise<void>;
+  /** Crash recovery only (components/shell/preview-crash-boundary.tsx). True if a preview was dropped. */
+  dropPreview: () => boolean;
   clearStore: () => void;
   /**
    * Drop the persisted PREFERENCES slice — see lib/local-state.ts.
@@ -265,12 +291,13 @@ interface PlannerStore {
 
   // Task actions ('task' actions operate on any task-LIKE item — custom types
   // are task-shaped and ride this pipeline; only habits are excluded)
-  /** Create an item of a user-defined type (task-shaped). */
+  /** Create an item of a user-defined type (task-shaped). Returns the new
+   *  item's id, or undefined for a slug that isn't a hydrated custom type. */
   addItem: (
     customType: string,
     item: Omit<Task, 'id' | 'order' | 'status' | 'isScheduled'>,
     memberships?: Memberships,
-  ) => void;
+  ) => string | undefined;
   /** Returns the new item's id. */
   addTask: (
     task: Omit<Task, 'id' | 'order' | 'status' | 'isScheduled'>,
@@ -282,12 +309,42 @@ interface PlannerStore {
    * contract above. `type` is 'task' or a hydrated custom slug and applies to
    * every row; habits are excluded (their config doesn't fit one-per-line).
    * A single-element array delegates to addTask/addItem so its history label
-   * stays the natural "Add task: …" form.
+   * stays the natural "Add task: …" form. Either way the rows it filed are
+   * reported through lib/filed-rows.ts, so held-captures can keep a list
+   * filed before the account's data landed as it keeps a capture.
    */
   addTasksBulk: (
     type: string,
     items: Array<Omit<Task, 'id' | 'order' | 'status' | 'isScheduled'>>,
   ) => void;
+  /**
+   * File again rows first filed before their account's data landed, whose
+   * writes may never have committed (lib/held-captures.ts): each as the person
+   * last left it, under its own id, so an insert that did commit fails on the
+   * primary key instead of making a second row, and is then settled as a row
+   * the database holds. One set() and one history entry per group, labelled as
+   * its add was; with `quiet` (the person has acted since the landing) no
+   * entry, the rows folded into every snapshot instead. Task rows take orders
+   * after the landed ones, in the order they last had across every group, and
+   * a group's task rows go back as one insert. A row `saved` holds (the
+   * database's live copy) is not inserted again: what the person changed
+   * since `filed` (the row as first filed) is laid over it and written.
+   */
+  refileItems: (
+    groups: Item[][],
+    opts?: { saved?: ReadonlyMap<string, Item>; filed?: ReadonlyMap<string, Item>; quiet?: boolean },
+  ) => void;
+  /**
+   * Rows first filed before their account's data landed that the landing
+   * brought back (lib/held-captures.ts), `row` as the person last left it and
+   * `filed` as first filed. One the person removed before the landing
+   * (`gone`) is removed again, its subtasks with it. Over any other, what the
+   * person changed since filing is laid over the landed copy and written, so
+   * an edit whose UPDATE failed with the load is kept and an edit made on
+   * another device to a field they never touched is not undone. No history
+   * entry: it is what the person had before the landing.
+   */
+  settleLandedRows: (rows: readonly { row: Item; filed: Item; gone: boolean }[]) => void;
   /**
    * `opts.label` names the history entry instead of "Edit task: <title>",
    * which is also what decides whether the undo strip offers ⌘Z
@@ -401,6 +458,12 @@ interface PlannerStore {
    */
   /** `undefined` clears. Habits (no priority field) and cancelled items are skipped. */
   setItemsPriority: (ids: string[], priority: Priority | undefined) => void;
+  /**
+   * Sizes several items at once, each to its own size (`undefined` clears), in
+   * one set() and one undo: "keep all guesses" sizes a batch to different
+   * sizes. Habits (no size) and items already at their size are skipped.
+   */
+  setItemsSize: (sizes: ReadonlyMap<string, ItemSize | undefined>) => void;
   /**
    * Re-file under a project by name (`undefined` unfiles). The id is resolved
    * once, case-folded. Unfiling skips types whose container is required.
@@ -611,21 +674,14 @@ export const projectItems = (items: Item[]) => ({
 });
 
 /**
- * Everything on this store that BELONGED TO AN ACCOUNT, back to empty.
+ * The account's DATA back to empty — shared by emptyAccountData, the failed-preview drop and dropPreview.
  *
- * Shared by the two callers that drop a previous user: `clearStore` on
- * sign-out, and `identifyUser` when the account changes under it. One list
- * rather than two, because the failure mode of the second copy is silent and
- * expensive — the `goals` note below is a bug that was found exactly that way,
- * a slice the reset had never been taught about, leaving user B holding user
- * A's rows.
- *
- * Deliberately NOT included: `userId` and `isLoading`, which say who we are and
- * where the fetch has got to. The two callers disagree about those (a sign-out
- * has no user and nothing loading; an account switch has both) so they stay at
- * the call sites, where the difference is visible.
+ * `isPreview` rides here because cached rows ARE the account's data: whichever
+ * of those paths empties the slices must end the preview in the same set().
+ * `userTimezone` stays out: a failed load must not wipe a zone that
+ * `hydrateSettings` already landed.
  */
-const emptyAccountData = () => ({
+const emptyPlannerData = () => ({
   ...projectItems([]),
   projects: [],
   itemTypes: [],
@@ -634,9 +690,10 @@ const emptyAccountData = () => ({
   collectionsAvailable: true,
   // Goals reset with every other slice. Missed, the previous account's goal
   // names, whys and target dates stay in memory after SIGNED_OUT — and
-  // initializeStore's catch branch sets only its status flags, never the data,
-  // so a FAILED next sign-in leaves user B looking at user A's goals in the
-  // chip and the console, with updateGoal firing user-B writes at user-A ids.
+  // initializeStore's catch branch sets only its status flags, never the data
+  // (it empties only a preview's cached rows), so a FAILED next sign-in leaves
+  // user B looking at user A's goals in the chip and the console, with
+  // updateGoal firing user-B writes at user-A ids.
   goals: [],
   goalsAvailable: true,
   // Its two siblings above were here and this was not — a gap inherited from
@@ -645,6 +702,26 @@ const emptyAccountData = () => ({
   // makes `addItemType`'s opening guard silently drop the NEXT account's custom
   // types until their own fetch resolves.
   itemTypesAvailable: true,
+  isPreview: false,
+});
+
+/**
+ * Everything on this store that BELONGED TO AN ACCOUNT, back to empty.
+ *
+ * Shared by the two callers that drop a previous user: `clearStore` on
+ * sign-out, and `identifyUser` when the account changes under it. One list
+ * rather than two, because the failure mode of the second copy is silent and
+ * expensive — the `goals` note in emptyPlannerData is a bug that was found
+ * exactly that way, a slice the reset had never been taught about, leaving
+ * user B holding user A's rows.
+ *
+ * Deliberately NOT included: `userId` and `isLoading`, which say who we are and
+ * where the fetch has got to. The two callers disagree about those (a sign-out
+ * has no user and nothing loading; an account switch has both) so they stay at
+ * the call sites, where the difference is visible.
+ */
+const emptyAccountData = () => ({
+  ...emptyPlannerData(),
   error: null,
   loadFailedUserId: null,
   canUndo: false,
@@ -751,6 +828,12 @@ export interface Memberships {
  * and the membership is silently lost — the store would show it, and a reload
  * would not. Chaining off the create is the whole point of this helper existing
  * rather than two call sites firing side by side.
+ *
+ * A subtask's own insert waits the same way for its parent's, when that is
+ * still in flight (items_parent_item_id_fkey; held-captures files a parent
+ * and its subtasks again in one pass), and every later write to the subtask
+ * waits behind its insert (insertWaitsFor, the item doors). Nothing in
+ * flight, it leaves at once.
  */
 function persistNewItem(
   userId: string,
@@ -758,16 +841,8 @@ function persistNewItem(
   memberships: Memberships | undefined,
   get: () => PlannerStore,
 ) {
-  const created = dbCreateItem(userId, row);
+  const created = sendItemCreate([row.id], insertWaitsFor([row], get().items), () => dbCreateItem(userId, row));
   created.catch(console.error);
-  const settled = created.then(
-    () => undefined,
-    () => undefined
-  );
-  pendingItemCreates.set(row.id, settled);
-  void settled.then(() => {
-    if (pendingItemCreates.get(row.id) === settled) pendingItemCreates.delete(row.id);
-  });
 
   const routineIds = memberships?.routineIds ?? [];
   const seasonIds = memberships?.seasonIds ?? [];
@@ -778,14 +853,24 @@ function persistNewItem(
     .then(() =>
       Promise.all([
         // Re-read in both loops: the optimistic set() already appended, and
-        // these are the arrays the reconciler diffs against.
+        // these are the arrays the reconciler diffs against. `known` is the
+        // same list without the new item, so the one change this write makes
+        // is the add (lib/db.ts reconcileMembership).
         ...routineIds.map((rid) => {
           const routine = get().routines.find((r) => r.id === rid);
-          return routine ? dbUpdateRoutine(userId, rid, { itemIds: routine.itemIds }) : undefined;
+          return routine
+            ? dbUpdateRoutine(userId, rid, { itemIds: routine.itemIds }, undefined, {
+                itemIds: routine.itemIds.filter((x) => x !== row.id),
+              })
+            : undefined;
         }),
         ...seasonIds.map((pid) => {
           const season = get().seasons.find((p) => p.id === pid);
-          return season ? dbUpdateSeason(userId, pid, { itemIds: season.itemIds }) : undefined;
+          return season
+            ? dbUpdateSeason(userId, pid, { itemIds: season.itemIds }, undefined, {
+                itemIds: season.itemIds.filter((x) => x !== row.id),
+              })
+            : undefined;
         }),
         // All three role arrays, even though only one of them changed: the
         // reconcile diffs whichever roles it is given, so sending the whole
@@ -1021,10 +1106,12 @@ let quietDepth = 0;
 let batchCompleted = false;
 let deferredAchievementIds: string[] = [];
 let deferredCheckins: { item: Item; dateStr: string }[] = [];
+let deferredModEvents: ModEvent[] = [];
 type BatchEffects = {
   completed: boolean;
   achievementIds: string[];
   checkins: { item: Item; dateStr: string }[];
+  modEvents: ModEvent[];
 };
 // Assigned inside the store creator, where the offer helpers live.
 let flushBatchEffects: (e: BatchEffects) => void = () => {};
@@ -1397,6 +1484,17 @@ const undoFailedContainerCreate = (
  */
 const pendingItemCreates = new Map<string, Promise<void>>();
 
+/**
+ * The item creates in `pendingItemCreates` that WAITED before leaving: a
+ * subtask's insert held behind its parent's, a row of a custom-type list behind
+ * the row before it. Every later write to such an item waits behind its insert
+ * (the item doors below): sent first, a tick, an edit or a delete matches zero
+ * rows and is lost, and the insert then writes the row as it was. An insert
+ * that left at once opens no window, so an ordinary add keeps the timing it
+ * always had.
+ */
+const heldItemCreates = new Map<string, Promise<void>>();
+
 export function awaitItemCreates(ids: readonly string[]): Promise<void> {
   const waits = ids.map((id) => pendingItemCreates.get(id)).filter((p): p is Promise<void> => !!p);
   return waits.length ? Promise.all(waits).then(() => undefined) : Promise.resolve();
@@ -1409,6 +1507,105 @@ export function awaitItemCreates(ids: readonly string[]): Promise<void> {
  */
 function afterItemCreates<T>(ids: readonly string[], write: () => Promise<T>): Promise<T> {
   return ids.some((id) => pendingItemCreates.has(id)) ? awaitItemCreates(ids).then(write) : write();
+}
+
+/**
+ * Send the insert that creates `ids` once everything in `waitOn` has landed
+ * (at once when none of it is in flight), and track each id as in flight
+ * until it settles: held as well when it had to wait.
+ */
+function sendItemCreate<T>(ids: readonly string[], waitOn: readonly string[], insert: () => Promise<T>): Promise<T> {
+  const held = waitOn.some((id) => pendingItemCreates.has(id));
+  const created = afterItemCreates(waitOn, insert);
+  const settled = created.then(
+    () => undefined,
+    () => undefined
+  );
+  for (const id of ids) {
+    pendingItemCreates.set(id, settled);
+    if (held) heldItemCreates.set(id, settled);
+  }
+  void settled.then(() => {
+    for (const id of ids) {
+      if (pendingItemCreates.get(id) === settled) pendingItemCreates.delete(id);
+      if (heldItemCreates.get(id) === settled) heldItemCreates.delete(id);
+    }
+  });
+  return created;
+}
+
+/**
+ * What a new row's insert must wait for: the insert of its parent when that is
+ * still in flight (items_parent_item_id_fkey), and then the inserts of its
+ * siblings still in flight, so subtasks added while their parent is held leave
+ * in the order they were added (they share an `order`, and created_at sorts
+ * them). Empty, so the insert leaves at once, when no parent is in flight.
+ */
+function insertWaitsFor(rows: readonly Item[], items: readonly Item[]): string[] {
+  const parents = new Set(
+    rows.flatMap((r) => {
+      const p = parentIdOf(r);
+      return p && pendingItemCreates.has(p) ? [p] : [];
+    })
+  );
+  if (parents.size === 0) return [];
+  const own = new Set(rows.map((r) => r.id));
+  const siblings = items.filter((i) => {
+    const p = parentIdOf(i);
+    return !!p && parents.has(p) && !own.has(i.id) && pendingItemCreates.has(i.id);
+  });
+  return [...parents, ...siblings.map((i) => i.id)];
+}
+
+/**
+ * Insert rows already on the store, each tracked as in flight. Task rows go as
+ * ONE statement (their explicit orders carry the order; all-or-nothing on the
+ * wire), every other row one at a time in order, each after the last has
+ * settled (a custom type sorts by created_at, which one statement stamps once).
+ * A single row is a single insert. `onError` gets each failed insert's rows.
+ */
+function insertNewRows(
+  userId: string,
+  rows: readonly Item[],
+  items: readonly Item[],
+  onError: (error: unknown, rows: Item[]) => void,
+): void {
+  if (rows.length === 0) return;
+  const waitOn = insertWaitsFor(rows, items);
+  const tasks = rows.filter((r) => r.type === 'task');
+  const together = tasks.length > 1 ? tasks : [];
+  if (together.length > 0) {
+    sendItemCreate(together.map((r) => r.id), waitOn, () => dbCreateItems(userId, together)).catch((err) =>
+      onError(err, together)
+    );
+  }
+  const sent = new Set(together.map((r) => r.id));
+  let prev: readonly string[] = waitOn;
+  for (const row of rows) {
+    if (sent.has(row.id)) continue;
+    sendItemCreate([row.id], prev, () => dbCreateItem(userId, row)).catch((err) => onError(err, [row]));
+    prev = [row.id];
+  }
+}
+
+// The store's only doors to these six item writes: each waits behind the
+// item's insert when that insert was held (above), and leaves at once otherwise.
+const dbUpdateItem: typeof rawUpdateItem = (id, ...rest) =>
+  afterHeldItemCreate(id, () => rawUpdateItem(id, ...rest));
+const dbDeleteItem: typeof rawDeleteItem = (id, ...rest) =>
+  afterHeldItemCreate(id, () => rawDeleteItem(id, ...rest));
+const dbRestoreItem: typeof rawRestoreItem = (id, ...rest) =>
+  afterHeldItemCreate(id, () => rawRestoreItem(id, ...rest));
+const dbChangeItemType: typeof rawChangeItemType = (id, ...rest) =>
+  afterHeldItemCreate(id, () => rawChangeItemType(id, ...rest));
+const dbSetItemCompletion: typeof rawSetItemCompletion = (id, ...rest) =>
+  afterHeldItemCreate(id, () => rawSetItemCompletion(id, ...rest));
+const dbSetItemSkip: typeof rawSetItemSkip = (id, ...rest) =>
+  afterHeldItemCreate(id, () => rawSetItemSkip(id, ...rest));
+
+function afterHeldItemCreate<T>(id: string, write: () => Promise<T>): Promise<T> {
+  const held = heldItemCreates.get(id);
+  return held ? held.then(write) : write();
 }
 
 /**
@@ -1546,6 +1743,89 @@ const diffItem = (from: Item, to: Item): Record<string, unknown> => {
   }
   return patch;
 };
+
+const parentIdOf = (item: Item): string | undefined =>
+  'parentItemId' in item ? item.parentItemId : undefined;
+
+/** The per-date lists, which the completion and skip RPCs own. */
+const DATE_LISTS = ['completedDates', 'skippedDates'] as const;
+type DateList = (typeof DATE_LISTS)[number];
+const datesOf = (item: Item, key: DateList): string[] =>
+  ((item as Record<string, unknown>)[key] as string[] | undefined) ?? [];
+/** A list the row never had reads back empty: the same dates. */
+const sameDates = (a: Item, b: Item, key: DateList) =>
+  [...datesOf(a, key)].sort().join() === [...datesOf(b, key)].sort().join();
+
+/**
+ * `saved`, a row as the database holds it, with what the person changed since
+ * the row was first filed (`filed` to `mine`) laid over it: lib/held-captures.ts
+ * settles a row filed before a landing this way. A field they never touched
+ * keeps the database's value, which may be newer (an edit made on another
+ * device). A date list takes their added and removed dates. With no `filed`,
+ * all of `mine` wins. A type switch is the whole row: theirs when they switched
+ * it, the database's when it was switched elsewhere. The project id follows
+ * the project, resolved against `projects` only when they moved it (a name the
+ * store cannot resolve keeps the id the database resolved for it). `order` is
+ * the caller's.
+ */
+function layOver(saved: Item, mine: Item, filed: Item | undefined, projects: Project[], order?: number): Item {
+  const field = (item: Item, key: string) => (item as Record<string, unknown>)[key];
+  const touched = (key: string) => !filed || JSON.stringify(field(filed, key)) !== JSON.stringify(field(mine, key));
+  const withOrder = (item: Item): Item => (order === undefined ? item : ({ ...item, order } as Item));
+  const resolve = (name: string | undefined) =>
+    projectIdFor(name, projects) ?? (saved.project === name ? saved.projectId : undefined);
+  if (itemDbType(saved) !== itemDbType(mine)) {
+    if (filed && itemDbType(filed) === itemDbType(mine)) return saved;
+    return withOrder({ ...mine, projectId: resolve(mine.project) } as Item);
+  }
+  const merged: Record<string, unknown> = { ...saved };
+  const own: readonly string[] = ['order', 'projectId', ...DATE_LISTS];
+  for (const key of getItemTypeConfig(itemTypeName(mine)).fields) {
+    if (!own.includes(key) && touched(key)) merged[key] = field(mine, key);
+  }
+  for (const key of DATE_LISTS) {
+    if (!filed) {
+      if (!sameDates(saved, mine, key)) merged[key] = datesOf(mine, key);
+      continue;
+    }
+    if (sameDates(filed, mine, key)) continue;
+    const before = new Set(datesOf(filed, key));
+    const after = new Set(datesOf(mine, key));
+    const kept = datesOf(saved, key).filter((d) => !before.has(d) || after.has(d));
+    merged[key] = [...kept, ...datesOf(mine, key).filter((d) => !before.has(d) && !kept.includes(d))];
+  }
+  merged.projectId = touched('project') ? resolve(mine.project) : saved.projectId;
+  return withOrder(merged as Item);
+}
+
+/**
+ * Write `merged` over `saved`, the database's copy of the same row: a type
+ * switch when the type differs, its date lists replayed once it lands (the
+ * switch leaves them out, as applyHistoryState's does), else one UPDATE of what
+ * differs. updateItem applies a date list as per-date intents.
+ */
+function writeOver(userId: string, saved: Item, merged: Item): void {
+  const send = (patch: Record<string, unknown>) => {
+    if (Object.keys(patch).length > 0) {
+      dbUpdateItem(merged.id, itemDbType(merged), patch).catch(console.error);
+    }
+  };
+  const datePatch = () => {
+    const patch: Record<string, unknown> = {};
+    for (const key of DATE_LISTS) if (!sameDates(saved, merged, key)) patch[key] = datesOf(merged, key);
+    return patch;
+  };
+  if (itemDbType(saved) !== itemDbType(merged)) {
+    queueTypeSwitch(merged.id, () => dbChangeItemType(merged.id, itemDbType(saved), merged, userId)).then(
+      () => send(datePatch()),
+      () => {}
+    );
+    return;
+  }
+  const patch = diffItem(saved, merged);
+  for (const key of DATE_LISTS) delete patch[key];
+  send({ ...patch, ...datePatch() });
+}
 
 /**
  * The `planner-storage` slice, at its defaults — every field the persist
@@ -2010,7 +2290,15 @@ export const usePlannerStore = create<PlannerStore>()(
         if (quietDepth > 0) deferredAchievementIds.push(itemId);
         else offerAchievementFor(itemId);
       };
-      flushBatchEffects = ({ completed, achievementIds, checkins }) => {
+      // The user's own transitions, for recipes and mods (lib/mod-events.ts).
+      // Checked for suppression HERE, at the raise: a recipe's quiet batch
+      // must not queue anything for the flush to send later.
+      const emit = (e: ModEvent) => {
+        if (isModEventsSuppressed()) return;
+        if (quietDepth > 0) deferredModEvents.push(e);
+        else raiseModEvent(e);
+      };
+      flushBatchEffects = ({ completed, achievementIds, checkins, modEvents }) => {
         // Fired after the batch's history entry exists, so the confetti aims at
         // the undo strip that entry raises (except when a quiet batch nests in a
         // loud one: see batchHistory).
@@ -2018,6 +2306,7 @@ export const usePlannerStore = create<PlannerStore>()(
         const offered = new Set<string>();
         for (const id of new Set(achievementIds)) offerAchievementFor(id, offered);
         if (checkins.length) offerCheckinSummary(checkins);
+        raiseModEvents(modEvents);
       };
 
       const updateItemAction = (id: string, type: ItemType, updates: Partial<Task> | Partial<HabitItem>) => {
@@ -2062,7 +2351,94 @@ export const usePlannerStore = create<PlannerStore>()(
         return toDateStr(date ?? get().selectedDate, userTimezone);
       };
 
-      return {
+      /**
+       * Paint the last session's planner while THIS load is in flight. Fire-and-forget: it can
+       * neither delay, fail, nor outlive the load. Never touches userId, isLoading, error,
+       * loadFailedUserId, userTimezone or any history field.
+       *
+       * Applied only once the load's request has left (plannerRequestsSent, lib/db.ts): the
+       * preview's render is one long task, and run first it held the fetch back by as long.
+       * Whatever the outcome, the offer ends the skeleton's hold (expectPreview): applied,
+       * declined, nothing on disk or thrown, no preview can come after it.
+       */
+      const offerPreview = (userId: string, generation: number, allowed: () => boolean): void => {
+        let read: Promise<PlannerSnapshotData | null>;
+        let sent: Promise<unknown>;
+        try {
+          read = readPlannerSnapshot(userId);
+        } catch {
+          expectPreview(false);
+          return;
+        }
+        // Nothing on disk to show: the bars need not wait for the requests as well.
+        read.then(
+          (snap) => {
+            if (!snap) expectPreview(false);
+          },
+          () => expectPreview(false)
+        );
+        try {
+          sent = plannerRequestsSent();
+        } catch {
+          sent = Promise.resolve();
+        }
+        Promise.all([read, sent])
+          .then(([snap]) => {
+            // The same ownership questions the landing asks, plus two of its own: the
+            // load is still out, and nothing has been put in the store since it began.
+            if (!snap || loadGeneration !== generation) return;
+            const s = get();
+            if (s.userId !== userId || !s.isLoading || s.isPreview) return;
+            // Paint over EMPTY only: anything already here is newer than the cache.
+            if (
+              s.items.length || s.projects.length || s.itemTypes.length ||
+              s.routines.length || s.seasons.length || s.goals.length
+            ) return;
+            if (!allowed()) return;
+            // Custom types must be resolvable before any item renders — the landing's rule.
+            hydrateCustomTypes(snap.itemTypes);
+            if (snap.extensionsEnabled) {
+              try {
+                useExtensionsStore.getState?.()?.seedPreviewEnabled?.(userId, snap.extensionsEnabled);
+              } catch {
+                /* display-only: a preview grouped by manifest defaults is still a preview */
+              }
+            }
+            markPreviewPending(true); // crash marker — removed on the isPreview true→false edge
+            // Never a history entry, never the baseline. The load holds the suppressor
+            // for its whole window already; saved and restored rather than assumed.
+            const was = isUpdatingUndoRedo;
+            isUpdatingUndoRedo = true;
+            try {
+              set({
+                ...projectItems(snap.items),
+                projects: snap.projects,
+                itemTypes: snap.itemTypes,
+                routines: snap.routines,
+                seasons: snap.seasons,
+                goals: snap.goals,
+                itemTypesAvailable: snap.itemTypesAvailable,
+                collectionsAvailable: snap.collectionsAvailable,
+                goalsAvailable: snap.goalsAvailable,
+                isPreview: true,
+              });
+            } catch (e) {
+              // Undo what was staged only if the preview never took; one that did (a
+              // subscriber threw after the state moved) ends like any other.
+              if (!get().isPreview) {
+                hydrateCustomTypes([]);
+                markPreviewPending(false);
+              }
+              throw e;
+            } finally {
+              isUpdatingUndoRedo = was;
+            }
+          })
+          .catch((err) => console.warn('[preview] skipped', err))
+          .finally(() => expectPreview(false));
+      };
+
+      const store: PlannerStore = {
       ...projectItems([]),
       selectedDate: new Date(),
       viewMode: 'day',
@@ -2147,6 +2523,7 @@ export const usePlannerStore = create<PlannerStore>()(
       // Supabase state
       userId: null,
       isLoading: false,
+      isPreview: false,
       error: null,
       loadFailedUserId: null,
 
@@ -2249,7 +2626,15 @@ export const usePlannerStore = create<PlannerStore>()(
           set({ routines: get().routines.map((r) => (r.id === id ? { ...r, ...updates } : r)) });
         if (updates.itemIds) withReleaseGrace(run);
         else run();
-        if (userId) dbUpdateRoutine(userId, id, updates).catch(console.error);
+        // A membership write names the list this tab held before it (`routine`,
+        // read before the set()), so lib/db.ts reconcileMembership writes only
+        // this change and keeps another device's toggles.
+        if (userId) {
+          (updates.itemIds
+            ? dbUpdateRoutine(userId, id, updates, undefined, { itemIds: routine.itemIds })
+            : dbUpdateRoutine(userId, id, updates)
+          ).catch(console.error);
+        }
       },
       removeRoutine: (id) => {
         const userId = get().userId;
@@ -2369,7 +2754,14 @@ export const usePlannerStore = create<PlannerStore>()(
         } else {
           run();
         }
-        if (userId) dbUpdateSeason(userId, id, updates).catch(console.error);
+        // As updateRoutine: the item list this tab held, for reconcileMembership.
+        // `routineIds` take none (the iPhone never writes season_routines).
+        if (userId) {
+          (updates.itemIds
+            ? dbUpdateSeason(userId, id, updates, undefined, { itemIds: season.itemIds })
+            : dbUpdateSeason(userId, id, updates)
+          ).catch(console.error);
+        }
       },
       removeSeason: (id) => {
         const userId = get().userId;
@@ -2616,7 +3008,7 @@ export const usePlannerStore = create<PlannerStore>()(
         }
       },
 
-      initializeStore: async (userId: string) => {
+      initializeStore: async (userId: string, opts) => {
         // Re-initializing the account that is already loaded is never a
         // refresh — it is a reset. It refetches six tables, flips isLoading
         // back to true (blanking any surface that gates on it), and throws away
@@ -2680,6 +3072,17 @@ export const usePlannerStore = create<PlannerStore>()(
           // this ONE await, so the single set() below still clears isLoading
           // with seasons, goals and routines in the same commit — the overdue
           // sweep's hydration gate (see loadPlannerTables).
+          //
+          // CALLED FIRST and synchronously, before the preview is even offered:
+          // the fetchers are called in the same frame as this call
+          // (loadPlannerData's contract, which the load-race tests rely on).
+          // Called is not sent: each request waits on supabase-js's auth lock,
+          // granted a task or more later, so a long task run first holds it
+          // back. The preview's render is one, which is why offerPreview waits
+          // for the request to leave (plannerRequestsSent) before applying.
+          // The cache read races the fetch and never delays it.
+          const dataPromise = loadPlannerData(userId, () => loadPlannerTables(userId));
+          if (opts?.preview) offerPreview(userId, generation, opts.preview);
           const {
             items,
             projects,
@@ -2687,7 +3090,7 @@ export const usePlannerStore = create<PlannerStore>()(
             routines: routinesResult,
             seasons: seasonsResult,
             goals: goalsResult,
-          } = await loadPlannerData(userId, () => loadPlannerTables(userId));
+          } = await dataPromise;
           // A SLOWER RESPONSE FOR A PREVIOUS ACCOUNT MUST NEVER LAND ON THE
           // CURRENT ONE — the rule supabase-provider's `hydrateSettings`
           // already follows across its own await, and the one place on this
@@ -2760,6 +3163,9 @@ export const usePlannerStore = create<PlannerStore>()(
             goals,
             goalsAvailable: goalsResult !== null,
             isLoading: false,
+            // In the SAME set() as the fresh slices, so no subscriber ever sees
+            // fresh rows marked as cache, or cached rows marked as fresh.
+            isPreview: false,
             canUndo: false,
             canRedo: false,
             actionLog: [...actionLog].reverse(),
@@ -2780,12 +3186,33 @@ export const usePlannerStore = create<PlannerStore>()(
           // Errors, so the message below is nearly always the fallback text.
           // This line is the only record of the cause.
           console.error('planner load failed', err);
+          // A FAILED load is settled (planner-ready.ts). Cached rows must not survive it:
+          // drop them IN THIS set(). The subscriber is awake here (released above, as
+          // today), so a wipe in a later set() would make the cached rows the undo
+          // baseline and ⌘Z would undelete/delete/revert server rows.
+          const dropped = get().isPreview;
+          if (dropped) hydrateCustomTypes([]);
           set({
+            ...(dropped ? emptyPlannerData() : null),
+            isPreview: false,
             isLoading: false,
             error: err instanceof Error ? err.message : 'Failed to load data',
             loadFailedUserId: userId,
           });
         }
+      },
+
+      dropPreview: () => {
+        if (!get().isPreview) return false;
+        hydrateCustomTypes([]);
+        const was = isUpdatingUndoRedo;
+        isUpdatingUndoRedo = true;
+        try {
+          set({ ...emptyPlannerData() });
+        } finally {
+          isUpdatingUndoRedo = was;
+        }
+        return true; // isLoading stays true → skeleton; the in-flight load lands normally
       },
 
       clearStore: () => {
@@ -2817,7 +3244,7 @@ export const usePlannerStore = create<PlannerStore>()(
           ['task', 'habit', 'custom'].includes(customType) ||
           !get().itemTypes.some((t) => t.name === customType)
         ) {
-          return;
+          return undefined;
         }
         const config = getItemTypeConfig(customType);
         const timeBucket = autoCorrectBucket(itemData.startTime, itemData.timeBucket);
@@ -2847,9 +3274,11 @@ export const usePlannerStore = create<PlannerStore>()(
           goals: withGoalMembership(state.goals, item.id, memberships?.goalIds, memberships?.goalRole),
           seasons: withMembership(state.seasons, item.id, memberships?.seasonIds),
         }));
+        emit({ kind: 'item.created', itemId: item.id, type: customType, date: item.startDate });
 
         const userId = get().userId;
         if (userId) persistNewItem(userId, item, memberships, get);
+        return item.id;
       },
 
       addTask: (taskData, memberships) => {
@@ -2881,6 +3310,7 @@ export const usePlannerStore = create<PlannerStore>()(
           goals: withGoalMembership(state.goals, task.id, memberships?.goalIds, memberships?.goalRole),
           seasons: withMembership(state.seasons, task.id, memberships?.seasonIds),
         }));
+        emit({ kind: 'item.created', itemId: task.id, type: 'task', date: task.startDate });
 
         const userId = get().userId;
         if (userId) persistNewItem(userId, task, memberships, get);
@@ -2892,8 +3322,12 @@ export const usePlannerStore = create<PlannerStore>()(
         // One row is a normal add wearing a bulk sleeve — delegate so the
         // history label keeps its natural single-item form.
         if (itemsData.length === 1) {
+          const before = get().items.length;
           if (type === 'task') get().addTask(itemsData[0]);
           else get().addItem(type, itemsData[0]);
+          // Both append; a refused slug appended nothing.
+          const filedBy = get().userId;
+          if (filedBy) reportBulkFiled(filedBy, get().items.slice(before));
           return;
         }
         // Same slug guard as addItem, with 'task' additionally allowed:
@@ -2931,6 +3365,10 @@ export const usePlannerStore = create<PlannerStore>()(
 
         // ONE set() for the whole paste: one history entry, one ⌘Z.
         set((state) => projectItems([...state.items, ...rows]));
+        // Multi-row path only: the one-row path above delegates, and raises there.
+        rows.forEach((row, i) =>
+          emit({ kind: 'item.created', itemId: row.id, type: itemTypeName(row), date: itemsData[i].startDate }),
+        );
 
         // Tasks: one INSERT statement, not N createItem calls — all-or-nothing
         // on the wire, and the undo-races-insert window stays as narrow as a
@@ -2942,18 +3380,115 @@ export const usePlannerStore = create<PlannerStore>()(
         // stamps every row with the statement's created_at — the paste order
         // would scramble on reload. A sequential chain gives each row its own
         // timestamp; custom bulk adds are rare enough to pay the round trips.
+        //
+        // Either way a subtask paste waits for its parent's insert when that is
+        // in flight (the one statement fails items_parent_item_id_fkey whole),
+        // and each row is tracked as in flight, so an undo of the paste, and
+        // any write to a row whose insert waited, goes out after it.
         const userId = get().userId;
         if (userId) {
-          if (isCustom) {
-            void (async () => {
-              for (const row of rows) {
-                await dbCreateItem(userId, row).catch(console.error);
-              }
-            })();
-          } else {
-            dbCreateItems(userId, rows).catch(console.error);
+          insertNewRows(userId, rows, get().items, (err) => console.error(err));
+          reportBulkFiled(userId, rows);
+        }
+      },
+
+      refileItems: (groups, opts) => {
+        const saved = opts?.saved;
+        const filed = opts?.filed;
+        const present = new Set(get().items.map((i) => i.id));
+        const back = groups
+          .map((group) => group.filter((item) => !present.has(item.id)))
+          .filter((group) => group.length > 0);
+        if (back.length === 0) return;
+        // Orders and project ids were stamped against the store the landing
+        // replaced. Task rows go after the landed ones, in the order the person
+        // last left them (a drag over the failed load included), across groups.
+        let next = get().tasks.length;
+        const orderOf = new Map(
+          back
+            .flat()
+            .filter((item): item is TaskItem => item.type === 'task')
+            .sort((a, b) => a.order - b.order)
+            .map((item) => [item.id, next++])
+        );
+        const { projects } = get();
+        const refiled = back.map((group) =>
+          group.map((item): Item => {
+            const order = orderOf.get(item.id);
+            const live = saved?.get(item.id);
+            // The database holds it (its insert committed after the landing's
+            // read began): what the person changed since filing goes over it.
+            if (live) return layOver(live, item, filed?.get(item.id), projects, order);
+            return {
+              ...item,
+              ...(order !== undefined ? { order } : {}),
+              projectId: projectIdFor(item.project, projects),
+            };
+          })
+        );
+        if (opts?.quiet) {
+          // The person has acted since the landing: an entry pushed now would
+          // sit on top of theirs and take the next ⌘Z. Folded into every
+          // snapshot instead, the rows are simply there, as they were before.
+          const all = refiled.flat();
+          foldIntoHistory((items) => {
+            const has = new Set(items.map((i) => i.id));
+            return [...items, ...all.filter((row) => !has.has(row.id))];
+          });
+        } else {
+          for (const rows of refiled) {
+            const noun = getItemTypeConfig(itemTypeName(rows[0])).label.toLowerCase();
+            setNextActionLabel(
+              rows.length === 1 ? `Add ${noun}: ${rows[0].title}` : `Bulk add: ${rows.length} items`
+            );
+            set((s) => projectItems([...s.items, ...rows]));
           }
         }
+        const userId = get().userId;
+        if (!userId) return;
+        for (const rows of refiled) {
+          // Sent at once: the read that found the row saw its insert commit.
+          for (const row of rows) {
+            const live = saved?.get(row.id);
+            if (live) writeOver(userId, live, row);
+          }
+          // A group's task rows as the one insert its add was. One that fails on
+          // the primary key was saved after all, and is settled as saved.
+          const missing = rows.filter((row) => !saved?.has(row.id));
+          insertNewRows(userId, missing, get().items, (err, failed) => {
+            if (isUniqueViolation(err)) void settleAlreadySaved(userId, failed, filed);
+            else console.error(err);
+          });
+        }
+      },
+
+      settleLandedRows: (entries) => {
+        const s = get();
+        const byId = new Map(s.items.map((i) => [i.id, i]));
+        const removed = new Set<string>();
+        const swap = new Map<string, { from: Item; to: Item }>();
+        for (const { row, filed, gone } of entries) {
+          const landed = byId.get(row.id);
+          if (!landed) continue;
+          if (gone) {
+            removed.add(row.id);
+            continue;
+          }
+          // The landing placed it, so its order stays the database's.
+          const merged = layOver(landed, row, filed, s.projects);
+          if (JSON.stringify(merged) !== JSON.stringify(landed)) swap.set(row.id, { from: landed, to: merged });
+        }
+        // Its subtasks go with it, as deleteTask takes them.
+        for (const item of s.items) {
+          const parent = parentIdOf(item);
+          if (parent && removed.has(parent)) removed.add(item.id);
+        }
+        if (removed.size === 0 && swap.size === 0) return;
+        foldIntoHistory(removeAndSwap(removed, swap));
+        const userId = s.userId;
+        if (!userId) return;
+        for (const { from, to } of swap.values()) writeOver(userId, from, to);
+        for (const id of removed) dbDeleteItem(id, dbTypeOf(byId.get(id)!)).catch(console.error);
       },
 
       updateTask: (id, updates, opts) => {
@@ -2970,8 +3505,16 @@ export const usePlannerStore = create<PlannerStore>()(
         );
 
         const newUpdates = { ...updates };
-        // Auto-correct bucket if start time changes
-        if (updates.startTime && task) {
+        // Auto-correct bucket if start time changes, unless the patch releases a project block with
+        // the stash's own time and names no part of day: that goes back beside the block's part of
+        // day, as setItemsProject and moveTaskOutOfProjectBlock write it (open question 4 of the 2f
+        // brief). A time the same save set itself comes with the part of day beside it (the item
+        // dialog's, beside its release), so it is filed where it falls, as ever, even when it
+        // equals the stash.
+        const stashedTime = (task as Partial<TaskItem> | undefined)?.previousStartTime;
+        const releasesStash =
+          updates.inProjectBlock === false && !('timeBucket' in updates) && updates.startTime === stashedTime;
+        if (updates.startTime && task && !releasesStash) {
           const bucket = updates.timeBucket || task.timeBucket;
           const corrected = autoCorrectBucket(updates.startTime, bucket);
           if (corrected !== bucket) newUpdates.timeBucket = corrected;
@@ -3071,6 +3614,12 @@ export const usePlannerStore = create<PlannerStore>()(
           set((state) => projectItems(
             state.items.map(i => i.id === id && i.type === found.type ? { ...i, completedDates: newCompletedDates } : i),
           ));
+          emit({
+            kind: alreadyDone ? 'item.uncompleted' : 'item.completed',
+            itemId: id,
+            date: dateStr,
+            type: itemTypeName(task),
+          });
           dbSetItemCompletion(id, dbTypeOf(found), dateStr, !alreadyDone).catch(console.error);
           if (!alreadyDone) {
             celebrate();
@@ -3086,6 +3635,17 @@ export const usePlannerStore = create<PlannerStore>()(
           if (newStatus === 'completed' && task.status !== 'completed') {
             celebrate();
             offerAchievement(id);
+          }
+          // A one-off keeps no per-date record. Its one occurrence is its
+          // startDate (callers pass no date for a one-off, so selectedDate
+          // would be the week's anchor, not the column ticked); the day acted
+          // on only when it has none.
+          const kind = newStatus === 'completed' && task.status !== 'completed' ? 'item.completed'
+            : task.status === 'completed' && newStatus !== 'completed' ? 'item.uncompleted'
+            : null;
+          if (kind) {
+            const on = date ? resolveDateStr(date) : (task.startDate ?? resolveDateStr());
+            emit({ kind, itemId: id, date: on, type: itemTypeName(task) });
           }
         }
       },
@@ -3666,6 +4226,16 @@ export const usePlannerStore = create<PlannerStore>()(
             })
           )
         );
+        // patchById holds only the items that changed.
+        for (const item of targets) {
+          if (!patchById.has(item.id)) continue;
+          emit({
+            kind: completed ? 'item.completed' : 'item.uncompleted',
+            itemId: item.id,
+            date: dateStr,
+            type: itemTypeName(item),
+          });
+        }
 
         dbWrites.forEach((w) => w());
       },
@@ -3745,10 +4315,13 @@ export const usePlannerStore = create<PlannerStore>()(
         );
 
         if (userId) {
+          // The list before this change, so the write is this change alone
+          // (lib/db.ts reconcileMembership's `known`).
+          const known = { itemIds: container.itemIds };
           const write =
             kind === 'routine'
-              ? dbUpdateRoutine(userId, containerId, { itemIds: nextIds })
-              : dbUpdateSeason(userId, containerId, { itemIds: nextIds });
+              ? dbUpdateRoutine(userId, containerId, { itemIds: nextIds }, undefined, known)
+              : dbUpdateSeason(userId, containerId, { itemIds: nextIds }, undefined, known);
           write.catch(console.error);
         }
       },
@@ -3792,10 +4365,40 @@ export const usePlannerStore = create<PlannerStore>()(
         );
       },
 
+      setItemsSize: (sizes) => {
+        const targets = get().items.filter(
+          (i) => i.type !== 'habit' && sizes.has(i.id) && i.size !== sizes.get(i.id)
+        );
+        if (targets.length === 0) return;
+        const only = targets.length === 1 ? sizes.get(targets[0].id) : undefined;
+        setNextActionLabel(
+          targets.length === 1
+            ? only
+              ? `Size: ${only} · ${targets[0].title}`
+              : `Clear size · ${targets[0].title}`
+            : `Size ${itemCount(targets.length)}`
+        );
+        // Key present with `undefined` on a clear, as setItemsPriority does it:
+        // the spread erases the field locally and taskUpdatesToRow writes null.
+        const patchOf = (id: string) => ({ size: sizes.get(id) });
+        const targetIds = new Set(targets.map((i) => i.id));
+        set((state) =>
+          projectItems(
+            state.items.map((i) => (targetIds.has(i.id) ? ({ ...i, ...patchOf(i.id) } as Item) : i))
+          )
+        );
+        targets.forEach((item) =>
+          dbUpdateItem(item.id, dbTypeOf(item), patchOf(item.id)).catch(console.error)
+        );
+      },
+
       /**
        * Re-file a selection. The id follows the name exactly as in
        * updateTask/updateHabit — resolved ONCE here, since every item is going
        * to the same place.
+       *
+       * Name AND id: a folded match whose id is stale (or missing, from before
+       * 027) is still worth the write — it repairs the link.
        *
        * An item sitting in its old project's time block has to come out of it.
        * `inProjectBlock` parks it inside the block with its own time stashed in
@@ -3803,6 +4406,10 @@ export const usePlannerStore = create<PlannerStore>()(
        * parked in is the one it no longer belongs to — left alone, it would
        * render in no block at all and vanish from the day. So the release is
        * moveTaskOutOfProjectBlock's, folded into the same patch.
+       *
+       * The rule lives in lib/item-edit.ts as projectRefilePatch, so the
+       * iPhone's `project` route writes what this writes; the item dialog's
+       * project change shares its release (projectBlockRelease).
        */
       setItemsProject: (ids, name) => {
         const idSet = new Set(ids);
@@ -3811,24 +4418,10 @@ export const usePlannerStore = create<PlannerStore>()(
         for (const item of get().items) {
           if (!idSet.has(item.id)) continue;
           if (name ? !canBulkSetProject(item) : !canBulkClearProject(item)) continue;
-          const current = item.project;
-          const sameName = name
-            ? current != null && sameContainerName('project', current, name)
-            : current == null;
-          // Name AND id: a folded match whose id is stale (or missing, from
-          // before 027) is still worth the write — it repairs the link.
-          if (sameName && item.projectId === projectId) continue;
-
-          const patch: Partial<Task> = { project: name, projectId };
-          const parked = item as Partial<TaskItem>;
-          if (parked.inProjectBlock && !sameName) {
-            patch.inProjectBlock = false;
-            patch.startTime = parked.previousStartTime;
-            patch.startDate = parked.previousStartDate;
-            patch.previousStartTime = undefined;
-            patch.previousStartDate = undefined;
-          }
-          patchById.set(item.id, patch);
+          // The bulk Move to project's rule (lib/item-edit.ts projectRefilePatch, which the iPhone's
+          // route runs too): name AND id, and the release of a parked item.
+          const patch = projectRefilePatch(item, name, projectId);
+          if (patch) patchById.set(item.id, patch);
         }
         if (patchById.size === 0) return;
 
@@ -4097,6 +4690,10 @@ export const usePlannerStore = create<PlannerStore>()(
         set((state) => projectItems(
           state.items.map((i) => (i.id === id && i.type === item.type ? { ...i, ...optimistic } as Item : i)),
         ));
+        // The habit path above raises in toggleHabitStatus; the non-habit
+        // unskip raises nothing. A skip that cleared the day's completion is
+        // only a skip (see ModEvent).
+        if (skipped) emit({ kind: 'item.skipped', itemId: id, date: dateStr, type: itemTypeName(item) });
 
         if (clearCompletion) {
           dbSetItemCompletion(id, dbTypeOf(item), dateStr, false).catch(console.error);
@@ -4185,6 +4782,8 @@ export const usePlannerStore = create<PlannerStore>()(
           goals: withGoalMembership(state.goals, habit.id, memberships?.goalIds, memberships?.goalRole),
           seasons: withMembership(state.seasons, habit.id, memberships?.seasonIds),
         }));
+        // No date: habits are date-blind.
+        emit({ kind: 'item.created', itemId: habit.id, type: 'habit' });
 
         const userId = get().userId;
         if (userId) persistNewItem(userId, habit, memberships, get);
@@ -4270,6 +4869,13 @@ export const usePlannerStore = create<PlannerStore>()(
         set((state) => projectItems(
           state.items.map((i) => (i.id === id && i.type === 'habit' ? { ...i, ...optimistic } as Item : i)),
         ));
+        // At most one event: a count-only update, a repeat done or an unskip
+        // raises nothing, and done → skipped is only a skip.
+        const habitEvent = status === 'done' && !wasCompleted ? 'item.completed'
+          : status === 'skipped' && !wasSkipped ? 'item.skipped'
+          : status === 'pending' && wasCompleted ? 'item.uncompleted'
+          : null;
+        if (habitEvent) emit({ kind: habitEvent, itemId: id, date: dateStr, type: 'habit' });
 
         dbSetItemCompletion(id, 'habit', dateStr, status === 'done').catch(console.error);
         // skippedDates joins completedDates and streak in the exclusion list:
@@ -4405,6 +5011,15 @@ export const usePlannerStore = create<PlannerStore>()(
         }));
 
         const projectByName = new Map(projects.map((p) => [p.name, p]));
+        // Matched on the EXACT stored text, never a trimmed copy. The adopting
+        // UPDATE filters on the name it is given, so a store that links
+        // " Personal" while the database matches "Personal" produces a link
+        // that looks right until the next reload drops it. planSeed keeps names
+        // exact for the same reason.
+        const adopt = (item: Item): Item => {
+          const p = item.project ? projectByName.get(item.project) : undefined;
+          return p && !item.projectId ? { ...item, projectId: p.id } : item;
+        };
 
         /**
          * NO HISTORY ENTRY, and this is a change of mind the review earned.
@@ -4433,17 +5048,7 @@ export const usePlannerStore = create<PlannerStore>()(
         try {
           set((s) => ({
             projects: [...s.projects, ...projects],
-            ...projectItems(
-              s.items.map((item) => {
-                // Matched on the EXACT stored text, never a trimmed copy. The
-                // adopting UPDATE filters on the name it is given, so a store
-                // that links " Personal" while the database matches "Personal"
-                // produces a link that looks right until the next reload drops
-                // it. planSeed keeps names exact for the same reason.
-                const p = item.project ? projectByName.get(item.project) : undefined;
-                return p && !item.projectId ? { ...item, projectId: p.id } : item;
-              })
-            ),
+            ...projectItems(s.items.map(adopt)),
           }));
           /**
            * BOTH BASELINES, and the second one is not optional — the first
@@ -4463,6 +5068,12 @@ export const usePlannerStore = create<PlannerStore>()(
            * exactly what 'Session start' is supposed to name. Length and index
            * are untouched, so it cannot break the invariant that `historyIndex`
            * names the state the store holds.
+           *
+           * EVERY snapshot, not only that one: 'Session start' is not always
+           * where the index sits. A quick capture held through the load is
+           * filed between the landing and this commit (lib/held-captures.ts),
+           * and undoing it into a snapshot without the seed would soft-delete
+           * all six. Same reasoning as forgetFailedContainer, in reverse.
            */
           const s = get();
           const seeded = {
@@ -4473,9 +5084,16 @@ export const usePlannerStore = create<PlannerStore>()(
             goals: s.goals,
           };
           updatePrevStateBaseline(seeded);
-          if (historyStack[historyIndex]) {
-            historyStack[historyIndex] = JSON.parse(JSON.stringify(seeded));
-          }
+          historyStack.forEach((snapshot, i) => {
+            historyStack[i] =
+              i === historyIndex
+                ? JSON.parse(JSON.stringify(seeded))
+                : {
+                    ...snapshot,
+                    projects: [...snapshot.projects, ...JSON.parse(JSON.stringify(projects))],
+                    items: snapshot.items.map(adopt),
+                  };
+          });
         } finally {
           isUpdatingUndoRedo = wasSuppressed;
         }
@@ -4957,12 +5575,25 @@ export const usePlannerStore = create<PlannerStore>()(
           return;
         }
 
+        // The entry being taken back, and the items before it goes: a mod
+        // hears each completion this undo removed (lib/mods/undo-events.ts).
+        const undoneLabel = actionLog[historyIndex + 1]?.label ?? '';
+        const itemsBefore = currentState.items;
+
         applyHistoryState(prevState, currentState, {
           canUndo: historyIndex > 0,
           canRedo: true,
         }, userId, set);
 
         isUndoRedoAction = false;
+
+        // Redo raises nothing. A suppressed undo (none today) raises nothing either.
+        if (!isModEventsSuppressed()) {
+          const tz = get().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+          raiseModOnlyEvents(
+            uncompletionsBetween(itemsBefore, get().items, toDateStr(new Date(), tz)).map((e) => ({ ...e, undoneLabel }))
+          );
+        }
       },
 
       redo: () => {
@@ -4989,6 +5620,10 @@ export const usePlannerStore = create<PlannerStore>()(
         isUndoRedoAction = false;
       },
       };
+      // The look-only preview's write barrier: every action off the allowlist refuses while
+      // isPreview. Persist merges only the prefs `partialize` names — no functions — so the
+      // wrapped actions survive rehydration.
+      return guardPreviewWrites(store, () => get().isPreview);
     },
     {
       name: 'planner-storage',
@@ -5178,21 +5813,31 @@ function applyHistoryState(
   // reconciliation: ROUTINE_FIELDS includes `itemIds`, so a membership undo
   // arrives here as an {itemIds} patch and dbUpdateRoutine turns it into
   // inserts/deletes. A column-mapper-style callback would drop it silently and
-  // membership undo would never reach the DB.
+  // membership undo would never reach the DB. The list the store held before
+  // the undo (`cur`) goes with it as reconcileMembership's `known`, so the undo
+  // also leaves alone what another device changed. A routine the undo brings
+  // back from the Trash has no `cur`, and its full restored list is written.
   syncContainers(
     currentState.routines, restoredRoutines, ROUTINE_FIELDS,
     (id) => dbRestoreRoutine(userId, id),
-    (id, patch) => dbUpdateRoutine(userId, id, patch),
+    (id, patch, cur) =>
+      patch.itemIds && cur
+        ? dbUpdateRoutine(userId, id, patch, undefined, { itemIds: cur.itemIds })
+        : dbUpdateRoutine(userId, id, patch),
     (id) => dbDeleteRoutine(userId, id),
   );
   // Seasons carry TWO member arrays (itemIds and routineIds), both in
   // SEASON_FIELDS and both reconciled by dbUpdateSeason against their own
   // join table. Undoing "added Morning to Summer" therefore arrives here as a
-  // {routineIds} patch and deletes exactly that one join row.
+  // {routineIds} patch and deletes exactly that one join row. `known` as the
+  // routines', for the item list alone.
   syncContainers(
     currentState.seasons, restoredSeasons, SEASON_FIELDS,
     (id) => dbRestoreSeason(userId, id),
-    (id, patch) => dbUpdateSeason(userId, id, patch),
+    (id, patch, cur) =>
+      patch.itemIds && cur
+        ? dbUpdateSeason(userId, id, patch, undefined, { itemIds: cur.itemIds })
+        : dbUpdateSeason(userId, id, patch),
     (id) => dbDeleteSeason(userId, id),
   );
   // Goals carry THREE member arrays, all in GOAL_FIELDS, and dbUpdateGoal
@@ -5210,12 +5855,17 @@ function applyHistoryState(
   );
 }
 
+/**
+ * `update`'s third argument is the container as the store holds it now, before
+ * the undo or redo: undefined on the restore path, where the container is back
+ * from the Trash and its full restored shape is pushed.
+ */
 function syncContainers<T extends { id: string }>(
   current: T[],
   restored: T[],
   fields: readonly (keyof T & string)[],
   restore: (id: string) => Promise<void>,
-  update: (id: string, patch: Partial<T>) => Promise<void>,
+  update: (id: string, patch: Partial<T>, cur?: T) => Promise<void>,
   remove: (id: string) => Promise<void>,
 ) {
   const currentById = new Map(current.map((c) => [c.id, c]));
@@ -5236,7 +5886,7 @@ function syncContainers<T extends { id: string }>(
       if (field === 'id') continue;
       if (JSON.stringify(cur[field]) !== JSON.stringify(r[field])) patch[field] = r[field];
     }
-    if (Object.keys(patch).length > 0) update(r.id, patch).catch(console.error);
+    if (Object.keys(patch).length > 0) update(r.id, patch, cur).catch(console.error);
   });
   current.forEach((c) => {
     if (!restoredById.has(c.id)) remove(c.id).catch(console.error);
@@ -5339,6 +5989,92 @@ const sameAgentFields = (a: AgentFields, b: AgentFields) =>
   (a.aiResult ?? null) === (b.aiResult ?? null) &&
   (a.aiStatusAt ?? null) === (b.aiStatusAt ?? null);
 
+/** The fields a server run (lib/recipes/server/) writes on an existing item. */
+const SERVER_RUN_FIELDS = [
+  'status',
+  'completedDates',
+  'skippedDates',
+  'dailyCounts',
+  'currentDayCount',
+  'streak',
+  'startDate',
+  'timeBucket',
+  'isScheduled',
+] as const;
+
+const serverRunFieldsOf = (item: Item): string =>
+  JSON.stringify(SERVER_RUN_FIELDS.map((k) => (item as unknown as Record<string, unknown>)[k] ?? null));
+
+/**
+ * Fold items a server run wrote (a timed or phone-started recipe,
+ * lib/recipes/server/) into the store, so Revert in Make (lib/recipes/revert.ts)
+ * asks the rows as they are, not as this tab loaded them. Only the fields a
+ * server run writes are taken for an item the store has (a local edit to
+ * anything else is never overwritten); an item it lacks (one the run added)
+ * comes in whole.
+ *
+ * The server's news, not a user action, so it is folded the way
+ * mergeAgentStates folds agent state: one set(), no undo entry, no write-back,
+ * every snapshot that still held the store's pre-merge fields rewritten to the
+ * merged ones (and an added item added to each), as if the server's value had
+ * been there all along, so an undo of an unrelated edit never writes the stale
+ * value back. Skipped while a load is in flight, which brings fresh rows of
+ * its own. Returns how many items changed.
+ */
+export function mergeServerItems(rows: readonly Item[]): number {
+  const state = usePlannerStore.getState();
+  if (state.isLoading || rows.length === 0) return 0;
+  const byId = new Map(state.items.map((item) => [item.id, item]));
+  const changes = new Map<string, { before: string | null; row: Item }>();
+  for (const row of rows) {
+    const item = byId.get(row.id);
+    if (!item) {
+      // An item the tab once held and no longer does was deleted here; a
+      // server read that still finds it is behind that delete, not ahead.
+      if (!historyStack.some((snap) => snap.items.some((i) => i.id === row.id))) {
+        changes.set(row.id, { before: null, row });
+      }
+    }
+    else if (item.type === row.type && serverRunFieldsOf(item) !== serverRunFieldsOf(row)) {
+      changes.set(row.id, { before: serverRunFieldsOf(item), row });
+    }
+  }
+  if (changes.size === 0) return 0;
+
+  const overlay = (item: Item, row: Item): Item => {
+    const next = { ...item } as unknown as Record<string, unknown>;
+    for (const k of SERVER_RUN_FIELDS) {
+      const v = (row as unknown as Record<string, unknown>)[k];
+      if (v === undefined) delete next[k];
+      else next[k] = v;
+    }
+    return next as unknown as Item;
+  };
+  const fold = (items: Item[]): Item[] => {
+    const seen = new Set<string>();
+    const out = items.map((item) => {
+      const change = changes.get(item.id);
+      if (!change) return item;
+      seen.add(item.id);
+      if (change.before === null || serverRunFieldsOf(item) !== change.before) return item;
+      return overlay(item, change.row);
+    });
+    for (const [id, change] of changes) if (change.before === null && !seen.has(id)) out.push(change.row);
+    return out;
+  };
+
+  const wasSuppressed = isUpdatingUndoRedo;
+  isUpdatingUndoRedo = true;
+  try {
+    usePlannerStore.setState((s) => projectItems(fold(s.items)));
+    historyStack = historyStack.map((snapshot) => ({ ...snapshot, items: fold(snapshot.items) }));
+    updatePrevStateBaseline(historySlice(usePlannerStore.getState()));
+  } finally {
+    isUpdatingUndoRedo = wasSuppressed;
+  }
+  return changes.size;
+}
+
 /**
  * Fold the agent columns read back from the server (lib/db.ts
  * `fetchAgentStates`, on Ask home's throttled refetch) into the store. An agent
@@ -5411,6 +6147,95 @@ export function mergeAgentStates(rows: readonly AgentStateRow[]): number {
   return changes.size;
 }
 
+/**
+ * Change the store's items and every history snapshot's the same way, with no
+ * entry of its own and no write: what it changes is what the person had
+ * before a landing (rows they filed while the account's data had not landed),
+ * so undo must neither take it away nor bring back what it removed.
+ * Suppressed the save-and-restore way, as mergeAgentStates is.
+ */
+function foldIntoHistory(fold: (items: Item[]) => Item[]): void {
+  const wasSuppressed = isUpdatingUndoRedo;
+  isUpdatingUndoRedo = true;
+  try {
+    usePlannerStore.setState((s) => projectItems(fold(s.items)));
+    historyStack = historyStack.map((snapshot) => ({ ...snapshot, items: fold(snapshot.items) }));
+    updatePrevStateBaseline(historySlice(usePlannerStore.getState()));
+  } finally {
+    isUpdatingUndoRedo = wasSuppressed;
+  }
+}
+
+/** A fold that drops `remove`, and swaps in `to` wherever a row still reads exactly as `from`. */
+function removeAndSwap(
+  remove: ReadonlySet<string>,
+  swap: ReadonlyMap<string, { from: Item; to: Item }>,
+): (items: Item[]) => Item[] {
+  const was = new Map([...swap].map(([id, { from }]) => [id, JSON.stringify(from)]));
+  return (items) =>
+    items.flatMap((item) => {
+      if (remove.has(item.id)) return [];
+      const change = swap.get(item.id);
+      return change && JSON.stringify(item) === was.get(item.id) ? [change.to] : [item];
+    });
+}
+
+/**
+ * Rows filed again whose insert failed on the primary key: the database had
+ * them after all (the question about them failed or ran out of time, or a
+ * first insert committed in between). Each is read and settled as the question
+ * would have settled it. Live, what the person changed since filing is laid
+ * over it and written, and the store shows the result where it still shows
+ * the row as filed. In the bin (deleted on another device), it leaves the
+ * store and every snapshot, and a subtask of it is deleted too. With no row,
+ * it is inserted once more: a statement that failed on another row's id
+ * inserted none of its rows.
+ */
+async function settleAlreadySaved(
+  userId: string,
+  rows: readonly Item[],
+  filed: ReadonlyMap<string, Item> | undefined,
+): Promise<void> {
+  let found: { item: Item; deleted: boolean }[];
+  try {
+    found = await fetchItemsAnyState(userId, rows.map((row) => row.id));
+  } catch (err) {
+    console.error('[planner] could not read rows already saved', err);
+    return;
+  }
+  const s = usePlannerStore.getState();
+  if (s.userId !== userId) return;
+  const saved = new Map(found.map((f) => [f.item.id, f]));
+  const current = new Map(s.items.map((item) => [item.id, item]));
+  const binned = new Set(rows.filter((row) => saved.get(row.id)?.deleted).map((row) => row.id));
+  const removed = new Set(binned);
+  for (const item of s.items) {
+    const parent = parentIdOf(item);
+    if (parent && binned.has(parent)) removed.add(item.id);
+  }
+  const swap = new Map<string, { from: Item; to: Item }>();
+  const missing: Item[] = [];
+  for (const row of rows) {
+    const mine = current.get(row.id);
+    // Removed since, by the person (its delete found the row) or above.
+    if (!mine || removed.has(row.id)) continue;
+    const db = saved.get(row.id);
+    if (!db) {
+      missing.push(mine);
+      continue;
+    }
+    const merged = layOver(db.item, mine, filed?.get(row.id), s.projects, 'order' in mine ? mine.order : undefined);
+    writeOver(userId, db.item, merged);
+    if (JSON.stringify(merged) !== JSON.stringify(mine)) swap.set(row.id, { from: mine, to: merged });
+  }
+  insertNewRows(userId, missing, s.items, (err) => console.error(err));
+  if (removed.size > 0 || swap.size > 0) foldIntoHistory(removeAndSwap(removed, swap));
+  for (const id of removed) {
+    const item = current.get(id);
+    if (item && !binned.has(id)) dbDeleteItem(id, itemDbType(item)).catch(console.error);
+  }
+}
+
 /* ── batches ───────────────────────────────────────────────────────────── */
 
 /** One receipt for a batch, by landingReceipt's own rule: say it once, or count. */
@@ -5456,6 +6281,7 @@ export function batchHistory(
     batchCompleted = false;
     deferredAchievementIds = [];
     deferredCheckins = [];
+    deferredModEvents = [];
   }
 
   const recordsHistory = !(isUndoRedoAction || isUpdatingUndoRedo);
@@ -5488,11 +6314,16 @@ export function batchHistory(
         completed: batchCompleted,
         achievementIds: deferredAchievementIds,
         checkins: deferredCheckins,
+        modEvents: deferredModEvents,
       };
       batchCompleted = false;
       deferredAchievementIds = [];
       deferredCheckins = [];
+      deferredModEvents = [];
       if (!failed) flushBatchEffects(effects);
+      // The writes a failed batch applied are in its entry and on the wire,
+      // so recipes still hear of them; only the cosmetic effects drop.
+      else raiseModEvents(effects.modEvents);
     }
   }
 }

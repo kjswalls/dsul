@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Do stuff mode</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:'Inter',system-ui,sans-serif;color:#1f2029}
+a{color:#3b4a1c}a:hover{color:#1f2a0c}
+button{font-family:inherit;cursor:pointer}
+.band{position:relative;overflow:hidden}
+.band::after{content:'';position:absolute;inset:0;background:linear-gradient(100deg,rgba(255,255,255,0) 30%,rgba(255,255,255,0.75) 50%,rgba(255,255,255,0) 70%);transform:translateX(-110%);animation:sheen 1.3s ease-out var(--d,0s) 1 forwards;pointer-events:none}
+@keyframes sheen{to{transform:translateX(110%)}}
+.rise{animation:rise .35s ease-out both}
+@keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion: reduce){.band::after{animation:none;display:none}.rise{animation:none}}
+</style>
+</helmet>
+<div style="width: 420px; height: 900px; box-sizing: border-box; background: #fbfbfb; padding: 24px 20px; display: flex; flex-direction: column; gap: 16px; font-family: 'Inter', system-ui, sans-serif; color: #1f2029; overflow: hidden">
+  <div style="display: flex; align-items: center; gap: 6px; padding-left: 8px; font-weight: 700; font-size: 22px">dsul<span style="width: 7px; height: 7px; border-radius: 50%; background: #a8d64a; margin-top: 4px"></span></div>
+
+  <sc-if value="{{rest}}" hint-placeholder-val="{{ false }}">
+    <div style="background: #eeeded; border-radius: 22px; padding: 6px">
+      <div style="background: #ffffff; border-radius: 16px; padding: 10px 10px 10px 16px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 1px 3px rgba(20,20,40,0.08)">
+        <div style="font-size: 16px"><span style="font-weight: 600">{{left}}</span> <span style="color: #8a8ea0">undated</span></div>
+        <div style="display: flex; align-items: center; gap: 12px; color: #8a8ea0">
+          <button type="button" onClick="{{enter}}" style="height: 32px; padding: 0 12px 0 10px; border-radius: 999px; border: 1px solid #dcdde1; background: #ffffff; color: #1f2029; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 7px"><span style="width: 7px; height: 7px; border-radius: 50%; background: #a8d64a"></span>do stuff</button>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8M16 5v4M10 15v4"></path></svg>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"></path></svg>
+        </div>
+      </div>
+    </div>
+    <div style="display: flex; flex-direction: column">
+      <sc-for list="{{flat}}" as="r" hint-placeholder-count="15">
+        <div style="display: flex; align-items: center; gap: 12px; padding: 7px 8px">
+          <span style="width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid #c9cbd3; background: #f4f4f6; flex: none"></span>
+          <span style="font-size: 15px">{{r.title}}</span>
+        </div>
+      </sc-for>
+    </div>
+    <div style="margin-top: auto; font-size: 13px; color: #8a8ea0; padding: 0 8px">tap "do stuff" to try it</div>
+  </sc-if>
+
+  <sc-if value="{{on}}" hint-placeholder-val="{{ true }}">
+    <div style="background: #eeeded; border-radius: 22px; padding: 6px">
+      <div style="background: #ffffff; border-radius: 16px; padding: 10px 10px 10px 16px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 0 0 1.5px #b9e05a, 0 1px 3px rgba(20,20,40,0.08)">
+        <div style="display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 600"><span style="width: 8px; height: 8px; border-radius: 50%; background: #a8d64a"></span>do stuff</div>
+        <div style="display: flex; align-items: center; gap: 10px">
+          <span style="font-size: 14px; color: #6b6f80">{{doneLabel}}</span>
+          <button type="button" onClick="{{exit}}" style="height: 32px; padding: 0 12px; border-radius: 999px; border: none; background: #f1f1f3; color: #4d5162; font-size: 13px; font-weight: 500">done for now</button>
+        </div>
+      </div>
+    </div>
+
+    <sc-if value="{{hasNext}}" hint-placeholder-val="{{ true }}">
+      <div class="rise" style="background: #ffffff; border: 1px solid #dcdde1; border-radius: 18px; padding: 16px; display: flex; flex-direction: column; gap: 12px">
+        <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #8a8ea0">up next<span style="font-size: 11px; font-weight: 600; letter-spacing: 0.02em; text-transform: none; padding: 2px 8px; border-radius: 999px; background: {{next.tint}}; color: {{next.ink}}">{{next.size}}</span></div>
+        <div style="font-size: 20px; font-weight: 600; line-height: 1.3">{{next.title}}</div>
+        <div style="display: flex; gap: 8px">
+          <button type="button" onClick="{{markDone}}" style="flex: 1; height: 44px; border-radius: 12px; border: none; background: #b9e05a; color: #2c3a12; font-size: 14px; font-weight: 600">done</button>
+          <button type="button" onClick="{{skip}}" style="height: 44px; padding: 0 16px; border-radius: 12px; border: 1px solid #dcdde1; background: #ffffff; color: #4d5162; font-size: 14px; font-weight: 500">skip</button>
+          <button type="button" onClick="{{toToday}}" style="height: 44px; padding: 0 16px; border-radius: 12px; border: 1px solid #dcdde1; background: #ffffff; color: #4d5162; font-size: 14px; font-weight: 500">put on today</button>
+        </div>
+      </div>
+    </sc-if>
+    <sc-if value="{{allDone}}" hint-placeholder-val="{{ false }}">
+      <div class="rise" style="background: #eef6d8; border-radius: 18px; padding: 18px; font-size: 16px; font-weight: 600; color: #3b4a1c">{{allDoneLine}}</div>
+    </sc-if>
+
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <sc-for list="{{groups}}" as="g" hint-placeholder-count="4">
+        <div style="display: flex; flex-direction: column">
+          <button type="button" onClick="{{g.toggle}}" aria-expanded="{{g.expanded}}" class="band" style="--d: {{g.delay}}; display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; border: none; border-radius: 12px; background: linear-gradient(90deg, {{g.tint}} 0%, {{g.tint}} 55%, rgba(251,251,251,0) 100%); color: {{g.ink}}; text-align: left">
+            <sc-if value="{{g.isQuick}}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8"></circle><path d="M12 8v4l2.5 2"></path></svg></sc-if>
+            <sc-if value="{{g.isErrand}}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 21s-6.5-6-6.5-11a6.5 6.5 0 0113 0c0 5-6.5 11-6.5 11z"></path><circle cx="12" cy="10" r="2.2"></circle></svg></sc-if>
+            <sc-if value="{{g.isBig}}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 4l9 5-9 5-9-5z"></path><path d="M3 14l9 5 9-5"></path></svg></sc-if>
+            <sc-if value="{{g.isFuzzy}}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 10c2-3 4-3 6 0s4 3 6 0 3-2 4-1"></path><path d="M4 16c2-3 4-3 6 0s4 3 6 0 3-2 4-1"></path></svg></sc-if>
+            <span style="font-size: 13px; font-weight: 600">{{g.label}}</span>
+            <span style="font-size: 13px; opacity: 0.7">{{g.count}}</span>
+            <span style="margin-left: auto; font-size: 12px; color: #8a8ea0">{{g.hint}}</span>
+          </button>
+          <sc-if value="{{g.open}}" hint-placeholder-val="{{ false }}">
+            <div style="display: flex; flex-direction: column; padding-top: 4px">
+              <sc-for list="{{g.rows}}" as="r" hint-placeholder-count="3">
+                <div style="display: flex; align-items: center; gap: 12px; padding: 6px 8px; border-radius: 10px; background: {{r.bg}}">
+                  <button type="button" onClick="{{r.toggle}}" aria-label="{{r.aria}}" style="width: 20px; height: 20px; border-radius: 6px; border: {{r.boxBorder}}; background: {{r.boxBg}}; flex: none; padding: 0; display: flex; align-items: center; justify-content: center">
+                    <sc-if value="{{r.done}}" hint-placeholder-val="{{ false }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#2c3a12" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"></path></svg></sc-if>
+                  </button>
+                  <span style="flex: 1; font-size: 15px; color: {{r.ink}}; text-decoration: {{r.strike}}">{{r.title}}</span>
+                  <sc-if value="{{r.today}}" hint-placeholder-val="{{ false }}"><span style="font-size: 12px; color: #3b4a1c">on today</span></sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+      </sc-for>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":420,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { on: false, done: {}, today: {}, skipped: {}, openKeys: {} };
+  }
+  renderVals() {
+    const data = [
+      { key: 'quick', label: 'quick', hint: 'about 45 min', tint: '#eef6d8', ink: '#3b4a1c', rows: ['make a dentist appointment', 'schedule MRI appointment', 'email ICA', "check sammy's insurance", 'ask mom and the sibs about NJ trip', 'hang up trip map'] },
+      { key: 'errand', label: 'errands', hint: 'next time you are out', tint: '#e6eefb', ink: '#2d4470', rows: ['Smog the Honda, sell to Cass', "get sammy's license"] },
+      { key: 'big', label: 'big', hint: 'needs a block', tint: '#fbf0d6', ink: '#6e5420', rows: ["clean spencer's room", 'cancel subscriptions', 'plan trip to europe', 'plan trip to China', 'make china trip video'] },
+      { key: 'fuzzy', label: 'fuzzy', hint: 'find a first step', tint: '#f1ebf9', ink: '#55407a', rows: ['budgets?', 'Figure out CPAP machine'] }
+    ];
+    const s = this.state;
+    const settled = (t) => s.done[t] || s.today[t];
+    const queue = [];
+    data.slice(0, 3).forEach((g) => g.rows.forEach((t) => queue.push({ title: t, g: g })));
+    const pending = queue.filter((q) => !settled(q.title));
+    const fresh = pending.filter((q) => !s.skipped[q.title]);
+    const next = fresh[0] || pending[0] || null;
+    const doneCount = Object.keys(s.done).filter((k) => s.done[k]).length;
+    const set = (field, t, v) => { const o = Object.assign({}, s[field]); o[t] = v; return o; };
+    const curKey = next ? next.g.key : null;
+    const groups = data.map((g, i) => {
+      const open = s.openKeys[g.key] !== undefined ? s.openKeys[g.key] : g.key === curKey;
+      return {
+        label: g.label, hint: g.hint, tint: g.tint, ink: g.ink, delay: (0.08 * i).toFixed(2) + 's',
+        count: String(g.rows.filter((t) => !settled(t)).length),
+        isQuick: g.key === 'quick', isErrand: g.key === 'errand', isBig: g.key === 'big', isFuzzy: g.key === 'fuzzy',
+        open: open, expanded: open ? 'true' : 'false',
+        toggle: () => { const o = Object.assign({}, s.openKeys); o[g.key] = !open; this.setState({ openKeys: o }); },
+        rows: g.rows.map((t) => {
+          const d = !!s.done[t];
+          const isNext = next && next.title === t;
+          return {
+            title: t, done: d, today: !!s.today[t] && !d,
+            aria: (d ? 'untick ' : 'tick ') + t,
+            toggle: () => this.setState({ done: set('done', t, !d) }),
+            bg: isNext ? 'rgba(30,32,48,0.045)' : 'transparent',
+            boxBg: d ? '#b9e05a' : '#f4f4f6', boxBorder: d ? '1.5px solid #b9e05a' : '1.5px solid #c9cbd3',
+            ink: d ? '#a0a4b4' : '#1f2029', strike: d ? 'line-through' : 'none'
+          };
+        })
+      };
+    });
+    const allTitles = data.reduce((a, g) => a.concat(g.rows), []);
+    return {
+      on: s.on, rest: !s.on,
+      enter: () => this.setState({ on: true, openKeys: {}, skipped: {} }),
+      exit: () => this.setState({ on: false }),
+      flat: allTitles.filter((t) => !s.done[t]).map((t) => ({ title: t })),
+      left: String(allTitles.filter((t) => !s.done[t]).length),
+      doneLabel: doneCount === 0 ? 'nothing yet' : doneCount + ' done',
+      hasNext: !!next,
+      allDone: !next,
+      allDoneLine: 'that is every quick one, errand and big thing. the fuzzy ones want a first step.',
+      next: next ? { title: next.title, size: next.g.label, tint: next.g.tint, ink: next.g.ink } : { title: '', size: '', tint: '', ink: '' },
+      markDone: () => next && this.setState({ done: set('done', next.title, true) }),
+      toToday: () => next && this.setState({ today: set('today', next.title, true) }),
+      skip: () => next && this.setState({ skipped: set('skipped', next.title, true) }),
+      groups: groups
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServiceClient } from '@/lib/supabase-service'
+import { createServiceClient, readAgentKey, storeAgentKey } from '@/lib/supabase-service'
 
 /**
  * POST /api/agent/connect/authorize
@@ -15,7 +15,8 @@ import { createServiceClient } from '@/lib/supabase-service'
  * - Looks up the session by user_code (status=pending, not expired)
  * - Reuses existing openclaw_api_key if user already has one, otherwise generates new
  * - Updates session: status='authorized', user_id, api_key
- * - Upserts api_key into user_settings
+ * - Stores api_key in user_secrets (service-role only; never user_settings,
+ *   which the user's browser can read)
  */
 export async function POST(req: NextRequest) {
   try {
@@ -59,28 +60,16 @@ export async function POST(req: NextRequest) {
     }
 
     // Reuse existing API key if the user already has one
-    const { data: existing } = await service
-      .from('user_settings')
-      .select('openclaw_api_key')
-      .eq('user_id', user.id)
-      .maybeSingle()
-
-    let apiKey = existing?.openclaw_api_key ?? null
+    let apiKey = await readAgentKey(user.id, service)
 
     if (!apiKey) {
       // Generate a new key: "dsul_" + 32 random hex bytes
       const raw = crypto.getRandomValues(new Uint8Array(32))
       apiKey = 'dsul_' + Array.from(raw).map((b) => b.toString(16).padStart(2, '0')).join('')
 
-      // Store in user_settings
-      const { error: upsertErr } = await service
-        .from('user_settings')
-        .upsert(
-          { user_id: user.id, openclaw_api_key: apiKey },
-          { onConflict: 'user_id' }
-        )
+      const { error: upsertErr } = await storeAgentKey(user.id, apiKey, service)
       if (upsertErr) {
-        return NextResponse.json({ error: upsertErr.message }, { status: 500 })
+        return NextResponse.json({ error: upsertErr }, { status: 500 })
       }
     }
 

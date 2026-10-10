@@ -8,6 +8,7 @@ import {
   EXT_ACCOUNTABILITY_PARTNER,
   EXT_BEEMINDER,
   EXT_COMPLETION_CONFETTI,
+  EXT_DO_STUFF,
   EXT_GOALS,
   EXT_HABIT_HEATMAP,
   EXT_ORGANIZE,
@@ -232,6 +233,33 @@ const Goals: Scene = () => (
         <span className={s.strike}>Long run, 18 km</span>
         <span className={s.why}>{TARGET}Half marathon</span>
       </div>
+    </div>
+  </div>
+);
+
+const SizeHead = ({ color, label, count }: { color: string; label: string; count: number }) => (
+  <div className={s.sizeHead} style={vars({ '--c': color })}>
+    <i />
+    {label}
+    <span>{count}</span>
+  </div>
+);
+
+const DoStuff: Scene = () => (
+  <div className={s.stage}>
+    <div className={s.col} style={{ gap: '0.4em' }}>
+      <SizeHead color="var(--size-quick)" label="quick" count={3} />
+      <div className={s.row}>
+        <span className={cn(s.box, s.done, s.tick)}>{CHECK}</span>
+        <span className={s.strike}>Email the landlord</span>
+        <span className={s.time}>next</span>
+      </div>
+      <div className={cn(s.row, s.dim)}>
+        <span className={s.box}>{CHECK}</span>
+        <span>Book a haircut</span>
+      </div>
+      <SizeHead color="var(--size-errand)" label="errands" count={2} />
+      <SizeHead color="var(--size-big)" label="big" count={4} />
     </div>
   </div>
 );
@@ -493,6 +521,7 @@ const Partner: Scene = () => (
 export const EXTENSION_PREVIEWS: Record<string, Scene> = {
   [EXT_GOALS]: Goals,
   [EXT_ORGANIZE]: Organize,
+  [EXT_DO_STUFF]: DoStuff,
   [EXT_STREAKS]: Streaks,
   [EXT_HABIT_HEATMAP]: Heatmap,
   [EXT_COMPLETION_CONFETTI]: Confetti,

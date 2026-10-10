@@ -86,6 +86,7 @@ import { useCommandShortcuts } from '@/hooks/use-command-shortcuts';
 import type { CommandContext } from '@/lib/commands';
 import {
   PANEL_OVERLAY_QUERY,
+  RAIL_HANDBACK_WAIT_MS,
   RAIL_HEADER_HOLD_MS,
   RAIL_RESERVE_PX,
   holdRailHeader,
@@ -108,9 +109,11 @@ import {
   conversationsSettled,
   useConversationsStore,
 } from '@/lib/conversations-store';
-import { seedAI, CONNECTED_MODEL, NOTHING_CONNECTED, type SeedAI } from './helpers/ai-fixtures';
+import { seedAI, AI_HIDDEN, CONNECTED_MODEL, KEY_TURNED_DOWN, NOTHING_CONNECTED, type SeedAI } from './helpers/ai-fixtures';
 import { fakeApi, fakeTransport, flush, hangs, summary, type FakeTransport } from './helpers/conversations-fakes';
 import { askFromCommandBar } from '@/lib/open-chat';
+import { useModsStore } from '@/lib/mods-store';
+import type { UserMod } from '@/lib/mods/schema';
 import type { TaskItem } from '@/lib/planner-types';
 
 /* ── fixtures ────────────────────────────────────────────────────────── */
@@ -1710,10 +1713,44 @@ describe('the Ask button', () => {
     expect(pill()).not.toHaveAttribute('hidden');
   });
 
-  it('is not there with no AI: the column is only the item panel then', () => {
-    seed(NOTHING_CONNECTED);
+  it('is not there with nothing offered: the column is only the item panel then', () => {
+    seed(AI_HIDDEN);
     renderShell();
     expect(opener()).toBeNull();
+  });
+
+  // Unlit, the key opens the setup column the way it opens Ask: the column
+  // takes the key's place, focus goes to the column's heading (the key hid),
+  // and closing hands it back to the key.
+  it.each([
+    ['Set up AI', NOTHING_CONNECTED, 'invite'],
+    ['Fix AI', KEY_TURNED_DOWN, 'fix'],
+  ])('reads "%s" with nothing answering, and opens the setup column, focus and all', async (word, state, kind) => {
+    seed(state);
+    renderShell();
+    expect(opener()).toHaveAccessibleName(word);
+    clickOpener();
+    await timers();
+    const setup = document.querySelector<HTMLElement>(`[data-ask-setup="${kind}"]`) as HTMLElement;
+    expect(setup).toBeInTheDocument();
+    expect(column()).toHaveClass('w-[420px]');
+    expect(pill()).toHaveAttribute('hidden');
+    expect(document.activeElement).toBe(setup.querySelector('[data-ask-heading]'));
+    expect(useSidebarStore.getState().askOpen).toBe(false);
+    // ✕ closes it and hands focus back to the key.
+    fireEvent.click(screen.getByTestId('setup-close'));
+    await act(() => new Promise((r) => setTimeout(r, RAIL_HANDBACK_WAIT_MS)));
+    expect(useRailStore.getState().summoned).toBe(false);
+    expect(column()).toHaveClass('w-0');
+    expect(document.activeElement).toBe(opener());
+    // Ctrl+J from the key opens it again, and Ctrl+J from inside closes it.
+    pressCtrlJHere();
+    await timers();
+    expect(document.querySelector(`[data-ask-setup="${kind}"]`)).toBeInTheDocument();
+    pressCtrlJHere();
+    await act(() => new Promise((r) => setTimeout(r, RAIL_HANDBACK_WAIT_MS)));
+    expect(column()).toHaveClass('w-0');
+    expect(document.activeElement).toBe(opener());
   });
 });
 
@@ -1736,7 +1773,8 @@ describe('with no AI', () => {
     expect(dialog()).toHaveClass('overflow-y-auto', 'px-5', 'pt-[42px]', 'pb-5');
   });
 
-  it('keeps Ctrl+J from the browser and does nothing with it', () => {
+  it('keeps Ctrl+J from the browser and does nothing with it, when nothing is offered', () => {
+    seed(AI_HIDDEN);
     renderShell();
     openRow();
     expect(pressCtrlJ()).toBe(true);
@@ -1747,6 +1785,111 @@ describe('with no AI', () => {
     expect(pressCtrlJ()).toBe(true);
     expect(useRailStore.getState().summoned).toBe(false);
     expect(column()).toHaveClass('w-0');
+  });
+});
+
+/* ── the setup column (nothing answers; setup or a fix offered) ──────── */
+
+describe('the setup column', () => {
+  beforeEach(() => {
+    seed(NOTHING_CONNECTED);
+    // Kept open from an earlier session: setup never reads it.
+    useSidebarStore.setState({ askOpen: true });
+  });
+  const setup = () => document.querySelector<HTMLElement>('[data-ask-setup]');
+
+  it('is not raised at boot by an Ask kept open, only by a summon', () => {
+    renderShell();
+    expect(setup()).toBeNull();
+    expect(column()).toHaveClass('w-0');
+    expect(pressCtrlJ()).toBe(true);
+    expect(setup()).toHaveAttribute('data-ask-setup', 'invite');
+  });
+
+  it("an item opened over it is today's panel, and closing the item shows setup again", () => {
+    renderShell();
+    pressCtrlJ();
+    openRow();
+    // Still mounted under the item, as Ask is, but hidden and inert.
+    expect(setup()).toBeInTheDocument();
+    expect(setup()).not.toBeVisible();
+    expect(setup()).toHaveAttribute('inert');
+    // The plain panel: no "‹ Ask" (there is no Ask to go back to), Done kept.
+    expect(within(dialog()).queryByTestId('rail-back')).toBeNull();
+    expect(within(dialog()).getByTestId('item-dialog-submit')).toBeInTheDocument();
+    expect(dialog().querySelector('[data-ask-composer]')).toBeNull();
+    act(() => useUIStore.getState().closeDialog());
+    expect(setup()).toBeVisible();
+    expect(setup()).not.toHaveAttribute('inert');
+  });
+
+  it('keeps a key left in its box, and the column itself, while an item is open over it', () => {
+    renderShell();
+    pressCtrlJ();
+    const before = setup();
+    const field = before!.querySelector<HTMLInputElement>('input');
+    expect(field).not.toBeNull();
+    // A sentinel, set on the DOM value as a paste leaves it (the box is uncontrolled).
+    fireEvent.change(field!, { target: { value: 'AQ.sentinel-left-in-the-box' } });
+
+    openRow();
+    expect(setup()).toBe(before);
+    act(() => useUIStore.getState().closeDialog());
+
+    // The same column, not a fresh mount: the box still holds what was in it.
+    expect(setup()).toBe(before);
+    expect(field!.isConnected).toBe(true);
+    expect(field!.value).toBe('AQ.sentinel-left-in-the-box');
+  });
+
+  it('goes when the summon does, under an item too', () => {
+    renderShell();
+    pressCtrlJ();
+    openRow();
+    expect(setup()).toBeInTheDocument();
+    // Ctrl+J over the item closes both (lib/open-chat.ts toggleSetup).
+    pressCtrlJ();
+    expect(itemOpen()).toBe(false);
+    expect(useRailStore.getState().summoned).toBe(false);
+    expect(setup()).toBeNull();
+  });
+
+  it('Escape closes it, docked as well as overlaid: it is not a place to rest', () => {
+    renderShell();
+    pressCtrlJ();
+    act(() => (setup()?.querySelector('[data-ask-heading]') as HTMLElement).focus());
+    pressEscapeHere();
+    expect(useRailStore.getState().summoned).toBe(false);
+    expect(column()).toHaveClass('w-0');
+  });
+
+  it('becomes Ask in place when something answers under the same summon', () => {
+    renderShell();
+    pressCtrlJ();
+    expect(setup()).toBeInTheDocument();
+    act(() => seed(CONNECTED_MODEL));
+    expect(setup()).toBeNull();
+    expect(askView()).toBeInTheDocument();
+    expect(column()).toHaveClass('w-[420px]');
+  });
+
+  it('wakes no conversation list: it is not Ask', () => {
+    const ensureLoaded = vi.spyOn(useConversationsStore.getState(), 'ensureLoaded');
+    try {
+      renderShell();
+      pressCtrlJ();
+      expect(setup()).toBeInTheDocument();
+      expect(ensureLoaded).not.toHaveBeenCalled();
+    } finally {
+      ensureLoaded.mockRestore();
+    }
+  });
+
+  it('drops a composer request that would otherwise wait for the next box', () => {
+    renderShell();
+    pressCtrlJ();
+    act(() => useRailStore.getState().focusComposer());
+    expect(useRailStore.getState().pendingFocus).toBeNull();
   });
 });
 
@@ -1957,7 +2100,7 @@ describe('<AskHome/>, a brand-new account', () => {
     expect(within(home).queryByTestId('needs-you')).toBeNull();
     expect(within(home).queryByTestId('ai-activity')).toBeNull();
     expect(home.querySelector('[data-ask-composer] textarea')).not.toBeNull();
-    expect(within(home).getByTestId('answerer-label')).toHaveTextContent('gpt-4o-mini');
+    expect(within(home).getByTestId('answerer-label')).toHaveTextContent('GPT-4o mini');
     expect(within(home).queryByTestId('proposal-card')).toBeNull();
 
     act(() => {
@@ -2074,5 +2217,130 @@ describe('<RailHeader/>', () => {
     expect(screen.getByTestId('rail-back')).toHaveClass('min-w-0');
     expect(screen.getByTestId('rail-back')).not.toHaveClass('shrink-0');
     expect(screen.getByTestId('rail-close')).toHaveClass('ml-auto');
+  });
+});
+
+/* ── a mod's panel (build order 9) ───────────────────────────────────── */
+
+describe("a mod's panel in the column", () => {
+  const WATER_ROW: UserMod = {
+    id: 'm1',
+    userId: 'u1',
+    kind: 'mod',
+    slug: 'water',
+    name: 'Water',
+    enabled: true,
+    manifest: { version: 1, uses: ['ui'], commands: [], panels: [{ id: 'water', label: 'Glasses' }] },
+    disabledReason: null,
+    createdAt: '2026-03-01T00:00:00Z',
+    updatedAt: '2026-03-01T00:00:00Z',
+  };
+  const modRail = () => document.querySelector<HTMLElement>('[data-mod-rail]');
+  const openWater = () => act(() => useRailStore.getState().openModPanel({ modId: 'm1', panelId: 'water' }));
+
+  beforeEach(() => {
+    useModsStore.setState({ available: true, loaded: true, safeMode: false, rows: [WATER_ROW] });
+  });
+  afterEach(() => {
+    act(() => useRailStore.getState().reset());
+    useModsStore.setState({ rows: [] });
+  });
+
+  it('shows with the host chrome, and Ask is not mounted under it while askOpen is false', () => {
+    useSidebarStore.setState({ askOpen: false });
+    renderShell();
+    openWater();
+    expect(modRail()).toBeVisible();
+    expect(within(modRail()!).getByTestId('mod-surface-chrome')).toHaveTextContent('Water');
+    expect(within(modRail()!).getByTestId('mod-surface-chrome')).toHaveTextContent('Your mod');
+    expect(askView()).toBeNull();
+    expect(useRailStore.getState().reservePx).toBe(432);
+    expect(main()).not.toHaveAttribute('inert');
+  });
+
+  it("is covered by an item, whose back reads \"Your mod · Water\" and returns to the panel", () => {
+    useSidebarStore.setState({ askOpen: false });
+    seed(NOTHING_CONNECTED);
+    renderShell();
+    openWater();
+    openRow();
+    expect(modRail()).not.toBeVisible();
+    expect(modRail()).toHaveAttribute('inert');
+    const back = within(dialog()).getByTestId('rail-back');
+    expect(back).toHaveTextContent('Your mod · Water');
+    fireEvent.click(back);
+    expect(itemOpen()).toBe(false);
+    expect(useRailStore.getState().modPanel).not.toBeNull();
+    expect(modRail()).toBeVisible();
+  });
+
+  it('✕ over the item closes the item once, then the panel', () => {
+    renderShell();
+    openWater();
+    const closes = vi.fn();
+    const off = useUIStore.subscribe((s, prev) => {
+      if (prev.activeDialog && !s.activeDialog) closes();
+    });
+    openRow();
+    fireEvent.click(within(dialog()).getByTestId('item-dialog-close'));
+    off();
+    expect(closes).toHaveBeenCalledTimes(1);
+    expect(itemOpen()).toBe(false);
+    expect(useRailStore.getState().modPanel).toBeNull();
+    // Ask was kept open, so it shows again; the panel never wrote askOpen.
+    expect(useSidebarStore.getState().askOpen).toBe(true);
+  });
+
+  it('stays painted while the column eases shut, until its width transition ends', () => {
+    useSidebarStore.setState({ askOpen: false });
+    renderShell();
+    openWater();
+    act(() => useRailStore.getState().closeModPanel());
+    expect(modRail()).toBeVisible();
+    expect(modRail()).toHaveAttribute('inert');
+    fireEvent.transitionEnd(column(), { propertyName: 'width' });
+    expect(modRail()).toBeNull();
+  });
+
+  it('as an overlay, a click on the canvas closes it', () => {
+    viewport.narrow = true;
+    useSidebarStore.setState({ askOpen: false });
+    renderShell();
+    openWater();
+    expect(modRail()).toBeVisible();
+    expect(main()).toHaveAttribute('inert');
+    clickAway();
+    expect(useRailStore.getState().modPanel).toBeNull();
+    expect(main()).not.toHaveAttribute('inert');
+  });
+
+  it('closes when its mod is deleted', () => {
+    renderShell();
+    openWater();
+    act(() => useModsStore.setState({ rows: [] }));
+    expect(useRailStore.getState().modPanel).toBeNull();
+  });
+
+  it('with no AI, the header key opens it and its ✕ closes it, handing focus back to the key', async () => {
+    seed(AI_HIDDEN);
+    useSidebarStore.setState({ askOpen: false });
+    renderShell();
+    const key = screen.getByRole('button', { name: 'Your mod panels' });
+    fireEvent.click(key, { detail: 1 });
+    expect(modRail()).toBeVisible();
+    expect(key).toHaveAttribute('hidden');
+    within(modRail()!).getByTestId('mod-rail-close').focus();
+    act(() => useRailStore.getState().closeModPanel());
+    expect(modRail()).toBeVisible();
+    fireEvent.transitionEnd(column(), { propertyName: 'width' });
+    await timers();
+    expect(key).not.toHaveAttribute('hidden');
+    expect(document.activeElement).toBe(key);
+  });
+
+  it('its header carries titlebar-hole', () => {
+    renderShell();
+    openWater();
+    expect(within(modRail()!).getByTestId('mod-surface-chrome')).toHaveClass('titlebar-hole');
   });
 });

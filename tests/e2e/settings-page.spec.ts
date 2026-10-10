@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { loginTestUser } from './helpers/auth';
 import { resetUserSettings } from './helpers/api';
+import { gateAnswered, stubAIGate, type GateStub } from './helpers/ai';
 
 /**
  * The settings ROUTE, driven through its own UI.
@@ -25,6 +26,27 @@ async function gotoSettings(page: Page, pane = 'day'): Promise<void> {
 
 function row(page: Page, id: string) {
   return page.locator(`[data-setting-row="${id}"]`);
+}
+
+/** Settings → AI's "Use AI in dsul" switch, drawn while something is connected or AI is off. */
+function useAISwitch(page: Page) {
+  return row(page, 'beacon.useAi').getByRole('switch', { name: 'Use AI in dsul' });
+}
+
+/**
+ * Settings → AI against the stubbed gate (helpers/ai.ts `stubAIGate`). The
+ * stub goes in before the load: the gate is asked at sign-in, and the pane
+ * asks again as it mounts, so a route added later answers nothing. Every
+ * write the pane makes (the switch, "No AI, thanks", Disconnect) is then
+ * answered in the browser and never reaches the shared account, where a real
+ * `ai_hidden = true` would take AI away from every parallel spec.
+ */
+async function gotoAIPane(page: Page, o: Parameters<typeof stubAIGate>[1]): Promise<GateStub> {
+  const gate = await stubAIGate(page, o);
+  const answered = gateAnswered(page);
+  await gotoSettings(page, 'ai');
+  await answered;
+  return gate;
 }
 
 test.describe('Settings page', () => {
@@ -65,10 +87,185 @@ test.describe('Settings page', () => {
     await expect(row(page, 'rituals.morningCheck')).toBeVisible();
 
     // …and arriving directly works the same way.
-    await gotoSettings(page, 'beacon');
-    await expect(row(page, 'beacon.provider')).toBeVisible();
-    // The AI pane opens with the model connection, above its rows.
+    await gotoSettings(page, 'ai');
+    await expect(row(page, 'beacon.useAi')).toBeVisible();
+    // The AI pane opens with Use AI in dsul, and the connection under it.
     await expect(page.getByTestId('model-connection-panel')).toBeVisible();
+  });
+
+  test('the AI pane lives at /settings/ai and keeps that address; /settings/beacon still opens it', async ({
+    page,
+  }) => {
+    // Read-only: nothing here connects, so the real gate is safe to ask.
+    const sections = page.getByRole('navigation', { name: 'Settings sections' });
+    const aiRow = sections.getByRole('button', { name: 'AI', exact: true });
+
+    // The address every link in the app uses: the pane, under the name it wears.
+    await gotoSettings(page, 'ai');
+    await expect(page.getByTestId('model-connection-panel')).toBeVisible();
+    await expect(row(page, 'beacon.useAi')).toBeVisible();
+    await expect(aiRow).toHaveAttribute('aria-current', 'true');
+    await expect(page).toHaveURL(/\/settings\/ai$/);
+
+    // The rail goes there by the same name, never by the pane's id.
+    await sections.getByRole('button', { name: 'Rituals', exact: true }).click();
+    await expect(page).toHaveURL(/\/settings\/rituals$/);
+    await aiRow.click();
+    await expect(page).toHaveURL(/\/settings\/ai$/);
+    await expect(page.getByTestId('model-connection-panel')).toBeVisible();
+
+    // A deep link to one of its rows, sent to the wrong pane, routes itself
+    // to the alias too (and the row strips its ?focus= once it has arrived,
+    // which for an AI row waits for the connection check to answer).
+    await page.goto('/settings/day?focus=beacon.useAi');
+    await expect(row(page, 'beacon.useAi')).toBeVisible({ timeout: 20_000 });
+    await expect(page).toHaveURL(/\/settings\/ai$/);
+
+    // The old address is kept, for links already out there.
+    await gotoSettings(page, 'beacon');
+    await expect(page.getByTestId('model-connection-panel')).toBeVisible();
+    await expect(page).toHaveURL(/\/settings\/beacon$/);
+  });
+
+  test('on the real gate the shared account reads as a paired, pull-only OpenClaw', async ({
+    page,
+  }) => {
+    // Read-only: nothing here is clicked, so the real gate is safe to ask.
+    // Global setup seeds an agent key for the shared account, so the gate
+    // answers "OpenClaw paired, no model": OpenClaw takes on tasks, and
+    // nothing answers in chat. The answer arrives after a beat, and every
+    // assertion here waits for it.
+    await gotoSettings(page, 'ai');
+
+    await expect(page.getByTestId('mcp-status')).toHaveText('Not set up');
+    await expect(page.getByTestId('openclaw-status')).toHaveText('Paired');
+    await expect(page.getByTestId('openclaw-copy')).toHaveText('OpenClaw takes on tasks you hand it.');
+    // Something is connected, so the explainer is the one sentence, not the tiles.
+    await expect(page.getByTestId('ai-explainer')).toHaveAttribute('data-form', 'sentence');
+    await expect(useAISwitch(page)).toBeChecked();
+    await expect(page.getByTestId('ai-device')).toBeVisible();
+    // Ctrl+J does nothing for a pull-only account, so the sentence never offers it.
+    // Asked only once the sentence is drawn from the gate's answer.
+    await expect(page.getByTestId('ai-explainer-chord')).toHaveCount(0);
+  });
+
+  test('the Use AI switch turns AI off for the account and back on', async ({ page }) => {
+    const gate = await gotoAIPane(page, { model: 'ok' });
+    const panel = page.getByTestId('model-connection-panel');
+    const off = page.getByTestId('mcp-ai-off');
+    const toggle = useAISwitch(page);
+
+    await expect(panel.getByTestId('mcp-status')).toHaveText('Working');
+    await expect(toggle).toBeChecked();
+
+    // Off: the AI-off card under the switch, and nothing of the connection below it.
+    await toggle.click();
+    await expect(off).toBeVisible();
+    await expect(toggle).not.toBeChecked();
+    await expect(panel).toHaveCount(0);
+
+    // On again: the card goes and the connection is back.
+    await toggle.click();
+    await expect(off).toHaveCount(0);
+    await expect(panel).toBeVisible();
+    await expect(toggle).toBeChecked();
+    await expect.poll(() => gate.patches).toEqual([{ hidden: true }, { hidden: false }]);
+    expect(gate.hidden()).toBe(false);
+  });
+
+  test('AI off with a model connected: the card says so, and Disconnect deletes it', async ({
+    page,
+  }) => {
+    const gate = await gotoAIPane(page, { model: 'ok', aiHidden: true });
+    const off = page.getByTestId('mcp-ai-off');
+    const connected = off.getByTestId('ai-off-connected');
+
+    await expect(off).toBeVisible();
+    await expect(useAISwitch(page)).not.toBeChecked();
+    // Everything else in the pane is hidden while AI is off.
+    await expect(page.getByTestId('ai-explainer')).toHaveCount(0);
+    await expect(page.getByTestId('ai-openclaw')).toHaveCount(0);
+    await expect(page.getByTestId('ai-device')).toHaveCount(0);
+    await expect(page.getByTestId('model-connection-panel')).toHaveCount(0);
+
+    await expect(connected).toContainText('Google Gemini is still connected');
+    await connected.getByTestId('ai-off-disconnect').click();
+    await expect(page.getByTestId('confirm-dialog')).toContainText('Disconnect Google Gemini?');
+    await page.getByTestId('model-disconnect-confirm').click();
+
+    // The row goes once the DELETE lands; the card stays, since AI is still off.
+    await expect(connected).toHaveCount(0);
+    await expect(off).toBeVisible();
+    expect(gate.deletes()).toBe(1);
+    expect(gate.model()).toBeNull();
+    expect(gate.patches).toEqual([]);
+    expect(gate.hidden()).toBe(true);
+  });
+
+  test('nothing connected: No AI, thanks turns into the switch, and the switch brings it back', async ({
+    page,
+  }) => {
+    const gate = await gotoAIPane(page, { model: 'none' });
+    const noAI = page.getByTestId('ai-no-ai-thanks');
+    const toggle = useAISwitch(page);
+
+    await expect(page.getByTestId('ai-explainer')).toHaveAttribute('data-form', 'tiles');
+    await expect(page.getByTestId('mcp-status')).toHaveText('Not set up');
+    await expect(noAI).toBeVisible();
+    await expect(toggle).toHaveCount(0);
+    await expect(page.getByTestId('ai-device')).toHaveCount(0);
+
+    // The press hands focus to the control that replaced the button.
+    await noAI.click();
+    await expect(toggle).not.toBeChecked();
+    await expect(toggle).toBeFocused();
+    await expect(page.getByTestId('mcp-ai-off')).toBeVisible();
+    await expect.poll(() => gate.patches).toEqual([{ hidden: true }]);
+
+    await toggle.click();
+    await expect(noAI).toBeVisible();
+    await expect(noAI).toBeFocused();
+    await expect(page.getByTestId('mcp-ai-off')).toHaveCount(0);
+    await expect.poll(() => gate.patches).toEqual([{ hidden: true }, { hidden: false }]);
+  });
+
+  test('a daily limit: the pill says when AI is back, with no Check again', async ({ page }) => {
+    const gate = await gotoAIPane(page, { model: 'limited' });
+    const panel = page.getByTestId('model-connection-panel');
+
+    await expect(panel.getByTestId('mcp-status')).toHaveText(/^Daily limit · back at /);
+    await expect(panel.getByTestId('mcp-limit-note')).toBeVisible();
+    await expect(panel.getByTestId('mcp-disconnect')).toBeVisible();
+    await expect(panel.getByTestId('mcp-recheck')).toHaveCount(0);
+    expect(gate.patches).toEqual([]);
+  });
+
+  test('AI off with OpenClaw paired: the card names it, and Unpair ends it', async ({ page }) => {
+    // Stubbed: a real Unpair would delete the agent key global setup seeds.
+    const gate = await gotoAIPane(page, { aiHidden: true, openclaw: 'paired' });
+    const off = page.getByTestId('mcp-ai-off');
+    const paired = off.getByTestId('ai-off-paired');
+
+    await expect(paired).toContainText('atlas is still paired');
+    await expect(paired).toContainText(
+      'OpenClaw reads your planner through its own pairing, which this switch doesn’t touch. Unpair it to stop that.'
+    );
+    await expect(off.getByTestId('ai-off-connected')).toHaveCount(0);
+
+    await paired.getByTestId('ai-off-unpair').click();
+    await expect(page.getByTestId('confirm-dialog')).toContainText('Unpair atlas?');
+    await page.getByTestId('openclaw-unpair-confirm').click();
+
+    // The row goes once the DELETE lands; the card stays, since AI is still off.
+    await expect(paired).toHaveCount(0);
+    await expect(off).toBeVisible();
+    expect(gate.unpairs()).toBe(1);
+    expect(gate.patches).toEqual([]);
+
+    // And it stays unpaired once AI is back on.
+    await useAISwitch(page).click();
+    await expect(page.getByTestId('openclaw-status')).toHaveText('Not paired');
+    await expect(page.getByTestId('openclaw-pair')).toBeVisible();
   });
 
   test('search filters across panes, counts out loud, and keeps rows live', async ({ page }) => {

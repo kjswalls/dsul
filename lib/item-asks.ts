@@ -84,7 +84,22 @@ export function isSitting(item: Item, ctx: Pick<ItemAskContext, 'todayStr' | 'in
  * down.
  */
 export function canBreakDown(item: Item, canPropose: boolean): boolean {
-  return canPropose && getItemTypeConfig(itemTypeName(item)).subtasks && !isSubtask(item) && !isFinished(item);
+  return canPropose && breakable(item);
+}
+
+/**
+ * The same button before any AI is set up (AI setup phase 2): while the gate
+ * invites (`askInvite`), an item that could be broken down offers it, and the
+ * press opens setup instead. The same item rule as `canBreakDown`, so the
+ * offer never shows where the real button would not once something answers.
+ * Whether the person closed it for good is the caller's (a one-time nudge).
+ */
+export function canOfferBreakDown(item: Item, askInvite: boolean): boolean {
+  return askInvite && breakable(item);
+}
+
+function breakable(item: Item): boolean {
+  return getItemTypeConfig(itemTypeName(item)).subtasks && !isSubtask(item) && !isFinished(item);
 }
 
 /** A streak-counting type (habits) gets "Make this easier to keep" instead of the task-shaped asks. */

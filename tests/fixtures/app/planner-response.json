@@ -9,8 +9,21 @@
     "timeFormat": "24h",
     "appIcon": "lime",
     "streaksEnabled": false,
-    "remindersEnabled": true
+    "remindersEnabled": true,
+    "lastCallEnabled": true,
+    "lastCallTime": "20:45",
+    "eodReviewEnabled": true,
+    "eodReviewTime": "21:30",
+    "lastEodReviewDate": "2026-10-01",
+    "reminderGraceMinutes": 30
   },
+  "snoozes": [
+    {
+      "itemId": "11111111-1111-4111-8111-000000000001",
+      "until": "2026-10-02T15:19:05.123456+00:00",
+      "date": "2026-10-02"
+    }
+  ],
   "writes": [
     "complete",
     "schedule",
@@ -26,7 +39,10 @@
     "timesPerDay",
     "reminder",
     "time",
-    "repeat"
+    "repeat",
+    "project",
+    "collect",
+    "snooze"
   ],
   "items": [
     {
@@ -185,7 +201,9 @@
       "completedDates": [],
       "skippedDates": [],
       "order": 7,
-      "inProjectBlock": true
+      "inProjectBlock": true,
+      "previousStartTime": "16:00",
+      "previousStartDate": "2026-10-01"
     },
     {
       "type": "habit",

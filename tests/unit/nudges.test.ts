@@ -11,7 +11,8 @@ vi.mock('@/lib/nudges/service', () => ({
 
 import { loadDismissedNudges, saveDismissedNudges } from '@/lib/nudges/service';
 import { useNudgeStore } from '@/lib/nudge-store';
-import { NUDGES, NUDGE_STREAKS_ON, nudgeDef } from '@/lib/nudges/registry';
+import { NUDGES, NUDGE_RITUALS_INTRO, NUDGE_STREAKS_ON, nudgeDef, ritualsNudgeReady } from '@/lib/nudges/registry';
+import { streakNudgeEnabled } from '@/lib/nudges/streak-gate';
 
 const mockLoad = vi.mocked(loadDismissedNudges);
 const mockSave = vi.mocked(saveDismissedNudges);
@@ -138,5 +139,76 @@ describe('nudge store in-flight claim', () => {
     dB.resolve([]);
     await b;
     expect(useNudgeStore.getState().hydratedUserId).toBe('user-b');
+  });
+});
+
+describe('the rituals nudge (#86)', () => {
+  const READY = {
+    settingsHydrated: true,
+    tourAnswered: true,
+    tourShowing: false,
+    hasTasks: true,
+    morningCheckEnabled: false,
+    eodReviewEnabled: false,
+    setupOrUndoUp: false,
+  };
+
+  it('deep-links to the Rituals pane, which turns nothing on by itself', () => {
+    expect(nudgeDef(NUDGE_RITUALS_INTRO)?.settingsFocusId).toBe('rituals.morningCheck');
+  });
+
+  it('fires once there is something planned and both rituals are still off', () => {
+    expect(ritualsNudgeReady(READY)).toBe(true);
+  });
+
+  it.each([
+    ['settings are not this account’s yet', { settingsHydrated: false }],
+    ['the onboarding answer has not come back', { tourAnswered: false }],
+    ['the tour is up', { tourShowing: true }],
+    ['nothing is planned yet', { hasTasks: false }],
+    ['the morning check is already on', { morningCheckEnabled: true }],
+    ['the review is already on', { eodReviewEnabled: true }],
+    // The tour's Set up AI ends with no toast: the intro waits out setup, the
+    // "It works." it ends on, and an undo row such as No AI's.
+    ['AI setup, "It works." or an undo row is up', { setupOrUndoUp: true }],
+  ])('waits while %s', (_why, patch) => {
+    expect(ritualsNudgeReady({ ...READY, ...patch })).toBe(false);
+  });
+});
+
+describe('when the streak nudge may show', () => {
+  // A returning account with a habit, the tour answered and not showing.
+  const READY = {
+    extReady: true,
+    streaksOn: true,
+    userId: 'user-1',
+    tourAnsweredFor: 'user-1',
+    tourShowing: false,
+    hasHabit: true,
+  };
+
+  it('shows once everything has answered and there is a habit', () => {
+    expect(streakNudgeEnabled(READY)).toBe(true);
+  });
+
+  it('waits for streaks to be provably on', () => {
+    expect(streakNudgeEnabled({ ...READY, extReady: false })).toBe(false);
+    expect(streakNudgeEnabled({ ...READY, streaksOn: false })).toBe(false);
+  });
+
+  it('never covers the first-run tour', () => {
+    expect(streakNudgeEnabled({ ...READY, tourShowing: true })).toBe(false);
+  });
+
+  it("waits for the tour's answer, for this account", () => {
+    // The onboarding read lands after the planner load: no tour showing yet
+    // is not an answer, and nor is the last account's.
+    expect(streakNudgeEnabled({ ...READY, tourAnsweredFor: null })).toBe(false);
+    expect(streakNudgeEnabled({ ...READY, tourAnsweredFor: 'user-0' })).toBe(false);
+    expect(streakNudgeEnabled({ ...READY, userId: null, tourAnsweredFor: null })).toBe(false);
+  });
+
+  it('says nothing about flames to an account with no habit', () => {
+    expect(streakNudgeEnabled({ ...READY, hasHabit: false })).toBe(false);
   });
 });

@@ -18,23 +18,30 @@ import {
   LOOK_ATTRIBUTES,
   LOOK_STORAGE_KEYS,
   darkLookDef,
-  isDarkLook,
-  isLightLook,
+  isDarkPickShape,
+  isLightPickShape,
   lightLookDef,
+  resolveDarkPick,
+  resolveLightPick,
 } from '@/lib/theme-looks';
+import { useUserThemes } from '@/lib/user-themes/store';
 import { DEFAULT_LAYOUT, LAYOUT_STORAGE_KEY, isLayoutTheme } from '@/lib/layout-themes';
 import { APP_ICON_STORAGE_KEY, isAppIcon } from '@/lib/app-icons';
 import { useExtensionsStore } from '@/lib/extensions-store';
+import { useModsStore } from '@/lib/mods-store';
 import { useAIConnectionStore } from '@/lib/ai-connection-store';
 import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
 import { useGatewayStore } from '@/lib/gateway-store';
 import { useNudgeStore } from '@/lib/nudge-store';
 import { sessionUserFrom, useSessionUserStore } from '@/lib/session-user-store';
-import { useUIStore } from '@/lib/ui-store';
-import { adoptLocalState, clearUserScopedLocalState } from '@/lib/local-state';
+import { isDataDialogArmed, useUIStore } from '@/lib/ui-store';
+import { adoptLocalState, clearUserScopedLocalState, localStateOwner } from '@/lib/local-state';
+import { clearPlannerSnapshot, warmPlannerSnapshot } from '@/lib/planner-snapshot';
+import { startPlannerSnapshotWriter } from '@/lib/planner-snapshot-writer';
 import { leaveForLoginIfNoSession, leaveForLoginIfSignedOutPage } from '@/lib/signed-out-redirect';
 import { fetchContainersSeeded, fetchTrashedNames, markContainersSeeded } from '@/lib/db';
 import { runFirstRunSeed } from '@/lib/seed-containers';
+import { withoutReleasedCaptures } from '@/lib/held-captures';
 import { routeNeedsItems } from '@/lib/route-data';
 import { useTheme } from 'next-themes';
 import type { TimeBucket } from '@/lib/planner-types';
@@ -48,6 +55,11 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
   const hydratedUserId = useRef<string | null>(null);
   /** Its sibling for the planner load itself — see loadPlanner. */
   const loadedUserId = useRef<string | null>(null);
+  /**
+   * Whether this page has offered the look-only preview yet (lib/planner-snapshot.ts).
+   * Once per page lifetime, on the first load attempt — see loadPlanner.
+   */
+  const previewOffered = useRef(false);
 
   /**
    * Does the route on screen render any of what `loadPlanner` fetches?
@@ -120,6 +132,9 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
   const palette = usePaletteStore((s) => s.palette);
   const lightLook = useLookStore((s) => s.light);
   const darkLook = useLookStore((s) => s.dark);
+  // A user theme's pick resolves against the registry, so both effects below
+  // re-run when it changes (rows arriving, a theme switched off, safe mode).
+  const userThemesRev = useUserThemes((s) => s.rev);
   useEffect(() => {
     const html = document.documentElement;
     if (palette === 'default') {
@@ -139,27 +154,29 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     // A theme with its own ground names its own chrome colour; the defaults
     // (Paper, Night) defer to the palette, which is the only thing tinting them.
     const colors = paletteDef(palette).themeColor;
-    const light = lightLookDef(lightLook).themeColor ?? colors.light;
-    const dark = darkLookDef(darkLook).themeColor ?? colors.dark;
+    const light = lightLookDef(resolveLightPick(lightLook)).themeColor ?? colors.light;
+    const dark = darkLookDef(resolveDarkPick(darkLook)).themeColor ?? colors.dark;
     document.querySelectorAll('meta[name="theme-color"]').forEach((meta) => {
       const media = meta.getAttribute('media') ?? '';
       meta.setAttribute('content', media.includes('dark') ? dark : light);
     });
-  }, [palette, lightLook, darkLook]);
+  }, [palette, lightLook, darkLook, userThemesRev]);
 
   // The themes' single DOM writer, same pattern as the palette above. BOTH
   // picks are stamped at all times — the CSS blocks are mode-scoped, so a mode
   // switch needs no JS and no flash. A default pick is the absence of its
   // attribute, which is also what the pre-hydration script leaves behind.
+  // The stamp is what SHOWS (a user theme that is off or missing shows the
+  // default); the mirror is the PICK, so the theme comes back when it does.
   useEffect(() => {
     const html = document.documentElement;
     const picks = [
-      ['light', lightLook, DEFAULT_LIGHT_LOOK],
-      ['dark', darkLook, DEFAULT_DARK_LOOK],
+      ['light', lightLook, resolveLightPick(lightLook), DEFAULT_LIGHT_LOOK],
+      ['dark', darkLook, resolveDarkPick(darkLook), DEFAULT_DARK_LOOK],
     ] as const;
-    for (const [mode, pick, fallback] of picks) {
-      if (pick === fallback) html.removeAttribute(LOOK_ATTRIBUTES[mode]);
-      else html.setAttribute(LOOK_ATTRIBUTES[mode], pick);
+    for (const [mode, pick, shown, fallback] of picks) {
+      if (shown === fallback) html.removeAttribute(LOOK_ATTRIBUTES[mode]);
+      else html.setAttribute(LOOK_ATTRIBUTES[mode], shown);
       try {
         if (pick === fallback) window.localStorage.removeItem(LOOK_STORAGE_KEYS[mode]);
         else window.localStorage.setItem(LOOK_STORAGE_KEYS[mode], pick);
@@ -167,7 +184,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         // Private mode — the stamp still applies for this session.
       }
     }
-  }, [lightLook, darkLook]);
+  }, [lightLook, darkLook, userThemesRev]);
 
   // The layout's localStorage mirror. No DOM stamp here: the desktop shell
   // stamps its own root (lib/layout-themes.ts), which keeps a layout off the
@@ -197,6 +214,17 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       // Private mode — the pick still holds for this session.
     }
   }, [appIcon, appIconKnown]);
+
+  // The planner snapshot (lib/planner-snapshot.ts): its writer for the page's
+  // lifetime, and an orphan purge. Declared BEFORE the auth effect, so the purge
+  // is asked for ahead of anything that effect reads. A sign-out's hard
+  // navigation can abort the IndexedDB clear, but the owner stamp went
+  // synchronously — so an unowned browser holding a snapshot (/login, after
+  // that sign-out) is exactly the leftover to drop.
+  useEffect(() => {
+    if (localStateOwner() === null) clearPlannerSnapshot();
+    return startPlannerSnapshotWriter();
+  }, []);
 
   useEffect(() => {
     const supabase = createClient();
@@ -328,10 +356,12 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         }
         // Same null rule as the palette: never chosen on any device leaves
         // this device's pick standing.
-        if (isLightLook(settings.theme_light)) {
+        // A user theme's slug is kept even before its row loads: what shows
+        // resolves separately, so the pick survives until the theme does.
+        if (isLightPickShape(settings.theme_light)) {
           useLookStore.getState().setLight(settings.theme_light);
         }
-        if (isDarkLook(settings.theme_dark)) {
+        if (isDarkPickShape(settings.theme_dark)) {
           useLookStore.getState().setDark(settings.theme_dark);
         }
         if (isLayoutTheme(settings.layout)) {
@@ -368,7 +398,20 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         hasSeeded: fetchContainersSeeded,
         markSeeded: markContainersSeeded,
         trashedNames: fetchTrashedNames,
-        snapshot: () => usePlannerStore.getState(),
+        snapshot: () => {
+          const s = usePlannerStore.getState();
+          // A capture held through the load is filed just after the landing,
+          // ahead of this read (lib/held-captures.ts). It is not the account's
+          // data: decided on it, a brand-new account would adopt nothing and
+          // latch with no starter set.
+          return {
+            userId: s.userId,
+            isLoading: s.isLoading,
+            loadFailedUserId: s.loadFailedUserId,
+            projects: s.projects,
+            items: withoutReleasedCaptures(s.userId, s.items),
+          };
+        },
         commit: (plan, forUserId) =>
           usePlannerStore.getState().seedStarterContainers(plan, forUserId),
       }).catch((error) => console.error('first-run container seeding failed', error));
@@ -431,6 +474,20 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     const loadPlanner = (userId: string) => {
       if (loadedUserId.current === userId) return;
       loadedUserId.current = userId;
+      // The look-only preview (lib/planner-snapshot.ts) is offered ONCE per
+      // page lifetime, on the first load attempt. Never on a retry: Retry calls
+      // initializeStore bare, and a SIGNED_IN after a failure (or an account
+      // switch) comes back here — re-previewing each offline retry would
+      // flicker cached → empty. Such a load is bare here too. Asked at APPLY
+      // time, not now: still on '/', and no data dialog armed (the /settings →
+      // Organize arm-then-push opens the console on fresh data, as it does
+      // without a preview). A first load on /item/x spends the offer, and its
+      // answer is no.
+      let preview: (() => boolean) | undefined;
+      if (!previewOffered.current) {
+        previewOffered.current = true;
+        preview = () => window.location.pathname === '/' && !isDataDialogArmed();
+      }
       // UNLATCHED ON FAILURE, and this half matters as much as the guard. A
       // failed load is a designed outcome, not a freak one: fetchRoutines
       // rethrows deliberately so a blip fails the WHOLE load rather than
@@ -449,7 +506,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       // The `userId` re-check is for a raced account switch: a slow failure for
       // the previous account must not unlatch the current one and trigger a
       // second load of someone else's data.
-      initializeStore(userId).then(
+      (preview ? initializeStore(userId, { preview }) : initializeStore(userId)).then(
         () => {
           const state = usePlannerStore.getState();
           // The deferred reads go out on a FAILED load too, ahead of the unlatch
@@ -561,6 +618,15 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     loadPlannerRef.current = loadPlanner;
     hydrateAfterLoadRef.current = hydrateAfterLoad;
 
+    // The cached planner's read, started BESIDE getSession rather than after
+    // it: a token refresh can hold getSession for longer than the skeleton's
+    // 250ms grace. Only a prefetch into memory, keyed on the on-disk owner
+    // stamp — nothing is painted until initializeStore offers the preview for
+    // the confirmed account, and a different account's adoption clears it
+    // (RAW_CLEARERS bumps the epoch, which voids the prefetch). Only where the
+    // route renders items; a lean route has no load to preview.
+    if (needsItemsRef.current) warmPlannerSnapshot(localStateOwner());
+
     // Check current session on mount
     supabase.auth.getSession().then(
       ({ data: { session }, error }) => {
@@ -576,7 +642,13 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         // retry; sending that user to /login would strand them on a sign-in
         // form they cannot use, so they stay where they are. That is the
         // backstop, not the usual road: a real offline launch rejects (below).
-        else if (!session && !error) leaveForLoginIfNoSession();
+        //
+        // The planner snapshot goes with it: with no session (expired, revoked
+        // or never), no account's whole planner should sit at rest here.
+        else if (!session && !error) {
+          clearPlannerSnapshot();
+          leaveForLoginIfNoSession();
+        }
       },
       // A rejection proves nothing about the account, and it is how an offline
       // launch with an expired session actually ends. auth-js retries the
@@ -610,12 +682,13 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         // switch through its own hydratedUserId guard — so they stay here,
         // where the only gap they have (a sign-out with no sign-in after it) is.
         useExtensionsStore.getState().reset();
+        useModsStore.getState().reset();
         useChannelSecretsStore.getState().reset();
         useGatewayStore.getState().reset();
         useNudgeStore.getState().reset();
         // The AI gate: not persisted, and an account switch already clears it
         // synchronously inside its hydrate. This covers the same gap as the
-        // four above (a sign-out with no sign-in after it), and drops any
+        // five above (a sign-out with no sign-in after it), and drops any
         // answer still in flight for the account that left.
         useAIConnectionStore.getState().reset();
         useSessionUserStore.getState().clear();

@@ -99,7 +99,7 @@ function onPointerDown(e: PointerEvent) {
  * reads are layout reads, and a pointerdown is the one moment they are cheap
  * (nothing has dirtied layout since the last frame).
  */
-function onScrollbar(e: PointerEvent): boolean {
+export function onScrollbar(e: PointerEvent): boolean {
   const el = e.target;
   if (!(el instanceof HTMLElement)) return false;
   const scrollsY = el.scrollHeight > el.clientHeight;

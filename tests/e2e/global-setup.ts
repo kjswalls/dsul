@@ -56,13 +56,16 @@ export default async function globalSetup() {
   // dismissed_nudges holds every one-time nudge: a nudge is a toast, and the
   // toaster sits where the dock omnibar's panel opens, so "Streaks are on"
   // swallowed the clicks on omnibar rows in omnibar.spec and pause.spec.
+  //
+  // The agent key lives in user_secrets (migration 059), never user_settings,
+  // which CHECKs its old column null.
   const existing = await rest(
-    `user_settings?user_id=eq.${userId}&select=openclaw_api_key`
+    `user_secrets?user_id=eq.${userId}&select=openclaw_api_key`
   ).then((r) => (r.ok ? r.json() : []));
 
   const apiKey: string =
     existing?.[0]?.openclaw_api_key ??
-    // Same shape the app mints: app/api/agent/apikey/route.ts.
+    // Same shape the app mints: app/api/agent/connect/authorize/route.ts.
     `dsul_${randomBytes(32).toString('hex')}`;
 
   const settingsRes = await rest('user_settings', {
@@ -79,7 +82,6 @@ export default async function globalSetup() {
       default_view: 'day',
       time_format: '12h',
       week_start_day: 'sunday',
-      openclaw_api_key: apiKey,
       dismissed_nudges: NUDGES.map((nudge) => nudge.id),
     }),
   });
@@ -87,6 +89,15 @@ export default async function globalSetup() {
     throw new Error(
       `Failed to seed user_settings (${settingsRes.status}): ${await settingsRes.text()}`
     );
+  }
+
+  const keyRes = await rest('user_secrets', {
+    method: 'POST',
+    headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify({ user_id: userId, openclaw_api_key: apiKey }),
+  });
+  if (!keyRes.ok) {
+    throw new Error(`Failed to seed the agent key (${keyRes.status}): ${await keyRes.text()}`);
   }
 
   // 2b. Switch on the extensions the specs drive.

@@ -90,6 +90,9 @@ export function confirmDeleteConversation(id: string, o: { item?: boolean; fallb
     confirmLabel: 'Delete',
     destructive: true,
     testId: item ? 'item-conversation-delete-confirm' : 'conversation-delete-confirm',
+    // A conversation is not a planner row (an item's stays as it is), so this
+    // is asked over the look-only preview too (lib/ui-store.ts confirm).
+    touchesPlanner: false,
     onConfirm: () => {
       void useConversationsStore
         .getState()

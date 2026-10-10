@@ -126,7 +126,7 @@ function LabelTag({
  * clamps every animation to nothing under [data-reduce-motion], which the
  * animations setting stamps, so this respects it without knowing about it.
  */
-function PendingControl({ label }: { label: string }) {
+export function PendingControl({ label }: { label: string }) {
   return (
     <span
       role="status"
@@ -377,6 +377,12 @@ export function SettingRow({
    * dead end.
    */
   action,
+  /**
+   * The modified bar in grey instead of lime. Settings → AI's rows pass it
+   * while nothing answers chat (settings-shell rowFor), so a row there never
+   * puts lime on a pane where nothing is lit. The reset button is unchanged.
+   */
+  quietMark,
 }: {
   record: SettingRecord;
   ctx: SettingCtx;
@@ -389,6 +395,7 @@ export function SettingRow({
   inactive?: boolean;
   highlighted?: boolean;
   action?: React.ReactNode;
+  quietMark?: boolean;
 }) {
   const uid = useId();
   const controlId = `set-${record.id}-${uid}`;
@@ -431,7 +438,10 @@ export function SettingRow({
         // Its own element, and never inside anything that fades: the lime
         // accent must not be dimmed through a parent's opacity.
         modified &&
-          'before:bg-primary before:absolute before:top-1/2 before:left-0 before:h-4 before:w-0.5 before:-translate-y-1/2 before:rounded-full before:content-[""]',
+          cn(
+            quietMark ? 'before:bg-muted-foreground' : 'before:bg-primary',
+            'before:absolute before:top-1/2 before:left-0 before:h-4 before:w-0.5 before:-translate-y-1/2 before:rounded-full before:content-[""]'
+          ),
         highlighted && 'after:ring-ring after:pointer-events-none after:absolute after:inset-0 after:rounded-[5px] after:ring-2 after:content-[""]'
       )}
     >

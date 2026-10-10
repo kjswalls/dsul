@@ -22,6 +22,7 @@ import { useAIConnectionStore } from '@/lib/ai-connection-store';
 import { useLookStore } from '@/lib/look-store';
 import { usePaletteStore } from '@/lib/palette-store';
 import { useExtensionsStore } from '@/lib/extensions-store';
+import { useModsStore } from '@/lib/mods-store';
 import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
 import { useGatewayStore } from '@/lib/gateway-store';
 import { useKeyboardShortcutsStore } from '@/lib/keyboard-shortcuts-store';
@@ -37,6 +38,8 @@ import {
   extensionPaneId,
   isExtensionPane,
   isPaneId,
+  paneHref,
+  resolvePaneSlug,
   settingById,
   type PaneId,
   type SettingCtx,
@@ -76,13 +79,17 @@ import { extensionEnabled } from '@/lib/extension-gates';
  *      and which the settings request usually beats anyway.
  */
 
+/** The modals this page owns and opens by name (see the dynamic imports below). */
+type LocalDialog = 'bug' | 'deleteAccount';
+
 /** Where an unrecognised path goes. Nearest real pane, never a blank page. */
 function fallbackPane(path: string | undefined): PaneId {
   return path && isExtensionPane(path) ? 'extensions' : 'day';
 }
 
-/* ── The one modal this page opens by name, deferred ───────────────────────
-   Reached only from a row the user clicks: dsul → Send feedback. Deferring it
+/* ── The modals this page opens by name, deferred ──────────────────────────
+   Reached only from a row the user clicks: dsul → Send feedback, and dsul →
+   Delete account, which is the same shape for the same reasons. Deferring it
    takes weight off this route's first load — measured across the PR that
    introduced the split at 40.6 kB gzip for the two modals that were deferred
    together, spent on surfaces most visits never open.
@@ -106,6 +113,10 @@ function fallbackPane(path: string | undefined): PaneId {
    STAYS mounted, keeping the close animation Radix needs a live subtree for. */
 const BugReportDialog = dynamic(
   () => import('@/components/bug-report/bug-report-dialog').then((m) => m.BugReportDialog),
+  { ssr: false }
+);
+const DeleteAccountDialog = dynamic(
+  () => import('@/components/settings/delete-account-dialog').then((m) => m.DeleteAccountDialog),
   { ssr: false }
 );
 
@@ -214,13 +225,16 @@ export default function SettingsPage() {
   const hydratedUserId = useMorningStore((s) => s.settingsHydratedUserId);
   const push = usePushSubscription();
 
-  const [localDialog, setLocalDialog] = useState<'bug' | null>(null);
-  // Whether the deferred modal has ever been opened. Latched, never cleared —
+  const [localDialog, setLocalDialog] = useState<LocalDialog | null>(null);
+  // Whether each deferred modal has ever been opened. Latched, never cleared —
   // see the note on the dynamic import above for both halves of why: mounting
   // it unopened downloads it, unmounting it on close takes the exit animation
   // with it.
-  const [everOpened, setEverOpened] = useState<{ bug: boolean }>({ bug: false });
-  const openLocalDialog = useCallback((which: 'bug') => {
+  const [everOpened, setEverOpened] = useState<Record<LocalDialog, boolean>>({
+    bug: false,
+    deleteAccount: false,
+  });
+  const openLocalDialog = useCallback((which: LocalDialog) => {
     setEverOpened((prev) => (prev[which] ? prev : { ...prev, [which]: true }));
     setLocalDialog(which);
   }, []);
@@ -232,7 +246,8 @@ export default function SettingsPage() {
      the extensions index — and it costs nothing for the one-segment panes,
      whose join is themselves. */
   const path = params?.pane?.join('/');
-  const pane: PaneId = path && isPaneId(path) ? path : fallbackPane(path);
+  // An alias (`ai`) is the pane it stands for, and stays in the address bar.
+  const pane: PaneId = resolvePaneSlug(path) ?? fallbackPane(path);
   const focusId = searchParams?.get('focus') ?? undefined;
 
   /* ── 1. The type-mode stamp ───────────────────────────────────────────── */
@@ -266,11 +281,15 @@ export default function SettingsPage() {
      record (home === the 'day' fallback) it correctly does nothing. Dropping
      the query here therefore dropped the deep link outright: on a cold load the
      hydration gate means SettingsShell is not mounted yet, so nothing has
-     consumed focusId by the time this runs. */
+     consumed focusId by the time this runs.
+
+     An alias is left alone, query and all: `/settings/ai` is what the address
+     bar is meant to say, and the AI pane reads its own `?start=` and
+     `?connect=`, which a replace here would drop. */
   useEffect(() => {
-    if (path && isPaneId(path)) return;
+    if (resolvePaneSlug(path)) return;
     const query = focusId ? `?focus=${encodeURIComponent(focusId)}` : '';
-    router.replace(`/settings/${fallbackPane(path)}${query}`);
+    router.replace(`${paneHref(fallbackPane(path))}${query}`);
   }, [path, focusId, router]);
 
   /* ── A ?focus= always lands on the pane that actually holds the row ───────
@@ -291,7 +310,7 @@ export default function SettingsPage() {
     if (!focusId) return;
     const home = settingById(focusId)?.pane;
     if (!home || home === pane || !isPaneId(home)) return;
-    router.replace(`/settings/${home}?focus=${encodeURIComponent(focusId)}`);
+    router.replace(`${paneHref(home)}?focus=${encodeURIComponent(focusId)}`);
   }, [focusId, pane, router]);
 
   /* ── Subscriptions that keep record.read() fresh ──────────────────────────
@@ -320,13 +339,14 @@ export default function SettingsPage() {
   // because it is free text and can contain the separator.
   const aiTick = useAISettingsStore((s) => JSON.stringify([s.chatTarget, s.systemPrompt]));
   // What the server last said is connected. The AI pane's rows read it through
-  // getState() (who answers, the status words on the panel-owned records), so
-  // it has to move the ctx like every other store. Never a key: the store
-  // cannot hold one.
+  // getState() (who answers, Use AI in dsul, the status words on the
+  // panel-owned records, the model's name), so it has to move the ctx like
+  // every other store. Never a key: the store cannot hold one.
   const aiConnTick = useAIConnectionStore(
     (s) =>
       `${s.phase}|${s.available}|${s.model?.provider}|${s.model?.model}|${s.model?.status}|` +
-      `${s.model?.authMethod}|${s.openclaw.gateway}|${s.openclaw.pluginChat}`
+      `${s.model?.authMethod}|${s.openclaw.gateway}|${s.openclaw.pluginChat}` +
+      `|${s.aiHidden}|${s.model?.limitedUntil}|${s.model?.modelLabel}|${s.openclaw.agent}|${s.openclaw.agentId}`
   );
   const paletteTick = usePaletteStore((s) => s.palette);
   const lookTick = useLookStore((s) => `${s.light}|${s.dark}|${s.layout}|${s.appIcon}`);
@@ -358,6 +378,9 @@ export default function SettingsPage() {
   // is for the OTHER path a binding is drawn on: a search result, which goes
   // through the generic rowFor and reads record.read(ctx) non-reactively.
   const shortcutsTick = useKeyboardShortcutsStore((s) => JSON.stringify(s.overrides));
+  // make.allOff's unavailable() reads `available`, which MakePane's hydrate can
+  // latch false after the row first renders.
+  const modsTick = useModsStore((s) => s.available);
 
   const signOut = useCallback(async () => {
     // Anything still buffered has to land while the session is alive, or RLS
@@ -398,6 +421,7 @@ export default function SettingsPage() {
         replayTour: () => void replayTour(),
         signOut: () => void signOut(),
         openLedger: () => router.push('/ledger'),
+        deleteAccount: () => openLocalDialog('deleteAccount'),
       },
     }),
     // The ticks are the point: they are not read here, they are what makes this
@@ -426,6 +450,7 @@ export default function SettingsPage() {
       channelSecretsTick,
       gatewayTick,
       shortcutsTick,
+      modsTick,
     ]
   );
 
@@ -478,26 +503,45 @@ export default function SettingsPage() {
   // not part of it.
   const hydrated = settingsBelongToUser(userId, hydratedUserId);
 
-  if (!hydrated) return <SettingsSkeleton userId={userId} />;
+  // Delete account sits OUTSIDE the gate, so it keeps its state when the gate
+  // drops. A browser can switch accounts under an open dialog (an email link
+  // for another account opened in a second tab): the gate goes to the skeleton
+  // until the new account's settings land. Inside the gate the dialog would
+  // unmount there and come back open by itself, asking about the NEW account.
+  // Out here it keeps the account it was opened for, and the server answers a
+  // delete with 409 changed (memory/plans/account-deletion.md).
+  const deleteAccountDialog = everOpened.deleteAccount && (
+    <DeleteAccountDialog
+      open={localDialog === 'deleteAccount'}
+      onOpenChange={(open) => setLocalDialog(open ? 'deleteAccount' : null)}
+    />
+  );
 
   return (
-    <div data-testid="settings-page" data-settings-state="ready">
-      <SettingsShell
-        pane={pane}
-        ctx={ctx}
-        focusId={focusId}
-        isMobile={isMobile}
-        onOpenDestination={openDestination}
-      />
+    <>
+      {hydrated ? (
+        <div data-testid="settings-page" data-settings-state="ready">
+          <SettingsShell
+            pane={pane}
+            ctx={ctx}
+            focusId={focusId}
+            isMobile={isMobile}
+            onOpenDestination={openDestination}
+          />
 
-      {/* Mounted here because AppShell isn't. */}
-      <ConfirmDialog />
-      {everOpened.bug && (
-        <BugReportDialog
-          open={localDialog === 'bug'}
-          onOpenChange={(open) => setLocalDialog(open ? 'bug' : null)}
-        />
+          {/* Mounted here because AppShell isn't. */}
+          <ConfirmDialog />
+          {everOpened.bug && (
+            <BugReportDialog
+              open={localDialog === 'bug'}
+              onOpenChange={(open) => setLocalDialog(open ? 'bug' : null)}
+            />
+          )}
+        </div>
+      ) : (
+        <SettingsSkeleton userId={userId} />
       )}
-    </div>
+      {deleteAccountDialog}
+    </>
   );
 }

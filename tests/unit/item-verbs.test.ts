@@ -127,3 +127,28 @@ describe('item verbs', () => {
     expect(after.status).toBe('pending');
   });
 });
+
+/**
+ * The gates live in lib/verb-gates.ts so server code (the recipe runner,
+ * lib/recipes/server/) asks the same ones without the planner store. Each
+ * verb's `eligible` IS its gate, not a copy, so the two cannot drift.
+ */
+describe('the gates are one set (lib/verb-gates.ts)', () => {
+  it('every gated verb’s eligible is VERB_GATES’s own function', async () => {
+    const { ITEM_VERBS } = await import('@/lib/item-verbs');
+    const { VERB_GATES } = await import('@/lib/verb-gates');
+    const gated = Object.keys(VERB_GATES) as (keyof typeof VERB_GATES)[];
+    expect(gated.sort()).toEqual(
+      Object.keys(ITEM_VERBS)
+        .filter((v) => v !== 'resetStreak' && v !== 'delete')
+        .sort()
+    );
+    for (const v of gated) expect(ITEM_VERBS[v].eligible, v).toBe(VERB_GATES[v]);
+  });
+
+  it('lib/verb-gates.ts reaches no store', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(`${process.cwd()}/lib/verb-gates.ts`, 'utf8');
+    expect(src).not.toMatch(/planner-store|ui-store|extension-gates|'use client'/);
+  });
+});

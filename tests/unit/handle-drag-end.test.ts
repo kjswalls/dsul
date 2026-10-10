@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { listGroupMovers, placementOf, resolveDrop, type DropContext } from '@/lib/dnd/handle-drag-end';
+import { listGroupMovers, parseProjectBlockId, placementOf, resolveDrop, type DropContext } from '@/lib/dnd/handle-drag-end';
 
 function ctx(overrides: Partial<DropContext> = {}): DropContext {
   return {
@@ -113,15 +113,25 @@ describe('resolveDrop — droppable ID grammar (lib/dnd/CONTRACT.md)', () => {
     });
   });
 
-  describe('projectblock:{name}', () => {
+  describe('projectblock:{date}:{name}', () => {
     it('moves a task into its own project block', () => {
-      const cmd = resolveDrop('t1', 'projectblock:Website', ctx({ draggedTaskProject: 'Website' }));
+      const cmd = resolveDrop('t1', 'projectblock:2026-07-06:Website', ctx({ draggedTaskProject: 'Website' }));
       expect(cmd).toEqual({ kind: 'move-task-to-project-block', taskId: 't1' });
     });
 
     it('rejects tasks from other projects and habits', () => {
-      expect(resolveDrop('t1', 'projectblock:Website', ctx({ draggedTaskProject: 'Other' }))).toBeNull();
-      expect(resolveDrop('h1', 'projectblock:Website', ctx({ itemType: 'habit' }))).toBeNull();
+      expect(resolveDrop('t1', 'projectblock:2026-07-06:Website', ctx({ draggedTaskProject: 'Other' }))).toBeNull();
+      expect(resolveDrop('h1', 'projectblock:2026-07-06:Website', ctx({ itemType: 'habit' }))).toBeNull();
+    });
+
+    it('keeps a colon in the project name, and refuses the undated form', () => {
+      expect(parseProjectBlockId('projectblock:2026-07-06:Q3: launch')).toEqual({
+        dateStr: '2026-07-06',
+        projectName: 'Q3: launch',
+      });
+      // The pre-#214 id: one per project, so seven week columns shared it.
+      expect(parseProjectBlockId('projectblock:Website')).toBeNull();
+      expect(resolveDrop('t1', 'projectblock:Website', ctx({ draggedTaskProject: 'Website' }))).toBeNull();
     });
   });
 

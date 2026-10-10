@@ -62,13 +62,29 @@ private struct RawItems: Decodable, Sendable {
         #expect(p.settings.timeFormat == .twentyFourHour)
         #expect(p.writes == [
             "complete", "schedule", "skip", "move", "pause", "title", "notes", "delete", "addSubtask", "resetStreak",
-            "priority", "timesPerDay", "reminder", "time", "repeat",
+            "priority", "timesPerDay", "reminder", "time", "repeat", "project", "collect", "snooze",
         ])
         // The route's test turns Streaks off, a value no default gives.
         #expect(p.settings.streaksEnabled == false)
         // ... and Habit reminders on, a value no default gives either (a
         // missing row is false, a database behind on its migrations null).
         #expect(p.settings.remindersEnabled == true)
+        // The last call and the review, on at hours no default gives.
+        #expect(p.settings.lastCallEnabled == true)
+        #expect(p.settings.lastCallTime == "20:45")
+        #expect(p.settings.eodReviewEnabled == true)
+        #expect(p.settings.eodReviewTime == "21:30")
+        #expect(p.settings.lastEodReviewDate == "2026-10-01")
+        #expect(p.settings.reminderGraceMinutes == reminderGraceMinutes)
+        #expect(p.settings.planEod == PlanEod(enabled: true, time: "21:30", lastReviewDate: "2026-10-01"))
+        // The one live snooze with a day, its instant as Postgres wrote it,
+        // and the item it names in the payload.
+        let snoozes = try #require(p.snoozes)
+        #expect(snoozes.count == 1)
+        let snooze = try #require(snoozes.first)
+        #expect(snooze.date == "2026-10-02")
+        #expect(parseTimestamp(snooze.until) != nil)
+        #expect(p.items.contains { $0.id == snooze.itemId })
         #expect(p.droppedItems == 0)
         #expect(p.items.count == raw.items.count)
         #expect(!p.items.isEmpty)
@@ -146,6 +162,30 @@ private struct RawItems: Decodable, Sendable {
         let water = try row("Drink water")
         #expect(water.currentDayCount == 3)
         #expect(water.reminderTime == nil)
+
+        // The project chip's fields: the id beside the name, a parked task's
+        // stash, and the projects' own colour and emoji (decoded, drawn
+        // nowhere yet).
+        let admin = "22222222-2222-4222-8222-000000000001"
+        let inbox = try row("Inbox zero")
+        #expect(inbox.projectId == admin)
+        #expect(inbox.inProjectBlock == true)
+        #expect(inbox.previousStartTime == "16:00")
+        #expect(inbox.previousStartDate == "2026-10-01")
+        #expect(bank.projectId == admin)
+        // An unfiled habit reads "" (itemFromRow), with no id.
+        #expect(meditate.project == "")
+        #expect(meditate.projectId == nil)
+        // A text-only name: no project row behind it.
+        let stretch = try row("Stretch")
+        #expect(stretch.project == "Fitness")
+        #expect(stretch.projectId == nil)
+        let adminProject = try #require(p.projects.first { $0.id == admin }, "no Admin")
+        #expect(adminProject.name == "Admin")
+        #expect(adminProject.color == "blue")
+        #expect(adminProject.emoji == "\u{1F4CB}")
+        let health = try #require(p.projects.first { $0.name == "Health" }, "no Health")
+        #expect(health.color == nil)
     }
 
     @Test func theWholePipelineRunsOverTheResponse() throws {
@@ -238,6 +278,12 @@ private struct RawItems: Decodable, Sendable {
         // Habit reminders are on is unknown.
         #expect(p.settings.streaksEnabled)
         #expect(p.settings.remindersEnabled == nil)
+        // ... and the rituals and the snoozes are unknown too.
+        #expect(p.settings.lastCallEnabled == nil)
+        #expect(p.settings.eodReviewEnabled == nil)
+        #expect(p.settings.planEod == nil)
+        #expect(p.settings.reminderGraceMinutes == nil)
+        #expect(p.snoozes == nil)
     }
 
     @Test func theWeekAndTheClockAreReadLeniently() throws {
@@ -303,6 +349,68 @@ private struct RawItems: Decodable, Sendable {
         #expect(try reminders("false") == false)
         // The inline payload has no key at all.
         #expect(try decode(payload(items: "")).settings.remindersEnabled == nil)
+    }
+
+    /// The rituals' settings: each unknown when missing, null or the wrong
+    /// type, and the review folded into what the plan takes.
+    @Test func theRitualSettingsAreReadLeniently() throws {
+        func settings(_ value: String) throws -> PlannerSettings {
+            let json = """
+            {"v":1,"userId":"\(user)","fetchedAt":"x","settings":\(value),
+             "items":[],"projects":[],"routines":[],"seasons":[]}
+            """
+            return try decode(json).settings
+        }
+        let odd = try settings(
+            #"{"lastCallEnabled":"yes","lastCallTime":2030,"eodReviewEnabled":null,"eodReviewTime":false,"reminderGraceMinutes":"30"}"#
+        )
+        #expect(odd.lastCallEnabled == nil)
+        #expect(odd.lastCallTime == nil)
+        #expect(odd.eodReviewEnabled == nil)
+        #expect(odd.eodReviewTime == nil)
+        #expect(odd.reminderGraceMinutes == nil)
+        #expect(odd.planEod == nil)
+
+        // Off is off, with whatever hour is stored, so the plan withdraws a
+        // review still in the shade.
+        let off = try settings(#"{"eodReviewEnabled":false,"eodReviewTime":"21:00","lastEodReviewDate":"2026-10-01"}"#)
+        #expect(off.planEod == PlanEod(enabled: false, time: "21:00", lastReviewDate: "2026-10-01"))
+        // On with no hour is off, as the scan reads it.
+        let noHour = try settings(#"{"eodReviewEnabled":true,"eodReviewTime":null}"#)
+        #expect(noHour.planEod == PlanEod(enabled: false, time: "", lastReviewDate: nil))
+        // The looser hour lib/eod.ts reads is passed as it is, for the plan to parse.
+        let loose = try settings(#"{"eodReviewEnabled":true,"eodReviewTime":"9:15","reminderGraceMinutes":45}"#)
+        #expect(loose.planEod == PlanEod(enabled: true, time: "9:15", lastReviewDate: nil))
+        #expect(loose.reminderGraceMinutes == 45)
+    }
+
+    /// The snoozes: a bad element is skipped, never the payload; null or the
+    /// wrong type is unknown.
+    @Test func theSnoozesAreReadLeniently() throws {
+        func snoozes(_ value: String) throws -> [PlanSnooze]? {
+            let json = """
+            {"v":1,"userId":"\(user)","fetchedAt":"x","settings":{},"snoozes":\(value),
+             "items":[],"projects":[],"routines":[],"seasons":[]}
+            """
+            return try decode(json).snoozes
+        }
+        let item = "11111111-1111-4111-8111-000000000001"
+        let good = #"{"itemId":"\#(item)","until":"2026-10-02T15:19:05.123456+00:00","date":"2026-10-02"}"#
+        #expect(try snoozes("[\(good)]") == [
+            PlanSnooze(itemId: UUID(uuidString: item)!, until: "2026-10-02T15:19:05.123456+00:00", date: "2026-10-02"),
+        ])
+        let bad = [
+            #"{"itemId":"nope","until":"2026-10-02T15:19:05Z","date":"2026-10-02"}"#,
+            #"{"itemId":"\#(item)","date":"2026-10-02"}"#,
+            #"{"itemId":"\#(item)","until":"2026-10-02T15:19:05Z","date":null}"#,
+            "3",
+            "null",
+        ]
+        #expect(try snoozes("[\(bad.joined(separator: ","))]")?.isEmpty == true)
+        #expect(try snoozes("[\(bad[0]),\(good)]")?.count == 1)
+        #expect(try snoozes("null") == nil)
+        #expect(try snoozes(#""none""#) == nil)
+        #expect(try snoozes("[]") == [])
     }
 
     @Test func theWritesListIsReadLeniently() throws {
@@ -423,5 +531,16 @@ private struct RawItems: Decodable, Sendable {
         // Unknown writes no key, so it reads back unknown, never as off.
         #expect(decoded.remindersEnabled == nil)
         #expect(!String(decoding: defaults, as: UTF8.self).contains("remindersEnabled"))
+
+        // The rituals round-trip, and unknown writes no key.
+        let rituals = PlannerSettings(
+            lastCallEnabled: true, lastCallTime: "20:45", eodReviewEnabled: false, eodReviewTime: "21:30",
+            lastEodReviewDate: "2026-10-01", reminderGraceMinutes: 30
+        )
+        #expect(try JSONDecoder().decode(PlannerSettings.self, from: try JSONEncoder().encode(rituals)) == rituals)
+        let keys = ["lastCallEnabled", "lastCallTime", "eodReviewEnabled", "eodReviewTime", "lastEodReviewDate", "reminderGraceMinutes"]
+        for key in keys {
+            #expect(!String(decoding: defaults, as: UTF8.self).contains(key), "\(key)")
+        }
     }
 }

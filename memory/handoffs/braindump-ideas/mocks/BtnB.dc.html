@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ink bar</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:'Inter',system-ui,sans-serif;color:#1f2029}
+a{color:#3b4a1c}a:hover{color:#1f2a0c}
+button{font-family:inherit;cursor:pointer}
+</style>
+</helmet>
+<div style="width: 360px; height: 700px; box-sizing: border-box; background: #fbfbfb; padding: 22px 14px; display: flex; flex-direction: column; gap: 28px; font-family: 'Inter', system-ui, sans-serif; color: #1f2029">
+
+  <div style="display: flex; flex-direction: column; gap: 10px">
+    <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #a0a4b4; padding-left: 4px">at rest</div>
+    <div style="background: #eeeded; border-radius: 10px; padding: 6px 10px"><div style="height: 37px; border-radius: 10px; background: #ffffff; box-shadow: 0 4px 4px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.08); display: flex; align-items: center; padding: 0 15px; font-size: 14px; font-weight: 500">15<span style="font-weight: 400; color: #8a8ea0; margin-left: 4px">undated</span></div></div>
+    <div style="padding: 0 4px"><button type="button" style="width: 100%; height: 34px; padding: 0 12px; border-radius: 8px; border: none; background: #1f2029; color: #ffffff; font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 8px"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l10-6.5z"></path></svg>do stuff<span style="margin-left: auto; font-size: 12px; font-weight: 400; color: rgba(255,255,255,0.55)">6 quick, 15 in all</span></button></div>
+    <div style="display: flex; flex-direction: column; padding: 0 4px">
+      <div style="display: flex; align-items: center; gap: 10px; padding: 5px 4px"><span style="width: 16px; height: 16px; border-radius: 5px; border: 1.5px solid #c9cbd3; background: #f4f4f6"></span><span style="font-size: 14px">Smog the Honda, sell to Cass</span></div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 5px 4px"><span style="width: 16px; height: 16px; border-radius: 5px; border: 1.5px solid #c9cbd3; background: #f4f4f6"></span><span style="font-size: 14px">budgets?</span></div>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 10px">
+    <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #a0a4b4; padding-left: 4px">hover (one glint passes)</div>
+    <div style="padding: 0 4px"><button type="button" style="width: 100%; height: 34px; padding: 0 12px; border-radius: 8px; border: none; background: linear-gradient(105deg, #2a2b35 0%, #2a2b35 38%, #4a4c58 50%, #2a2b35 62%, #2a2b35 100%); color: #ffffff; font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 8px"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l10-6.5z"></path></svg>do stuff<span style="margin-left: auto; font-size: 12px; font-weight: 400; color: rgba(255,255,255,0.7)">about 45 min of quick ones</span></button></div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 10px">
+    <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #a0a4b4; padding-left: 4px">on</div>
+    <div style="background: #eeeded; border-radius: 10px; padding: 6px 10px"><div style="height: 37px; border-radius: 10px; background: #ffffff; box-shadow: 0 4px 4px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.08); display: flex; align-items: center; padding: 0 15px; font-size: 14px; font-weight: 500">13<span style="font-weight: 400; color: #8a8ea0; margin-left: 4px">undated</span></div></div>
+    <div style="padding: 0 4px"><div style="position: relative; overflow: hidden; height: 34px; padding: 0 6px 0 12px; border-radius: 8px; background: #ffffff; box-shadow: inset 0 0 0 1px #dcdde1; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500"><span style="width: 7px; height: 7px; border-radius: 50%; background: #a8d64a"></span>doing stuff<span style="font-size: 12px; font-weight: 400; color: #8a8ea0">2 done, 4 quick left</span><button type="button" style="margin-left: auto; height: 24px; padding: 0 9px; border-radius: 6px; border: none; background: #f0f0f2; color: #4d5162; font-size: 12px; font-weight: 500">stop</button><span style="position: absolute; left: 0; bottom: 0; height: 2px; width: 33%; background: #a8d64a"></span></div></div>
+  </div>
+
+  <div style="margin-top: auto; font-size: 12.5px; color: #6b6f80; line-height: 1.55; padding: 0 4px">The new ink button (#436) stretched to the column. The most direct ask to start; the right side says what you are in for. When on, it turns light with a lime progress line along the bottom edge.</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":360,"height":700}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

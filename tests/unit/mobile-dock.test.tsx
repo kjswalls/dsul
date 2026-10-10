@@ -56,7 +56,15 @@ import {
   useConversationsStore,
 } from '@/lib/conversations-store';
 import { useRailStore } from '@/lib/rail-store';
-import { CONNECTED_MODEL, NOTHING_CONNECTED, OPENCLAW_PLUGIN, seedAI } from './helpers/ai-fixtures';
+import {
+  AI_HIDDEN,
+  CONNECTED_MODEL,
+  KEY_TURNED_DOWN,
+  NOTHING_CONNECTED,
+  OPENCLAW_PLUGIN,
+  seedAI,
+  type SeedAI,
+} from './helpers/ai-fixtures';
 import { fakeApi, fakeTransport, flush, hangs, type FakeTransport } from './helpers/conversations-fakes';
 
 /** Where the stubbed layout puts the dock's top edge, in a 800px-tall viewport. */
@@ -117,12 +125,24 @@ afterEach(() => {
 });
 
 const card = () => screen.getByTestId('mobile-mode-card');
+/** The AI's mark on the card (components/ai/ask-mark.tsx), when the card wears it. */
+const cardMark = () => card().querySelector('[data-ask-mark]');
+/** The accent, by any of its names: the mark's foot, the key's rim, the lime itself. */
+const ACCENT = /--(?:lime-solid|ask-icon-accent|ask-key-accent)\b|primary|lime/;
 
 describe('the mode card', () => {
   it('names the surface it is showing', () => {
     render(<MobileBottomDock />);
     expect(card()).toHaveAttribute('data-surface', 'today');
     expect(card()).toHaveAttribute('aria-label', 'Surface: Today. Change surface.');
+  });
+
+  it("is the tour's spotlight on the phone, at every mobile step", () => {
+    // onboarding-tour.tsx `tourSpotlightSelector`: renamed, every phone step
+    // would draw a plain scrim with nothing lit, the AI card's included.
+    render(<MobileBottomDock />);
+    expect(card()).toHaveAttribute('data-tour', 'mode-card');
+    expect(document.querySelectorAll('[data-tour="mode-card"]')).toHaveLength(1);
   });
 
   it('follows the active surface, and calls the chat surface Ask', () => {
@@ -143,9 +163,20 @@ describe('the mode card', () => {
     expect(screen.getByTestId('answerer-label')).toHaveTextContent('OpenClaw · kirby-1');
   });
 
-  it('never says it is on a chat tab that cannot answer', () => {
+  it('wears Ask\'s one-ink mark on the Ask tab, not the lit aurora', () => {
+    useMobileNavStore.setState({ activeTab: 'chat' });
+    render(<MobileBottomDock />);
+
+    expect(cardMark()).toHaveAttribute('data-tone', 'ink');
+    expect(cardMark()).not.toHaveAttribute('data-lit');
+  });
+
+  it.each<[string, SeedAI | undefined]>([
+    ['the account has said No AI', AI_HIDDEN],
+    ['the gate has not answered', undefined],
+  ])('never says it is on a chat tab that is not offered: %s', (_, s) => {
     unseed();
-    unseed = seedAI(NOTHING_CONNECTED);
+    unseed = seedAI(s);
     useMobileNavStore.setState({ activeTab: 'chat' });
     render(<MobileBottomDock />);
 
@@ -156,6 +187,28 @@ describe('the mode card', () => {
     expect(screen.getByTestId('omnibar-input')).toBeInTheDocument();
   });
 
+  // Nothing answers, but the gate invites or offers the fix: the chat tab
+  // holds the setup page, and the card says so, in the unlit mark the
+  // desktop's key wears. The bar stays the omnibar: there is no conversation
+  // to type into, and capture still belongs to it.
+  it.each<[string, SeedAI, string]>([
+    ['invited', NOTHING_CONNECTED, 'Set up AI'],
+    ['offering the fix', KEY_TURNED_DOWN, 'Fix AI'],
+  ])('names the setup page while the gate is %s, and keeps the omnibar there', (_, s, word) => {
+    unseed();
+    unseed = seedAI(s);
+    useMobileNavStore.setState({ activeTab: 'chat' });
+    render(<MobileBottomDock />);
+
+    expect(card()).toHaveAttribute('data-surface', 'chat');
+    expect(card()).toHaveAttribute('aria-label', `Surface: ${word}. Change surface.`);
+    expect(cardMark()).toHaveAttribute('data-tone', 'aurora');
+    expect(cardMark()).toHaveAttribute('data-lit', 'false');
+    expect(screen.getByTestId('omnibar-input')).toBeInTheDocument();
+    expect(screen.queryByTestId('chat-dock-input')).toBeNull();
+    expect(screen.queryByTestId('answerer-label')).toBeNull();
+  });
+
   it('carries no lime: the glyph alone says where you are', () => {
     render(<MobileBottomDock />);
     // Round 6 removed the highlight. `text-foreground` and nothing tinted —
@@ -163,6 +216,22 @@ describe('the mode card', () => {
     // reintroduces "for affordance" without knowing it was decided against.
     expect(card().className).toContain('text-foreground');
     expect(card().className).not.toMatch(/primary|lime|text-ai/);
+  });
+
+  // The mark's paint is in its tiles, which the className check above cannot
+  // see: on Ask and on the setup page alike, nothing in the card is the accent.
+  it.each<[string, SeedAI]>([
+    ['Ask', CONNECTED_MODEL],
+    ['the setup page', NOTHING_CONNECTED],
+    ['the fix home', KEY_TURNED_DOWN],
+  ])('carries no lime in its mark either, on %s', (_, s) => {
+    unseed();
+    unseed = seedAI(s);
+    useMobileNavStore.setState({ activeTab: 'chat' });
+    render(<MobileBottomDock />);
+
+    expect(cardMark()).not.toBeNull();
+    expect(card().innerHTML).not.toMatch(ACCENT);
   });
 });
 
@@ -185,9 +254,9 @@ describe('the switcher sheet', () => {
     );
   });
 
-  it('lists only the surfaces that exist when nothing can answer', async () => {
+  it('lists only the surfaces that exist when nothing is offered', async () => {
     unseed();
-    unseed = seedAI(NOTHING_CONNECTED);
+    unseed = seedAI(AI_HIDDEN);
     render(<MobileBottomDock />);
     fireEvent.click(card());
 
@@ -195,6 +264,27 @@ describe('the switcher sheet', () => {
       expect(document.querySelectorAll('[data-tour^="tab-"]')).toHaveLength(2);
     });
     expect(screen.queryByTestId('mode-option-chat')).toBeNull();
+  });
+
+  it('offers the setup page as the third while nothing answers: "Set up AI", optional', async () => {
+    unseed();
+    unseed = seedAI(NOTHING_CONNECTED);
+    render(<MobileBottomDock />);
+    fireEvent.click(card());
+
+    await waitFor(() => {
+      expect(document.querySelectorAll('[data-tour^="tab-"]')).toHaveLength(3);
+    });
+    const row = screen.getByTestId('mode-option-chat');
+    expect(row).toHaveTextContent('Set up AI Optional');
+    expect(row.querySelector('[data-ask-mark]')).toHaveAttribute('data-lit', 'false');
+    expect(screen.getByTestId('mode-switcher-sheet')).toHaveTextContent(
+      'Switch between the Braindump, Today and Set up AI surfaces.'
+    );
+
+    fireEvent.click(row);
+    expect(useMobileNavStore.getState().activeTab).toBe('chat');
+    expect(card()).toHaveAttribute('data-surface', 'chat');
   });
 
   it('marks the surface you are on', async () => {
@@ -288,7 +378,7 @@ describe('the omnibar in the dock', () => {
       'placeholder',
       'Ask anything…'
     );
-    expect(screen.getByTestId('answerer-label')).toHaveTextContent('gpt-4o-mini');
+    expect(screen.getByTestId('answerer-label')).toHaveTextContent('GPT-4o mini');
   });
 
   it('shows no answerer label off the Ask tab', () => {
@@ -374,6 +464,38 @@ describe('the chat composer in the dock', () => {
     expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument();
   });
 
+  // A connect on the setup page lights the gate before it pops the phone's
+  // stack home (connect-ai.tsx's `succeed` runs after the store's write), so
+  // for that moment the dock sees Ask over whatever the stack kept from
+  // before. Nobody arrived: no caret, no keyboard over "It works.".
+  it('takes no caret when the setup page turns into Ask under it, whatever the stack kept', async () => {
+    unseed();
+    unseed = seedAI(NOTHING_CONNECTED);
+    const id = useConversationsStore.getState().newDraft();
+    useRailStore.getState().push('phone', { kind: 'conversation', id });
+    render(<MobileBottomDock />);
+    expect(screen.queryByTestId('chat-dock-input')).toBeNull();
+
+    act(() => {
+      seedAI(CONNECTED_MODEL);
+    });
+    await act(() => new Promise((r) => setTimeout(r, 0)));
+
+    expect(input()).toBeInTheDocument();
+    expect(document.activeElement).not.toBe(input());
+    expect(useRailStore.getState().pendingFocus).toBeNull();
+  });
+
+  it('still takes it arriving on Ask from another tab over that stack', async () => {
+    useMobileNavStore.setState({ activeTab: 'today' });
+    const id = useConversationsStore.getState().newDraft();
+    useRailStore.getState().push('phone', { kind: 'conversation', id });
+    render(<MobileBottomDock />);
+
+    act(() => useMobileNavStore.getState().setActiveTab('chat'));
+    await waitFor(() => expect(document.activeElement).toBe(input()));
+  });
+
   it("follows the top of the phone's stack: the binding, its wording, and its own half-typed text", () => {
     const rail = () => useRailStore.getState();
     render(<MobileBottomDock />);
@@ -416,7 +538,7 @@ describe('the chat composer in the dock', () => {
     useRailStore.getState().push('phone', { kind: 'conversation', id });
     render(<MobileBottomDock />);
     expect(input()).toHaveAttribute('placeholder', 'Reply…');
-    expect(screen.getByTestId('answerer-label')).toHaveTextContent('gpt-4o-mini');
+    expect(screen.getByTestId('answerer-label')).toHaveTextContent('GPT-4o mini');
   });
 });
 

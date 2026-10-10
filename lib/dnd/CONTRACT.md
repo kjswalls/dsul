@@ -46,7 +46,7 @@ the id. **Both tasks and habits are drag sources** (`components/primitives/task-
 | `hour:{H}` | Day-schedule grid slot (0–23) | schedule at `HH:00`; bucket = morning <12, afternoon <17, else evening |
 | `weekhour:{yyyy-MM-dd}:{H}` | Week-schedule grid slot | schedule task on that day at `HH:00` (habit: time only, no date) |
 | `week:{yyyy-MM-dd}:anytime` | Week-schedule per-day Anytime strip | schedule on that day, `anytime` bucket, no time |
-| `projectblock:{projectName}` | Project block in day view | `moveTaskToProjectBlock(id)` — only if `task.project === projectName`; habits ignored |
+| `projectblock:{date}:{projectName}` | Project block in day view and in each Week × Buckets column | `moveTaskToProjectBlock(id)` — only if `task.project === projectName`; habits ignored. The move is date-agnostic: `{date}` (the column's day, the selected day in Day view) only keeps the id unique when a recurring block renders in several columns at once (#214) |
 | `sidebar` | Braindump | a task: `unscheduleTask(id)`. A habit on the canvas: `setItemPaused(id, true)` (command `pause-item`), so it shows in the Paused section; a habit already in the braindump, or one that can't pause or already is, no-ops. A selection does both in one undo (`sidebarDropPlan`, lib/dnd/sidebar-drop.ts) |
 | `list:{yyyy-MM-dd}` | Day × List body, or one Week × List day | Task from the braindump: `scheduleTask(id, 'anytime', undefined, date)`. Task from the canvas onto another day: `moveTaskToDate(id, date)`, keeping bucket and time. Nothing for: the day it is already on, a recurring canvas task (its date is the series anchor), any habit (`listDropCommand`). Group: `moveTasksToDate` over `listGroupMovers` |
 

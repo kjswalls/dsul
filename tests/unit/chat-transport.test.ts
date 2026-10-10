@@ -310,7 +310,7 @@ describe('the plugin path (OpenClaw with no gateway)', () => {
           json: async () => ({
             chatUrl: 'https://claw.example/plugins/dsul/chat',
             agentId: 'kirby-1',
-            dsulApiKey: 'dsul-plugin-key',
+            chatToken: 'dsulchat_plugin-token',
           }),
         }
       : { ok: true, json: async () => ({ content: 'From OpenClaw.' }) };
@@ -329,7 +329,7 @@ describe('the plugin path (OpenClaw with no gateway)', () => {
       context: '## dsul Context',
     });
     expect(pluginSessionKey(id)).toBe(`dsul-chat-${id}`);
-    expect((post.init.headers as Record<string, string>).Authorization).toBe('Bearer dsul-plugin-key');
+    expect((post.init.headers as Record<string, string>).Authorization).toBe('Bearer dsulchat_plugin-token');
     expect(last(id)).toMatchObject({ content: 'From OpenClaw.', answerer: 'openclaw', model: null });
   });
 
@@ -396,7 +396,7 @@ describe('the plugin path (OpenClaw with no gateway)', () => {
     let registered = false;
     const calls = stubFetch((url) =>
       url === '/api/agent/chat-url' && !registered
-        ? { ok: true, json: async () => ({ chatUrl: null, agentId: null, dsulApiKey: 'dsul-plugin-key' }) }
+        ? { ok: true, json: async () => ({ chatUrl: null, agentId: null, chatToken: 'dsulchat_plugin-token' }) }
         : pluginRoute(url)
     );
 

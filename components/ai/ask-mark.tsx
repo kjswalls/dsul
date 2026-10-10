@@ -47,6 +47,25 @@ const HEAD = cn(
 );
 /** The one-ink mark: every tile in the text colour round it, and still. */
 const INK = 'fill-current';
+/*
+ * Unlit: the aurora mark with nothing answering yet (the "Set up AI" and
+ * "Fix AI" key, and the setup column's header). The same three tiles in two
+ * neutral inks from the slot contract, no accent anywhere, so there is no
+ * lime to dim and no light for the key's rim to catch:
+ *   --ask-icon-unlit      the foot and the head (the look's secondary ink)
+ *   --ask-icon-unlit-mid  the middle tile, a step lighter in light mode
+ * The middle tile never takes the accent when the key engages; the head still
+ * grows, which is motion, not light.
+ */
+const UNLIT_FOOT = 'fill-[var(--ask-icon-unlit)]';
+const UNLIT_MID = 'fill-[var(--ask-icon-unlit-mid)]';
+const UNLIT_HEAD = cn(
+  'origin-top-right fill-[var(--ask-icon-unlit)] [transform-box:fill-box]',
+  'transition-[scale] duration-[160ms] ease-[var(--ease-out-soft)] motion-reduce:transition-none',
+  'group-hover/ask-key:scale-125 group-hover/ask-key:delay-[60ms]',
+  'group-focus-visible/ask-key:scale-125 group-focus-visible/ask-key:delay-[60ms]',
+  'group-active/ask-key:scale-125 group-active/ask-key:delay-[60ms]'
+);
 
 /**
  * Which paint the mark wears:
@@ -63,25 +82,31 @@ type DataAttributes = { [key: `data-${string}`]: string | undefined };
 
 function Mark({
   tone,
+  lit = true,
   className,
   data,
   ref,
   sized,
 }: {
   tone: AskMarkTone;
+  /** False: nothing answers yet, and the aurora mark wears neutral ink (UNLIT_*). */
+  lit?: boolean;
   className?: string;
   data?: DataAttributes;
   ref?: Ref<SVGSVGElement>;
   /** Width and height attributes, Lucide's way, for a slot that sizes by class. */
   sized?: boolean;
 }) {
-  const [foot, mid, head] = tone === 'ink' ? [INK, INK, INK] : [FOOT, MID, HEAD];
+  const [foot, mid, head] =
+    tone === 'ink' ? [INK, INK, INK] : lit ? [FOOT, MID, HEAD] : [UNLIT_FOOT, UNLIT_MID, UNLIT_HEAD];
   return (
     <svg
       ref={ref}
       {...data}
       data-ask-mark="aurora-step"
       data-tone={tone}
+      // Only when unlit, so the lit mark's markup is exactly what it was.
+      data-lit={lit ? undefined : 'false'}
       aria-hidden="true"
       focusable="false"
       viewBox="0 0 16 16"
@@ -114,8 +139,8 @@ function Mark({
  * Lucide's Sparkles used to (the Ask rows in ⌘K and the right-click menu, a
  * proposal, a general conversation in History, a new chat's greeting, the
  * agent block, the AI settings pane, the AI notices, the phone's Ask glyph;
- * tests/unit/ask-key.test.tsx lists them). Each renders <AskMark /> or
- * <AskMarkIcon />, the key reads
+ * tests/unit/ask-key.test.tsx lists them). Each renders <AskMark />,
+ * <AskMarkIcon /> or <AskMarkUnlitIcon />, the key reads
  * ASK_MARK_LIGHT to aim its rim light, and nothing else knows what the mark
  * looks like. Swapping it is a change to this file alone: a new svg on the
  * same slot and tokens, and its own light point.
@@ -123,13 +148,21 @@ function Mark({
  * Where the sparkle was the AI's honey, the mark wears its own colours
  * ('aurora', the default); where it took the ink of the row it sat in, the
  * mark does too ('ink'), so a muted list stays one ink and a failure stays red.
+ *
+ * `lit={false}` is the aurora mark before anything answers (the AI gate's
+ * `askInvite` or `askFix`): the "Set up AI" or "Fix AI" key and the setup
+ * column's header draw it in neutral ink, and it lights only with `canChat`.
+ * AskMarkUnlitIcon carries the same paint into a slot that takes a Lucide
+ * icon: Ctrl+K's "Set up AI" and "Fix AI", the launcher's chat hint and the
+ * dock's `?` row while nothing answers, and the phone's switcher row.
  */
 export function AskMark({
   className,
   tone = 'aurora',
+  lit = true,
   ...data
-}: { className?: string; tone?: AskMarkTone } & DataAttributes) {
-  return <Mark tone={tone} data={data} className={cn('size-4', className)} />;
+}: { className?: string; tone?: AskMarkTone; lit?: boolean } & DataAttributes) {
+  return <Mark tone={tone} lit={lit} data={data} className={cn('size-4', className)} />;
 }
 
 /**
@@ -144,4 +177,19 @@ export const AskMarkIcon: LucideIcon = forwardRef<SVGSVGElement, Omit<LucideProp
   ref
 ) {
   return <Mark ref={ref} tone="ink" sized className={className} />;
+});
+
+/**
+ * The unlit mark where a slot takes a Lucide icon (see AskMark's `lit`): the
+ * doors into setup while nothing answers. Sized and decorative exactly as
+ * AskMarkIcon is, but in the unlit aurora paint, not one ink: its neutral
+ * tiles are what say "not connected yet", so a muted row keeps them, and it
+ * carries no accent anywhere, so nothing lime sits on a row that cannot
+ * answer.
+ */
+export const AskMarkUnlitIcon: LucideIcon = forwardRef<SVGSVGElement, Omit<LucideProps, 'ref'>>(function AskMarkUnlitIcon(
+  { className },
+  ref
+) {
+  return <Mark ref={ref} tone="aurora" lit={false} sized className={className} />;
 });

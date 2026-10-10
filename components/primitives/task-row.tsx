@@ -13,6 +13,7 @@ import { goalRolesByItem, milestoneItemIds } from '@/lib/goals';
 import { canMoveToNextDay, canReschedule as canRescheduleItem, canSendToBraindump, formatTargetDay, nextDayLabel, nextDayTarget } from '@/lib/row-moves';
 import { RowControl, RowControlDivider, RowControlGroup } from '@/components/primitives/row-control';
 import { RescheduleControl } from '@/components/primitives/reschedule-control';
+import { RowTitleText } from '@/components/primitives/row-title-text';
 import { useGoalsForDisplay, useStreaksEnabled } from '@/lib/extension-gates';
 import { getItemTypeConfig } from '@/lib/item-registry';
 import { useUIStore, openEditFor } from '@/lib/ui-store';
@@ -69,12 +70,19 @@ interface TaskRowProps {
   density?: 'default' | 'compact';
   /** The day this row is rendered for (week columns); defaults to the selected day. */
   date?: Date;
+  /**
+   * The braindump's own trailing control, at the row's right edge after the
+   * hover capsule: the Do stuff size control (components/sidebar/do-stuff.tsx).
+   * Drawn only in the braindump, where the quiet rail is gated off and the
+   * edge is free.
+   */
+  trailing?: React.ReactNode;
 }
 
 /** How long the title's fade runs before the hover controls, in px. */
 const TITLE_FADE_PX = 24;
 
-export function TaskRow({ row, context = 'bucket', density = 'default', date }: TaskRowProps) {
+export function TaskRow({ row, context = 'bucket', density = 'default', date, trailing }: TaskRowProps) {
   const {
     toggleTaskStatus,
     toggleHabitStatus,
@@ -128,6 +136,17 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
    * Neither has anything to do with what the user did.
    */
   const suppressionDate = inBraindump ? toDateStr(new Date(), timezone) : dateStr;
+
+  /**
+   * This row to the cached → fresh settle (lib/settle.ts): its day and its
+   * item, so one habit in seven week columns is seven rows, and a row that
+   * changed group is found again in its new one. Both variants carry it, so a
+   * row skipped on another device swaps shape in place rather than leaving
+   * and arriving. The braindump keys on the item alone: it has no day of its
+   * own, and its `dateStr` is just the selected day, which says nothing about
+   * the row.
+   */
+  const settleKey = `${inBraindump ? '' : dateStr}|${item.id}`;
 
   /**
    * Is this row's work set aside on the day it is rendered for?
@@ -415,6 +434,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
           data-item-id={item.id}
           data-item-kind={itemType}
           data-item-type={typeName}
+          data-settle-key={settleKey}
           // A skipped row is a COMPLETELY different DOM shape under the same
           // testid — no complete button, no rail. Tests must be able to tell the
           // two apart, or a drill to item-complete-button times out mysteriously.
@@ -438,7 +458,11 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
           <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center">
             <SkipForward className="h-3.5 w-3.5 text-muted-foreground/60" />
           </span>
-          <span className="min-w-0 flex-1 truncate font-content text-content text-muted-foreground/70">
+          {/* A muted title: it keeps its ink while the preview waits (app/globals.css). */}
+          <span
+            data-row-title="muted"
+            className="min-w-0 flex-1 truncate font-content text-content text-muted-foreground/70"
+          >
             {item.title}
           </span>
           {isMobile ? (
@@ -505,6 +529,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
         // Registry type name ('task' | 'habit' | custom slug) — the Phase 6
         // selector policy.
         data-item-type={typeName}
+        data-settle-key={settleKey}
         data-row-variant="default"
         // Selected == in the multi-select set; drives the persistent highlight and
         // marks the current / open row.
@@ -620,10 +645,12 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
           <TooltipTrigger asChild {...titleTip.triggerProps}>
             <p
               ref={titleRef}
-              // Where tests/e2e/helpers/dnd.ts presses to drag the row. The row's
-              // centre is under the hover cluster once the pointer arrives, and
-              // the cluster stops pointerdown, so a press there never drags.
-              data-row-title=""
+              // The waiting shimmer's mark (lib/planner-shimmer.ts): an open
+              // title takes the muted ink and the band while the preview is up;
+              // a muted one keeps its own ink, so it never outshines an open row.
+              // Also where tests/e2e/helpers/dnd.ts presses to drag the row: the
+              // row's centre is under the hover cluster, which stops pointerdown.
+              data-row-title={suppressed || (completed && !suppressCompletedLook) ? 'muted' : 'open'}
               className={cn(
                 // Content typeface via tokens: sans = Inter Regular 11.5,
                 // serif = Source Serif SemiBold 15. Flipped by data-type-mode.
@@ -641,7 +668,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
                   'group-hover:[mask-image:var(--title-mask,none)] group-has-[:focus-visible]:[mask-image:var(--title-mask,none)]'
               )}
             >
-              {item.title}
+              <RowTitleText text={item.title} />
             </p>
           </TooltipTrigger>
           <TooltipContent side="bottom" align="start" className="max-w-sm">
@@ -940,6 +967,8 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
               </RowControlGroup>
             </span>
           )}
+
+          {inBraindump && trailing}
 
           {!compact && !inBraindump && (
             <>

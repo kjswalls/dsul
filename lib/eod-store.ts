@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 import { createClient } from '@/lib/supabase';
 import { saveSettings } from '@/lib/settings-service';
 import { usePlannerStore } from '@/lib/planner-store';
+import { raiseModEvent } from '@/lib/mod-events';
 
 interface EODStore {
   _hasHydrated: boolean;
@@ -75,7 +76,7 @@ const USER_SCOPED_DEFAULTS = {
 
 export const useEODStore = create<EODStore>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       _hasHydrated: false,
       setHasHydrated: (v) => set({ _hasHydrated: v }),
 
@@ -101,7 +102,10 @@ export const useEODStore = create<EODStore>()(
       },
 
       saveLastReviewDate: async (userId, date) => {
+        const prev = get().lastEodReviewDate;
         set({ lastEodReviewDate: date, isOpen: false });
+        // For recipes (lib/mod-events.ts): only a review that moved the date.
+        if (prev !== date) raiseModEvent({ kind: 'review.saved', date });
         if (!userId) return;
         const supabase = createClient();
         await supabase

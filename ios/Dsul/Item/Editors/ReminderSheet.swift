@@ -18,8 +18,12 @@ import SwiftUI
 ///   only when typed in (the seed rule), so a time-only change keeps what is
 ///   stored. Return lowers the keyboard and leaves the sheet up; nothing is
 ///   sent until Done.
-/// - **The settings lines**, when a reminder can't fire: Habit reminders off
-///   on the web, or no stored time zone. Signed in only.
+/// - **The settings lines** (`reminderSettingsLines`), signed in only: Habit
+///   reminders off on the web, notifications off in this iPhone's Settings,
+///   what can quiet this iPhone's cue or let it ring late, and the last call
+///   this iPhone can't ring yet.
+/// - **Done** with a time set asks for permission to notify, the first time
+///   only (never at launch, never provisionally), then re-plans.
 /// - **No reminder**, when the item had one as the sheet opened: turns it
 ///   off at once, with no confirm, and closes the sheet.
 /// - **Leaving.** A swipe down is refused once anything changed, and Cancel
@@ -91,7 +95,8 @@ struct ReminderSheet: View {
         let current = planner.item(id) ?? opened
         let needsDate = reminderNeedsDate(current, caps: planner.caps(for: current))
         let lines = ItemSheetModel.reminderSettingsLines(remindersEnabled: planner.settings.remindersEnabled,
-                                                         hasStoredZone: planner.hasStoredZone,
+                                                         permission: NotificationHub.shared.permission,
+                                                         lastCallEnabled: planner.settings.lastCallEnabled,
                                                          live: planner.isLive)
         return NavigationStack {
             Form {
@@ -145,6 +150,9 @@ struct ReminderSheet: View {
             }
         }
         .tint(Color.primary)
+        .task {
+            if planner.isLive { await NotificationHub.shared.refreshPermission() }
+        }
         .interactiveDismissDisabled(isDirty)
         .presentationDetents([.large])
     }
@@ -191,6 +199,9 @@ struct ReminderSheet: View {
                                                     anchorDraft: anchorDraft, anchorSeed: anchorSeed,
                                                     stored: stored) {
             withAnimation(.snappy) { planner.edit(id, edit) }
+        }
+        if planner.isLive {
+            Task { await NotificationHub.shared.askPermissionIfNeeded() }
         }
         dismiss()
     }

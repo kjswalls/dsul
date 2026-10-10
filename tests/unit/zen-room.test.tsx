@@ -267,6 +267,103 @@ describe('the Zen room', () => {
     expect(screen.getByText('2/3')).toBeInTheDocument();
   });
 
+  /*
+   * A reload with Zen open lands straight in the room, which has no skeleton.
+   * While the planner shows the look-only preview (lib/planner-snapshot.ts) the
+   * rows are this browser's cache: a tick there would write on stale state
+   * (Beeminder included), so <main> is inert — and only <main>, so the way out
+   * still works. And before there is anything to show at all, the room claims
+   * nothing about the day.
+   */
+  describe('while the planner is not loaded', () => {
+    // seed() writes neither field; leave the rest of the suite settled.
+    afterEach(() => usePlannerStore.setState({ isLoading: false, isPreview: false }));
+
+    it('makes <main> inert while previewing, and keeps the exit live', () => {
+      usePlannerStore.setState({ isLoading: true, isPreview: true });
+      const { container } = render(<ZenRoom />);
+      const main = screen.getByRole('main');
+      expect(main).toHaveAttribute('inert');
+      // The cached day is shown, just not actionable.
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Morning pages');
+      expect(screen.getByRole('button', { name: 'Complete Morning pages' }).closest('[inert]')).toBe(main);
+
+      const exit = screen.getByRole('button', { name: /back to the planner/i });
+      expect(exit.closest('[inert]')).toBeNull();
+      expect(container.querySelector('.zen-room')).not.toHaveAttribute('inert');
+      expect(container.querySelector('.zen-room')).toHaveAttribute('data-settle-scope', 'zen');
+      fireEvent.click(exit);
+      expect(useViewStore.getState().zenOpen).toBe(false);
+    });
+
+    it('carries the sync line while previewing — on the room, outside the inert <main>', () => {
+      usePlannerStore.setState({ isLoading: true, isPreview: true });
+      const { container } = render(<ZenRoom />);
+      const line = screen.getByTestId('planner-sync-line');
+      expect(line.parentElement).toBe(container.querySelector('.zen-room'));
+      expect(line.closest('[inert]')).toBeNull();
+      expect(line).toHaveAttribute('aria-hidden', 'true');
+
+      act(() => usePlannerStore.setState({ isLoading: false, isPreview: false }));
+      // Landed inside the line's 300ms delay: it was never visible, so no sweep.
+      expect(screen.queryByTestId('planner-sync-line')).toBeNull();
+    });
+
+    it('lifts inert when the fresh data lands', () => {
+      usePlannerStore.setState({ isLoading: true, isPreview: true });
+      render(<ZenRoom />);
+      act(() => usePlannerStore.setState({ isLoading: false, isPreview: false }));
+      expect(screen.getByRole('main')).not.toHaveAttribute('inert');
+    });
+
+    it("says nothing — no \"That's the day.\", no \"Clear\" — before anything is visible", () => {
+      seed([]);
+      usePlannerStore.setState({ isLoading: true, isPreview: false });
+      render(<ZenRoom />);
+      expect(screen.queryByText("That's the day.")).toBeNull();
+      expect(screen.queryByText('Clear')).toBeNull();
+      expect(screen.getByRole('main')).not.toHaveAttribute('inert');
+
+      // The fresh, empty day: now it is a claim worth making.
+      act(() => usePlannerStore.setState({ isLoading: false }));
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent("That's the day.");
+      expect(screen.getByText('Clear')).toBeInTheDocument();
+    });
+
+    it('keys the hero and the rows for the settle', () => {
+      const { container } = render(<ZenRoom />);
+      // Its rows glide unlifted: they sit on the frost and under the folded
+      // ledger's veil, neither an ancestor, so a lift's ground would knock the
+      // frost out of a moving row and its z-index carry it over the veil.
+      expect(container.querySelector('.zen-room')).toHaveAttribute('data-settle-lift', 'off');
+      expect(screen.getByRole('heading', { level: 1 })).toHaveAttribute(
+        'data-settle-key',
+        'zen:hero:h-pages'
+      );
+      expect(container.querySelector('[data-settle-key="zen:hero"]')).toHaveAttribute(
+        'data-settle-role',
+        'frame'
+      );
+      expect(container.querySelector('[data-settle-key="zen:ledger"]')).toHaveAttribute(
+        'data-settle-role',
+        'frame'
+      );
+      expect(screen.getByText('Dinner with Sam').closest('li')).toHaveAttribute(
+        'data-settle-key',
+        'zen:t-dinner'
+      );
+      // A ledger row says which item it is, as every planner row does…
+      expect(screen.getByText('Dinner with Sam').closest('li')).toHaveAttribute(
+        'data-item-id',
+        't-dinner'
+      );
+      // …and the hero deliberately does not: the settle pairs unmatched rows by
+      // id, and a hero that changed on landing leaves and arrives in place
+      // rather than sliding in from a ledger line's slot.
+      expect(screen.getByRole('heading', { level: 1 })).not.toHaveAttribute('data-item-id');
+    });
+  });
+
   it('unfolds the rest of the day', () => {
     seed([
       HABIT,

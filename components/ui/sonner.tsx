@@ -40,7 +40,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
           title: '!text-sm !font-medium !text-foreground',
           description: '!text-xs !text-muted-foreground',
           actionButton:
-            '!h-7 !rounded-[8px] !bg-primary !px-3 !text-xs !font-medium !text-primary-foreground hover:!bg-primary/90',
+            '!h-7 !rounded-[calc(var(--radius)*0.5)] !bg-foreground !px-3 !text-xs !font-medium !text-background hover:!bg-foreground/85',
           closeButton:
             '!border-border !bg-surface-3 !text-muted-foreground hover:!text-foreground',
         },

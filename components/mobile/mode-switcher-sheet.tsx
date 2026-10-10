@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { AlignLeft, Check, Sun } from 'lucide-react';
 
-import { AskMarkIcon } from '@/components/ai/ask-mark';
+import { AskMarkIcon, AskMarkUnlitIcon } from '@/components/ai/ask-mark';
 import {
   Drawer,
   DrawerContent,
@@ -12,10 +12,12 @@ import {
   DrawerTitle,
   DrawerTrigger,
 } from '@/components/ui/drawer';
-import { useAICapabilities } from '@/lib/ai-connection-store';
+import { getAICapabilities, useAICapabilities } from '@/lib/ai-connection-store';
 import { phoneArrivalFocuses, useRailStore } from '@/lib/rail-store';
 import {
+  chatOffered,
   mobileTabOrder,
+  setupPageShown,
   shownMobileTab,
   useMobileNavStore,
   type MobileTab,
@@ -35,6 +37,16 @@ const GLYPHS: Record<MobileTab, typeof Sun> = {
   today: Sun,
   chat: AskMarkIcon,
 };
+
+/**
+ * The chat surface's glyph while it holds the setup page or the fix home: the
+ * unlit mark, as on the desktop's "Set up AI" and "Fix AI" key. Its neutral
+ * tiles say "not connected yet" and carry no accent, so the card stays
+ * colourless. Once something answers it is Ask's one-ink mark again, not the
+ * lit aurora mark: that would put the accent back on the card round 6 took it
+ * off.
+ */
+const SETUP_GLYPHS: Record<MobileTab, typeof Sun> = { ...GLYPHS, chat: AskMarkUnlitIcon };
 
 /**
  * Lucide's default stroke of 2 is thinned to 1.5 app-wide (the
@@ -75,35 +87,46 @@ const GLYPH_STROKE = 2.25;
 export function ModeSwitcherSheet() {
   const storedTab = useMobileNavStore((s) => s.activeTab);
   const setActiveTab = useMobileNavStore((s) => s.setActiveTab);
-  const { canChat } = useAICapabilities();
-  // What the shell is SHOWING: a chat tab that can no longer answer renders as
+  const caps = useAICapabilities();
+  const offered = chatOffered(caps);
+  const setupShown = setupPageShown(caps);
+  // What the shell is SHOWING: a chat tab that is no longer offered renders as
   // Today (components/shell/mobile-shell.tsx), and the card has to say so too.
-  const activeTab = shownMobileTab(storedTab, canChat);
+  const activeTab = shownMobileTab(storedTab, offered);
   const [open, setOpen] = useState(false);
   /**
-   * The surface the last tap sent us to, remembered only long enough for the
-   * close-autofocus handler below to read it. Cleared on every open so a sheet
-   * dismissed by the scrim or a swipe restores focus normally.
+   * Whether the last tap was an arrival on Ask, remembered only long enough
+   * for the close-autofocus handler below to read it: the chat row tapped
+   * from another surface while something answered, the one tap the dock's
+   * arrival rule (mobile-bottom-dock.tsx) gives the box focus for. Cleared on
+   * every open so a sheet dismissed by the scrim or a swipe restores focus
+   * normally.
    */
-  const [pendingTab, setPendingTab] = useState<MobileTab | null>(null);
+  const [pendingAsk, setPendingAsk] = useState(false);
 
   // The chat surface is Ask, whoever answers: the model label under its box
-  // says who (components/mobile/mobile-bottom-dock.tsx). It is only listed
-  // while something can answer (mobileTabOrder), so the name is never a
-  // promise.
+  // says who (components/mobile/mobile-bottom-dock.tsx). While nothing answers
+  // it is named for the page it holds instead, in the words the desktop's key
+  // wears, so the name is never a promise. It is only listed while the gate
+  // offers it (mobileTabOrder).
   const labels: Record<MobileTab, string> = {
     braindump: 'Braindump',
     today: 'Today',
-    chat: 'Ask',
+    chat: !setupShown ? 'Ask' : caps.askFix ? 'Fix AI' : 'Set up AI',
   };
-  const ActiveGlyph = GLYPHS[activeTab];
+  // The setup page's row says how much it matters: setting AI up is a choice,
+  // a saved model that stopped answering is a problem. Its own span, never
+  // part of the name the card and the sheet's description read.
+  const chatNote = !setupShown ? null : caps.askFix ? 'Needs attention' : 'Optional';
+  const glyphs = setupShown ? SETUP_GLYPHS : GLYPHS;
+  const ActiveGlyph = glyphs[activeTab];
 
   return (
     <Drawer
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (next) setPendingTab(null);
+        if (next) setPendingAsk(false);
       }}
       // vaul defaults autoFocus to false, which it implements by
       // preventDefault-ing Radix's open-autofocus — so focus stayed on the mode
@@ -146,9 +169,18 @@ export function ModeSwitcherSheet() {
         // with motion ON, since a reduced-motion unmount beats the composer to
         // it. Stand down for exactly that arrival, by the same rule: at Ask
         // home or History nothing takes focus, and the mode card should get it
-        // back rather than leave it on <body>.
+        // back rather than leave it on <body>. Only for a tap the dock answers,
+        // and only while Ask is still what the tab shows: the stack outlives
+        // the gate, and a conversation left on it under the setup page or the
+        // fix home is neither on screen nor given a box. The setup page that
+        // turns into Ask during the close, or the row already current, moves
+        // nothing in the dock, so the card gets focus back then too.
         onCloseAutoFocus={(event) => {
-          if (pendingTab === 'chat' && phoneArrivalFocuses(useRailStore.getState().stacks.phone)) {
+          if (
+            pendingAsk &&
+            getAICapabilities().canChat &&
+            phoneArrivalFocuses(useRailStore.getState().stacks.phone)
+          ) {
             event.preventDefault();
           }
         }}
@@ -156,15 +188,16 @@ export function ModeSwitcherSheet() {
         <DrawerHeader className="pb-2">
           <DrawerTitle className="text-left text-base">Go to</DrawerTitle>
           <DrawerDescription className="sr-only">
-            {canChat
+            {offered
               ? `Switch between the Braindump, Today and ${labels.chat} surfaces.`
               : 'Switch between the Braindump and Today surfaces.'}
           </DrawerDescription>
         </DrawerHeader>
 
         <div className="flex flex-col gap-1 px-4 pb-4">
-          {mobileTabOrder(canChat).map((id) => {
-            const Glyph = GLYPHS[id];
+          {mobileTabOrder(offered).map((id) => {
+            const Glyph = glyphs[id];
+            const note = id === 'chat' ? chatNote : null;
             const current = id === activeTab;
             return (
               <button
@@ -174,7 +207,11 @@ export function ModeSwitcherSheet() {
                 data-testid={`mode-option-${id}`}
                 aria-current={current ? 'true' : undefined}
                 onClick={() => {
-                  setPendingTab(id);
+                  // Read before the tap moves the tab: only one from another
+                  // surface onto Ask is an arrival.
+                  setPendingAsk(
+                    id === 'chat' && useMobileNavStore.getState().activeTab !== 'chat' && getAICapabilities().canChat
+                  );
                   setActiveTab(id);
                   setOpen(false);
                 }}
@@ -198,6 +235,19 @@ export function ModeSwitcherSheet() {
                 />
                 <span className="flex-1 truncate text-sm font-medium text-foreground">
                   {labels[id]}
+                  {/* After a space, not a gap: the row's name is read off
+                      its text, and two spans with nothing between them run
+                      together ("Set up AIOptional"). Muted ink, never the
+                      accent: a quiet aside on a row the sheet keeps
+                      colourless. */}
+                  {note && (
+                    <>
+                      {' '}
+                      <span data-mode-note="" className="ml-1 text-xs font-normal text-muted-foreground">
+                        {note}
+                      </span>
+                    </>
+                  )}
                 </span>
                 {/* A mark, not a tint: the card this sheet belongs to gave up
                     its lime highlight in round 6, and a lime row here would put

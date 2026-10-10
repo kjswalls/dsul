@@ -92,9 +92,188 @@ describe('items', () => {
   });
 
   it('tells the model, in the tool text, how to complete a recurring item', () => {
-    // The single most common way to corrupt a series is status-instead-of-date.
+    // The single most common way to corrupt a series is status-instead-of-date,
+    // and the next is a short completedDates list un-ticking the rest.
+    expect(toolByName('dsul_update_task')!.description).toMatch(/dsul_complete/);
     expect(toolByName('dsul_update_task')!.description).toMatch(/completedDates/);
+    expect(toolByName('dsul_update_habit')!.description).toMatch(/dsul_complete/);
     expect(toolByName('dsul_update_habit')!.description).toMatch(/completedDates/);
+  });
+
+  it('refuses a monthly repeat day outside 1 to 31, which the server would store', () => {
+    for (const bad of [0, 32, 1.5, '1']) {
+      expect(plan('dsul_update_task', { id: 'abc', repeatMonthDay: bad }), String(bad)).toHaveProperty('error');
+      expect(plan('dsul_create_habit', { title: 'Rent', repeatMonthDay: bad }), String(bad)).toHaveProperty('error');
+    }
+  });
+
+  it('takes a monthly repeat day on tasks and habits', () => {
+    for (const name of ['dsul_create_task', 'dsul_update_task', 'dsul_create_habit', 'dsul_update_habit']) {
+      const args = name.startsWith('dsul_create') ? { title: 'Rent', repeatMonthDay: 1 } : { id: 'abc', repeatMonthDay: 1 };
+      expect((plan(name, args) as { body: Record<string, unknown> }).body.repeatMonthDay, name).toBe(1);
+    }
+  });
+});
+
+describe('one-day verbs', () => {
+  const ACT = '/api/agent/items/abc/act';
+
+  it('ticks one date, done by default', () => {
+    expect(plan('dsul_complete', { id: 'abc', date: '2026-10-08' })).toEqual({
+      method: 'POST',
+      path: ACT,
+      body: { action: 'complete', date: '2026-10-08', done: true },
+    });
+  });
+
+  it('unticks, and carries a habit tally', () => {
+    expect(plan('dsul_complete', { id: 'abc', date: '2026-10-08', done: false, count: 2 })).toEqual({
+      method: 'POST',
+      path: ACT,
+      body: { action: 'complete', date: '2026-10-08', done: false, count: 2 },
+    });
+  });
+
+  it('skips and unskips one date', () => {
+    expect(plan('dsul_skip', { id: 'abc', date: '2026-10-08' })).toEqual({
+      method: 'POST',
+      path: ACT,
+      body: { action: 'skip', date: '2026-10-08', skipped: true },
+    });
+    expect((plan('dsul_skip', { id: 'abc', date: '2026-10-08', skipped: false }) as { body: unknown }).body).toEqual({
+      action: 'skip',
+      date: '2026-10-08',
+      skipped: false,
+    });
+  });
+
+  it('carries a task to a day', () => {
+    expect(plan('dsul_move', { id: 'abc', date: '2026-10-09' })).toEqual({
+      method: 'POST',
+      path: ACT,
+      body: { action: 'move', date: '2026-10-09' },
+    });
+  });
+
+  it('resets a streak with no other field', () => {
+    expect(plan('dsul_reset_streak', { id: 'abc' })).toEqual({
+      method: 'POST',
+      path: ACT,
+      body: { action: 'resetStreak' },
+    });
+  });
+
+  it('adds or removes one routine or season member', () => {
+    expect(plan('dsul_set_membership', { id: 'abc', kind: 'routine', collectionId: 'r1' })).toEqual({
+      method: 'POST',
+      path: ACT,
+      body: { action: 'collect', kind: 'routine', containerId: 'r1', member: true },
+    });
+    expect(
+      (plan('dsul_set_membership', { id: 'abc', kind: 'season', collectionId: 's1', member: false }) as { body: unknown }).body
+    ).toEqual({ action: 'collect', kind: 'season', containerId: 's1', member: false });
+  });
+
+  it('refuses a missing or loose date rather than guessing today', () => {
+    for (const name of ['dsul_complete', 'dsul_skip', 'dsul_move']) {
+      expect(plan(name, { id: 'abc' }), name).toHaveProperty('error');
+      expect(plan(name, { id: 'abc', date: 'Oct 8' }), name).toHaveProperty('error');
+    }
+  });
+
+  it('refuses a non-boolean flag and a goal membership', () => {
+    expect(plan('dsul_complete', { id: 'abc', date: '2026-10-08', done: 'yes' })).toHaveProperty('error');
+    expect(plan('dsul_skip', { id: 'abc', date: '2026-10-08', skipped: 'yes' })).toHaveProperty('error');
+    expect(plan('dsul_set_membership', { id: 'abc', kind: 'goal', collectionId: 'g1' })).toHaveProperty('error');
+    expect(plan('dsul_set_membership', { id: 'abc', kind: 'routine' })).toHaveProperty('error');
+  });
+
+  it('sends every schema property it lists', () => {
+    // The verbs rename two keys on the way (collectionId → containerId, and the
+    // action), so this compares by value: a property the plan drops is one the
+    // model believes it set.
+    const cases: [string, Record<string, unknown>][] = [
+      ['dsul_complete', { id: 'abc', date: '2026-10-08', done: false, count: 7 }],
+      ['dsul_skip', { id: 'abc', date: '2026-10-08', skipped: false }],
+      ['dsul_move', { id: 'abc', date: '2026-10-09' }],
+      ['dsul_reset_streak', { id: 'abc' }],
+      ['dsul_set_membership', { id: 'abc', kind: 'season', collectionId: 's9', member: false }],
+    ];
+    for (const [name, args] of cases) {
+      const props = Object.keys((toolByName(name)!.inputSchema as { properties: Record<string, unknown> }).properties);
+      expect(Object.keys(args).sort(), name).toEqual(props.sort());
+      const body = JSON.stringify((plan(name, args) as { body: unknown }).body);
+      for (const [k, v] of Object.entries(args)) if (k !== 'id') expect(body, `${name}.${k}`).toContain(JSON.stringify(v));
+    }
+  });
+});
+
+describe('the schema and the body agree', () => {
+  // A key the schema lists but the plan drops is a field the model believes it
+  // set (habit duration and reminderTime were exactly this). A key the plan
+  // sends but the schema hides is one no strict client will ever send (task
+  // repeatFrequency was). Fill every property and compare.
+  const WRITE_TOOLS = [
+    'dsul_create_task', 'dsul_update_task', 'dsul_create_habit', 'dsul_update_habit',
+    'dsul_create_project', 'dsul_update_project',
+  ];
+  for (const name of WRITE_TOOLS) {
+    it(name, () => {
+      const props = Object.keys(
+        (toolByName(name)!.inputSchema as { properties: Record<string, unknown> }).properties
+      );
+      // 'x' everywhere but the one key a plan range-checks itself.
+      const args = Object.fromEntries(props.map((k) => [k, k === 'repeatMonthDay' ? 1 : 'x']));
+      const result = plan(name, args) as { body: Record<string, unknown> };
+      expect(Object.keys(result.body).sort()).toEqual(props.filter((k) => k !== 'id').sort());
+    });
+  }
+});
+
+describe('projects', () => {
+  it('creates a project by name', () => {
+    expect(plan('dsul_create_project', { name: 'YouTube', notes: 'Weekly devlog' })).toEqual({
+      method: 'POST',
+      path: '/api/agent/projects',
+      body: { name: 'YouTube', notes: 'Weekly devlog' },
+    });
+  });
+
+  it('refuses a repeating task with no start day, which would never come round', () => {
+    expect(plan('dsul_create_task', { title: 'Bins', repeatFrequency: 'custom', repeatDays: [1] })).toMatchObject({
+      error: expect.stringContaining('startDate'),
+    });
+    expect(
+      plan('dsul_create_task', { title: 'Bins', repeatFrequency: 'custom', repeatDays: [1], startDate: '2026-10-12' })
+    ).toMatchObject({ method: 'POST' });
+    expect(plan('dsul_create_task', { title: 'Once', repeatFrequency: 'none' })).toMatchObject({ method: 'POST' });
+  });
+
+  it('refuses a create with no name', () => {
+    expect(plan('dsul_create_project', { name: ' ' })).toMatchObject({ error: expect.any(String) });
+  });
+
+  it('deletes by id, in the path', () => {
+    expect(plan('dsul_delete_project', { id: 'p1' })).toEqual({ method: 'DELETE', path: '/api/agent/projects/p1' });
+    expect(plan('dsul_delete_project', {})).toHaveProperty('error');
+  });
+
+  it('updates by id, in the path', () => {
+    expect(plan('dsul_update_project', { id: 'p1', name: 'Sunday Softworks' })).toEqual({
+      method: 'PATCH',
+      path: '/api/agent/projects/p1',
+      body: { name: 'Sunday Softworks' },
+    });
+  });
+
+  it('refuses an update that changes nothing, or blanks the name', () => {
+    expect(plan('dsul_update_project', { id: 'p1' })).toMatchObject({ error: expect.any(String) });
+    expect(plan('dsul_update_project', { id: 'p1', name: '' })).toMatchObject({ error: expect.any(String) });
+  });
+
+  it('tells the model to create a new project before filing under it', () => {
+    expect(toolByName('dsul_create_task')!.description).toMatch(/dsul_create_project/);
+    expect(toolByName('dsul_create_habit')!.description).toMatch(/dsul_create_project/);
   });
 });
 

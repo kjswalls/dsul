@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { useLayoutEffect } from 'react';
 import { CloudOff, Sun } from 'lucide-react';
 
@@ -54,7 +54,8 @@ import {
   resetNoticeAnchors,
 } from '@/lib/notice-anchors';
 import { useUndoStripStore } from '@/lib/undo-strip-store';
-import { usePlannerStore } from '@/lib/planner-store';
+import { projectItems, usePlannerStore } from '@/lib/planner-store';
+import type { Item } from '@/lib/planner-types';
 import { useMorningStore } from '@/lib/morning-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { toDateStr } from '@/lib/recurrence';
@@ -455,6 +456,56 @@ describe('the undo strip', () => {
     expect(useUndoStripStore.getState().entry).toBeNull();
   });
 
+  // A row that is not the planner's ("AI is off" after No AI, thanks) brings
+  // its own take-back, and the planner's history is never touched by it.
+  it("runs a row's own Undo instead of the planner's", () => {
+    const plannerUndo = vi.fn();
+    const own = vi.fn();
+    usePlannerStore.setState({ canUndo: true, undo: plannerUndo });
+    useUndoStripStore.getState().show({ id: 'ai-off-1', label: 'AI is off.', durationMs: 5000, onUndo: own });
+    render(<UndoStrip />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+
+    expect(own).toHaveBeenCalledTimes(1);
+    expect(plannerUndo).not.toHaveBeenCalled();
+    expect(useUndoStripStore.getState().entry).toBeNull();
+  });
+
+  it('sets prose in the UI face, and keeps the numeric face for the action log', () => {
+    useUndoStripStore.getState().show({ id: 'a1', label: 'Delete task: Swim', durationMs: 5000 });
+    const { rerender } = render(<UndoStrip />);
+    const faces = () =>
+      [
+        screen.getByTestId('undo-strip').querySelector('span.inline-block') as HTMLElement,
+        screen.getByRole('button', { name: 'Undo' }),
+      ].map((el) => el.className.includes('font-num'));
+    expect(faces()).toEqual([true, true]);
+
+    act(() => useUndoStripStore.getState().show({ id: 'b1', label: 'AI is off.', durationMs: 5000, face: 'ui' }));
+    rerender(<UndoStrip />);
+    expect(faces()).toEqual([false, false]);
+    expect(screen.getByRole('button', { name: 'Undo' }).className).not.toMatch(/tracking-/);
+  });
+
+  it('takes focus onto Undo only for a row that asks, as it appears', () => {
+    const elsewhere = document.createElement('button');
+    document.body.appendChild(elsewhere);
+    elsewhere.focus();
+    try {
+      useUndoStripStore.getState().show({ id: 'a1', label: 'Delete task: Swim', durationMs: 5000 });
+      render(<UndoStrip />);
+      // An action-log row never takes focus: the user is mid-edit.
+      expect(document.activeElement).toBe(elsewhere);
+      act(() =>
+        useUndoStripStore.getState().show({ id: 'b1', label: 'AI is off.', durationMs: 5000, face: 'ui', focusUndo: true })
+      );
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Undo' }));
+    } finally {
+      elsewhere.remove();
+    }
+  });
+
   it('will not let a stale timer clear the row that replaced it', () => {
     const store = useUndoStripStore.getState();
     store.show({ id: 'a1', label: 'Delete task: Swim', durationMs: 5000 });
@@ -669,5 +720,202 @@ describe('the mobile dock', () => {
     expect(well).not.toBeNull();
     expect(well!.contains(screen.getByTestId('dock-notices'))).toBe(false);
     expect(well!.contains(screen.getByTestId('undo-strip'))).toBe(false);
+  });
+});
+
+/* ── verbs that wait for the planner ─────────────────────────────────── */
+
+/**
+ * A notice's verb acts on the planner, so it waits until the planner has
+ * LOADED — not merely settled, because a failed load is settled with an empty
+ * store. The line itself stays mounted (nothing inserted mid-landing). While a
+ * load is in flight it reads "Syncing…" with no onSelect, which both renderers
+ * draw inert. After a FAILED load nothing is syncing, so it says nothing of the
+ * kind: the verb is left off, and the Retry notice is the way on. ✕ stays live
+ * throughout: dropping a line is the user's own call either way.
+ *
+ * Put back is the one that bites: restoreScheduling finds no rows to restore
+ * before landing, and the receipt was then cleared regardless — the only way
+ * back from the sweep, spent on nothing.
+ */
+describe('the notice verbs wait for the planner to load', () => {
+  const restoreScheduling = vi.fn();
+  const pristineRestore = usePlannerStore.getState().restoreScheduling;
+  const previewing = { isLoading: true, isPreview: true, error: null, loadFailedUserId: null };
+  const failed = { isLoading: false, isPreview: false, error: 'Failed to load data', loadFailedUserId: 'u1' };
+  const loaded = { isLoading: false, isPreview: false, error: null, loadFailedUserId: null };
+
+  const receipt = () => useMorningStore.getState().morningAutoAgeReceiptByUser.u1;
+
+  beforeEach(() => {
+    resetNoticeAnchors();
+    restoreScheduling.mockClear();
+    useSidebarStore.setState({ leftSidebarOpen: true });
+    usePlannerStore.setState({ restoreScheduling, selectedDate: new Date() });
+    useViewStore.setState({ scope: 'day' });
+  });
+  afterEach(() => {
+    cleanup();
+    usePlannerStore.setState({ restoreScheduling: pristineRestore, ...loaded });
+    useMorningStore.setState({ morningAutoAgeReceiptByUser: {} });
+    useEODStore.setState({ eodReviewEnabled: false, _hasHydrated: false, isOpen: false });
+  });
+
+  describe('the sweep receipt', () => {
+    beforeEach(seedSweepReceipt);
+
+    it('reads Syncing… in place while previewing, and pressing it spends nothing', () => {
+      usePlannerStore.setState(previewing);
+      render(<NoticeSlot anchor="braindump" />);
+
+      const row = screen.getByTestId('in-place-notice');
+      expect(row).toHaveTextContent('Syncing…');
+      expect(row).not.toHaveTextContent('Put back');
+      fireEvent.click(screen.getByText('Syncing…'));
+
+      expect(restoreScheduling).not.toHaveBeenCalled();
+      expect(receipt()).toBeDefined();
+    });
+
+    it('offers no verb on the dock after a failed load (nothing is syncing), and pressing it spends nothing', () => {
+      usePlannerStore.setState(failed);
+      render(<DockNotices />);
+      // "Couldn't load your data" holds the one row; the receipt is behind the fold.
+      fireEvent.click(screen.getByTestId('dock-notice-overflow'));
+
+      const row = document.querySelector('[data-notice-id="auto-age-receipt"]') as HTMLElement;
+      expect(row).toHaveTextContent('put aside this morning');
+      expect(row).not.toHaveTextContent('Syncing…');
+      expect(row).not.toHaveTextContent('Put back');
+      fireEvent.click(within(row).getByText('put aside this morning', { exact: false }));
+
+      expect(restoreScheduling).not.toHaveBeenCalled();
+      expect(receipt()).toBeDefined();
+      // The way on is the Retry beside it.
+      expect(document.querySelector('[data-notice-id="sync-error"]')).toHaveTextContent('Retry');
+    });
+
+    it('keeps its ✕ live while syncing', () => {
+      usePlannerStore.setState(previewing);
+      render(<NoticeSlot anchor="braindump" />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Dismiss this receipt' }));
+      expect(receipt()).toBeUndefined();
+    });
+
+    it('puts them back once loaded', () => {
+      usePlannerStore.setState(loaded);
+      render(<NoticeSlot anchor="braindump" />);
+
+      fireEvent.click(screen.getByText('Put back'));
+      expect(restoreScheduling).toHaveBeenCalledWith([
+        { id: 'i1', title: 'Swim', isScheduled: true, startDate: '2026-08-20' },
+      ]);
+      expect(receipt()).toBeUndefined();
+    });
+  });
+
+  describe('the end-of-day line', () => {
+    beforeEach(() => {
+      usePlannerStore.setState({ userId: 'u1', userTimezone: 'UTC' });
+      useEODStore.setState({
+        _hasHydrated: true,
+        eodReviewEnabled: true,
+        eodReviewTime: '00:00',
+        lastEodReviewDate: null,
+        eodDeferredDate: null,
+        isOpen: false,
+      });
+    });
+
+    it('reads Syncing… beside the date while previewing, and pressing it opens nothing', () => {
+      usePlannerStore.setState(previewing);
+      render(<DayHeaderNotice />);
+
+      expect(screen.getByTestId('in-place-notice')).toHaveTextContent('Syncing…');
+      fireEvent.click(screen.getByText('Syncing…'));
+      expect(useEODStore.getState().isOpen).toBe(false);
+    });
+
+    it('offers no verb on the dock after a failed load (nothing is syncing), and pressing it opens nothing', () => {
+      usePlannerStore.setState(failed);
+      useViewStore.setState({ scope: 'week' }); // no day-header anchor: the dock takes it
+      render(<DockNotices />);
+      fireEvent.click(screen.getByTestId('dock-notice-overflow'));
+
+      const row = document.querySelector('[data-notice-id="eod-review"]') as HTMLElement;
+      expect(row).toHaveTextContent('Today’s review is waiting');
+      expect(row).not.toHaveTextContent('Syncing…');
+      expect(row).not.toHaveTextContent('Start');
+      fireEvent.click(within(row).getByText('Today’s review is waiting'));
+      expect(useEODStore.getState().isOpen).toBe(false);
+      // ✕ ("Not tonight") is still there to wave it away.
+      expect(within(row).queryByRole('button', { name: 'Not tonight' })).not.toBeNull();
+    });
+
+    it('offers no verb in place after a failed load either', () => {
+      usePlannerStore.setState(failed);
+      render(<DayHeaderNotice />);
+
+      const row = screen.getByTestId('in-place-notice');
+      expect(row).not.toHaveTextContent('Syncing…');
+      expect(row).not.toHaveTextContent('Start');
+      fireEvent.click(within(row).getByText('Today’s review is waiting'));
+      expect(useEODStore.getState().isOpen).toBe(false);
+    });
+
+    it('keeps “Not tonight” live while syncing', () => {
+      usePlannerStore.setState(previewing);
+      render(<DayHeaderNotice />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Not tonight' }));
+      expect(useEODStore.getState().eodDeferredDate).toBe(TODAY);
+    });
+
+    it('starts the review once loaded', () => {
+      usePlannerStore.setState(loaded);
+      render(<DayHeaderNotice />);
+
+      fireEvent.click(screen.getByText('Start'));
+      expect(useEODStore.getState().isOpen).toBe(true);
+    });
+  });
+
+  describe('the waiting line', () => {
+    const waiting: Item = {
+      type: 'task',
+      id: 'late-1',
+      title: 'From last week',
+      status: 'pending',
+      isScheduled: true,
+      timeBucket: 'morning',
+      startDate: '2026-01-05',
+      order: 0,
+      completedDates: [],
+    } as Item;
+
+    beforeEach(() => {
+      usePlannerStore.setState({ userId: 'u1', userTimezone: 'UTC', ...projectItems([waiting]) });
+      useMorningStore.setState({ morningCheckEnabled: true, morningCheckDismissedDate: null });
+    });
+    afterEach(() => {
+      usePlannerStore.setState({ ...projectItems([]) });
+      useMorningStore.setState({ morningCheckEnabled: false });
+    });
+
+    it('is not there while previewing cached rows, or over a failed load', () => {
+      for (const state of [previewing, failed]) {
+        usePlannerStore.setState(state);
+        const { unmount } = render(<DockNotices />);
+        expect(screen.queryByTestId('morning-bar')).toBeNull();
+        unmount();
+      }
+    });
+
+    it('appears once loaded', () => {
+      usePlannerStore.setState(loaded);
+      render(<DockNotices />);
+      expect(screen.getByTestId('morning-bar')).toHaveTextContent('1 item waiting');
+    });
   });
 });

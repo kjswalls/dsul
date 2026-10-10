@@ -129,3 +129,74 @@ describe('creating a project whose name the Trash still holds', () => {
     expect(screen.getByTestId('project-add')).toBeEnabled();
   });
 });
+
+/**
+ * The look-only preview's landing is not a delete (lib/planner-snapshot.ts).
+ *
+ * The union above records every project that LEAVES the live array. The
+ * preview → fresh landing replaces cached projects with the server's in one
+ * set(), so a project the cache had and the server lacks would read as deleted
+ * here and its name would be refused — for a row that was never in this
+ * session's bin, and may be in no bin at all. The failure drop empties the
+ * array outright, and is no delete either. The server's bin speaks for any
+ * real deletion.
+ */
+describe('the preview landing fences no names', () => {
+  afterEach(() => {
+    usePlannerStore.setState({ isPreview: false, error: null } as never);
+  });
+
+  const typeName = async (name: string) => {
+    fireEvent.click(screen.getByTestId('project-new'));
+    fireEvent.change(screen.getByTestId('project-new-name'), { target: { value: name } });
+    await waitFor(() => expect(fetchTrashedNames).toHaveBeenCalled());
+  };
+
+  it('preview → fresh: a cached project the server no longer has is not held', async () => {
+    usePlannerStore.setState({
+      isPreview: true,
+      isLoading: true,
+      projects: [project('p1', 'Work'), project('p-stale', 'Stale')],
+    } as never);
+    openProjects();
+    usePlannerStore.setState({ isPreview: false, isLoading: false, projects: [project('p1', 'Work')] } as never);
+
+    await typeName('Stale');
+    expect(screen.queryByTestId('project-new-problem')).toBeNull();
+    expect(screen.getByTestId('project-add')).toBeEnabled();
+  });
+
+  it('the failure drop: nothing the preview showed is held', async () => {
+    usePlannerStore.setState({
+      isPreview: true,
+      isLoading: true,
+      projects: [project('p1', 'Work'), project('p-stale', 'Stale')],
+    } as never);
+    openProjects();
+    usePlannerStore.setState({ isPreview: false, isLoading: false, error: 'offline', projects: [] } as never);
+
+    await waitFor(() => expect(screen.getByTestId('project-new-name')).toBeTruthy());
+    fireEvent.change(screen.getByTestId('project-new-name'), { target: { value: 'Stale' } });
+    await waitFor(() => expect(fetchTrashedNames).toHaveBeenCalled());
+    expect(screen.queryByTestId('project-new-problem')).toBeNull();
+  });
+
+  it('a project removed AFTER the landing is still held (the fence is intact)', async () => {
+    usePlannerStore.setState({
+      isPreview: true,
+      isLoading: true,
+      projects: [project('p1', 'Work'), project('p2', 'Errands')],
+    } as never);
+    openProjects();
+    usePlannerStore.setState({
+      isPreview: false,
+      isLoading: false,
+      projects: [project('p1', 'Work'), project('p2', 'Errands')],
+    } as never);
+    // What removeProject does to the live array.
+    usePlannerStore.setState({ projects: [project('p1', 'Work')] } as never);
+
+    await typeName('Errands');
+    expect(screen.getByTestId('project-new-problem')).toHaveTextContent(/Trash/);
+  });
+});

@@ -32,6 +32,8 @@ const CHAT_CODES: ReplyErrorCode[] = [
   'blocked_url',
   'empty',
   'refused',
+  'daily_limit',
+  'region',
   'not_connected',
   'unauthorized',
   'invalid',
@@ -78,6 +80,58 @@ describe('chatErrorCopy', () => {
   it('reads an unknown or missing code as the generic line', () => {
     expect(chatErrorCopy('teapot', 'model')).toBe(CLIENT_ERROR_COPY.client);
     expect(chatErrorCopy(null, null)).toBe(CLIENT_ERROR_COPY.client);
+  });
+});
+
+describe("chatErrorCopy: a daily limit's own sentence", () => {
+  const NOW = Date.UTC(2026, 9, 7, 12, 0);
+  const at = (ms: number) => new Date(NOW + ms).toISOString();
+
+  it('says when the limit lifts, in the reader\'s zone', () => {
+    const copy = chatErrorCopy('daily_limit', 'model', {
+      resetAt: at(19 * 3_600_000),
+      timeZone: 'UTC',
+      now: NOW,
+    });
+    expect(copy).toBe("That's today's free limit. AI is back when it resets at 7 am.");
+    expect(copy).not.toMatch(/—|Beacon/);
+  });
+
+  it('follows the time format and the zone it is given', () => {
+    const ctx = { resetAt: at(19 * 3_600_000), now: NOW };
+    expect(chatErrorCopy('daily_limit', 'model', { ...ctx, timeZone: 'UTC', timeFormat: '24h' })).toContain(
+      'resets at 07:00.'
+    );
+    expect(chatErrorCopy('daily_limit', 'model', { ...ctx, timeZone: 'America/New_York' })).toContain(
+      'resets at 3 am.'
+    );
+    expect(
+      chatErrorCopy('daily_limit', 'model', { resetAt: at(12 * 3_600_000), timeZone: 'UTC', now: NOW })
+    ).toContain('resets at midnight.');
+  });
+
+  it('falls back to the static line for a reset time that is past, missing or unreadable', () => {
+    // A saved reply re-renders long after the limit lifted, and `limitedUntil`
+    // is dropped the moment a later check succeeds.
+    for (const resetAt of [at(-60_000), at(0), null, undefined, '', 'tomorrow', '2026-13-45T99:00:00Z']) {
+      expect(chatErrorCopy('daily_limit', 'model', { resetAt, timeZone: 'UTC', now: NOW })).toBe(
+        MODEL_ERROR_COPY.daily_limit
+      );
+    }
+    expect(chatErrorCopy('daily_limit', 'model')).toBe(MODEL_ERROR_COPY.daily_limit);
+    expect(chatErrorCopy('daily_limit', null)).toBe(MODEL_ERROR_COPY.daily_limit);
+  });
+
+  it('is the only code a reset time changes', () => {
+    const ctx = { resetAt: at(19 * 3_600_000), timeZone: 'UTC', now: NOW };
+    for (const code of ['rate_limit', 'quota', 'region', 'upstream'] as const) {
+      expect(chatErrorCopy(code, 'model', ctx)).toBe(chatErrorCopy(code, 'model'));
+    }
+  });
+
+  it("region names a next step, since nothing about waiting would help", () => {
+    expect(chatErrorCopy('region', 'model')).toBe(MODEL_ERROR_COPY.region);
+    expect(MODEL_ERROR_COPY.region).toContain('Settings');
   });
 });
 

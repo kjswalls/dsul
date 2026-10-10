@@ -19,8 +19,11 @@ import { registerItemPanelFlush, useUIStore } from '@/lib/ui-store';
 import { useRailStore } from '@/lib/rail-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useProposalStore } from '@/lib/proposal-store';
+import { useUndoStripStore } from '@/lib/undo-strip-store';
+import { useMobileNavStore } from '@/lib/mobile-nav-store';
+import { AskMarkUnlitIcon } from '@/components/ai/ask-mark';
 import type { Item, ItemTypeDef } from '@/lib/planner-types';
-import { CONNECTED_MODEL, NOTHING_CONNECTED, seedAI } from './helpers/ai-fixtures';
+import { AI_HIDDEN, CONNECTED_MODEL, KEY_TURNED_DOWN, NOTHING_CONNECTED, OPENCLAW_PLUGIN, seedAI } from './helpers/ai-fixtures';
 
 /**
  * The palette's load-bearing invariants: every rendered row has a unique cmdk
@@ -792,11 +795,40 @@ describe('the right rail', () => {
       expect(useRailStore.getState().summoned).toBe(false);
     });
 
-    it('is unavailable, and hidden, with nothing to answer', () => {
+    // With nothing to answer but setup or a fix offered, the chord opens the
+    // setup column (lib/open-chat.ts toggleRail); the palette row stays out of
+    // sight, since it is not Ask it opens.
+    it('is available, and hidden from the palette, while the gate offers setup or a fix', () => {
+      for (const offered of [NOTHING_CONNECTED, KEY_TURNED_DOWN]) {
+        unseed();
+        unseed = seedAI(offered);
+        expect(toggle().availableWhen!(ctx)).toBe(true);
+        expect((toggle().hidden as (c: CommandContext) => boolean)(ctx)).toBe(true);
+      }
+    });
+
+    // The setup column is the desktop rail's. On the phone shell the chord
+    // would only arm a summon nothing draws, which springs the column open
+    // unasked once the window widens; so there it is consumed and inert.
+    it('offers setup or a fix only on the desktop shell', () => {
+      const phone = { ...ctx, isMobile: true };
+      for (const offered of [NOTHING_CONNECTED, KEY_TURNED_DOWN]) {
+        unseed();
+        unseed = seedAI(offered);
+        expect(toggle().availableWhen!(phone)).toBe(false);
+      }
       unseed();
-      unseed = seedAI(NOTHING_CONNECTED);
-      expect(toggle().availableWhen!(ctx)).toBe(false);
-      expect((toggle().hidden as (c: CommandContext) => boolean)(ctx)).toBe(true);
+      unseed = seedAI(CONNECTED_MODEL);
+      expect(toggle().availableWhen!(phone)).toBe(true);
+    });
+
+    it('is unavailable, and hidden, with nothing offered', () => {
+      for (const nothing of [AI_HIDDEN, { ...KEY_TURNED_DOWN, aiHidden: true }, { phase: 'error' as const }, undefined]) {
+        unseed();
+        unseed = seedAI(nothing);
+        expect(toggle().availableWhen!(ctx)).toBe(false);
+        expect((toggle().hidden as (c: CommandContext) => boolean)(ctx)).toBe(true);
+      }
     });
   });
 
@@ -873,5 +905,247 @@ describe('the right rail', () => {
       expect(useSidebarStore.getState().askOpen).toBe(false);
       expect(useProposalStore.getState().lastRequest).toMatchObject({ intent: 'catch-up' });
     });
+  });
+});
+
+/* ── Ctrl+Z and the undo strip ──────────────────────────────────────────── */
+
+// The strip's row and Ctrl+Z are one offer. A row with its own take-back
+// ("AI is off" · Undo, lib/no-ai.ts) is what Ctrl+Z takes back while it shows.
+describe('Ctrl+Z (history.undo) and the strip', () => {
+  const real = usePlannerStore.getState();
+  const plannerUndo = vi.fn();
+  const undo = () => commandById('history.undo');
+
+  beforeEach(() => {
+    plannerUndo.mockReset();
+    usePlannerStore.setState({ canUndo: true, undo: plannerUndo } as never);
+    useUndoStripStore.setState({ entry: null });
+  });
+  afterEach(() => {
+    usePlannerStore.setState({ canUndo: real.canUndo, undo: real.undo } as never);
+    useUndoStripStore.setState({ entry: null });
+  });
+
+  it("takes back the row's own Undo, never the planner action from before it", () => {
+    const own = vi.fn();
+    useUndoStripStore.getState().show({ id: 'ai-off-1', label: 'AI is off.', durationMs: 5000, onUndo: own });
+    undo().run(ctx);
+    expect(own).toHaveBeenCalledTimes(1);
+    expect(plannerUndo).not.toHaveBeenCalled();
+    expect(useUndoStripStore.getState().entry).toBeNull();
+    // The row gone, Ctrl+Z is the planner's again.
+    undo().run(ctx);
+    expect(plannerUndo).toHaveBeenCalledTimes(1);
+  });
+
+  it('is available for such a row with nothing in the planner to undo, and not without one', () => {
+    usePlannerStore.setState({ canUndo: false } as never);
+    expect(undo().availableWhen!(ctx)).toBe(false);
+    useUndoStripStore.getState().show({ id: 'ai-off-2', label: 'AI is off.', durationMs: 5000, onUndo: vi.fn() });
+    expect(undo().availableWhen!(ctx)).toBe(true);
+  });
+
+  it("leaves an action-log row's Ctrl+Z to the planner, as before", () => {
+    useUndoStripStore.getState().show({ id: 'log-1', label: 'Delete task: Swim', durationMs: 5000 });
+    undo().run(ctx);
+    expect(plannerUndo).toHaveBeenCalledTimes(1);
+  });
+});
+
+/* ── Ask hands off to Make (mods PR 7) ───────────────────────────────────── */
+
+describe('make.write: "Write a recipe with AI"', () => {
+  const write = () => commandById('make.write');
+
+  it('shows only with a connected model (canMake), never for OpenClaw alone', () => {
+    for (const [seed, shown] of [
+      [CONNECTED_MODEL, true],
+      [OPENCLAW_PLUGIN, false],
+      [{ ...CONNECTED_MODEL, openclaw: { gateway: true, agent: true, agentId: 'a' }, choice: 'openclaw' as const }, false],
+      [KEY_TURNED_DOWN, false],
+      [AI_HIDDEN, false],
+      [{ ...CONNECTED_MODEL, aiHidden: true }, false],
+      [{ phase: 'error' as const }, false],
+      [undefined, false],
+    ] as const) {
+      const unseed = seedAI(seed);
+      try {
+        expect(write().availableWhen!(ctx)).toBe(shown);
+        expect((write().hidden as (c: CommandContext) => boolean)(ctx)).toBe(!shown);
+      } finally {
+        unseed();
+      }
+    }
+  });
+
+  it('opens Make with the Recipe box, and sends nothing; no shortcut id', () => {
+    expect(write().shortcut).toBeUndefined();
+    const navigate = vi.fn();
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const unseed = seedAI(CONNECTED_MODEL);
+    try {
+      write().run({ ...ctx, navigate });
+      expect(navigate).toHaveBeenCalledWith('/settings/make?write=recipe');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      unseed();
+      fetchSpy.mockRestore();
+    }
+  });
+});
+
+describe('make.write-mod: "Write a mod with AI"', () => {
+  const write = () => commandById('make.write-mod');
+
+  it('shares make.write\'s gate: a connected model only', () => {
+    for (const [seed, shown] of [
+      [CONNECTED_MODEL, true],
+      [OPENCLAW_PLUGIN, false],
+      [KEY_TURNED_DOWN, false],
+      [AI_HIDDEN, false],
+      [undefined, false],
+    ] as const) {
+      const unseed = seedAI(seed);
+      try {
+        expect(write().availableWhen!(ctx)).toBe(shown);
+        expect((write().hidden as (c: CommandContext) => boolean)(ctx)).toBe(!shown);
+      } finally {
+        unseed();
+      }
+    }
+  });
+
+  it('opens Make with the Mod box, and sends nothing; no shortcut id; make.write is unchanged', () => {
+    expect(write().label).toBe('Write a mod with AI');
+    expect(write().group).toBe(commandById('make.write').group);
+    expect(write().shortcut).toBeUndefined();
+    expect(commandById('make.write').label).toBe('Write a recipe with AI');
+    const navigate = vi.fn();
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const unseed = seedAI(CONNECTED_MODEL);
+    try {
+      write().run({ ...ctx, navigate });
+      expect(navigate).toHaveBeenCalledWith('/settings/make?write=mod');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      unseed();
+      fetchSpy.mockRestore();
+    }
+  });
+});
+
+/* ── the doors into setup (AI setup PR 5) ──────────────────────────────── */
+
+// Ask AI's place while nothing answers: "Set up AI" while the gate invites,
+// "Fix AI" while a saved key needs attention, and nothing anywhere else.
+describe('ai.setup and ai.fix: "Set up AI" and "Fix AI"', () => {
+  const setup = () => commandById('ai.setup');
+  const fix = () => commandById('ai.fix');
+  const phone: CommandContext = { ...ctx, isMobile: true };
+  let unseed: () => void = () => {};
+
+  beforeEach(() => {
+    useRailStore.getState().reset();
+    useSidebarStore.setState({ askOpen: false });
+    useUIStore.setState({ activeDialog: null, displacedItemId: null });
+    useMobileNavStore.setState({ activeTab: 'today' });
+  });
+  afterEach(() => {
+    unseed();
+    unseed = () => {};
+  });
+
+  it('shows each only in its own state of the gate, on desktop and on the phone', () => {
+    for (const [label, seed, offered] of [
+      ['nothing connected', NOTHING_CONNECTED, 'setup'],
+      ['a key turned down', KEY_TURNED_DOWN, 'fix'],
+      ['No AI', AI_HIDDEN, null],
+      ['a key turned down, and No AI', { ...KEY_TURNED_DOWN, aiHidden: true }, null],
+      ['the server cannot say whether AI is hidden', { ...NOTHING_CONNECTED, aiHidden: null }, null],
+      ['chat Off on this device', { ...NOTHING_CONNECTED, choice: 'none' as const }, null],
+      ['a connected model', CONNECTED_MODEL, null],
+      ['OpenClaw answering', OPENCLAW_PLUGIN, null],
+      ['the status read failed', { phase: 'error' as const }, null],
+      ['the status unknown', undefined, null],
+    ] as const) {
+      unseed();
+      unseed = seedAI(seed);
+      for (const c of [ctx, phone]) {
+        const where = `${label}, ${c.isMobile ? 'phone' : 'desktop'}`;
+        expect(setup().availableWhen!(c), where).toBe(offered === 'setup');
+        expect((setup().hidden as (x: CommandContext) => boolean)(c), where).toBe(offered !== 'setup');
+        expect(fix().availableWhen!(c), where).toBe(offered === 'fix');
+        expect((fix().hidden as (x: CommandContext) => boolean)(c), where).toBe(offered !== 'fix');
+        const ids = matchCommands('', c).map((r) => r.command.id);
+        expect(ids.includes('ai.setup'), where).toBe(offered === 'setup');
+        expect(ids.includes('ai.fix'), where).toBe(offered === 'fix');
+      }
+    }
+  });
+
+  it('sits where Ask AI sits, says "open", wears the unlit mark, and owns no shortcut', () => {
+    for (const command of [setup(), fix()]) {
+      expect(command.group).toBe('rituals');
+      expect(command.verb).toBe('open');
+      expect(command.icon).toBe(AskMarkUnlitIcon);
+      // Palette only: the frozen shortcut list above stays as it is.
+      expect(command.shortcut).toBeUndefined();
+      expect(STATIC_COMMANDS.includes(command)).toBe(true);
+    }
+    expect(setup().label).toBe('Set up AI');
+    expect(fix().label).toBe('Fix AI');
+    // Declared right after Ask AI, so `/` lists them in its place.
+    const order = STATIC_COMMANDS.map((c) => c.id);
+    const chat = order.indexOf('rituals.chat');
+    expect(order.slice(chat, chat + 3)).toEqual(['rituals.chat', 'ai.setup', 'ai.fix']);
+  });
+
+  it('is what the old words and its own find while invited', () => {
+    unseed = seedAI(NOTHING_CONNECTED);
+    for (const q of ['setup', 'connect']) expect(matchCommands(q, ctx)[0].command.id).toBe('ai.setup');
+    for (const q of ['ai', 'ask', 'chat', 'set up']) {
+      expect(matchCommands(q, ctx).map((r) => r.command.id)).toContain('ai.setup');
+    }
+    unseed();
+    unseed = seedAI(KEY_TURNED_DOWN);
+    expect(matchCommands('fix', ctx)[0].command.id).toBe('ai.fix');
+  });
+
+  it('opens the setup column on desktop: open only, never kept open, and an open item closes', () => {
+    unseed = seedAI(NOTHING_CONNECTED);
+    useUIStore.setState({ activeDialog: { type: 'edit-item', item: { id: 'i1' } as never } });
+    setup().run(ctx);
+    expect(useRailStore.getState().summoned).toBe(true);
+    expect(useSidebarStore.getState().askOpen).toBe(false);
+    expect(useRailStore.getState().pendingFocus).toBeNull();
+    expect(useUIStore.getState().activeDialog).toBeNull();
+    // A second run leaves it showing: a door, not a toggle.
+    setup().run(ctx);
+    expect(useRailStore.getState().summoned).toBe(true);
+  });
+
+  it('opens the fix the same way while a key needs attention', () => {
+    unseed = seedAI(KEY_TURNED_DOWN);
+    fix().run(ctx);
+    expect(useRailStore.getState().summoned).toBe(true);
+    expect(useSidebarStore.getState().askOpen).toBe(false);
+  });
+
+  // The phone's palette (Ctrl+K and `/` focus the dock's omnibar there) lists
+  // these too, and the Ask tab holds the setup page while nothing answers.
+  it('on the phone, shows the Ask tab and never summons the desktop column', () => {
+    for (const [seed, command] of [
+      [NOTHING_CONNECTED, setup],
+      [KEY_TURNED_DOWN, fix],
+    ] as const) {
+      unseed();
+      unseed = seedAI(seed);
+      useMobileNavStore.setState({ activeTab: 'today' });
+      expect(matchCommands('', phone).map((r) => r.command.id)).toContain(command().id);
+      command().run(phone);
+      expect(useMobileNavStore.getState().activeTab).toBe('chat');
+      expect(useRailStore.getState().summoned).toBe(false);
+    }
   });
 });

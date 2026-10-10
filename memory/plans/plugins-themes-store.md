@@ -1,5 +1,11 @@
 # Plugins, Themes & the Store — extensibility across dsul (and future apps)
 
+> **Addendum (2026-10-07): private mods.** [mods.md](mods.md) builds the tier (c)
+> sandbox, a rail mode and one sidebar card for PRIVATE code only (a mod runs only
+> for the account that wrote it), which reverses Project B item 6's "skip
+> indefinitely" for those two cases. Sharing stays behind the
+> closed verified-plugins program, and themes stay token values, never CSS.
+
 > **Addendum (2026-10-01): the in-app extensions store is NOT Project C.**
 > The store is the body of Settings → Extensions
 > (components/extensions/extension-browse.tsx; `/extensions` and ⌘K only open

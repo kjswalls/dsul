@@ -37,7 +37,7 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button, ButtonKey } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import {
   ResponsiveModalTitle,
@@ -46,7 +46,6 @@ import {
 import {
   ADD_MODAL_CLASS,
   ColorSquare,
-  EnterHint,
   NewTypeMenu,
   SERIF_NOTES_CLASS,
   SERIF_TITLE_CLASS,
@@ -99,6 +98,7 @@ import {
   durationLabel,
   EDIT_COPY,
   planTimeEdit,
+  projectBlockRelease,
   reminderPatch,
   repeatPatch,
   TIMES_PER_DAY_MAX,
@@ -475,6 +475,11 @@ export function habitUpdatesFromDraft(d: ItemDraft, keys: readonly string[]): Pa
  * stale comparison re-runs scheduleTask — which unconditionally clears
  * inProjectBlock and the previous-slot fields — on every subsequent save.
  *
+ * A project change takes a task parked in its old project's block out of it,
+ * in the same updateTask (one history entry, one undo), with the release the
+ * bulk Move to project writes (lib/item-edit.ts projectBlockRelease), read off
+ * the live item's stash.
+ *
  * Module scope, reading the store inside each call (never once at load: a test
  * that swaps an action with usePlannerStore.setState must still see its swap).
  * Exported for tests/unit/edit-writes-fixtures.test.ts and
@@ -494,6 +499,19 @@ export function commitEdit(item: Item, d: ItemDraft, keys: readonly string[]): v
     const live = found && found.type !== 'habit' ? found : item;
 
     const updates = taskUpdatesFromDraft(d, keys);
+    // Q6: a task parked in its project's block leaves it when it leaves the project, as the bulk
+    // Move to project releases it (projectBlockRelease, lib/item-edit.ts). A day or a time this
+    // save moved itself wins over the stash. Such a time goes with the live part of day beside it,
+    // which tells updateTask it is not the stash's (even when it equals the stash), so it is filed
+    // where it falls in this same write and the second pass moves nothing.
+    if ('project' in updates) {
+      for (const [key, value] of Object.entries(projectBlockRelease(live, updates.project))) {
+        const k = key as keyof Task;
+        const moved = k in updates && updates[k] !== (live as Partial<Task>)[k];
+        if (!moved) (updates as Record<string, unknown>)[k] = value;
+        else if (k === 'startTime' && updates.startTime) updates.timeBucket = live.timeBucket;
+      }
+    }
     if (Object.keys(updates).length > 0) store.updateTask(item.id, updates);
 
     // Scheduling is a second pass through scheduleTask/unscheduleTask — they
@@ -1787,9 +1805,11 @@ function ItemDialogInner({
                 label={CONTAINER_KINDS.routine.newLabel}
                 defaultIcon={makeIconToken('Repeat')}
                 testId="item-dialog-routine-new"
-                onCreate={(name, icon) =>
-                  toggleRoutine(addRoutine({ name, icon, itemIds: [] }), true)
-                }
+                onCreate={(name, icon) => {
+                  // '' is a refusal (the preview's write barrier): nothing to tick.
+                  const id = addRoutine({ name, icon, itemIds: [] });
+                  if (id) toggleRoutine(id, true);
+                }}
               />
             )}
             {/* The manager's home. It is NOT in the braindump header —
@@ -1913,12 +1933,10 @@ function ItemDialogInner({
                 label={CONTAINER_KINDS.season.newLabel}
                 defaultIcon={makeIconToken('CalendarRange')}
                 testId="item-dialog-season-new"
-                onCreate={(name, icon) =>
-                  toggleSeason(
-                    addSeason({ name, icon, state: 'auto', itemIds: [], routineIds: [] }),
-                    true
-                  )
-                }
+                onCreate={(name, icon) => {
+                  const id = addSeason({ name, icon, state: 'auto', itemIds: [], routineIds: [] });
+                  if (id) toggleSeason(id, true);
+                }}
               />
             )}
             {/* A door, gone while the console is off — see the routine
@@ -2061,19 +2079,17 @@ function ItemDialogInner({
                 label={CONTAINER_KINDS.goal.newLabel}
                 defaultIcon={makeIconToken('Target')}
                 testId="item-dialog-goal-new"
-                onCreate={(name, icon) =>
-                  toggleGoal(
-                    addGoal({
-                      name,
-                      icon,
-                      state: 'active',
-                      memberIds: [],
-                      milestoneIds: [],
-                      checkinIds: [],
-                    }),
-                    true
-                  )
-                }
+                onCreate={(name, icon) => {
+                  const id = addGoal({
+                    name,
+                    icon,
+                    state: 'active',
+                    memberIds: [],
+                    milestoneIds: [],
+                    checkinIds: [],
+                  });
+                  if (id) toggleGoal(id, true);
+                }}
               />
             )}
             {/* The Goals section of the console rides EXT_GOALS, not
@@ -3527,7 +3543,7 @@ function ItemDialogInner({
                   growth plan. Live data (subtasks/agent state read the store),
                   while the property draft above stays snapshot-based. */}
               {withDetailSections && mode === 'edit' && editItem && (
-                <ItemDetailSections item={editItem} conversation={conversation} withActivity={!autosaves} />
+                <ItemDetailSections item={editItem} conversation={conversation} withActivity={!autosaves} offerSetup />
               )}
 
               {/* An autosaving surface has no moment of commitment, so its
@@ -3549,15 +3565,16 @@ function ItemDialogInner({
                 // Reached only when `autosaves` is false, so there is no
                 // saving-indicator arm here: this surface commits on submit and
                 // the button is the whole promise.
-                <div className="flex items-center justify-between gap-3 border-t pt-3">
-                  <EnterHint verb={mode === 'add' ? 'add' : 'save'} />
+                <div className="flex items-center justify-end gap-3 border-t pt-3">
                   <Button
                     onClick={handleSubmit}
                     data-testid="item-dialog-submit"
                     disabled={invalidCustomDays(activeDraft) || !activeDraft.title.trim()}
-                    className="h-9 max-sm:w-full"
+                    aria-keyshortcuts="Enter"
+                    className="max-sm:w-full"
                   >
-                    {mode === 'add' ? `Add ${activeConfig.label}` : 'Save Changes'}
+                    {mode === 'add' ? `Add ${activeConfig.label}` : 'Save changes'}
+                    <ButtonKey />
                   </Button>
                 </div>
               )}
@@ -3577,7 +3594,7 @@ function ItemDialogInner({
         <AlertDialog open={showResetConfirm} onOpenChange={setShowResetConfirm}>
           <AlertDialogContent data-testid="reset-streak-confirm">
             <AlertDialogHeader>
-              <AlertDialogTitle>Reset Streak?</AlertDialogTitle>
+              <AlertDialogTitle>Reset streak?</AlertDialogTitle>
               <AlertDialogDescription>{EDIT_COPY.resetStreakMessage}</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -3585,9 +3602,9 @@ function ItemDialogInner({
               <AlertDialogAction
                 data-testid="reset-streak-confirm-accept"
                 onClick={handleResetStreak}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                variant="destructive"
               >
-                Reset Streak
+                Reset streak
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -3710,7 +3727,7 @@ function ItemDialogInner({
             <AlertDialogAction
               data-testid="item-dialog-delete-confirm-accept"
               onClick={handleDeleteConfirm}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
             >
               Delete
             </AlertDialogAction>

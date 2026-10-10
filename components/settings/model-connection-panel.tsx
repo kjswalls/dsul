@@ -1,205 +1,110 @@
 'use client';
 
-import {
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  useSyncExternalStore,
-  type FormEvent,
-  type KeyboardEvent,
-} from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { formatDistanceToNowStrict } from 'date-fns';
-import { ArrowUpRight } from 'lucide-react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { ArrowUpRight, Moon } from 'lucide-react';
 
-import { Button, buttonVariants } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { ConnectAI, GoodToKnowConnected, SwitchService } from '@/components/ai/connect/connect-ai';
+import { ConnectFix } from '@/components/ai/connect/connect-fix';
+import {
+  ANCHOR_CLASS,
+  DANGER_TEXT_ACTION,
+  TEXT_ACTION,
+  ago,
+  connectErrorCopy,
+  hostOf,
+  keyPageLabel,
+  labelName,
+  limitCopy,
+  openRouterStartHref,
+  settingAnchor as anchor,
+  useInDesktopApp,
+  useRefreshOnWindowFocus,
+  useResetsAt,
+} from '@/components/ai/connect/connect-shared';
+import { HoneyNote, KeyPageLink } from '@/components/ai/connect/key-check';
+import { KeyField, type KeyFieldHandle } from '@/components/ai/connect/key-field';
+import { Button } from '@/components/ui/button';
+import { useDisconnect } from './disconnect';
 import { ModelPicker } from './model-picker';
-import { useAIConnectionStore, useAICapabilities } from '@/lib/ai-connection-store';
+import { StatusPill } from './status-pill';
+import { useAIConnectionStore, useAICapabilities, type ApiFailure } from '@/lib/ai-connection-store';
+import { isPlausibleKey, mismatchedKey, type DetectedProvider } from '@/lib/ai-key-prefix';
+import {
+  connectionBody,
+  connectionPill,
+  connectionPillLabel,
+  connectionPillTone,
+  isAIOff,
+  limitInForce,
+} from '@/lib/ai-pane-state';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
+import { FLOW_COPY, UNAVAILABLE_COPY, flowSaved, readFlow, type ConnectFlow } from '@/lib/connect-flow';
 import { revealChat } from '@/lib/open-chat';
 import { chordLabel, isApplePlatform } from '@/lib/commands/keys';
 import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
-import { getDesktopBridge } from '@/lib/desktop';
-import { useUIStore } from '@/lib/ui-store';
+import { useMinuteClock } from '@/lib/use-now-minutes';
 import {
-  MODEL_PROVIDERS,
+  AI_SETTINGS_PATH,
   PROVIDER_META,
-  isModelId,
-  type ApiErrorCode,
   type ConnectRequest,
   type ModelConnectionView,
   type ModelProviderId,
 } from '@/lib/ai-types';
 import { cn } from '@/lib/utils';
 
+// The pane's error words live with the connect card's (components/ai/connect/
+// connect-shared.ts); the model picker and its tests still read them here.
+export { connectErrorCopy, type ErrorCopyContext } from '@/components/ai/connect/connect-shared';
+
 /**
- * Connect a model: the top of the AI settings pane (pane id 'beacon').
+ * Connection: Settings → AI's model section (pane id 'beacon', at
+ * /settings/ai), drawn by the pane body (components/settings/ai-pane.tsx)
+ * under "Use AI in dsul".
  *
  * dsul ships no AI of its own. A user brings a provider they already pay for,
- * and this is the one place that happens: paste a key (OpenAI, Anthropic,
- * Google Gemini, OpenRouter, or any OpenAI-compatible service) or sign in with
- * OpenRouter. The key goes to the server once, is sealed there, and never
- * comes back: not into a store, not into the URL, not masked, not as a last
- * four. It lives in this component's state only between keystroke and submit,
- * and is cleared on every submit, on a provider change and on unmount.
+ * or a free key from Google. The heading carries one pill for the state
+ * ("Not set up", "Checking…", "Working", "Needs attention", "Daily limit ·
+ * back at 3 pm"), and under it one body, each decided by a pure function of
+ * the connection (lib/ai-pane-state.ts):
+ *
+ *  - nothing connected: the connect card the setup column shows too
+ *    (components/ai/connect/connect-ai.tsx), with its own Good to know;
+ *  - working: the provider, when it last answered a test question, the model,
+ *    and the band of actions (Replace key, another service, Disconnect);
+ *  - a daily limit: when AI comes back, and the same actions but a recheck;
+ *  - turned down, or unreadable: the fix card (components/ai/connect/
+ *    connect-fix.tsx, host 'pane'), a new key fixed in place.
+ *
+ * The pill and the body are separate questions: a connect or a recheck in
+ * flight turns only the pill to "Checking…", so the card under it (and a key
+ * typed into its box) stays mounted while the answer is out. Once something
+ * is connected, a folded Good to know follows the card. While AI is off for
+ * the account the section draws nothing at all (the pane's AI-off card says
+ * what is still connected), though it still asks the server on mount.
+ *
+ * The key goes to the server once, is sealed there, and never comes back: not
+ * into a store, not into the URL, not masked, not as a last four. Between
+ * paste and send it lives only in the key box's value
+ * (components/ai/connect/key-field.tsx, uncontrolled, so never in an
+ * attribute). A key that fails stays there to be fixed; one that works is
+ * emptied out at once, and so is the box on a provider change and on unmount.
  *
  * Bespoke rather than manifest rows (the ShortcutsPanel / ExtensionHero
  * precedent): connecting is a form with states, not a value. The two records
  * it stands in for, `beacon.apiKey` and `beacon.model`, stay in the manifest
  * so search still finds them, and `?focus=` (a search hit's "Set up" opens
- * it) lands here, on the `data-setting-alias` anchors below. Every state
- * carries both anchors.
+ * it) lands here, on the `data-setting-alias` anchors below. Every state the
+ * section draws carries both anchors exactly once.
  *
  * Mounting re-asks the server (`refresh()`, past the dedupe window). This pane
  * is where an OpenClaw user lands after pairing, and where a model connected on
  * another device first shows up, so it must never show a five-minute-old answer.
  */
 
-const OPENROUTER_START = '/api/ai/openrouter/start';
-const UNAVAILABLE_COPY = 'Connecting a model isn’t available on this server yet.';
-
-const noopSubscribe = () => () => {};
-const isDesktopApp = () => getDesktopBridge() !== null;
-
-/**
- * Whether this page is inside the desktop app (electron/). OpenRouter's sign-in
- * can't finish there: the shell sends openrouter.ai to the system browser, and
- * the callback then lands in a browser that has neither the PKCE cookie (it is
- * in the app's cookie jar) nor, often, a dsul session. So the app offers the
- * key path only. A connection belongs to the account, so one made by signing
- * in from a browser works in the app too. Read as app/login/login-page.tsx reads it,
- * so the server render and hydration agree.
- */
-function useInDesktopApp(): boolean {
-  return useSyncExternalStore(noopSubscribe, isDesktopApp, () => false);
-}
-
-/** What `/api/ai/openrouter/callback` reports back through `?connect=`. */
-type FlowResult = 'ok' | 'denied' | 'expired' | 'failed' | 'busy' | 'unavailable';
-
-const FLOW_COPY: Record<FlowResult, string> = {
-  ok: 'Signed in with OpenRouter. You’re connected.',
-  denied: 'OpenRouter sign-in was cancelled.',
-  expired: 'That sign-in took too long or was already used. Try again.',
-  failed: 'Couldn’t finish signing in to OpenRouter. Try again.',
-  busy: 'Too many tries. Wait a few minutes and try again.',
-  unavailable: UNAVAILABLE_COPY,
-};
-
-function readFlow(raw: string | null | undefined): FlowResult | null {
-  // Own keys only: `in` would also accept 'constructor' and 'toString'.
-  return raw && Object.hasOwn(FLOW_COPY, raw) ? (raw as FlowResult) : null;
-}
-
-/** The provider as the copy names it. "Other" says nothing, so a custom host is its hostname. */
-function providerName(provider: ModelProviderId, baseUrl?: string | null): string {
-  if (provider === 'custom') return hostOf(baseUrl) ?? 'That service';
-  return PROVIDER_META[provider].label;
-}
-
-function hostOf(url: string | null | undefined): string | null {
-  if (!url) return null;
-  try {
-    return new URL(url).hostname || null;
-  } catch {
-    return null;
-  }
-}
-
-/** Where an error is shown, which changes what it can honestly say. */
-export interface ErrorCopyContext {
-  /**
-   * 'connect': a form the user typed into (the default). 'recheck': Check
-   * again on the connected card. 'model': a pick in the model picker. The last
-   * two send no field the user typed, so they never say "the fields": an
-   * `invalid` the route pins on `model` is a model the key can't use, and an
-   * unnamed one is a request we sent wrong.
-   */
-  during?: 'connect' | 'recheck' | 'model';
-  /** The form was for Other: a base URL the user typed. */
-  custom?: boolean;
-  /** The field the route said an `invalid` is about, when the answer names one. */
-  field?: string | null;
-}
-
-/**
- * A custom host answers 404 at a wrong path, which reads as "doesn't list its
- * models" and then as an unknown model. The usual cause is a base URL missing
- * its /v1, so every Other failure that could be that says so.
- */
-const BASE_URL_HINT = 'Check the base URL (it usually ends in /v1)';
-
-/** ApiErrorCode → our words. Never a provider's own error text: the routes don't send one. */
-export function connectErrorCopy(
-  code: ApiErrorCode,
-  name: string,
-  { during = 'connect', custom = false, field = null }: ErrorCopyContext = {}
-): string {
-  switch (code) {
-    case 'key_rejected':
-      return during === 'connect'
-        ? `${name} didn’t accept that key. Check that you copied all of it.`
-        : `${name} turned down your saved key.`;
-    case 'unreachable':
-      return `Couldn’t reach ${name}. Try again in a moment.`;
-    case 'blocked_url':
-      return 'That address isn’t allowed. Use a public https address.';
-    case 'model_required':
-      return `Nothing at that address listed its models. ${BASE_URL_HINT}, or add a model name above and connect again.`;
-    case 'busy':
-      return 'Too many tries. Wait a few minutes and try again.';
-    case 'invalid':
-      if (during !== 'connect') {
-        if (field === 'model') return 'That model isn’t available to your key. Pick another.';
-        return during === 'model' ? 'Couldn’t save. Try again.' : 'Something went wrong. Try again.';
-      }
-      if (field === 'apiKey') {
-        return 'That doesn’t look like a whole key. Check that you copied all of it, and nothing else.';
-      }
-      if (field === 'baseUrl') return `${BASE_URL_HINT}.`;
-      if (field === 'model') {
-        return custom
-          ? `Nothing answered for that model at that address. ${BASE_URL_HINT} and the model name.`
-          : 'Check the model name and try again.';
-      }
-      if (!custom) return 'Check the fields and try again.';
-      // Unnamed: every field it could be, the likeliest first.
-      return `${BASE_URL_HINT}, the model name and the key.`;
-    case 'conflict':
-      return 'Your connection changed in another tab. Reload this page.';
-    case 'unavailable':
-      return UNAVAILABLE_COPY;
-    default:
-      return during === 'model' ? 'Couldn’t save. Try again.' : 'Something went wrong. Try again.';
-  }
-}
-
-/* ── Deep-link anchors ──────────────────────────────────────────────────── */
-
-type AnchorId = 'beacon.apiKey' | 'beacon.model';
-
-/**
- * Where `?focus=beacon.apiKey` / `beacon.model` land (settings-shell resolves
- * `[data-setting-alias]`, scrolls, focuses and rings it). Focusable but out of
- * the tab order, like a SettingRow.
- */
-function anchor(id: AnchorId, highlightId: string | null | undefined) {
-  return {
-    'data-setting-alias': id,
-    'data-highlight': highlightId === id || undefined,
-    tabIndex: -1,
-  } as const;
-}
-
-const ANCHOR_CLASS =
-  'rounded-[6px] outline-none focus-visible:ring-2 focus-visible:ring-ring data-[highlight]:ring-2 data-[highlight]:ring-ring';
-
-const QUIET_LINK =
-  'text-muted-foreground hover:text-foreground text-xs underline-offset-4 transition-colors hover:underline ' +
-  'focus-visible:ring-ring rounded-[3px] focus-visible:ring-2 focus-visible:outline-none';
+/** A quiet link in a band of text actions: one size with TextAction. */
+const QUIET_LINK = TEXT_ACTION;
 
 function UseOpenClawLink() {
   return (
@@ -209,17 +114,22 @@ function UseOpenClawLink() {
   );
 }
 
-/** A text-sized action in a row of them ("Check again", "Replace key"). */
+/** A text-sized action in a band of them ("Check again", "Replace key", "Disconnect"). */
 function TextAction({
   onClick,
   disabled,
   children,
   testId,
+  danger = false,
+  className,
 }: {
   onClick: () => void;
   disabled?: boolean;
   children: React.ReactNode;
   testId?: string;
+  /** Disconnect: red text, no border, no wash. */
+  danger?: boolean;
+  className?: string;
 }) {
   return (
     <button
@@ -227,30 +137,14 @@ function TextAction({
       onClick={onClick}
       disabled={disabled}
       data-testid={testId}
-      className={cn(QUIET_LINK, 'disabled:pointer-events-none disabled:opacity-50')}
+      className={cn(
+        danger ? DANGER_TEXT_ACTION : TEXT_ACTION,
+        'disabled:pointer-events-none disabled:opacity-50',
+        className
+      )}
     >
       {children}
     </button>
-  );
-}
-
-function StatusPill({ failing }: { failing: boolean }) {
-  return (
-    <span
-      data-testid="mcp-status"
-      className={cn(
-        'inline-flex shrink-0 items-center gap-1.5 rounded-[5px] px-1.5 py-0.5 text-[10px] font-medium',
-        failing ? 'text-muted-foreground' : 'bg-secondary text-foreground'
-      )}
-    >
-      {/* A dot marks a VALUE (the extension index's rule). Its own element, so
-          the lime is never faded through a parent. */}
-      <span
-        className={cn('size-[6px] rounded-full', failing ? 'bg-destructive' : 'bg-primary')}
-        aria-hidden
-      />
-      {failing ? 'Stopped working' : 'Working'}
-    </span>
   );
 }
 
@@ -265,15 +159,37 @@ export function ModelConnectionPanel({
   highlightId?: string | null;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const phase = useAIConnectionStore((s) => s.phase);
   const available = useAIConnectionStore((s) => s.available);
   const model = useAIConnectionStore((s) => s.model);
+  const aiHidden = useAIConnectionStore((s) => s.aiHidden);
+  const busy = useAIConnectionStore((s) => s.busy);
+  const chatTarget = useAISettingsStore((s) => s.chatTarget);
+  const { canChat } = useAICapabilities();
+  // The display reads the store's own model (the gate zeroes `limitedUntil`),
+  // and this clock re-renders it each minute, so a daily limit lifts on time.
+  const nowMs = useMinuteClock();
+  const resetsAtOf = useResetsAt();
 
   // Read ONCE: the URL is cleaned right after, and the notice has to outlive that.
-  const [flow, setFlow] = useState<FlowResult | null>(() => readFlow(searchParams?.get('connect')));
+  const [flow, setFlow] = useState<ConnectFlow | null>(() => readFlow(searchParams?.get('connect')));
+  // `?start=openrouter` (the desktop app's copied link, connect-shared.ts
+  // `desktopSignInLink`): the connect card opens on OpenRouter's sign-in, its
+  // button focused. Only ever an unfold, never a sign-in by itself, and only
+  // for the first connect card: once something is connected it is spent.
+  const [start, setStart] = useState<'openrouter' | undefined>(() =>
+    searchParams?.get('start') === 'openrouter' ? 'openrouter' : undefined
+  );
+  if (start && model) setStart(undefined);
   const [justConnected, setJustConnected] = useState(false);
   const flowHandled = useRef(false);
+  // What the band's last action was refused with: Check again's answer, or
+  // Disconnect's (useDisconnect keeps that one). Only the latest is said.
+  const [recheckError, setRecheckError] = useState<string | null>(null);
+  const [lastAction, setLastAction] = useState<'recheck' | 'disconnect' | null>(null);
+  const disconnect = useDisconnect(model);
 
   useEffect(() => {
     void useAIConnectionStore.getState().refresh();
@@ -281,13 +197,8 @@ export function ModelConnectionPanel({
 
   // In the desktop app an OpenRouter sign-in happens in the browser
   // (useInDesktopApp), so the connection it makes lands while this pane sits
-  // open behind it. Ask again when the window comes back to the front.
-  useEffect(() => {
-    if (!getDesktopBridge()) return;
-    const ask = () => void useAIConnectionStore.getState().refresh();
-    window.addEventListener('focus', ask);
-    return () => window.removeEventListener('focus', ask);
-  }, []);
+  // open behind it.
+  useRefreshOnWindowFocus();
 
   // …but no longer than the state it reports. The notice says how ONE
   // OpenRouter round trip ended; the next connect, check or disconnect gives a
@@ -307,54 +218,113 @@ export function ModelConnectionPanel({
     flowHandled.current = true;
     // The callback saved the connection server-side; ask for it. (The mount
     // refresh is usually still in flight, and this joins it.)
-    if (flow === 'ok') void useAIConnectionStore.getState().refresh();
-    router.replace('/settings/beacon');
-  }, [flow, router]);
+    if (flowSaved(flow)) void useAIConnectionStore.getState().refresh();
+    // The address the pane was reached by, /settings/ai or the permanent
+    // /settings/beacon, minus the query.
+    router.replace(pathname || AI_SETTINGS_PATH);
+  }, [flow, router, pathname]);
+
+  // A daily limit lifts on the clock, and the server is asked once, on that
+  // edge: the ref holds the `limitedUntil` in force, and only when the clock
+  // passes that same value is there a refresh. A disconnect or another model
+  // changes the value under it (re-pointed or dropped, no refresh), and a
+  // mount with no limit never asks for this.
+  const limited = limitInForce(model, nowMs);
+  const limitedUntil = model?.limitedUntil ?? null;
+  const limitSeen = useRef<string | null>(null);
+  useEffect(() => {
+    if (limited) {
+      limitSeen.current = limitedUntil;
+      return;
+    }
+    const seen = limitSeen.current;
+    limitSeen.current = null;
+    if (seen !== null && seen === limitedUntil) void useAIConnectionStore.getState().refresh();
+  }, [limited, limitedUntil]);
+
+  // AI is off for the account: the pane's own card says so, and what is
+  // still connected. Every hook above has run, so the mount still asked.
+  if (isAIOff({ phase, aiHidden })) return null;
 
   const unavailableHere = phase === 'ready' && !available;
   // The `!available` body already says this, in the same words.
   const showFlow = flow !== null && !(flow === 'unavailable' && unavailableHere);
 
+  const pill = connectionPill({ phase, available, model, busy }, nowMs);
+  const kind = connectionBody({ phase, available, model }, nowMs);
+
+  const recheck = async () => {
+    if (!model) return;
+    const name = labelName(model.provider, model.baseUrl);
+    setLastAction('recheck');
+    setRecheckError(null);
+    const result = await useAIConnectionStore.getState().recheck();
+    if (!result.ok) {
+      setRecheckError(connectErrorCopy(result.code, name, { during: 'recheck', field: result.field }));
+    }
+  };
+  const askDisconnect = () => {
+    setLastAction('disconnect');
+    disconnect.ask();
+  };
+  const actionError =
+    lastAction === 'disconnect' ? disconnect.error : lastAction === 'recheck' ? recheckError : null;
+  const onConnected = () => setJustConnected(true);
+
   let body: React.ReactNode;
-  if (phase === 'unknown') {
+  if (kind === 'checking') {
     body = <CheckingCard highlightId={highlightId} />;
-  } else if (phase === 'error') {
+  } else if (kind === 'failed') {
     body = <CheckFailedCard highlightId={highlightId} />;
-  } else if (!available) {
+  } else if (kind === 'unavailable') {
     body = <UnavailableCard highlightId={highlightId} />;
-  } else if (!model) {
+  } else if (kind === 'connect' || !model) {
+    // The connect card's key box carries `beacon.apiKey` itself.
     body = (
-      <div {...anchor('beacon.model', highlightId)} className={ANCHOR_CLASS}>
-        <Card>
-          <ConnectForm
-            variant="fresh"
-            highlightId={highlightId}
-            onConnected={() => setJustConnected(true)}
-          />
-        </Card>
+      <div {...anchor('beacon.model', highlightId)} className={ANCHOR_CLASS} data-testid="mcp-connect-fresh">
+        <ConnectAI host="pane" highlightId={highlightId} onConnected={onConnected} unfold={start} />
       </div>
+    );
+  } else if (kind === 'fix') {
+    body = (
+      <FixCard model={model} highlightId={highlightId} onConnected={onConnected} onDisconnect={askDisconnect} />
+    );
+  } else if (kind === 'limit') {
+    body = (
+      <LimitCard model={model} highlightId={highlightId} onConnected={onConnected} onDisconnect={askDisconnect} />
     );
   } else {
     body = (
-      <ConnectedCard
+      <WorkingCard
         model={model}
         isMobile={isMobile}
         highlightId={highlightId}
         justConnected={justConnected}
-        onConnected={() => setJustConnected(true)}
+        onConnected={onConnected}
+        onRecheck={() => void recheck()}
+        onDisconnect={askDisconnect}
       />
     );
   }
+  // The cards for a saved connection, under which its status lines sit.
+  const connected = model !== null && (kind === 'working' || kind === 'limit' || kind === 'fix');
 
   return (
     <section
       data-testid="model-connection-panel"
       aria-labelledby="mcp-title"
-      className="mt-2 mb-4 flex flex-col gap-3"
+      className="mt-2 mb-4 flex flex-col gap-3 focus:outline-none"
     >
-      <h3 id="mcp-title" className="text-foreground text-sm font-medium">
-        Connect a model
-      </h3>
+      <div className="flex items-center justify-between gap-3">
+        <h3 id="mcp-title" className="text-foreground text-sm font-medium">
+          Connection
+        </h3>
+        {pill && (
+          <StatusPill testId="mcp-status" tone={connectionPillTone(pill, canChat)}>
+            {connectionPillLabel(pill, pill === 'daily_limit' ? resetsAtOf(limitedUntil) : null)}
+          </StatusPill>
+        )}
+      </div>
       {showFlow && (
         <p
           role={flow === 'ok' ? 'status' : 'alert'}
@@ -369,6 +339,17 @@ export function ModelConnectionPanel({
         </p>
       )}
       {body}
+      {connected && actionError && (
+        <p role="alert" className="text-destructive text-xs" data-testid="mcp-error">
+          {actionError}
+        </p>
+      )}
+      {connected && chatTarget === 'none' && (
+        <p className="text-muted-foreground text-xs" data-testid="mcp-chat-off">
+          Chat is off on this device. Change it under Who answers in chat below.
+        </p>
+      )}
+      {model && <GoodToKnowConnected model={model} />}
     </section>
   );
 }
@@ -460,68 +441,7 @@ function UnavailableCard({ highlightId }: { highlightId: string | null }) {
   );
 }
 
-/* ── Connect form ───────────────────────────────────────────────────────── */
-
-function ProviderChips({
-  value,
-  onChange,
-  disabled,
-}: {
-  value: ModelProviderId;
-  onChange: (next: ModelProviderId) => void;
-  disabled?: boolean;
-}) {
-  const refs = useRef<(HTMLButtonElement | null)[]>([]);
-
-  // A radiogroup moves with the arrow keys, and only the checked radio is in
-  // the tab order (WAI-ARIA radio group pattern).
-  const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>, index: number) => {
-    const n = MODEL_PROVIDERS.length;
-    let next: number | null = null;
-    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = (index + 1) % n;
-    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = (index - 1 + n) % n;
-    else if (e.key === 'Home') next = 0;
-    else if (e.key === 'End') next = n - 1;
-    if (next === null) return;
-    e.preventDefault();
-    onChange(MODEL_PROVIDERS[next]);
-    refs.current[next]?.focus();
-  };
-
-  return (
-    <div role="radiogroup" aria-label="Provider" className="flex flex-wrap gap-1.5" data-testid="mcp-providers">
-      {MODEL_PROVIDERS.map((p, i) => {
-        const checked = p === value;
-        return (
-          <Button
-            key={p}
-            ref={(el) => {
-              refs.current[i] = el;
-            }}
-            type="button"
-            role="radio"
-            aria-checked={checked}
-            tabIndex={checked ? 0 : -1}
-            variant="outline"
-            size="sm"
-            disabled={disabled}
-            data-provider={p}
-            onClick={() => onChange(p)}
-            onKeyDown={(e) => onKeyDown(e, i)}
-            className={cn(
-              'h-7 px-2.5 text-xs font-normal',
-              checked
-                ? 'border-foreground/25 bg-secondary text-foreground dark:bg-secondary font-medium'
-                : 'text-muted-foreground'
-            )}
-          >
-            {PROVIDER_META[p].label}
-          </Button>
-        );
-      })}
-    </div>
-  );
-}
+/* ── Key form pieces ──────────────────────────────────────────────────── */
 
 function FieldLabel({ htmlFor, children }: { htmlFor: string; children: React.ReactNode }) {
   return (
@@ -531,229 +451,37 @@ function FieldLabel({ htmlFor, children }: { htmlFor: string; children: React.Re
   );
 }
 
-/** Attributes every key field carries: never autofilled, never remembered, never spellchecked. */
-const KEY_FIELD_PROPS = {
-  type: 'password',
-  name: 'model-api-key',
-  autoComplete: 'off',
-  spellCheck: false,
-  'data-1p-ignore': true,
-  'data-lpignore': 'true',
-} as const;
+/** What a form's last send was refused with: the route's answer, or the same words for one refused here. */
+type FormFailure = Pick<ApiFailure, 'code' | 'field' | 'detected' | 'limitedUntil'> & {
+  /** The provider as the pane names it, for the copy. */
+  name: string;
+  /** The form was for Other. */
+  custom: boolean;
+};
 
-function ConnectForm({
-  variant,
-  highlightId,
-  exclude,
-  onConnected,
-}: {
-  /** 'fresh': nothing is connected. 'switch': replacing the connection there is. */
-  variant: 'fresh' | 'switch';
-  highlightId: string | null;
-  /** The provider already connected, so 'switch' does not preselect it. */
-  exclude?: ModelProviderId;
-  onConnected: () => void;
-}) {
-  const uid = useId();
-  const busy = useAIConnectionStore((s) => s.busy === 'connect');
-  const inDesktopApp = useInDesktopApp();
-  const [provider, setProvider] = useState<ModelProviderId>(
-    () => MODEL_PROVIDERS.find((p) => p !== exclude) ?? 'openai'
-  );
-  // The key exists only here, between keystroke and submit.
-  const [apiKey, setApiKey] = useState('');
-  const [baseUrl, setBaseUrl] = useState('');
-  const [modelName, setModelName] = useState('');
-  const [error, setError] = useState<{ code: ApiErrorCode; name: string; field: string | null } | null>(
-    null
-  );
+/**
+ * Refused before it leaves the page: something that can't be a key, or a key
+ * that reads as another company's (lib/ai-key-prefix.ts). The route refuses
+ * both again; this only spares a round trip, and keeps a key from ever going
+ * to a company it was not made for.
+ */
+function refuseHere(provider: ModelProviderId, key: string): Pick<ApiFailure, 'code' | 'field' | 'detected'> | null {
+  if (!isPlausibleKey(key)) return { code: 'invalid', field: 'apiKey' };
+  const detected: DetectedProvider | null = mismatchedKey(provider, key);
+  return detected ? { code: 'wrong_provider', detected } : null;
+}
 
-  const custom = provider === 'custom';
-  const meta = PROVIDER_META[provider];
-  const typedModel = modelName.trim();
-  const modelOk = typedModel === '' || isModelId(typedModel);
-  const ready =
-    apiKey.trim() !== '' && (!custom || baseUrl.trim() !== '') && (!custom || modelOk) && !busy;
-
-  const choose = (next: ModelProviderId) => {
-    if (next === provider) return;
-    setProvider(next);
-    setApiKey('');
-    setError(null);
-  };
-
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!ready) return;
-    const req: ConnectRequest = { provider, apiKey: apiKey.trim() };
-    if (custom) {
-      req.baseUrl = baseUrl.trim();
-      if (typedModel) req.model = typedModel;
-    }
-    const name = providerName(provider, req.baseUrl);
-    // Gone from the field before the request is even out, whatever it answers.
-    setApiKey('');
-    setError(null);
-    const result = await useAIConnectionStore.getState().connect(req);
-    if (result.ok) onConnected();
-    else setError({ code: result.code, name, field: result.field ?? null });
-  };
-
-  const keyId = `${uid}-key`;
-  const urlId = `${uid}-url`;
-  const modelId = `${uid}-model`;
-
+function FormError({ error }: { error: FormFailure }) {
+  const resetsAtOf = useResetsAt();
   return (
-    <div className="flex flex-col gap-4" data-testid={`mcp-connect-${variant}`}>
-      {variant === 'fresh' && (
-        <p className="text-muted-foreground max-w-[60ch] text-xs leading-relaxed">
-          dsul doesn’t include AI. Use a provider you already have. Your key is stored encrypted on
-          our server, used only to answer you, and never shown again.
-        </p>
-      )}
-
-      {inDesktopApp ? (
-        <p
-          className="text-muted-foreground max-w-[60ch] text-xs leading-relaxed"
-          data-testid="mcp-openrouter-browser"
-        >
-          To sign in with OpenRouter instead of pasting a key, connect from dsul in your browser.
-          The connection works here too.
-        </p>
-      ) : (
-        <>
-          <div className="bg-secondary/60 flex flex-col gap-3 rounded-[6px] p-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0">
-              <p className="text-foreground text-sm font-medium">Sign in with OpenRouter</p>
-              <p className="text-muted-foreground text-xs">
-                One account for hundreds of models, including free ones. Nothing to copy or paste.
-              </p>
-            </div>
-            <a
-              href={OPENROUTER_START}
-              data-testid="mcp-openrouter-signin"
-              className={cn(buttonVariants({ size: 'sm' }), 'shrink-0 self-start sm:self-auto')}
-            >
-              Sign in with OpenRouter
-            </a>
-          </div>
-
-          <div className="flex items-center gap-3" aria-hidden>
-            <span className="bg-border h-px flex-1" />
-            <span className="text-muted-foreground text-[10px] font-medium tracking-wider uppercase">
-              Or paste a key
-            </span>
-            <span className="bg-border h-px flex-1" />
-          </div>
-        </>
-      )}
-
-      <form
-        onSubmit={submit}
-        aria-busy={busy || undefined}
-        aria-label="Connect with an API key"
-        className="flex flex-col gap-4"
-        data-testid="mcp-connect-form"
-      >
-        <ProviderChips value={provider} onChange={choose} disabled={busy} />
-
-        <div
-          {...(variant === 'fresh' ? anchor('beacon.apiKey', highlightId) : {})}
-          className={cn('flex flex-col gap-1.5', variant === 'fresh' && ANCHOR_CLASS)}
-        >
-          <FieldLabel htmlFor={keyId}>API key</FieldLabel>
-          <Input
-            id={keyId}
-            {...KEY_FIELD_PROPS}
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder={meta.keyPlaceholder}
-            disabled={busy}
-            data-testid="mcp-key"
-            className="h-8 max-w-[360px] text-xs"
-          />
-          {meta.keyHelpUrl && (
-            <a
-              href={meta.keyHelpUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={cn(QUIET_LINK, 'inline-flex items-center gap-1 self-start')}
-            >
-              Get a key from {meta.label}
-              <ArrowUpRight className="size-3" aria-hidden />
-            </a>
-          )}
-        </div>
-
-        {custom && (
-          <>
-            <div className="flex flex-col gap-1.5">
-              <FieldLabel htmlFor={urlId}>Base URL</FieldLabel>
-              <Input
-                id={urlId}
-                type="url"
-                inputMode="url"
-                value={baseUrl}
-                onChange={(e) => setBaseUrl(e.target.value)}
-                placeholder="https://api.example.com/v1"
-                autoComplete="off"
-                spellCheck={false}
-                disabled={busy}
-                aria-describedby={`${urlId}-help`}
-                data-testid="mcp-base-url"
-                className="h-8 max-w-[360px] text-xs"
-              />
-              <p id={`${urlId}-help`} className="text-muted-foreground text-[11px]">
-                Any OpenAI-compatible service. Public https addresses only.
-              </p>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <FieldLabel htmlFor={modelId}>Model (optional)</FieldLabel>
-              <Input
-                id={modelId}
-                value={modelName}
-                onChange={(e) => setModelName(e.target.value)}
-                autoComplete="off"
-                spellCheck={false}
-                disabled={busy}
-                aria-describedby={`${modelId}-help`}
-                aria-invalid={!modelOk || undefined}
-                data-testid="mcp-model-name"
-                className="h-8 max-w-[360px] text-xs"
-              />
-              <p id={`${modelId}-help`} className="text-muted-foreground text-[11px]">
-                {modelOk
-                  ? 'Only needed if the service doesn’t list its models.'
-                  : 'Model names can’t contain spaces.'}
-              </p>
-            </div>
-          </>
-        )}
-
-        {error && (
-          <p role="alert" className="text-destructive text-xs" data-testid="mcp-error">
-            {/* `custom` from the provider shown: picking another clears the error. */}
-            {connectErrorCopy(error.code, error.name, { custom, field: error.field })}
-          </p>
-        )}
-
-        <div>
-          <Button type="submit" size="sm" disabled={!ready} data-testid="mcp-connect">
-            {busy ? 'Checking key…' : 'Connect'}
-          </Button>
-        </div>
-      </form>
-
-      {variant === 'fresh' && (
-        <div className="flex flex-col gap-2">
-          <p className="text-muted-foreground max-w-[60ch] text-[11px] leading-relaxed">
-            You pay your provider directly. When you use AI, your request and the parts of your plan
-            it needs go from dsul’s server to that provider.
-          </p>
-          <UseOpenClawLink />
-        </div>
-      )}
-    </div>
+    <p role="alert" className="text-destructive text-xs" data-testid="mcp-error">
+      {connectErrorCopy(error.code, error.name, {
+        custom: error.custom,
+        field: error.field ?? null,
+        detected: error.detected ?? null,
+        resetsAt: resetsAtOf(error.limitedUntil),
+      })}
+    </p>
   );
 }
 
@@ -768,25 +496,36 @@ function ReplaceKeyForm({
 }) {
   const uid = useId();
   const busy = useAIConnectionStore((s) => s.busy === 'connect');
-  const [apiKey, setApiKey] = useState('');
-  const [error, setError] = useState<{ code: ApiErrorCode; field: string | null } | null>(null);
-  const name = providerName(model.provider, model.baseUrl);
+  const field = useRef<KeyFieldHandle>(null);
+  const [hasKey, setHasKey] = useState(false);
+  const [error, setError] = useState<FormFailure | null>(null);
+  const name = labelName(model.provider, model.baseUrl);
   const keyHelpUrl = PROVIDER_META[model.provider].keyHelpUrl;
 
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    const key = apiKey.trim();
-    if (!key || busy) return;
+  const submit = async (e?: FormEvent) => {
+    e?.preventDefault();
+    if (!hasKey || busy) return;
+    field.current?.focus();
+    const key = field.current?.read() ?? '';
+    setError(null);
+    const refused = refuseHere(model.provider, key);
+    if (refused) {
+      setError({ ...refused, name, custom: false });
+      return;
+    }
     // Same provider and host; the model rides along so a new key does not
     // quietly swap the user's pick for the provider's default.
     const req: ConnectRequest = { provider: model.provider, apiKey: key };
     if (model.baseUrl) req.baseUrl = model.baseUrl;
     if (model.model) req.model = model.model;
-    setApiKey('');
-    setError(null);
     const result = await useAIConnectionStore.getState().connect(req);
-    if (result.ok) onDone();
-    else setError({ code: result.code, field: result.field ?? null });
+    if (result.ok) {
+      field.current?.clear();
+      onDone();
+    } else {
+      const { code, field: named, detected, limitedUntil } = result;
+      setError({ code, field: named, detected, limitedUntil, name, custom: false });
+    }
   };
 
   const keyId = `${uid}-key`;
@@ -800,18 +539,19 @@ function ReplaceKeyForm({
     >
       <FieldLabel htmlFor={keyId}>New API key</FieldLabel>
       <div className="flex flex-wrap items-center gap-2">
-        <Input
+        <KeyField
+          ref={field}
           id={keyId}
-          {...KEY_FIELD_PROPS}
-          value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
           placeholder={PROVIDER_META[model.provider].keyPlaceholder}
-          disabled={busy}
-          aria-describedby={`${keyId}-help`}
-          data-testid="mcp-replace-key"
-          className="h-8 max-w-[300px] text-xs"
+          checking={busy}
+          describedBy={`${keyId}-help`}
+          testId="mcp-replace-key"
+          className="w-full max-w-[300px]"
+          onChange={(key) => setHasKey(key !== '')}
+          onPaste={() => setHasKey(true)}
+          onEnter={() => void submit()}
         />
-        <Button type="submit" size="sm" disabled={busy || apiKey.trim() === ''}>
+        <Button type="submit" size="sm" disabled={busy || !hasKey}>
           {busy ? 'Checking key…' : 'Save'}
         </Button>
         <Button type="button" variant="ghost" size="sm" onClick={onDone} disabled={busy}>
@@ -836,22 +576,20 @@ function ReplaceKeyForm({
           <ArrowUpRight className="size-3" aria-hidden />
         </a>
       )}
-      {error && (
-        <p role="alert" className="text-destructive text-xs" data-testid="mcp-error">
-          {connectErrorCopy(error.code, name, { field: error.field })}
-        </p>
-      )}
+      {error && <FormError error={error} />}
     </form>
   );
 }
+
+/* ── Connected ──────────────────────────────────────────────────────────── */
 
 /**
  * The desktop's way in, once a model is connected: Ask starts closed
  * (sidebar-store ASK_OPEN_DEFAULT), so the line names each way to open it,
  * the Ask button on the canvas's header row, the chord as the user has it
- * bound (chordLabel: "Ctrl+J", "⌘J" on a Mac; never typed by hand) and `?` in
- * the dock. The phone has no chord and its own Ask tab, and keeps the dock
- * sentence.
+ * bound (chordLabel reads "Ctrl+J" on a PC and the Mac's own symbols there,
+ * and follows a rebinding; never typed by hand) and `?` in the dock. The
+ * phone has no chord and its own Ask tab, and keeps the dock sentence.
  */
 function JustConnectedDesktop() {
   const keys = useShortcutKeys('toggle_right_sidebar');
@@ -859,37 +597,49 @@ function JustConnectedDesktop() {
   return <>Connected. Open Ask with the Ask button or {chord}, or type ? in the dock, to ask anything.</>;
 }
 
-function ConnectedCard({
+/** "Key saved", or "Signed in" for an OpenRouter sign-in. */
+const authWord = (model: ModelConnectionView) => (model.authMethod === 'oauth' ? 'Signed in' : 'Key saved');
+
+/** The provider, as the card names it: "Google Gemini", or "Other · api.groq.com". Never the raw model id. */
+function ProviderLine({ model }: { model: ModelConnectionView }) {
+  const host = model.provider === 'custom' ? hostOf(model.baseUrl) : null;
+  return (
+    <p className="text-foreground truncate text-sm font-medium" data-testid="mcp-provider">
+      {PROVIDER_META[model.provider].label}
+      {host && <span className="text-muted-foreground font-normal"> · {host}</span>}
+    </p>
+  );
+}
+
+/** Who is connected and how it stands: where `beacon.apiKey` lands while the key works. */
+function HeaderBand({
   model,
-  isMobile,
   highlightId,
-  justConnected,
-  onConnected,
+  children,
 }: {
   model: ModelConnectionView;
-  isMobile: boolean;
   highlightId: string | null;
-  justConnected: boolean;
-  onConnected: () => void;
+  /** The sub-line under the name. */
+  children: React.ReactNode;
 }) {
-  const router = useRouter();
-  const busy = useAIConnectionStore((s) => s.busy);
-  const chatTarget = useAISettingsStore((s) => s.chatTarget);
-  const caps = useAICapabilities();
-  const [mode, setMode] = useState<'idle' | 'replace' | 'switch'>('idle');
-  const [actionError, setActionError] = useState<string | null>(null);
+  return (
+    <div
+      {...anchor('beacon.apiKey', highlightId)}
+      className={cn('-mx-2 -my-1 flex min-w-0 flex-col px-2 py-1', ANCHOR_CLASS)}
+    >
+      <ProviderLine model={model} />
+      <p className="text-muted-foreground text-xs" data-testid="mcp-subline">
+        {children}
+      </p>
+    </div>
+  );
+}
 
-  const label = PROVIDER_META[model.provider].label;
-  const name = providerName(model.provider, model.baseUrl);
-  const host = model.provider === 'custom' ? hostOf(model.baseUrl) : null;
-  const oauth = model.authMethod === 'oauth';
-  // A sign-in is renewed by signing in again, except in the desktop app, where
-  // that flow can't finish (useInDesktopApp): there a pasted key replaces it.
-  const inDesktopApp = useInDesktopApp();
-  const signInAgain = oauth && !inDesktopApp;
-  const failing = model.status === 'failing';
-  const unreadable = failing && model.problem === 'key_unreadable';
-  const needsModel = !failing && !model.model;
+/** Which of the provider's models answers: where `beacon.model` lands. */
+function ModelBand({ model, highlightId }: { model: ModelConnectionView; highlightId: string | null }) {
+  const busy = useAIConnectionStore((s) => s.busy);
+  const name = labelName(model.provider, model.baseUrl);
+  const needsModel = !model.model;
 
   // Prefetch the list so the picker opens onto models, not a spinner. Only
   // for a working key: listing with a refused one is a wasted provider call.
@@ -897,225 +647,276 @@ function ConnectedCard({
     if (model.status === 'ok') void useAIConnectionStore.getState().loadModels();
   }, [model.provider, model.baseUrl, model.status]);
 
-  const checked = (() => {
-    if (!model.checkedAt) return null;
-    const at = new Date(model.checkedAt);
-    return Number.isNaN(at.getTime()) ? null : formatDistanceToNowStrict(at, { addSuffix: true });
-  })();
+  return (
+    <div className="border-border grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-t pt-4">
+      <div className="min-w-0">
+        <p className="text-foreground text-sm font-medium">Model</p>
+        <p className="text-muted-foreground text-xs" data-testid="mcp-model-hint">
+          {needsModel ? 'Pick a model to finish connecting.' : 'Answers in Ask and drafts your plans.'}
+        </p>
+      </div>
+      <div
+        {...anchor('beacon.model', highlightId)}
+        className={cn('flex min-w-0 max-w-[260px] justify-end', ANCHOR_CLASS)}
+      >
+        <ModelPicker
+          defaultOpen={needsModel}
+          disabled={busy !== null && busy !== 'model'}
+          errorCopy={(code, field) => connectErrorCopy(code, name, { during: 'model', field })}
+        />
+      </div>
+    </div>
+  );
+}
 
-  const recheck = async () => {
-    setActionError(null);
-    const result = await useAIConnectionStore.getState().recheck();
-    if (!result.ok) {
-      setActionError(connectErrorCopy(result.code, name, { during: 'recheck', field: result.field }));
-    }
-  };
-
-  const disconnect = () => {
-    setActionError(null);
-    useUIStore.getState().confirm({
-      title: `Disconnect ${name}?`,
-      // The middle sentence: once nothing answers there is no Ask and no
-      // History to look in, so nothing else says whether the chats survived.
-      description: `dsul will delete the saved key. Chat and plan suggestions hide until you connect again. Your saved conversations stay, and come back when you reconnect. The key stays active with ${name} until you revoke it there.`,
-      confirmLabel: 'Disconnect',
-      destructive: true,
-      testId: 'model-disconnect-confirm',
-      onConfirm: () => {
-        void useAIConnectionStore
-          .getState()
-          .disconnect()
-          .then((result) => {
-            if (!result.ok) setActionError(connectErrorCopy(result.code, name));
-          });
-      },
-    });
-  };
-
-  const replaceAction = signInAgain ? (
-    <a
-      href={OPENROUTER_START}
-      data-testid="mcp-signin-again"
-      className={failing ? buttonVariants({ size: 'sm' }) : QUIET_LINK}
-    >
-      Sign in again
-    </a>
-  ) : failing ? (
-    <Button size="sm" onClick={() => setMode('replace')} data-testid="mcp-replace">
-      Replace key
-    </Button>
-  ) : (
-    <TextAction onClick={() => setMode(mode === 'replace' ? 'idle' : 'replace')} testId="mcp-replace">
-      Replace key
+/** Disconnect: red text, no border and no wash; the confirm carries the destructive button. */
+function DisconnectAction({ onClick, className }: { onClick: () => void; className?: string }) {
+  const busy = useAIConnectionStore((s) => s.busy);
+  return (
+    <TextAction danger onClick={onClick} disabled={busy !== null} testId="mcp-disconnect" className={className}>
+      {busy === 'disconnect' ? 'Disconnecting…' : 'Disconnect'}
     </TextAction>
   );
+}
+
+/** The band of actions: the card's own on the left, Disconnect on the right. */
+function ActionsBand({
+  children,
+  onDisconnect,
+  hairline = true,
+}: {
+  children: React.ReactNode;
+  onDisconnect: () => void;
+  hairline?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        'flex flex-wrap items-center justify-between gap-x-4 gap-y-2',
+        hairline && 'border-border border-t pt-4'
+      )}
+    >
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">{children}</div>
+      <DisconnectAction onClick={onDisconnect} />
+    </div>
+  );
+}
+
+/**
+ * "Use a different service": the connect card's own folds (SwitchService,
+ * components/ai/connect/connect-ai.tsx), a key from anyone placed by its
+ * prefix, another service, or OpenRouter's sign-in, in place of the connection
+ * there is. The saved one stays until the new one works.
+ */
+function SwitchPanel({ onConnected }: { onConnected: () => void }) {
+  return (
+    <div className="border-border flex flex-col gap-3 border-t pt-4" data-testid="mcp-switch-panel">
+      <div>
+        <p className="text-foreground text-sm font-medium">Switch service</p>
+        <p className="text-muted-foreground text-xs">Connecting a different service replaces this one.</p>
+      </div>
+      <SwitchService onConnected={onConnected} />
+    </div>
+  );
+}
+
+/**
+ * Working (F19), and saved with no model picked yet: three bands split by
+ * hairlines. Who is connected and when it last answered a test question, with
+ * Check again; the model; and the actions.
+ */
+function WorkingCard({
+  model,
+  isMobile,
+  highlightId,
+  justConnected,
+  onConnected,
+  onRecheck,
+  onDisconnect,
+}: {
+  model: ModelConnectionView;
+  isMobile: boolean;
+  highlightId: string | null;
+  justConnected: boolean;
+  onConnected: () => void;
+  onRecheck: () => void;
+  onDisconnect: () => void;
+}) {
+  const router = useRouter();
+  const busy = useAIConnectionStore((s) => s.busy);
+  const caps = useAICapabilities();
+  const [mode, setMode] = useState<'idle' | 'replace' | 'switch'>('idle');
+  const oauth = model.authMethod === 'oauth';
+  // A sign-in is renewed by signing in again, except in the desktop app, where
+  // that flow can't finish (useInDesktopApp).
+  const inDesktopApp = useInDesktopApp();
+  const signInAgain = oauth && !inDesktopApp;
+  const answered = ago(model.checkedAt);
 
   return (
     <Card>
-      {/* Who is connected, and whether it works. While it works, this row is
-          where `beacon.apiKey` lands; once it stops, the explanation below is. */}
-      <div
-        {...anchor(failing ? 'beacon.model' : 'beacon.apiKey', highlightId)}
-        className={cn('-mx-2 -my-1 flex items-start justify-between gap-4 px-2 py-1', ANCHOR_CLASS)}
-      >
-        <div className="min-w-0">
-          <p className="text-foreground truncate text-sm font-medium" data-testid="mcp-provider">
-            {label}
-            {host && <span className="text-muted-foreground font-normal"> · {host}</span>}
-            {failing && model.model && (
-              <span className="text-muted-foreground font-num font-normal"> · {model.model}</span>
-            )}
-          </p>
-          <p className="text-muted-foreground text-xs">
-            {oauth ? 'Signed in' : 'Key saved'}
-            {!failing && checked && <> · Checked {checked}</>}
-            {!failing && (
-              <>
-                {' · '}
-                <TextAction onClick={() => void recheck()} disabled={busy !== null} testId="mcp-recheck">
-                  {busy === 'recheck' ? 'Checking…' : 'Check again'}
-                </TextAction>
-              </>
-            )}
-          </p>
-        </div>
-        <StatusPill failing={failing} />
-      </div>
+      <HeaderBand model={model} highlightId={highlightId}>
+        {authWord(model)}
+        {answered && <> · answered a test question {answered}</>}
+        {' · '}
+        {/* Underlined at rest: a link inside a sentence needs more than colour. */}
+        <TextAction onClick={onRecheck} disabled={busy !== null} testId="mcp-recheck" className="underline">
+          {busy === 'recheck' ? 'Checking…' : 'Check again'}
+        </TextAction>
+      </HeaderBand>
 
-      {failing ? (
-        <div {...anchor('beacon.apiKey', highlightId)} className={cn('-mx-2 -my-1 flex flex-col gap-3 px-2 py-1', ANCHOR_CLASS)}>
-          <p role="status" className="text-foreground text-sm" data-testid="mcp-failing">
-            {unreadable
-              ? 'dsul can’t read your saved key anymore. Connect it again.'
-              : `This key stopped working. ${name} turned it down the last time dsul used it.`}
-          </p>
-          {oauth && inDesktopApp && (
-            <p className="text-muted-foreground text-xs" data-testid="mcp-signin-browser">
-              Or sign in to OpenRouter again from dsul in your browser. The connection works here
-              too.
-            </p>
-          )}
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-            {replaceAction}
-            {!unreadable && (
-              <TextAction onClick={() => void recheck()} disabled={busy !== null} testId="mcp-recheck">
-                {busy === 'recheck' ? 'Checking…' : 'Check again'}
-              </TextAction>
-            )}
-            <TextAction onClick={disconnect} disabled={busy !== null} testId="mcp-disconnect">
-              {busy === 'disconnect' ? 'Disconnecting…' : 'Disconnect'}
+      <ModelBand model={model} highlightId={highlightId} />
+
+      <ActionsBand onDisconnect={onDisconnect}>
+        {signInAgain ? (
+          <a href={openRouterStartHref('settings')} data-testid="mcp-signin-again" className={QUIET_LINK}>
+            Sign in again
+          </a>
+        ) : (
+          !oauth && (
+            <TextAction onClick={() => setMode(mode === 'replace' ? 'idle' : 'replace')} testId="mcp-replace">
+              Replace key
             </TextAction>
-          </div>
-        </div>
-      ) : (
-        <>
-          <div className="border-border grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-t pt-4">
-            <div className="min-w-0">
-              <p className="text-foreground text-sm font-medium">Model</p>
-              <p className="text-muted-foreground text-xs" data-testid="mcp-model-hint">
-                {needsModel
-                  ? 'Pick a model to finish connecting.'
-                  : 'Which of your provider’s models answers.'}
-              </p>
-            </div>
-            <div
-              {...anchor('beacon.model', highlightId)}
-              className={cn('flex min-w-0 max-w-[260px] justify-end', ANCHOR_CLASS)}
-            >
-              <ModelPicker
-                defaultOpen={needsModel}
-                disabled={busy !== null && busy !== 'model'}
-                errorCopy={(code, field) => connectErrorCopy(code, name, { during: 'model', field })}
-              />
-            </div>
-          </div>
+          )
+        )}
+        <TextAction onClick={() => setMode(mode === 'switch' ? 'idle' : 'switch')} testId="mcp-switch">
+          Use a different service
+        </TextAction>
+      </ActionsBand>
 
-          {justConnected && caps.canChat && caps.target === 'model' && (
-            <div
-              role="status"
-              data-testid="mcp-just-connected"
-              className="bg-secondary flex flex-wrap items-center justify-between gap-2 rounded-[6px] px-3 py-2"
-            >
-              <p className="text-foreground text-xs">
-                {isMobile ? 'Connected. Type ? in the dock to ask anything.' : <JustConnectedDesktop />}
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  revealChat(isMobile);
-                  router.push('/');
-                }}
-              >
-                Try it
-              </Button>
-            </div>
-          )}
-
-          <div className="border-border flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t pt-4">
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-              {!oauth && replaceAction}
-              <TextAction
-                onClick={() => setMode(mode === 'switch' ? 'idle' : 'switch')}
-                testId="mcp-switch"
-              >
-                Use a different provider
-              </TextAction>
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={disconnect}
-              disabled={busy !== null}
-              data-testid="mcp-disconnect"
-              className="text-muted-foreground -my-1 -mr-2 h-7 px-2 text-xs"
-            >
-              {busy === 'disconnect' ? 'Disconnecting…' : 'Disconnect'}
-            </Button>
-          </div>
-        </>
-      )}
-
-      {mode === 'replace' && !signInAgain && (
-        <ReplaceKeyForm model={model} onDone={() => setMode('idle')} />
-      )}
-
-      {mode === 'switch' && !failing && (
-        <div className="border-border flex flex-col gap-3 border-t pt-4" data-testid="mcp-switch-panel">
-          <div>
-            <p className="text-foreground text-sm font-medium">Switch provider</p>
-            <p className="text-muted-foreground text-xs">
-              Connecting a different provider replaces this one.
-            </p>
-          </div>
-          <ConnectForm
-            variant="switch"
-            highlightId={highlightId}
-            exclude={model.provider}
-            onConnected={() => {
-              setMode('idle');
-              onConnected();
-            }}
-          />
-        </div>
-      )}
-
-      {actionError && (
-        <p role="alert" className="text-destructive text-xs" data-testid="mcp-error">
-          {actionError}
-        </p>
-      )}
-
-      {chatTarget === 'none' ? (
-        <p className="text-muted-foreground text-xs" data-testid="mcp-chat-off">
-          Chat is off on this device. Change it under Who answers in chat below.
-        </p>
-      ) : (
-        caps.openclawUsable && (
-          <p className="text-muted-foreground text-xs" data-testid="mcp-openclaw-too">
-            OpenClaw is connected too. Choose who answers in chat below.
+      {justConnected && caps.canChat && caps.target === 'model' && (
+        <div
+          role="status"
+          data-testid="mcp-just-connected"
+          className="bg-secondary flex flex-wrap items-center justify-between gap-2 rounded-[6px] px-3 py-2"
+        >
+          <p className="text-foreground text-xs">
+            {isMobile ? 'Connected. Type ? in the dock to ask anything.' : <JustConnectedDesktop />}
           </p>
-        )
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              revealChat(isMobile);
+              router.push('/');
+            }}
+          >
+            Try it
+          </Button>
+        </div>
+      )}
+
+      {mode === 'replace' && !signInAgain && <ReplaceKeyForm model={model} onDone={() => setMode('idle')} />}
+
+      {mode === 'switch' && (
+        <SwitchPanel
+          onConnected={() => {
+            setMode('idle');
+            onConnected();
+          }}
+        />
+      )}
+    </Card>
+  );
+}
+
+/**
+ * Today's limit is used up (F21): when AI comes back, on the planner's own
+ * clock, and what raises the limit. No Check again (it would only meet the
+ * limit) and no Replace key; Disconnect stays, so Good to know's "Disconnect
+ * above" is true here too.
+ */
+function LimitCard({
+  model,
+  highlightId,
+  onConnected,
+  onDisconnect,
+}: {
+  model: ModelConnectionView;
+  highlightId: string | null;
+  onConnected: () => void;
+  onDisconnect: () => void;
+}) {
+  const [switching, setSwitching] = useState(false);
+  const resetsAtOf = useResetsAt();
+  const copy = limitCopy(model, resetsAtOf(model.limitedUntil));
+  const keyPage = model.authMethod === 'key' ? PROVIDER_META[model.provider].keyHelpUrl : null;
+
+  return (
+    <Card>
+      <div data-testid="mcp-limit" className="flex flex-col gap-4">
+        <HeaderBand model={model} highlightId={highlightId}>
+          {authWord(model)} · today’s limit is used up
+        </HeaderBand>
+        {/* A resting note, not an alert: it is the card's state on every load. */}
+        <HoneyNote icon={Moon} role={null} testId="mcp-limit-note" text={copy.note} />
+        <p className="text-muted-foreground text-xs" data-testid="mcp-limit-paid">
+          {copy.paid}
+        </p>
+        <ActionsBand onDisconnect={onDisconnect} hairline={false}>
+          {keyPage && (
+            <KeyPageLink href={keyPage} label={keyPageLabel(model.provider, model.baseUrl)} className="self-auto" />
+          )}
+          <TextAction onClick={() => setSwitching(!switching)} testId="mcp-switch">
+            Use a different service
+          </TextAction>
+        </ActionsBand>
+        <ModelBand model={model} highlightId={highlightId} />
+      </div>
+      {switching && (
+        <SwitchPanel
+          onConnected={() => {
+            setSwitching(false);
+            onConnected();
+          }}
+        />
+      )}
+    </Card>
+  );
+}
+
+/**
+ * Turned down, or no longer readable (F20): the fix card, fixed in place
+ * (components/ai/connect/connect-fix.tsx on its pane host), with this pane's
+ * own actions in its band. No model band: a refused key lists no models.
+ */
+function FixCard({
+  model,
+  highlightId,
+  onConnected,
+  onDisconnect,
+}: {
+  model: ModelConnectionView;
+  highlightId: string | null;
+  onConnected: () => void;
+  onDisconnect: () => void;
+}) {
+  const [switching, setSwitching] = useState(false);
+  return (
+    <Card>
+      <ConnectFix
+        host="pane"
+        model={model}
+        highlightId={highlightId}
+        paneActions={
+          <>
+            {/* A key turned down may be the provider's doing, not the key's
+                (no credit, a region it won't answer): another service is a
+                way out that keeps the saved connection until the new one works. */}
+            <TextAction onClick={() => setSwitching(!switching)} testId="mcp-switch">
+              Use a different service
+            </TextAction>
+            <DisconnectAction onClick={onDisconnect} className="ml-auto" />
+          </>
+        }
+      />
+      {switching && (
+        <SwitchPanel
+          onConnected={() => {
+            setSwitching(false);
+            onConnected();
+          }}
+        />
       )}
     </Card>
   );

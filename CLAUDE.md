@@ -22,7 +22,9 @@ pnpm workspace (Node 24). `packages/types` is `@dsul/types`, and its `dist/` is
 without `pnpm --filter @dsul/types build` is a red build. `openclaw-plugin/` is a
 separate consumer of the agent API; its `dist/` is gitignored and built at publish time,
 so CI does not gate it — a plugin `src` change reaches users only when the npm package
-is republished.
+is republished. Both packages publish from the hand-dispatched `npm publish` workflow
+([npm-publish.yml](.github/workflows/npm-publish.yml), main only, Kirby approves each run);
+bump the version in a PR first, since a version already on npm is skipped.
 
 ## Setting up a new machine
 
@@ -223,6 +225,16 @@ https base URL. Five rules are load-bearing:
 
 Read [ai-vision.md](memory/plans/ai-vision.md) before touching any of it.
 
+**Deleting an account is one call.** `auth.admin.deleteUser` in
+[lib/account-server/delete.ts](lib/account-server/delete.ts) (its only caller), and every table
+that holds a user's data references `auth.users` ON DELETE CASCADE, so the database deletes the
+rest in GoTrue's one transaction. A new table with a user column follows the rule (its own
+cascading key, or a composite key to a table that has one), or
+`tests/unit/account-deletion-migration.test.ts` fails; a column with no key at all would keep
+its rows and take new ones from a service-role write in flight. Sign in with Apple is revoked
+after the delete, never before, and never blocks it. Read
+[account-deletion.md](memory/plans/account-deletion.md) before touching it.
+
 **State.** Zustand stores in `lib/*-store.ts`, one per concern (planner, view, drag,
 sidebar, eod, morning, conversations, rail, …). `planner-store.ts` is the big one: it
 holds `items[]` with `tasks`/`habits` projections derived off it.
@@ -388,7 +400,12 @@ rather than taking the flag.
   parks on click-away or Escape, so it never locks the planner at boot. Every send goes
   through `sendFrom()` in [open-chat.ts](lib/open-chat.ts), the one place that decides
   which conversation a message lands in. The help bubble lives inside `<main>` so it can
-  never cover the rail.
+  never cover the rail. A mod's panel is the rail's `'mod'` mode (rail-store's memory-only
+  `modPanel`, precedence `item > mod > ask > setup > hidden`): it shows at any width with
+  or without AI, opens only through `openModPanel()` in
+  [open-panel.ts](lib/mods/ui/open-panel.ts) (the phone's sheet there), and never writes
+  `summoned` or `askOpen`; an overlay gives the planner back through `parkOverlay()`, not
+  a bare `park()`.
 - **Design source of truth is the Figma file, not the mockup PNGs in the repo.** Pull
   specs live via the Figma MCP; the checked-in PNGs drift.
 - Some settings persist but are read by no view. That's deliberate — leave them alone
@@ -418,20 +435,44 @@ third container role (`aspire`), where milestones and check-ins are ordinary ite
 a membership role. Read it before touching `lib/goals.ts`, the goals store slice, or
 anything that writes an item's `startDate` in bulk: a milestone's start date is a target
 date, and the sweep and the carry verbs are excluded from it on purpose.
+[mods.md](memory/plans/mods.md) is the plan for **mods and recipes** (Kirby's pick,
+2026-10-03; decisions 2026-10-07): private, sandboxed mods (QuickJS-in-WASM behind a
+capability broker, host-drawn UI, never CSS), no-code recipes over `ITEM_VERBS`, and
+user themes and Looks as token values. It reverses plugins-themes-store.md's "skip
+tier (c)" and "skip sidebar-panel slots" for private code only. Build orders 2 to 10 are built (6 is the
+server runner, `lib/recipes/server/`; 7 is "Write with AI" in Make, `/api/ai/make`; 8 is the mod runtime,
+`lib/mods/`: sandbox frame, broker, ⌘K commands, faults, Make's source editor; 9 is the mod UI, `lib/mods/ui/`
+and `components/mods/`: the element tree, the rail's mod mode, the braindump card, the phone sheet and Make's
+settings form; 10 is the AI writing mods, the same Write box with a scratch run before the card, and `$` still
+has no AI); read it before adding a mod
+event, a recipe step, a `$` method, or anything that lets user-written code or values into the app. The mod
+runtime's worker, wasm and frame page are GENERATED: `scripts/build-mod-runtime.mjs` runs on `postinstall` and
+`prebuild` and writes `lib/mods/sandbox/generated/` (gitignored), served at `/mods/sandbox/<version>`, where the
+version hashes the whole page and its CSP. A fresh clone has none until `pnpm install` runs.
 [ai-vision.md](memory/plans/ai-vision.md) does the same for the AI: the model connection,
 the capability gate, delegation to OpenClaw, saved conversations and their privacy
 statement, and which earlier decisions steps 1 and 2a superseded. Read it before touching
 `lib/ai-*`, `lib/ai-server/**`, `app/api/ai/**`, `app/api/chat`, the AI settings pane, the
 right rail, or anything under `components/ai/`.
-[sign-in-with-apple.md](memory/plans/sign-in-with-apple.md) holds the Apple provider: why its
-button follows Supabase's own settings, the desktop shell's provider list, the dashboard setup,
-and the client secret that must be re-minted every six months
-(`scripts/apple-client-secret.mjs`) or Apple sign-in stops.
+[sign-in-with-apple.md](memory/plans/sign-in-with-apple.md) holds the Apple provider: why the web's
+button follows Supabase's own settings (the iPhone's is always shown), the desktop shell's provider
+list, the iPhone's native id_token flow, the dashboard setup, and the client secret that must be
+re-minted every six months (`scripts/apple-client-secret.mjs`) or Apple sign-in stops on the web
+and the desktop (the iPhone's id_token grant needs no secret).
+[account-deletion.md](memory/plans/account-deletion.md) holds Delete account on the iPhone and the
+web: the one rule (one admin delete, every user column cascades, migration 063 and the test that
+pins it), the account guard and the "gone" answers, exchange then delete then revoke for Sign in
+with Apple, what stays outside the database, Kirby's setup and the App Review gate. Read it before
+touching `lib/account-*`, `lib/account-server/**`, `app/api/account/**`, `app/api/app/account/**`,
+or a migration that adds a table holding user data.
 [reminders-platforms.md](memory/plans/reminders-platforms.md) is the plan for reminders on
 every surface (web/PWA, Electron, the iPhone app, Android, Apple Watch): one server authority
 on owed/discharged, a `devices` registry replacing `push_subscriptions`, device-local scheduling
 on the phone, and a Phase 0 that brings the ticks migration 045 paused back as one merged
 pg_cron job. Kirby decided its §7 on 2026-10-06; Phase 0 is built (migration 058 resumes the
-tick once Kirby applies it), and its top addendum lists where Phase 0's code departs from the body. Read
-it before touching `lib/reminders/**`, `lib/push-send.ts`, `app/api/cron/**`,
-`/api/reminders/act`, `push_subscriptions`, or notification code in `electron/` or `ios/`.
+tick once Kirby applies it), and its top addendum lists where Phase 0's code departs from the body.
+Phase 1a's device registry is built too (migration 065, `lib/devices/`: every push leaves through
+`sendToUser`, and until Kirby applies 065 it falls back to `push_subscriptions`). Read
+it before touching `lib/reminders/**`, `lib/devices/**`, `lib/push-send.ts`, `app/api/cron/**`,
+`/api/reminders/act`, `/api/devices/**`, `push_subscriptions`, or notification code in `electron/`
+or `ios/`.

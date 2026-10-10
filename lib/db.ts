@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase';
 type DbClient = any;
 import type { Task, Habit, Item, ItemTypeDef, TaskItem, HabitItem, Project, Routine, Season, Goal, GoalRole } from './planner-types';
 import { ITEM_TYPES, getItemTypeConfig } from './item-registry';
+import { foldContainerName } from './container-registry';
 import { notifyPlugins } from './openclaw-registry';
 import { COMPLETION_RETRACTION_WINDOW_DAYS, windowStart } from './completion-window';
 
@@ -71,6 +72,8 @@ interface ItemRow {
   // reminders (migration 032) — shared by every remindable type
   reminder_time?: string | null;
   reminder_anchor?: string | null;
+  // size (migration 066) — task-shaped types only, read by the braindump
+  size?: string | null;
 }
 
 function itemFromRow(row: ItemRow): Item {
@@ -107,6 +110,7 @@ function itemFromRow(row: ItemRow): Item {
       aiStatus: row.ai_status ?? undefined,
       aiResult: row.ai_result ?? undefined,
       aiStatusAt: row.ai_status_at ?? undefined,
+      size: row.size ?? undefined,
       pausedAt: row.paused_at ?? undefined,
       pausedUntil: row.paused_until ?? undefined,
       reminderTime: row.reminder_time ?? undefined,
@@ -181,6 +185,7 @@ function itemFromRow(row: ItemRow): Item {
     aiStatus: row.ai_status ?? undefined,
     aiResult: row.ai_result ?? undefined,
     aiStatusAt: row.ai_status_at ?? undefined,
+    size: row.size ?? undefined,
     pausedAt: row.paused_at ?? undefined,
     pausedUntil: row.paused_until ?? undefined,
     reminderTime: row.reminder_time ?? undefined,
@@ -256,6 +261,16 @@ function reminderColumns(item: Item): Partial<Pick<ItemRow, 'reminder_time' | 'r
   };
 }
 
+/**
+ * The size, emitted ONLY when set — the same PGRST204 guard as the column
+ * helpers above, for migration 066. Nearly every item is created unsized, so
+ * this keeps a create byte-identical to a pre-066 one.
+ */
+function sizeColumn(item: Item): Partial<Pick<ItemRow, 'size'>> {
+  const size = item.type === 'habit' ? undefined : item.size;
+  return size !== undefined ? { size } : {};
+}
+
 function itemToRow(userId: string, item: Item): ItemRow {
   if (item.type === 'habit') {
     return {
@@ -322,6 +337,7 @@ function itemToRow(userId: string, item: Item): ItemRow {
     ...agentStampColumn(item),
     ...containerColumns(item),
     ...reminderColumns(item),
+    ...sizeColumn(item),
   };
 }
 
@@ -384,6 +400,9 @@ function taskUpdatesToRow(updates: Partial<Task>): Record<string, unknown> {
     row.ai_status_at = explicit ?? new Date().toISOString();
   }
   if ('aiResult' in updates) row.ai_result = updates.aiResult ?? null;
+  // Size (migration 066). Null is "not sized" and a real write: the braindump's
+  // size menu offers it, and undo restores it.
+  if ('size' in updates) row.size = updates.size ?? null;
   // Reminders (migration 032). Nulls pass through and MEAN something here —
   // null is how a reminder is turned off, so a `?? null` guard is the
   // behavior, not a fallback (compare `group` above, where null would corrupt).
@@ -826,9 +845,62 @@ export async function fetchItems(userId: string, type?: string, client?: DbClien
   return itemsFromRows(data as ItemRow[]);
 }
 
+/**
+ * One live item of one user, mapped as fetchItems maps it, or null. Scoped by
+ * `user_id` itself, so a service-role caller (the recipe runner,
+ * lib/recipes/server/) reads only that user's row: the completion and skip
+ * RPCs filter on id and type alone, so a caller re-reads the row with the
+ * user scope before each one.
+ */
+export async function fetchItemById(userId: string, id: string, client?: DbClient): Promise<Item | null> {
+  const supabase = client ?? createClient();
+  const run = async () =>
+    itemsReadFrom(supabase).select('*').eq('id', id).eq('user_id', userId).is('deleted_at', null).maybeSingle();
+  let { data, error } = await run();
+  if (missingItemsWindow(error) && itemsWindowAvailable) {
+    itemsWindowAvailable = false;
+    ({ data, error } = await run());
+  }
+  if (error) throw error;
+  return data ? itemsFromRows([data as ItemRow])[0] : null;
+}
+
 /** Shared by fetchItems and loadPlannerData, so both paths map rows alike. */
 function itemsFromRows(rows: ItemRow[]): Item[] {
   return rows.map(itemFromRow);
+}
+
+/**
+ * The rows under `ids`, the trashed ones too, each with whether it is in the
+ * bin. No deleted_at filter, on purpose: the own-rows policy lets an owner
+ * read their trashed rows, and the bin is the question. One reader,
+ * lib/held-captures.ts, before it files again a row first filed over a failed
+ * load: an id with no row is filed, a trashed one was deleted elsewhere and
+ * stays in the bin, and a live one is shown as saved.
+ *
+ * Reads `items`, not items_windowed: a row filed this session has no history
+ * to window. Throws the client's error, as fetchItems does.
+ */
+export async function fetchItemsAnyState(
+  userId: string,
+  ids: readonly string[],
+  client?: DbClient,
+): Promise<{ item: Item; deleted: boolean }[]> {
+  const supabase = client ?? createClient();
+  const found: { item: Item; deleted: boolean }[] = [];
+  // Chunked so a long pasted list cannot outgrow the request URL an `in` list lives in.
+  for (let i = 0; i < ids.length; i += 100) {
+    const { data, error } = await supabase
+      .from('items')
+      .select('*')
+      .eq('user_id', userId)
+      .in('id', ids.slice(i, i + 100));
+    if (error) throw error;
+    for (const row of (data ?? []) as (ItemRow & { deleted_at?: string | null })[]) {
+      found.push({ item: itemFromRow(row), deleted: !!row.deleted_at });
+    }
+  }
+  return found;
 }
 
 /** One item's agent columns, as `fetchAgentStates` reads them. */
@@ -1039,8 +1111,8 @@ async function withResolvedContainer(
 }
 
 /**
- * Columns added by migration 032 that a write may name before the migration has
- * run.
+ * Columns added by later migrations (032's reminder pair, 066's size) that a
+ * write may name before the migration has run.
  *
  * reminderColumns (above) already omits them from an INSERT when no reminder is
  * set, and the update path cannot do even that: the ItemDialog's whole-item
@@ -1052,9 +1124,9 @@ async function withResolvedContainer(
  *
  * The retry both paths use is loadSettings' fallback applied to items: drop the
  * not-yet-migrated columns and try once more, so the write lands and only the
- * reminder half is deferred.
+ * reminder half (or the size) is deferred.
  */
-const REMINDER_WRITE_COLUMNS = ['reminder_time', 'reminder_anchor'] as const;
+const DEFERRABLE_WRITE_COLUMNS = ['reminder_time', 'reminder_anchor', 'size'] as const;
 
 /** True only for "the database doesn't have a column we asked for". */
 export function isMissingColumnError(error: { code?: string; message?: string } | null): boolean {
@@ -1117,7 +1189,7 @@ export async function createItem(
   if (error && isMissingColumnError(error)) {
     const stable = { ...row };
     let dropped = false;
-    for (const column of REMINDER_WRITE_COLUMNS) {
+    for (const column of DEFERRABLE_WRITE_COLUMNS) {
       if (column in stable) {
         delete stable[column];
         dropped = true;
@@ -1126,8 +1198,8 @@ export async function createItem(
     if (dropped) {
       console.warn(
         `[db] items is missing a column this build writes (${error.message}). ` +
-          'Retrying the create without the migration-032 reminder columns — the item is ' +
-          'saved, its reminder is not. Apply supabase/migrations/032_habit_reminders.sql.',
+          'Retrying the create without the reminder and size columns — the item is saved, ' +
+          'its reminder or size is not. Apply the pending migration (032 or 066).',
       );
       ({ error } = await supabase.from('items').insert(stable));
     }
@@ -1179,7 +1251,7 @@ export async function createItems(userId: string, items: Item[], client?: DbClie
     let dropped = false;
     const stable = rows.map((row) => {
       const copy = { ...row };
-      for (const column of REMINDER_WRITE_COLUMNS) {
+      for (const column of DEFERRABLE_WRITE_COLUMNS) {
         if (column in copy) {
           delete copy[column];
           dropped = true;
@@ -1190,8 +1262,8 @@ export async function createItems(userId: string, items: Item[], client?: DbClie
     if (dropped) {
       console.warn(
         `[db] items is missing a column this build writes (${error.message}). ` +
-          'Retrying the batch create without the migration-032 reminder columns — the items ' +
-          'are saved, their reminders are not. Apply supabase/migrations/032_habit_reminders.sql.',
+          'Retrying the batch create without the reminder and size columns — the items are ' +
+          'saved, their reminders or sizes are not. Apply the pending migration (032 or 066).',
       );
       ({ error } = await supabase.from('items').insert(stable));
     }
@@ -1214,8 +1286,16 @@ export async function updateItem(
   updates: Partial<Task> | Partial<HabitItem>,
   userId?: string,
   client?: DbClient,
+  /**
+   * `ownerId` adds `user_id = ownerId` to the row update: a service-role
+   * caller (the recipe runner, lib/recipes/server/) scopes every write to one
+   * user itself, since RLS does not. Not the webhook's `userId`.
+   */
+  opts: { ownerId?: string } = {},
 ): Promise<void> {
   const supabase = client ?? createClient();
+  const scoped = <Q extends { eq: (column: string, value: string) => Q }>(q: Q): Q =>
+    opts.ownerId ? q.eq('user_id', opts.ownerId) : q;
   // Per-date arrays are applied as intents and removed from the body BEFORE
   // the allowlist sees it — they have no column mapping any more.
   const routedDates = 'completedDates' in updates || 'skippedDates' in updates;
@@ -1232,7 +1312,7 @@ export async function updateItem(
     // reconciliation exists to serve.
     if (!routedDates) return;
   } else {
-    let { error } = await supabase.from('items').update(row).eq('id', id).eq('type', type);
+    let { error } = await scoped(supabase.from('items').update(row).eq('id', id).eq('type', type));
 
     // Schema-behind fallback, applied AFTER reconciliation so it can only ever
     // drop reminder columns — the per-date arrays are already gone from `row`
@@ -1240,7 +1320,7 @@ export async function updateItem(
     if (error && isMissingColumnError(error)) {
       const stable: Record<string, unknown> = { ...row };
       let dropped = false;
-      for (const column of REMINDER_WRITE_COLUMNS) {
+      for (const column of DEFERRABLE_WRITE_COLUMNS) {
         if (column in stable) {
           delete stable[column];
           dropped = true;
@@ -1249,11 +1329,11 @@ export async function updateItem(
       if (dropped) {
         console.warn(
           `[db] items is missing a column this build writes (${error.message}). ` +
-            'Retrying without the migration-032 reminder columns — the reminder was not saved. ' +
-            'Apply supabase/migrations/032_habit_reminders.sql to fix this.',
+            'Retrying without the reminder and size columns — the reminder or size was not ' +
+            'saved. Apply the pending migration (032 or 066) to fix this.',
         );
         if (Object.keys(stable).length > 0) {
-          ({ error } = await supabase.from('items').update(stable).eq('id', id).eq('type', type));
+          ({ error } = await scoped(supabase.from('items').update(stable).eq('id', id).eq('type', type)));
         } else {
           error = null;
         }
@@ -1266,7 +1346,9 @@ export async function updateItem(
   // and the webhook payload is a pinned external contract — narrowing it to the
   // post-reconcile body would drop completion changes from tasks.updated.
   if (userId) notifyItemChange(userId, type, { action: 'update', id, updates });
-  recordItemEvent(id, type, 'update', updates as Record<string, unknown>, userId, client);
+  // The owner a service-role caller scoped by: item_events.user_id defaults to
+  // auth.uid(), which is NULL on that client, so the feed row needs it named.
+  recordItemEvent(id, type, 'update', updates as Record<string, unknown>, userId ?? opts.ownerId, client);
 }
 
 /**
@@ -1310,7 +1392,7 @@ export async function changeItemType(
   // task → habit switch would keep the orphan project's id on an unfiled task,
   // or a pause the target no longer has. A switch writes the whole shape, so
   // unset means cleared.
-  const clearable = ['project_id', 'paused_at', 'paused_until', 'reminder_time', 'reminder_anchor'];
+  const clearable = ['project_id', 'paused_at', 'paused_until', 'reminder_time', 'reminder_anchor', 'size'];
   if (target.type !== 'habit') clearable.push('ai_status_at');
   for (const column of clearable) if (!(column in row)) row[column] = null;
 
@@ -1323,7 +1405,7 @@ export async function changeItemType(
   if (error && isMissingColumnError(error)) {
     // Same schema-behind fallback as updateItem: only the reminder columns
     // can be dropped, and only they are.
-    for (const column of REMINDER_WRITE_COLUMNS) delete row[column];
+    for (const column of DEFERRABLE_WRITE_COLUMNS) delete row[column];
     ({ data, error } = await supabase
       .from('items')
       .update(row)
@@ -1978,6 +2060,14 @@ interface SeasonRow {
  * members is a set difference, not a column write — a column-mapper-style
  * update would silently drop the key and undo of a membership change would
  * never reach the DB.
+ *
+ * `known` closes a race with the iPhone, which writes one membership row at a
+ * time (addContainerMember / removeContainerMember, below). A web tab's list is
+ * what it last fetched plus its own change, and the web never refetches on its
+ * own, so without `known` a tab older than a phone toggle would delete the
+ * phone's add and put back the phone's remove on its next write to that
+ * container. With it, the tab writes only its own differences. One writer
+ * (`known` equal to what is stored) sends exactly the calls it sent before.
  */
 async function reconcileMembership(
   supabase: DbClient,
@@ -1988,6 +2078,17 @@ async function reconcileMembership(
   userId: string,
   desired: string[],
   ordered = false,
+  /**
+   * The list the caller believed was stored, when it has one: then only the
+   * caller's own changes are written. A stored member it didn't know of
+   * (another device's add) is kept, and one it knew of that is gone by this
+   * call's read (another device's remove) is not put back. A remove that lands
+   * after this read and before this upsert is put back: the upsert rewrites the
+   * members the caller kept. Absent (createRoutine, createSeason, the agent
+   * API's PATCH, an undo's restore of a trashed container), the stored list is
+   * made to equal `desired`, as before.
+   */
+  known?: readonly string[],
 ): Promise<void> {
   const { data, error } = await supabase
     .from(table)
@@ -2002,7 +2103,10 @@ async function reconcileMembership(
   // second time"), and a multi-add UI can produce one trivially.
   const members = [...new Set(desired)];
   const desiredSet = new Set(members);
-  const removed = [...current].filter((id) => !desiredSet.has(id));
+  const knownSet = known ? new Set(known) : undefined;
+  // current \ desired, and with `known` only what the caller knew of: a member
+  // another device added since is not the caller's to remove.
+  const removed = [...current].filter((id) => !desiredSet.has(id) && (!knownSet || knownSet.has(id)));
 
   // Additions BEFORE removals. The two sets are disjoint by construction
   // (removed = current \ desired), so the order can never cause a collision —
@@ -2010,16 +2114,24 @@ async function reconcileMembership(
   // statement never runs, this ordering leaves a SUPERSET of the intended
   // membership (visible in the manager, removable by the user) rather than
   // silently dropping members the user asked to keep.
-  if (members.length > 0) {
-    // Upsert rather than insert-the-difference: it adds new members AND
-    // rewrites sort_order for existing ones in one statement, so a reorder
-    // costs the same as an add.
-    const rows = members.map((memberId, i) => ({
-      [ownerCol]: ownerId,
-      [memberCol]: memberId,
-      user_id: userId,
-      ...(ordered ? { sort_order: i } : {}),
-    }));
+  //
+  // Upsert rather than insert-the-difference: it adds new members AND
+  // rewrites sort_order for existing ones in one statement, so a reorder
+  // costs the same as an add. With `known`, a member the caller knew of that
+  // is no longer stored is another device's remove, and is left out; every
+  // other row keeps its index in `desired` as its sort_order.
+  const putBack = (memberId: string) => !!knownSet && knownSet.has(memberId) && !current.has(memberId);
+  const rows = members.flatMap((memberId, i) =>
+    putBack(memberId)
+      ? []
+      : [{
+          [ownerCol]: ownerId,
+          [memberCol]: memberId,
+          user_id: userId,
+          ...(ordered ? { sort_order: i } : {}),
+        }],
+  );
+  if (rows.length > 0) {
     const onConflict = `${ownerCol},${memberCol}`;
     const { error: upsertError } = await supabase.from(table).upsert(rows, { onConflict });
     if (upsertError) {
@@ -2050,6 +2162,83 @@ async function reconcileMembership(
       .in(memberCol, removed);
     if (deleteError) throw deleteError;
   }
+}
+
+/**
+ * The join table of each container an item joins by membership, for the
+ * iPhone's one-row writes below. Only a routine orders its members.
+ */
+const MEMBERSHIP = {
+  routine: { table: 'routine_items', owner: 'routine_id', ordered: true },
+  season: { table: 'season_items', owner: 'season_id', ordered: false },
+} as const;
+
+/**
+ * Add one item to one routine or season: one row, last in a routine's order
+ * (the highest sort_order plus one, 0 for the first), never touching another
+ * member. sort_order is nullable and every read orders it nulls last, then by
+ * item_id, so no number sorts after a member that has none: where any member
+ * has none, the new row has none either and sorts among them by its id.
+ * Answers false when it was a member already (23505 on the join table's key),
+ * whose place is kept: an insert, never an upsert, since an upsert's conflict
+ * branch would rewrite the stored sort_order.
+ *
+ * The iPhone's `collect` write (lib/app-api.ts). It writes the one row asked
+ * for, so a web tab's write in between is kept, as reconcileMembership's
+ * `known` keeps the phone's. Any error but the 23505 is thrown; a 23503 (the
+ * container or the item purged meanwhile) reaches the route as one.
+ */
+export async function addContainerMember(
+  userId: string,
+  kind: 'routine' | 'season',
+  containerId: string,
+  itemId: string,
+  client?: DbClient,
+): Promise<boolean> {
+  const supabase = client ?? createClient();
+  const { table, owner, ordered } = MEMBERSHIP[kind];
+  const row: Record<string, unknown> = { [owner]: containerId, item_id: itemId, user_id: userId };
+  if (ordered) {
+    // Nulls first, so a member with no place is the answer when there is one.
+    const { data, error } = await supabase
+      .from(table)
+      .select('sort_order')
+      .eq(owner, containerId)
+      .eq('user_id', userId)
+      .order('sort_order', { ascending: false, nullsFirst: true })
+      .limit(1);
+    if (error) throw error;
+    const last = (data as { sort_order: number | null }[] | null)?.[0];
+    row.sort_order = !last ? 0 : last.sort_order == null ? null : last.sort_order + 1;
+  }
+  const { error } = await supabase.from(table).insert(row);
+  if (error) {
+    if (error.code === '23505') return false;
+    throw error;
+  }
+  return true;
+}
+
+/**
+ * Take one item out of one routine or season: that row alone, filtered by its
+ * owner as reconcileMembership's delete is. Nothing to take out is no error.
+ */
+export async function removeContainerMember(
+  userId: string,
+  kind: 'routine' | 'season',
+  containerId: string,
+  itemId: string,
+  client?: DbClient,
+): Promise<void> {
+  const supabase = client ?? createClient();
+  const { table, owner } = MEMBERSHIP[kind];
+  const { error } = await supabase
+    .from(table)
+    .delete()
+    .eq(owner, containerId)
+    .eq('item_id', itemId)
+    .eq('user_id', userId);
+  if (error) throw error;
 }
 
 export async function fetchRoutines(userId: string, client?: DbClient): Promise<Routine[] | null> {
@@ -2141,11 +2330,19 @@ export async function createRoutine(userId: string, routine: Routine, client?: D
   }
 }
 
+/**
+ * `known.itemIds` is the member list the caller believed was stored, which
+ * reconcileMembership's `known` reads: the web store passes it whenever it
+ * sends `itemIds` to a routine that exists, so its write keeps another
+ * device's toggles. Without it (the agent API's PATCH, an undo's restore of a
+ * trashed routine) `itemIds` is the whole list, as before.
+ */
 export async function updateRoutine(
   userId: string,
   id: string,
   updates: Partial<Routine>,
   client?: DbClient,
+  known?: { itemIds?: readonly string[] },
 ): Promise<void> {
   const supabase = client ?? createClient();
   const row: Record<string, unknown> = {};
@@ -2164,7 +2361,7 @@ export async function updateRoutine(
   }
   if (updates.itemIds) {
     await reconcileMembership(
-      supabase, 'routine_items', 'routine_id', id, 'item_id', userId, updates.itemIds, true,
+      supabase, 'routine_items', 'routine_id', id, 'item_id', userId, updates.itemIds, true, known?.itemIds,
     );
   }
 }
@@ -2295,11 +2492,17 @@ export async function createSeason(userId: string, season: Season, client?: DbCl
   }
 }
 
+/**
+ * `known.itemIds` as updateRoutine's. A season's `routineIds` take none: the
+ * iPhone never writes season_routines, so that list has no other writer to
+ * keep.
+ */
 export async function updateSeason(
   userId: string,
   id: string,
   updates: Partial<Season>,
   client?: DbClient,
+  known?: { itemIds?: readonly string[] },
 ): Promise<void> {
   const supabase = client ?? createClient();
   const row: Record<string, unknown> = {};
@@ -2318,7 +2521,7 @@ export async function updateSeason(
   }
   if (updates.itemIds) {
     await reconcileMembership(
-      supabase, 'season_items', 'season_id', id, 'item_id', userId, updates.itemIds,
+      supabase, 'season_items', 'season_id', id, 'item_id', userId, updates.itemIds, false, known?.itemIds,
     );
   }
   if (updates.routineIds) {
@@ -3049,6 +3252,54 @@ export function loadPlannerData(
   })();
 }
 
+/** How long plannerRequestsSent waits on the auth lock before it lets the caller go anyway. */
+export const REQUESTS_SENT_CAP_MS = 500;
+
+/**
+ * Resolves once the requests a load already asked for have been handed to
+ * fetch. Never rejects; browser only.
+ *
+ * Asking is not sending. supabase-js awaits `auth.getSession()` before each
+ * request, and getSession holds the auth lock (a navigator lock), which is
+ * granted in a later task. So after `loadPlannerData` returns, its request
+ * has not left: anything long that runs first holds it back. The preview's
+ * render is that (lib/planner-store.ts offerPreview), 150 to 250ms at 30 rows
+ * and over a second at 300 on a desktop, about four times that on a slow
+ * phone, and it used to run first, so a reload with a snapshot fetched the
+ * fresh planner later than one without.
+ *
+ * The lock is first come, first served: navigator locks grant in request
+ * order, and a call made while it is held queues behind the last one waiting
+ * (GoTrueClient's pendingInLock). So a getSession asked for AFTER the load's
+ * own is answered after it, and the load's fetch is called in the microtasks
+ * that follow its answer. Three steps, each for a reason:
+ *  - one task first, so the load's own getSession, which starts a few
+ *    microtasks after loadPlannerData returns, is already in the queue;
+ *  - then this getSession, which waits its turn;
+ *  - then one more task, because while the lock is held a queued call can be
+ *    answered before the holder's own caller has resumed.
+ * Usually a few milliseconds in all. A lock held elsewhere (another tab's
+ * token refresh) would hold this too, so it gives up after
+ * REQUESTS_SENT_CAP_MS and the caller goes ahead, as it did before this.
+ */
+export function plannerRequestsSent(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const cap = setTimeout(resolve, REQUESTS_SENT_CAP_MS);
+    const done = () =>
+      setTimeout(() => {
+        clearTimeout(cap);
+        resolve();
+      }, 0);
+    setTimeout(() => {
+      try {
+        void createClient().auth.getSession().then(done, done);
+      } catch {
+        done();
+      }
+    }, 0);
+  });
+}
+
 /**
  * Both event names, for one write (039).
  *
@@ -3066,6 +3317,32 @@ export function loadPlannerData(
 function notifyContainerChange(userId: string, data: Record<string, unknown>): void {
   notifyPlugins(userId, 'projects.updated', data);
   notifyPlugins(userId, 'habitGroups.updated', data);
+}
+
+/**
+ * The live project an agent's name would collide with, folding case the way
+ * every lookup does (`CONTAINER_KINDS.project.caseFold`). The unique index is
+ * exact-case, so without this an agent could create "work" beside "Work" and
+ * leave two rows the app treats as one container. `exceptId` lets a rename
+ * keep its own name in a different case. Trashed rows are left to the index.
+ */
+export async function findLiveProjectByName(
+  userId: string,
+  name: string,
+  client: DbClient,
+  exceptId?: string,
+): Promise<Project | null> {
+  const { data, error } = await client
+    .from('projects')
+    .select('*')
+    .eq('user_id', userId)
+    .is('deleted_at', null);
+  if (error) throw error;
+  const folded = foldContainerName('project', name);
+  const hit = ((data ?? []) as ProjectRow[]).find(
+    (r) => r.id !== exceptId && foldContainerName('project', r.name) === folded,
+  );
+  return hit ? projectFromRow(hit) : null;
 }
 
 export async function createProject(userId: string, project: Project, client?: DbClient): Promise<void> {

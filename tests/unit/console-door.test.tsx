@@ -41,7 +41,7 @@ vi.mock('@/lib/db', async (importOriginal) => ({
 }));
 
 import { ItemDialog } from '@/components/planner/item-dialog';
-import { consoleHosted } from '@/lib/console-door';
+import { consoleHosted, openConsole, useConsoleHost } from '@/lib/console-door';
 import { OrganizeConsole } from '@/components/planner/organize/organize-console';
 import { useUIStore } from '@/lib/ui-store';
 import { usePlannerStore } from '@/lib/planner-store';
@@ -282,5 +282,33 @@ describe('nothing arms an organize slot behind the helper\'s back', () => {
       'utf8'
     );
     expect(src).toContain('useOpenConsole');
+  });
+});
+
+describe('openConsole, the door without a hook (a recipe step)', () => {
+  function Host() {
+    useConsoleHost();
+    return null;
+  }
+
+  it('with a console mounted: arms the slot and does not navigate', () => {
+    const navigate = vi.fn();
+    render(<Host />);
+    openConsole({ section: 'goals' }, navigate);
+    expect(armed()).toMatchObject({ type: 'organize', section: 'goals' });
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('with none: arms the slot, then goes where the console lives', () => {
+    const navigate = vi.fn();
+    expect(consoleHosted()).toBe(false);
+    openConsole({}, navigate);
+    expect(armed()).toMatchObject({ type: 'organize' });
+    expect(navigate).toHaveBeenCalledWith('/');
+  });
+
+  it('useOpenConsole is the same door with the router', () => {
+    const src = readFileSync(path.resolve(__dirname, '../..', 'lib/console-door.ts'), 'utf8');
+    expect(src).toMatch(/openConsole\(target, router\.push\)/);
   });
 });

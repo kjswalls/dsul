@@ -19,6 +19,7 @@ import { SurfaceHeader } from '@/components/primitives/surface-header';
 import { resolveConversationId, useConversationsStore } from '@/lib/conversations-store';
 import { openHistory } from '@/lib/open-chat';
 import { usePlannerStore } from '@/lib/planner-store';
+import { selectPlannerSettled, usePlannerSettled } from '@/lib/planner-ready';
 import { phoneArrivalFocuses, useRailStore, type AskView } from '@/lib/rail-store';
 import { cn } from '@/lib/utils';
 
@@ -32,11 +33,23 @@ function viewKeyOf(view: AskView | undefined): string {
 
 const back = () => useRailStore.getState().back('phone');
 
-/** Pop an item view that is still on top: it is gone, or it left for its own page. */
-function leaveItem(itemId: string): void {
+/**
+ * An item view that is still on top leaves: it is gone, or it left for its own
+ * page. Popped, unless `toConversation`: an item opened for its conversation
+ * before the planner settled, never found, gives way to that conversation
+ * (`fallbackConversation`), which is what openConversation pushes for a gone
+ * item on fresh rows. A push, so the level rule replaces the item with it.
+ */
+function leaveItem(itemId: string, o: { toConversation?: boolean } = {}): void {
   const rail = useRailStore.getState();
   const top = rail.stacks.phone.at(-1);
-  if (top?.kind === 'item' && top.itemId === itemId) rail.back('phone');
+  if (top?.kind !== 'item' || top.itemId !== itemId) return;
+  const id = o.toConversation ? top.fallbackConversation : undefined;
+  if (!id) {
+    rail.back('phone');
+    return;
+  }
+  rail.push('phone', top.returnFocus ? { kind: 'conversation', id, returnFocus: top.returnFocus } : { kind: 'conversation', id });
 }
 
 /**
@@ -287,21 +300,46 @@ function PhoneHistoryButton() {
  * payload rebuilt from every planner write (the panel's own autosave
  * included) would close a confirm mid-edit.
  *
+ * THE ITEM IS LOOKED UP ONLY ONCE THE PLANNER HAS SETTLED, as /item/[id] looks
+ * up its own and for the same reason: the editor autosaves, and until then the
+ * store holds the look-only preview's cached rows (lib/planner-ready.ts).
+ * Seeded from a cached row, a chip picked during the preview would be refused
+ * by the write barrier without a word, and a field still pending at the
+ * landing would write cached text over the fresh row. So the view reads
+ * "Loading…" until the load settles, and the editor mounts on the fresh row.
+ * Settled rather than loaded: a failed load settles with an empty store, where
+ * the item is not found and the view leaves as below, instead of loading for
+ * ever behind the failure.
+ *
  * Its `onOpenChange(false)` means only that the item is gone (or left for its
- * page), and so does finding no item at all (deleted while the tab was away):
- * either way the view beneath shows.
+ * page), and so does finding no item at all once settled (deleted while the
+ * tab was away): either way the view beneath shows. An item opened for its
+ * conversation before the planner settled, and not found in this mount, shows
+ * that conversation instead (`fallbackConversation`, lib/open-chat.ts
+ * openConversation).
  */
 function PhoneItemView({ itemId }: { itemId: string }) {
-  const item = usePlannerStore((s) => s.items.find((i) => i.id === itemId));
+  const settled = usePlannerSettled();
+  const item = usePlannerStore((s) => (selectPlannerSettled(s) ? s.items.find((i) => i.id === itemId) : undefined));
   const itemKey = item?.id;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const state = useMemo<ItemDialogState | null>(() => (item ? { mode: 'edit', item } : null), [itemKey]);
+  // Found once in this mount: a later disappearance is a delete, which goes back.
+  const found = useRef(false);
 
   useEffect(() => {
-    if (!itemKey) leaveItem(itemId);
-  }, [itemKey, itemId]);
+    if (itemKey) found.current = true;
+    else if (settled) leaveItem(itemId, { toConversation: !found.current });
+  }, [settled, itemKey, itemId]);
 
-  if (!state) return null;
+  if (!state) {
+    if (settled) return null;
+    return (
+      <div data-rail-body="" data-testid="ask-item-loading" aria-busy="true" className="min-h-0 flex-1 px-5 pt-1 pb-4">
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      </div>
+    );
+  }
   return (
     <div data-rail-body="" data-testid="ask-item" className="min-h-0 flex-1 overflow-y-auto px-5 pt-1 pb-4">
       <ItemDialog

@@ -69,7 +69,7 @@ import { getActionLog, usePlannerStore } from '@/lib/planner-store';
 import { resetAgentFreshness } from '@/hooks/use-agent-freshness';
 import { useSelectionStore } from '@/lib/selection-store';
 import { useUIStore } from '@/lib/ui-store';
-import { EXT_ORGANIZE } from '@/lib/extension-registry';
+import { EXT_ORGANIZE, EXT_STREAKS } from '@/lib/extension-registry';
 import { disableExtensions, enableExtensions } from './support/extensions';
 import { ItemContextMenu } from '@/components/planner/item-context-menu';
 import {
@@ -247,6 +247,43 @@ describe('the item right-click menu', () => {
   });
 });
 
+describe('the item menu\'s rare rows', () => {
+  afterEach(() => disableExtensions(EXT_STREAKS));
+
+  it('opens the item in the panel, with no "Open as page" beside it', () => {
+    render(<LiveRow id="once" />);
+    const menu = rightClick(cardOf('once'));
+    expect(within(menu).getByTestId('item-menu-open')).toBeInTheDocument();
+    expect(within(menu).queryByTestId('item-menu-open-page')).toBeNull();
+    expect(within(menu).queryByText('Open as page')).toBeNull();
+  });
+
+  it('keeps Copy link and Copy title under one Copy row', () => {
+    render(<LiveRow id="once" />);
+    const menu = rightClick(cardOf('once'));
+    expect(within(menu).queryByTestId('item-menu-copy-link')).toBeNull();
+    const trigger = within(menu).getByTestId('item-menu-copy');
+    fireEvent.pointerMove(trigger);
+    fireEvent.keyDown(trigger, { key: 'ArrowRight' });
+    const pane = screen.getByTestId('item-menu-copy-content');
+    expect(within(pane).getByTestId('item-menu-copy-link')).toHaveTextContent('Link');
+    expect(within(pane).getByTestId('item-menu-copy-title')).toHaveTextContent('Title');
+  });
+
+  it('puts Reset streak beside Delete, below the line', () => {
+    enableExtensions(EXT_STREAKS);
+    usePlannerStore.setState({
+      items: store().items.map((i) => (i.id === 'daily' ? ({ ...i, type: 'habit', streak: 3, dailyCounts: {} } as unknown as Item) : i)),
+    });
+    render(<LiveRow id="daily" />);
+    const menu = rightClick(cardOf('daily'));
+    const reset = within(menu).getByTestId('item-menu-reset-streak');
+    // Its section is Reset streak and Delete, nothing else.
+    expect(reset.previousElementSibling?.getAttribute('role')).toBe('separator');
+    expect(reset.nextElementSibling).toBe(within(menu).getByTestId('item-menu-delete'));
+  });
+});
+
 describe('the item menu\'s property rows', () => {
   beforeEach(() => {
     hosted.current = false;
@@ -254,14 +291,25 @@ describe('the item menu\'s property rows', () => {
     usePlannerStore.setState({ collectionsAvailable: true, projects: [{ id: 'p1', name: 'Work', emoji: '' }] as never });
   });
 
-  /** Open one property's flyout from the menu, the way a keyboard does. */
-  function openPane(menu: HTMLElement, key: string) {
-    const trigger = within(menu).getByTestId(`item-menu-edit-${key}`);
+  /** Open a flyout from its row, the way a keyboard does. */
+  function openSub(trigger: HTMLElement) {
     fireEvent.pointerMove(trigger);
     fireEvent.keyDown(trigger, { key: 'ArrowRight' });
   }
-  const summaryOf = (menu: HTMLElement, key: string) =>
-    within(within(menu).getByTestId(`item-menu-edit-${key}`)).getByTestId('edit-row-summary');
+  /**
+   * A property's row: on the menu itself, or, for a container when more than
+   * one applies, under "Organize ▸", which this opens first.
+   */
+  function rowOf(menu: HTMLElement, key: string) {
+    const organize = within(menu).queryByTestId('item-menu-edit-organize');
+    if (organize && !screen.queryByTestId('item-menu-organize-content')) openSub(organize);
+    return screen.queryByTestId(`item-menu-edit-${key}`);
+  }
+  /** Open one property's flyout from the menu. */
+  function openPane(menu: HTMLElement, key: string) {
+    openSub(rowOf(menu, key)!);
+  }
+  const summaryOf = (menu: HTMLElement, key: string) => within(rowOf(menu, key)!).getByTestId('edit-row-summary');
 
   it('previews every property, "None" where nothing is set', () => {
     usePlannerStore.setState({ routines: [{ id: 'r1', name: 'Mornings', itemIds: [] }] as never });
@@ -275,11 +323,34 @@ describe('the item menu\'s property rows', () => {
     expect(summaryOf(menu, 'routine')).toHaveTextContent('None');
   });
 
+  it('keeps the containers under one Organize row, previewing the ones set', () => {
+    usePlannerStore.setState({ routines: [{ id: 'r1', name: 'Mornings', itemIds: ['once'] }] as never });
+    render(<LiveRow id="once" />);
+    const menu = rightClick(cardOf('once'));
+    // Priority and Remind stay on the menu; the containers do not.
+    expect(within(menu).getByTestId('item-menu-edit-priority')).toBeInTheDocument();
+    expect(within(menu).queryByTestId('item-menu-edit-project')).toBeNull();
+    expect(within(menu).queryByTestId('item-menu-edit-routine')).toBeNull();
+    const organize = within(menu).getByTestId('item-menu-edit-organize');
+    expect(within(organize).getByTestId('edit-row-summary')).toHaveTextContent(/^Mornings$/);
+    openSub(organize);
+    const pane = screen.getByTestId('item-menu-organize-content');
+    expect(within(pane).getByTestId('item-menu-edit-project')).toBeInTheDocument();
+    expect(within(pane).getByTestId('item-menu-edit-routine')).toBeInTheDocument();
+  });
+
+  it('leaves a lone container on the menu, with no Organize row to open first', () => {
+    render(<LiveRow id="once" />);
+    const menu = rightClick(cardOf('once'));
+    expect(within(menu).queryByTestId('item-menu-edit-organize')).toBeNull();
+    expect(within(menu).getByTestId('item-menu-edit-project')).toBeInTheDocument();
+  });
+
   it('offers New routine… on the planner, opening the "new" dialog with the item in it', () => {
     render(<LiveRow id="once" />);
     // Off the planner the dialog is not mounted, and with no routines the row
     // has nothing else to offer.
-    expect(within(rightClick(cardOf('once'))).queryByTestId('item-menu-edit-routine')).toBeNull();
+    expect(rowOf(rightClick(cardOf('once')), 'routine')).toBeNull();
     fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
     cleanup();
 
@@ -303,7 +374,7 @@ describe('the item menu\'s property rows', () => {
     disableExtensions(EXT_ORGANIZE);
     hosted.current = true;
     render(<LiveRow id="once" />);
-    expect(within(rightClick(cardOf('once'))).queryByTestId('item-menu-edit-routine')).toBeNull();
+    expect(rowOf(rightClick(cardOf('once')), 'routine')).toBeNull();
   });
 
   it('files items into a just-made project only once its row exists', async () => {
@@ -323,7 +394,7 @@ describe('the item menu\'s property rows', () => {
     useUIStore.setState({ activeDialog: { type: 'organize' } });
     render(<LiveRow id="once" />);
     const menu = rightClick(cardOf('once'));
-    expect(within(menu).queryByTestId('item-menu-edit-routine')).toBeNull();
+    expect(rowOf(menu, 'routine')).toBeNull();
     openPane(menu, 'project');
     expect(screen.queryByTestId('bulk-new-option')).toBeNull();
   });
@@ -456,8 +527,8 @@ describe('the right-click that opens a menu (components/ui/context-menu.tsx)', (
     expect(openMenu()).toBeNull();
 
     const again = pressRight(cardOf('once'));
-    releaseRight(within(again).getByTestId('item-menu-open-page'));
-    expect(push).not.toHaveBeenCalled();
+    releaseRight(within(again).getByTestId('item-menu-open'));
+    expect(useUIStore.getState().activeDialog).toBeNull();
     fireEvent.click(within(again).getByTestId('item-menu-next-day'));
     expect(itemById('once').startDate).toBe('2026-07-18');
   });

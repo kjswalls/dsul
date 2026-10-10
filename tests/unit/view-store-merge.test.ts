@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { adoptLegacyViewPrefs, useViewStore } from '@/lib/view-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { EMPTY_VIEW_FILTERS, isEmptyFilters, normalizeFilters } from '@/lib/filters';
@@ -422,5 +422,53 @@ describe('renameContainerRef follows a container rename', () => {
       projects: [{ id: 'pr2', name: 'Something Else', emoji: 'icon:Briefcase' }],
     });
     expect(useViewStore.getState().canvasFilters.containers).toContain('project:Work');
+  });
+});
+
+/**
+ * The look-only preview's landing is a LOAD, not a rename (lib/planner-snapshot.ts).
+ *
+ * The preview paints last session's projects; the landing replaces them with
+ * the server's in one set(). Read as a diff, every project renamed elsewhere
+ * since looks like a rename made here, and the refs would be rewritten — which
+ * a load has never done (the empty → fresh landing has no `before` to diff),
+ * and which a chain of remote renames turns into a mis-pointed filter that
+ * persists. So the subscriber ignores any change out of a preview.
+ */
+describe('the preview landing does not remap filter refs', () => {
+  const project = (id: string, name: string) => ({ id, name, emoji: 'icon:Briefcase' });
+
+  beforeEach(() => {
+    usePlannerStore.setState({ isPreview: false, projects: [] } as never);
+    useViewStore.setState({
+      canvasFilters: { ...EMPTY_VIEW_FILTERS, containers: ['project:A', 'project:B'] },
+      braindumpFilters: { ...EMPTY_VIEW_FILTERS, containers: ['project:A'] },
+    });
+  });
+  afterEach(() => {
+    usePlannerStore.setState({ isPreview: false, projects: [] } as never);
+  });
+
+  it('leaves the refs alone on the preview → fresh edge, even across a rename chain', () => {
+    // Cached: X is "A", Y is "B". Since then, elsewhere: Y B→C, then X A→B.
+    usePlannerStore.setState({ isPreview: true, projects: [project('x', 'A'), project('y', 'B')] } as never);
+    usePlannerStore.setState({ isPreview: false, projects: [project('x', 'B'), project('y', 'C')] } as never);
+    // A remap would have folded A into B and then B into C: one ref, pointing at Y.
+    expect(useViewStore.getState().canvasFilters.containers).toEqual(['project:A', 'project:B']);
+    expect(useViewStore.getState().braindumpFilters.containers).toEqual(['project:A']);
+  });
+
+  it('leaves them alone on the failure drop', () => {
+    usePlannerStore.setState({ isPreview: true, projects: [project('x', 'A')] } as never);
+    usePlannerStore.setState({ isPreview: false, projects: [], error: 'offline' } as never);
+    expect(useViewStore.getState().canvasFilters.containers).toEqual(['project:A', 'project:B']);
+  });
+
+  it('still follows a rename made after the landing', () => {
+    usePlannerStore.setState({ isPreview: true, projects: [project('x', 'A')] } as never);
+    usePlannerStore.setState({ isPreview: false, projects: [project('x', 'A')] } as never);
+    usePlannerStore.setState({ projects: [project('x', 'Renamed')] } as never);
+    expect(useViewStore.getState().canvasFilters.containers).toEqual(['project:Renamed', 'project:B']);
+    expect(useViewStore.getState().braindumpFilters.containers).toEqual(['project:Renamed']);
   });
 });

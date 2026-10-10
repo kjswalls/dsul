@@ -26,6 +26,7 @@ import {
   Moon,
   PanelLeft,
   Palette,
+  PowerOff,
   Plus,
   Redo2,
   Rows3,
@@ -53,10 +54,12 @@ import {
   Pause as PauseIcon,
   Play as PlayIcon,
   Target,
+  Workflow,
+  Puzzle,
 } from 'lucide-react';
 import { addDays, subDays } from 'date-fns';
 
-import { AskMarkIcon } from '@/components/ai/ask-mark';
+import { AskMarkIcon, AskMarkUnlitIcon } from '@/components/ai/ask-mark';
 import { usePlannerStore } from '../planner-store';
 import { useViewStore } from '../view-store';
 import { EMPTY_VIEW_FILTERS, isEmptyFilters } from '../filters';
@@ -72,17 +75,27 @@ import {
 import { useSidebarStore } from '../sidebar-store';
 import { revealDock } from '../look-store';
 import { useSelectionStore, selectableIdsInDom } from '../selection-store';
-import { useMobileNavStore } from '../mobile-nav-store';
+import { setupPageShown, useMobileNavStore } from '../mobile-nav-store';
 import { useMorningStore } from '../morning-store';
 import { useEODStore } from '../eod-store';
 import { useProposalStore } from '../proposal-store';
 import { getAICapabilities } from '../ai-connection-store';
-import { askNew, newChat, openHistory, revealChat, toggleRail } from '../open-chat';
+import { askNew, newChat, openHistory, openSetup, revealChat, toggleRail } from '../open-chat';
 import { useConversationsStore } from '../conversations-store';
+import { useModsStore } from '../mods-store';
+import { modDisplayLabel, modLabel, parseModManifest, type UserMod } from '../mods/schema';
+import { modSurfaceLabel } from '../mods/labels';
+import { parseRecipe } from '../recipes/validate';
+import { runRecipeCommand } from '../recipes/command-run';
+import { runModCommand } from '../mods/command-run';
+import { openablePanelsOf } from '../mods/ui/card';
+import { openModPanel } from '../mods/ui/open-panel';
 import { railModeNow, useRailStore } from '../rail-store';
+import { useUndoStripStore } from '../undo-strip-store';
 import { goToDate, stepScope } from '../nav-commands';
+import { openHoveredSlot } from '../slot-add';
 import { resolveCategoryIcon } from '../category-icons';
-import { getItemTypeConfig } from '../item-registry';
+import { getCustomTypeDefs, getItemTypeConfig } from '../item-registry';
 import { selectOverdue } from '../overdue';
 import { inactiveItemIdsOn, isPausedOn, isSeasonActiveOn } from '../active';
 import { seasonStateForSwitch } from '../scope-rail';
@@ -146,6 +159,18 @@ const view = () => useViewStore.getState();
  * same fact in words, for the shortcuts table — see CommandShortcutSpec.context.
  */
 const WEEK_COLUMNS_CONTEXT = 'Only in a week view with columns.';
+
+/**
+ * The phone's palette and capture keys focus the dock's omnibar, which Ask's
+ * composer replaces on the `chat` tab, so they move to Today first. Not from
+ * the setup page or the fix home (lib/mobile-nav-store.ts setupPageShown):
+ * that page keeps the omnibar, and moving would only take the person off the
+ * page they were on.
+ */
+function leaveAskForOmnibar(): void {
+  const nav = useMobileNavStore.getState();
+  if (nav.activeTab === 'chat' && !setupPageShown(getAICapabilities())) nav.setActiveTab('today');
+}
 
 /**
  * "Set priority" and "Move to bucket" want TWO values — an item and a level.
@@ -225,6 +250,10 @@ export const STATIC_COMMANDS: Command[] = [
     aliases: ['task'],
     shortcut: { id: 'new_task', keys: ['n'] },
     run: () => openAddDialog('task'),
+    // Over a grid slot or an add row, the key adds right there.
+    runFromShortcut: () => {
+      if (!openHoveredSlot()) openAddDialog('task');
+    },
   },
   {
     id: 'create.habit',
@@ -846,6 +875,44 @@ export const STATIC_COMMANDS: Command[] = [
     availableWhen: () => getAICapabilities().canChat,
     run: (ctx) => ctx.openChat(),
   },
+  // Ask AI's place while nothing answers (the AI setup spec's "Doors"): "Set
+  // up AI" while the gate invites, "Fix AI" while a saved key needs
+  // attention. Palette only (no shortcut id: the frozen list in
+  // commands.test.ts stays as it is, and Ctrl+J already opens the same
+  // column). Hidden as well as unavailable outside its own state, so No AI,
+  // an unknown gate and a working connection never see a greyed row. Open
+  // only, never a toggle (lib/open-chat.ts openSetup): on desktop the setup
+  // column, on the phone the Ask tab, which holds the setup page then. The
+  // launcher draws whichever is offered inline, first in Actions
+  // (components/sidebar/omnibar.tsx), so these two are only ever reached as
+  // ordinary rows in the dock and in `/`.
+  {
+    id: 'ai.setup',
+    label: 'Set up AI',
+    group: 'rituals',
+    icon: AskMarkUnlitIcon,
+    keywords: 'ai ask chat assistant connect key gemini openrouter model',
+    aliases: ['setup', 'connect'],
+    verb: 'open',
+    hidden: () => !getAICapabilities().askInvite,
+    availableWhen: () => getAICapabilities().askInvite,
+    run: (ctx) => {
+      openSetup(ctx.isMobile);
+    },
+  },
+  {
+    id: 'ai.fix',
+    label: 'Fix AI',
+    group: 'rituals',
+    icon: AskMarkUnlitIcon,
+    keywords: 'ai ask chat assistant key repair reconnect gemini model',
+    verb: 'open',
+    hidden: () => !getAICapabilities().askFix,
+    availableWhen: () => getAICapabilities().askFix,
+    run: (ctx) => {
+      openSetup(ctx.isMobile);
+    },
+  },
   {
     id: 'rituals.catchUp',
     label: 'Pick things back up',
@@ -917,6 +984,39 @@ export const STATIC_COMMANDS: Command[] = [
     availableWhen: () => getAICapabilities().canChat && useConversationsStore.getState().saving !== 'off',
     run: (ctx) => openHistory(ctx.isMobile, { reveal: true, focusSearch: true }),
   },
+  // ⌘K hands off to Make (memory/plans/mods.md, "AI writes it"): Write with
+  // AI lives in Settings → Make, gated on canMake (a connected model, never
+  // OpenClaw alone). This only opens it with the Recipe box focused; nothing
+  // is sent until Write is pressed there. Palette only, so no shortcut id.
+  {
+    id: 'make.write',
+    label: 'Write a recipe with AI',
+    group: 'mods',
+    icon: AskMarkIcon,
+    keywords: 'ai make recipe theme look write automate when',
+    hidden: () => !getAICapabilities().canMake,
+    availableWhen: () => getAICapabilities().canMake,
+    run: (ctx) => {
+      if (ctx.navigate) ctx.navigate('/settings/make?write=recipe');
+      else if (typeof window !== 'undefined') window.location.assign('/settings/make?write=recipe');
+    },
+  },
+  // The same door with the Mod box (build order 10). It shares make.write's
+  // gate and sends nothing either; Make boots the sandbox when the kind is a
+  // mod, since a draft is checked there before its card shows.
+  {
+    id: 'make.write-mod',
+    label: 'Write a mod with AI',
+    group: 'mods',
+    icon: AskMarkIcon,
+    keywords: 'ai make mod panel card command counter write code',
+    hidden: () => !getAICapabilities().canMake,
+    availableWhen: () => getAICapabilities().canMake,
+    run: (ctx) => {
+      if (ctx.navigate) ctx.navigate('/settings/make?write=mod');
+      else if (typeof window !== 'undefined') window.location.assign('/settings/make?write=mod');
+    },
+  },
   {
     id: 'rituals.eod',
     label: 'Start end-of-day review',
@@ -944,12 +1044,23 @@ export const STATIC_COMMANDS: Command[] = [
       allowInInput: true,
       context: 'Desktop only. On the phone, Ask is a tab.',
     },
-    // The phone's Ask is a tab, not the rail. And with nothing to answer there
-    // is no Ask to open: the rail is only the item's panel then, and the chord
-    // stays consumed and inert (`availableWhen`; hooks/use-command-shortcuts.ts),
-    // so the browser's own Ctrl+J never opens either.
+    // The phone's Ask is a tab, not the rail. With nothing to answer but the
+    // gate offering setup or a fix, the chord opens the setup column, as the
+    // unlit key does (lib/open-chat.ts toggleRail); the palette row stays
+    // hidden then, since "Open or close Ask" is not what it opens. With
+    // nothing offered (AI hidden, the gate unknown) the rail is only the
+    // item's panel, and the chord stays consumed and inert (`availableWhen`;
+    // hooks/use-command-shortcuts.ts), so the browser's own Ctrl+J never opens
+    // either.
+    // The setup column is the desktop rail's, so on the phone shell the chord
+    // offers it nothing: there it would only arm a summon nothing draws, to
+    // spring the column open unasked once the window widens (toggle_zen's
+    // reason, above).
     hidden: (ctx) => ctx.isMobile || !getAICapabilities().canChat,
-    availableWhen: () => getAICapabilities().canChat,
+    availableWhen: (ctx) => {
+      const ai = getAICapabilities();
+      return ai.canChat || (!ctx.isMobile && (ai.askInvite || ai.askFix));
+    },
     run: () => toggleRail(),
   },
   {
@@ -1010,12 +1121,12 @@ export const STATIC_COMMANDS: Command[] = [
     //
     // Mobile has no launcher (no keyboard): keep the old behaviour of focusing
     // the docked omnibar, switching off the Chat tab first since the mobile
-    // dock unmounts the omnibar there — focusing a zero-width clipped input
-    // otherwise takes n / e / Backspace / ⌘Z down with it until you blur.
+    // dock unmounts the omnibar under Ask: focusing a zero-width clipped input
+    // otherwise takes n / e / Backspace / ⌘Z down with it until you blur. The
+    // setup page keeps the omnibar, so there it stays (leaveAskForOmnibar).
     run: (ctx) => {
       if (ctx.isMobile) {
-        const nav = useMobileNavStore.getState();
-        if (nav.activeTab === 'chat') nav.setActiveTab('today');
+        leaveAskForOmnibar();
         useUIStore.getState().focusOmnibar();
         return;
       }
@@ -1038,8 +1149,7 @@ export const STATIC_COMMANDS: Command[] = [
     // '/' reaches the same palette.
     run: (ctx) => {
       if (ctx.isMobile) {
-        const nav = useMobileNavStore.getState();
-        if (nav.activeTab === 'chat') nav.setActiveTab('today');
+        leaveAskForOmnibar();
         useUIStore.getState().focusOmnibar();
         return;
       }
@@ -1058,11 +1168,11 @@ export const STATIC_COMMANDS: Command[] = [
     // The reveal+focus path ⌘K used before the launcher took ⌘K over. Reveal the
     // sidebar BEFORE focusing: focusing a clipped zero-width input in a collapsed
     // sidebar swallows every binding without allowInInput (n / e / Backspace / ⌘Z)
-    // until you blur. Mobile switches off the Chat tab, which unmounts the omnibar.
+    // until you blur. Mobile switches off the Chat tab where Ask unmounts the
+    // omnibar, and stays on the setup page, which keeps it (leaveAskForOmnibar).
     run: (ctx) => {
       if (ctx.isMobile) {
-        const nav = useMobileNavStore.getState();
-        if (nav.activeTab === 'chat') nav.setActiveTab('today');
+        leaveAskForOmnibar();
       } else {
         revealDock();
       }
@@ -1213,6 +1323,20 @@ export const STATIC_COMMANDS: Command[] = [
       store.setEodReviewEnabled(!store.eodReviewEnabled);
     },
   },
+  {
+    // mods.md, "Faults": the off switch for everything a person made that runs.
+    // Same write as Settings → Make's make.allOff. No shortcut: ids are frozen.
+    id: 'settings.modsOff',
+    label: 'Turn all mods off',
+    description: 'Switches off every recipe and mod you made.',
+    group: 'settings',
+    icon: PowerOff,
+    keywords: 'mods recipes make disable off safe',
+    availableWhen: () => useModsStore.getState().available,
+    run: (ctx) => {
+      if (ctx.userId) void useModsStore.getState().turnAllOff(ctx.userId);
+    },
+  },
 
   /* ── History ────────────────────────────────────────────────────────── */
   {
@@ -1222,8 +1346,23 @@ export const STATIC_COMMANDS: Command[] = [
     icon: Undo2,
     keywords: 'undo revert back mistake',
     shortcut: { id: 'undo', keys: ['ctrl', 'z'], repeatable: true },
-    availableWhen: () => planner().canUndo,
-    run: () => planner().undo(),
+    // The strip's row and Ctrl+Z are one offer. A row with its own take-back
+    // ("AI is off" · Undo, lib/no-ai.ts) is what Ctrl+Z takes back while it
+    // shows, never the planner's last action from before it.
+    availableWhen: () => planner().canUndo || !!useUndoStripStore.getState().entry?.onUndo,
+    // That row is not the planner's history, so the look-only preview leaves
+    // it live; the planner's own undo stays refused there (lib/commands/types.ts).
+    liveDuringPreview: () => !!useUndoStripStore.getState().entry?.onUndo,
+    run: () => {
+      const strip = useUndoStripStore.getState();
+      const own = strip.entry;
+      if (own?.onUndo) {
+        strip.dismiss(own.id);
+        own.onUndo();
+        return;
+      }
+      planner().undo();
+    },
   },
   {
     id: 'history.redo',
@@ -1635,11 +1774,155 @@ const goalCommands: CommandProvider = () => {
   return cachedGoalCommands;
 };
 
+let cachedRecipeRows: readonly UserMod[] | null = null;
+let cachedRecipeTypes: readonly unknown[] | null = null;
+let cachedRecipeCommands: Command[] = [];
+
+/**
+ * "Run recipe: Morning reset", one per switched-on recipe whose trigger is
+ * ⌘K (memory/plans/mods.md, "Commands"). Ids `mod.<slug>.run`; the slug is
+ * unique across every kind a person makes (lib/mods-store.ts createRecipe), and
+ * a duplicate is dropped anyway, first one wins.
+ *
+ * No shortcut (only STATIC_COMMANDS may own a binding) and no alias: a recipe's
+ * name is free text, for the reason spelled out above routineCommands. The
+ * label always starts "Run recipe:", host chrome the name cannot remove.
+ *
+ * Memoised on the rows array's identity, which every write replaces, and on
+ * the hydrated custom types', which parseRecipe asks (a recipe that adds an
+ * Errand is invalid until the Errand type has loaded).
+ */
+const recipeCommands: CommandProvider = () => {
+  const { rows, available, safeMode } = useModsStore.getState();
+  if (!available || safeMode) return [];
+  const types = getCustomTypeDefs();
+  if (rows === cachedRecipeRows && types === cachedRecipeTypes) return cachedRecipeCommands;
+
+  cachedRecipeRows = rows;
+  cachedRecipeTypes = types;
+  const seen = new Set<string>();
+  cachedRecipeCommands = [];
+  for (const row of rows) {
+    if (row.kind !== 'recipe' || !row.enabled) continue;
+    if (parseRecipe(row)?.trigger.on !== 'command') continue;
+    const id = `mod.${row.slug}.run`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const label = modLabel(row);
+    cachedRecipeCommands.push({
+      id,
+      label: `Run recipe: ${label}`,
+      group: 'mods',
+      icon: Workflow,
+      keywords: `recipe ${label} run`,
+      availableWhen: () =>
+        useModsStore.getState().rows.some((r) => r.id === row.id && r.enabled),
+      run: () => runRecipeCommand(row.id),
+    });
+  }
+  return cachedRecipeCommands;
+};
+
+let cachedModRows: readonly UserMod[] | null = null;
+let cachedModCommands: Command[] = [];
+
+/**
+ * "Your mod · Water: Add a glass", one per command a switched-on mod's STORED
+ * manifest declares (memory/plans/mods.md, "Commands"; build order 8). Ids
+ * `mod.<slug>.<id>`: slugs are unique across every kind (createMod checks
+ * every row) and `run` is a reserved command id, so a mod's command never
+ * takes a recipe's `mod.<slug>.run`. A duplicate is dropped anyway, first one
+ * wins.
+ *
+ * The stored manifest is Zod-checked here and again at every load, and the
+ * runtime refuses one that no longer matches the code, so ⌘K never offers a
+ * command the mod does not have. The prefix and the name (modDisplayLabel, so
+ * a name only the database accepted shows as the slug) are host chrome the
+ * mod cannot remove.
+ *
+ * No shortcut and no alias, for recipeCommands' reasons. No loaded runtime
+ * needed: runModCommand goes through ModHost's slot, which loads the mod
+ * lazily; an empty slot (a lean route) does nothing.
+ *
+ * Build order 9 adds "Your mod · Water: Open Water", one per panel, with ids
+ * `mod.<slug>.open.<panelId>`: a mod's command id has no `.`, so none can
+ * collide, and their name is modSurfaceLabel, the panel chrome's. They open
+ * through the one router (lib/mods/ui/open-panel.ts), the rail on the desktop
+ * and the sheet on the phone. And `mod.close-panel`, while
+ * a panel shows in the rail: the keyboard's way out with no AI, where Ctrl+J
+ * is consumed before it reaches the toggle.
+ */
+const modCommands: CommandProvider = () => {
+  const { rows, available, safeMode } = useModsStore.getState();
+  if (!available || safeMode) return [];
+  if (rows === cachedModRows) return cachedModCommands;
+
+  cachedModRows = rows;
+  const seen = new Set<string>();
+  cachedModCommands = [];
+  for (const row of rows) {
+    if (row.kind !== 'mod' || !row.enabled) continue;
+    const manifest = parseModManifest(row);
+    if (!manifest) continue;
+    const name = modDisplayLabel(row);
+    for (const c of manifest.commands) {
+      const id = `mod.${row.slug}.${c.id}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      cachedModCommands.push({
+        id,
+        label: `Your mod · ${name}: ${c.label}`,
+        description: 'Your mod',
+        group: 'mods',
+        icon: Puzzle,
+        keywords: c.keywords?.join(' '),
+        availableWhen: () =>
+          useModsStore.getState().rows.some((r) => r.id === row.id && r.enabled),
+        run: () => runModCommand(row.id, c.id),
+      });
+    }
+  }
+  for (const p of openablePanelsOf(rows)) {
+    const id = `mod.${p.row.slug}.open.${p.panelId}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const name = modSurfaceLabel(p.row);
+    cachedModCommands.push({
+      id,
+      label: `Your mod · ${name}: Open ${p.panel.label}`,
+      description: 'Your mod',
+      group: 'mods',
+      icon: Puzzle,
+      keywords: 'panel open',
+      availableWhen: () => useModsStore.getState().rows.some((r) => r.id === p.modId && r.enabled),
+      run: () => openModPanel({ modId: p.modId, panelId: p.panelId }),
+    });
+  }
+  // Offered with any mod at all (shown only while a panel is in the rail): a
+  // panel stays open, saying it is off, after its mod is switched off.
+  if (rows.some((r) => r.kind === 'mod')) cachedModCommands.push(CLOSE_MOD_PANEL);
+  return cachedModCommands;
+};
+
+/** "Close your mod's panel", while one shows in the rail (modCommands). */
+const CLOSE_MOD_PANEL: Command = {
+  id: 'mod.close-panel',
+  label: "Close your mod's panel",
+  group: 'mods',
+  icon: Puzzle,
+  keywords: 'mod panel close hide',
+  hidden: () => railModeNow() !== 'mod',
+  availableWhen: () => railModeNow() === 'mod',
+  run: () => useRailStore.getState().closeModPanel(),
+};
+
 const PROVIDERS: CommandProvider[] = [
   customTypeCommands,
   routineCommands,
   seasonCommands,
   goalCommands,
+  recipeCommands,
+  modCommands,
 ];
 
 /**

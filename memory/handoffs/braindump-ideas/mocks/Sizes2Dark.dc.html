@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Quick lens, dark</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:'Inter',system-ui,sans-serif;color:#e8e9ee}
+a{color:#c4ea6a}a:hover{color:#d8f590}
+button{font-family:inherit;cursor:pointer}
+</style>
+</helmet>
+<div style="width: 420px; height: 900px; box-sizing: border-box; background: #18191d; padding: 24px 20px; display: flex; flex-direction: column; gap: 18px; font-family: 'Inter', system-ui, sans-serif; color: #e8e9ee">
+  <div style="display: flex; align-items: center; gap: 6px; padding-left: 8px; font-weight: 700; font-size: 22px">dsul<span style="width: 7px; height: 7px; border-radius: 50%; background: #b9e65a; margin-top: 4px"></span></div>
+
+  <div style="background: #222328; border-radius: 22px; padding: 6px; display: flex; flex-direction: column; gap: 6px">
+    <div style="background: #2c2d33; border-radius: 16px; padding: 14px 16px; display: flex; align-items: center; justify-content: space-between">
+      <div style="font-size: 16px"><span style="font-weight: 600">6</span> <span style="color: #8b8fa0">of 15</span></div>
+      <div style="display: flex; gap: 14px; color: #8b8fa0">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8M16 5v4M10 15v4"></path></svg>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"></path></svg>
+      </div>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 2px">
+      <button type="button" style="height: 36px; border-radius: 12px; border: none; background: transparent; color: #8b8fa0; font-size: 13px; font-weight: 500">all</button>
+      <button type="button" aria-pressed="true" style="height: 36px; border-radius: 12px; border: none; background: #34353c; color: #f2f3f6; font-size: 13px; font-weight: 600">quick <span style="font-size: 12px; color: #8b8fa0; font-weight: 400">6</span></button>
+      <button type="button" style="height: 36px; border-radius: 12px; border: none; background: transparent; color: #8b8fa0; font-size: 13px; font-weight: 500">errands <span style="font-size: 12px; color: #6c7080; font-weight: 400">2</span></button>
+      <button type="button" style="height: 36px; border-radius: 12px; border: none; background: transparent; color: #8b8fa0; font-size: 13px; font-weight: 500">big <span style="font-size: 12px; color: #6c7080; font-weight: 400">5</span></button>
+      <button type="button" style="height: 36px; border-radius: 12px; border: none; background: transparent; color: #8b8fa0; font-size: 13px; font-weight: 500">fuzzy <span style="font-size: 12px; color: #6c7080; font-weight: 400">2</span></button>
+    </div>
+  </div>
+
+  <div style="display: flex; align-items: center; justify-content: space-between; padding: 0 8px">
+    <div style="font-size: 14px; color: #b4b7c4">2 down, 4 to go</div>
+    <div style="display: flex; gap: 4px">
+      <span style="width: 8px; height: 8px; border-radius: 50%; background: #b9e65a"></span>
+      <span style="width: 8px; height: 8px; border-radius: 50%; background: #b9e65a"></span>
+      <span style="width: 8px; height: 8px; border-radius: 50%; background: #3a3b42"></span>
+      <span style="width: 8px; height: 8px; border-radius: 50%; background: #3a3b42"></span>
+      <span style="width: 8px; height: 8px; border-radius: 50%; background: #3a3b42"></span>
+      <span style="width: 8px; height: 8px; border-radius: 50%; background: #3a3b42"></span>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column">
+    <div style="display: flex; align-items: center; gap: 12px; padding: 6px 8px">
+      <span style="width: 20px; height: 20px; border-radius: 6px; background: #b9e65a; flex: none; display: flex; align-items: center; justify-content: center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#24300c" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"></path></svg></span>
+      <span style="font-size: 15px; color: #6c7080; text-decoration: line-through">make a dentist appointment</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 12px; padding: 6px 8px">
+      <span style="width: 20px; height: 20px; border-radius: 6px; background: #b9e65a; flex: none; display: flex; align-items: center; justify-content: center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#24300c" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"></path></svg></span>
+      <span style="font-size: 15px; color: #6c7080; text-decoration: line-through">schedule MRI appointment</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 12px; padding: 6px 8px">
+      <span style="width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid #4a4c55; background: #24252a; flex: none"></span>
+      <span style="font-size: 15px">email ICA</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 12px; padding: 6px 8px">
+      <span style="width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid #4a4c55; background: #24252a; flex: none"></span>
+      <span style="font-size: 15px">check sammy's insurance</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 12px; padding: 6px 8px">
+      <span style="width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid #4a4c55; background: #24252a; flex: none"></span>
+      <span style="font-size: 15px">ask mom and the sibs about NJ trip</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 12px; padding: 6px 8px">
+      <span style="width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid #4a4c55; background: #24252a; flex: none"></span>
+      <span style="font-size: 15px">hang up trip map</span>
+    </div>
+  </div>
+
+  <div style="margin-top: auto; background: #222328; border-radius: 14px; padding: 12px 14px; font-size: 13px; color: #8b8fa0; line-height: 1.5">ticked items stay put while the lens is open so the dots fill up, then tidy away when you switch back to all.</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":420,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

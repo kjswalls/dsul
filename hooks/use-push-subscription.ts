@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { registerThisBrowser } from '@/lib/devices/web-client';
+import { releaseThisBrowserPush } from '@/lib/push-release';
 
 // VAPID public key — must also be set in Vercel env vars (NEXT_PUBLIC_VAPID_PUBLIC_KEY)
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? '';
@@ -68,17 +70,10 @@ export function usePushSubscription(): UsePushSubscriptionReturn {
       applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
     });
 
-    const keys = subscription.toJSON().keys as { p256dh: string; auth: string };
-
-    await fetch('/api/push/subscribe', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        endpoint: subscription.endpoint,
-        p256dh: keys.p256dh,
-        auth: keys.auth,
-      }),
-    });
+    // This browser becomes a device on the account (lib/devices/web-client.ts).
+    if (!(await registerThisBrowser(subscription))) {
+      console.error('[push] the subscription was made but the server did not take it');
+    }
 
     setIsSubscribed(true);
     setPermissionState(Notification.permission);
@@ -86,18 +81,9 @@ export function usePushSubscription(): UsePushSubscriptionReturn {
 
   const unsubscribe = useCallback(async () => {
     if (!isSupported) return;
-
-    const reg = await navigator.serviceWorker.ready;
-    const subscription = await reg.pushManager.getSubscription();
-    if (!subscription) return;
-
-    await fetch('/api/push/unsubscribe', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ endpoint: subscription.endpoint }),
-    });
-
-    await subscription.unsubscribe();
+    // The device row first, then the subscription: the order #254 needs, and
+    // the same call every change of user makes (lib/push-release.ts).
+    await releaseThisBrowserPush();
     setIsSubscribed(false);
   }, [isSupported]);
 

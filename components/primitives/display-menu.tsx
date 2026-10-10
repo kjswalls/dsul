@@ -41,6 +41,7 @@ import { Tooltip, TooltipTrigger } from '@/components/ui/tooltip';
 import { RailTipContent, useQuietTip } from '@/components/primitives/pills';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { usePlannerStore } from '@/lib/planner-store';
+import { selectPlannerLoaded, selectPlannerSettled } from '@/lib/planner-ready';
 import { useViewStore } from '@/lib/view-store';
 import { NO_PRIORITY, type PriorityFilterValue, type ViewFilters } from '@/lib/filters';
 import {
@@ -1462,6 +1463,14 @@ function DisplaySheet({
  * is merely holding down keeps its own switch on and is not listed here — the
  * blocking SEASON is, and turning it on brings the routine back. Mounted inside
  * the open menu or sheet, so buildScopeRows only runs while one is on screen.
+ *
+ * Turning one on is a planner write, so the rows ACT only once the planner has
+ * loaded. While its load is in flight (the look-only preview paints cached
+ * routines and seasons here) each row is drawn disabled with "Syncing…" on its
+ * rail, the notices' word for the same wait: the write barrier would refuse the
+ * click, and a live-looking row that does nothing reads as a broken switch.
+ * After a FAILED load the section is not drawn at all; the Retry notice is the
+ * way out, and nothing here is syncing.
  */
 function PausedScopesSection({
   variant,
@@ -1473,6 +1482,9 @@ function PausedScopesSection({
   const routines = usePlannerStore((s) => s.routines);
   const seasons = usePlannerStore((s) => s.seasons);
   const userTimezone = usePlannerStore((s) => s.userTimezone);
+  const load = usePlannerStore((s) =>
+    selectPlannerLoaded(s) ? 'loaded' : selectPlannerSettled(s) ? 'failed' : 'syncing'
+  );
 
   const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   // Resolved at today and used as a memo key — pausing is dateless, and a menu
@@ -1483,7 +1495,8 @@ function PausedScopesSection({
     [routines, seasons, todayStr, tz]
   );
 
-  if (offRows.length === 0) return null;
+  if (offRows.length === 0 || load === 'failed') return null;
+  const syncing = load === 'syncing';
 
   const entries: Entry[] = [
     { kind: 'cap', key: 'paused-cap', label: 'Paused scopes' },
@@ -1499,7 +1512,9 @@ function PausedScopesSection({
         ),
         label: row.name,
         // The rail's own line — "back Sep 8", "you turned it off", "ended Jul 31".
-        rail: row.state,
+        // While syncing it gives the reason the row is disabled instead.
+        rail: syncing ? 'Syncing…' : row.state,
+        disabled: syncing,
         // An ACTION, not a value: role=menuitem so a screen reader announces
         // "turn on <name>" rather than a check box that can never read checked
         // (turning it on drops the row from the !localOn list). keepOpen keeps

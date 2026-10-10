@@ -1,6 +1,6 @@
 'use client';
 
-import { useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 import { ExternalLink, MailCheck } from 'lucide-react';
@@ -16,6 +16,8 @@ import { RELAY } from '@/lib/relay-config';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { RelayField } from '@/components/primitives/relay-field';
+import { DEFAULT_LOGIN_HEADLINE, pickLoginHeadline } from '@/lib/login-headlines';
+import { takeDeletionNotice } from '@/lib/account-client';
 
 const BROWSER_UNOPENED = 'Couldn’t open your browser to sign in. Try again.';
 
@@ -23,6 +25,12 @@ type OAuthProvider = 'google' | 'apple';
 const PROVIDER_NAME: Record<OAuthProvider, string> = { google: 'Google', apple: 'Apple' };
 
 const noopSubscribe = () => () => {};
+// Picked once per page load, in the reader's own time zone, so it is read on
+// the client only: the server renders the default, hidden, and hydration
+// swaps in the pick before the heading fades in.
+let pickedHeadline: string | null = null;
+const clientHeadline = () => (pickedHeadline ??= pickLoginHeadline());
+const serverHeadline = () => null;
 const isDesktopApp = () => getDesktopBridge() !== null;
 // A desktop shell opens only the providers its main process allows
 // (electron/lib/policy.cjs), and a shell built before Apple doesn't list
@@ -117,6 +125,7 @@ function LoginPageInner({ apple }: { apple: boolean }) {
   // snapshot is a browser's answer; an older shell drops the button once the
   // page hydrates.
   const appleHere = useSyncExternalStore(noopSubscribe, canOpenApple, () => true);
+  const headline = useSyncExternalStore(noopSubscribe, clientHeadline, serverHeadline);
   const showApple = apple && appleHere;
   // Desktop only. The authorize URL the system browser was sent to, and whose
   // it is, kept so "Open again" can send it there a second time with the same
@@ -130,6 +139,18 @@ function LoginPageInner({ apple }: { apple: boolean }) {
   // A token, not a counter of anything meaningful: every change re-strikes the
   // field's ripple from the focal point. See RelayField's `burst` docs.
   const [burst, setBurst] = useState(0);
+  // Settings → dsul → Delete account left a note in sessionStorage (it
+  // survives the sign-out that brought the browser here), so this page says
+  // the account is deleted. Read once, in an effect: the server render never
+  // reads storage, and a reload shows nothing. react-hooks/set-state-in-effect
+  // flags the set; reading FROM an external store is the case its guidance
+  // carves out. Only a line is ever set, so a second run (Strict Mode) that
+  // finds the note already taken keeps the first one's.
+  const [deletedNotice, setDeletedNotice] = useState<string | null>(null);
+  useEffect(() => {
+    const line = takeDeletionNotice();
+    if (line) setDeletedNotice(line);
+  }, []);
 
   const { ref: columnRef, focal } = useContentFocal();
 
@@ -354,7 +375,7 @@ function LoginPageInner({ apple }: { apple: boolean }) {
               height keeps the form still while a larger hover flavor is up. */}
           <div className="space-y-1.5">
             <Wordmark className="h-[13px]" />
-            <p className="text-[11.5px] text-muted-foreground">like vin diesel w/out the vin :)</p>
+            <p className="text-[11.5px] text-muted-foreground">vin sold separately</p>
           </div>
 
           {handoff ? (
@@ -425,15 +446,23 @@ function LoginPageInner({ apple }: { apple: boolean }) {
               <div className="space-y-3 delay-100 duration-700 animate-in fade-in slide-in-from-bottom-2 fill-mode-both motion-reduce:animate-none">
                 {/* Negative tracking is doing real work here — Inter sets loose
                     at display sizes and the two lines won't lock up without it. */}
-                <h1 className="text-[27px] font-semibold leading-[1.12] tracking-[-0.032em] text-balance">
-                  Ok! what are we doing today?
+                <h1
+                  className={`text-[27px] font-semibold leading-[1.12] tracking-[-0.032em] text-balance${headline ? '' : ' invisible'}`}
+                >
+                  {headline ?? DEFAULT_LOGIN_HEADLINE}
                 </h1>
-                <p className="text-[13.5px] leading-relaxed text-muted-foreground">
-                  sign in and we&rsquo;ll figure it out together
-                </p>
               </div>
 
               <div className="space-y-3 delay-200 duration-700 animate-in fade-in slide-in-from-bottom-2 fill-mode-both motion-reduce:animate-none">
+                {deletedNotice && (
+                  <p
+                    role="status"
+                    className="text-[12.5px] leading-relaxed text-foreground"
+                    data-testid="login-deleted"
+                  >
+                    {deletedNotice}
+                  </p>
+                )}
                 {/* bg-card/55 replaces the outline variant's opaque
                     `bg-background`, which was the one solid patch on the whole
                     frost — the glass died inside the button's rectangle, which
@@ -502,7 +531,6 @@ function LoginPageInner({ apple }: { apple: boolean }) {
                     type="email"
                     aria-label="Email address"
                     placeholder="you@example.com"
-                    autoFocus
                     autoComplete="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}

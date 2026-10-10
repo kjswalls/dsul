@@ -35,10 +35,13 @@ vi.mock('@/lib/openclaw-registry', async (importOriginal) => ({
   notifyPlugins: vi.fn(),
 }));
 
-import { authenticateAppRequest, dbErrorResponse, precheckToken } from '@/lib/app-auth';
+import { authenticateAppCaller, authenticateAppRequest, dbErrorResponse, precheckToken } from '@/lib/app-auth';
 import { GET as getPlanner } from '@/app/api/app/planner/route';
 import { POST as postCapture } from '@/app/api/app/items/route';
 import { POST as postItem } from '@/app/api/app/items/[id]/route';
+import { GET as getAccount } from '@/app/api/app/account/route';
+import { POST as postAccountDelete } from '@/app/api/app/account/delete/route';
+import { POST as postTimezone } from '@/app/api/app/timezone/route';
 import { ITEM_WRITES } from '@/lib/app-api';
 
 const b64 = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
@@ -170,6 +173,42 @@ describe('authenticateAppRequest', () => {
     expect(((await authenticateAppRequest(bearer(token()))) as Response).status).toBe(503);
     expect(h.createClient).not.toHaveBeenCalled();
   });
+
+  it('401s a deleted account (user_not_found), as any refused token', async () => {
+    h.getUser.mockResolvedValue({
+      data: { user: null },
+      error: new AuthApiError('User from sub claim in JWT does not exist', 403, 'user_not_found'),
+    });
+    const res = (await authenticateAppRequest(bearer(token()))) as Response;
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: 'unauthorized' });
+  });
+});
+
+describe('authenticateAppCaller', () => {
+  it('answers a live caller exactly as authenticateAppRequest does', async () => {
+    expect(await authenticateAppCaller(bearer(token()))).toEqual({ userId: USER, client: fakeClient });
+  });
+
+  it('answers a deleted account as gone, with the token’s own sub', async () => {
+    // GoTrue loads the user only after the signature checks out, so
+    // user_not_found is the subject of a token it just verified.
+    h.getUser.mockResolvedValue({
+      data: { user: null },
+      error: new AuthApiError('User from sub claim in JWT does not exist', 403, 'user_not_found'),
+    });
+    expect(await authenticateAppCaller(bearer(token()))).toEqual({ gone: true, userId: USER });
+  });
+
+  it('answers every other refusal the way authenticateAppRequest does', async () => {
+    h.getUser.mockResolvedValue({ data: { user: null }, error: new AuthApiError('bad jwt', 403, 'bad_jwt') });
+    expect(((await authenticateAppCaller(bearer(token()))) as Response).status).toBe(401);
+    h.getUser.mockResolvedValue({ data: { user: null }, error: new AuthSessionMissingError() });
+    expect(((await authenticateAppCaller(bearer(token()))) as Response).status).toBe(401);
+    h.getUser.mockResolvedValue({ data: { user: null }, error: new AuthRetryableFetchError('down', 502) });
+    expect(((await authenticateAppCaller(bearer(token()))) as Response).status).toBe(503);
+    expect(((await authenticateAppCaller(request({}))) as Response).status).toBe(401);
+  });
 });
 
 describe('dbErrorResponse', () => {
@@ -194,6 +233,7 @@ describe('dbErrorResponse', () => {
 
 describe('every /api/app route is behind it', () => {
   const ITEM = '11111111-1111-4111-8111-111111111111';
+  const ROUTINE = '33333333-3333-4333-8333-333333333333';
   /** One intent on POST /api/app/items/:id: each is listed, so a new one is too. */
   const itemWrite =
     (body: Record<string, unknown>) =>
@@ -237,6 +277,35 @@ describe('every /api/app route is behind it', () => {
     ['POST /api/app/items/:id reminder', itemWrite({ action: 'reminder', time: '08:00' })],
     ['POST /api/app/items/:id time', itemWrite({ action: 'time', duration: 45 })],
     ['POST /api/app/items/:id repeat', itemWrite({ action: 'repeat', frequency: 'daily' })],
+    ['POST /api/app/items/:id project', itemWrite({ action: 'project', projectId: null })],
+    [
+      'POST /api/app/items/:id collect',
+      itemWrite({ action: 'collect', kind: 'routine', containerId: ROUTINE, member: true }),
+    ],
+    ['POST /api/app/items/:id snooze', itemWrite({ action: 'snooze', date: '2026-10-02' })],
+    [
+      'POST /api/app/timezone',
+      (headers) =>
+        postTimezone(
+          new Request('https://do.dsul.app/api/app/timezone', {
+            method: 'POST',
+            headers: { ...headers, 'content-type': 'application/json' },
+            body: JSON.stringify({ timezone: 'Europe/Paris' }),
+          }),
+        ),
+    ],
+    ['GET /api/app/account', (headers) => getAccount(new Request('https://do.dsul.app/api/app/account', { headers }))],
+    [
+      'POST /api/app/account/delete',
+      (headers) =>
+        postAccountDelete(
+          new Request('https://do.dsul.app/api/app/account/delete', {
+            method: 'POST',
+            headers: { ...headers, 'content-type': 'application/json' },
+            body: JSON.stringify({ account: USER, confirm: 'DELETE' }),
+          }),
+        ),
+    ],
   ];
 
   it('lists every intent the item route takes', () => {

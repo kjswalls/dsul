@@ -41,7 +41,7 @@ const LABEL_MAX = 200;
 
 /** Chat and propose: the route's signal carries the real deadline; this is a backstop per attempt. */
 const CALL = { timeout: 60_000, maxRetries: 1 } as const;
-/** List, describe: free metadata calls, never retried. */
+/** List, describe and the check's test question: never retried by the SDK. */
 const META = { timeout: 10_000, maxRetries: 0 } as const;
 
 const ANTHROPIC_HEADERS = (n: string) =>
@@ -191,6 +191,21 @@ export function createAnthropicAdapter(): ProviderAdapter {
     },
 
     listModels,
+
+    // The check's test question (lib/ai-server/check.ts). The model list is
+    // free and proves the key; only a message proves the account can be
+    // billed for one.
+    async ping(creds, model, signal) {
+      const client = makeClient(creds, META);
+      try {
+        await client.messages.create(
+          { model, max_tokens: 1, messages: [{ role: 'user', content: 'ping' }] },
+          { signal }
+        );
+      } catch (err) {
+        throw fail(err, 'call', signal);
+      }
+    },
 
     async describeModel(creds, model, signal): Promise<ModelMeta> {
       const client = makeClient(creds, META);

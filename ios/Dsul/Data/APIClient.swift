@@ -68,8 +68,10 @@ enum APIError: Error, Equatable, Sendable {
 /// The app's writes and one read on /api/app (lib/app-api.ts), with a
 /// Supabase access token as the bearer: capture, and the item writes (tick,
 /// braindump row to an hour, skip, move, pause, and the item sheet's title,
-/// notes, priority, times a day, reminder, time and repeat, Delete, Add a
-/// subtask and Reset streak).
+/// notes, priority, times a day, reminder, time, repeat and project, Delete,
+/// Add a subtask, Reset streak and its routine and season toggles). And
+/// Delete account's two calls, on the account routes (lib/account-types.ts):
+/// what the sheet says, and the deletion.
 ///
 /// Writes are intents, never arrays: a tick or a skip sends the date and the
 /// end state, never `completedDates` or `skippedDates`, because the phone reads
@@ -80,11 +82,16 @@ final class APIClient {
     private let origin: URL
     private let tokens: any AccessTokenSource
     private let transport: Transport
+    /// This install's registry id (DeviceIdentity), sent as `X-Dsul-Device`
+    /// on every write so a later wake can skip the device that made the
+    /// change. Nil sends no header.
+    private let deviceId: String?
 
-    init(origin: URL, tokens: any AccessTokenSource, transport: @escaping Transport) {
+    init(origin: URL, tokens: any AccessTokenSource, transport: @escaping Transport, deviceId: String? = nil) {
         self.origin = origin
         self.tokens = tokens
         self.transport = transport
+        self.deviceId = deviceId
     }
 
     /// GET /api/app/planner.
@@ -131,11 +138,13 @@ final class APIClient {
     }
 
     /// POST /api/app/items/:id `title`, `notes`, `priority`, `timesPerDay`,
-    /// `reminder`, `time` or `repeat`: a typed edit, as its own action. The
-    /// body is DsulCore's `ItemWriteBody`, which sends a cleared field as
-    /// `null`, never as a missing key, a reminder's anchor only when it
-    /// changed, a time edit's keys only when they changed, and a repeat's days
-    /// only with Custom days and its day only with Monthly.
+    /// `reminder`, `time` or `repeat`: a typed edit, as its own action; or
+    /// `project`, a project by its id, null for none. The body is DsulCore's
+    /// `ItemWriteBody`, which sends a cleared field as `null`, never as a
+    /// missing key, a reminder's anchor only when it changed, a time edit's
+    /// keys only when they changed, a repeat's days only with Custom days and
+    /// its day only with Monthly, and a project's id alone (the route reads
+    /// the project's name itself).
     func edit(id: UUID, _ edit: ItemEdit) async throws {
         _ = try await send("POST", Self.itemPath(id), body: try Self.encode(ItemWriteBody.edit(edit)))
     }
@@ -164,11 +173,82 @@ final class APIClient {
         _ = try await send("POST", Self.itemPath(id), body: try Self.encode(ItemWriteBody.resetStreak))
     }
 
+    /// POST /api/app/items/:id `collect`: one membership row, the item added
+    /// to one routine or season (last in a routine's order) or taken out of
+    /// it, by the container's id. Never a list, so a toggle from another
+    /// device in between is kept. Already so is answered 200 with nothing
+    /// written; a routine or season gone or in the Trash is 409
+    /// `container_gone`.
+    func collect(id: UUID, kind: ContainerKind, containerId: String, member: Bool) async throws {
+        let body = ItemWriteBody.collect(kind: kind, containerId: containerId, member: member)
+        _ = try await send("POST", Self.itemPath(id), body: try Self.encode(body))
+    }
+
+    /// POST /api/app/items/:id `snooze`: a notification's Snooze, ringing
+    /// again `minutes` from now, held to `date` in the stored zone, or in
+    /// `timeZone` when the account stores none (lib/app-api.ts). The route
+    /// answers the instant it stored, or null when that instant would be
+    /// past `date`'s midnight and it stored nothing; a body that doesn't say
+    /// is nil too.
+    func snooze(id: UUID, date: String, minutes: Int, timeZone: String?) async throws -> String? {
+        let body = SnoozeBody(date: date, minutes: minutes, timeZone: timeZone)
+        let result = try await send("POST", Self.itemPath(id), body: try Self.encode(body))
+        guard let object = try? JSONSerialization.jsonObject(with: result.data, options: []),
+              let json = object as? [String: Any]
+        else { return nil }
+        return json["snoozedUntil"] as? String
+    }
+
+    /// POST /api/app/devices: this iPhone in the device registry, once a
+    /// launch (NotificationHub).
+    func registerDevice(_ body: DeviceRegistrationBody) async throws {
+        _ = try await send("POST", "/api/app/devices", body: try Self.encode(body))
+    }
+
+    /// DELETE /api/app/devices/:deviceId: the sign-out's release, sent
+    /// before the GoTrue logout (AuthStore.signOut).
+    func releaseDevice(_ deviceId: String) async throws {
+        guard DeviceIdentity.isValid(deviceId) else { throw APIError.badResponse }
+        _ = try await send("DELETE", "/api/app/devices/" + deviceId, body: nil)
+    }
+
+    /// POST /api/app/timezone: this iPhone's IANA zone, stored as the
+    /// account's when it differs (the web's PATCH /api/user/timezone does
+    /// the same for a browser).
+    func saveTimeZone(_ timeZone: String) async throws {
+        _ = try await send("POST", "/api/app/timezone", body: try Self.encode(TimeZoneBody(timezone: timeZone)))
+    }
+
     /// POST /api/app/items: a capture, under the phone's own id, so a retry
     /// after a lost response is answered 200 for the same row.
     func capture(id: UUID, title: String) async throws {
         let body = CaptureBody(id: id.uuidString.lowercased(), title: title)
         _ = try await send("POST", "/api/app/items", body: try Self.encode(body))
+    }
+
+    /// GET /api/app/account: what the Delete account sheet says (DsulCore
+    /// `AccountFacts`). A body that isn't JSON, or has no `userId`, is
+    /// `badResponse`. A 410 is `.rejected(status: 410, code: "gone")`, as any
+    /// refusal is: the account is already deleted.
+    func accountFacts() async throws -> AccountFacts {
+        let result = try await send("GET", AccountDeletion.factsPath, body: nil)
+        do {
+            return try JSONDecoder().decode(AccountFacts.self, from: result.data)
+        } catch {
+            throw APIError.badResponse
+        }
+    }
+
+    /// POST /api/app/account/delete: `{"account":…,"confirm":"DELETE"}`, with
+    /// Apple's one-time code when there is one (DsulCore `AccountDeleteBody`).
+    /// `account` is the facts' `userId`, a guard the route checks against the
+    /// verified caller, never a target. Any 2xx is a deletion: its body only
+    /// says what became of Sign in with Apple, and one that can't be read is
+    /// `.unknown` (`AccountDeleted.read` never throws).
+    func deleteAccount(account: String, appleCode: String?) async throws -> AccountDeleted {
+        let body = AccountDeleteBody(account: account, appleCode: appleCode)
+        let result = try await send("POST", AccountDeletion.deletePath, body: try Self.encode(body))
+        return AccountDeleted.read(result.data)
     }
 
     /// Postgres stores uuids lowercase; `uuidString` is uppercase.
@@ -211,6 +291,9 @@ final class APIClient {
         request.httpMethod = method
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if method != "GET", let deviceId {
+            request.setValue(deviceId, forHTTPHeaderField: "X-Dsul-Device")
+        }
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = body
@@ -285,4 +368,18 @@ private struct PauseBody: Encodable {
     var paused: Bool
     var pausedUntil: String?
     var timeZone: String?
+}
+
+/// `{"action":"snooze","date":…,"minutes":…,"timeZone"?:…}`. A nil zone is
+/// left out, not sent as null.
+private struct SnoozeBody: Encodable {
+    var action = "snooze"
+    var date: String
+    var minutes: Int
+    var timeZone: String?
+}
+
+/// `{"timezone":…}`.
+private struct TimeZoneBody: Encodable {
+    var timezone: String
 }

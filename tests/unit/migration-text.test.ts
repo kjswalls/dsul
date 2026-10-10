@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { DEVICE_ROSTER_COLUMNS } from '@/lib/devices/db';
+import { STALE_DAYS } from '@/lib/devices/prune';
+import { placeholderDeviceId } from '@/lib/devices/routes';
 
 /**
  * Every migration from 058 on, read as text, against the rules
@@ -547,5 +550,124 @@ describe('058_resume_cron_tick', () => {
 
   it('leaves the keepalive commented out (decision 1: the project is on Pro)', () => {
     expect(sql).not.toContain('dsul-keepalive');
+  });
+});
+
+/**
+ * 062 widens dsul_tick's cheap question for recipes at a time of day
+ * (memory/plans/mods.md build order 6). The same structure 058 pins, plus the
+ * recipe clause, verbatim, and the partial index it rides.
+ */
+describe('062_recipe_tick', () => {
+  const file = RULED.find((f) => f.name === '062_recipe_tick.sql');
+  const sql = code(file?.text ?? '');
+  const start = sql.indexOf('create or replace function public.dsul_tick(');
+  const tick = sql.slice(start, sql.indexOf('$$;', start));
+  const flat = tick.replace(/\s+/g, ' ');
+
+  it('exists, and redefines the tick with the same signature, so nothing is dropped', () => {
+    expect(file).toBeDefined();
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(tick).toMatch(/dsul_tick\(route text, force boolean default false\)/);
+    expect(tick).toMatch(/security definer/);
+    expect(sql).not.toMatch(/drop function/);
+  });
+
+  it("keeps 058's gate whole, and adds any switched-on timed recipe whose owner has a zone", () => {
+    expect(flat).toContain(
+      'where timezone is not null ' +
+        'and (coalesce(habit_reminders_enabled, false) ' +
+        'or coalesce(stakes_enabled, false) ' +
+        'or coalesce(eod_review_enabled, false))'
+    );
+    expect(flat).toContain(
+      ') or exists ( select 1 from public.user_mods m ' +
+        'join public.user_settings s on s.user_id = m.user_id ' +
+        "where m.kind = 'recipe' and m.enabled " +
+        "and (m.manifest -> 'trigger' ->> 'on') = 'time' " +
+        'and s.timezone is not null ) into anyone;'
+    );
+    // No clock: the window is lib/recipes/server/window.ts's.
+    expect(tick).not.toMatch(/\binterval\b|::\s*time\b|\bnow\(\)|current_time|localtime/);
+  });
+
+  it('fails OPEN only for a schema that is behind, and returns early only when nobody is enabled', () => {
+    expect(tick).toMatch(/when undefined_column or undefined_table then\s+anyone := true;/);
+    expect(tick).not.toContain('when others');
+    expect(flat).toMatch(/anyone boolean := true; begin if not force then begin select exists \(/);
+    expect(flat).toContain('anyone := true; end; if not anyone then return; end if; end if;');
+    const beforeVault = flat.slice(0, flat.indexOf('vault.decrypted_secrets'));
+    expect(beforeVault.match(/\breturn;/g)).toEqual(['return;']);
+  });
+
+  it("keeps 058's Vault names, fallback and 55 s request", () => {
+    for (const name of ['dsul_app_url', 'anchor_app_url', 'dsul_cron_secret', 'anchor_cron_secret']) {
+      expect(tick).toContain(`'${name}'`);
+    }
+    expect(tick).toContain("rtrim(app_url, '/') || route");
+    expect(tick).toContain('timeout_milliseconds := 55000');
+  });
+
+  it('is executable by nobody below the service role, and touches no job', () => {
+    expect(sql).toContain('revoke all on function public.dsul_tick(text, boolean) from public, anon, authenticated;');
+    expect(sql).not.toMatch(/\bgrant\b/);
+    expect(sql).not.toContain('cron.');
+  });
+
+  it('adds the lookup as a guarded partial index on the same predicate', () => {
+    expect(sql.replace(/\s+/g, ' ')).toContain(
+      'create index if not exists user_mods_timed_recipe_idx on public.user_mods (user_id) ' +
+        "where kind = 'recipe' and enabled and (manifest -> 'trigger' ->> 'on') = 'time';"
+    );
+  });
+});
+
+/**
+ * 065 is the device registry (memory/plans/reminders-platforms.md §4.2, the
+ * plan's "059_devices.sql", renumbered). scripts/verify-065.sh replays it on a
+ * real Postgres; these hold its text to the TypeScript that depends on it.
+ */
+describe('065_devices', () => {
+  const file = RULED.find((f) => f.name === '065_devices.sql');
+  const sql = code(file?.text ?? '');
+  const flat = sql.replace(/\s+/g, ' ');
+
+  it('exists', () => {
+    expect(file).toBeDefined();
+  });
+
+  it('grants the owner exactly the roster columns lib/devices/db.ts reads, and never token or keys', () => {
+    const grant = flat.match(/grant select \(([^)]*)\) on public\.devices to authenticated;/);
+    expect(grant).not.toBeNull();
+    const granted = grant![1].split(',').map((c) => c.trim());
+    expect(DEVICE_ROSTER_COLUMNS.split(',').map((c) => c.trim())).toEqual(granted);
+    expect(granted).not.toContain('token');
+    expect(granted).not.toContain('keys');
+    expect(flat).toContain('grant update (prefs, label) on public.devices to authenticated;');
+  });
+
+  it('makes register_device security invoker, with an empty path, executable by the service role only', () => {
+    const head = flat.slice(flat.indexOf('create or replace function public.register_device'));
+    expect(head.slice(0, head.indexOf(' as $$'))).toMatch(/security invoker set search_path = ''$/);
+    expect(flat).toMatch(/revoke all on function public\.register_device\([^)]*\) from public, anon, authenticated;/);
+    expect(flat).toMatch(/grant execute on function public\.register_device\([^)]*\) to service_role;/);
+  });
+
+  it("prunes on the same limits the sender holds as stale (lib/devices/prune.ts)", () => {
+    expect(flat).toContain(
+      `(transport in ('webpush', 'apns', 'none') and last_seen_at < now() - interval '${STALE_DAYS.webpush} days')`
+    );
+    expect(STALE_DAYS.apns).toBe(STALE_DAYS.webpush);
+    expect(STALE_DAYS.none).toBe(STALE_DAYS.webpush);
+    expect(flat).toContain(`(transport = 'fcm' and last_seen_at < now() - interval '${STALE_DAYS.fcm} days')`);
+  });
+
+  it("backfills with the placeholder id the /api/push aliases use (lib/devices/routes.ts)", () => {
+    expect(flat).toContain("'web:' || encode(sha256(convert_to(s.endpoint, 'utf8')), 'hex')");
+    expect(placeholderDeviceId('https://x.example/endpoint')).toMatch(/^web:[0-9a-f]{64}$/);
+  });
+
+  it("keeps the browser's id inside the device_id check (lib/devices/web-client.ts)", () => {
+    expect(flat).toContain("check (device_id ~ '^[a-za-z0-9:._-]{8,128}$')");
   });
 });

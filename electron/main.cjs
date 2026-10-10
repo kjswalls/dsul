@@ -888,8 +888,9 @@ function guardNavigation(event, contents) {
 }
 
 function guardSubframe(event) {
-  // The app has no frames. One that appears (an embed in rendered markdown) may show the app
-  // and nothing else, and never opens a browser tab on its own.
+  // The one frame is the mod sandbox at /mods/sandbox/<v>, an app URL. Any other that appears
+  // (an embed in rendered markdown) may show the app and nothing else, and never opens a
+  // browser tab on its own.
   if (isApp(event.url) && !policy.carriesAuthCode(event.url)) return;
   event.preventDefault();
 }
@@ -902,11 +903,22 @@ function openOutside(url) {
 
 function configureSession(ses) {
   const allowed = new Set(['clipboard-sanitized-write', 'notifications']);
+  // A subframe is refused outright: the mod sandbox frame is an app URL, so isApp alone would
+  // let it hold `notifications`. Only an explicit false refuses, so a check Electron makes with
+  // no frame at all still answers by the URL.
   ses.setPermissionRequestHandler((contents, permission, callback, details) => {
-    callback(allowed.has(permission) && isApp(details.requestingUrl || contents.getURL()));
+    callback(
+      details.isMainFrame !== false &&
+        allowed.has(permission) &&
+        isApp(details.requestingUrl || contents.getURL()),
+    );
   });
   ses.setPermissionCheckHandler((_contents, permission, requestingOrigin, details) => {
-    return allowed.has(permission) && isApp(details.requestingUrl || requestingOrigin);
+    return (
+      details.isMainFrame !== false &&
+      allowed.has(permission) &&
+      isApp(details.requestingUrl || requestingOrigin)
+    );
   });
 }
 

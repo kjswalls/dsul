@@ -1,0 +1,170 @@
+<title>Mobile web, app-shaped</title>
+<style>
+/* Layout: one reading column; boards break out wider and scroll sideways inside their own frame. */
+:root{
+  --bg:oklch(0.986 0.0012 90);--card:#fff;--well:oklch(0.945 0.0015 90);--ink:oklch(0.24 0.01 272);--ink2:oklch(0.5 0.02 272);--ink3:oklch(0.66 0.03 272);
+  --hair:oklch(0.9 0.008 272);--lime:oklch(0.86 0.17 125);--limeink:oklch(0.32 0.07 130);--limetint:oklch(0.95 0.05 125);--web:oklch(0.62 0.11 265);
+  --sans:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;--mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:oklch(0.17 0.006 286);--card:oklch(0.21 0.006 286);--well:oklch(0.245 0.006 286);--ink:oklch(0.955 0.002 286);--ink2:oklch(0.8 0.005 286);--ink3:oklch(0.7 0.008 286);--hair:oklch(1 0 0/10%);--lime:oklch(0.87 0.19 125);--limeink:oklch(0.26 0.06 130);--limetint:oklch(0.32 0.05 125);--web:oklch(0.72 0.11 265);color-scheme:dark}}
+:root[data-theme="dark"]{--bg:oklch(0.17 0.006 286);--card:oklch(0.21 0.006 286);--well:oklch(0.245 0.006 286);--ink:oklch(0.955 0.002 286);--ink2:oklch(0.8 0.005 286);--ink3:oklch(0.7 0.008 286);--hair:oklch(1 0 0/10%);--lime:oklch(0.87 0.19 125);--limeink:oklch(0.26 0.06 130);--limetint:oklch(0.32 0.05 125);--web:oklch(0.72 0.11 265);color-scheme:dark}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.55;padding-inline:20px;padding-block:40px 80px}
+main{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:44px}
+h1{font-size:34px;line-height:1.15;letter-spacing:-.025em;margin:0;text-wrap:balance}
+h2{font-size:22px;letter-spacing:-.015em;margin:0 0 6px;text-wrap:balance}
+h3{font-size:16px;margin:0}
+p{margin:0}
+.lede{font-size:18px;color:var(--ink2);max-width:62ch}
+.eyebrow{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);font-weight:600}
+section{display:flex;flex-direction:column;gap:14px}
+.answer{background:var(--card);border:1px solid var(--hair);border-radius:18px;padding:22px 24px;display:flex;flex-direction:column;gap:12px}
+.answer p b{background:var(--limetint);color:var(--ink);padding:0 4px;border-radius:4px}
+.decisions{display:grid;gap:10px}
+.dec{display:grid;grid-template-columns:28px 1fr;gap:4px 12px;background:var(--card);border:1px solid var(--hair);border-radius:14px;padding:14px 16px}
+.dec .k{grid-row:span 3;width:28px;height:28px;border-radius:8px;background:var(--well);display:grid;place-items:center;font-weight:700;font-size:14px}
+.dec .opt{font-size:15px;color:var(--ink2)}
+.dec .rec{font-size:14px;color:var(--limeink);font-weight:600}
+:root:not([data-theme="light"]) .dec .rec{color:var(--lime)}
+@media (prefers-color-scheme: light){.dec .rec{color:var(--limeink)}}
+:root[data-theme="light"] .dec .rec{color:var(--limeink)}
+.board{margin-inline:calc(50% - min(50vw - 20px, 700px));overflow-x:auto;border-radius:16px;background:var(--well);border:1px solid var(--hair)}
+.board img{display:block;max-width:none;width:1400px;height:auto}
+.board.narrow img{width:760px}
+.cap{font-size:14.5px;color:var(--ink2);max-width:70ch}
+.cap b{color:var(--ink)}
+.now{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.now figure{margin:0;display:flex;flex-direction:column;gap:6px}
+.now img{border-radius:12px;border:1px solid var(--hair);width:100%}
+.now figcaption{font-size:12.5px;color:var(--ink3)}
+@media (max-width:560px){.now{grid-template-columns:repeat(2,1fr)}}
+table{border-collapse:collapse;width:100%;font-size:14.5px}
+.tw{overflow-x:auto}
+th,td{text-align:left;vertical-align:top;padding:10px 12px;border-bottom:1px solid var(--hair)}
+th{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3);font-weight:600}
+td:first-child{font-weight:600;white-space:nowrap}
+.tag{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--web);border:1px solid currentColor;border-radius:6px;padding:1px 5px;white-space:nowrap}
+ul{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
+li{max-width:70ch}
+code{font-family:var(--mono);font-size:.88em;background:var(--well);padding:1px 5px;border-radius:5px}
+.src{font-size:13px;color:var(--ink3)}
+</style>
+
+<main>
+<header style="display:flex;flex-direction:column;gap:12px">
+  <span class="eyebrow">dsul · design exploration · Oct 2, 2026</span>
+  <h1>Should the phone web app look like the iPhone app?</h1>
+  <p class="lede">Yes for its shape, because the iPhone design is the best phone structure dsul has: the same tabs, the same capture bar, the same places to find things. No for its chrome: the web keeps dsul's own Look themes and uses web gestures where a browser lacks the native ones.</p>
+</header>
+
+<section id="round-3">
+  <span class="eyebrow">Round 3 · the middle ground</span>
+  <h2>The iPhone app's chrome around the web's own views</h2>
+  <p class="cap">The frame is the iPhone app's: the inline title with the date and layout, the layout capsule and avatar, the capture bar, the floating tab pill with its Search circle, and the braindump sheet. Everything inside the frame is the web app's real phone views, with the same schedule blocks, mono times and rows as today. Lime marks the selected tab and the + so it stays at full strength in both themes.</p>
+  <div class="board"><img src="r3/a.png" alt="Schedule at rest, Schedule scrolled with the dock minimized, List, List in Compact"></div>
+  <p class="cap"><b>1</b> Schedule at rest. <b>2</b> The same after scrolling down. As on iPhone, the tab bar shrinks to the current tab and the capture bar sits inline, then everything comes back when you scroll up. <b>3</b> List. <b>4</b> List in Compact, with 30px rows.</p>
+  <div class="board"><img src="r3/b.png" alt="Buckets, Buckets Compact, Schedule in Night, Buckets Compact in Night scrolled"></div>
+  <p class="cap"><b>Compact</b> only changes the rows. Buckets lose their cards for hairlines and keep the lime edge on the bucket you're in. The dock is the same in both densities. The iPhone app has no density setting yet, so for now Compact would be web-only.</p>
+  <div class="board narrow"><img src="r3/c.png" alt="Schedule with the week strip, and the braindump sheet over Schedule in Night"></div>
+  <p class="cap"><b>Week strip</b> (question B) as a web option under the top row, if you'd rather keep one-tap day hopping. <b>Braindump sheet</b>: the web braindump in the iPhone sheet. It has no dimming, so the schedule above stays live for dragging.</p>
+</section>
+
+<section id="round-2" class="r2">
+  <span class="eyebrow">Round 2 · web dock (superseded by round 3)</span>
+  <h2>Same structure, real web components, and a Compact density</h2>
+  <p class="cap">These are the app's real phone views rendered with sample data, so the schedule blocks, mono times, square checkboxes and header card are exactly what ships today. Only the dock is new. The hand-drawn round 1 boards further down show the structure, and this round replaces their look. The new dock keeps the web dock's well, radius-10 keys and key shadows instead of iOS capsules, and holds the capture bar plus Today, Ask, Organize and Search.</p>
+  <div class="board"><img src="r2/r2-a.png" alt="Schedule and List, Comfortable and Compact, using the real web components"></div>
+  <p class="cap"><b>Comfortable</b> (1st and 3rd) gives the dock two rows: the capture bar, then labelled tab keys. <b>Compact</b> (2nd and 4th) folds the dock into one row of icon keys with a short Add bar, about 50px back for the day. List rows drop from 40px to 30px, so the same day takes about a third less height. Schedule already fits the hours to the screen, so Compact gives its blocks more room instead.</p>
+  <div class="board"><img src="r2/r2-b.png" alt="Buckets Comfortable and Compact, then Compact Schedule and Buckets in Night"></div>
+  <p class="cap"><b>Buckets in Compact</b> drops the bucket cards for hairline dividers and tighter rows, which is the iOS Compact idea in the web's style. The last two are Compact in Night. Density would be its own setting next to Mode and theme under Look, phone only, so it works in light and dark alike.</p>
+</section>
+
+<div class="answer">
+  <p>Judged on its own as a web app, today's phone shell hides its surfaces behind a "Go to" sheet and a swipe, and has no Organize. The iPhone boards (D to H) solve both. What carries over is their structure: <b>Today · Ask · Organize</b> plus Search, a capture bar that opens the braindump, and a layout capsule beside the avatar. Browser chrome, touch gestures and installing are where the web needs its own answers, and those are below.</p>
+  <p class="src">Mockups below are drawn in the web app's Paper and Night looks. Nothing is built: the next step is your pick on the four questions.</p>
+</div>
+
+<section>
+  <h2>Four things to decide</h2>
+  <div class="decisions">
+    <div class="dec"><span class="k">A</span><h3>Move mobile web to the iOS structure?</h3><p class="opt">Braindump stops being a tab and becomes the capture bar plus a sheet. Chat becomes the Ask tab. Organize gets a tab.</p><p class="rec">Recommend yes.</p></div>
+    <div class="dec"><span class="k">B</span><h3>Drop the week strip?</h3><p class="opt">The iPhone app has none: tapping the title opens Go to date, and a Today button shows when you're on another day. Keeping the strip makes it one-tap day hopping, but the two apps then differ.</p><p class="rec">Recommend drop it, to match.</p></div>
+    <div class="dec"><span class="k">C</span><h3>Ask with nothing connected: show setup or hide the tab?</h3><p class="opt">Today the chat tab disappears without a model. Showing a setup screen (Connect a model or Pair OpenClaw) keeps three tabs. It shows only when nothing is connected. If you turned chat off on this device the tab hides, and a failing key gets its repair screen, not this one.</p><p class="rec">Recommend show setup.</p></div>
+    <div class="dec"><span class="k">D</span><h3>In a browser tab, how should the bottom fold?</h3><p class="opt">Two rows plus Safari's bar is a lot. Option 1: two rows at rest that fold to one row as you scroll, which is what the iPhone app does. Option 2: always one row in a browser tab.</p><p class="rec">Recommend fold on scroll, like the app.</p></div>
+  </div>
+</section>
+
+<section>
+  <h2>Today's phone web, for reference</h2>
+  <p class="cap">Three surfaces (Braindump, Today and the chat) behind a "Go to" sheet and a sideways swipe. A header card with the week strip. A dock with the mode card and the omnibar. Day only. Organize opens as a dialog from the braindump's folder button.</p>
+  <div class="now">
+    <figure><img src="today/now-buckets.png" alt="Today, Buckets layout, current mobile web"><figcaption>Today · Buckets</figcaption></figure>
+    <figure><img src="today/now-braindump.png" alt="Braindump tab, current mobile web"><figcaption>Braindump tab</figcaption></figure>
+    <figure><img src="today/now-schedule-dark.png" alt="Schedule layout in dark, current mobile web"><figcaption>Schedule · Night</figcaption></figure>
+    <figure><img src="today/now-switcher-dark.png" alt="Go to sheet, current mobile web"><figcaption>The Go to sheet</figcaption></figure>
+  </div>
+</section>
+
+<section>
+  <span class="eyebrow">Round 1 · Board 1</span>
+  <h2>One structure, three frames</h2>
+  <div class="board"><img src="shots/b1.png" alt="Four phones: installed app, Safari tab at rest, Safari tab scrolled, Android Chrome"></div>
+  <p class="cap"><b>Installed to the Home Screen:</b> the app's two rows, capture bar over the tab bar. Anytime stays first, as the web does today. <b>Safari tab at rest:</b> the same two rows above Safari's bar. <b>Safari tab scrolled</b> (question D): the tab bar shrinks to the current tab and the capture bar sits inline, which is the iPhone app's own minimized state. <b>Android Chrome, List layout:</b> the address bar is on top, so nothing stacks at the bottom. List gets the iPhone app's filter chips (All, Tasks, Habits, one per project).</p>
+</section>
+
+<section>
+  <span class="eyebrow">Board 2</span>
+  <h2>The capsule and the title</h2>
+  <div class="board"><img src="shots/b2.png" alt="Capsule menu, Go to date sheet, and a day other than today"></div>
+  <p class="cap"><b>The capsule works as it does on iPhone and on the web today:</b> a tap steps List → Buckets → Schedule, a sideways swipe steps too, and holding it opens the menu (a long-press with the browser's callout turned off, since nothing drags from the capsule). The menu has Layout and Show (Day now, Week once the iPhone app has it). <span class="tag">web</span> Display… adds group, sort and filter, which the web has and the iPhone app doesn't. <b>The title is a plain button</b> that opens Go to date. <b>On another day</b> a lime Today button jumps back.</p>
+</section>
+
+<section>
+  <span class="eyebrow">Board 3</span>
+  <h2>Capture, the braindump sheet, and putting a thought on an hour</h2>
+  <div class="board"><img src="shots/b3.png" alt="Capture sheet with keyboard, braindump sheet over Schedule, dragging onto 11:00, and the tap-to-schedule sheet"></div>
+  <p class="cap">The capture bar has two targets, as on iPhone. <b>The field</b> opens a capture sheet that stays open after Return; the tab bar hides while the keyboard is up. <b>The count</b> switches Today to Schedule and opens the braindump sheet over it, with peek, half and full heights. <b>Hold a thought</b> and the sheet slides down to a peek so you can drop it on an hour. <b>Tap a thought's ⋯</b> for today's schedule sheet, with every current action kept. <span class="tag">new</span> It gets an "At a time" row, because a touch drag in a browser is the least dependable gesture the app has.</p>
+</section>
+
+<section>
+  <span class="eyebrow">Board 4</span>
+  <h2>Ask, Organize and Search</h2>
+  <div class="board"><img src="shots/b4.png" alt="Ask with a proposal, Ask with nothing connected, Organize list, Search launcher"></div>
+  <p class="cap"><b>Ask</b> is today's chat with the Ask board's header (left today, scheduled, needs you). The composer replaces the capture bar, and proposal cards keep their shipped wording (Do all of it, Not now, Something else). The header names the answerer: AI and the model, or OpenClaw. <b>Nothing connected</b> is question C. <b>Organize</b> lists routines, seasons, goals and projects, plus Item types and Trash from the console. Rows open the existing container pages. With Organize switched off in Extensions the tab stays and says so, and Goals appears only when Goals is on. <b>Search</b> is the ⌘K launcher laid out full-screen for the phone, with its four modes as chips; "? Ask" lands in the Ask tab.</p>
+</section>
+
+<section>
+  <span class="eyebrow">Board 5</span>
+  <h2>Installing, so reminders reach the phone</h2>
+  <div class="board narrow"><img src="shots/b5.png" alt="Reminders settings in an iPhone Safari tab and in Android Chrome"></div>
+  <p class="cap"><b>iPhone in Safari:</b> web push only reaches Home Screen apps, so the reminders page says how to add dsul and marks push as needing it. <b>Android Chrome:</b> notifications work in the browser, with Done and Snooze 15m, and Chrome offers an install prompt the page can show as an Install button. Once the Android app ships, that button can point to it instead.</p>
+</section>
+
+<section>
+  <h2>Where mobile web has to differ</h2>
+  <div class="tw"><table>
+    <thead><tr><th>Area</th><th>iPhone app</th><th>Mobile web</th></tr></thead>
+    <tbody>
+      <tr><td>Bottom chrome</td><td>Capture bar over the tab bar; minimizes on scroll</td><td>Same, above the browser's own bar in a tab (question D). The tab bar hides while the keyboard is up.</td></tr>
+      <tr><td>Long-press</td><td>Context menus everywhere</td><td>On rows a long-press is a drag (250ms), so menus open from the ⋯ button. Callouts and text selection are switched off on the chrome and on rows, but the Ask transcript stays selectable.</td></tr>
+      <tr><td>Swipes</td><td>No swipe between tabs</td><td>The sideways tab swipe goes. It fights Safari's back swipe and Android's gesture back. Pull-to-refresh is switched off on the shell.</td></tr>
+      <tr><td>Back</td><td>Sheets close with a swipe down</td><td>Android back and browser back close the open sheet or menu first, then return to Today, then leave. Every sheet keeps a visible Close for the installed iPhone app, which has no back gesture.</td></tr>
+      <tr><td>Notifications</td><td>Push with actions, Focus as a Live Activity</td><td>iPhone: only once installed, and probably without action buttons, so tapping opens the item with Done and Snooze at the top (to check on a device). Android: in the browser, with Done and Snooze 15m on single-item cues. No Live Activity: Focus stays an in-app room.</td></tr>
+      <tr><td>Sign-in</td><td>Apple, Google, email link</td><td>The same three. In the installed iPhone app an emailed link opens in Safari, which can't finish the app's sign-in, so the app asks for a 6-digit code from the same email.</td></tr>
+      <tr><td>Installing</td><td>App Store</td><td>Board 5: an Install button on Android, Add to Home Screen steps on iPhone. The web manifest's colors and icons get a pass to match Look themes.</td></tr>
+      <tr><td>Offline</td><td>Native app shell</td><td>The service worker only handles push today. An installed app opened offline needs a cached shell, and capture has to queue or say it can't save.</td></tr>
+      <tr><td>Week</td><td>Day only so far (Week is on the boards)</td><td>Matches: day only, and Week arrives on both together.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <h2>What else moves if you say yes</h2>
+  <ul>
+    <li><b>Everything the dock carries today gets a new place.</b> Past-due and undo lines go above the capture bar. The catch-up card stays on Today when nothing can answer. The evening review notice and the Display shelf go under the top row.</li>
+    <li><b>Places that open the Braindump tab today</b> now open the sheet: the "Go to Braindump" command, three onboarding tour steps and the end-to-end test helpers.</li>
+    <li><b>Item detail</b> follows the iPhone H board and the approved item conversations design when that ships. Until then, tapping an item works as it does now.</li>
+    <li><b>The end-of-day review cards</b> open from the evening nudge and from Search, as on iPhone. A Comfortable/Compact density setting and the first-run steps can follow the iPhone app later. Neither blocks this.</li>
+  </ul>
+  <p class="src">Checked by three adversarial reviews: against the code, against the iOS boards and SwiftUI, and against what phone browsers allow. Sources and the mockup generator are in the project's mobile-web folder.</p>
+</section>
+</main>

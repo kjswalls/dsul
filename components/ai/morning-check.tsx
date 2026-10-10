@@ -5,6 +5,7 @@ import { Sun } from 'lucide-react';
 
 import { MorningTriageList } from '@/components/ai/morning-triage-list';
 import { usePlannerStore } from '@/lib/planner-store';
+import { usePlannerLoaded } from '@/lib/planner-ready';
 import { useMorningStore } from '@/lib/morning-store';
 import { summarizeOverdue, type OverdueSummary } from '@/lib/overdue';
 import { inactiveItemIdsOn } from '@/lib/active';
@@ -38,6 +39,7 @@ import { NOTICE_RANK, type DockNotice } from '@/lib/dock-notices';
 /** Everything both platforms need, computed once. */
 function usePastDue() {
   const items = usePlannerStore((s) => s.items);
+  const loaded = usePlannerLoaded();
   const morningCheckEnabled = useMorningStore((s) => s.morningCheckEnabled);
   const dismissedDate = useMorningStore((s) => s.morningCheckDismissedDate);
   const isOpen = useMorningStore((s) => s.isOpen);
@@ -112,8 +114,12 @@ function usePastDue() {
   // n === 0 hides the notice — EXCEPT while the tray is open. The `|| isOpen` is
   // load-bearing: without it, actioning the last item yanks the tray out from
   // under the cursor mid-triage.
+  //
+  // Nothing before the planner has LOADED: the tray freezes its list at open,
+  // and a count from the preview's cached rows (or a failed load's empty
+  // store) is not the pile. It appears at landing, as it always has.
   const visible =
-    morningCheckEnabled && dismissedDate !== todayStr && (summary.count > 0 || isOpen);
+    loaded && morningCheckEnabled && dismissedDate !== todayStr && (summary.count > 0 || isOpen);
 
   // `isOpen` is the store's answer; `trayOpen` is the one any surface may
   // render from. `visible` deliberately keeps using the raw flag: the row must

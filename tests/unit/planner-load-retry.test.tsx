@@ -80,6 +80,10 @@ vi.mock('@/lib/db', async (importOriginal) => {
       ctl.created.push(project.name);
     }),
     adoptContainerMembers: vi.fn(async () => {}),
+    // A held quick capture lands as an ordinary add, and its undo as a delete.
+    createItem: vi.fn(async () => {}),
+    deleteItem: vi.fn(async () => {}),
+    deleteProject: vi.fn(async () => {}),
   };
 });
 
@@ -120,6 +124,7 @@ import { useGatewayStore } from '@/lib/gateway-store';
 import { useNudgeStore } from '@/lib/nudge-store';
 import { useMorningStore } from '@/lib/morning-store';
 import { useAIConnectionStore } from '@/lib/ai-connection-store';
+import { captureTask, __resetHeldCapturesForTests } from '@/lib/held-captures';
 import * as db from '@/lib/db';
 
 const original = {
@@ -169,7 +174,9 @@ beforeEach(() => {
   ctl.created = [];
   ctl.marked = [];
   vi.mocked(db.fetchItems).mockClear();
+  vi.mocked(db.deleteProject).mockClear();
   store().clearStore();
+  __resetHeldCapturesForTests();
   useSidebarStore.setState({ leftSidebarOpen: true });
   useExtensionsStore.setState({ hydrate: async () => {} });
   useChannelSecretsStore.setState({ hydrate: async () => {} });
@@ -474,5 +481,43 @@ describe('the first-run seed across a failure and a retry', () => {
     // was all six starter containers, latched for good.
     expect(ctl.created).toEqual(['Personal']);
     expect(ctl.marked).toEqual([A]);
+  });
+});
+
+describe('the first-run seed and a capture held through the first load', () => {
+  it('still reads a brand-new account as new, and ⌘Z on the capture leaves the starter set', async () => {
+    // A new user types into the braindump before their first load lands. The
+    // capture is held (lib/held-captures.ts) and added just after the landing,
+    // which is BEFORE the seed reads the store: decided on it, the account is
+    // one to adopt from, with nothing to adopt, latched with no starter set.
+    ctl.holdSeeding = true;
+    render(
+      <SupabaseProvider>
+        <DockNotices />
+      </SupabaseProvider>
+    );
+    await waitFor(() => expect(ctl.items).toHaveLength(1));
+    act(() => expect(captureTask('Buy milk')).toBe('held'));
+
+    await act(async () => ctl.items[0].resolve([]));
+    await flush();
+    expect(store().items.map((i) => i.title)).toEqual(['Buy milk']);
+
+    await act(async () => ctl.seeded[0].resolve(false));
+    await flush();
+    await act(async () => ctl.trash[0].resolve({ projects: [] }));
+    await flush();
+
+    const STARTER = ['Work', 'Home', 'Health', 'Morning', 'Movement', 'Wind-down'];
+    expect(ctl.created).toEqual(STARTER);
+    expect(ctl.marked).toEqual([A]);
+
+    // The seed is part of what the session started with, under the capture's
+    // own entry too: undoing the capture takes the capture and nothing else.
+    act(() => store().undo());
+    await flush();
+    expect(store().items).toEqual([]);
+    expect(store().projects.map((p) => p.name)).toEqual(STARTER);
+    expect(vi.mocked(db.deleteProject)).not.toHaveBeenCalled();
   });
 });

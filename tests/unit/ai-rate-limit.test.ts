@@ -33,6 +33,7 @@ describe('takeToken', () => {
     ['conv_write', 600],
     ['conv_read', 1_200],
     ['conv_search', 300],
+    ['make', 30],
   ] as const)('allows %s %i an hour, then refuses, and frees up an hour later', (bucket, limit) => {
     expect(take(limit, 'u1', bucket, T0).every(Boolean)).toBe(true);
     expect(takeToken('u1', bucket, T0)).toBe(false);
@@ -75,6 +76,20 @@ describe('takeToken', () => {
     take(20, 'u1', 'connect', T0);
     for (let i = 0; i < 50; i++) takeToken('u1', 'connect', T0 + 1000);
     expect(takeToken('u1', 'connect', T0 + HOUR)).toBe(true);
+  });
+
+  it('a cost takes that many tokens at once, or none', () => {
+    take(29, 'u1', 'make', T0);
+    // One left: a cost of 2 is refused and records nothing.
+    expect(takeToken('u1', 'make', T0, 2)).toBe(false);
+    expect(takeToken('u1', 'make', T0)).toBe(true);
+    expect(takeToken('u1', 'make', T0)).toBe(false);
+    // An hour on, both of a cost-2 call's tokens free up together.
+    expect(takeToken('u2', 'make', T0, 2)).toBe(true);
+    take(28, 'u2', 'make', T0 + 1000);
+    expect(takeToken('u2', 'make', T0 + 1000)).toBe(false);
+    expect(takeToken('u2', 'make', T0 + HOUR, 2)).toBe(true);
+    expect(takeToken('u2', 'make', T0 + HOUR)).toBe(false);
   });
 
   it('survives far more users than the key cap', () => {

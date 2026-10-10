@@ -79,7 +79,7 @@ export type DropTargetKind =
   | 'week-cell'
   /** `hour:{H}` and `weekhour:{date}:{H}` — a schedule-grid hour slot. */
   | 'hour-slot'
-  /** `projectblock:{name}`. */
+  /** `projectblock:{date}:{name}`. */
   | 'project-block'
   /** `sidebar` — the braindump. */
   | 'braindump'

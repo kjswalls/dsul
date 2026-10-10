@@ -26,7 +26,20 @@ import Foundation
 //   type's frequencies (`frequency_not_allowed`), and written as
 //   lib/item-edit.ts `repeatEditPatch` writes it: the dialog's save over the
 //   keys sent, all three keys together through the dialog's own `repeatPatch`,
-//   or nothing when the item already says it;
+//   or nothing when the item already says it. From 2f, the Project chip
+//   (`project`): a project by id, or none, refused on a subtask
+//   (`not_for_subtask`) and on a type with no project axis (`no_project`), and
+//   written as lib/item-edit.ts `projectRefilePatch` writes it, the bulk Move
+//   to project's own rule (lib/planner-store.ts `setItemsProject`): the name
+//   and the id, nothing when the item is already there by folded name and id,
+//   and a task parked in its old project's block released from it
+//   (`projectBlockRelease`), its own time and day back. From 2f-b, the
+//   routine and season chips' gate (`collect`: lib/item-registry.ts
+//   `isCollectible`, which lib/app-api.ts `collect` asks first, else
+//   `not_collectible`). A membership is no field of the item, so `collect`
+//   has no `ItemEdit` case and no step here: its body is ItemWriteBody.swift's
+//   `.collect`, and the container's list moves by Membership.swift's
+//   `settingMembership`;
 // - lib/planner-store.ts `deleteTask` / `deleteHabit` (`deleting`): the item
 //   and, for anything but a habit, its live subtasks, which is also the child
 //   pass lib/app-api.ts `del` makes on the server, in the same order;
@@ -46,10 +59,10 @@ import Foundation
 // Text is measured in UTF-16 units, JavaScript's `length`, which is what every
 // cap on the server counts. What the phone SENDS is the intent (POST
 // /api/app/items/:id `title`, `notes`, `delete`, `addSubtask`, `resetStreak`,
-// `priority`, `timesPerDay`, `reminder`, `time`, `repeat`, built by
-// ItemWriteBody.swift), never these items. `Place` and `reinserting` are the
-// phone's alone: they put a deleted item back where it was when its delete
-// fails.
+// `priority`, `timesPerDay`, `reminder`, `time`, `repeat`, `project`,
+// `collect`, built by ItemWriteBody.swift), never these items. `Place` and
+// `reinserting` are the phone's alone: they put a deleted item back where it
+// was when its delete fails.
 
 /// One typed edit, as the phone sends it (lib/item-edit.ts `ItemEdit`). Each
 /// is its own server action, so a server that doesn't list one in `writes`
@@ -83,6 +96,10 @@ public enum ItemEdit: Sendable, Hashable {
     /// (1...31) for "monthly" alone; nil otherwise, and then left off the
     /// wire. The server writes all three keys together.
     case repeats(frequency: String, days: [Int]?, monthDay: Int?)
+    /// The project chip: the project's id and its name, both nil for No
+    /// project. The name is for the optimistic step alone; the wire carries
+    /// the id (the route reads the name).
+    case project(id: String?, name: String?)
 
     /// The server's `action` name, which is also what `writes` lists.
     public var action: String {
@@ -94,8 +111,28 @@ public enum ItemEdit: Sendable, Hashable {
         case .reminder: "reminder"
         case .time: "time"
         case .repeats: "repeat"
+        case .project: "project"
         }
     }
+}
+
+/// A routine or a season, the two containers an item joins by membership (2f-b).
+public enum ContainerKind: String, Sendable, Hashable {
+    case routine, season
+}
+
+/// lib/item-edit.ts `sameProjectName`: is `current` the same project as
+/// `name`, folded as the project kind folds (`CONTAINER_KINDS.project`
+/// `caseFold`, `toLowerCase`, so `jsLowercased`)? With no name, is there no
+/// name either? The two arguments read "" differently, as the TS does
+/// (`name ? … : current == null`): a nil or "" `name` is no name, while a
+/// `current` of "" is a name, since an unfiled habit reads "" (lib/db.ts
+/// `itemFromRow`) and its clear always writes. So (nil, "") is true and
+/// ("", "") is false, on both sides.
+public func sameProjectName(_ current: String?, _ name: String?) -> Bool {
+    guard let name, !name.isEmpty else { return current == nil }
+    guard let current else { return false }
+    return jsLowercased(current) == jsLowercased(name)
 }
 
 /// lib/item-edit.ts `EDIT_LIMITS`, `OUTER_LIMITS` and `NEW_TITLE_LIMIT`, the
@@ -232,6 +269,13 @@ public func cleanNotes(_ raw: String, limit: Int) -> String? {
 ///   parent's sheet, so a repeat there would show nowhere), and a type with
 ///   more than one frequency (`caps.allowedFrequencies`; the web's chip shows
 ///   only then), so a task's, a habit's and a custom item's, dated or not.
+/// - `project`: not a subtask (`not_for_subtask`), and a type with the project
+///   axis (`caps.containerKind` "projects", else `no_project`), so every
+///   shipped type's.
+/// - `collect` (2f-b): not a subtask, and a collectible type
+///   (lib/item-registry.ts `isCollectible`, else `not_collectible`), so every
+///   shipped type's. The membership write, which has no `ItemEdit` case: it
+///   changes no field of the item.
 /// - any other name: false. Delete, Add a subtask and Reset streak have gates
 ///   of their own, and an action the phone doesn't know is never sent.
 /// The growth caps are the field's to keep (`growthLimit`), not this gate's.
@@ -251,6 +295,10 @@ public func editAllowed(action: String, on item: Item, caps: ItemCaps) -> Bool {
         return !isSubtask(item) && (!caps.dateAnchored || !(item.startDate ?? "").isEmpty)
     case "repeat":
         return !isSubtask(item) && caps.allowedFrequencies.count > 1
+    case "project":
+        return !isSubtask(item) && caps.containerKind == "projects"
+    case "collect":
+        return !isSubtask(item) && caps.collectible
     default:
         return false
     }
@@ -267,7 +315,11 @@ public func editAllowed(action: String, on item: Item, caps: ItemCaps) -> Bool {
 /// the schema's rules (`invalid`): `days` present exactly with "custom",
 /// non-empty and strictly ascending within 0...6, as the dialog's keys sort
 /// as they toggle and never hold a day twice; `monthDay` present exactly with
-/// "monthly", within 1...31.
+/// "monthly", within 1...31. For `.project`, the id and the name come
+/// together, both set or both nil, and No project only where the type's
+/// container isn't required (`caps.containerRequired`, else
+/// `project_required`). A project that is gone is the route's to find
+/// (`project_gone`), since only it reads the project.
 public func editAllowed(_ edit: ItemEdit, on item: Item, caps: ItemCaps) -> Bool {
     guard editAllowed(action: edit.action, on: item, caps: caps) else { return false }
     switch edit {
@@ -297,6 +349,8 @@ public func editAllowed(_ edit: ItemEdit, on item: Item, caps: ItemCaps) -> Bool
             return false
         }
         return true
+    case .project(let id, let name):
+        return (id == nil) == (name == nil) && (id != nil || !caps.containerRequired)
     case .title, .notes, .priority, .timesPerDay, .reminder:
         return true
     }
@@ -320,6 +374,8 @@ public func editAllowed(_ edit: ItemEdit, on item: Item, caps: ItemCaps) -> Bool
 /// - time: `timeEditPatch` (`editingTime`), the dialog's two passes.
 /// - repeats: `repeatEditPatch` (`editingRepeat`), the dialog's save over the
 ///   keys sent, all three keys or none.
+/// - project: `projectRefilePatch` (`editingProject`), the bulk Move to
+///   project's write, with the release of a parked task.
 /// No cap is applied: the server refuses growth rather than cutting it, and
 /// the field never sends it.
 public func editing(_ item: Item, _ edit: ItemEdit) -> Item {
@@ -350,6 +406,8 @@ public func editing(_ item: Item, _ edit: ItemEdit) -> Item {
         return editingTime(item, bucket: bucket, startTime: startTime, duration: duration)
     case .repeats(let frequency, let days, let monthDay):
         return editingRepeat(item, frequency: frequency, days: days, monthDay: monthDay)
+    case .project(let id, let name):
+        return editingProject(item, id: id, name: name)
     }
     return next
 }
@@ -372,7 +430,8 @@ public func editing(_ item: Item, _ edit: ItemEdit) -> Item {
 ///      dialog's `effectiveBucket`) different from the stored one, or the
 ///      item not scheduled (nil reads as not): `scheduleTaskPatch`, which
 ///      schedules it, files the time, and takes it out of any project block
-///      (`inProjectBlock` false; the phone decodes no `previousStart*`).
+///      (`inProjectBlock` false and the stash cleared, as
+///      `scheduleTaskPatch` writes them).
 ///      Else a time different from the stored one, compared raw (a stored ""
 ///      is not nil, as `!==` has it): the time alone, through `updateTask`'s
 ///      auto-correct against the bucket as the first pass left it, so a
@@ -424,6 +483,8 @@ private func editingTime(_ item: Item, bucket: ColumnWrite?, startTime: ColumnWr
                 next.timeBucket = autoCorrectBucket(time, effective) ?? effective
                 next.startTime = time
                 next.inProjectBlock = false
+                next.previousStartTime = nil
+                next.previousStartDate = nil
             } else if time != item.startTime {
                 // `updateTask(id, { startTime })`, its auto-correct against
                 // the bucket as pass 1 left it.
@@ -485,6 +546,40 @@ private func editingRepeat(_ item: Item, frequency: String, days: [Int]?, monthD
     next.repeatFrequency = item.isHabit || frequency != "none" ? frequency : nil
     next.repeatDays = frequency == "custom" ? draftDays : nil
     next.repeatMonthDay = frequency == "monthly" ? draftMonthDay : nil
+    return next
+}
+
+/// lib/item-edit.ts `projectRefilePatch` applied to the item: the bulk Move to
+/// project's write for one item (lib/planner-store.ts `setItemsProject`, which
+/// imports it back), which the route writes for the Project chip.
+/// 1. Unmoved when the item is already there by folded name
+///    (`sameProjectName`) AND id: nothing. A folded match whose id is stale,
+///    or missing (a text-only reference), still writes, which repairs the
+///    link. The id is compared and stored lowercase, as Postgres writes it.
+/// 2. Else the project's own name and id, both nil for No project. A habit's
+///    "" is a name, so its clear always writes, as the web's does.
+/// 3. The release (`projectBlockRelease`), only when the item is parked in a
+///    block (`inProjectBlock`) and the folded name moves: out of the block,
+///    its own time and day back from the stash, and the stash cleared, as
+///    `moveTaskOutOfProjectBlock` writes it. The part of day stays the
+///    block's (the stash holds none), and nothing else moves: not
+///    `isScheduled`, the status, the streak or the done days. A same-name
+///    link repair keeps it in its own block.
+/// Nothing here reads the frozen `group` column.
+private func editingProject(_ item: Item, id: String?, name: String?) -> Item {
+    let projectId = id?.lowercased()
+    let sameName = sameProjectName(item.project, name)
+    guard !sameName || item.projectId != projectId else { return item }
+    var next = item
+    next.project = name
+    next.projectId = projectId
+    if item.inProjectBlock == true && !sameName {
+        next.inProjectBlock = false
+        next.startTime = item.previousStartTime
+        next.startDate = item.previousStartDate
+        next.previousStartTime = nil
+        next.previousStartDate = nil
+    }
     return next
 }
 

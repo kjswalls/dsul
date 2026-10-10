@@ -78,6 +78,7 @@ vi.mock('@/lib/supabase', () => ({ createClient: vi.fn(() => ({})) }));
 import { WeekBuckets } from '@/components/views/week-buckets';
 import { WeekList } from '@/components/views/week-list';
 import { WeekSchedule } from '@/components/views/week-schedule';
+import { ViewRouter } from '@/components/views/view-router';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
 import { EMPTY_VIEW_FILTERS } from '@/lib/filters';
@@ -234,6 +235,41 @@ describe('nothing dims at REST — the exception is pointer-only', () => {
         .map((a) => `${a.tagName}.${a.className} @${selfOpacity(a)} over ${mark.className}`)
     );
     expect(offenders, name).toEqual([]);
+  });
+
+  /**
+   * The look-only preview (lib/planner-snapshot.ts) is NOT a dim. It paints the
+   * real view under an inert, display:contents root marked data-preview, and
+   * says it is syncing with its own neutral line — never by fading the canvas,
+   * which would composite every lime mark in it for the length of a load. So
+   * the same walk as above, through ViewRouter in the preview state, all the
+   * way up to <body>: the router's marker and anything around it count too.
+   */
+  it.each([
+    ['Week × Schedule', 'schedule'],
+    ['Week × Buckets', 'buckets'],
+  ] as const)('%s: the preview fades nothing above a lime mark, up to <body>', (name, layout) => {
+    useViewStore.setState({ scope: 'week', layout });
+    usePlannerStore.setState({ isLoading: true, isPreview: true });
+    try {
+      mount(<ViewRouter />);
+      const root = document.querySelector<HTMLElement>('[data-testid="view-root"]')!;
+      // Guard the guard: it IS the preview, with the real view mounted.
+      expect(root.dataset.preview, name).toBe('true');
+      expect(root.dataset.loaded, name).toBe('false');
+
+      const marks = ([...root.querySelectorAll('*')] as HTMLElement[]).filter(paintsAccent);
+      expect(marks.length, `${name} rendered no accent marks to check`).toBeGreaterThan(3);
+
+      const offenders = marks.flatMap((mark) =>
+        ancestors(mark, document.body)
+          .filter((a) => selfOpacity(a) !== null)
+          .map((a) => `${a.tagName}.${a.className} @${selfOpacity(a)} over ${mark.className}`)
+      );
+      expect(offenders, name).toEqual([]);
+    } finally {
+      usePlannerStore.setState({ isLoading: false, isPreview: false });
+    }
   });
 
   it('the lime is in an ORDINARY column — not the selected one, not today', () => {

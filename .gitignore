@@ -35,3 +35,7 @@ docs/test-implementation-plan.md
 .claude/worktrees/
 .vercel
 .env*
+
+# The mod sandbox's worker, wasm and frame page, written by
+# scripts/build-mod-runtime.mjs on install and before every build.
+lib/mods/sandbox/generated/

@@ -44,6 +44,15 @@ vi.mock('@/lib/settings-service', () => ({
   flushSettings: vi.fn(async () => {}),
 }));
 vi.mock('@/lib/user-profile', () => ({ resetOnboardingComplete: vi.fn(async () => {}) }));
+// The surface itself, stood in so a HYDRATED render can say which pane the
+// route handed it. Every other case renders unhydrated and never reaches it.
+const shell = vi.hoisted(() => ({ pane: null as string | null }));
+vi.mock('@/components/settings/settings-shell', () => ({
+  SettingsShell: ({ pane }: { pane: string }) => {
+    shell.pane = pane;
+    return null;
+  },
+}));
 vi.mock('@/lib/supabase', () => ({
   createClient: () => ({
     from: () => ({
@@ -55,7 +64,10 @@ vi.mock('@/lib/supabase', () => ({
 }));
 
 import SettingsPage from '@/app/settings/[[...pane]]/page';
-import { settingById } from '@/lib/settings/manifest';
+import { PANES, paneHref, resolvePaneSlug, settingById } from '@/lib/settings/manifest';
+import { AI_SETTINGS_PATH } from '@/lib/ai-types';
+import { usePlannerStore } from '@/lib/planner-store';
+import { useMorningStore } from '@/lib/morning-store';
 
 /** Render the route at one URL. `pane` undefined is a bare /settings. */
 function at(pane: string[] | undefined, focus?: string) {
@@ -141,5 +153,78 @@ describe('the two effects settle instead of arguing', () => {
     expect(at(['day'], 'nope.nope')).toEqual([]);
     cleanup();
     expect(at(['day'], '../../etc/passwd')).toEqual([]);
+  });
+});
+
+describe('/settings/ai, the AI pane by the name the rail gives it', () => {
+  /** Render at a path with a raw query, as the browser has it. */
+  function atQuery(pane: string[], query: string) {
+    nav.replace.mockClear();
+    nav.params = { pane };
+    nav.search = new URLSearchParams(query);
+    render(<SettingsPage />);
+    return nav.replace.mock.calls.map((c) => c[0] as string);
+  }
+
+  it('resolves to the pane it stands for, by own keys only', () => {
+    expect(resolvePaneSlug('ai')).toBe('beacon');
+    expect(resolvePaneSlug('beacon')).toBe('beacon');
+    expect(resolvePaneSlug('day')).toBe('day');
+    expect(resolvePaneSlug('extensions/beeminder')).toBe('extensions/beeminder');
+    for (const junk of ['constructor', '__proto__', 'toString', 'AI', 'nope', '', undefined]) {
+      expect(resolvePaneSlug(junk)).toBeNull();
+    }
+  });
+
+  it('is linked by its alias, and every other pane by its id', () => {
+    expect(paneHref('beacon')).toBe('/settings/ai');
+    expect(paneHref('beacon')).toBe(AI_SETTINGS_PATH);
+    expect(paneHref('day')).toBe('/settings/day');
+    expect(paneHref('extensions/beeminder')).toBe('/settings/extensions/beeminder');
+    // An alias is a way in, not a pane: the rail still has one AI row, under its id.
+    expect(PANES.filter((p) => p.name === 'AI').map((p) => p.id)).toEqual(['beacon']);
+  });
+
+  it('keeps its address: nothing replaces /settings/ai', () => {
+    expect(at(['ai'])).toEqual([]);
+    expect(at(['ai'], 'beacon.model')).toEqual([]);
+  });
+
+  it("keeps its query: the pane's own ?start= and ?connect= survive the normalizer", () => {
+    expect(atQuery(['ai'], 'start=openrouter')).toEqual([]);
+    cleanup();
+    expect(atQuery(['ai'], 'connect=denied')).toEqual([]);
+  });
+
+  it('sends an AI record that arrived on another pane to /settings/ai, never /settings/beacon', () => {
+    expect(at(['day'], 'beacon.model')).toEqual(['/settings/ai?focus=beacon.model']);
+    cleanup();
+    // Use AI in dsul, the pane's first row, is a record like the rest.
+    expect(at(['day'], 'beacon.useAi')).toEqual(['/settings/ai?focus=beacon.useAi']);
+    cleanup();
+    // The one-time nudges' bare /settings?focus=<id>: normalized first, then the record's own pane.
+    expect(at(undefined, 'beacon.apiKey').at(-1)).toBe('/settings/ai?focus=beacon.apiKey');
+  });
+
+  it('still answers to /settings/beacon, which old links name', () => {
+    expect(at(['beacon'])).toEqual([]);
+    expect(at(['beacon'], 'beacon.model')).toEqual([]);
+  });
+
+  it('renders the AI pane at /settings/ai', () => {
+    usePlannerStore.setState({ userId: 'u1' });
+    useMorningStore.setState({ settingsHydratedUserId: 'u1' });
+    try {
+      shell.pane = null;
+      at(['ai']);
+      expect(shell.pane).toBe('beacon');
+      cleanup();
+      shell.pane = null;
+      at(['beacon']);
+      expect(shell.pane).toBe('beacon');
+    } finally {
+      useMorningStore.setState({ settingsHydratedUserId: null });
+      usePlannerStore.setState({ userId: null });
+    }
   });
 });

@@ -22,7 +22,12 @@ Console, whose braindump is the fixed 300px pane), and it goes back to its own w
 the column closes. On the phone the Ask tab is the same home. Every
 conversation is saved to the account, once per finished turn, in `chat_conversations` /
 `chat_messages` (migration 057), kept until the user deletes it. Next: 2b (control: edit and
-resend, retry, action lines, receipts with Undo, a typed answer on every card) and 2c
+resend (built 2026-10-10: Edit under your latest question sends the changed words as a new
+turn; the old question and its reply stay, saved and in what the model hears, since Kirby chose
+to keep history append-only over replacing the pair), retry (built 2026-10-10: Try again under the latest reply when it was stopped or failed
+in a way asking again might get past, `isRetryableReplyError`; the same question goes again as
+a new turn, so nothing saved is rewritten), action lines, receipts with Undo (built
+2026-10-10, below), a typed answer on every card) and 2c
 (reach: @ items, / commands, the model chip, attachments, open wide). The section "Step 2a —
 Move and save" below has what shipped and the privacy statement.
 
@@ -48,6 +53,127 @@ Opening the menu on a held item reads the agent's rows first, so a finished repo
 cleared on a stale "Queued". Both writes are named history entries with the undo strip.
 The item panel's "Assign to OpenClaw" / "Unassign" is unchanged for now (it still offers
 finished and paused tasks); naming the AI across the rest of the app is parked.
+
+**Note 2026-10-07: connecting asks one test question (AI setup PR 4).** Every connect,
+recheck and OpenRouter sign-in lists the models and then asks the chosen one a 1-token
+question (`lib/ai-server/check.ts`), so "connected" means a model answered. The answers are
+typed: key_rejected, wrong_provider (a key whose prefix names another company is refused
+before anything is sent, `lib/ai-key-prefix.ts`), no_credit, daily_limit, region, network.
+A free key's daily cap is read from Google's and OpenRouter's error bodies by fixed fields
+only (`lib/ai-server/error-hints.ts`), written to `model_connections.limited_until` (060),
+and the chat note says when it resets. Connecting lives in one card, `ConnectAI`
+(`components/ai/connect/`), in the setup column and in Settings → AI; a free Google key
+leads, pasting a sure key checks it at once, and the key field is uncontrolled so a key is
+never in a `value` attribute. The pane's address is `/settings/ai` (an alias of the
+permanent `beacon` id), and an OpenRouter sign-in returns to the pane or home (`r`, sealed
+in the PKCE cookie). Both opens are closed (2026-10-09): a model that refuses only streamed
+requests (an unverified OpenAI org) fails the check as `stream_refused`, falling back once to
+the next default when dsul picked the model (#454); and the connect and check buckets also
+take a token from a count every instance shares (migration 064's `take_ai_token`, a fixed
+hour, failing open to the memory answer until 064 is applied).
+
+**Note 2026-10-07: the doors into setup and the kept question (AI setup PR 5).** While
+nothing answers and the gate offers setup, three doors open it besides the unlit key and
+Ctrl+J: `?` in the dock or the launcher, whose one row "Set up AI to ask this" keeps the
+question typed after it; Ctrl+K's "Set up AI" or "Fix AI" (`ai.setup`, `ai.fix`, no
+shortcut), first in the launcher's Actions; and on the phone, the Ask tab itself. The kept
+question (`lib/ask-pending.ts`) lives in the tab's sessionStorage, never a URL, cookie or
+persisted store, shows in the setup home as YOUR QUESTION with Clear, and is asked at most
+once: the watcher claims its id on a short localStorage list before it sends, so a reload,
+a status flap or a duplicated tab finds nothing to send. It is sent only to the company the
+consent line named ("Connecting sends your question … to Google."), pressed within the
+hour: with a question kept a paste only fills the box, and Connect and ask, Check again or
+the OpenRouter sign-in stamps the consent. Any other road to a working AI (Settings → AI,
+another device, OpenClaw, another company, a stale press) leaves the question unsent in Ask
+home's box, so it is never lost and never goes somewhere the person did not see named. On
+the phone the third surface is offered while AI can be set up or fixed: the switcher reads
+"Set up AI" (Optional) or "Fix AI" (Needs attention) with the unlit mark, the tab holds a
+setup page built from the column's pieces (`components/mobile/setup-tab.tsx`) with the
+dock's omnibar kept under it, and a key that works turns it into Ask in place. Leaving the
+phone's Ask tab spends "It works.". Open: a question kept over an open item is sent without
+the item, and the one-time "Connected to …" notice belongs to no PR yet.
+
+**Note 2026-10-08: the tour ends on the AI invitation (AI setup PR 6).** The tour's last
+step reads the gate once (`tourAIStep`, `components/onboarding/onboarding-tour.tsx`) and is
+one of three cards or none: `ready` while something answers ("Your AI is ready", as before),
+`invite` while the gate offers setup, `off` on a replay after No AI ("AI stays off", with Got
+it), and otherwise no step 4 at all. An unknown or failed read, AI unavailable, chat Off on
+this device, an OpenClaw agent key with no chat, or a key that needs fixing ends the tour on
+step 3's last card, whose button then reads "Got it": no invitation while the gate cannot say
+one is right. A card already up keeps its variant through a brief flap of the gate. No card
+offers Settings any more, so the shell's `onOpenSettings` is gone. On the desktop the invite
+card spotlights the unlit key (`data-tour="ask-key"` on its button, the cutout sealed so a
+click through it cannot open setup under the tour) and hangs under it; on the phone it
+spotlights the mode card and adds "Later, it waits under the mode button.". It is a dialog
+that takes focus on its title and keeps Tab among its own buttons. Its two example questions
+come from `buildTourOpenerPreviews` (`lib/ai-openers.ts`): Ask home's first two chips at the
+real hour, with shorter lines that quote the task added at step 2, found by the id `addTask`
+returned (never the typed text, so a Skip quotes nothing); triage, let-go and reflect keep
+the column's lines. The three exits do everything that moves the rail, the tab or the gate
+before their one await (`setOnboardingComplete`), so nothing opens a round trip late or under
+the scrim. Set up AI puts back what the tour showed, then calls `openSetup` (the column, or
+the phone's setup page), with no toast either way. Not now toasts "You're all set. One thing at a
+time." with where Set up AI waits (at the top right, or under the mode button). No AI, thanks
+calls `chooseNoAI` (the undo strip, no toast) and still writes `onboarding_completed`, so the
+tour never comes back. The rituals intro waits for three things (`ritualsNudgeReady`'s
+`setupOrUndoUp`, read in `FirstRunNudges`): setup on screen (the column on the desktop, the
+setup page on the phone's Ask tab, each read on its own shell), the "It works." a connect
+there ends on, and an undo row, so it never covers No AI's focused Undo. Each is spent when
+the person moves on, and the intro comes after. Defaults awaiting Kirby: the real hour, so
+before 16:00 the card offers "Plan my day" with a new line, "Drafts today from your
+braindump, like “…”."; "AI stays off" on a replay after No AI, and no step 4 whenever the
+gate cannot invite; and the intro's wait. Open: app shortcuts (Ctrl+J, Ctrl+K) still fire
+under the tour, as on every step, and a replay with a key that needs fixing gets no fix card.
+
+**Note 2026-10-08: Settings → AI is the pane F18 to F22 draw (AI setup PR 7).** The shell
+draws no flat rows and no Advanced fold on the pane: `AIPane` (`components/settings/ai-pane.tsx`)
+draws, top to bottom, What AI does (three tiles while nothing is connected, else one sentence),
+Use AI in dsul, the AI-off card (only while AI is off), Connection (`ModelConnectionPanel`, always
+mounted, drawing nothing while AI is off), OpenClaw (with the gateway rows in its own fold), and
+On this device (Who answers in chat, Custom instructions). Which of them show, and where each
+`beacon.*` record's one anchor sits in every state, is pure data in `lib/ai-pane-state.ts`
+(`aiPaneLayout`, `connectionPill`, `connectionBody`). Use AI in dsul is a new permanent record,
+`beacon.useAi`: it reads the account's `ai_hidden` inverted (on only once the server has said
+false), has no `dbColumn`, and is written only by `setUseAI` (`lib/no-ai.ts`), never by
+`chooseNoAI` and never by `setAIHidden` directly; while nothing is connected it is a "No AI,
+thanks" button rather than a lit switch, in the pane and in search alike. The Connection pill
+says one of `Checking…`, `Not set up`, `Working`, `Needs attention` or `Daily limit · back at
+{t}` (the reset in the user's time zone), and search's `beacon.apiKey` reads the same words
+(`Saved ({provider})` for Working, and no time on the limit). The frames'
+data clauses that no column backs are dropped: no "Free key" (no provider gives a tier signal),
+no "today’s limit reached at {t}" (no `limited_at`), and no "back tomorrow" (a daily limit
+always carries its reset). Unpair shipped in PR 7b (below). The header mark lights only with
+`canChat`, so F20's mark is unlit by rule while the frame draws it lit.
+
+**Note 2026-10-09: Unpair (AI setup PR 7b).** Pairing still starts on OpenClaw's side (the
+device code); Unpair ends it from Settings → AI, on the OpenClaw section's paired card and on
+the AI-off card's "{name} is still paired · … Unpair it to stop that." row, both through one
+confirm (`useUnpair`, `components/settings/disconnect.ts`). It is `DELETE /api/ai/openclaw`
+(session and same origin, `app/api/ai/openclaw/route.ts`) running `unpairOpenClaw`
+(`lib/ai-server/connections.ts`) in this order: every `plugin_registrations` row
+(`deregisterAllPlugins`), `openclaw_chat_url` and `openclaw_agent_id`, any authorized
+`connect_sessions` row still holding a copy of the key (expired, key nulled), the agent key
+itself (`clearAgentKey`, `lib/supabase-service.ts`, in either column before 059), then the
+registrations once more. The key goes last because it is what reads as paired: a failure part
+way answers 503 with the Unpair button still on screen, and every step is idempotent. The
+gateway URL and token are a separate connection and stay; the confirm says so when one is
+saved. Other instances can keep a cached registration for up to a minute
+(`CACHE_TTL_MS`). The browser's plugin chat token is dropped (`resetPluginTransport`), since it
+derives from the deleted key. Pairing again mints a new key.
+
+**Note 2026-10-09: Break it down before AI is set up (AI setup phase 2).** While the gate
+invites (`askInvite`), the item panel's Subtasks heading offers the same "Break it down" an
+item would get once something answers, unlit (a grey Split, nothing lime), and its press opens
+setup through `openSetup` instead of asking. Which items is `canOfferBreakDown`
+(`lib/item-asks.ts`), the real button's own item rule, so the two never disagree. Its ✕ is
+the one-time nudge `break-it-down-offer` (`lib/nudges/registry.ts`, no toast row): closed
+once, it is gone on every item and device, and it never shows before this account's
+dismissals have loaded. It shows only in the item panel (`offerSetup` on
+`ItemDetailSections`, passed by ItemDialog), never on `/item/[id]`, where no column or Ask
+tab can open. `openSetup` now closes an open item on the phone too: the item there is a
+drawer over the tabs, and the setup page switched to under it showed nothing. The setup
+column's Fix card now sends the saved model with a new key, as the pane's does. Open: after a
+connect the item is not reopened, so the real button is one tap back.
 
 **Status (2026-10-01): step 1, "Honest setup", SHIPPED (#355).** dsul ships no AI of
 its own any more: `process.env.OPENAI_API_KEY` is never read. Each user connects their own
@@ -157,6 +283,9 @@ inside dsul (tool loop, task queue, background workers). **Do not branch on prov
 strings in the UI.** The house pattern is already established: do what
 [lib/item-registry.ts](../../lib/item-registry.ts) does and ask a capability question
 (`canDelegate()`, `canPropose()`, …). Adding the hosted tier must be config, not code paths.
+`canMake` (2026-10-07, mods.md "AI writes it") is Settings → Make's "Write with AI": true only
+for `target === 'model'`, so an OpenClaw-only account, or a device that chose OpenClaw, gets no
+Write, and "No AI, thanks" hides it with everything else.
 
 ## Trust model
 
@@ -210,6 +339,16 @@ memory under the no-TTL default.
 directly to the gateway ([lib/chat-store.ts](../../lib/chat-store.ts), deleted in step 2a;
 [app/api/agent/chat-url/route.ts](../../app/api/agent/chat-url/route.ts)). After this, the
 browser talks only to dsul.
+
+*Narrowed 2026-10-07 (#123, #142, migration 059), for accounts still on the plugin path:* the
+browser no longer holds the agent key. `/api/agent/chat-url` hands it a plugin chat token, an
+HMAC of the key ([lib/plugin-chat-token.ts](../../lib/plugin-chat-token.ts), mirrored in
+`openclaw-plugin/src/chat-token.ts`), which the plugin's chat route accepts and dsul's agent API
+does not. The key itself moved from `user_settings` (browser-readable under RLS) to
+`user_secrets` (service role only), read and written only through the helpers in
+[lib/supabase-service.ts](../../lib/supabase-service.ts); the old column is CHECKed null. The
+plugin path stays browser-direct because a plugin on a tailnet is reachable from the user's
+browser and not from Vercel, so a server proxy would break it.
 
 **2. Delegation → `POST /hooks/agent`,** with the agent reporting results back through the
 dsul items tools the plugin already registers. Because announce is best-effort,
@@ -288,6 +427,13 @@ Folded here from ai-vision-decisions.md, which now carries only what is still op
    accepted proposal is four counters (added, steps, moved, changed) behind History's second
    line: the record that something changed, not the proposal. 2b's receipts with Undo will
    live in `chat_messages.meta`, not in a proposal table.
+
+   *2026-10-10 (step 2b, receipts):* built memory-only instead (`lib/chat-receipts.ts`). A
+   receipt's Undo names a planner history entry, and that history is per tab and gone on
+   reload, so a saved receipt would come back with an Undo that can undo nothing; the
+   counters stay the account's record. Undo shows only while the accept is the planner's
+   latest entry, because the history is one line and undoing past a later change would take
+   that back too. If receipts should outlive the tab, `meta` is still the place, read-only.
 3. **Proposal scope grows in this order: unschedule → subtasks → habits.** Subtasks shipped
    in phase 2e, unschedule in 2h; habits remain out (decision 5 and `containerRequired`).
 
@@ -959,14 +1105,20 @@ conversation is saved to the account.
   - your custom instructions;
   - proposal cards;
   - error text (only a short error code);
-  - your model key (which never leaves the server's sealed store, as before).
+  - your model key (which never leaves the server's sealed store, as before);
+  - "Write with AI" in Settings → Make (mods build orders 7 and 10): neither the ask nor the reply.
+    Only what you install is saved, switched off, as anything made in Make is. The model is sent the
+    ask and the names of your projects, types, themes and Looks (for a mod, only types, themes and
+    Looks; project names are not even read), never your items, notes or conversations. A mod it
+    writes has no AI of its own.
 - *Who can read it:*
   - you, on any device you sign in on;
   - the database's operators.
 
   It is protected by row-level security and TLS, and is **not end-to-end encrypted**.
 - *Delete* removes a conversation and its messages from the database at once. Database
-  backups age it out on the provider's backup schedule.
+  backups age it out on the provider's backup schedule. Deleting the account deletes them at
+  once, with everything else (memory/plans/account-deletion.md).
 - *OpenClaw* keeps its own session memory, and dsul cannot delete that. Continuing a
   conversation with OpenClaw sends its last few turns to OpenClaw (at most 12, as context),
   so a conversation another answerer started becomes part of that memory too. A message
@@ -976,8 +1128,8 @@ conversation is saved to the account.
   counts both when they happened in this browser; across devices it knows only of a saved
   OpenClaw reply (`openclaw_seen`, which a turn with no reply never sets).
 - *Disconnecting* a model or OpenClaw deletes no conversation (the model's disconnect
-  confirm says so; OpenClaw has no disconnect step in dsul, and clearing the Gateway URL or
-  unpairing the plugin deletes none). *Changing who answers* deletes nothing either.
+  confirm says so, and so does Unpair's; clearing the Gateway URL deletes none either).
+  *Changing who answers* deletes nothing either.
 - *History, and deleting from it,* is reachable only while a model or OpenClaw can answer.
   To delete conversations after disconnecting, reconnect first.
 - *Device-local, as before:* who answers in chat and your custom instructions.

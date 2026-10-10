@@ -67,12 +67,15 @@ import {
   isReadable,
   openConnectionKey,
   openModelConnection,
+  readAIHidden,
   readModelConnection,
   readOpenClawStatus,
   saveModelConnection,
+  setConnectionLimit,
   setConnectionModel,
   setConnectionStatus,
   toConnectionView,
+  writeAIHidden,
   type ModelConnectionRow,
 } from '@/lib/ai-server/connections';
 import { BUILTIN_BASE_URLS } from '@/lib/ai-server/providers';
@@ -111,8 +114,17 @@ function row(over: Partial<ModelConnectionRow> = {}): ModelConnectionRow {
     status: 'ok',
     last_error: null,
     checked_at: '2026-10-01T12:00:00.123+00:00',
+    limited_until: null,
     ...over,
   };
+}
+
+/** The 060 column, as a select lists it. */
+const WITH_LIMIT = /, limited_until$/;
+const selectOf = (call: Call) => String(call.ops.find(([n]) => n === 'select')?.[1]?.[0] ?? '');
+/** A response for every statement that does not name `limited_until` (a database before 060). */
+function withoutLimitColumn(fn: (call: Call) => Result) {
+  answer((call) => (WITH_LIMIT.test(selectOf(call)) ? { data: null, error: { code: '42703' } } : fn(call)));
 }
 
 function answer(fn: (call: Call) => Result) {
@@ -151,8 +163,8 @@ function loggedText(): string {
 }
 
 describe('readModelConnection', () => {
-  it('reads the caller’s row on the service client', async () => {
-    const r = row();
+  it('reads the caller’s row on the service client, 060’s column with it', async () => {
+    const r = row({ limited_until: '2026-10-02T07:00:00.000Z' });
     answer(() => ({ data: r, error: null }));
     const read = await readModelConnection(USER);
     expect(read).toEqual({ kind: 'row', row: { ...r, checked_at: r.checked_at } });
@@ -160,6 +172,17 @@ describe('readModelConnection', () => {
     expect(call.table).toBe('model_connections');
     expect(call.ops).toContainEqual(['eq', ['user_id', USER]]);
     expect(opsOf(call)).toContain('maybeSingle');
+    expect(selectOf(call)).toMatch(WITH_LIMIT);
+  });
+
+  it('a database without 060 reads the rest of the row, not "no table"', async () => {
+    // 42703 is in the missing-schema set, so an unguarded read of the column
+    // would turn AI off for everyone on a deploy that lands ahead of it.
+    const r = row();
+    withoutLimitColumn(() => ({ data: r, error: null }));
+    expect(await readModelConnection(USER)).toEqual({ kind: 'row', row: { ...r, limited_until: null } });
+    expect(mock.state.calls).toHaveLength(2);
+    expect(selectOf(mock.state.calls[1])).not.toMatch(WITH_LIMIT);
   });
 
   it('no row → none', async () => {
@@ -289,6 +312,8 @@ describe('isReadable / toConnectionView', () => {
       status: 'ok',
       problem: null,
       checkedAt: '2026-10-01T12:00:00.123Z',
+      limitedUntil: null,
+      modelLabel: null,
     });
     expect(JSON.stringify(ok)).not.toContain('v1:');
 
@@ -300,6 +325,24 @@ describe('isReadable / toConnectionView', () => {
     expect(
       toConnectionView(row({ provider: 'custom', base_url: 'https://api.groq.com/openai/v1' }), true).baseUrl
     ).toBe('https://api.groq.com/openai/v1');
+  });
+
+  it('a daily limit shows only while it is in the future', () => {
+    const now = Date.parse('2026-10-02T03:00:00.000Z');
+    const limited = row({ limited_until: '2026-10-02T07:00:00.000Z' });
+    expect(toConnectionView(limited, true, now).limitedUntil).toBe('2026-10-02T07:00:00.000Z');
+    // Over: nothing to say, and no reader has to compare it with the clock.
+    expect(toConnectionView(limited, true, Date.parse('2026-10-02T07:00:00.001Z')).limitedUntil).toBeNull();
+    expect(toConnectionView(row(), true, now).limitedUntil).toBeNull();
+    expect(toConnectionView(row({ limited_until: 'not a time' }), true, now).limitedUntil).toBeNull();
+    // A limited connection is still connected: it comes back by itself.
+    expect(toConnectionView(limited, true, now).status).toBe('ok');
+  });
+
+  it('carries the model’s listed name, and only beside a model', () => {
+    expect(toConnectionView(row({ model_meta: { label: 'Llama 3 (free)' } }), true).modelLabel).toBe('Llama 3 (free)');
+    expect(toConnectionView(row({ model: null, model_meta: { label: 'Llama 3 (free)' } }), true).modelLabel).toBeNull();
+    expect(toConnectionView(row(), true).modelLabel).toBeNull();
   });
 });
 
@@ -333,6 +376,8 @@ describe('saveModelConnection', () => {
       auth_method: 'key',
       status: 'ok',
       last_error: null,
+      // A new key never inherits the old one's daily cap.
+      limited_until: null,
     });
     expect(typeof payload.checked_at).toBe('string');
     const ct = payload.key_ciphertext as string;
@@ -361,15 +406,36 @@ describe('saveModelConnection', () => {
     expect(openSecret(builtin.key_ciphertext!, { userId: USER, purpose: 'model-key', provider: 'openai', baseUrl: null }, ENV_KEY)).toBe(PLAINTEXT);
   });
 
-  it('stores only known model_meta fields', async () => {
+  it('stores only known model_meta fields, and a label only when it reads as one', async () => {
     answer(echo);
-    await saveModelConnection(USER, {
-      provider: 'openai', baseUrl: null, model: null,
-      modelMeta: { effortLow: false, extra: 'x' } as never,
-      authMethod: 'key', apiKey: PLAINTEXT,
+    const meta = async (modelMeta: unknown) => {
+      mock.state.calls = [];
+      await saveModelConnection(USER, {
+        provider: 'openai', baseUrl: null, model: null,
+        modelMeta: modelMeta as never,
+        authMethod: 'key', apiKey: PLAINTEXT,
+      });
+      const payload = mock.state.calls[0].ops.find(([n]) => n === 'upsert')![1][0] as Record<string, unknown>;
+      return payload.model_meta;
+    };
+    expect(await meta({ effortLow: false, extra: 'x' })).toEqual({ effortLow: false });
+    expect(await meta({ label: '  Llama 3 (free)  ' })).toEqual({ label: 'Llama 3 (free)' });
+    expect(await meta({ label: `L${'o'.repeat(400)}ng` })).toEqual({ label: `L${'o'.repeat(199)}` });
+    for (const bad of [{ label: '' }, { label: '   ' }, { label: 'bell\u0007' }, { label: 42 }]) {
+      expect(await meta(bad)).toEqual({});
+    }
+  });
+
+  it('a database without 060 saves the rest of the row', async () => {
+    withoutLimitColumn(echo);
+    const saved = await saveModelConnection(USER, {
+      provider: 'openai', baseUrl: null, model: 'gpt-4o-mini', modelMeta: {}, authMethod: 'key', apiKey: PLAINTEXT,
     });
-    const payload = mock.state.calls[0].ops.find(([n]) => n === 'upsert')![1][0] as Record<string, unknown>;
-    expect(payload.model_meta).toEqual({ effortLow: false });
+    expect(saved.model).toBe('gpt-4o-mini');
+    expect(saved.limited_until).toBeNull();
+    expect(mock.state.calls).toHaveLength(2);
+    const retried = mock.state.calls[1].ops.find(([n]) => n === 'upsert')![1][0] as Record<string, unknown>;
+    expect(retried).not.toHaveProperty('limited_until');
   });
 
   it.each([
@@ -455,14 +521,26 @@ describe('saveModelConnection', () => {
 });
 
 describe('setConnectionModel', () => {
-  it('updates only the caller’s row for that provider', async () => {
+  it('updates only the caller’s row for that provider, and clears the limit with it', async () => {
     answer(() => ({ data: row({ model: 'gpt-4o' }), error: null }));
     const updated = await setConnectionModel(USER, 'openai', 'gpt-4o', { effortLow: true });
     expect(updated?.model).toBe('gpt-4o');
     const [call] = mock.state.calls;
-    expect(call.ops).toContainEqual(['update', [{ model: 'gpt-4o', model_meta: { effortLow: true } }]]);
+    // Gemini's daily quota is per model: the old model's cap says nothing
+    // about the new one.
+    expect(call.ops).toContainEqual([
+      'update',
+      [{ model: 'gpt-4o', model_meta: { effortLow: true }, limited_until: null }],
+    ]);
     expect(call.ops).toContainEqual(['eq', ['user_id', USER]]);
     expect(call.ops).toContainEqual(['eq', ['provider', 'openai']]);
+  });
+
+  it('a database without 060 still sets the model', async () => {
+    withoutLimitColumn(() => ({ data: row({ model: 'gpt-4o' }), error: null }));
+    expect((await setConnectionModel(USER, 'openai', 'gpt-4o', {}))?.model).toBe('gpt-4o');
+    expect(mock.state.calls).toHaveLength(2);
+    expect(mock.state.calls[1].ops).toContainEqual(['update', [{ model: 'gpt-4o', model_meta: {} }]]);
   });
 
   it('returns null when no row matched', async () => {
@@ -538,6 +616,52 @@ describe('setConnectionStatus', () => {
   });
 });
 
+describe('setConnectionLimit', () => {
+  const UNTIL = '2026-10-02T07:00:00.000Z';
+
+  it('writes when the limit lifts, conditionally on the seal the caller read', async () => {
+    answer(() => ({ data: [{ user_id: USER }], error: null }));
+    const expected = sealed('gemini', null);
+    expect(await setConnectionLimit(USER, expected, UNTIL)).toBe(true);
+    const [call] = mock.state.calls;
+    expect(call.ops).toContainEqual(['update', [{ limited_until: UNTIL }]]);
+    expect(call.ops).toContainEqual(['eq', ['user_id', USER]]);
+    expect(call.ops).toContainEqual(['like', ['key_ciphertext', `${expected.split(':').slice(0, 2).join(':')}:%`]]);
+    // Only the status it was given: nothing here decides whether AI works.
+    const update = call.ops.find(([n]) => n === 'update')![1][0] as Record<string, unknown>;
+    expect(Object.keys(update)).toEqual(['limited_until']);
+  });
+
+  it('clears it with null, and normalizes anything else to null', async () => {
+    answer(() => ({ data: [{ user_id: USER }], error: null }));
+    for (const until of [null, 'not a time', '']) {
+      mock.state.calls = [];
+      expect(await setConnectionLimit(USER, sealed('gemini', null), until)).toBe(true);
+      expect(mock.state.calls[0].ops).toContainEqual(['update', [{ limited_until: null }]]);
+    }
+  });
+
+  it('reports false when the key changed underneath, or is off 053’s shape', async () => {
+    answer(() => ({ data: [], error: null }));
+    expect(await setConnectionLimit(USER, 'v1:old:ct:x', UNTIL)).toBe(false);
+    expect(await setConnectionLimit(USER, 'not a seal', UNTIL)).toBe(false);
+    expect(mock.state.calls).toHaveLength(1);
+  });
+
+  it.each(['42703', 'PGRST204'])('a database without 060 (%s) keeps nothing and says so', async (code) => {
+    answer(() => ({ data: null, error: { code } }));
+    expect(await setConnectionLimit(USER, sealed('gemini', null), UNTIL)).toBe(false);
+  });
+
+  it('another write error throws as op limit, with the code alone', async () => {
+    answer(() => ({ data: null, error: { code: '23514', details: 'the whole row' } }));
+    const err = await setConnectionLimit(USER, sealed('gemini', null), UNTIL).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AiDbError);
+    expect(err).toMatchObject({ op: 'limit', code: '23514' });
+    expect(String((err as Error).message)).not.toContain('the whole row');
+  });
+});
+
 describe('the sealed key never travels in a request URL', () => {
   /**
    * The real supabase-js, over a recording fetch: what PostgREST (and so
@@ -596,9 +720,10 @@ describe('the sealed key never travels in a request URL', () => {
     }).catch(() => {});
     await setConnectionModel(USER, 'openai', 'gpt-4o', {}).catch(() => {});
     await setConnectionStatus(USER, stored, 'failing', 'key_rejected');
+    await setConnectionLimit(USER, stored, '2026-10-02T07:00:00.000Z').catch(() => {});
     await deleteModelConnection(USER).catch(() => {});
 
-    expect(requests.map((r) => r.method)).toEqual(['GET', 'GET', 'POST', 'PATCH', 'PATCH', 'DELETE']);
+    expect(requests.map((r) => r.method)).toEqual(['GET', 'GET', 'POST', 'PATCH', 'PATCH', 'PATCH', 'DELETE']);
     // The upsert's own ciphertext, sealed inside saveModelConnection, rides in its body.
     const savedCt = (JSON.parse(requests[2].body) as Record<string, string>).key_ciphertext;
     expect(savedCt).toMatch(/^v1:/);
@@ -651,6 +776,23 @@ describe('readOpenClawStatus', () => {
     expect(await readOpenClawStatus(USER)).toEqual({ gateway: false, pluginChat: false, agent: false, agentId: null });
   });
 
+  it('the agent key counts from user_secrets (059 on)', async () => {
+    respondWith({ openclaw_chat_url: 'https://claw.example/chat' }, { openclaw_api_key: 'dsul_k' });
+    expect(await readOpenClawStatus(USER)).toEqual({ gateway: false, pluginChat: true, agent: true, agentId: null });
+  });
+
+  it('before 059 the secrets read retries without the key column and the old column counts', async () => {
+    answer((call) => {
+      if (call.table === 'user_settings') return { data: { openclaw_api_key: 'k' }, error: null };
+      const cols = String(call.ops.find((o) => o[0] === 'select')?.[1]?.[0] ?? '');
+      return cols.includes('openclaw_api_key')
+        ? { data: null, error: { code: '42703' } }
+        : { data: { openclaw_gateway_token: 'tok' }, error: null };
+    });
+    expect(await readOpenClawStatus(USER)).toEqual({ gateway: false, pluginChat: false, agent: true, agentId: null });
+    expect(mock.state.calls.filter((c) => c.table === 'user_secrets')).toHaveLength(2);
+  });
+
   it('missing schema → all false', async () => {
     respondWith(null, null, { settings: { code: '42703' }, secrets: { code: '42P01' } });
     expect(await readOpenClawStatus(USER)).toEqual({ gateway: false, pluginChat: false, agent: false, agentId: null });
@@ -659,5 +801,60 @@ describe('readOpenClawStatus', () => {
   it('another error throws', async () => {
     respondWith({ openclaw_api_key: 'k' }, null, { secrets: { code: 'PGRST301' } });
     await expect(readOpenClawStatus(USER)).rejects.toMatchObject({ op: 'openclaw', code: 'PGRST301' });
+  });
+});
+
+describe('"No AI, thanks" (user_settings.ai_hidden, 060)', () => {
+  it('reads the account\'s own row, and only that column', async () => {
+    answer(() => ({ data: { ai_hidden: true }, error: null }));
+    expect(await readAIHidden(USER)).toBe(true);
+    const [call] = mock.state.calls;
+    expect(call.table).toBe('user_settings');
+    expect(call.ops).toContainEqual(['select', ['ai_hidden']]);
+    expect(call.ops).toContainEqual(['eq', ['user_id', USER]]);
+    expect(hasWrite()).toBe(false);
+  });
+
+  it('no row yet is an account that has said nothing: false', async () => {
+    answer(() => ({ data: null, error: null }));
+    expect(await readAIHidden(USER)).toBe(false);
+    // maybeSingle: .single() would answer an error for no row, and fail the
+    // whole gate for an account whose settings row is not there yet.
+    const [call] = mock.state.calls;
+    expect(opsOf(call)).toContain('maybeSingle');
+    expect(opsOf(call)).not.toContain('single');
+    answer(() => ({ data: { ai_hidden: false }, error: null }));
+    expect(await readAIHidden(USER)).toBe(false);
+  });
+
+  it.each(['42703', 'PGRST204'])('a missing column (%s) is unknown: null', async (code) => {
+    answer(() => ({ data: null, error: { code } }));
+    expect(await readAIHidden(USER)).toBeNull();
+  });
+
+  it('another read error throws as op hidden', async () => {
+    answer(() => ({ data: null, error: { code: 'PGRST301', details: 'row' } }));
+    await expect(readAIHidden(USER)).rejects.toMatchObject({ op: 'hidden', code: 'PGRST301' });
+  });
+
+  it.each([true, false])('writes %s by upsert on user_id, so an account with no row yet gets one', async (hidden) => {
+    answer(() => ({ data: null, error: null }));
+    expect(await writeAIHidden(USER, hidden)).toBe(true);
+    const [call] = mock.state.calls;
+    expect(call.table).toBe('user_settings');
+    expect(call.ops).toContainEqual(['upsert', [{ user_id: USER, ai_hidden: hidden }, { onConflict: 'user_id' }]]);
+  });
+
+  it('a missing column keeps nothing and says so', async () => {
+    answer(() => ({ data: null, error: { code: '42703' } }));
+    expect(await writeAIHidden(USER, true)).toBe(false);
+  });
+
+  it('another write error throws as op hidden, with the code alone', async () => {
+    answer(() => ({ data: null, error: { code: '23514', details: 'the whole row' } }));
+    const err = await writeAIHidden(USER, false).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AiDbError);
+    expect(err).toMatchObject({ op: 'hidden', code: '23514' });
+    expect(String((err as Error).message)).not.toContain('the whole row');
   });
 });

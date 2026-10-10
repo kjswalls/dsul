@@ -21,9 +21,20 @@
  * accent inherits the lime's contract: it never dims.
  */
 
+import { isUserThemeSlug, userTheme } from '@/lib/user-themes/store';
+
 export type LightLook = 'paper' | 'studio' | 'sorbet';
 export type DarkLook = 'night' | 'terminal' | 'dusk';
 export type LookMode = 'light' | 'dark';
+
+/**
+ * A pick: a built-in theme, or one of your own (`u-<8 hex>`, lib/user-themes/).
+ * The pick is what is saved; what shows is `resolveLightPick(pick)`, which
+ * falls back to the default while that theme is off, deleted, not loaded yet
+ * or in safe mode, and never throws the saved pick away.
+ */
+export type LightPick = LightLook | `u-${string}`;
+export type DarkPick = DarkLook | `u-${string}`;
 
 export interface LookDef<T extends string = string> {
   value: T;
@@ -105,10 +116,52 @@ export function isDarkLook(value: unknown): value is DarkLook {
   return typeof value === 'string' && DARK_LOOKS.some((look) => look.value === value);
 }
 
-export function lightLookDef(value: LightLook): LookDef<LightLook> {
-  return LIGHT_LOOKS.find((look) => look.value === value) ?? LIGHT_LOOKS[0];
+/** A built-in, or anything shaped like a user theme's slug: what a store may hold. */
+export function isLightPickShape(value: unknown): value is LightPick {
+  return isLightLook(value) || isUserThemeSlug(value);
 }
 
-export function darkLookDef(value: DarkLook): LookDef<DarkLook> {
-  return DARK_LOOKS.find((look) => look.value === value) ?? DARK_LOOKS[0];
+export function isDarkPickShape(value: unknown): value is DarkPick {
+  return isDarkLook(value) || isUserThemeSlug(value);
+}
+
+/** A built-in, or an enabled user theme of this mode that the registry holds now. */
+export function isLightPick(value: unknown): value is LightPick {
+  return isLightLook(value) || !!userTheme(value, 'light');
+}
+
+export function isDarkPick(value: unknown): value is DarkPick {
+  return isDarkLook(value) || !!userTheme(value, 'dark');
+}
+
+/** What shows for a pick: itself when it can, else the default. */
+export function resolveLightPick(pick: unknown): LightPick {
+  return isLightPick(pick) ? pick : DEFAULT_LIGHT_LOOK;
+}
+
+export function resolveDarkPick(pick: unknown): DarkPick {
+  return isDarkPick(pick) ? pick : DEFAULT_DARK_LOOK;
+}
+
+const OWN_DESCRIPTION = 'Your own theme, made in Settings → Make.';
+
+/**
+ * A pick's catalog entry, from the merged registry: a built-in, else a user
+ * theme with its own name and chrome colour, so a `u-` slug never borrows
+ * Paper's. Paper only when the theme is missing.
+ */
+export function lightLookDef(value: LightPick): LookDef<LightPick> {
+  const builtIn = LIGHT_LOOKS.find((look) => look.value === value);
+  if (builtIn) return builtIn;
+  const own = userTheme(value, 'light');
+  if (own) return { value: own.slug as LightPick, label: own.label, description: OWN_DESCRIPTION, themeColor: own.themeColor };
+  return LIGHT_LOOKS[0];
+}
+
+export function darkLookDef(value: DarkPick): LookDef<DarkPick> {
+  const builtIn = DARK_LOOKS.find((look) => look.value === value);
+  if (builtIn) return builtIn;
+  const own = userTheme(value, 'dark');
+  if (own) return { value: own.slug as DarkPick, label: own.label, description: OWN_DESCRIPTION, themeColor: own.themeColor };
+  return DARK_LOOKS[0];
 }

@@ -4,6 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { PrioritySchema, RepeatFrequencySchema, TimeBucketSchema } from '@dsul/types';
 import { authenticateAppRequest, dbErrorResponse } from './app-auth';
 import {
+  addContainerMember,
   createItem,
   deleteItem,
   fetchItems,
@@ -14,12 +15,23 @@ import {
   fetchUserExtensions,
   isMissingColumnError,
   loadPlannerData,
-  setItemCompletion,
-  setItemSkip,
+  removeContainerMember,
   updateItem,
   type PlannerData,
 } from './db';
-import { getItemTypeConfig, type ItemTypeConfig } from './item-registry';
+import {
+  applyComplete,
+  applyMove,
+  applySkip,
+  completedOn,
+  nextTaskOrder,
+  writeContextFor,
+  WRITE_ROW_COLUMNS,
+  type IntentResult,
+  type WriteContext,
+  type WriteRow,
+} from './item-intents';
+import { getItemTypeConfig, isCollectible } from './item-registry';
 import {
   editPatch,
   editRefusal,
@@ -35,16 +47,19 @@ import {
 } from './item-edit';
 import { demoteInvalidGoalRoles } from './goal-roles';
 import { EXT_STREAKS, resolveEnabled } from './extension-registry';
-import { isPausableRow, resolveItemPause } from './item-pause';
+import { capabilityShape, isPausableRow, resolveItemPause } from './item-pause';
 import { DEFAULT_APP_ICON, isAppIcon, type AppIcon } from './app-icons';
-import { isRecurring } from './recurrence';
-import { canReschedule } from './row-moves';
 import { getBucketForTime } from './time-bucket';
 import { reportLiveCompletion } from './stakes/live';
+import { notifyPlugins } from './openclaw-registry';
 import { createServiceClient } from './supabase-service';
+import { SNOOZE_MINUTES } from './reminders/channels/push';
+import { REMINDER_GRACE_MINUTES } from './reminders/due';
+import { snoozeFireInstant } from './reminders/snooze';
+import { saveTimezone } from './user-timezone';
 import type { WeekStartDay } from './container-schedule';
 import type { TimeFormat } from './reminders/copy';
-import type { HabitItem, Item, Project, Routine, Season, Task, TaskItem } from './planner-types';
+import type { Item, Project, Routine, Season, Task, TaskItem } from './planner-types';
 
 /**
  * The iPhone app's API: /api/app/planner, /api/app/items, /api/app/items/:id.
@@ -58,7 +73,8 @@ import type { HabitItem, Item, Project, Routine, Season, Task, TaskItem } from '
  * another day; pause or resume one; retitle it, rewrite its notes or delete
  * it; add a subtask under it, reset its streak; set its priority, a habit's
  * times a day, its reminder, its part of day, time and length, or how it
- * repeats) is one verb here that does what the web's own store action does
+ * repeats; file it under a project, or add it to a routine or a season, or
+ * take it out) is one verb here that does what the web's own store action does
  * for the same gesture, through the same lib/db.ts calls.
  * Nothing accepts an absolute completedDates, skippedDates or dailyCounts: the
  * phone reads a 400-day window, and an array written back from a window
@@ -107,6 +123,12 @@ const DateStrSchema = z
   .refine(isCalendarDate, 'not a calendar date');
 
 const TimeStrSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'expected HH:mm');
+
+/**
+ * The longest snooze a request may ask for. The buttons promise SNOOZE_MINUTES;
+ * this only bounds a body, and the day gate cuts any snooze at local midnight.
+ */
+export const SNOOZE_MAX_MINUTES = 240;
 
 /** POST /api/app/items. The id is the phone's own, so a retry is the same row. */
 export const CaptureSchema = z.object({
@@ -225,6 +247,43 @@ const ItemWriteActions = z.discriminatedUnion('action', [
       monthDay: z.number().int().min(1).max(31).optional(),
     })
     .strict(),
+  // The project chip (2f): a project by id, or null for No project. The route reads its name.
+  z
+    .object({
+      action: z.literal('project'),
+      projectId: z
+        .string()
+        .regex(UUID, 'expected a uuid')
+        .transform((id) => id.toLowerCase())
+        .nullable(),
+    })
+    .strict(),
+  // Routines and seasons (2f): join or leave one, a single membership row, never a list.
+  z
+    .object({
+      action: z.literal('collect'),
+      kind: z.enum(['routine', 'season']),
+      containerId: z
+        .string()
+        .regex(UUID, 'expected a uuid')
+        .transform((id) => id.toLowerCase()),
+      member: z.boolean(),
+    })
+    .strict(),
+  // A notification's Snooze on the phone (reminders Phase 2): the web's
+  // /api/reminders/act snooze, behind the bearer, with the day gate the web's
+  // lacks. Its Done is `complete`, which clears the snooze.
+  z
+    .object({
+      action: z.literal('snooze'),
+      /** The day the notification was about, which the snooze belongs to (habit-reminders.md decision 8). */
+      date: DateStrSchema,
+      /** Absent is SNOOZE_MINUTES, the length the button promises. */
+      minutes: z.number().int().min(1).max(SNOOZE_MAX_MINUTES).optional(),
+      /** The device's zone, used only when the account has no usable one stored. */
+      timeZone: z.string().max(100).optional(),
+    })
+    .strict(),
 ]);
 
 export const ItemWriteSchema = ItemWriteActions.superRefine((body, ctx) => {
@@ -329,7 +388,36 @@ export interface AppPlannerPayload {
      * older server, means the same.
      */
     remindersEnabled: boolean | null;
+    /**
+     * The last call (habit_last_call_enabled, migration 032), as the scan reads
+     * it: only true is on. Null when unread, as remindersEnabled is. The phone
+     * never rings it (server-only until APNs, reminders-platforms.md §2.3); it
+     * reads it to say so.
+     */
+    lastCallEnabled: boolean | null;
+    /** habit_last_call_time, 'HH:mm', as stored; null when unset or unread. */
+    lastCallTime: string | null;
+    /** The end-of-day review's switch (eod_review_enabled): only true is on, as the scan reads it. */
+    eodReviewEnabled: boolean;
+    /** eod_review_time as stored, 'HH:mm' or the looser 'H:mm' lib/eod.ts reads; null when unset. */
+    eodReviewTime: string | null;
+    /** last_eod_review_date: the day the last review was FOR (lib/eod.ts reviewedDay). */
+    lastEodReviewDate: string | null;
+    /**
+     * How long after its minute a missed cue may still ring (the scan's
+     * REMINDER_GRACE_MINUTES): the phone's catch-up window, so the two agree.
+     */
+    reminderGraceMinutes: number;
   };
+  /**
+   * Every pending snooze on a live item (reminder_snooze_until/date, migration
+   * 032), as lib/reminders/plan.ts's PlanSnooze: the phone arms each one that
+   * still rings on its own day (ringsOnDay). Stale ones are sent as stored;
+   * the plan gates them, as the scan does. Null when the columns couldn't be
+   * read (a database behind on its migrations), which the phone reads as
+   * none. Absent, from an older server, means the same.
+   */
+  snoozes: AppSnooze[] | null;
   /**
    * The item-write intents this server takes (ITEM_WRITES). The phone hides
    * a verb whose write is not listed, so a build that reaches users before
@@ -351,6 +439,15 @@ export interface AppPlannerPayload {
   itemTypes: AppItemType[] | null;
 }
 
+/** A pending snooze: lib/reminders/plan.ts PlanSnooze. */
+export interface AppSnooze {
+  itemId: string;
+  /** reminder_snooze_until: an ISO instant. */
+  until: string;
+  /** reminder_snooze_date: the local day the snooze belongs to, yyyy-MM-dd. */
+  date: string;
+}
+
 /** One custom type's names, and nothing of its config: the phone's capabilities come from the registry port. */
 export interface AppItemType {
   name: string;
@@ -359,19 +456,23 @@ export interface AppItemType {
 }
 
 /**
- * Named columns, never `*`: the same row holds `openclaw_api_key`, a plaintext
- * key with service-role power that RLS lets this token read.
+ * Named columns, never `*`: the row is the user's own and RLS lets this token
+ * read all of it. It held the plaintext agent key until migration 059 moved it
+ * to user_secrets; the habit stays.
  *
- * The week start and the time format are migration 008, and stable.
+ * The week start and the time format are migration 008, and the review's
+ * three columns 002/010, all stable.
  */
-const STABLE_SETTINGS_COLUMNS = 'timezone, show_completed_tasks, week_start_day, time_format';
+const STABLE_SETTINGS_COLUMNS =
+  'timezone, show_completed_tasks, week_start_day, time_format, eod_review_enabled, eod_review_time, last_eod_review_date';
 /**
- * `app_icon` is migration 056 and `habit_reminders_enabled` 032; both sit in
+ * `app_icon` is migration 056 and the three reminder switches 032; all sit in
  * lib/settings-service.ts PENDING_SCHEMA_COLUMNS. PostgREST refuses the whole
  * select over one unknown column, so a missing one is read again without
- * either (`full` is then false).
+ * any of them (`full` is then false).
  */
-const SETTINGS_COLUMNS = `${STABLE_SETTINGS_COLUMNS}, app_icon, habit_reminders_enabled`;
+const SETTINGS_COLUMNS =
+  `${STABLE_SETTINGS_COLUMNS}, app_icon, habit_reminders_enabled, habit_last_call_enabled, habit_last_call_time`;
 
 interface SettingsRow {
   timezone?: string | null;
@@ -380,6 +481,11 @@ interface SettingsRow {
   time_format?: string | null;
   app_icon?: string | null;
   habit_reminders_enabled?: boolean | null;
+  habit_last_call_enabled?: boolean | null;
+  habit_last_call_time?: string | null;
+  eod_review_enabled?: boolean | null;
+  eod_review_time?: string | null;
+  last_eod_review_date?: string | null;
 }
 
 interface SettingsRead {
@@ -415,6 +521,35 @@ async function readStreaksEnabled(userId: string, client: Client): Promise<boole
     console.error('[app/planner] extensions read failed:', err instanceof Error ? err.message : err);
     return resolveEnabled({}, EXT_STREAKS); // the manifest default, true
   }
+}
+
+/**
+ * Every live item's pending snooze, by the three columns that say it. Sparse:
+ * a snooze lives fifteen minutes, and the scan sweeps the stale ones. A row
+ * with no day is left out, since the plan can't gate it ("an unreadable
+ * snooze is no snooze"). Null on a database without migration 032's columns,
+ * and on any other failed read, logged: a snooze the phone misses rings on
+ * the web's push all the same, and the planner must still load.
+ */
+async function readSnoozes(userId: string, client: Client): Promise<AppSnooze[] | null> {
+  const { data, error } = await client
+    .from('items')
+    .select('id, reminder_snooze_until, reminder_snooze_date')
+    .eq('user_id', userId)
+    .is('deleted_at', null)
+    .not('reminder_snooze_until', 'is', null);
+  if (error) {
+    if (!isMissingColumnError(error)) {
+      console.error('[app/planner] snooze read failed:', error.message ?? error);
+    }
+    return null;
+  }
+  const rows = (data ?? []) as { id: string; reminder_snooze_until: string | null; reminder_snooze_date: string | null }[];
+  return rows.flatMap((row) =>
+    row.reminder_snooze_until && row.reminder_snooze_date
+      ? [{ itemId: row.id, until: row.reminder_snooze_until, date: row.reminder_snooze_date }]
+      : [],
+  );
 }
 
 /** The web's rule (migration 056): an unknown slug is Aurora, null is unchosen. */
@@ -462,10 +597,11 @@ export async function getPlanner(req: Request): Promise<Response> {
     // 400-day completion window) and cannot drift from what the web shows. It
     // falls back to the per-table read rather than answering 503 on a missing
     // RPC, so its module-level latch can slow an instance but never fail one.
-    const [data, { row: settings, full }, streaksEnabled] = await Promise.all([
+    const [data, { row: settings, full }, streaksEnabled, snoozes] = await Promise.all([
       loadPlannerData(userId, () => perTable(userId, client), client),
       readSettings(userId, client),
       readStreaksEnabled(userId, client),
+      readSnoozes(userId, client),
     ]);
 
     const payload: AppPlannerPayload = {
@@ -483,7 +619,14 @@ export async function getPlanner(req: Request): Promise<Response> {
         // Only true lets a reminder through (the scan's own test), so a missing
         // row or a null column is off. Unread is unknown, never off.
         remindersEnabled: full ? settings?.habit_reminders_enabled === true : null,
+        lastCallEnabled: full ? settings?.habit_last_call_enabled === true : null,
+        lastCallTime: (full && settings?.habit_last_call_time) || null,
+        eodReviewEnabled: settings?.eod_review_enabled === true,
+        eodReviewTime: settings?.eod_review_time || null,
+        lastEodReviewDate: settings?.last_eod_review_date || null,
+        reminderGraceMinutes: REMINDER_GRACE_MINUTES,
       },
+      snoozes,
       writes: ITEM_WRITES,
       items: data.items,
       projects: data.projects,
@@ -495,6 +638,36 @@ export async function getPlanner(req: Request): Promise<Response> {
     return NextResponse.json(payload, { headers: { 'Cache-Control': 'no-store' } });
   } catch (err) {
     return dbErrorResponse(err, 'app/planner');
+  }
+}
+
+// ── POST /api/app/timezone ───────────────────────────────────────────────────
+
+/**
+ * The phone's zone, stored as the account's (lib/user-timezone.ts, the web's
+ * PATCH /api/user/timezone's own write): the scan reads the day and the
+ * minute of every cue, last call and review in it, so a phone that travels
+ * keeps the server's pushes on the phone's clock. Already so is 200 with
+ * `unchanged: true` and no write. Body: `{ timezone }`, an IANA name.
+ */
+export async function postTimezone(req: Request): Promise<Response> {
+  const auth = await authenticateAppRequest(req);
+  if (auth instanceof Response) return auth;
+  const { userId, client } = auth;
+
+  let raw: unknown;
+  try {
+    raw = await req.json();
+  } catch {
+    return invalid();
+  }
+  const timezone = raw && typeof raw === 'object' ? (raw as { timezone?: unknown }).timezone : undefined;
+  try {
+    const result = await saveTimezone(client, userId, timezone);
+    if ('invalid' in result) return invalid({ formErrors: [], fieldErrors: { timezone: [result.invalid] } });
+    return NextResponse.json(result.unchanged ? { ok: true, unchanged: true } : { ok: true });
+  } catch (err) {
+    return dbErrorResponse(err, 'app/timezone');
   }
 }
 
@@ -511,7 +684,7 @@ export async function getPlanner(req: Request): Promise<Response> {
  * conflict, and is not described further: another user's row is invisible
  * under RLS, so "not yours" and "trashed" read alike, which is the point.
  */
-export async function postCapture(req: Request): Promise<Response> {
+export async function postCapture(req: Request, opts: AppWriteOptions = {}): Promise<Response> {
   const auth = await authenticateAppRequest(req);
   if (auth instanceof Response) return auth;
   const { userId, client } = auth;
@@ -542,24 +715,9 @@ export async function postCapture(req: Request): Promise<Response> {
     if (errorCode(err) === '23505') return captureRetry(client, id);
     return dbErrorResponse(err, 'app/items');
   }
+  // Only a capture that made the row: a retry that found it raises nothing.
+  committed(opts, { kind: 'item.created', userId, itemId: id, type: 'task' });
   return NextResponse.json({ ok: true, id }, { status: 201 });
-}
-
-/**
- * The `order` the web's addTask gives a new task: `tasks.length`, every live
- * task-like row that is not a subtask, which is the store's `tasks`
- * projection. A capture and a new subtask both take it. Throws a failed count.
- */
-async function nextTaskOrder(client: Client, userId: string): Promise<number> {
-  const { count, error } = await client
-    .from('items')
-    .select('id', { count: 'exact', head: true })
-    .eq('user_id', userId)
-    .neq('type', 'habit')
-    .is('parent_item_id', null)
-    .is('deleted_at', null);
-  if (error) throw error;
-  return count ?? 0;
 }
 
 async function captureRetry(client: Client, id: string): Promise<Response> {
@@ -579,15 +737,6 @@ async function captureRetry(client: Client, id: string): Promise<Response> {
 // ── POST /api/app/items/:id ──────────────────────────────────────────────────
 
 /**
- * The row every intent decides on. Never completed_dates: no intent reads it
- * (a skip clears the day's completion through the idempotent RPC, unasked),
- * and it is the column that grows without bound.
- */
-const WRITE_ROW_COLUMNS =
-  'id, type, parent_item_id, repeat_frequency, status, start_date, time_bucket, in_project_block, ' +
-  'skipped_dates, daily_counts, current_day_count, paused_at, paused_until';
-
-/**
  * What an edit reads on top: only the column it decides on. A tick never reads
  * the notes, which can run to 200,000 characters.
  */
@@ -602,57 +751,12 @@ const EDIT_COLUMNS: Partial<Record<ItemWriteAction, string>> = {
   time: 'start_time, is_scheduled, duration',
   // repeat_frequency is in every read.
   repeat: 'repeat_days, repeat_month_day',
+  // in_project_block is in every read.
+  project: 'project, project_id, previous_start_time, previous_start_date',
 };
-
-interface WriteRow {
-  id: string;
-  type: string;
-  parent_item_id: string | null;
-  repeat_frequency: string | null;
-  status: string | null;
-  start_date: string | null;
-  time_bucket: string | null;
-  in_project_block: boolean | null;
-  skipped_dates: string[] | null;
-  daily_counts: Record<string, number> | null;
-  current_day_count: number | null;
-  paused_at: string | null;
-  paused_until: string | null;
-  /** EDIT_COLUMNS: present only when the action read it. */
-  title?: string | null;
-  notes?: string | null;
-  streak?: number | null;
-  priority?: string | null;
-  times_per_day?: number | null;
-  reminder_time?: string | null;
-  reminder_anchor?: string | null;
-  start_time?: string | null;
-  is_scheduled?: boolean | null;
-  duration?: number | null;
-  repeat_days?: number[] | null;
-  repeat_month_day?: number | null;
-}
 
 type ItemWrite = z.infer<typeof ItemWriteSchema>;
 type IntentBody<A extends ItemWriteAction> = Extract<ItemWrite, { action: A }>;
-
-/** What every intent knows once the row is read. */
-interface WriteContext {
-  userId: string;
-  client: Client;
-  id: string;
-  /** The stored slug, never 'custom': every write filters on it. */
-  type: string;
-  config: ItemTypeConfig;
-  row: WriteRow;
-  /**
-   * Through the registry, not the raw column: repeat_frequency has no
-   * default, and NULL means the type's default (the itemFromRow fallback),
-   * so a habit stored with NULL recurs daily rather than reading as one-shot.
-   */
-  frequency: string;
-  recurring: boolean;
-}
 
 /**
  * Report a completion to a live stake once the response is sent, as the
@@ -696,6 +800,11 @@ function reportStake(userId: string, itemId: string, dateStr: string, completed:
  *   time         part of day, a specific time and a length (the dialog's Time chip, commitEdit)
  *   repeat       how it repeats, its three keys together (the dialog's Repeat chip, repeatPatch),
  *                then any goal role it left untrue demoted (lib/goal-roles.ts)
+ *   project      its project, by id, the name read here (the bulk Move to project's rule,
+ *                projectRefilePatch), leaving a project block it no longer belongs to
+ *   collect      join or leave one routine or season: one membership row
+ *                (addContainerMember / removeContainerMember)
+ *   snooze       a notification's Snooze (/api/reminders/act's snooze), held to its day
  *
  * The row is read first, under RLS, and a missing one is a 404. That read is
  * load-bearing, not politeness: set_item_completion, set_item_skip,
@@ -708,18 +817,62 @@ function reportStake(userId: string, itemId: string, dateStr: string, completed:
  * (lib/item-verbs.ts), asked of the registry. Whether the day is due, done or
  * drawn at all is the surface's question, on the phone as on the web.
  */
-export async function postItemWrite(req: Request, rawId: string): Promise<Response> {
+export async function postItemWrite(req: Request, rawId: string, opts: AppWriteOptions = {}): Promise<Response> {
   const auth = await authenticateAppRequest(req);
   if (auth instanceof Response) return auth;
-  const { userId, client } = auth;
 
   // Not a uuid, so not an item: answered before Postgres rejects the cast.
   if (!UUID.test(rawId)) return notFound();
-  const id = rawId.toLowerCase();
 
   const body = await parseBody(req, ItemWriteSchema);
   if (body instanceof Response) return body;
 
+  return runItemWrite({ userId: auth.userId, client: auth.client }, rawId.toLowerCase(), body, opts);
+}
+
+/**
+ * The intents an agent may send (POST /api/agent/items/:id/act). The verbs
+ * whose absolute-array or whole-list form is the only one the agent API's
+ * PATCH has: a tick or skip for ONE day, a carry, a streak reset, and one
+ * routine or season membership. Everything else the phone sends one key at a
+ * time, the agent PATCH already takes as a key.
+ */
+export const AGENT_ITEM_ACTIONS = ['complete', 'skip', 'move', 'resetStreak', 'collect'] as const satisfies readonly ItemWriteAction[];
+
+/**
+ * POST /api/agent/items/:id/act: one of the phone's intents, sent by an agent,
+ * through the very code the phone's door runs (runItemWrite), so an agent's
+ * tick is the phone's tick, which is the web's. The caller has resolved the
+ * agent key; the client is the service role, so every write is owner-scoped
+ * (WriteContext.ownerScoped) and every read filters on the user.
+ */
+export async function postAgentItemAction(
+  req: Request,
+  rawId: string,
+  scope: { userId: string; client: Client },
+  opts: AppWriteOptions = {},
+): Promise<Response> {
+  if (!UUID.test(rawId)) return notFound();
+  const body = await parseBody(req, ItemWriteSchema);
+  if (body instanceof Response) return body;
+  if (!(AGENT_ITEM_ACTIONS as readonly string[]).includes(body.action)) {
+    return invalid({ formErrors: [`action must be one of: ${AGENT_ITEM_ACTIONS.join(', ')}`], fieldErrors: {} });
+  }
+  return runItemWrite({ ...scope, ownerScoped: true, webhook: true }, rawId.toLowerCase(), body, opts);
+}
+
+/**
+ * One intent on one item, once the caller is known and the body parsed. A
+ * service-role caller (the agent door) passes `ownerScoped`, which adds
+ * `user_id` to every row update, since RLS does not scope that client.
+ */
+async function runItemWrite(
+  scope: { userId: string; client: Client; ownerScoped?: boolean; webhook?: boolean },
+  id: string,
+  body: ItemWrite,
+  opts: AppWriteOptions,
+): Promise<Response> {
+  const { userId, client } = scope;
   const extra = EDIT_COLUMNS[body.action];
   const { data, error } = await client
     .from('items')
@@ -732,27 +885,32 @@ export async function postItemWrite(req: Request, rawId: string): Promise<Respon
   const row = data as WriteRow | null;
   if (!row) return body.action === 'delete' ? deleteTrashed(client, userId, id) : notFound();
 
-  const config = getItemTypeConfig(row.type);
-  const frequency = row.repeat_frequency ?? config.defaultFrequency;
-  const ctx: WriteContext = {
-    userId,
-    client,
-    id,
-    type: row.type,
-    config,
-    row,
-    frequency,
-    recurring: isRecurring({ repeatFrequency: frequency }),
-  };
+  // The id as the route was asked, which the row read matched.
+  const ctx: WriteContext = { ...writeContextFor(userId, client, row, { ownerScoped: scope.ownerScoped }), id };
 
+  const res = await dispatchItemWrite(ctx, body, opts);
+  // The agent door's webhook (the PATCH routes' tasks.updated / habits.updated):
+  // the OpenClaw plugin only drops its cached context on it, so the payload
+  // names the item and nothing else. After the response, as other agent writes
+  // fire theirs; never on a refusal, which changed nothing.
+  if (scope.webhook && res.ok) {
+    const event = ctx.config.webhookEvent;
+    after(() => notifyPlugins(userId, event, { action: 'update', id, updates: {} }));
+  }
+  return res;
+}
+
+async function dispatchItemWrite(ctx: WriteContext, body: ItemWrite, opts: AppWriteOptions): Promise<Response> {
+  const { userId, client, id, row } = ctx;
+  const raise = opts.onCommitted;
   try {
     switch (body.action) {
       case 'complete':
-        return await complete(ctx, body);
+        return await complete(ctx, body, raise);
       case 'schedule':
         return await schedule(ctx, body);
       case 'skip':
-        return await skip(ctx, body);
+        return await skip(ctx, body, raise);
       case 'move':
         return await move(ctx, body);
       case 'pause':
@@ -764,6 +922,7 @@ export async function postItemWrite(req: Request, rawId: string): Promise<Respon
       case 'reminder':
       case 'time':
       case 'repeat':
+      case 'project':
         return await edit(ctx, body);
       case 'delete':
         return await del(client, userId, id, row.type);
@@ -771,6 +930,10 @@ export async function postItemWrite(req: Request, rawId: string): Promise<Respon
         return await addSubtask(ctx, body);
       case 'resetStreak':
         return await resetStreak(ctx);
+      case 'collect':
+        return await collect(ctx, body);
+      case 'snooze':
+        return await snooze(ctx, body);
     }
   } catch (err) {
     return dbErrorResponse(err, 'app/items/:id');
@@ -778,51 +941,178 @@ export async function postItemWrite(req: Request, rawId: string): Promise<Respon
 }
 
 /**
- * `complete`: the web's tick.
- *
- * A skipped occurrence is refused outright, as toggleRowDone refuses it
- * (lib/item-toggle.ts): ticking it would leave a date both skipped and done,
- * and on a habit it would turn a deliberate skip back into an open loop that
- * settles as a miss. Its answer is `skip` with `skipped: false`.
+ * A write the phone made that the web raises an item event for
+ * (lib/mod-events.ts): one per real transition, after the write committed.
+ * Generic on purpose: this module knows nothing about who listens (the route
+ * files pass the listener).
  */
-async function complete(ctx: WriteContext, body: IntentBody<'complete'>): Promise<Response> {
-  const { userId, client, id, type, config, row } = ctx;
-  const { date, done, count } = body;
-  const skipped = (row.skipped_dates ?? []).includes(date);
+export interface AppWriteEvent {
+  kind: 'item.completed' | 'item.uncompleted' | 'item.skipped' | 'item.created';
+  userId: string;
+  itemId: string;
+  /** The stored slug. */
+  type: string;
+  /** The occurrence date; a one-off's is its start date, or the day acted on. */
+  date?: string;
+}
 
-  if (config.skipStatus) {
-    // A habit: the store's toggleHabitStatus. The RPC owns the per-date
-    // array and the streak; the companion update writes the status snapshot
-    // and the day's tally, never the arrays. `dailyCounts` is written whole
-    // by the column, so the stored map is merged with this one date rather
-    // than replaced by a phone's copy of it.
-    if (skipped) return refused('skipped', 409);
-    await setItemCompletion(id, type, date, done, true, client);
-    reportStake(userId, id, date, done);
-    const updates: Partial<HabitItem> = {
-      status: done ? 'done' : 'pending',
-      ...(count !== undefined ? { dailyCounts: { ...(row.daily_counts ?? {}), [date]: count } } : {}),
-      currentDayCount: count ?? row.current_day_count ?? 0,
-    };
-    await updateItem(id, type, updates, undefined, client);
-    return ok();
+export interface AppWriteOptions {
+  /**
+   * Called once per real transition, after the write committed. Never
+   * awaited, and a throw is swallowed: the user's write landed, and nothing a
+   * listener does may fail it.
+   */
+  onCommitted?: (e: AppWriteEvent) => void;
+}
+
+function committed(opts: AppWriteOptions, e: AppWriteEvent): void {
+  try {
+    opts.onCommitted?.(e);
+  } catch (err) {
+    console.error('[app/items] write listener failed:', err instanceof Error ? err.message : err);
   }
+}
 
-  // A tally belongs to a habit's daily target; nothing else has one.
-  if (count !== undefined) return invalid({ count: ['only a habit takes a count'] });
-  if (skipped) return refused('skipped', 409);
-
-  if (ctx.recurring) {
-    // toggleTaskStatus's recurring branch: the per-date RPC and nothing
-    // else. No status write and no event, as on the web.
-    await setItemCompletion(id, type, date, done, true, client);
-    reportStake(userId, id, date, done);
-    return ok();
-  }
-
-  // A one-off: the scalar status, which stamps completed_at by trigger.
-  await updateItem(id, type, { status: done ? config.doneStatus : 'pending' } as Partial<Task>, undefined, client);
+/** An intent's result as the phone's Response. */
+function answer(result: IntentResult): Response {
+  if ('refused' in result) return refused(result.refused, result.status);
+  if ('invalid' in result) return invalid(result.invalid);
   return ok();
+}
+
+/**
+ * `complete`: the web's tick (lib/item-intents.ts applyComplete). With a
+ * listener, whether the day was already done is read first, so a repeat
+ * `done` (a retry, a stale phone) raises nothing, as the web raises only on a
+ * real transition: a one-off's scalar status, a recurring row's one date.
+ */
+async function complete(
+  ctx: WriteContext,
+  body: IntentBody<'complete'>,
+  onCommitted?: AppWriteOptions['onCommitted'],
+): Promise<Response> {
+  let wasDone: boolean | undefined;
+  const result = await applyComplete(ctx, body, {
+    onStake: (itemId, date, done) => reportStake(ctx.userId, itemId, date, done),
+    ...(onCommitted && {
+      beforeWrite: async () => {
+        if (!ctx.recurring) {
+          wasDone = ctx.row.status === ctx.config.doneStatus;
+          return;
+        }
+        // Only the listener needs this read, so its failure must not fail the
+        // tick: an unknown before raises nothing, in either direction.
+        try {
+          wasDone = await completedOn(ctx, body.date);
+        } catch (err) {
+          console.error('[app/items] transition read failed:', err instanceof Error ? err.message : err);
+          wasDone = undefined;
+        }
+      },
+    }),
+  });
+  if ('ok' in result && body.done) await clearSnooze(ctx, body.date);
+  if (onCommitted && 'ok' in result && wasDone !== undefined && body.done !== wasDone) {
+    committed(
+      { onCommitted },
+      {
+        kind: body.done ? 'item.completed' : 'item.uncompleted',
+        userId: ctx.userId,
+        itemId: ctx.id,
+        type: ctx.type,
+        date: ctx.recurring ? body.date : (ctx.row.start_date ?? body.date),
+      },
+    );
+  }
+  return answer(result);
+}
+
+/**
+ * A done day must not be asked about again by a snooze armed before it, as
+ * /api/reminders/act clears it after its own Done. A recurring row's snooze is
+ * cleared only when it belongs to the day ticked: ticking yesterday late must
+ * not silence the snooze tapped on today's cue. A one-off has one occurrence,
+ * so its snooze goes whatever day it names. The filter on a live snooze makes
+ * the common tick, with none, match no row and write nothing.
+ *
+ * Never fatal: the tick has landed, and a snooze left behind is about a done
+ * day, which the scan's open-loop check and the phone's plan both pass over.
+ */
+async function clearSnooze(ctx: WriteContext, date: string): Promise<void> {
+  let query = ctx.client
+    .from('items')
+    .update({ reminder_snooze_until: null, reminder_snooze_date: null })
+    .eq('id', ctx.id)
+    .eq('user_id', ctx.userId)
+    .not('reminder_snooze_until', 'is', null);
+  if (ctx.recurring) query = query.eq('reminder_snooze_date', date);
+  try {
+    const { error } = await query;
+    if (error) console.error('[app/items] snooze clear failed:', error.message);
+  } catch (err) {
+    console.error('[app/items] snooze clear failed:', err instanceof Error ? err.message : err);
+  }
+}
+
+/**
+ * `snooze`: a notification's Snooze, the write /api/reminders/act makes for
+ * the web's: `reminder_snooze_until` at the tap plus the button's minutes, and
+ * `reminder_snooze_date`, the day the notification was about, never the day
+ * it matures on (habit-reminders.md decision 8). The scan rings it on the
+ * first tick after it matures, and the phone's plan arms it as `#snooze`.
+ *
+ * Held to its day, as the phone's own snooze is (lib/reminders/snooze.ts): a
+ * snooze that would ring past that day's local midnight, in the zone the scan
+ * reads (the stored one, else the device's), writes nothing and answers
+ * `snoozedUntil: null`. The web's stores it anyway and the scan expires it at
+ * maturity; here it never exists, so no device arms a ring about a day that is
+ * over. A notification left in the shade from yesterday snoozes to nothing.
+ *
+ * Gate: a type that takes reminders, and never a subtask (editRefusal's
+ * `reminder` rule). No `reminder_time` is needed: a last call's Snooze asks
+ * again about an item with no cue of its own (lib/reminders/scan.ts).
+ */
+async function snooze(ctx: WriteContext, body: IntentBody<'snooze'>): Promise<Response> {
+  const { client, userId, id, config, row } = ctx;
+  if (!config.remindable || row.parent_item_id) return refused('not_remindable', 400);
+  const zone = await pauseZone(client, userId, body.timeZone);
+  const fireMs = snoozeFireInstant(Date.now(), body.minutes ?? SNOOZE_MINUTES, zone, body.date);
+  if (fireMs === null) return NextResponse.json({ ok: true, snoozedUntil: null });
+  const until = new Date(fireMs).toISOString();
+  const { error } = await client
+    .from('items')
+    .update({ reminder_snooze_until: until, reminder_snooze_date: body.date })
+    .eq('id', id)
+    .eq('user_id', userId);
+  if (error) throw error;
+  return NextResponse.json({ ok: true, snoozedUntil: until });
+}
+
+/**
+ * `skip`: Skip today and Unskip today (lib/item-intents.ts applySkip). A skip
+ * that changed the day raises `item.skipped`; an unskip raises nothing, as on
+ * the web.
+ */
+async function skip(
+  ctx: WriteContext,
+  body: IntentBody<'skip'>,
+  onCommitted?: AppWriteOptions['onCommitted'],
+): Promise<Response> {
+  const result = await applySkip(ctx, body, {
+    onStake: (itemId, date, done) => reportStake(ctx.userId, itemId, date, done),
+  });
+  if (onCommitted && 'ok' in result && result.changed && body.skipped) {
+    committed(
+      { onCommitted },
+      { kind: 'item.skipped', userId: ctx.userId, itemId: ctx.id, type: ctx.type, date: body.date },
+    );
+  }
+  return answer(result);
+}
+
+/** `move`: Tomorrow and Reschedule (lib/item-intents.ts applyMove). */
+async function move(ctx: WriteContext, body: IntentBody<'move'>): Promise<Response> {
+  return answer(await applyMove(ctx, body));
 }
 
 /**
@@ -842,116 +1132,6 @@ async function schedule(ctx: WriteContext, body: IntentBody<'schedule'>): Promis
   const updates: Partial<Task> = {
     ...scheduleTaskPatch(getBucketForTime(body.startTime), body.startTime),
     startDate: body.date,
-  };
-  await updateItem(id, type, updates, undefined, client);
-  return ok();
-}
-
-/**
- * `skip`: Skip today and Unskip today, the store's setItemSkipped, which
- * splits on whether the type's status vocabulary has a skip in it.
- *
- * Gate: the registry's isSkippable (a skippable type that recurs), and never
- * a subtask, which has no occurrence of its own. A one-off is completed,
- * cancelled or deleted, never skipped.
- *
- * Order: the day's completion is cleared BEFORE the skip is set, so a write
- * that fails halfway leaves the day open, never skipped-and-done.
- */
-async function skip(ctx: WriteContext, body: IntentBody<'skip'>): Promise<Response> {
-  const { userId, client, id, type, config, row } = ctx;
-  if (!config.skippable || !ctx.recurring || row.parent_item_id) return refused('not_skippable', 400);
-  const { date, skipped } = body;
-  const changes = (row.skipped_dates ?? []).includes(date) !== skipped;
-
-  if (config.skipStatus) {
-    // A habit: toggleHabitStatus(skipped ? 'skipped' : 'pending'). Neither is
-    // 'done', so the day's completion is cleared either way (an unskip on a
-    // ticked day unticks it, as on the web), through the RPC that takes the
-    // streak down only if the day was done. In the browser that RPC reports
-    // to a live stake, so a skip retracts a datapoint already posted; this
-    // reports it too. The skip RPC runs only when the skip changes. The
-    // companion update is the status snapshot and the tally the row already
-    // has: never the arrays, and never dailyCounts, which the web writes
-    // whole from its copy and the phone only holds a window of.
-    await setItemCompletion(id, type, date, false, true, client);
-    reportStake(userId, id, date, false);
-    if (changes) await setItemSkip(id, type, date, skipped, client);
-    const updates: Partial<HabitItem> = {
-      status: (skipped ? config.skipStatus : 'pending') as HabitItem['status'],
-      currentDayCount: row.current_day_count ?? 0,
-    };
-    await updateItem(id, type, updates, undefined, client);
-    return ok();
-  }
-
-  // Task-like: skippedDates and nothing else. `pending|completed|cancelled`
-  // is an external contract with no skip in it, so no status write, no
-  // updateItem and no event, and an unchanged skip is no write at all.
-  if (!changes) return ok();
-  if (skipped) {
-    // A skipped occurrence is not a completed one. The store clears a done
-    // day first; this clears it unasked, since the RPC is idempotent and the
-    // row read leaves completed_dates out.
-    await setItemCompletion(id, type, date, false, true, client);
-    reportStake(userId, id, date, false);
-  }
-  await setItemSkip(id, type, date, skipped, client);
-  return ok();
-}
-
-/**
- * `move`: Tomorrow and Reschedule, the store's moveTaskToDate. The phone picks
- * the day (nextDayTarget, or the one picked), as the web's verbs pass it in.
- *
- * Gate: lib/row-moves.ts canReschedule, the looser of the two verbs' gates,
- * asked of the row: a date-addressable type, never inside a project block
- * (nothing here clears it, so the item would land nowhere visible), never
- * finished. A recurring task may move: the picked day becomes the series
- * start, which always shows as an occurrence. Tomorrow's own refusal of a
- * series (canMoveToNextDay) is the phone's to keep, since the write is the
- * same. And never a subtask, which shows only inside its parent. Refused is a
- * 409: the row said no, not the body.
- */
-async function move(ctx: WriteContext, body: IntentBody<'move'>): Promise<Response> {
-  const { userId, client, id, type, row } = ctx;
-  const kind = type === 'habit' ? 'habit' : 'task';
-  // The day the gate asks about, as the web's rowDateOf does: the row's own
-  // date, or the target for an undated one.
-  const dateStr = row.start_date ?? body.date;
-  // Whether that day is done matters only for a series (isOpenOn), so only
-  // then is it asked, and of that one date: the row read leaves
-  // completed_dates out.
-  let completedDates: string[] = [];
-  if (kind === 'task' && ctx.recurring && !row.parent_item_id) {
-    const { data, error } = await client
-      .from('items')
-      .select('id')
-      .eq('id', id)
-      .eq('user_id', userId)
-      .contains('completed_dates', [dateStr])
-      .maybeSingle();
-    if (error) throw error;
-    if (data) completedDates = [dateStr];
-  }
-  const movable = {
-    id,
-    type: type === 'task' || type === 'habit' ? type : 'custom',
-    customType: type,
-    status: row.status as Task['status'],
-    repeatFrequency: ctx.frequency as Task['repeatFrequency'],
-    inProjectBlock: !!row.in_project_block,
-    completedDates,
-  };
-  if (row.parent_item_id || !canReschedule(movable, kind, dateStr)) {
-    return refused('not_movable', 409);
-  }
-  // The bucket fallback is load-bearing: a day view lists only rows that have
-  // a bucket, so a carry that wrote the date alone would land out of sight.
-  // startTime is kept, as the web keeps it for a one-item carry.
-  const updates: Partial<Task> = {
-    startDate: body.date,
-    timeBucket: (row.time_bucket ?? 'anytime') as Task['timeBucket'],
   };
   await updateItem(id, type, updates, undefined, client);
   return ok();
@@ -996,19 +1176,61 @@ async function pause(ctx: WriteContext, body: IntentBody<'pause'>): Promise<Resp
  * `repeat`, the Repeat chip, is the dialog's save over the keys sent
  * (repeatEditPatch): all three keys whenever any moved, never the date, the
  * status or the streak. Then `demoteRoles`.
+ *
+ * `project`, the project chip, is the bulk Move to project's write
+ * (`projectRefilePatch`) for the project the route reads first: its own name
+ * and id, and a parked task released from the block it no longer belongs to;
+ * nothing when the item is already there by folded name and id. A project
+ * missing, trashed or another user's is `project_gone`.
  */
 async function edit(
   ctx: WriteContext,
-  body: IntentBody<'title' | 'notes' | 'priority' | 'timesPerDay' | 'reminder' | 'time' | 'repeat'>,
+  body: IntentBody<'title' | 'notes' | 'priority' | 'timesPerDay' | 'reminder' | 'time' | 'repeat' | 'project'>,
 ): Promise<Response> {
   const { client, id, type, config, row } = ctx;
   const shape = editShapeFromRow(row);
   const refusal = editRefusal(shape, body, config);
   if (refusal) return refused(refusal.code, refusal.status);
-  const patch = editPatch(shape, body, config);
-  if (Object.keys(patch).length > 0) await updateItem(id, type, patch, undefined, client);
+  let project: { id: string; name: string } | null | undefined;
+  if (body.action === 'project') {
+    const target = await projectTarget(ctx, body.projectId);
+    if (target === 'gone') return refused('project_gone', 409);
+    project = target;
+  }
+  const patch = editPatch(shape, body, config, { project });
+  if (Object.keys(patch).length > 0) {
+    try {
+      await updateItem(id, type, patch, undefined, client);
+    } catch (err) {
+      // items.project_id references projects: one purged between the read and this write.
+      if (body.action === 'project' && errorCode(err) === '23503') return refused('project_gone', 409);
+      throw err;
+    }
+  }
   if (body.action === 'repeat') await demoteRoles(ctx);
   return ok();
+}
+
+/**
+ * The project a `project` edit names, read live under RLS: null for No project, 'gone' for one
+ * that is missing, in the Trash or another user's (all three read as no row). Its own name is what
+ * the item is filed under, as the web's pickers file it.
+ */
+async function projectTarget(
+  ctx: WriteContext,
+  projectId: string | null,
+): Promise<{ id: string; name: string } | null | 'gone'> {
+  if (projectId === null) return null;
+  const { data, error } = await ctx.client
+    .from('projects')
+    .select('id, name')
+    .eq('id', projectId)
+    .eq('user_id', ctx.userId)
+    .is('deleted_at', null)
+    .maybeSingle();
+  if (error) throw error;
+  const found = data as { id: string; name: string } | null;
+  return found ? { id: found.id, name: found.name } : 'gone';
 }
 
 /**
@@ -1117,7 +1339,47 @@ async function resetStreak(ctx: WriteContext): Promise<Response> {
   if (refusal) return refused(refusal.code, refusal.status);
   const patch = resetStreakPatch(editShapeFromRow(row));
   if (Object.keys(patch).length === 0) return ok();
-  await updateItem(id, type, patch, undefined, client);
+  await updateItem(id, type, patch, undefined, client, ctx.ownerScoped ? { ownerId: ctx.userId } : undefined);
+  return ok();
+}
+
+/**
+ * `collect`: join or leave one routine or season for one item, the end list
+ * the web's routine and season chips (item-dialog.tsx toggleRoutine /
+ * toggleSeason, through updateRoutine / updateSeason) and the bulk bar's Add
+ * to / Remove from (the store's setItemsCollected) both write. One membership
+ * row added or removed (lib/db.ts addContainerMember / removeContainerMember),
+ * never the container's whole list, so a write from another device in between
+ * is kept. An add puts the item last in a routine's order. Already so is 200
+ * with nothing written. No webhook and no item_events row, as the browser's
+ * membership writes have none.
+ *
+ * A routine or season in the Trash is `container_gone`, as one that is missing
+ * or another user's: the web's chip lists only live ones, and a trashed one's
+ * members come back with it on a restore (its join rows survive a soft
+ * delete), so writing into it would change what a restore brings back with
+ * nothing showing it.
+ */
+async function collect(ctx: WriteContext, body: IntentBody<'collect'>): Promise<Response> {
+  const { client, userId, id, row } = ctx;
+  if (!isCollectible(capabilityShape(row))) return refused('not_collectible', 400);
+  const { data, error } = await client
+    .from(body.kind === 'routine' ? 'routines' : 'seasons')
+    .select('id')
+    .eq('id', body.containerId)
+    .eq('user_id', userId)
+    .is('deleted_at', null)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return refused('container_gone', 409);
+  try {
+    if (body.member) await addContainerMember(userId, body.kind, body.containerId, id, client);
+    else await removeContainerMember(userId, body.kind, body.containerId, id, client);
+  } catch (err) {
+    // The join rows reference the container: one purged between the read and this write.
+    if (errorCode(err) === '23503') return refused('container_gone', 409);
+    throw err;
+  }
   return ok();
 }
 
@@ -1203,10 +1465,11 @@ function isTimeZone(zone: string): boolean {
 }
 
 /**
- * The zone a pause resolves "today" in: the user's stored zone, else the
- * device's, else UTC. That is the rule the phone uses to say "today", so the
- * resume day it shows is the one written. Each candidate counts only if Intl
- * knows it, so a junk value falls through rather than throwing mid-write.
+ * The zone a pause resolves "today" in, and a snooze's day gate is held in:
+ * the user's stored zone, else the device's, else UTC. That is the rule the
+ * phone uses to say "today", so the resume day it shows is the one written.
+ * Each candidate counts only if Intl knows it, so a junk value falls through
+ * rather than throwing mid-write.
  *
  * A failed read throws, unlike the agent API's silent UTC: the phone retries a
  * failed write, and a pause resolved in the wrong zone is a wrong write.

@@ -2,6 +2,7 @@
 *.xcodeproj/
 *.xcworkspace/
 Dsul/Info.plist
+Dsul/Dsul.entitlements
 # Build output
 build/
 DerivedData/

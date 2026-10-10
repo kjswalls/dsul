@@ -40,12 +40,26 @@ targets:
           - CFBundleURLName: app.dsul.ios.auth
             CFBundleURLSchemes:
               - app.dsul.ios
+        # Phase 2c (memory/plans/reminders-platforms.md §5.3): a background
+        # refresh re-plans the iPhone's notifications while dsul isn't
+        # opened (BackgroundRefresh.swift). No `remote-notification` and no
+        # aps-environment until push (Phase 3); CI stays unsigned.
+        UIBackgroundModes:
+          - fetch
+        BGTaskSchedulerPermittedIdentifiers:
+          - app.dsul.ios.reconcile
         UTExportedTypeDeclarations:
           - UTTypeIdentifier: app.dsul.item-ref
             UTTypeDescription: dsul item reference
             UTTypeConformsTo:
               - public.data
             UTTypeTagSpecification: {}
+    # Sign in with Apple (memory/plans/sign-in-with-apple.md). XcodeGen writes
+    # this file on every generate and points CODE_SIGN_ENTITLEMENTS at it.
+    entitlements:
+      path: Dsul/Dsul.entitlements
+      properties:
+        com.apple.developer.applesignin: [Default]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.dsul.ios

@@ -1,0 +1,16 @@
+{
+  "userId": "6f1c2a9e-3b4d-4e5f-8a6b-7c8d9e0f1a2b",
+  "email": "kirby@example.com",
+  "appleIds": [
+    "001234.dsul.0001"
+  ],
+  "appleRevocable": true,
+  "beeminder": true,
+  "ledger": true,
+  "openclaw": false,
+  "keyServices": [
+    "Beeminder",
+    "Twilio"
+  ],
+  "modelProviderName": "OpenAI"
+}

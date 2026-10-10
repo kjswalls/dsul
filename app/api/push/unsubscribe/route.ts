@@ -1,28 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { releaseWebPushToken } from '@/lib/devices/registry';
+import { answer, badRequest, isWebPushEndpoint, readJson } from '@/lib/devices/routes';
 import { createClient } from '@/lib/supabase-server';
+import { createServiceClient } from '@/lib/supabase-service';
 
 /**
- * POST /api/push/unsubscribe
+ * POST /api/push/unsubscribe — the pre-registry way out, kept for ONE release.
  *
- * Removes a push subscription for the authenticated user.
- * Body: { endpoint: string }
+ * Body: { endpoint }. The same release as /api/devices/release's token form,
+ * for a page loaded from a build before the registry. Still asks for a session,
+ * as it always did.
  */
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const { endpoint } = await req.json();
-  if (!endpoint) {
-    return NextResponse.json({ error: 'endpoint is required' }, { status: 400 });
-  }
+  const json = await readJson(req);
+  if (!json.ok) return badRequest('invalid JSON');
+  const { endpoint } = (json.body ?? {}) as Record<string, unknown>;
+  if (!isWebPushEndpoint(endpoint)) return badRequest('endpoint is required');
 
-  const { error } = await supabase
-    .from('push_subscriptions')
-    .delete()
-    .eq('user_id', user.id)
-    .eq('endpoint', endpoint);
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true });
+  return answer(await releaseWebPushToken(createServiceClient(), endpoint), 'push/unsubscribe');
 }

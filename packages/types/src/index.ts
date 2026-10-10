@@ -1,6 +1,7 @@
 // Schemas (Zod) — use for runtime validation
 export {
   PrioritySchema,
+  ItemSizeSchema,
   TimeBucketSchema,
   TimeOfDaySchema,
   TaskStatusSchema,
@@ -40,6 +41,14 @@ export {
   ProposalOperationSchema,
   ProposalSchema,
   ProposalDraftSchema,
+  DevicePlatformSchema,
+  DeviceTransportSchema,
+  DeviceDeliverySchema,
+  DeviceFormSchema,
+  DeviceSendKindSchema,
+  DevicePrefsSchema,
+  DeviceRegistrationSchema,
+  DeviceSchema,
 } from './schemas.js'
 
 // Schema-derived field lists (values, not types)
@@ -57,6 +66,7 @@ export {
 import { z } from 'zod'
 import {
   PrioritySchema,
+  ItemSizeSchema,
   TimeBucketSchema,
   TaskStatusSchema,
   HabitStatusSchema,
@@ -85,9 +95,18 @@ import {
   ProposalOperationSchema,
   ProposalSchema,
   ProposalDraftSchema,
+  DevicePlatformSchema,
+  DeviceTransportSchema,
+  DeviceDeliverySchema,
+  DeviceFormSchema,
+  DeviceSendKindSchema,
+  DevicePrefsSchema,
+  DeviceRegistrationSchema,
+  DeviceSchema,
 } from './schemas.js'
 
 export type Priority         = z.infer<typeof PrioritySchema>
+export type ItemSize         = z.infer<typeof ItemSizeSchema>
 export type TimeBucket       = z.infer<typeof TimeBucketSchema>
 export type TaskStatus       = z.infer<typeof TaskStatusSchema>
 export type HabitStatus      = z.infer<typeof HabitStatusSchema>
@@ -121,3 +140,11 @@ export type ProposalUpdateOp      = z.infer<typeof ProposalUpdateOpSchema>
 export type ProposalOperation     = z.infer<typeof ProposalOperationSchema>
 export type Proposal              = z.infer<typeof ProposalSchema>
 export type ProposalDraft         = z.infer<typeof ProposalDraftSchema>
+export type DevicePlatform        = z.infer<typeof DevicePlatformSchema>
+export type DeviceTransport       = z.infer<typeof DeviceTransportSchema>
+export type DeviceDelivery        = z.infer<typeof DeviceDeliverySchema>
+export type DeviceForm            = z.infer<typeof DeviceFormSchema>
+export type DeviceSendKind        = z.infer<typeof DeviceSendKindSchema>
+export type DevicePrefs           = z.infer<typeof DevicePrefsSchema>
+export type DeviceRegistration    = z.infer<typeof DeviceRegistrationSchema>
+export type Device                = z.infer<typeof DeviceSchema>

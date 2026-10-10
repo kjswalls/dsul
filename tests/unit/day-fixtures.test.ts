@@ -37,8 +37,20 @@ import { canMoveToNextDay, canReschedule, formatTargetDay, nextDayLabel, nextDay
 import { reminderNeedsDate } from '@/lib/bulk-edit';
 import { cadenceLabel } from '@/lib/cadence';
 import { membershipSummary } from '@/lib/item-bands';
-import { occursOn } from '@/lib/reminders/due';
-import { formatCueTime, type TimeFormat } from '@/lib/reminders/copy';
+import {
+  dueReminders,
+  hasMatured,
+  isWithinWindow,
+  lastCallItems,
+  minutesOfDay,
+  occursOn,
+  REMINDER_GRACE_MINUTES,
+  sentKeyFor,
+  streakOf,
+  wantsDoingOn,
+} from '@/lib/reminders/due';
+import { EOD_COPY, formatCueTime, lastCallCopy, reminderCopy, streakPhrase, type TimeFormat } from '@/lib/reminders/copy';
+import { NEVER_SCOLDS } from './support/copy-contract';
 import { isCompletedOnDate } from '@/lib/recurrence';
 import { projectItems } from '@/lib/planner-store';
 import { useExtensionsStore } from '@/lib/extensions-store';
@@ -59,11 +71,15 @@ import type { HabitItem, Item, Project, Routine, Season, Task } from '@/lib/plan
  * gates and labels (lib/item-verbs.ts), the carry (lib/row-moves.ts), the
  * occurrence (lib/reminders/due.ts `occursOn`), the pause write
  * (lib/active.ts `resolvePauseWrite`), the registry capabilities and the chip
- * copy. Every case is built here, run through the real TS, and written with
- * its answer to tests/fixtures/day/*.json. DsulCore's *FixtureTests.swift
- * (ios/DsulCore/Tests/DsulCoreTests/) read the same files and assert the Swift
- * port answers identically. The sheet's optimistic writes, which need the real
- * store, are in tests/unit/verb-writes-fixtures.test.ts (verb-writes.json).
+ * copy; and, for the phone's local reminders, the rest of
+ * lib/reminders/due.ts (due.json) and lib/reminders/copy.ts with the copy
+ * contract's pattern (copy.json). Every case is built here, run through the
+ * real TS, and written with its answer to tests/fixtures/day/*.json.
+ * DsulCore's *FixtureTests.swift (ios/DsulCore/Tests/DsulCoreTests/) read the
+ * same files and assert the Swift port answers identically. The sheet's optimistic writes, which need the real
+ * store, are in tests/unit/verb-writes-fixtures.test.ts (verb-writes.json);
+ * the notification plan (lib/reminders/plan.ts) is in
+ * tests/unit/notification-plan-fixtures.test.ts (notification-plan.json).
  *
  * This test fails when a committed file no longer matches what the TS says.
  * Regenerate with:
@@ -1267,6 +1283,13 @@ type TypeCaps = {
    * frequency_not_allowed). More than one is what lets the chip edit.
    */
   allowedFrequencies: string[];
+  /**
+   * `containerKind`: the classify kind's registry name ('projects'), or null for a type with no
+   * project axis (lib/item-edit.ts no_project). The project chip edits only where it is set.
+   */
+  containerKind: string | null;
+  /** `containerRequired`: No project is refused (lib/item-edit.ts project_required). */
+  containerRequired: boolean;
   /** `form.titlePlaceholder`, the title field's empty prompt. */
   titlePlaceholder: string;
   /** The delete confirm's title (lib/item-verbs.ts deleteConfirmTitle). */
@@ -1341,6 +1364,8 @@ function buildCaps(): CapsFixture {
       hasNotes: c.fields.includes('notes'),
       hasDuration: c.fields.includes('duration'),
       allowedFrequencies: [...c.allowedFrequencies],
+      containerKind: c.containerKind,
+      containerRequired: c.containerRequired,
       titlePlaceholder: c.form.titlePlaceholder,
       deleteTitle: deleteConfirmTitle(c.label),
       deleteDescriptions: deleteDescriptions(c),
@@ -1432,6 +1457,397 @@ function buildChips(): ChipsFixture {
   return { membershipSummary: summaries, formatCueTime: cueTimes, formatDay: days };
 }
 
+// ── due.json ─────────────────────────────────────────────────────────────────
+
+type MinutesOfDayCase = { name: string; input: string | null; expected: number | null };
+type WindowCase = { name: string; target: number; now: number; grace?: number; expected: boolean };
+type WantsDoingCase = {
+  name: string;
+  timeZone: string;
+  item: Item;
+  routines: Routine[];
+  seasons: Season[];
+  dateStr: string;
+  expected: boolean;
+};
+/** One ScanRow: the item and the scan's bookkeeping beside it. */
+type DueRow = { item: Item; sentKey?: string; snoozeUntil?: string; snoozeDate?: string };
+type DueClock = {
+  dateStr: string;
+  nowMinutes: number;
+  nowIso: string;
+  nowMs: number;
+  graceMinutes?: number;
+  latestOpening?: number;
+};
+/** A candidate as ids and words: `anchor` is absent when there is none. */
+type DueCandidate = { itemId: string; at: string; anchor?: string; snoozed: boolean };
+type DueRemindersCase = { name: string; timeZone: string; rows: DueRow[]; clock: DueClock; expected: DueCandidate[] };
+type LastCallCase = { name: string; timeZone: string; items: Item[]; dateStr: string; expected: string[] };
+type StreakCase = { name: string; item: Item; expected: number };
+type MaturedCase = { name: string; snoozeUntil?: string; nowMs: number; expected: boolean };
+type SentKeyCase = { name: string; dateStr: string; at: string; expected: string };
+type DueFixture = {
+  graceMinutes: number;
+  minutesOfDay: MinutesOfDayCase[];
+  isWithinWindow: WindowCase[];
+  wantsDoingOn: WantsDoingCase[];
+  dueReminders: DueRemindersCase[];
+  lastCallItems: LastCallCase[];
+  streakOf: StreakCase[];
+  hasMatured: MaturedCase[];
+  sentKeyFor: SentKeyCase[];
+};
+
+/**
+ * Every section of lib/reminders/due.ts but occursOn, which occurs.json
+ * already holds: the cue's parser and window, "does this want doing", the
+ * scan's own question (dueReminders, transcribed from
+ * tests/unit/reminders-due.test.ts), what the last call names, and the
+ * snooze's maturity. The phone asks these to plan its cues and to re-check one
+ * at the last moment (`willPresent`).
+ */
+function buildDue(): DueFixture {
+  const D = '2026-08-10'; // a Monday
+  const SAT = '2026-08-15';
+  const NOW_ISO = '2026-08-10T12:00:00.000Z';
+  const NOW_MS = Date.parse(NOW_ISO);
+
+  const minutes: MinutesOfDayCase[] = (
+    [
+      ['midnight', '00:00'],
+      ['morning', '07:30'],
+      ['last minute', '23:59'],
+      ['no time', null],
+      ['empty', ''],
+      ['one-digit hour', '7:30'],
+      ['24:00 is not a time', '24:00'],
+      ['minute 60', '12:60'],
+      ['seconds are not HH:mm', '07:30:00'],
+      ['a word', 'noon'],
+    ] as [string, string | null][]
+  ).map(([name, input]) => ({ name, input, expected: minutesOfDay(input) }));
+
+  const windows: WindowCase[] = (
+    [
+      ['a minute before', 450, 449],
+      ['at the minute', 450, 450],
+      ['last minute of the grace', 450, 479],
+      ['grace over', 450, 480],
+      ['clamped, inside', 1430, 1439],
+      ['clamped, never wraps past midnight', 1430, 0],
+      ['clamped, five past midnight', 1430, 5],
+      ['a shorter grace, inside', 450, 459, 10],
+      ['a shorter grace, over', 450, 460, 10],
+    ] as [string, number, number, number?][]
+  ).map(([name, target, now, grace]) => ({
+    name,
+    target,
+    now,
+    ...(grace === undefined ? {} : { grace }),
+    expected: isWithinWindow(target, now, grace),
+  }));
+
+  const h1 = habit(901, 'vitamins');
+  const wants = (
+    [
+      ['untouched occurrence', h1],
+      ['done that day', habit(901, 'vitamins', { completedDates: [D] })],
+      ['skipped that day', habit(901, 'vitamins', { skippedDates: [D] })],
+      ['tallied once with no target', habit(901, 'vitamins', { dailyCounts: { [D]: 1 } })],
+      ['tallied below its target', habit(901, 'water', { timesPerDay: 3, dailyCounts: { [D]: 2 } })],
+      ['paused itself', habit(901, 'vitamins', { pausedAt: '2026-08-01T12:00:00Z', pausedUntil: '2026-09-01' })],
+      ['in a paused season', h1, [], [season('s-shelf', 'Shelf', { state: 'paused', itemIds: [uid(901)] })]],
+      [
+        'a second, live container keeps it',
+        h1,
+        [
+          routine('r-off', 'Morning', [uid(901)], { pausedAt: '2026-08-01T12:00:00Z' }),
+          routine('r-on', 'Always', [uid(901)]),
+        ],
+      ],
+      ['weekday habit on a Saturday', habit(901, 'standup', { repeatFrequency: 'weekdays' }), [], [], SAT],
+      ['anchored recurring task with no start date', task(902, 'water plants', { repeatFrequency: 'daily' })],
+      ['recurring task before its start', task(902, 'water plants', { repeatFrequency: 'daily', startDate: '2026-08-11' })],
+      ['one-off on its day', task(903, 'file taxes', { startDate: D })],
+      ['one-off done', task(903, 'file taxes', { startDate: D, status: 'completed' })],
+    ] as [string, Item, Routine[]?, Season[]?, string?][]
+  ).map(([name, item, routines = [], seasons = [], dateStr = D]) => ({
+    name,
+    timeZone: NY,
+    item,
+    routines,
+    seasons,
+    dateStr,
+    expected: wantsDoingOn(item, dateStr, { userTimezone: NY, routines, seasons }),
+  }));
+
+  const clock = (nowMinutes: number, over: Partial<DueClock> = {}): DueClock => ({
+    dateStr: D,
+    nowMinutes,
+    nowIso: NOW_ISO,
+    nowMs: NOW_MS,
+    ...over,
+  });
+  const cue = (n: number, title: string, over: Record<string, unknown> = {}) =>
+    habit(n, title, { reminderTime: '07:30', ...over });
+  const due = (name: string, rows: DueRow[], c: DueClock): DueRemindersCase => ({
+    name,
+    timeZone: NY,
+    rows,
+    clock: c,
+    expected: dueReminders(rows, c, { userTimezone: NY }).map((r) => ({
+      itemId: r.item.id,
+      at: r.at,
+      ...(r.anchor === undefined ? {} : { anchor: r.anchor }),
+      snoozed: r.snoozed,
+    })),
+  });
+  const coarse = { latestOpening: 1435 };
+  const dueCases: DueRemindersCase[] = [
+    due('in its window', [{ item: cue(911, 'vitamins') }], clock(450)),
+    due('before its window', [{ item: cue(911, 'vitamins') }], clock(449)),
+    due('after its window', [{ item: cue(911, 'vitamins') }], clock(480)),
+    due('a shorter grace closes sooner', [{ item: cue(911, 'vitamins') }], clock(460, { graceMinutes: 10 })),
+    due('no cue set', [{ item: habit(911, 'vitamins') }], clock(450)),
+    due('a cue time that is not HH:mm', [{ item: cue(911, 'vitamins', { reminderTime: '7:30' }) }], clock(450)),
+    due('a coarse clock opens 23:58 at its last tick', [{ item: cue(911, 'late', { reminderTime: '23:58' }) }], clock(1435, coarse)),
+    due('a coarse clock, before its last tick', [{ item: cue(911, 'late', { reminderTime: '23:58' }) }], clock(1430, coarse)),
+    due(
+      'a coarse clock, claimed at 23:55 by its own time',
+      [{ item: cue(911, 'late', { reminderTime: '23:58' }), sentKey: `${D}T23:58` }],
+      clock(1438, coarse),
+    ),
+    due('a coarse clock opens an earlier cue at its own minute', [{ item: cue(911, 'late', { reminderTime: '23:50' }) }], clock(1425, coarse)),
+    due('a coarse clock, an earlier cue in its window', [{ item: cue(911, 'late', { reminderTime: '23:50' }) }], clock(1430, coarse)),
+    due('a clock that ticks every minute waits for 23:58', [{ item: cue(911, 'late', { reminderTime: '23:58' }) }], clock(1435)),
+    due('a clock that ticks every minute, at 23:58', [{ item: cue(911, 'late', { reminderTime: '23:58' }) }], clock(1438)),
+    due('already sent today', [{ item: cue(911, 'vitamins'), sentKey: `${D}T07:30` }], clock(450)),
+    due('sent yesterday', [{ item: cue(911, 'vitamins'), sentKey: '2026-08-09T07:30' }], clock(450)),
+    due('retimed the same day re-arms', [{ item: cue(911, 'vitamins', { reminderTime: '18:00' }), sentKey: `${D}T07:30` }], clock(1080)),
+    due('an unrelated edit does not re-arm', [{ item: cue(911, 'vitamins (renamed)'), sentKey: `${D}T07:30` }], clock(455)),
+    due('done today', [{ item: cue(911, 'vitamins', { completedDates: [D] }) }], clock(450)),
+    due('paused', [{ item: cue(911, 'vitamins', { pausedAt: '2026-08-01T12:00:00Z' }) }], clock(450)),
+    due(
+      'a matured snooze beats the stamp and the window',
+      [{ item: cue(911, 'vitamins'), sentKey: `${D}T07:30`, snoozeUntil: '2026-08-10T11:00:00.000Z', snoozeDate: D }],
+      clock(900),
+    ),
+    due(
+      'a matured snooze in the +00:00 form',
+      [{ item: cue(911, 'vitamins'), sentKey: `${D}T07:30`, snoozeUntil: '2026-08-10T11:00:00+00:00', snoozeDate: D }],
+      clock(900),
+    ),
+    due(
+      'a snooze not yet matured',
+      [{ item: cue(911, 'vitamins'), sentKey: `${D}T07:30`, snoozeUntil: '2026-08-10T13:00:00.000Z', snoozeDate: D }],
+      clock(900),
+    ),
+    due(
+      'a snooze for another day never fires',
+      [{ item: cue(911, 'vitamins'), sentKey: '2026-08-09T07:30', snoozeUntil: '2026-08-09T12:00:00.000Z', snoozeDate: '2026-08-09' }],
+      clock(5),
+    ),
+    due(
+      'a snooze on an item with no cue of its own',
+      [{ item: habit(911, 'vitamins'), snoozeUntil: '2026-08-10T11:00:00.000Z', snoozeDate: D }],
+      clock(900),
+    ),
+    due(
+      'a snooze does not resurrect what was done meanwhile',
+      [{ item: cue(911, 'vitamins', { completedDates: [D] }), sentKey: `${D}T07:30`, snoozeUntil: '2026-08-10T11:00:00.000Z', snoozeDate: D }],
+      clock(900),
+    ),
+    due('never a subtask', [{ item: task(912, 'sub', { reminderTime: '07:30', startDate: D, parentItemId: uid(913) }) }], clock(450)),
+    due(
+      'earliest cue first',
+      [{ item: cue(914, 'b', { reminderTime: '07:20' }) }, { item: cue(915, 'a', { reminderTime: '07:00' }) }],
+      clock(445),
+    ),
+    due(
+      'the anchor carried, a blank one dropped',
+      [
+        { item: cue(916, 'with', { reminderAnchor: 'I pour my coffee' }) },
+        { item: cue(917, 'blank', { reminderAnchor: '' }) },
+      ],
+      clock(450),
+    ),
+    due('a one-off task on its day', [{ item: task(918, 'file taxes', { reminderTime: '07:30', startDate: D }) }], clock(450)),
+  ];
+
+  const lastCalls: LastCallCase[] = (
+    [
+      ['only what still wants doing', [habit(921, 'open'), habit(922, 'done', { completedDates: [D] })]],
+      ['tasks are left out', [task(923, 'taxes', { startDate: D }), habit(924, 'stretch')]],
+      [
+        'biggest streak first',
+        [habit(925, 'small', { streak: 2 }), habit(926, 'big', { streak: 40 }), habit(927, 'mid', { streak: 9 })],
+      ],
+      ['no cue needed', [habit(928, 'read')]],
+      ['never a paused one', [habit(929, 'read', { pausedAt: '2026-08-01T12:00:00Z' })]],
+    ] as [string, Item[]][]
+  ).map(([name, items]) => ({
+    name,
+    timeZone: NY,
+    items,
+    dateStr: D,
+    expected: lastCallItems(items, D, { userTimezone: NY }).map((i) => i.id),
+  }));
+
+  const streaks: StreakCase[] = (
+    [
+      ['a task has none', task(931, 'taxes')],
+      ['a habit at zero', habit(932, 'read')],
+      ['a habit at twelve', habit(932, 'read', { streak: 12 })],
+    ] as [string, Item][]
+  ).map(([name, item]) => ({ name, item, expected: streakOf(item) }));
+
+  const matured: MaturedCase[] = (
+    [
+      ['a second ago', '2026-08-10T11:59:59.000Z'],
+      ['a second to go', '2026-08-10T12:00:01.000Z'],
+      ['exactly now', '2026-08-10T12:00:00.000Z'],
+      ['+00:00, matured', '2026-08-10T11:00:00+00:00'],
+      ['+00:00, not yet', '2026-08-10T13:00:00+00:00'],
+      ['+03:00 is earlier than its digits', '2026-08-10T14:00:00+03:00'],
+      ['microseconds', '2026-08-10T11:59:59.999999+00:00'],
+      ['unreadable', 'whenever'],
+      ['absent', undefined],
+    ] as [string, string | undefined][]
+  ).map(([name, snoozeUntil]) => ({
+    name,
+    ...(snoozeUntil === undefined ? {} : { snoozeUntil }),
+    nowMs: NOW_MS,
+    expected: hasMatured(snoozeUntil, NOW_MS),
+  }));
+
+  return {
+    graceMinutes: REMINDER_GRACE_MINUTES,
+    minutesOfDay: minutes,
+    isWithinWindow: windows,
+    wantsDoingOn: wants,
+    dueReminders: dueCases,
+    lastCallItems: lastCalls,
+    streakOf: streaks,
+    hasMatured: matured,
+    sentKeyFor: [
+      { name: 'the day and the time', dateStr: D, at: '07:30', expected: sentKeyFor(D, '07:30') },
+      { name: 'just before midnight', dateStr: '2026-12-31', at: '23:59', expected: sentKeyFor('2026-12-31', '23:59') },
+    ],
+  };
+}
+
+// ── copy.json ────────────────────────────────────────────────────────────────
+
+type ContractCase = { name: string; line: string; scolds: boolean };
+type StreakPhraseCase = { name: string; streak: number; expected: string };
+type Copy = { title: string; body: string };
+type ReminderCopyCase = {
+  name: string;
+  item: Item;
+  at: string;
+  anchor?: string;
+  snoozed: boolean;
+  timeFormat: TimeFormat;
+  expected: Copy;
+};
+type LastCallCopyCase = { name: string; items: Item[]; expected: Copy | null };
+type CopyFixture = {
+  /** NEVER_SCOLDS (tests/unit/support/copy-contract.ts): one pattern, case-insensitive. */
+  neverScolds: { source: string; flags: string };
+  contract: ContractCase[];
+  streakPhrase: StreakPhraseCase[];
+  reminderCopy: ReminderCopyCase[];
+  lastCallCopy: LastCallCopyCase[];
+  eodCopy: Copy;
+};
+
+/**
+ * lib/reminders/copy.ts: the words every notification says, and the copy
+ * contract as one regular expression, so the phone can hold its own strings
+ * to it (NSRegularExpression, case-insensitive). `contract` pins what the
+ * pattern catches and what it lets through, its known false positive included,
+ * so a port whose engine reads the pattern differently fails here.
+ */
+function buildCopy(): CopyFixture {
+  const vitamins = (over: Record<string, unknown> = {}) => habit(941, 'Vitamins', over);
+  const reminder = (
+    name: string,
+    item: Item,
+    at: string,
+    timeFormat: TimeFormat,
+    over: { anchor?: string; snoozed?: boolean } = {}
+  ): ReminderCopyCase => {
+    const candidate = { item, at, anchor: over.anchor, snoozed: over.snoozed ?? false };
+    return {
+      name,
+      item,
+      at,
+      ...(over.anchor === undefined ? {} : { anchor: over.anchor }),
+      snoozed: candidate.snoozed,
+      timeFormat,
+      expected: reminderCopy(candidate, timeFormat),
+    };
+  };
+  const named = (titles: string[], streaks: number[] = []) =>
+    titles.map((title, i) => habit(951 + i, title, { streak: streaks[i] ?? 0 }));
+
+  return {
+    neverScolds: { source: NEVER_SCOLDS.source, flags: NEVER_SCOLDS.flags },
+    contract: (
+      [
+        ['an item name', 'Vitamins'],
+        ['a time and a streak', '7:30 am · 12 days'],
+        ['the last call', 'Reading and Stretch · 12 days riding on it'],
+        ['the review', "How'd today go?"],
+        ['the review title', 'End of day 🌙'],
+        ['the failure, named', "You still haven't taken your vitamins"],
+        ['the failure, curly apostrophe', 'You still haven’t stretched'],
+        ['you did not', "You didn't read today"],
+        ['failed', 'Failed again'],
+        ['behind', 'Falling behind on water'],
+        ['should have', 'You should have stretched'],
+        ['letting someone down', 'Don’t let the team down'],
+        ['disappointment', 'We are disappointed'],
+        ['a threat', 'Lose your streak tonight'],
+        ['do not, upper case', "DON'T STOP NOW"],
+        ['an exclamation', 'Vitamins!'],
+        ['a false positive the contract accepts', 'Close the rings'],
+      ] as [string, string][]
+    ).map(([name, line]) => ({ name, line, scolds: NEVER_SCOLDS.test(line) })),
+    streakPhrase: [0, 1, 2, 12].map((streak) => ({
+      name: `${streak}`,
+      streak,
+      expected: streakPhrase(streak),
+    })),
+    reminderCopy: [
+      reminder('time alone, 12h', vitamins(), '07:30', '12h'),
+      reminder('time alone, 24h', vitamins(), '07:30', '24h'),
+      reminder('half past midnight, 12h', vitamins(), '00:30', '12h'),
+      reminder('noon, 12h', vitamins(), '12:00', '12h'),
+      reminder('a streak follows the time', vitamins({ streak: 12 }), '07:30', '12h'),
+      reminder('a streak of one', vitamins({ streak: 1 }), '19:05', '24h'),
+      reminder('the anchor leads', vitamins(), '07:30', '12h', { anchor: 'I pour my coffee' }),
+      reminder('the anchor and a streak', vitamins({ streak: 3 }), '07:30', '12h', { anchor: 'I pour my coffee' }),
+      reminder('a snooze with no cue of its own', vitamins({ streak: 4 }), '', '12h', { snoozed: true }),
+      reminder('a snooze with no cue and no streak', vitamins(), '', '12h', { snoozed: true }),
+      reminder('a task has no streak', task(942, 'File taxes'), '09:00', '12h'),
+    ],
+    lastCallCopy: (
+      [
+        ['nothing open', []],
+        ['one', named(['Reading'])],
+        ['two', named(['Reading', 'Stretch'])],
+        ['two with a streak', named(['Reading', 'Stretch'], [12])],
+        ['three', named(['A', 'B', 'C'])],
+        ['five counts the rest', named(['A', 'B', 'C', 'D', 'E'])],
+        ['a streak of one', named(['Reading'], [1])],
+      ] as [string, Item[]][]
+    ).map(([name, items]) => ({ name, items, expected: lastCallCopy(items) })),
+    eodCopy: { ...EOD_COPY },
+  };
+}
+
 // ── Writing and checking ─────────────────────────────────────────────────────
 
 const FIXTURES: Record<string, () => unknown> = {
@@ -1448,6 +1864,8 @@ const FIXTURES: Record<string, () => unknown> = {
   occurs: buildOccurs,
   caps: buildCaps,
   chips: buildChips,
+  due: buildDue,
+  copy: buildCopy,
 };
 
 const serialize = (f: unknown) => JSON.stringify(f, null, 2) + '\n';
@@ -1572,5 +1990,31 @@ describe('day fixtures shared with DsulCore', () => {
 
     const chips = generated.chips as ChipsFixture;
     expect(chips.membershipSummary.some((c) => c.expected === null)).toBe(true);
+  });
+
+  it('the reminder cases exercise both answers, and every word keeps the contract', () => {
+    const both = new Set([true, false]);
+    const due = generated.due as DueFixture;
+    expect(new Set(due.minutesOfDay.map((c) => c.expected === null))).toEqual(both);
+    expect(due.minutesOfDay.find((c) => c.input === '24:00')?.expected).toBeNull();
+    expect(new Set(due.isWithinWindow.map((c) => c.expected))).toEqual(both);
+    expect(due.isWithinWindow.find((c) => c.target === 1430 && c.now === 0)?.expected).toBe(false);
+    expect(new Set(due.wantsDoingOn.map((c) => c.expected))).toEqual(both);
+    expect(new Set(due.hasMatured.map((c) => c.expected))).toEqual(both);
+    expect(due.dueReminders.some((c) => c.expected.length === 0)).toBe(true);
+    expect(due.dueReminders.some((c) => c.expected.length > 1)).toBe(true);
+    expect(due.dueReminders.some((c) => c.expected.some((e) => e.snoozed))).toBe(true);
+    expect(due.dueReminders.some((c) => c.expected.some((e) => e.anchor !== undefined))).toBe(true);
+
+    const copy = generated.copy as CopyFixture;
+    expect(new Set(copy.contract.map((c) => c.scolds))).toEqual(both);
+    expect(copy.lastCallCopy.some((c) => c.expected === null)).toBe(true);
+    const lines = [
+      ...copy.reminderCopy.flatMap((c) => [c.expected.title, c.expected.body]),
+      ...copy.lastCallCopy.flatMap((c) => (c.expected ? [c.expected.title, c.expected.body] : [])),
+      copy.eodCopy.title,
+      copy.eodCopy.body,
+    ];
+    for (const line of lines) expect(line, line).not.toMatch(NEVER_SCOLDS);
   });
 });

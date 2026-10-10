@@ -1,0 +1,566 @@
+{
+  "neverScolds": {
+    "source": "still haven['’]t|you didn['’]t|failed|behind|should have|let .* down|disappoint|lose|don['’]t|!",
+    "flags": "i"
+  },
+  "contract": [
+    {
+      "name": "an item name",
+      "line": "Vitamins",
+      "scolds": false
+    },
+    {
+      "name": "a time and a streak",
+      "line": "7:30 am · 12 days",
+      "scolds": false
+    },
+    {
+      "name": "the last call",
+      "line": "Reading and Stretch · 12 days riding on it",
+      "scolds": false
+    },
+    {
+      "name": "the review",
+      "line": "How'd today go?",
+      "scolds": false
+    },
+    {
+      "name": "the review title",
+      "line": "End of day 🌙",
+      "scolds": false
+    },
+    {
+      "name": "the failure, named",
+      "line": "You still haven't taken your vitamins",
+      "scolds": true
+    },
+    {
+      "name": "the failure, curly apostrophe",
+      "line": "You still haven’t stretched",
+      "scolds": true
+    },
+    {
+      "name": "you did not",
+      "line": "You didn't read today",
+      "scolds": true
+    },
+    {
+      "name": "failed",
+      "line": "Failed again",
+      "scolds": true
+    },
+    {
+      "name": "behind",
+      "line": "Falling behind on water",
+      "scolds": true
+    },
+    {
+      "name": "should have",
+      "line": "You should have stretched",
+      "scolds": true
+    },
+    {
+      "name": "letting someone down",
+      "line": "Don’t let the team down",
+      "scolds": true
+    },
+    {
+      "name": "disappointment",
+      "line": "We are disappointed",
+      "scolds": true
+    },
+    {
+      "name": "a threat",
+      "line": "Lose your streak tonight",
+      "scolds": true
+    },
+    {
+      "name": "do not, upper case",
+      "line": "DON'T STOP NOW",
+      "scolds": true
+    },
+    {
+      "name": "an exclamation",
+      "line": "Vitamins!",
+      "scolds": true
+    },
+    {
+      "name": "a false positive the contract accepts",
+      "line": "Close the rings",
+      "scolds": true
+    }
+  ],
+  "streakPhrase": [
+    {
+      "name": "0",
+      "streak": 0,
+      "expected": "0 days"
+    },
+    {
+      "name": "1",
+      "streak": 1,
+      "expected": "1 day"
+    },
+    {
+      "name": "2",
+      "streak": 2,
+      "expected": "2 days"
+    },
+    {
+      "name": "12",
+      "streak": 12,
+      "expected": "12 days"
+    }
+  ],
+  "reminderCopy": [
+    {
+      "name": "time alone, 12h",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000003ad",
+        "title": "Vitamins",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "at": "07:30",
+      "snoozed": false,
+      "timeFormat": "12h",
+      "expected": {
+        "title": "Vitamins",
+        "body": "7:30 am"
+      }
+    },
+    {
+      "name": "time alone, 24h",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000003ad",
+        "title": "Vitamins",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "at": "07:30",
+      "snoozed": false,
+      "timeFormat": "24h",
+      "expected": {
+        "title": "Vitamins",
+        "body": "07:30"
+      }
+    },
+    {
+      "name": "half past midnight, 12h",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000003ad",
+        "title": "Vitamins",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "at": "00:30",
+      "snoozed": false,
+      "timeFormat": "12h",
+      "expected": {
+        "title": "Vitamins",
+        "body": "12:30 am"
+      }
+    },
+    {
+      "name": "noon, 12h",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000003ad",
+        "title": "Vitamins",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "at": "12:00",
+      "snoozed": false,
+      "timeFormat": "12h",
+      "expected": {
+        "title": "Vitamins",
+        "body": "12:00 pm"
+      }
+    },
+    {
+      "name": "a streak follows the time",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000003ad",
+        "title": "Vitamins",
+        "streak": 12,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "at": "07:30",
+      "snoozed": false,
+      "timeFormat": "12h",
+      "expected": {
+        "title": "Vitamins",
+        "body": "7:30 am · 12 days"
+      }
+    },
+    {
+      "name": "a streak of one",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000003ad",
+        "title": "Vitamins",
+        "streak": 1,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "at": "19:05",
+      "snoozed": false,
+      "timeFormat": "24h",
+      "expected": {
+        "title": "Vitamins",
+        "body": "19:05 · 1 day"
+      }
+    },
+    {
+      "name": "the anchor leads",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000003ad",
+        "title": "Vitamins",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "at": "07:30",
+      "anchor": "I pour my coffee",
+      "snoozed": false,
+      "timeFormat": "12h",
+      "expected": {
+        "title": "Vitamins",
+        "body": "I pour my coffee"
+      }
+    },
+    {
+      "name": "the anchor and a streak",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000003ad",
+        "title": "Vitamins",
+        "streak": 3,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "at": "07:30",
+      "anchor": "I pour my coffee",
+      "snoozed": false,
+      "timeFormat": "12h",
+      "expected": {
+        "title": "Vitamins",
+        "body": "I pour my coffee · 3 days"
+      }
+    },
+    {
+      "name": "a snooze with no cue of its own",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000003ad",
+        "title": "Vitamins",
+        "streak": 4,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "at": "",
+      "snoozed": true,
+      "timeFormat": "12h",
+      "expected": {
+        "title": "Vitamins",
+        "body": "4 days"
+      }
+    },
+    {
+      "name": "a snooze with no cue and no streak",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000003ad",
+        "title": "Vitamins",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "at": "",
+      "snoozed": true,
+      "timeFormat": "12h",
+      "expected": {
+        "title": "Vitamins",
+        "body": ""
+      }
+    },
+    {
+      "name": "a task has no streak",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000003ae",
+        "title": "File taxes",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0
+      },
+      "at": "09:00",
+      "snoozed": false,
+      "timeFormat": "12h",
+      "expected": {
+        "title": "File taxes",
+        "body": "9:00 am"
+      }
+    }
+  ],
+  "lastCallCopy": [
+    {
+      "name": "nothing open",
+      "items": [],
+      "expected": null
+    },
+    {
+      "name": "one",
+      "items": [
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-0000000003b7",
+          "title": "Reading",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        }
+      ],
+      "expected": {
+        "title": "Still open today",
+        "body": "Reading"
+      }
+    },
+    {
+      "name": "two",
+      "items": [
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-0000000003b7",
+          "title": "Reading",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-0000000003b8",
+          "title": "Stretch",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        }
+      ],
+      "expected": {
+        "title": "2 still open",
+        "body": "Reading and Stretch"
+      }
+    },
+    {
+      "name": "two with a streak",
+      "items": [
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-0000000003b7",
+          "title": "Reading",
+          "streak": 12,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-0000000003b8",
+          "title": "Stretch",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        }
+      ],
+      "expected": {
+        "title": "2 still open",
+        "body": "Reading and Stretch · 12 days riding on it"
+      }
+    },
+    {
+      "name": "three",
+      "items": [
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-0000000003b7",
+          "title": "A",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-0000000003b8",
+          "title": "B",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-0000000003b9",
+          "title": "C",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        }
+      ],
+      "expected": {
+        "title": "3 still open",
+        "body": "A, B and C"
+      }
+    },
+    {
+      "name": "five counts the rest",
+      "items": [
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-0000000003b7",
+          "title": "A",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-0000000003b8",
+          "title": "B",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-0000000003b9",
+          "title": "C",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-0000000003ba",
+          "title": "D",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-0000000003bb",
+          "title": "E",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        }
+      ],
+      "expected": {
+        "title": "5 still open",
+        "body": "A, B, C and 2 more"
+      }
+    },
+    {
+      "name": "a streak of one",
+      "items": [
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-0000000003b7",
+          "title": "Reading",
+          "streak": 1,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        }
+      ],
+      "expected": {
+        "title": "Still open today",
+        "body": "Reading · 1 day riding on it"
+      }
+    }
+  ],
+  "eodCopy": {
+    "title": "End of day 🌙",
+    "body": "How'd today go?"
+  }
+}

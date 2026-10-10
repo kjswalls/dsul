@@ -6,6 +6,7 @@ import { openEditFor, setEditItemInterceptor, useUIStore } from './ui-store';
 import { askOpenOf, useSidebarStore } from './sidebar-store';
 import { getAICapabilities, useAIConnectionStore } from './ai-connection-store';
 import { useAISettingsStore } from './ai-settings-store';
+import { useMobileNavStore } from './mobile-nav-store';
 import { useViewStore } from './view-store';
 import type { Item, Task } from './planner-types';
 
@@ -35,6 +36,11 @@ import type { Item, Task } from './planner-types';
  * item is a view too (`{kind:'item'}`): while the tab is mounted every
  * `openEditFor` pushes over Ask instead of opening the drawer.
  *
+ * A MOD'S PANEL (memory/plans/mods.md, build order 9) is the column's third
+ * occupant: `modPanel`, set only by an explicit open (lib/mods/ui/open-panel.ts)
+ * and memory only, so it is its own summon. It never writes Ask's `summoned`
+ * or `askOpen`, and closing it leaves both as they were.
+ *
  * Client-safe (tests/unit/ai-server-boundary.test.ts).
  */
 
@@ -56,27 +62,50 @@ export const PANEL_OVERLAY_QUERY = 'not all and (min-width: 1180px)';
  */
 export const RAIL_RESERVE_PX = 432;
 
-export type RailMode = 'item' | 'ask' | 'hidden';
+export type RailMode = 'item' | 'mod' | 'ask' | 'setup' | 'hidden';
+
+/** One of a mod's declared panels: which mod, and the panel's id in its manifest. */
+export interface ModPanelRef {
+  modId: string;
+  panelId: string;
+}
 
 /**
  * THE visibility rule, pure.
  *   item    an item is open: the column is its panel, with or without AI
+ *   mod     a mod's panel was opened (`modOpen`): at any width, docked or as
+ *           an overlay, with or without AI, and over a kept-open Ask
  *   ask     Ask shows: kept open (or summoned), something answers, and either
  *           the column docks or Ask was summoned while it overlays
+ *   setup   nothing answers, the gate offers to set AI up or fix it
+ *           (`invite`: its askInvite or askFix), and the unlit key or Ctrl+J
+ *           summoned it this session
  *   hidden  nothing to show
  * `summoned` alone opens Ask only for the tour's non-persisting summon: every
  * other summon also sets `askOpen`, and closeRail clears both. An overlay
  * needs `summoned`, so a persisted `askOpen` never raises one at boot.
+ *
+ * Setup needs `summoned`, never `askOpen`: it is not Ask, its open state is
+ * not kept, and the next load starts closed. A kept-open Ask whose key
+ * stopped working shows nothing until the "Fix AI" key is pressed. It is its
+ * own mode, not 'ask', so every reader of 'ask' keeps meaning "Ask, with a
+ * box, is on screen" (Ask home's catch-up card, a composer focus request);
+ * the readers of 'hidden' (the key hiding, an overlay making <main> inert,
+ * park's hand-back) take it in on their own.
  */
 export function railMode(i: {
   itemOpen: boolean;
+  modOpen?: boolean;
   askOpen: boolean;
   canChat: boolean;
   overlays: boolean;
   summoned: boolean;
+  invite?: boolean;
 }): RailMode {
   if (i.itemOpen) return 'item';
+  if (i.modOpen) return 'mod';
   if ((i.askOpen || i.summoned) && i.canChat && (!i.overlays || i.summoned)) return 'ask';
+  if (i.summoned && i.invite && !i.canChat) return 'setup';
   return 'hidden';
 }
 
@@ -96,8 +125,13 @@ export type AskView =
   | { kind: 'history'; returnFocus?: string; memo?: HistoryMemo }
   /** `returnTo`: asked with "?" over an item; Back re-opens that item if it still exists. */
   | { kind: 'conversation'; id: string; returnTo?: { itemId: string }; returnFocus?: string }
-  /** Phone only: on desktop the item is ui-store's slot. */
-  | { kind: 'item'; itemId: string; returnFocus?: string };
+  /**
+   * Phone only: on desktop the item is ui-store's slot. `fallbackConversation`:
+   * pushed for that conversation before the planner settled, when nobody could
+   * yet say whether the item exists (lib/open-chat.ts openConversation). If the
+   * view finds it gone on fresh rows, the conversation shows in its place.
+   */
+  | { kind: 'item'; itemId: string; returnFocus?: string; fallbackConversation?: string };
 
 export type AskSurface = 'desktop' | 'phone';
 
@@ -147,6 +181,13 @@ interface RailState {
    * 1180px. Memory only, so a reload never brings an overlay up.
    */
   summoned: boolean;
+  /**
+   * The mod panel the column shows (railMode's 'mod'), under an item opened
+   * over it. Set only by an explicit open (lib/mods/ui/open-panel.ts), so it
+   * is its own summon at any width, and memory only: a reload never brings
+   * one back. Never touches `summoned` or `askOpen`.
+   */
+  modPanel: ModPanelRef | null;
   pendingFocus: FocusRequest | null;
   /**
    * An item opened FOR its conversation (a History or activity row): its
@@ -210,6 +251,12 @@ interface RailState {
    * reads it any more. conversations-store's markGone calls it.
    */
   carryDraftHome(id: string): void;
+  /**
+   * Text that waits in Ask home's box, after anything already typed there:
+   * a question kept from `?` whose connection is not the one its consent line
+   * named (lib/ask-pending.ts), left for the person to send or not.
+   */
+  appendDraftHome(text: string): void;
   requestFocus(req: FocusRequest): void;
   focusComposer(binding?: ComposerBinding): void;
   /**
@@ -241,6 +288,25 @@ interface RailState {
   park(): void;
   /** Close Ask: `askOpen` and `summoned` both off. The caller closes an item first. */
   closeRail(): void;
+  /**
+   * Show a mod's panel in the column. Only the router calls this
+   * (lib/mods/ui/open-panel.ts), after closing an open item and leaving Zen.
+   * Remembers where focus was when the column was hidden, as a summon does;
+   * a mode already showing keeps its record.
+   */
+  openModPanel(ref: ModPanelRef): void;
+  /**
+   * Close the mod panel. When that hides the column, focus left in it goes
+   * back to where it was before the open. A docked Ask kept open shows again:
+   * the person chose that, so it is no unasked open.
+   */
+  closeModPanel(): void;
+  /**
+   * An overlay given back (its click-away, Escape there, a window narrowing
+   * into one): the mod panel closes, then `park`. `overlays` is the caller's
+   * PANEL_OVERLAY_QUERY reading, read here when not given.
+   */
+  parkOverlay(overlays?: boolean): void;
   setPendingReveal(itemId: string | null): void;
   /** True exactly once, for the item the pending reveal names. Clears it. */
   consumeReveal(itemId: string): boolean;
@@ -297,6 +363,22 @@ function dismissLeftCards(before: Record<AskSurface, AskView[]>, after: Record<A
   }
 }
 
+/**
+ * Ask home's "It works." (components/ai/ask/it-works-card.tsx) is said once,
+ * for the moment a connection lands, and so is the note in its place when a
+ * sign-in that came home saved one whose test question went unanswered
+ * (`flowResult`, lib/connect-return.ts). A conversation pushed (a send from
+ * home, New chat) or opened (lib/open-chat.ts `openConversation`, an item's
+ * too) or Ask closing spends both (on the phone, leaving its Ask tab, under
+ * "The phone" below); so does any send (conversations-store's `send`), a
+ * model change, a disconnect and a sign-out (ai-connection-store.ts).
+ */
+export function spendJustConnected(): void {
+  const ai = useAIConnectionStore.getState();
+  if (ai.justConnected) ai.setJustConnected(null);
+  if (ai.flowResult) ai.setFlowResult(null);
+}
+
 /** Re-open an item by id, as every opener does, if the planner still has it. True when it did. */
 function reopenItem(itemId: string): boolean {
   const item = usePlannerStore.getState().items.find((i) => i.id === itemId);
@@ -316,6 +398,7 @@ export const useRailStore = create<RailState>()((set, get) => {
   return {
     stacks: EMPTY_STACKS,
     summoned: false,
+    modPanel: null,
     pendingFocus: null,
     pendingReveal: null,
     drafts: {},
@@ -329,6 +412,7 @@ export const useRailStore = create<RailState>()((set, get) => {
       const { stacks } = get();
       const kept = stacks[surface].filter((v) => ASK_LEVEL[v.kind] < ASK_LEVEL[view.kind]);
       setStacks({ ...stacks, [surface]: [...kept, view] }, 'push');
+      if (view.kind === 'conversation') spendJustConnected();
     },
 
     back: (surface) => {
@@ -415,6 +499,13 @@ export const useRailStore = create<RailState>()((set, get) => {
         return { drafts };
       }),
 
+    appendDraftHome: (text) =>
+      set((s) => {
+        if (!text) return s;
+        const home = s.drafts.home ?? '';
+        return { drafts: { ...s.drafts, home: home ? `${home}\n${text}` : text } };
+      }),
+
     requestFocus: (req) => set({ pendingFocus: req }),
 
     focusComposer: (binding) => set({ pendingFocus: binding ? { target: 'composer', binding } : { target: 'composer' } }),
@@ -444,13 +535,20 @@ export const useRailStore = create<RailState>()((set, get) => {
       if (railModeNow() !== 'ask') rememberFocus();
       if (o.persist !== false) useSidebarStore.getState().setAskOpen(true);
       if (o.home) get().popToHome('desktop');
-      set(o.focus ? { summoned: true, pendingFocus: desktopFieldRequest(get().stacks) } : { summoned: true });
+      // Ask replaces a mod's panel: every reader of 'ask' (a send, catch-up,
+      // ⌘K's ask) then finds Ask showing after its summon.
+      set(
+        o.focus
+          ? { summoned: true, modPanel: null, pendingFocus: desktopFieldRequest(get().stacks) }
+          : { summoned: true, modPanel: null }
+      );
     },
 
     park: () => {
       if (!get().summoned) return;
       const handBack = focusIsInRail();
       set({ summoned: false });
+      spendJustConnected();
       // A docked Ask kept open stays where it is, and so does its record.
       if (railModeNow() !== 'hidden') return;
       const el = takeFocusRecord();
@@ -461,9 +559,32 @@ export const useRailStore = create<RailState>()((set, get) => {
       const handBack = focusIsInRail();
       useSidebarStore.getState().setAskOpen(false);
       set({ summoned: false });
+      spendJustConnected();
       // Taken either way: a record left behind would answer a later, unrelated close.
       const el = takeFocusRecord();
       if (handBack) restoreFocus(el);
+    },
+
+    openModPanel: (ref) => {
+      if (railModeNow() === 'hidden') rememberFocus();
+      const was = get().modPanel;
+      if (was && was.modId === ref.modId && was.panelId === ref.panelId) return;
+      set({ modPanel: { modId: ref.modId, panelId: ref.panelId } });
+    },
+
+    closeModPanel: () => {
+      if (!get().modPanel) return;
+      const handBack = focusIsInRail();
+      set({ modPanel: null });
+      // Ask kept open and docked shows again, and keeps the record.
+      if (railModeNow() !== 'hidden') return;
+      const el = takeFocusRecord();
+      if (handBack) restoreFocus(el, '[data-mod-opener]');
+    },
+
+    parkOverlay: (overlays = overlaysNow()) => {
+      if (overlays) get().closeModPanel();
+      get().park();
     },
 
     setPendingReveal: (itemId) => set({ pendingReveal: itemId ? { itemId } : null }),
@@ -503,7 +624,15 @@ export const useRailStore = create<RailState>()((set, get) => {
       focusBeforeSummon = null;
       railHeaderHeldUntil = 0;
       unshieldSummonSpot?.();
-      set({ stacks: EMPTY_STACKS, summoned: false, pendingFocus: null, pendingReveal: null, drafts: {}, lastNav: null });
+      set({
+        stacks: EMPTY_STACKS,
+        summoned: false,
+        modPanel: null,
+        pendingFocus: null,
+        pendingReveal: null,
+        drafts: {},
+        lastNav: null,
+      });
     },
   };
 });
@@ -581,11 +710,15 @@ export function focusIsInRail(): boolean {
  */
 export const RAIL_HANDBACK_WAIT_MS = 450;
 
-function restoreFocus(record: HTMLElement | null): void {
+/**
+ * `fallback`: the header key that opened what is closing, for a close with no
+ * record (the Ask button; a mod panel's own key, components/mods/mod-opener.tsx).
+ */
+function restoreFocus(record: HTMLElement | null, fallback = '[data-ask-opener]'): void {
   const el =
     record?.isConnected || typeof document === 'undefined'
       ? record
-      : document.querySelector<HTMLElement>('[data-ask-opener]');
+      : document.querySelector<HTMLElement>(fallback);
   if (!el) return;
   // Deferred past the commit that hides the rail, as a FocusRequest's focus
   // is: a Radix layer closing in the same tick hands focus back on its own
@@ -775,12 +908,15 @@ function overlaysNow(): boolean {
 }
 
 function modeFromStores(overlays: boolean): RailMode {
+  const ai = getAICapabilities();
   return railMode({
     itemOpen: useUIStore.getState().activeDialog?.type === 'edit-item',
+    modOpen: !!useRailStore.getState().modPanel,
     askOpen: askOpenOf(useSidebarStore.getState()),
-    canChat: getAICapabilities().canChat,
+    canChat: ai.canChat,
     overlays,
     summoned: useRailStore.getState().summoned,
+    invite: ai.askInvite || ai.askFix,
   });
 }
 
@@ -847,6 +983,18 @@ export function usePanelOverlays(): boolean {
 }
 
 // ── The phone ────────────────────────────────────────────────────────────────
+
+/**
+ * Leaving the phone's Ask tab is the phone's close: by the sheet, a swipe, a
+ * command or the shell moving off a tab that is no longer offered, it spends
+ * "It works." as Ask closing does on the desktop. Only that: the stack and
+ * every draft stay, so the tab comes back as it was left. A subscription,
+ * not a setter, so a write by setState spends it too, and mobile-nav-store
+ * stays a leaf.
+ */
+useMobileNavStore.subscribe((s, prev) => {
+  if (prev.activeTab === 'chat' && s.activeTab !== 'chat') spendJustConnected();
+});
 
 /**
  * Whether arriving on the phone's Ask tab puts the caret in the dock's box:

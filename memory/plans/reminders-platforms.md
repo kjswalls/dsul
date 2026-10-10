@@ -76,6 +76,291 @@
 >    dsul_tick never wakes the route for, with nothing erroring, so #220's morning check
 >    (when decision 13 changes) comes with a migration that redefines the gate.
 
+> **Addendum (2026-10-09): what Phase 2a changed on the way in.** Phase 2a is §5.3's pure
+> half: `lib/reminders/{clock,snooze,plan}.ts`, the fixtures `due.json`, `copy.json` and
+> `notification-plan.json`, and their DsulCore ports. Nothing on the phone schedules a
+> notification yet; the routes, the payload's settings and snooze, and the hosted scheduler
+> are still to come. Fourteen shapes in §2.3, decision 23 (§3.5), §5.3, §6's risk 2 and
+> Appendix B 23 are not what the code does. **The body keeps the old shapes**, so read it
+> through this list. `plan.ts`'s header ("THE SHAPES", "THE SHADE", "What is left") is the
+> full statement.
+>
+> 1. **No repeating interval trigger.** `UNTimeIntervalNotificationTrigger` has no start
+>    date: a repeating one first fires its interval after it is added, then every interval,
+>    so it can start at the next wanted cue or repeat on the cadence, never both. Anchored at
+>    the cue, a 21:00 daily ticked at 08:00 got a 37-hour period and rang Tuesday 21:00,
+>    Thursday 10:00 and Friday 23:00. With a 24-hour period it rings at the minute it was
+>    planned, and inside a pause. `PlannedTrigger` is `calendar`, `at` (a dated one-off),
+>    `afterMs` (a snooze) or `now`, with no `interval`. Decision 23 is met another way. A
+>    slot is HELD while today is handled before its cue, while a pause or a season not yet
+>    begun covers its next ring, or while an unwanted day lies ahead of it (item 2). A held
+>    weekday of a split is a one-off at that weekday's next wanted cue under its own
+>    `#<weekday>`, and the other weekdays keep standing. A held daily splits into `#1` to
+>    `#7` (1 is Sunday, as in DateComponents): six stand, and today's weekday is a one-off a
+>    week out. A held lone weekday or day of the month has no other day to stand on and is
+>    the one-off series: the next wanted cue under `dsul-item-<id>`, the one after under
+>    `#next`. The review is held as a daily is, under `dsul-eod#1` to `#7`. The first plan
+>    after whatever held a slot puts its calendar trigger back. §5.3's device checklist item
+>    "the interval-trigger swap after an early tick" is this split.
+> 2. **A slot stands only while its later rings want doing too.** A calendar trigger cannot
+>    be told to stop, so one left standing rang past a season's last day, on a Wednesday
+>    skipped in advance and on a Friday ticked a week early. A slot now stands only if its
+>    next ring is the next wanted cue on its days and every ring it makes in the
+>    `LAPSE_DAYS` (31) after that one, and the ring after it however far off, wants doing;
+>    otherwise it is held as in item 1. An unwanted day further off is left to a plan in
+>    between. The 31 is Kirby's to move.
+> 3. **The phone goes quiet rather than ring on a wrong day, and the copy says so.** "Never
+>    silent" (decision 23) and "every ring on its own minute, on a day the item still wants
+>    doing" cannot both hold, and the second wins. The silences, each until dsul next plans:
+>    a held weekday of a split rings once, with no `#next`, so a daily ticked before its cue
+>    is quiet on that weekday from two weeks on; a pause or a season not yet begun holds
+>    every weekday whose next ring it covers, so a pause of a week or more quiets the whole
+>    item from a week after it ends; a held lone weekday, a held day of the month and a
+>    series not yet begun from an off-rule start ring twice; a cue in the changeover minutes
+>    rings twice, a day apart; a slot held by an unwanted day ahead rings once or twice,
+>    however far off that day is. §5.3's Settings line becomes "ticking early, a pause, a
+>    season, or a cue in the hour the clocks change can quiet this iPhone's cue until dsul
+>    next opens". The hour of DST drift in §6's risk 2 and Appendix B 23 is gone, and this
+>    silence takes its place. Only the hosted scheduler's re-plans (foreground,
+>    `BGAppRefreshTask`) end it, and 2a's plan does not say when the next one is needed.
+> 4. **`#next`, `#now` and `#1` to `#7` are every item's, and `identifiers(for:)` returns
+>    them all.** An item's requests live under `dsul-item-<id>`, `#1` to `#7` (a split's
+>    weekdays, a held daily's seven), `#next` (the series' second one-off, and item 5's
+>    clamped day), `#now` (the catch-up) and `#snooze`. `identifiers(for:)` (TS
+>    `identifiers(itemId)`) returns all eleven whatever the item's cadence is today, because
+>    a habit moved from three weekdays to daily still has `#2` in the shade from this
+>    morning. `eodIdentifiers()` returns the review's nine: `dsul-eod`, `#1` to `#7` and
+>    `#next`.
+> 5. **A day of the month after the 28th stands, with the short month's day beside it; a
+>    held one is the series.** A calendar trigger on the 31st matches no day in a 30-day
+>    month, where `occursOn` clamps to the last day. So it stands and rings in the long
+>    months, and the next short month's clamped day is a one-off under `#next`; the short
+>    months after that wait for a plan. A held day of the month, any day, is the one-off
+>    series, a month apart, as §2.3 said.
+> 6. **A series not yet begun is one-offs only when its start is off its rule.** §2.3 made
+>    every anchored task one-offs. A dated task still is. A date-anchored recurring item
+>    whose start, today or later, is not one of its repeat days is too, since
+>    `anchoredSeriesOn` counts the start day off the rule and no calendar trigger rings it.
+>    One that starts on a repeat day stands, held until it begins (a daily starting
+>    tomorrow is item 1's split). An anchored one with no start occurs on no day and plans
+>    nothing.
+> 7. **Daylight saving is the zone's own changeover minutes, not 01:00 to 03:59.**
+>    `changeoverMinutes(zone, nowMs, 400)` in `clock.ts` finds the minutes the zone's
+>    changeovers skip or play twice in the next 400 days (in New York, 02:00 to 02:59 and
+>    01:00 to 01:59), and a cue or review hour on one of them is one-offs. The fixed band
+>    made a 02:30 cue in Kolkata, which never changes its clocks, one-offs that go quiet
+>    after two rings for no gain, and it missed Santiago, which changes at midnight. A
+>    spring-forward minute is absent that day with a `dst-gap` note; a fall-back minute
+>    rings once, at the earlier instant (`instantOf`).
+> 8. **The budget is spent one request at a time, in ring order.** A first draft let a
+>    weekday set, or a held daily's seven, ride the budget as one one-off and upgrade to its
+>    slots when they fit. Now every item asks for all its requests, and the 60 pending are
+>    spent in passes: the review's soonest; live snoozes; catch-ups, which are delivered at
+>    once and never count; one request per item, soonest first; then everyone's others, the
+>    review's among them, in the order they ring. A split the budget cuts short stands on the
+>    weekdays it kept, which ring at the same instants a one-off pair would and keep ringing
+>    weekly after it. Ten held dailies in twenty places each get their next two days, rather
+>    than three getting a week and the rest one day. Losing anything but a `#next` is an
+>    `over-budget` note.
+> 9. **A snooze is gated to its day with `ringsOnDay`, and a snooze from today holds the
+>    catch-up.** `snooze.ts` has `ringsOnDay(fireMs, zone, dayStr)` beside
+>    `snoozeFireInstant`, for a snooze whose instant is already fixed: the payload's
+>    `reminder_snooze_until/date`. The web's Snooze stores the tap plus fifteen minutes with
+>    no gate, so one tapped at 23:55 arrives as 00:10 tomorrow, which the scan would never
+>    ring. The plan arms it only if it rings on its own day, and only while the item still
+>    wants doing today. The catch-up (`#now`, for a cue armed inside its own window) is
+>    never planned while a snooze from today is pending, armed here or expired at midnight:
+>    either way the user said "not now". An unreadable snooze is no snooze.
+> 10. **The plan reads the shade.** `PlanInput.delivered` (id, delivery instant, `dateStr`)
+>     is what Notification Center holds, and `withdraw` is each dsul id there that is stale
+>     for the day it is about (its `dateStr`, else the local day it rang): done, skipped or
+>     paused since; its item gone or no longer remindable; reminders off on this iPhone; the
+>     review answered for that day or a later one, or switched off; or a snooze armed for
+>     that day, which replaces that day's cue. It is per day, never per item: a Monday cue
+>     still open stays when Wednesday's is ticked. §2.3's `removeDeliveredNotifications`
+>     of the bare `dsul-item-<id>` on a snooze would miss every cue under another
+>     identifier.
+> 11. **Each request carries `firesAt`, and notes are objects.** `PlannedRequest.firesAt`
+>     is the epoch-ms instant it first rings. It orders `requests` (by `firesAt`, then id)
+>     and the budget's passes, and anchors `afterMs`: a snooze added later than the plan's
+>     instant is added with `firesAt` minus the moment of adding. It is never identity.
+>     `notes` are `PlanNote`s, tagged objects (`bad-zone`, `bad-time`, `dst-gap`,
+>     `over-budget` with `itemId` and `kept`) and a Swift enum, so a log, a test and the
+>     fixture match them on both platforms without matching prose.
+> 12. **`localClock` moved to `lib/reminders/clock.ts` in 2a, not in Phase 1's PR-1b.**
+>     `plan.ts` and `snooze.ts` run on the phone through their twins and must read a day
+>     and a minute without importing `scan.ts` and the database client behind it;
+>     `scan.ts` re-exports it, as PR-1b planned. `clock.ts` also holds `instantOf`,
+>     `addDays`, `weekdayOf`, `changeoverMinutes` and `inMinuteRun`. It and
+>     `recurrence.ts`'s `toDateStr` cache one formatter per zone, because the plan asks
+>     `wantsDoingOn` per item per day up to a year ahead, and uncached, sixty paused habits
+>     took seconds to plan; `tests/unit/reminders-plan-cost.test.ts` holds it to once per
+>     day per item.
+> 13. **DsulCore's files are flat: `ReminderClock.swift`, `ReminderDue.swift`,
+>     `ReminderCopy.swift`, `ReminderSnooze.swift` and `ReminderPlan.swift`**, not
+>     `Reminders/{Due,Copy,Snooze,Plan}.swift`. Every DsulCore source sits in one
+>     directory, and `ios-change-filter.test.ts` reads that directory, not a tree.
+>     `ReminderClock.swift` ports `clock.ts`, which §5.3 did not list for Swift. The
+>     snooze fixtures are `notification-plan.json`'s `snoozeFireInstant` section (beside
+>     `identifiers`, `changeoverMinutes` and `plans`), and `ReminderClockTests` sits in
+>     `SnoozeFixtureTests.swift`.
+> 14. **`tests/unit/ios-change-filter.test.ts` exists now**, ahead of Phase 1, where §5.2
+>     listed it. It reads the TypeScript each DsulCore header cites and fails when the
+>     `changes` job's regex in `ios.yml` does not match one, unless `NOT_MIRRORED` names it
+>     with a reason (a stale entry fails too). The regex gained
+>     `reminders/(plan|snooze|clock|channels/push)`, `eod` (the review hour's parser) and
+>     `verb-gates`, which `ItemVerbs.swift` already cited unmatched.
+
+> **Addendum (2026-10-09): what Phase 2b changed on the way in.** Phase 2b is §5.3's server
+> half: the `snooze` intent, `complete`'s snooze clear, `POST /api/app/timezone` and the
+> planner payload's rituals and snoozes (all in `lib/app-api.ts`). The phone still schedules
+> nothing; 2c's hosted scheduler is the first reader. Where it departs from §2.3 and the
+> write-path table:
+>
+> 1. **`snooze` is held to its day on the server too.** `{ action: 'snooze', date, minutes?,
+>    timeZone? }` writes `reminder_snooze_until` = the request's instant plus `minutes`
+>    (`SNOOZE_MINUTES` when absent; 1 to 240) and `reminder_snooze_date` = `date`, but only
+>    when `snoozeFireInstant` says that instant is still on `date` in the stored zone (the
+>    device's when none is stored, as `pause` reads it). Otherwise it writes nothing and
+>    answers `{ ok: true, snoozedUntil: null }`. The web's act route still stores an
+>    ungated snooze for the scan to expire; the phone's never exists, so no device arms a
+>    ring about a day that is over. The gate is the type's `remindable` and not a subtask
+>    (`not_remindable`); no `reminder_time` is needed, since a last call's Snooze asks about
+>    an item with no cue. The instant is the request's, not the tap's, so an action outbox
+>    drained late snoozes from the drain.
+> 2. **`complete` clears a snooze only for the day it ticks.** On a recurring row the clear
+>    filters `reminder_snooze_date = date`, so ticking yesterday late leaves today's snooze
+>    alone; a one-off's goes whatever day it names. Only `done: true` that the row took
+>    clears, the update filters on a live snooze (the common tick writes nothing), and a
+>    failed clear is logged and never fails the tick. The agent door's `complete` runs the
+>    same code and clears too.
+> 3. **The snooze projection is a top-level `snoozes` array, not fields on `Item`.** It is
+>    `PlanSnooze[]` (`itemId`, `until` as Postgres stamps it, `date`), read by its own
+>    query on `items` (live rows with a snooze), rows with no day left out, stale ones sent
+>    for the plan to gate. Null when the columns can't be read; DsulCore's `PlannerPayload`
+>    reads it lossily.
+> 4. **The settings are flat and raw.** `lastCallEnabled` and `lastCallTime` (032's group,
+>    null when unread), `eodReviewEnabled`, `eodReviewTime` and `lastEodReviewDate` (stable,
+>    pre-032) and `reminderGraceMinutes` (the scan's constant). Only `true` is on, as the
+>    scan reads it; times are sent as stored, empty as null. DsulCore's
+>    `PlannerSettings.planEod` folds the review into `PlanEod` (nil while its switch is
+>    unknown; on with no hour reads as off, as the scan does).
+> 5. **`POST /api/app/timezone` shares the web's writer.** `lib/user-timezone.ts`
+>    `saveTimezone` is both doors' write, skip-unchanged included; the web's PATCH keeps
+>    its answers and now 400s a body that isn't JSON instead of throwing.
+> 6. **Not in 2b:** the Swift snooze body (2c, beside the other verb bodies in
+>    `ios/Dsul/Data/APIClient.swift`) and `X-Dsul-Device` on `/api/app` writes (2d, with
+>    the devices registry).
+
+> **Addendum (2026-10-09): what Phase 2c changed on the way in.** Phase 2c is §5.3's hosted
+> half: the phone now arms its own notifications. `ios/Dsul/Notifications/` holds
+> `NotificationCenterPort`, `NotificationScheduler`, `ActionOutbox`, `NotificationHub`,
+> `LiveNotificationCenter`, `NotificationDelegate`, `NotificationCategories` and
+> `BackgroundRefresh`, with `ios/Dsul/App/AppDelegate.swift` and project.yml's `fetch` mode
+> and `app.dsul.ios.reconcile`. Where it departs from §5.3:
+>
+> 1. **No `PlannerCache` yet** (decision 10 said yes). A background refresh fetches the
+>    planner with the Keychain's token and plans from the answer; with no network it plans
+>    nothing and the standing triggers keep ringing. `APIClient`'s "nothing it fetches
+>    outlives the session on disk" still holds. The cache comes with the widget, which needs
+>    it in the App Group anyway.
+> 2. **`NotificationHub` is the glue the plan didn't name.** Everything that decides
+>    something (the diff, the outbox, willPresent, the headless path) is Foundation-only and
+>    runs in the Linux shim (`NotificationTests`, 26 tests, against a fake center and
+>    `FakeServer`); the UIKit and UserNotifications files only translate.
+> 3. **One hook, `SamplePlanner.onChange(fetched:)`**, for §5.3's `didApplyFetch` and
+>    `didQueueWrite`. Every change re-plans; only a fetch drains the outbox. Draining on a
+>    revert sent an unsent Done again at once, into the same failure, for as long as the
+>    phone was offline.
+> 4. **Done is the web's act route's Done.** The day is marked done (a counted habit at its
+>    full tally) only while it still wants doing as the phone holds it; otherwise nothing is
+>    sent, so a stale banner's Done never unticks. Through the planner it is the row tick's
+>    optimistic step and `complete` write. With no planner (a lock-screen tap that launched
+>    no window) the hub fetches, sends `complete` and `snooze` straight to the item route,
+>    and plans from the fetched planner with the ticks on it. PlannerSync gained a `snooze`
+>    write (no subjects, nothing to revert, no banner) and a `settled` callback, which is
+>    how a tap leaves the outbox: landed or refused, never unsent.
+> 5. **A Snooze rings here at once,** from the tapped notification's own words, before any
+>    plan, and is remembered locally until it rings (`localSnoozes`, merged with the
+>    payload's, the later ring winning on the same day). The server is sent the minutes
+>    left, so a late drain still names the promised minute. Past its day's midnight a
+>    snooze is nothing, on the phone as on the server.
+> 6. **`localSentKeys`** are this iPhone's shade (each dsul cue's day and time) plus the
+>    cues armed at the last plan whose next ring has passed, and today's ring of a slot
+>    that kept repeating; the last three days' are kept.
+> 7. **Permission is asked from the Remind sheet's Done only.** The phone has no Rituals
+>    screen, so there is no "Remind me on this iPhone" switch: iOS's own notification
+>    setting is the per-device switch, and with it off nothing is planned or removed.
+> 8. **The phone stores its zone.** When the account's stored zone differs from the
+>    device's, the hub sends the device's to `POST /api/app/timezone` once a launch, as the
+>    web's `useTimezoneSync` does for a browser. The Remind sheet's time zone line is gone;
+>    it says instead what can quiet this iPhone's cue, that a habit ticked elsewhere may
+>    still ring, notifications off in Settings, and, with the last call on, that this iPhone
+>    has none until push.
+> 9. **`summaryArgument` is not set:** iOS 15 stopped reading it. Grouping is the thread's.
+> 10. **Signing out, switching user or trying the sample** removes every dsul request and
+>     notification, the outbox and the remembered state.
+> 11. **Not in 2c:** `RealNotificationCenterTests` (a test host can't grant permission;
+>     the README's "Checking reminders" list is the device check), and the devices registry
+>     with `X-Dsul-Device` (2d).
+
+> **Addendum (2026-10-10): what Phase 1a changed on the way in.** PR-1a (§5.2) is the device
+> registry: `supabase/migrations/065_devices.sql`, `lib/devices/`, `POST /api/devices`,
+> `/release` and `/rotate`, the boot re-post (`hooks/use-device-registration.ts`), the
+> service worker's `pushsubscriptionchange`, and Rituals → Devices
+> (`components/settings/devices-list.tsx`). Where it departs from §4.2 and §5.2:
+>
+> 1. **The migration is 065, not 059.** 059 to 065 were taken first. Its body is §4.2's,
+>    plus a backfill guard: a `push_subscriptions` row that would fail one of 065's CHECKs
+>    (009 checked nothing) stays in the ballast rather than aborting the migration.
+>    `scripts/verify-065.sh` is the replay §4.2 describes, plus the owner's grants and an
+>    account deletion; the plan's `verify-059.sh` is that file.
+> 2. **The fallback writes as well as reads.** Until 065 is applied, a web push
+>    registration is the old upsert into `push_subscriptions` (service role) and a release
+>    deletes from it, so a browser that turns push on between the deploy and the migration
+>    is not lost. Only a tokenless registration answers 503 `unavailable`.
+> 3. **A browser registers only while it holds a push subscription.** The page-as-a-device
+>    rows (`transport 'none'`) arrive with PR-1b, which needs them; until then the roster is
+>    the devices push can reach.
+> 4. **The suggested name is sent on a NEW row only.** `register_device` keeps a label it is
+>    passed null for, and the browser posts on every boot; sending "Chrome on Mac" each
+>    time would undo the owner's rename.
+> 5. **`/rotate` answers 404 when the browser gives no old endpoint** (Chrome often does
+>    not). The worker has no device id of its own, so the next boot's re-post registers
+>    the new endpoint instead.
+> 6. **`DeviceSendKind` adds `pledge` and `other`.** The pledge notice and `/api/push/send`
+>    go through `sendToUser` too, so each needed a kind: `other` is held only by mute,
+>    staleness and quiet hours. `sendPushToUser` stays in `lib/push-send.ts` as the
+>    fallback, for one release.
+> 7. **The Devices list shows three switches** (habit reminders, last call, end-of-day
+>    review) and no rename or `claimsLocally` yet: the claim arrives with PR-1b, and with it
+>    the switch and its copy.
+> 8. **Tests are named for what they hold:** `devices-select`, `devices-send`,
+>    `devices-registry` (the routes included), `devices-web-client` (the roster's words
+>    included), `push-release` (both release forms) and a `065_devices` block in
+>    `migration-text.test.ts`.
+
+> **Addendum (2026-10-10): what Phase 2d changed on the way in.** Phase 2d is the iPhone's
+> side of the registry: `POST /api/app/devices` and `DELETE /api/app/devices/:deviceId`
+> (`app/api/app/devices/`), and `ios/Dsul/Devices/DeviceRegistration.swift`. Where it
+> departs from §5.3:
+>
+> 1. **No `DeviceRegistrar` type.** The hub registers (`NotificationHub.syncDevice`, once a
+>    launch per user, beside `syncZone`), `AuthStore.signOut` releases, and the id is
+>    `DeviceIdentity`: `ios:` and a lowercase UUID in UserDefaults (`dsul.deviceId`), never
+>    cleared, like the web's `dsul-device-id`. A reinstall makes a new one; the old row is
+>    never sent anything and goes at the 180-day prune.
+> 2. **The route takes one shape for now:** `platform 'ios'`, `transport 'none'`,
+>    `delivery 'local'`, anything else a bare 400 `invalid`. `apns` joins in Phase 3. No
+>    label is sent, so the roster says "dsul on iPhone" and never "Browser on iPhone".
+> 3. **The release goes after the local wipe, before the GoTrue logout,** with the ending
+>    token and no refresh (`EndingSessionToken`); offline it fails quietly and the logout
+>    still goes. A delete is filtered by the bearer's user id as well as the device id.
+> 4. **`X-Dsul-Device` is sent on every non-GET `/api/app` call** (Delete account's
+>    included) and read by nothing yet: Phase 3's wake is its first reader.
+> 5. **A registration the server may still take (offline, 503) is tried again at the next
+>    fetch; a 400 is not.**
+
 2026-10-05. **Status: plan, decided 2026-10-06 — Kirby took every default in §7; nothing in it has been built yet, nothing was written to prod.** Phase 0 is next. Every code citation is tree-level (`main` at `b8d480c`, 2026-10-04; every cited `file:line` holds at `3200896`, #405, 2026-10-05 — six cited files changed between the two commits, `electron/main.cjs`, `electron/preload.cjs`, `lib/desktop.ts`, `desktop-app.md`, `ios-app.md`, `CLAUDE.md`, but not at the cited lines; `preload.cjs` gained `authProviders`): the live project was read on 2026-10-05, read-only, and the observed values sit at the top of §5.1.1: the organisation is on the **Pro** plan, both ticks are paused exactly as 045 left them, no ritual is enabled by any of the four accounts, and Kirby is the only user, so the runbook's EXPECT lines are now observations and the §5.1 writes have no one to disturb. Kirby also holds a paid Apple Developer Program membership (confirmed 2026-10-05), which removes the purchase gate the brief assumed (decision 5, resolved). Facts taken from search snippets of pages the planning sessions could not open are marked `[S]`; facts no source verified are marked **[unverified]** inline and collected in §6. Sibling plans: [habit-reminders.md](habit-reminders.md) (the reminder model this builds on — read it first), [desktop-app.md](desktop-app.md), [ios-app.md](ios-app.md).
 
 ---
@@ -171,7 +456,7 @@ The invariant every row keeps: a device may *compute* "wants doing" through the 
 flowchart TB
   subgraph PG["Supabase Postgres (project anchor, Nano)"]
     CRON["pg_cron dsul-reminders<br/>*/5 * * * *  (058: resumed, merged)"]
-    TICK["dsul_tick(route, force)<br/>flag-only short-circuit (no time math):<br/>exists(user_settings where timezone not null<br/>and (reminders or stakes or eod))<br/>fails OPEN on undefined_column"]
+    TICK["dsul_tick(route, force)<br/>flag-only short-circuit (no time math):<br/>exists(user_settings where timezone not null<br/>and (reminders or stakes or eod))<br/>or (062) a switched-on timed recipe<br/>fails OPEN on undefined_column"]
     US[("user_settings<br/>habit_*, eod_*, stakes_*, timezone<br/>last_eod_notified_date, habit_last_call_date")]
     IT[("items<br/>reminder_time · reminder_sent_key (claim)<br/>reminder_snooze_until/date")]
     DEV[("devices (059)<br/>unique(transport,token) · unique(user_id,device_id)<br/>delivery push|local · prefs · registered_at · last_seen_at")]
@@ -320,7 +605,7 @@ Design decisions this plan adds, in the style of [habit-reminders.md](habit-remi
 
 ### 3.6 The SQL gate, and why it has no clock in Phase 0
 
-058's `dsul_tick(route, force)` asks one existence question before `net.http_get`: is there any `user_settings` row with `timezone is not null` and any of `habit_reminders_enabled`, `stakes_enabled`, `eod_review_enabled` on? It fails **open** on `undefined_column`/`undefined_table`. It is a coarse superset, not a second definition of "owed" — the route still decides. **No time arithmetic** (design decision 22, §3.5): in Postgres `time + interval` wraps modulo 24 h, so a window written as `least(reminder_time::time + interval '30 minutes', time '23:59:59')` is closed from 23:30 to 23:59 — verified on Postgres 16.14. The fail-open clause never fires because nothing errors. A per-window gate is deferred (§5.9) and, if ever built, computes in minutes-of-day (`extract(hour from t)*60 + extract(minute from t)` against `least(target + 30, 1440)`), fails open on exception, is documented as a superset, gets an e2e before/after spec including a 23:45 case, and [habit-reminders.md](habit-reminders.md) gains the rule "any new window in `scan.ts` edits the gate in the same PR".
+058's `dsul_tick(route, force)` asks one existence question before `net.http_get`: is there any `user_settings` row with `timezone is not null` and any of `habit_reminders_enabled`, `stakes_enabled`, `eod_review_enabled` on? It fails **open** on `undefined_column`/`undefined_table`. It is a coarse superset, not a second definition of "owed" — the route still decides. Migration 062 adds one non-flag clause (memory/plans/mods.md, build order 6): it also wakes for any `user_mods` recipe that is switched on and has a timed trigger, again with no time arithmetic; that clause is deliberately not in `TICK_FLAGS`, which the scan's own user query mirrors. **No time arithmetic** (design decision 22, §3.5): in Postgres `time + interval` wraps modulo 24 h, so a window written as `least(reminder_time::time + interval '30 minutes', time '23:59:59')` is closed from 23:30 to 23:59 — verified on Postgres 16.14. The fail-open clause never fires because nothing errors. A per-window gate is deferred (§5.9) and, if ever built, computes in minutes-of-day (`extract(hour from t)*60 + extract(minute from t)` against `least(target + 30, 1440)`), fails open on exception, is documented as a superset, gets an e2e before/after spec including a 23:45 case, and [habit-reminders.md](habit-reminders.md) gains the rule "any new window in `scan.ts` edits the gate in the same PR".
 
 If the project is on Supabase Free, a daily `dsul-keepalive` job calls `dsul_tick('/api/cron/reminders', true)`: `force` skips the short-circuit so one real request reaches the route and PostgREST once a day even when nobody is enabled. Supabase's pausing doc counts "API calls to your project or sending requests via your connected application" and dashboard visits as activity and says nothing about internal pg_cron statements (https://supabase.com/docs/guides/platform/free-project-pausing), so a `select 1` job is **[unverified]** as a keepalive while a request through the API is the documented kind; whether even that suffices is **[unverified]** until a Free project is watched for a week with nobody enabled. Daily app use already keeps a Free project alive; the keepalive covers only the fully-off case. The 7-idle-day rule and "a paused project stops pg_cron" are `[S]`.
 

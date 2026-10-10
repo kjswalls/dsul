@@ -7,6 +7,7 @@ import { NewChatChips, NewChatEmpty } from '@/components/ai/ask/new-chat-empty';
 import { ProposalCard } from '@/components/ai/proposal-card';
 import { resolveConversationId, useConversationsStore } from '@/lib/conversations-store';
 import { usePlannerStore } from '@/lib/planner-store';
+import { selectPlannerLoaded } from '@/lib/planner-ready';
 import type { AskSurface, ComposerBinding } from '@/lib/rail-store';
 import { cn } from '@/lib/utils';
 
@@ -62,7 +63,12 @@ export function ConversationView({
   });
   const gone = useConversationsStore((s) => s.threads[id]?.load === 'gone');
   const itemId = useConversationsStore((s) => s.summaries[id]?.itemId ?? s.threads[id]?.itemId ?? null);
-  const itemGone = usePlannerStore((s) => itemId !== null && !s.items.some((i) => i.id === itemId));
+  // Said only of rows that loaded: the look-only preview's cached ones, a cold
+  // load's none and a failed load's none cannot tell a gone item from one
+  // made since, or from one not fetched (lib/planner-ready.ts, loaded).
+  const itemGone = usePlannerStore(
+    (s) => itemId !== null && selectPlannerLoaded(s) && !s.items.some((i) => i.id === itemId)
+  );
   const binding = useMemo<ComposerBinding>(() => (gone ? HOME : { kind: 'conversation', id }), [gone, id]);
 
   // Its transcript, if this browser does not have it fresh: one opened from

@@ -432,6 +432,79 @@ import Testing
         #expect(planner.sync == nil)
     }
 
+    /// The sample takes the project chip's write too, sending nothing: every
+    /// row filed under a project carries its id, as a payload's row does, so
+    /// Groceries (Home) moved to Work reads Work's name and id. Standup is
+    /// filed "work" with no link, which the List layout already reads as
+    /// Work; picking Work relinks it under Work's own name, and it stays in
+    /// Work's section.
+    @Test func theSampleTakesAProjectWithoutSending() throws {
+        let planner = makePlanner()
+        #expect(planner.sync == nil)
+        #expect(first(planner, "Draft Q4 roadmap").projectId == "sample-work")
+
+        let groceries = first(planner, "Groceries")
+        #expect(groceries.project == "Home")
+        #expect(groceries.projectId == "sample-home")
+        #expect(planner.canEdit("project", groceries))
+        planner.edit(groceries.id, .project(id: "sample-work", name: "Work"))
+        let filed = try #require(planner.item(groceries.id))
+        #expect(filed.project == "Work")
+        #expect(filed.projectId == "sample-work")
+
+        let standup = first(planner, "Standup")
+        #expect(standup.project == "work")
+        #expect(standup.projectId == nil)
+        planner.edit(standup.id, .project(id: "sample-work", name: "Work"))
+        let relinked = try #require(planner.item(standup.id))
+        #expect(relinked.project == "Work")
+        #expect(relinked.projectId == "sample-work")
+        let work = try #require(planner.listSections(.all).first { $0.title == "Work" })
+        #expect(work.items.contains { $0.id == standup.id })
+        #expect(planner.sync == nil)
+    }
+
+    /// The sample has a second routine, Wind down, empty, after Morning
+    /// routine, and one season, Autumn, holding Journal. Autumn follows no
+    /// dates, so it hides nothing, and an empty routine forms no List group:
+    /// the day, the boards and the sections read as they did without them.
+    @Test func theSampleHasASeasonAndASecondRoutine() {
+        let planner = makePlanner()
+        #expect(planner.routines.map(\.name) == ["Morning routine", "Wind down"])
+        #expect(planner.routines.last?.itemIds.isEmpty == true)
+        #expect(planner.seasons.map(\.name) == ["Autumn"])
+        let journal = first(planner, "Journal")
+        #expect(planner.seasons.first?.itemIds == [journal.id])
+        #expect(planner.seasonNames(for: journal.id) == ["Autumn"])
+        #expect(planner.routineNames(for: journal.id) == ["Morning routine"])
+        #expect(planner.dayItems.contains { $0.id == journal.id })
+        #expect(!planner.listSections(.all).contains { $0.title == "Wind down" })
+    }
+
+    /// The sample takes the routine and season toggles too, sending nothing:
+    /// Groceries into Wind down and out again, and Journal out of Autumn.
+    @Test func theSampleTogglesAMembershipWithoutSending() throws {
+        let planner = makePlanner()
+        #expect(planner.sync == nil)
+        let windDown = try #require(planner.routines.first { $0.name == "Wind down" })
+        let autumn = try #require(planner.seasons.first)
+
+        let groceries = first(planner, "Groceries")
+        #expect(planner.canEdit("collect", groceries))
+        planner.collect(groceries.id, kind: .routine, containerId: windDown.id, member: true)
+        #expect(planner.routineNames(for: groceries.id) == ["Wind down"])
+        #expect(planner.listSections(.all).contains { $0.title == "Wind down" && $0.kind == .routine })
+        planner.collect(groceries.id, kind: .routine, containerId: windDown.id, member: false)
+        #expect(planner.routineNames(for: groceries.id).isEmpty)
+        #expect(planner.routines.first { $0.id == windDown.id }?.itemIds.isEmpty == true)
+
+        let journal = first(planner, "Journal")
+        planner.collect(journal.id, kind: .season, containerId: autumn.id, member: false)
+        #expect(planner.seasonNames(for: journal.id).isEmpty)
+        #expect(planner.seasons.first?.itemIds.isEmpty == true)
+        #expect(planner.sync == nil)
+    }
+
     @Test func nextWeekStartsOnTheUsersWeekStart() {
         let planner = makePlanner()
         // Thursday 2026-10-01; the sample's week starts on Sunday (the default).

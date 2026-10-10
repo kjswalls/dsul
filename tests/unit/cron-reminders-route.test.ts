@@ -17,6 +17,9 @@ vi.mock('@/lib/reminders/scan', async (importOriginal) => {
   return { ...actual, runReminderScan: (...args: unknown[]) => runReminderScan(...args) };
 });
 
+const runRecipeTick = vi.fn();
+vi.mock('@/lib/recipes/server', () => ({ runRecipeTick: (...args: unknown[]) => runRecipeTick(...args) }));
+
 const SERVICE = { stand: 'in for the service client' };
 vi.mock('@/lib/supabase-service', () => ({ createServiceClient: () => SERVICE }));
 
@@ -44,6 +47,8 @@ const summary = (over: Partial<ScanSummary> = {}): ScanSummary => ({
   ...over,
 });
 
+const RECIPES = { users: 1, runs: 2, notes: [] as string[] };
+
 let log: ReturnType<typeof vi.spyOn>;
 let error: ReturnType<typeof vi.spyOn>;
 
@@ -51,6 +56,8 @@ beforeEach(() => {
   vi.stubEnv('CRON_SECRET', SECRET);
   runReminderScan.mockReset();
   runReminderScan.mockResolvedValue(summary());
+  runRecipeTick.mockReset();
+  runRecipeTick.mockResolvedValue(RECIPES);
   log = vi.spyOn(console, 'log').mockImplementation(() => {});
   error = vi.spyOn(console, 'error').mockImplementation(() => {});
 });
@@ -100,7 +107,7 @@ describe('GET /api/cron/reminders', () => {
     const res = await get(`Bearer ${SECRET}`);
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, ...partial });
+    expect(await res.json()).toEqual({ ok: true, ...partial, recipes: RECIPES });
   });
 
   // A database without migration 032 degrades to silence, not to an alarm
@@ -122,6 +129,7 @@ describe('GET /api/cron/reminders', () => {
     expect(await res.json()).toEqual({
       error: 'Gateway Timeout',
       notes: ['migration 034 not applied — settling is off, reminders continue'],
+      recipes: RECIPES,
     });
     expect(error).toHaveBeenCalledWith('[cron/reminders] scan failed:', expect.any(ReminderScanError));
   });
@@ -130,7 +138,7 @@ describe('GET /api/cron/reminders', () => {
     runReminderScan.mockRejectedValue(new Error('supabaseUrl is required.'));
     const res = await get(`Bearer ${SECRET}`);
     expect(res.status).toBe(500);
-    expect(await res.json()).toEqual({ error: 'supabaseUrl is required.', notes: [] });
+    expect(await res.json()).toEqual({ error: 'supabaseUrl is required.', notes: [], recipes: RECIPES });
   });
 
   // One line per tick, in the function log, whatever the tick held: the
@@ -140,16 +148,73 @@ describe('GET /api/cron/reminders', () => {
 
     await get(`Bearer ${SECRET}`);
 
-    expect(log).toHaveBeenCalledTimes(1);
-    expect(log).toHaveBeenCalledWith(
+    // The tick's line, unchanged, then the recipe tier's own.
+    expect(log).toHaveBeenCalledTimes(2);
+    expect(log).toHaveBeenNthCalledWith(
+      1,
       '[cron/reminders] users=2 cues=3 lastCalls=1 eod=1 unreached=1 daysSettled=0 notes=1',
     );
+    expect(log).toHaveBeenNthCalledWith(2, '[cron/recipes] users=1 runs=2 notes=0');
   });
 
   it('logs no tick line for a tick that never ran', async () => {
     runReminderScan.mockRejectedValue(new ReminderScanError('Gateway Timeout', []));
     await get(`Bearer ${SECRET}`);
     await get();
-    expect(log).not.toHaveBeenCalled();
+    const lines = log.mock.calls.map((c: unknown[]) => String(c[0]));
+    expect(lines.filter((l: string) => l.startsWith('[cron/reminders]'))).toEqual([]);
+  });
+});
+
+/**
+ * The timed-recipe tier (lib/recipes/server/tick.ts) rides the same request,
+ * after the scan, and is isolated from it both ways: a recipe never costs a
+ * reminder its status, and a failed scan never costs a recipe its run.
+ */
+describe('GET /api/cron/reminders: the recipe tier', () => {
+  it('runs after the scan, with the same service client, clock and a deadline inside maxDuration', async () => {
+    const order: string[] = [];
+    runReminderScan.mockImplementation(async () => {
+      order.push('scan');
+      return summary();
+    });
+    runRecipeTick.mockImplementation(async () => {
+      order.push('recipes');
+      return RECIPES;
+    });
+    await get(`Bearer ${SECRET}`);
+    expect(order).toEqual(['scan', 'recipes']);
+    const [service, options] = runRecipeTick.mock.calls[0] as [unknown, { now: Date; deadlineMs: number }];
+    const [, scanOptions] = runReminderScan.mock.calls[0] as [unknown, { now: Date }];
+    expect(service).toBe(SERVICE);
+    expect(options.now).toBe(scanOptions.now);
+    expect(options.deadlineMs - options.now.getTime()).toBeLessThan(maxDuration * 1000);
+  });
+
+  it('a scan that throws still runs the recipes, and the answer is still the scan\'s 500', async () => {
+    runReminderScan.mockRejectedValue(new ReminderScanError('Gateway Timeout', []));
+    const res = await get(`Bearer ${SECRET}`);
+    expect(runRecipeTick).toHaveBeenCalledTimes(1);
+    expect(res.status).toBe(500);
+  });
+
+  it('a recipe tier that throws costs the tick nothing: 200, the scan summary, the same first line', async () => {
+    runRecipeTick.mockRejectedValue(new Error('boom'));
+    const res = await get(`Bearer ${SECRET}`);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      ok: true,
+      ...summary(),
+      recipes: { users: 0, runs: 0, notes: ['recipe tier failed'] },
+    });
+    expect(log).toHaveBeenNthCalledWith(
+      1,
+      '[cron/reminders] users=2 cues=3 lastCalls=1 eod=1 unreached=1 daysSettled=0 notes=0',
+    );
+  });
+
+  it('runs no recipe for a request the gate refused', async () => {
+    await get();
+    expect(runRecipeTick).not.toHaveBeenCalled();
   });
 });

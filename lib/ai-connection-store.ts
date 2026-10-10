@@ -4,6 +4,8 @@ import { useMemo } from 'react';
 import { create, type StoreApi, type UseBoundStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { resolveAICapabilities, type AICapabilities } from './ai-registry';
+import type { DetectedProvider } from './ai-key-prefix';
+import type { FlowResult } from './connect-flow';
 import { useAISettingsStore } from './ai-settings-store';
 import {
   isModelId,
@@ -15,6 +17,7 @@ import {
   type ConnectResponse,
   type ModelConnectionView,
   type ModelOption,
+  type ModelProviderId,
   type ModelsResponse,
   type OpenClawView,
 } from './ai-types';
@@ -42,8 +45,32 @@ export type ConnectionPhase = 'unknown' | 'ready' | 'error';
  * named one (every 400 `invalid` does), the field it is about, so the panel can
  * say which: a key, a base URL, or a model the key cannot use.
  */
-export type ApiFailure = { ok: false; code: ApiErrorCode; field?: string };
-export type ApiResult = { ok: true } | ApiFailure;
+export type ApiFailure = {
+  ok: false;
+  code: ApiErrorCode;
+  field?: string;
+  /** `wrong_provider` only: whose key the route read it as. */
+  detected?: DetectedProvider;
+  /** `daily_limit` only: when the limit lifts (ISO). */
+  limitedUntil?: string;
+};
+/** `freeTier`: a connect's answer only, OpenRouter's free-tier flag (ConnectResponse). */
+export type ApiResult = { ok: true; freeTier?: boolean } | ApiFailure;
+
+/**
+ * A connection made a moment ago in this tab, by a key in the setup column or
+ * an OpenRouter sign-in that returned home: what Ask home's "It works." card
+ * names. Memory only, never persisted, and shown only while the live model is
+ * still this one (components/ai/ask/it-works-card.tsx).
+ */
+export interface JustConnected {
+  provider: ModelProviderId;
+  model: string;
+  /** OpenRouter's free tier, as the connect answer said. */
+  freeTier: boolean;
+  /** When (ms). */
+  at: number;
+}
 
 export interface AIConnectionState {
   phase: ConnectionPhase;
@@ -55,10 +82,25 @@ export interface AIConnectionState {
   available: boolean;
   model: ModelConnectionView | null;
   openclaw: OpenClawView;
+  /**
+   * The account said "No AI, thanks" (user_settings.ai_hidden, 060). Null
+   * until an answer arrives, and when the database cannot keep the choice.
+   */
+  aiHidden: boolean | null;
   models: ModelOption[] | null;
   modelsListed: boolean;
   modelsStatus: 'idle' | 'loading' | 'ready' | 'error';
-  busy: null | 'connect' | 'model' | 'recheck' | 'disconnect';
+  busy: null | 'connect' | 'model' | 'recheck' | 'disconnect' | 'unpair' | 'hidden';
+  /** See JustConnected. Cleared by the first send, a new chat, a conversation opened, Ask closing, a model change, a disconnect. */
+  justConnected: JustConnected | null;
+  /**
+   * How an OpenRouter sign-in that returned HOME ended, when it did not end
+   * connected (lib/connect-return.ts). The setup column's OpenRouter fold and
+   * the fix home show it; the next action there clears it. One that saved a
+   * connection that answers (saved, no_credit, daily_limit) is Ask home's to
+   * say instead, and is spent where "It works." is.
+   */
+  flowResult: FlowResult | null;
 }
 
 export interface AIConnectionStore extends AIConnectionState {
@@ -79,10 +121,20 @@ export interface AIConnectionStore extends AIConnectionState {
   recheck(): Promise<ApiResult>;
   /** DELETE; clears models */
   disconnect(): Promise<ApiResult>;
+  /** DELETE /api/ai/openclaw: Unpair. Applies what the route read back, or asks for it. */
+  unpair(): Promise<ApiResult>;
+  /**
+   * PATCH {hidden}: "No AI, thanks" for the account, or its undo. Applied at
+   * once; a failed write goes back to what the server last said and asks it
+   * again, never keeping the tap as if it had been saved.
+   */
+  setAIHidden(hidden: boolean): Promise<ApiResult>;
   /** GET /models */
   loadModels(opts?: { force?: boolean }): Promise<ApiResult>;
   /** 'auth' → model.status='failing' locally, then refresh(); 'not_connected' → refresh() */
   noteCallFailure(code: ChatErrorCode): void;
+  setJustConnected(value: JustConnected | null): void;
+  setFlowResult(value: FlowResult | null): void;
   reset(): void;
 }
 
@@ -100,13 +152,17 @@ const INITIAL: AIConnectionState = {
   available: false,
   model: null,
   openclaw: EMPTY_OPENCLAW,
+  aiHidden: null,
   models: null,
   modelsListed: false,
   modelsStatus: 'idle',
   busy: null,
+  justConnected: null,
+  flowResult: null,
 };
 
 const CONNECTION_URL = '/api/ai/connection';
+const OPENCLAW_URL = '/api/ai/openclaw';
 const MODELS_URL = '/api/ai/connection/models';
 
 /**
@@ -159,6 +215,27 @@ let modelsInflight: Promise<ApiResult> | null = null;
 let listSeq = 0;
 /** The epoch the state was last wiped for, so a same-account retry does not wipe it again. */
 let clearedGen = -1;
+/**
+ * "No AI, thanks" (or its undo) tapped and not yet answered: the account epoch
+ * it was tapped in, the latest value tapped, how many of those writes are still
+ * queued or out, and the last value the server itself gave. While any write is
+ * pending, a status read cannot know the answer (it may have read the row
+ * before the write landed), so the tap stands over it. Keyed by epoch, so a
+ * tap on another account never stands over this one.
+ */
+let hiddenTap: {
+  gen: number;
+  value: boolean;
+  pending: number;
+  /** Counts taps, so a write can tell whether a newer one came after it. */
+  taps: number;
+  server: boolean | null;
+} | null = null;
+
+/** The tapped value standing over status reads in epoch `gen`, if one is. */
+function tapFor(gen: number): typeof hiddenTap {
+  return hiddenTap !== null && hiddenTap.gen === gen && hiddenTap.pending > 0 ? hiddenTap : null;
+}
 
 /** Forget every status read in flight (a fresh one is started on the next ask). */
 function dropInflightStatus() {
@@ -190,6 +267,20 @@ function isObj(v: unknown): v is Record<string, unknown> {
 
 const strOrNull = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null);
 
+/** An ISO time the server sent, normalized, or null. */
+function isoOrNull(v: unknown): string | null {
+  if (typeof v !== 'string' || v.length > 40) return null;
+  const at = Date.parse(v);
+  return Number.isFinite(at) ? new Date(at).toISOString() : null;
+}
+
+/** A model's listed name: printable, at most 200 characters, or null. */
+function labelOrNull(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  const t = v.trim();
+  return t && t.length <= 200 && !/[\u0000-\u001f\u007f]/.test(t) ? t : null;
+}
+
 /** A server view, re-checked field by field. Anything that does not read as `ok` reads as failing. */
 function readModelView(v: unknown): ModelConnectionView | null {
   if (!isObj(v) || !isModelProviderId(v.provider)) return null;
@@ -202,6 +293,8 @@ function readModelView(v: unknown): ModelConnectionView | null {
     status: v.status === 'ok' ? 'ok' : 'failing',
     problem,
     checkedAt: strOrNull(v.checkedAt),
+    limitedUntil: isoOrNull(v.limitedUntil),
+    modelLabel: labelOrNull(v.modelLabel),
   };
 }
 
@@ -215,12 +308,17 @@ function readOpenClaw(v: unknown): OpenClawView {
   };
 }
 
+function readHidden(v: unknown): boolean | null {
+  return typeof v === 'boolean' ? v : null;
+}
+
 function readConnectionResponse(body: unknown): AIConnectionResponse | null {
   if (!isObj(body) || typeof body.available !== 'boolean') return null;
   return {
     available: body.available,
     model: body.available ? readModelView(body.model) : null,
     openclaw: readOpenClaw(body.openclaw),
+    aiHidden: readHidden(body.aiHidden),
   };
 }
 
@@ -244,6 +342,12 @@ const API_ERROR_CODES: readonly ApiErrorCode[] = [
   'too_large',
   'unsupported_media',
   'key_rejected',
+  'wrong_provider',
+  'no_credit',
+  'daily_limit',
+  'region',
+  'stream_refused',
+  'network',
   'unreachable',
   'blocked_url',
   'model_required',
@@ -264,11 +368,26 @@ function errorCodeOf(body: unknown, status: number): ApiErrorCode {
   return 'server';
 }
 
-/** A failed write's result: the route's code, and the field it named, if it named one. */
+/**
+ * A failed write's result: the route's code, the field it named, if it named
+ * one, and the two extras two codes carry, each re-checked: `detected` must be
+ * a provider the prefix table could name, `limitedUntil` a time.
+ */
 function failureOf(body: unknown, status: number): ApiFailure {
   const code = errorCodeOf(body, status);
-  const field = isObj(body) ? strOrNull(body.field) : null;
-  return field === null ? { ok: false, code } : { ok: false, code, field };
+  const out: ApiFailure = { ok: false, code };
+  if (!isObj(body)) return out;
+  const field = strOrNull(body.field);
+  if (field !== null) out.field = field;
+  if (code === 'wrong_provider' && typeof body.detected === 'string') {
+    const d = body.detected;
+    if (d === 'openai' || d === 'anthropic' || d === 'gemini' || d === 'openrouter') out.detected = d;
+  }
+  if (code === 'daily_limit') {
+    const until = isoOrNull(body.limitedUntil);
+    if (until !== null) out.limitedUntil = until;
+  }
+  return out;
 }
 
 async function readBody(res: Response): Promise<unknown> {
@@ -292,6 +411,7 @@ function somethingCanAnswer(s: AIConnectionState): boolean {
     model: s.model,
     openclaw: s.openclaw,
     choice: 'model',
+    aiHidden: false,
   });
   return caps.modelUsable || caps.openclawUsable;
 }
@@ -385,6 +505,11 @@ export const useAIConnectionStore: UseBoundStore<StoreApi<AIConnectionStore>> =
       // screen. Ask again; the fresh answer includes the write.
       if (seq !== writeSeq) return load(userId, true);
 
+      // A "No AI" tap still on its way: the read may predate it, so the tap
+      // stands, and what the server said is kept for a write that fails.
+      const tap = tapFor(gen);
+      if (tap) tap.server = parsed.aiHidden;
+
       const prev = get().model;
       const patch: Partial<AIConnectionState> = {
         phase: 'ready',
@@ -393,6 +518,7 @@ export const useAIConnectionStore: UseBoundStore<StoreApi<AIConnectionStore>> =
         available: parsed.available,
         model: parsed.model,
         openclaw: parsed.openclaw,
+        aiHidden: tap ? tap.value : parsed.aiHidden,
       };
       // Connections are server-side, so one replaced on another device shows
       // up here. The cached list belongs to the old one: offering its ids
@@ -492,13 +618,16 @@ export const useAIConnectionStore: UseBoundStore<StoreApi<AIConnectionStore>> =
             models: readModelOptions(data.models),
             modelsListed: data.listed === true,
             modelsStatus: 'ready',
+            // A new connection: what was said about the last one is spent.
+            justConnected: null,
+            flowResult: null,
           });
           modelSeen();
           // A connect from a gate that never answered (or failed) still owes
           // the OpenClaw half of the picture. A fresh read, never the one in
           // flight: that one began before the PUT.
           if (get().phase !== 'ready') void get().refresh();
-          return { ok: true };
+          return data.freeTier === true ? { ok: true, freeTier: true } : { ok: true };
         }),
 
       setModel: (model) =>
@@ -519,7 +648,7 @@ export const useAIConnectionStore: UseBoundStore<StoreApi<AIConnectionStore>> =
           }
           serverMoved();
           const connection = readModelView(isObj(body) ? body.connection : null);
-          if (connection) set({ model: connection });
+          if (connection) set({ model: connection, justConnected: null, flowResult: null });
           else void get().refresh();
           return { ok: true };
         }),
@@ -553,9 +682,96 @@ export const useAIConnectionStore: UseBoundStore<StoreApi<AIConnectionStore>> =
           if (!res.ok) return { ok: false, code: errorCodeOf(body, res.status) };
           serverMoved();
           listReplaced();
-          set({ model: null, models: null, modelsListed: false, modelsStatus: 'idle' });
+          set({
+            model: null,
+            models: null,
+            modelsListed: false,
+            modelsStatus: 'idle',
+            justConnected: null,
+            flowResult: null,
+          });
           return { ok: true };
         }),
+
+      unpair: () =>
+        enqueueWrite('unpair', async (c) => {
+          const res = await sendJson('DELETE', OPENCLAW_URL);
+          const body = await readBody(res);
+          if (!stillCurrent(c)) return { ok: false, code: 'unauthorized' };
+          if (!res.ok) {
+            // A failure part way may still have changed something: ask.
+            serverMoved();
+            void get().refresh();
+            return { ok: false, code: errorCodeOf(body, res.status) };
+          }
+          serverMoved();
+          if (isObj(body) && isObj(body.openclaw)) set({ openclaw: readOpenClaw(body.openclaw) });
+          else void get().refresh();
+          return { ok: true };
+        }),
+
+      setAIHidden: (hidden) => {
+        // At once, so "No AI, thanks" hides everything on the tap and an undo
+        // brings it back on the tap. Until the last tap's write answers, no
+        // status read can put the old answer back (fetchStatus).
+        const gen = generation;
+        const s = get();
+        if (tapFor(gen) === null) {
+          const known = s.phase === 'ready' && s.hydratedUserId === currentUserId;
+          hiddenTap = { gen, value: hidden, pending: 0, taps: 0, server: known ? s.aiHidden : null };
+        }
+        const tap = hiddenTap as NonNullable<typeof hiddenTap>;
+        tap.value = hidden;
+        tap.pending += 1;
+        const mine = ++tap.taps;
+        if (s.phase === 'ready' && currentUserId !== null) set({ aiHidden: hidden });
+
+        // This tap stops standing over status reads the moment its write has
+        // answered: before the read a failure asks for can answer, so that
+        // read is never covered by the very value that just failed. Once
+        // only, whichever comes first: the write's own end, or the queue
+        // skipping it (the account changed before it ran).
+        let standing = true;
+        const stand = () => {
+          if (!standing) return;
+          standing = false;
+          tap.pending -= 1;
+        };
+        const write = enqueueWrite('hidden', async (c) => {
+          try {
+            let res: Response | null = null;
+            let body: unknown = null;
+            try {
+              res = await sendJson('PATCH', CONNECTION_URL, { hidden });
+              body = await readBody(res);
+            } catch {
+              // Offline, or the connection dropped: whether it landed is not
+              // knowable, which is the failure below.
+            }
+            if (!stillCurrent(c)) return { ok: false, code: 'unauthorized' };
+            // A status read begun while this was out may predate it.
+            serverMoved();
+            const last = tap.taps === mine;
+            if (res === null || !res.ok) {
+              if (last) {
+                // Nothing newer is queued to decide it: back to what the server
+                // last said, and ask it again. `fetchedAt: null` makes the next
+                // sign-in event ask too, should this read fail as well.
+                set({ aiHidden: tap.server, fetchedAt: null });
+              }
+              void get().refresh();
+              return res === null ? { ok: false, code: 'server' } : failureOf(body, res.status);
+            }
+            tap.server = hidden;
+            // An older write answering under a newer tap leaves the newer one on screen.
+            if (last) set({ aiHidden: hidden });
+            return { ok: true };
+          } finally {
+            stand();
+          }
+        });
+        return write.finally(stand);
+      },
 
       loadModels: (opts) => {
         const c = capture();
@@ -616,11 +832,16 @@ export const useAIConnectionStore: UseBoundStore<StoreApi<AIConnectionStore>> =
             set({ model: { ...model, status: 'failing', problem: 'key_rejected' } });
           }
           void get().refresh();
-        } else if (code === 'not_connected') {
+        } else if (code === 'not_connected' || code === 'daily_limit') {
+          // daily_limit: the server wrote when the limit lifts; the read brings it.
           serverMoved();
           void get().refresh();
         }
       },
+
+      setJustConnected: (value) => set({ justConnected: value }),
+
+      setFlowResult: (value) => set({ flowResult: value }),
 
       reset: () => {
         generation += 1;
@@ -645,6 +866,7 @@ function gateFields(s: AIConnectionState) {
     pluginChat: s.openclaw.pluginChat,
     agent: s.openclaw.agent,
     agentId: s.openclaw.agentId,
+    aiHidden: s.aiHidden,
   };
 }
 
@@ -675,6 +897,8 @@ export function useAICapabilities(): AICapabilities {
                 authMethod: 'key',
                 problem: null,
                 checkedAt: null,
+                limitedUntil: null,
+                modelLabel: null,
               },
         openclaw: {
           gateway: f.gateway,
@@ -683,6 +907,7 @@ export function useAICapabilities(): AICapabilities {
           agentId: f.agentId,
         },
         choice,
+        aiHidden: f.aiHidden,
       }),
     [f, choice]
   );
@@ -697,5 +922,6 @@ export function getAICapabilities(): AICapabilities {
     model: s.model,
     openclaw: s.openclaw,
     choice: useAISettingsStore.getState().chatTarget,
+    aiHidden: s.aiHidden,
   });
 }

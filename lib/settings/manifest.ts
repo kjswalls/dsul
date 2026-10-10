@@ -5,6 +5,7 @@ import {
   Command,
   Zap,
   Blocks,
+  Hammer,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -19,13 +20,24 @@ import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { getAICapabilities, useAIConnectionStore } from '@/lib/ai-connection-store';
 import { chooseChatTarget } from '@/lib/chat-target';
 import { PROVIDER_META, type ChatTarget } from '@/lib/ai-types';
+import { modelName } from '@/lib/ai-model-names';
+import {
+  AI_PANE_IDS,
+  USE_AI_CHECK_FAILED,
+  USE_AI_COPY,
+  USE_AI_NEEDS_UPDATE,
+  connectionPill,
+} from '@/lib/ai-pane-state';
+import { setUseAI } from '@/lib/no-ai';
 import { useExtensionsStore } from '@/lib/extensions-store';
+import { useModsStore } from '@/lib/mods-store';
 import {
   EXT_COMPLETION_CONFETTI,
   EXT_GOALS,
   EXT_HABIT_HEATMAP,
   EXT_ORGANIZE,
   EXT_STREAKS,
+  EXT_DO_STUFF,
   OFFICIAL_EXTENSIONS,
   extensionManifest,
 } from '@/lib/extension-registry';
@@ -41,21 +53,27 @@ import {
   DEFAULT_DARK_LOOK,
   DEFAULT_LIGHT_LOOK,
   LIGHT_LOOKS,
-  isDarkLook,
-  isLightLook,
+  isDarkPick,
+  isLightPick,
   darkLookDef,
   lightLookDef,
+  resolveDarkPick,
+  resolveLightPick,
+  type DarkPick,
+  type LightPick,
 } from '@/lib/theme-looks';
 import {
   DEFAULT_LAYOUT,
   LAYOUTS,
   LAYOUT_FAMILIES,
   isLayoutTheme,
+  type LayoutTheme,
   layoutDef,
   layoutStyles,
 } from '@/lib/layout-themes';
 import { APP_ICONS, DEFAULT_APP_ICON, isAppIcon } from '@/lib/app-icons';
 import { lookChanges, type LookPreset } from '@/lib/looks';
+import { userLookChanges, type UserLook } from '@/lib/user-looks';
 import { toast } from 'sonner';
 import { saveSettings } from '@/lib/settings-service';
 import {
@@ -94,7 +112,7 @@ import type { TimeBucket } from '@/lib/planner-types';
  * back once the feature behind them exists.
  *
  * PANES ARE TWO LEVELS, and only under Extensions. The rail is the map and it
- * stays at seven entries; an extension gets a pane of its OWN below it, at
+ * stays at eight entries; an extension gets a pane of its OWN below it, at
  * `extensions/<slug>`. Every one of those is generated from the catalog in
  * lib/extension-registry.ts — there is no hand-written pane per extension and
  * there must never be one, because the whole promise of the extension surface
@@ -109,6 +127,7 @@ export type RootPaneId =
   | 'beacon'
   | 'keyboard'
   | 'extensions'
+  | 'make'
   | 'dsul';
 
 /**
@@ -177,8 +196,10 @@ export const PANES: SettingsPane[] = [
     // every beacon.* record, all permanent. Only the name the user reads moved.
     id: 'beacon',
     name: 'AI',
+    // The static mark stays here (the rail and the eyebrow draw the live one,
+    // components/settings/ai-pane.tsx `AIPaneMark`, lit only while something answers).
     icon: AskMarkIcon,
-    blurb: 'Connect a model and choose who answers.',
+    blurb: 'Optional help that knows your planner.',
   },
   {
     id: 'keyboard',
@@ -194,6 +215,14 @@ export const PANES: SettingsPane[] = [
     // stopped being the place the switches are and became the place they are
     // listed from.
     blurb: 'Optional pieces of dsul, on when you want them. Open one to set it up.',
+  },
+  {
+    // Your own recipes, mods, themes and Looks (memory/plans/mods.md). Never
+    // in OFFICIAL_EXTENSIONS: nothing here is listed, shared or reviewed.
+    id: 'make',
+    name: 'Make',
+    icon: Hammer,
+    blurb: 'Your own recipes, mods, themes and Looks.',
   },
   {
     id: 'dsul',
@@ -283,6 +312,8 @@ export interface SettingCtx {
     replayTour: () => void;
     signOut: () => void;
     openLedger: () => void;
+    /** Opens Delete account's dialog, which the settings page owns. */
+    deleteAccount: () => void;
   };
 }
 
@@ -395,6 +426,7 @@ const reminders = () => useReminderStore.getState();
 const ai = () => useAISettingsStore.getState();
 const aiConn = () => useAIConnectionStore.getState();
 const ext = () => useExtensionsStore.getState();
+const mods = () => useModsStore.getState();
 const channelSecrets = () => useChannelSecretsStore.getState();
 const gateway = () => useGatewayStore.getState();
 const palette = () => usePaletteStore.getState();
@@ -833,10 +865,15 @@ export const SETTINGS: SettingRecord[] = [
     options: LIGHT_LOOKS.map((l) => ({ value: l.value, label: l.label })),
     keywords: ['theme', 'look', 'style', 'skin', 'appearance', 'paper', 'studio', 'sorbet'],
     read: () => look().light,
+    // A user theme's `u-` slug reads back as its own name; the options stay
+    // the built-ins, which is what search indexes.
+    display: (v) => lightLookDef(String(v) as LightPick).label,
     // Paired write, same rule as look.theme and look.palette: the store setter
-    // is localStorage + DOM only (supabase-provider's sync effect).
+    // is localStorage + DOM only (supabase-provider's sync effect). A user
+    // theme is taken only while it is on and loaded, so a recipe step naming
+    // one that is off or deleted does nothing.
     write: (v, ctx) => {
-      if (!isLightLook(v)) return;
+      if (!isLightPick(v)) return;
       look().setLight(v, { eased: true });
       if (ctx.userId) saveSettings(ctx.userId, { theme_light: v });
     },
@@ -852,8 +889,9 @@ export const SETTINGS: SettingRecord[] = [
     options: DARK_LOOKS.map((l) => ({ value: l.value, label: l.label })),
     keywords: ['theme', 'look', 'style', 'skin', 'appearance', 'night', 'terminal', 'dusk'],
     read: () => look().dark,
+    display: (v) => darkLookDef(String(v) as DarkPick).label,
     write: (v, ctx) => {
-      if (!isDarkLook(v)) return;
+      if (!isDarkPick(v)) return;
       look().setDark(v, { eased: true });
       if (ctx.userId) saveSettings(ctx.userId, { theme_dark: v });
     },
@@ -959,8 +997,10 @@ export const SETTINGS: SettingRecord[] = [
     // The other themes design their ground with their accent, so a tint has
     // nothing to act on there. Stated, not hidden: the stored value stands and
     // comes back the moment either default theme is picked again.
+    // What shows, not the raw pick: a pick for one of your themes that is off,
+    // gone or held back by safe mode shows the default, which takes a tint.
     unavailable: () =>
-      look().light === DEFAULT_LIGHT_LOOK || look().dark === DEFAULT_DARK_LOOK
+      resolveLightPick(look().light) === DEFAULT_LIGHT_LOOK || resolveDarkPick(look().dark) === DEFAULT_DARK_LOOK
         ? null
         : 'Only Paper and Night take a tint.',
     control: 'enum',
@@ -1318,17 +1358,52 @@ export const SETTINGS: SettingRecord[] = [
   },
 
   /* ── AI (pane id 'beacon') ────────────────────────────────────────────
-     The pane's top is ModelConnectionPanel (components/settings/
-     model-connection-panel.tsx), mounted by settings-shell: connecting a model
-     is a form with states, not a row. Two of the records below exist so search
-     and `?focus=` can still reach that form, and the panel owns their anchors
-     (see CONNECT_PANEL_RECORD_IDS). The ids are permanent, so they kept their
-     `beacon.*` names when the AI lost its own. */
+     The pane is drawn by AIPane (components/settings/ai-pane.tsx), not as flat
+     rows: Use AI in dsul, Connection (ModelConnectionPanel), OpenClaw (holding
+     the gateway rows) and On this device (who answers, custom instructions),
+     each shown or hidden by state (lib/ai-pane-state.ts). Every record below
+     stays here so search and `?focus=` reach it, and the pane gives each one
+     exactly one anchor in every state (see AI_PANE_RECORD_IDS). The ids are
+     permanent, so they kept their `beacon.*` names when the AI lost its own. */
+  {
+    // "Use AI in dsul": the account's "No AI, thanks" (user_settings.ai_hidden,
+    // 060), read from the connection store and written only through setUseAI
+    // (lib/no-ai.ts): never a dbColumn (the server writes it, service role),
+    // and never chooseNoAI, whose undo strip /settings does not mount.
+    // No surface draws it through the generic SettingRow: the pane and search
+    // both draw `UseAIRow`, which says "No AI, thanks" while nothing is
+    // connected and never shows a modified bar or a reset.
+    id: 'beacon.useAi',
+    pane: 'beacon',
+    label: 'Use AI in dsul',
+    control: 'switch',
+    description: USE_AI_COPY.on,
+    // Never ai, connect, connection, setup, set up or sign: those words find
+    // the connection (beacon.apiKey) first, and Sign out.
+    keywords: ['no ai', 'turn off', 'hide', 'disable', 'opt out'],
+    // Inverted polarity: the account stores ai_hidden; this row says "use AI". On only once the server
+    // has said false, so a disabled row never draws a checked (lime) track through disabled:opacity-50.
+    read: () => {
+      const s = aiConn();
+      return s.phase === 'ready' && s.aiHidden === false;
+    },
+    write: (v) => {
+      void setUseAI(v === true);
+    },
+    defaultValue: true,
+    pending: () => aiConn().phase === 'unknown',
+    unavailable: () => {
+      const s = aiConn();
+      if (s.phase === 'error') return USE_AI_CHECK_FAILED;
+      if (s.phase === 'ready' && s.aiHidden === null) return USE_AI_NEEDS_UPDATE;
+      return null;
+    },
+  },
   {
     id: 'beacon.provider',
     pane: 'beacon',
     label: 'Who answers in chat',
-    description: 'Saved on this device. If your choice isn’t connected, the other one answers.',
+    description: 'Who replies when you open Ask here. Off keeps Ask closed on this device only.',
     control: 'enum',
     options: [
       { value: 'model', label: 'Your model' },
@@ -1336,8 +1411,9 @@ export const SETTINGS: SettingRecord[] = [
       { value: 'none', label: 'Off' },
     ],
     keywords: ['ai', 'agent', 'assistant', 'chat', 'llm', 'openclaw', 'beacon', 'provider'],
-    // The only user-initiated way to change who answers: it wipes transcripts,
-    // which a raw setter (or a rehydrate) must never do. lib/chat-target.ts.
+    // The only user-initiated way to change who answers (lib/chat-target.ts):
+    // it deletes nothing, and a raw setter (or a rehydrate) must never stand in
+    // for the user's choice.
     read: () => ai().chatTarget,
     write: (v) => chooseChatTarget(v as ChatTarget),
     defaultValue: 'model',
@@ -1345,6 +1421,9 @@ export const SETTINGS: SettingRecord[] = [
     // a choice that works.
     pending: () => aiConn().phase === 'unknown',
     unavailable: () => {
+      // Off on this device is always undoable: with nothing connected, On this
+      // device shows for exactly this reason, so the way back must work.
+      if (ai().chatTarget === 'none') return null;
       const caps = getAICapabilities();
       if (!caps.known) return null;
       return caps.modelUsable || caps.openclawUsable ? null : 'Connect a model or OpenClaw first.';
@@ -1354,10 +1433,10 @@ export const SETTINGS: SettingRecord[] = [
     id: 'beacon.instructions',
     pane: 'beacon',
     label: 'Custom instructions',
-    description: 'What the AI should know about how you work. Added to every message.',
+    description: 'What the AI should know about how you work. Added to every message you send from this device.',
     control: 'text',
     textVariant: 'multiline',
-    placeholder: "I plan in two-hour blocks and I'd rather you were blunt…",
+    placeholder: 'I plan in two-hour blocks and I’d rather you were blunt…',
     keywords: ['system prompt', 'personality', 'context', 'about me', 'profile', 'memory'],
     read: () => ai().systemPrompt,
     write: (v) => ai().setSystemPrompt(String(v)),
@@ -1416,15 +1495,45 @@ export const SETTINGS: SettingRecord[] = [
     description: 'Stored encrypted on the server. Never shown again.',
     control: 'info',
     // Never 'api key': that is the label, which is indexed already, and the
-    // manifest's own rule forbids restating it.
-    keywords: ['key', 'token', 'byok', 'openai', 'chatgpt', 'anthropic', 'claude', 'gemini', 'openrouter', 'llm'],
+    // manifest's own rule forbids restating it. The verbs are how people look
+    // for the form: "connect" used to land only on "Who answers in chat" and
+    // OpenClaw, and "set up" on nothing; 'model' makes the app's own words for
+    // it, "Connect a model", land here too. Never 'sign in': the AI pane draws
+    // above the account's in the results, so "sign" would put this row over
+    // Sign out, and "openrouter" already finds OpenRouter's sign-in.
+    keywords: [
+      'connect',
+      'connection',
+      'set up',
+      'setup',
+      'model',
+      'ai',
+      'key',
+      'token',
+      'byok',
+      'openai',
+      'chatgpt',
+      'anthropic',
+      'claude',
+      'gemini',
+      'openrouter',
+      'llm',
+    ],
+    // The Connection pill's words (lib/ai-pane-state.ts), so search and the
+    // pane never name one state two ways. `busy` is left out: a check in flight
+    // is the pane's moment, not the record's.
     read: () => {
       const conn = aiConn();
       if (conn.phase === 'unknown') return 'Checking…';
       if (conn.phase === 'error') return 'Couldn’t check';
       if (!conn.available) return 'Not available on this server';
-      if (!conn.model) return 'Not connected';
-      if (conn.model.status === 'failing') return 'Stopped working';
+      const pill = connectionPill(
+        { phase: conn.phase, available: conn.available, model: conn.model, busy: null },
+        Date.now()
+      );
+      if (pill === 'needs_attention') return 'Needs attention';
+      if (pill === 'daily_limit') return 'Daily limit';
+      if (pill !== 'working' || !conn.model) return 'Not set up';
       const label = PROVIDER_META[conn.model.provider].label;
       return conn.model.authMethod === 'oauth' ? `Signed in (${label})` : `Saved (${label})`;
     },
@@ -1437,10 +1546,14 @@ export const SETTINGS: SettingRecord[] = [
     id: 'beacon.model',
     pane: 'beacon',
     label: 'Model',
-    description: 'Which of your provider’s models answers.',
+    description: 'Answers in Ask and drafts your plans.',
     control: 'info',
     keywords: ['gpt', 'claude', 'gemini', 'llama', 'engine', 'free', 'model picker'],
-    read: () => aiConn().model?.model ?? 'None',
+    // The model's name, as the picker's chip shows it ("GPT-4o mini"), never a raw id.
+    read: () => {
+      const model = aiConn().model;
+      return model?.model ? modelName(model.provider, model.model, model.modelLabel).name : 'None';
+    },
     write: () => {},
     defaultValue: '',
   },
@@ -1451,6 +1564,38 @@ export const SETTINGS: SettingRecord[] = [
      which meant the bindings themselves were unsearchable, undeep-linkable and
      visible only from inside a dialog. */
   ...SHORTCUT_RECORDS,
+
+  /* ── Make ───────────────────────────────────────────────────────────────
+     The pane's list is MakePane (components/settings/make-pane.tsx), drawn
+     above this one row. The row is what search finds the pane by. */
+  {
+    id: 'make.allOff',
+    pane: 'make',
+    label: 'Turn all mods off',
+    description: 'Switches off every recipe and mod you made, on every device.',
+    control: 'action',
+    keywords: [
+      'mods',
+      'mod',
+      'recipes',
+      'recipe',
+      'make',
+      'automation',
+      'workflow',
+      'script',
+      'plugin',
+      'disable',
+      'off',
+      'safe mode',
+      'custom',
+    ],
+    unavailable: () => (mods().available ? null : 'Needs a database update that has not landed here yet.'),
+    read: () => 'Turn off',
+    write: (_v, ctx) => {
+      if (ctx.userId) void mods().turnAllOff(ctx.userId);
+    },
+    defaultValue: 'Turn off',
+  },
 
   /* ── dsul ───────────────────────────────────────────────────────────── */
   {
@@ -1484,6 +1629,20 @@ export const SETTINGS: SettingRecord[] = [
     read: () => 'Sign out',
     write: (_v, ctx) => ctx.actions?.signOut(),
     defaultValue: 'Sign out',
+  },
+  {
+    // memory/plans/account-deletion.md. The dialog says what goes and what
+    // dsul can't delete for the person, and asks them to type DELETE.
+    id: 'dsul.deleteAccount',
+    pane: 'dsul',
+    label: 'Delete account',
+    description: 'Deletes your account and everything in it, on every device. It cannot be undone.',
+    control: 'action',
+    // Not 'delete account': that is the label, which search already reads.
+    keywords: ['remove account', 'close account', 'erase', 'gdpr'],
+    read: () => 'Delete…',
+    write: (_v, ctx) => ctx.actions?.deleteAccount(),
+    defaultValue: 'Delete…',
   },
 
   /* ── Extensions ───────────────────────────────────────────────────────── */
@@ -1537,6 +1696,23 @@ export const SETTINGS: SettingRecord[] = [
     // ON by default (see extension-registry). Must track the manifest default, or
     // a fresh account draws the "modified" bar and a per-row reset would write
     // OFF into the user's row — isModified is read() !== defaultValue.
+    defaultValue: true,
+  },
+  {
+    id: 'extensions.doStuff',
+    pane: extensionPaneId(EXT_DO_STUFF),
+    label: 'Do stuff',
+    description:
+      'Sort the braindump by size and walk the quick ones first. Off hides the row and the size dots; every size you set is kept.',
+    control: 'switch',
+    keywords: ['size', 'quick', 'errand', 'braindump', 'stale', 'momentum', 'focus'],
+    unavailable: extUnavailable,
+    // Defaults ON, so extPending matters for the reason the Streaks row gives.
+    pending: extPending,
+    read: () => ext().isEnabled(EXT_DO_STUFF),
+    write: (v, ctx) => {
+      if (ctx.userId) ext().setEnabled(ctx.userId, EXT_DO_STUFF, Boolean(v));
+    },
     defaultValue: true,
   },
   {
@@ -1693,9 +1869,11 @@ export const DESTINATIONS: DestinationRecord[] = [
   {
     id: 'dest.openclaw',
     label: 'Connect OpenClaw',
-    where: '/connect',
+    // Pairing is a CLI device-code flow, so the guide is where it starts:
+    // /connect without a code is a dead end.
+    where: '/docs/openclaw',
     keywords: ['openclaw', 'agent', 'connect', 'pair', 'device', 'cli'],
-    action: 'connect-openclaw',
+    action: 'openclaw-docs',
   },
   {
     id: 'dest.ledger',
@@ -1717,6 +1895,15 @@ export const DESTINATIONS: DestinationRecord[] = [
  * `data-setting-alias` anchors.
  */
 export const CONNECT_PANEL_RECORD_IDS: ReadonlySet<string> = new Set(['beacon.apiKey', 'beacon.model']);
+
+/**
+ * Every record the AI pane (components/settings/ai-pane.tsx) draws or
+ * anchors itself, so the shell draws no flat rows and no Advanced fold there.
+ * They stay in SETTINGS, so search finds them, and the pane gives each one
+ * exactly one anchor in every state for `?focus=`. CONNECT_PANEL_RECORD_IDS,
+ * beside it, means only "search shows Set up".
+ */
+export const AI_PANE_RECORD_IDS: ReadonlySet<string> = new Set(AI_PANE_IDS);
 
 /**
  * Records the Look pane's picker (components/settings/look-picker.tsx) draws as
@@ -1748,12 +1935,12 @@ export function pickLayoutFamily(v: string | boolean, ctx: SettingCtx): boolean 
 }
 
 /**
- * Applies a Look (lib/looks.ts): its exact layout, style included, and the
- * theme for each mode it pairs with, as one settings patch. The mode is left
- * alone, so following the device keeps following it.
+ * Writes a Look's picks: the layout, and each theme given that differs from
+ * the store's, as one settings patch. The mode is left alone, so following
+ * the device keeps following it. Shared by built-in and user Looks.
  */
-export function applyLook(preset: LookPreset, ctx: SettingCtx): void {
-  const { layout, light, dark } = lookChanges(preset);
+function applyPicks(picks: { layout: LayoutTheme; light?: LightPick; dark?: DarkPick }, ctx: SettingCtx): void {
+  const { layout, light, dark } = picks;
   look().setLayout(layout);
   if (light && look().light !== light) look().setLight(light, { eased: true });
   if (dark && look().dark !== dark) look().setDark(dark, { eased: true });
@@ -1764,6 +1951,27 @@ export function applyLook(preset: LookPreset, ctx: SettingCtx): void {
       ...(dark && { theme_dark: dark }),
     });
   }
+}
+
+/**
+ * Applies a Look (lib/looks.ts): its exact layout, style included, and the
+ * theme for each mode it pairs with, as one settings patch. The mode is left
+ * alone, so following the device keeps following it.
+ */
+export function applyLook(preset: LookPreset, ctx: SettingCtx): void {
+  applyPicks(lookChanges(preset), ctx);
+}
+
+/**
+ * Applies one of your own Looks (lib/user-looks.ts): all three parts, each
+ * theme by its pick (userLookChanges), so one of yours that is off is saved
+ * as itself and shows the default until it is on again, and a side already
+ * holding that pick is left as it is. On a phone the layout is written too
+ * (it is the account's) and only the colours show there. Nothing in safe mode.
+ */
+export function applyUserLook(look: UserLook, ctx: SettingCtx): void {
+  if (useModsStore.getState().safeMode) return;
+  applyPicks(userLookChanges(look), ctx);
 }
 
 /* ---------------------------------------------------------------- lookups */
@@ -1787,6 +1995,39 @@ export function paneById(id: string): SettingsPane | undefined {
  */
 export function isPaneId(value: string): value is PaneId {
   return ALL_PANES.some((p) => p.id === value);
+}
+
+/**
+ * A pane's user-facing path, where it differs from its id: the AI pane's id
+ * stays 'beacon' (the route every old link and the `beacon.*` records name,
+ * permanent), but the address bar says what the rail says. Never in PANES or
+ * ALL_PANES: an alias is a second way to the same pane, not a pane, so the
+ * rail, search and every pane lookup still see one AI pane.
+ */
+export const PANE_ALIASES: Readonly<Record<string, RootPaneId>> = Object.freeze({ ai: 'beacon' });
+
+/** The other direction: the path a pane is linked by. Only the panes with an alias are here. */
+export const PANE_PATHS: Readonly<Partial<Record<PaneId, string>>> = Object.freeze({ beacon: 'ai' });
+
+/**
+ * The pane a `/settings/<path>` names: its id, or the pane its alias stands
+ * for (`ai` → 'beacon'). Null for anything else. Own keys only, so a path of
+ * `constructor` is no pane.
+ */
+export function resolvePaneSlug(path: string | undefined): PaneId | null {
+  if (!path) return null;
+  if (isPaneId(path)) return path;
+  return Object.hasOwn(PANE_ALIASES, path) ? PANE_ALIASES[path] : null;
+}
+
+/**
+ * Where the app links a pane: `/settings/ai` for the AI pane, `/settings/<id>`
+ * for every other. Every href and push the settings surface builds goes
+ * through here, so the address bar never shows "beacon" for a link dsul made
+ * (`/settings/beacon` itself keeps working).
+ */
+export function paneHref(id: PaneId): string {
+  return `/settings/${PANE_PATHS[id] ?? id}`;
 }
 
 /** The value as the user sees it — chip copy, and what search echoes back. */

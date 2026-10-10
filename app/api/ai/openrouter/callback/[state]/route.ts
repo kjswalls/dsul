@@ -1,8 +1,12 @@
 import { requireSessionUser } from '@/app/api/ai/_shared/guard'
+import { AI_SETTINGS_PATH, openRouterReturnPath, type OpenRouterReturn } from '@/lib/ai-types'
+import type { ConnectFlow } from '@/lib/connect-flow'
+import { checkConnection } from '@/lib/ai-server/check'
 import {
   AiDbError,
   readModelConnection,
   saveModelConnection,
+  setConnectionLimit,
   type ModelConnectionRow,
 } from '@/lib/ai-server/connections'
 import { logProviderError, toProviderError } from '@/lib/ai-server/errors'
@@ -13,8 +17,8 @@ import {
   PKCE_COOKIE_PATH,
   pkceStateMatches,
 } from '@/lib/ai-server/pkce'
-import { credentialsFor, getAdapter, type VerifyResult } from '@/lib/ai-server/providers'
-import { takeToken } from '@/lib/ai-server/rate-limit'
+import { credentialsFor, getAdapter, type ModelMeta, type VerifyResult } from '@/lib/ai-server/providers'
+import { takeSharedToken } from '@/lib/ai-server/rate-limit'
 import { loadEncryptionKey } from '@/lib/ai-server/secret-box'
 import { anySignal } from '@/lib/ai-server/stream'
 
@@ -28,21 +32,30 @@ import { anySignal } from '@/lib/ai-server/stream'
  * exchanged. That binds the callback to the browser that started the flow, so
  * a code minted for someone else's OpenRouter account cannot be planted here.
  *
- * The issued key is verified, stored encrypted, and never sent to the browser.
- * Every exit clears the cookie and lands on the settings pane with a result
- * flag.
+ * The issued key is checked, stored encrypted, and never sent to the browser.
+ * Every exit clears the cookie and lands with a result flag on where the
+ * sign-in started: the settings pane, or home, from the `r` sealed in the
+ * cookie. The exits BEFORE the cookie opens cannot know it, so they land on
+ * the pane.
  *
  * "Sign in again" (a revoked or expired OpenRouter key) runs this same flow,
  * so it keeps the model the user already picked, as "Replace key" does on the
  * key path, rather than quietly swapping it for the provider's default.
+ *
+ * Unlike a pasted key, an issued one has no box to stay in: a second try
+ * means another round trip, and mints another key on the account. So once the
+ * exchange and OpenRouter's own key check have proven it, it is SAVED whatever
+ * the test question said, and the landing says what happened. Only a refused
+ * key, or a browser that went away, saves nothing.
  */
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
-const SETTINGS_PATH = '/settings/beacon'
 const STEP_TIMEOUT_MS = 10_000
+/** The check: OpenRouter's key call and catalog, then the test question. */
+const CHECK_TIMEOUT_MS = 20_000
 /** RFC 3986 unreserved characters, a sane length. Anything else never leaves this server. */
 const CODE_RE = /^[A-Za-z0-9._~-]{8,512}$/
 
@@ -96,11 +109,14 @@ export async function GET(
     )
     return new Response(null, { status: 303, headers })
   }
-  const back = (result: string) => done(`${origin}${SETTINGS_PATH}?connect=${result}`)
+  // Until the cookie opens, where the sign-in started is unknown: the pane is
+  // where every sign-in landed before `r`, and where Settings → AI lives.
+  let to: OpenRouterReturn = 'settings'
+  const back = (result: ConnectFlow) => done(`${origin}${openRouterReturnPath(to)}?connect=${result}`)
 
   // 1-4: who, and is this the flow they started. No outbound call until all pass.
   const user = await requireSessionUser()
-  if (!user) return done(`${origin}/login?redirect=${encodeURIComponent(SETTINGS_PATH)}`)
+  if (!user) return done(`${origin}/login?redirect=${encodeURIComponent(AI_SETTINGS_PATH)}`)
 
   const key = loadEncryptionKey()
   if (!key.ok) return back('unavailable')
@@ -112,6 +128,7 @@ export async function GET(
     const { state } = await params
     if (!pkceStateMatches(flow.state, state)) return back('expired')
     verifier = flow.verifier
+    to = flow.r
   } catch {
     return back('expired')
   }
@@ -138,7 +155,7 @@ export async function GET(
   }
 
   // 7: whether this user may spend another connect.
-  if (!takeToken(user.id, 'connect')) return back('busy')
+  if (!(await takeSharedToken(user.id, 'connect'))) return back('busy')
 
   // 8: the exchange, server to server. The key never reaches the browser.
   let apiKey: string
@@ -155,22 +172,52 @@ export async function GET(
   }
 
   // 9: the same check a pasted key gets, then store it, keeping the user's
-  // own pick when the new key can still use it.
+  // own pick when the new key can still use it. The model the test question
+  // went to is the model stored, so "it answered" is about the one Ask uses.
   try {
     const creds = credentialsFor('openrouter', null, apiKey)
     const adapter = getAdapter('openrouter')
-    const signal = anySignal([req.signal, AbortSignal.timeout(STEP_TIMEOUT_MS)])
-    const verified = await adapter.verify(creds, { signal })
-    const list: VerifyResult = { ...(await adapter.listModels(creds, signal)), freeTier: verified.freeTier }
-    const model = keptModel(existing, list) ?? adapter.pickDefaultModel(list)
-    await saveModelConnection(user.id, {
+    const { result, model, ping } = await checkConnection(adapter, creds, {
+      signal: anySignal([req.signal, AbortSignal.timeout(CHECK_TIMEOUT_MS)]),
+      choose: (list) => keptModel(existing, list) ?? adapter.pickDefaultModel(list),
+      deadline: Date.now() + CHECK_TIMEOUT_MS,
+    })
+
+    let landing: ConnectFlow = 'ok'
+    let limitedUntil: string | null = null
+    if (!ping.ok) {
+      const e = ping.error
+      logProviderError('openrouter-callback', 'openrouter', e.kind, e.status)
+      // A key OpenRouter refuses is not worth keeping, and a browser that
+      // left asked for nothing.
+      if (e.kind === 'auth' || e.kind === 'aborted') return back('failed')
+      if (e.kind === 'daily_limit') {
+        landing = 'daily_limit'
+        limitedUntil = e.resetAt ?? null
+      } else if (e.kind === 'quota') {
+        landing = 'no_credit'
+      } else {
+        // Connected, but nothing answered yet: never 'ok', which claims a
+        // model did.
+        landing = 'saved'
+      }
+    }
+
+    const entry = model === null ? undefined : result.models.find((m) => m.id === model)
+    const modelMeta: ModelMeta = entry && entry.label !== model ? { label: entry.label } : {}
+    const row = await saveModelConnection(user.id, {
       provider: 'openrouter',
       baseUrl: null,
       model,
-      modelMeta: {},
+      modelMeta,
       authMethod: 'oauth',
       apiKey,
     })
+    // After the save, which clears any limit the old key carried.
+    if (landing === 'daily_limit') {
+      await setConnectionLimit(user.id, row.key_ciphertext, limitedUntil).catch(() => {})
+    }
+    return back(landing)
   } catch (err) {
     // Never the error object: a database error's details can carry the row.
     if (err instanceof AiDbError) {
@@ -181,6 +228,4 @@ export async function GET(
     }
     return back('failed')
   }
-
-  return back('ok')
 }

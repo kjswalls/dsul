@@ -2,6 +2,7 @@ import type { Habit, Priority, RepeatFrequency, Task, TimeBucket } from '@dsul/t
 import { getItemTypeConfig, type ItemTypeConfig } from './item-registry';
 import { MAX_BULK_ITEMS } from './bulk-add';
 import { autoCorrectBucket } from './time-bucket';
+import { classifyKindForItemType, sameContainerName } from './container-registry';
 
 /**
  * WHAT A TYPED EDIT FROM THE IPHONE MAY CHANGE, AND WHAT IT WRITES.
@@ -57,6 +58,16 @@ import { autoCorrectBucket } from './time-bucket';
  * import back. Goal roles are not here: the route demotes any the write left
  * untrue through lib/goal-roles.ts once the write has landed.
  *
+ * The project chip's edit (2f), `project`: a project by id, or null for No
+ * project. It is refused under a subtask (`not_for_subtask`), on a type with no
+ * project axis (`no_project`) and, for No project, on a type whose container
+ * is required (`project_required`); no shipped type meets the last two. The
+ * route reads the project's own name first (a project gone is its refusal,
+ * since only it reads one), and `projectRefilePatch` writes it: the bulk Move
+ * to project's own rule, which the store's setItemsProject imports back, and
+ * whose release of a parked task (`projectBlockRelease`) the item dialog's
+ * project change shares.
+ *
  * Two of the sheet's writes are not edits of a field, and have their own rule:
  *  - Add a subtask (`subtaskRefusal`) is refused on a type without subtasks (a
  *    habit) and under a subtask, since one level is all there is. It writes a
@@ -69,8 +80,9 @@ import { autoCorrectBucket } from './time-bucket';
  * spells them twice.
  *
  * Imports @dsul/types, lib/item-registry.ts (a type's config), lib/bulk-add.ts's
- * cap and lib/time-bucket.ts's auto-correct (pure: no store, no DOM) only, so
- * any route can use it.
+ * cap, lib/time-bucket.ts's auto-correct, and lib/container-registry.ts's
+ * project kind and its case rule (pure: no store, no DOM) only, so any route
+ * can use it.
  */
 
 /** One typed edit, as the phone sends it. Each is its own server action. */
@@ -90,7 +102,12 @@ export type ItemEdit =
    * The Repeat chip: one of the type's frequencies, with its days for Custom days alone and its
    * day of the month for Monthly alone. All three keys are written together.
    */
-  | { action: 'repeat'; frequency: RepeatFrequency; days?: number[]; monthDay?: number };
+  | { action: 'repeat'; frequency: RepeatFrequency; days?: number[]; monthDay?: number }
+  /**
+   * The project chip: a project by id, or null for No project. The route reads the project's own
+   * name under RLS (editPatch's `ctx`), so the phone never sends one.
+   */
+  | { action: 'project'; projectId: string | null };
 
 /** The columns an edit is decided on, as the route selects them. */
 export interface EditRow {
@@ -115,6 +132,11 @@ export interface EditRow {
   repeat_frequency?: string | null;
   repeat_days?: number[] | null;
   repeat_month_day?: number | null;
+  /** The project chip's (2f), in its own read; in_project_block is in every read. */
+  project?: string | null;
+  project_id?: string | null;
+  previous_start_time?: string | null;
+  previous_start_date?: string | null;
 }
 
 /**
@@ -146,6 +168,11 @@ export interface EditShape {
   repeatFrequency?: RepeatFrequency | null;
   repeatDays?: number[] | null;
   repeatMonthDay?: number | null;
+  /** The project chip's columns (2f), each absent when not read, like `notes`. */
+  project?: string | null;
+  projectId?: string | null;
+  previousStartTime?: string | null;
+  previousStartDate?: string | null;
 }
 
 export function editShapeFromRow(row: EditRow): EditShape {
@@ -173,6 +200,10 @@ export function editShapeFromRow(row: EditRow): EditShape {
       : {}),
     ...(row.repeat_days !== undefined ? { repeatDays: row.repeat_days ?? null } : {}),
     ...(row.repeat_month_day !== undefined ? { repeatMonthDay: row.repeat_month_day ?? null } : {}),
+    ...(row.project !== undefined ? { project: row.project ?? null } : {}),
+    ...(row.project_id !== undefined ? { projectId: row.project_id ?? null } : {}),
+    ...(row.previous_start_time !== undefined ? { previousStartTime: row.previous_start_time ?? null } : {}),
+    ...(row.previous_start_date !== undefined ? { previousStartDate: row.previous_start_date ?? null } : {}),
   };
 }
 
@@ -303,6 +334,11 @@ const INVALID: EditRefusal = { code: 'invalid', status: 400 };
  * `frequency_not_allowed` with a frequency its type doesn't offer; days or a
  * day beside the wrong frequency, and days out of order, are the schema's
  * refusal.
+ *
+ * A project edit is `not_for_subtask` under a subtask, `no_project` on a type
+ * with no project axis and `project_required` when it would clear a container
+ * the type requires; a project that is gone is the route's (`project_gone`),
+ * since only the route reads it.
  */
 export function editRefusal(row: EditShape, edit: ItemEdit, config: ItemTypeConfig): EditRefusal | null {
   switch (edit.action) {
@@ -358,6 +394,15 @@ export function editRefusal(row: EditShape, edit: ItemEdit, config: ItemTypeConf
       }
       return null;
     }
+    case 'project': {
+      // As the Time and Repeat chips: a subtask shows only in its parent's sheet.
+      if (row.parentItemId) return { code: 'not_for_subtask', status: 400 };
+      // The bulk path's two skips (lib/bulk-edit.ts canBulkSetProject, canBulkClearProject),
+      // refused rather than answered 200 having done nothing. No shipped type meets either.
+      if (classifyKindForItemType(config.containerKind) !== 'project') return { code: 'no_project', status: 400 };
+      if (edit.projectId === null && config.containerRequired) return { code: 'project_required', status: 400 };
+      return null;
+    }
   }
 }
 
@@ -380,6 +425,9 @@ export type EditPatch = Partial<
     | 'repeatFrequency'
     | 'repeatDays'
     | 'repeatMonthDay'
+    | 'project'
+    | 'projectId'
+    | 'startDate'
   > &
     Pick<Habit, 'streak' | 'timesPerDay'>
 >;
@@ -399,11 +447,15 @@ export type EditPatch = Partial<
  * `config` matters only to `time` (its seeded length is the type's default
  * block) and `repeat` (its seeded frequency is the type's default), and
  * defaults to the row's own type.
+ *
+ * `ctx.project` is the project a `project` edit names, as the route read it
+ * (its own name and id, or null for No project); every other edit ignores it.
  */
 export function editPatch(
   row: EditShape,
   edit: ItemEdit,
   config: ItemTypeConfig = getItemTypeConfig(row.type),
+  ctx: { project?: { id: string; name: string } | null } = {},
 ): EditPatch {
   switch (edit.action) {
     case 'title': {
@@ -440,6 +492,18 @@ export function editPatch(
       return timeEditPatch(row, edit, config);
     case 'repeat':
       return repeatEditPatch(row, edit, config);
+    case 'project': {
+      // The route's read of the project the edit names: null for No project.
+      const target = ctx.project;
+      if (
+        target === undefined ||
+        (target === null) !== (edit.projectId === null) ||
+        (target !== null && target.id !== edit.projectId)
+      ) {
+        throw new Error('editPatch: a project edit needs the project the route read');
+      }
+      return projectRefilePatch(refileItemFromShape(row), target?.name, target?.id) ?? {};
+    }
   }
 }
 
@@ -721,6 +785,88 @@ export function repeatEditPatch(
     JSON.stringify(draft.days) !== JSON.stringify(seed.days) ||
     draft.monthDay !== seed.monthDay;
   return moved ? repeatPatch(row.type, draft.frequency, draft.days, draft.monthDay) : {};
+}
+
+// ── The project write (2f) ───────────────────────────────────────────────────
+
+/** What a re-file reads of an item: the store's Item, or a row (refileItemFromShape). */
+export interface RefileItem {
+  project?: string;
+  projectId?: string;
+  inProjectBlock?: boolean;
+  previousStartTime?: string;
+  previousStartDate?: string;
+}
+
+/**
+ * Is `current` the project `name` names? The project kind folds case (CONTAINER_KINDS.project
+ * caseFold), so 'work' is Work. With no name (No project, and '' as a `name`, which setItemsProject's
+ * own `name ?` reads the same way): is there none either? A `current` of '' is a name, as the
+ * store holds it: an unfiled habit reads '' (lib/db.ts itemFromRow), so its clear always writes,
+ * as the web's does. So (undefined, '') is true and ('', '') is false.
+ */
+export function sameProjectName(current: string | undefined, name: string | undefined): boolean {
+  return name ? current != null && sameContainerName('project', current, name) : current == null;
+}
+
+/**
+ * A task parked in its project's block (moveTasksToProjectBlock) and moved to another project, or
+ * to none: its own time and day back from the stash, and the stash cleared, as
+ * moveTaskOutOfProjectBlock writes it. Left parked it would sit in a block it no longer belongs to
+ * and show in none. The part of day stays the block's: the stash holds no bucket. `{}` when it isn't
+ * parked, or the name doesn't move (a same-name link repair keeps it in its own block).
+ */
+export function projectBlockRelease(item: RefileItem, name: string | undefined): Partial<Task> {
+  if (!item.inProjectBlock || sameProjectName(item.project, name)) return {};
+  return {
+    inProjectBlock: false,
+    startTime: item.previousStartTime,
+    startDate: item.previousStartDate,
+    previousStartTime: undefined,
+    previousStartDate: undefined,
+  };
+}
+
+/**
+ * The bulk Move to project's write for one item (planner-store.ts setItemsProject, which imports it
+ * back; the iPhone's `project` route too): the name and the id, and the release. Null when the item
+ * is already there by folded name AND id: a folded match whose id is stale, or missing (a text-only
+ * reference), still writes, which repairs the link. A key set to undefined is written as NULL.
+ */
+export function projectRefilePatch(
+  item: RefileItem,
+  name: string | undefined,
+  projectId: string | undefined,
+): Partial<Task> | null {
+  if (sameProjectName(item.project, name) && item.projectId === projectId) return null;
+  return { project: name, projectId, ...projectBlockRelease(item, name) };
+}
+
+/**
+ * The row as the store would hold it, for projectRefilePatch: a habit as lib/db.ts itemFromRow
+ * gives it, its NULL project read as '' (and the frozen `group` column never read: CLAUDE.md keeps
+ * its one read in itemFromRow), with no block; any other type with its block and its stash. The
+ * branch is `type === 'habit'`, itemFromRow's own. Throws when a column it reads wasn't read:
+ * EDIT_COLUMNS.project always reads them.
+ */
+export function refileItemFromShape(row: EditShape): RefileItem {
+  const { project, projectId, previousStartTime, previousStartDate } = row;
+  if (
+    project === undefined ||
+    projectId === undefined ||
+    previousStartTime === undefined ||
+    previousStartDate === undefined
+  ) {
+    throw new Error('refileItemFromShape: the row was read without its project columns');
+  }
+  if (row.type === 'habit') return { project: project ?? '', projectId: projectId ?? undefined };
+  return {
+    project: project ?? undefined,
+    projectId: projectId ?? undefined,
+    inProjectBlock: row.inProjectBlock ?? undefined,
+    previousStartTime: previousStartTime ?? undefined,
+    previousStartDate: previousStartDate ?? undefined,
+  };
 }
 
 /** The Time chip's lengths, in its order (item-dialog.tsx's Duration rows), as the draft holds them. */

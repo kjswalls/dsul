@@ -2,7 +2,8 @@
 
 import { create } from 'zustand';
 import { format } from 'date-fns';
-import { usePlannerStore } from './planner-store';
+import { getHistoryInfo, usePlannerStore } from './planner-store';
+import { isPlannerLoaded, isPlannerPreviewing, whenPreviewEnds } from './planner-ready';
 import { inactiveItemIdsOn } from './active';
 import { milestoneItemIds } from './goals';
 import { useAISettingsStore } from './ai-settings-store';
@@ -11,6 +12,7 @@ import type { ChatErrorCode } from './ai-types';
 import { buildCatchUpProposal, buildProposalContext, validateProposal } from './proposal';
 import { noteOpenclawAsked, useConversationsStore } from './conversations-store';
 import { tallyOperations } from './conversation-summary';
+import { useChatReceipts } from './chat-receipts';
 import type { Proposal, ProposalOperation } from './planner-types';
 
 /**
@@ -232,14 +234,37 @@ const NO_SELECTION: ProposalStore['selection'] = { proposalId: null, dropped: ne
  * or the item's one conversation for an `item:` card. None (the catch-up card,
  * or an item nobody has chatted about) means there is no row to count on.
  */
-function noteAccepted(surface: ProposalSurface | undefined, accepted: readonly ProposalOperation[]): void {
-  if (!surface || surface === 'chat') return;
+function conversationFor(surface: ProposalSurface | undefined): string | null {
+  if (!surface || surface === 'chat') return null;
   const conversations = useConversationsStore.getState();
   const id = surface.startsWith('conv:')
     ? surface.slice('conv:'.length)
     : conversations.itemIndex[surface.slice('item:'.length)];
-  if (typeof id !== 'string' || !id) return;
-  conversations.noteChanges(id, tallyOperations(accepted));
+  return typeof id === 'string' && id ? id : null;
+}
+
+function noteAccepted(surface: ProposalSurface | undefined, accepted: readonly ProposalOperation[]): void {
+  const id = conversationFor(surface);
+  if (id) useConversationsStore.getState().noteChanges(id, tallyOperations(accepted));
+}
+
+/**
+ * The accept's receipt, in the conversation that asked (lib/chat-receipts.ts):
+ * what the planner actually took, and the history entry it wrote, which is the
+ * newest one the moment applyProposal returns.
+ */
+function receiptFor(surface: ProposalSurface | undefined, accepted: readonly ProposalOperation[]): void {
+  const id = conversationFor(surface);
+  if (!id || accepted.length === 0) return;
+  const actionId = getHistoryInfo().actionLog[0]?.id;
+  if (!actionId) return;
+  const messages = useConversationsStore.getState().threads[id]?.messages;
+  useChatReceipts.getState().add(id, {
+    actionId,
+    afterMessageId: messages?.at(-1)?.id ?? null,
+    tally: tallyOperations(accepted),
+    undone: false,
+  });
 }
 
 /**
@@ -272,7 +297,13 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
    * cannot resurrect a card the user has already dealt with.
    */
   let generation = 0;
-  const claim = () => ++generation;
+  /** The ask waiting out a look-only preview, if any: a newer claim ends its wait. */
+  let waiting: AbortController | null = null;
+  const claim = () => {
+    waiting?.abort();
+    waiting = null;
+    return ++generation;
+  };
   const settle = (token: number, patch: Partial<ProposalStore>) => {
     if (token === generation) set(patch);
   };
@@ -285,6 +316,19 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
    * second copy of the fetch that will one day be updated alone.
    */
   async function askModel(promptForModel: string, itemId: string | undefined, token: number): Promise<void> {
+    // Nothing goes out on cached rows, as with Ask's send
+    // (lib/conversations-store.ts): during the look-only preview the ask
+    // waits for the load to settle, then reads the gate and builds its context
+    // from the fresh rows. The card shows its spinner meanwhile. Asked before
+    // awaiting, so an ordinary ask still reaches fetch in its caller's tick.
+    if (isPlannerPreviewing()) {
+      const wait = new AbortController();
+      waiting = wait;
+      await whenPreviewEnds(wait.signal);
+      if (waiting === wait) waiting = null;
+      if (token !== generation) return;
+    }
+
     // Who proposes is the gate's call (lib/ai-registry.ts): the connected
     // model, or an OpenClaw GATEWAY. The plugin path has no structured
     // proposals, and the route never reroutes an OpenClaw user's planner to a
@@ -485,6 +529,10 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
     },
 
     accept: (operations) => {
+      // Before claim(), so the card stays: applyProposal re-validates against
+      // the CURRENT planner, which before landing is empty or the look-only
+      // preview, and a 0 from there would close it as "those items have changed".
+      if (!isPlannerLoaded()) return 0;
       const { proposal, lastRequest } = get();
       if (!proposal) return 0;
       const chosen = operations ?? proposal.operations;
@@ -493,9 +541,12 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
       // What the planner actually took (it re-validates), counted on the
       // conversation that asked: History's second line.
       const surface = lastRequest?.surface;
-      const applied = usePlannerStore
-        .getState()
-        .applyProposal({ ...proposal, operations: chosen }, (accepted) => noteAccepted(surface, accepted));
+      let took: readonly ProposalOperation[] = [];
+      const applied = usePlannerStore.getState().applyProposal({ ...proposal, operations: chosen }, (accepted) => {
+        took = accepted;
+        noteAccepted(surface, accepted);
+      });
+      if (applied > 0) receiptFor(surface, took);
 
       claim();
       if (applied === 0) {

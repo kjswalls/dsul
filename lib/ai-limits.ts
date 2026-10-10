@@ -9,8 +9,9 @@ import { buildBeaconSystemPrompt } from './beacon-system-prompt'
  *   - they protect the user's own bill. A runaway client, a pasted book or a
  *     transcript that never stops growing would otherwise be charged to them
  *     turn after turn.
- *   - they keep a request inside the 60 s function. An unbounded prompt is a
- *     slower first token and a reply cut off by the platform with no body.
+ *   - they keep a request inside its function's time (60 s for chat, 120 s
+ *     for Make's Write). An unbounded prompt is a slower first token and a
+ *     reply cut off by the platform with no body.
  *
  * The prompt is always built here, on the server, never taken from the body.
  * The user's Custom instructions are APPENDED to it on every path.
@@ -39,6 +40,38 @@ export const MAX_TRANSCRIPT_CHARS = 32_000
 export const MAX_MESSAGES = 40
 /** The user's own "Custom instructions", appended to the built-in prompt. */
 export const MAX_INSTRUCTIONS_CHARS = 2_000
+/**
+ * "Write with AI" in Settings → Make (/api/ai/make): the ask, then per kind
+ * the output cap (memory/plans/mods.md, decision 6: 2,000 tokens, 4,000 for a
+ * mod), the stream's own character stop, which a reply inside the token cap
+ * never reaches, the route's deadline inside its 120 s `maxDuration`, and what
+ * one call takes from the `make` bucket (lib/ai-server/rate-limit.ts).
+ *
+ * A mod costs two of the bucket's 30 an hour, so an hour's output stays under
+ * the 60,000 tokens build order 7 set. Its deadline is longer because at 40 to
+ * 80 tokens a second a 4,000-token reply takes 50 to 100 s; a reasoning model
+ * spends part of the 4,000 thinking, so its replies run short more often.
+ */
+export const MAX_MAKE_ASK_CHARS = 1_000
+/** What "Write with AI" writes, and the one `kind` /api/ai/make accepts. */
+export const MAKE_KINDS = ['recipe', 'theme', 'look', 'mod'] as const
+export type MakeKind = (typeof MAKE_KINDS)[number]
+export function isMakeKind(v: unknown): v is MakeKind {
+  return typeof v === 'string' && (MAKE_KINDS as readonly string[]).includes(v)
+}
+export interface MakeCaps {
+  outputTokens: number
+  maxChars: number
+  timeoutMs: number
+  /** Tokens one call takes from the `make` bucket. */
+  cost: number
+}
+export const MAKE_CAPS: Readonly<Record<MakeKind, MakeCaps>> = {
+  recipe: { outputTokens: 2_000, maxChars: 12_000, timeoutMs: 50_000, cost: 1 },
+  theme: { outputTokens: 2_000, maxChars: 12_000, timeoutMs: 50_000, cost: 1 },
+  look: { outputTokens: 2_000, maxChars: 12_000, timeoutMs: 50_000, cost: 1 },
+  mod: { outputTokens: 4_000, maxChars: 24_000, timeoutMs: 110_000, cost: 2 },
+}
 const MAX_TYPE_NOUNS = 20
 const MAX_TYPE_NOUN_CHARS = 40
 

@@ -1,14 +1,19 @@
 'use client';
 
 import { useAISettingsStore } from './ai-settings-store';
+import { clearKeptQuestionState } from './ask-pending';
 import { useCommandUsageStore } from './command-usage-store';
 import { clearChatState } from './conversations-store';
 import { useEODStore } from './eod-store';
 import { useKeyboardShortcutsStore } from './keyboard-shortcuts-store';
 import { useMorningStore } from './morning-store';
+import { clearPlannerSnapshot } from './planner-snapshot';
 import { usePlannerStore } from './planner-store';
+import { releaseThisBrowserPush } from './push-release';
 import { useSidebarStore } from './sidebar-store';
 import { clearReleased } from './sweep-grace';
+import { forgetUserThemePicks } from './user-themes/forget-picks';
+import { clearUserThemeCache } from './user-themes/store';
 import { useViewStore } from './view-store';
 
 /**
@@ -276,10 +281,24 @@ export const PERSISTED_USER_STORES: readonly PersistedUserStore[] = [
  * Per-user state outside any zustand persist blob, so the audit test cannot
  * walk it by key: saved conversations are a memory-only cache (whose clear
  * also sweeps the pre-2a transcript keys, one fixed plus one per item thread),
- * and sweep-grace is plain functions over a raw map. Both are wholly
- * disclosive, so neither takes a scope. Covered by named tests.
+ * and sweep-grace is plain functions over a raw map. The planner snapshot
+ * (lib/planner-snapshot.ts) is IndexedDB, which the localStorage audit cannot
+ * see at all: a copy of every title and note, so it has its own audit line and
+ * named tests. All three are wholly disclosive, so none takes a scope. The
+ * user-theme cache (lib/user-themes/store.ts) is the account's own colours, so
+ * it goes too, with any device pick naming one of them
+ * (lib/user-themes/forget-picks.ts). So does a question kept from `?`
+ * (lib/ask-pending.ts): sessionStorage, and the memory mirror a reader may have
+ * filled before this ran.
  */
-const RAW_CLEARERS: readonly (() => void)[] = [clearChatState, clearReleased];
+const RAW_CLEARERS: readonly (() => void)[] = [
+  clearChatState,
+  clearKeptQuestionState,
+  clearReleased,
+  clearPlannerSnapshot,
+  clearUserThemeCache,
+  forgetUserThemePicks,
+];
 
 /** The account whose local state is on disk right now, or null for none. */
 export function localStateOwner(): string | null {
@@ -310,7 +329,7 @@ function setLocalStateOwner(userId: string | null): void {
  * is a zustand `set()`, and the persist middleware calls `storage.setItem`
  * UNWRAPPED — a browser at its quota, or one with site data blocked, throws
  * `QuotaExceededError`/`SecurityError` straight back out of `set()`. In a bare
- * loop that one throw aborts the stores after it, both raw clearers and the
+ * loop that one throw aborts the stores after it, every raw clearer and the
  * stamp write; and because this runs FIRST inside the provider's `adoptUser`,
  * it would take `loadPlanner`, `hydrateSettings` and both extension hydrates
  * down with it. The app would come up as a blank shell on a browser that,
@@ -351,6 +370,8 @@ function clearStores(ctx: ClearContext): void {
 export function clearUserScopedLocalState(): void {
   clearStores({ scope: 'all', incomingUserId: null });
   setLocalStateOwner(null);
+  // The one per-user artefact that is not in localStorage (#254). Not awaited.
+  void releaseThisBrowserPush();
 }
 
 /**
@@ -375,6 +396,12 @@ export function adoptLocalState(userId: string): boolean {
   // anyone. A stamp naming a different account is a known user change.
   clearStores({ scope: owner === null ? 'disclosive' : 'all', incomingUserId: userId });
   setLocalStateOwner(userId);
+  // A stamp naming someone else is a KNOWN user change, so the push
+  // subscription goes too (#254), before the new account can subscribe. Not on
+  // an unstamped browser: that is also every load in a browser that cannot
+  // write the stamp (private mode), where releasing would switch the owner's
+  // own reminders off on every visit.
+  if (owner !== null) void releaseThisBrowserPush();
   return true;
 }
 
@@ -399,5 +426,7 @@ if (typeof window !== 'undefined') {
   window.addEventListener('storage', (event) => {
     if (event.key !== LOCAL_STATE_OWNER_KEY) return;
     clearStores({ scope: 'all', incomingUserId: event.newValue });
+    // The writing tab released already; a repeat finds nothing and returns.
+    void releaseThisBrowserPush();
   });
 }

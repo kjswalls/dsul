@@ -7,7 +7,7 @@ import { AskMarkIcon } from '@/components/ai/ask-mark';
 import { useAICapabilities, useAIConnectionStore } from '@/lib/ai-connection-store';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { NOTICE_RANK, type DockNotice } from '@/lib/dock-notices';
-import { PROVIDER_META, type ModelProviderId } from '@/lib/ai-types';
+import { AI_SETTINGS_PATH, PROVIDER_META, type ModelProviderId } from '@/lib/ai-types';
 
 /**
  * The AI's two dock lines: "your key stopped working" and "AI now uses your own
@@ -26,8 +26,8 @@ import { PROVIDER_META, type ModelProviderId } from '@/lib/ai-types';
  * idiom for a condition that waits too.
  */
 
-/** Where both notices send you: Settings → AI (the pane id is a contract). */
-const SETTINGS_HREF = '/settings/beacon';
+/** Where both notices send you: Settings → AI, by the path the address bar shows (the pane id 'beacon' is a contract). */
+const SETTINGS_HREF = AI_SETTINGS_PATH;
 
 /**
  * The failing line's words. "AI paused" only when it is true: a failing model
@@ -79,7 +79,7 @@ export function __resetAINoticeForTests(): void {
 
 export function useAINotice(): DockNotice | null {
   const router = useRouter();
-  const { known, canChat, modelFailing } = useAICapabilities();
+  const { known, canChat, modelFailing, aiHidden } = useAICapabilities();
   const userId = useAIConnectionStore((s) => s.hydratedUserId);
   const checkedAt = useAIConnectionStore((s) => s.model?.checkedAt ?? null);
   const hasModel = useAIConnectionStore((s) => s.model !== null);
@@ -89,6 +89,10 @@ export function useAINotice(): DockNotice | null {
   // Subscribed so a dismissal re-renders every mounted dock, not just the one
   // whose ✕ was pressed.
   useSyncExternalStore(subscribeHidden, hiddenSnapshot, hiddenSnapshot);
+
+  // "No AI, thanks": the gate keeps the connection facts (a failing key is
+  // still failing), but neither line may bring AI back up.
+  if (aiHidden) return null;
 
   const openSettings = () => router.push(SETTINGS_HREF);
 

@@ -9,7 +9,9 @@
  * lost. The Done action closes it in one tap.
  */
 
-import { isPushConfigured, sendPushToUser, type PushPayload, type PushResult } from '../../push-send'
+import { sendToUser } from '../../devices/send'
+import type { SendReport } from '../../devices/types'
+import { isPushConfigured, type PushPayload } from '../../push-send'
 import type { Nudge, NudgeKind } from '../nudge'
 import type { ChannelResult, NudgeChannel } from './types'
 
@@ -91,24 +93,33 @@ const DELIVERY: Record<
  * nothing), but no longer a delivery. Devices that all refused it are a
  * failure; one that took it is a delivery.
  *
+ * "No device" is every device the registry HELD as well as none at all: a
+ * phone whose last-call switch is off, or one the iPhone app covers, is not a
+ * device this push went to (lib/devices/select.ts).
+ *
  * A read that failed is a failure too, not "no devices": the zero it carries
  * is a question nobody answered, and calling it unreached would file a
  * database blip under "this user has no phone".
  */
-function channelResultOf(result: PushResult): ChannelResult {
+function channelResultOf(result: SendReport, kind: Nudge['kind']): ChannelResult {
   if (result.detail) return { ok: false, detail: `push ${result.detail}` }
-  if (result.devices === 0) {
-    return {
-      ok: true,
-      unreached: true,
-      detail: isPushConfigured() ? 'push: no device subscribed' : 'push: no VAPID pair configured',
-    }
+  if (result.eligible === 0) {
+    const detail =
+      result.devices === 0
+        ? isPushConfigured()
+          ? 'push: no device subscribed'
+          : 'push: no VAPID pair configured'
+        : isPushConfigured()
+          ? `push: no device takes ${kind} (held=${result.held})`
+          : 'push: no VAPID pair configured'
+    return { ok: true, unreached: true, detail }
   }
-  const counts = `expired=${result.expired} failed=${result.failed}`
-  if (result.sent === 0) {
-    return { ok: false, detail: `push failed: 0 of ${result.devices} accepted (${counts})` }
+  const held = result.held > 0 ? ` held=${result.held}` : ''
+  const counts = `expired=${result.pruned} failed=${result.failed}${held}`
+  if (result.accepted === 0) {
+    return { ok: false, detail: `push failed: 0 of ${result.eligible} accepted (${counts})` }
   }
-  return { ok: true, detail: `push sent=${result.sent}/${result.devices} ${counts}` }
+  return { ok: true, detail: `push sent=${result.accepted}/${result.eligible} ${counts}` }
 }
 
 export const pushChannel: NudgeChannel = {
@@ -151,15 +162,17 @@ export const pushChannel: NudgeChannel = {
       topic: DELIVERY[nudge.kind].topic(nudge),
     }
 
-    let result: PushResult
+    let result: SendReport
     try {
-      result = await sendPushToUser(ctx.service, ctx.userId, payload)
+      // Through the device registry, which picks the devices that take this
+      // kind (lib/devices/select.ts) and sends on each one's transport.
+      result = await sendToUser(ctx.service, ctx.userId, { kind: nudge.kind, payload })
     } catch (err) {
-      // sendPushToUser answers rather than throws. Caught anyway, because the
+      // sendToUser answers rather than throws. Caught anyway, because the
       // channel contract (types.ts) is this channel's to keep, not a promise
       // borrowed from the function it calls.
       return { ok: false, detail: `push threw: ${err instanceof Error ? err.message : String(err)}` }
     }
-    return channelResultOf(result)
+    return channelResultOf(result, nudge.kind)
   },
 }

@@ -1,4 +1,4 @@
-import { Flame, type LucideIcon } from 'lucide-react';
+import { Flame, Sunrise, type LucideIcon } from 'lucide-react';
 
 /**
  * One-time nudges — a tiny declarative catalog, the same bargain the extension
@@ -14,6 +14,15 @@ import { Flame, type LucideIcon } from 'lucide-react';
  * same rule the extension slugs live under.
  */
 export const NUDGE_STREAKS_ON = 'streaks-on';
+export const NUDGE_RITUALS_INTRO = 'rituals-intro';
+/**
+ * The item panel's "Break it down" offer while AI is not set up (AI setup
+ * phase 2, lib/item-asks.ts `canOfferBreakDown`). Not a toast, so it has no
+ * row in NUDGES: it is the ✕ beside the offer, and closing it once hides the
+ * offer on every item and every device. Setting AI up shows the real button
+ * whatever this says.
+ */
+export const NUDGE_BREAK_IT_DOWN_OFFER = 'break-it-down-offer';
 
 export interface NudgeDef {
   /** Permanent id — the dismissed-set key and the stored value. Slug-shaped. */
@@ -43,7 +52,54 @@ export const NUDGES: NudgeDef[] = [
     ctaLabel: 'Streak settings',
     settingsFocusId: 'extensions.streaks',
   },
+  {
+    id: NUDGE_RITUALS_INTRO,
+    // Issue #86. Both rituals are opt-in for a new account (migration 054), so
+    // without this nobody learns they exist. The nudge only points at them:
+    // the CTA opens the Rituals pane and turns nothing on, and the body says so.
+    title: 'Two quiet rituals, if you want them',
+    body: 'A morning line when something is still waiting from an earlier day, and a short review before the day closes. Both stay off unless you turn them on.',
+    icon: Sunrise,
+    ctaLabel: 'Rituals settings',
+    settingsFocusId: 'rituals.morningCheck',
+  },
 ];
+
+/**
+ * When the rituals nudge may fire (issue #86): once the account has something
+ * planned, after the first-run tour has had its say, and only while BOTH
+ * rituals are off. Settings must be this account's (settingsBelongToUser), or a
+ * shared browser's previous values could hide it, or show it to someone who
+ * already turned a ritual on. The tour gate waits for the tour's ANSWER, not
+ * just its absence, so the toast never lands on top of a tour about to open.
+ *
+ * `setupOrUndoUp` holds it while the tour's last card has left something on
+ * screen: AI setup (the setup column, or the phone's setup page under the Ask
+ * tab), the "It works." a connect there ends on, or an undo row (No AI's, whose
+ * focused Undo the desktop toaster would cover). After Set up AI there is no
+ * toast, and this keeps that true until the person moves on. The shell reads
+ * the three (components/shell/app-shell.tsx FirstRunNudges); this only says
+ * that any one of them holds the intro.
+ */
+export function ritualsNudgeReady(s: {
+  settingsHydrated: boolean;
+  tourAnswered: boolean;
+  tourShowing: boolean;
+  hasTasks: boolean;
+  morningCheckEnabled: boolean;
+  eodReviewEnabled: boolean;
+  setupOrUndoUp: boolean;
+}): boolean {
+  return (
+    s.settingsHydrated &&
+    s.tourAnswered &&
+    !s.tourShowing &&
+    s.hasTasks &&
+    !s.morningCheckEnabled &&
+    !s.eodReviewEnabled &&
+    !s.setupOrUndoUp
+  );
+}
 
 export function nudgeDef(id: string): NudgeDef | undefined {
   return NUDGES.find((nudge) => nudge.id === id);

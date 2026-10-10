@@ -33,6 +33,9 @@ describe('labels', () => {
   });
   it('formats the target day off the string', () => {
     expect(formatTargetDay('2026-07-15')).toBe('Wed, Jul 15');
+    // One formatter serves every call; each still reads its own string.
+    expect(formatTargetDay('2026-12-31')).toBe('Thu, Dec 31');
+    expect(formatTargetDay('2027-01-01')).toBe('Fri, Jan 1');
   });
 });
 

@@ -153,3 +153,34 @@ describe('anchored series', () => {
     expect(firstRepeatDayFrom({ repeatFrequency: 'custom', repeatDays: [] }, '2026-09-25')).toBe('2026-09-25');
   });
 });
+
+/**
+ * toDateStr keeps one formatter per zone (building one is the expensive part,
+ * and every row asks a few times a render). The cache must not change a
+ * single answer, an invalid zone's RangeError included.
+ */
+describe('toDateStr', () => {
+  // 2026-03-01 05:30 UTC: still Feb 28 in Los Angeles, Mar 1 in Auckland.
+  const instant = new Date(Date.UTC(2026, 2, 1, 5, 30));
+
+  it('answers in the zone it is given, the same every time', () => {
+    for (let i = 0; i < 3; i++) {
+      expect(toDateStr(instant, 'UTC')).toBe('2026-03-01');
+      expect(toDateStr(instant, 'America/Los_Angeles')).toBe('2026-02-28');
+      expect(toDateStr(instant, 'Pacific/Auckland')).toBe('2026-03-01');
+    }
+    expect(toDateStr(new Date(Date.UTC(2026, 2, 1, 7, 59)), 'America/Los_Angeles')).toBe('2026-02-28');
+    expect(toDateStr(new Date(Date.UTC(2026, 2, 1, 8, 0)), 'America/Los_Angeles')).toBe('2026-03-01');
+  });
+
+  it('throws for an invalid zone on every call, not only the first', () => {
+    expect(() => toDateStr(instant, 'Not/AZone')).toThrow(RangeError);
+    expect(() => toDateStr(instant, 'Not/AZone')).toThrow(RangeError);
+  });
+
+  it("with no zone, uses the runtime's own", () => {
+    expect(toDateStr(instant, undefined as unknown as string)).toBe(
+      new Intl.DateTimeFormat('en-CA').format(instant)
+    );
+  });
+});

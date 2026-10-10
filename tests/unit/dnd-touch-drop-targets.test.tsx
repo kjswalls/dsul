@@ -113,7 +113,7 @@ const EVERY_DROP_TARGET = [
   'hour:9',
   'weekhour:2026-07-06:14',
   'week:2026-07-06:anytime',
-  'projectblock:Work',
+  'projectblock:2026-07-06:Work',
   'sidebar',
   'list:2026-07-06',
 ] as const;

@@ -17,7 +17,12 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
  *  - THE DOCK'S BOX is the tab's one box: bound to the top view, worded for
  *    it, with the answerer named under it; arriving puts the caret in it only
  *    at a conversation or an item.
- *  - LEAVING THE TAB keeps the stack, the drafts and a conversation's card.
+ *  - LEAVING THE TAB keeps the stack, the drafts and a conversation's card,
+ *    and spends "It works." (and a sign-in's note), as Ask closing does on
+ *    the desktop.
+ *  - THE SETUP PAGE holds the tab while nothing answers but the gate invites:
+ *    not Ask (no markers, no item interceptor, the dock's omnibar), and it
+ *    turns into Ask in place, at home, with no caret, once something answers.
  *
  * Stubbed: the dated header, the user menu (a bare button), the schedule
  * sheet, the braindump, and Today (one button that opens an item, as a row
@@ -123,8 +128,9 @@ import { phoneArrivalFocuses, useRailStore, type AskView } from '@/lib/rail-stor
 import { openEditFor, useUIStore } from '@/lib/ui-store';
 import type { TaskItem } from '@/lib/planner-types';
 import { matchCommands, STATIC_COMMANDS, type CommandContext } from '@/lib/commands';
+import { useAIConnectionStore } from '@/lib/ai-connection-store';
 import { CONNECTED_MODEL, NOTHING_CONNECTED, OPENCLAW_PLUGIN, seedAI } from './helpers/ai-fixtures';
-import { fakeApi, fakeTransport, flush, summary, type FakeTransport } from './helpers/conversations-fakes';
+import { fakeApi, fakeTransport, flush, summary, type FakeApi, type FakeTransport } from './helpers/conversations-fakes';
 
 beforeAll(() => {
   if (!('PointerEvent' in globalThis)) {
@@ -380,6 +386,125 @@ describe('one stack under one capsule', () => {
   });
 });
 
+describe('leaving the tab', () => {
+  const ai = () => useAIConnectionStore.getState();
+  /** "It works." for the model that answers, and a sign-in's note beside it. */
+  const say = () =>
+    act(() => {
+      ai().setJustConnected({ provider: 'openai', model: 'gpt-4o-mini', freeTier: false, at: Date.now() });
+      ai().setFlowResult('saved');
+    });
+  const said = () => [ai().justConnected, ai().flowResult];
+
+  // The phone's close: Ask closing spends it on the desktop (✕, Ctrl+J, a
+  // park), and here the tab is what closes. Only that: the stack and every
+  // draft are the tab's to come back to.
+  it('spends "It works." by the sheet, a swipe or any write, and keeps the stack and drafts', () => {
+    seedConversation('c1');
+    renderShell([{ kind: 'history' }, { kind: 'conversation', id: 'c1' }]);
+    fireEvent.change(dockInput(), { target: { value: 'and after lunch?' } });
+
+    say();
+    act(() => useMobileNavStore.getState().setActiveTab('today'));
+    expect(said()).toEqual([null, null]);
+    expect(phone()).toEqual([{ kind: 'history' }, { kind: 'conversation', id: 'c1' }]);
+    expect(rail().drafts['conv:c1']).toBe('and after lunch?');
+
+    act(() => useMobileNavStore.getState().setActiveTab('chat'));
+    say();
+    act(() => useMobileNavStore.setState({ activeTab: 'braindump' }));
+    expect(said()).toEqual([null, null]);
+
+    // From Ask home a swipe right walks to Today.
+    act(() => useMobileNavStore.getState().setActiveTab('chat'));
+    act(() => rail().popToHome('phone'));
+    say();
+    act(() => swipe.handlers?.onSwipedRight?.());
+    expect(tab()).toBe('today');
+    expect(said()).toEqual([null, null]);
+  });
+
+  it('spends nothing while the tab stays, or between the other two', () => {
+    renderShell();
+    say();
+    act(() => useMobileNavStore.getState().setActiveTab('chat'));
+    expect(said()).not.toEqual([null, null]);
+    expect(screen.getByTestId('it-works')).toBeInTheDocument();
+
+    act(() => useMobileNavStore.getState().setActiveTab('today'));
+    say();
+    act(() => useMobileNavStore.getState().setActiveTab('braindump'));
+    act(() => useMobileNavStore.getState().setActiveTab('today'));
+    expect(said()).not.toEqual([null, null]);
+  });
+});
+
+describe('the setup page in Ask\'s place', () => {
+  const gateAnswer = vi.fn(async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      available: true,
+      model: null,
+      openclaw: { gateway: false, pluginChat: false, agent: false, agentId: null },
+      aiHidden: false,
+    }),
+  }));
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', gateAnswer);
+    unseed();
+    unseed = seedAI(NOTHING_CONNECTED);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('is not Ask: none of its markers, nothing intercepted, and the dock keeps the omnibar', () => {
+    renderShell([{ kind: 'conversation', id: 'c1' }]);
+
+    expect(document.querySelector('[data-setup-tab]')).not.toBeNull();
+    expect(document.querySelector('[data-ask-tab]')).toBeNull();
+    expect(document.querySelector('[data-ask-home]')).toBeNull();
+    expect(rail().phoneAskHosts).toBe(0);
+    expect(screen.getByTestId('omnibar-input')).toBeInTheDocument();
+    expect(screen.queryByTestId('chat-dock-input')).toBeNull();
+    // The one user menu, in the page's own capsule.
+    expect(screen.getAllByRole('button', { name: 'User menu' })).toHaveLength(1);
+
+    act(() => openEditFor(TASK, 'task'));
+    expect(useUIStore.getState().activeDialog?.type).toBe('edit-item');
+    expect(phone()).toEqual([{ kind: 'conversation', id: 'c1' }]);
+  });
+
+  // A connect lights the gate first and pops the phone's stack home after
+  // (connect-ai.tsx's `succeed`), so for a moment Ask stands over whatever
+  // the stack kept from before. It lands at home, saying "It works.", with
+  // no keyboard raised over it.
+  it('turns into Ask in place once something answers: at home, "It works.", and no caret', async () => {
+    seedConversation('c1');
+    renderShell([{ kind: 'conversation', id: 'c1' }]);
+
+    act(() => {
+      unseed = seedAI(CONNECTED_MODEL);
+    });
+    act(() => {
+      rail().popToHome('phone');
+      useAIConnectionStore
+        .getState()
+        .setJustConnected({ provider: 'openai', model: 'gpt-4o-mini', freeTier: false, at: Date.now() });
+    });
+    await act(() => new Promise((r) => setTimeout(r, 0)));
+
+    expect(document.querySelector('[data-setup-tab]')).toBeNull();
+    expect(document.querySelector('[data-ask-tab] [data-ask-home]')).not.toBeNull();
+    expect(tab()).toBe('chat');
+    expect(phone()).toEqual([]);
+    expect(screen.getByTestId('it-works')).toBeInTheDocument();
+    expect(document.activeElement).not.toBe(dockInput());
+  });
+});
+
 describe('items push over Ask while the tab is mounted', () => {
   it("counts the tab in an effect, so StrictMode's mount, unmount, mount leaves one host and an unmount none", () => {
     const { unmount } = render(
@@ -458,6 +583,113 @@ describe('items push over Ask while the tab is mounted', () => {
     renderShell([{ kind: 'history' }, { kind: 'item', itemId: 'item-1' }]);
     act(() => usePlannerStore.setState({ items: [] }));
     expect(phone()).toEqual([{ kind: 'history' }]);
+  });
+});
+
+/**
+ * An item's conversation opened from a History row or an activity row while
+ * the planner is the look-only preview (lib/open-chat.ts openConversation).
+ * The pushed view is an inline, autosaving editor, so it must never be seeded
+ * from a cached row: it waits for the load, then edits the fresh one.
+ */
+describe("an item's conversation opened over the look-only preview", () => {
+  const CACHED = { ...TASK, title: 'Book the dentist (cached)' } as TaskItem;
+  const FRESH = { ...TASK, title: 'Book the dentist, Tuesday' } as TaskItem;
+  // Today's, so Ask home lists it under With AI activity too.
+  const ROW = summary({ id: 'c-item', itemId: 'item-1', title: 'Dentist', lastMessageAt: new Date().toISOString() });
+  const TOP = { kind: 'item', itemId: 'item-1', fallbackConversation: 'c-item', returnFocus: 'conv:c-item' };
+
+  let api: FakeApi;
+  beforeEach(() => {
+    api = fakeApi();
+    api.answer.list = (o) =>
+      o?.cursor ? undefined : { ok: true, value: { conversations: [ROW], starred: [], nextCursor: null } };
+    api.answer.thread = () => ({ ok: true, value: { conversation: ROW, messages: [], hasEarlier: false } });
+    configureConversations({ api: api.api, transport: transport.transport });
+    usePlannerStore.setState({ isLoading: true, isPreview: true, items: [CACHED] } as never);
+  });
+  afterEach(() =>
+    usePlannerStore.setState({ isPreview: false, isLoading: false, error: null, loadFailedUserId: null } as never)
+  );
+
+  const land = (items: TaskItem[]) =>
+    act(() => usePlannerStore.setState({ isLoading: false, isPreview: false, items } as never));
+
+  async function openFrom(testId: string) {
+    renderShell(testId === 'history-row' ? [{ kind: 'history' }] : []);
+    await act(() => flush());
+    fireEvent.click(screen.getByTestId(testId));
+  }
+
+  it.each([['history-row'], ['ai-activity-row']])(
+    'from a %s: reads as loading, never an editor on the cached row, then edits the fresh one',
+    async (testId) => {
+      await openFrom(testId);
+      expect(phone().at(-1)).toEqual(TOP);
+      expect(screen.getByTestId('ask-item-loading')).toHaveTextContent('Loading…');
+      expect(screen.queryByTestId('ask-item')).toBeNull();
+      expect(screen.queryByDisplayValue(CACHED.title)).toBeNull();
+
+      land([FRESH]);
+      expect(screen.queryByTestId('ask-item-loading')).toBeNull();
+      expect(screen.getByTestId('ask-item')).toBeInTheDocument();
+      expect(screen.getByDisplayValue(FRESH.title)).toBeInTheDocument();
+      expect(screen.queryByDisplayValue(CACHED.title)).toBeNull();
+      expect(phone().at(-1)).toEqual(TOP);
+    }
+  );
+
+  it.each([['history-row'], ['ai-activity-row']])(
+    'from a %s: an item gone from the fresh rows gives way to its conversation',
+    async (testId) => {
+      await openFrom(testId);
+      land([]);
+      await act(() => flush());
+      expect(phone().at(-1)).toEqual({ kind: 'conversation', id: 'c-item', returnFocus: 'conv:c-item' });
+      expect(screen.queryByTestId('ask-item')).toBeNull();
+      expect(screen.getByTestId('conversation-item-gone')).toHaveTextContent('The item this was about is gone.');
+    }
+  );
+
+  it('an item made since the snapshot (missing from the cache) still opens as its item', async () => {
+    usePlannerStore.setState({ items: [] } as never);
+    await openFrom('history-row');
+    expect(phone().at(-1)).toEqual(TOP);
+    land([FRESH]);
+    expect(screen.getByDisplayValue(FRESH.title)).toBeInTheDocument();
+  });
+
+  it('once found, a later delete goes back, not to the conversation', async () => {
+    await openFrom('history-row');
+    land([FRESH]);
+    act(() => usePlannerStore.setState({ items: [] }));
+    expect(phone()).toEqual([{ kind: 'history' }]);
+  });
+
+  it('a failed load settles with nothing to edit: the conversation shows', async () => {
+    await openFrom('history-row');
+    act(() =>
+      usePlannerStore.setState({
+        isLoading: false,
+        isPreview: false,
+        items: [],
+        error: 'load failed',
+        loadFailedUserId: 'user-1',
+      } as never)
+    );
+    await act(() => flush());
+    expect(phone().at(-1)).toMatchObject({ kind: 'conversation', id: 'c-item' });
+    // Nothing loaded, so nothing is known to be gone.
+    expect(screen.queryByTestId('conversation-item-gone')).toBeNull();
+  });
+
+  it("a conversation's view says its item is gone only on fresh rows", async () => {
+    usePlannerStore.setState({ items: [] } as never);
+    renderShell([{ kind: 'conversation', id: 'c-item' }]);
+    await act(() => flush());
+    expect(screen.queryByTestId('conversation-item-gone')).toBeNull();
+    land([]);
+    expect(screen.getByTestId('conversation-item-gone')).toBeInTheDocument();
   });
 });
 
@@ -565,7 +797,7 @@ describe("the dock's box", () => {
   });
 
   it.each([
-    ['the model id', CONNECTED_MODEL, 'gpt-4o-mini'],
+    ['the model, by name', CONNECTED_MODEL, 'GPT-4o mini'],
     ['OpenClaw and its agent', OPENCLAW_PLUGIN, 'OpenClaw · kirby-1'],
   ])('names who answers under it, at home and in a conversation: %s', (_, seed, label) => {
     unseed();

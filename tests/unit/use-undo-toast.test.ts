@@ -29,3 +29,15 @@ describe('isToastWorthy — the hand-off', () => {
     expect(isToastWorthy({ label: 'Edit task: Book dentist' })).toBe(false);
   });
 });
+
+describe('isToastWorthy — recipes', () => {
+  it('a recipe run offers its one undo', () => {
+    expect(isToastWorthy({ label: 'Recipe: After run' })).toBe(true);
+  });
+});
+
+describe('isToastWorthy — mods', () => {
+  it("a mod's held writes offer their one undo", () => {
+    expect(isToastWorthy({ label: 'Mod: Water counter · item.completed' })).toBe(true);
+  });
+});

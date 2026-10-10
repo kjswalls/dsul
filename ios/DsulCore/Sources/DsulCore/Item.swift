@@ -38,6 +38,9 @@ public struct Item: Codable, Sendable, Hashable, Identifiable {
     public var repeatFrequency: String?
     /// The container's NAME, which is what the web displays and matches on.
     public var project: String?
+    /// The project's id (items.project_id): nil for a name with no project row
+    /// (a text-only reference) or none at all.
+    public var projectId: String?
     public var parentItemId: String?
     /// The instant a pause began, as Postgres wrote it.
     public var pausedAt: String?
@@ -63,6 +66,10 @@ public struct Item: Codable, Sendable, Hashable, Identifiable {
     public var currentDayCount: Int?
     public var isScheduled: Bool?
     public var inProjectBlock: Bool?
+    /// Where a task parked in its project's block stood before it was parked
+    /// (moveTasksToProjectBlock), put back when it leaves the block.
+    public var previousStartTime: String?
+    public var previousStartDate: String?
     public var repeatDays: [Int]?
     public var completedDates: [String]
     public var skippedDates: [String]
@@ -79,6 +86,7 @@ public struct Item: Codable, Sendable, Hashable, Identifiable {
         timeBucket: String? = nil,
         repeatFrequency: String? = nil,
         project: String? = nil,
+        projectId: String? = nil,
         parentItemId: String? = nil,
         pausedAt: String? = nil,
         pausedUntil: String? = nil,
@@ -94,6 +102,8 @@ public struct Item: Codable, Sendable, Hashable, Identifiable {
         currentDayCount: Int? = nil,
         isScheduled: Bool? = nil,
         inProjectBlock: Bool? = nil,
+        previousStartTime: String? = nil,
+        previousStartDate: String? = nil,
         repeatDays: [Int]? = nil,
         completedDates: [String] = [],
         skippedDates: [String] = [],
@@ -109,6 +119,7 @@ public struct Item: Codable, Sendable, Hashable, Identifiable {
         self.timeBucket = timeBucket
         self.repeatFrequency = repeatFrequency
         self.project = project
+        self.projectId = projectId
         self.parentItemId = parentItemId
         self.pausedAt = pausedAt
         self.pausedUntil = pausedUntil
@@ -124,6 +135,8 @@ public struct Item: Codable, Sendable, Hashable, Identifiable {
         self.currentDayCount = currentDayCount
         self.isScheduled = isScheduled
         self.inProjectBlock = inProjectBlock
+        self.previousStartTime = previousStartTime
+        self.previousStartDate = previousStartDate
         self.repeatDays = repeatDays
         self.completedDates = completedDates
         self.skippedDates = skippedDates
@@ -147,10 +160,11 @@ public struct Item: Codable, Sendable, Hashable, Identifiable {
 
     enum CodingKeys: String, CodingKey {
         case id, type, customType, title, status, startDate, startTime, timeBucket
-        case repeatFrequency, project, parentItemId, pausedAt, pausedUntil
+        case repeatFrequency, project, projectId, parentItemId, pausedAt, pausedUntil
         case notes, priority, reminderTime, reminderAnchor
         case duration, order, repeatMonthDay, streak, timesPerDay, currentDayCount
-        case isScheduled, inProjectBlock, repeatDays, completedDates, skippedDates, dailyCounts
+        case isScheduled, inProjectBlock, previousStartTime, previousStartDate
+        case repeatDays, completedDates, skippedDates, dailyCounts
     }
 
     /// Throws only for what makes a row meaningless: no uuid id, no type, no
@@ -171,6 +185,7 @@ public struct Item: Codable, Sendable, Hashable, Identifiable {
         self.timeBucket = c.lenientString(.timeBucket)
         self.repeatFrequency = c.lenientString(.repeatFrequency)
         self.project = c.lenientString(.project)
+        self.projectId = c.lenientString(.projectId)
         self.parentItemId = c.lenientString(.parentItemId)
         self.pausedAt = c.lenientString(.pausedAt)
         self.pausedUntil = c.lenientString(.pausedUntil)
@@ -186,6 +201,8 @@ public struct Item: Codable, Sendable, Hashable, Identifiable {
         self.currentDayCount = c.lenientInt(.currentDayCount)
         self.isScheduled = c.lenientBool(.isScheduled)
         self.inProjectBlock = c.lenientBool(.inProjectBlock)
+        self.previousStartTime = c.lenientString(.previousStartTime)
+        self.previousStartDate = c.lenientString(.previousStartDate)
         self.repeatDays = c.lenientInts(.repeatDays)
         self.completedDates = c.lenientStrings(.completedDates) ?? []
         self.skippedDates = c.lenientStrings(.skippedDates) ?? []
@@ -193,7 +210,8 @@ public struct Item: Codable, Sendable, Hashable, Identifiable {
     }
 }
 
-/// packages/types `ProjectSchema`, the fields a recurring time block reads.
+/// packages/types `ProjectSchema`, the fields a recurring time block reads,
+/// and from 2f the web's colour and emoji.
 public struct Project: Codable, Sendable, Hashable, Identifiable {
     public var id: String
     public var name: String
@@ -203,6 +221,9 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
     public var timeBucket: String?
     public var startTime: String?
     public var duration: Int?
+    /// The web's colour token and emoji. Decoded and drawn nowhere in part 2 (Q1 a).
+    public var color: String?
+    public var emoji: String?
 
     public init(
         id: String,
@@ -212,7 +233,9 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
         repeatMonthDay: Int? = nil,
         timeBucket: String? = nil,
         startTime: String? = nil,
-        duration: Int? = nil
+        duration: Int? = nil,
+        color: String? = nil,
+        emoji: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -222,10 +245,12 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
         self.timeBucket = timeBucket
         self.startTime = startTime
         self.duration = duration
+        self.color = color
+        self.emoji = emoji
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, repeatFrequency, repeatDays, repeatMonthDay, timeBucket, startTime, duration
+        case id, name, repeatFrequency, repeatDays, repeatMonthDay, timeBucket, startTime, duration, color, emoji
     }
 
     public init(from decoder: Decoder) throws {
@@ -238,6 +263,8 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
         self.timeBucket = c.lenientString(.timeBucket)
         self.startTime = c.lenientString(.startTime)
         self.duration = c.lenientInt(.duration)
+        self.color = c.lenientString(.color)
+        self.emoji = c.lenientString(.emoji)
     }
 }
 
@@ -355,6 +382,25 @@ public struct PlannerSettings: Codable, Sendable, Hashable {
     /// field sends nothing, as does a value that isn't a bool. Unknown shows no
     /// line in the Remind sheet, so the phone never says "off" on a guess.
     public var remindersEnabled: Bool?
+    /// The last call (`habit_last_call_enabled`, migration 032), as the scan
+    /// reads it: only true is on. Nil is unknown, as for `remindersEnabled`.
+    /// The phone never rings it before APNs (reminders-platforms.md §2.3); it
+    /// reads it to say so.
+    public var lastCallEnabled: Bool?
+    /// `habit_last_call_time`, "HH:mm" as stored; nil when unset or unknown.
+    public var lastCallTime: String?
+    /// The end-of-day review's switch (`eod_review_enabled`): only true is on.
+    /// Nil from a server older than the field.
+    public var eodReviewEnabled: Bool?
+    /// `eod_review_time` as stored: "HH:mm", or the looser "H:mm" lib/eod.ts
+    /// reads. Nil when unset, or from a server older than the field.
+    public var eodReviewTime: String?
+    /// `last_eod_review_date`: the day the last review was FOR.
+    public var lastEodReviewDate: String?
+    /// The scan's grace after a cue's minute (`REMINDER_GRACE_MINUTES`), the
+    /// catch-up window. Nil from a server older than the field, where the
+    /// plan's own `reminderGraceMinutes` stands in.
+    public var reminderGraceMinutes: Int?
 
     public init(
         timezone: String? = nil,
@@ -363,7 +409,13 @@ public struct PlannerSettings: Codable, Sendable, Hashable {
         weekStartDay: WeekStartDay = .sunday,
         timeFormat: TimeFormat = .twelveHour,
         streaksEnabled: Bool = true,
-        remindersEnabled: Bool? = nil
+        remindersEnabled: Bool? = nil,
+        lastCallEnabled: Bool? = nil,
+        lastCallTime: String? = nil,
+        eodReviewEnabled: Bool? = nil,
+        eodReviewTime: String? = nil,
+        lastEodReviewDate: String? = nil,
+        reminderGraceMinutes: Int? = nil
     ) {
         self.timezone = timezone
         self.showCompletedTasks = showCompletedTasks
@@ -372,10 +424,29 @@ public struct PlannerSettings: Codable, Sendable, Hashable {
         self.timeFormat = timeFormat
         self.streaksEnabled = streaksEnabled
         self.remindersEnabled = remindersEnabled
+        self.lastCallEnabled = lastCallEnabled
+        self.lastCallTime = lastCallTime
+        self.eodReviewEnabled = eodReviewEnabled
+        self.eodReviewTime = eodReviewTime
+        self.lastEodReviewDate = lastEodReviewDate
+        self.reminderGraceMinutes = reminderGraceMinutes
+    }
+
+    /// The review as `planNotifications` takes it. Nil while its switch is
+    /// unknown (a server older than the field), which plans no review and
+    /// withdraws none. A review switched on with no hour is off, as the scan
+    /// reads it (lib/reminders/scan.ts asks for a time before it rings).
+    public var planEod: PlanEod? {
+        guard let enabled = eodReviewEnabled else { return nil }
+        guard enabled, let time = eodReviewTime else {
+            return PlanEod(enabled: false, time: eodReviewTime ?? "", lastReviewDate: lastEodReviewDate)
+        }
+        return PlanEod(enabled: true, time: time, lastReviewDate: lastEodReviewDate)
     }
 
     enum CodingKeys: String, CodingKey {
         case timezone, showCompletedTasks, appIcon, weekStartDay, timeFormat, streaksEnabled, remindersEnabled
+        case lastCallEnabled, lastCallTime, eodReviewEnabled, eodReviewTime, lastEodReviewDate, reminderGraceMinutes
     }
 
     public init(from decoder: Decoder) throws {
@@ -387,6 +458,12 @@ public struct PlannerSettings: Codable, Sendable, Hashable {
         self.timeFormat = c.lenientString(.timeFormat).flatMap { TimeFormat(rawValue: $0) } ?? .twelveHour
         self.streaksEnabled = c.lenientBool(.streaksEnabled) ?? true
         self.remindersEnabled = c.lenientBool(.remindersEnabled)
+        self.lastCallEnabled = c.lenientBool(.lastCallEnabled)
+        self.lastCallTime = c.lenientString(.lastCallTime)
+        self.eodReviewEnabled = c.lenientBool(.eodReviewEnabled)
+        self.eodReviewTime = c.lenientString(.eodReviewTime)
+        self.lastEodReviewDate = c.lenientString(.lastEodReviewDate)
+        self.reminderGraceMinutes = c.lenientInt(.reminderGraceMinutes)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -398,6 +475,12 @@ public struct PlannerSettings: Codable, Sendable, Hashable {
         try c.encode(timeFormat.rawValue, forKey: .timeFormat)
         try c.encode(streaksEnabled, forKey: .streaksEnabled)
         try c.encodeIfPresent(remindersEnabled, forKey: .remindersEnabled)
+        try c.encodeIfPresent(lastCallEnabled, forKey: .lastCallEnabled)
+        try c.encodeIfPresent(lastCallTime, forKey: .lastCallTime)
+        try c.encodeIfPresent(eodReviewEnabled, forKey: .eodReviewEnabled)
+        try c.encodeIfPresent(eodReviewTime, forKey: .eodReviewTime)
+        try c.encodeIfPresent(lastEodReviewDate, forKey: .lastEodReviewDate)
+        try c.encodeIfPresent(reminderGraceMinutes, forKey: .reminderGraceMinutes)
     }
 }
 
@@ -422,6 +505,11 @@ public struct PlannerPayload: Decodable, Sendable, Hashable {
     /// or is older than the field; either way a custom type is its slug,
     /// capitalised. A bad element is skipped.
     public var itemTypes: [ItemTypeLabel]?
+    /// Every pending snooze on a live item (`snoozes`, lib/app-api.ts), as
+    /// `planNotifications` takes them. Nil when the server couldn't read them,
+    /// or is older than the field; the plan then arms none. A bad element is
+    /// skipped.
+    public var snoozes: [PlanSnooze]?
     /// Item rows that couldn't be read and were left out.
     public var droppedItems: Int
 
@@ -436,6 +524,7 @@ public struct PlannerPayload: Decodable, Sendable, Hashable {
         seasons: [Season] = [],
         writes: [String]? = nil,
         itemTypes: [ItemTypeLabel]? = nil,
+        snoozes: [PlanSnooze]? = nil,
         droppedItems: Int = 0
     ) {
         self.v = v
@@ -448,11 +537,12 @@ public struct PlannerPayload: Decodable, Sendable, Hashable {
         self.seasons = seasons
         self.writes = writes
         self.itemTypes = itemTypes
+        self.snoozes = snoozes
         self.droppedItems = droppedItems
     }
 
     enum CodingKeys: String, CodingKey {
-        case v, userId, fetchedAt, settings, items, projects, routines, seasons, writes, itemTypes
+        case v, userId, fetchedAt, settings, items, projects, routines, seasons, writes, itemTypes, snoozes
     }
 
     /// The envelope is strict (a payload with no user can't be trusted to be
@@ -475,6 +565,7 @@ public struct PlannerPayload: Decodable, Sendable, Hashable {
         self.seasons = c.lossyArray(Season.self, .seasons).values
         self.writes = c.lenientStrings(.writes)
         self.itemTypes = c.lossyArrayIfPresent(ItemTypeLabel.self, .itemTypes)
+        self.snoozes = c.lossyArrayIfPresent(PlanSnooze.self, .snoozes)
     }
 }
 

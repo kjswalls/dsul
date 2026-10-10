@@ -23,6 +23,7 @@ vi.mock('@/lib/db', () => ({
   createItem: vi.fn(async () => {}),
   updateItem: vi.fn(async () => {}),
   deleteItem: vi.fn(async () => {}),
+  restoreItem: vi.fn(async () => {}),
   createProject: vi.fn(async () => {}),
   updateProject: vi.fn(async () => {}),
   deleteProject: vi.fn(async () => {}),
@@ -119,6 +120,42 @@ describe('seedStarterContainers', () => {
     expect(store().projects.map((p) => p.name)).toEqual([
       'Work', 'Home', 'Health', 'Morning', 'Movement', 'Wind-down',
     ]);
+  });
+
+  it('survives undoing, and redoing, an action recorded BEFORE it', async () => {
+    // A quick capture held through the load is filed between the landing and
+    // the seed (lib/held-captures.ts), so the index is past 'Session start'
+    // when the seed commits. Every snapshot has to carry it, or undoing the
+    // capture soft-deletes all six.
+    store().addTask({ title: 'Typed while loading' });
+    await settle();
+    store().seedStarterContainers(FULL, 'user-1');
+    await settle();
+
+    store().undo();
+    expect(store().items).toEqual([]);
+    expect(store().projects).toHaveLength(6);
+    expect(vi.mocked(db.deleteProject)).not.toHaveBeenCalled();
+
+    store().redo();
+    expect(store().items.map((i) => i.title)).toEqual(['Typed while loading']);
+    expect(store().projects).toHaveLength(6);
+    expect(vi.mocked(db.deleteProject)).not.toHaveBeenCalled();
+  });
+
+  it('keeps an adopted member linked in the snapshots under it', async () => {
+    vi.mocked(db.fetchItems).mockResolvedValue([habit()]);
+    store().clearStore();
+    await store().initializeStore('user-1');
+    store().addTask({ title: 'Typed while loading' });
+    await settle();
+    store().seedStarterContainers(planSeed({ items: [habit()], projects: [] }), 'user-1');
+    await settle();
+    const personal = store().projects.find((p) => p.name === 'Personal')!;
+
+    store().undo();
+    expect(store().projects.map((p) => p.id)).toEqual([personal.id]);
+    expect(store().items.map((i) => i.projectId)).toEqual([personal.id]);
   });
 });
 

@@ -9,10 +9,12 @@ import {
   AiDbError,
   readModelConnection,
   saveModelConnection,
+  setConnectionLimit,
   type ModelConnectionRow,
 } from '@/lib/ai-server/connections';
 import { ProviderError, type ProviderErrorKind } from '@/lib/ai-server/errors';
-import { takeToken } from '@/lib/ai-server/rate-limit';
+import { CONNECT_FLOWS } from '@/lib/connect-flow';
+import { takeSharedToken } from '@/lib/ai-server/rate-limit';
 
 /**
  * "Sign in with OpenRouter": GET /api/ai/openrouter/start and
@@ -66,7 +68,12 @@ vi.mock('@/lib/ai-server/pkce', async (importOriginal) => {
 
 vi.mock('@/lib/ai-server/connections', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/ai-server/connections')>();
-  return { ...actual, readModelConnection: vi.fn(), saveModelConnection: vi.fn() };
+  return {
+    ...actual,
+    readModelConnection: vi.fn(),
+    saveModelConnection: vi.fn(),
+    setConnectionLimit: vi.fn(),
+  };
 });
 vi.mock('@/lib/ai-server/errors', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/ai-server/errors')>();
@@ -81,11 +88,15 @@ vi.mock('@/lib/ai-server/errors', async (importOriginal) => {
 vi.mock('@/lib/ai-server/stream', () => ({
   anySignal: vi.fn((signals: AbortSignal[]) => AbortSignal.any(signals)),
 }));
-vi.mock('@/lib/ai-server/rate-limit', () => ({ takeToken: vi.fn(() => true) }));
+vi.mock('@/lib/ai-server/rate-limit', () => ({
+  takeToken: vi.fn(() => true),
+  takeSharedToken: vi.fn(async () => true),
+}));
 
 const adapter = vi.hoisted(() => ({
   verify: vi.fn(),
   listModels: vi.fn(),
+  ping: vi.fn(),
   pickDefaultModel: vi.fn(),
 }));
 vi.mock('@/lib/ai-server/providers', () => ({
@@ -102,7 +113,7 @@ const realPkce = real.pkce!;
 const realBox = real.box!;
 
 const ORIGIN = 'https://do.dsul.app';
-const SETTINGS = `${ORIGIN}/settings/beacon`;
+const SETTINGS = `${ORIGIN}/settings/ai`;
 const KEY = Buffer.alloc(32, 9);
 const ENV_KEY = KEY.toString('base64');
 
@@ -112,9 +123,12 @@ const CHALLENGE = 'c'.repeat(43);
 const STATE = 'S'.repeat(22);
 const SEALED = 'v1:sealed-for-user-1';
 const CODE = 'or-code-abcdef123456';
+const SAVED_CIPHER = 'v1:saved-iv:saved-tag:saved-ct';
+/** Where the sealed cookie says the sign-in came from, for the mocked cases. */
+const RETURN: { value: 'settings' | 'home' } = { value: 'settings' };
 
-function startReq(headers: Record<string, string> = {}, origin = ORIGIN) {
-  return start.GET(new Request(`${origin}/api/ai/openrouter/start`, { headers }));
+function startReq(headers: Record<string, string> = {}, origin = ORIGIN, query = '') {
+  return start.GET(new Request(`${origin}/api/ai/openrouter/start${query}`, { headers }));
 }
 function callbackReq(
   state: string,
@@ -158,7 +172,7 @@ function useMockedPkce() {
   vi.mocked(pkce.sealPkceCookie).mockReturnValue(SEALED);
   vi.mocked(pkce.openPkceCookie).mockReset();
   vi.mocked(pkce.openPkceCookie).mockImplementation((raw, userId) =>
-    raw === SEALED && userId === 'user-1' ? { verifier: VERIFIER, state: STATE } : null
+    raw === SEALED && userId === 'user-1' ? { verifier: VERIFIER, state: STATE, r: RETURN.value } : null
   );
   vi.mocked(pkce.pkceStateMatches).mockReset();
   vi.mocked(pkce.pkceStateMatches).mockImplementation((expected, got) => typeof got === 'string' && got === expected);
@@ -200,12 +214,18 @@ beforeEach(() => {
   useMockedPkce();
   vi.mocked(pkce.exchangeOpenRouterCode).mockReset();
   vi.mocked(pkce.exchangeOpenRouterCode).mockResolvedValue('sk-or-v1-SENTINEL-issued');
-  vi.mocked(takeToken).mockReset();
-  vi.mocked(takeToken).mockReturnValue(true);
+  vi.mocked(takeSharedToken).mockReset();
+  vi.mocked(takeSharedToken).mockResolvedValue(true);
   vi.mocked(readModelConnection).mockReset();
   vi.mocked(readModelConnection).mockResolvedValue({ kind: 'none' });
   vi.mocked(saveModelConnection).mockReset();
-  vi.mocked(saveModelConnection).mockResolvedValue({} as never);
+  // The saved row's ciphertext is what a limit is written against.
+  vi.mocked(saveModelConnection).mockResolvedValue({ key_ciphertext: SAVED_CIPHER } as never);
+  vi.mocked(setConnectionLimit).mockReset();
+  vi.mocked(setConnectionLimit).mockResolvedValue(true);
+  RETURN.value = 'settings';
+  adapter.ping.mockReset();
+  adapter.ping.mockResolvedValue(undefined);
   adapter.verify.mockReset();
   adapter.verify.mockResolvedValue({ models: [], listed: false, freeTier: true });
   adapter.listModels.mockReset();
@@ -239,7 +259,7 @@ describe('GET /api/ai/openrouter/start', () => {
     expect(c).toContain('Max-Age=600');
     expect(c).toContain('Secure');
     expect(cookieValue(res)).toBe(SEALED);
-    expect(pkce.sealPkceCookie).toHaveBeenCalledWith({ verifier: VERIFIER, state: STATE }, 'user-1', KEY);
+    expect(pkce.sealPkceCookie).toHaveBeenCalledWith({ verifier: VERIFIER, state: STATE, r: 'settings' }, 'user-1', KEY);
 
     const loc = new URL(res.headers.get('location') ?? '');
     expect(loc.origin).toBe('https://openrouter.ai');
@@ -280,7 +300,7 @@ describe('GET /api/ai/openrouter/start', () => {
     h.user = null;
     const res = await startReq();
     expect(res.status).toBe(303);
-    expect(res.headers.get('location')).toBe(`${ORIGIN}/login?redirect=%2Fsettings%2Fbeacon`);
+    expect(res.headers.get('location')).toBe(`${ORIGIN}/login?redirect=%2Fsettings%2Fai`);
     expect(res.headers.get('set-cookie')).toBeNull();
   });
 
@@ -289,6 +309,45 @@ describe('GET /api/ai/openrouter/start', () => {
     const res = await startReq();
     expect(res.status).toBe(303);
     expect(res.headers.get('location')).toBe(`${SETTINGS}?connect=unavailable`);
+    expect(res.headers.get('set-cookie')).toBeNull();
+  });
+
+  it('?r=home seals home, so the callback can come back there', async () => {
+    const res = await startReq({}, ORIGIN, '?r=home');
+    expect(res.status).toBe(302);
+    expect(pkce.sealPkceCookie).toHaveBeenCalledWith(
+      { verifier: VERIFIER, state: STATE, r: 'home' },
+      'user-1',
+      KEY
+    );
+    // `r` rides inside the seal, never in the callback URL.
+    expect(res.headers.get('location')).not.toContain('home');
+  });
+
+  it('?r=settings is the same as no `r` at all', async () => {
+    await startReq({}, ORIGIN, '?r=settings');
+    expect(pkce.sealPkceCookie).toHaveBeenCalledWith(
+      { verifier: VERIFIER, state: STATE, r: 'settings' },
+      'user-1',
+      KEY
+    );
+  });
+
+  it.each([['evil'], ['https://evil.example'], ['HOME'], ['']])(
+    'an `r` this build does not know (%s) arms nothing and says so on the pane',
+    async (r) => {
+      const res = await startReq({}, ORIGIN, `?r=${encodeURIComponent(r)}`);
+      expect(res.status).toBe(303);
+      expect(res.headers.get('location')).toBe(`${SETTINGS}?connect=failed`);
+      expect(res.headers.get('set-cookie')).toBeNull();
+      expect(pkce.createPkcePair).not.toHaveBeenCalled();
+    }
+  );
+
+  it('no session still sends the sign-in to the pane, whatever `r` said', async () => {
+    h.user = null;
+    const res = await startReq({}, ORIGIN, '?r=home');
+    expect(res.headers.get('location')).toBe(`${ORIGIN}/login?redirect=%2Fsettings%2Fai`);
     expect(res.headers.get('set-cookie')).toBeNull();
   });
 });
@@ -303,7 +362,7 @@ describe('GET /api/ai/openrouter/callback/[state]', () => {
     expectCleared(res);
     expect(res.headers.get('location')).toBe(`${SETTINGS}?connect=ok`);
     expect(pkce.exchangeOpenRouterCode).toHaveBeenCalledWith(CODE, VERIFIER, expect.any(AbortSignal));
-    expect(takeToken).toHaveBeenCalledWith('user-1', 'connect');
+    expect(takeSharedToken).toHaveBeenCalledWith('user-1', 'connect');
     expect(adapter.pickDefaultModel).toHaveBeenCalledWith({
       models: [{ id: 'meta-llama/llama-3:free', label: 'Llama 3 (free)', free: true }],
       listed: true,
@@ -313,7 +372,7 @@ describe('GET /api/ai/openrouter/callback/[state]', () => {
       provider: 'openrouter',
       baseUrl: null,
       model: 'meta-llama/llama-3:free',
-      modelMeta: {},
+      modelMeta: { label: 'Llama 3 (free)' },
       authMethod: 'oauth',
       apiKey: 'sk-or-v1-SENTINEL-issued',
     });
@@ -321,11 +380,31 @@ describe('GET /api/ai/openrouter/callback/[state]', () => {
     expect(all).not.toContain('SENTINEL');
   });
 
+  it('asks the model it is about to save, and records no limit when it answered', async () => {
+    await callbackReq(STATE, `?code=${CODE}`);
+    expect(adapter.ping).toHaveBeenCalledTimes(1);
+    const [creds, model, signal] = adapter.ping.mock.calls[0];
+    expect(creds).toMatchObject({ provider: 'openrouter', apiKey: 'sk-or-v1-SENTINEL-issued' });
+    expect(model).toBe('meta-llama/llama-3:free');
+    expect(signal).toBeInstanceOf(AbortSignal);
+    expect(vi.mocked(saveModelConnection).mock.calls[0][1].model).toBe(model);
+    expect(setConnectionLimit).not.toHaveBeenCalled();
+  });
+
+  it('drops a catalog name that only repeats the id', async () => {
+    adapter.listModels.mockResolvedValue({
+      models: [{ id: 'meta-llama/llama-3:free', label: 'meta-llama/llama-3:free', free: true }],
+      listed: true,
+    });
+    await callbackReq(STATE, `?code=${CODE}`);
+    expect(saveModelConnection).toHaveBeenCalledWith('user-1', expect.objectContaining({ modelMeta: {} }));
+  });
+
   it('no session → /login, cookie cleared, nothing exchanged', async () => {
     h.user = null;
     const res = await callbackReq(STATE, `?code=${CODE}`);
     expect(res.status).toBe(303);
-    expect(res.headers.get('location')).toBe(`${ORIGIN}/login?redirect=%2Fsettings%2Fbeacon`);
+    expect(res.headers.get('location')).toBe(`${ORIGIN}/login?redirect=%2Fsettings%2Fai`);
     expectCleared(res);
     expect(pkce.exchangeOpenRouterCode).not.toHaveBeenCalled();
   });
@@ -378,7 +457,7 @@ describe('GET /api/ai/openrouter/callback/[state]', () => {
   );
 
   it('the connect limiter → busy, no exchange', async () => {
-    vi.mocked(takeToken).mockReturnValue(false);
+    vi.mocked(takeSharedToken).mockResolvedValue(false);
     const res = await callbackReq(STATE, `?code=${CODE}`);
     expect(res.headers.get('location')).toBe(`${SETTINGS}?connect=busy`);
     expectCleared(res);
@@ -399,6 +478,104 @@ describe('GET /api/ai/openrouter/callback/[state]', () => {
     expect(res.headers.get('location')).toBe(`${SETTINGS}?connect=failed`);
     expectCleared(res);
     expect(saveModelConnection).not.toHaveBeenCalled();
+  });
+
+  describe('what the test question said, and where it lands', () => {
+    // An issued key has no box to stay in: a second try mints another key on
+    // the account. So once OpenRouter's own key check has passed, the key is
+    // kept whatever the test question said, and the landing says what happened.
+    beforeEach(() => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+    });
+
+    it('a daily limit is saved, then recorded, in that order', async () => {
+      const at = '2026-10-08T07:00:00.000Z';
+      adapter.ping.mockRejectedValue(new ProviderError('daily_limit', 429, at));
+      const res = await callbackReq(STATE, `?code=${CODE}`);
+      expect(res.headers.get('location')).toBe(`${SETTINGS}?connect=daily_limit`);
+      expect(saveModelConnection).toHaveBeenCalledTimes(1);
+      // Against the ciphertext the save just wrote: the limit belongs to THIS key.
+      expect(setConnectionLimit).toHaveBeenCalledWith('user-1', SAVED_CIPHER, at);
+      expect(vi.mocked(setConnectionLimit).mock.invocationCallOrder[0]).toBeGreaterThan(
+        vi.mocked(saveModelConnection).mock.invocationCallOrder[0]
+      );
+    });
+
+    it('a daily limit with no reset time known still lands there', async () => {
+      adapter.ping.mockRejectedValue(new ProviderError('daily_limit', 429));
+      const res = await callbackReq(STATE, `?code=${CODE}`);
+      expect(res.headers.get('location')).toBe(`${SETTINGS}?connect=daily_limit`);
+      expect(setConnectionLimit).toHaveBeenCalledWith('user-1', SAVED_CIPHER, null);
+    });
+
+    it('a database that cannot record the limit still keeps the key', async () => {
+      adapter.ping.mockRejectedValue(new ProviderError('daily_limit', 429));
+      vi.mocked(setConnectionLimit).mockRejectedValue(new AiDbError('limit', '42703'));
+      const res = await callbackReq(STATE, `?code=${CODE}`);
+      expect(res.headers.get('location')).toBe(`${SETTINGS}?connect=daily_limit`);
+      expect(saveModelConnection).toHaveBeenCalledTimes(1);
+    });
+
+    it('no credit is saved and says so', async () => {
+      adapter.ping.mockRejectedValue(new ProviderError('quota', 402));
+      const res = await callbackReq(STATE, `?code=${CODE}`);
+      expect(res.headers.get('location')).toBe(`${SETTINGS}?connect=no_credit`);
+      expect(saveModelConnection).toHaveBeenCalledTimes(1);
+      expect(setConnectionLimit).not.toHaveBeenCalled();
+    });
+
+    it.each([['rate_limit'], ['upstream'], ['region']] as const)(
+      'a %s answer is saved, and lands on saved rather than ok',
+      async (kind) => {
+        adapter.ping.mockRejectedValue(new ProviderError(kind as ProviderErrorKind));
+        const res = await callbackReq(STATE, `?code=${CODE}`);
+        expect(saveModelConnection).toHaveBeenCalledTimes(1);
+        // 'ok' would claim a model answered.
+        expect(res.headers.get('location')).toBe(`${SETTINGS}?connect=saved`);
+      }
+    );
+
+    it.each([['bad_model'], ['bad_request'], ['forbidden']] as const)(
+      'a %s answer passes the check and lands on ok: the key answered, the model is the picker’s business',
+      async (kind) => {
+        adapter.ping.mockRejectedValue(new ProviderError(kind as ProviderErrorKind));
+        const res = await callbackReq(STATE, `?code=${CODE}`);
+        expect(saveModelConnection).toHaveBeenCalledTimes(1);
+        expect(res.headers.get('location')).toBe(`${SETTINGS}?connect=ok`);
+      }
+    );
+
+    it.each([['auth'], ['aborted']] as const)('a %s answer saves nothing', async (kind) => {
+      adapter.ping.mockRejectedValue(new ProviderError(kind as ProviderErrorKind));
+      const res = await callbackReq(STATE, `?code=${CODE}`);
+      expect(res.headers.get('location')).toBe(`${SETTINGS}?connect=failed`);
+      expectCleared(res);
+      expect(saveModelConnection).not.toHaveBeenCalled();
+      expect(setConnectionLimit).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('where the sign-in came from', () => {
+    it('a sign-in from home comes back to home', async () => {
+      RETURN.value = 'home';
+      const res = await callbackReq(STATE, `?code=${CODE}`);
+      expect(res.headers.get('location')).toBe(`${ORIGIN}/?connect=ok`);
+      expectCleared(res);
+    });
+
+    it('a failure from home lands on home too, once the cookie has opened', async () => {
+      RETURN.value = 'home';
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      vi.mocked(pkce.exchangeOpenRouterCode).mockRejectedValue(new ProviderError('auth', 403));
+      const res = await callbackReq(STATE, `?code=${CODE}`);
+      expect(res.headers.get('location')).toBe(`${ORIGIN}/?connect=failed`);
+    });
+
+    it('an exit before the cookie opens cannot know, and lands on the pane', async () => {
+      RETURN.value = 'home';
+      const res = await callbackReq(STATE, `?code=${CODE}`, null);
+      expect(res.headers.get('location')).toBe(`${SETTINGS}?connect=expired`);
+    });
   });
 
   it('a save failure → failed, logged as op + code only', async () => {
@@ -423,6 +600,7 @@ describe('GET /api/ai/openrouter/callback/[state]', () => {
         status: 'failing',
         last_error: 'key_rejected',
         checked_at: null,
+        limited_until: null,
         ...o,
       };
     }
@@ -492,7 +670,7 @@ describe('GET /api/ai/openrouter/callback/[state]', () => {
     const res = await callbackReq(STATE, `?code=${CODE}`);
     expect(res.headers.get('location')).toBe(`${SETTINGS}?connect=unavailable`);
     expectCleared(res);
-    expect(takeToken).not.toHaveBeenCalled();
+    expect(takeSharedToken).not.toHaveBeenCalled();
     expect(pkce.exchangeOpenRouterCode).not.toHaveBeenCalled();
     expect(saveModelConnection).not.toHaveBeenCalled();
   });
@@ -515,9 +693,40 @@ describe('GET /api/ai/openrouter/callback/[state]', () => {
     expect(readModelConnection).not.toHaveBeenCalled();
   });
 
+  it('every `?connect=` either route sends is a flow the landing has words for', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const seen = new Set<string>();
+    const note = (res: Response) => {
+      const value = new URL(res.headers.get('location') ?? '').searchParams.get('connect');
+      if (value !== null) seen.add(value);
+    };
+    // One of each exit that carries a result.
+    note(await startReq({ 'sec-fetch-site': 'cross-site' }));
+    vi.mocked(box.loadEncryptionKey).mockReturnValueOnce({ ok: false, reason: 'missing' });
+    note(await startReq());
+    note(await callbackReq(STATE, `?code=${CODE}`));
+    note(await callbackReq(STATE, `?code=${CODE}`, null));
+    note(await callbackReq(STATE, '?error=access_denied'));
+    note(await callbackReq(STATE, '?code=short'));
+    vi.mocked(takeSharedToken).mockResolvedValueOnce(false);
+    note(await callbackReq(STATE, `?code=${CODE}`));
+    vi.mocked(readModelConnection).mockResolvedValueOnce({ kind: 'unavailable', reason: 'no_table' });
+    note(await callbackReq(STATE, `?code=${CODE}`));
+    adapter.ping.mockRejectedValueOnce(new ProviderError('daily_limit', 429));
+    note(await callbackReq(STATE, `?code=${CODE}`));
+    adapter.ping.mockRejectedValueOnce(new ProviderError('quota', 402));
+    note(await callbackReq(STATE, `?code=${CODE}`));
+    // A kind the check does not retry and does not forgive: saved, not ok.
+    adapter.ping.mockRejectedValue(new ProviderError('region', 403));
+    note(await callbackReq(STATE, `?code=${CODE}`));
+
+    expect(seen.size).toBeGreaterThan(8);
+    for (const value of seen) expect(CONNECT_FLOWS).toContain(value);
+  });
+
   it('clears without Secure on plain http', async () => {
     const res = await callbackReq(STATE, `?code=${CODE}`, `dsul_or_pkce=${encodeURIComponent(SEALED)}`, 'http://localhost:3000');
-    expect(res.headers.get('location')).toBe('http://localhost:3000/settings/beacon?connect=ok');
+    expect(res.headers.get('location')).toBe('http://localhost:3000/settings/ai?connect=ok');
     expectCleared(res, false);
   });
 });
@@ -556,6 +765,7 @@ describe('state binding (real pkce.ts + secret-box)', () => {
     expect(flow).not.toBeNull();
     expect(flow!.state).toBe(state);
     expect(flow!.verifier).toHaveLength(43);
+    expect(flow!.r).toBe('settings');
     expect(loc.searchParams.get('code_challenge')).toBe(
       createHash('sha256').update(flow!.verifier).digest('base64url')
     );

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 
 /**
  * /routine/[id], /season/[id], /project/[id] (Kirby, 2026-09-26) — the goal
@@ -139,6 +139,19 @@ describe('the routine page', () => {
     seed();
     render(<ContainerPage kind="routine" id="nope" />);
     expect(screen.getByTestId('container-page-missing').textContent).toBe('Routine not found');
+  });
+
+  it('says Loading over the look-only preview’s cached routine, and opens once settled', () => {
+    // Reached by client navigation from `/` mid-preview: the routine is in the
+    // store, but only as cache, and the pause and state toggles here write at once.
+    seed({ isLoading: true, isPreview: true });
+    render(<ContainerPage kind="routine" id="r1" />);
+    expect(screen.getByTestId('container-page-missing').textContent).toBe('Loading…');
+    expect(screen.queryByTestId('container-page-summary')).toBeNull();
+
+    act(() => usePlannerStore.setState({ isLoading: false, isPreview: false }));
+    expect(screen.queryByTestId('container-page-missing')).toBeNull();
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toContain('Mornings');
   });
 });
 

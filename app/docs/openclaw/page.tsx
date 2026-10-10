@@ -103,8 +103,8 @@ export default function OpenClawDocsPage() {
               Leaving it blank is a perfectly fine choice. That is pull-only mode: the
               plugin still refreshes your context on its own, there is just no push and no
               plugin chat in Ask (a Gateway URL in Settings → AI still gives you one).
-              Settings will show{' '}
-              <span className="text-foreground">Connected · pull-only</span>. It is
+              Settings → AI will show OpenClaw as{' '}
+              <span className="text-foreground">Paired</span>. It is
               still connected and working. You can add{' '}
               <code className="font-mono text-xs text-foreground">publicUrl</code>{' '}
               to the <code className="font-mono text-xs text-foreground">dsul-context</code>{' '}
@@ -128,6 +128,17 @@ export default function OpenClawDocsPage() {
           <p className="text-sm leading-relaxed text-muted-foreground">
             The wizard merges into your existing config rather than replacing it, so
             hand-added keys stay put. Run it again any time something looks off.
+          </p>
+        </div>
+
+        <div className="space-y-3 rounded-lg border border-border bg-card p-4">
+          <p className="text-sm font-medium text-foreground">Unpairing</p>
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            Unpair under Settings → AI. dsul deletes the key the plugin uses and stops
+            sending it your changes, so your agent can no longer read or change your
+            planner. The plugin stops working until you run the setup wizard again, which
+            pairs it with a new key. Your saved conversations stay, and so does a Gateway
+            URL saved under Advanced: clear that there if you want OpenClaw out of Ask too.
           </p>
         </div>
 
