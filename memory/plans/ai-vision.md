@@ -22,7 +22,10 @@ Console, whose braindump is the fixed 300px pane), and it goes back to its own w
 the column closes. On the phone the Ask tab is the same home. Every
 conversation is saved to the account, once per finished turn, in `chat_conversations` /
 `chat_messages` (migration 057), kept until the user deletes it. Next: 2b (control: edit and
-resend, retry, action lines, receipts with Undo, a typed answer on every card) and 2c
+resend, retry (built 2026-10-10: Try again under the latest reply when it was stopped or failed
+in a way asking again might get past, `isRetryableReplyError`; the same question goes again as
+a new turn, so nothing saved is rewritten), action lines, receipts with Undo, a typed answer on
+every card) and 2c
 (reach: @ items, / commands, the model chip, attachments, open wide). The section "Step 2a —
 Move and save" below has what shipped and the privacy statement.
 
