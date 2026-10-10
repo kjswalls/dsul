@@ -8,7 +8,7 @@ import { useProposalStore, type ProposalSurface } from '@/lib/proposal-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { selectPlannerLoaded, selectPlannerSettled } from '@/lib/planner-ready';
 import { useAICapabilities } from '@/lib/ai-connection-store';
-import { describeOperation } from '@/lib/proposal';
+import { describeOperation, isDestructive } from '@/lib/proposal';
 import { toDateStr } from '@/lib/recurrence';
 import { cn } from '@/lib/utils';
 
@@ -250,8 +250,14 @@ export function ProposalCard({
    * more than the ticked lines. "Do all of it" survives only while all of it is
    * still on the table.
    */
-  const acceptLabel =
-    keeping.length === 0
+  // A delete or a streak reset stands alone on its card (lib/proposal.ts), and
+  // its button says what it does, in the destructive style its own confirm uses.
+  const destructive = proposal.operations.length === 1 && isDestructive(proposal.operations[0]) ? proposal.operations[0] : null;
+  const acceptLabel = destructive
+    ? destructive.kind === 'delete'
+      ? 'Delete'
+      : 'Reset streak'
+    : keeping.length === 0
       ? 'Nothing selected'
       : keeping.length === proposal.operations.length
         ? keeping.length === 1
@@ -320,6 +326,7 @@ export function ProposalCard({
       <div className="mt-3 flex flex-wrap items-center gap-2 pl-6">
         <Button
           size="sm"
+          variant={destructive ? 'destructive' : 'default'}
           className="h-7 px-3 text-xs"
           disabled={keeping.length === 0 || acceptBlocked !== null}
           onClick={() => accept(keeping)}

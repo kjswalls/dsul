@@ -20,9 +20,11 @@ import type {
   Proposal,
   ProposalContainer,
   ProposalContainerOp,
+  ProposalDeleteOp,
   ProposalDraft,
   ProposalMembershipOp,
   ProposalOperation,
+  ProposalResetStreakOp,
   ProposalVerbOp,
   Routine,
   Season,
@@ -74,6 +76,11 @@ export interface ProposalContext {
    * a name or an id against.
    */
   containers?: ProposalContainers
+  /**
+   * False when the Streaks extension is off: a reset would change a number the
+   * user cannot see. Like goalsEnabled, the browser knows and the server does not.
+   */
+  streaksEnabled?: boolean
 }
 
 export interface ProposalContainers {
@@ -280,6 +287,13 @@ export function validateProposalOperations(
       continue
     }
 
+    if (operation.kind === 'delete' || operation.kind === 'resetStreak') {
+      const why = operation.kind === 'delete' ? deleteRefusal(operation, ctx) : resetStreakRefusal(operation, ctx)
+      if (why) reject(operation, why)
+      else accepted.push(operation)
+      continue
+    }
+
     const target = ctx.items.find((i) => i.id === operation.itemId)
     if (!target) {
       reject(operation, 'item no longer exists')
@@ -386,7 +400,22 @@ export function validateProposalOperations(
     accepted.push(next)
   }
 
+  // A delete or a streak reset is never one tap among others (the design's
+  // safety rule 6): it stands only as the card's one change. Asked of what
+  // survived, so a delete beside a change that was refused anyway still goes.
+  if (accepted.length > 1 && accepted.some(isDestructive)) {
+    for (const op of accepted.filter(isDestructive)) {
+      reject(op, `${op.kind === 'delete' ? 'a delete' : 'a streak reset'} goes on a card of its own`)
+    }
+    return { accepted: accepted.filter((op) => !isDestructive(op)), rejected }
+  }
+
   return { accepted, rejected }
+}
+
+/** A change that takes something away: a delete, or a streak back to 0. */
+export function isDestructive(op: ProposalOperation): op is ProposalDeleteOp | ProposalResetStreakOp {
+  return op.kind === 'delete' || op.kind === 'resetStreak'
 }
 
 const VERB_WORDS: Record<ProposalVerbOp['verb'], string> = {
@@ -624,6 +653,83 @@ function describeMembershipOp(op: ProposalMembershipOp, ctx: ProposalContext): s
   return op.container === 'project' ? `${title}: file under ${where}` : `${title}: add to ${where}`
 }
 
+// ── Deletes and streak resets ─────────────────────────────────────────────────
+
+const isStep = (item: Item) => 'parentItemId' in item && !!item.parentItemId
+
+function deleteRefusal(op: ProposalDeleteOp, ctx: ProposalContext): string | null {
+  if (op.what === 'item') {
+    const item = ctx.items.find((i) => i.id === op.id)
+    if (!item) return 'item no longer exists'
+    // A step is deleted where it lives, in its task's panel.
+    if (isStep(item)) return 'a step is deleted inside its task'
+    return null
+  }
+  const list = containerList(op.what, ctx)
+  if (typeof list === 'string') return list
+  return list.some((c) => c.id === op.id) ? null : `no ${kindWord(op.what)} has that id`
+}
+
+function resetStreakRefusal(op: ProposalResetStreakOp, ctx: ProposalContext): string | null {
+  const item = ctx.items.find((i) => i.id === op.itemId)
+  if (!item) return 'item no longer exists'
+  // The store's reset is the habit's: registry-asked, so a type that keeps no
+  // streak is refused by what it is, not by name.
+  if (item.type !== 'habit' || !getItemTypeConfig(itemTypeName(item)).counters.streak) return 'only a habit keeps a streak'
+  if (ctx.streaksEnabled === false) return 'streaks are turned off in Settings'
+  if (!item.streak) return 'its streak is already 0'
+  return null
+}
+
+const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
+
+/** The members a container holds, for the consequence line. */
+function memberCount(kind: ProposalContainer, container: AnyContainer, ctx: ProposalContext): number {
+  if (kind === 'project') return ctx.items.filter((i) => !isStep(i) && holds('project', container, i)).length
+  if (kind === 'goal') return goalItemIds(container as Goal).length
+  return (container as Routine | Season).itemIds.length
+}
+
+/**
+ * A delete's line says what goes with it and what stays, the way each
+ * Organize pane words its own delete: a card the user taps on trust has to
+ * carry the consequence itself.
+ */
+function describeDeleteOp(op: ProposalDeleteOp, ctx: ProposalContext): string {
+  const trash = 'It goes to the trash for 30 days.'
+  if (op.what === 'item') {
+    const item = ctx.items.find((i) => i.id === op.id)
+    if (!item) return `Delete this item. ${trash}`
+    if (item.type === 'habit') {
+      const streak = item.streak ? `, its ${item.streak}-day streak` : ''
+      return `Delete the habit "${item.title}"${streak} and its history. ${trash}`
+    }
+    const steps = ctx.items.filter((i) => 'parentItemId' in i && i.parentItemId === item.id).length
+    return `Delete "${item.title}"${steps ? ` and its ${count(steps, 'step')}` : ''}. ${trash}`
+  }
+  const container = containerNamed(op.what, op.id, ctx)
+  const word = kindWord(op.what)
+  if (!container) return `Delete this ${word}. ${trash}`
+  const n = memberCount(op.what, container, ctx)
+  const stays =
+    n === 0
+      ? ''
+      : op.what === 'project'
+        ? ` Its ${count(n, 'item')} ${n === 1 ? 'stays' : 'stay'}, in no project.`
+        : op.what === 'season'
+          ? ` Its ${count(n, 'item')} ${n === 1 ? 'stays' : 'stay'}, no longer waiting on the season.`
+          : op.what === 'routine'
+            ? ` Its ${count(n, 'item')} ${n === 1 ? 'stays' : 'stay'}, no longer paused together.`
+            : ` Its ${count(n, 'item')} ${n === 1 ? 'stays' : 'stay'}.`
+  return `Delete the ${word} "${container.name}".${stays} ${trash}`
+}
+
+function describeResetStreakOp(op: ProposalResetStreakOp, ctx: ProposalContext): string {
+  const item = ctx.items.find((i) => i.id === op.itemId)
+  const from = item && 'streak' in item && item.streak ? ` from ${count(item.streak, 'day')}` : ''
+  return `Reset the streak on "${item?.title ?? 'this habit'}"${from} to 0. Its history stays: days already ticked stay ticked.`
+}
+
 /** Convenience wrapper returning a proposal with only its viable operations. */
 export function validateProposal(
   proposal: Proposal,
@@ -760,6 +866,8 @@ function ordinal(n: number): string {
 export function describeOperation(operation: ProposalOperation, ctx: ProposalContext): string {
   if (operation.kind === 'container') return describeContainerOp(operation, ctx)
   if (operation.kind === 'membership') return describeMembershipOp(operation, ctx)
+  if (operation.kind === 'delete') return describeDeleteOp(operation, ctx)
+  if (operation.kind === 'resetStreak') return describeResetStreakOp(operation, ctx)
   if (operation.kind === 'create') {
     if (operation.parentItemId) {
       const parent = ctx.items.find((i) => i.id === operation.parentItemId)

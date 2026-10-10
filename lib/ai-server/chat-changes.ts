@@ -35,7 +35,8 @@ export const PROPOSE_TOOL: ToolDef = {
     'something, to start a habit or change how something repeats, to tick off, skip, pause or resume a habit ' +
     'or a repeating item, or to make, rename or fill a project, routine, season or goal. An existing item is named ' +
     'by its id, so find it with find_items first; a container by the id planner_overview gives. One card per ' +
-    `message, at most ${MAX_CARD_CHANGES} changes. Not for deleting anything.`,
+    `message, at most ${MAX_CARD_CHANGES} changes. A delete or a streak reset only when they ask for one, and ` +
+    'always alone on its card.',
   parameters: {
     type: 'object',
     properties: {
@@ -49,13 +50,21 @@ export const PROPOSE_TOOL: ToolDef = {
           properties: {
             kind: {
               type: 'string',
-              enum: ['create', 'update', 'verb', 'container', 'membership'],
+              enum: ['create', 'update', 'verb', 'container', 'membership', 'delete', 'resetStreak'],
               description:
                 'create a new item, update an existing one, or verb: tick off, skip, pause or resume one. A habit or ' +
                 'a repeating item is only ever ticked or skipped with verb, one day at a time. container makes a ' +
                 'project, routine, season or goal (no containerId), or changes one (with containerId). membership ' +
-                'puts one existing item in an existing container, or takes it out.',
+                'puts one existing item in an existing container, or takes it out. delete deletes one item or ' +
+                'container (it goes to the trash for 30 days), and resetStreak sets a habit\'s streak to 0: each ' +
+                'only when they ask for it, and as the only change on its card.',
             },
+            what: {
+              type: 'string',
+              enum: ['item', 'project', 'routine', 'season', 'goal'],
+              description: 'delete: what kind of thing it is.',
+            },
+            id: { type: 'string', description: 'delete: the id of the item or container, copied exactly.' },
             container: {
               type: 'string',
               enum: ['project', 'routine', 'season', 'goal'],
@@ -86,7 +95,10 @@ export const PROPOSE_TOOL: ToolDef = {
             startsOn: { type: 'string', description: 'container, seasons and goals: the first day, YYYY-MM-DD.' },
             endsOn: { type: 'string', description: 'container, seasons only: the last day, YYYY-MM-DD.' },
             targetOn: { type: 'string', description: 'container, goals only: the day being aimed at, YYYY-MM-DD.' },
-            itemId: { type: 'string', description: 'update and verb: the id of the item, copied exactly.' },
+            itemId: {
+              type: 'string',
+              description: 'update, verb, membership and resetStreak: the id of the item, copied exactly.',
+            },
             verb: {
               type: 'string',
               enum: ['complete', 'skip', 'unskip', 'pause', 'resume'],
@@ -230,7 +242,9 @@ export function makeChangeOffer(source: ChangeSource) {
     }
 
     // Containers are read only when the card names one: most cards are items alone.
-    const wantsContainers = draft.operations.some((op) => op.kind === 'container' || op.kind === 'membership');
+    const wantsContainers = draft.operations.some(
+      (op) => op.kind === 'container' || op.kind === 'membership' || (op.kind === 'delete' && op.what !== 'item')
+    );
     const [items, goals, types, containers] = await Promise.all([
       source.items(),
       source.goals(),

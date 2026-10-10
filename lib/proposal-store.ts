@@ -10,7 +10,7 @@ import { useAISettingsStore } from './ai-settings-store';
 import { getAICapabilities, useAIConnectionStore } from './ai-connection-store';
 import type { ChatErrorCode } from './ai-types';
 import { buildCatchUpProposal, buildProposalContext, proposalContainersOf, validateProposal } from './proposal';
-import { goalsEnabled } from './extension-gates';
+import { goalsEnabled, streaksEnabled } from './extension-gates';
 import { noteOpenclawAsked, useConversationsStore } from './conversations-store';
 import { tallyOperations } from './conversation-summary';
 import { useChatReceipts } from './chat-receipts';
@@ -218,6 +218,7 @@ function plannerContext() {
     // For a card that makes or fills a project, routine, season or goal; with
     // Goals switched off, a goal is one the user could not see.
     containers: proposalContainersOf(state, goalsEnabled()),
+    streaksEnabled: streaksEnabled(),
   };
 }
 

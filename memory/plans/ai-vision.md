@@ -129,6 +129,16 @@ setItemsCollected, setItemsGoal, setItemsProject, …) inside the plan's one `ba
 writes, so the card is still one undo. Pausing a routine, a season's or goal's state, a goal member's role
 (milestone, check-in) and deletes are not on a card yet; the receipt counts a new container as an added
 item. The evals gained routine-add and new-routine.
+Step 5d is built: a card can delete one item or container (`{kind:'delete', what, id}`) or reset a habit's
+streak (`{kind:'resetStreak', itemId}`). Each stands ALONE on its card: validation refuses a delete or a
+reset beside any other surviving change ("a delete goes on a card of its own"; `isDestructive`), so it is
+never one tap among others. The line spells out what goes and what stays ("Delete "Report" and its 2 steps.
+It goes to the trash for 30 days."; a container's items stay; a reset keeps the history), and the card's
+button reads Delete or Reset streak in the destructive style. A step is deleted inside its task, a streak of
+0 or one hidden by the Streaks extension is not reset, and a goal is not deleted while Goals is off.
+Accepting runs the row's own action (deleteItems, removeProject/Routine/Season/Goal, resetHabitStreak), so
+it is one undo and everything deleted is in the trash. The receipt counts either as a change (its counters
+are stored columns). The evals gained reset-streak.
 
 **Note 2026-10-04: "Ask AI" on the item's right-click menu.** One row, a submenu of at
 most four asks, declared in `lib/item-asks.ts` (gate, label, wording) and run by

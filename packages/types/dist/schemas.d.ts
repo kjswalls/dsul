@@ -5179,6 +5179,40 @@ export declare const ProposalMembershipOpSchema: z.ZodObject<{
     containerId: string;
     member?: boolean | undefined;
 }>;
+/**
+ * Delete one item or container. Never one tap among others: validation lets a
+ * delete through only as the card's ONE change, and the card spells out what
+ * goes with it (lib/proposal.ts). Everything deleted goes to the trash for 30
+ * days, and the accept is one undo.
+ */
+export declare const PROPOSAL_DELETABLE: readonly ["item", "project", "routine", "season", "goal"];
+export declare const ProposalDeleteOpSchema: z.ZodObject<{
+    kind: z.ZodLiteral<"delete">;
+    what: z.ZodEnum<["item", "project", "routine", "season", "goal"]>;
+    id: z.ZodString;
+}, "strip", z.ZodTypeAny, {
+    id: string;
+    kind: "delete";
+    what: "project" | "routine" | "season" | "goal" | "item";
+}, {
+    id: string;
+    kind: "delete";
+    what: "project" | "routine" | "season" | "goal" | "item";
+}>;
+/**
+ * Set a habit's streak back to 0, keeping its history. Alone on its card, like
+ * a delete: a streak is the user's own, and is never recomputed.
+ */
+export declare const ProposalResetStreakOpSchema: z.ZodObject<{
+    kind: z.ZodLiteral<"resetStreak">;
+    itemId: z.ZodString;
+}, "strip", z.ZodTypeAny, {
+    kind: "resetStreak";
+    itemId: string;
+}, {
+    kind: "resetStreak";
+    itemId: string;
+}>;
 export declare const ProposalOperationSchema: z.ZodDiscriminatedUnion<"kind", [z.ZodObject<{
     kind: z.ZodLiteral<"create">;
     /** Registry type name: 'task', 'habit', or a user-defined slug. */
@@ -5367,6 +5401,27 @@ export declare const ProposalOperationSchema: z.ZodDiscriminatedUnion<"kind", [z
     container: "project" | "routine" | "season" | "goal";
     containerId: string;
     member?: boolean | undefined;
+}>, z.ZodObject<{
+    kind: z.ZodLiteral<"delete">;
+    what: z.ZodEnum<["item", "project", "routine", "season", "goal"]>;
+    id: z.ZodString;
+}, "strip", z.ZodTypeAny, {
+    id: string;
+    kind: "delete";
+    what: "project" | "routine" | "season" | "goal" | "item";
+}, {
+    id: string;
+    kind: "delete";
+    what: "project" | "routine" | "season" | "goal" | "item";
+}>, z.ZodObject<{
+    kind: z.ZodLiteral<"resetStreak">;
+    itemId: z.ZodString;
+}, "strip", z.ZodTypeAny, {
+    kind: "resetStreak";
+    itemId: string;
+}, {
+    kind: "resetStreak";
+    itemId: string;
 }>]>;
 export declare const ProposalSchema: z.ZodObject<{
     id: z.ZodString;
@@ -5570,6 +5625,27 @@ export declare const ProposalSchema: z.ZodObject<{
         container: "project" | "routine" | "season" | "goal";
         containerId: string;
         member?: boolean | undefined;
+    }>, z.ZodObject<{
+        kind: z.ZodLiteral<"delete">;
+        what: z.ZodEnum<["item", "project", "routine", "season", "goal"]>;
+        id: z.ZodString;
+    }, "strip", z.ZodTypeAny, {
+        id: string;
+        kind: "delete";
+        what: "project" | "routine" | "season" | "goal" | "item";
+    }, {
+        id: string;
+        kind: "delete";
+        what: "project" | "routine" | "season" | "goal" | "item";
+    }>, z.ZodObject<{
+        kind: z.ZodLiteral<"resetStreak">;
+        itemId: z.ZodString;
+    }, "strip", z.ZodTypeAny, {
+        kind: "resetStreak";
+        itemId: string;
+    }, {
+        kind: "resetStreak";
+        itemId: string;
     }>]>, "many">;
     createdAt: z.ZodString;
 }, "strip", z.ZodTypeAny, {
@@ -5628,6 +5704,13 @@ export declare const ProposalSchema: z.ZodObject<{
         container: "project" | "routine" | "season" | "goal";
         containerId: string;
         member?: boolean | undefined;
+    } | {
+        id: string;
+        kind: "delete";
+        what: "project" | "routine" | "season" | "goal" | "item";
+    } | {
+        kind: "resetStreak";
+        itemId: string;
     })[];
     createdAt: string;
     rationale?: string | undefined;
@@ -5687,6 +5770,13 @@ export declare const ProposalSchema: z.ZodObject<{
         container: "project" | "routine" | "season" | "goal";
         containerId: string;
         member?: boolean | undefined;
+    } | {
+        id: string;
+        kind: "delete";
+        what: "project" | "routine" | "season" | "goal" | "item";
+    } | {
+        kind: "resetStreak";
+        itemId: string;
     })[];
     createdAt: string;
     rationale?: string | undefined;
@@ -5894,6 +5984,27 @@ export declare const ProposalDraftSchema: z.ZodObject<Omit<{
         container: "project" | "routine" | "season" | "goal";
         containerId: string;
         member?: boolean | undefined;
+    }>, z.ZodObject<{
+        kind: z.ZodLiteral<"delete">;
+        what: z.ZodEnum<["item", "project", "routine", "season", "goal"]>;
+        id: z.ZodString;
+    }, "strip", z.ZodTypeAny, {
+        id: string;
+        kind: "delete";
+        what: "project" | "routine" | "season" | "goal" | "item";
+    }, {
+        id: string;
+        kind: "delete";
+        what: "project" | "routine" | "season" | "goal" | "item";
+    }>, z.ZodObject<{
+        kind: z.ZodLiteral<"resetStreak">;
+        itemId: z.ZodString;
+    }, "strip", z.ZodTypeAny, {
+        kind: "resetStreak";
+        itemId: string;
+    }, {
+        kind: "resetStreak";
+        itemId: string;
     }>]>, "many">;
     createdAt: z.ZodString;
 }, "id" | "createdAt">, "strip", z.ZodTypeAny, {
@@ -5951,6 +6062,13 @@ export declare const ProposalDraftSchema: z.ZodObject<Omit<{
         container: "project" | "routine" | "season" | "goal";
         containerId: string;
         member?: boolean | undefined;
+    } | {
+        id: string;
+        kind: "delete";
+        what: "project" | "routine" | "season" | "goal" | "item";
+    } | {
+        kind: "resetStreak";
+        itemId: string;
     })[];
     rationale?: string | undefined;
 }, {
@@ -6008,6 +6126,13 @@ export declare const ProposalDraftSchema: z.ZodObject<Omit<{
         container: "project" | "routine" | "season" | "goal";
         containerId: string;
         member?: boolean | undefined;
+    } | {
+        id: string;
+        kind: "delete";
+        what: "project" | "routine" | "season" | "goal" | "item";
+    } | {
+        kind: "resetStreak";
+        itemId: string;
     })[];
     rationale?: string | undefined;
 }>;

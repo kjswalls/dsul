@@ -43,6 +43,9 @@ export {
   ProposalContainerOpSchema,
   ProposalMembershipOpSchema,
   PROPOSAL_CONTAINERS,
+  ProposalDeleteOpSchema,
+  ProposalResetStreakOpSchema,
+  PROPOSAL_DELETABLE,
   ProposalOperationSchema,
   ProposalSchema,
   ProposalDraftSchema,
@@ -102,6 +105,9 @@ import {
   ProposalContainerOpSchema,
   ProposalMembershipOpSchema,
   PROPOSAL_CONTAINERS,
+  ProposalDeleteOpSchema,
+  ProposalResetStreakOpSchema,
+  PROPOSAL_DELETABLE,
   ProposalOperationSchema,
   ProposalSchema,
   ProposalDraftSchema,
@@ -152,6 +158,8 @@ export type ProposalVerb          = ProposalVerbOp['verb']
 export type ProposalContainerOp   = z.infer<typeof ProposalContainerOpSchema>
 export type ProposalMembershipOp  = z.infer<typeof ProposalMembershipOpSchema>
 export type ProposalContainer     = ProposalContainerOp['container']
+export type ProposalDeleteOp      = z.infer<typeof ProposalDeleteOpSchema>
+export type ProposalResetStreakOp = z.infer<typeof ProposalResetStreakOpSchema>
 export type ProposalOperation     = z.infer<typeof ProposalOperationSchema>
 export type Proposal              = z.infer<typeof ProposalSchema>
 export type ProposalDraft         = z.infer<typeof ProposalDraftSchema>

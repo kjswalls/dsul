@@ -42,7 +42,13 @@ export function tallyOperations(ops: readonly ProposalOperation[]): Conversation
     }
     // A tick, a skip or a pause changes the item, not its place; so does
     // putting it in a container or taking it out.
-    if (op.kind === 'verb' || op.kind === 'membership') {
+    // A delete or a streak reset is counted as a change too: the counters are
+    // stored columns, and neither is common enough to earn one of its own.
+    if (op.kind === 'delete') {
+      changed.add(`${op.what}:${op.id}`);
+      continue;
+    }
+    if (op.kind === 'verb' || op.kind === 'membership' || op.kind === 'resetStreak') {
       changed.add(op.itemId);
       continue;
     }

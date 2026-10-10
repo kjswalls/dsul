@@ -367,4 +367,17 @@ export const CASES: EvalCase[] = [
     },
     why: 'Makes a new routine holding the two habits, in the order asked.',
   },
+  {
+    id: 'reset-streak',
+    ask: 'Reset my reading streak, I want a fresh start.',
+    lookups: [
+      { tool: 'find_items', accepts: mentions('read'), example: { query: 'read' } },
+      proposes({ summary: 'A fresh start on reading', operations: [{ kind: 'resetStreak', itemId: 'itm_read' }] }),
+    ],
+    card: {
+      accepts: (d) => ops(d).length === 1 && ops(d).some((o) => o.kind === 'resetStreak' && o.itemId === 'itm_read'),
+    },
+    saysNot: [/deleted|history (is|was) (gone|cleared)/i],
+    why: 'Offers the reset alone on its card, and does not say the history goes with it.',
+  },
 ];

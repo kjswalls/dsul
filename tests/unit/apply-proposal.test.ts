@@ -714,3 +714,38 @@ describe('applyProposal: containers', () => {
     expect(store().projects.filter((p) => p.name.toLowerCase() === 'admin')).toHaveLength(1);
   });
 });
+
+describe('applyProposal: deletes and streak resets', () => {
+  it('deletes an item, and one undo brings it back', () => {
+    expect(store().applyProposal(proposalOf({ kind: 'delete', what: 'item', id: 'task-1' }))).toBe(1);
+    expect(store().items.find((i) => i.id === 'task-1')).toBeUndefined();
+    expect(db.deleteItem).toHaveBeenCalledWith('task-1', 'task');
+    store().undo();
+    expect(store().items.find((i) => i.id === 'task-1')).toBeDefined();
+  });
+
+  it('resets a streak and keeps the history', () => {
+    store().toggleHabitStatus('habit-1', 'done');
+    const before = store().items.find((i) => i.id === 'habit-1') as Item & { streak: number; completedDates: string[] };
+    expect(store().applyProposal(proposalOf({ kind: 'resetStreak', itemId: 'habit-1' }))).toBe(1);
+    const after = store().items.find((i) => i.id === 'habit-1') as Item & { streak: number; completedDates: string[] };
+    expect(after.streak).toBe(0);
+    expect(after.completedDates).toEqual(before.completedDates);
+  });
+
+  it('deletes a routine but not its items', () => {
+    const id = store().addRoutine({ name: 'Morning', itemIds: ['habit-1'] });
+    store().applyProposal(proposalOf({ kind: 'delete', what: 'routine', id }));
+    expect(store().routines).toEqual([]);
+    expect(store().items.find((i) => i.id === 'habit-1')).toBeDefined();
+  });
+
+  it('applies nothing destructive beside other changes', () => {
+    expect(
+      store().applyProposal(
+        proposalOf({ kind: 'delete', what: 'item', id: 'task-1' }, { kind: 'update', itemId: 'task-2', priority: 'high' }),
+      ),
+    ).toBe(1);
+    expect(store().items.find((i) => i.id === 'task-1')).toBeDefined();
+  });
+});

@@ -31,6 +31,8 @@ import type {
   ProposalVerbOp,
   ProposalContainerOp,
   ProposalMembershipOp,
+  ProposalDeleteOp,
+  ProposalResetStreakOp,
 } from './planner-types';
 import { PRIORITY_LABELS } from './planner-types';
 import type { ItemSize } from './item-size';
@@ -38,7 +40,7 @@ import type { ItemSize } from './item-size';
 import { autoCorrectBucket, getBucketForTime } from './time-bucket';
 // The schedule actions' patches live in lib/item-edit.ts, so the iPhone's routes write the same ones.
 import { projectRefilePatch, scheduleHabitPatch, scheduleTaskPatch, UNSCHEDULE_TASK_PATCH } from './item-edit';
-import { proposalContainersOf, validateProposalOperations } from './proposal';
+import { isDestructive, proposalContainersOf, validateProposalOperations } from './proposal';
 import { makeIconToken } from './category-icons';
 import {
   addDaysToDateStr,
@@ -3824,6 +3826,9 @@ export const usePlannerStore = create<PlannerStore>()(
         // Made and changed first, so a membership on the same card finds them.
         const containerOps = accepted.filter((op): op is ProposalContainerOp => op.kind === 'container');
         const membershipOps = accepted.filter((op): op is ProposalMembershipOp => op.kind === 'membership');
+        // A delete or a streak reset arrives alone (validation's rule), and runs
+        // as the row's own Delete or Reset streak does.
+        const destructiveOps = accepted.filter(isDestructive);
         const writePlan = () => {
           // Armed before the set(), like every other labelled action — the label
           // is consumed by the NEXT history save.
@@ -3867,7 +3872,7 @@ export const usePlannerStore = create<PlannerStore>()(
           };
 
           for (const op of accepted) {
-            if (op.kind === 'verb' || op.kind === 'container' || op.kind === 'membership') continue;
+            if (op.kind !== 'create' && op.kind !== 'update') continue;
             if (op.kind === 'create') {
               // A day with no bucket is no day at all: day views list only
               // bucketed items, and the Braindump takes anything unbucketed, so
@@ -4017,8 +4022,9 @@ export const usePlannerStore = create<PlannerStore>()(
           for (const op of verbOps) runProposalVerb(op, today, tz);
           for (const op of containerOps) runProposalContainer(op);
           for (const op of membershipOps) runProposalMembership(op);
+          for (const op of destructiveOps) runProposalDestructive(op);
         };
-        if (verbOps.length + containerOps.length + membershipOps.length === 0) writePlan();
+        if (verbOps.length + containerOps.length + membershipOps.length + destructiveOps.length === 0) writePlan();
         else batchHistory(`Accept plan: ${proposal.summary}`, accepted.length, writePlan, { quiet: true });
 
         return accepted.length;
@@ -6443,6 +6449,32 @@ function runProposalMembership(op: ProposalMembershipOp): void {
       return;
     case 'goal':
       store.setItemsGoal([op.itemId], op.containerId, member);
+      return;
+  }
+}
+
+function runProposalDestructive(op: ProposalDeleteOp | ProposalResetStreakOp): void {
+  const store = usePlannerStore.getState();
+  if (op.kind === 'resetStreak') {
+    store.resetHabitStreak(op.itemId);
+    return;
+  }
+  switch (op.what) {
+    case 'item':
+      // deleteItems takes any type and its steps with it, as the bar's Delete does.
+      store.deleteItems([op.id]);
+      return;
+    case 'project':
+      store.removeProject(op.id);
+      return;
+    case 'routine':
+      store.removeRoutine(op.id);
+      return;
+    case 'season':
+      store.removeSeason(op.id);
+      return;
+    case 'goal':
+      store.removeGoal(op.id);
       return;
   }
 }

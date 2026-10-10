@@ -165,6 +165,22 @@ describe('propose_changes', () => {
     expect(r.content).toMatch(/Dentist: add to Morning: it is already in Morning/);
   });
 
+  it('offers a delete alone, and leaves one off a card with other changes', async () => {
+    const alone = await makeChangeOffer(source())({ summary: 'Delete the report', operations: [{ kind: 'delete', what: 'item', id: 't2' }] });
+    expect(alone.proposal?.operations).toEqual([{ kind: 'delete', what: 'item', id: 't2' }]);
+    expect(alone.content).toContain('- Delete "Report" and its 1 step. It goes to the trash for 30 days.');
+
+    const mixed = await makeChangeOffer(source())({
+      summary: 'Tidy up',
+      operations: [
+        { kind: 'delete', what: 'routine', id: 'r1' },
+        { kind: 'update', itemId: 't1', title: 'Dentist (Mon)' },
+      ],
+    });
+    expect(mixed.proposal?.operations).toEqual([{ kind: 'update', itemId: 't1', title: 'Dentist (Mon)' }]);
+    expect(mixed.content).toMatch(/Delete the routine "Morning".*: a delete goes on a card of its own/);
+  });
+
   it('reads no containers for a card of items alone', async () => {
     let read = 0;
     const counted = async () => {

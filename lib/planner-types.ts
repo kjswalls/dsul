@@ -41,6 +41,8 @@ export type {
   ProposalContainerOp,
   ProposalMembershipOp,
   ProposalContainer,
+  ProposalDeleteOp,
+  ProposalResetStreakOp,
   ProposalVerb,
 } from '@dsul/types'
 

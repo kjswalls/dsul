@@ -1249,12 +1249,37 @@ export const ProposalMembershipOpSchema = z.object({
   member: z.boolean().optional(),
 })
 
+/**
+ * Delete one item or container. Never one tap among others: validation lets a
+ * delete through only as the card's ONE change, and the card spells out what
+ * goes with it (lib/proposal.ts). Everything deleted goes to the trash for 30
+ * days, and the accept is one undo.
+ */
+export const PROPOSAL_DELETABLE = ['item', 'project', 'routine', 'season', 'goal'] as const
+
+export const ProposalDeleteOpSchema = z.object({
+  kind: z.literal('delete'),
+  what: z.enum(PROPOSAL_DELETABLE),
+  id: z.string().min(1).max(200),
+})
+
+/**
+ * Set a habit's streak back to 0, keeping its history. Alone on its card, like
+ * a delete: a streak is the user's own, and is never recomputed.
+ */
+export const ProposalResetStreakOpSchema = z.object({
+  kind: z.literal('resetStreak'),
+  itemId: z.string().min(1).max(200),
+})
+
 export const ProposalOperationSchema = z.discriminatedUnion('kind', [
   ProposalCreateOpSchema,
   ProposalUpdateOpSchema,
   ProposalVerbOpSchema,
   ProposalContainerOpSchema,
   ProposalMembershipOpSchema,
+  ProposalDeleteOpSchema,
+  ProposalResetStreakOpSchema,
 ])
 
 export const ProposalSchema = z.object({
