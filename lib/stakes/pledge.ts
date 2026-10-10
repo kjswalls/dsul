@@ -22,7 +22,7 @@
  */
 
 import { assertSafeUrl, postToChannel, requireString } from '../reminders/channels/http'
-import { sendPushToUser } from '../push-send'
+import { sendToUser } from '../devices/send'
 import { formatMoney, pledgeSummary } from './copy'
 import type { StakeAdapter, StakeEventDraft } from './types'
 
@@ -121,27 +121,30 @@ export const pledgeAdapter: StakeAdapter = {
     const problems: string[] = []
 
     try {
-      const pushed = await sendPushToUser(ctx.service, ctx.userId, {
-        title: copy.title,
-        body: copy.body,
-        // The ledger, not the planner. This notification asserts a number, and
-        // the claim the pledge tier makes for itself is that the number is
-        // backed by rows you can read — so the tap has to land on them.
-        url: '/ledger',
-        tag: `dsul-pledge-${outcome.dateStr}`,
-        ttl: PLEDGE_TTL_S,
-        // A summary, not a moment: it can wait for the phone to wake.
-        urgency: 'normal',
-        // NO topic, as a cue has none (channels/push.ts says why). Each day's
-        // notice goes once, against the stake_events claim, and none replaces
-        // another, so a topic would collapse nothing and only spend one of the
-        // four collapse keys FCM keeps per device. And it is the one sender
-        // whose topics have no bound: a catch-up after an outage settles up to
-        // a week in one tick (MAX_CATCH_UP_DAYS, lib/reminders/scan.ts), a
-        // notice a day, so with that evening's last call and review a phone
-        // that is off would hold nine keys, and lose three or more without a
-        // trace while every send came back 201. The tag keeps each day to one
-        // entry in the shade.
+      const pushed = await sendToUser(ctx.service, ctx.userId, {
+        kind: 'pledge',
+        payload: {
+          title: copy.title,
+          body: copy.body,
+          // The ledger, not the planner. This notification asserts a number, and
+          // the claim the pledge tier makes for itself is that the number is
+          // backed by rows you can read — so the tap has to land on them.
+          url: '/ledger',
+          tag: `dsul-pledge-${outcome.dateStr}`,
+          ttl: PLEDGE_TTL_S,
+          // A summary, not a moment: it can wait for the phone to wake.
+          urgency: 'normal',
+          // NO topic, as a cue has none (channels/push.ts says why). Each day's
+          // notice goes once, against the stake_events claim, and none replaces
+          // another, so a topic would collapse nothing and only spend one of the
+          // four collapse keys FCM keeps per device. And it is the one sender
+          // whose topics have no bound: a catch-up after an outage settles up to
+          // a week in one tick (MAX_CATCH_UP_DAYS, lib/reminders/scan.ts), a
+          // notice a day, so with that evening's last call and review a phone
+          // that is off would hold nine keys, and lose three or more without a
+          // trace while every send came back 201. The tag keeps each day to one
+          // entry in the shade.
+        },
       })
       // A failed subscription read is answered now rather than thrown. It is
       // still the one push outcome reported as a problem, as when it threw.

@@ -38,6 +38,7 @@ import {
 import { ExtensionRailList } from './extension-rail-list';
 import { ExtensionHero } from './extension-hero';
 import { ExtensionBrowse } from '@/components/extensions/extension-browse';
+import { DevicesList } from './devices-list';
 import { ShortcutsPanel } from './shortcuts-panel';
 import { AIPane, AIPaneMark, UseAIRow } from './ai-pane';
 import { MakePane } from './make-pane';
@@ -906,6 +907,10 @@ export function SettingsShell({
               ) : (
                 <div className="divide-border divide-y">{groupPaneRows(rows).map(groupFor)}</div>
               )}
+
+              {/* Rituals ends with the devices those rituals reach, and which
+                  reminders each one takes (lib/devices, migration 065). */}
+              {pane === 'rituals' && <DevicesList />}
 
               {advanced.length > 0 && (
                 <>

@@ -279,6 +279,11 @@ function nothingSent(detail?: string): PushResult {
 /**
  * Push one payload to every device a user has subscribed. NEVER throws.
  *
+ * THE PRE-REGISTRY SEND, kept for one release. Every caller now goes through
+ * lib/devices/send.ts's sendToUser, which reads the `devices` table (migration
+ * 065) and comes here only while that table is missing: a build that landed
+ * ahead of the migration.
+ *
  * Requires a SERVICE client: push_subscriptions is RLS'd to the owner, and the
  * scan runs with no session at all.
  *

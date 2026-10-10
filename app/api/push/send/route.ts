@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase-server';
 import { createServiceClient } from '@/lib/supabase-service';
-import { isPushConfigured, sendPushToUser, type PushAction } from '@/lib/push-send';
+import { sendToUser } from '@/lib/devices/send';
+import { isPushConfigured, type PushAction } from '@/lib/push-send';
 
 /**
  * POST /api/push/send
@@ -18,7 +19,7 @@ import { isPushConfigured, sendPushToUser, type PushAction } from '@/lib/push-se
  * hours) for a device that is off, where web-push alone would hold it for four
  * weeks.
  *
- * The delivery itself lives in lib/push-send.ts — this route is the HTTP
+ * The delivery itself lives in lib/devices/send.ts — this route is the HTTP
  * surface and the auth gate, nothing more. The in-process caller (the reminder
  * scan, the EOD review included) calls the library directly rather than
  * POSTing here.
@@ -46,21 +47,26 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const result = await sendPushToUser(createServiceClient(), userId, {
-      title,
-      body: body ?? '',
-      url,
-      tag,
-      actions: actions as PushAction[] | undefined,
-      data,
+    // Kind 'other': a push with no kind is held only by a device's mute, its
+    // staleness and its quiet hours, never by a per-kind switch.
+    const result = await sendToUser(createServiceClient(), userId, {
+      kind: 'other',
+      payload: {
+        title,
+        body: body ?? '',
+        url,
+        tag,
+        actions: actions as PushAction[] | undefined,
+        data,
+      },
     });
-    // sendPushToUser answers a failed subscription read instead of throwing it.
+    // sendToUser answers a failed device read instead of throwing it.
     // Still a 500 here, as it was when it threw: a 200 with `sent: 0` would
     // tell the caller "no devices" about a question nobody answered.
     if (result.detail) {
       return NextResponse.json({ error: result.detail }, { status: 500 });
     }
-    return NextResponse.json({ ok: true, sent: result.sent });
+    return NextResponse.json({ ok: true, sent: result.accepted });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Push failed' },

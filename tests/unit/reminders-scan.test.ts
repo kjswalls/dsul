@@ -12,6 +12,26 @@ vi.mock('@/lib/push-send', () => ({
   isPushConfigured: () => true,
 }));
 
+// The scan's push channel sends through the device registry (lib/devices/send.ts).
+// It is stood in for here by the PushResult-shaped mock above, translated, so
+// every count below still reads as devices, sent, expired and failed.
+vi.mock('@/lib/devices/send', () => ({
+  sendToUser: async (service: unknown, userId: string, message: { payload: unknown }) =>
+    reportOf(await (sendPushToUser as unknown as (...a: unknown[]) => Promise<PushResult>)(service, userId, message.payload)),
+}));
+function reportOf(r: PushResult) {
+  return {
+    devices: r.devices,
+    eligible: r.devices,
+    accepted: r.sent,
+    failed: r.failed,
+    pruned: r.expired,
+    held: 0,
+    perDevice: [],
+    ...(r.detail !== undefined ? { detail: r.detail } : {}),
+  };
+}
+
 const fetchItems = vi.fn(async (): Promise<Item[]> => []);
 vi.mock('@/lib/db', () => ({
   fetchItems: () => fetchItems(),

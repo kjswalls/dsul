@@ -27,7 +27,7 @@ import { join } from 'node:path';
  *      after a deletion, and a service-role write in flight (the reminder scan,
  *      the agent API) could even add rows for an account that is gone: only a
  *      foreign key refuses a row whose user no longer exists. That is the shape
- *      a new table (the planned `devices`) would most easily take.
+ *      a new table would most easily take (065's `devices` cascades).
  *
  * TEXT, NOT A DATABASE, like tests/unit/migration-text.test.ts. Comments and
  * string literals are stripped first, so a header that discusses a clause is
@@ -355,6 +355,7 @@ describe('every user column has a cascading path to auth.users (rule 2)', () => 
       'chat_messages',
       'user_mods',
       'mod_runs',
+      'devices',
     ]) {
       expect(tables, t).toContain(t);
     }
@@ -386,13 +387,13 @@ describe('every user column has a cascading path to auth.users (rule 2)', () => 
 
   it('fails a table with a user column and no key at all', () => {
     const probe = code(`
-      create table if not exists public.devices (
+      create table if not exists public.devices_probe (
         id uuid primary key default gen_random_uuid(),
         user_id uuid not null default auth.uid(),
         token text not null
       );`);
     expect(userColumnViolations([...ALL, { name: '999_devices.sql', src: probe }])).toEqual([
-      '999_devices.sql: devices.user_id has no cascading key to auth.users',
+      '999_devices.sql: devices_probe.user_id has no cascading key to auth.users',
     ]);
   });
 
@@ -445,10 +446,10 @@ describe('every user column has a cascading path to auth.users (rule 2)', () => 
     // keyless table between them.
     const probe = code(`
       -- 063_devices: registers what lib/devices/*.ts sends to.
-      create table public.devices (id uuid primary key, user_id uuid not null default auth.uid(), token text);
+      create table public.devices_probe (id uuid primary key, user_id uuid not null default auth.uid(), token text);
       select cron.schedule('prune-devices', '*/15 * * * *', $$select 1$$);`);
     expect(userColumnViolations([...ALL, { name: '063_devices.sql', src: probe }])).toEqual([
-      '063_devices.sql: devices.user_id has no cascading key to auth.users',
+      '063_devices.sql: devices_probe.user_id has no cascading key to auth.users',
     ]);
   });
 

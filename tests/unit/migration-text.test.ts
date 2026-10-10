@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { DEVICE_ROSTER_COLUMNS } from '@/lib/devices/db';
+import { STALE_DAYS } from '@/lib/devices/prune';
+import { placeholderDeviceId } from '@/lib/devices/routes';
 
 /**
  * Every migration from 058 on, read as text, against the rules
@@ -616,5 +619,55 @@ describe('062_recipe_tick', () => {
       'create index if not exists user_mods_timed_recipe_idx on public.user_mods (user_id) ' +
         "where kind = 'recipe' and enabled and (manifest -> 'trigger' ->> 'on') = 'time';"
     );
+  });
+});
+
+/**
+ * 065 is the device registry (memory/plans/reminders-platforms.md §4.2, the
+ * plan's "059_devices.sql", renumbered). scripts/verify-065.sh replays it on a
+ * real Postgres; these hold its text to the TypeScript that depends on it.
+ */
+describe('065_devices', () => {
+  const file = RULED.find((f) => f.name === '065_devices.sql');
+  const sql = code(file?.text ?? '');
+  const flat = sql.replace(/\s+/g, ' ');
+
+  it('exists', () => {
+    expect(file).toBeDefined();
+  });
+
+  it('grants the owner exactly the roster columns lib/devices/db.ts reads, and never token or keys', () => {
+    const grant = flat.match(/grant select \(([^)]*)\) on public\.devices to authenticated;/);
+    expect(grant).not.toBeNull();
+    const granted = grant![1].split(',').map((c) => c.trim());
+    expect(DEVICE_ROSTER_COLUMNS.split(',').map((c) => c.trim())).toEqual(granted);
+    expect(granted).not.toContain('token');
+    expect(granted).not.toContain('keys');
+    expect(flat).toContain('grant update (prefs, label) on public.devices to authenticated;');
+  });
+
+  it('makes register_device security invoker, with an empty path, executable by the service role only', () => {
+    const head = flat.slice(flat.indexOf('create or replace function public.register_device'));
+    expect(head.slice(0, head.indexOf(' as $$'))).toMatch(/security invoker set search_path = ''$/);
+    expect(flat).toMatch(/revoke all on function public\.register_device\([^)]*\) from public, anon, authenticated;/);
+    expect(flat).toMatch(/grant execute on function public\.register_device\([^)]*\) to service_role;/);
+  });
+
+  it("prunes on the same limits the sender holds as stale (lib/devices/prune.ts)", () => {
+    expect(flat).toContain(
+      `(transport in ('webpush', 'apns', 'none') and last_seen_at < now() - interval '${STALE_DAYS.webpush} days')`
+    );
+    expect(STALE_DAYS.apns).toBe(STALE_DAYS.webpush);
+    expect(STALE_DAYS.none).toBe(STALE_DAYS.webpush);
+    expect(flat).toContain(`(transport = 'fcm' and last_seen_at < now() - interval '${STALE_DAYS.fcm} days')`);
+  });
+
+  it("backfills with the placeholder id the /api/push aliases use (lib/devices/routes.ts)", () => {
+    expect(flat).toContain("'web:' || encode(sha256(convert_to(s.endpoint, 'utf8')), 'hex')");
+    expect(placeholderDeviceId('https://x.example/endpoint')).toMatch(/^web:[0-9a-f]{64}$/);
+  });
+
+  it("keeps the browser's id inside the device_id check (lib/devices/web-client.ts)", () => {
+    expect(flat).toContain("check (device_id ~ '^[a-za-z0-9:._-]{8,128}$')");
   });
 });
