@@ -107,6 +107,46 @@ describe('buildDsulContext', () => {
     );
   });
 
+  it('names what is coming up and what sits in the braindump, which today alone never showed', () => {
+    const task = (id: string, title: string, over: Record<string, unknown>): Item =>
+      ({ type: 'task', id, title, status: 'pending', order: 0, ...over }) as Item;
+    const out = buildDsulContext({
+      items: [
+        task('c2', 'Dentist', { isScheduled: true, startDate: '2026-07-20' }),
+        task('c1', 'Call mum', { isScheduled: true, startDate: '2026-07-16', project: 'Home' }),
+        task('far', 'Renew passport', { isScheduled: true, startDate: '2026-08-30' }),
+        task('b1', 'Fix the bike', { isScheduled: false }),
+        task('b2', 'Done idea', { isScheduled: false, status: 'completed' }),
+        task('s1', 'A step', { isScheduled: false, parentItemId: 'b1' }),
+        task('bucket', 'Anytime thing', { isScheduled: false, timeBucket: 'anytime' }),
+        task('g1', 'Learn Mandarin', { type: 'custom', customType: 'goal', isScheduled: false }),
+      ],
+      projects: [],
+    });
+    expect(out).toContain(
+      ['### Coming up (next 14 days)', '- Thu, Jul 16: Call mum (Project: Home)', '- Mon, Jul 20: Dentist'].join('\n')
+    );
+    expect(out).toContain('### Braindump');
+    expect(out).toContain('- Fix the bike');
+    // Further out than two weeks, finished, a subtask, or bucketed for a day: not listed there.
+    expect(out).not.toContain('Renew passport');
+    expect(out).not.toContain('Done idea');
+    expect(out).not.toContain('A step');
+    expect(out.split('### Braindump')[1]).not.toContain('Anytime thing');
+    // A custom type's own section lists every one of them already.
+    expect(out.split('### Braindump')[1]).not.toContain('Learn Mandarin');
+  });
+
+  it('caps a long braindump with a count', () => {
+    const many = Array.from({ length: 45 }, (_, i) =>
+      ({ type: 'task', id: `b${i}`, title: `Idea ${i}`, status: 'pending', order: i, isScheduled: false }) as Item
+    );
+    const out = buildDsulContext({ items: many, projects: [] });
+    expect(out).toContain('- Idea 39');
+    expect(out).not.toContain('- Idea 40');
+    expect(out).toContain('- +5 more');
+  });
+
   it('renders the empty-state lines', () => {
     const out = buildDsulContext({ items: [], projects: [] });
     expect(out).toContain('No tasks scheduled for today.');
@@ -119,9 +159,13 @@ describe('BEACON_SYSTEM_PROMPT', () => {
   it('is pinned byte for byte, and names no assistant', () => {
     expect(BEACON_SYSTEM_PROMPT).toBe(
       'You are a warm and encouraging AI assistant built into dsul, a daily planner for neurodivergent people. ' +
-        "You have full visibility into the user's current tasks, habits, and projects. " +
+        "Each message comes with a snapshot of the user's tasks, habits, and projects: today, anything overdue, the next two weeks, and the braindump (things captured with no day yet). " +
+        'Finished work and anything further out are not in it. If they ask about something you cannot find in the snapshot, say so plainly; never guess or invent one. ' +
+        'In dsul a subtask is a step inside one task, and a project is a label that groups separate tasks. ' +
+        'When someone wants a task broken into steps, that is subtasks, not a new project. ' +
+        'You cannot change the planner from this chat: "Break it down" on a task adds its steps, and "Turn this into a plan" under a reply turns what you suggested into changes they can accept. ' +
         'Help them plan their day, break down overwhelming tasks, celebrate progress, and stay focused. ' +
-        "Be concise, warm, and never judgmental. When you reference their tasks or habits, be specific — you can see exactly what they're working on."
+        'Be concise, warm, and never judgmental. When you reference their tasks or habits, be specific and use the names they gave them.'
     );
     // The AI has no name (decision 10): the model must not introduce itself as one.
     expect(BEACON_SYSTEM_PROMPT).not.toMatch(/\bBeacon\b/);
@@ -129,7 +173,7 @@ describe('BEACON_SYSTEM_PROMPT', () => {
 
   it('announces custom-type nouns when hydrated types are passed', () => {
     const prompt = buildBeaconSystemPrompt(['goals']);
-    expect(prompt).toContain("current tasks, habits, goals, and projects.");
+    expect(prompt).toContain("snapshot of the user's tasks, habits, goals, and projects:");
     expect(prompt).toContain('reference their tasks, habits, or goals,');
   });
 

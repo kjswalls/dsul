@@ -7,6 +7,10 @@ import type { Item, Project, Routine, Season, Goal } from './planner-types'
 
 /** Per cause, before the list collapses to a count. */
 const MAX_PAUSED_TITLES = 5
+/** Per section (braindump, coming up), before the rest collapses to a count. */
+const MAX_LISTED = 40
+/** How far ahead "Coming up" looks, in days after today. */
+const COMING_UP_DAYS = 14
 
 /**
  * Builds the Beacon chat context. Each item type contributes its own section
@@ -132,6 +136,39 @@ export function buildDsulContext(state: {
     lines.push('')
   }
 
+  // --- Coming up, and the braindump ---
+  //
+  // The per-type sections above are TODAY's (and overdue): a task dated next
+  // week, or one in the braindump with no date at all, appeared nowhere, so
+  // asked about one by name the AI could only say it did not exist, or guess.
+  // Tasks only, not subtasks, still open and not suppressed. Not custom types:
+  // their own section above is date-blind and already lists every one, so
+  // naming them here too would say each twice. Emitted only when non-empty,
+  // like Paused below.
+  const open = state.items.filter(
+    (i): i is Extract<Item, { type: 'task' }> =>
+      i.type === 'task' &&
+      !('parentItemId' in i && i.parentItemId) &&
+      i.status === 'pending' &&
+      !suppressedIds.has(i.id)
+  )
+  const horizon = addDays(todayStr, COMING_UP_DAYS)
+  const comingUp = open
+    .filter((i) => i.isScheduled && !!i.startDate && i.startDate > todayStr && i.startDate <= horizon)
+    .sort((a, b) => (a.startDate ?? '').localeCompare(b.startDate ?? ''))
+  const braindump = open.filter((i) => !i.isScheduled && !i.timeBucket)
+  if (comingUp.length > 0) {
+    lines.push(`### Coming up (next ${COMING_UP_DAYS} days)`)
+    lines.push(...listed(comingUp, (i) => `${shortDate(i.startDate as string)}: ${i.title}${projectNote(i)}`))
+    lines.push('')
+  }
+  if (braindump.length > 0) {
+    lines.push('### Braindump')
+    lines.push('Captured with no day yet. Not late, not owed; there when the user wants them.')
+    lines.push(...listed(braindump, (i) => `${i.title}${projectNote(i)}`))
+    lines.push('')
+  }
+
   // --- Goals ---
   //
   // ACTIVE goals only, and double-guarded on the RENDERED set the way Paused
@@ -234,4 +271,28 @@ export function buildDsulContext(state: {
   }
 
   return lines.join('\n')
+}
+
+function listed<T extends Item>(items: readonly T[], line: (i: T) => string): string[] {
+  const out = items.slice(0, MAX_LISTED).map((i) => `- ${line(i)}`)
+  if (items.length > MAX_LISTED) out.push(`- +${items.length - MAX_LISTED} more`)
+  return out
+}
+
+function projectNote(i: Item): string {
+  return i.project ? ` (Project: ${i.project})` : ''
+}
+
+/** yyyy-MM-dd plus `days`, as yyyy-MM-dd. Calendar arithmetic in UTC, so no zone shifts it. */
+function addDays(day: string, days: number): string {
+  const d = new Date(`${day}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
+/** yyyy-MM-dd → "Thu Jul 16". */
+function shortDate(day: string): string {
+  const d = new Date(`${day}T00:00:00Z`)
+  if (Number.isNaN(d.getTime())) return day
+  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })
 }
