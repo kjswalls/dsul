@@ -14,7 +14,7 @@ import {
 } from '@/lib/ai-server/connections';
 import { ProviderError, type ProviderErrorKind } from '@/lib/ai-server/errors';
 import { CONNECT_FLOWS } from '@/lib/connect-flow';
-import { takeToken } from '@/lib/ai-server/rate-limit';
+import { takeSharedToken } from '@/lib/ai-server/rate-limit';
 
 /**
  * "Sign in with OpenRouter": GET /api/ai/openrouter/start and
@@ -88,7 +88,10 @@ vi.mock('@/lib/ai-server/errors', async (importOriginal) => {
 vi.mock('@/lib/ai-server/stream', () => ({
   anySignal: vi.fn((signals: AbortSignal[]) => AbortSignal.any(signals)),
 }));
-vi.mock('@/lib/ai-server/rate-limit', () => ({ takeToken: vi.fn(() => true) }));
+vi.mock('@/lib/ai-server/rate-limit', () => ({
+  takeToken: vi.fn(() => true),
+  takeSharedToken: vi.fn(async () => true),
+}));
 
 const adapter = vi.hoisted(() => ({
   verify: vi.fn(),
@@ -211,8 +214,8 @@ beforeEach(() => {
   useMockedPkce();
   vi.mocked(pkce.exchangeOpenRouterCode).mockReset();
   vi.mocked(pkce.exchangeOpenRouterCode).mockResolvedValue('sk-or-v1-SENTINEL-issued');
-  vi.mocked(takeToken).mockReset();
-  vi.mocked(takeToken).mockReturnValue(true);
+  vi.mocked(takeSharedToken).mockReset();
+  vi.mocked(takeSharedToken).mockResolvedValue(true);
   vi.mocked(readModelConnection).mockReset();
   vi.mocked(readModelConnection).mockResolvedValue({ kind: 'none' });
   vi.mocked(saveModelConnection).mockReset();
@@ -359,7 +362,7 @@ describe('GET /api/ai/openrouter/callback/[state]', () => {
     expectCleared(res);
     expect(res.headers.get('location')).toBe(`${SETTINGS}?connect=ok`);
     expect(pkce.exchangeOpenRouterCode).toHaveBeenCalledWith(CODE, VERIFIER, expect.any(AbortSignal));
-    expect(takeToken).toHaveBeenCalledWith('user-1', 'connect');
+    expect(takeSharedToken).toHaveBeenCalledWith('user-1', 'connect');
     expect(adapter.pickDefaultModel).toHaveBeenCalledWith({
       models: [{ id: 'meta-llama/llama-3:free', label: 'Llama 3 (free)', free: true }],
       listed: true,
@@ -454,7 +457,7 @@ describe('GET /api/ai/openrouter/callback/[state]', () => {
   );
 
   it('the connect limiter → busy, no exchange', async () => {
-    vi.mocked(takeToken).mockReturnValue(false);
+    vi.mocked(takeSharedToken).mockResolvedValue(false);
     const res = await callbackReq(STATE, `?code=${CODE}`);
     expect(res.headers.get('location')).toBe(`${SETTINGS}?connect=busy`);
     expectCleared(res);
@@ -667,7 +670,7 @@ describe('GET /api/ai/openrouter/callback/[state]', () => {
     const res = await callbackReq(STATE, `?code=${CODE}`);
     expect(res.headers.get('location')).toBe(`${SETTINGS}?connect=unavailable`);
     expectCleared(res);
-    expect(takeToken).not.toHaveBeenCalled();
+    expect(takeSharedToken).not.toHaveBeenCalled();
     expect(pkce.exchangeOpenRouterCode).not.toHaveBeenCalled();
     expect(saveModelConnection).not.toHaveBeenCalled();
   });
@@ -705,7 +708,7 @@ describe('GET /api/ai/openrouter/callback/[state]', () => {
     note(await callbackReq(STATE, `?code=${CODE}`, null));
     note(await callbackReq(STATE, '?error=access_denied'));
     note(await callbackReq(STATE, '?code=short'));
-    vi.mocked(takeToken).mockReturnValueOnce(false);
+    vi.mocked(takeSharedToken).mockResolvedValueOnce(false);
     note(await callbackReq(STATE, `?code=${CODE}`));
     vi.mocked(readModelConnection).mockResolvedValueOnce({ kind: 'unavailable', reason: 'no_table' });
     note(await callbackReq(STATE, `?code=${CODE}`));
