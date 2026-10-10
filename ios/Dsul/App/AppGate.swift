@@ -94,7 +94,8 @@ struct AppGate: View {
             if let current = planner, current.userId == session.userId { return }
             let switching = planner?.isLive == true
             planner?.stopSync()
-            let api = APIClient(origin: AppConfig.apiOrigin, tokens: auth, transport: HTTP.live)
+            let api = APIClient(origin: AppConfig.apiOrigin, tokens: auth, transport: HTTP.live,
+                                deviceId: DeviceIdentity.id())
             let live = SamplePlanner(userId: session.userId, api: api, isDragging: { DragHold.shared.isHeld },
                                      backgroundTime: .uiApplication)
             if let email = auth.takeWelcome() {

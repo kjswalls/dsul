@@ -340,6 +340,27 @@
 >    included), `push-release` (both release forms) and a `065_devices` block in
 >    `migration-text.test.ts`.
 
+> **Addendum (2026-10-10): what Phase 2d changed on the way in.** Phase 2d is the iPhone's
+> side of the registry: `POST /api/app/devices` and `DELETE /api/app/devices/:deviceId`
+> (`app/api/app/devices/`), and `ios/Dsul/Devices/DeviceRegistration.swift`. Where it
+> departs from §5.3:
+>
+> 1. **No `DeviceRegistrar` type.** The hub registers (`NotificationHub.syncDevice`, once a
+>    launch per user, beside `syncZone`), `AuthStore.signOut` releases, and the id is
+>    `DeviceIdentity`: `ios:` and a lowercase UUID in UserDefaults (`dsul.deviceId`), never
+>    cleared, like the web's `dsul-device-id`. A reinstall makes a new one; the old row is
+>    never sent anything and goes at the 180-day prune.
+> 2. **The route takes one shape for now:** `platform 'ios'`, `transport 'none'`,
+>    `delivery 'local'`, anything else a bare 400 `invalid`. `apns` joins in Phase 3. No
+>    label is sent, so the roster says "dsul on iPhone" and never "Browser on iPhone".
+> 3. **The release goes after the local wipe, before the GoTrue logout,** with the ending
+>    token and no refresh (`EndingSessionToken`); offline it fails quietly and the logout
+>    still goes. A delete is filtered by the bearer's user id as well as the device id.
+> 4. **`X-Dsul-Device` is sent on every non-GET `/api/app` call** (Delete account's
+>    included) and read by nothing yet: Phase 3's wake is its first reader.
+> 5. **A registration the server may still take (offline, 503) is tried again at the next
+>    fetch; a 400 is not.**
+
 2026-10-05. **Status: plan, decided 2026-10-06 — Kirby took every default in §7; nothing in it has been built yet, nothing was written to prod.** Phase 0 is next. Every code citation is tree-level (`main` at `b8d480c`, 2026-10-04; every cited `file:line` holds at `3200896`, #405, 2026-10-05 — six cited files changed between the two commits, `electron/main.cjs`, `electron/preload.cjs`, `lib/desktop.ts`, `desktop-app.md`, `ios-app.md`, `CLAUDE.md`, but not at the cited lines; `preload.cjs` gained `authProviders`): the live project was read on 2026-10-05, read-only, and the observed values sit at the top of §5.1.1: the organisation is on the **Pro** plan, both ticks are paused exactly as 045 left them, no ritual is enabled by any of the four accounts, and Kirby is the only user, so the runbook's EXPECT lines are now observations and the §5.1 writes have no one to disturb. Kirby also holds a paid Apple Developer Program membership (confirmed 2026-10-05), which removes the purchase gate the brief assumed (decision 5, resolved). Facts taken from search snippets of pages the planning sessions could not open are marked `[S]`; facts no source verified are marked **[unverified]** inline and collected in §6. Sibling plans: [habit-reminders.md](habit-reminders.md) (the reminder model this builds on — read it first), [desktop-app.md](desktop-app.md), [ios-app.md](ios-app.md).
 
 ---

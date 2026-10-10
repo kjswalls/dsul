@@ -27,12 +27,12 @@ enum AuthJSON {
 @Suite struct AuthStoreTests {
     /// An AuthStore on `server`, with its own empty defaults and no waiting
     /// between refresh retries.
-    private func makeAuth(_ server: FakeServer, store: InMemoryTokenStore) -> AuthStore {
+    private func makeAuth(_ server: FakeServer, store: InMemoryTokenStore, deviceId: String? = nil) -> AuthStore {
         let defaults = UserDefaults(suiteName: "dsul-tests-" + UUID().uuidString)!
         let config = SupabaseConfigStore(origin: URL(string: "https://dsul.test")!, defaults: defaults,
                                          transport: server.transport)
         let auth = AuthStore(tokenStore: store, configStore: config, transport: server.transport,
-                             sleep: { _ in })
+                             sleep: { _ in }, deviceId: deviceId)
         store.observedAuth = auth
         return auth
     }
@@ -233,6 +233,47 @@ enum AuthJSON {
         #expect(logout?.route == AuthJSON.logoutRoute)
         #expect(logout?.headers["authorization"] == "Bearer a1")
         #expect(logout?.headers["apikey"] == "anon-key")
+    }
+
+    /// Sign out releases this iPhone's registry row with the ending token,
+    /// before the GoTrue logout ends it, and the wipe still comes first.
+    @Test func signingOutReleasesThisDeviceBeforeTheLogout() async {
+        let device = "ios:0b7c2f9a-1d3e-4c5b-9a8f-7e6d5c4b3a21"
+        let release = "DELETE /api/app/devices/" + device
+        let server = await serverForSignIn()
+        await server.on(release, .status(200, "{\"ok\":true}"))
+        await server.on(AuthJSON.logoutRoute, .status(204, ""))
+        let store = InMemoryTokenStore()
+        let auth = makeAuth(server, store: store, deviceId: device)
+        await signIn(auth)
+
+        await auth.signOut()
+
+        #expect(auth.state == .signedOut)
+        #expect(store.session == nil)
+        let routes = await server.requests.map(\.route)
+        let released = routes.firstIndex(of: release)
+        let loggedOut = routes.firstIndex(of: AuthJSON.logoutRoute)
+        #expect(released != nil)
+        #expect(loggedOut != nil)
+        if let released, let loggedOut { #expect(released < loggedOut) }
+        let request = await server.requests.first { $0.route == release }
+        #expect(request?.headers["authorization"] == "Bearer a1")
+    }
+
+    /// Offline, the release fails quietly and the logout is still sent.
+    @Test func anOfflineReleaseStillLogsOut() async {
+        let device = "ios:0b7c2f9a-1d3e-4c5b-9a8f-7e6d5c4b3a21"
+        let server = await serverForSignIn()
+        await server.on("DELETE /api/app/devices/" + device, .offline)
+        let store = InMemoryTokenStore()
+        let auth = makeAuth(server, store: store, deviceId: device)
+        await signIn(auth)
+
+        await auth.signOut()
+
+        #expect(auth.state == .signedOut)
+        #expect(await server.count(AuthJSON.logoutRoute) == 1)
     }
 
     @Test func aSessionTheStoreCouldNotKeepIsHeldAndSavedLater() async throws {

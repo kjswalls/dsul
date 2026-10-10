@@ -82,11 +82,16 @@ final class APIClient {
     private let origin: URL
     private let tokens: any AccessTokenSource
     private let transport: Transport
+    /// This install's registry id (DeviceIdentity), sent as `X-Dsul-Device`
+    /// on every write so a later wake can skip the device that made the
+    /// change. Nil sends no header.
+    private let deviceId: String?
 
-    init(origin: URL, tokens: any AccessTokenSource, transport: @escaping Transport) {
+    init(origin: URL, tokens: any AccessTokenSource, transport: @escaping Transport, deviceId: String? = nil) {
         self.origin = origin
         self.tokens = tokens
         self.transport = transport
+        self.deviceId = deviceId
     }
 
     /// GET /api/app/planner.
@@ -194,6 +199,19 @@ final class APIClient {
         return json["snoozedUntil"] as? String
     }
 
+    /// POST /api/app/devices: this iPhone in the device registry, once a
+    /// launch (NotificationHub).
+    func registerDevice(_ body: DeviceRegistrationBody) async throws {
+        _ = try await send("POST", "/api/app/devices", body: try Self.encode(body))
+    }
+
+    /// DELETE /api/app/devices/:deviceId: the sign-out's release, sent
+    /// before the GoTrue logout (AuthStore.signOut).
+    func releaseDevice(_ deviceId: String) async throws {
+        guard DeviceIdentity.isValid(deviceId) else { throw APIError.badResponse }
+        _ = try await send("DELETE", "/api/app/devices/" + deviceId, body: nil)
+    }
+
     /// POST /api/app/timezone: this iPhone's IANA zone, stored as the
     /// account's when it differs (the web's PATCH /api/user/timezone does
     /// the same for a browser).
@@ -273,6 +291,9 @@ final class APIClient {
         request.httpMethod = method
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if method != "GET", let deviceId {
+            request.setValue(deviceId, forHTTPHeaderField: "X-Dsul-Device")
+        }
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = body

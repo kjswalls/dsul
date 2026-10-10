@@ -91,12 +91,18 @@ final class NotificationHub {
     @ObservationIgnored private var headless: Task<Bool, Never>?
     /// The zone last sent to the server, so a mismatch is sent once a launch.
     @ObservationIgnored private var sentZone: String?
+    /// This install's registry id (DeviceIdentity); nil registers nothing.
+    @ObservationIgnored private let deviceId: String?
+    /// The user this iPhone was registered for this launch, so it posts once.
+    @ObservationIgnored private var registeredFor: UUID?
     /// A cue tapped before its planner had loaded: opened once it has.
     @ObservationIgnored private var pendingOpen: (id: UUID, day: String)?
 
     init(scheduler: NotificationScheduler, outbox: ActionOutbox,
          makeAPI: @escaping @MainActor (any AccessTokenSource) -> APIClient,
-         now: @escaping () -> Date = { Date() }, zone: @escaping () -> String = { TimeZone.current.identifier }) {
+         now: @escaping () -> Date = { Date() }, zone: @escaping () -> String = { TimeZone.current.identifier },
+         deviceId: String? = nil) {
+        self.deviceId = deviceId
         self.scheduler = scheduler
         self.outbox = outbox
         self.makeAPI = makeAPI
@@ -128,6 +134,7 @@ final class NotificationHub {
         planner = nil
         inFlight = []
         pendingOpen = nil
+        registeredFor = nil
         planning?.cancel()
         planning = nil
         outbox.clear()
@@ -146,6 +153,7 @@ final class NotificationHub {
         }
         drain()
         syncZone()
+        syncDevice()
         requestPlan()
     }
 
@@ -204,6 +212,29 @@ final class NotificationHub {
         sentZone = device
         let api = makeAPI(account)
         Task { try? await api.saveTimeZone(device) }
+    }
+
+    /// This iPhone in the device registry, once a launch per user: the web's
+    /// boot re-post (hooks/use-device-registration.ts). It is a phone that
+    /// arms its own cues, so the server never pushes one to it, and Settings
+    /// → Rituals lists it among the account's devices. A failure the server
+    /// may get past (offline, 503) is tried again at the next fetch; one it
+    /// refused is not.
+    private func syncDevice() {
+        guard let deviceId, let planner, planner.isLive, let userId = planner.userId, let account,
+              registeredFor != userId else { return }
+        registeredFor = userId
+        let body = DeviceRegistrationBody.current(deviceId: deviceId, timezone: zone())
+        let api = makeAPI(account)
+        Task { [weak self] in
+            do {
+                try await api.registerDevice(body)
+            } catch APIError.rejected {
+                return
+            } catch {
+                if self?.registeredFor == userId { self?.registeredFor = nil }
+            }
+        }
     }
 
     // MARK: Permission
