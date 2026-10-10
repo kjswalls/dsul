@@ -1807,8 +1807,8 @@ if (typeof window !== 'undefined') {
   // The pre-2a transcripts (24h, localStorage) are not imported: the account
   // is the record now, and they are the most disclosive thing on this disk.
   sweepLegacyTranscripts();
-  // Here, not in a component: every page that can send (/, and /item/[id],
-  // which has no AppShell) closes through it, and two listeners would spend
+  // Here, not in a component: every page that can send (/, and /item/[id] and
+  // /chat/[id], which have no AppShell) closes through it, and two listeners would spend
   // the browser's one keepalive budget twice. Not on a bfcache hide
   // (`persisted`): that page comes back, and its saves with it.
   window.addEventListener('pagehide', (e) => {

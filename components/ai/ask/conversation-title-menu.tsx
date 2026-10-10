@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState, type RefObject } from 'react';
-import { ChevronDown, Pencil, Star, Trash2 } from 'lucide-react';
+import Link from 'next/link';
+import { ChevronDown, Maximize2, Pencil, Star, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   DropdownMenu,
@@ -17,8 +18,9 @@ import { useUIStore } from '@/lib/ui-store';
 /**
  * A saved conversation's own controls: the ⌄ on its title in Ask (Rename,
  * Star, Delete…) and the ⌄ on an item's Conversation section (Star, Delete
- * conversation…; no Rename, since that title is the item's). "Open wide" joins
- * the title's menu in 2c.
+ * conversation…; no Rename, since that title is the item's). The title's menu
+ * also has "Open wide" on the desktop: the same conversation on a page of its
+ * own (app/chat/[id]), a link, so ⌘-click opens it in a new tab.
  *
  * Every change is optimistic in the store (lib/conversations-store.ts) and
  * comes back on failure, with a toast saying so. A delete asks first, through
@@ -146,7 +148,16 @@ async function toggleStar(id: string, starred: boolean): Promise<void> {
  * Only for a conversation with a row: a draft has nothing to rename, star or
  * delete, so its header names it plainly.
  */
-export function ConversationTitleMenu({ id, title }: { id: string; title: string }) {
+export function ConversationTitleMenu({
+  id,
+  title,
+  wide = true,
+}: {
+  id: string;
+  title: string;
+  /** "Open wide": off on the phone, whose Ask is already the whole screen. */
+  wide?: boolean;
+}) {
   const starred = useConversationsStore((s) => !!s.summaries[id]?.starred);
   const [renaming, setRenaming] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -191,6 +202,14 @@ export function ConversationTitleMenu({ id, title }: { id: string; title: string
           <Star aria-hidden />
           {starred ? 'Unstar' : 'Star'}
         </DropdownMenuItem>
+        {wide && (
+          <DropdownMenuItem asChild data-testid="conversation-open-wide">
+            <Link href={`/chat/${resolveConversationId(id)}`}>
+              <Maximize2 aria-hidden />
+              Open wide
+            </Link>
+          </DropdownMenuItem>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem
           variant="destructive"
