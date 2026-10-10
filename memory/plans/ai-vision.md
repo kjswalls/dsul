@@ -42,6 +42,16 @@ snapshot holds, to say so rather than guess, the two nouns, and where the two ac
 Next, by Kirby's direction ("do anything in the app, like the MCP capabilities"): give chat the MCP
 tool set, reads run at once and every write arrives as an accept card with Undo, gated on a model
 that supports tool calling. Design first, for Kirby to look at.
+Design: https://claude.ai/code/artifact/2e548916-b4d8-4554-ba6a-42ddb161aa77. Kirby took its three
+recommendations (2026-10-10): every change waits on a tap at first; the action lines' words are saved
+with the turn, raw tool results never are; a smaller today-only snapshot stays beside the tools.
+Build order: (1) tool calls in the adapters, (2) lookups in `/api/chat` with action lines, (3) evals,
+(4) item changes as cards, (5) containers, habits, pause, deletes. Step 1 is built:
+`completeWithTools` on both adapters (non-streamed, one step, never runs a tool; malformed arguments
+read as `null`, `tool-args.ts`), and `supportsTools` (lib/ai-server/tool-support.ts), decided per ask
+and never stored: the three built-ins yes, a custom host no until a probe exists, OpenRouter by its
+catalog's `supported_parameters` (an hour's cache; `openrouter/auto` no, since it may route to a model
+without tools). Nothing calls either yet.
 
 **Note 2026-10-04: "Ask AI" on the item's right-click menu.** One row, a submenu of at
 most four asks, declared in `lib/item-asks.ts` (gate, label, wording) and run by

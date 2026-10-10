@@ -48,6 +48,11 @@ export interface CompletionRequest {
 
 export interface ListedModel extends ModelOption {
   effortLow?: boolean;
+  /**
+   * OpenRouter only: whether its catalog lists `tools` among the model's
+   * supported parameters. Absent when the catalog does not say.
+   */
+  tools?: boolean;
   created?: number;
   contextLength?: number;
 }
@@ -61,6 +66,43 @@ export interface VerifyResult extends ModelList {
   freeTier?: boolean;
 }
 
+// ── tool calling (AI step 3: chat tools) ───────────────────────────────────
+
+/** A tool the model may call: its name, what it is for, and its arguments as a JSON Schema object. */
+export interface ToolDef {
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+}
+
+/**
+ * One call the model asked for. `args` is null when the model sent arguments
+ * that are not a JSON object: the caller answers that call with an error
+ * rather than guessing what was meant.
+ */
+export interface ToolCall {
+  id: string;
+  name: string;
+  args: Record<string, unknown> | null;
+}
+
+/** A turn in a conversation with tools: the plain turns, plus the calls and their results. */
+export type ToolTurn =
+  | { role: 'user'; content: string }
+  | { role: 'assistant'; content: string; toolCalls?: ToolCall[] }
+  | { role: 'tool'; callId: string; name: string; content: string };
+
+export interface ToolRequest extends Omit<CompletionRequest, 'messages' | 'json'> {
+  messages: ToolTurn[];
+  tools: ToolDef[];
+}
+
+/** One model step: what it said (may be empty) and the calls it asked for (may be none). */
+export interface ToolStep {
+  text: string;
+  toolCalls: ToolCall[];
+}
+
 export interface ProviderAdapter {
   readonly id: ModelProviderId;
   /**
@@ -72,6 +114,13 @@ export interface ProviderAdapter {
   openStream(creds: ProviderCredentials, req: CompletionRequest): Promise<AsyncIterable<string>>;
   /** Throws 'refused' / 'empty'. */
   completeText(creds: ProviderCredentials, req: CompletionRequest): Promise<string>;
+  /**
+   * One non-streamed step with tools offered. Resolves with the text and the
+   * calls the model asked for; throws 'refused', and 'empty' when it gave
+   * neither. Never runs a tool: the caller does, and sends the results back
+   * as `role: 'tool'` turns on the next step.
+   */
+  completeWithTools(creds: ProviderCredentials, req: ToolRequest): Promise<ToolStep>;
   verify(
     creds: ProviderCredentials,
     opts: { signal: AbortSignal; modelHint?: string }
