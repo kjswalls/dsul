@@ -39,3 +39,6 @@ docs/test-implementation-plan.md
 # The mod sandbox's worker, wasm and frame page, written by
 # scripts/build-mod-runtime.mjs on install and before every build.
 lib/mods/sandbox/generated/
+
+# Chat eval reports (pnpm eval:chat)
+tests/evals/chat/results/
