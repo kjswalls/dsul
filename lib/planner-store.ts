@@ -28,6 +28,7 @@ import type {
   GoalRole,
   Proposal,
   ProposalOperation,
+  ProposalVerbOp,
 } from './planner-types';
 import { PRIORITY_LABELS } from './planner-types';
 import type { ItemSize } from './item-size';
@@ -3781,11 +3782,15 @@ export const usePlannerStore = create<PlannerStore>()(
 
       applyProposal: (proposal, onAccepted) => {
         const state = get();
+        const tz = state.userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const today = toDateStr(new Date(), tz);
         // Re-validate at the boundary rather than trusting whatever produced
         // the proposal: the card may have been rendered minutes ago, and the
         // items it references can be edited or deleted in the meantime.
         const { accepted } = validateProposalOperations(proposal.operations, {
           items: state.items,
+          todayStr: today,
+          tz,
           customTypeNames: state.itemTypes.map((t) => t.name),
           // The write boundary carries the guard too, not just the card: this
           // re-validation exists precisely because the planner can have changed
@@ -3801,168 +3806,180 @@ export const usePlannerStore = create<PlannerStore>()(
           /* the plan applies regardless */
         }
 
-        // Armed before the set(), like every other labelled action — the label
-        // is consumed by the NEXT history save.
-        setNextActionLabel(`Accept plan: ${proposal.summary}`);
+        // A tick, a skip or a pause is not a field write: each runs as its own
+        // store verb, the one the row runs, so streaks, completedDates and
+        // pause windows move exactly as they do by hand. They and the plan's
+        // one set() are folded into ONE history entry, so a card is still one
+        // undo whatever it holds.
+        const verbOps = accepted.filter((op): op is ProposalVerbOp => op.kind === 'verb');
+        const writePlan = () => {
+          // Armed before the set(), like every other labelled action — the label
+          // is consumed by the NEXT history save.
+          setNextActionLabel(`Accept plan: ${proposal.summary}`);
 
-        const created: Item[] = [];
-        const patchById = new Map<string, Partial<Task>>();
-        /**
-         * Items a clear targeted, applied AFTER every operation is merged.
-         *
-         * Two update operations on one item merge later-op-wins, so expanding
-         * the clear per-operation let a following op put back what it had just
-         * removed — `[{startDate: null}, {timeBucket: 'afternoon'}]` produced an
-         * item with a bucket and no day, which the grid drops (`!startDate`)
-         * and the Braindump also drops (`isScheduled || timeBucket`). Invisible
-         * everywhere, and persisted.
-         *
-         * The clear wins over a later reschedule rather than the reverse: a plan
-         * saying both is incoherent, and of the two readings only this one
-         * leaves the item somewhere the user can find it.
-         */
-        const unscheduled = new Set<string>();
-        // Mirrors addTask's `order: get().tasks.length`, advanced per create so
-        // a multi-item plan doesn't stack every new task on the same index.
-        //
-        // Top-level creates ONLY. Subtasks are absent from the tasks projection
-        // (projectItems filters `!parentItemId`), so counting them here would
-        // push the cursor past a length that never included them — and a step
-        // added by hand afterwards, ordered by the real `tasks.length`, would
-        // sort into the MIDDLE of the generated list after a reload.
-        let orderCursor = state.tasks.length;
-        // Steps get their own run, per parent, continuing that parent's
-        // existing children rather than restarting at zero.
-        const childCursors = new Map<string, number>();
-        const nextChildOrder = (parentId: string) => {
-          const seeded =
-            childCursors.get(parentId) ??
-            state.items.filter((i) => 'parentItemId' in i && i.parentItemId === parentId).length;
-          childCursors.set(parentId, seeded + 1);
-          return seeded;
-        };
-
-        for (const op of accepted) {
-          if (op.kind === 'create') {
-            // A day with no bucket is no day at all: day views list only
-            // bucketed items, and the Braindump takes anything unbucketed, so
-            // "Call Mum on Sunday" would have landed in the Braindump. Same
-            // fallback moveTaskToDate makes. Steps have no date by now.
-            const timeBucket =
-              autoCorrectBucket(op.startTime, op.timeBucket) ??
-              (op.startDate ? (op.startTime ? getBucketForTime(op.startTime) : 'anytime') : undefined);
-            const common = {
-              title: op.title,
-              notes: op.notes,
-              priority: op.priority,
-              project: op.project,
-              // Every other create path resolves this, and the container rename
-              // fan-out is keyed on projectId — an item carrying only the NAME
-              // silently stops following its project when the project is renamed.
-              projectId: projectIdFor(op.project, state.projects),
-              startDate: op.startDate,
-              startTime: op.startTime,
-              timeBucket,
-              // Validation has already checked the parent exists, allows
-              // children, and is not itself a child — and stripped the
-              // scheduling fields, since nothing outside the parent's panel
-              // renders a subtask.
-              parentItemId: op.parentItemId,
-              id: crypto.randomUUID(),
-              status: 'pending' as const,
-              isScheduled: !!timeBucket,
-            };
-            const order = op.parentItemId ? nextChildOrder(op.parentItemId) : orderCursor++;
-            created.push(
-              op.itemType === 'task'
-                ? ({ ...common, type: 'task', order } as Item)
-                : // Custom types aren't manually orderable (created_at sorts).
-                  ({ ...common, type: 'custom', customType: op.itemType, order: 0 } as Item),
-            );
-            continue;
-          }
-
-          const { kind: _kind, itemId, ...rest } = op;
-          void _kind;
-          const target = state.items.find((i) => i.id === itemId);
-          if (!target) continue;
-
-          const updates = { ...rest } as Partial<Task>;
-
-          // A cleared date is the UNSCHEDULE verb, not a null write.
+          const created: Item[] = [];
+          const patchById = new Map<string, Partial<Task>>();
+          /**
+           * Items a clear targeted, applied AFTER every operation is merged.
+           *
+           * Two update operations on one item merge later-op-wins, so expanding
+           * the clear per-operation let a following op put back what it had just
+           * removed — `[{startDate: null}, {timeBucket: 'afternoon'}]` produced an
+           * item with a bucket and no day, which the grid drops (`!startDate`)
+           * and the Braindump also drops (`isScheduled || timeBucket`). Invisible
+           * everywhere, and persisted.
+           *
+           * The clear wins over a later reschedule rather than the reverse: a plan
+           * saying both is incoherent, and of the two readings only this one
+           * leaves the item somewhere the user can find it.
+           */
+          const unscheduled = new Set<string>();
+          // Mirrors addTask's `order: get().tasks.length`, advanced per create so
+          // a multi-item plan doesn't stack every new task on the same index.
           //
-          // `unscheduleTask` clears startTime, timeBucket and isScheduled with
-          // it, and this has to match: writing only the date would leave an
-          // item that is `isScheduled` with a bucket and no day — placeable on
-          // no surface, and reachable from nowhere but the Braindump it was
-          // never put in. Validation has already refused this for a recurring
-          // item and for any type that cannot live undated.
-          //
-          // `undefined` rather than `null` because that is how a clear is
-          // spelled everywhere else in the store: `updatesToRow` is
-          // presence-keyed, so a key present-and-undefined writes NULL while an
-          // absent key is left alone.
-          if (rest.startDate === null) unscheduled.add(itemId);
-          // The simple clears: no companions, nothing derived from them.
-          if (rest.startTime === null) updates.startTime = undefined;
-          if (rest.priority === null) updates.priority = undefined;
-          // A new day keeps the item visible on it: the same load-bearing
-          // bucket fallback as moveTaskToDate, or a Braindump item given a
-          // day would stay in the Braindump.
-          if (typeof rest.startDate === 'string' && rest.startDate && !(updates.timeBucket ?? target.timeBucket)) {
-            const time = updates.startTime ?? target.startTime;
-            updates.timeBucket = time ? getBucketForTime(time) : 'anytime';
+          // Top-level creates ONLY. Subtasks are absent from the tasks projection
+          // (projectItems filters `!parentItemId`), so counting them here would
+          // push the cursor past a length that never included them — and a step
+          // added by hand afterwards, ordered by the real `tasks.length`, would
+          // sort into the MIDDLE of the generated list after a reload.
+          let orderCursor = state.tasks.length;
+          // Steps get their own run, per parent, continuing that parent's
+          // existing children rather than restarting at zero.
+          const childCursors = new Map<string, number>();
+          const nextChildOrder = (parentId: string) => {
+            const seeded =
+              childCursors.get(parentId) ??
+              state.items.filter((i) => 'parentItemId' in i && i.parentItemId === parentId).length;
+            childCursors.set(parentId, seeded + 1);
+            return seeded;
+          };
+
+          for (const op of accepted) {
+            if (op.kind === 'verb') continue;
+            if (op.kind === 'create') {
+              // A day with no bucket is no day at all: day views list only
+              // bucketed items, and the Braindump takes anything unbucketed, so
+              // "Call Mum on Sunday" would have landed in the Braindump. Same
+              // fallback moveTaskToDate makes. Steps have no date by now.
+              const timeBucket =
+                autoCorrectBucket(op.startTime, op.timeBucket) ??
+                (op.startDate ? (op.startTime ? getBucketForTime(op.startTime) : 'anytime') : undefined);
+              const common = {
+                title: op.title,
+                notes: op.notes,
+                priority: op.priority,
+                project: op.project,
+                // Every other create path resolves this, and the container rename
+                // fan-out is keyed on projectId — an item carrying only the NAME
+                // silently stops following its project when the project is renamed.
+                projectId: projectIdFor(op.project, state.projects),
+                startDate: op.startDate,
+                startTime: op.startTime,
+                timeBucket,
+                // Validation has already checked the parent exists, allows
+                // children, and is not itself a child — and stripped the
+                // scheduling fields, since nothing outside the parent's panel
+                // renders a subtask.
+                parentItemId: op.parentItemId,
+                id: crypto.randomUUID(),
+                status: 'pending' as const,
+                isScheduled: !!timeBucket,
+              };
+              const order = op.parentItemId ? nextChildOrder(op.parentItemId) : orderCursor++;
+              created.push(
+                op.itemType === 'task'
+                  ? ({ ...common, type: 'task', order } as Item)
+                  : // Custom types aren't manually orderable (created_at sorts).
+                    ({ ...common, type: 'custom', customType: op.itemType, order: 0 } as Item),
+              );
+              continue;
+            }
+
+            const { kind: _kind, itemId, ...rest } = op;
+            void _kind;
+            const target = state.items.find((i) => i.id === itemId);
+            if (!target) continue;
+
+            const updates = { ...rest } as Partial<Task>;
+
+            // A cleared date is the UNSCHEDULE verb, not a null write.
+            //
+            // `unscheduleTask` clears startTime, timeBucket and isScheduled with
+            // it, and this has to match: writing only the date would leave an
+            // item that is `isScheduled` with a bucket and no day — placeable on
+            // no surface, and reachable from nowhere but the Braindump it was
+            // never put in. Validation has already refused this for a recurring
+            // item and for any type that cannot live undated.
+            //
+            // `undefined` rather than `null` because that is how a clear is
+            // spelled everywhere else in the store: `updatesToRow` is
+            // presence-keyed, so a key present-and-undefined writes NULL while an
+            // absent key is left alone.
+            if (rest.startDate === null) unscheduled.add(itemId);
+            // The simple clears: no companions, nothing derived from them.
+            if (rest.startTime === null) updates.startTime = undefined;
+            if (rest.priority === null) updates.priority = undefined;
+            // A new day keeps the item visible on it: the same load-bearing
+            // bucket fallback as moveTaskToDate, or a Braindump item given a
+            // day would stay in the Braindump.
+            if (typeof rest.startDate === 'string' && rest.startDate && !(updates.timeBucket ?? target.timeBucket)) {
+              const time = updates.startTime ?? target.startTime;
+              updates.timeBucket = time ? getBucketForTime(time) : 'anytime';
+            }
+
+            // Same reason as the create path: the id has to move with the name.
+            if (updates.project !== undefined) {
+              updates.projectId = projectIdFor(updates.project, state.projects);
+            }
+            // Same auto-correct the manual edit path applies: a concrete start
+            // time overrides a mismatched bucket. Guarded on a REAL time, so
+            // clearing one never reaches it.
+            if (updates.startTime) {
+              updates.timeBucket = autoCorrectBucket(
+                updates.startTime,
+                updates.timeBucket ?? target.timeBucket,
+              );
+            }
+            // Merge rather than overwrite: two operations may touch one item.
+            patchById.set(itemId, { ...(patchById.get(itemId) ?? {}), ...updates });
           }
 
-          // Same reason as the create path: the id has to move with the name.
-          if (updates.project !== undefined) {
-            updates.projectId = projectIdFor(updates.project, state.projects);
+          // Expanded on the MERGED patch — see the note on `unscheduled`.
+          for (const id of unscheduled) {
+            patchById.set(id, {
+              ...(patchById.get(id) ?? {}),
+              startDate: undefined,
+              startTime: undefined,
+              timeBucket: undefined,
+              isScheduled: false,
+            });
           }
-          // Same auto-correct the manual edit path applies: a concrete start
-          // time overrides a mismatched bucket. Guarded on a REAL time, so
-          // clearing one never reaches it.
-          if (updates.startTime) {
-            updates.timeBucket = autoCorrectBucket(
-              updates.startTime,
-              updates.timeBucket ?? target.timeBucket,
-            );
-          }
-          // Merge rather than overwrite: two operations may touch one item.
-          patchById.set(itemId, { ...(patchById.get(itemId) ?? {}), ...updates });
-        }
 
-        // Expanded on the MERGED patch — see the note on `unscheduled`.
-        for (const id of unscheduled) {
-          patchById.set(id, {
-            ...(patchById.get(id) ?? {}),
-            startDate: undefined,
-            startTime: undefined,
-            timeBucket: undefined,
-            isScheduled: false,
+          // ONE set() => ONE history entry => ONE Cmd+Z reverses the whole plan.
+          // Accepting an AI proposal is a single user gesture and must undo like
+          // one; see the same contract on moveTasksToDate.
+          set((s) => projectItems([
+            ...s.items.map((i) => {
+              const updates = patchById.get(i.id);
+              return updates ? ({ ...i, ...updates } as Item) : i;
+            }),
+            ...created,
+          ]));
+
+          const userId = get().userId;
+          if (userId) {
+            created.forEach((item) => dbCreateItem(userId, item).catch(console.error));
+          }
+          // dbType per item: a custom-type row is matched on .eq('type', slug),
+          // so passing 'task' would silently write nothing.
+          patchById.forEach((updates, id) => {
+            const item = get().items.find((i) => i.id === id);
+            if (item) dbUpdateItem(id, dbTypeOf(item), updates).catch(console.error);
           });
-        }
-
-        // ONE set() => ONE history entry => ONE Cmd+Z reverses the whole plan.
-        // Accepting an AI proposal is a single user gesture and must undo like
-        // one; see the same contract on moveTasksToDate.
-        set((s) => projectItems([
-          ...s.items.map((i) => {
-            const updates = patchById.get(i.id);
-            return updates ? ({ ...i, ...updates } as Item) : i;
-          }),
-          ...created,
-        ]));
-
-        const userId = get().userId;
-        if (userId) {
-          created.forEach((item) => dbCreateItem(userId, item).catch(console.error));
-        }
-        // dbType per item: a custom-type row is matched on .eq('type', slug),
-        // so passing 'task' would silently write nothing.
-        patchById.forEach((updates, id) => {
-          const item = get().items.find((i) => i.id === id);
-          if (item) dbUpdateItem(id, dbTypeOf(item), updates).catch(console.error);
-        });
+          for (const op of verbOps) runProposalVerb(op, today, tz);
+        };
+        if (verbOps.length === 0) writePlan();
+        else batchHistory(`Accept plan: ${proposal.summary}`, accepted.length, writePlan, { quiet: true });
 
         return accepted.length;
       },
@@ -6246,6 +6263,48 @@ async function settleAlreadySaved(
   for (const id of removed) {
     const item = current.get(id);
     if (item && !binned.has(id)) dbDeleteItem(id, itemDbType(item)).catch(console.error);
+  }
+}
+
+/* ── a card's verbs ────────────────────────────────────────────────────── */
+
+/**
+ * An instant that falls on `dateStr` in `tz`, for the store verbs that take
+ * a Date and read its day in the user's zone (resolveDateStr). Noon UTC lands
+ * on the same calendar day everywhere from UTC-12 to UTC+11; the nudge covers
+ * the zones past that.
+ */
+function instantOn(dateStr: string, tz: string): Date {
+  const noon = new Date(`${dateStr}T12:00:00Z`);
+  const got = toDateStr(noon, tz);
+  if (got === dateStr) return noon;
+  return new Date(noon.getTime() + (got < dateStr ? 1 : -1) * 12 * 60 * 60 * 1000);
+}
+
+/**
+ * One accepted verb operation, through the same store action its row verb
+ * runs (lib/item-verbs.ts): complete is one-directional, a one-off takes its
+ * scalar status and a recurring item or a habit the day. Already validated
+ * against its gate (lib/proposal.ts), inside applyProposal's batch.
+ */
+function runProposalVerb(op: ProposalVerbOp, today: string, tz: string): void {
+  const store = usePlannerStore.getState();
+  const item = store.items.find((i) => i.id === op.itemId);
+  if (!item) return;
+  const date = instantOn(op.date ?? today, tz);
+  switch (op.verb) {
+    case 'complete':
+      if (item.type === 'habit') store.toggleHabitStatus(item.id, 'done', undefined, date);
+      else store.toggleTaskStatus(item.id, 'completed', isRecurring(item) ? date : undefined);
+      return;
+    case 'skip':
+    case 'unskip':
+      store.setItemSkipped(item.id, op.verb === 'skip', date);
+      return;
+    case 'pause':
+    case 'resume':
+      store.setItemPaused(item.id, op.verb === 'pause');
+      return;
   }
 }
 

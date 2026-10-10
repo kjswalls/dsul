@@ -17,6 +17,7 @@ vi.mock('@/lib/db', () => ({
   deleteItem: vi.fn(async () => {}),
   restoreItem: vi.fn(async () => {}),
   setItemCompletion: vi.fn(async () => {}),
+  setItemSkip: vi.fn(async () => {}),
   createProject: vi.fn(async () => {}),
   updateProject: vi.fn(async () => {}),
   deleteProject: vi.fn(async () => {}),
@@ -51,6 +52,8 @@ vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}) }
 import { usePlannerStore } from '@/lib/planner-store';
 import * as db from '@/lib/db';
 import type { Item, Proposal, ProposalOperation } from '@/lib/planner-types';
+import { addDays, format, subDays } from 'date-fns';
+import { toDateStr } from '@/lib/recurrence';
 
 const USER = 'user-1';
 const store = () => usePlannerStore.getState();
@@ -554,7 +557,7 @@ describe('onAccepted: what the plan actually took', () => {
     );
     expect(applied).toBe(2);
     expect(heard).toHaveLength(1);
-    expect(heard[0].map((op) => (op.kind === 'update' ? op.itemId : op.title))).toEqual(['task-1', 'Book dentist']);
+    expect(heard[0].map((op) => (op.kind === 'create' ? op.title : op.itemId))).toEqual(['task-1', 'Book dentist']);
     // Called before the write: the planner still held the three fixtures.
     expect(itemsWhenHeard).toBe(3);
     expect(store().items).toHaveLength(4);
@@ -578,5 +581,55 @@ describe('onAccepted: what the plan actually took', () => {
     const onAccepted = vi.fn();
     expect(store().applyProposal(proposalOf({ kind: 'update', itemId: 'gone-1', startDate: '2026-08-06' }), onAccepted)).toBe(0);
     expect(onAccepted).not.toHaveBeenCalled();
+  });
+});
+
+describe('applyProposal: verbs (tick, skip, pause)', () => {
+  const today = () => toDateStr(new Date(), Intl.DateTimeFormat().resolvedOptions().timeZone);
+  const habit = () => store().items.find((i) => i.id === 'habit-1') as Extract<Item, { type: 'habit' }>;
+
+  it('ticks a habit through its own verb, so the streak moves as by hand', () => {
+    expect(store().applyProposal(proposalOf({ kind: 'verb', verb: 'complete', itemId: 'habit-1' }))).toBe(1);
+    expect(habit().completedDates).toContain(today());
+    expect(habit().streak).toBe(4);
+  });
+
+  it('skips a habit ahead of time on the day given, not the selected one', () => {
+    const tomorrow = format(addDays(new Date(), 1), 'yyyy-MM-dd');
+    expect(store().applyProposal(proposalOf({ kind: 'verb', verb: 'skip', itemId: 'habit-1', date: tomorrow }))).toBe(1);
+    expect(habit().skippedDates).toEqual([tomorrow]);
+  });
+
+  it('ticks a day already behind you, but never skips one (the row offers no skip there either)', () => {
+    const yesterday = format(subDays(new Date(), 1), 'yyyy-MM-dd');
+    expect(store().applyProposal(proposalOf({ kind: 'verb', verb: 'skip', itemId: 'habit-1', date: yesterday }))).toBe(0);
+    expect(store().applyProposal(proposalOf({ kind: 'verb', verb: 'complete', itemId: 'habit-1', date: yesterday }))).toBe(1);
+    expect(habit().completedDates).toEqual([yesterday]);
+  });
+
+  it('is still ONE undo when a card mixes a tick with a field write', () => {
+    store().applyProposal(
+      proposalOf(
+        { kind: 'verb', verb: 'complete', itemId: 'habit-1' },
+        { kind: 'update', itemId: 'task-1', startDate: '2026-08-06' },
+      ),
+    );
+    expect(habit().completedDates).toContain(today());
+    store().undo();
+    expect(habit().completedDates).not.toContain(today());
+    expect(habit().streak).toBe(3);
+    expect(store().items.find((i) => i.id === 'task-1')).toMatchObject({ startDate: '2026-07-20' });
+    expect(store().canUndo).toBe(false);
+  });
+
+  it('refuses a tick on a day still to come', () => {
+    const tomorrow = format(addDays(new Date(), 1), 'yyyy-MM-dd');
+    expect(store().applyProposal(proposalOf({ kind: 'verb', verb: 'complete', itemId: 'habit-1', date: tomorrow }))).toBe(0);
+    expect(habit().completedDates).toHaveLength(0);
+  });
+
+  it('pauses a habit', () => {
+    expect(store().applyProposal(proposalOf({ kind: 'verb', verb: 'pause', itemId: 'habit-1' }))).toBe(1);
+    expect(habit()).toMatchObject({ pausedAt: expect.any(String) });
   });
 });

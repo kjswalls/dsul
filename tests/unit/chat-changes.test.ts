@@ -128,6 +128,19 @@ describe('propose_changes', () => {
     expect(r.proposal?.operations).toEqual([{ kind: 'create', itemType: 'task', title: 'A' }]);
   });
 
+  it('offers a tick or a skip as a verb, with no type, and leaves off one the item cannot take', async () => {
+    const r = await makeChangeOffer(source())({
+      summary: 'Newsletter done, dentist skipped',
+      operations: [
+        { kind: 'verb', verb: 'complete', itemId: 't4', date: '2026-10-17' },
+        { kind: 'verb', verb: 'skip', itemId: 't1' },
+      ],
+    });
+    expect(r.proposal?.operations).toEqual([{ kind: 'verb', verb: 'complete', itemId: 't4', date: '2026-10-17' }]);
+    expect(r.content).toContain('Newsletter: done on');
+    expect(r.content).toMatch(/Dentist: skip today: .*cannot be skipped/);
+  });
+
   it('is offered beside the lookups, and runs through them', async () => {
     expect(CHAT_TOOLS.map((t) => t.name)).toEqual(['find_items', 'planner_overview', 'item_activity', 'propose_changes']);
     // No union types: not every provider's schema dialect takes them.

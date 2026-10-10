@@ -40,6 +40,11 @@ export function tallyOperations(ops: readonly ProposalOperation[]): Conversation
       else added += 1;
       continue;
     }
+    // A tick, a skip or a pause changes the item, not its place.
+    if (op.kind === 'verb') {
+      changed.add(op.itemId);
+      continue;
+    }
     const touchesSchedule = MOVE_FIELDS.some((f) => op[f] !== undefined);
     if (touchesSchedule) moved.add(op.itemId);
     else changed.add(op.itemId);

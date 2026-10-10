@@ -196,18 +196,21 @@ const todayStr = () => format(new Date(), 'yyyy-MM-dd');
 function plannerContext() {
   const state = usePlannerStore.getState();
   const today = todayStr();
+  // Same fallback the store uses everywhere it needs a zone.
+  const tz = state.userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   return {
     items: state.items,
     customTypeNames: state.itemTypes.map((t) => t.name),
     todayStr: today,
+    // With the day, a tick, skip or pause on the card asks its own gate.
+    tz,
     // Work a routine or season has paused today is not "waiting on you" — the
     // same rule the auto-age sweep and the past-due bar obey.
     // Every bulk date verb subtracts these; a proposal that clears a date is
     // one. See the note on ProposalContext.
     milestoneIds: milestoneItemIds(state.goals),
     inactiveIds: inactiveItemIdsOn(state.items, today, {
-      // Same fallback the store uses everywhere it needs a zone.
-      userTimezone: state.userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+      userTimezone: tz,
       routines: state.routines,
       seasons: state.seasons,
     }),

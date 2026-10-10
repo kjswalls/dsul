@@ -65,7 +65,11 @@ const IDEAL: Record<string, { found?: RegExp[]; reply: string }> = {
     found: [/Buy a birthday present for Mum: move to Braindump/],
     reply: "That's fine. The card takes it off your calendar and back to the braindump, so it's there when you're ready.",
   },
-  'habit-tick': { reply: "I can't tick habits from here yet, but you can tick Morning run on Today." },
+  'habit-tick': { found: [/Morning run: done today/], reply: 'Nice! Tap Accept on the card to tick off your run.' },
+  'habit-skip': {
+    found: [/Floss: skip today/],
+    reply: "Of course. The card skips tonight's floss, and your streak stays as it is.",
+  },
 };
 
 /** A model that makes each case's example calls, then gives its ideal reply. */

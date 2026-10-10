@@ -9,6 +9,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { selectPlannerLoaded, selectPlannerSettled } from '@/lib/planner-ready';
 import { useAICapabilities } from '@/lib/ai-connection-store';
 import { describeOperation } from '@/lib/proposal';
+import { toDateStr } from '@/lib/recurrence';
 import { cn } from '@/lib/utils';
 
 /**
@@ -62,6 +63,7 @@ export function ProposalCard({
 
   const items = usePlannerStore((s) => s.items);
   const itemTypes = usePlannerStore((s) => s.itemTypes);
+  const userTimezone = usePlannerStore((s) => s.userTimezone);
   /**
    * Accept writes to the planner, so it waits for the planner's load: the
    * store's accept refuses before then and keeps the card (lib/proposal-store.ts),
@@ -127,12 +129,14 @@ export function ProposalCard({
 
   const lines = useMemo(() => {
     if (!proposal) return [];
-    const ctx = { items, customTypeNames: itemTypes.map((t) => t.name) };
+    // Today, so a tick reads "done today" rather than naming today's date.
+    const todayStr = toDateStr(new Date(), userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
+    const ctx = { items, customTypeNames: itemTypes.map((t) => t.name), todayStr };
     return proposal.operations.map((operation, index) => ({
       key: `${index}`,
       text: describeOperation(operation, ctx),
     }));
-  }, [proposal, items, itemTypes]);
+  }, [proposal, items, itemTypes, userTimezone]);
 
   if (status === 'idle') return null;
   // Not this mount's card. Checked after the hooks and before every visual

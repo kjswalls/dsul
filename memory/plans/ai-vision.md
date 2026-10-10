@@ -95,6 +95,16 @@ Building it found that `applyProposal` gave a dated create, or a Braindump item 
 bucket, so it stayed in the Braindump (day views list only bucketed items); it now takes moveTaskToDate's
 fallback (`anytime`, or the bucket for its time). `find_items` reads "undated" by the Braindump's own
 rule (neither scheduled nor bucketed).
+Step 5a is built: a card can carry verb operations, `{kind:'verb', verb, itemId, date?}` with verb one of
+complete, skip, unskip, pause, resume (`ProposalVerbOpSchema`). That is how a habit, or one day of a
+repeating item, is ticked or skipped; a habit is never ticked through `status`. Each asks the verb's own
+gate in lib/verb-gates.ts (the one the row and ⌘K ask) once the day is known, which is in the browser
+only: the server knows no zone, so there it checks only that the item exists, is not a step, and can be
+skipped or paused at all. Two rules on top of the gates: no tick on a day still to come, and skip keeps
+the gate's "not on a past open day". Accepting runs the store verb itself (`toggleHabitStatus`,
+`toggleTaskStatus`, `setItemSkipped`, `setItemPaused`, each with the op's day, never `selectedDate`), so
+streaks and pause windows move exactly as by hand, and `batchHistory` folds them and the plan's field
+writes into one undo. The evals' habit tick now expects a card, and a habit skip joins it.
 
 **Note 2026-10-04: "Ask AI" on the item's right-click menu.** One row, a submenu of at
 most four asks, declared in `lib/item-asks.ts` (gate, label, wording) and run by
