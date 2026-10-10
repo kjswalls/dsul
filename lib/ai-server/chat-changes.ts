@@ -32,8 +32,9 @@ export const PROPOSE_TOOL: ToolDef = {
   description:
     'Offer the user changes to their planner as a card they accept with one tap. Nothing changes until they ' +
     'accept, so call this whenever they ask you to add, move, reschedule, rename, finish, cancel or break down ' +
-    "something. An existing item is named by its id, so find it with find_items first. One card per message, " +
-    `at most ${MAX_CARD_CHANGES} changes. Not for repeating items' single days, habits, projects or deleting.`,
+    'something, or to tick off, skip, pause or resume a habit or a repeating item. An existing item is named by ' +
+    `its id, so find it with find_items first. One card per message, at most ${MAX_CARD_CHANGES} changes. Not for ` +
+    'creating or editing habits, projects, or deleting anything.',
   parameters: {
     type: 'object',
     properties: {
@@ -47,10 +48,23 @@ export const PROPOSE_TOOL: ToolDef = {
           properties: {
             kind: {
               type: 'string',
-              enum: ['create', 'update'],
-              description: 'create a new item, or update an existing one.',
+              enum: ['create', 'update', 'verb'],
+              description:
+                'create a new item, update an existing one, or verb: tick off, skip, pause or resume one. A habit or ' +
+                'a repeating item is only ever ticked or skipped with verb, one day at a time.',
             },
-            itemId: { type: 'string', description: 'update: the id of the item to change, copied exactly.' },
+            itemId: { type: 'string', description: 'update and verb: the id of the item, copied exactly.' },
+            verb: {
+              type: 'string',
+              enum: ['complete', 'skip', 'unskip', 'pause', 'resume'],
+              description:
+                'verb: complete ticks it off for the day, skip lets the day go without breaking anything, unskip ' +
+                'takes a skip back, pause stops it showing up until resumed, resume brings it back.',
+            },
+            date: {
+              type: 'string',
+              description: 'verb: the day it is for, YYYY-MM-DD; today when left out. Never a day still to come for complete.',
+            },
             itemType: { type: 'string', description: 'create: "task" (the default) or the name of one of their own types.' },
             parentItemId: {
               type: 'string',

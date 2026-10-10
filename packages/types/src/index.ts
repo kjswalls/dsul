@@ -38,6 +38,8 @@ export {
   AiStatusSchema,
   ProposalCreateOpSchema,
   ProposalUpdateOpSchema,
+  ProposalVerbOpSchema,
+  PROPOSAL_VERBS,
   ProposalOperationSchema,
   ProposalSchema,
   ProposalDraftSchema,
@@ -92,6 +94,8 @@ import {
   AiStatusSchema,
   ProposalCreateOpSchema,
   ProposalUpdateOpSchema,
+  ProposalVerbOpSchema,
+  PROPOSAL_VERBS,
   ProposalOperationSchema,
   ProposalSchema,
   ProposalDraftSchema,
@@ -137,6 +141,8 @@ export type DsulChangeEvent     = z.infer<typeof DsulChangeEventSchema>
 export type AiStatus              = z.infer<typeof AiStatusSchema>
 export type ProposalCreateOp      = z.infer<typeof ProposalCreateOpSchema>
 export type ProposalUpdateOp      = z.infer<typeof ProposalUpdateOpSchema>
+export type ProposalVerbOp        = z.infer<typeof ProposalVerbOpSchema>
+export type ProposalVerb          = ProposalVerbOp['verb']
 export type ProposalOperation     = z.infer<typeof ProposalOperationSchema>
 export type Proposal              = z.infer<typeof ProposalSchema>
 export type ProposalDraft         = z.infer<typeof ProposalDraftSchema>

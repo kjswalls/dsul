@@ -5035,6 +5035,31 @@ export declare const ProposalUpdateOpSchema: z.ZodObject<{
     priority?: "low" | "medium" | "high" | null | undefined;
     startDate?: string | null | undefined;
 }>;
+/**
+ * One of the item verbs (lib/item-verbs.ts) on one item and day: what a tick,
+ * a skip or a pause is, since none of them is a field write. A recurring
+ * item's or a habit's done-ness is per DATE (`completedDates`), which an
+ * update's scalar `status` can never express. Gated app-side by the verb's
+ * own gate (lib/verb-gates.ts) and run through the verb itself on accept.
+ */
+export declare const PROPOSAL_VERBS: readonly ["complete", "skip", "unskip", "pause", "resume"];
+export declare const ProposalVerbOpSchema: z.ZodObject<{
+    kind: z.ZodLiteral<"verb">;
+    verb: z.ZodEnum<["complete", "skip", "unskip", "pause", "resume"]>;
+    itemId: z.ZodString;
+    /** The day it acts on, yyyy-MM-dd; today when absent. Pause and resume ignore it. */
+    date: z.ZodOptional<z.ZodString>;
+}, "strip", z.ZodTypeAny, {
+    kind: "verb";
+    itemId: string;
+    verb: "complete" | "skip" | "unskip" | "pause" | "resume";
+    date?: string | undefined;
+}, {
+    kind: "verb";
+    itemId: string;
+    verb: "complete" | "skip" | "unskip" | "pause" | "resume";
+    date?: string | undefined;
+}>;
 export declare const ProposalOperationSchema: z.ZodDiscriminatedUnion<"kind", [z.ZodObject<{
     kind: z.ZodLiteral<"create">;
     /** Registry type name: 'task', 'habit', or a user-defined slug. */
@@ -5111,6 +5136,22 @@ export declare const ProposalOperationSchema: z.ZodDiscriminatedUnion<"kind", [z
     title?: string | undefined;
     priority?: "low" | "medium" | "high" | null | undefined;
     startDate?: string | null | undefined;
+}>, z.ZodObject<{
+    kind: z.ZodLiteral<"verb">;
+    verb: z.ZodEnum<["complete", "skip", "unskip", "pause", "resume"]>;
+    itemId: z.ZodString;
+    /** The day it acts on, yyyy-MM-dd; today when absent. Pause and resume ignore it. */
+    date: z.ZodOptional<z.ZodString>;
+}, "strip", z.ZodTypeAny, {
+    kind: "verb";
+    itemId: string;
+    verb: "complete" | "skip" | "unskip" | "pause" | "resume";
+    date?: string | undefined;
+}, {
+    kind: "verb";
+    itemId: string;
+    verb: "complete" | "skip" | "unskip" | "pause" | "resume";
+    date?: string | undefined;
 }>]>;
 export declare const ProposalSchema: z.ZodObject<{
     id: z.ZodString;
@@ -5202,6 +5243,22 @@ export declare const ProposalSchema: z.ZodObject<{
         title?: string | undefined;
         priority?: "low" | "medium" | "high" | null | undefined;
         startDate?: string | null | undefined;
+    }>, z.ZodObject<{
+        kind: z.ZodLiteral<"verb">;
+        verb: z.ZodEnum<["complete", "skip", "unskip", "pause", "resume"]>;
+        itemId: z.ZodString;
+        /** The day it acts on, yyyy-MM-dd; today when absent. Pause and resume ignore it. */
+        date: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        kind: "verb";
+        itemId: string;
+        verb: "complete" | "skip" | "unskip" | "pause" | "resume";
+        date?: string | undefined;
+    }, {
+        kind: "verb";
+        itemId: string;
+        verb: "complete" | "skip" | "unskip" | "pause" | "resume";
+        date?: string | undefined;
     }>]>, "many">;
     createdAt: z.ZodString;
 }, "strip", z.ZodTypeAny, {
@@ -5228,6 +5285,11 @@ export declare const ProposalSchema: z.ZodObject<{
         title?: string | undefined;
         priority?: "low" | "medium" | "high" | null | undefined;
         startDate?: string | null | undefined;
+    } | {
+        kind: "verb";
+        itemId: string;
+        verb: "complete" | "skip" | "unskip" | "pause" | "resume";
+        date?: string | undefined;
     })[];
     createdAt: string;
     rationale?: string | undefined;
@@ -5255,6 +5317,11 @@ export declare const ProposalSchema: z.ZodObject<{
         title?: string | undefined;
         priority?: "low" | "medium" | "high" | null | undefined;
         startDate?: string | null | undefined;
+    } | {
+        kind: "verb";
+        itemId: string;
+        verb: "complete" | "skip" | "unskip" | "pause" | "resume";
+        date?: string | undefined;
     })[];
     createdAt: string;
     rationale?: string | undefined;
@@ -5350,6 +5417,22 @@ export declare const ProposalDraftSchema: z.ZodObject<Omit<{
         title?: string | undefined;
         priority?: "low" | "medium" | "high" | null | undefined;
         startDate?: string | null | undefined;
+    }>, z.ZodObject<{
+        kind: z.ZodLiteral<"verb">;
+        verb: z.ZodEnum<["complete", "skip", "unskip", "pause", "resume"]>;
+        itemId: z.ZodString;
+        /** The day it acts on, yyyy-MM-dd; today when absent. Pause and resume ignore it. */
+        date: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        kind: "verb";
+        itemId: string;
+        verb: "complete" | "skip" | "unskip" | "pause" | "resume";
+        date?: string | undefined;
+    }, {
+        kind: "verb";
+        itemId: string;
+        verb: "complete" | "skip" | "unskip" | "pause" | "resume";
+        date?: string | undefined;
     }>]>, "many">;
     createdAt: z.ZodString;
 }, "id" | "createdAt">, "strip", z.ZodTypeAny, {
@@ -5375,6 +5458,11 @@ export declare const ProposalDraftSchema: z.ZodObject<Omit<{
         title?: string | undefined;
         priority?: "low" | "medium" | "high" | null | undefined;
         startDate?: string | null | undefined;
+    } | {
+        kind: "verb";
+        itemId: string;
+        verb: "complete" | "skip" | "unskip" | "pause" | "resume";
+        date?: string | undefined;
     })[];
     rationale?: string | undefined;
 }, {
@@ -5400,6 +5488,11 @@ export declare const ProposalDraftSchema: z.ZodObject<Omit<{
         title?: string | undefined;
         priority?: "low" | "medium" | "high" | null | undefined;
         startDate?: string | null | undefined;
+    } | {
+        kind: "verb";
+        itemId: string;
+        verb: "complete" | "skip" | "unskip" | "pause" | "resume";
+        date?: string | undefined;
     })[];
     rationale?: string | undefined;
 }>;

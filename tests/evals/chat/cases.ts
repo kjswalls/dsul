@@ -52,6 +52,7 @@ const words = (args: Record<string, unknown>) =>
 const mentions = (...stems: string[]) => (args: Record<string, unknown>) =>
   stems.some((s) => words(args).includes(s));
 const finishedOrAny = (args: Record<string, unknown>) => args.status === 'finished' || args.status === 'any';
+const TODAY = '2026-10-14';
 const ops = (d: ProposalDraft) => d.operations as ProposalOperation[];
 const proposes = (example: Record<string, unknown>): LookupExpectation => ({ tool: 'propose_changes', example });
 const reaches = (day: string) => (args: Record<string, unknown>) =>
@@ -282,7 +283,30 @@ export const CASES: EvalCase[] = [
   {
     id: 'habit-tick',
     ask: 'Mark my morning run done for today',
-    says: [/can.t|cannot|not able|isn.t|from here|on (?:the )?today/i],
-    why: 'A habit is ticked per day, which no card can do yet: says so and offers no card.',
+    lookups: [
+      { tool: 'find_items', accepts: mentions('run'), example: { query: 'morning run' } },
+      proposes({ summary: 'Morning run done', operations: [{ kind: 'verb', verb: 'complete', itemId: 'itm_run' }] }),
+    ],
+    card: {
+      accepts: (d) =>
+        ops(d).some(
+          (o) => o.kind === 'verb' && o.verb === 'complete' && o.itemId === 'itm_run' && (o.date ?? TODAY) === TODAY
+        ),
+    },
+    why: 'Offers the tick for today, as a verb: a habit is never ticked through its status.',
+  },
+  {
+    id: 'habit-skip',
+    ask: "I'm not flossing tonight, my gums are sore. Can you skip it so I don't lose my streak?",
+    lookups: [
+      { tool: 'find_items', accepts: mentions('floss'), example: { query: 'floss' } },
+      proposes({ summary: 'Floss skipped tonight', operations: [{ kind: 'verb', verb: 'skip', itemId: 'itm_floss' }] }),
+    ],
+    card: {
+      accepts: (d) =>
+        ops(d).some((o) => o.kind === 'verb' && o.verb === 'skip' && o.itemId === 'itm_floss' && (o.date ?? TODAY) === TODAY),
+    },
+    saysNot: [/should|try to|make sure/i],
+    why: 'Offers the skip for today, which keeps the streak, and does not lecture.',
   },
 ];

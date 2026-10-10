@@ -591,3 +591,46 @@ describe('what the model is shown', () => {
     ).toContain('repeats');
   });
 });
+
+describe('verb operations (tick, skip, pause)', () => {
+  const day = { ...ctx, todayStr: '2026-08-26', tz: 'UTC' };
+  const verb = (v: 'complete' | 'skip' | 'unskip' | 'pause' | 'resume', itemId: string, date?: string): ProposalOperation => ({
+    kind: 'verb',
+    verb: v,
+    itemId,
+    ...(date ? { date } : {}),
+  });
+  const reasons = (op: ProposalOperation, c: ProposalContext = day) =>
+    validateProposalOperations([op], c).rejected.map((r) => r.reason);
+
+  it('ticks, skips and pauses a habit today', () => {
+    for (const v of ['complete', 'skip', 'pause'] as const) expect(reasons(verb(v, 'habit-1')), v).toEqual([]);
+  });
+
+  it('never ticks a day still to come, but skips one', () => {
+    expect(reasons(verb('complete', 'habit-1', '2026-08-27'))).toEqual(['a day that has not come yet cannot be marked done']);
+    expect(reasons(verb('skip', 'habit-1', '2026-08-27'))).toEqual([]);
+  });
+
+  it('asks the gates: no resume for what is not paused, no unskip for what is not skipped', () => {
+    expect(reasons(verb('resume', 'habit-1'))).toEqual(['it cannot be resumed now']);
+    expect(reasons(verb('unskip', 'habit-1'))).toEqual(['it cannot be unskipped on 2026-08-26']);
+  });
+
+  it('refuses a skip on a one-off task, and an id that is not there', () => {
+    expect(reasons(verb('skip', 'task-1'))[0]).toMatch(/cannot be skipped/);
+    expect(reasons(verb('complete', 'nope'))).toEqual(['item no longer exists']);
+  });
+
+  it('asks only what fits the item when the day cannot be known (the server)', () => {
+    expect(reasons(verb('complete', 'habit-1', '2026-08-27'), ctx)).toEqual([]);
+    expect(reasons(verb('skip', 'task-1'), ctx)[0]).toMatch(/cannot be skipped/);
+  });
+
+  it('describes each in the words the card shows', () => {
+    expect(describeOperation(verb('complete', 'habit-1'), day)).toBe('Stretch: done today');
+    expect(describeOperation(verb('skip', 'habit-1', '2026-08-27'), day)).toMatch(/^Stretch: skip on /);
+    expect(describeOperation(verb('complete', 'task-1'), day)).toBe('Email Dana: mark done');
+    expect(describeOperation(verb('pause', 'habit-1'), day)).toBe('Stretch: pause');
+  });
+});

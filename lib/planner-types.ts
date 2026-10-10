@@ -37,6 +37,8 @@ export type {
   ProposalOperation,
   ProposalCreateOp,
   ProposalUpdateOp,
+  ProposalVerbOp,
+  ProposalVerb,
 } from '@dsul/types'
 
 // ── App-only types ────────────────────────────────────────────────────────────

@@ -1072,9 +1072,25 @@ export const ProposalUpdateOpSchema = z.object({
     priority: PrioritySchema.nullable().optional(),
     status: z.string().optional(),
 });
+/**
+ * One of the item verbs (lib/item-verbs.ts) on one item and day: what a tick,
+ * a skip or a pause is, since none of them is a field write. A recurring
+ * item's or a habit's done-ness is per DATE (`completedDates`), which an
+ * update's scalar `status` can never express. Gated app-side by the verb's
+ * own gate (lib/verb-gates.ts) and run through the verb itself on accept.
+ */
+export const PROPOSAL_VERBS = ['complete', 'skip', 'unskip', 'pause', 'resume'];
+export const ProposalVerbOpSchema = z.object({
+    kind: z.literal('verb'),
+    verb: z.enum(PROPOSAL_VERBS),
+    itemId: z.string().min(1).max(200),
+    /** The day it acts on, yyyy-MM-dd; today when absent. Pause and resume ignore it. */
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+});
 export const ProposalOperationSchema = z.discriminatedUnion('kind', [
     ProposalCreateOpSchema,
     ProposalUpdateOpSchema,
+    ProposalVerbOpSchema,
 ]);
 export const ProposalSchema = z.object({
     id: z.string(),

@@ -13,10 +13,11 @@
  */
 
 import { format } from 'date-fns'
-import type { Item, Proposal, ProposalDraft, ProposalOperation } from './planner-types'
-import { getItemTypeConfig, itemTypeName } from './item-registry'
+import type { Item, Proposal, ProposalDraft, ProposalOperation, ProposalVerbOp } from './planner-types'
+import { getItemTypeConfig, isPausable, isSkippable, itemTypeName } from './item-registry'
 import { selectOverdue, splitOverdueCohorts } from './overdue'
 import { isRecurring } from './recurrence'
+import { VERB_GATES, isHabit, occurrenceOn, type VerbContext } from './verb-gates'
 
 export interface ProposalContext {
   items: Item[]
@@ -42,6 +43,15 @@ export interface ProposalContext {
    * checkpoint's date — see the refusal below.
    */
   milestoneIds?: ReadonlySet<string>
+  /**
+   * Wall-clock today and the user's zone, for the verb operations (a tick, a
+   * skip, a pause): with them each verb asks its own day gate
+   * (lib/verb-gates.ts); without them (the server, which knows no zone) only
+   * whether the verb fits the item at all. The browser always passes them,
+   * and its check is the one that counts.
+   */
+  todayStr?: string
+  tz?: string
 }
 
 export interface RejectedOperation {
@@ -141,6 +151,13 @@ export function validateProposalOperations(
       continue
     }
 
+    if (operation.kind === 'verb') {
+      const why = verbRefusal(operation, ctx)
+      if (why) reject(operation, why)
+      else accepted.push(operation)
+      continue
+    }
+
     const target = ctx.items.find((i) => i.id === operation.itemId)
     if (!target) {
       reject(operation, 'item no longer exists')
@@ -231,6 +248,50 @@ export function validateProposalOperations(
   }
 
   return { accepted, rejected }
+}
+
+const VERB_WORDS: Record<ProposalVerbOp['verb'], string> = {
+  complete: 'marked done',
+  skip: 'skipped',
+  unskip: 'unskipped',
+  pause: 'paused',
+  resume: 'resumed',
+}
+
+/**
+ * Why a verb operation cannot be offered, or null. Asks the verb's own gate
+ * (the one every other surface asks) when the day can be known; the structural
+ * questions (does it exist, is it a step, can this type be skipped or paused
+ * at all) are asked either way.
+ */
+function verbRefusal(op: ProposalVerbOp, ctx: ProposalContext): string | null {
+  const item = ctx.items.find((i) => i.id === op.itemId)
+  if (!item) return 'item no longer exists'
+  if ('parentItemId' in item && item.parentItemId) return 'subtasks are managed inside their parent, not scheduled'
+  if ((op.verb === 'skip' || op.verb === 'unskip') && !isSkippable(item)) {
+    return `${getItemTypeConfig(itemTypeName(item)).label.toLowerCase()} items that do not repeat cannot be skipped`
+  }
+  if ((op.verb === 'pause' || op.verb === 'resume') && !isPausable(item)) {
+    return `${getItemTypeConfig(itemTypeName(item)).label.toLowerCase()} items cannot be paused`
+  }
+  if (!ctx.todayStr || !ctx.tz) return null
+
+  const dateStr = op.date ?? ctx.todayStr
+  // A day can be put behind you, or skipped ahead of time, but not done ahead
+  // of time: a tick on tomorrow is a streak bumped for something not yet done.
+  if (op.verb === 'complete' && dateStr > ctx.todayStr) return 'a day that has not come yet cannot be marked done'
+  const vctx: VerbContext = {
+    dateStr,
+    date: new Date(`${dateStr}T00:00:00`),
+    todayStr: ctx.todayStr,
+    tz: ctx.tz,
+    milestoneIds: ctx.milestoneIds ?? new Set(),
+    occurrence: occurrenceOn(item, dateStr, ctx.todayStr, ctx.tz),
+  }
+  if (VERB_GATES[op.verb](item, vctx)) return null
+  return isRecurring(item) && vctx.occurrence === 'absent'
+    ? `it does not fall on ${dateStr}`
+    : `it cannot be ${VERB_WORDS[op.verb]} ${op.verb === 'pause' || op.verb === 'resume' ? 'now' : `on ${dateStr}`}`
 }
 
 /** Convenience wrapper returning a proposal with only its viable operations. */
@@ -354,6 +415,24 @@ export function describeOperation(operation: ProposalOperation, ctx: ProposalCon
 
   const target = ctx.items.find((i) => i.id === operation.itemId)
   const title = target?.title ?? 'this item'
+
+  if (operation.kind === 'verb') {
+    const day = operation.date && operation.date !== ctx.todayStr ? ` on ${friendlyDate(operation.date)}` : ''
+    switch (operation.verb) {
+      case 'complete':
+        // A one-off has no day to be done on: it is simply done.
+        return target && !isRecurring(target) && !isHabit(target) ? `${title}: mark done` : `${title}: done${day || ' today'}`
+      case 'skip':
+        return `${title}: skip${day || ' today'}`
+      case 'unskip':
+        return `${title}: unskip${day || ' today'}`
+      case 'pause':
+        return `${title}: pause`
+      case 'resume':
+        return `${title}: resume`
+    }
+  }
+
   const parts: string[] = []
 
   if (operation.title) parts.push(`rename to "${operation.title}"`)
