@@ -45,6 +45,7 @@ private struct InputFixture: Decodable, Sendable {
     let items: [Item]
     let routines: [Routine]?
     let seasons: [Season]?
+    let away: [AwayPeriod]?
     let timeFormat: String?
     let remindersEnabled: Bool
     let eod: EodInput?
@@ -221,6 +222,7 @@ private func planInput(_ f: InputFixture, _ name: String) throws -> PlanInput {
         items: f.items,
         routines: f.routines ?? [],
         seasons: f.seasons ?? [],
+        away: f.away ?? [],
         timeFormat: format,
         remindersEnabled: f.remindersEnabled,
         eod: f.eod.map { PlanEod(enabled: $0.enabled, time: $0.time, lastReviewDate: $0.lastReviewDate) },
@@ -548,7 +550,9 @@ private func fixture(_ n: PlanNote) -> NoteFixture {
 
                 // Its rings in the month after its first, and the one after its
                 // first however far (the 31st's, two months on past a short one).
-                let ctx = ActivationContext(timeZone: input.timeZone, routines: input.routines, seasons: input.seasons)
+                let ctx = ActivationContext(
+                    timeZone: input.timeZone, routines: input.routines, seasons: input.seasons, away: input.away
+                )
                 let first = try #require(DayString(clock.dateStr), "\(place)")
                 let monthOn = first.adding(days: 31)
                 var days: [DayString] = [first]

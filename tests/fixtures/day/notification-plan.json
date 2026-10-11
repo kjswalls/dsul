@@ -4004,6 +4004,548 @@
       }
     },
     {
+      "name": "away until Thursday: standing from the return",
+      "input": {
+        "nowMs": 1791194400000,
+        "timezone": "America/New_York",
+        "items": [
+          {
+            "type": "habit",
+            "id": "00000000-0000-4000-8000-0000000003e9",
+            "title": "Vitamins",
+            "streak": 0,
+            "status": "pending",
+            "completedDates": [],
+            "skippedDates": [],
+            "dailyCounts": {},
+            "repeatFrequency": "daily",
+            "reminderTime": "07:30"
+          }
+        ],
+        "remindersEnabled": true,
+        "away": [
+          {
+            "id": "week",
+            "startsOn": "2026-10-03",
+            "endsOn": "2026-10-08",
+            "keep": {
+              "itemIds": [],
+              "routineIds": [],
+              "projectIds": []
+            },
+            "returns": {},
+            "fromTrip": {}
+          }
+        ]
+      },
+      "expected": {
+        "requests": [
+          {
+            "id": "dsul-item-00000000-0000-4000-8000-0000000003e9#5",
+            "kind": "cue",
+            "itemId": "00000000-0000-4000-8000-0000000003e9",
+            "trigger": {
+              "type": "calendar",
+              "hour": 7,
+              "minute": 30,
+              "weekday": 5,
+              "repeats": true
+            },
+            "firesAt": 1791459000000,
+            "title": "Vitamins",
+            "body": "7:30 am",
+            "threadId": "dsul.cues",
+            "summaryArgument": "Vitamins",
+            "categoryId": "DSUL_CUE",
+            "level": "active",
+            "relevance": 0,
+            "userInfo": {
+              "kind": "cue",
+              "itemId": "00000000-0000-4000-8000-0000000003e9",
+              "at": "07:30"
+            }
+          },
+          {
+            "id": "dsul-item-00000000-0000-4000-8000-0000000003e9#6",
+            "kind": "cue",
+            "itemId": "00000000-0000-4000-8000-0000000003e9",
+            "trigger": {
+              "type": "calendar",
+              "hour": 7,
+              "minute": 30,
+              "weekday": 6,
+              "repeats": true
+            },
+            "firesAt": 1791545400000,
+            "title": "Vitamins",
+            "body": "7:30 am",
+            "threadId": "dsul.cues",
+            "summaryArgument": "Vitamins",
+            "categoryId": "DSUL_CUE",
+            "level": "active",
+            "relevance": 0,
+            "userInfo": {
+              "kind": "cue",
+              "itemId": "00000000-0000-4000-8000-0000000003e9",
+              "at": "07:30"
+            }
+          },
+          {
+            "id": "dsul-item-00000000-0000-4000-8000-0000000003e9#7",
+            "kind": "cue",
+            "itemId": "00000000-0000-4000-8000-0000000003e9",
+            "trigger": {
+              "type": "calendar",
+              "hour": 7,
+              "minute": 30,
+              "weekday": 7,
+              "repeats": true
+            },
+            "firesAt": 1791631800000,
+            "title": "Vitamins",
+            "body": "7:30 am",
+            "threadId": "dsul.cues",
+            "summaryArgument": "Vitamins",
+            "categoryId": "DSUL_CUE",
+            "level": "active",
+            "relevance": 0,
+            "userInfo": {
+              "kind": "cue",
+              "itemId": "00000000-0000-4000-8000-0000000003e9",
+              "at": "07:30"
+            }
+          },
+          {
+            "id": "dsul-item-00000000-0000-4000-8000-0000000003e9#1",
+            "kind": "cue",
+            "itemId": "00000000-0000-4000-8000-0000000003e9",
+            "trigger": {
+              "type": "calendar",
+              "hour": 7,
+              "minute": 30,
+              "weekday": 1,
+              "repeats": true
+            },
+            "firesAt": 1791718200000,
+            "title": "Vitamins",
+            "body": "7:30 am",
+            "threadId": "dsul.cues",
+            "summaryArgument": "Vitamins",
+            "categoryId": "DSUL_CUE",
+            "level": "active",
+            "relevance": 0,
+            "userInfo": {
+              "kind": "cue",
+              "itemId": "00000000-0000-4000-8000-0000000003e9",
+              "at": "07:30"
+            }
+          },
+          {
+            "id": "dsul-item-00000000-0000-4000-8000-0000000003e9#2",
+            "kind": "cue",
+            "itemId": "00000000-0000-4000-8000-0000000003e9",
+            "dateStr": "2026-10-12",
+            "trigger": {
+              "type": "at",
+              "dateStr": "2026-10-12",
+              "hhmm": "07:30"
+            },
+            "firesAt": 1791804600000,
+            "title": "Vitamins",
+            "body": "7:30 am",
+            "threadId": "dsul.cues",
+            "summaryArgument": "Vitamins",
+            "categoryId": "DSUL_CUE",
+            "level": "active",
+            "relevance": 0,
+            "userInfo": {
+              "kind": "cue",
+              "itemId": "00000000-0000-4000-8000-0000000003e9",
+              "dateStr": "2026-10-12",
+              "at": "07:30"
+            }
+          },
+          {
+            "id": "dsul-item-00000000-0000-4000-8000-0000000003e9#3",
+            "kind": "cue",
+            "itemId": "00000000-0000-4000-8000-0000000003e9",
+            "dateStr": "2026-10-13",
+            "trigger": {
+              "type": "at",
+              "dateStr": "2026-10-13",
+              "hhmm": "07:30"
+            },
+            "firesAt": 1791891000000,
+            "title": "Vitamins",
+            "body": "7:30 am",
+            "threadId": "dsul.cues",
+            "summaryArgument": "Vitamins",
+            "categoryId": "DSUL_CUE",
+            "level": "active",
+            "relevance": 0,
+            "userInfo": {
+              "kind": "cue",
+              "itemId": "00000000-0000-4000-8000-0000000003e9",
+              "dateStr": "2026-10-13",
+              "at": "07:30"
+            }
+          },
+          {
+            "id": "dsul-item-00000000-0000-4000-8000-0000000003e9#4",
+            "kind": "cue",
+            "itemId": "00000000-0000-4000-8000-0000000003e9",
+            "dateStr": "2026-10-14",
+            "trigger": {
+              "type": "at",
+              "dateStr": "2026-10-14",
+              "hhmm": "07:30"
+            },
+            "firesAt": 1791977400000,
+            "title": "Vitamins",
+            "body": "7:30 am",
+            "threadId": "dsul.cues",
+            "summaryArgument": "Vitamins",
+            "categoryId": "DSUL_CUE",
+            "level": "active",
+            "relevance": 0,
+            "userInfo": {
+              "kind": "cue",
+              "itemId": "00000000-0000-4000-8000-0000000003e9",
+              "dateStr": "2026-10-14",
+              "at": "07:30"
+            }
+          }
+        ],
+        "withdraw": [],
+        "notes": []
+      }
+    },
+    {
+      "name": "away, but kept: standing",
+      "input": {
+        "nowMs": 1791194400000,
+        "timezone": "America/New_York",
+        "items": [
+          {
+            "type": "habit",
+            "id": "00000000-0000-4000-8000-0000000003e9",
+            "title": "Vitamins",
+            "streak": 0,
+            "status": "pending",
+            "completedDates": [],
+            "skippedDates": [],
+            "dailyCounts": {},
+            "repeatFrequency": "daily",
+            "reminderTime": "07:30"
+          }
+        ],
+        "remindersEnabled": true,
+        "away": [
+          {
+            "id": "week",
+            "startsOn": "2026-10-03",
+            "endsOn": "2026-10-08",
+            "keep": {
+              "itemIds": [
+                "00000000-0000-4000-8000-0000000003e9"
+              ],
+              "routineIds": [],
+              "projectIds": []
+            },
+            "returns": {},
+            "fromTrip": {}
+          }
+        ]
+      },
+      "expected": {
+        "requests": [
+          {
+            "id": "dsul-item-00000000-0000-4000-8000-0000000003e9",
+            "kind": "cue",
+            "itemId": "00000000-0000-4000-8000-0000000003e9",
+            "trigger": {
+              "type": "calendar",
+              "hour": 7,
+              "minute": 30,
+              "repeats": true
+            },
+            "firesAt": 1791199800000,
+            "title": "Vitamins",
+            "body": "7:30 am",
+            "threadId": "dsul.cues",
+            "summaryArgument": "Vitamins",
+            "categoryId": "DSUL_CUE",
+            "level": "active",
+            "relevance": 0,
+            "userInfo": {
+              "kind": "cue",
+              "itemId": "00000000-0000-4000-8000-0000000003e9",
+              "at": "07:30"
+            }
+          }
+        ],
+        "withdraw": [],
+        "notes": []
+      }
+    },
+    {
+      "name": "away with no end: nothing",
+      "input": {
+        "nowMs": 1791194400000,
+        "timezone": "America/New_York",
+        "items": [
+          {
+            "type": "habit",
+            "id": "00000000-0000-4000-8000-0000000003e9",
+            "title": "Vitamins",
+            "streak": 0,
+            "status": "pending",
+            "completedDates": [],
+            "skippedDates": [],
+            "dailyCounts": {},
+            "repeatFrequency": "daily",
+            "reminderTime": "07:30"
+          }
+        ],
+        "remindersEnabled": true,
+        "away": [
+          {
+            "id": "open",
+            "startsOn": "2026-10-01",
+            "keep": {
+              "itemIds": [],
+              "routineIds": [],
+              "projectIds": []
+            },
+            "returns": {},
+            "fromTrip": {}
+          }
+        ]
+      },
+      "expected": {
+        "requests": [],
+        "withdraw": [],
+        "notes": []
+      }
+    },
+    {
+      "name": "a trip starting Wednesday: today and tomorrow, then from its return",
+      "input": {
+        "nowMs": 1791194400000,
+        "timezone": "America/New_York",
+        "items": [
+          {
+            "type": "habit",
+            "id": "00000000-0000-4000-8000-0000000003e9",
+            "title": "Vitamins",
+            "streak": 0,
+            "status": "pending",
+            "completedDates": [],
+            "skippedDates": [],
+            "dailyCounts": {},
+            "repeatFrequency": "daily",
+            "reminderTime": "07:30"
+          }
+        ],
+        "remindersEnabled": true,
+        "away": [
+          {
+            "id": "later",
+            "startsOn": "2026-10-07",
+            "endsOn": "2026-10-10",
+            "keep": {
+              "itemIds": [],
+              "routineIds": [],
+              "projectIds": []
+            },
+            "returns": {},
+            "fromTrip": {}
+          }
+        ]
+      },
+      "expected": {
+        "requests": [
+          {
+            "id": "dsul-item-00000000-0000-4000-8000-0000000003e9#2",
+            "kind": "cue",
+            "itemId": "00000000-0000-4000-8000-0000000003e9",
+            "trigger": {
+              "type": "calendar",
+              "hour": 7,
+              "minute": 30,
+              "weekday": 2,
+              "repeats": true
+            },
+            "firesAt": 1791199800000,
+            "title": "Vitamins",
+            "body": "7:30 am",
+            "threadId": "dsul.cues",
+            "summaryArgument": "Vitamins",
+            "categoryId": "DSUL_CUE",
+            "level": "active",
+            "relevance": 0,
+            "userInfo": {
+              "kind": "cue",
+              "itemId": "00000000-0000-4000-8000-0000000003e9",
+              "at": "07:30"
+            }
+          },
+          {
+            "id": "dsul-item-00000000-0000-4000-8000-0000000003e9#3",
+            "kind": "cue",
+            "itemId": "00000000-0000-4000-8000-0000000003e9",
+            "trigger": {
+              "type": "calendar",
+              "hour": 7,
+              "minute": 30,
+              "weekday": 3,
+              "repeats": true
+            },
+            "firesAt": 1791286200000,
+            "title": "Vitamins",
+            "body": "7:30 am",
+            "threadId": "dsul.cues",
+            "summaryArgument": "Vitamins",
+            "categoryId": "DSUL_CUE",
+            "level": "active",
+            "relevance": 0,
+            "userInfo": {
+              "kind": "cue",
+              "itemId": "00000000-0000-4000-8000-0000000003e9",
+              "at": "07:30"
+            }
+          },
+          {
+            "id": "dsul-item-00000000-0000-4000-8000-0000000003e9#7",
+            "kind": "cue",
+            "itemId": "00000000-0000-4000-8000-0000000003e9",
+            "trigger": {
+              "type": "calendar",
+              "hour": 7,
+              "minute": 30,
+              "weekday": 7,
+              "repeats": true
+            },
+            "firesAt": 1791631800000,
+            "title": "Vitamins",
+            "body": "7:30 am",
+            "threadId": "dsul.cues",
+            "summaryArgument": "Vitamins",
+            "categoryId": "DSUL_CUE",
+            "level": "active",
+            "relevance": 0,
+            "userInfo": {
+              "kind": "cue",
+              "itemId": "00000000-0000-4000-8000-0000000003e9",
+              "at": "07:30"
+            }
+          },
+          {
+            "id": "dsul-item-00000000-0000-4000-8000-0000000003e9#1",
+            "kind": "cue",
+            "itemId": "00000000-0000-4000-8000-0000000003e9",
+            "trigger": {
+              "type": "calendar",
+              "hour": 7,
+              "minute": 30,
+              "weekday": 1,
+              "repeats": true
+            },
+            "firesAt": 1791718200000,
+            "title": "Vitamins",
+            "body": "7:30 am",
+            "threadId": "dsul.cues",
+            "summaryArgument": "Vitamins",
+            "categoryId": "DSUL_CUE",
+            "level": "active",
+            "relevance": 0,
+            "userInfo": {
+              "kind": "cue",
+              "itemId": "00000000-0000-4000-8000-0000000003e9",
+              "at": "07:30"
+            }
+          },
+          {
+            "id": "dsul-item-00000000-0000-4000-8000-0000000003e9#4",
+            "kind": "cue",
+            "itemId": "00000000-0000-4000-8000-0000000003e9",
+            "dateStr": "2026-10-14",
+            "trigger": {
+              "type": "at",
+              "dateStr": "2026-10-14",
+              "hhmm": "07:30"
+            },
+            "firesAt": 1791977400000,
+            "title": "Vitamins",
+            "body": "7:30 am",
+            "threadId": "dsul.cues",
+            "summaryArgument": "Vitamins",
+            "categoryId": "DSUL_CUE",
+            "level": "active",
+            "relevance": 0,
+            "userInfo": {
+              "kind": "cue",
+              "itemId": "00000000-0000-4000-8000-0000000003e9",
+              "dateStr": "2026-10-14",
+              "at": "07:30"
+            }
+          },
+          {
+            "id": "dsul-item-00000000-0000-4000-8000-0000000003e9#5",
+            "kind": "cue",
+            "itemId": "00000000-0000-4000-8000-0000000003e9",
+            "dateStr": "2026-10-15",
+            "trigger": {
+              "type": "at",
+              "dateStr": "2026-10-15",
+              "hhmm": "07:30"
+            },
+            "firesAt": 1792063800000,
+            "title": "Vitamins",
+            "body": "7:30 am",
+            "threadId": "dsul.cues",
+            "summaryArgument": "Vitamins",
+            "categoryId": "DSUL_CUE",
+            "level": "active",
+            "relevance": 0,
+            "userInfo": {
+              "kind": "cue",
+              "itemId": "00000000-0000-4000-8000-0000000003e9",
+              "dateStr": "2026-10-15",
+              "at": "07:30"
+            }
+          },
+          {
+            "id": "dsul-item-00000000-0000-4000-8000-0000000003e9#6",
+            "kind": "cue",
+            "itemId": "00000000-0000-4000-8000-0000000003e9",
+            "dateStr": "2026-10-16",
+            "trigger": {
+              "type": "at",
+              "dateStr": "2026-10-16",
+              "hhmm": "07:30"
+            },
+            "firesAt": 1792150200000,
+            "title": "Vitamins",
+            "body": "7:30 am",
+            "threadId": "dsul.cues",
+            "summaryArgument": "Vitamins",
+            "categoryId": "DSUL_CUE",
+            "level": "active",
+            "relevance": 0,
+            "userInfo": {
+              "kind": "cue",
+              "itemId": "00000000-0000-4000-8000-0000000003e9",
+              "dateStr": "2026-10-16",
+              "at": "07:30"
+            }
+          }
+        ],
+        "withdraw": [],
+        "notes": []
+      }
+    },
+    {
       "name": "a paused season: nothing",
       "input": {
         "nowMs": 1791194400000,

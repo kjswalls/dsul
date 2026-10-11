@@ -43,6 +43,8 @@ private struct World: Decodable, Sendable {
     let items: [Item]
     let routines: [Routine]
     let seasons: [Season]
+    /// The trips (vacation mode); empty in the worlds that predate them.
+    let away: [AwayPeriod]
     let days: [WorldDay]
 }
 
@@ -85,6 +87,28 @@ private func ids(_ set: Set<UUID>) -> [String] {
         #expect(!f.isOpenLoopOn.isEmpty)
         #expect(!f.worlds.isEmpty)
         for world in f.worlds { #expect(!world.days.isEmpty, "\(world.name)") }
+        // The trip worlds decoded whole: every trip, its keep list and its waves.
+        let trips = f.worlds.flatMap(\.away)
+        #expect(trips.count >= 3)
+        #expect(trips.contains { $0.endsOn == nil })
+        #expect(trips.contains { !$0.returns.isEmpty })
+        #expect(trips.contains { !$0.keep.itemIds.isEmpty && !$0.keep.routineIds.isEmpty && !$0.keep.projectIds.isEmpty })
+    }
+
+    /// Without its trips a trip world answers differently: the layer is read.
+    @Test func theTripsAreWhatHoldTheTripWorlds() throws {
+        for world in try loadFixture().worlds where !world.away.isEmpty {
+            var differs = false
+            for d in world.days {
+                let day = try #require(DayString(d.date))
+                let without = inactiveItemIdsOn(
+                    items: world.items, date: day, timeZone: world.timeZone,
+                    routines: world.routines, seasons: world.seasons
+                )
+                if ids(without) != d.inactive { differs = true }
+            }
+            #expect(differs, "\(world.name)")
+        }
     }
 
     @Test func isPausedOnMatchesTheWeb() throws {
@@ -115,7 +139,7 @@ private func ids(_ set: Set<UUID>) -> [String] {
                 let day = try #require(DayString(d.date), "\(world.name): bad date \(d.date)")
                 let got = inactiveItemIdsOn(
                     items: world.items, date: day, timeZone: world.timeZone,
-                    routines: world.routines, seasons: world.seasons
+                    routines: world.routines, seasons: world.seasons, away: world.away
                 )
                 #expect(ids(got) == d.inactive, "\(world.name) on \(d.date)")
             }
@@ -129,7 +153,7 @@ private func ids(_ set: Set<UUID>) -> [String] {
                 for item in world.items {
                     let live = isItemActiveOn(
                         item, on: day, timeZone: world.timeZone,
-                        routines: world.routines, seasons: world.seasons
+                        routines: world.routines, seasons: world.seasons, away: world.away
                     )
                     let expected = d.live.contains(item.id.uuidString.lowercased())
                     #expect(live == expected, "\(world.name) on \(d.date): \(item.title)")
@@ -145,10 +169,13 @@ private func ids(_ set: Set<UUID>) -> [String] {
                 let day = try #require(DayString(d.date))
                 let bulk = inactiveItemIdsOn(
                     items: world.items, date: day, timeZone: world.timeZone,
-                    routines: world.routines, seasons: world.seasons
+                    routines: world.routines, seasons: world.seasons, away: world.away
                 )
                 let each = Set(world.items.filter {
-                    isOpenLoopSuppressedOn($0, on: day, timeZone: world.timeZone, routines: world.routines, seasons: world.seasons)
+                    isOpenLoopSuppressedOn(
+                        $0, on: day, timeZone: world.timeZone,
+                        routines: world.routines, seasons: world.seasons, away: world.away
+                    )
                 }.map(\.id))
                 #expect(bulk == each, "\(world.name) on \(d.date)")
             }

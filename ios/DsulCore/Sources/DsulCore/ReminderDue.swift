@@ -39,18 +39,23 @@ func truthyText(_ s: String?) -> String? {
     return s
 }
 
-/// lib/active.ts `ActivationContext`: the zone and the live containers that
-/// `isItemActiveOn` reads, bundled as the reminder rules pass them around.
+/// lib/active.ts `ActivationContext`: the zone, the live containers and the
+/// trips that `isItemActiveOn` reads, bundled as the reminder rules pass them
+/// around.
 public struct ActivationContext: Sendable, Hashable {
     /// The user's IANA zone (`userTimezone`).
     public var timeZone: String
     public var routines: [Routine]
     public var seasons: [Season]
+    /// The user's trips (vacation mode), past and future. Empty, the default,
+    /// answers as before vacation mode.
+    public var away: [AwayPeriod]
 
-    public init(timeZone: String, routines: [Routine] = [], seasons: [Season] = []) {
+    public init(timeZone: String, routines: [Routine] = [], seasons: [Season] = [], away: [AwayPeriod] = []) {
         self.timeZone = timeZone
         self.routines = routines
         self.seasons = seasons
+        self.away = away
     }
 }
 
@@ -92,7 +97,7 @@ public func wantsDoingOn(_ item: Item, on dateStr: String, _ ctx: ActivationCont
 public func wantsDoingOn(_ item: Item, on day: DayString, _ ctx: ActivationContext) -> Bool {
     return occursOn(item, on: day.description, timeZone: ctx.timeZone)
         && isOpenLoopOn(item, on: day)
-        && isItemActiveOn(item, on: day, timeZone: ctx.timeZone, routines: ctx.routines, seasons: ctx.seasons)
+        && isItemActiveOn(item, on: day, timeZone: ctx.timeZone, routines: ctx.routines, seasons: ctx.seasons, away: ctx.away)
 }
 
 /// lib/reminders/due.ts `ReminderCandidate`: one item that has earned a nudge,

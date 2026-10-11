@@ -7,6 +7,7 @@ import {
   addContainerMember,
   createItem,
   deleteItem,
+  fetchAwayPeriods,
   fetchItems,
   fetchItemTypes,
   fetchProjects,
@@ -60,6 +61,7 @@ import { saveTimezone } from './user-timezone';
 import type { WeekStartDay } from './container-schedule';
 import type { TimeFormat } from './reminders/copy';
 import type { Item, Project, Routine, Season, Task, TaskItem } from './planner-types';
+import type { AwayPeriod } from './away';
 
 /**
  * The iPhone app's API: /api/app/planner, /api/app/items, /api/app/items/:id.
@@ -437,6 +439,18 @@ export interface AppPlannerPayload {
    * fallback does). Absent, from an older server, means the same.
    */
   itemTypes: AppItemType[] | null;
+  /**
+   * The user's trips (vacation mode, away_periods, migration 071), past and
+   * future, newest first, as lib/away.ts's AwayPeriod (fetchAwayPeriods). The
+   * phone asks them first of every "is this live" question, as the web's
+   * ActivationContext.away does, so a trip hides on the phone what it hides on
+   * the web. Empty when there are none and when the table is missing, which
+   * answers exactly as before vacation mode; any other failed read fails the
+   * load, as a failed routines read does, because a trip that silently
+   * vanished would wake every habit it held. Absent, from an older server,
+   * means none.
+   */
+  awayPeriods: AwayPeriod[];
 }
 
 /** A pending snooze: lib/reminders/plan.ts PlanSnooze. */
@@ -597,11 +611,12 @@ export async function getPlanner(req: Request): Promise<Response> {
     // 400-day completion window) and cannot drift from what the web shows. It
     // falls back to the per-table read rather than answering 503 on a missing
     // RPC, so its module-level latch can slow an instance but never fail one.
-    const [data, { row: settings, full }, streaksEnabled, snoozes] = await Promise.all([
+    const [data, { row: settings, full }, streaksEnabled, snoozes, awayPeriods] = await Promise.all([
       loadPlannerData(userId, () => perTable(userId, client), client),
       readSettings(userId, client),
       readStreaksEnabled(userId, client),
       readSnoozes(userId, client),
+      fetchAwayPeriods(userId, client),
     ]);
 
     const payload: AppPlannerPayload = {
@@ -634,6 +649,8 @@ export async function getPlanner(req: Request): Promise<Response> {
       seasons: data.seasons,
       // Named fields only: a def also carries its icon, colour and config.
       itemTypes: data.itemTypes?.map(({ name, label, labelPlural }) => ({ name, label, labelPlural })) ?? null,
+      // Null is migration 071 not applied: no trips, as the web's store reads it.
+      awayPeriods: awayPeriods ?? [],
     };
     return NextResponse.json(payload, { headers: { 'Cache-Control': 'no-store' } });
   } catch (err) {

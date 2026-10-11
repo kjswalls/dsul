@@ -141,6 +141,7 @@ import { toDateOnly } from '../overdue'
 import { minutesOfDay as eodMinutesOfDay } from '../eod'
 import type { ActivationContext } from '../active'
 import type { Item, Routine, Season } from '../planner-types'
+import type { AwayPeriod } from '../away'
 import {
   hasMatured,
   isWithinWindow,
@@ -332,6 +333,8 @@ export interface PlanInput {
   /** Live routines and seasons, as ActivationContext wants them. */
   routines?: readonly Routine[]
   seasons?: readonly Season[]
+  /** The user's trips (vacation mode, lib/away.ts): a held habit's cue waits for its return day. */
+  away?: readonly AwayPeriod[]
   timeFormat?: TimeFormat
   /**
    * habit_reminders_enabled AND this device's own switch. Off plans no cue,
@@ -566,6 +569,7 @@ export function planNotifications(input: PlanInput): NotificationPlan {
     userTimezone: timezone,
     routines: input.routines,
     seasons: input.seasons,
+    away: input.away,
   }
   const timeFormat = input.timeFormat ?? '12h'
   const grace = input.graceMinutes ?? REMINDER_GRACE_MINUTES

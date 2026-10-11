@@ -354,6 +354,87 @@ public struct Season: Codable, Sendable, Hashable, Identifiable {
     }
 }
 
+/// lib/away.ts `AwayKeep`: what keeps going on a trip. An item is kept if it,
+/// its parent, its project or a routine holding it is listed. Item ids are
+/// read as uuids, as `Routine.itemIds` are; one that isn't is skipped.
+public struct AwayKeep: Decodable, Sendable, Hashable {
+    public var itemIds: [UUID]
+    public var routineIds: [String]
+    public var projectIds: [String]
+
+    public init(itemIds: [UUID] = [], routineIds: [String] = [], projectIds: [String] = []) {
+        self.itemIds = itemIds
+        self.routineIds = routineIds
+        self.projectIds = projectIds
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case itemIds, routineIds, projectIds
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.itemIds = (c.lenientStrings(.itemIds) ?? []).compactMap { UUID(uuidString: $0) }
+        self.routineIds = c.lenientStrings(.routineIds) ?? []
+        self.projectIds = c.lenientStrings(.projectIds) ?? []
+    }
+}
+
+/// lib/away.ts `AwayPeriod`: one trip (vacation mode, migration 071), as
+/// lib/db.ts `awayPeriodFromRow` builds it and /api/app/planner serves it in
+/// `awayPeriods`. Read by `awayHoldOn` (Away.swift). `returns` and `fromTrip`
+/// are keyed by item id; a key that isn't a uuid, or a value that isn't a
+/// string, is skipped. A trip with no id or no start can't be placed and fails
+/// to decode, so the payload's lossy array drops it.
+public struct AwayPeriod: Decodable, Sendable, Hashable, Identifiable {
+    public var id: String
+    /// First day away, yyyy-MM-dd in the user's zone.
+    public var startsOn: String
+    /// The day you are back, EXCLUSIVE. Nil is open-ended.
+    public var endsOn: String?
+    public var keep: AwayKeep
+    /// itemId → the day it comes back, when later than `endsOn` (the easing waves).
+    public var returns: [UUID: String]
+    /// itemId → the day it was due, for tasks moved to the braindump on return.
+    public var fromTrip: [UUID: String]
+    /// When those tasks were moved. Nil is not yet.
+    public var settledAt: String?
+
+    public init(
+        id: String,
+        startsOn: String,
+        endsOn: String? = nil,
+        keep: AwayKeep = AwayKeep(),
+        returns: [UUID: String] = [:],
+        fromTrip: [UUID: String] = [:],
+        settledAt: String? = nil
+    ) {
+        self.id = id
+        self.startsOn = startsOn
+        self.endsOn = endsOn
+        self.keep = keep
+        self.returns = returns
+        self.fromTrip = fromTrip
+        self.settledAt = settledAt
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, startsOn, endsOn, keep, returns, fromTrip, settledAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decode(String.self, forKey: .id)
+        self.startsOn = try c.decode(String.self, forKey: .startsOn)
+        // `ends_on ? … : undefined`: an empty end is open-ended, as on the web.
+        self.endsOn = c.lenientString(.endsOn).flatMap { $0.isEmpty ? nil : $0 }
+        self.keep = (try? c.decodeIfPresent(AwayKeep.self, forKey: .keep)) ?? AwayKeep()
+        self.returns = c.lenientDayMap(.returns)
+        self.fromTrip = c.lenientDayMap(.fromTrip)
+        self.settledAt = c.lenientString(.settledAt)
+    }
+}
+
 /// The `user_settings` columns the phone reads. `timezone` is the stored value
 /// untrimmed; the caller applies `timezone?.trim() || device`
 /// (components/supabase-provider.tsx, lib/planner-store.ts).
@@ -511,6 +592,11 @@ public struct PlannerPayload: Decodable, Sendable, Hashable {
     /// or is older than the field; the plan then arms none. A bad element is
     /// skipped.
     public var snoozes: [PlanSnooze]?
+    /// The user's trips (`awayPeriods`, lib/app-api.ts), past and future, as
+    /// `awayHoldOn` takes them. Nil from a server older than the field, read
+    /// as none (`trips`), which answers as the phone did before vacation mode.
+    /// A bad element is skipped.
+    public var awayPeriods: [AwayPeriod]?
     /// Item rows that couldn't be read and were left out.
     public var droppedItems: Int
 
@@ -526,6 +612,7 @@ public struct PlannerPayload: Decodable, Sendable, Hashable {
         writes: [String]? = nil,
         itemTypes: [ItemTypeLabel]? = nil,
         snoozes: [PlanSnooze]? = nil,
+        awayPeriods: [AwayPeriod]? = nil,
         droppedItems: Int = 0
     ) {
         self.v = v
@@ -539,11 +626,17 @@ public struct PlannerPayload: Decodable, Sendable, Hashable {
         self.writes = writes
         self.itemTypes = itemTypes
         self.snoozes = snoozes
+        self.awayPeriods = awayPeriods
         self.droppedItems = droppedItems
     }
 
+    /// The trips every "is this live" question takes: none when the server
+    /// sent no list.
+    public var trips: [AwayPeriod] { awayPeriods ?? [] }
+
     enum CodingKeys: String, CodingKey {
         case v, userId, fetchedAt, settings, items, projects, routines, seasons, writes, itemTypes, snoozes
+        case awayPeriods
     }
 
     /// The envelope is strict (a payload with no user can't be trusted to be
@@ -567,6 +660,7 @@ public struct PlannerPayload: Decodable, Sendable, Hashable {
         self.writes = c.lenientStrings(.writes)
         self.itemTypes = c.lossyArrayIfPresent(ItemTypeLabel.self, .itemTypes)
         self.snoozes = c.lossyArrayIfPresent(PlanSnooze.self, .snoozes)
+        self.awayPeriods = c.lossyArrayIfPresent(AwayPeriod.self, .awayPeriods)
     }
 }
 
@@ -665,6 +759,17 @@ extension KeyedDecodingContainer {
         var out: [String: Int] = [:]
         for k in map.allKeys {
             if let i = map.lenientInt(k) { out[k.stringValue] = i }
+        }
+        return out
+    }
+
+    /// A trip's `returns` / `fromTrip`: an item id → day map, keeping the
+    /// entries whose key is a uuid and whose value is a string.
+    fileprivate func lenientDayMap(_ key: Key) -> [UUID: String] {
+        guard let map = try? nestedContainer(keyedBy: AnyKey.self, forKey: key) else { return [:] }
+        var out: [UUID: String] = [:]
+        for k in map.allKeys {
+            if let id = UUID(uuidString: k.stringValue), let day = map.lenientString(k) { out[id] = day }
         }
         return out
     }

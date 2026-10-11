@@ -349,6 +349,9 @@ public struct PlanInput: Sendable, Hashable {
     /// Live routines and seasons.
     public var routines: [Routine]
     public var seasons: [Season]
+    /// The user's trips (vacation mode): a held habit's cue waits for its
+    /// return day.
+    public var away: [AwayPeriod]
     public var timeFormat: TimeFormat
     /// habit_reminders_enabled AND this device's own switch. Off plans no cue,
     /// no snooze and no catch-up, and withdraws every cue in the shade; the
@@ -370,6 +373,7 @@ public struct PlanInput: Sendable, Hashable {
         items: [Item],
         routines: [Routine] = [],
         seasons: [Season] = [],
+        away: [AwayPeriod] = [],
         timeFormat: TimeFormat = .twelveHour,
         remindersEnabled: Bool,
         eod: PlanEod? = nil,
@@ -384,6 +388,7 @@ public struct PlanInput: Sendable, Hashable {
         self.items = items
         self.routines = routines
         self.seasons = seasons
+        self.away = away
         self.timeFormat = timeFormat
         self.remindersEnabled = remindersEnabled
         self.eod = eod
@@ -758,7 +763,7 @@ public func planNotifications(_ input: PlanInput) -> NotificationPlan {
     let (today, nowMinutes) = wallClock(nowMs, zone)
     let todayStr = today.description
 
-    let ctx = ActivationContext(timeZone: input.timeZone, routines: input.routines, seasons: input.seasons)
+    let ctx = ActivationContext(timeZone: input.timeZone, routines: input.routines, seasons: input.seasons, away: input.away)
     let budget = input.budget
 
     // The minutes no repeating trigger may sit on here: those the zone's

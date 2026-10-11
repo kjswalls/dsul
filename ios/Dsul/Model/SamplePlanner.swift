@@ -108,6 +108,11 @@ final class SamplePlanner {
     /// In the server's order. An item in a season is hidden on a day the
     /// season isn't live (`inactiveItemIdsOn`).
     private(set) var seasons: [Season]
+    /// The user's trips (`PlannerPayload.awayPeriods`, vacation mode): asked
+    /// first by every "is this live" question here, as on the web, so a trip
+    /// hides what the web hides. Empty for the sample and for a server older
+    /// than the field.
+    private(set) var awayPeriods: [AwayPeriod] = []
     private(set) var settings: PlannerSettings
     /// The user's day now. Moves at midnight and on returning to the app
     /// (`refreshToday`), and when the stored timezone changes, never from a
@@ -292,7 +297,8 @@ final class SamplePlanner {
     private func derive(on date: DayString) -> DayItems {
         let zone = timeZoneID
         let split = DsulCore.project(items)
-        let inactive = inactiveItemIdsOn(items: items, date: date, timeZone: zone, routines: routines, seasons: seasons)
+        let inactive = inactiveItemIdsOn(items: items, date: date, timeZone: zone, routines: routines, seasons: seasons,
+                                         away: awayPeriods)
         return deriveDayItems(tasks: split.tasks, habits: split.habits, projects: projectRecords, date: date,
                               timeZone: zone, showCompletedTasks: settings.showCompletedTasks, inactive: inactive)
     }
@@ -914,7 +920,7 @@ final class SamplePlanner {
     var braindump: [SampleItem] {
         let split = DsulCore.project(items)
         let suppressed = inactiveItemIdsOn(items: items, date: today, timeZone: timeZoneID,
-                                           routines: routines, seasons: seasons)
+                                           routines: routines, seasons: seasons, away: awayPeriods)
         return braindumpMembers(tasks: split.tasks, habits: split.habits, suppressed: suppressed)
     }
 
@@ -972,6 +978,7 @@ final class SamplePlanner {
         projectRecords = payload.projects
         routines = payload.routines
         seasons = payload.seasons
+        awayPeriods = payload.trips
         settings = payload.settings
         snoozes = payload.snoozes ?? []
         writes = payload.writes
@@ -1002,7 +1009,7 @@ final class SamplePlanner {
             return false
         }
         let before = items[i]
-        let ctx = ActivationContext(timeZone: timeZone, routines: routines, seasons: seasons)
+        let ctx = ActivationContext(timeZone: timeZone, routines: routines, seasons: seasons, away: awayPeriods)
         guard let intent = notificationDoneIntent(before, on: day, ctx) else { return false }
         items[i] = applying(intent, to: before, on: day)
         sync.enqueue(.complete(id: id, date: dateStr, done: intent.done, count: intent.count), snapshot: before,
