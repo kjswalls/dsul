@@ -635,6 +635,43 @@ export function askNew(text: string, o: { title: string; isMobile: boolean }): v
   void sendFrom({ kind: 'draft', id }, text, { surface });
 }
 
+/**
+ * Leave the Organize console for Ask: it is a modal over the planner, so an
+ * answer opened under it would be one nobody sees. A container's row there
+ * and a selection of its member rows ask from inside it.
+ */
+function leaveConsole(): void {
+  const ui = useUIStore.getState();
+  if (ui.activeDialog?.type === 'organize') ui.closeDialog();
+}
+
+/**
+ * Start a fresh conversation with `text` waiting in its box, nothing sent: a
+ * container's "Ask about this…" and a selection's "Ask about these…"
+ * (lib/container-asks.ts). Pushed and focused as askNew pushes, with the caret
+ * after the words. An item open on top on desktop is closed first, through
+ * the one flushing close, and so is the Organize console.
+ */
+export function composeNew(text: string, isMobile: boolean): void {
+  if (!getAICapabilities().canChat) return;
+  leaveConsole();
+  if (!revealChat(isMobile)) return;
+  const id = useConversationsStore.getState().newDraft();
+  const surface: AskSurface = isMobile ? 'phone' : 'desktop';
+  if (!isMobile) closeItemPanel();
+  const rail = useRailStore.getState();
+  rail.push(surface, { kind: 'conversation', id });
+  rail.setDraft(bindingKey({ kind: 'draft', id }), text);
+  rail.focusComposer({ kind: 'draft', id });
+}
+
+/** askNew from a container's menu ("Break it down"), which may be inside the Organize console. */
+export function askNewFromContainer(text: string, o: { title: string; isMobile: boolean }): void {
+  if (!getAICapabilities().canChat) return;
+  leaveConsole();
+  askNew(text, o);
+}
+
 // ── Asked from an item's own menu ────────────────────────────────────────────
 //
 // The item's right-click menu ("Ask AI", lib/item-asks.ts) lands in three
