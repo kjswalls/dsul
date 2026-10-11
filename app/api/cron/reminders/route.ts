@@ -39,7 +39,8 @@ export const maxDuration = 60;
 function tickLine(summary: ScanSummary): string {
   return (
     `[cron/reminders] users=${summary.users} cues=${summary.cues} lastCalls=${summary.lastCalls} ` +
-    `eod=${summary.eod} unreached=${summary.unreached} daysSettled=${summary.daysSettled} ` +
+    `eod=${summary.eod} unreached=${summary.unreached} retried=${summary.retried} ` +
+    `daysSettled=${summary.daysSettled} ` +
     `notes=${summary.notes.length}`
   );
 }

@@ -23,7 +23,7 @@ import { CUE_LOG_KEY } from '@/lib/reminders/cue-log';
  * id), or `{ key, endpoint }` from the worker, which has no localStorage and
  * so no device id; the endpoint is looked up among the user's own devices.
  * Answers `{ ok: true, logged }`; `logged` is false when no row has that key
- * (the scan's writer, PR-1d, is what makes them) or it was acked already.
+ * (the scan, the retry pass and the claim route make them; lib/reminders/cue-log-write.ts) or it was acked already.
  * 503 `unavailable` while 067 is not applied.
  */
 

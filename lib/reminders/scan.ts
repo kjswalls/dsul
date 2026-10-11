@@ -34,7 +34,6 @@ import {
   minutesOfDay,
   REMINDER_GRACE_MINUTES,
   sentKeyFor,
-  streakOf,
   type ReminderCandidate,
   type ScanRow,
 } from './due'
@@ -42,15 +41,17 @@ import {
 // this file means by `minutesOfDay`. The two are not interchangeable: see the
 // review's tier below.
 import { isEodOwed, minutesOfDay as eodMinutesOfDay } from '../eod'
-import { EOD_COPY, lastCallCopy, reminderCopy, type TimeFormat } from './copy'
+import type { TimeFormat } from './copy'
 import { deliverNudge, type DeliveryReport } from './deliver'
-import type { Nudge, NudgeItem } from './nudge'
+import type { Nudge } from './nudge'
 import type { ActivationContext } from '../active'
 import type { Item } from '../planner-types'
 import { isMissingColumn, loadChannelState } from './extension-state'
 import { localClock, type LocalClock } from './clock'
 import { claimCue, claimSnooze } from './claim'
-import { cueKey, dayKey, snoozeKey } from './cue-log'
+import { cueNudge, eodNudge, lastCallNudge } from './build'
+import { closeCueLog, openCueLog, resultsOf } from './cue-log-write'
+import { readOpenCues, retryOpenCues } from './retry'
 
 type ServiceClient = ReturnType<typeof createServiceClient>
 
@@ -234,6 +235,11 @@ export interface ScanSummary {
    * see noteFailures.
    */
   unreached: number
+  /**
+   * Nudges re-sent to devices by the retry pass: claimed by an earlier tick,
+   * logged in cue_log, and never delivered (lib/reminders/retry.ts).
+   */
+  retried: number
   /** Days closed by the stakes settlement. */
   daysSettled: number
   /** Non-fatal problems, one line each. */
@@ -268,10 +274,6 @@ export class ReminderScanError extends Error {
   }
 }
 
-function toNudgeItem(item: Item): NudgeItem {
-  return { id: item.id, title: item.title, streak: streakOf(item) }
-}
-
 
 export async function runReminderScan(
   service: ServiceClient,
@@ -283,6 +285,7 @@ export async function runReminderScan(
     lastCalls: 0,
     eod: 0,
     unreached: 0,
+    retried: 0,
     daysSettled: 0,
     notes: [],
   }
@@ -375,6 +378,13 @@ export async function runReminderScan(
     forUser.set(row.id, row)
   }
 
+  // The retry pass's input, for everyone in one read, like the bookkeeping:
+  // nudges an earlier tick claimed and logged that no device got
+  // (lib/reminders/retry.ts). Never a reason to stop the tick; a failure here
+  // is a note and no retries.
+  const open = await readOpenCues(service, rows.map((r) => r.user_id), options.now.getTime())
+  if (open.error) summary.notes.push(`cue_log read failed — ${open.error}`)
+
   for (const user of rows) {
     const timezone = user.timezone as string
     let clock: LocalClock
@@ -459,9 +469,10 @@ export async function runReminderScan(
       // went off bring nobody in, now that the review alone can put a user in
       // the tick.
       const itemsWanted = (remindersOn && book.size > 0) || lastCallDue || pendingDays.length > 0
+      const retries = open.byUser.get(user.user_id) ?? []
 
-      // Nothing set and nothing owed — do not pay for the reads below.
-      if (!eodDue && !itemsWanted) continue
+      // Nothing set, nothing owed and nothing to retry — do not pay for the reads below.
+      if (!eodDue && !itemsWanted && retries.length === 0) continue
 
       summary.users += 1
 
@@ -470,6 +481,70 @@ export async function runReminderScan(
       // delivery then cannot even be attempted is a nudge spent on nothing.
       const channelState = await loadChannelState(service, user.user_id)
       const base = { userId: user.user_id, service, timeFormat, timezone }
+
+      // The user's items and activation context, read at most once a tick, and
+      // only by whatever needs them: the retry pass, the cues, the last call
+      // and the settlement. A user here for the review alone never pays.
+      let worldRead: Promise<{ items: Item[]; ctx: ActivationContext }> | null = null
+      const world = () =>
+        (worldRead ??= (async () => {
+          const [items, routines, seasons] = await Promise.all([
+            fetchItems(user.user_id, undefined, service),
+            fetchRoutines(user.user_id, service),
+            fetchSeasons(user.user_id, service),
+          ])
+          // routines/seasons return null when their tables are unreachable.
+          // Passing the nulls through as "no memberships known" is the
+          // ActivationContext contract and leaves item-level pause still
+          // honoured — which is the safe direction: the worst case is a nudge
+          // for something a paused SEASON covers, not a nudge for something
+          // the user paused by hand.
+          const ctx: ActivationContext = {
+            userTimezone: timezone,
+            routines: routines ?? undefined,
+            seasons: seasons ?? undefined,
+          }
+          return { items, ctx }
+        })())
+
+      // A claimed nudge is sent through this: its cue_log row opened first, so
+      // a send cut off partway leaves the row the retry pass looks for, and
+      // closed after with what every channel made of it. The ledger never
+      // gates the send; a row that cannot be written is a note.
+      const deliverLogged = async (nudge: Nudge, kind: string) => {
+        const opened = await openCueLog(service, user.user_id, nudge, options.now.getTime())
+        if (opened.error) summary.notes.push(`${user.user_id}: cue_log open failed — ${opened.error}`)
+        const reports = await deliverNudge(nudge, base, channelState)
+        noteFailures(summary, user.user_id, kind, reports)
+        if (opened.id) {
+          const nowMs = Date.now()
+          const closeError = await closeCueLog(service, user.user_id, opened.id, resultsOf(reports, new Date(nowMs).toISOString()), { nowMs })
+          if (closeError) summary.notes.push(`${user.user_id}: cue_log close failed — ${closeError}`)
+        }
+      }
+
+      /* ── The retry pass ────────────────────────────────────────────────── */
+
+      // First, so a nudge an earlier tick lost goes before anything new about
+      // the same day. Devices only, each row claimed on `attempts` and asked
+      // again before it is sent (lib/reminders/retry.ts).
+      if (retries.length > 0) {
+        const retried = await retryOpenCues(service, retries, {
+          userId: user.user_id,
+          clock,
+          timeFormat,
+          remindersOn,
+          lastCallOn: user.habit_last_call_enabled === true,
+          eod: {
+            enabled: user.eod_review_enabled === true,
+            time: user.eod_review_time,
+            lastReviewDate: user.last_eod_review_date,
+          },
+          world,
+        })
+        summary.retried += retried.retried
+        summary.notes.push(...retried.notes)
+      }
 
       /* ── The end-of-day review (Tier 0) ────────────────────────────────── */
 
@@ -497,46 +572,16 @@ export async function runReminderScan(
         } else if ((claimedEod ?? []).length === 0) {
           // Another tick got there first. Nothing to do, and nothing wrong.
         } else {
-          const nudge: Nudge = {
-            kind: 'eod',
-            title: EOD_COPY.title,
-            body: EOD_COPY.body,
-            // The day it invites a review of, so a tap after midnight is
-            // recorded as that day's review and not the new one's, which would
-            // retire the new day's invitation before it is sent (lib/eod.ts's
-            // reviewedDay). The app still opens the bare ?eod=1 of older pushes.
-            url: `/?eod=${clock.dateStr}`,
-            dateStr: clock.dateStr,
-            items: [],
-            // Good until the user's own midnight and no further: the review
-            // is about today, and tomorrow's invitation is tomorrow's.
-            expiresAtMs: expiryAt(clock, MINUTES_PER_DAY),
-            logKey: dayKey('eod', clock.dateStr),
-          }
-          const reports = await deliverNudge(nudge, base, channelState)
-          noteFailures(summary, user.user_id, 'eod', reports)
+          // Good until the user's own midnight and no further: the review is
+          // about today, and tomorrow's invitation is tomorrow's.
+          await deliverLogged(eodNudge(clock.dateStr, expiryAt(clock, MINUTES_PER_DAY)), 'eod')
           summary.eod += 1
         }
       }
 
       if (!itemsWanted) continue
 
-      const [items, routines, seasons] = await Promise.all([
-        fetchItems(user.user_id, undefined, service),
-        fetchRoutines(user.user_id, service),
-        fetchSeasons(user.user_id, service),
-      ])
-
-      // routines/seasons return null when their tables are unreachable. Passing
-      // the nulls through as "no memberships known" is the ActivationContext
-      // contract and leaves item-level pause still honoured — which is the safe
-      // direction: the worst case is a nudge for something a paused SEASON
-      // covers, not a nudge for something the user paused by hand.
-      const ctx: ActivationContext = {
-        userTimezone: timezone,
-        routines: routines ?? undefined,
-        seasons: seasons ?? undefined,
-      }
+      const { items, ctx } = await world()
 
       /* ── The per-item cues ─────────────────────────────────────────────── */
 
@@ -608,23 +653,14 @@ export async function runReminderScan(
           summary.notes.push(`${user.user_id}: cue claim failed`)
         } else {
           for (const candidate of claimed) {
-            const { title, body } = reminderCopy(candidate, timeFormat)
-            const nudge: Nudge = {
-              kind: 'cue',
-              title,
-              body,
-              url: `/item/${candidate.item.id}`,
-              dateStr: clock.dateStr,
-              itemId: candidate.item.id,
-              items: [toNudgeItem(candidate.item)],
-              snoozed: candidate.snoozed,
-              expiresAtMs: cueExpiresAt(candidate, clock, grace),
-              logKey: candidate.snoozed
-                ? (snoozeKey(candidate.item.id, book.get(candidate.item.id)?.reminder_snooze_until ?? '') ?? undefined)
-                : cueKey(candidate.item.id, clock.dateStr, candidate.at),
-            }
-            const reports = await deliverNudge(nudge, base, channelState)
-            noteFailures(summary, user.user_id, 'cue', reports)
+            const nudge = cueNudge(
+              candidate,
+              clock.dateStr,
+              timeFormat,
+              cueExpiresAt(candidate, clock, grace),
+              book.get(candidate.item.id)?.reminder_snooze_until ?? null,
+            )
+            await deliverLogged(nudge, 'cue')
             summary.cues += 1
           }
         }
@@ -633,8 +669,15 @@ export async function runReminderScan(
       /* ── The streak-at-risk last call ──────────────────────────────────── */
 
       if (lastCallDue) {
-        const open = lastCallItems(items, clock.dateStr, ctx)
-        const copy = lastCallCopy(open)
+        // One grace from THIS tick, never past midnight, rather than to the
+        // end of the window it was found in. What a last call says is the
+        // day's state at the minute it was computed, so how long it stays
+        // true runs from then.
+        const nudge = lastCallNudge(
+          lastCallItems(items, clock.dateStr, ctx),
+          clock.dateStr,
+          expiryAt(clock, Math.min(clock.nowMinutes + grace, MINUTES_PER_DAY)),
+        )
 
         // CLAIMED, not stamped — the cue path's rule, and it matters more here.
         // A blind write always "succeeds", so two overlapping ticks would both
@@ -656,24 +699,8 @@ export async function runReminderScan(
           summary.notes.push(`${user.user_id}: last-call claim failed — ${stampError.message}`)
         } else if ((claimedLastCall ?? []).length === 0) {
           // Another tick got there first. Nothing to do, and nothing wrong.
-        } else if (copy) {
-          const nudge: Nudge = {
-            kind: 'last-call',
-            title: copy.title,
-            body: copy.body,
-            url: '/',
-            dateStr: clock.dateStr,
-            itemId: open.length === 1 ? open[0].id : undefined,
-            items: open.map(toNudgeItem),
-            // One grace from THIS tick, never past midnight, rather than to the
-            // end of the window it was found in. What a last call says is the
-            // day's state at the minute it was computed, so how long it stays
-            // true runs from then.
-            expiresAtMs: expiryAt(clock, Math.min(clock.nowMinutes + grace, MINUTES_PER_DAY)),
-            logKey: dayKey('last-call', clock.dateStr),
-          }
-          const reports = await deliverNudge(nudge, base, channelState)
-          noteFailures(summary, user.user_id, 'last-call', reports)
+        } else if (nudge) {
+          await deliverLogged(nudge, 'last-call')
           summary.lastCalls += 1
         }
       }

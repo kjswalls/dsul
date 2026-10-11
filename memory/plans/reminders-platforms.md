@@ -420,6 +420,40 @@
 >     `local-state` allowlist: the tick keeps its shown/lost sets in memory, so nothing new is
 >     stored.
 
+> **Addendum (2026-10-11): what PR-1d changed on the way in.** PR-1d (§5.2) fills `cue_log`:
+> `lib/reminders/cue-log-write.ts` (the writer), `lib/reminders/retry.ts` (the retry pass),
+> `lib/reminders/build.ts` (the three nudges, worded once for the scan and the retry), and the
+> ledger's side of `POST /api/reminders/claim`. No migration: 067 is §4.3's table and was applied
+> on 2026-10-10. Where it departs from §4.3 and §5.2:
+>
+> 1. **The row is opened at the claim, before the send, and closed after it.** An upsert on
+>    `(user_id, key)` with `attempts 1`, `delivered_at null`, `results []`; on a conflict it
+>    starts the row again (a cue a page claimed and released, now the scan's). A row still open
+>    and empty is the one signature of a send that was cut off, and is what the retry pass reads.
+>    The ledger never gates a send: a row that cannot be opened is a note, and the cue still goes.
+> 2. **`results` holds codes, never a provider's words**: `{ channel, ok, code?, at }` per channel
+>    (`code` is `unreached`, `skipped`, `failed`, or a retry's `not_wanted` / `not_today` /
+>    `malformed`), the latest 20 kept under 067's 8 KB check. `delivered_at` is stamped when any
+>    channel delivered.
+> 3. **Only a FAILED send is retried.** A nudge that reached nobody because there is no device
+>    (`unreached`) or every channel declined it (`skipped`) finds the same nothing next tick, so
+>    its row is closed with `attempts = 5` (habit-reminders.md decision 4: discharged, not held
+>    over). Retried: a failed push, and a send cut off before it was closed.
+> 4. **The retry pass runs per user, first in that user's turn**, not once at the top of the
+>    tick. One read for everyone (beside the bookkeeping read) finds rows undelivered, under 5
+>    attempts, window open and claimed more than `RETRY_AFTER_MS` (4 minutes) ago: past the
+>    route's 60-second `maxDuration`, so a sibling tick's send is never taken for lost, and under
+>    the 5-minute tick, so the next tick picks it up. Each row is asked again (the same
+>    `wantsDoingOn`, `lastCallItems` and `isEodOwed`, plus the master and last-call switches and
+>    the row's day) with the copy rebuilt as it reads now; silence closes it with its reason.
+>    A user who would otherwise be skipped (nothing set, nothing owed) is visited if a row waits.
+> 5. **The page's cues are in the ledger too.** A won cue or snooze is recorded as delivered at
+>    the claim, `results [{ channel: 'page' }]` (`ignoreDuplicates`: the first record wins), so
+>    the retry never re-sends what a page showed and "did it fire" includes the desk. A won
+>    release deletes only the page's own unacked row (`results @> [{channel:'page'}]`), never one
+>    the scan reopened in between.
+> 6. **The tick's line gains `retried=`**, and `ScanSummary.retried` counts rows re-sent.
+
 2026-10-05. **Status: plan, decided 2026-10-06 — Kirby took every default in §7; nothing in it has been built yet, nothing was written to prod.** Phase 0 is next. Every code citation is tree-level (`main` at `b8d480c`, 2026-10-04; every cited `file:line` holds at `3200896`, #405, 2026-10-05 — six cited files changed between the two commits, `electron/main.cjs`, `electron/preload.cjs`, `lib/desktop.ts`, `desktop-app.md`, `ios-app.md`, `CLAUDE.md`, but not at the cited lines; `preload.cjs` gained `authProviders`): the live project was read on 2026-10-05, read-only, and the observed values sit at the top of §5.1.1: the organisation is on the **Pro** plan, both ticks are paused exactly as 045 left them, no ritual is enabled by any of the four accounts, and Kirby is the only user, so the runbook's EXPECT lines are now observations and the §5.1 writes have no one to disturb. Kirby also holds a paid Apple Developer Program membership (confirmed 2026-10-05), which removes the purchase gate the brief assumed (decision 5, resolved). Facts taken from search snippets of pages the planning sessions could not open are marked `[S]`; facts no source verified are marked **[unverified]** inline and collected in §6. Sibling plans: [habit-reminders.md](habit-reminders.md) (the reminder model this builds on — read it first), [desktop-app.md](desktop-app.md), [ios-app.md](ios-app.md).
 
 ---
