@@ -79,6 +79,7 @@ import { RailHeader } from '@/components/ai/rail/rail-header';
 import { BoundComposer } from '@/components/ai/bound-composer';
 import { ItemConversation } from '@/components/ai/item-conversation';
 import { ItemRail, type RailChip } from '@/components/planner/item-rail';
+import { AttachFileButton } from '@/components/planner/item-files';
 import { useConversationsStore } from '@/lib/conversations-store';
 import {
   ChipOption,
@@ -3118,6 +3119,7 @@ function ItemDialogInner({
   const headerActions = (
     <div className="ml-auto flex items-center gap-0.5">
       {rowControls}
+      {withDetailSections && mode === 'edit' && editItem && <AttachFileButton itemId={editItem.id} />}
       {mode === 'edit' && editItem && pathname !== `/item/${editItem.id}` && (
         <Button
           variant="ghost"

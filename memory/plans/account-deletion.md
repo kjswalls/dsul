@@ -147,6 +147,7 @@ entry is what keeps the outcome when another tab's refused refresh replaces the 
 | Google | dsul in the Google Account's connected apps | Nothing: dsul keeps no Google token |
 | Apple | dsul under Sign in with Apple | Revoked from the iPhone; a line otherwise |
 | Vercel Analytics | page views, with no account id | Nothing |
+| Supabase Storage (`item-files`, 073) | a file's bytes, for at most one cron tick after its row | The `item_files` rows cascade with the account; their AFTER DELETE trigger queues each path in `storage_sweep` in the same transaction, and the reminders cron's files tier removes the bytes through the Storage API (Postgres may not delete Storage objects). Paths are `<user>/<file id>`, so the queue holds no file name |
 
 The keys line names a service only from what `user_secrets` holds, mapped to names on the server;
 no value ever leaves `readAccountFacts`. Every read in the facts route but the user's is

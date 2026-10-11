@@ -3,6 +3,7 @@ import { createServiceClient } from '@/lib/supabase-service';
 import { ReminderScanError, runReminderScan, type ScanSummary } from '@/lib/reminders/scan';
 import { checkCronAuth } from '@/lib/cron-auth';
 import { runRecipeTick, type RecipeTickSummary } from '@/lib/recipes/server';
+import { sweepItemFiles, type SweepSummary } from '@/lib/item-files-sweep';
 
 /**
  * GET /api/cron/reminders
@@ -20,7 +21,8 @@ import { runRecipeTick, type RecipeTickSummary } from '@/lib/recipes/server';
  * After the scan, the timed-recipe tier (lib/recipes/server/tick.ts,
  * memory/plans/mods.md build order 6), in its own try with its own log line:
  * it runs whether the scan succeeded or not, and it never decides the status,
- * so a failing recipe never costs a reminder its monitor.
+ * so a failing recipe never costs a reminder its monitor. Then the files tier
+ * (lib/item-files-sweep.ts), the same way.
  *
  * Auth: Authorization: Bearer <CRON_SECRET>. The caller is Postgres: pg_cron
  * runs public.dsul_tick, which sends the header through pg_net with the secret
@@ -63,6 +65,24 @@ async function recipeTier(now: Date, startMs: number): Promise<RecipeTickSummary
   }
 }
 
+/**
+ * The files tier (lib/item-files-sweep.ts, migration 073): bytes whose row is
+ * gone are removed through the Storage API. Last, isolated like the recipes,
+ * and quiet in the log unless it did something.
+ */
+async function filesTier(now: Date): Promise<SweepSummary> {
+  try {
+    const files = await sweepItemFiles(createServiceClient(), now);
+    if (files.removed || files.stale || files.notes.length) {
+      console.log(`[cron/files] removed=${files.removed} stale=${files.stale} notes=${files.notes.length}`);
+    }
+    return files;
+  } catch (err) {
+    console.error('[cron/files] tier failed:', err);
+    return { removed: 0, stale: 0, notes: ['files tier failed'] };
+  }
+}
+
 export async function GET(req: NextRequest) {
   const denied = checkCronAuth(req);
   if (denied) return denied.response;
@@ -84,11 +104,13 @@ export async function GET(req: NextRequest) {
     // The recipes still run: they do not depend on the scan's reads.
     const recipes = await recipeTier(now, startMs);
     console.log(recipeLine(recipes));
+    const files = await filesTier(now);
     return NextResponse.json(
       {
         error: err instanceof Error ? err.message : 'Scan failed',
         notes: err instanceof ReminderScanError ? err.notes : [],
         recipes,
+        files,
       },
       { status: 500 },
     );
@@ -100,5 +122,6 @@ export async function GET(req: NextRequest) {
   console.log(tickLine(summary));
   const recipes = await recipeTier(now, startMs);
   console.log(recipeLine(recipes));
-  return NextResponse.json({ ok: true, ...summary, recipes });
+  const files = await filesTier(now);
+  return NextResponse.json({ ok: true, ...summary, recipes, files });
 }
