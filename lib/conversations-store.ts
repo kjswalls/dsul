@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { usePlannerStore } from './planner-store';
+import { useAwayStore } from './away-store';
 import { getAICapabilities, useAIConnectionStore } from './ai-connection-store';
 import { buildDsulContext } from './ai-context';
 import { mentionedItemIds } from './chat-mentions';
@@ -522,6 +523,7 @@ function plannerContext(itemId: string | null, message: string): { context: stri
     projects,
     routines,
     seasons,
+    away: useAwayStore.getState().periods,
     // The AI is told about goals only while the user has the idea switched on.
     goals: goalsEnabled() ? goals : [],
     focusItemId,

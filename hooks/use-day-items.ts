@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useAwayStore } from '@/lib/away-store';
 import { useViewStore } from '@/lib/view-store';
 import { toDateStr } from '@/lib/recurrence';
 import { deriveDayItems, type DayItems } from '@/lib/day-items';
@@ -36,6 +37,7 @@ export function useDayItemsForDates(dates: Date[]): DayItems[] {
     userTimezone,
   } = usePlannerStore();
   const typeFilter = useViewStore((s) => s.typeFilter);
+  const away = useAwayStore((s) => s.periods);
   const canvasFilters = useViewStore((s) => s.canvasFilters);
 
   const timezone = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -110,6 +112,7 @@ export function useDayItemsForDates(dates: Date[]): DayItems[] {
                 userTimezone: timezone,
                 routines,
                 seasons,
+                away,
               }),
         });
       }),
@@ -117,7 +120,7 @@ export function useDayItemsForDates(dates: Date[]): DayItems[] {
     // array as well would re-derive on every render for the array-literal
     // callers, which is every caller.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [dateKey, tasks, habits, projects, items, routines, seasons, timezone, typeFilter, showCompletedTasks, showPausedOnGrid, canvasFilters, goalMemberIds]
+    [dateKey, tasks, habits, projects, items, routines, seasons, away, timezone, typeFilter, showCompletedTasks, showPausedOnGrid, canvasFilters, goalMemberIds]
   );
 }
 

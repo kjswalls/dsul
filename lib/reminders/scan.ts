@@ -24,7 +24,7 @@
  */
 
 import { addDays, format, parseISO } from 'date-fns'
-import { fetchItems, fetchRoutines, fetchSeasons } from '../db'
+import { fetchAwayPeriods, fetchItems, fetchRoutines, fetchSeasons } from '../db'
 import { settleOneDay } from '../stakes/settle'
 import type { createServiceClient } from '../supabase-service'
 import {
@@ -45,6 +45,7 @@ import type { TimeFormat } from './copy'
 import { deliverNudge, type DeliveryReport } from './deliver'
 import type { Nudge } from './nudge'
 import type { ActivationContext } from '../active'
+import { currentAway } from '../away'
 import type { Item } from '../planner-types'
 import { isMissingColumn, loadChannelState } from './extension-state'
 import { localClock, type LocalClock } from './clock'
@@ -474,6 +475,14 @@ export async function runReminderScan(
       // Nothing set, nothing owed and nothing to retry — do not pay for the reads below.
       if (!eodDue && !itemsWanted && retries.length === 0) continue
 
+      // The user's trips, read once and shared by the review's veto and the
+      // ActivationContext below. null is migration 071 not applied: no trips.
+      const away = (await fetchAwayPeriods(user.user_id, service)) ?? undefined
+      // No review is invited on a day away: there is no day to review. Asked
+      // before the claim, so the stamp is left free for the day you are back.
+      const reviewDue = eodDue && !currentAway(away, clock.dateStr)
+      if (!reviewDue && !itemsWanted && retries.length === 0) continue
+
       summary.users += 1
 
       const timeFormat: TimeFormat = user.time_format === '24h' ? '24h' : '12h'
@@ -503,6 +512,7 @@ export async function runReminderScan(
             userTimezone: timezone,
             routines: routines ?? undefined,
             seasons: seasons ?? undefined,
+            away,
           }
           return { items, ctx }
         })())
@@ -555,7 +565,7 @@ export async function runReminderScan(
       // devices costs this review and not the cues below; and it is what lets
       // voice and SMS decline the kind (REMINDER_KINDS) rather than this tier
       // knowing that push is the only channel that wants it.
-      if (eodDue) {
+      if (reviewDue) {
         // CLAIMED, then delivered: the cue path's rule, and the reverse of the
         // route this replaced, which delivered and then stamped, so a stamp
         // that failed after a push that landed left the next tick free to send

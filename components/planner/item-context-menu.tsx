@@ -59,6 +59,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { useMediaQuery } from '@/hooks/use-media-query';
 import { useCommandContext } from '@/hooks/use-command-context';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useAwayStore } from '@/lib/away-store';
 import { useSelectionStore } from '@/lib/selection-store';
 import { openEditFor } from '@/lib/ui-store';
 import { milestoneItemIds } from '@/lib/goals';
@@ -454,6 +455,7 @@ function AskSection({ item, todayStr, tz, page }: { item: Item; todayStr: string
   const hasConversation = useConversationsStore((s) => typeof s.itemIndex[item.id] === 'string');
   const routines = usePlannerStore((s) => s.routines);
   const seasons = usePlannerStore((s) => s.seasons);
+  const away = useAwayStore((s) => s.periods);
   const goals = usePlannerStore((s) => s.goals);
   // The menu body mounts only while open, so the status beside "Take back"
   // reads the clock as of opening, which is all a glance needs.
@@ -473,7 +475,7 @@ function AskSection({ item, todayStr, tz, page }: { item: Item; todayStr: string
 
   const takeBack = canTakeBack(item);
   if (!canChat && !canPropose && !canDelegate && !takeBack) return null;
-  const inactiveIds = inactiveItemIdsOn([item], todayStr, { userTimezone: tz, routines, seasons });
+  const inactiveIds = inactiveItemIdsOn([item], todayStr, { userTimezone: tz, routines, seasons, away });
   const ctx: ItemAskContext = {
     todayStr,
     inactiveIds,

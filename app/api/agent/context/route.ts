@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { HabitItem, TaskItem } from '@dsul/types'
 import { createClient } from '@/lib/supabase-server'
 import { createServiceClient, resolveUserIdFromApiKey } from '@/lib/supabase-service'
-import { fetchItems, fetchProjects, fetchRoutines, fetchSeasons, toLegacyTask, toLegacyHabit, fetchGoals } from '@/lib/db'
+import { fetchItems, fetchProjects, fetchRoutines, fetchSeasons, toLegacyTask, toLegacyHabit, fetchGoals, fetchAwayPeriods } from '@/lib/db'
 import { isOpenLoopSuppressedOn } from '@/lib/active'
 import { toDateStr } from '@/lib/recurrence'
 
@@ -38,6 +38,7 @@ export async function GET(req: NextRequest) {
     seasonsResult,
     goalsResult,
     settingsResult,
+    away,
   ] =
     await Promise.all([
       fetchItems(userId, undefined, dbClient),
@@ -53,6 +54,9 @@ export async function GET(req: NextRequest) {
         .select('timezone')
         .eq('user_id', userId)
         .single(),
+      // Only for the filter, never emitted: a trip holds its habits and dated
+      // tasks exactly as a pause does, and the response's schema stays pinned.
+      fetchAwayPeriods(userId, dbClient),
     ])
   // null means the tables are unreachable — degrade to item-level pause rather
   // than 500ing a read the plugin depends on.
@@ -94,7 +98,7 @@ export async function GET(req: NextRequest) {
   // that was already marked today is NOT an open loop, so it stays in these
   // arrays and the plugin's narration keeps matching the EOD review.
   const visible = items.filter(
-    (i) => !isOpenLoopSuppressedOn(i, todayStr, { userTimezone, routines, seasons })
+    (i) => !isOpenLoopSuppressedOn(i, todayStr, { userTimezone, routines, seasons, away: away ?? undefined })
   )
   const tasks = visible.filter((i): i is TaskItem => i.type === 'task').map(toLegacyTask)
   const habits = visible.filter((i): i is HabitItem => i.type === 'habit').map(toLegacyHabit)

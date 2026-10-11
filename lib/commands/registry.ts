@@ -115,6 +115,7 @@ import {
 import type { Command, CommandArgOption, CommandContext, CommandProvider } from './types';
 import type { TypeFilter, ViewLayout } from '../view-store';
 import type { GroupBy, Priority, TimeBucket, Routine, Season, Goal } from '../planner-types';
+import { useAwayStore } from '../away-store';
 
 /**
  * The command registry.
@@ -596,7 +597,12 @@ export const STATIC_COMMANDS: Command[] = [
       const todayStr = toDateStr(new Date(), tz);
       // Dateless surface: resolve suppression at TODAY, never at the store's
       // navigable selectedDate (plan decision 3).
-      const inactive = inactiveItemIdsOn(items, todayStr, { userTimezone: tz, routines, seasons });
+      const inactive = inactiveItemIdsOn(items, todayStr, {
+        userTimezone: tz,
+        routines,
+        seasons,
+        away: useAwayStore.getState().periods,
+      });
       return selectOverdue(items, todayStr, inactive).length > 0;
     },
     // Reveal the surface BEFORE poking its state — the same guard Open

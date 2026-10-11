@@ -8,6 +8,8 @@ import { selectOverdue, daysOverdue, toDateOnly } from '@/lib/overdue';
 import { milestoneItemIds } from '@/lib/goals';
 import { inactiveItemIdsOn, type Pausable } from '@/lib/active';
 import { releasedOn } from '@/lib/sweep-grace';
+import { useAwayStore } from '@/lib/away-store';
+import { returnDayOf, type AwayPeriod } from '@/lib/away';
 import type { Item, Routine, Season } from '@/lib/planner-types';
 
 /** Did this pause interval end within the trailing `windowDays`? */
@@ -80,8 +82,17 @@ function resumedRecently(
   windowDays: number,
   routines: readonly Routine[],
   seasons: readonly Season[],
+  away: readonly AwayPeriod[],
 ): boolean {
   if (pauseEndedRecently(item, todayStr, windowDays)) return true;
+
+  // A trip (vacation mode) is a suppression with a recorded end, so coming back
+  // earns the window too. The day an item is back is its wave's day when it has
+  // one. Kept items were never held, but gracing one costs only a day.
+  for (const trip of away) {
+    const back = returnDayOf(item.id, trip);
+    if (back && back <= todayStr && withinTrailingWindow(back, todayStr, windowDays)) return true;
+  }
 
   // The container that was hiding this item may be GONE — deleted, or no longer
   // holding it. Then there is no resume date to read anywhere, because the row
@@ -177,6 +188,9 @@ export function useOverdueSweep() {
   const isLoading = usePlannerStore((s) => s.isLoading);
   const loadError = usePlannerStore((s) => s.error);
   const userTimezone = usePlannerStore((s) => s.userTimezone);
+  // Trips load beside the planner (supabase-provider). While this account's are
+  // still in flight, every held item would read as unprotected.
+  const awayPending = useAwayStore((s) => s.userId === userId && !s.loaded);
 
   useEffect(() => {
     // ── Gate 1: items have actually finished hydrating from Supabase ──────────
@@ -214,6 +228,9 @@ export function useOverdueSweep() {
     // milestone as an ordinary stale task, and erases a year of target dates in
     // one unattended batch that no toast even announces.
     if (!userId || isLoading || loadError) return;
+    // Trips are the one suppression that does not ride that set(): they are
+    // not undo state, so they load beside it. Same rule, its own gate.
+    if (awayPending) return;
 
     // ── Gate 2: the SETTINGS in memory demonstrably belong to THIS user ───────
     // Gate 1 is about items and says nothing about settings; the two requests
@@ -295,10 +312,12 @@ export function useOverdueSweep() {
     // `> autoAgeDays` is exactly "past due by MORE than N days".
     const routines = planner.routines;
     const seasons = planner.seasons;
+    const away = useAwayStore.getState().periods;
     const inactive = inactiveItemIdsOn(planner.items, todayStr, {
       userTimezone,
       routines,
       seasons,
+      away,
     });
     const stale = selectOverdue(planner.items, todayStr, inactive).filter(
       (item) => daysOverdue(item, todayStr) > autoAgeDays,
@@ -320,7 +339,7 @@ export function useOverdueSweep() {
     // clearing the pause pair — the interval has to survive on the row for this
     // to be computable at all.
     const graced = stale.filter(
-      (item) => !resumedRecently(item, todayStr, autoAgeDays, routines, seasons)
+      (item) => !resumedRecently(item, todayStr, autoAgeDays, routines, seasons, away)
     );
 
     // Milestones are subtracted HERE, not left to unscheduleTasks to refuse.
@@ -402,5 +421,6 @@ export function useOverdueSweep() {
     isLoading,
     loadError,
     userTimezone,
+    awayPending,
   ]);
 }

@@ -35,6 +35,7 @@
  */
 
 import type { ActivationContext } from '../active'
+import type { AwayPeriod } from '../away'
 import type { Item, Routine, Season } from '../planner-types'
 // The buttons and the snooze length from the worker's mirror, never from
 // ./channels/push, which would pull the sender (web-push) into the page.
@@ -60,6 +61,8 @@ export interface PlannerView {
   items: readonly Item[]
   routines?: readonly Routine[]
   seasons?: readonly Season[]
+  /** The user's trips (lib/away-store.ts). The server re-asks with its own, so this only saves a claim. */
+  away?: readonly AwayPeriod[]
   /** The account's STORED zone, the one the scan reads, never the browser's. */
   timezone: string | null
   timeFormat: TimeFormat
@@ -153,6 +156,7 @@ export function createLocalCueTick(deps: LocalTickDeps): LocalCueTick {
       userTimezone: zone,
       routines: view.routines ? [...view.routines] : undefined,
       seasons: view.seasons ? [...view.seasons] : undefined,
+      away: view.away,
     }
     const due = dueReminders(rows, { ...clock, graceMinutes: REMINDER_GRACE_MINUTES }, ctx)
 

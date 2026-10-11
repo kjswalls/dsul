@@ -17,6 +17,7 @@ import {
 import { RelayField } from '@/components/primitives/relay-field';
 import { AskMark, AskMarkUnlitIcon } from '@/components/ai/ask-mark';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useAwayStore } from '@/lib/away-store';
 import { captureTask } from '@/lib/held-captures';
 import { useUIStore, openEditFor, openAddDialog, openBulkAdd } from '@/lib/ui-store';
 import { isBulkPaste } from '@/lib/bulk-add';
@@ -185,6 +186,7 @@ export function Omnibar({
     goals,
     animationsEnabled,
   } = usePlannerStore();
+  const away = useAwayStore((s) => s.periods);
   const router = useRouter();
   // Today, not selectedDate — the omnibar carries no date of its own.
   const searchTz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -1117,6 +1119,7 @@ export function Omnibar({
                           userTimezone: searchTz,
                           routines,
                           seasons,
+                          away,
                         });
                         return (
                           <CommandItem

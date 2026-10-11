@@ -6,6 +6,7 @@ import { ITEM_TYPES, getItemTypeConfig } from './item-registry';
 import { foldContainerName } from './container-registry';
 import { notifyPlugins } from './openclaw-registry';
 import { COMPLETION_RETRACTION_WINDOW_DAYS, windowStart } from './completion-window';
+import type { AwayKeep, AwayPeriod } from './away';
 
 /**
  * DB-level type value for an item: custom items store their user-defined slug
@@ -3917,4 +3918,121 @@ export async function adoptContainerMembers(
     .select('id');
   if (error) throw error;
   return data?.length ?? 0;
+}
+
+// ── Vacation mode (migration 071) ──────────────────────────────────────────
+
+interface AwayPeriodRow {
+  id: string;
+  starts_on: string;
+  ends_on: string | null;
+  keep: Partial<Record<keyof AwayKeep, unknown>> | null;
+  returns: Record<string, unknown> | null;
+  from_trip: Record<string, unknown> | null;
+  settled_at: string | null;
+}
+
+const strings = (v: unknown): string[] =>
+  Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+
+const dayMap = (v: Record<string, unknown> | null): Record<string, string> => {
+  const out: Record<string, string> = {};
+  for (const [k, d] of Object.entries(v ?? {})) if (typeof d === 'string') out[k] = d.slice(0, 10);
+  return out;
+};
+
+export function awayPeriodFromRow(row: AwayPeriodRow): AwayPeriod {
+  return {
+    id: row.id,
+    startsOn: row.starts_on.slice(0, 10),
+    endsOn: row.ends_on ? row.ends_on.slice(0, 10) : undefined,
+    keep: {
+      itemIds: strings(row.keep?.itemIds),
+      routineIds: strings(row.keep?.routineIds),
+      projectIds: strings(row.keep?.projectIds),
+    },
+    returns: dayMap(row.returns),
+    fromTrip: dayMap(row.from_trip),
+    settledAt: row.settled_at ?? undefined,
+  };
+}
+
+/**
+ * Every trip, newest first. Null when migration 071 is not applied: callers
+ * read that as "no trips", which answers exactly as the app did before
+ * vacation mode. Any other error rethrows, like fetchRoutines: a trip that
+ * silently vanished would wake every habit it held.
+ */
+export async function fetchAwayPeriods(userId: string, client?: DbClient): Promise<AwayPeriod[] | null> {
+  const supabase = client ?? createClient();
+  const { data, error } = await supabase
+    .from('away_periods')
+    .select('id, starts_on, ends_on, keep, returns, from_trip, settled_at')
+    .eq('user_id', userId)
+    .order('starts_on', { ascending: false });
+  if (error) return unavailable('fetchAwayPeriods', error, '071', 'vacation mode');
+  return ((data ?? []) as AwayPeriodRow[]).map(awayPeriodFromRow);
+}
+
+export async function createAwayPeriod(userId: string, period: AwayPeriod, client?: DbClient): Promise<void> {
+  const supabase = client ?? createClient();
+  const { error } = await supabase.from('away_periods').insert({
+    id: period.id,
+    user_id: userId,
+    starts_on: period.startsOn,
+    ends_on: period.endsOn ?? null,
+    keep: period.keep,
+    returns: period.returns,
+  });
+  if (error) throw error;
+}
+
+export async function updateAwayPeriod(
+  userId: string,
+  id: string,
+  updates: Partial<Pick<AwayPeriod, 'startsOn' | 'endsOn' | 'keep' | 'returns' | 'fromTrip'>>,
+  client?: DbClient,
+): Promise<void> {
+  const supabase = client ?? createClient();
+  const row: Record<string, unknown> = {};
+  if ('startsOn' in updates) row.starts_on = updates.startsOn;
+  if ('endsOn' in updates) row.ends_on = updates.endsOn ?? null;
+  if ('keep' in updates) row.keep = updates.keep;
+  if ('returns' in updates) row.returns = updates.returns;
+  if ('fromTrip' in updates) row.from_trip = updates.fromTrip;
+  if (Object.keys(row).length === 0) return;
+  const { error } = await supabase.from('away_periods').update(row).eq('id', id).eq('user_id', userId);
+  if (error) throw error;
+}
+
+export async function deleteAwayPeriod(userId: string, id: string, client?: DbClient): Promise<void> {
+  const supabase = client ?? createClient();
+  const { error } = await supabase.from('away_periods').delete().eq('id', id).eq('user_id', userId);
+  if (error) throw error;
+}
+
+/**
+ * Claim a finished trip's return, then say whether this caller won it.
+ *
+ * Conditional on settled_at being unset, so two open tabs (or the phone and
+ * the web) move the trip's tasks once: only the caller whose update changed a
+ * row goes on to move them. Claim, then act, as the reminder cues do.
+ */
+export async function claimAwaySettle(
+  userId: string,
+  id: string,
+  fromTrip: Record<string, string>,
+  nowIso: string,
+  client?: DbClient,
+): Promise<boolean> {
+  const supabase = client ?? createClient();
+  const { data, error } = await supabase
+    .from('away_periods')
+    .update({ settled_at: nowIso, from_trip: fromTrip })
+    .eq('id', id)
+    .eq('user_id', userId)
+    .is('settled_at', null)
+    .select('id');
+  if (error) throw error;
+  return (data?.length ?? 0) > 0;
 }

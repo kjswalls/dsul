@@ -153,6 +153,7 @@ vi.mock('@/lib/db', async (importOriginal) => {
     fetchRoutines: vi.fn(async () => []),
     fetchSeasons: vi.fn(async () => []),
     fetchGoals: vi.fn(async () => []),
+    fetchAwayPeriods: vi.fn(async () => []),
   };
 });
 

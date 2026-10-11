@@ -5,6 +5,7 @@ import { Sun } from 'lucide-react';
 
 import { MorningTriageList } from '@/components/ai/morning-triage-list';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useAwayStore } from '@/lib/away-store';
 import { usePlannerLoaded } from '@/lib/planner-ready';
 import { useMorningStore } from '@/lib/morning-store';
 import { summarizeOverdue, type OverdueSummary } from '@/lib/overdue';
@@ -94,6 +95,7 @@ function usePastDue() {
   const userTimezone = usePlannerStore((s) => s.userTimezone);
   const routines = usePlannerStore((s) => s.routines);
   const seasons = usePlannerStore((s) => s.seasons);
+  const away = useAwayStore((s) => s.periods);
   const todayStr = toDateStr(
     new Date(),
     userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
@@ -107,9 +109,9 @@ function usePastDue() {
     return summarizeOverdue(
       items,
       todayStr,
-      inactiveItemIdsOn(items, todayStr, { userTimezone: tz, routines, seasons })
+      inactiveItemIdsOn(items, todayStr, { userTimezone: tz, routines, seasons, away })
     );
-  }, [items, routines, seasons, todayStr, userTimezone]);
+  }, [items, routines, seasons, away, todayStr, userTimezone]);
 
   // n === 0 hides the notice — EXCEPT while the tray is open. The `|| isOpen` is
   // load-bearing: without it, actioning the last item yanks the tray out from

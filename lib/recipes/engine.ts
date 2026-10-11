@@ -3,6 +3,7 @@
 import { toast } from 'sonner';
 import { batchHistory, usePlannerStore } from '@/lib/planner-store';
 import { selectPlannerSettled } from '@/lib/planner-ready';
+import { useAwayStore } from '@/lib/away-store';
 import { useModsStore } from '@/lib/mods-store';
 import { subscribeModEvents, withSuppressed, type ModEvent } from '@/lib/mod-events';
 import { ITEM_VERBS, occurrenceOn, type VerbContext } from '@/lib/item-verbs';
@@ -103,7 +104,7 @@ function zone(): string {
 
 function filterEnv(dateStr: string, today: string, tz: string): FilterEnv {
   const { routines, seasons } = planner();
-  return { dateStr, todayStr: today, tz, routines, seasons };
+  return { dateStr, todayStr: today, tz, routines, seasons, away: useAwayStore.getState().periods };
 }
 
 /* ── rate limit ────────────────────────────────────────────────────────── */

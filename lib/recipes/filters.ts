@@ -5,6 +5,7 @@ import { wantsDoingOn } from '@/lib/reminders/due';
 import type { ModEvent } from '@/lib/mod-events';
 import type { RecipeManifest, RecipeTrigger } from '@/lib/mods/schema';
 import type { Item, Routine, Season } from '@/lib/planner-types';
+import type { AwayPeriod } from '@/lib/away';
 
 /**
  * Which fires start which recipe, and whether an item passes its filters. Pure.
@@ -33,6 +34,8 @@ export interface FilterEnv {
   tz: string;
   routines: Routine[];
   seasons: Season[];
+  /** The user's trips (vacation mode). Omitted = none. */
+  away?: readonly AwayPeriod[];
 }
 
 /**
@@ -66,7 +69,7 @@ export function passesFilters(
     // Occurs today, still an open loop, and not paused or gated off: the same
     // composition lib/stakes/day.ts settles on (isOpenLoopOn + isItemActiveOn),
     // asked through the one helper that already joins them.
-    const ctx = { userTimezone: env.tz, routines: env.routines, seasons: env.seasons };
+    const ctx = { userTimezone: env.tz, routines: env.routines, seasons: env.seasons, away: env.away };
     if (!wantsDoingOn(item, env.todayStr, ctx)) return false;
   }
   return true;

@@ -3,6 +3,7 @@ import { getAllItemTypeNames, getItemTypeConfig, itemTypeName } from './item-reg
 import { isOpenLoopSuppressedOn, suppressionLabel, suppressionReason } from './active'
 import { toDateStr } from './recurrence'
 import { goalProgress, goalRolesByItem, nextMilestoneVisible } from './goals'
+import type { AwayPeriod } from './away'
 import type { Item, Project, Routine, Season, Goal } from './planner-types'
 
 /** Per cause, before the list collapses to a count. */
@@ -31,6 +32,8 @@ export function buildDsulContext(state: {
   routines?: Routine[]
   /** Live seasons, same reason — a switched-off season hides its members here too. */
   seasons?: Season[]
+  /** The user's trips, so what a trip holds is set aside here as on the grid. */
+  away?: readonly AwayPeriod[]
   /**
    * Live goals. NOT for suppression — a goal hides nothing — but for the
    * opposite question: asked how something long-running is going, Beacon should
@@ -98,6 +101,7 @@ export function buildDsulContext(state: {
     userTimezone: tz,
     routines: state.routines,
     seasons: state.seasons,
+    away: state.away,
   }
   // Resolved ONCE and shared with the Paused section below, so the two can
   // never disagree about which items are hidden — the section's whole job is to

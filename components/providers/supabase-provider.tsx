@@ -33,6 +33,7 @@ import { useAIConnectionStore } from '@/lib/ai-connection-store';
 import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
 import { useGatewayStore } from '@/lib/gateway-store';
 import { useNudgeStore } from '@/lib/nudge-store';
+import { useAwayStore } from '@/lib/away-store';
 import { sessionUserFrom, useSessionUserStore } from '@/lib/session-user-store';
 import { isDataDialogArmed, useUIStore } from '@/lib/ui-store';
 import { adoptLocalState, clearUserScopedLocalState, localStateOwner } from '@/lib/local-state';
@@ -506,6 +507,9 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       // The `userId` re-check is for a raced account switch: a slow failure for
       // the previous account must not unlatch the current one and trigger a
       // second load of someone else's data.
+      // Trips (vacation mode) load beside the planner, never inside its one
+      // set(): they are not undo state. The auto-age sweep waits for both.
+      void useAwayStore.getState().load(userId);
       (preview ? initializeStore(userId, { preview }) : initializeStore(userId)).then(
         () => {
           const state = usePlannerStore.getState();
@@ -686,6 +690,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         useChannelSecretsStore.getState().reset();
         useGatewayStore.getState().reset();
         useNudgeStore.getState().reset();
+        useAwayStore.getState().reset();
         // The AI gate: not persisted, and an account switch already clears it
         // synchronously inside its hydrate. This covers the same gap as the
         // five above (a sign-out with no sign-in after it), and drops any

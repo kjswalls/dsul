@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useAwayStore } from '@/lib/away-store';
 import { useMorningStore } from '@/lib/morning-store';
 import { toDateStr } from '@/lib/recurrence';
 import { milestoneItemIds } from '@/lib/goals';
@@ -24,6 +25,7 @@ function candidatesFor(items: readonly Item[], todayStr: string, userTimezone: s
     userTimezone,
     routines: planner.routines,
     seasons: planner.seasons,
+    away: useAwayStore.getState().periods,
   });
   return selectFilingCandidates(items, {
     milestones: milestoneItemIds(planner.goals),

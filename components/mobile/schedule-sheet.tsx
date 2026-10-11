@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/drawer';
 import { Button } from '@/components/ui/button';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useAwayStore } from '@/lib/away-store';
 import { useUIStore } from '@/lib/ui-store';
 import { useScheduleSheet } from '@/lib/schedule-sheet-store';
 import { useSelectionStore } from '@/lib/selection-store';
@@ -56,6 +57,7 @@ export function ScheduleSheet() {
     seasons,
     goals,
   } = usePlannerStore();
+  const away = useAwayStore((s) => s.periods);
   const confirm = useUIStore((s) => s.confirm);
   // Mobile multi-select entry: no long-press (that gesture belongs to dnd-kit's
   // TouchSensor drag), so selection is toggled here from the action sheet. Two+
@@ -98,7 +100,7 @@ export function ScheduleSheet() {
   // touch, so when the cause is a container it has to SAY so: otherwise the
   // user taps Resume, the row stays hidden, and nothing anywhere explains it.
   const reason = liveItem
-    ? suppressionReason(liveItem, todayStr, { userTimezone: tz, routines, seasons })
+    ? suppressionReason(liveItem, todayStr, { userTimezone: tz, routines, seasons, away })
     : null;
   const containerReason = reason && reason.kind !== 'paused' ? reason : null;
 

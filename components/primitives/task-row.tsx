@@ -9,6 +9,7 @@ import { useDraggable } from '@dnd-kit/core';
 import { ItemContextMenu } from '@/components/planner/item-context-menu';
 import { Button } from '@/components/ui/button';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useAwayStore } from '@/lib/away-store';
 import { goalRolesByItem, milestoneItemIds } from '@/lib/goals';
 import { canMoveToNextDay, canReschedule as canRescheduleItem, canSendToBraindump, formatTargetDay, nextDayLabel, nextDayTarget } from '@/lib/row-moves';
 import { RowControl, RowControlDivider, RowControlGroup } from '@/components/primitives/row-control';
@@ -98,6 +99,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
     seasons,
     goals,
   } = usePlannerStore();
+  const away = useAwayStore((s) => s.periods);
   const confirm = useUIStore((s) => s.confirm);
   const isMobile = useIsMobile();
   const { item, itemType } = row;
@@ -171,6 +173,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
     userTimezone: timezone,
     routines,
     seasons,
+    away,
   });
   const suppressed = !!suppression;
 
