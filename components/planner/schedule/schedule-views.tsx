@@ -4,6 +4,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight, Flag } from 'lucide-react';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useAwayStore } from '@/lib/away-store';
 import { useToday, formatShort } from '@/lib/collections';
 import {
   addDaysStr,
@@ -76,6 +77,7 @@ export function useContainerSchedule(
   const habits = usePlannerStore((s) => s.habits);
   const storeRoutines = usePlannerStore((s) => s.routines);
   const storeSeasons = usePlannerStore((s) => s.seasons);
+  const away = useAwayStore((s) => s.periods);
   const { todayStr, tz } = useToday();
   const routines = overrides?.routines ?? storeRoutines;
   const seasons = overrides?.seasons ?? storeSeasons;
@@ -92,9 +94,10 @@ export function useContainerSchedule(
               habits: [...habits, ...(drafts.filter((i) => i.type === 'habit') as unknown as HabitItem[])],
               routines,
               seasons,
+              away,
               timezone: tz,
             }
-          : { items, tasks, habits, routines, seasons, timezone: tz },
+          : { items, tasks, habits, routines, seasons, away, timezone: tz },
         from,
         days,
         todayStr,
@@ -102,7 +105,7 @@ export function useContainerSchedule(
       }),
     // `key` stands in for `memberIds`: callers build the array per render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [key, items, tasks, habits, routines, seasons, drafts, tz, from, days, todayStr, block]
+    [key, items, tasks, habits, routines, seasons, away, drafts, tz, from, days, todayStr, block]
   );
 }
 

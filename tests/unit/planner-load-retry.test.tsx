@@ -126,6 +126,7 @@ import { useMorningStore } from '@/lib/morning-store';
 import { useAIConnectionStore } from '@/lib/ai-connection-store';
 import { captureTask, __resetHeldCapturesForTests } from '@/lib/held-captures';
 import * as db from '@/lib/db';
+import { useAwayStore } from '@/lib/away-store';
 
 const original = {
   extensions: useExtensionsStore.getState().hydrate,
@@ -133,6 +134,7 @@ const original = {
   gateway: useGatewayStore.getState().hydrate,
   nudges: useNudgeStore.getState().hydrate,
   ai: useAIConnectionStore.getState().hydrate,
+  away: useAwayStore.getState().load,
 };
 
 /** The AI gate's status read, counted at the store boundary. */
@@ -182,6 +184,7 @@ beforeEach(() => {
   useChannelSecretsStore.setState({ hydrate: async () => {} });
   useGatewayStore.setState({ hydrate: async () => {} });
   useNudgeStore.setState({ hydrate: async () => {} });
+  useAwayStore.setState({ load: async () => {} });
   aiHydrate.mockClear();
   useAIConnectionStore.setState({ hydrate: aiHydrate });
   useMorningStore.setState({ settingsHydratedUserId: null, morningAutoAgeReceiptByUser: {} });
@@ -200,6 +203,7 @@ afterEach(() => {
   useGatewayStore.setState({ hydrate: original.gateway });
   useNudgeStore.setState({ hydrate: original.nudges });
   useAIConnectionStore.setState({ hydrate: original.ai });
+  useAwayStore.setState({ load: original.away });
   expect(unexpected).toEqual([]);
 });
 

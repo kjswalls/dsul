@@ -3,6 +3,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Item } from '@dsul/types';
 import type { PushResult } from '@/lib/push-send';
+import type { AwayPeriod } from '@/lib/away';
 
 /* ── Mocks ────────────────────────────────────────────────────────────────── */
 
@@ -33,10 +34,12 @@ function reportOf(r: PushResult) {
 }
 
 const fetchItems = vi.fn(async (): Promise<Item[]> => []);
+const fetchAwayPeriods = vi.fn(async (): Promise<AwayPeriod[] | null> => []);
 vi.mock('@/lib/db', () => ({
   fetchItems: () => fetchItems(),
   fetchRoutines: async () => [],
   fetchSeasons: async () => [],
+  fetchAwayPeriods: () => fetchAwayPeriods(),
 }));
 
 // Passed through untouched, and watched: the nudge the scan hands over is its
@@ -114,6 +117,8 @@ beforeEach(() => {
   vi.mocked(deliverNudge).mockClear();
   fetchItems.mockReset();
   fetchItems.mockResolvedValue([]);
+  fetchAwayPeriods.mockReset();
+  fetchAwayPeriods.mockResolvedValue([]);
 });
 
 /** Every nudge the scan handed to the channels, in order. */
@@ -726,6 +731,22 @@ describe('the EOD review (Tier 0)', () => {
     } else {
       expect(summary.notes).toEqual([]);
     }
+  });
+
+  // Vacation mode: there is no day to review on a day away. Not claimed
+  // either, so the stamp is free for the day the trip ends.
+  it('neither claims nor sends the review on a day away, and sends it the day you are back', async () => {
+    const trip: AwayPeriod = { id: 't1', startsOn: '2026-08-08', endsOn: '2026-08-12', keep: { itemIds: [], routineIds: [], projectIds: [] }, returns: {}, fromTrip: {} };
+    fetchAwayPeriods.mockResolvedValue([trip]);
+    const away = eodService();
+    const summary = await runReminderScan(away.service, { now: AT_2105_NY });
+    expect(eodClaim(away.calls)).toBeUndefined();
+    expect(sendPushToUser).not.toHaveBeenCalled();
+    expect(summary).toMatchObject({ users: 0, eod: 0 });
+
+    fetchAwayPeriods.mockResolvedValue([{ ...trip, endsOn: '2026-08-10' }]);
+    const back = eodService();
+    expect((await runReminderScan(back.service, { now: AT_2105_NY })).eod).toBe(1);
   });
 
   it('does not ask again once today is claimed', async () => {

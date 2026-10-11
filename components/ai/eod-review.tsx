@@ -15,6 +15,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useAwayStore } from '@/lib/away-store';
 import { milestoneItemIds } from '@/lib/goals';
 import { useStreaksEnabled } from '@/lib/extension-gates';
 import { useEODStore } from '@/lib/eod-store';
@@ -119,6 +120,7 @@ export function EODReview() {
   const userTimezone = usePlannerStore((s) => s.userTimezone);
   const routines = usePlannerStore((s) => s.routines);
   const seasons = usePlannerStore((s) => s.seasons);
+  const away = useAwayStore((s) => s.periods);
   const goals = usePlannerStore((s) => s.goals);
   const milestoneIds = useMemo(() => milestoneItemIds(goals), [goals]);
   const streaksOn = useStreaksEnabled();
@@ -140,7 +142,7 @@ export function EODReview() {
       // or a terminal status, so `completedTasks` passes through untouched:
       // an item paused after being ticked today still shows under Done today
       // (the history rule).
-      if (isOpenLoopSuppressedOn(asItem(t), today, { userTimezone: resolvedTz, routines, seasons }))
+      if (isOpenLoopSuppressedOn(asItem(t), today, { userTimezone: resolvedTz, routines, seasons, away }))
         return false;
       // One-off tasks: match by startDate
       if (!isRecurring(t)) return t.startDate === today;
@@ -157,7 +159,7 @@ export function EODReview() {
       completedTasks: todayTasks.filter((t) => isTaskDoneToday(t)),
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tasks, routines, seasons, today, userTimezone]);
+  }, [tasks, routines, seasons, away, today, userTimezone]);
 
   // Tasks marked complete during this EOD session
   const [justCompletedIds, setJustCompletedIds] = useState<Set<string>>(new Set());

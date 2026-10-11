@@ -17,6 +17,7 @@ import { KeyCap } from '@/components/planner/organize/primitives';
 import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
 import { formatKeys } from '@/lib/commands/keys';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useAwayStore } from '@/lib/away-store';
 import { PlannerSkeleton } from '@/components/primitives/planner-skeleton';
 import {
   isPlannerLoaded,
@@ -415,6 +416,7 @@ interface BraindumpProps {
 
 export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpProps = {}) {
   const { tasks, habits, items, routines, seasons, goals, userTimezone } = usePlannerStore();
+  const away = useAwayStore((s) => s.periods);
   // Action selector, not a whole-store destructure: actions are stable, and a
   // bare useUIStore() here re-rendered this whole column on every dialog open.
   const openDialog = useUIStore((s) => s.openDialog);
@@ -462,8 +464,9 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
       userTimezone: tz,
       routines,
       seasons,
+      away,
     });
-  }, [items, routines, seasons, userTimezone]);
+  }, [items, routines, seasons, away, userTimezone]);
 
   /**
    * The goal clause, resolved to item ids.
@@ -651,7 +654,11 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
     for (const item of items) {
       if (!suppressedIds.has(item.id)) continue;
       if ('parentItemId' in item && item.parentItemId) continue;
-      const reason = suppressionReason(item, todayStr, { userTimezone: tz, routines, seasons });
+      const reason = suppressionReason(item, todayStr, { userTimezone: tz, routines, seasons, away });
+      // Resting for a trip is not "set aside": every habit rests at once, and
+      // the trip's own line on the canvas already says so and brings them back.
+      // Listing them here would bury the braindump under the whole routine.
+      if (reason?.kind === 'away') continue;
       // Self-paused items key on their RESUME DATE as well as the cause. The
       // heading is taken from whichever row lands in the bucket first, and
       // store order is sort_order/created_at — nothing to do with pause dates —
@@ -678,7 +685,7 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
       else groups.set(key, { key, label: reason ? suppressionLabel(reason) : 'Paused', rows: [row] });
     }
     return [...groups.values()];
-  }, [items, suppressedIds, routines, seasons, userTimezone]);
+  }, [items, suppressedIds, routines, seasons, away, userTimezone]);
 
   const pausedCount = pausedGroups.reduce((n, g) => n + g.rows.length, 0);
 

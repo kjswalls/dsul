@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import { inactiveItemIdsOn } from '@/lib/active';
 import type { OpenerContext } from '@/lib/ai-openers';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useAwayStore } from '@/lib/away-store';
 import { toDateStr } from '@/lib/recurrence';
 import { useMinuteClock, useNowMinutes } from '@/lib/use-now-minutes';
 
@@ -28,6 +29,7 @@ export function useOpenerContext(): {
   const items = usePlannerStore((s) => s.items);
   const routines = usePlannerStore((s) => s.routines);
   const seasons = usePlannerStore((s) => s.seasons);
+  const away = useAwayStore((s) => s.periods);
   const userTimezone = usePlannerStore((s) => s.userTimezone);
 
   const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -43,9 +45,9 @@ export function useOpenerContext(): {
             items,
             todayStr,
             userTimezone: tz,
-            inactiveIds: inactiveItemIdsOn(items, todayStr, { userTimezone: tz, routines, seasons }),
+            inactiveIds: inactiveItemIdsOn(items, todayStr, { userTimezone: tz, routines, seasons, away }),
           },
-    [items, routines, seasons, todayStr, tz]
+    [items, routines, seasons, away, todayStr, tz]
   );
 
   return { ctx, minutesNow, now, todayStr, tz };

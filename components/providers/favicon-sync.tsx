@@ -7,6 +7,7 @@ import { useToday } from '@/lib/collections';
 import { isDayCleared } from '@/lib/day-done';
 import { useLookStore } from '@/lib/look-store';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useAwayStore } from '@/lib/away-store';
 import { selectPlannerSettled } from '@/lib/planner-ready';
 import { useNowMinutes } from '@/lib/use-now-minutes';
 
@@ -37,6 +38,7 @@ export function FaviconSync() {
   const items = usePlannerStore((s) => s.items);
   const routines = usePlannerStore((s) => s.routines);
   const seasons = usePlannerStore((s) => s.seasons);
+  const away = useAwayStore((s) => s.periods);
   // A failed load counts as settled (lib/planner-ready.ts), but its store is
   // not the account's items, so it is not read as today's.
   const loaded = usePlannerStore((s) => selectPlannerSettled(s) && s.loadFailedUserId !== s.userId);
@@ -57,8 +59,8 @@ export function FaviconSync() {
   }, []);
 
   const dayDone = useMemo(
-    () => loaded && isDayCleared(items, todayStr, { userTimezone: tz, routines, seasons }),
-    [loaded, items, todayStr, tz, routines, seasons]
+    () => loaded && isDayCleared(items, todayStr, { userTimezone: tz, routines, seasons, away }),
+    [loaded, items, todayStr, tz, routines, seasons, away]
   );
   const variant: AppIcon = appIcon === 'lime' || dayDone ? 'lime' : 'aurora';
 

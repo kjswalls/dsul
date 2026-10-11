@@ -31,7 +31,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ActivationContext } from '../active'
-import { fetchItemById, fetchRoutines, fetchSeasons } from '../db'
+import { fetchAwayPeriods, fetchItemById, fetchRoutines, fetchSeasons } from '../db'
 import type { Item } from '../planner-types'
 import { claimCue, claimSnooze, releaseCue } from './claim'
 import type { ClaimAnswer, ClaimCandidate } from './claim-wire'
@@ -103,15 +103,21 @@ export async function claimForPage(
   let items: (Item | null)[]
   let ctx: ActivationContext
   try {
-    const [found, routines, seasons] = await Promise.all([
+    const [found, routines, seasons, away] = await Promise.all([
       Promise.all(ids.filter((id) => book.has(id)).map((id) => fetchItemById(userId, id, client))),
       fetchRoutines(userId, client),
       fetchSeasons(userId, client),
+      fetchAwayPeriods(userId, client),
     ])
     items = found
     // Unreachable containers read as "no memberships known", the scan's
-    // contract: item-level pause is still honoured.
-    ctx = { userTimezone: zone, routines: routines ?? undefined, seasons: seasons ?? undefined }
+    // contract: item-level pause is still honoured. No trips table is no trips.
+    ctx = {
+      userTimezone: zone,
+      routines: routines ?? undefined,
+      seasons: seasons ?? undefined,
+      away: away ?? undefined,
+    }
   } catch (err) {
     throw new PageClaimError(err instanceof Error ? err.message : String(err))
   }

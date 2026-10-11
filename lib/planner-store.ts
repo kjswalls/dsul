@@ -128,6 +128,7 @@ import {
 import { saveSettings } from './settings-service';
 import { isRecurring, isCompletedOnDate, toDateStr } from './recurrence';
 import { accentColorForName } from './accent-colors';
+import { useAwayStore } from './away-store';
 import { CONTAINER_KINDS, foldContainerName, sameContainerName } from './container-registry';
 import {
   canBulkClearProject,
@@ -850,6 +851,11 @@ function persistNewItem(
   const created = sendItemCreate([row.id], insertWaitsFor([row], get().items), () => dbCreateItem(userId, row));
   created.catch(console.error);
 
+  // Vacation mode: anything you add in the app while away keeps going, so
+  // planning one thing on the trip just works. A no-op with no current trip.
+  const tz = get().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  useAwayStore.getState().keepItem(row.id, toDateStr(new Date(), tz));
+
   const routineIds = memberships?.routineIds ?? [];
   const seasonIds = memberships?.seasonIds ?? [];
   const goalIds = memberships?.goalIds ?? [];
@@ -962,7 +968,7 @@ function landingReceipt(
 ): string | undefined {
   const tz = state.userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const target = dateStr ?? toDateStr(new Date(), tz);
-  const ctx = { userTimezone: tz, routines: state.routines, seasons: state.seasons };
+  const ctx = { userTimezone: tz, routines: state.routines, seasons: state.seasons, away: useAwayStore.getState().periods };
   const labels = ids
     .map((id) => state.items.find((i) => i.id === id))
     .filter((item): item is Item => !!item)
@@ -1041,6 +1047,7 @@ function suppressedNow(
     userTimezone: tz,
     routines: state.routines,
     seasons: state.seasons,
+    away: useAwayStore.getState().periods,
   });
 }
 

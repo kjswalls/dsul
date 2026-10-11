@@ -27,6 +27,7 @@ const h = vi.hoisted(() => ({
   fetchRoutines: vi.fn(async () => []),
   fetchSeasons: vi.fn(async () => []),
   ledger: null as unknown,
+  fetchAwayPeriods: vi.fn(async () => []),
 }));
 
 vi.mock('@/lib/supabase-server', () => ({ createClient: async () => h.session }));
@@ -35,6 +36,7 @@ vi.mock('@/lib/db', () => ({
   fetchItemById: h.fetchItemById,
   fetchRoutines: h.fetchRoutines,
   fetchSeasons: h.fetchSeasons,
+  fetchAwayPeriods: h.fetchAwayPeriods,
 }));
 
 import { POST } from '@/app/api/reminders/claim/route';

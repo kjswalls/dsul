@@ -87,6 +87,7 @@ import {
   PropertyChip,
 } from '@/components/primitives/property-chip';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useAwayStore } from '@/lib/away-store';
 import { useGoalsEnabled, useOrganizeEnabled, useStreaksEnabled } from '@/lib/extension-gates';
 import { accentColorForName } from '@/lib/accent-colors';
 import { goalItemIds, milestoneItemIds, nextMilestone } from '@/lib/goals';
@@ -845,6 +846,7 @@ function ItemDialogInner({
     addSeason,
     addGoal,
   } = usePlannerStore();
+  const away = useAwayStore((s) => s.periods);
   /**
    * The two extension gates this dialog answers to.
    *
@@ -993,6 +995,7 @@ function ItemDialogInner({
         userTimezone: activationTz,
         routines,
         seasons,
+        away,
       })
     : null;
   const canPause = !!editItem && isPausable(editItem);

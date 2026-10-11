@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
+  fetchAwayPeriods,
   fetchItemTypes,
   fetchProjects,
   fetchRoutines,
@@ -8,6 +9,7 @@ import {
   fetchUserExtensions,
 } from '@/lib/db';
 import { EXT_BEEMINDER } from '@/lib/extension-registry';
+import type { AwayPeriod } from '@/lib/away';
 import type { Project, Routine, Season } from '@/lib/planner-types';
 import { stakeLockFrom, type StakeFacts } from '../stake-rule';
 import type { FilterEnv } from '../filters';
@@ -35,6 +37,8 @@ export interface UserContext {
   projects: Project[];
   routines: Routine[];
   seasons: Season[];
+  /** The user's trips; undefined when migration 071 is not applied (no trips). */
+  away?: AwayPeriod[];
   customTypeNames: string[];
   stake: StakeFacts;
 }
@@ -68,10 +72,11 @@ export async function loadUserContext(
   now: Date,
   today: string
 ): Promise<UserContext> {
-  const [projects, routines, seasons, types, stake] = await Promise.all([
+  const [projects, routines, seasons, away, types, stake] = await Promise.all([
     fetchProjects(userId, service),
     fetchRoutines(userId, service),
     fetchSeasons(userId, service),
+    fetchAwayPeriods(userId, service),
     fetchItemTypes(userId, service),
     stakeFacts(service, userId),
   ]);
@@ -84,6 +89,7 @@ export async function loadUserContext(
     projects,
     routines: routines ?? [],
     seasons: seasons ?? [],
+    away: away ?? undefined,
     customTypeNames: (types ?? []).map((t) => t.name),
     stake,
   };
@@ -91,5 +97,5 @@ export async function loadUserContext(
 
 /** The filter environment for a fire about `dateStr`. */
 export function filterEnvOf(ctx: UserContext, dateStr: string): FilterEnv {
-  return { dateStr, todayStr: ctx.today, tz: ctx.tz, routines: ctx.routines, seasons: ctx.seasons };
+  return { dateStr, todayStr: ctx.today, tz: ctx.tz, routines: ctx.routines, seasons: ctx.seasons, away: ctx.away };
 }

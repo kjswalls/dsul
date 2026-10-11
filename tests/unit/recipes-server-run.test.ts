@@ -108,6 +108,7 @@ function respond(q: FakeQuery): FakeResult {
     case 'routine_items':
     case 'season_items':
     case 'season_routines':
+    case 'away_periods':
     case 'item_events':
       return { data: [], error: null };
     case 'items_windowed':

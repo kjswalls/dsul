@@ -1,6 +1,7 @@
 import type { Goal, HabitItem, Item, Season, Project, Routine, Task } from './planner-types';
 import { deriveDayItems, flattenDayRows } from './day-items';
 import { inactiveItemIdsOn } from './active';
+import type { AwayPeriod } from './away';
 import { isCompletedOnDate, isRecurring, isSkippedOnDate } from './recurrence';
 import { sameContainerName } from './container-registry';
 import { getItemTypeConfig, itemTypeName } from './item-registry';
@@ -67,6 +68,8 @@ export interface ScheduleSource {
   habits: readonly HabitItem[];
   routines: readonly Routine[];
   seasons: readonly Season[];
+  /** The user's trips (vacation mode). Omitted = none. */
+  away?: readonly AwayPeriod[];
   timezone: string;
 }
 
@@ -200,7 +203,7 @@ export function deriveContainerSchedule({
   // resolves against, because a member's paths run through other containers.
   const tasks = source.tasks.filter((t) => members.has(t.id));
   const habits = source.habits.filter((h) => members.has(h.id));
-  const ctx = { userTimezone: source.timezone, routines: source.routines, seasons: source.seasons };
+  const ctx = { userTimezone: source.timezone, routines: source.routines, seasons: source.seasons, away: source.away };
   // Activation is resolved for the MEMBERS only: paths come from the routine
   // and season lists, and the item list only drives the final pass, so this is
   // the same answer for a fraction of the work on every one of up to 400 days.

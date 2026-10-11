@@ -41,6 +41,7 @@ import { RowControl, RowControlGroup } from '@/components/primitives/row-control
 import { RescheduleControl } from '@/components/primitives/reschedule-control';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useAwayStore } from '@/lib/away-store';
 import { openEditFor } from '@/lib/ui-store';
 import { useViewStore, type ScheduleMarkStyle } from '@/lib/view-store';
 import { useCanvasGroupBy } from '@/lib/extension-gates';
@@ -607,6 +608,7 @@ export function ScheduleBlock({
     unscheduleTask,
     goals,
   } = usePlannerStore();
+  const away = useAwayStore((s) => s.periods);
   const timeFormatStr = useTimeFormat();
   const isMobile = useIsMobile();
   // Raw goals, not the display list: this gates a write (lib/row-moves.ts).
@@ -638,6 +640,7 @@ export function ScheduleBlock({
     userTimezone: timezone,
     routines,
     seasons,
+    away,
   });
   const suppressed = !!suppression;
   const done = isTask

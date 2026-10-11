@@ -6,6 +6,7 @@ import { format } from 'date-fns';
 import { CalendarClock, Flag, Moon, Target } from 'lucide-react';
 import { CategoryIcon } from '@/lib/category-icons';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useAwayStore } from '@/lib/away-store';
 import { fetchCheckins, getItemEventsAvailable, type ItemEvent } from '@/lib/db';
 import { suppressionLabel, suppressionReason } from '@/lib/active';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
@@ -119,9 +120,10 @@ export function GoalProgressTrack({
 function useSuppression() {
   const routines = usePlannerStore((s) => s.routines);
   const seasons = usePlannerStore((s) => s.seasons);
+  const away = useAwayStore((s) => s.periods);
   const { todayStr, tz } = useToday();
   return (item: Item) =>
-    suppressionReason(item, todayStr, { userTimezone: tz, routines, seasons });
+    suppressionReason(item, todayStr, { userTimezone: tz, routines, seasons, away });
 }
 
 export function GoalMemberNote({ item }: { item: Item }) {

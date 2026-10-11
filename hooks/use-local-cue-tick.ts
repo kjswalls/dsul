@@ -9,6 +9,7 @@ import { createClient } from '@/lib/supabase';
 import { storedDeviceId } from '@/lib/devices/web-client';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useReminderStore } from '@/lib/reminder-store';
+import { useAwayStore } from '@/lib/away-store';
 import {
   createLocalCueTick,
   deviceClaims,
@@ -115,6 +116,7 @@ export function useLocalCueTick() {
           items: p.items,
           routines: p.routines,
           seasons: p.seasons,
+          away: useAwayStore.getState().periods,
           timezone: p.userTimezone,
           timeFormat: p.timeFormat === '24h' ? '24h' : '12h',
           remindersEnabled: useReminderStore.getState().remindersEnabled,
