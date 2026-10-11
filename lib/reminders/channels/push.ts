@@ -122,59 +122,79 @@ function channelResultOf(result: SendReport, kind: Nudge['kind']): ChannelResult
   return { ok: true, detail: `push sent=${result.accepted}/${result.eligible} ${counts}` }
 }
 
+/**
+ * The tag a nudge's notification collapses on: the item, or the day for a
+ * multi-item last call and for the EOD review (whose `dsul-eod-<date>` is the
+ * tag its old route sent), so a re-delivery REPLACES rather than stacks. A
+ * shade with four copies of the same cue is how someone learns to swipe the
+ * whole app away. cue_log keeps it as the row's `collapse_id`.
+ */
+export function tagOf(nudge: Nudge): string {
+  return nudge.itemId ? `dsul-item-${nudge.itemId}` : `dsul-${nudge.kind}-${nudge.dateStr}`
+}
+
+/**
+ * The notification a nudge becomes on a device. The channel's, and the retry
+ * pass's (lib/reminders/retry.ts), which re-sends it to the devices alone: one
+ * shape, so a retried cue lands in the same slot as the first.
+ */
+export function pushPayloadOf(nudge: Nudge): PushPayload {
+  // A Done button only makes sense when there is exactly one thing it could
+  // mean. A last call naming three habits gets a plain click-through instead
+  // of a button that silently picks one of them.
+  const actionable = Boolean(nudge.itemId)
+  return {
+    title: nudge.title,
+    body: nudge.body,
+    url: nudge.url,
+    tag: tagOf(nudge),
+    actions: actionable
+      ? [
+          { action: ACTION_DONE, title: 'Done' },
+          { action: ACTION_SNOOZE, title: `Snooze ${SNOOZE_MINUTES}m` },
+        ]
+      : undefined,
+    data: {
+      url: nudge.url,
+      itemId: nudge.itemId,
+      dateStr: nudge.dateStr,
+      kind: nudge.kind,
+      // What the service worker acks once it has shown this (cue_log, 067).
+      ...(nudge.logKey ? { key: nudge.logKey } : {}),
+    },
+    // Worked out by the scan, which holds the user's clock, and passed on as
+    // the instant it is: push-send turns it into a TTL as each device's
+    // request leaves, so the device read in between is not added on after
+    // midnight. Without one the push service would hand a phone switched on
+    // at noon its 07:30 cue, or yesterday's last call.
+    expiresAtMs: nudge.expiresAtMs,
+    urgency: DELIVERY[nudge.kind].urgency,
+    topic: DELIVERY[nudge.kind].topic(nudge),
+  }
+}
+
+/** One nudge to the user's devices, answered in the channel's terms. Never throws. */
+export async function sendNudgeToDevices(
+  service: Parameters<typeof sendToUser>[0],
+  userId: string,
+  nudge: Nudge,
+): Promise<ChannelResult> {
+  let result: SendReport
+  try {
+    // Through the device registry, which picks the devices that take this
+    // kind (lib/devices/select.ts) and sends on each one's transport.
+    result = await sendToUser(service, userId, { kind: nudge.kind, payload: pushPayloadOf(nudge) })
+  } catch (err) {
+    // sendToUser answers rather than throws. Caught anyway, because the
+    // channel contract (types.ts) is this channel's to keep, not a promise
+    // borrowed from the function it calls.
+    return { ok: false, detail: `push threw: ${err instanceof Error ? err.message : String(err)}` }
+  }
+  return channelResultOf(result, nudge.kind)
+}
+
 export const pushChannel: NudgeChannel = {
   slug: 'push',
   extensionSlug: null,
-  async deliver(nudge, ctx) {
-    // A Done button only makes sense when there is exactly one thing it could
-    // mean. A last call naming three habits gets a plain click-through instead
-    // of a button that silently picks one of them.
-    const actionable = Boolean(nudge.itemId)
-    const payload: PushPayload = {
-      title: nudge.title,
-      body: nudge.body,
-      url: nudge.url,
-      // Collapse on the item (or on the day, for a multi-item last call and
-      // for the EOD review, whose `dsul-eod-<date>` is the tag its old route
-      // sent) so a re-delivery REPLACES rather than stacks. A shade with four
-      // copies of the same cue is how someone learns to swipe the whole app
-      // away.
-      tag: nudge.itemId ? `dsul-item-${nudge.itemId}` : `dsul-${nudge.kind}-${nudge.dateStr}`,
-      actions: actionable
-        ? [
-            { action: ACTION_DONE, title: 'Done' },
-            { action: ACTION_SNOOZE, title: `Snooze ${SNOOZE_MINUTES}m` },
-          ]
-        : undefined,
-      data: {
-        url: nudge.url,
-        itemId: nudge.itemId,
-        dateStr: nudge.dateStr,
-        kind: nudge.kind,
-        // What the service worker acks once it has shown this (cue_log, 067).
-        ...(nudge.logKey ? { key: nudge.logKey } : {}),
-      },
-      // Worked out by the scan, which holds the user's clock, and passed on as
-      // the instant it is: push-send turns it into a TTL as each device's
-      // request leaves, so the device read in between is not added on after
-      // midnight. Without one the push service would hand a phone switched on
-      // at noon its 07:30 cue, or yesterday's last call.
-      expiresAtMs: nudge.expiresAtMs,
-      urgency: DELIVERY[nudge.kind].urgency,
-      topic: DELIVERY[nudge.kind].topic(nudge),
-    }
-
-    let result: SendReport
-    try {
-      // Through the device registry, which picks the devices that take this
-      // kind (lib/devices/select.ts) and sends on each one's transport.
-      result = await sendToUser(ctx.service, ctx.userId, { kind: nudge.kind, payload })
-    } catch (err) {
-      // sendToUser answers rather than throws. Caught anyway, because the
-      // channel contract (types.ts) is this channel's to keep, not a promise
-      // borrowed from the function it calls.
-      return { ok: false, detail: `push threw: ${err instanceof Error ? err.message : String(err)}` }
-    }
-    return channelResultOf(result, nudge.kind)
-  },
+  deliver: (nudge, ctx) => sendNudgeToDevices(ctx.service, ctx.userId, nudge),
 }

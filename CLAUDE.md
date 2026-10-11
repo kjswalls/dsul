@@ -488,7 +488,9 @@ Phase 1a's device registry is built too (migration 065, `lib/devices/`: every pu
 the open page as a device: while someone is using it, `hooks/use-local-cue-tick.ts` claims due
 cues through `POST /api/reminders/claim` (the scan's own CAS, re-asked of `dueReminders` on the
 server first) and rings them through the service worker, never `new Notification` (a test), and
-`/api/reminders/ack` writes `cue_log` (migration 067, a ledger: owner SELECT only; until Kirby
-applies it the ack answers 503). Read it before touching `lib/reminders/**`, `lib/devices/**`,
+`/api/reminders/ack` writes `cue_log` (migration 067, applied; a ledger: owner SELECT only). PR-1d
+fills it: the scan opens a row at every claim and closes it after the send
+(`lib/reminders/cue-log-write.ts`), and a row a cut-off send left undelivered is re-sent to devices
+only, after a conditional claim on `attempts` (`lib/reminders/retry.ts`). Read it before touching `lib/reminders/**`, `lib/devices/**`,
 `lib/sw/**`, `lib/push-send.ts`, `app/api/cron/**`, `/api/reminders/**`, `/api/devices/**`,
 `push_subscriptions`, or notification code in `electron/` or `ios/`.

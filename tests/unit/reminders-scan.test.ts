@@ -58,7 +58,18 @@ import {
 import { deliverNudge } from '@/lib/reminders/deliver';
 import { isWithinWindow, REMINDER_GRACE_MINUTES } from '@/lib/reminders/due';
 import type { Nudge } from '@/lib/reminders/nudge';
-import { makeServiceFake, type FakeCall } from './support/service-fake';
+import { makeServiceFake as makeFullFake, type FakeCall, type Responder } from './support/service-fake';
+
+/**
+ * The service fake, with `writes()` read as the TIERS' writes: the claims and
+ * stamps this file pins. The ledger the scan keeps beside them (cue_log, the
+ * row opened at each claim and closed after the send) has its own describe at
+ * the end, which reads every call.
+ */
+function makeServiceFake(respond?: Responder) {
+  const fake = makeFullFake(respond);
+  return { ...fake, writes: () => fake.writes().filter((c) => c.table !== 'cue_log') };
+}
 
 const habit = (over: Partial<Item> = {}): Item => ({
   type: 'habit', id: 'h1', title: 'Vitamins', project: 'G', streak: 12, status: 'pending',
@@ -1315,5 +1326,250 @@ describe('expiresAtMs', () => {
     expect(expiryAt(clock, 1440)).toBe(AT_2350_NY.getTime() + 600_000);
     expect(expiryAt(clock, 1430)).toBe(AT_2350_NY.getTime());
     expect(expiryAt(clock, 1400)).toBe(AT_2350_NY.getTime());
+  });
+});
+
+/* ── The ledger and the retry pass (cue_log, PR-1d) ─────────────────────────── */
+
+describe('cue_log: the row each claim opens, and the retry pass', () => {
+  const OPEN_ROW = {
+    id: 'row1',
+    user_id: 'u1',
+    key: 'cue:h1:2026-08-10T07:30',
+    kind: 'cue',
+    item_id: 'h1',
+    date_str: '2026-08-10',
+    window_end: '2026-08-10T12:00:00.000Z',
+    claimed_at: '2026-08-10T11:30:10.000Z',
+    attempts: 1,
+    results: [],
+  };
+
+  /** A tick at 07:35 New York whose cue_log answers `open` to the retry read. */
+  const ledgerFake = (over: { open?: unknown[]; user?: Record<string, unknown>; book?: unknown[]; retryWon?: boolean; upsert?: { data?: unknown; error?: unknown } } = {}) =>
+    makeFullFake((call) => {
+      const key = `${call.table}.${call.op}`;
+      if (key === 'user_settings.select') return { data: [{ ...USER, ...over.user }] };
+      if (key === 'items.select') return { data: over.book ?? [BOOK_ROW] };
+      if (key === 'items.update') return { data: [{ id: 'h1' }] };
+      if (key === 'cue_log.select') return { data: over.open ?? [] };
+      if (key === 'cue_log.upsert') return over.upsert ?? { data: { id: 'new-row' } };
+      if (key === 'cue_log.update' && (call.payload as Record<string, unknown>).attempts !== undefined && call.filters.some(([m, a]) => m === 'eq' && a[0] === 'attempts')) {
+        return { data: over.retryWon === false ? [] : [{ id: 'row1' }] };
+      }
+      return {};
+    });
+
+  const ledgerCalls = (calls: FakeCall[]) => calls.filter((c) => c.table === 'cue_log');
+
+  it('opens the row after the claim and before the send, then closes it with what each channel made of it', async () => {
+    fetchItems.mockResolvedValue([habit({ reminderTime: '07:30' })]);
+    const { service, calls, mark } = ledgerFake();
+    sendPushToUser.mockImplementationOnce(async () => {
+      mark('push');
+      return { devices: 1, sent: 1, expired: 0, failed: 0 };
+    });
+
+    await runReminderScan(service, { now: AT_0735_NY });
+
+    const claim = calls.findIndex((c) => c.table === 'items' && c.op === 'update');
+    const opened = calls.findIndex((c) => c.table === 'cue_log' && c.op === 'upsert');
+    const push = calls.findIndex((c) => c.op === 'push');
+    const closed = calls.findIndex((c) => c.table === 'cue_log' && c.op === 'update');
+    expect(claim).toBeLessThan(opened);
+    expect(opened).toBeLessThan(push);
+    expect(push).toBeLessThan(closed);
+
+    expect(calls[opened].payload).toMatchObject({
+      user_id: 'u1',
+      key: 'cue:h1:2026-08-10T07:30',
+      kind: 'cue',
+      item_id: 'h1',
+      date_str: '2026-08-10',
+      collapse_id: 'dsul-item-h1',
+      window_end: '2026-08-10T12:00:00.000Z',
+      claimed_at: AT_0735_NY.toISOString(),
+      delivered_at: null,
+      attempts: 1,
+      results: [],
+    });
+    expect(calls[opened].options).toEqual({ onConflict: 'user_id,key' });
+    expect(calls[closed].payload).toMatchObject({
+      results: [{ channel: 'push', ok: true }],
+      delivered_at: expect.any(String),
+    });
+    expect(calls[closed].filters).toEqual([['eq', ['id', 'new-row']], ['eq', ['user_id', 'u1']]]);
+  });
+
+  it('a nudge that reached no device is closed for retries, not left open', async () => {
+    fetchItems.mockResolvedValue([habit({ reminderTime: '07:30' })]);
+    sendPushToUser.mockResolvedValueOnce({ devices: 0, sent: 0, expired: 0, failed: 0 });
+    const { service, calls } = ledgerFake();
+    await runReminderScan(service, { now: AT_0735_NY });
+    const close = ledgerCalls(calls).find((c) => c.op === 'update');
+    expect(close?.payload).toEqual({ results: [expect.objectContaining({ channel: 'push', ok: false, code: 'unreached' })], attempts: 5 });
+  });
+
+  it('a send that failed is left open for the retry pass', async () => {
+    fetchItems.mockResolvedValue([habit({ reminderTime: '07:30' })]);
+    sendPushToUser.mockResolvedValueOnce({ devices: 1, sent: 0, expired: 0, failed: 1 });
+    const { service, calls } = ledgerFake();
+    await runReminderScan(service, { now: AT_0735_NY });
+    const close = ledgerCalls(calls).find((c) => c.op === 'update');
+    expect(close?.payload).toEqual({ results: [expect.objectContaining({ channel: 'push', ok: false, code: 'failed' })] });
+  });
+
+  it('a ledger that cannot be written never costs the cue', async () => {
+    fetchItems.mockResolvedValue([habit({ reminderTime: '07:30' })]);
+    const { service, calls } = ledgerFake({ upsert: { error: { code: 'XX000', message: 'down' } } });
+    const summary = await runReminderScan(service, { now: AT_0735_NY });
+    expect(summary.cues).toBe(1);
+    expect(sendPushToUser).toHaveBeenCalledTimes(1);
+    expect(ledgerCalls(calls).some((c) => c.op === 'update')).toBe(false);
+    expect(summary.notes).toContain('u1: cue_log open failed — down');
+  });
+
+  it('before 067 the ledger is a quiet no-op', async () => {
+    fetchItems.mockResolvedValue([habit({ reminderTime: '07:30' })]);
+    const missing = { code: 'PGRST205', message: 'no cue_log' };
+    const { service } = makeFullFake((call) => {
+      if (call.table === 'cue_log') return { error: missing };
+      if (call.table === 'user_settings') return { data: [USER] };
+      if (call.op === 'select') return { data: [BOOK_ROW] };
+      return { data: [{ id: 'h1' }] };
+    });
+    const summary = await runReminderScan(service, { now: AT_0735_NY });
+    expect(summary.cues).toBe(1);
+    expect(summary.notes).toEqual([]);
+  });
+
+  it('reads only rows worth a retry: undelivered, under the cap, window open, and older than one tick’s run', async () => {
+    const { service, calls } = ledgerFake();
+    await runReminderScan(service, { now: AT_0735_NY });
+    const read = ledgerCalls(calls).find((c) => c.op === 'select');
+    expect(read?.filters).toEqual([
+      ['in', ['user_id', ['u1']]],
+      ['is', ['delivered_at', null]],
+      ['lt', ['attempts', 5]],
+      ['gt', ['window_end', AT_0735_NY.toISOString()]],
+      ['lt', ['claimed_at', new Date(AT_0735_NY.getTime() - 4 * 60_000).toISOString()]],
+    ]);
+  });
+
+  it('re-sends a lost cue to the DEVICES only, after a conditional claim on attempts, and closes it delivered', async () => {
+    // Claimed at 07:30 by a tick that never finished; the bookkeeping already
+    // holds today's key, so the scan's own cue pass finds nothing new.
+    fetchItems.mockResolvedValue([habit({ reminderTime: '07:30' })]);
+    const { service, calls, mark } = ledgerFake({
+      open: [OPEN_ROW],
+      book: [{ ...BOOK_ROW, reminder_sent_key: '2026-08-10T07:30' }],
+    });
+    sendPushToUser.mockImplementationOnce(async () => {
+      mark('push');
+      return { devices: 1, sent: 1, expired: 0, failed: 0 };
+    });
+
+    const summary = await runReminderScan(service, { now: AT_0735_NY });
+
+    expect(summary.retried).toBe(1);
+    expect(summary.cues).toBe(0);
+    expect(deliverNudge).not.toHaveBeenCalled();
+    const [, , payload] = sendPushToUser.mock.calls[0] as unknown as [unknown, string, Record<string, unknown>];
+    expect(payload).toMatchObject({
+      title: 'Vitamins',
+      tag: 'dsul-item-h1',
+      data: expect.objectContaining({ key: 'cue:h1:2026-08-10T07:30' }),
+      expiresAtMs: Date.parse('2026-08-10T12:00:00.000Z'),
+    });
+
+    const ledger = ledgerCalls(calls).filter((c) => c.op === 'update');
+    const claim = calls.indexOf(ledger[0]);
+    expect(ledger[0].payload).toEqual({ attempts: 2 });
+    expect(ledger[0].filters).toEqual([
+      ['eq', ['id', 'row1']],
+      ['eq', ['user_id', 'u1']],
+      ['eq', ['attempts', 1]],
+      ['is', ['delivered_at', null]],
+      ['select', ['id']],
+    ]);
+    expect(claim).toBeLessThan(calls.findIndex((c) => c.op === 'push'));
+    expect(ledger[1].payload).toMatchObject({ results: [{ channel: 'push', ok: true }], delivered_at: expect.any(String) });
+  });
+
+  it('a retry another tick claimed first sends nothing', async () => {
+    fetchItems.mockResolvedValue([habit({ reminderTime: '07:30' })]);
+    const { service } = ledgerFake({
+      open: [OPEN_ROW],
+      book: [{ ...BOOK_ROW, reminder_sent_key: '2026-08-10T07:30' }],
+      retryWon: false,
+    });
+    const summary = await runReminderScan(service, { now: AT_0735_NY });
+    expect(summary.retried).toBe(0);
+    expect(sendPushToUser).not.toHaveBeenCalled();
+  });
+
+  it('a habit ticked since the claim is silence: closed with why, nothing sent', async () => {
+    fetchItems.mockResolvedValue([habit({ reminderTime: '07:30', completedDates: ['2026-08-10'] })]);
+    const { service, calls } = ledgerFake({
+      open: [OPEN_ROW],
+      book: [{ ...BOOK_ROW, reminder_sent_key: '2026-08-10T07:30' }],
+    });
+    const summary = await runReminderScan(service, { now: AT_0735_NY });
+    expect(summary.retried).toBe(0);
+    expect(sendPushToUser).not.toHaveBeenCalled();
+    const close = ledgerCalls(calls).find((c) => c.op === 'update');
+    expect(close?.payload).toEqual({
+      results: [expect.objectContaining({ channel: 'retry', ok: false, code: 'not_wanted' })],
+      attempts: 5,
+    });
+  });
+
+  it('a user with nothing due but a row to retry is still visited, and one with reminders off is not re-sent', async () => {
+    fetchItems.mockResolvedValue([habit({ reminderTime: '07:30' })]);
+    const off = ledgerFake({
+      open: [OPEN_ROW],
+      user: { habit_reminders_enabled: false, eod_review_enabled: true, eod_review_time: '21:00' },
+    });
+    await runReminderScan(off.service, { now: AT_0735_NY });
+    expect(sendPushToUser).not.toHaveBeenCalled();
+    expect(ledgerCalls(off.calls).find((c) => c.op === 'update')?.payload).toMatchObject({ attempts: 5 });
+  });
+
+  it('retries a lost review while it is still owed, and not once it is done', async () => {
+    const eodRow = { ...OPEN_ROW, key: 'eod:2026-08-10', kind: 'eod', item_id: null, window_end: '2026-08-11T04:00:00.000Z' };
+    const eodUser = { habit_reminders_enabled: false, eod_review_enabled: true, eod_review_time: '07:00', last_eod_notified_date: '2026-08-10' };
+
+    const owed = ledgerFake({ open: [eodRow], user: eodUser });
+    expect((await runReminderScan(owed.service, { now: AT_0735_NY })).retried).toBe(1);
+    const [, , payload] = sendPushToUser.mock.calls[0] as unknown as [unknown, string, Record<string, unknown>];
+    expect(payload).toMatchObject({ url: '/?eod=2026-08-10', tag: 'dsul-eod-2026-08-10' });
+
+    sendPushToUser.mockClear();
+    const done = ledgerFake({ open: [eodRow], user: { ...eodUser, last_eod_review_date: '2026-08-10' } });
+    expect((await runReminderScan(done.service, { now: AT_0735_NY })).retried).toBe(0);
+    expect(sendPushToUser).not.toHaveBeenCalled();
+  });
+
+  it('a row from another day is never re-sent', async () => {
+    fetchItems.mockResolvedValue([habit({ reminderTime: '07:30' })]);
+    const { service, calls } = ledgerFake({
+      open: [{ ...OPEN_ROW, date_str: '2026-08-09' }],
+      book: [{ ...BOOK_ROW, reminder_sent_key: '2026-08-10T07:30' }],
+    });
+    await runReminderScan(service, { now: AT_0735_NY });
+    expect(sendPushToUser).not.toHaveBeenCalled();
+    expect(ledgerCalls(calls).find((c) => c.op === 'update')?.payload).toMatchObject({
+      results: [expect.objectContaining({ code: 'not_today' })],
+      attempts: 5,
+    });
+  });
+
+  it('MAX_ATTEMPTS is 067’s open-index cap, and a retry waits out a tick’s run but not the next tick', async () => {
+    const { MAX_ATTEMPTS } = await import('@/lib/reminders/cue-log-write');
+    const { RETRY_AFTER_MS } = await import('@/lib/reminders/retry');
+    const sql = readFileSync(join(process.cwd(), 'supabase/migrations/067_cue_log.sql'), 'utf8');
+    expect(sql).toContain(`where delivered_at is null and attempts < ${MAX_ATTEMPTS}`);
+    expect(RETRY_AFTER_MS).toBeGreaterThan(60_000);
+    expect(RETRY_AFTER_MS).toBeLessThan(TICK_MINUTES * 60_000);
   });
 });

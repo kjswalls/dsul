@@ -26,9 +26,11 @@ const h = vi.hoisted(() => ({
   fetchItemById: vi.fn(),
   fetchRoutines: vi.fn(async () => []),
   fetchSeasons: vi.fn(async () => []),
+  ledger: null as unknown,
 }));
 
 vi.mock('@/lib/supabase-server', () => ({ createClient: async () => h.session }));
+vi.mock('@/lib/supabase-service', () => ({ createServiceClient: () => h.ledger }));
 vi.mock('@/lib/db', () => ({
   fetchItemById: h.fetchItemById,
   fetchRoutines: h.fetchRoutines,
@@ -58,6 +60,8 @@ let book: Record<string, unknown>[];
 let casResult: FakeResult;
 let fake: ReturnType<typeof fakeService>;
 let user: { id: string } | null;
+let ledger: ReturnType<typeof fakeService>;
+let ledgerResult: FakeResult;
 
 function respond(q: FakeQuery): FakeResult {
   if (q.table === 'user_settings') return { data: settings, error: null };
@@ -85,6 +89,9 @@ beforeEach(() => {
   h.fetchItemById.mockImplementation(async (_u: string, id: string) => (id === ITEM ? habit() : null));
   fake = fakeService(respond);
   h.session = { ...fake.service, auth: { getUser: async () => ({ data: { user } }) } };
+  ledgerResult = { data: null, error: null };
+  ledger = fakeService(() => ledgerResult);
+  h.ledger = ledger.service;
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
@@ -239,5 +246,61 @@ describe('a release', () => {
   it('a newer key is never cleared: the CAS matches nothing and the answer is lost', async () => {
     casResult = { data: [], error: null };
     expect(await (await claim({ candidates: [release] })).json()).toEqual({ won: [], lost: [release], later: [] });
+  });
+});
+
+describe('the ledger (cue_log, PR-1d)', () => {
+  it('a won cue is recorded as delivered by the page, through the service client, first record wins', async () => {
+    await claim({ candidates: [cue()] });
+    expect(fake.queries.some((q) => q.table === 'cue_log')).toBe(false);
+    const [row] = ledger.queries;
+    expect(row.table).toBe('cue_log');
+    expect(op(row)).toBe('upsert');
+    const [written, options] = called(row, 'upsert')[0] as [Record<string, unknown>[], Record<string, unknown>];
+    expect(options).toEqual({ onConflict: 'user_id,key', ignoreDuplicates: true });
+    expect(written).toEqual([
+      expect.objectContaining({
+        user_id: USER,
+        key: `cue:${ITEM}:2026-10-10T07:30`,
+        kind: 'cue',
+        item_id: ITEM,
+        date_str: DAY,
+        collapse_id: `dsul-item-${ITEM}`,
+        claimed_at: AT_0731,
+        delivered_at: AT_0731,
+        results: [{ channel: 'page', ok: true, at: AT_0731 }],
+      }),
+    ]);
+  });
+
+  it('a lost or later claim writes nothing', async () => {
+    casResult = { data: [], error: null };
+    await claim({ candidates: [cue()] });
+    casResult = { data: null, error: { message: 'refused' } };
+    await claim({ candidates: [cue()] });
+    expect(ledger.queries).toEqual([]);
+  });
+
+  it('a won release takes back only the page’s own unacked row', async () => {
+    await claim({ candidates: [cue({ kind: 'release' })] });
+    const [row] = ledger.queries;
+    expect(op(row)).toBe('delete');
+    expect(eqOf(row, 'user_id')).toBe(USER);
+    expect(called(row, 'in')[0]).toEqual(['key', [`cue:${ITEM}:2026-10-10T07:30`]]);
+    expect(called(row, 'is')[0]).toEqual(['acked_at', null]);
+    expect(called(row, 'contains')[0]).toEqual(['results', [{ channel: 'page' }]]);
+  });
+
+  it('a ledger that cannot be written never costs the page its answer', async () => {
+    ledgerResult = { data: null, error: { code: 'XX000', message: 'down' } };
+    const res = await claim({ candidates: [cue()] });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ won: [cue()], lost: [], later: [] });
+  });
+
+  it('a ledger not yet migrated is silent', async () => {
+    ledgerResult = { data: null, error: { code: 'PGRST205', message: 'no cue_log' } };
+    await claim({ candidates: [cue()] });
+    expect(console.error).not.toHaveBeenCalled();
   });
 });

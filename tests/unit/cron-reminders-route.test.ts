@@ -42,6 +42,7 @@ const summary = (over: Partial<ScanSummary> = {}): ScanSummary => ({
   lastCalls: 1,
   eod: 1,
   unreached: 1,
+    retried: 0,
   daysSettled: 0,
   notes: [],
   ...over,
@@ -152,7 +153,7 @@ describe('GET /api/cron/reminders', () => {
     expect(log).toHaveBeenCalledTimes(2);
     expect(log).toHaveBeenNthCalledWith(
       1,
-      '[cron/reminders] users=2 cues=3 lastCalls=1 eod=1 unreached=1 daysSettled=0 notes=1',
+      '[cron/reminders] users=2 cues=3 lastCalls=1 eod=1 unreached=1 retried=0 daysSettled=0 notes=1',
     );
     expect(log).toHaveBeenNthCalledWith(2, '[cron/recipes] users=1 runs=2 notes=0');
   });
@@ -209,7 +210,7 @@ describe('GET /api/cron/reminders: the recipe tier', () => {
     });
     expect(log).toHaveBeenNthCalledWith(
       1,
-      '[cron/reminders] users=2 cues=3 lastCalls=1 eod=1 unreached=1 daysSettled=0 notes=0',
+      '[cron/reminders] users=2 cues=3 lastCalls=1 eod=1 unreached=1 retried=0 daysSettled=0 notes=0',
     );
   });
 
