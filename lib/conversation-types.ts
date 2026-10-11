@@ -54,6 +54,8 @@ export interface StoredMessage {
   createdAt: string;
   /** A reply's action lines (migration 068's `meta.actions`); absent when it has none. */
   actions?: string[];
+  /** A question's picture count (migration 070's `meta.images`); absent when it had none. */
+  imageCount?: number;
 }
 
 /** What a client sends for one message. `meta` itself is never accepted. */
@@ -68,6 +70,8 @@ export interface TurnMessage {
   model?: string | null;
   /** A reply only: what the AI looked up, in dsul's words (cleanActions). */
   actions?: string[];
+  /** A question only: how many pictures went with it (cleanImageCount). Never the pictures. */
+  imageCount?: number;
 }
 
 export interface TurnCreate {
@@ -175,6 +179,11 @@ export const CHAT_LIMITS = {
    */
   actions: 16,
   actionChars: 200,
+  /**
+   * A question's picture count, at most: lib/chat-images.ts MAX_CHAT_IMAGES.
+   * The count is kept (migration 070); the pictures never are.
+   */
+  images: 3,
 } as const;
 
 export const DEFAULT_TITLE = 'New chat';
@@ -273,4 +282,14 @@ export function cleanActions(raw: unknown): string[] {
     if (line) out.push(line);
   }
   return out;
+}
+
+/**
+ * A question's picture count as it is kept: a whole number from 1 to
+ * CHAT_LIMITS.images, or 0 for none (anything else, a fraction included).
+ * More than the cap is the cap. chat_append (070) applies the same rule in SQL.
+ */
+export function cleanImageCount(raw: unknown): number {
+  if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 1) return 0;
+  return Math.min(raw, CHAT_LIMITS.images);
 }

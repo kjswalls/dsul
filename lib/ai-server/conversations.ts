@@ -34,6 +34,7 @@ import {
   ERROR_CODE_RE,
   UUID_RE,
   cleanActions,
+  cleanImageCount,
   cleanText,
   cleanTitle,
   isAnswerer,
@@ -187,6 +188,7 @@ export function toMessage(row: unknown): StoredMessage | null {
     model: strOrNull(row.model),
     createdAt: created_at,
     ...actionsOf(role, row.meta),
+    ...imagesOf(role, row.meta),
   };
 }
 
@@ -195,6 +197,13 @@ function actionsOf(role: string, meta: unknown): { actions?: string[] } {
   if (role !== 'assistant' || !isObj(meta)) return {};
   const actions = cleanActions(meta.actions);
   return actions.length > 0 ? { actions } : {};
+}
+
+/** A question's picture count from `meta` (070), cleaned again: meta is owner-asserted. */
+function imagesOf(role: string, meta: unknown): { imageCount?: number } {
+  if (role !== 'user' || !isObj(meta)) return {};
+  const imageCount = cleanImageCount(meta.images);
+  return imageCount > 0 ? { imageCount } : {};
 }
 
 function toSearchHit(row: unknown): SearchHit | null {
@@ -279,7 +288,7 @@ export interface ParsedTurn {
 
 const TURN_KEYS = new Set(['ownerId', 'create', 'messages']);
 const CREATE_KEYS = new Set(['itemId', 'title']);
-const MESSAGE_KEYS = new Set(['id', 'role', 'content', 'status', 'errorCode', 'replyTo', 'answerer', 'model', 'actions']);
+const MESSAGE_KEYS = new Set(['id', 'role', 'content', 'status', 'errorCode', 'replyTo', 'answerer', 'model', 'actions', 'imageCount']);
 const PATCH_KEYS = new Set(['title', 'starred', 'addChanges']);
 const CHANGE_KEYS = new Set<keyof ConversationChanges>(['added', 'steps', 'moved', 'changed']);
 const SEARCH_KEYS = new Set(['q']);
@@ -295,9 +304,13 @@ const NOT_BLANK_RE = /[^ \t\r\n]/;
 
 function parseMessage(raw: unknown): TurnMessage | null {
   if (!isObj(raw) || !onlyKeys(raw, MESSAGE_KEYS)) return null;
-  const { id, role, status = 'complete', errorCode, replyTo, answerer, model, actions } = raw;
+  const { id, role, status = 'complete', errorCode, replyTo, answerer, model, actions, imageCount } = raw;
   // Only a reply has action lines, and they are a list (each line is clipped, never refused).
   if (!absent(actions) && (role !== 'assistant' || !Array.isArray(actions))) return null;
+  // Only a question has a picture count, and it is a whole number (more than the cap is the cap).
+  if (!absent(imageCount) && (role !== 'user' || typeof imageCount !== 'number' || !Number.isInteger(imageCount) || imageCount < 0)) {
+    return null;
+  }
   if (typeof id !== 'string' || !UUID_RE.test(id)) return null;
   if (typeof raw.content !== 'string') return null;
   if (!isMessageStatus(status)) return null;
@@ -311,7 +324,18 @@ function parseMessage(raw: unknown): TurnMessage | null {
     // Clipped, never refused for length; blank is a shape problem, not a length.
     const content = cleanText(raw.content, CHAT_LIMITS.userChars);
     if (!NOT_BLANK_RE.test(content)) return null;
-    return { id, role, content, status: 'complete', errorCode: null, replyTo: null, answerer: null, model: null };
+    const images = cleanImageCount(imageCount);
+    return {
+      id,
+      role,
+      content,
+      status: 'complete',
+      errorCode: null,
+      replyTo: null,
+      answerer: null,
+      model: null,
+      ...(images > 0 ? { imageCount: images } : {}),
+    };
   }
   if (role === 'assistant') {
     if (typeof replyTo !== 'string' || !UUID_RE.test(replyTo) || !isAnswerer(answerer)) return null;
@@ -576,6 +600,8 @@ export async function appendTurn(
     // Sent only when there are some: 057's chat_append ignores the key, so a
     // turn saved before 068 is applied keeps everything but its lines.
     ...(m.role === 'assistant' && cleanActions(m.actions).length > 0 ? { actions: cleanActions(m.actions) } : {}),
+    // The same for a question's picture count before 070: the words save without it.
+    ...(m.role === 'user' && cleanImageCount(m.imageCount) > 0 ? { imageCount: cleanImageCount(m.imageCount) } : {}),
   }));
   const p_create = turn.create
     ? { itemId: turn.create.itemId, title: cleanTitle(turn.create.title) || DEFAULT_TITLE }

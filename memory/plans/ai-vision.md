@@ -79,9 +79,12 @@ drops a photo's metadata), they ride `/api/chat` as `images` beside the newest m
 turn (checked by `sanitizeChatImages` on both sides: a malformed one is a 400, not a quiet drop; the
 body cap rose to 4.4 MB, under Vercel's 4.5), and each adapter puts them on that user turn (Anthropic
 image blocks before the words, OpenAI-compatible `image_url` data URLs after them, in the lookup loop
-too). The saved turn is the words alone; the transcript says "1 image, not saved" under the message
-for as long as the page holds it (`ChatMessage.imageCount`, memory only). A later turn, Try again and
-Edit send words only. A model that cannot see pictures answers with its provider's own refusal, which
+too). The saved turn is the words plus how many pictures went with them (migration 070, Kirby's
+call 2026-10-11: "send only, but with an elegant placeholder after reload"): `meta.images`, 1 to 3,
+never a picture, a name or a size. While the sending page is open the pictures show above the
+question (`ChatMessage.images`, memory only); after a reload each is a same-size tile with a picture
+glyph, and either way one line says "1 image, not saved". A later turn, Try again and Edit send
+words only. A model that cannot see pictures answers with its provider's own refusal, which
 reaches the user as the usual error line.
 
 **Note 2026-10-10: what the chat can see, and its words.** Kirby tried free OpenRouter models and
@@ -1276,8 +1279,8 @@ conversation is saved to the account.
   - the planner context sent with each message;
   - your custom instructions;
   - proposal cards;
-  - pictures attached to a message (sent to your model with it, then gone; the transcript notes
-    "1 image, not saved" until the page reloads);
+  - pictures attached to a message (sent to your model with it, then gone; only how many is kept,
+    so after a reload the transcript shows a blank tile for each, marked "not saved");
   - error text (only a short error code);
   - your model key (which never leaves the server's sealed store, as before);
   - "Write with AI" in Settings → Make (mods build orders 7 and 10): neither the ask nor the reply.

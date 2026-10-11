@@ -4,9 +4,10 @@
  *
  * SENT, NEVER STORED. An image goes to the connected model with the message it
  * was attached to, for that turn only, and nothing keeps it: not the saved
- * conversation (chat_messages holds the words), not a bucket, not the server.
- * The transcript says "1 image" under the message for as long as this page
- * holds it, and a later turn, a retry or an edit sends words only. OpenClaw is
+ * conversation (chat_messages holds the words and, since migration 070, how
+ * many pictures there were), not a bucket, not the server. The transcript
+ * shows them while this page holds them and a placeholder tile for each after
+ * a reload, and a later turn, a retry or an edit sends words only. OpenClaw is
  * never sent one (its transports carry text).
  *
  * The browser shrinks each picture before it is attached

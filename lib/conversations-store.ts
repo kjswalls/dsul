@@ -10,6 +10,7 @@ import { replyErrorCode } from './chat-errors';
 import {
   CHAT_LIMITS,
   cleanActions,
+  cleanImageCount,
   cleanText,
   cleanTitle,
   deriveTitle,
@@ -93,10 +94,15 @@ export interface ChatMessage {
    */
   actions?: string[];
   /**
-   * How many pictures a user message was sent with (lib/chat-images.ts). This
-   * page's memory only: the pictures are never stored, and neither is this.
+   * How many pictures a user message was sent with (lib/chat-images.ts). Saved
+   * with the question (migration 070), so a reload shows a placeholder for each.
    */
   imageCount?: number;
+  /**
+   * The pictures themselves, for this page's memory only: the transcript shows
+   * them while the page that sent them is open. Never saved, never re-sent.
+   */
+  images?: ChatImage[];
 }
 
 export interface Thread {
@@ -388,12 +394,16 @@ function fromStored(m: StoredMessage): ChatMessage {
     pos: m.pos,
     sync: 'saved',
     ...(m.actions?.length ? { actions: m.actions } : {}),
+    ...(m.imageCount ? { imageCount: m.imageCount } : {}),
   };
 }
 
 /** What a save sends for one message. A user message carries nothing but itself. */
 function toTurn(m: ChatMessage): TurnMessage {
-  if (m.role === 'user') return { id: m.id, role: 'user', content: m.content };
+  if (m.role === 'user') {
+    const imageCount = cleanImageCount(m.imageCount);
+    return { id: m.id, role: 'user', content: m.content, ...(imageCount ? { imageCount } : {}) };
+  }
   const status: MessageStatus = m.status === 'streaming' ? 'stopped' : m.status;
   return {
     id: m.id,
@@ -414,7 +424,13 @@ function toTurn(m: ChatMessage): TurnMessage {
  */
 function mergeMessages(...lists: ChatMessage[][]): ChatMessage[] {
   const byId = new Map<string, ChatMessage>();
-  for (const list of lists) for (const m of list) byId.set(m.id, m);
+  for (const list of lists) {
+    for (const m of list) {
+      // A saved copy never carries the pictures; this page's memory keeps them.
+      const pictures = m.images ?? byId.get(m.id)?.images;
+      byId.set(m.id, pictures ? { ...m, images: pictures } : m);
+    }
+  }
   const all = [...byId.values()];
   const placed = all.filter((m) => m.pos !== null).sort((a, b) => (a.pos as number) - (b.pos as number));
   return [...placed, ...all.filter((m) => m.pos === null)];
@@ -1315,7 +1331,7 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
         createdAt: now,
         pos: null,
         sync: 'pending',
-        ...(pictures.length ? { imageCount: pictures.length } : {}),
+        ...(pictures.length ? { imageCount: pictures.length, images: pictures } : {}),
       };
       const reply: ChatMessage = {
         id: crypto.randomUUID(),
