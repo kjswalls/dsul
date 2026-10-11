@@ -78,7 +78,8 @@ import { ClearingFooter, ItemDetailSections } from '@/components/planner/item-de
 import { RailHeader } from '@/components/ai/rail/rail-header';
 import { BoundComposer } from '@/components/ai/bound-composer';
 import { ItemConversation } from '@/components/ai/item-conversation';
-import { ItemRail, type RailChip } from '@/components/planner/item-rail';
+import { ItemRail, RailDoneCheck, type RailChip } from '@/components/planner/item-rail';
+import { ITEM_VERBS, isDoneOn, occurrenceOn, type VerbContext } from '@/lib/item-verbs';
 import { AttachFileButton } from '@/components/planner/item-files';
 import { useConversationsStore } from '@/lib/conversations-store';
 import {
@@ -3413,6 +3414,29 @@ function ItemDialogInner({
     }
   }
 
+  // The rail's Done check: the row checkbox's verb (lib/item-verbs.ts `tick`),
+  // asked of a context the panel builds itself. The panel is drawn for no day,
+  // so like its header controls it answers for TODAY, and it asks whether the
+  // item falls on today at all, so a weekday habit opened on a Saturday shows
+  // no check rather than writing an off-schedule tick.
+  const railVerbContext = (item: Item): VerbContext => {
+    const now = new Date();
+    const todayStr = toDateStr(now, activationTz);
+    return {
+      dateStr: todayStr,
+      date: now,
+      todayStr,
+      tz: activationTz,
+      milestoneIds: typeSwitchMilestones,
+      occurrence: occurrenceOn(item, todayStr, todayStr, activationTz),
+    };
+  };
+  const railCtx = foldable && editItem ? railVerbContext(editItem) : null;
+  const railTick = railCtx && editItem && ITEM_VERBS.tick.eligible(editItem, railCtx) ? railCtx : null;
+  const railTarget = editItem?.type === 'habit' ? (editItem.timesPerDay ?? 1) : 1;
+  const railCount =
+    railTick && editItem?.type === 'habit' ? ((editItem.dailyCounts ?? {})[railTick.dateStr] ?? 0) : 0;
+
   return (
     <>
       <SurfaceRoot panel={isPanel} open={open} onOpenChange={onOpenChange} isMobile={isMobile}>
@@ -3500,10 +3524,12 @@ function ItemDialogInner({
           {/* The details, folded, while the chat has the panel. Outside the
               body like the header, so it stays put while the chat scrolls. */}
           {foldable && editItem && activeDraft && (
+            <div className="relative">
             <FoldRegion open={folded} testId="item-rail-region">
               <div className="px-5 pt-1 pb-2">
                 <ItemRail
                   title={activeDraft.title}
+                  check={!!railTick}
                   container={activeDraft.container === 'none' ? undefined : activeDraft.container}
                   chips={railChips}
                   onExpand={(e) => {
@@ -3522,6 +3548,26 @@ function ItemDialogInner({
                 />
               </div>
             </FoldRegion>
+            {/* Over the rail's title row, outside the fold's clip: the lime
+                tick keeps its own element. Only while folded: open, the
+                strip it sits on is clipped away. */}
+            {folded && railTick && (
+              <RailDoneCheck
+                className="absolute top-[15px] left-[33px]"
+                done={isDoneOn(editItem, railTick.dateStr)}
+                partial={railTarget > 1 ? Math.min(railCount, railTarget) / railTarget : 0}
+                label={ITEM_VERBS.tick.label(editItem, railTick)}
+                onToggle={() => {
+                  // Re-read and re-gate at click time (the verb's contract):
+                  // the render may be a frame behind the store, or behind midnight.
+                  const live = usePlannerStore.getState().items.find((i) => i.id === editItem.id);
+                  if (!live) return;
+                  const ctx = railVerbContext(live);
+                  if (ITEM_VERBS.tick.eligible(live, ctx)) ITEM_VERBS.tick.run(live, ctx);
+                }}
+              />
+            )}
+            </div>
           )}
           <PanelBody panel={presentation === 'panel'} rail={!!railChrome}>
           {/* The visible heading is the title field itself; Radix still needs a

@@ -1136,6 +1136,39 @@ describe("the item's pinned conversation", () => {
       expect(details()).toHaveAttribute('data-open', 'false');
     });
 
+    it('ticks the item from the folded rail, outside the fold, and unticks it again', () => {
+      renderShell();
+      openRow(DATED);
+      expect(within(dialog()).queryByTestId('item-rail-check')).toBeNull();
+      act(() => itemBox().focus());
+      const check = within(dialog()).getByTestId('item-rail-check');
+      // Over the strip, never in the fold's clip: the lime keeps its own element.
+      expect(check.closest('[data-testid="item-rail-region"]')).toBeNull();
+      expect(check.closest('[data-testid="item-rail"]')).toBeNull();
+      expect(check).toHaveAttribute('data-checked', 'false');
+      expect(check).toHaveAccessibleName('Mark done');
+      fireEvent.click(check);
+      expect(usePlannerStore.getState().items.find((i) => i.id === 't1')?.status).toBe('completed');
+      // A tick is not a tap on the strip: the details stay folded.
+      expect(details()).toHaveAttribute('data-open', 'false');
+      const ticked = within(dialog()).getByTestId('item-rail-check');
+      expect(ticked).toHaveAttribute('data-checked', 'true');
+      expect(ticked).toHaveAccessibleName('Mark not done');
+      fireEvent.click(ticked);
+      expect(usePlannerStore.getState().items.find((i) => i.id === 't1')?.status).toBe('pending');
+    });
+
+    it('offers no check where the verb is not offered: a cancelled item', () => {
+      usePlannerStore.setState({
+        items: [{ ...DATED, status: 'cancelled' }, PLANTS, ...steps],
+      } as never);
+      renderShell();
+      openRow(DATED);
+      act(() => itemBox().focus());
+      expect(details()).toHaveAttribute('data-open', 'false');
+      expect(within(dialog()).queryByTestId('item-rail-check')).toBeNull();
+    });
+
     it('has no rail with no AI: the details never fold', () => {
       seed(AI_HIDDEN);
       renderShell();
