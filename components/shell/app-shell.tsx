@@ -36,6 +36,7 @@ import { MobileShell } from '@/components/shell/mobile-shell';
 import { ZenStage } from '@/components/zen/zen-stage';
 import { OnboardingTour } from '@/components/onboarding/onboarding-tour';
 import { BugReportDialog } from '@/components/bug-report/bug-report-dialog';
+import { VacationDialog } from '@/components/planner/vacation-dialog';
 import { OneTimeNudge } from '@/components/primitives/one-time-nudge';
 import { SettleHost } from '@/components/shell/settle-host';
 
@@ -73,6 +74,7 @@ import { useTimezoneSync } from '@/hooks/use-timezone-sync';
 import { useDeviceRegistration } from '@/hooks/use-device-registration';
 import { useLocalCueTick } from '@/hooks/use-local-cue-tick';
 import { useOverdueSweep } from '@/hooks/use-overdue-sweep';
+import { useAwaySettle } from '@/hooks/use-away-settle';
 import { useCompletionFiling } from '@/hooks/use-completion-filing';
 import { useDeferredDialogPromotion } from '@/hooks/use-deferred-dialog';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -302,6 +304,8 @@ export function AppShell() {
   // survives view changes — and declared AFTER useUndoToast so the batched
   // unschedule it fires is picked up by the already-mounted toast subscriber.
   useOverdueSweep();
+  // Back from a trip: its overdue tasks move to the braindump, once.
+  useAwaySettle();
   // Finished braindump items move onto the day they were finished on, once
   // that day is over (lib/completion-filing.ts). Always on; same mount point
   // and the same load-time gates as the sweep above.
@@ -848,6 +852,12 @@ export function AppShell() {
 
       <BugReportDialog
         open={activeDialog?.type === 'bug-report'}
+        onOpenChange={(open) => !open && closeDialog()}
+      />
+
+      <VacationDialog
+        open={activeDialog?.type === 'vacation'}
+        editKeep={activeDialog?.type === 'vacation' ? activeDialog.editKeep : undefined}
         onOpenChange={(open) => !open && closeDialog()}
       />
 

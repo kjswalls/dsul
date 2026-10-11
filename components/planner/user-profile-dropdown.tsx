@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import { VacationMenuItem } from '@/components/planner/vacation-menu-item';
 import { createClient } from '@/lib/supabase';
 import { useSessionUserStore } from '@/lib/session-user-store';
 import { flushSettings } from '@/lib/settings-service';
@@ -99,6 +100,7 @@ export function UserProfileDropdown({ settingsHref, onOpenBugReport }: UserProfi
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuGroup>
+          <VacationMenuItem />
           <DropdownMenuItem asChild className="cursor-pointer">
             <Link href={settingsHref}>
               <Settings className="mr-2 h-4 w-4" />

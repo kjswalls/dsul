@@ -38,6 +38,7 @@ import {
   Sunrise,
   Sunset,
   Bug,
+  Palmtree,
   AlarmClock,
   CheckCircle2,
   Clock,
@@ -116,6 +117,17 @@ import type { Command, CommandArgOption, CommandContext, CommandProvider } from 
 import type { TypeFilter, ViewLayout } from '../view-store';
 import type { GroupBy, Priority, TimeBucket, Routine, Season, Goal } from '../planner-types';
 import { useAwayStore } from '../away-store';
+import { currentAway } from '../away';
+import { formatAwayDay, parseBackOn } from '../away-dates';
+import {
+  activeTrip,
+  awayInputsNow,
+  defaultKeep,
+  endVacation,
+  keepSentence,
+  openVacationCard,
+  startVacation,
+} from '../away-actions';
 
 /**
  * The command registry.
@@ -1468,6 +1480,79 @@ export const STATIC_COMMANDS: Command[] = [
     // itself is off, whatever the console is doing.
     availableWhen: () => goalsEnabled(),
     run: () => useUIStore.getState().openDialog({ type: 'organize', section: 'goals' }),
+  },
+  /*
+   * Vacation mode. One line: "/vacation until tue" previews and Enter starts
+   * it, keeping the month's every-day habits; the chip opens the card's keep
+   * picker instead. While a trip is on or coming, the same words open the card
+   * (which holds End vacation) and "I'm back" ends it. Hidden until trips have
+   * loaded, and for good without migration 071.
+   */
+  {
+    id: 'app.vacation',
+    label: 'Vacation mode',
+    group: 'app',
+    icon: Palmtree,
+    keywords: 'vacation away holiday trip break rest pause travel leave off',
+    aliases: ['vacation', 'away', 'holiday', 'trip'],
+    hidden: () => {
+      const away = useAwayStore.getState();
+      return !away.available || !!activeTrip(away.periods, awayInputsNow().todayStr);
+    },
+    argument: {
+      kind: 'text',
+      placeholder: 'Back on? (tue, oct 20, 2 weeks)',
+      validate: (value) =>
+        parseBackOn(value, awayInputsNow().todayStr) ? null : 'Try a day like tue, oct 20 or 2 weeks',
+      preview: (value) => {
+        const now = awayInputsNow();
+        const back = parseBackOn(value, now.todayStr);
+        if (!back) return null;
+        return {
+          label: `Vacation mode until ${formatAwayDay(back)}`,
+          detail: keepSentence(defaultKeep(now.items, now.todayStr), now.items, now.routines),
+        };
+      },
+      chip: { label: 'Change what’s paused', run: () => openVacationCard({ editKeep: true }) },
+    },
+    run: (_ctx, value) => {
+      const back = value ? parseBackOn(value, awayInputsNow().todayStr) : null;
+      if (back) startVacation(back);
+    },
+  },
+  {
+    id: 'app.vacation-open',
+    label: 'Vacation mode',
+    dynamicLabel: () => {
+      const now = awayInputsNow();
+      const trip = activeTrip(useAwayStore.getState().periods, now.todayStr);
+      if (!trip) return 'Vacation mode';
+      if (trip.startsOn > now.todayStr) return `Vacation from ${formatAwayDay(trip.startsOn)}`;
+      return trip.endsOn ? `Vacation until ${formatAwayDay(trip.endsOn)}` : 'On vacation';
+    },
+    group: 'app',
+    icon: Palmtree,
+    // No aliases: an alias has one owner (commands.test.ts), and the start
+    // command holds them. Its label and keywords find this one by the same words.
+    keywords: 'vacation away holiday trip break rest pause travel change keep',
+    hidden: () => {
+      const away = useAwayStore.getState();
+      return !away.available || !activeTrip(away.periods, awayInputsNow().todayStr);
+    },
+    run: () => openVacationCard(),
+  },
+  {
+    id: 'app.vacation-end',
+    label: 'I’m back from vacation',
+    group: 'app',
+    icon: Palmtree,
+    keywords: 'end vacation back home return away holiday trip',
+    aliases: ['back'],
+    hidden: () => {
+      const away = useAwayStore.getState();
+      return !away.available || !currentAway(away.periods, awayInputsNow().todayStr);
+    },
+    run: () => endVacation(),
   },
   {
     id: 'app.shortcuts',

@@ -3,6 +3,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Sidebar } from '@/components/sidebar/sidebar';
 import { ViewRouter } from '@/components/views/view-router';
+import { AwayNotice } from '@/components/views/away-notice';
 import { SeasonNotice } from '@/components/views/season-notice';
 import { DayHeaderNotice } from '@/components/notices/notice-slot';
 import { HeaderCapsule } from '@/components/canvas/header-capsule';
@@ -264,6 +265,9 @@ export const DesktopShell = memo(function DesktopShell() {
               unbounded line here would push WeekScale off the row's right end
               before it ever thought about eliding. */}
           <SeasonNotice className="mt-2 h-8 min-w-0 max-w-[260px]" />
+          {/* Vacation mode's line: on every date and scope, since a trip is
+              about you and not about a day (away-notice.tsx). */}
+          <AwayNotice className="mt-2 h-8 max-w-[360px]" />
           {/* "Today's review is waiting" — beside the date it is about, on the
               same argument and in the same row as the line above it. Free, for
               the same reason: the row's height is max(children) and the capsule

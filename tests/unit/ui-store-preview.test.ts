@@ -47,6 +47,7 @@ const SLOT_IS_DATA: Record<ActiveDialog['type'], boolean> = {
   'new-container': true,
   'bulk-add': true,
   organize: true,
+  vacation: true,
   launcher: false,
   'keyboard-shortcuts': false,
   'bug-report': false,
@@ -58,6 +59,7 @@ const DATA_SLOTS: ActiveDialog[] = [
   { type: 'new-container', kind: 'routine' },
   { type: 'bulk-add', text: 'one\ntwo' },
   { type: 'organize', section: 'projects' },
+  { type: 'vacation' },
 ];
 const CHROME_SLOTS: ActiveDialog[] = [
   { type: 'launcher' },

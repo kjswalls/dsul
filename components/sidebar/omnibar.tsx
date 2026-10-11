@@ -747,7 +747,95 @@ export function Omnibar({
       </span>
     );
 
+  /**
+   * What a text argument's row says for `value`: the command's preview when it
+   * has one ("Vacation mode until Tue, Oct 20" and a line under it), else its
+   * label and the value in quotes, or the error the value fails with.
+   */
+  const textArgBody = (command: DsulCommand, value: string) => {
+    const arg = command.argument;
+    if (arg?.kind !== 'text') return null;
+    const error = value ? (arg.validate?.(value) ?? null) : null;
+    if (error) return <span className="text-destructive">{error}</span>;
+    if (!value) return <span className="text-muted-foreground">{arg.placeholder}</span>;
+    const preview = arg.preview?.(value, ctx);
+    if (preview) {
+      return (
+        <span className="flex min-w-0 flex-col">
+          <span className="truncate">{preview.label}</span>
+          {preview.detail && (
+            <span className="truncate text-xs text-muted-foreground">{preview.detail}</span>
+          )}
+        </span>
+      );
+    }
+    return (
+      <>
+        {resolveLabel(command, ctx)} <span className="font-content">“{value}”</span>
+      </>
+    );
+  };
+
+  /** A text argument's chip ("Change what's paused"), beside Enter. */
+  const textArgChip = (command: DsulCommand, value: string) => {
+    const arg = command.argument;
+    if (arg?.kind !== 'text' || !arg.chip) return null;
+    const chip = arg.chip;
+    return (
+      <button
+        type="button"
+        data-testid="omnibar-arg-chip"
+        // Not a cmdk row: a pointer press must not also select the row under it.
+        onPointerDown={(e) => e.preventDefault()}
+        onClick={(e) => {
+          e.stopPropagation();
+          chip.run(ctx, value);
+          useCommandUsageStore.getState().record(command.id);
+          closeAndClear();
+          closeLauncher();
+        }}
+        className="shrink-0 rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground"
+      >
+        {chip.label}
+      </button>
+    );
+  };
+
+  /**
+   * "vacation until tue" typed as one line: the row previews what Enter will
+   * do and runs it in one step. A value that does not read yet opens the
+   * command's own line with the value already in it, where its error shows.
+   */
+  const renderInlineArgRow = (row: CommandRow, value: string) => {
+    const arg = row.command.argument;
+    const valid = arg?.kind === 'text' && !arg.validate?.(value);
+    return (
+      <CommandItem
+        key={row.value}
+        value={row.value}
+        disabled={row.disabled}
+        data-testid="omnibar-row"
+        className="group"
+        data-command-id={row.command.id}
+        data-arg={value}
+        onSelect={() => {
+          if (valid) {
+            runCommand(row.command, value);
+            return;
+          }
+          runCommand(row.command);
+          setQuery(value);
+        }}
+      >
+        <row.command.icon className="h-4 w-4 text-muted-foreground" />
+        <span className="min-w-0 flex-1">{textArgBody(row.command, value)}</span>
+        {textArgChip(row.command, value)}
+      </CommandItem>
+    );
+  };
+
   const renderCommandRow = (row: CommandRow) => {
+    if (row.inlineArg !== undefined) return renderInlineArgRow(row, row.inlineArg);
     const Icon = row.arg?.icon ?? row.command.icon;
     const needsArgument = !!row.command.argument && !row.arg;
 
@@ -968,18 +1056,10 @@ export function Omnibar({
                         onSelect={() => runCommand(activeCommand, query.trim())}
                       >
                         <activeCommand.icon className="h-4 w-4 text-muted-foreground" />
-                        <span className="truncate">
-                          {argError ? (
-                            <span className="text-destructive">{argError}</span>
-                          ) : query.trim() ? (
-                            <>
-                              {resolveLabel(activeCommand, ctx)}{' '}
-                              <span className="font-content">“{query.trim()}”</span>
-                            </>
-                          ) : (
-                            <span className="text-muted-foreground">{argument.placeholder}</span>
-                          )}
+                        <span className="min-w-0 flex-1 truncate">
+                          {textArgBody(activeCommand, query.trim())}
                         </span>
+                        {textArgChip(activeCommand, query.trim())}
                       </CommandItem>
                     ) : argument?.kind === 'entity' ? (
                       entityOptions.length > 0 ? (
