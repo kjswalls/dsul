@@ -95,6 +95,8 @@ final class NotificationHub {
     @ObservationIgnored private let deviceId: String?
     /// The user this iPhone was registered for this launch, so it posts once.
     @ObservationIgnored private var registeredFor: UUID?
+    /// The APNs token this launch was handed, if any: registered with it.
+    @ObservationIgnored private(set) var pushToken: PushToken?
     /// A cue tapped before its planner had loaded: opened once it has.
     @ObservationIgnored private var pendingOpen: (id: UUID, day: String)?
 
@@ -224,7 +226,7 @@ final class NotificationHub {
         guard let deviceId, let planner, planner.isLive, let userId = planner.userId, let account,
               registeredFor != userId else { return }
         registeredFor = userId
-        let body = DeviceRegistrationBody.current(deviceId: deviceId, timezone: zone())
+        let body = DeviceRegistrationBody.current(deviceId: deviceId, timezone: zone()).withPush(pushToken)
         let api = makeAPI(account)
         Task { [weak self] in
             do {
@@ -235,6 +237,16 @@ final class NotificationHub {
                 if self?.registeredFor == userId { self?.registeredFor = nil }
             }
         }
+    }
+
+    /// APNs handed this launch a token (AppDelegate): registered again with
+    /// it, since a token can change between launches and Apple says never to
+    /// keep one. The same token twice registers once.
+    func pushTokenArrived(_ token: PushToken) {
+        guard token.isValid, token != pushToken else { return }
+        pushToken = token
+        registeredFor = nil
+        syncDevice()
     }
 
     // MARK: Permission

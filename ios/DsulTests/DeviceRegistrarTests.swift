@@ -56,6 +56,36 @@ import Testing
         #expect(bareJSON["timezone"] == nil)
     }
 
+    @Test func aPushTokenMakesItAnAPNsRegistration() throws {
+        let raw = Data((0..<32).map { UInt8($0 * 7 % 256) })
+        let push = PushToken(deviceToken: raw, environment: "production")
+        #expect(push.hex.count == 64)
+        #expect(push.hex == push.hex.lowercased())
+        #expect(push.isValid)
+
+        let body = DeviceRegistrationBody(deviceId: device).withPush(push)
+        let json = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(body)) as? [String: Any])
+        #expect(json["transport"] as? String == "apns")
+        #expect(json["token"] as? String == push.hex)
+        #expect(json["apnsEnvironment"] as? String == "production")
+        #expect(json["delivery"] as? String == "local")
+
+        // No token, or one the route would refuse, leaves it tokenless.
+        #expect(DeviceRegistrationBody(deviceId: device).withPush(nil).transport == "none")
+        let short = PushToken(hex: "abcd", environment: "sandbox")
+        #expect(!short.isValid)
+        #expect(DeviceRegistrationBody(deviceId: device).withPush(short).token == nil)
+        #expect(!PushToken(hex: String(repeating: "a", count: 64), environment: "staging").isValid)
+    }
+
+    @Test func aDebugBuildsTokenIsASandboxToken() {
+        #if DEBUG
+        #expect(PushToken.buildEnvironment == "sandbox")
+        #else
+        #expect(PushToken.buildEnvironment == "production")
+        #endif
+    }
+
     @Test func theCurrentBodyNamesThisSystemAndZone() {
         let body = DeviceRegistrationBody.current(deviceId: device, timezone: "Europe/London")
         #expect(body.deviceId == device)
