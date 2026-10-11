@@ -12,10 +12,12 @@
  * calls `new Date()` for "today" — callers pass the day, which is what makes
  * the whole thing testable and timezone-stable.
  *
- * Three layers answer "is it live": the item's own pause, the routines holding
- * it, and the seasons holding those (or holding it directly). They combine
- * through the path algebra in {@link isItemActiveOn} — read that first; the
- * rest of this file is its supporting cast.
+ * Four layers answer "is it live": a trip (vacation mode, lib/away.ts), the
+ * item's own pause, the routines holding it, and the seasons holding those (or
+ * holding it directly). The last three combine through the path algebra in
+ * {@link isItemActiveOn} — read that first; the rest of this file is its
+ * supporting cast. A trip sits outside the algebra: it is conjunctive, so a
+ * held item is inactive whatever its containers say.
  *
  * See memory/plans/programs-routines.md, locked decisions 3 and 4.
  */
@@ -23,6 +25,7 @@
 import { isRecurring, isCompletedOnDate, isSkippedOnDate, toDateStr } from './recurrence';
 import { toDateOnly } from './overdue';
 import type { Item, Routine, Season } from './planner-types';
+import { awayHoldOn, returnDayOf, type AwayPeriod } from './away';
 
 /**
  * Everything the resolver needs beyond the item and the date.
@@ -54,6 +57,12 @@ export interface ActivationContext {
    * "restore within 30 days" restore the suppression too, intact.
    */
   seasons?: readonly Season[];
+  /**
+   * The user's trips (vacation mode), past and future. Omitted means none, so
+   * every caller that predates vacation mode answers exactly as before. Past
+   * trips stay in the list because last month's week view still needs them.
+   */
+  away?: readonly AwayPeriod[];
 }
 
 /** The pause columns, on an item or (from Phase 2) a routine. */
@@ -294,6 +303,7 @@ export function isPathLiveOn(path: ActivationPath, dateStr: string, tz: string):
  * {@link isOpenLoopSuppressedOn}.
  */
 export function isItemActiveOn(item: Item, dateStr: string, ctx: ActivationContext): boolean {
+  if (awayHoldOn(item, dateStr, ctx.away, ctx.routines)) return false;
   if (isPausedOn(item, dateStr, ctx.userTimezone)) return false;
   const paths = activationPathsFor(item.id, ctx);
   if (paths.length === 0) return true;
@@ -419,7 +429,9 @@ export function inactiveItemIdsOn(
   for (const item of items) {
     const tally = pathsByItem.get(item.id);
     const active =
-      !isPausedOn(item, dateStr, ctx.userTimezone) && (!tally || tally.total === 0 || tally.live > 0);
+      !awayHoldOn(item, dateStr, ctx.away, ctx.routines) &&
+      !isPausedOn(item, dateStr, ctx.userTimezone) &&
+      (!tally || tally.total === 0 || tally.live > 0);
     if (!active && isOpenLoopOn(item, dateStr)) ids.add(item.id);
   }
   return ids;
@@ -436,6 +448,7 @@ export function inactiveItemIdsOn(
  * and only the caller knows which.
  */
 export type SuppressionReason =
+  | { kind: 'away'; until?: string }
   | { kind: 'paused'; until?: string }
   | { kind: 'routine'; routine: Routine; until?: string }
   | { kind: 'season'; season: Season; routine?: Routine; until?: string };
@@ -627,6 +640,14 @@ function deadPathExplanation(
 export function suppressionLabel(reason: SuppressionReason, opts: { long?: boolean } = {}): string {
   const back = reason.until ? ` until ${formatDay(reason.until)}` : '';
   switch (reason.kind) {
+    case 'away':
+      return opts.long
+        ? reason.until
+          ? `Resting for vacation mode until ${formatDay(reason.until)}`
+          : 'Resting for vacation mode'
+        : reason.until
+          ? `Back ${formatDay(reason.until)}`
+          : 'On vacation';
     case 'paused':
       return reason.until ? `Paused until ${formatDay(reason.until)}` : 'Paused';
     case 'routine':
@@ -660,6 +681,10 @@ export function suppressionReason(
   if (isPausedOn(item, dateStr, ctx.userTimezone)) {
     return { kind: 'paused', until: item.pausedUntil };
   }
+  // A trip next: it holds the item whatever its containers say, so naming a
+  // routine or season here would send the user to a switch that changes nothing.
+  const trip = awayHoldOn(item, dateStr, ctx.away, ctx.routines);
+  if (trip) return { kind: 'away', until: returnDayOf(item.id, trip) };
   const paths = activationPathsFor(item.id, ctx);
   if (paths.length === 0) return null;
   if (paths.some((p) => isPathLiveOn(p, dateStr, ctx.userTimezone))) return null;
