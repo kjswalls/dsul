@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient, resolveUserIdFromApiKey } from '@/lib/supabase-service'
 import { MAX_QUESTION_OPTIONS, recordAgentQuestion, updateItem } from '@/lib/db'
 import { getItemTypeConfig } from '@/lib/item-registry'
+import { tagClientActor } from '@/lib/event-actor'
 
 /**
  * POST /api/agent/items/:id/ask — the agent asks the user something answerable
@@ -44,7 +45,8 @@ export async function POST(
   }
 
   try {
-    const serviceClient = createServiceClient()
+    // Tagged: what it writes reads as the agent's in the item timeline.
+    const serviceClient = tagClientActor(createServiceClient(), 'agent')
     const userId = await resolveUserIdFromApiKey(authHeader.slice(7), serviceClient, 'write')
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

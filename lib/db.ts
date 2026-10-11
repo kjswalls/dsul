@@ -1,3 +1,4 @@
+import { clientActor, type EventActor } from './event-actor';
 import { createClient } from '@/lib/supabase';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type DbClient = any;
@@ -506,6 +507,17 @@ export interface ItemEvent {
   createdAt: string;
 }
 
+function eventPayload(payload: Record<string, unknown>, by: EventActor | undefined, client: DbClient | undefined) {
+  // undefined values vanish in JSON serialization, which would turn an
+  // unassign ({ assignee: undefined }) into an empty payload — keep the key,
+  // as null, so the feed can say "Unassigned" instead of "Updated".
+  const clean = Object.fromEntries(Object.entries(payload).map(([k, v]) => [k, v === undefined ? null : v]));
+  // Only when it is not the person: no `by` reads as them, on old rows and new,
+  // so every payload the person's own edits write is exactly what it was.
+  const actor = by ?? clientActor(client);
+  return actor && actor !== 'you' ? { ...clean, by: actor } : clean;
+}
+
 let itemEventsAvailable = true;
 const missingEventsTable = (error: { code?: string } | null) =>
   error?.code === '42P01' || error?.code === 'PGRST205';
@@ -532,12 +544,11 @@ async function insertItemEvent(
   payload: Record<string, unknown>,
   userId?: string,
   client?: DbClient,
+  by?: EventActor,
 ): Promise<boolean> {
   if (!itemEventsAvailable) return false;
   const supabase = client ?? createClient();
-  const cleanPayload = Object.fromEntries(
-    Object.entries(payload).map(([k, v]) => [k, v === undefined ? null : v])
-  );
+  const cleanPayload = eventPayload(payload, by, client);
   try {
     const { error } = await supabase.from('item_events').insert({
       ...(userId ? { user_id: userId } : {}),
@@ -564,15 +575,11 @@ function recordItemEvent(
   payload: Record<string, unknown>,
   userId?: string,
   client?: DbClient,
+  by?: EventActor,
 ): void {
   if (!itemEventsAvailable) return;
   const supabase = client ?? createClient();
-  // undefined values vanish in JSON serialization, which would turn an
-  // unassign ({ assignee: undefined }) into an empty payload — keep the key,
-  // as null, so the feed can say "Unassigned" instead of "Updated".
-  const cleanPayload = Object.fromEntries(
-    Object.entries(payload).map(([k, v]) => [k, v === undefined ? null : v])
-  );
+  const cleanPayload = eventPayload(payload, by, client);
   supabase
     .from('item_events')
     // user_id defaults to auth.uid() for browser sessions; the service-role
@@ -1175,7 +1182,7 @@ export async function createItem(
   userId: string,
   item: Item,
   client?: DbClient,
-  opts: { notify?: boolean } = {},
+  opts: { notify?: boolean; by?: EventActor } = {},
 ): Promise<void> {
   const supabase = client ?? createClient();
   const linked = await withResolvedContainer(supabase, userId, item);
@@ -1214,7 +1221,7 @@ export async function createItem(
       [getItemTypeConfig(dbType).webhookPayloadKey]: legacyPayload(item),
     });
   }
-  recordItemEvent(item.id, dbType, 'create', { title: item.title }, userId, client);
+  recordItemEvent(item.id, dbType, 'create', { title: item.title }, userId, client, opts.by);
 }
 
 /**
@@ -1292,7 +1299,7 @@ export async function updateItem(
    * caller (the recipe runner, lib/recipes/server/) scopes every write to one
    * user itself, since RLS does not. Not the webhook's `userId`.
    */
-  opts: { ownerId?: string } = {},
+  opts: { ownerId?: string; by?: EventActor } = {},
 ): Promise<void> {
   const supabase = client ?? createClient();
   const scoped = <Q extends { eq: (column: string, value: string) => Q }>(q: Q): Q =>
@@ -1349,7 +1356,7 @@ export async function updateItem(
   if (userId) notifyItemChange(userId, type, { action: 'update', id, updates });
   // The owner a service-role caller scoped by: item_events.user_id defaults to
   // auth.uid(), which is NULL on that client, so the feed row needs it named.
-  recordItemEvent(id, type, 'update', updates as Record<string, unknown>, userId ?? opts.ownerId, client);
+  recordItemEvent(id, type, 'update', updates as Record<string, unknown>, userId ?? opts.ownerId, client, opts.by);
 }
 
 /**

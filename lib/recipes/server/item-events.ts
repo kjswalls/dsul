@@ -8,6 +8,7 @@ import { filterEnvOf, loadUserContext } from './context';
 import { runRecipeOnServer } from './run';
 import { missingTable, RECIPE_ROW_COLUMNS, recipeShape, runnable, type RecipeRow } from './rows';
 import { itemClaimKey } from './window';
+import { tagClientActor } from '@/lib/event-actor';
 
 /**
  * Item-trigger recipes for a write that never passed through a browser: a
@@ -47,6 +48,8 @@ export async function runItemEventRecipes(
   e: ServerItemEvent,
   now: Date = new Date()
 ): Promise<ItemEventResult> {
+  // What a recipe writes reads as the recipe's in the item timeline.
+  tagClientActor(service, 'recipe');
   const result: ItemEventResult = { runs: 0, notes: [] };
   try {
     const { data, error } = await service

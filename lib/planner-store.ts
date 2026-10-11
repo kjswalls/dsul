@@ -4018,13 +4018,14 @@ export const usePlannerStore = create<PlannerStore>()(
 
           const userId = get().userId;
           if (userId) {
-            created.forEach((item) => dbCreateItem(userId, item).catch(console.error));
+            // `by: 'ai'`: the timeline says the AI made these (lib/item-timeline.ts).
+            created.forEach((item) => dbCreateItem(userId, item, undefined, { by: 'ai' }).catch(console.error));
           }
           // dbType per item: a custom-type row is matched on .eq('type', slug),
           // so passing 'task' would silently write nothing.
           patchById.forEach((updates, id) => {
             const item = get().items.find((i) => i.id === id);
-            if (item) dbUpdateItem(id, dbTypeOf(item), updates).catch(console.error);
+            if (item) dbUpdateItem(id, dbTypeOf(item), updates, undefined, undefined, { by: 'ai' }).catch(console.error);
           });
           for (const op of verbOps) runProposalVerb(op, today, tz);
           for (const op of containerOps) runProposalContainer(op);

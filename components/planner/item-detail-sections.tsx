@@ -2,12 +2,11 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { addDays, format, isAfter, startOfDay, startOfWeek, subWeeks } from 'date-fns';
-import { Check, ChevronDown, Plus, Split, X } from 'lucide-react';
+import { Check, Plus, Split, X } from 'lucide-react';
 import { AskMark } from '@/components/ai/ask-mark';
 import { Input } from '@/components/ui/input';
 import { RelayField } from '@/components/primitives/relay-field';
 import { usePlannerStore } from '@/lib/planner-store';
-import { fetchItemEvents, getItemEventsAvailable, type ItemEvent } from '@/lib/db';
 import { answerAgentQuestion } from '@/lib/agent-question';
 import { useAgentQuestion } from '@/hooks/use-agent-question';
 import { useAICapabilities } from '@/lib/ai-connection-store';
@@ -21,6 +20,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { ProposalCard } from '@/components/ai/proposal-card';
 import { ItemConversation } from '@/components/ai/item-conversation';
 import { ItemFilesSection } from '@/components/planner/item-files';
+import { ItemTimeline } from '@/components/planner/item-timeline';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { EXT_HABIT_HEATMAP, resolveEnabled } from '@/lib/extension-registry';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
@@ -522,186 +522,25 @@ function AgentReply({ item }: { item: TaskItem }) {
  */
 export { AgentReply as AgentReplyForTest };
 
-// ── Activity ─────────────────────────────────────────────────────────────────
-
-function eventLabel(e: ItemEvent): string {
-  if (e.action === 'create') return 'Created';
-  if (e.action === 'delete') return 'Deleted';
-  // The user's answer to a blocked agent — like a check-in note, the payload is
-  // the only part worth reading.
-  // The agent's question. Reads before the user's answer in the feed, and the
-  // options are worth showing — they say what the agent thought the shape of
-  // the answer was.
-  if (e.action === 'agent_question') {
-    const question = typeof e.payload?.question === 'string' ? e.payload.question.trim() : '';
-    const options = Array.isArray(e.payload?.options)
-      ? (e.payload.options as unknown[]).filter((o): o is string => typeof o === 'string')
-      : [];
-    if (!question) return 'Agent asked a question';
-    return options.length > 0
-      ? `Agent asked: ${question} (${options.join(' / ')})`
-      : `Agent asked: ${question}`;
-  }
-  if (e.action === 'agent_reply') {
-    const text = typeof e.payload?.text === 'string' ? e.payload.text.trim() : '';
-    return text ? `You answered: ${text}` : 'You answered';
-  }
-  // A check-in note reads here as well as on the goal page. It is the one event
-  // whose payload is something the user WROTE, so showing the action alone
-  // would hide the only part worth reading — and an item whose notes live
-  // exclusively on another surface is an item whose own page lies about its
-  // history.
-  if (e.action === 'checkin') {
-    const note = typeof e.payload?.note === 'string' ? e.payload.note.trim() : '';
-    return note ? `Checked in: ${note}` : 'Checked in';
-  }
-  const payload = e.payload ?? {};
-  // The container ids ride along with every re-file (migration 027) and are an
-  // internal mirror of the name beside them — listing both turns "Updated
-  // project" into "Updated project, projectId", which names a column the user
-  // has never seen. Dropped from the LABEL only; the payload keeps them.
-  const keys = Object.keys(payload).filter((k) => k !== 'projectId' && k !== 'groupId');
-  if ('assignee' in payload) {
-    return payload.assignee
-      ? `Assigned to ${assigneeLabel(String(payload.assignee))}`
-      : 'Unassigned';
-  }
-  if ('aiStatus' in payload && payload.aiStatus) return `Agent: ${payload.aiStatus}`;
-  if ('status' in payload) {
-    return payload.status === 'completed' ? 'Completed' : `Status → ${payload.status}`;
-  }
-  if (keys.length === 0) return 'Updated';
-  return `Updated ${keys.slice(0, 3).join(', ')}${keys.length > 3 ? '…' : ''}`;
-}
-
-function ActivitySection({ itemId }: { itemId: string }) {
-  const [events, setEvents] = useState<ItemEvent[] | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetchItemEvents(itemId).then((rows) => {
-      if (!cancelled) setEvents(rows);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [itemId]);
-
-  // Quiet when the table isn't deployed or nothing happened yet — the feed is
-  // a bonus surface, never an empty-state to explain.
-  if (!getItemEventsAvailable() || !events || events.length === 0) return null;
-
-  return (
-    <div className="flex flex-col gap-1.5">
-      <SectionLabel>Activity</SectionLabel>
-      {events.slice(0, 8).map((e) => (
-        <div key={e.id} className="text-muted-foreground flex items-baseline gap-2 text-xs">
-          <span className="bg-muted-foreground/60 size-1 shrink-0 translate-y-[-2px] rounded-full" />
-          <span className="min-w-0 flex-1 truncate">{eventLabel(e)}</span>
-          <time className="text-muted-foreground/70 shrink-0 font-mono text-[10px]">
-            {format(new Date(e.createdAt), 'MMM d · HH:mm')}
-          </time>
-        </div>
-      ))}
-    </div>
-  );
-}
+// ── Footer ───────────────────────────────────────────────────────────────────
 
 /**
- * The activity log as a footer disclosure — Clearing's home for it.
- *
- * The body stack shows Activity as its own labelled section; Clearing instead
- * folds the whole edit history into one quiet line in the pane's bottom-right,
- * across from "Saves as you go": the most recent change and its date, click to
- * expand the rest. The expanded list is height-capped and scrolls in a PLAIN
- * overflow container (a ScrollArea silently drops max-h — see CLAUDE.md). Same
- * quiet-null rule as ActivitySection: nothing to show ⇒ just the save note.
- *
- * It owns its own fetch (the panel above autosaves off a snapshot; this reads
- * the live event feed) and its own open state, reset when the panel retargets.
+ * The autosaving panel's footer: "Saves as you go", the only promise a surface
+ * with no Save button makes. The edit history it used to fold up beside that
+ * is the item's timeline now (components/planner/item-timeline.tsx).
  */
-export function ClearingFooter({
-  itemId,
-  saving,
-  // On /item/[id] the page body already renders Activity, and the editor panel
-  // is mounted withDetailSections=false so it must not double the feed. There the
-  // save note (the sole autosave signal) still shows; the history disclosure and
-  // its fetch are suppressed.
-  showHistory = true,
-}: {
-  itemId: string;
-  saving: boolean;
-  showHistory?: boolean;
-}) {
-  const [events, setEvents] = useState<ItemEvent[] | null>(null);
-  const [open, setOpen] = useState(false);
-
-  // Mounted fresh per item (the caller keys on itemId), so events and the open
-  // flag reset on retarget with no reset effect — a new item starts collapsed.
-  useEffect(() => {
-    if (!showHistory) return;
-    let cancelled = false;
-    fetchItemEvents(itemId).then((rows) => {
-      if (!cancelled) setEvents(rows);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [itemId, showHistory]);
-
-  const has = showHistory && getItemEventsAvailable() && !!events && events.length > 0;
-  const latest = has ? events![0] : null;
-
+export function ClearingFooter({ saving }: { saving: boolean }) {
   return (
-    <div>
-      {has && open && (
-        <div
-          id={`item-history-${itemId}`}
-          data-testid="item-history-list"
-          className="bg-secondary/50 mb-2 max-h-[132px] overflow-y-auto rounded-md px-3 py-1"
-        >
-          {events!.slice(0, 20).map((e) => (
-            <div key={e.id} className="text-muted-foreground flex items-baseline gap-2 py-1 text-xs">
-              <span className="bg-muted-foreground/60 size-1 shrink-0 translate-y-[-2px] rounded-full" />
-              <span className="min-w-0 flex-1 truncate">{eventLabel(e)}</span>
-              <time className="text-muted-foreground/70 shrink-0 font-mono text-[10px]">
-                {format(new Date(e.createdAt), 'MMM d · HH:mm')}
-              </time>
-            </div>
-          ))}
-        </div>
-      )}
-      <div className="flex items-center justify-between gap-3 border-t pt-3">
-        <span
-          role="status"
-          aria-live="polite"
-          className="text-muted-foreground inline-flex items-center gap-1.5 text-xs"
-        >
-          {/* The lime tick is its own element so no parent opacity ever dims it. */}
-          <span className="bg-primary size-1.5 shrink-0 rounded-full" aria-hidden />
-          {saving ? 'Saving…' : 'Saves as you go'}
-        </span>
-        {has && latest && (
-          <button
-            type="button"
-            data-testid="item-history-toggle"
-            aria-expanded={open}
-            aria-controls={`item-history-${itemId}`}
-            aria-label="Edit history"
-            onClick={() => setOpen((o) => !o)}
-            className="text-muted-foreground hover-wash inline-flex min-w-0 max-w-[62%] items-center gap-1.5 rounded-sm px-1.5 py-1 text-[11px] transition-colors focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none"
-          >
-            <span className="min-w-0 truncate">{eventLabel(latest)}</span>
-            <time className="text-muted-foreground/70 shrink-0 font-mono">
-              {format(new Date(latest.createdAt), 'MMM d')}
-            </time>
-            <ChevronDown
-              className={cn('size-3 shrink-0 opacity-60 transition-transform', open && 'rotate-180')}
-              aria-hidden
-            />
-          </button>
-        )}
-      </div>
+    <div className="flex items-center justify-between gap-3 border-t pt-3">
+      <span
+        role="status"
+        aria-live="polite"
+        className="text-muted-foreground inline-flex items-center gap-1.5 text-xs"
+      >
+        {/* The lime tick is its own element so no parent opacity ever dims it. */}
+        <span className="bg-primary size-1.5 shrink-0 rounded-full" aria-hidden />
+        {saving ? 'Saving…' : 'Saves as you go'}
+      </span>
     </div>
   );
 }
@@ -812,7 +651,7 @@ export function ItemDetailSections({
       {config.agentAssignable && <AgentSection item={item} />}
       <ItemFilesSection itemId={item.id} />
       {heatmapOn && config.counters.streak && <HeatmapSection item={item} />}
-      {withActivity && <ActivitySection itemId={item.id} />}
+      {withActivity && <ItemTimeline item={item} />}
       {/* Keyed by item: the panel retargets in place, and a message count
           carried over from the last item would read as new messages here and
           scroll the rail body to the bottom of a different conversation. */}

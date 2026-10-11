@@ -32,6 +32,7 @@ import {
   verifyItemOwnership,
   validateParentItemId,
 } from './db'
+import { tagClientActor } from './event-actor'
 import { resolvePauseWrite, type Pausable } from './active'
 import { capabilityShape, isPausableRow, resolveItemPause } from './item-pause'
 import {
@@ -122,7 +123,8 @@ async function authenticateAgent(req: NextRequest): Promise<AgentAuth | NextResp
   if (!authHeader?.startsWith('Bearer ')) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  const serviceClient = createServiceClient()
+  // Tagged: what an agent writes reads as the agent's in the item timeline.
+  const serviceClient = tagClientActor(createServiceClient(), 'agent')
   const userId = await resolveUserIdFromApiKey(authHeader.slice(7), serviceClient, 'write')
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

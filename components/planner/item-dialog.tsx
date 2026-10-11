@@ -959,8 +959,7 @@ function ItemDialogInner({
    *
    *  · the top rail carries Done (flush + close) only where there is nothing to
    *    submit, and the footer carries the status + submit row everywhere else;
-   *  · Activity stays in the body wherever ClearingFooter isn't there to fold it
-   *    into its history line.
+   *  · the item's timeline (its history) is in the body on every surface.
    *
    * The one remaining layout question is `mode`: add offers the type as a
    * control, edit only whispers it.
@@ -3675,25 +3674,18 @@ function ItemDialogInner({
                   // The pinned conversation is drawn below the fold instead, so
                   // folding the details leaves the chat on screen.
                   conversation={foldable ? 'none' : conversation}
-                  withActivity={!autosaves}
                   offerSetup
                 />
               )}
 
               {/* An autosaving surface has no moment of commitment, so its
-                  footer is a status line: "Saves as you go" on the left, the
-                  edit history folded into one expandable line on the right, and
-                  Done lifted to the top rail. Everything that still commits on
+                  footer is a status line, "Saves as you go" (the edit history
+                  is the timeline above), with Done lifted to the top rail. Everything that still commits on
                   submit — the capture modal, the mobile drawer — keeps the
                   Enter hint and the button. */}
               {autosaves ? (
                 editItem && (
-                  <ClearingFooter
-                    key={editItem.id}
-                    itemId={editItem.id}
-                    saving={saving}
-                    showHistory={withDetailSections}
-                  />
+                  <ClearingFooter key={editItem.id} saving={saving} />
                 )
               ) : (
                 // Reached only when `autosaves` is false, so there is no

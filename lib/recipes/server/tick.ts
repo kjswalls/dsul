@@ -6,6 +6,7 @@ import { filterEnvOf, loadUserContext, type UserContext } from './context';
 import { runRecipeOnServer } from './run';
 import { missingTable, RECIPE_ROW_COLUMNS, recipeShape, runnable, type RecipeRow } from './rows';
 import { timeClaimKey, timedRunDay } from './window';
+import { tagClientActor } from '@/lib/event-actor';
 
 /**
  * The timed-recipe tier of the one cron tick (/api/cron/reminders, after the
@@ -45,6 +46,8 @@ interface Due {
 }
 
 export async function runRecipeTick(service: SupabaseClient, options: RecipeTickOptions): Promise<RecipeTickSummary> {
+  // What a recipe writes reads as the recipe's in the item timeline.
+  tagClientActor(service, 'recipe');
   const summary: RecipeTickSummary = { users: 0, runs: 0, notes: [] };
   const { now } = options;
   const deadline = options.deadlineMs ?? Number.POSITIVE_INFINITY;

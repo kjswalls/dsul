@@ -190,10 +190,15 @@ describe('applyProposal', () => {
       'task-1',
       'task',
       expect.objectContaining({ startDate: '2026-08-06' }),
+      undefined,
+      undefined,
+      { by: 'ai' },
     );
     expect(db.createItem).toHaveBeenCalledWith(
       USER,
       expect.objectContaining({ title: 'Book dentist', type: 'task', status: 'pending' }),
+      undefined,
+      { by: 'ai' },
     );
   });
 

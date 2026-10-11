@@ -688,7 +688,7 @@ describe('the item panel', () => {
     expect(updateTask).toHaveBeenCalledWith('item-1', { assignee: 'openclaw', aiStatus: 'queued' });
   });
 
-  it('reads a stored beacon assignee as AI, in the chip and in Activity', async () => {
+  it('reads a stored beacon assignee as AI, in the chip and in the timeline', async () => {
     seed();
     events.rows = [
       {
@@ -705,7 +705,7 @@ describe('the item panel', () => {
     const block = screen.getByTestId('agent-block');
     expect(within(block).getByText('AI')).toBeInTheDocument();
     expect(within(block).queryByText(/beacon/i)).toBeNull();
-    expect(await screen.findByText('Assigned to AI')).toBeInTheDocument();
+    expect(await screen.findByText('assigned it to AI')).toBeInTheDocument();
   });
 });
 
