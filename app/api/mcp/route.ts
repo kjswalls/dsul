@@ -19,7 +19,8 @@ import { dispatch, type ToolResult } from '@/lib/mcp/protocol'
 import { READ_TOOL_DESCRIPTORS, READ_TOOL_NAMES, TOOL_DESCRIPTORS, toolByName, type ToolPlan } from '@/lib/mcp/tools'
 import { ACCESS_PREFIX, originOf, wwwAuthenticate } from '@/lib/mcp-oauth/core'
 import { resolveAccessToken } from '@/lib/mcp-oauth/store'
-import type { Scope } from '@/lib/mcp-oauth/scopes'
+import { AGENT_KEY_PREFIX, type Scope } from '@/lib/mcp-oauth/scopes'
+import { resolveAgentKey } from '@/lib/agent-keys'
 
 /**
  * POST /api/mcp — dsul's planner as a remote MCP server.
@@ -182,13 +183,17 @@ async function toToolResult(
  */
 const MAX_BATCH = 32
 
-/** Who is calling: the OpenClaw key (everything), or an OAuth app at its scope. */
+/** Who is calling: the OpenClaw key (everything), or an OAuth app or a named agent key at its scope. */
 type McpCaller = { userId: string; scope: Scope }
 
 async function resolveCaller(token: string): Promise<McpCaller | null> {
   const service = createServiceClient()
   if (token.startsWith(ACCESS_PREFIX)) {
     const caller = await resolveAccessToken(service, token)
+    return caller ? { userId: caller.userId, scope: caller.scope } : null
+  }
+  if (token.startsWith(AGENT_KEY_PREFIX)) {
+    const caller = await resolveAgentKey(service, token)
     return caller ? { userId: caller.userId, scope: caller.scope } : null
   }
   const userId = await resolveUserIdFromApiKey(token, service)
