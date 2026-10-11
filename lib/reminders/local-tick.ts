@@ -88,6 +88,13 @@ export interface LocalTickDeps {
   /** The service worker's registration, or null with no worker to show through. */
   presenter(): Promise<Presenter | null>
   post(path: string, body: unknown): Promise<{ ok: boolean; json(): Promise<unknown> }>
+  /**
+   * Who is here, when "here" is not this page: the desktop app asks the
+   * computer how long it has been idle, because its window can sit behind
+   * another app, or closed to the tray, while someone works at the desk
+   * (PR-1c). Replaces the visible-and-input test; permission is still asked.
+   */
+  presence?(): Promise<boolean>
 }
 
 export interface HeldSnooze {
@@ -110,11 +117,14 @@ export function createLocalCueTick(deps: LocalTickDeps): LocalCueTick {
   const snoozes = new Map<string, HeldSnooze>()
   let running = false
 
-  const present = () =>
-    deps.visible() && deps.now() - deps.lastInputMs() <= PRESENCE_MS && deps.permission() === 'granted'
+  const present = async () => {
+    if (deps.permission() !== 'granted') return false
+    if (deps.presence) return deps.presence()
+    return deps.visible() && deps.now() - deps.lastInputMs() <= PRESENCE_MS
+  }
 
   async function run(): Promise<void> {
-    if (!present()) return
+    if (!(await present())) return
     const view = deps.planner()
     if (!view.userId || !view.remindersEnabled || !view.timezone) return
     const zone = view.timezone

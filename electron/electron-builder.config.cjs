@@ -14,6 +14,9 @@ module.exports = {
   // Permanent once shipped: the macOS bundle id, the Windows AUMID and the NSIS GUID.
   appId: 'app.dsul.desktop',
   productName: 'dsul',
+  // Read by main.cjs (SIGNED): an unsigned Mac build's notifications are shown to nobody, so it
+  // must never claim a reminder that would otherwise ring on the phone (lib/notify.cjs probe).
+  extraMetadata: { dsulSigned: signed },
 
   directories: { output: 'release', buildResources: 'build' },
   // package.json goes in on its own. build/ is not packed except for the tray icons and the
@@ -63,6 +66,9 @@ module.exports = {
     hardenedRuntime: signed,
     entitlements: signed ? 'build/entitlements.mac.plist' : undefined,
     entitlementsInherit: signed ? 'build/entitlements.mac.plist' : undefined,
+    // Reminders arrive as alerts, which stay until dealt with and show their Done and Snooze
+    // buttons; a banner slides away and hides them behind a hover.
+    extendInfo: { NSUserNotificationAlertStyle: 'alert' },
   },
 
   win: {

@@ -33,6 +33,28 @@ ipcRenderer.on('dsul:quick-capture', () => {
   }
 });
 
+// Reminder clicks and wakes, each to the page's callbacks with only the plain data main sent.
+const notificationListeners = new Set();
+const wakeListeners = new Set();
+ipcRenderer.on('dsul:notification', (_event, message) => {
+  for (const listener of [...notificationListeners]) {
+    try {
+      listener(message);
+    } catch (err) {
+      console.error('[dsul] notification listener failed', err);
+    }
+  }
+});
+ipcRenderer.on('dsul:wake', () => {
+  for (const listener of [...wakeListeners]) {
+    try {
+      listener();
+    } catch (err) {
+      console.error('[dsul] wake listener failed', err);
+    }
+  }
+});
+
 contextBridge.exposeInMainWorld('dsulDesktop', {
   version: 1,
   shellVersion: versionArg ? versionArg.slice(VERSION_ARG.length) : '',
@@ -85,5 +107,41 @@ contextBridge.exposeInMainWorld('dsulDesktop', {
     return ipcRenderer
       .invoke('dsul:set-app-icon', look === 'lime' ? 'lime' : 'aurora')
       .then((ok) => ok === true);
+  },
+
+  // Reminders (memory/plans/reminders-platforms.md §5.2, PR-1c). Added after version 1 shipped,
+  // like setAppIcon, so the page feature-detects each one. Main checks every notification
+  // (lib/notify.cjs) and answers false for one it refused.
+  notify(spec) {
+    return ipcRenderer.invoke('dsul:notify', spec).then((ok) => ok === true);
+  },
+  closeNotification(tag) {
+    return ipcRenderer.invoke('dsul:notify-close', typeof tag === 'string' ? tag : '').then((ok) => ok === true);
+  },
+  // Seconds since the last input anywhere on the computer, or null when main would not say.
+  idleSeconds() {
+    return ipcRenderer.invoke('dsul:idle-seconds').then((s) => (typeof s === 'number' ? s : null));
+  },
+  // 'ok', 'unsupported' or 'unsigned' (a Mac build whose notifications nobody would see).
+  notifyProbe() {
+    return ipcRenderer
+      .invoke('dsul:notify-probe')
+      .then((v) => (v === 'ok' || v === 'unsigned' ? v : 'unsupported'));
+  },
+  onNotification(cb) {
+    if (typeof cb !== 'function') return () => {};
+    const listener = (message) => cb(message);
+    notificationListeners.add(listener);
+    return () => {
+      notificationListeners.delete(listener);
+    };
+  },
+  onWake(cb) {
+    if (typeof cb !== 'function') return () => {};
+    const listener = () => cb();
+    wakeListeners.add(listener);
+    return () => {
+      wakeListeners.delete(listener);
+    };
   },
 });

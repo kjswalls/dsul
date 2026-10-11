@@ -454,6 +454,36 @@
 >    the scan reopened in between.
 > 6. **The tick's line gains `retried=`**, and `ScanSummary.retried` counts rows re-sent.
 
+> **Addendum (2026-10-11): what PR-1c changed on the way in.** PR-1c (§5.2) is the desktop app
+> as a device: `electron/lib/notify.cjs` (pure: what main may draw, the click it reports, the
+> probe), four `fromApp`-checked handlers and `backgroundThrottling: false` in `main.cjs`,
+> six optional preload members (`notify`, `closeNotification`, `idleSeconds`, `notifyProbe`,
+> `onNotification`, `onWake`; `version` stays 1), `lib/reminders/desktop-presenter.ts`, and the
+> desktop branch of `hooks/use-local-cue-tick.ts`. Where it departs from §5.2:
+>
+> 1. **The probe is a build fact, not a test notification.** Electron cannot ask macOS whether a
+>    banner was seen, so `notifyProbe` answers `ok` unless the OS has no notifications or the
+>    build is a packaged Mac build without a Developer ID (`unsigned`): electron-builder writes
+>    `dsulSigned` into the packaged package.json (`extraMetadata`), and main reads it. Anything
+>    but `ok` reads as permission denied: the tick never claims, and the desktop never registers.
+> 2. **The desktop registers only once its probe is `ok`**, as `platform 'electron'`,
+>    `transport 'none'`, `form 'desktop'`, from the boot registration hook. No `prefs` on the
+>    way in (registration has none); the Devices list's "Ring here" switch is its switch, and its
+>    copy now says the desktop app counts any use of the computer.
+> 3. **"Here" is `powerMonitor.getSystemIdleTime() < 300`**, through the tick's new optional
+>    `presence()` dep, which replaces the visible-and-input test; permission is still asked. A
+>    window behind another app or closed to the tray still rings.
+> 4. **Clicks come back to the page**, never to main's own fetch: a plain click brings the window
+>    forward and opens the link through the router; Done and Snooze call `/api/reminders/act`
+>    with the page's cookie, as the service worker does, and a stored Snooze goes to the tick. A
+>    button that fails is a toast with Open. Buttons are drawn on macOS and Windows, never Linux.
+> 5. **No release at sign-out.** The tokenless row can be sent nothing, so it leaks nothing; by
+>    SIGNED_OUT the cookie that would say whose row it is has gone, and adopting a new account
+>    would release the NEW account's row. A stale row waits for the 180-day prune.
+> 6. **Not here:** the signed macOS release itself (the secrets and `desktop-release.yml`; Kirby's),
+>    a Done that also updates the open planner (the act route writes the database; the page shows
+>    it at its next load, as with a pushed cue's Done), and the `desktop-smoke` xvfb job.
+
 2026-10-05. **Status: plan, decided 2026-10-06 — Kirby took every default in §7; nothing in it has been built yet, nothing was written to prod.** Phase 0 is next. Every code citation is tree-level (`main` at `b8d480c`, 2026-10-04; every cited `file:line` holds at `3200896`, #405, 2026-10-05 — six cited files changed between the two commits, `electron/main.cjs`, `electron/preload.cjs`, `lib/desktop.ts`, `desktop-app.md`, `ios-app.md`, `CLAUDE.md`, but not at the cited lines; `preload.cjs` gained `authProviders`): the live project was read on 2026-10-05, read-only, and the observed values sit at the top of §5.1.1: the organisation is on the **Pro** plan, both ticks are paused exactly as 045 left them, no ritual is enabled by any of the four accounts, and Kirby is the only user, so the runbook's EXPECT lines are now observations and the §5.1 writes have no one to disturb. Kirby also holds a paid Apple Developer Program membership (confirmed 2026-10-05), which removes the purchase gate the brief assumed (decision 5, resolved). Facts taken from search snippets of pages the planning sessions could not open are marked `[S]`; facts no source verified are marked **[unverified]** inline and collected in §6. Sibling plans: [habit-reminders.md](habit-reminders.md) (the reminder model this builds on — read it first), [desktop-app.md](desktop-app.md), [ios-app.md](ios-app.md).
 
 ---

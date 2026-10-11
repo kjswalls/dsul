@@ -210,5 +210,7 @@ describe('Ring here while I’m using it (claimsLocally, reminders PR-1b)', () =
     expect(help).toMatch(/Each browser has its own switch/);
     expect(help).toMatch(/a new browser starts with it on/);
     expect(help).toMatch(/five minutes/);
+    // The desktop app counts any use of the computer (reminders PR-1c).
+    expect(help).toMatch(/desktop app, using anything on the computer counts/);
   });
 });

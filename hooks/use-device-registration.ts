@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { registerThisBrowser } from '@/lib/devices/web-client';
+import { getDesktopBridge, desktopNotifier } from '@/lib/desktop';
+import { registerThisBrowser, registerThisDesktop } from '@/lib/devices/web-client';
 import { usePlannerStore } from '@/lib/planner-store';
 
 /**
@@ -17,6 +18,11 @@ import { usePlannerStore } from '@/lib/planner-store';
  *
  * Waits for the planner load to settle, as useTimezoneSync does, to stay out of
  * the cold-start burst. A browser with no subscription posts nothing.
+ *
+ * The desktop app registers its tokenless row instead (reminders PR-1c), and
+ * only when a notification shown there would be seen: an unsigned Mac build,
+ * or a shell too old to draw one, stays off the roster, so nothing offers to
+ * ring it.
  */
 export function useDeviceRegistration() {
   const userId = usePlannerStore((s) => s.userId);
@@ -26,6 +32,15 @@ export function useDeviceRegistration() {
   useEffect(() => {
     if (!userId || isLoading || done.current === userId) return;
     done.current = userId;
+    const desktop = desktopNotifier();
+    if (desktop) {
+      const platform = getDesktopBridge()?.platform ?? 'linux';
+      void desktop.notifyProbe().then(
+        (probe) => (probe === 'ok' ? registerThisDesktop(platform) : false),
+        () => false
+      );
+      return;
+    }
     void registerThisBrowser();
   }, [userId, isLoading]);
 }
