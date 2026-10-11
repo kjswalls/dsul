@@ -22,8 +22,8 @@ import {
   composeChatSystem,
   sanitizeChatMessages,
 } from '@/lib/ai-limits';
-import { BEACON_SYSTEM_PROMPT } from '@/lib/beacon-system-prompt';
-import { TOOLS_PROMPT, withToolsPrompt } from '@/lib/ai-server/chat-loop';
+import { BEACON_SYSTEM_PROMPT, SNAPSHOT_SCOPE } from '@/lib/beacon-system-prompt';
+import { TODAY_SNAPSHOT_SCOPE, TOOLS_PROMPT, withToolsPrompt } from '@/lib/ai-server/chat-loop';
 import { MAX_CHAT_IMAGES, MAX_IMAGE_DATA_CHARS } from '@/lib/chat-images';
 
 /**
@@ -801,6 +801,30 @@ describe('POST /api/chat → a model that takes tools', () => {
     const result = second.messages.at(-1);
     expect(result).toMatchObject({ role: 'tool', callId: 'c1', name: 'find_items' });
     expect(result.content).toContain('Book dentist [id: i-1]');
+  });
+
+  it('sends a model with tools only today\'s part of the planner, and says the rest is a lookup', async () => {
+    adapter.completeWithTools.mockResolvedValueOnce({ text: 'Fine.', toolCalls: [] });
+    await (await post({ ...hi, context: 'TODAY PART', contextBeyond: 'BEYOND PART' })).text();
+    const [, first] = adapter.completeWithTools.mock.calls[0];
+    const sent = first.system.join('\n\n');
+    expect(sent).toContain('TODAY PART');
+    expect(sent).not.toContain('BEYOND PART');
+    expect(first.system[0]).toContain(TODAY_SNAPSHOT_SCOPE);
+    expect(first.system[0]).not.toContain(SNAPSHOT_SCOPE);
+  });
+
+  it('sends a model without tools both parts, within one cap', async () => {
+    toolsOn.value = false;
+    await post({ ...hi, context: 'TODAY PART', contextBeyond: 'BEYOND PART' });
+    const { system } = adapter.openStream.mock.calls[0][1] as { system: string[] };
+    expect(system[1]).toContain('TODAY PART\n\nBEYOND PART');
+    expect(system[0]).toBe(BEACON_SYSTEM_PROMPT);
+
+    adapter.openStream.mockClear();
+    await post({ ...hi, context: 't'.repeat(MAX_CHAT_CONTEXT_CHARS), contextBeyond: 'BEYOND PART' });
+    const capped = (adapter.openStream.mock.calls[0][1] as { system: string[] }).system[1];
+    expect(capped).not.toContain('BEYOND');
   });
 
   it('a change arrives as a card frame, after its action line, and the reply follows', async () => {

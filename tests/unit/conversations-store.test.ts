@@ -42,9 +42,9 @@ vi.mock('@/lib/planner-store', () => ({
 
 const contextArgs = vi.hoisted(() => [] as { focusItemId?: string }[]);
 vi.mock('@/lib/ai-context', () => ({
-  buildDsulContext: (args: { focusItemId?: string }) => {
+  buildDsulContextParts: (args: { focusItemId?: string }) => {
     contextArgs.push(args);
-    return '## dsul Context';
+    return { today: '## dsul Context', beyond: '' };
   },
 }));
 

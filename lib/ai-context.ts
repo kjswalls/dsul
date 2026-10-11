@@ -22,7 +22,29 @@ const COMING_UP_DAYS = 14
  * `focusItemId` (per-item threads) prepends a focused-item section; the base
  * output without it stays byte-identical — the pinned tests parse that shape.
  */
-export function buildDsulContext(state: {
+export function buildDsulContext(state: DsulContextState): string {
+  const { head, beyond, tail } = contextSections(state)
+  return [...head, ...beyond, ...tail].join('\n')
+}
+
+/**
+ * The same context in two parts, for chat (AI step 3).
+ *
+ * `today` is what is on today and overdue, the habits and the user's own
+ * types, the focused and @-named items, long-term goals, what is paused and
+ * the project names: what the AI needs to answer about today without a
+ * lookup. `beyond` is Coming up and the Braindump, the two lists that grow
+ * with the planner. A model that can look things up is sent only `today` and
+ * finds the rest with find_items (app/api/chat decides, since only the server
+ * knows); every other answerer gets both. `beyond` is '' when both lists are
+ * empty.
+ */
+export function buildDsulContextParts(state: DsulContextState): { today: string; beyond: string } {
+  const { head, beyond, tail } = contextSections(state)
+  return { today: [...head, ...tail].join('\n'), beyond: beyond.join('\n').trimEnd() }
+}
+
+export interface DsulContextState {
   items: Item[]
   projects: Project[]
   focusItemId?: string
@@ -47,7 +69,10 @@ export function buildDsulContext(state: {
    * absent or empty, the output is byte-identical to before.
    */
   mentionedItemIds?: string[]
-}): string {
+}
+
+/** The context's lines in three runs; buildDsulContext is head, beyond, tail. */
+function contextSections(state: DsulContextState): { head: string[]; beyond: string[]; tail: string[] } {
   const today = new Date()
   // tz first: `todayStr` is compared against pause intervals that isPausedOn
   // resolves in the USER's zone, so deriving the day in the RUNTIME's zone
@@ -57,7 +82,7 @@ export function buildDsulContext(state: {
   // toDateStr(new Date(), tz); this one now does too.
   const tz = state.userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
   const todayStr = toDateStr(today, tz)
-  const lines: string[] = []
+  let lines: string[] = []
 
   lines.push('## dsul Context')
   lines.push(`Date: ${format(today, 'EEEE, MMMM d yyyy')}`)
@@ -140,6 +165,8 @@ export function buildDsulContext(state: {
     .filter((i) => i.isScheduled && !!i.startDate && i.startDate > todayStr && i.startDate <= horizon)
     .sort((a, b) => (a.startDate ?? '').localeCompare(b.startDate ?? ''))
   const braindump = open.filter((i) => !i.isScheduled && !i.timeBucket)
+  const head = lines
+  lines = []
   if (comingUp.length > 0) {
     lines.push(`### Coming up (next ${COMING_UP_DAYS} days)`)
     lines.push(...listed(comingUp, (i) => `${shortDate(i.startDate as string)}: ${i.title}${projectNote(i)}`))
@@ -151,6 +178,9 @@ export function buildDsulContext(state: {
     lines.push(...listed(braindump, (i) => `${i.title}${projectNote(i)}`))
     lines.push('')
   }
+
+  const beyond = lines
+  lines = []
 
   // --- Goals ---
   //
@@ -253,7 +283,7 @@ export function buildDsulContext(state: {
     lines.push(state.projects.map((p) => p.name).join(', '))
   }
 
-  return lines.join('\n')
+  return { head, beyond, tail: lines }
 }
 
 function listed<T extends Item>(items: readonly T[], line: (i: T) => string): string[] {

@@ -23,11 +23,11 @@ import { act, renderHook } from '@testing-library/react';
 /** A context build that throws: send finishes before it returns. */
 const context = vi.hoisted(() => ({ throws: false, titles: [] as string[][] }));
 vi.mock('@/lib/ai-context', () => ({
-  buildDsulContext: (o: { items: { title: string }[] }) => {
+  buildDsulContextParts: (o: { items: { title: string }[] }) => {
     // The titles each built context was made from (the look-only preview's case).
     context.titles.push(o.items.map((i) => i.title));
     if (context.throws) throw new RangeError('Invalid time zone specified: Mars/Olympus');
-    return '## dsul Context';
+    return { today: '## dsul Context', beyond: '' };
   },
 }));
 

@@ -29,7 +29,7 @@ vi.mock('@/lib/planner-store', () => ({
   },
 }));
 
-vi.mock('@/lib/ai-context', () => ({ buildDsulContext: () => '## dsul Context' }));
+vi.mock('@/lib/ai-context', () => ({ buildDsulContextParts: () => ({ today: '## dsul Context', beyond: '' }) }));
 
 import { chatTransport, resetPluginTransport } from '@/lib/chat-transport';
 import { chooseChatTarget } from '@/lib/chat-target';

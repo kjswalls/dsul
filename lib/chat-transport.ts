@@ -57,6 +57,12 @@ export interface TurnInput {
   images?: ChatImage[];
   /** The planner context, already built (and any continuity note folded in). */
   context: string;
+  /**
+   * The rest of the planner (Coming up and the Braindump, lib/ai-context.ts's
+   * `beyond`). /api/chat sends it to a model only when the model cannot look
+   * those up; OpenClaw always gets it.
+   */
+  contextBeyond?: string;
   /** Custom-type nouns, for the server's prompt. */
   typeNouns: string[];
   signal: AbortSignal;
@@ -216,6 +222,18 @@ function withInstructions(context: string, systemPrompt: string): string {
   return instructions ? `${context}\n\n## The user's own instructions\n${instructions}` : context;
 }
 
+/** Today's context with the rest after it, for an answerer that cannot look things up. */
+function wholeContext(input: Pick<TurnInput, 'context' | 'contextBeyond'>): string {
+  return input.contextBeyond ? `${input.context}\n\n${input.contextBeyond}` : input.context;
+}
+
+/** `contextBeyond` for /api/chat, clipped so the two together stay inside the server's cap. */
+function beyondField(input: Pick<TurnInput, 'context' | 'contextBeyond'>): { contextBeyond?: string } {
+  const room = MAX_CHAT_CONTEXT_CHARS - Math.min(input.context.length, MAX_CHAT_CONTEXT_CHARS) - 2;
+  const beyond = room > 0 ? clipText(input.contextBeyond ?? '', room) : '';
+  return beyond ? { contextBeyond: beyond } : {};
+}
+
 /** Tell the gate why a call failed; it re-checks on a rejected key or a vanished connection. */
 function noteFailure(code: unknown) {
   if (isChatErrorCode(code)) useAIConnectionStore.getState().noteCallFailure(code);
@@ -260,7 +278,7 @@ async function viaPlugin(input: TurnInput): Promise<TurnOutcome> {
       body: JSON.stringify({
         message: input.message,
         sessionKey: pluginSessionKey(input.conversationId),
-        context: withInstructions(input.context, systemPrompt),
+        context: withInstructions(wholeContext(input), systemPrompt),
       }),
     });
     // The plugin may have re-registered (a new URL or key) since this was
@@ -308,6 +326,9 @@ async function viaChatRoute(input: TurnInput): Promise<TurnOutcome> {
         // Clipped to the server's own limit: it clips there anyway, and an
         // unclipped heavy account would push the body past its cap.
         context: clipText(input.context, MAX_CHAT_CONTEXT_CHARS),
+        // The rest, in what the cap leaves: the server decides whether the model
+        // needs it (it does not when it can look things up).
+        ...beyondField(input),
         // Who answers. The key, the model and the prompt are the server's;
         // this body never carries any of them.
         target: input.target,

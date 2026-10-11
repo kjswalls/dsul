@@ -60,8 +60,10 @@ import { fetchGoals, fetchItemEvents, fetchItems, fetchItemTypes, fetchProjects,
  * (lib/ai-server/tool-support.ts), it may search the planner while it answers
  * (lib/ai-server/chat-loop.ts). Each lookup reads through the SESSION client,
  * so RLS holds it to the user's own rows, and streams an `{action}` frame
- * before the reply, which then arrives as one `{content}` frame. A model that
- * cannot take tools streams exactly as before.
+ * before the reply, which then arrives as one `{content}` frame. Such a model
+ * is sent only today's part of the planner (`context`) and looks up the rest;
+ * a model that cannot take tools gets `contextBeyond` too and streams exactly
+ * as before.
  *
  * Stateless: a turn names its saved conversation (`conversationId`) only so
  * the gateway path can key one OpenClaw session per conversation. Nothing here
@@ -100,6 +102,7 @@ const STREAM_HEADERS = { ...SSE_HEADERS, 'Cache-Control': 'no-store' }
 interface ChatBody {
   messages?: unknown
   context?: unknown
+  contextBeyond?: unknown
   target?: unknown
   customInstructions?: unknown
   typeNouns?: unknown
@@ -139,12 +142,15 @@ export async function POST(req: Request): Promise<Response> {
   // malformed ones are refused rather than dropped, since the words are about them.
   const images = sanitizeChatImages(body.images)
   if (images === null) return jsonChatError(400, ROUTE_ERROR_COPY.invalid, 'invalid')
+  // The planner in two parts (lib/ai-context.ts `buildDsulContextParts`):
+  // today's, and the rest (Coming up and the Braindump). A model that can look
+  // things up is sent only today's below; every other answerer gets both, in
+  // one cap between them. An older client sends it all as `context`.
   const context = clipText(body.context, MAX_CHAT_CONTEXT_CHARS)
-  const system = composeChatSystem({
-    typeNouns: body.typeNouns,
-    customInstructions: body.customInstructions,
-    context,
-  })
+  const beyond = clipText(body.contextBeyond, Math.max(0, MAX_CHAT_CONTEXT_CHARS - context.length - 2))
+  const systemWith = (ctx: string) =>
+    composeChatSystem({ typeNouns: body.typeNouns, customInstructions: body.customInstructions, context: ctx })
+  const system = systemWith(beyond ? `${context}\n\n${beyond}` : context)
 
   // ── OpenClaw gateway ───────────────────────────────────────────────────────
   // Proxied here rather than called from the browser: the gateway token is full
@@ -238,7 +244,7 @@ export async function POST(req: Request): Promise<Response> {
     const events = lookupLoop({
       adapter,
       creds,
-      request: { ...request, system: withToolsPrompt(system) },
+      request: { ...request, system: withToolsPrompt(systemWith(context)) },
       messages: turns,
       lookups: makeLookups(sessionSource(user.id, db)),
     })

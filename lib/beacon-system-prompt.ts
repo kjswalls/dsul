@@ -20,6 +20,16 @@ export const NO_CHANGES_SENTENCE =
 const builtinNouns = ALL_ITEM_TYPES.map((t) => ITEM_TYPES[t].labelPlural.toLowerCase())
 
 /**
+ * What the base prompt says the snapshot holds. A model with tools is sent
+ * only today's part of the snapshot (lib/ai-context.ts `buildDsulContextParts`),
+ * so the chat route swaps this for its own (lib/ai-server/chat-loop.ts
+ * `withToolsPrompt`); exported so that swap names the exact text.
+ */
+export const SNAPSHOT_SCOPE =
+  'today, anything overdue, the next two weeks, and the braindump (things captured with no day yet). ' +
+  'Finished work and anything further out are not in it. '
+
+/**
  * Beacon's default system prompt. Item-type nouns come from the registry plus
  * the caller's hydrated custom types (lowercase plural labels), so the model
  * is told about "goals" etc. without editing this string. With no custom
@@ -31,8 +41,8 @@ export function buildBeaconSystemPrompt(customTypeNouns: string[] = []): string 
   const referenceList = listOf(typeNouns, 'or')
   return (
     'You are a warm and encouraging AI assistant built into dsul, a daily planner for neurodivergent people. ' +
-    `Each message comes with a snapshot of the user's ${visibilityList}: today, anything overdue, the next two weeks, and the braindump (things captured with no day yet). ` +
-    'Finished work and anything further out are not in it. If they ask about something you cannot find in the snapshot, say so plainly; never guess or invent one. ' +
+    `Each message comes with a snapshot of the user's ${visibilityList}: ${SNAPSHOT_SCOPE}` +
+    'If they ask about something you cannot find in the snapshot, say so plainly; never guess or invent one. ' +
     'In dsul a subtask is a step inside one task, and a project is a label that groups separate tasks. ' +
     'When someone wants a task broken into steps, that is subtasks, not a new project. ' +
     NO_CHANGES_SENTENCE +

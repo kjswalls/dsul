@@ -47,7 +47,7 @@ vi.mock('@/lib/ai-connection-store', () => ({
   },
 }));
 
-vi.mock('@/lib/ai-context', () => ({ buildDsulContext: () => '## dsul Context' }));
+vi.mock('@/lib/ai-context', () => ({ buildDsulContextParts: () => ({ today: '## dsul Context', beyond: '' }) }));
 
 import { chatTransport } from '@/lib/chat-transport';
 import {
