@@ -31,8 +31,10 @@ vi.mock('@/lib/planner-store', () => ({
   },
 }));
 
-const plannerContext = vi.hoisted(() => ({ text: '## dsul Context' }));
-vi.mock('@/lib/ai-context', () => ({ buildDsulContext: () => plannerContext.text }));
+const plannerContext = vi.hoisted(() => ({ text: '## dsul Context', beyond: '' }));
+vi.mock('@/lib/ai-context', () => ({
+  buildDsulContextParts: () => ({ today: plannerContext.text, beyond: plannerContext.beyond }),
+}));
 
 import {
   clearChatState,
@@ -93,6 +95,7 @@ let id: string;
 
 beforeEach(() => {
   plannerContext.text = '## dsul Context';
+  plannerContext.beyond = '';
   api = fakeApi();
   configureConversations({ api: api.api, transport: chatTransport });
   clearChatState();
@@ -273,6 +276,22 @@ describe('the model path (/api/chat)', () => {
     expect(messagesOf(id)[0].content).toHaveLength(8_000);
   });
 
+  it('sends the rest of the planner apart, for the server to keep from a model with lookups', async () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    plannerContext.beyond = '### Braindump\n- Fix the bike';
+    const calls = stubFetch(() => ({ ok: true, body: sse({ content: 'ok' }) }));
+    await store().send(id, 'hi');
+    expect(bodyOf(calls[0])).toMatchObject({ context: '## dsul Context', contextBeyond: '### Braindump\n- Fix the bike' });
+
+    // The two together stay inside the route's one cap.
+    plannerContext.text = 'c'.repeat(59_990);
+    await store().send(id, 'again');
+    expect((bodyOf(calls[1]).contextBeyond as string).length).toBe(8);
+    plannerContext.text = 'c'.repeat(60_000);
+    await store().send(id, 'once more');
+    expect(bodyOf(calls[2])).not.toHaveProperty('contextBeyond');
+  });
+
   it('keeps the code of a refusal, not its words, and tells the gate why', async () => {
     unseed = seedAI(CONNECTED_MODEL);
     const calls = stubFetch((url) =>
@@ -381,6 +400,14 @@ describe('the plugin path (OpenClaw with no gateway)', () => {
     expect(pluginSessionKey(id)).toBe(`dsul-chat-${id}`);
     expect((post.init.headers as Record<string, string>).Authorization).toBe('Bearer dsulchat_plugin-token');
     expect(last(id)).toMatchObject({ content: 'From OpenClaw.', answerer: 'openclaw', model: null });
+  });
+
+  it('gives the plugin the whole planner in its one context', async () => {
+    unseed = seedAI(OPENCLAW_PLUGIN);
+    plannerContext.beyond = '### Braindump\n- Fix the bike';
+    const calls = stubFetch(pluginRoute);
+    await store().send(id, 'hi');
+    expect(bodyOf(calls[1]).context).toBe('## dsul Context\n\n### Braindump\n- Fix the bike');
   });
 
   it('sends the message already clipped to the user cap', async () => {

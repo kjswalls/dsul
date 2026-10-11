@@ -1,10 +1,11 @@
 /**
  * Runs one eval case exactly as the chat route would: the same system prompt
- * (base, lookups, the planner snapshot), the same loop and the same lookups,
- * with the fixture planner standing in for the user's database.
+ * (base, lookups, today's part of the planner snapshot, which is all a model
+ * with tools is sent), the same loop and the same lookups, with the fixture
+ * planner standing in for the user's database.
  */
 
-import { buildDsulContext } from '@/lib/ai-context';
+import { buildDsulContextParts } from '@/lib/ai-context';
 import { MAX_OUTPUT_TOKENS, composeChatSystem } from '@/lib/ai-limits';
 import { lookupLoop, withToolsPrompt } from '@/lib/ai-server/chat-loop';
 import { makeLookups } from '@/lib/ai-server/chat-lookups';
@@ -15,7 +16,7 @@ import { GOALS, ITEMS, PROJECTS, ROUTINES, TIMEZONE, fixtureSource } from './pla
 
 /** Call with Date frozen at planner.NOW, or "today" is the wrong day. */
 export function evalSystem(): string[] {
-  const context = buildDsulContext({
+  const { today: context } = buildDsulContextParts({
     items: ITEMS,
     projects: PROJECTS,
     routines: ROUTINES,

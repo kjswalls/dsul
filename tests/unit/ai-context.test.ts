@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { buildDsulContext } from '@/lib/ai-context';
+import { buildDsulContext, buildDsulContextParts } from '@/lib/ai-context';
 import { BEACON_SYSTEM_PROMPT, buildBeaconSystemPrompt } from '@/lib/beacon-system-prompt';
 import type { Item } from '@/lib/planner-types';
 
@@ -135,6 +135,33 @@ describe('buildDsulContext', () => {
     expect(out.split('### Braindump')[1]).not.toContain('Anytime thing');
     // A custom type's own section lists every one of them already.
     expect(out.split('### Braindump')[1]).not.toContain('Learn Mandarin');
+  });
+
+  it('splits into today and the rest, which a model with lookups is not sent', () => {
+    const task = (id: string, title: string, over: Record<string, unknown>): Item =>
+      ({ type: 'task', id, title, status: 'pending', order: 0, ...over }) as Item;
+    const state = {
+      items: [
+        task('c1', 'Call mum', { isScheduled: true, startDate: '2026-07-16' }),
+        task('b1', 'Fix the bike', { isScheduled: false }),
+      ],
+      projects: [{ id: 'p1', name: 'Work', emoji: '' }],
+    };
+    const { today, beyond } = buildDsulContextParts(state);
+    expect(beyond.startsWith('### Coming up (next 14 days)')).toBe(true);
+    expect(beyond).toContain('### Braindump\n');
+    expect(beyond).toContain('- Fix the bike');
+    expect(today).not.toContain('Call mum');
+    expect(today).not.toContain('Fix the bike');
+    expect(today).toContain('No tasks scheduled for today.');
+    expect(today.endsWith('### Projects\nWork')).toBe(true);
+    // Together they are the whole context: beyond is the run cut out of it.
+    expect(buildDsulContext(state).replace(`${beyond}\n\n`, '')).toBe(today);
+
+    expect(buildDsulContextParts({ items: [], projects: [] })).toEqual({
+      today: buildDsulContext({ items: [], projects: [] }),
+      beyond: '',
+    });
   });
 
   it('caps a long braindump with a count', () => {

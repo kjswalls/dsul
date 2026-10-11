@@ -17,7 +17,7 @@ import { cleanup, render, renderHook } from '@testing-library/react';
  * as it mounts).
  */
 
-vi.mock('@/lib/ai-context', () => ({ buildDsulContext: () => '## dsul Context' }));
+vi.mock('@/lib/ai-context', () => ({ buildDsulContextParts: () => ({ today: '## dsul Context', beyond: '' }) }));
 
 import { askAboutItem, openConversation, openSetup } from '@/lib/open-chat';
 import { clearChatState, configureConversations, conversationsSettled, useConversationsStore } from '@/lib/conversations-store';

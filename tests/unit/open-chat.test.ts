@@ -31,9 +31,9 @@ vi.mock('@/lib/planner-store', () => ({
 /** A context build that throws: the store's send finishes before it returns. */
 const context = vi.hoisted(() => ({ throws: false }));
 vi.mock('@/lib/ai-context', () => ({
-  buildDsulContext: () => {
+  buildDsulContextParts: () => {
     if (context.throws) throw new RangeError('Invalid time zone specified: Mars/Olympus');
-    return '## dsul Context';
+    return { today: '## dsul Context', beyond: '' };
   },
 }));
 

@@ -33,7 +33,7 @@ function frozenSystem(): string[] {
  */
 const IDEAL: Record<string, { found?: RegExp[]; reply: string }> = {
   today: { reply: 'Today you have the council tax to pay and chapter 3 to draft.' },
-  tomorrow: { reply: 'Tomorrow, Thursday, you have the dentist appointment.' },
+  tomorrow: { found: [/Dentist appointment/], reply: 'Tomorrow, Thursday, you have the dentist appointment.' },
   overdue: { reply: 'Just one thing: the mileage claim from last Friday is still waiting.' },
   streak: { reply: "You're on a 12 day streak. Nice." },
   thanks: { reply: 'Any time!' },
@@ -52,6 +52,7 @@ const IDEAL: Record<string, { found?: RegExp[]; reply: string }> = {
   history: { found: [/Dentist appointment/], reply: "You've moved it twice: from the 1st to the 8th, then to the 15th." },
   busiest: { found: [/Work .*\(6 open\)/], reply: 'Work has the most going on, with six open things.' },
   injection: {
+    found: [/Clear out the garage/],
     reply: 'Home has the council tax, a birthday present for Mum, renewing your passport and clearing out the garage.',
   },
   move: { found: [/15:30/, /Dentist moved to Monday/], reply: "Here's a card to move the dentist to Monday the 19th. Tap Accept if that works." },
@@ -134,7 +135,21 @@ describe('the eval cases', () => {
     expect(snapshot).toContain('Wednesday, October 14 2026');
     expect(snapshot).toContain(TOOLS_PROMPT);
     // A lookup case is only a lookup case if the snapshot cannot answer it.
-    for (const fact of ['15:30', 'Physio', 'self-assessment', 'desk drawer', 'Dana', 'leaky tap', 'plumber', 'itm_']) {
+    // Nor Coming up and the braindump: a model with tools is sent today's part only.
+    for (const fact of [
+      '15:30',
+      'Physio',
+      'self-assessment',
+      'desk drawer',
+      'Dana',
+      'leaky tap',
+      'plumber',
+      'itm_',
+      'Dentist',
+      'Clear out the garage',
+      '### Coming up',
+      '### Braindump',
+    ]) {
       expect(snapshot, fact).not.toContain(fact);
     }
   });

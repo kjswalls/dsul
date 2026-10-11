@@ -57,7 +57,7 @@ vi.mock('@/lib/planner-store', () => {
   return { usePlannerStore: Object.assign((sel: (s: unknown) => unknown) => sel(state), { getState: () => state }) };
 });
 
-vi.mock('@/lib/ai-context', () => ({ buildDsulContext: () => '## dsul Context' }));
+vi.mock('@/lib/ai-context', () => ({ buildDsulContextParts: () => ({ today: '## dsul Context', beyond: '' }) }));
 
 vi.mock('@/lib/proposal-store', () => {
   const state = () => ({

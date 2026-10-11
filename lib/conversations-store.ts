@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { usePlannerStore } from './planner-store';
 import { useAwayStore } from './away-store';
 import { getAICapabilities, useAIConnectionStore } from './ai-connection-store';
-import { buildDsulContext } from './ai-context';
+import { buildDsulContextParts } from './ai-context';
 import { mentionedItemIds } from './chat-mentions';
 import { goalsEnabled } from './extension-gates';
 import { isPlannerPreviewing, whenPreviewEnds } from './planner-ready';
@@ -515,10 +515,13 @@ function withSummaries(
  * The planner as context, focused on the conversation's item while it exists,
  * with the items the message names with @ (lib/chat-mentions.ts) in detail.
  */
-function plannerContext(itemId: string | null, message: string): { context: string; typeNouns: string[] } {
+function plannerContext(
+  itemId: string | null,
+  message: string
+): { context: string; contextBeyond: string; typeNouns: string[] } {
   const { items, projects, itemTypes, routines, seasons, goals, userTimezone } = usePlannerStore.getState();
   const focusItemId = itemId && items.some((i) => i.id === itemId) ? itemId : undefined;
-  const context = buildDsulContext({
+  const { today, beyond } = buildDsulContextParts({
     items,
     projects,
     routines,
@@ -530,7 +533,7 @@ function plannerContext(itemId: string | null, message: string): { context: stri
     userTimezone,
     mentionedItemIds: mentionedItemIds(message, items),
   });
-  return { context, typeNouns: itemTypes.map((t) => t.labelPlural.toLowerCase()) };
+  return { context: today, contextBeyond: beyond, typeNouns: itemTypes.map((t) => t.labelPlural.toLowerCase()) };
 }
 
 /**
@@ -1389,7 +1392,7 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
           // leaving the question — exactly a stop before the first token.
           outcome = { content: '', status: 'stopped', errorCode: null, model: modelId };
         } else {
-          const { context, typeNouns } = plannerContext(base.itemId, content);
+          const { context, contextBeyond, typeNouns } = plannerContext(base.itemId, content);
           const note = continuityNote(prior, answerer, via, now);
           // Whatever comes back, OpenClaw has the message from here on.
           if (answerer === 'openclaw') noteOpenclawAsked(id);
@@ -1401,6 +1404,7 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
             turns: outgoingTurns([...prior, user]),
             ...(pictures.length ? { images: pictures } : {}),
             context: note ? `${context}\n\n${note}` : context,
+            ...(contextBeyond ? { contextBeyond } : {}),
             typeNouns,
             signal: controller.signal,
             onAction: (action) => {

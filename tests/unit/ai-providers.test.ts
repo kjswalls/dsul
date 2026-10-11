@@ -29,7 +29,14 @@ import { checkConnection } from '@/lib/ai-server/check';
 import { BUILTIN_BASE_URLS, credentialsFor, getAdapter } from '@/lib/ai-server/providers';
 import type { CompletionRequest, ProviderCredentials, ToolRequest } from '@/lib/ai-server/providers/types';
 import { parseToolArgs } from '@/lib/ai-server/providers/tool-args';
-import { CATALOG_TTL_MS, resetToolSupportCache, supportsTools } from '@/lib/ai-server/tool-support';
+import {
+  CATALOG_TTL_MS,
+  PROBE_RETRY_MS,
+  PROBE_TOOL,
+  PROBE_TTL_MS,
+  resetToolSupportCache,
+  supportsTools,
+} from '@/lib/ai-server/tool-support';
 import type { ModelProviderId } from '@/lib/ai-types';
 
 // ── the recording fetch ─────────────────────────────────────────────────────
@@ -1566,15 +1573,91 @@ describe('supportsTools', () => {
 
   beforeEach(() => resetToolSupportCache());
 
-  it('the built-in providers say yes and a custom host says no, without asking anyone', async () => {
+  it('the built-in providers say yes without asking anyone', async () => {
     route = () => {
       throw new Error('no request expected');
     };
     for (const p of ['openai', 'gemini', 'anthropic'] as const) {
       expect(await supportsTools(p, 'any-model', creds(p), signal())).toBe(true);
     }
-    expect(await supportsTools('custom', 'llama', creds('custom', 'https://llm.example.com/v1'), signal())).toBe(false);
     expect(seen).toHaveLength(0);
+  });
+
+  describe('a custom host', () => {
+    const host = (apiKey = 'key-custom') => creds('custom', 'https://llm.example.com/v1', apiKey);
+    const calls = (name = PROBE_TOOL.name) =>
+      json(completion({ tool_calls: [{ id: 'p1', type: 'function', function: { name, arguments: '{}' } }] }, 'tool_calls'));
+
+    it('is a yes when the model calls the probe tool back, asked once an hour', async () => {
+      route = () => calls();
+      const t0 = Date.now();
+      expect(await supportsTools('custom', 'llama', host(), signal(), t0)).toBe(true);
+      expect(seen).toHaveLength(1);
+      const body = JSON.parse(seen[0].body!);
+      expect(seen[0].url).toBe('https://llm.example.com/v1/chat/completions');
+      expect(body.model).toBe('llama');
+      expect(body.tools.map((t: { function: { name: string } }) => t.function.name)).toEqual([PROBE_TOOL.name]);
+      expect(await supportsTools('custom', 'llama', host(), signal(), t0 + PROBE_TTL_MS - 1)).toBe(true);
+      expect(seen).toHaveLength(1);
+      expect(await supportsTools('custom', 'llama', host(), signal(), t0 + PROBE_TTL_MS)).toBe(true);
+      expect(seen).toHaveLength(2);
+    });
+
+    it('is a no when the host ignores tools and answers in words, or calls something else', async () => {
+      route = () => json(completion({ content: 'Connection checked!' }));
+      expect(await supportsTools('custom', 'llama', host(), signal())).toBe(false);
+      route = () => calls('something_else');
+      expect(await supportsTools('custom', 'qwen', host(), signal())).toBe(false);
+      // Both are answers, kept for the hour.
+      expect(await supportsTools('custom', 'llama', host(), signal())).toBe(false);
+      expect(seen).toHaveLength(2);
+    });
+
+    it('is a no for the hour when the host refuses tools outright', async () => {
+      route = () => json({ error: { message: 'tools is not supported' } }, 400, noRetry);
+      const t0 = Date.now();
+      expect(await supportsTools('custom', 'llama', host(), signal(), t0)).toBe(false);
+      route = () => calls();
+      expect(await supportsTools('custom', 'llama', host(), signal(), t0 + PROBE_RETRY_MS + 1)).toBe(false);
+      expect(seen).toHaveLength(1);
+    });
+
+    it('asks again a few minutes after a probe it could not judge', async () => {
+      route = () => json({ error: 'down' }, 503, noRetry);
+      const t0 = Date.now();
+      expect(await supportsTools('custom', 'llama', host(), signal(), t0)).toBe(false);
+      route = () => calls();
+      expect(await supportsTools('custom', 'llama', host(), signal(), t0 + PROBE_RETRY_MS - 1)).toBe(false);
+      expect(seen).toHaveLength(1);
+      expect(await supportsTools('custom', 'llama', host(), signal(), t0 + PROBE_RETRY_MS)).toBe(true);
+      expect(seen).toHaveLength(2);
+    });
+
+    it('probes each model and key apart, and shares one probe between asks in flight', async () => {
+      route = () => calls();
+      const [a, b] = await Promise.all([
+        supportsTools('custom', 'llama', host(), signal()),
+        supportsTools('custom', 'llama', host(), signal()),
+      ]);
+      expect([a, b]).toEqual([true, true]);
+      expect(seen).toHaveLength(1);
+      await supportsTools('custom', 'llama', host('another-key'), signal());
+      await supportsTools('custom', 'mistral', host(), signal());
+      expect(seen).toHaveLength(3);
+    });
+
+    it('stops waiting when the chat is stopped, and keeps the answer for the next ask', async () => {
+      let release!: () => void;
+      route = () => new Promise<Response>((r) => (release = () => r(calls())));
+      const stop = new AbortController();
+      const asked = supportsTools('custom', 'llama', host(), stop.signal);
+      await vi.waitFor(() => expect(seen).toHaveLength(1));
+      stop.abort();
+      expect(await asked).toBe(false);
+      release();
+      await vi.waitFor(async () => expect(await supportsTools('custom', 'llama', host(), signal())).toBe(true));
+      expect(seen).toHaveLength(1);
+    });
   });
 
   it('OpenRouter follows the catalog, and lists the flag on each model', async () => {

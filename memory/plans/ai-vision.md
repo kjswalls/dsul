@@ -142,7 +142,7 @@ Build order: (1) tool calls in the adapters, (2) lookups in `/api/chat` with act
 (4) item changes as cards, (5) containers, habits, pause, deletes. Step 1 is built:
 `completeWithTools` on both adapters (non-streamed, one step, never runs a tool; malformed arguments
 read as `null`, `tool-args.ts`), and `supportsTools` (lib/ai-server/tool-support.ts), decided per ask
-and never stored: the three built-ins yes, a custom host no until a probe exists, OpenRouter by its
+and never stored: the three built-ins yes, a custom host by a probe (2026-10-11, below), OpenRouter by its
 catalog's `supported_parameters` (an hour's cache; `openrouter/auto` no, since it may route to a model
 without tools). Nothing calls either yet.
 Step 2 is built: on a model `supportsTools` says yes to, `/api/chat` runs `lookupLoop`
@@ -157,8 +157,8 @@ The action lines live on `ChatMessage.actions` and are saved with the reply: mig
 most 16 lines of 200, `cleanActions` in lib/conversation-types.ts and the same rule in SQL), and
 `toMessage` reads them back. 068 grants authenticated INSERT on `meta`, so meta is owner-asserted;
 only `actions` is ever read from it, cleaned again. Before 068 is applied, 057's `chat_append` ignores
-the key and a turn saves without its lines. The snapshot is unchanged
-for now; trimming it to today waits on the evals (step 3).
+the key and a turn saves without its lines. The snapshot was unchanged
+then; trimming it to today waited on the evals (step 3), and is done (2026-10-11, below).
 Step 3 is built: `pnpm eval:chat` (tests/evals/chat/, its own vitest config, never in `pnpm test` or CI
 because it spends real keys) asks 20 questions of a frozen planner (Wednesday 2026-10-14) through the
 same prompt, loop and lookups as the route, against the models named in `EVAL_MODELS` with
@@ -169,6 +169,20 @@ planner). `tests/unit/chat-evals.test.ts` runs every case against a scripted ide
 eval is the model's and never the harness's. The three change asks (move, add, break down) are graded
 as read-only today and flip to expecting a card in step 4. Building it caught `planner_overview`
 promising an overdue count it never gave; its description no longer does.
+**2026-10-11: today-only snapshot and the custom-host probe.** The browser now builds the context in two
+parts (`buildDsulContextParts`, lib/ai-context.ts): `today` (date, focused and @-named items, today and
+overdue, habits and the user's own types, long-term goals, Paused, project names) and `beyond` (Coming up
+and the Braindump, the two lists that grow with the planner), sent as `context` and `contextBeyond` in one
+60k cap. `/api/chat` sends a model with tools only `today`, and `withToolsPrompt` swaps the base prompt's
+`SNAPSHOT_SCOPE` for `TODAY_SNAPSHOT_SCOPE` ("later days, the braindump and finished work are not in it:
+look those up"); a model without tools, the gateway and the plugin get both, as before. Goals stay in
+`today` because `planner_overview` has no progress or why. The evals run on the today-only snapshot:
+"Anything tomorrow?" and "What's in my Home project?" are lookups now (the second makes the injection
+note arrive through a tool result, the harder case). A custom OpenAI-compatible host is asked by a probe
+(lib/ai-server/tool-support.ts): one `completeWithTools` call offering a single `check_connection` tool,
+and only a call back is a yes (a host that ignores `tools` answers in words: no). Kept an hour per host,
+model and key hash, in instance memory, never on the connection; a refusal (400), an empty or refused
+answer is the host's answer for the hour, anything else (timeout, down, key refused) a no for 5 minutes.
 Step 4 is built: the same loop offers `propose_changes` (lib/ai-server/chat-changes.ts), which never
 writes. Its arguments are a ProposalDraft (a create with no type is a task; `clear: [...]` stands in for
 the nulls, since not every provider's schema dialect takes a union type), parsed with
