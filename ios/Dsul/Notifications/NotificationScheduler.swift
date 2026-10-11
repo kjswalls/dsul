@@ -16,20 +16,23 @@ struct PlanSnapshot: Sendable, Hashable {
     var items: [Item]
     var routines: [Routine]
     var seasons: [Season]
+    /// The user's trips (vacation mode): a held habit's cue waits for its return.
+    var away: [AwayPeriod]
     var settings: PlannerSettings
     var snoozes: [PlanSnooze]
 
-    init(items: [Item], routines: [Routine] = [], seasons: [Season] = [], settings: PlannerSettings,
-         snoozes: [PlanSnooze] = []) {
+    init(items: [Item], routines: [Routine] = [], seasons: [Season] = [], away: [AwayPeriod] = [],
+         settings: PlannerSettings, snoozes: [PlanSnooze] = []) {
         self.items = items
         self.routines = routines
         self.seasons = seasons
+        self.away = away
         self.settings = settings
         self.snoozes = snoozes
     }
 
     init(_ payload: PlannerPayload) {
-        self.init(items: payload.items, routines: payload.routines, seasons: payload.seasons,
+        self.init(items: payload.items, routines: payload.routines, seasons: payload.seasons, away: payload.trips,
                   settings: payload.settings, snoozes: payload.snoozes ?? [])
     }
 }
@@ -182,6 +185,7 @@ final class NotificationScheduler {
             items: snapshot.items,
             routines: snapshot.routines,
             seasons: snapshot.seasons,
+            away: snapshot.away,
             timeFormat: snapshot.settings.timeFormat,
             remindersEnabled: snapshot.settings.remindersEnabled == true,
             eod: snapshot.settings.planEod,

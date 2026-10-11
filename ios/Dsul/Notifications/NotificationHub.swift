@@ -198,7 +198,7 @@ final class NotificationHub {
     private func planFromPlanner() async {
         guard let planner, let userId = planner.userId, planner.hasLoaded else { return }
         let snapshot = PlanSnapshot(items: planner.items, routines: planner.routines, seasons: planner.seasons,
-                                    settings: planner.settings, snoozes: planner.snoozes)
+                                    away: planner.awayPeriods, settings: planner.settings, snoozes: planner.snoozes)
         await scheduler.reconcile(snapshot, userId: userId)
         permission = await scheduler.center.permission()
     }
@@ -282,7 +282,8 @@ final class NotificationHub {
         }
         guard let id = info.itemId else { return true }
         guard let item = planner.item(id), let dayString = DayString(day) else { return false }
-        let ctx = ActivationContext(timeZone: zone(), routines: planner.routines, seasons: planner.seasons)
+        let ctx = ActivationContext(timeZone: zone(), routines: planner.routines, seasons: planner.seasons,
+                                    away: planner.awayPeriods)
         return wantsDoingOn(item, on: dayString, ctx)
     }
 
@@ -450,7 +451,8 @@ final class NotificationHub {
         }
         let api = makeAPI(account)
         guard var payload = try? await api.fetchPlanner(), payload.userId == userId else { return false }
-        let ctx = ActivationContext(timeZone: zone(), routines: payload.routines, seasons: payload.seasons)
+        let ctx = ActivationContext(timeZone: zone(), routines: payload.routines, seasons: payload.seasons,
+                                    away: payload.trips)
         var done = Set<UUID>()
         sending: for entry in outbox.entries {
             guard entry.userId == userId else {

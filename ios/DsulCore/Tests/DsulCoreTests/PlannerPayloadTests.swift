@@ -89,6 +89,24 @@ private struct RawItems: Decodable, Sendable {
         #expect(p.items.count == raw.items.count)
         #expect(!p.items.isEmpty)
         #expect(!p.fetchedAt.isEmpty)
+        // The trips, newest first: an open-ended one from December, its jsonb
+        // null on the server and empty here, and a week away with a keep list
+        // and an easing wave.
+        let trips = try #require(p.awayPeriods)
+        #expect(trips.count == 2)
+        let openEnded = try #require(trips.first)
+        #expect(openEnded.startsOn == "2026-12-20")
+        #expect(openEnded.endsOn == nil)
+        #expect(openEnded.keep == AwayKeep())
+        #expect(openEnded.returns.isEmpty)
+        let week = try #require(trips.last)
+        #expect(week.startsOn == "2026-10-10")
+        #expect(week.endsOn == "2026-10-17")
+        #expect(week.keep.itemIds.count == 1 && week.keep.routineIds.count == 1 && week.keep.projectIds.count == 1)
+        #expect(week.keep.itemIds.allSatisfy { id in p.items.contains { $0.id == id } })
+        #expect(week.returns.count == 1)
+        #expect(week.returns.values.first == "2026-10-19")
+        #expect(p.trips == trips)
     }
 
     /// The cases the route's fixture is built to cover (lib/app-api.ts).
@@ -192,7 +210,11 @@ private struct RawItems: Decodable, Sendable {
         let p = try JSONDecoder().decode(PlannerPayload.self, from: try fixtureData())
         let zone = p.settings.timezone ?? "UTC"
         let today = try #require(DayString(String(p.fetchedAt.prefix(10))))
-        let inactive = inactiveItemIdsOn(items: p.items, date: today, timeZone: zone, routines: p.routines, seasons: p.seasons)
+        let inactive = inactiveItemIdsOn(
+            items: p.items, date: today, timeZone: zone, routines: p.routines, seasons: p.seasons, away: p.trips
+        )
+        // Neither trip has begun on the fixture's day, so they hide nothing yet.
+        #expect(inactive == inactiveItemIdsOn(items: p.items, date: today, timeZone: zone, routines: p.routines, seasons: p.seasons))
         let split = project(p.items)
         let day = deriveDayItems(
             tasks: split.tasks, habits: split.habits, projects: p.projects, date: today,
@@ -284,6 +306,9 @@ private struct RawItems: Decodable, Sendable {
         #expect(p.settings.planEod == nil)
         #expect(p.settings.reminderGraceMinutes == nil)
         #expect(p.snoozes == nil)
+        // ... and a server older than vacation mode sends no trips: none.
+        #expect(p.awayPeriods == nil)
+        #expect(p.trips.isEmpty)
     }
 
     @Test func theWeekAndTheClockAreReadLeniently() throws {
@@ -411,6 +436,45 @@ private struct RawItems: Decodable, Sendable {
         #expect(try snoozes("null") == nil)
         #expect(try snoozes(#""none""#) == nil)
         #expect(try snoozes("[]") == [])
+    }
+
+    /// The trips: a bad element is skipped, never the payload; null or the
+    /// wrong type is none; a bad id in a keep list or a wave is skipped.
+    @Test func theTripsAreReadLeniently() throws {
+        func trips(_ value: String) throws -> [AwayPeriod]? {
+            let json = """
+            {"v":1,"userId":"\(user)","fetchedAt":"x","settings":{},"awayPeriods":\(value),
+             "items":[],"projects":[],"routines":[],"seasons":[]}
+            """
+            return try decode(json).awayPeriods
+        }
+        let item = "11111111-1111-4111-8111-000000000001"
+        let good = #"""
+        {"id":"t1","startsOn":"2026-10-10","endsOn":"2026-10-17",
+         "keep":{"itemIds":["\#(item)","not-a-uuid",7],"routineIds":["r1"],"projectIds":null},
+         "returns":{"\#(item)":"2026-10-19","nope":"2026-10-20","11111111-1111-4111-8111-000000000002":3},
+         "fromTrip":{},"settledAt":null}
+        """#
+        let read = try #require(try trips("[\(good)]"))
+        let id = UUID(uuidString: item)!
+        #expect(read == [
+            AwayPeriod(
+                id: "t1", startsOn: "2026-10-10", endsOn: "2026-10-17",
+                keep: AwayKeep(itemIds: [id], routineIds: ["r1"], projectIds: []),
+                returns: [id: "2026-10-19"]
+            ),
+        ])
+        // No end, or an empty one, is open-ended; no keep list keeps nothing.
+        #expect(try trips(#"[{"id":"t2","startsOn":"2026-11-01","endsOn":""}]"#) == [
+            AwayPeriod(id: "t2", startsOn: "2026-11-01"),
+        ])
+        // A trip with no id or no start can't be placed, and is skipped.
+        let bad = [#"{"startsOn":"2026-11-01"}"#, #"{"id":"t3"}"#, #"{"id":"t4","startsOn":5}"#, "3", "null"]
+        #expect(try trips("[\(bad.joined(separator: ","))]")?.isEmpty == true)
+        #expect(try trips("[\(bad[0]),\(good)]")?.count == 1)
+        #expect(try trips("null") == nil)
+        #expect(try trips(#""none""#) == nil)
+        #expect(try trips("[]") == [])
     }
 
     @Test func theWritesListIsReadLeniently() throws {

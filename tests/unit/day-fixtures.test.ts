@@ -11,6 +11,7 @@ import {
   resolvePauseWrite,
   type Pausable,
 } from '@/lib/active';
+import type { AwayPeriod } from '@/lib/away';
 import { deriveDayItems, flattenDayRows, BUCKET_ORDER, type DayItems } from '@/lib/day-items';
 import { deriveTimedEntries } from '@/components/views/day-schedule';
 import { braindumpMembers } from '@/lib/braindump-members';
@@ -171,6 +172,8 @@ type World = {
   items: Item[];
   routines: Routine[];
   seasons: Season[];
+  /** The trips (vacation mode, lib/away.ts); empty in the worlds that predate them. */
+  away: AwayPeriod[];
   days: WorldDay[];
 };
 type ActiveFixture = {
@@ -270,14 +273,16 @@ function buildActive(): ActiveFixture {
     isPausedOn: pauses,
     isSeasonActiveOn: seasonCases,
     isOpenLoopOn: openLoops,
-    worlds: [containersWorld(), tokyoWorld()],
+    worlds: [containersWorld(), tokyoWorld(), tripWorld(), openTripWorld()],
   };
 }
 
-function resolveWorld(w: Omit<World, 'days'>, dates: string[]): World {
-  const ctx = { userTimezone: w.timeZone, routines: w.routines, seasons: w.seasons };
+function resolveWorld(w: Omit<World, 'days' | 'away'> & { away?: AwayPeriod[] }, dates: string[]): World {
+  const away = w.away ?? [];
+  const ctx = { userTimezone: w.timeZone, routines: w.routines, seasons: w.seasons, away };
   return {
     ...w,
+    away,
     days: dates.map((date) => ({
       date,
       inactive: sortedIds(inactiveItemIdsOn(w.items, date, ctx)),
@@ -367,6 +372,82 @@ function tokyoWorld(): World {
     '2026-09-30',
     '2026-10-01',
     '2026-10-02',
+  ]);
+}
+
+const trip = (id: string, startsOn: string, endsOn: string | undefined, over: Partial<AwayPeriod> = {}): AwayPeriod => ({
+  id,
+  startsOn,
+  ...(endsOn ? { endsOn } : {}),
+  keep: { itemIds: [], routineIds: [], projectIds: [] },
+  returns: {},
+  fromTrip: {},
+  ...over,
+});
+
+/**
+ * Vacation mode (lib/away.ts): a week away from the 10th, back ON the 17th
+ * (the end is exclusive), with the keep list by item, parent, project and
+ * routine, an easing wave, and a one-day trip later in the month.
+ */
+function tripWorld(): World {
+  const items: Item[] = [
+    habit(31, 'held by the trip'),
+    habit(32, 'kept by its id'),
+    task(33, 'subtask of the kept habit, dated inside the trip', { parentItemId: uid(32), startDate: '2026-10-12' }),
+    habit(34, 'kept by its project', { project: 'Plants', projectId: 'p-plants' }),
+    habit(35, 'kept through its routine'),
+    habit(36, 'eases back on the 19th'),
+    habit(37, 'a wave before the end is the end'),
+    task(38, 'undated braindump task, never held', { isScheduled: false }),
+    task(39, 'dated task inside the trip', { startDate: '2026-10-12' }),
+    task(40, 'dated task inside the trip, completed', { startDate: '2026-10-12', status: 'completed' }),
+    habit(41, 'held, ticked on the 12th', { completedDates: ['2026-10-12'] }),
+    habit(42, 'kept through a routine that is itself paused'),
+    habit(43, 'held, in a live routine'),
+    task(44, 'recurring task, held', { repeatFrequency: 'daily', startDate: '2026-10-01' }),
+    habit(45, 'in another project', { project: 'Work', projectId: 'p-work' }),
+  ];
+  const routines: Routine[] = [
+    routine('r-meds', 'Meds', [uid(35)]),
+    routine('r-shelved', 'Shelved', [uid(42)], { pausedAt: '2026-10-01T12:00:00Z' }),
+    routine('r-live', 'Mornings', [uid(43)]),
+  ];
+  const away: AwayPeriod[] = [
+    trip('t-week', '2026-10-10', '2026-10-17', {
+      keep: { itemIds: [uid(32)], routineIds: ['r-meds', 'r-shelved'], projectIds: ['p-plants'] },
+      returns: { [uid(36)]: '2026-10-19', [uid(37)]: '2026-10-15' },
+    }),
+    trip('t-day', '2026-10-25', '2026-10-26'),
+  ];
+  return resolveWorld({ name: 'a week away', timeZone: NY, items, routines, seasons: [], away }, [
+    '2026-10-09',
+    '2026-10-10',
+    '2026-10-12',
+    '2026-10-16',
+    '2026-10-17',
+    '2026-10-18',
+    '2026-10-19',
+    '2026-10-25',
+    '2026-10-26',
+  ]);
+}
+
+/** A trip with no end: everything that falls on a day rests from its start, for good. */
+function openTripWorld(): World {
+  const items: Item[] = [
+    habit(51, 'a habit'),
+    task(52, 'a task dated in January', { startDate: '2027-01-05' }),
+    task(53, 'an undated task', { isScheduled: false }),
+    habit(54, 'kept', {}),
+  ];
+  const away: AwayPeriod[] = [
+    trip('t-open', '2026-11-01', undefined, { keep: { itemIds: [uid(54)], routineIds: [], projectIds: [] } }),
+  ];
+  return resolveWorld({ name: 'an open-ended trip', timeZone: LA, items, routines: [], seasons: [], away }, [
+    '2026-10-31',
+    '2026-11-01',
+    '2027-01-05',
   ]);
 }
 
@@ -1914,6 +1995,11 @@ describe('day fixtures shared with DsulCore', () => {
     const world = active.worlds[0];
     expect(world.days.some((d) => d.inactive.length > 0)).toBe(true);
     expect(world.days.some((d) => d.live.length < world.items.length)).toBe(true);
+    // Each trip world's first day is before its trip, and the trip then holds more.
+    for (const w of active.worlds.filter((x) => x.away.length > 0)) {
+      expect(w.days.some((d) => d.inactive.length > w.days[0].inactive.length), w.name).toBe(true);
+      expect(w.days.some((d) => d.live.length < w.days[0].live.length), w.name).toBe(true);
+    }
 
     const braindump = (generated.braindump as { cases: BraindumpCase[] }).cases[0];
     expect(braindump.expected).not.toEqual(braindump.atSelectedDate);

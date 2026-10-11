@@ -117,6 +117,13 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   and `ReminderPlan.swift` ← `lib/reminders/plan.ts` (which local
   notifications the phone arms and withdraws; nothing schedules one yet, see
   reminders-platforms.md's 2026-10-09 addendum).
+  Vacation mode adds `Away.swift` ← `lib/away.ts` (`isDayBound`, `isKeptOn`,
+  `returnDayOf`, `awayHoldOn`), asked first by `isItemActiveOn` and
+  `inactiveItemIdsOn` through their `away:` argument and `ActivationContext.away`
+  (empty by default, so a caller without trips answers as before), and
+  `AwayPeriod` / `AwayKeep` in `Item.swift`, decoded from the planner's
+  `awayPeriods` (nil from an older server; `trips` reads it as none).
+  `PlanInput.away` carries them into the notification plan.
   Each cites what it mirrors.
 - `ios/Dsul/App`: `DsulApp` (one `AuthStore`), `AppGate` (sign-in screen,
   sample or the user's planner, keyed on `AuthStore.gateKey`), `AppConfig`.

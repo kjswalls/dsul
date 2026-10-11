@@ -441,14 +441,14 @@ const SETTINGS_ROW = {
 
 /**
  * Answers each table from `tables`, and anything else as an error. The quiet
- * defaults are user_extensions and items (the snooze read), which every load
- * reads: no rows, the manifest's defaults and no snoozes. A test that wants
- * either read to fail names it.
+ * defaults are user_extensions, items (the snooze read) and away_periods,
+ * which every load reads: no rows, the manifest's defaults, no snoozes and no
+ * trips. A test that wants one of those reads to fail names it.
  */
 function respondWith(tables: Record<string, Result>) {
   respond = (q) =>
     tables[q.table] ??
-    (q.table === 'user_extensions' || q.table === 'items'
+    (q.table === 'user_extensions' || q.table === 'items' || q.table === 'away_periods'
       ? { data: [], error: null }
       : { data: null, error: { code: 'XX000', message: `unexpected ${q.table}` } });
 }
@@ -463,6 +463,35 @@ const SNOOZE_ROWS = [
   { id: id(3), reminder_snooze_until: '2026-10-02T15:30:00+00:00', reminder_snooze_date: null },
 ];
 const SNOOZES: Result = { data: SNOOZE_ROWS, error: null };
+
+/**
+ * The trips (away_periods, migration 071), newest first as the query orders
+ * them: an open-ended one from December, its jsonb columns null, as a row
+ * written before the columns had defaults would read, and a week away later
+ * this month with a keep list and an easing wave. Neither has begun on the
+ * fixture's day, so Today's answers in PlannerPayloadTests stand.
+ */
+const AWAY_ROWS = [
+  {
+    id: '55555555-5555-4555-8555-000000000002',
+    starts_on: '2026-12-20',
+    ends_on: null,
+    keep: null,
+    returns: null,
+    from_trip: null,
+    settled_at: null,
+  },
+  {
+    id: '55555555-5555-4555-8555-000000000001',
+    starts_on: '2026-10-10',
+    ends_on: '2026-10-17',
+    keep: { itemIds: [id(1)], routineIds: [ROUTINE_MORNING], projectIds: [PROJECT_HEALTH] },
+    returns: { [id(2)]: '2026-10-19' },
+    from_trip: {},
+    settled_at: null,
+  },
+];
+const AWAY: Result = { data: AWAY_ROWS, error: null };
 
 /** The user turned Streaks off on the web (Settings → Extensions). */
 const STREAKS_OFF: Result = { data: [{ slug: 'streaks', enabled: false }], error: null };
@@ -497,7 +526,12 @@ function setUp() {
   vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'anon-key');
   queries = [];
   rpc = vi.fn(async () => ({ data: BUNDLE, error: null }));
-  respondWith({ user_settings: { data: SETTINGS_ROW, error: null }, user_extensions: STREAKS_OFF, items: SNOOZES });
+  respondWith({
+    user_settings: { data: SETTINGS_ROW, error: null },
+    user_extensions: STREAKS_OFF,
+    items: SNOOZES,
+    away_periods: AWAY,
+  });
   h.createClient.mockImplementation(() => ({
     auth: { getUser: vi.fn(async () => ({ data: { user: { id: USER } }, error: null })) },
     from,
@@ -534,7 +568,20 @@ describe('the payload fixture shared with DsulCore', () => {
 
   it('has the documented top-level shape', () => {
     expect(Object.keys(generated).sort()).toEqual(
-      ['fetchedAt', 'itemTypes', 'items', 'projects', 'routines', 'seasons', 'settings', 'snoozes', 'userId', 'v', 'writes'].sort(),
+      [
+        'awayPeriods',
+        'fetchedAt',
+        'itemTypes',
+        'items',
+        'projects',
+        'routines',
+        'seasons',
+        'settings',
+        'snoozes',
+        'userId',
+        'v',
+        'writes',
+      ].sort(),
     );
     expect(generated.v).toBe(1);
     expect(generated.userId).toBe(USER);
@@ -581,6 +628,25 @@ describe('the payload fixture shared with DsulCore', () => {
     ]);
     // The custom type's names, and nothing else of its row.
     expect(generated.itemTypes).toEqual([{ name: 'book', label: 'Book to read', labelPlural: 'Books to read' }]);
+    // The trips, as lib/away.ts's AwayPeriod (awayPeriodFromRow): an
+    // open-ended one has no endsOn, and null jsonb reads as empty.
+    expect(generated.awayPeriods).toEqual([
+      {
+        id: AWAY_ROWS[0].id,
+        startsOn: '2026-12-20',
+        keep: { itemIds: [], routineIds: [], projectIds: [] },
+        returns: {},
+        fromTrip: {},
+      },
+      {
+        id: AWAY_ROWS[1].id,
+        startsOn: '2026-10-10',
+        endsOn: '2026-10-17',
+        keep: { itemIds: [id(1)], routineIds: [ROUTINE_MORNING], projectIds: [PROJECT_HEALTH] },
+        returns: { [id(2)]: '2026-10-19' },
+        fromTrip: {},
+      },
+    ]);
   });
 
   it('carries every case the Swift decoder has to meet', () => {
@@ -683,7 +749,7 @@ describe('GET /api/app/planner', () => {
       ],
     ]);
     // Nothing else is read: no per-table burst on top of the RPC.
-    expect(queries.map((q) => q.table)).toEqual(['user_settings', 'user_extensions', 'items']);
+    expect(queries.map((q) => q.table)).toEqual(['user_settings', 'user_extensions', 'items', 'away_periods']);
   });
 
   it('falls back to the web’s defaults when there is no settings row', async () => {
@@ -721,7 +787,7 @@ describe('GET /api/app/planner', () => {
 
   it('reads the settings again without app_icon on a database without migration 056', async () => {
     respond = (q) => {
-      if (q.table === 'user_extensions') return { data: [], error: null };
+      if (q.table === 'user_extensions' || q.table === 'away_periods') return { data: [], error: null };
       if (q.table !== 'user_settings') return { data: null, error: { code: 'XX000', message: `unexpected ${q.table}` } };
       const columns = String(q.calls.find(([m]) => m === 'select')?.[1][0]);
       return columns.includes('app_icon')
@@ -849,7 +915,7 @@ describe('GET /api/app/planner', () => {
 
     it('is null on a database without migration 032, from the one retry, with appIcon unread too', async () => {
       respond = (q) => {
-        if (q.table === 'user_extensions') return { data: [], error: null };
+        if (q.table === 'user_extensions' || q.table === 'away_periods') return { data: [], error: null };
         if (q.table !== 'user_settings') return { data: null, error: { code: 'XX000', message: `unexpected ${q.table}` } };
         const columns = String(q.calls.find(([m]) => m === 'select')?.[1][0]);
         return columns.includes('habit_reminders_enabled')
@@ -860,6 +926,51 @@ describe('GET /api/app/planner', () => {
       expect(settings.remindersEnabled).toBeNull();
       expect(settings.appIcon).toBeNull();
       expect(queries.filter((q) => q.table === 'user_settings')).toHaveLength(2);
+    });
+  });
+
+  describe('awayPeriods', () => {
+    it('reads the trips as the user, newest first', async () => {
+      await get();
+      const trips = queries.filter((q) => q.table === 'away_periods');
+      expect(trips.map((q) => q.calls)).toEqual([
+        [
+          ['select', ['id, starts_on, ends_on, keep, returns, from_trip, settled_at']],
+          ['eq', ['user_id', USER]],
+          ['order', ['starts_on', { ascending: false }]],
+        ],
+      ]);
+    });
+
+    it('is an empty list when there are none', async () => {
+      respondWith({ user_settings: { data: SETTINGS_ROW, error: null }, away_periods: { data: [], error: null } });
+      expect((await (await get()).json()).awayPeriods).toEqual([]);
+    });
+
+    it('is an empty list on a database without migration 071, and the planner still loads', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      respondWith({
+        user_settings: { data: SETTINGS_ROW, error: null },
+        away_periods: { data: null, error: { code: '42P01', message: 'relation "away_periods" does not exist' } },
+      });
+      const res = await get();
+      warn.mockRestore();
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.awayPeriods).toEqual([]);
+      expect(body.items).toHaveLength(ITEM_ROWS.length);
+    });
+
+    it('fails the load on any other failed read: a trip that vanished would wake every habit it held', async () => {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      respondWith({
+        user_settings: { data: SETTINGS_ROW, error: null },
+        away_periods: { data: null, error: { code: '57014', message: 'canceling statement due to statement timeout' } },
+      });
+      const res = await get();
+      error.mockRestore();
+      expect(res.status).toBe(500);
+      expect(await res.json()).toEqual({ error: 'failed' });
     });
   });
 
@@ -948,6 +1059,7 @@ describe('GET /api/app/planner', () => {
     user_settings: { data: SETTINGS_ROW, error: null },
     user_extensions: STREAKS_OFF,
     items: SNOOZES,
+    away_periods: AWAY,
     items_windowed: { data: ITEM_ROWS, error: null },
     projects: { data: PROJECT_ROWS, error: null },
     item_types: { data: ITEM_TYPE_ROWS, error: null },

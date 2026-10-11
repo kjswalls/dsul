@@ -15,6 +15,7 @@ import { EOD_COPY, reminderCopy } from '@/lib/reminders/copy';
 import { occursOn, wantsDoingOn } from '@/lib/reminders/due';
 import { SNOOZE_MINUTES } from '@/lib/reminders/channels/push';
 import type { Item, Routine, Season } from '@/lib/planner-types';
+import type { AwayPeriod } from '@/lib/away';
 import { NEVER_SCOLDS } from './support/copy-contract';
 
 /**
@@ -171,6 +172,15 @@ function buildPlans(): PlanCase[] {
   const season = (id: string, over: Partial<Season>): Season =>
     ({ id, name: id, state: 'auto', itemIds: [], routineIds: [], ...over }) as Season;
   const routine = (id: string, itemIds: string[], over: Partial<Routine> = {}): Routine => ({ id, name: id, itemIds, ...over });
+  const trip = (id: string, startsOn: string, endsOn?: string, over: Partial<AwayPeriod> = {}): AwayPeriod => ({
+    id,
+    startsOn,
+    ...(endsOn ? { endsOn } : {}),
+    keep: { itemIds: [], routineIds: [], projectIds: [] },
+    returns: {},
+    fromTrip: {},
+    ...over,
+  });
 
   return [
     // Standing triggers.
@@ -277,6 +287,21 @@ function buildPlans(): PlanCase[] {
     make('a season starting Wednesday: standing from its start', {
       items: [vitamins()],
       seasons: [season('later', { startsOn: '2026-10-07', itemIds: [uid(1001)] })],
+    }),
+    // A trip (vacation mode): held habits wait for their return day, the end
+    // exclusive; the keep list rings straight through.
+    make('away until Thursday: standing from the return', {
+      items: [vitamins()],
+      away: [trip('week', '2026-10-03', '2026-10-08')],
+    }),
+    make('away, but kept: standing', {
+      items: [vitamins()],
+      away: [trip('week', '2026-10-03', '2026-10-08', { keep: { itemIds: [uid(1001)], routineIds: [], projectIds: [] } })],
+    }),
+    make('away with no end: nothing', { items: [vitamins()], away: [trip('open', '2026-10-01')] }),
+    make('a trip starting Wednesday: today and tomorrow, then from its return', {
+      items: [vitamins()],
+      away: [trip('later', '2026-10-07', '2026-10-10')],
     }),
     make('a paused season: nothing', { items: [vitamins()], seasons: [season('shelf', { state: 'paused', itemIds: [uid(1001)] })] }),
     make('a second, live container keeps it standing', {
@@ -898,7 +923,7 @@ describe('notification plan fixtures shared with DsulCore', () => {
         if (item) expect(occursOn(item, clock.dateStr, input.timezone), `${where} on ${clock.dateStr}`).toBe(true);
         if (r.kind === 'eod') expect(clock.dateStr, where).not.toBe(input.eod!.lastReviewDate);
 
-        const ctx = { userTimezone: input.timezone, routines: input.routines, seasons: input.seasons };
+        const ctx = { userTimezone: input.timezone, routines: input.routines, seasons: input.seasons, away: input.away };
         const t = r.trigger;
         // Its rings in the month after its first, and the one after its
         // first however far (the 31st's, two months on past a short one).

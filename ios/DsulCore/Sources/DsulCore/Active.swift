@@ -5,9 +5,11 @@ import Foundation
 // phone shows an item the web has hidden (or hides one the web still shows).
 // Checked against the web by ActiveFixtureTests (tests/fixtures/day/active.json).
 //
-// Three layers answer: the item's own pause, the routines holding it, and the
-// seasons holding those (or holding it directly). An item is live when it is
-// not itself paused AND it has no paths, or at least one path is live. What is
+// Four layers answer: a trip (vacation mode, `awayHoldOn` in Away.swift), the
+// item's own pause, the routines holding it, and the seasons holding those (or
+// holding it directly). An item is live when no trip holds it AND it is not
+// itself paused AND it has no paths, or at least one path is live. The trip
+// sits outside the path algebra: it is conjunctive. What is
 // HIDDEN is only an item that is not live and still an open loop: suppression
 // hides open loops, never history.
 //
@@ -316,16 +318,20 @@ public func isPathLiveOn(_ path: ActivationPath, on day: DayString, timeZone: St
     return true
 }
 
-/// lib/active.ts `isItemActiveOn`: not itself paused, and no paths or at least
-/// one live path. Disjunctive: a second container is another reason to show,
-/// never a new way to vanish.
+/// lib/active.ts `isItemActiveOn`: held by no trip, not itself paused, and no
+/// paths or at least one live path. The paths are disjunctive: a second
+/// container is another reason to show, never a new way to vanish. A trip is
+/// asked first and is conjunctive (`awayHoldOn`); `away` empty, the default,
+/// answers as before vacation mode.
 public func isItemActiveOn(
     _ item: Item,
     on day: DayString,
     timeZone: String,
     routines: [Routine] = [],
-    seasons: [Season] = []
+    seasons: [Season] = [],
+    away: [AwayPeriod] = []
 ) -> Bool {
+    if awayHoldOn(item, on: day, away: away, routines: routines) != nil { return false }
     if isPausedOn(item, on: day, timeZone: timeZone) { return false }
     let paths = activationPathsFor(item.id, routines: routines, seasons: seasons)
     if paths.isEmpty { return true }
@@ -354,9 +360,10 @@ public func isOpenLoopSuppressedOn(
     on day: DayString,
     timeZone: String,
     routines: [Routine] = [],
-    seasons: [Season] = []
+    seasons: [Season] = [],
+    away: [AwayPeriod] = []
 ) -> Bool {
-    return !isItemActiveOn(item, on: day, timeZone: timeZone, routines: routines, seasons: seasons)
+    return !isItemActiveOn(item, on: day, timeZone: timeZone, routines: routines, seasons: seasons, away: away)
         && isOpenLoopOn(item, on: day)
 }
 
@@ -368,7 +375,8 @@ public func inactiveItemIdsOn(
     date: DayString,
     timeZone: String,
     routines: [Routine] = [],
-    seasons: [Season] = []
+    seasons: [Season] = [],
+    away: [AwayPeriod] = []
 ) -> Set<UUID> {
     // Per item: how many paths it has, and how many are live on `date`.
     var total: [UUID: Int] = [:]
@@ -412,7 +420,9 @@ public func inactiveItemIdsOn(
     for item in items {
         let t = total[item.id] ?? 0
         let l = live[item.id] ?? 0
-        let active = !isPausedOn(item, on: date, timeZone: timeZone) && (t == 0 || l > 0)
+        let active = awayHoldOn(item, on: date, away: away, routines: routines) == nil
+            && !isPausedOn(item, on: date, timeZone: timeZone)
+            && (t == 0 || l > 0)
         if !active && isOpenLoopOn(item, on: date) { ids.insert(item.id) }
     }
     return ids
