@@ -36,8 +36,9 @@ import {
   useConversationsStore,
 } from '@/lib/conversations-store';
 import { useRailStore } from '@/lib/rail-store';
+import type { StoredMessage } from '@/lib/conversation-types';
 import { seedAI, CONNECTED_MODEL, OPENCLAW_PLUGIN } from './helpers/ai-fixtures';
-import { fakeApi, fakeTransport, flush, type FakeApi, type FakeTransport } from './helpers/conversations-fakes';
+import { fakeApi, fakeTransport, flush, summary, type FakeApi, type FakeTransport } from './helpers/conversations-fakes';
 
 beforeAll(() => {
   Element.prototype.scrollIntoView = () => {};
@@ -123,16 +124,20 @@ describe('attaching pictures in the chat box', () => {
     await settle();
     expect(transport.inputs[0].images).toEqual([{ mediaType: 'image/jpeg', data: '/9j/4AAQ' }]);
     expect(screen.queryByTestId('chat-attachments')).toBeNull();
-    // Saved: the words, never the picture.
+    // Saved: the words and how many pictures, never the picture.
     expect(JSON.stringify(api.turns)).toContain('what is this?');
     expect(JSON.stringify(api.turns)).not.toContain('/9j/4AAQ');
+    expect(api.turns[0].body.messages[0]).toMatchObject({ role: 'user', imageCount: 1 });
+    expect(api.turns[0].body.messages[1]).not.toHaveProperty('imageCount');
 
-    // The transcript says so, for as long as this page holds it.
+    // The transcript shows the picture itself while this page holds it, and says it was not saved.
     const id = transport.inputs[0].conversationId;
     const question = useConversationsStore.getState().threads[id].messages[0];
     expect(question.imageCount).toBe(1);
     render(<ChatTranscript id={id} />);
     expect(screen.getByTestId('chat-message-images')).toHaveTextContent('1 image, not saved');
+    expect(screen.getByRole('img', { name: 'Picture 1' })).toBeInTheDocument();
+    expect(screen.queryByTestId('chat-picture-placeholder')).toBeNull();
 
     // The next message goes without it.
     act(() => useRailStore.getState().popToHome('desktop'));
@@ -175,5 +180,42 @@ describe('attaching pictures in the chat box', () => {
     fireEvent.paste(box(), { clipboardData: { files: [picture()], getData: () => '' } });
     await settle();
     expect(screen.queryByTestId('chat-attachment')).toBeNull();
+  });
+
+  it('after a reload, shows a quiet tile where each picture was, from the saved count alone', async () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    const cid = 'c0000000-0000-4000-8000-000000000001';
+    const stored = (pos: number, o: Partial<StoredMessage>): StoredMessage => ({
+      id: `d0000000-0000-4000-8000-00000000000${pos}`,
+      pos,
+      role: 'user',
+      content: 'what is this?',
+      status: 'complete',
+      errorCode: null,
+      replyTo: null,
+      answerer: null,
+      model: null,
+      createdAt: '2026-10-11T01:00:00.000Z',
+      ...o,
+    });
+    api.answer.thread = (id) =>
+      id === cid
+        ? {
+            ok: true,
+            value: {
+              conversation: summary({ id: cid, messageCount: 2 }),
+              messages: [
+                stored(1, { imageCount: 2 }),
+                stored(2, { role: 'assistant', content: 'A cat on a step.', replyTo: 'd0000000-0000-4000-8000-000000000001', answerer: 'model' }),
+              ],
+              hasEarlier: false,
+            },
+          }
+        : undefined;
+    await act(() => useConversationsStore.getState().openThread(cid));
+    render(<ChatTranscript id={cid} />);
+    expect(screen.getAllByTestId('chat-picture-placeholder')).toHaveLength(2);
+    expect(screen.getByTestId('chat-message-images')).toHaveTextContent('2 images, not saved');
+    expect(screen.queryByRole('img', { name: /Picture/ })).toBeNull();
   });
 });

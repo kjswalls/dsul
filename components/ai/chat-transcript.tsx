@@ -21,7 +21,7 @@ import { useUndoStripStore } from '@/lib/undo-strip-store';
 import { useProposalStore } from '@/lib/proposal-store';
 import { buildPlanPrompt } from '@/lib/plan-prompt';
 import { chatErrorCopy, isRetryableReplyError } from '@/lib/chat-errors';
-import { imageCountLabel } from '@/lib/chat-images';
+import { imageCountLabel, imageDataUrl, type ChatImage } from '@/lib/chat-images';
 import { sendFrom } from '@/lib/open-chat';
 import type { ComposerBinding } from '@/lib/rail-store';
 import { chatAssistantName, stripReasoningTags } from '@/lib/chat-utils';
@@ -260,17 +260,10 @@ const UserMessage = memo(function UserMessage({
   }
   return (
     <div data-message-role="user" data-message-id={m.id} className="group/question flex flex-col items-end gap-1">
+      {m.imageCount ? <SentPictures count={m.imageCount} images={m.images} /> : null}
       <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl bg-secondary px-3 py-2 text-sm leading-relaxed text-foreground">
         {m.content}
       </div>
-      {m.imageCount ? (
-        // The pictures went to the model with this message and were not kept
-        // (lib/chat-images.ts), so this page's memory is all that says so.
-        <p data-testid="chat-message-images" className="flex items-center gap-1 text-2xs text-muted-foreground">
-          <ImageIcon className="size-3" aria-hidden />
-          {imageCountLabel(m.imageCount)}, not saved
-        </p>
-      ) : null}
       {notSaved && <NotSaved />}
       {canEdit && (
         // A tool, so it fades like Copy under a reply; always on a touch screen.
@@ -924,5 +917,44 @@ export function TranscriptSkeleton() {
       <div aria-hidden className="h-14 w-11/12 rounded-2xl bg-muted motion-safe:animate-pulse" />
       <div aria-hidden className="h-9 w-2/5 self-end rounded-2xl bg-muted motion-safe:animate-pulse" />
     </div>
+  );
+}
+
+/**
+ * The pictures a question went with, above it (lib/chat-images.ts). While the
+ * page that sent them is open they show as themselves; after a reload only
+ * their count was kept (migration 070), so each is a quiet tile of the same
+ * size in its place. Either way one line says they were not saved.
+ */
+function SentPictures({ count, images }: { count: number; images?: ChatImage[] }) {
+  const shown = images?.slice(0, count) ?? [];
+  const label = `${imageCountLabel(count)}, not saved`;
+  return (
+    <figure data-testid="chat-message-images" className="flex max-w-[85%] flex-col items-end gap-1">
+      <ul className="flex flex-wrap justify-end gap-1.5" aria-label={label}>
+        {Array.from({ length: count }, (_, i) =>
+          shown[i] ? (
+            <li key={i}>
+              {/* eslint-disable-next-line @next/next/no-img-element -- a data: URL in memory, nothing to optimise */}
+              <img
+                src={imageDataUrl(shown[i])}
+                alt={`Picture ${i + 1}`}
+                className="size-16 rounded-xl border border-border object-cover"
+              />
+            </li>
+          ) : (
+            <li
+              key={i}
+              data-testid="chat-picture-placeholder"
+              title="This picture went to the AI with your message and wasn’t saved."
+              className="flex size-16 items-center justify-center rounded-xl border border-border bg-linear-to-br from-secondary to-muted text-muted-foreground/70"
+            >
+              <ImageIcon className="size-5" strokeWidth={1.5} aria-hidden />
+            </li>
+          )
+        )}
+      </ul>
+      <figcaption className="text-2xs text-muted-foreground">{label}</figcaption>
+    </figure>
   );
 }

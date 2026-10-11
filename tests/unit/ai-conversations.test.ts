@@ -905,3 +905,49 @@ describe('action lines (migration 068)', () => {
     expect(toMessage(msgRow(1, { meta: { actions: ['x'] } }))).not.toHaveProperty('actions');
   });
 });
+
+describe('a question’s picture count (migration 070)', () => {
+  const user = { id: U1, role: 'user', content: 'what is this?' };
+  const reply = { id: R1, role: 'assistant', content: 'a cat', replyTo: U1, answerer: 'model' };
+  const body = (u: Record<string, unknown>, r: Record<string, unknown> = reply) => ({ ownerId: USER, messages: [u, r] });
+
+  it('a question may carry one; more than the cap is the cap, and none is absent', () => {
+    expect(parseTurn(body({ ...user, imageCount: 2 }))?.messages[0].imageCount).toBe(2);
+    expect(parseTurn(body({ ...user, imageCount: 9 }))?.messages[0].imageCount).toBe(CHAT_LIMITS.images);
+    expect(parseTurn(body({ ...user, imageCount: 0 }))?.messages[0]).not.toHaveProperty('imageCount');
+    expect(parseTurn(body(user))?.messages[0]).not.toHaveProperty('imageCount');
+  });
+
+  it('a count on a reply, or one that is not a whole number, is a 400', () => {
+    expect(parseTurn(body(user, { ...reply, imageCount: 1 }))).toBeNull();
+    for (const bad of [1.5, -1, '2', [1]]) expect(parseTurn(body({ ...user, imageCount: bad }))).toBeNull();
+  });
+
+  it('appendTurn sends the count to chat_append, never pictures, and nothing without one', async () => {
+    respond = (call) =>
+      call.rpc === 'chat_append' ? { data: { status: 'ok', inserted: 2, messageCount: 2 }, error: null } : { data: convRow(), error: null };
+    await appendTurn(db, USER, CID, {
+      create: null,
+      messages: [
+        { id: U1, role: 'user', content: 'what is this?', imageCount: 2 },
+        { id: R1, role: 'assistant', content: 'a cat', replyTo: U1, answerer: 'model' },
+      ],
+    });
+    const sent = (calls[0].args as { p_messages: Record<string, unknown>[] }).p_messages;
+    expect(sent[0].imageCount).toBe(2);
+    expect(sent[1]).not.toHaveProperty('imageCount');
+
+    calls = [];
+    await appendTurn(db, USER, CID, { create: null, messages: [{ id: U1, role: 'user', content: 'hi' }] });
+    expect((calls[0].args as { p_messages: Record<string, unknown>[] }).p_messages[0]).not.toHaveProperty('imageCount');
+  });
+
+  it('toMessage reads it back from meta, cleaned again, and only on a question', () => {
+    expect(toMessage(msgRow(1, { meta: { images: 3 } }))?.imageCount).toBe(3);
+    expect(toMessage(msgRow(1, { meta: { images: 40 } }))?.imageCount).toBe(CHAT_LIMITS.images);
+    for (const meta of [{}, { images: 'x' }, { images: 1.5 }, { images: 0 }]) {
+      expect(toMessage(msgRow(1, { meta }))).not.toHaveProperty('imageCount');
+    }
+    expect(toMessage(msgRow(2, { meta: { images: 2 } }))).not.toHaveProperty('imageCount');
+  });
+});
