@@ -1,16 +1,17 @@
 import { definePluginEntry } from 'openclaw/plugin-sdk/plugin-entry'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { PluginConfig } from './plugin-types.js'
-import { fetchContext, markCacheDirty } from './cache.js'
-import { registerWithDsul, registerChatUrl, deregisterFromDsul, parseWebhookBody, verifyHmac } from './webhook.js'
+import { registerWithDsul, registerChatUrl, deregisterFromDsul } from './webhook.js'
 import { handleChatRequest } from './chat.js'
+import { handleWebhookRequest } from './wake.js'
 import { runSetup } from './setup.js'
-import { registerTools } from './tools.js'
 
 export default definePluginEntry({
   id: 'dsul-context',
   name: 'dsul Context',
-  description: 'Relevance-gated dsul task/habit context with push-based cache invalidation',
+  // Two jobs only this in-process plugin can do: chat from dsul's Ask, and the
+  // hand-off wake. Every planner tool is dsul's MCP server (`openclaw mcp add`).
+  description: 'Chat from dsul\'s Ask, and a wake that starts your agent the moment you hand it a dsul item',
 
   register(api) {
     // ── Setup CLI: openclaw dsul-context setup ──────────────────────────────
@@ -34,44 +35,22 @@ export default definePluginEntry({
       return
     }
 
-    registerTools(api, cfg)
-
-    // ── Seed cache + register webhook on startup ──────────────────────────────
-    fetchContext(cfg).then(async () => {
-      const { getCache } = await import('./cache.js')
-      const c = getCache()
-      api.logger.info(
-        `dsul-context: ready — ${c?.tasks.length ?? 0} tasks, ${c?.habits.length ?? 0} habits`
-      )
-
-      const gatewayPublicUrl = cfg.publicUrl?.replace(/\/$/, '')
-
-      if (gatewayPublicUrl) {
-        // Issue #141: without a secret the webhook route accepts any caller who
-        // can reach the gateway — the HMAC check below is skipped entirely.
-        if (!cfg.webhookSecret) {
-          api.logger.warn(
-            'dsul-context: webhookSecret not set — the webhook endpoint is UNAUTHENTICATED and will ' +
-            'accept unsigned requests. Set webhookSecret in your dsul-context plugin config in openclaw.json.'
-          )
-        }
+    // ── Register the wake and the chat URL on startup ───────────────────────
+    const gatewayPublicUrl = cfg.publicUrl?.replace(/\/$/, '')
+    if (gatewayPublicUrl) {
+      void (async () => {
         await registerWithDsul(cfg, `${gatewayPublicUrl}/plugins/dsul/webhook`, api.logger)
         const agentId = cfg.agentId?.trim() || cfg.id?.trim() || 'main'
-        await registerChatUrl(
-          cfg,
-          `${gatewayPublicUrl}/plugins/dsul/chat`,
-          agentId,
-          api.logger
-        )
-      } else {
-        api.logger.warn(
-          'dsul-context: publicUrl not set in plugin config — webhook push and chat URL registration disabled. ' +
-          'Add publicUrl to your dsul-context plugin config in openclaw.json.'
-        )
-      }
-    }).catch((err: Error) => {
-      api.logger.warn(`dsul-context: initial fetch failed — ${err.message}`)
-    })
+        await registerChatUrl(cfg, `${gatewayPublicUrl}/plugins/dsul/chat`, agentId, api.logger)
+      })().catch((err: Error) => {
+        api.logger.warn(`dsul-context: registration with dsul failed — ${err.message}`)
+      })
+    } else {
+      api.logger.warn(
+        'dsul-context: publicUrl not set in plugin config — the hand-off wake and chat from Ask are off. ' +
+        'Add publicUrl to your dsul-context plugin config in openclaw.json.'
+      )
+    }
 
     // ── Deregister on shutdown ────────────────────────────────────────────────
     api.registerService({
@@ -82,32 +61,15 @@ export default definePluginEntry({
       },
     })
 
-    // ── Webhook listener: dsul → cache invalidation ─────────────────────────
-    // OpenClaw uses Node's IncomingMessage/ServerResponse, not the Web Fetch API
+    // ── Webhook listener: dsul → the hand-off wake ──────────────────────────
+    // OpenClaw uses Node's IncomingMessage/ServerResponse, not the Web Fetch API.
+    // Starts a run only for a SIGNED items.handedOff (wake.ts); every other
+    // event is a 200 no-op.
     api.registerHttpRoute({
       path: '/plugins/dsul/webhook',
       auth: 'plugin',
       async handler(req: IncomingMessage, res: ServerResponse) {
-        const { body, eventName } = await parseWebhookBody(req)
-
-        if (cfg.webhookSecret) {
-          const sig = (req.headers['x-dsul-signature'] as string) ?? ''
-          const valid = await verifyHmac(cfg.webhookSecret, body, sig)
-          if (!valid) {
-            res.writeHead(401)
-            res.end('Unauthorized')
-            return
-          }
-        }
-
-        api.logger.info(`dsul-context: cache invalidated (${eventName})`)
-        markCacheDirty()
-        fetchContext(cfg).catch((err: Error) => {
-          api.logger.warn(`dsul-context: post-change refresh failed — ${err.message}`)
-        })
-
-        res.writeHead(200)
-        res.end('ok')
+        await handleWebhookRequest(req, res, cfg, api.runtime, api.logger)
       },
     })
 

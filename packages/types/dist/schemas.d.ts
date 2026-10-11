@@ -6227,18 +6227,18 @@ export declare const ProposalDraftSchema: z.ZodObject<Omit<{
     rationale?: string | undefined;
 }>;
 export declare const DsulChangeEventSchema: z.ZodObject<{
-    event: z.ZodEnum<["tasks.updated", "habits.updated", "projects.updated", "habitGroups.updated"]>;
+    event: z.ZodEnum<["tasks.updated", "habits.updated", "projects.updated", "habitGroups.updated", "items.handedOff"]>;
     userId: z.ZodString;
     data: z.ZodUnknown;
     timestamp: z.ZodString;
 }, "strip", z.ZodTypeAny, {
     userId: string;
-    event: "tasks.updated" | "habits.updated" | "projects.updated" | "habitGroups.updated";
+    event: "tasks.updated" | "habits.updated" | "projects.updated" | "habitGroups.updated" | "items.handedOff";
     timestamp: string;
     data?: unknown;
 }, {
     userId: string;
-    event: "tasks.updated" | "habits.updated" | "projects.updated" | "habitGroups.updated";
+    event: "tasks.updated" | "habits.updated" | "projects.updated" | "habitGroups.updated" | "items.handedOff";
     timestamp: string;
     data?: unknown;
 }>;

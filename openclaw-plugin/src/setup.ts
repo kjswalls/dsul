@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto'
 import { createInterface } from 'node:readline/promises'
 import { readConfigFileSnapshotForWrite, writeConfigFile } from 'openclaw/plugin-sdk/config-runtime'
 import type { OpenClawConfig } from 'openclaw/plugin-sdk/config-runtime'
@@ -12,7 +13,7 @@ function sleep(ms: number): Promise<void> {
 
 /**
  * Ask for the gateway's public URL (issue #146). Without it the plugin runs in
- * pull-only mode — no webhook push, no chat from Ask in dsul — and the old wizard never
+ * pull-only mode — no hand-off wake, no chat from Ask in dsul — and the old wizard never
  * mentioned it, so users had to discover the key by reading a startup warning.
  *
  * Returns undefined when skipped, or when there's no TTY to prompt on (the
@@ -21,10 +22,10 @@ function sleep(ms: number): Promise<void> {
 async function promptPublicUrl(): Promise<string | undefined> {
   if (!process.stdin.isTTY) return undefined
 
-  console.log('\n  Gateway public URL — lets dsul push changes to the plugin and')
-  console.log('  powers chat from Ask in dsul. Example:')
+  console.log('\n  Gateway public URL — lets dsul wake your agent the moment you hand it')
+  console.log('  an item, and powers chat from Ask in dsul. Example:')
   console.log('    https://midgar-1b4eaa3.turkey-rockhopper.ts.net')
-  console.log('  Leave blank for pull-only mode (no webhooks, no chat).\n')
+  console.log('  Leave blank for pull-only mode (no wake, no chat).\n')
 
   const rl = createInterface({ input: process.stdin, output: process.stdout })
   try {
@@ -117,11 +118,13 @@ export async function runSetup(): Promise<void> {
 
       // 5. Collect the gateway public URL, then write config
       const publicUrl = await promptPublicUrl()
-      await writePluginConfig(poll.dsulUrl ?? DSUL_URL, poll.apiKey, publicUrl)
+      const dsulUrl = poll.dsulUrl ?? DSUL_URL
+      await writePluginConfig(dsulUrl, poll.apiKey, publicUrl)
       if (!publicUrl) {
-        console.log('\n  Pull-only mode — webhook push and chat from Ask are off.')
+        console.log('\n  Pull-only mode — the hand-off wake and chat from Ask are off.')
         console.log('  Add publicUrl to the dsul-context config in openclaw.json to enable them.')
       }
+      printMcpSteps(dsulUrl)
       console.log('\nConfig saved. Restart the gateway: openclaw gateway restart\n')
       return
     }
@@ -148,6 +151,21 @@ export async function runSetup(): Promise<void> {
   process.exit(1)
 }
 
+/**
+ * The agent's dsul tools are dsul's MCP server, not this plugin (0.3.0): the
+ * plugin only carries chat from Ask and the wake. Same commands as
+ * memory/plans/ai-vision-decisions.md's MCP check.
+ */
+function printMcpSteps(dsulUrl: string): void {
+  console.log('\n  One more step: give your agent its dsul tools. They come from dsul\'s MCP')
+  console.log('  server, not from this plugin. Make a key under Settings → AI → Agent keys')
+  console.log('  ("Read and change"), then:\n')
+  console.log(`    openclaw mcp add dsul --url ${dsulUrl}/api/mcp --transport streamable-http`)
+  console.log('    # then set mcp.servers.dsul.headers.Authorization = "Bearer <that key>"')
+  console.log('    # (keep the key out of config literals — use the secret mechanism)')
+  console.log('    openclaw mcp doctor dsul --probe')
+}
+
 async function writePluginConfig(
   dsulUrl: string,
   apiKey: string,
@@ -169,9 +187,11 @@ async function writePluginConfig(
   const existing = ((entries['dsul-context'] ?? {}) as Record<string, unknown>)
 
   // Merge into the existing plugin config rather than replacing it — re-running
-  // setup used to silently drop hand-added keys like webhookSecret, agentId,
-  // and cacheTtlMs. publicUrl is only overwritten when the wizard collected one,
-  // so skipping the prompt keeps whatever is already configured.
+  // setup used to silently drop hand-added keys like webhookSecret and agentId.
+  // publicUrl is only overwritten when the wizard collected one, so skipping the
+  // prompt keeps whatever is already configured. A webhookSecret is made only
+  // when there is none: the wake refuses unsigned requests, and replacing a
+  // secret would break the registration dsul already holds until a restart.
   const existingConfig = ((existing.config ?? {}) as Record<string, unknown>)
   const existingDsulConfig = ((existingConfig['dsul-context'] ?? {}) as Record<string, unknown>)
 
@@ -185,6 +205,10 @@ async function writePluginConfig(
         dsulUrl,
         apiKey,
         ...(publicUrl ? { publicUrl } : {}),
+        webhookSecret:
+          typeof existingDsulConfig.webhookSecret === 'string' && existingDsulConfig.webhookSecret.trim()
+            ? existingDsulConfig.webhookSecret
+            : randomBytes(32).toString('hex'),
       },
     },
   }

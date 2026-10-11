@@ -1643,9 +1643,10 @@ export async function setItemSkip(
  * the new truth, which is only safe while every writer holds the complete
  * history. Two writers don't:
  *
- *   * The OpenClaw plugin's update_task sends "the full set of ISO date strings
- *     representing all completion dates" (openclaw-plugin/src/tools.ts) — a set
- *     a model composed from injected context, not one read from this row.
+ *   * An agent's update_task sends "the full set of ISO date strings
+ *     representing all completion dates" (the 0.2 plugin's tools, and MCP's
+ *     dsul_update_task, lib/mcp/tools.ts) — a set a model composed from the
+ *     context it read, not one read from this row.
  *   * Every client, since migration 031: fetchItems now reads items_windowed,
  *     so what a browser holds is the last COMPLETION_READ_WINDOW_DAYS of a
  *     history that may run for years.

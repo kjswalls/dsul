@@ -1,7 +1,7 @@
 {
   "name": "@dsul/openclaw-context",
-  "version": "0.2.0",
-  "description": "OpenClaw plugin — injects your dsul tasks, habits, and projects into every AI conversation",
+  "version": "0.3.0",
+  "description": "OpenClaw plugin for dsul — chat with your agent from dsul's Ask, and wake it the moment you hand it an item. Planner tools come from dsul's MCP server.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -38,10 +38,6 @@
     "extensions": [
       "./dist/index.js"
     ]
-  },
-  "dependencies": {
-    "@dsul/types": "workspace:*",
-    "@sinclair/typebox": "^0.33.0"
   },
   "peerDependencies": {
     "openclaw": ">=2026.0.0"

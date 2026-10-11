@@ -201,6 +201,24 @@ describe('who gets told', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it('sends the hand-off wake only to a registration that listed it', async () => {
+    // A pre-0.3.0 plugin registered the four change events and has no wake
+    // handler: it must never be sent one.
+    const m = await load();
+    await m.registerPlugin(reg({ events: ['tasks.updated', 'habits.updated', 'projects.updated', 'habitGroups.updated'] }));
+    await m.notifyPlugins('u1', 'items.handedOff', { itemId: 'i1', title: 'Book dentist', type: 'task' });
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    await m.registerPlugin(reg({ events: ['items.handedOff'] }));
+    await m.notifyPlugins('u1', 'items.handedOff', { itemId: 'i1', title: 'Book dentist', type: 'task' });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(String(((fetchSpy.mock.calls[0] as unknown[])[1] as { body: string }).body));
+    expect(body).toMatchObject({ event: 'items.handedOff', userId: 'u1', data: { itemId: 'i1', title: 'Book dentist', type: 'task' } });
+    // And the published schema knows the name, so a plugin that parses events can.
+    const { DsulChangeEventSchema } = await import('@dsul/types');
+    expect(DsulChangeEventSchema.safeParse(body).success).toBe(true);
+  });
+
   it('honours a wildcard subscription', async () => {
     const m = await load();
     await m.registerPlugin(reg({ events: ['*'] }));

@@ -1,17 +1,27 @@
 # @dsul/openclaw-context
 
-> OpenClaw plugin — brings your [dsul](https://github.com/kjswalls/dsul) tasks, habits, and projects into every AI conversation.
+> OpenClaw plugin for [dsul](https://github.com/kjswalls/dsul) — chat with your agent from dsul's Ask, and wake it the moment you hand it an item.
 
-Once installed, your OpenClaw agent automatically knows what's on your plate — from any channel (Discord, WhatsApp, webchat, wherever). No more copy-pasting your to-do list into chat.
+Since 0.3.0 the plugin does only the two things that need code inside your
+gateway. Your agent's dsul **tools** (reading your plan, adding and changing
+tasks, habits, projects, routines, seasons and goals, and working on items you
+hand it) come from **dsul's MCP server**, which you add to OpenClaw once (below).
 
-## How it works
+## What it does
 
-- **On startup:** fetches your full dsul context and caches it locally
-- **On demand:** the agent calls the `dsul_get_context` tool when it needs your
-  plate — the model decides when, rather than the plugin guessing from keywords.
-  Repeat calls inside one conversation return a short "context unchanged"
-  acknowledgement instead of re-spending the tokens.
-- **On data change:** dsul pushes a webhook → cache invalidates instantly (zero polling, always fresh)
+- **Chat from Ask.** dsul's Ask can talk to your agent through
+  `/plugins/dsul/chat`, one OpenClaw session per saved conversation.
+- **The hand-off wake.** When you hand an item to OpenClaw in dsul (right-click
+  → AI → Hand off to OpenClaw, or Assign to OpenClaw in the item panel), dsul
+  signs an `items.handedOff` event and POSTs it to `/plugins/dsul/webhook`. The
+  plugin starts a run in the session `dsul:handoff:<itemId>` that tells the agent
+  to pick the item up with `dsul_my_work`, report with `dsul_report_progress`,
+  and ask with `dsul_ask_user` if it is blocked. It does not wait for the run.
+
+  The wake **only** starts a run for a request signed with your `webhookSecret`.
+  Without a secret it is off, and an unsigned request never spends your model
+  budget. Missing a wake costs nothing but time: the agent still finds the item
+  the next time it checks `dsul_my_work`.
 
 ## Install
 
@@ -29,13 +39,31 @@ The wizard prints a link and waits. Open it, sign in to dsul, check that the
 code on screen matches the one in your terminal, and authorize. The terminal
 picks it up and writes the config for you — there is no API key to copy by hand.
 The code is single-use and expires after 15 minutes; if you miss it, just run
-setup again.
+setup again. It also creates a `webhookSecret` if you don't have one, so the
+wake works out of the box.
 
 It then asks for your gateway's **public URL** (e.g.
 `https://midgar-1b4eaa3.turkey-rockhopper.ts.net`). Leave it blank for pull-only
-mode: your agent can still read your tasks, but dsul can't push changes to it
-and chatting with it from Ask in dsul stays off. You can add `publicUrl` to `openclaw.json`
-later — re-running setup preserves keys you've set by hand.
+mode: your agent still works through MCP, but there is no wake and no chat from
+Ask. You can add `publicUrl` to `openclaw.json` later — re-running setup
+preserves keys you've set by hand.
+
+### Add dsul's MCP server
+
+Make a key in dsul under **Settings → AI → Agent keys** ("Read and change"),
+then:
+
+```bash
+openclaw mcp add dsul \
+  --url https://do.dsul.app/api/mcp \
+  --transport streamable-http
+# then add the header through the scoped config editor or config:
+#   mcp.servers.dsul.headers.Authorization = "Bearer <that key>"
+#   (keep the key out of config literals — use the secret mechanism)
+openclaw mcp doctor dsul --probe
+```
+
+`doctor --probe` is the real check: a working server lists the `dsul_*` tools.
 
 Then restart the gateway:
 
@@ -43,59 +71,13 @@ Then restart the gateway:
 openclaw gateway restart
 ```
 
-That's it. Your agent now sees your tasks from Discord, webchat, Signal — everywhere.
+## Upgrading from 0.2
 
-## What the agent sees
-
-`dsul_get_context` returns a compact summary of your day:
-
-```
-## Today's Tasks
-- Fix login bug [high] (dsul project) @ 10:00
-- Review PR
-- Write release notes [medium]
-
-## Habits
-- ✅ Morning walk (12 day streak)
-- ⬜ Read 30 min (5 day streak)
-
-## Projects
-- 🪝 dsul
-- 🎮 Side project
-
-## Collections
-- Routine: Morning [id: …]
-- Season: Summer [id: …] (auto 2026-06-01 → 2026-08-31)
-
-## Set aside
-Deliberately paused — NOT overdue and not missed. …
-- Read 30 min [id: …] — paused until 2026-09-01
-- Swim [id: …] — set aside with the Summer season
-```
-
-**Set aside** is there so an absence never has to be guessed at. Paused work is
-filtered out of the lists above — an agent shouldn't plan around a habit you put
-down for the summer — but an agent asked about one BY NAME with no other
-information will answer that it was finished, dropped, or never existed, and the
-last two invite a "helpful" recreate that duplicates the row.
-
-Alongside it the plugin registers write tools, so the agent can act on what it
-reads rather than just describe it: `dsul_create_task`, `dsul_update_task`,
-`dsul_delete_task`, and the matching `dsul_*_habit` trio. Deletes are soft —
-dsul keeps them in the trash for 30 days.
-
-`dsul_pause` puts a task, habit, or routine down without deleting it —
-streak, history and dates all survive, and resuming brings it back exactly as it
-was. `dsul_create_collection` / `dsul_update_collection` /
-`dsul_delete_collection` manage routines and seasons. Membership arrays
-REPLACE the whole set rather than adding to it, so a retried call can't
-double-add.
-
-Seasons aren't switched through `dsul_pause`, deliberately: they carry a
-tri-state where `auto` follows the date range and `active`/`paused` override it
-until changed back. Writing `active` onto a season that was following its dates
-would silently end that, so switching one is an explicit `state` on
-`dsul_update_collection` rather than a boolean that hides the difference.
+0.2 registered its own `dsul_*` tools and kept a cache of your plan. Those are
+gone: add dsul's MCP server (above) and your agent has the same tools and more
+(projects, subtasks, notes, one-day ticks and skips, moving a task, the
+delegation tools). `cacheTtlMs` is no longer read; an old config that has it
+still loads. Re-run setup, or set `webhookSecret` yourself, to turn the wake on.
 
 ## Configuration
 
@@ -105,10 +87,9 @@ Config lives in `openclaw.json` under `plugins.entries.dsul-context.config.dsul-
 |-----|----------|-------------|
 | `dsulUrl` | ✅ | Base URL of your dsul deployment (written by setup) |
 | `apiKey` | ✅ | Your personal dsul API key (written by setup) |
-| `publicUrl` | Optional | Your gateway's public URL. Required for webhook push and chat from Ask in dsul; omit for pull-only mode |
-| `webhookSecret` | Optional | HMAC secret for verifying change event payloads. **Without it the webhook endpoint accepts unsigned requests** — set it if your gateway is reachable from the internet |
+| `publicUrl` | Optional | Your gateway's public URL. Required for the wake and chat from Ask in dsul; omit for pull-only mode |
+| `webhookSecret` | For the wake | HMAC secret dsul signs events with (setup writes one). **Without it the wake is off**: the plugin does not register for it, and refuses an unsigned hand-off |
 | `agentId` | Optional | OpenClaw agent that answers in dsul's Ask (default: `main`) |
-| `cacheTtlMs` | Optional | Max cache age before re-fetch (default: `300000` = 5 min) |
 
 The chat route (`/plugins/dsul/chat`) does not accept `apiKey` itself. dsul's browser sends a chat token derived from it (an HMAC, `dsulchat_…`), so the key that reaches dsul's agent API is never in a web page. Plugin versions before this change accepted only the raw key, and dsul no longer sends it: update the plugin to keep chat from Ask working.
 

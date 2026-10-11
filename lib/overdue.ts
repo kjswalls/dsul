@@ -86,7 +86,7 @@ export function daysOverdue(item: { startDate?: string }, todayStr: string): num
  *    property of the item, so it can never be "past due" as a whole.
  *  - `status === 'pending'`. That is the only non-terminal task status, so this
  *    one check also excludes 'completed' and — deliberately — 'cancelled',
- *    which the agent API can write (openclaw-plugin/src/tools.ts:88,
+ *    which the agent API can write (MCP's dsul_update_task, lib/mcp/tools.ts;
  *    TaskStatusSchema) but which has no UI producer and no inverse. A cancelled
  *    item must never reappear in a surface whose only exits assume it can be
  *    completed.

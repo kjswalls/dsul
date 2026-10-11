@@ -34,7 +34,7 @@ production integration.
 **My lean:** do it before you point any hosted runtime at this, and not before — a read-only
 key you can hand out is most of the value.
 
-## 2. Does the OpenClaw plugin's tool surface retire?
+## 2. Does the OpenClaw plugin's tool surface retire? DECIDED
 
 MCP now covers everything `openclaw-plugin/src/tools.ts` covers, and more (it reaches
 projects, subtasks, notes, durations — the plugin never did). Keeping both means two tool
@@ -44,6 +44,22 @@ surfaces that can drift.
 **My lean:** keep the plugin for what only in-process code can do — context injection, the
 webhook receiver, the setup CLI — and let its *tools* be superseded by MCP once you have
 confirmed a gateway can reach `/api/mcp`. That is a plugin release, so it wants your say-so.
+
+**Decided 2026-10-11 (Kirby): yes, the tools retire.** Plugin 0.3.0 keeps only what needs
+code inside the gateway: chat from Ask (`chat.ts`, `chat-token.ts`), the setup CLI, and the
+webhook route, which is now the wake receiver (decision 4). `tools.ts`, `cache.ts` and
+`context.ts` are deleted, and with them context injection; the agent's dsul tools are the MCP
+server, added with `openclaw mcp add` (the setup wizard and README say how). Checked tool by
+tool first: every one of the plugin's eleven tools has an MCP tool of the same name that
+takes at least the same fields. Three differences, none a lost capability: MCP's habit
+`repeatFrequency` enum leaves out `weekly` (the API rewrites it to `custom` anyway) and
+`none` (a habit repeats by definition; MCP's own description says so);
+`dsul_get_context` answers raw JSON rather than the plugin's rendered summary with its "Set
+aside" list (`items[]` still carries what is paused); and `dsul_create_task` no longer sends
+`isScheduled: !!startDate`, so a dated task with no part of day is filed as the app's own
+add files it (`isScheduled` follows the bucket). The publish needs the `npm publish` workflow
+run for `openclaw-context` 0.3.0; deployed 0.2 builds keep working, since the context
+projection they parse is unchanged.
 
 ## 3. Webhooks die on serverless — ~~fix now or when it bites?~~ DONE
 
@@ -66,7 +82,7 @@ on `typeof window`, because `lib/db.ts` reaches this from the browser too and Ne
 only `NEXT_PUBLIC_*` — which also stopped the test suite silently skipping every server path
 under jsdom.
 
-## 4. Delegation kickoff — hooks token, or let the agent spawn it?
+## 4. Delegation kickoff — hooks token, or let the agent spawn it? DECIDED
 
 Phase 2b needs something that actually *starts* a background run. Two shapes: dsul calls
 `POST /hooks/agent` on the gateway (needs a dedicated `hooks.token`, a second credential to
@@ -76,6 +92,22 @@ take something on (no new credential, but the kickoff only happens inside a conv
 **Current state:** neither; `user_secrets.openclaw_hooks_token` exists and is unused.
 **My lean:** the hooks path, because "delegate" should work from the item without opening a
 chat. But it is the first place delegation costs you setup, so it is your call.
+
+**Decided 2026-10-11 (Kirby): neither — the plugin's own webhook wakes it.** No hooks token
+(`user_secrets.openclaw_hooks_token` stays unused). A hand-off that lands in the database
+makes the planner store POST `/api/agent/handoff-wake` (`lib/handoff-wake.ts`, hooked at the
+store's one `dbUpdateItem` door, so the menu's Hand off, the panel's Assign and an undo that
+restores an assignment all wake). The route reads the item through the session client and
+sends `items.handedOff` (`{ itemId, title, type }`) through `notifyPlugins` in `after()`,
+only while the item is assigned to `openclaw` and still queued, at most once a minute per
+item. The plugin's webhook route verifies the HMAC and starts `api.runtime.subagent.run` in
+`dsul:handoff:<itemId>`, telling the agent to use `dsul_my_work`, `dsul_report_progress` and
+`dsul_ask_user`; it never waits for the run. **It refuses to start a run unless
+`webhookSecret` is set and the signature verifies**, so an unsigned request never spends the
+user's model budget; setup now writes a secret. The wake is a nudge: one that fails or never
+arrives costs only time, because the agent still finds the item on its next poll. It needs
+the plugin's webhook reachable from Vercel (verify item 4 below), the same as webhooks always
+have.
 
 ---
 

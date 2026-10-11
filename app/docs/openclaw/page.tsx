@@ -54,9 +54,10 @@ export default function OpenClawDocsPage() {
             Connect OpenClaw
           </h1>
           <p className="text-sm leading-relaxed text-muted-foreground">
-            If you run your own OpenClaw gateway, the dsul plugin lets your agent see
-            your tasks and habits from any channel, with no copy-pasting your list into chat.
-            Five minutes, mostly waiting.
+            If you run your own OpenClaw gateway, your agent can read and change your
+            planner from any channel, with no copy-pasting your list into chat. Its dsul
+            tools come from dsul&apos;s MCP server; the dsul plugin adds chat from Ask and
+            wakes your agent the moment you hand it an item. Five minutes, mostly waiting.
           </p>
         </header>
 
@@ -96,13 +97,14 @@ export default function OpenClawDocsPage() {
               <code className="font-mono text-xs text-foreground">
                 https://your-gateway.ts.net
               </code>
-              . With it, dsul pushes changes to the plugin the moment they happen, and
+              . With it, dsul wakes your agent the moment you hand it an item, and
               Ask in dsul can talk to your agent.
             </p>
             <p>
-              Leaving it blank is a perfectly fine choice. That is pull-only mode: the
-              plugin still refreshes your context on its own, there is just no push and no
-              plugin chat in Ask (a Gateway URL in Settings → AI still gives you one).
+              Leaving it blank is a perfectly fine choice. That is pull-only mode: your
+              agent still works through dsul&apos;s tools, it just picks up a hand-off the
+              next time it checks rather than at once, and there is no plugin chat in Ask (a
+              Gateway URL in Settings → AI still gives you one).
               Settings → AI will show OpenClaw as{' '}
               <span className="text-foreground">Paired</span>. It is
               still connected and working. You can add{' '}
@@ -113,7 +115,26 @@ export default function OpenClawDocsPage() {
             </p>
           </Step>
 
-          <Step n={5} title="Restart the gateway">
+          <Step n={5} title="Give your agent its dsul tools">
+            <p>
+              Make a key under Settings → AI → Agent keys (Read and change), then add
+              dsul&apos;s MCP server to OpenClaw:
+            </p>
+            <CopyableCommand command="openclaw mcp add dsul --url https://do.dsul.app/api/mcp --transport streamable-http" />
+            <p>
+              Set{' '}
+              <code className="font-mono text-xs text-foreground">
+                mcp.servers.dsul.headers.Authorization
+              </code>{' '}
+              to <code className="font-mono text-xs text-foreground">Bearer</code> and that
+              key (through OpenClaw&apos;s secret mechanism, not a config literal), then
+              check it:
+            </p>
+            <CopyableCommand command="openclaw mcp doctor dsul --probe" />
+            <p>A working server lists the dsul tools.</p>
+          </Step>
+
+          <Step n={6} title="Restart the gateway">
             <CopyableCommand command="openclaw gateway restart" />
             <p>
               Then choose <span className="text-foreground">OpenClaw</span> under
@@ -148,7 +169,7 @@ export default function OpenClawDocsPage() {
           rel="noopener noreferrer"
           className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
         >
-          Full plugin docs (config keys, webhooks, what gets injected)
+          Full plugin docs (config keys, the wake, upgrading)
           <ExternalLink className="h-3.5 w-3.5" />
         </a>
       </div>

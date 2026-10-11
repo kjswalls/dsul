@@ -411,6 +411,72 @@ describe('handOffItem / takeBackItem', () => {
   });
 });
 
+/* ── The wake (lib/handoff-wake.ts) ──────────────────────────────────── */
+
+describe('the hand-off wakes the agent once the write has landed', () => {
+  const fetchSpy = vi.fn(async () => new Response(JSON.stringify({ woken: true })));
+  const wakes = () =>
+    fetchSpy.mock.calls.filter((c) => (c as unknown[])[0] === '/api/agent/handoff-wake');
+  const flush = () => new Promise<void>((resolve) => queueMicrotask(resolve)).then(() => Promise.resolve());
+
+  beforeEach(async () => {
+    store().clearStore();
+    vi.clearAllMocks();
+    fetchSpy.mockClear();
+    vi.stubGlobal('fetch', fetchSpy);
+    vi.mocked(db.fetchItems).mockResolvedValue(fixtures());
+    await store().initializeStore(USER);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('POSTs { itemId } after the row update resolves, never before', async () => {
+    let land!: () => void;
+    vi.mocked(db.updateItem).mockImplementationOnce(() => new Promise<void>((resolve) => (land = resolve)));
+
+    handOffItem(byId('plain'));
+    await flush();
+    // The write is still out: no wake yet.
+    expect(db.updateItem).toHaveBeenCalledTimes(1);
+    expect(wakes()).toHaveLength(0);
+
+    land();
+    await vi.waitFor(() => expect(wakes()).toHaveLength(1));
+    const [, init] = wakes()[0] as unknown as [string, RequestInit];
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(String(init.body))).toEqual({ itemId: 'plain' });
+  });
+
+  it('a write that failed never wakes, and the failure stays where it was', async () => {
+    vi.mocked(db.updateItem).mockRejectedValueOnce(new Error('offline'));
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    handOffItem(byId('plain'));
+    await vi.waitFor(() => expect(logged).toHaveBeenCalled());
+    expect(wakes()).toHaveLength(0);
+    logged.mockRestore();
+  });
+
+  it('a wake that fails surfaces nothing and undoes nothing', async () => {
+    fetchSpy.mockRejectedValueOnce(new Error('network'));
+
+    handOffItem(byId('plain'));
+    await vi.waitFor(() => expect(wakes()).toHaveLength(1));
+    await flush();
+    expect(byId('plain')).toMatchObject({ assignee: 'openclaw', aiStatus: 'queued' });
+    expect(store().canUndo).toBe(true);
+  });
+
+  it('taking back never wakes', async () => {
+    takeBackItem(byId('run'));
+    await vi.waitFor(() => expect(db.updateItem).toHaveBeenCalled());
+    await flush();
+    expect(wakes()).toHaveLength(0);
+  });
+});
+
 /* ── Parity with the agent's own queue ───────────────────────────────── */
 
 describe('parity with selectAssignedWork', () => {

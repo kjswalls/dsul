@@ -74,7 +74,11 @@ export function canTakeBack(item: Item): boolean {
   return hasAgentState(heldState(item));
 }
 
-/** Hand it off: one undoable write, named so the undo strip offers ⌘Z. */
+/**
+ * Hand it off: one undoable write, named so the undo strip offers ⌘Z. Once the
+ * write lands, the store wakes the agent (lib/handoff-wake.ts, hooked at
+ * planner-store's `dbUpdateItem`), so it need not wait for its next poll.
+ */
 export function handOffItem(item: Item): void {
   usePlannerStore
     .getState()
