@@ -1,10 +1,11 @@
 'use client';
 
-import { Fragment, createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Fragment, createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDown, Check, Copy, Image as ImageIcon, Pencil, RotateCcw, Search, Wand2 } from 'lucide-react';
 import ReactMarkdown, { type Components, type ExtraProps } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ProposalCard } from '@/components/ai/proposal-card';
+import { ChatOptionsCard } from '@/components/ai/chat-options-card';
 import { TypingIndicator } from '@/components/ui/typing-indicator';
 import { useConversationsStore, type ChatMessage } from '@/lib/conversations-store';
 import { useAICapabilities, useAIConnectionStore } from '@/lib/ai-connection-store';
@@ -28,6 +29,7 @@ import { chatAssistantName, stripReasoningTags } from '@/lib/chat-utils';
 import { clockTime } from '@/lib/format-chat-timestamp';
 import { prefersReducedMotion } from '@/lib/zen-transition';
 import type { Answerer } from '@/lib/conversation-types';
+import { parseAnswers, parseOptions, questionStates, stripOptionDirectives } from '@/lib/chat-options';
 
 /**
  * chat-transcript.tsx — a conversation's messages, the one way every
@@ -116,6 +118,12 @@ export function retryQuestion(messages: readonly ChatMessage[]): string | null {
 }
 
 /** Where Edit goes: the latest question in the thread, or -1 when there is none. */
+/** The words of the first user message after index i, or null when none has come. */
+function nextUserContent(messages: readonly ChatMessage[], i: number): string | null {
+  for (let j = i + 1; j < messages.length; j++) if (messages[j].role === 'user') return messages[j].content;
+  return null;
+}
+
 export function editableQuestionIndex(messages: readonly ChatMessage[]): number {
   for (let i = messages.length - 1; i >= 0; i--) if (messages[i].role === 'user') return i;
   return -1;
@@ -171,6 +179,8 @@ export function TranscriptMessages({
               notSaved={endsUnsavedTurn(messages, i)}
               planFrom={planFor && i === messages.length - 1 && !busy ? { conversationId: planFor, messages } : undefined}
               retry={again && retryVia && i === messages.length - 1 ? { via: retryVia, text: again } : undefined}
+              nextQuestion={nextUserContent(messages, i)}
+              answerVia={retryVia && !busy && i === messages.length - 1 ? retryVia : undefined}
             />
           )}
           {receiptsAt(i)}
@@ -245,7 +255,11 @@ const UserMessage = memo(function UserMessage({
 }) {
   const { canChat } = useAICapabilities();
   const [editing, setEditing] = useState(false);
-  const canEdit = !!editVia && canChat;
+  // An option card's answer shows its readable lines (lib/chat-options.ts),
+  // and is answered again on the card, not edited.
+  const answers = useMemo(() => parseAnswers(m.content) !== null, [m.content]);
+  const shown = answers ? stripOptionDirectives(m.content).replace(/\*\*(.+?)\*\*/g, '$1') : m.content;
+  const canEdit = !!editVia && canChat && !answers;
   if (editing && canEdit) {
     return (
       <EditQuestion
@@ -262,7 +276,7 @@ const UserMessage = memo(function UserMessage({
     <div data-message-role="user" data-message-id={m.id} className="group/question flex flex-col items-end gap-1">
       {m.imageCount ? <SentPictures count={m.imageCount} images={m.images} /> : null}
       <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl bg-secondary px-3 py-2 text-sm leading-relaxed text-foreground">
-        {m.content}
+        {shown}
       </div>
       {notSaved && <NotSaved />}
       {canEdit && (
@@ -410,6 +424,8 @@ const Reply = memo(function Reply({
   notSaved,
   planFrom,
   retry,
+  nextQuestion,
+  answerVia,
 }: {
   m: ChatMessage;
   typing: boolean;
@@ -418,6 +434,10 @@ const Reply = memo(function Reply({
   planFrom?: { conversationId: string; messages: readonly ChatMessage[] };
   /** Set on the latest reply only, when it can be asked again (retryQuestion). */
   retry?: { via: ComposerBinding; text: string };
+  /** The user message after this reply, if any: it answers this reply's option card. */
+  nextQuestion?: string | null;
+  /** Set on the latest reply only, while nothing is arriving: where an option card's answer goes. */
+  answerVia?: ComposerBinding;
 }) {
   const { canChat, canPropose, openclawTransport } = useAICapabilities();
   const userTimezone = usePlannerStore((s) => s.userTimezone);
@@ -426,7 +446,15 @@ const Reply = memo(function Reply({
   // the connection (lib/ai-connection-store.ts `noteCallFailure` re-reads it).
   const limitedUntil = useAIConnectionStore((s) => s.model?.limitedUntil ?? null);
   const streaming = m.status === 'streaming';
-  const text = m.content ? stripReasoningTags(m.content).replace(/^\[\[reply_to[^\]]*\]\]\s*/i, '') : '';
+  const raw = m.content ? stripReasoningTags(m.content).replace(/^\[\[reply_to[^\]]*\]\]\s*/i, '') : '';
+  // An option card (lib/chat-options.ts) is read once the reply is whole;
+  // until then a half-written directive is only hidden.
+  const options = useMemo(() => (streaming ? null : parseOptions(raw)), [streaming, raw]);
+  const text = options ? options.text : stripOptionDirectives(raw);
+  const states = useMemo(
+    () => (options?.questions ? questionStates(options.questions, nextQuestion) : null),
+    [options, nextQuestion]
+  );
 
   return (
     <div data-message-role="assistant" data-message-id={m.id} className="group/reply flex flex-col gap-1">
@@ -442,6 +470,9 @@ const Reply = memo(function Reply({
         // started yet waits.
         typing && m.answerer === 'openclaw' && openclawTransport === 'plugin' ? <TypingIndicator /> : <LoadingDots />
       ) : null}
+      {options?.questions && states && (
+        <ChatOptionsCard questions={options.questions} states={states} via={canChat ? answerVia : undefined} />
+      )}
       {m.status === 'stopped' && (
         <p data-testid="chat-stopped-note" className="text-xs text-muted-foreground">
           Stopped
@@ -462,7 +493,7 @@ const Reply = memo(function Reply({
           data-testid="reply-actions"
           className="flex items-center gap-2 opacity-0 transition-opacity group-hover/reply:opacity-100 group-focus-within/reply:opacity-100 [@media(hover:none)]:opacity-100"
         >
-          {m.content && <CopyButton text={m.content} />}
+          {text && <CopyButton text={text} />}
           {m.createdAt > 0 && (
             // History's clock and Ask home's: "8:03", never "8:03 AM" beside them.
             <span data-testid="reply-time" className="text-2xs text-muted-foreground tabular-nums">
