@@ -71,6 +71,16 @@ conversation found deleted shows the gone notice with no box, since a send from 
 conversation in a rail that page does not have. Not on the phone, whose Ask is already the whole
 screen, and not on an item's conversation, whose wide form is the item's own page.
 
+**Note 2026-10-11: option cards.** A reply that ends with ClawBoy's `[clawboy-options]` link-reference
+(github.com/kjswalls/clawboy-expo, docs/interactive-options.md) shows its question as buttons under the
+words (lib/chat-options.ts, components/ai/chat-options-card.tsx), from any answerer: the connected model is
+taught the one-line form in the chat prompt (`OPTIONS_PROMPT_SENTENCE`), and OpenClaw already writes it for
+ClawBoy. One question answers with one tap or typed words; several page through and go as one message. The
+answer is ClawBoy's own `[clawboy-answers]` message (base64 JSON keyed by question id, then readable lines),
+so an agent parses one format whichever client answered. Only the latest reply's card is live; the next user
+message closes it, and a reload draws it in the state that answer left, since the saved reply keeps its
+directive. An answer is not editable (it is answered on the card); its bubble shows the readable lines.
+
 **Note 2026-10-10: pictures.** The panel's + (and a paste into the box) attaches up to three pictures
 while the connected model answers; never for OpenClaw, whose transports carry words, and not in the
 phone's one-row dock bar. SENT, NEVER STORED (lib/chat-images.ts): the browser shrinks each to 1568px

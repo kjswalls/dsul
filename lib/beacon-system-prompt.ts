@@ -1,4 +1,5 @@
 import { ALL_ITEM_TYPES, ITEM_TYPES } from './item-registry'
+import { OPTIONS_PROMPT_SENTENCE } from './chat-options'
 
 /** "a or b" / "a, b, or c" — two items match the original comma-less phrasing. */
 const listOf = (nouns: string[], conjunction: 'and' | 'or'): string => {
@@ -35,6 +36,7 @@ export function buildBeaconSystemPrompt(customTypeNouns: string[] = []): string 
     'In dsul a subtask is a step inside one task, and a project is a label that groups separate tasks. ' +
     'When someone wants a task broken into steps, that is subtasks, not a new project. ' +
     NO_CHANGES_SENTENCE +
+    OPTIONS_PROMPT_SENTENCE +
     'Help them plan their day, break down overwhelming tasks, celebrate progress, and stay focused. ' +
     `Be concise, warm, and never judgmental. When you reference their ${referenceList}, be specific and use the names they gave them.`
   )
