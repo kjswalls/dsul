@@ -28,7 +28,7 @@ const NO_MESSAGES: ChatMessage[] = [];
  * indexed to, else the draft on its way to its first save, else one found gone
  * (deleted elsewhere), which stays on screen until the next send starts afresh.
  */
-function itemThreadId(s: ConversationsState, itemId: string): string | null {
+export function itemThreadId(s: ConversationsState, itemId: string): string | null {
   const known = s.itemIndex[itemId];
   if (typeof known === 'string') return resolveConversationId(known);
   let gone: string | null = null;

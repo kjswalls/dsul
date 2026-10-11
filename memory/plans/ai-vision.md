@@ -90,6 +90,15 @@ Every way a row goes queues its bytes in `storage_sweep` from a trigger, emptied
 files tier (lib/item-files-sweep.ts), so deleting an account stays one call. Files are not in the chat
 context, `/api/agent/context` or MCP: showing them to a model is a decision of its own.
 
+**Note 2026-10-11: the item timeline.** The Activity list and the panel footer's edit history became one
+timeline (lib/item-timeline.ts, components/planner/item-timeline.tsx): an item's `item_events` and its
+conversation, oldest first, by day, each line saying who did it. A day's conversation folds into one line
+("You and the AI talked it through · 4 messages"); the conversation itself stays where it is drawn. With AI,
+All · Talk · Changes filter it; with no AI there is no filter and no talk. WHO rides in the event payload's
+`by` key, written only when it is not you (lib/event-actor.ts tags a Supabase client; `applyProposal` passes
+`{ by: 'ai' }`): 'ai' for an accepted card, 'agent' for the agent API and MCP, 'recipe' for recipes. Rows from
+before have no `by` and read as you, except an agent's question and its status. No migration.
+
 **Note 2026-10-11: the details rail.** While an item's conversation has the docked panel (AI on, desktop),
 its details fold into one strip under the rail header (components/planner/item-rail.tsx): the container ›
 the title, then day, time, steps done/total and repeat as small chips. The chat folds them, never a timer:

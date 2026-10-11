@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { postAgentItemAction } from '@/lib/app-api'
 import { createServiceClient, resolveUserIdFromApiKey } from '@/lib/supabase-service'
+import { tagClientActor } from '@/lib/event-actor'
 
 /**
  * POST /api/agent/items/:id/act — one verb on one item, for ONE day:
@@ -35,7 +36,8 @@ export async function POST(
   if (!authHeader?.startsWith('Bearer ')) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  const client = createServiceClient()
+  // Tagged: what it writes reads as the agent's in the item timeline.
+    const client = tagClientActor(createServiceClient(), 'agent')
   const userId = await resolveUserIdFromApiKey(authHeader.slice(7), client, 'write')
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
