@@ -106,7 +106,11 @@ the box taking focus, or a send about this item from anywhere. A tap on the stri
 another item always opens unfolded. The pinned conversation renders below the fold in item-dialog.tsx, not
 inside ItemDetailSections, so folding leaves it on screen. The fold is a grid-rows 1fr↔0fr ease (~200ms,
 off under reduced motion), always rendered so a gate flip never remounts the body, and folded content is
-`inert`. The strip edits nothing yet; a Done check on it waits on a VerbContext the panel can build.
+`inert`. The strip edits nothing but one thing: a Done check over its title row (`RailDoneCheck`), the row
+checkbox's `tick` verb (lib/item-verbs.ts) asked of a VerbContext the panel builds for TODAY, as its header
+controls do, with `occurrenceOn` so a day the item does not fall on shows no check. The check is a sibling
+of the fold, laid over the strip, never inside its clip: the lime keeps its own element. A tick is not a
+tap on the strip, so the details stay folded.
 
 **Note 2026-10-10: pictures.** The panel's + (and a paste into the box) attaches up to three pictures
 while the connected model answers; never for OpenClaw, whose transports carry words, and not in the
