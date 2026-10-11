@@ -707,8 +707,10 @@ function FoldRegion({
       data-testid={testId}
       data-open={open ? 'true' : 'false'}
       className={cn(
-        active && 'grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none',
-        active && (open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0')
+        // Rows only, never opacity: the details hold lime marks, and the lime
+        // is never faded through a parent (CLAUDE.md). The clip hides them.
+        active && 'grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none',
+        active && (open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]')
       )}
     >
       {/* -mx-1/px-1: room for a focus ring at the clipped edge. */}

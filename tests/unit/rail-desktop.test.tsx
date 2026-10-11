@@ -1099,6 +1099,9 @@ describe("the item's pinned conversation", () => {
       act(() => itemBox().focus());
       expect(details()).toHaveAttribute('data-open', 'false');
       expect(inertInside(details())).toBe(true);
+      // The fold clips, never fades: the details hold lime, and lime is never dimmed through a parent.
+      expect(details().className).not.toMatch(/opacity/);
+      expect(railRegion().className).not.toMatch(/opacity/);
       expect(railRegion()).toHaveAttribute('data-open', 'true');
       const rail = within(dialog()).getByTestId('item-rail');
       expect(rail).toHaveTextContent('Health');
