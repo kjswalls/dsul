@@ -3,7 +3,7 @@
 import type { ReactElement } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { Link2, Maximize2, PanelRight, Power, PowerOff } from 'lucide-react';
+import { Link2, Maximize2, MessageSquare, PanelRight, Power, PowerOff, Split, Sprout } from 'lucide-react';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -11,7 +11,7 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
-import { ItemMenuRow as Row } from '@/components/planner/item-context-menu';
+import { AiSubmenu, ItemMenuRow as Row } from '@/components/planner/item-context-menu';
 import { PANEL } from '@/components/shell/bulk-edit-menu';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useMediaQuery } from '@/hooks/use-media-query';
@@ -20,6 +20,16 @@ import { useGoalsEnabled, useOrganizeEnabled } from '@/lib/extension-gates';
 import { isSeasonActiveOn, routineStandingOn } from '@/lib/active';
 import { setGateOn } from '@/lib/gate-toggle';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useAICapabilities } from '@/lib/ai-connection-store';
+import {
+  containerAskSubject,
+  containerAsksFor,
+  type AskableContainer,
+  type ContainerAsk,
+  type ContainerAskSubject,
+} from '@/lib/container-asks';
+import { askNewFromContainer, composeNew } from '@/lib/open-chat';
+import type { Item } from '@/lib/planner-types';
 import { toDateStr } from '@/lib/recurrence';
 
 /**
@@ -33,6 +43,10 @@ import { toDateStr } from '@/lib/recurrence';
  * switch's own write (lib/gate-toggle.ts). Delete is NOT here: each pane
  * words its own consequence sentence from what it holds, and a second copy of
  * those sentences is exactly the kind that drifts. It stays in the pane's ⋯.
+ *
+ * "AI ▸" holds what can be asked about the container (lib/container-asks.ts):
+ * "Ask about this…" and "Break it down" / "Help me plan this", each a new
+ * conversation in Ask. It is not there while nothing can answer.
  *
  * Pointer only, like the item menu.
  */
@@ -82,8 +96,10 @@ function Body({ kind, id, inConsole }: { kind: ContainerMenuKind; id: string; in
   const seasons = usePlannerStore((s) => s.seasons);
   const goals = usePlannerStore((s) => s.goals);
   const userTimezone = usePlannerStore((s) => s.userTimezone);
+  const items = usePlannerStore((s) => s.items);
+  const { canChat } = useAICapabilities();
 
-  const list: readonly { id: string; name: string }[] =
+  const list: readonly AskableContainer[] =
     kind === 'project' ? projects : kind === 'routine' ? routines : kind === 'season' ? seasons : (goals ?? []);
   const container = list.find((c) => c.id === id);
   if (!container) return null;
@@ -121,6 +137,7 @@ function Body({ kind, id, inConsole }: { kind: ContainerMenuKind; id: string; in
         testId="container-menu-open-page"
         onSelect={() => router.push(href)}
       />
+      <ContainerAskSection kind={kind} container={container} items={items} canChat={canChat} />
       {gateOn !== undefined && (
         <>
           <ContextMenuSeparator />
@@ -144,6 +161,49 @@ function Body({ kind, id, inConsole }: { kind: ContainerMenuKind; id: string; in
           );
         }}
       />
+    </>
+  );
+}
+
+const ASK_ICON: Record<ContainerAsk['id'], (s: ContainerAskSubject) => ReactElement> = {
+  ask: () => <MessageSquare className="size-3.5" />,
+  plan: (s) => (s.kind === 'project' || s.kind === 'goal' ? <Split className="size-3.5" /> : <Sprout className="size-3.5" />),
+};
+
+function ContainerAskSection({
+  kind,
+  container,
+  items,
+  canChat,
+}: {
+  kind: ContainerMenuKind;
+  container: AskableContainer;
+  items: readonly Item[];
+  canChat: boolean;
+}) {
+  const isMobile = useIsMobile();
+  const asks = containerAsksFor({ canChat });
+  if (asks.length === 0) return null;
+  const subject = containerAskSubject(kind, container, items);
+  const run = (ask: ContainerAsk) => () => {
+    const text = ask.text(subject);
+    if (ask.kind === 'compose') composeNew(text, isMobile);
+    else askNewFromContainer(text, { title: subject.name, isMobile });
+  };
+  return (
+    <>
+      <ContextMenuSeparator />
+      <AiSubmenu testId="container-menu-ask">
+        {asks.map((ask) => (
+          <Row
+            key={ask.id}
+            icon={ASK_ICON[ask.id](subject)}
+            label={ask.label(subject)}
+            testId={`container-menu-ask-${ask.id}`}
+            onSelect={run(ask)}
+          />
+        ))}
+      </AiSubmenu>
     </>
   );
 }

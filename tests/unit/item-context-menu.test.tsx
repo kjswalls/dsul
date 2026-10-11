@@ -864,7 +864,7 @@ describe('the item menu\'s AI row', () => {
     expect(askIds(openAsk(rightClick(cardOf('once'))))).toEqual(['ask', 'start']);
   });
 
-  it('is not offered on a multiselection, whose menu is the batch verbs', () => {
+  it('on a multiselection is one ask, "Ask about these…", naming the items as mentions', () => {
     unseed = seedAI(CONNECTED_MODEL);
     useSelectionStore.getState().replace(['once', 'other']);
     render(
@@ -876,6 +876,55 @@ describe('the item menu\'s AI row', () => {
     const menu = rightClick(cardOf('once'));
     expect(menu.textContent).toContain('2 items');
     expect(within(menu).queryByTestId('item-menu-ask')).toBeNull();
+    const trigger = within(menu).getByTestId('item-menu-batch-ask');
+    fireEvent.pointerMove(trigger);
+    fireEvent.keyDown(trigger, { key: 'ArrowRight' });
+    const content = screen.getByTestId('item-menu-batch-ask-content');
+    fireEvent.click(within(content).getByTestId('item-menu-batch-ask-these'));
+    const rail = useRailStore.getState();
+    const top = rail.stacks.desktop.at(-1) as { kind: string; id: string };
+    expect(top.kind).toBe('conversation');
+    expect(rail.drafts[`conv:${top.id}`]).toBe('@File taxes @Call mum ');
+    expect(tx.inputs).toHaveLength(0);
+  });
+
+  it('is not on a multiselection while nothing can answer', () => {
+    unseed = seedAI(NOTHING_CONNECTED);
+    useSelectionStore.getState().replace(['once', 'other']);
+    render(
+      <>
+        <LiveRow id="once" />
+        <LiveRow id="other" />
+      </>
+    );
+    expect(within(rightClick(cardOf('once'))).queryByTestId('item-menu-batch-ask')).toBeNull();
+  });
+
+  it("on a container's heading: Ask about this… and Break it down, each a new conversation", () => {
+    usePlannerStore.setState({ projects: [{ id: 'p1', name: 'Work', emoji: '' }] as never });
+    unseed = seedAI(NOTHING_CONNECTED);
+    const heading = () => (
+      <GroupSection label="Work" groupKey="project:Work">
+        <div />
+      </GroupSection>
+    );
+    render(heading());
+    expect(within(rightClick(screen.getByText('Work'))).queryByTestId('container-menu-ask')).toBeNull();
+    cleanup();
+    unseed();
+    unseed = seedAI(CONNECTED_MODEL);
+    render(heading());
+    const menu = rightClick(screen.getByText('Work'));
+    const trigger = within(menu).getByTestId('container-menu-ask');
+    fireEvent.pointerMove(trigger);
+    fireEvent.keyDown(trigger, { key: 'ArrowRight' });
+    const content = screen.getByTestId('container-menu-ask-content');
+    expect(within(content).getByTestId('container-menu-ask-plan').textContent).toBe('Break it down');
+    fireEvent.click(within(content).getByTestId('container-menu-ask-ask'));
+    const rail = useRailStore.getState();
+    const top = rail.stacks.desktop.at(-1) as { kind: string; id: string };
+    expect(rail.drafts[`conv:${top.id}`]).toBe('About my “Work” project. It\'s empty so far. ');
+    expect(tx.inputs).toHaveLength(0);
   });
 
   it('"Ask about this…" opens the item in the slot with its box asked for, and sends nothing', async () => {

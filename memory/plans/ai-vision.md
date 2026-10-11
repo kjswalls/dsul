@@ -266,6 +266,20 @@ cleared on a stale "Queued". Both writes are named history entries with the undo
 The item panel's "Assign to OpenClaw" / "Unassign" is unchanged for now (it still offers
 finished and paused tasks); naming the AI across the rest of the app is parked.
 
+**Note 2026-10-11: "AI ▸" on containers and on a multiselection.** Declared in
+`lib/container-asks.ts`, run by `lib/open-chat.ts` (`composeNew`, `askNewFromContainer`).
+A project, routine, season or goal's right-click menu (container-context-menu.tsx) gets
+"Ask about this…" (a new conversation with "About my “Work” project. It has A, B and C. "
+waiting in its box, nothing sent) and "Break it down" (project, goal) or "Help me plan this"
+(routine, season), sent as a new conversation's first message. A container has no saved
+conversation of its own (057 binds one per ITEM), and the chat context names projects but not
+what any container holds, so the words carry up to eight open members' titles themselves:
+what the model is told is what the user sees. A multiselection's menu gets one ask, "Ask about
+these…", which leaves "@A @B " in a new conversation's box, so the send gives the model each
+item's detail (lib/chat-mentions.ts). It is offered for 2 to MAX_MENTIONED (5) items with
+distinct titles only, never with some quietly dropped. Both close the Organize console first,
+which is a modal and would cover the answer. Hand-off stays per item.
+
 **Note 2026-10-07: connecting asks one test question (AI setup PR 4).** Every connect,
 recheck and OpenRouter sign-in lists the models and then asks the chosen one a 1-token
 question (`lib/ai-server/check.ts`), so "connected" means a model answered. The answers are

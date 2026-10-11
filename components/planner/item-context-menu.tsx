@@ -72,7 +72,8 @@ import { useAICapabilities } from '@/lib/ai-connection-store';
 import { useConversationsStore } from '@/lib/conversations-store';
 import { inactiveItemIdsOn } from '@/lib/active';
 import { itemAsksFor, type ItemAsk, type ItemAskContext, type ItemAskId } from '@/lib/item-asks';
-import { askAboutItem, breakDownItem, proposeForItem } from '@/lib/open-chat';
+import { askAboutItem, breakDownItem, composeNew, proposeForItem } from '@/lib/open-chat';
+import { SELECTION_ASK_LABEL, selectionAskText } from '@/lib/container-asks';
 import { canHandOff, canTakeBack, delegateName, handOffItem, heldState, takeBackItem } from '@/lib/agent-handoff';
 import { refreshAgentFreshness } from '@/hooks/use-agent-freshness';
 import { agentStatusView } from '@/lib/agent-status';
@@ -99,7 +100,9 @@ import type { HabitItem, Item, Task } from '@/lib/planner-types';
  * "AI" is one row with the asks under it (lib/item-asks.ts declares them,
  * lib/open-chat.ts runs them) and the hand-off to the agent
  * (lib/agent-handoff.ts), so the AI adds a single line to the menu; it is not
- * there at all while nothing can answer, propose or take the item.
+ * there at all while nothing can answer, propose or take the item. A
+ * multiselection's "AI ▸" holds one ask, "Ask about these…", which names the
+ * selected items as @ mentions in a new conversation (lib/container-asks.ts).
  *
  * Pointer only. On touch a long-press already means drag (and, on phones, the
  * row swipe), so the trigger is disabled there and the row's own ⋯ / sheet
@@ -509,8 +512,52 @@ function AskSection({ item, todayStr, tz, page }: { item: Item; todayStr: string
   const who = takeBack && 'assignee' in item && item.assignee ? assigneeLabel(item.assignee) : delegateName();
 
   return (
+    <AiSubmenu testId="item-menu-ask">
+      {asks.map((ask) => (
+        <Row
+          key={ask.id}
+          icon={ASK_ICON[ask.id]}
+          label={ask.label(item, ctx)}
+          testId={`item-menu-ask-${ask.id}`}
+          onSelect={run(ask)}
+        />
+      ))}
+      {asks.length > 0 && (handOff || takeBack) && <ContextMenuSeparator />}
+      {handOff && (
+        <Row
+          icon={<Bot className="size-3.5" />}
+          label={`Hand off to ${who}`}
+          testId="item-menu-handoff"
+          onSelect={() => {
+            returnFocusToOpener();
+            handOffItem(item);
+          }}
+        />
+      )}
+      {takeBack && (
+        <Row
+          icon={<Undo2 className="size-3.5" />}
+          label={`Take back from ${who}`}
+          detail={agentStatusView(heldState(item), now)?.label}
+          testId="item-menu-takeback"
+          onSelect={() => {
+            returnFocusToOpener();
+            takeBackItem(item);
+          }}
+        />
+      )}
+    </AiSubmenu>
+  );
+}
+
+/**
+ * The "AI ▸" row and its submenu: an item's, a selection's and a container's
+ * (container-context-menu.tsx), so all three read as one row.
+ */
+export function AiSubmenu({ testId, children }: { testId: string; children: ReactNode }) {
+  return (
     <ContextMenuSub>
-      <ContextMenuSubTrigger className={cn(ROW, '[&>svg:last-child]:size-3.5')} data-testid="item-menu-ask">
+      <ContextMenuSubTrigger className={cn(ROW, '[&>svg:last-child]:size-3.5')} data-testid={testId}>
         <span className="flex size-3.5 shrink-0 items-center justify-center">
           <AskMark className="size-3.5" />
         </span>
@@ -518,40 +565,8 @@ function AskSection({ item, todayStr, tz, page }: { item: Item; todayStr: string
       </ContextMenuSubTrigger>
       {/* Sized to its rows, from the panel's width up: "Take back from OpenClaw"
           beside a status ("Couldn't finish") does not fit in 240px. */}
-      <ContextMenuSubContent className={cn(PANEL, 'w-auto max-w-80 min-w-60')} data-testid="item-menu-ask-content">
-        {asks.map((ask) => (
-          <Row
-            key={ask.id}
-            icon={ASK_ICON[ask.id]}
-            label={ask.label(item, ctx)}
-            testId={`item-menu-ask-${ask.id}`}
-            onSelect={run(ask)}
-          />
-        ))}
-        {asks.length > 0 && (handOff || takeBack) && <ContextMenuSeparator />}
-        {handOff && (
-          <Row
-            icon={<Bot className="size-3.5" />}
-            label={`Hand off to ${who}`}
-            testId="item-menu-handoff"
-            onSelect={() => {
-              returnFocusToOpener();
-              handOffItem(item);
-            }}
-          />
-        )}
-        {takeBack && (
-          <Row
-            icon={<Undo2 className="size-3.5" />}
-            label={`Take back from ${who}`}
-            detail={agentStatusView(heldState(item), now)?.label}
-            testId="item-menu-takeback"
-            onSelect={() => {
-              returnFocusToOpener();
-              takeBackItem(item);
-            }}
-          />
-        )}
+      <ContextMenuSubContent className={cn(PANEL, 'w-auto max-w-80 min-w-60')} data-testid={`${testId}-content`}>
+        {children}
       </ContextMenuSubContent>
     </ContextMenuSub>
   );
@@ -700,6 +715,8 @@ function entityArg(command: Command | undefined) {
 
 function SelectionBody({ selected }: { selected: Item[] }) {
   const ctx = useCommandContext();
+  const isMobile = useIsMobile();
+  const { canChat } = useAICapabilities();
   const edit = useEditModel(selected);
   const ids = selected.map((i) => i.id);
   const byId = (id: string) => STATIC_COMMANDS.find((c) => c.id === id);
@@ -725,12 +742,27 @@ function SelectionBody({ selected }: { selected: Item[] }) {
     ];
   });
   const del = entityArg(byId('items.delete'));
+  const askText = selectionAskText(selected, { canChat });
 
   return (
     <>
       <ContextMenuLabel className="text-muted-foreground px-2 py-1 text-2xs font-normal">
         {ids.length} items
       </ContextMenuLabel>
+      {askText && (
+        <AiSubmenu testId="item-menu-batch-ask">
+          <Row
+            icon={<MessageSquare className="size-3.5" />}
+            label={SELECTION_ASK_LABEL}
+            testId="item-menu-batch-ask-these"
+            onSelect={() => {
+              returnFocusToOpener();
+              composeNew(askText, isMobile);
+            }}
+          />
+        </AiSubmenu>
+      )}
+      {askText && rows.length > 0 && <ContextMenuSeparator />}
       {rows}
       <EditSection edit={edit} />
       {del && (

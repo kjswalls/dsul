@@ -41,8 +41,10 @@ import {
   askAboutItem,
   askKeptQuestion,
   askNew,
+  askNewFromContainer,
   bindingKey,
   breakDownItem,
+  composeNew,
   newChat,
   openConversation,
   openHistory,
@@ -516,6 +518,51 @@ describe('askNew', () => {
     askNew('Plan my day', { title: 'Plan my day', isMobile: false });
     expect(tx.inputs).toHaveLength(0);
     expect(Object.keys(store().threads)).toEqual([]);
+  });
+});
+
+describe('composeNew (a container\'s or a selection\'s "Ask about…")', () => {
+  it('desktop: a fresh conversation with the words waiting in its box, nothing sent', async () => {
+    openItem();
+    composeNew('@Call mum @Book the dentist ', false);
+    const top = rail().stacks.desktop.at(-1) as { kind: string; id: string };
+    expect(top.kind).toBe('conversation');
+    expect(rail().drafts[bindingKey({ kind: 'draft', id: top.id })]).toBe('@Call mum @Book the dentist ');
+    expect(rail().pendingFocus).toEqual({ target: 'composer', binding: { kind: 'draft', id: top.id } });
+    expect(useUIStore.getState().activeDialog).toBeNull();
+    await new Promise((r) => setTimeout(r, 0));
+    await conversationsSettled();
+    expect(tx.inputs).toHaveLength(0);
+  });
+
+  it('phone: on the Ask tab', () => {
+    composeNew('About my “Work” project. ', true);
+    const top = rail().stacks.phone.at(-1) as { kind: string; id: string };
+    expect(top.kind).toBe('conversation');
+    expect(rail().drafts[bindingKey({ kind: 'draft', id: top.id })]).toBe('About my “Work” project. ');
+    expect(useMobileNavStore.getState().activeTab).toBe('chat');
+  });
+
+  it('leaves the Organize console, which would cover the answer', async () => {
+    useUIStore.setState({ activeDialog: { type: 'organize' } as never });
+    composeNew('About my “Work” project. ', false);
+    expect(useUIStore.getState().activeDialog).toBeNull();
+    useUIStore.setState({ activeDialog: { type: 'organize' } as never });
+    askNewFromContainer('Help me plan my “Work” project.', { title: 'Work', isMobile: false });
+    expect(useUIStore.getState().activeDialog).toBeNull();
+    await new Promise((r) => setTimeout(r, 0));
+    await conversationsSettled();
+    expect(tx.inputs[0]).toMatchObject({ message: 'Help me plan my “Work” project.' });
+  });
+
+  it('does nothing with nothing to answer, and leaves the console open', () => {
+    unseed();
+    unseed = seedAI(NOTHING_CONNECTED);
+    useUIStore.setState({ activeDialog: { type: 'organize' } as never });
+    composeNew('x ', false);
+    askNewFromContainer('x', { title: 'x', isMobile: false });
+    expect(Object.keys(store().threads)).toEqual([]);
+    expect(useUIStore.getState().activeDialog).toEqual({ type: 'organize' });
   });
 });
 
