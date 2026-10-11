@@ -135,6 +135,9 @@ const GATED_DURING_PREVIEW: Record<string, boolean> = {
   'app.categories': false,
   'app.collections': false,
   'app.goals': false,
+  'app.vacation': false,
+  'app.vacation-open': false,
+  'app.vacation-end': false,
   'app.shortcuts': false,
   'app.feedback': false,
 };

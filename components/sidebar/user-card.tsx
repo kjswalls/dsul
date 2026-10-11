@@ -19,6 +19,7 @@ import { RelayField } from '@/components/primitives/relay-field';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
 import { RELAY } from '@/lib/relay-config';
+import { VacationMenuItem } from '@/components/planner/vacation-menu-item';
 import { createClient } from '@/lib/supabase';
 import { useSessionUserStore } from '@/lib/session-user-store';
 import { flushSettings } from '@/lib/settings-service';
@@ -157,6 +158,7 @@ export function UserCard() {
               an imperative push always pays the fetch at click time. The
               canonical pane URL (not bare /settings) also skips the
               replace-to-/settings/day hop the page would otherwise do. */}
+          <VacationMenuItem />
           <DropdownMenuItem asChild className="cursor-pointer">
             <Link href="/settings/day">
               <Settings className="mr-2 h-4 w-4" />

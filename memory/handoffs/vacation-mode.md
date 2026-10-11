@@ -1,6 +1,6 @@
 # Handoff: vacation mode
 
-Thread: "vacation mode" in the dsul project. Updated 2026-10-09. **Planning and design only so far; nothing is built** (no branch, PR or migration).
+Thread: "vacation mode" in the dsul project. Updated 2026-10-11. **Building the slim version Kirby picked on 2026-10-11.** memory/plans/vacation-mode.md is now the plan of record and supersedes this file where they differ. Part 1 (migration 071 and the rule) merged as #485; parts 2 (every surface follows a trip) and 3 (the screens) follow, then the iPhone.
 
 ## Goal
 A vacation mode that pauses everything in dsul except what you choose to keep, and makes coming back from time away easy and not overwhelming. Kirby finds getting back into a routine after a break the hardest part, so the return gets as much design as the pause. Kirby wants dsul to make the choices on both ends, so there are no forms to fill in. Copy is sentence case (not all lowercase), with no em dashes.

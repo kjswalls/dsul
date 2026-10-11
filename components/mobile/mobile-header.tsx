@@ -24,6 +24,7 @@ import { useAICapabilities } from '@/lib/ai-connection-store';
 import { useViewStore, type ViewLayout } from '@/lib/view-store';
 import { goToDate } from '@/lib/nav-commands';
 import { DayHeaderNotice } from '@/components/notices/notice-slot';
+import { AwayNotice } from '@/components/views/away-notice';
 import { cn } from '@/lib/utils';
 
 interface MobileHeaderProps {
@@ -346,6 +347,8 @@ export function MobileHeader({ settingsHref, onOpenBugReport }: MobileHeaderProp
             has no writer here to correct it. Renders nothing on any other date,
             and nothing at all when the review is not owed. */}
         <DayHeaderNotice scope="day" />
+        {/* Vacation mode's line, on every date (away-notice.tsx). */}
+        <AwayNotice className="px-1 py-1" />
 
         {/* The Display shelf, the desktop capsule's line under its pill: what
             the menu above has set, in words, while anything is. Last in the

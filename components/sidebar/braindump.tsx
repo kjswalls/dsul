@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
-import { FolderOpen, Moon, ChevronRight } from 'lucide-react';
+import { FolderOpen, Moon, ChevronRight, Palmtree } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { TaskRow, type RowItem } from '@/components/primitives/task-row';
 import { GroupSection } from '@/components/primitives/group-section';
@@ -18,6 +18,8 @@ import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
 import { formatKeys } from '@/lib/commands/keys';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useAwayStore } from '@/lib/away-store';
+import { addDays } from '@/lib/away';
+import { formatAwayDay } from '@/lib/away-dates';
 import { PlannerSkeleton } from '@/components/primitives/planner-skeleton';
 import {
   isPlannerLoaded,
@@ -292,6 +294,55 @@ function LandingRow({ title, reveal }: { title: string; reveal: boolean }) {
 type PausedGroup = { key: string; label: string; rows: RowItem[] };
 
 /**
+ * "From the trip": vacation mode's receipt, under the rows it moved. Open by
+ * default (it is news on the first day back), grouped under the day each task
+ * was due, "Was Oct 14", since the row itself has no slot to spend on a date.
+ */
+function FromTripSection({ rows, days }: { rows: RowItem[]; days: Readonly<Record<string, string>> }) {
+  const [open, setOpen] = useState(true);
+  if (rows.length === 0) return null;
+  const byDay = new Map<string, RowItem[]>();
+  for (const row of [...rows].sort((a, b) => (days[a.item.id] ?? '').localeCompare(days[b.item.id] ?? ''))) {
+    const day = days[row.item.id] ?? '';
+    byDay.set(day, [...(byDay.get(day) ?? []), row]);
+  }
+  return (
+    <div data-testid="braindump-from-trip" className="mx-[10px] mb-2 shrink-0 rounded-[10px] bg-surface-2">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-2 rounded-[10px] px-3 py-2 text-left hover-wash"
+      >
+        <Palmtree className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        <span className="font-content text-content text-muted-foreground">From the trip</span>
+        <span className="ml-auto text-xs tabular-nums text-muted-foreground">{rows.length}</span>
+        <ChevronRight
+          className={cn('h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform', open && 'rotate-90')}
+        />
+      </button>
+      {/* Plain overflow-y-auto, never <ScrollArea>, which drops max-h. */}
+      {open && (
+        <div className="max-h-[40vh] overflow-y-auto px-[6px] pb-2">
+          {[...byDay.entries()].map(([day, dayRows]) => (
+            <div key={day}>
+              {day && (
+                <p className="text-muted-foreground px-2 pt-2 pb-0.5 text-[10.5px] font-medium tracking-wider uppercase">
+                  Was {formatAwayDay(day).replace(/^\w+, /, '')}
+                </p>
+              )}
+              {dayRows.map((row) => (
+                <TaskRow key={row.item.id} row={row} context="braindump" />
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
  * `landing` is the habits a drop on the sidebar would pause. While there are
  * any, the section shows (even when nothing is paused yet) and opens, with a
  * landing line for each at its top, so the drag says where the habit will go.
@@ -481,9 +532,32 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
   const goalMemberIds = useGoalFilterIds(goals, braindumpFilters.goals);
 
   // Membership and the Display-narrowed list; see braindumpRows.
-  const { base, rows } = useMemo(
+  const { base, rows: memberRows } = useMemo(
     () => braindumpRows(tasks, habits, suppressedIds, braindumpFilters, goalMemberIds),
     [tasks, habits, braindumpFilters, suppressedIds, goalMemberIds]
+  );
+
+  /**
+   * "From the trip": the tasks vacation mode moved here on your first day back
+   * (away-store's settle), in their own section for two weeks, under the day
+   * each was due. Lifted out of the working list rather than shown twice, and
+   * still counted in it: they are open braindump items like any other, which
+   * is where they go once the two weeks are up.
+   */
+  const fromTrip = useMemo(() => {
+    const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const todayStr = toDateStr(new Date(), tz);
+    const trip = away
+      .filter((p) => p.settledAt && p.endsOn && p.endsOn >= addDays(todayStr, -14))
+      .filter((p) => Object.keys(p.fromTrip).length > 0)
+      .sort((a, b) => (b.endsOn ?? '').localeCompare(a.endsOn ?? ''))[0];
+    if (!trip) return { days: {} as Readonly<Record<string, string>>, rows: [] as RowItem[] };
+    return { days: trip.fromTrip, rows: base.filter((r) => r.item.id in trip.fromTrip) };
+  }, [away, base, userTimezone]);
+  const fromTripIds = useMemo(() => new Set(fromTrip.rows.map((r) => r.item.id)), [fromTrip]);
+  const rows = useMemo(
+    () => (fromTripIds.size === 0 ? memberRows : memberRows.filter((r) => !fromTripIds.has(r.item.id))),
+    [memberRows, fromTripIds]
   );
 
   /**
@@ -555,8 +629,10 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
         ? { ...t, isScheduled: false, timeBucket: undefined, startTime: undefined, startDate: undefined }
         : t
     );
-    return braindumpRows(landed, habits, suppressedIds, braindumpFilters, goalMemberIds).rows;
-  }, [landingIds, rows, tasks, habits, suppressedIds, braindumpFilters, goalMemberIds]);
+    return braindumpRows(landed, habits, suppressedIds, braindumpFilters, goalMemberIds).rows.filter(
+      (r) => !fromTripIds.has(r.item.id)
+    );
+  }, [landingIds, rows, tasks, habits, suppressedIds, braindumpFilters, goalMemberIds, fromTripIds]);
   const landingShown = landingIds.size > 0 && shownRows.some((r) => landingIds.has(r.item.id));
 
   /**
@@ -1009,6 +1085,7 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
           joins no layout: the strip stays the section's own flex child, and
           its settle frame key sits on its root, which has a box. */}
       <div inert={previewing} className="contents">
+        <FromTripSection rows={fromTrip.rows} days={fromTrip.days} />
         <PausedSection groups={pausedGroups} count={pausedCount} landing={pausingRows} />
       </div>
 

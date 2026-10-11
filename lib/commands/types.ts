@@ -161,6 +161,17 @@ export type CommandArgument =
       placeholder: string;
       /** Returns an error message, or null when the value is acceptable. */
       validate?: (value: string) => string | null;
+      /**
+       * What Enter will do with this value, in words, for the row: "Vacation
+       * mode until Tue, Oct 20" and a line under it. Absent = the command's
+       * label and the value in quotes.
+       */
+      preview?: (value: string, ctx: CommandContext) => { label: string; detail?: string } | null;
+      /**
+       * A second way to finish the line, drawn as a chip beside Enter ("Change
+       * what's paused"). Gets the typed value, which may be empty or invalid.
+       */
+      chip?: { label: string; run: (ctx: CommandContext, value: string) => void };
     };
 
 export interface CommandShortcutSpec {

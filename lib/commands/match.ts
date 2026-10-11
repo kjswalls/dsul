@@ -38,6 +38,12 @@ export interface CommandRow {
   command: Command;
   /** Set when the row is a flattened enum option that runs in one step. */
   arg?: CommandArgOption;
+  /**
+   * Set when the query was a text command's alias and its value on one line
+   * ("vacation until tue"): the value as typed, for the row to preview and
+   * Enter to run in one step.
+   */
+  inlineArg?: string;
   label: string;
   group: CommandGroupId;
   disabled: boolean;
@@ -77,6 +83,25 @@ export function matchCommands(
     const label = resolveLabel(command, ctx);
     const disabled = !isAvailable(command, ctx);
     const boost = frequencyBoost(usage, command.id);
+
+    // A text command's alias followed by its value, on one line: "vacation
+    // until tue". Ranked above everything, since the alias was typed whole.
+    if (command.argument?.kind === 'text' && command.aliases?.length) {
+      const alias = command.aliases.find((a) => q.startsWith(`${a} `));
+      const rest = alias ? query.trim().slice(alias.length).trim() : '';
+      if (rest) {
+        rows.push({
+          value: `cmd:${command.id}:inline`,
+          command,
+          label,
+          group: command.group,
+          disabled,
+          inlineArg: rest,
+          score: 1300 + boost,
+        });
+        continue;
+      }
+    }
 
     // The command itself. Score against both the canonical label (what the
     // matcher is specced on) and the displayed one, which may differ —

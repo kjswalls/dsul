@@ -60,6 +60,8 @@ export type ActiveDialog =
   // variant so nothing can dispatch to a surface no longer mounted anywhere.
   | { type: 'keyboard-shortcuts' }
   | { type: 'bug-report' }
+  /** Vacation mode's card (components/planner/vacation-dialog.tsx). `editKeep` opens its keep picker. */
+  | { type: 'vacation'; editKeep?: boolean }
   /**
    * The bulk-add dialog — paste a list (or import a file), get one item per
    * line. `text` seeds its textarea (the raw paste, re-parsed there so the
@@ -226,6 +228,8 @@ export const PREVIEW_DEFERRED_SLOTS: ReadonlySet<ActiveDialog['type']> = new Set
   'new-container',
   'bulk-add',
   'organize',
+  // It plans the comeback from the loaded items, so it waits for fresh ones.
+  'vacation',
 ]);
 
 export const isDataDialog = (dialog: ActiveDialog | null | undefined): boolean =>
