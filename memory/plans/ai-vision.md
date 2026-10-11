@@ -81,6 +81,15 @@ so an agent parses one format whichever client answered. Only the latest reply's
 message closes it, and a reload draws it in the state that answer left, since the saved reply keeps its
 directive. An answer is not editable (it is answered on the card); its bubble shows the readable lines.
 
+**Note 2026-10-11: the details rail.** While an item's conversation has the docked panel (AI on, desktop),
+its details fold into one strip under the rail header (components/planner/item-rail.tsx): the container ›
+the title, then day, time, steps done/total and repeat as small chips. The chat folds them, never a timer:
+the box taking focus, or a send about this item from anywhere. A tap on the strip opens them again, and
+another item always opens unfolded. The pinned conversation renders below the fold in item-dialog.tsx, not
+inside ItemDetailSections, so folding leaves it on screen. The fold is a grid-rows 1fr↔0fr ease (~200ms,
+off under reduced motion), always rendered so a gate flip never remounts the body, and folded content is
+`inert`. The strip edits nothing yet; a Done check on it waits on a VerbContext the panel can build.
+
 **Note 2026-10-10: pictures.** The panel's + (and a paste into the box) attaches up to three pictures
 while the connected model answers; never for OpenClaw, whose transports carry words, and not in the
 phone's one-row dock bar. SENT, NEVER STORED (lib/chat-images.ts): the browser shrinks each to 1568px

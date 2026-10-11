@@ -77,6 +77,9 @@ import { AddIconButton } from '@/components/primitives/add-icon-button';
 import { ClearingFooter, ItemDetailSections } from '@/components/planner/item-detail-sections';
 import { RailHeader } from '@/components/ai/rail/rail-header';
 import { BoundComposer } from '@/components/ai/bound-composer';
+import { ItemConversation } from '@/components/ai/item-conversation';
+import { ItemRail, type RailChip } from '@/components/planner/item-rail';
+import { useConversationsStore } from '@/lib/conversations-store';
 import {
   ChipOption,
   ChipSectionLabel,
@@ -109,6 +112,7 @@ import type {
   Priority,
   RepeatFrequency,
   Task,
+  TaskItem,
   TimeBucket,
 } from '@/lib/planner-types';
 import { REPEAT_FREQUENCY_LABELS, WEEKDAY_LABELS } from '@/lib/planner-types';
@@ -674,6 +678,41 @@ function PanelBody({ panel, rail, children }: { panel: boolean; rail: boolean; c
       className={rail ? 'min-h-0 flex-1 overflow-y-auto px-5 pt-2 pb-4' : 'contents'}
     >
       {children}
+    </div>
+  );
+}
+
+/**
+ * A block that folds to nothing and back: rows animate 1fr ↔ 0fr with a fade,
+ * ~200ms, instant under reduced motion. ALWAYS RENDERED, open or not, so the
+ * gate flipping never re-parents what is inside (see PanelBody); folded, the
+ * content is `inert`, so nothing hidden takes focus or a tap.
+ */
+function FoldRegion({
+  open,
+  active = true,
+  testId,
+  children,
+}: {
+  open: boolean;
+  /** False where nothing folds: the same two divs, unstyled, so nothing clips. */
+  active?: boolean;
+  testId?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      data-testid={testId}
+      data-open={open ? 'true' : 'false'}
+      className={cn(
+        active && 'grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none',
+        active && (open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0')
+      )}
+    >
+      {/* -mx-1/px-1: room for a focus ring at the clipped edge. */}
+      <div className={active ? '-mx-1 min-h-0 overflow-hidden px-1' : undefined} inert={!open}>
+        {children}
+      </div>
     </div>
   );
 }
@@ -3313,6 +3352,61 @@ function ItemDialogInner({
     [editItemId]
   );
 
+  // While the item's conversation has the panel, its details fold into one
+  // strip under the header (ItemRail), the way a chat thread keeps its title
+  // and counts. Folding is the chat's own doing: the box taking focus, or a
+  // send for this item from anywhere (the right-click menu's asks included).
+  // A tap on the strip opens the details. Held per item id, so another item
+  // opens unfolded with no reset effect.
+  const foldable =
+    !!railChrome && presentation === 'panel' && conversation === 'pinned' && mode === 'edit' && !!editItem;
+  const [foldedFor, setFoldedFor] = useState<string | null>(null);
+  const folded = foldable && !!editItemId && foldedFor === editItemId;
+  const fold = useCallback(() => {
+    if (editItemId) setFoldedFor(editItemId);
+  }, [editItemId]);
+  // A send folds once, as it starts (adjusted during render, React's pattern
+  // for state that follows a change): a tap on the rail mid-reply stays open.
+  const itemSending = useConversationsStore((s) => !!(editItemId && s.sending[`item:${editItemId}`]));
+  const [sendSeen, setSendSeen] = useState<string | null>(null);
+  if (foldable && editItemId && itemSending && sendSeen !== editItemId) {
+    setSendSeen(editItemId);
+    setFoldedFor(editItemId);
+  } else if (!itemSending && sendSeen !== null) {
+    setSendSeen(null);
+  }
+  const railChips: RailChip[] = [];
+  if (foldable && activeDraft && editItemId) {
+    const config = getItemTypeConfig(activeTypeName);
+    if (activeDraft.startDate) railChips.push({ kind: 'date', label: format(activeDraft.startDate, 'EEE, MMM d') });
+    // The chips' own reading (renderChips): a dated item with no bucket is 'anytime'.
+    const bucket: TimeBucket | 'none' =
+      config.dateAnchored && activeDraft.startDate && activeDraft.timeBucket === 'none'
+        ? 'anytime'
+        : activeDraft.timeBucket;
+    const time =
+      bucket === 'none'
+        ? null
+        : bucket !== 'anytime' && activeDraft.startTime
+          ? activeDraft.startTime
+          : BUCKET_LABELS[bucket];
+    const duration = config.fields.includes('duration') ? durationLabel(activeDraft.duration) : null;
+    const timeLabel = [time, duration].filter(Boolean).join(' · ');
+    if (timeLabel) railChips.push({ kind: 'time', label: timeLabel });
+    if (config.subtasks) {
+      const steps = items.filter(
+        (i): i is TaskItem => i.type !== 'habit' && i.parentItemId === editItemId
+      );
+      if (steps.length > 0) {
+        const done = steps.filter((st) => st.status === 'completed').length;
+        railChips.push({ kind: 'steps', label: `${done}/${steps.length}` });
+      }
+    }
+    if (activeDraft.repeatFrequency !== 'none') {
+      railChips.push({ kind: 'repeat', label: REPEAT_FREQUENCY_LABELS[activeDraft.repeatFrequency] });
+    }
+  }
+
   return (
     <>
       <SurfaceRoot panel={isPanel} open={open} onOpenChange={onOpenChange} isMobile={isMobile}>
@@ -3397,6 +3491,32 @@ function ItemDialogInner({
               closeTestId="item-dialog-close"
             />
           )}
+          {/* The details, folded, while the chat has the panel. Outside the
+              body like the header, so it stays put while the chat scrolls. */}
+          {foldable && editItem && activeDraft && (
+            <FoldRegion open={folded} testId="item-rail-region">
+              <div className="px-5 pt-1 pb-2">
+                <ItemRail
+                  title={activeDraft.title}
+                  container={activeDraft.container === 'none' ? undefined : activeDraft.container}
+                  chips={railChips}
+                  onExpand={(e) => {
+                    setFoldedFor(null);
+                    // The rail goes inert under the pointer, so focus moves to
+                    // the title, and the body goes back to its top: scrolled
+                    // to the chat, the details would open above the fold.
+                    const body = e.currentTarget
+                      .closest('[data-testid="item-dialog"]')
+                      ?.querySelector<HTMLElement>('[data-rail-body]');
+                    requestAnimationFrame(() => {
+                      if (body) body.scrollTop = 0;
+                      document.getElementById(titleId)?.focus({ preventScroll: true });
+                    });
+                  }}
+                />
+              </div>
+            </FoldRegion>
+          )}
           <PanelBody panel={presentation === 'panel'} rail={!!railChrome}>
           {/* The visible heading is the title field itself; Radix still needs a
               real title and description in the a11y tree. The panel doesn't —
@@ -3413,6 +3533,8 @@ function ItemDialogInner({
           </SurfaceA11yHeader>
 
           {activeDraft && (
+            <div className="flex flex-col gap-4">
+            <FoldRegion open={!folded} active={foldable} testId="item-details">
             <div className="flex flex-col gap-4">
               {/* Header + title, the same two zones on every surface. The
                   docked panel's reason came first — leading with the title puts
@@ -3543,7 +3665,14 @@ function ItemDialogInner({
                   growth plan. Live data (subtasks/agent state read the store),
                   while the property draft above stays snapshot-based. */}
               {withDetailSections && mode === 'edit' && editItem && (
-                <ItemDetailSections item={editItem} conversation={conversation} withActivity={!autosaves} offerSetup />
+                <ItemDetailSections
+                  item={editItem}
+                  // The pinned conversation is drawn below the fold instead, so
+                  // folding the details leaves the chat on screen.
+                  conversation={foldable ? 'none' : conversation}
+                  withActivity={!autosaves}
+                  offerSetup
+                />
               )}
 
               {/* An autosaving surface has no moment of commitment, so its
@@ -3579,11 +3708,16 @@ function ItemDialogInner({
                 </div>
               )}
             </div>
+            </FoldRegion>
+            {/* Keyed by item, as ItemDetailSections keys it: a message count
+                carried over from the last item would read as new here. */}
+            {foldable && editItem && <ItemConversation key={editItem.id} item={editItem} mode="pinned" />}
+            </div>
           )}
           </PanelBody>
           {/* The item's conversation box, pinned under the scrolling body. */}
           {railChrome && presentation === 'panel' && conversation === 'pinned' && itemBinding && (
-            <div className="shrink-0 px-3 pt-2 pb-3">
+            <div className="shrink-0 px-3 pt-2 pb-3" onFocusCapture={foldable ? fold : undefined}>
               <BoundComposer binding={itemBinding} />
             </div>
           )}

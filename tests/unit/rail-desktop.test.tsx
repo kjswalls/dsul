@@ -1063,6 +1063,84 @@ describe("the item's pinned conversation", () => {
       delete proto.scrollTop;
     }
   });
+
+  describe('folding the details into a rail while the chat has the panel', () => {
+    const DATED = task({ project: 'Health', startDate: '2026-10-14', isScheduled: true } as Partial<TaskItem>);
+    const steps = [
+      task({ id: 's1', title: 'Find the number', parentItemId: 't1', status: 'completed', order: 2 }),
+      task({ id: 's2', title: 'Call them', parentItemId: 't1', order: 3 }),
+    ];
+    const details = () => within(dialog()).getByTestId('item-details');
+    const railRegion = () => within(dialog()).getByTestId('item-rail-region');
+    const inertInside = (el: HTMLElement) => (el.firstElementChild as HTMLElement).hasAttribute('inert');
+
+    beforeEach(() => {
+      usePlannerStore.setState({ items: [DATED, PLANTS, ...steps] } as never);
+    });
+
+    it('opens with the details out and the rail folded away', () => {
+      renderShell();
+      openRow(DATED);
+      expect(details()).toHaveAttribute('data-open', 'true');
+      expect(railRegion()).toHaveAttribute('data-open', 'false');
+      expect(inertInside(railRegion())).toBe(true);
+      expect(inertInside(details())).toBe(false);
+    });
+
+    it('folds when the box takes focus, keeping the conversation and naming the item in the rail', () => {
+      act(() =>
+        useConversationsStore.setState((s) => ({
+          threads: { ...s.threads, ca: loaded('ca', 't1', 2) } as never,
+          itemIndex: { ...s.itemIndex, t1: 'ca' },
+        }))
+      );
+      renderShell();
+      openRow(DATED);
+      act(() => itemBox().focus());
+      expect(details()).toHaveAttribute('data-open', 'false');
+      expect(inertInside(details())).toBe(true);
+      expect(railRegion()).toHaveAttribute('data-open', 'true');
+      const rail = within(dialog()).getByTestId('item-rail');
+      expect(rail).toHaveTextContent('Health');
+      expect(rail).toHaveTextContent('Book the dentist');
+      expect(rail.querySelector('[data-rail-chip="date"]')).toHaveTextContent('Wed, Oct 14');
+      expect(rail.querySelector('[data-rail-chip="steps"]')).toHaveTextContent('1/2');
+      expect(rail.querySelector('[data-rail-chip="repeat"]')).toBeNull();
+      // The chat is outside the fold, so it is still there to read.
+      const chat = within(dialog()).getByTestId('item-conversation');
+      expect(chat.closest('[data-testid="item-details"]')).toBeNull();
+    });
+
+    it('opens the details again on a tap on the rail, and opens the next item unfolded', () => {
+      renderShell();
+      openRow(DATED);
+      act(() => itemBox().focus());
+      act(() => within(dialog()).getByTestId('item-rail').focus());
+      fireEvent.click(within(dialog()).getByTestId('item-rail'));
+      expect(details()).toHaveAttribute('data-open', 'true');
+      act(() => itemBox().focus());
+      expect(details()).toHaveAttribute('data-open', 'false');
+      openRow(PLANTS);
+      expect(details()).toHaveAttribute('data-open', 'true');
+    });
+
+    it('folds for a send about this item from anywhere, and not for another item’s', () => {
+      renderShell();
+      openRow(DATED);
+      act(() => useConversationsStore.setState((s) => ({ sending: { ...s.sending, 'item:t2': true } })));
+      expect(details()).toHaveAttribute('data-open', 'true');
+      act(() => useConversationsStore.setState((s) => ({ sending: { ...s.sending, 'item:t1': true } })));
+      expect(details()).toHaveAttribute('data-open', 'false');
+    });
+
+    it('has no rail with no AI: the details never fold', () => {
+      seed(AI_HIDDEN);
+      renderShell();
+      openRow(DATED);
+      expect(within(dialog()).queryByTestId('item-rail-region')).toBeNull();
+      expect(details()).toHaveAttribute('data-open', 'true');
+    });
+  });
 });
 
 /* ── the column ──────────────────────────────────────────────────────── */
