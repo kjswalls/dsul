@@ -484,6 +484,32 @@
 >    a Done that also updates the open planner (the act route writes the database; the page shows
 >    it at its next load, as with a pushed cue's Done), and the `desktop-smoke` xvfb job.
 
+> **Addendum (2026-10-11): what PR-3a changed on the way in.** PR-3a is §5.4's server half:
+> `lib/devices/transports/apns.ts` (in `SENDERS` beside web push) and `POST /api/app/devices`
+> taking `transport 'apns'`. No migration (065 already has `apns_environment`), no Swift: the
+> phone's `PushRegistrar`, the entitlement and the NSE are PR-3b, the `device_wakes` migration
+> and the throttled background wake PR-3c. Where it departs from §5.4:
+>
+> 1. **Off until configured, and held, not failed.** Without all four of `APNS_TEAM_ID`,
+>    `APNS_KEY_ID`, `APNS_KEY_P8` and `APNS_BUNDLE_ID`, or with a key that is not an EC key,
+>    `available()` is false and every apns row is held `transport_off`, exactly as web push is
+>    without a VAPID pair. The key may be pasted with its newlines escaped as `\n`.
+> 2. **Native-wins asks the sender.** `selectDevices` takes a `canSend` and holds the iPhone
+>    Home Screen app's last call for an apns row only when the deployment can send on apns, so a
+>    phone that registered a token before the key was set keeps getting its last call by web push.
+> 3. **One HTTP/2 session per request**, closed on the answer, with a 10-second timeout read as
+>    `network`. A user has one or two phones and a tick sends each at most a last call, so a
+>    pooled session buys nothing a cold function would keep.
+> 4. **The alert carries the web payload's own fields.** `apns-collapse-id` is the tag (left off
+>    past 64 bytes), `apns-expiration` the sooner of `ttl` and `expiresAtMs` (0 once past),
+>    priority 10 for `high` and 5 otherwise, `thread-id` `dsul.rituals`, the `DSUL_CUE` category
+>    only for one item on one day, and `url`, `itemId`, `dateStr`, `kind`, `key` as top-level
+>    strings. No `mutable-content` until the NSE exists to read it.
+> 5. **Codes, for `last_failure`:** `bad_device_token` and `not_for_topic` (400) and `gone_410`
+>    (410 newer than `registered_at`) prune; `unregistered_before`, `provider_token_rejected`
+>    (403, after one re-mint for `ExpiredProviderToken`), `throttled`, `token_updates`,
+>    `payload_too_large`, `apns_error`, `network`, `no_token`, `no_environment` keep the row.
+
 2026-10-05. **Status: plan, decided 2026-10-06 — Kirby took every default in §7; nothing in it has been built yet, nothing was written to prod.** Phase 0 is next. Every code citation is tree-level (`main` at `b8d480c`, 2026-10-04; every cited `file:line` holds at `3200896`, #405, 2026-10-05 — six cited files changed between the two commits, `electron/main.cjs`, `electron/preload.cjs`, `lib/desktop.ts`, `desktop-app.md`, `ios-app.md`, `CLAUDE.md`, but not at the cited lines; `preload.cjs` gained `authProviders`): the live project was read on 2026-10-05, read-only, and the observed values sit at the top of §5.1.1: the organisation is on the **Pro** plan, both ticks are paused exactly as 045 left them, no ritual is enabled by any of the four accounts, and Kirby is the only user, so the runbook's EXPECT lines are now observations and the §5.1 writes have no one to disturb. Kirby also holds a paid Apple Developer Program membership (confirmed 2026-10-05), which removes the purchase gate the brief assumed (decision 5, resolved). Facts taken from search snippets of pages the planning sessions could not open are marked `[S]`; facts no source verified are marked **[unverified]** inline and collected in §6. Sibling plans: [habit-reminders.md](habit-reminders.md) (the reminder model this builds on — read it first), [desktop-app.md](desktop-app.md), [ios-app.md](ios-app.md).
 
 ---

@@ -119,12 +119,50 @@ describe('sendToUser', () => {
   });
 
   it('holds a device on a transport this build cannot send on', async () => {
-    const native = device(1, { platform: 'ios', transport: 'apns', keys: null, token: 'a'.repeat(64) });
-    const report = await sendToUser(makeServiceFake({ 'devices.select': { data: [native] } }).service, 'u1', {
+    const android = device(1, { platform: 'android', transport: 'fcm', keys: null, token: 'a'.repeat(64) });
+    const report = await sendToUser(makeServiceFake({ 'devices.select': { data: [android] } }).service, 'u1', {
       kind: 'last-call',
       payload: message.payload,
     }, { nowMs: NOW });
-    expect(report.perDevice).toEqual([{ deviceId: 'device-1-000', transport: 'apns', outcome: 'held', code: 'no_sender' }]);
+    expect(report.perDevice).toEqual([{ deviceId: 'device-1-000', transport: 'fcm', outcome: 'held', code: 'no_sender' }]);
+  });
+
+  describe('the iPhone app on APNs', () => {
+    const native = device(1, {
+      platform: 'ios', transport: 'apns', delivery: 'local', os: 'ios', form: 'phone', keys: null,
+      token: 'a'.repeat(64), apns_environment: 'production',
+    });
+    const pwa = device(2, { os: 'ios', form: 'phone' });
+
+    it('holds it as transport_off while the deployment has no APNs key, and the Home Screen app keeps the last call', async () => {
+      const fake = makeServiceFake({ 'devices.select': { data: [native, pwa] } });
+      const report = await sendToUser(fake.service, 'u1', { kind: 'last-call', payload: message.payload }, { nowMs: NOW });
+      expect(report.perDevice).toEqual([
+        { deviceId: 'device-1-000', transport: 'apns', outcome: 'held', code: 'transport_off' },
+        { deviceId: 'device-2-000', transport: 'webpush', outcome: 'accepted' },
+      ]);
+    });
+
+    it('sends the last call through APNs once it can, and the Home Screen app stands down', async () => {
+      const apns: Transport = { available: () => true, send: vi.fn(async () => ({ ok: true as const })) };
+      const fake = makeServiceFake({ 'devices.select': { data: [native, pwa] } });
+      const report = await sendToUser(fake.service, 'u1', { kind: 'last-call', payload: message.payload }, { nowMs: NOW }, {
+        ...SENDERS,
+        apns,
+      });
+      expect(apns.send).toHaveBeenCalledWith(native, { kind: 'last-call', payload: message.payload });
+      expect(report.perDevice).toEqual([
+        { deviceId: 'device-2-000', transport: 'webpush', outcome: 'held', code: 'native_wins' },
+        { deviceId: 'device-1-000', transport: 'apns', outcome: 'accepted' },
+      ]);
+    });
+
+    it('never sends it a cue, which the phone arms itself', async () => {
+      const apns: Transport = { available: () => true, send: vi.fn(async () => ({ ok: true as const })) };
+      const fake = makeServiceFake({ 'devices.select': { data: [native] } });
+      await sendToUser(fake.service, 'u1', message, { nowMs: NOW }, { ...SENDERS, apns });
+      expect(apns.send).not.toHaveBeenCalled();
+    });
   });
 
   it('a transport that throws costs that device, never the others or the caller', async () => {

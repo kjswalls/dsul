@@ -12,7 +12,9 @@
  *   3. native-wins — a phone with the iPhone app AND the Home Screen app gets
  *      cue, snooze and eod from the app only: the webpush row with
  *      os 'ios' + form 'phone' is held while a live `ios` row exists, and for
- *      last call too once that row's transport is apns. A per-device override
+ *      last call too once that row's transport is apns AND this deployment
+ *      can send on apns (an APNs key missing from the deployment must not
+ *      leave the last call with nowhere to go). A per-device override
  *      (`prefs.kinds[kind] === true`, set on the web row) wins. An iPad is
  *      never held by it: it is not the phone the app is on.
  *   4. `prefs.muted`.
@@ -56,24 +58,38 @@ function quietNow(row: DeviceRow, prefs: DevicePrefs, nowMs: number): boolean {
 }
 
 /** Does a native iPhone app row hold this webpush row back for this kind? */
-function nativeWins(row: DeviceRow, kind: DeviceSendKind, rows: readonly DeviceRow[], nowMs: number): boolean {
+function nativeWins(
+  row: DeviceRow,
+  kind: DeviceSendKind,
+  rows: readonly DeviceRow[],
+  nowMs: number,
+  canSend: CanSend,
+): boolean {
   if (row.transport !== 'webpush' || row.os !== 'ios' || row.form !== 'phone') return false
   const natives = rows.filter((r) => r.platform === 'ios' && !isStale(r, nowMs))
   if (natives.length === 0) return false
   if (LOCAL_KINDS.has(kind)) return true
-  return kind === 'last-call' && natives.some((r) => r.transport === 'apns')
+  return kind === 'last-call' && canSend('apns') && natives.some((r) => r.transport === 'apns')
 }
+
+/** Can this deployment send on a transport? The sender answers; a bare call assumes yes. */
+export type CanSend = (transport: DeviceRow['transport']) => boolean
 
 export interface Selection {
   eligible: DeviceRow[]
   held: { row: DeviceRow; reason: HeldReason }[]
 }
 
-export function selectDevices(rows: readonly DeviceRow[], kind: DeviceSendKind, nowMs: number): Selection {
+export function selectDevices(
+  rows: readonly DeviceRow[],
+  kind: DeviceSendKind,
+  nowMs: number,
+  canSend: CanSend = () => true,
+): Selection {
   const eligible: DeviceRow[] = []
   const held: Selection['held'] = []
   for (const row of rows) {
-    const reason = heldReason(row, kind, rows, nowMs)
+    const reason = heldReason(row, kind, rows, nowMs, canSend)
     if (reason) held.push({ row, reason })
     else eligible.push(row)
   }
@@ -85,12 +101,13 @@ function heldReason(
   kind: DeviceSendKind,
   rows: readonly DeviceRow[],
   nowMs: number,
+  canSend: CanSend,
 ): HeldReason | null {
   const prefs = prefsOf(row.prefs)
   const override = prefs.kinds?.[kind]
   if (row.transport === 'none') return 'no_transport'
   if (row.delivery === 'local' && LOCAL_KINDS.has(kind)) return 'local'
-  if (override !== true && nativeWins(row, kind, rows, nowMs)) return 'native_wins'
+  if (override !== true && nativeWins(row, kind, rows, nowMs, canSend)) return 'native_wins'
   if (prefs.muted) return 'muted'
   if (override === false) return 'kind_off'
   if (isStale(row, nowMs)) return 'stale'

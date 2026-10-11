@@ -31,6 +31,8 @@ export interface DeviceRow {
   form: DeviceForm | null
   token: string | null
   keys: { p256dh: string; auth: string } | null
+  /** Which APNs host takes `token`: set exactly when transport is 'apns' (065's check). */
+  apns_environment?: 'production' | 'sandbox' | null
   timezone: string | null
   /** Read leniently: the owner writes it through PostgREST, and 065 checks only that it is an object. */
   prefs: unknown
@@ -66,8 +68,8 @@ export type HeldReason =
   | 'kind_off'
   | 'stale'
   | 'quiet'
-  | 'no_sender' // a transport this build cannot send on yet (apns, fcm)
-  | 'transport_off' // a transport this deployment has no credentials for (no VAPID pair)
+  | 'no_sender' // a transport this build cannot send on yet (fcm)
+  | 'transport_off' // a transport this deployment has no credentials for (no VAPID pair, no APNs key)
 
 export interface DeviceSendResult {
   deviceId: string

@@ -16,8 +16,8 @@ export const DEVICE_ROSTER_COLUMNS =
 
 /** What the sender reads through the service role. The only place `token` and `keys` are selected. */
 export const DEVICE_SEND_COLUMNS =
-  'id, user_id, device_id, platform, transport, delivery, os, form, token, keys, timezone, prefs, ' +
-  'registered_at, last_seen_at'
+  'id, user_id, device_id, platform, transport, delivery, os, form, token, keys, apns_environment, timezone, ' +
+  'prefs, registered_at, last_seen_at'
 
 /**
  * Is this "the devices table is not there"? Postgres says 42P01; PostgREST,

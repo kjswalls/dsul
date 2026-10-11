@@ -28,6 +28,7 @@ import { sendPushToUser } from '../push-send'
 import type { createServiceClient } from '../supabase-service'
 import { DEVICE_SEND_COLUMNS, isMissingRegistry } from './db'
 import { selectDevices } from './select'
+import { apnsTransport } from './transports/apns'
 import { webpushTransport } from './transports/webpush'
 import type {
   DeviceMessage,
@@ -46,9 +47,10 @@ export interface Transport {
   send: (device: DeviceRow, message: DeviceMessage) => Promise<TransportOutcome>
 }
 
-/** The transports this build can send on. APNs arrives in Phase 3, FCM in Phase 5. */
+/** The transports this build can send on. FCM arrives in Phase 5. */
 export const SENDERS: Partial<Record<DeviceTransport, Transport>> = {
   webpush: webpushTransport,
+  apns: apnsTransport,
 }
 
 export interface SendOptions {
@@ -83,7 +85,8 @@ export async function sendToUser(
     return readFailed(`read failed: ${messageOf(err)}`)
   }
 
-  const { eligible: selected, held } = selectDevices(rows, message.kind, nowMs)
+  const canSend = (t: DeviceTransport) => senders[t]?.available() ?? false
+  const { eligible: selected, held } = selectDevices(rows, message.kind, nowMs, canSend)
   const perDevice: DeviceSendResult[] = held.map(({ row, reason }) => ({
     deviceId: row.device_id,
     transport: row.transport,
