@@ -491,6 +491,8 @@ server first) and rings them through the service worker, never `new Notification
 `/api/reminders/ack` writes `cue_log` (migration 067, applied; a ledger: owner SELECT only). PR-1d
 fills it: the scan opens a row at every claim and closes it after the send
 (`lib/reminders/cue-log-write.ts`), and a row a cut-off send left undelivered is re-sent to devices
-only, after a conditional claim on `attempts` (`lib/reminders/retry.ts`). Read it before touching `lib/reminders/**`, `lib/devices/**`,
+only, after a conditional claim on `attempts` (`lib/reminders/retry.ts`). Phase 3's APNs transport is built
+(`lib/devices/transports/apns.ts`): the iPhone app's rows are held until all four `APNS_*` env vars
+are set in Vercel, and then take the last call and the pledge notice. Read it before touching `lib/reminders/**`, `lib/devices/**`,
 `lib/sw/**`, `lib/push-send.ts`, `app/api/cron/**`, `/api/reminders/**`, `/api/devices/**`,
 `push_subscriptions`, or notification code in `electron/` or `ios/`.

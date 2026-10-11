@@ -75,6 +75,14 @@ describe('selectDevices', () => {
       expect(why([pwa, iphoneApp('apns')], 'last-call', pwa)).toBe('native_wins');
     });
 
+    it('keeps the last call on the Home Screen app while the deployment cannot send on APNs', () => {
+      const pwa = iphonePwa();
+      const { held } = selectDevices([pwa, iphoneApp('apns')], 'last-call', NOW, (t) => t !== 'apns');
+      expect(held.find((h) => h.row === pwa)).toBeUndefined();
+      // Cues stay the app's either way: the phone arms them itself.
+      expect(selectDevices([pwa, iphoneApp('apns')], 'cue', NOW, (t) => t !== 'apns').held.find((h) => h.row === pwa)?.reason).toBe('native_wins');
+    });
+
     it('keeps the iPad, which is not the phone the app is on', () => {
       const ipad = row({ os: 'ios', form: 'tablet' });
       expect(why([ipad, iphoneApp()], 'cue', ipad)).toBe('sent');

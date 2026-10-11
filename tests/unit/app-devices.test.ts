@@ -91,7 +91,9 @@ describe('POST /api/app/devices', () => {
     ['a web device', { ...phone, platform: 'web' }],
     ['a pushed delivery', { ...phone, delivery: 'push' }],
     ['no delivery', Object.fromEntries(Object.entries(phone).filter(([key]) => key !== 'delivery'))],
-    ['an APNs token before Phase 3', { ...phone, transport: 'apns', token: 'a'.repeat(64), apnsEnvironment: 'sandbox' }],
+    ['an APNs token that is not hex', { ...phone, transport: 'apns', token: 'z'.repeat(64), apnsEnvironment: 'sandbox' }],
+    ['an APNs token with no environment', { ...phone, transport: 'apns', token: 'a'.repeat(64) }],
+    ['an APNs token on a pushed delivery', { ...phone, transport: 'apns', token: 'a'.repeat(64), apnsEnvironment: 'sandbox', delivery: 'push' }],
     ['a token on a tokenless device', { ...phone, token: 'a'.repeat(64) }],
     ['an unknown key', { ...phone, userId: USER }],
     ['a short device id', { ...phone, deviceId: 'ios:1' }],
@@ -100,6 +102,18 @@ describe('POST /api/app/devices', () => {
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: 'invalid' });
     expect(h.registerDevice).not.toHaveBeenCalled();
+  });
+
+  it('registers an APNs token with its environment, the delivery still local (Phase 3)', async () => {
+    const apns = { ...phone, transport: 'apns', token: 'ab'.repeat(32), apnsEnvironment: 'production' };
+    const res = await post(apns);
+    expect(res.status).toBe(200);
+    expect(h.registerDevice).toHaveBeenCalledWith(h.service, USER, expect.objectContaining({
+      transport: 'apns',
+      token: 'ab'.repeat(32),
+      apnsEnvironment: 'production',
+      delivery: 'local',
+    }));
   });
 
   it('refuses a body that is not JSON', async () => {
