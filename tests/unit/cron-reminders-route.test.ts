@@ -20,6 +20,9 @@ vi.mock('@/lib/reminders/scan', async (importOriginal) => {
 const runRecipeTick = vi.fn();
 vi.mock('@/lib/recipes/server', () => ({ runRecipeTick: (...args: unknown[]) => runRecipeTick(...args) }));
 
+const sweepItemFiles = vi.fn();
+vi.mock('@/lib/item-files-sweep', () => ({ sweepItemFiles: (...args: unknown[]) => sweepItemFiles(...args) }));
+
 const SERVICE = { stand: 'in for the service client' };
 vi.mock('@/lib/supabase-service', () => ({ createServiceClient: () => SERVICE }));
 
@@ -49,6 +52,7 @@ const summary = (over: Partial<ScanSummary> = {}): ScanSummary => ({
 });
 
 const RECIPES = { users: 1, runs: 2, notes: [] as string[] };
+const FILES = { removed: 0, stale: 0, notes: [] as string[] };
 
 let log: ReturnType<typeof vi.spyOn>;
 let error: ReturnType<typeof vi.spyOn>;
@@ -59,6 +63,8 @@ beforeEach(() => {
   runReminderScan.mockResolvedValue(summary());
   runRecipeTick.mockReset();
   runRecipeTick.mockResolvedValue(RECIPES);
+  sweepItemFiles.mockReset();
+  sweepItemFiles.mockResolvedValue(FILES);
   log = vi.spyOn(console, 'log').mockImplementation(() => {});
   error = vi.spyOn(console, 'error').mockImplementation(() => {});
 });
@@ -108,7 +114,7 @@ describe('GET /api/cron/reminders', () => {
     const res = await get(`Bearer ${SECRET}`);
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, ...partial, recipes: RECIPES });
+    expect(await res.json()).toEqual({ ok: true, ...partial, recipes: RECIPES, files: FILES });
   });
 
   // A database without migration 032 degrades to silence, not to an alarm
@@ -131,6 +137,7 @@ describe('GET /api/cron/reminders', () => {
       error: 'Gateway Timeout',
       notes: ['migration 034 not applied — settling is off, reminders continue'],
       recipes: RECIPES,
+      files: FILES,
     });
     expect(error).toHaveBeenCalledWith('[cron/reminders] scan failed:', expect.any(ReminderScanError));
   });
@@ -139,7 +146,7 @@ describe('GET /api/cron/reminders', () => {
     runReminderScan.mockRejectedValue(new Error('supabaseUrl is required.'));
     const res = await get(`Bearer ${SECRET}`);
     expect(res.status).toBe(500);
-    expect(await res.json()).toEqual({ error: 'supabaseUrl is required.', notes: [], recipes: RECIPES });
+    expect(await res.json()).toEqual({ error: 'supabaseUrl is required.', notes: [], recipes: RECIPES, files: FILES });
   });
 
   // One line per tick, in the function log, whatever the tick held: the
@@ -207,6 +214,7 @@ describe('GET /api/cron/reminders: the recipe tier', () => {
       ok: true,
       ...summary(),
       recipes: { users: 0, runs: 0, notes: ['recipe tier failed'] },
+      files: FILES,
     });
     expect(log).toHaveBeenNthCalledWith(
       1,
@@ -217,5 +225,41 @@ describe('GET /api/cron/reminders: the recipe tier', () => {
   it('runs no recipe for a request the gate refused', async () => {
     await get();
     expect(runRecipeTick).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The files tier (lib/item-files-sweep.ts, migration 073) rides last, isolated
+ * like the recipes, and logs only when it did something.
+ */
+describe('GET /api/cron/reminders: the files tier', () => {
+  it('runs after the recipes with the service client, quiet when there was nothing to do', async () => {
+    const order: string[] = [];
+    runRecipeTick.mockImplementation(async () => (order.push('recipes'), RECIPES));
+    sweepItemFiles.mockImplementation(async () => (order.push('files'), FILES));
+    await get(`Bearer ${SECRET}`);
+    expect(order).toEqual(['recipes', 'files']);
+    expect(sweepItemFiles.mock.calls[0][0]).toBe(SERVICE);
+    expect(log.mock.calls.map((c: unknown[]) => String(c[0])).some((l: string) => l.startsWith('[cron/files]'))).toBe(false);
+  });
+
+  it('logs a line when it removed something', async () => {
+    sweepItemFiles.mockResolvedValue({ removed: 3, stale: 1, notes: [] });
+    const res = await get(`Bearer ${SECRET}`);
+    expect(log).toHaveBeenCalledWith('[cron/files] removed=3 stale=1 notes=0');
+    expect((await res.json()).files).toEqual({ removed: 3, stale: 1, notes: [] });
+  });
+
+  it('a files tier that throws costs the tick nothing', async () => {
+    sweepItemFiles.mockRejectedValue(new Error('boom'));
+    const res = await get(`Bearer ${SECRET}`);
+    expect(res.status).toBe(200);
+    expect((await res.json()).files).toEqual({ removed: 0, stale: 0, notes: ['files tier failed'] });
+  });
+
+  it('still runs when the scan could not start', async () => {
+    runReminderScan.mockRejectedValue(new ReminderScanError('Gateway Timeout', []));
+    await get(`Bearer ${SECRET}`);
+    expect(sweepItemFiles).toHaveBeenCalledTimes(1);
   });
 });

@@ -81,6 +81,15 @@ so an agent parses one format whichever client answered. Only the latest reply's
 message closes it, and a reload draws it in the state that answer left, since the saved reply keeps its
 directive. An answer is not editable (it is answered on the card); its bubble shows the readable lines.
 
+**Note 2026-10-11: files on an item.** The paperclip beside "Open as page" in the item panel adds files
+(10 MB each, 20 an item, 200 or 500 MB an account); a Files section lists them only once there are some, so
+a panel without files is unchanged. Migration 073: a private `item-files` bucket, owner-only `item_files`
+rows written by the session client (lib/item-files.ts), and Storage policies that reach an object only
+while a row of yours names its exact path (`<user>/<file id>`). Row first, then bytes, then `ready`.
+Every way a row goes queues its bytes in `storage_sweep` from a trigger, emptied by the reminders cron's
+files tier (lib/item-files-sweep.ts), so deleting an account stays one call. Files are not in the chat
+context, `/api/agent/context` or MCP: showing them to a model is a decision of its own.
+
 **Note 2026-10-11: the details rail.** While an item's conversation has the docked panel (AI on, desktop),
 its details fold into one strip under the rail header (components/planner/item-rail.tsx): the container ›
 the title, then day, time, steps done/total and repeat as small chips. The chat folds them, never a timer:

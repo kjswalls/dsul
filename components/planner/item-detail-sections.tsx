@@ -20,6 +20,7 @@ import { useOneTimeNudge } from '@/hooks/use-one-time-nudge';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { ProposalCard } from '@/components/ai/proposal-card';
 import { ItemConversation } from '@/components/ai/item-conversation';
+import { ItemFilesSection } from '@/components/planner/item-files';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { EXT_HABIT_HEATMAP, resolveEnabled } from '@/lib/extension-registry';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
@@ -809,6 +810,7 @@ export function ItemDetailSections({
     <div className="flex flex-col gap-4" data-sub-input>
       {config.subtasks && <SubtasksSection item={item} offerSetup={offerSetup} />}
       {config.agentAssignable && <AgentSection item={item} />}
+      <ItemFilesSection itemId={item.id} />
       {heatmapOn && config.counters.streak && <HeatmapSection item={item} />}
       {withActivity && <ActivitySection itemId={item.id} />}
       {/* Keyed by item: the panel retargets in place, and a message count
