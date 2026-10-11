@@ -18,6 +18,7 @@ const {
   nativeImage,
   nativeTheme,
   net,
+  Notification,
   powerMonitor,
   screen,
   session,
@@ -37,11 +38,22 @@ const {
   showLoginItemsPane,
 } = require('./lib/login-item.cjs');
 const appIcons = require('./lib/app-icon.cjs');
+const notify = require('./lib/notify.cjs');
 
 // Also names the Windows Run value for Open at login, which build/installer.nsh deletes by this
 // name (as ${APP_ID}) on uninstall.
 const APP_ID = 'app.dsul.desktop';
 const IS_MAC = process.platform === 'darwin';
+// Set in the packaged package.json by electron-builder.config.cjs (extraMetadata) when the build
+// was signed with a Developer ID. macOS shows an unsigned app's notifications to nobody, so an
+// unsigned Mac build never claims a cue (lib/notify.cjs probe).
+const SIGNED = (() => {
+  try {
+    return require('./package.json').dsulSigned === true;
+  } catch {
+    return false;
+  }
+})();
 const SHORTCUT = 'CommandOrControl+Shift+Space';
 const UPDATE_EVERY_MS = 24 * 60 * 60 * 1000;
 // The "Signed in as" toast is for the sign-in that just happened, not one the page never got
@@ -80,6 +92,10 @@ let isQuitting = false;
 let shortcutRegistered = false;
 let update = null; // { version, url } once GitHub has a newer release
 let pending = null; // { kind: 'oauth' | 'email', until } while a sign-in may come back
+// The reminders on screen, by tag (lib/notify.cjs). One tag, one notification: the old one is
+// closed before a new one shows, as a service worker's tag replaces in a browser. Held here so
+// they are not collected while still on screen, which would drop their click handlers.
+const notifications = new Map();
 let signInNoticeUntil = 0;
 let appIcon = appIcons.DEFAULT_LOOK; // the look the Dock or window shows (lib/app-icon.cjs)
 const seenCodes = new Set();
@@ -228,10 +244,14 @@ function ready() {
   // A wake from sleep is when the network usually comes back, so the offline page's retries
   // start over from the shortest wait.
   powerMonitor.on('resume', () => {
+    tellWake();
     if (!win || win.isDestroyed() || !onOfflinePage(win.webContents)) return;
     offlineTries = 0;
     scheduleOfflineRetry();
   });
+  // A wake or an unlock is when someone is back at the desk, so the page's reminder clock ticks
+  // at once rather than at its next minute (hooks/use-local-cue-tick.ts).
+  powerMonitor.on('unlock-screen', tellWake);
 
   checkForUpdate();
   setInterval(checkForUpdate, UPDATE_EVERY_MS);
@@ -269,6 +289,10 @@ function createWindow() {
       navigateOnDragDrop: false,
       spellcheck: true,
       additionalArguments: [`--dsul-shell-version=${app.getVersion()}`],
+      // The page is the desktop's reminder clock (lib/reminders/local-tick.ts). Throttled, a
+      // window closed to the tray runs its timers once a minute at best, and later on battery,
+      // so a cue would ring late or not at all.
+      backgroundThrottling: false,
     },
   });
   if ('x' in bounds) openedAs = { asked: bounds, got: win.getBounds() };
@@ -984,6 +1008,43 @@ function registerIpc() {
     if (fromFindBar(event)) closeFind();
   });
 
+  // Reminders (memory/plans/reminders-platforms.md §5.2, PR-1c). The page decides what is due
+  // and claims it; main only draws what lib/notify.cjs lets through, and tells the page about a
+  // click or a button. True when it was shown.
+  ipcMain.handle('dsul:notify', (event, spec) => {
+    if (!fromApp(event)) return false;
+    if (!Notification.isSupported()) return false;
+    const shaped = notify.shapeNotification(spec, process.platform);
+    if (!shaped) return false;
+    return showNotification(shaped);
+  });
+
+  ipcMain.handle('dsul:notify-close', (event, tag) => {
+    if (!fromApp(event) || typeof tag !== 'string') return false;
+    const open = notifications.get(tag);
+    if (!open) return false;
+    notifications.delete(tag);
+    open.close();
+    return true;
+  });
+
+  // Seconds since the last input anywhere on this computer: "at the desk" for the desktop app is
+  // any use of the machine, not only of this window.
+  ipcMain.handle('dsul:idle-seconds', (event) => {
+    if (!fromApp(event)) return null;
+    return powerMonitor.getSystemIdleTime();
+  });
+
+  ipcMain.handle('dsul:notify-probe', (event) => {
+    if (!fromApp(event)) return 'unsupported';
+    return notify.probe({
+      supported: Notification.isSupported(),
+      platform: process.platform,
+      packaged: app.isPackaged,
+      signed: SIGNED,
+    });
+  });
+
   // The page's Settings → Look choice. A repeat (every sign-in sends one) touches nothing.
   ipcMain.handle('dsul:set-app-icon', (event, look) => {
     if (!fromApp(event)) return false;
@@ -1276,4 +1337,50 @@ async function checkForUpdate() {
   } catch {
     // Offline, rate-limited or no releases yet.
   }
+}
+
+// ── Reminders ────────────────────────────────────────────────────────────────
+
+function showNotification(shaped) {
+  const old = notifications.get(shaped.tag);
+  if (old) {
+    notifications.delete(shaped.tag);
+    old.close();
+  }
+  const n = new Notification({
+    title: shaped.title,
+    body: shaped.body,
+    actions: shaped.actions,
+    // A reminder the user chose; Windows keeps it in the Action Center after the toast.
+    timeoutType: 'default',
+  });
+  const forget = () => {
+    if (notifications.get(shaped.tag) === n) notifications.delete(shaped.tag);
+  };
+  n.on('click', () => {
+    forget();
+    // A plain click opens the item, so the window comes forward for it.
+    bringForward();
+    tellNotification(notify.clickEvent(shaped));
+  });
+  n.on('action', (_event, index) => {
+    forget();
+    // A button acts in place (Done, Snooze): the window stays where it is.
+    const told = notify.clickEvent(shaped, index);
+    if (told) tellNotification(told);
+  });
+  n.on('close', forget);
+  notifications.set(shaped.tag, n);
+  n.show();
+  return true;
+}
+
+function tellNotification(message) {
+  if (!message || !win || win.isDestroyed()) return;
+  win.webContents.send('dsul:notification', message);
+}
+
+function tellWake() {
+  if (!win || win.isDestroyed()) return;
+  win.webContents.send('dsul:wake');
 }

@@ -105,5 +105,6 @@ export const CLAIMS_LOCALLY_COPY = {
   help:
     'When dsul is open on a screen with “Ring here while I’m using it” on, and you’ve used it in the last five ' +
     'minutes, a habit’s reminder rings there and nowhere else: not on your phone, and no text or call for it ' +
-    'either. Each browser has its own switch, and a new browser starts with it on.',
+    'either. Each browser has its own switch, and a new browser starts with it on. In the desktop app, using ' +
+    'anything on the computer counts, even with dsul out of sight.',
 } as const

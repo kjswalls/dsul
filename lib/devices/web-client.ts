@@ -165,3 +165,39 @@ export async function registerThisBrowser(subscription?: PushSubscription): Prom
     return false;
   }
 }
+
+/**
+ * The desktop app as a device (reminders PR-1c): a tokenless row, since Web
+ * Push never worked in Electron and nothing can push to it. It exists so the
+ * page tick may claim (local-tick.ts claims only for a registered device) and
+ * so Rituals → Devices lists it, with its "Ring here" switch. Same id as a
+ * browser's: the shell's localStorage is its own.
+ */
+export function desktopRegistration(platform: string, deviceId: string): DeviceRegistration {
+  const os = platform === 'darwin' ? 'macos' : platform === 'win32' ? 'windows' : 'linux';
+  const body: DeviceRegistration = {
+    deviceId,
+    platform: 'electron',
+    transport: 'none',
+    os,
+    form: 'desktop',
+  };
+  const zone = timeZone();
+  if (zone) body.timezone = zone;
+  return body;
+}
+
+/** Register the desktop app with the signed-in account. Returns whether the server took it. Never throws. */
+export async function registerThisDesktop(platform: string): Promise<boolean> {
+  try {
+    const res = await fetch('/api/devices', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(desktopRegistration(platform, thisDeviceId())),
+    });
+    return res.ok;
+  } catch (err) {
+    console.warn('[devices] could not register this desktop app:', err);
+    return false;
+  }
+}

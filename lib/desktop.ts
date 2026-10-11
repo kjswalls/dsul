@@ -34,6 +34,66 @@ export interface DsulDesktop {
    * unreadable, sign-in and quick capture included. Feature-detect it.
    */
   setAppIcon?(look: 'aurora' | 'lime'): Promise<boolean>;
+  /*
+   * Reminders (memory/plans/reminders-platforms.md §5.2, PR-1c). Optional like
+   * setAppIcon: a shell built before them lacks every one, and the page then
+   * leaves reminders to the server. Feature-detect with `desktopNotifier`.
+   */
+  /** Shows a native notification main has checked (electron/lib/notify.cjs). False when it refused. */
+  notify?(spec: DesktopNotificationSpec): Promise<boolean>;
+  closeNotification?(tag: string): Promise<boolean>;
+  /** Seconds since the last input anywhere on the computer, or null. */
+  idleSeconds?(): Promise<number | null>;
+  /** Whether a notification shown here would be seen: 'unsigned' is a Mac build that shows none. */
+  notifyProbe?(): Promise<'ok' | 'unsupported' | 'unsigned'>;
+  /** A click on one of those notifications, or one of its buttons. Returns an unsubscribe. */
+  onNotification?(cb: (event: DesktopNotificationEvent) => void): () => void;
+  /** The computer woke or was unlocked. Returns an unsubscribe. */
+  onWake?(cb: () => void): () => void;
+}
+
+export interface DesktopNotificationSpec {
+  /** `dsul-…`, the push's tag: one cue, one notification. */
+  tag: string;
+  title: string;
+  body?: string;
+  /** An in-app path a click opens. */
+  url?: string;
+  actions?: { action: 'done' | 'snooze'; title: string }[];
+  data?: { itemId?: string; dateStr?: string; kind?: 'cue'; key?: string };
+}
+
+export interface DesktopNotificationEvent {
+  type: 'click' | 'action';
+  action?: 'done' | 'snooze';
+  tag: string;
+  data: { url: string; itemId?: string; dateStr?: string; kind?: 'cue'; key?: string };
+}
+
+/** The bridge's reminder members, all present, or null when this shell has none. */
+export type DesktopNotifier = Required<
+  Pick<DsulDesktop, 'notify' | 'idleSeconds' | 'notifyProbe' | 'onNotification' | 'onWake'>
+>;
+
+export function desktopNotifier(bridge: DsulDesktop | null = getDesktopBridge()): DesktopNotifier | null {
+  if (!bridge) return null;
+  const { notify, idleSeconds, notifyProbe, onNotification, onWake } = bridge;
+  if (
+    typeof notify !== 'function' ||
+    typeof idleSeconds !== 'function' ||
+    typeof notifyProbe !== 'function' ||
+    typeof onNotification !== 'function' ||
+    typeof onWake !== 'function'
+  ) {
+    return null;
+  }
+  return {
+    notify: notify.bind(bridge),
+    idleSeconds: idleSeconds.bind(bridge),
+    notifyProbe: notifyProbe.bind(bridge),
+    onNotification: onNotification.bind(bridge),
+    onWake: onWake.bind(bridge),
+  };
 }
 
 /**

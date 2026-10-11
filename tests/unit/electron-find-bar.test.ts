@@ -408,7 +408,10 @@ describe('main.cjs: find in page', () => {
     );
     // The config's `files` is a plain list of globs (electron-builder types it more widely).
     const files = builder.files as string[];
+    // package.json goes in whatever `files` says (electron-builder writes it, extraMetadata
+    // included, which is where main.cjs reads SIGNED from).
     const packed = (file: string) =>
+      file === 'package.json' ||
       files.some((glob) =>
         glob.endsWith('/**')
           ? file.startsWith(glob.slice(0, -2))
