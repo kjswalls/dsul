@@ -412,6 +412,33 @@ final class FakeAccount: NotificationAccount {
         #expect(await server.count(deviceRoute) == 2)
     }
 
+    /// A push token registers the iPhone again, as an APNs device; the same
+    /// token twice registers once.
+    @Test func aPushTokenRegistersThisIPhoneForAPNs() async throws {
+        let server = FakeServer()
+        let clock = TestClock(at("07:00"))
+        await server.on(deviceRoute, .status(200, ok))
+        let planner = await loadedPlanner(server, clock: clock, json: payload())
+        let (hub, _) = makeHub(server, clock: clock, deviceId: testDevice)
+        hub.attach(planner)
+        #expect(await waitUntil { await server.count(deviceRoute) == 1 })
+
+        let push = PushToken(hex: String(repeating: "ab", count: 32), environment: "sandbox")
+        hub.pushTokenArrived(push)
+        #expect(await waitUntil { await server.count(deviceRoute) == 2 })
+        hub.pushTokenArrived(push)
+        hub.plannerChanged()
+        await hub.settle()
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(await server.count(deviceRoute) == 2)
+
+        let body = try #require(await bodies(server, deviceRoute).last)
+        #expect(body["transport"] as? String == "apns")
+        #expect(body["token"] as? String == push.hex)
+        #expect(body["apnsEnvironment"] as? String == "sandbox")
+        #expect(body["delivery"] as? String == "local")
+    }
+
     /// No device id (the sample, a test host) registers nothing.
     @Test func noDeviceIdRegistersNothing() async throws {
         let server = FakeServer()

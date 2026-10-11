@@ -510,6 +510,26 @@
 >    (403, after one re-mint for `ExpiredProviderToken`), `throttled`, `token_updates`,
 >    `payload_too_large`, `apns_error`, `network`, `no_token`, `no_environment` keep the row.
 
+> **Addendum (2026-10-11): what PR-3b changed on the way in.** PR-3b is the phone's half of
+> PR-3a: `aps-environment` in `project.yml`'s entitlements, `registerForRemoteNotifications()`
+> at every launch in `AppDelegate`, `PushToken` beside `DeviceRegistrationBody`, and
+> `NotificationHub.pushTokenArrived`. There is no `PushRegistrar.swift`: the hub already
+> registers once per launch per user, and a token re-registers through that same path. Where it departs from §5.4:
+>
+> 1. **The environment is the build's, not the profile's.** A Debug build says `sandbox`, and
+>    any other build says `production`. That is right for an Xcode run and for an archive
+>    exported to TestFlight or the App Store, which Xcode re-signs `production`. An ad-hoc
+>    Release build signed with a development profile would be wrong, and dsul ships none.
+> 2. **Asking for a token asks the user nothing.** The alert permission is still the Remind
+>    sheet's. A phone that never allowed alerts registers a token, and the last call it is sent
+>    is not shown. That is the same as a local trigger without permission.
+> 3. **No `remote-notification` background mode, no NSE and no `didReceiveRemoteNotification`
+>    yet.** Those come with PR-3c's background wake. Until then an alert's Done and Snooze go
+>    through the delegate the local triggers already use. That works only if iOS gives a remote
+>    notification its `apns-collapse-id` (`dsul-item-<id>`) as the request identifier. This is
+>    **[unverified]** and is on the device checklist. If it is not given, `NotificationKeys.isDsul`
+>    ignores the tap and a plain open still works.
+
 2026-10-05. **Status: plan, decided 2026-10-06 — Kirby took every default in §7; nothing in it has been built yet, nothing was written to prod.** Phase 0 is next. Every code citation is tree-level (`main` at `b8d480c`, 2026-10-04; every cited `file:line` holds at `3200896`, #405, 2026-10-05 — six cited files changed between the two commits, `electron/main.cjs`, `electron/preload.cjs`, `lib/desktop.ts`, `desktop-app.md`, `ios-app.md`, `CLAUDE.md`, but not at the cited lines; `preload.cjs` gained `authProviders`): the live project was read on 2026-10-05, read-only, and the observed values sit at the top of §5.1.1: the organisation is on the **Pro** plan, both ticks are paused exactly as 045 left them, no ritual is enabled by any of the four accounts, and Kirby is the only user, so the runbook's EXPECT lines are now observations and the §5.1 writes have no one to disturb. Kirby also holds a paid Apple Developer Program membership (confirmed 2026-10-05), which removes the purchase gate the brief assumed (decision 5, resolved). Facts taken from search snippets of pages the planning sessions could not open are marked `[S]`; facts no source verified are marked **[unverified]** inline and collected in §6. Sibling plans: [habit-reminders.md](habit-reminders.md) (the reminder model this builds on — read it first), [desktop-app.md](desktop-app.md), [ios-app.md](ios-app.md).
 
 ---

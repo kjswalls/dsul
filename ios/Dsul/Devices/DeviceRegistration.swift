@@ -28,12 +28,47 @@ enum DeviceIdentity {
     }
 }
 
-/// The body of POST /api/app/devices (app/api/app/devices/route.ts), which
-/// takes exactly this shape for now: an iPhone that arms its own cues
-/// (`delivery 'local'`) and has no token to push to (`transport 'none'`) until
-/// APNs. The server's DeviceRegistrationSchema (@dsul/types) is strict, so
-/// nothing else goes in it; a nil field is left out, and the registry keeps
-/// what it already held for it.
+/// This install's APNs device token (reminders Phase 3) and the host it
+/// belongs to. A Debug build is signed with the development push
+/// entitlement, so its token is a sandbox token; a TestFlight or App Store
+/// build's is a production one. Sent to the wrong host a token answers
+/// BadDeviceToken, which the server prunes on, so the two must never mix.
+struct PushToken: Equatable, Sendable {
+    var hex: String
+    var environment: String
+
+    init(hex: String, environment: String = PushToken.buildEnvironment) {
+        self.hex = hex
+        self.environment = environment
+    }
+
+    init(deviceToken: Data, environment: String = PushToken.buildEnvironment) {
+        self.init(hex: deviceToken.map { String(format: "%02x", $0) }.joined(), environment: environment)
+    }
+
+    static var buildEnvironment: String {
+        #if DEBUG
+        return "sandbox"
+        #else
+        return "production"
+        #endif
+    }
+
+    /// What the route takes (lib/devices/transports/apns.ts APNS_TOKEN): hex,
+    /// 64 characters today, and Apple says not to assume the length.
+    var isValid: Bool {
+        (64...200).contains(hex.count) && hex.allSatisfy(\.isHexDigit)
+            && (environment == "production" || environment == "sandbox")
+    }
+}
+
+/// The body of POST /api/app/devices (app/api/app/devices/route.ts): an
+/// iPhone that arms its own cues (`delivery 'local'`), with no token
+/// (`transport 'none'`) or, once APNs has handed it one, `transport 'apns'`
+/// with the token and its environment, for what it cannot ring alone (the
+/// last call, a pledge). The server's DeviceRegistrationSchema (@dsul/types)
+/// is strict, so nothing else goes in it; a nil field is left out, and the
+/// registry keeps what it already held for it.
 struct DeviceRegistrationBody: Encodable, Equatable, Sendable {
     var deviceId: String
     var platform = "ios"
@@ -48,6 +83,18 @@ struct DeviceRegistrationBody: Encodable, Equatable, Sendable {
     var appVersion: String?
     var osVersion: String?
     var timezone: String?
+    var token: String? = nil
+    var apnsEnvironment: String? = nil
+
+    /// This body with the push token, when there is a valid one; without, as it was.
+    func withPush(_ push: PushToken?) -> DeviceRegistrationBody {
+        guard let push, push.isValid else { return self }
+        var body = self
+        body.transport = "apns"
+        body.token = push.hex.lowercased()
+        body.apnsEnvironment = push.environment
+        return body
+    }
 
     /// This iPhone now: the bundle's version and build, the system's version,
     /// and the zone it rings in.
