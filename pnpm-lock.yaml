@@ -269,13 +269,6 @@ importers:
         version: 4.1.2(@types/node@22.19.15)(jsdom@29.0.1)(vite@8.0.3(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)(@types/node@22.19.15)(jiti@2.6.1)(yaml@2.8.3))
 
   openclaw-plugin:
-    dependencies:
-      '@dsul/types':
-        specifier: workspace:*
-        version: link:../packages/types
-      '@sinclair/typebox':
-        specifier: ^0.33.0
-        version: 0.33.22
     devDependencies:
       openclaw:
         specifier: '*'
@@ -2103,9 +2096,6 @@ packages:
 
   '@silvia-odwyer/photon-node@0.3.4':
     resolution: {integrity: sha512-bnly4BKB3KDTFxrUIcgCLbaeVVS8lrAkri1pEzskpmxu9MdfGQTy8b8EgcD83ywD3RPMsIulY8xJH5Awa+t9fA==}
-
-  '@sinclair/typebox@0.33.22':
-    resolution: {integrity: sha512-auUj4k+f4pyrIVf4GW5UKquSZFHJWri06QgARy9C0t9ZTjJLIuNIrr1yl9bWcJWJ1Gz1vOvYN1D+QPaIlNMVkQ==}
 
   '@sinclair/typebox@0.34.48':
     resolution: {integrity: sha512-kKJTNuK3AQOrgjjotVxMrCn1sUJwM76wMszfq1kdU4uYVJjvEWuFQ6HgvLt4Xz3fSmZlTOxJ/Ie13KnIcWQXFA==}
@@ -8153,8 +8143,6 @@ snapshots:
       - browserslist
 
   '@silvia-odwyer/photon-node@0.3.4': {}
-
-  '@sinclair/typebox@0.33.22': {}
 
   '@sinclair/typebox@0.34.48': {}
 

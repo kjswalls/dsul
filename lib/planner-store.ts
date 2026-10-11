@@ -116,6 +116,7 @@ import { seasonStateForSwitch } from './scope-rail';
 import { conversionBlock, convertItem, type ConvertRepeat } from './item-convert';
 import { recordReleased } from './sweep-grace';
 import { reportBulkFiled } from './filed-rows';
+import { wakeIfHandedOff } from './handoff-wake';
 // Type-only, so it is erased at compile time and lib/local-state.ts importing
 // this store back does not make a runtime cycle.
 import type { ClearScope } from './local-state';
@@ -1603,8 +1604,14 @@ function insertNewRows(
 
 // The store's only doors to these six item writes: each waits behind the
 // item's insert when that insert was held (above), and leaves at once otherwise.
+// An update that hands the item to the agent wakes it once the row has landed
+// (lib/handoff-wake.ts), so every hand-off surface, and an undo that puts an
+// assignment back, wakes from this one place. A failed write never wakes.
 const dbUpdateItem: typeof rawUpdateItem = (id, ...rest) =>
-  afterHeldItemCreate(id, () => rawUpdateItem(id, ...rest));
+  afterHeldItemCreate(id, () => rawUpdateItem(id, ...rest)).then((result) => {
+    wakeIfHandedOff(id, rest[1]);
+    return result;
+  });
 const dbDeleteItem: typeof rawDeleteItem = (id, ...rest) =>
   afterHeldItemCreate(id, () => rawDeleteItem(id, ...rest));
 const dbRestoreItem: typeof rawRestoreItem = (id, ...rest) =>

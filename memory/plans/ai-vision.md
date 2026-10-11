@@ -108,6 +108,21 @@ inside ItemDetailSections, so folding leaves it on screen. The fold is a grid-ro
 off under reduced motion), always rendered so a gate flip never remounts the body, and folded content is
 `inert`. The strip edits nothing yet; a Done check on it waits on a VerbContext the panel can build.
 
+**Note 2026-10-11: the hand-off wakes OpenClaw, and the plugin shrinks to two jobs.** Kirby decided
+ai-vision-decisions.md's 2 and 4. A hand-off (the menu's Hand off, the panel's Assign, an undo that puts
+an assignment back) wakes the agent once the write lands: planner-store's `dbUpdateItem` calls
+`wakeIfHandedOff` (lib/handoff-wake.ts), which POSTs `/api/agent/handoff-wake`; the route reads the item
+as the user, and only while it is assigned to `openclaw` and still queued sends `items.handedOff`
+(`{ itemId, title, type }`, a new `DsulEvent`, delivered only to a registration that lists it) through
+`notifyPlugins` in `after()`, once a minute per item at most. Fire and forget: a failed wake surfaces
+nothing and undoes nothing, since the agent still finds the item on its next `dsul_my_work`. Plugin 0.3.0
+is chat from Ask plus the wake: its webhook route starts `subagent.run` in `dsul:handoff:<itemId>`, never
+waits for it, and refuses to start one unless `webhookSecret` is set and the HMAC verifies (setup now
+writes a secret). Its own tools, cache and context rendering are gone; the agent's dsul tools are the MCP
+server (`openclaw mcp add`), checked tool by tool first. No hooks token. Pillar 2's "the plugin already has
+tools to read context and mutate items" and the integration section's "the only way to register agent
+tools" describe 0.2.
+
 **Note 2026-10-10: pictures.** The panel's + (and a paste into the box) attaches up to three pictures
 while the connected model answers; never for OpenClaw, whose transports carry words, and not in the
 phone's one-row dock bar. SENT, NEVER STORED (lib/chat-images.ts): the browser shrinks each to 1568px

@@ -205,8 +205,9 @@ describe('/api/agent/context keeps habitGroups[] alive as a projection', () => {
 describe('a container write still announces itself under BOTH event names', () => {
   /**
    * `habitGroups.updated` is in the plugin's pinned event enum
-   * (DsulChangeEventSchema) and in the subscription it registers on setup
-   * (openclaw-plugin/src/webhook.ts). `notifyPlugins` DROPS an unregistered
+   * (DsulChangeEventSchema) and in the subscription every plugin build before
+   * 0.3.0 registers on setup (0.3.0 registers only for the wake,
+   * openclaw-plugin/src/webhook.ts). `notifyPlugins` DROPS an unregistered
    * name, so going quiet on it does not fail anywhere — it silently
    * unsubscribes every deployed build and leaves it on a stale cache until
    * something else happens to move.

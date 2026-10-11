@@ -1211,6 +1211,10 @@ export const DsulChangeEventSchema = z.object({
         'habits.updated',
         'projects.updated',
         'habitGroups.updated',
+        // The wake (2026-10-11): an item was just handed to the agent. `data` is
+        // `{ itemId, title, type }` and nothing else. Only a plugin that registered
+        // for it (or for `*`) receives it: `notifyPlugins` drops the rest.
+        'items.handedOff',
     ]),
     userId: z.string(),
     data: z.unknown(),

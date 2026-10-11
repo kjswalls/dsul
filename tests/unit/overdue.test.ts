@@ -144,7 +144,7 @@ describe('selectOverdue', () => {
 
   it('excludes completed and cancelled items', () => {
     // 'cancelled' has no UI producer but the agent API can write it
-    // (openclaw-plugin tools.ts / TaskStatusSchema), and it has no inverse —
+    // (MCP dsul_update_task / TaskStatusSchema), and it has no inverse —
     // it must never resurface in a tray whose only exits assume completability.
     const pending = task({ id: 'pending', startDate: D.d1 });
     const completed = task({ id: 'completed', startDate: D.d1, status: 'completed' });

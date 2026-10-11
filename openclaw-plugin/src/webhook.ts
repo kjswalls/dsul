@@ -1,38 +1,44 @@
 import type { IncomingMessage } from 'node:http'
 import type { PluginConfig } from './plugin-types.js'
-import { DsulChangeEventSchema } from '@dsul/types'
 
-export async function verifyHmac(secret: string, body: string, sigHeader: string): Promise<boolean> {
-  const enc = new TextEncoder()
-  const key = await crypto.subtle.importKey(
-    'raw', enc.encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false, ['sign']
-  )
-  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(body))
-  const hex = Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, '0')).join('')
-  return sigHeader === `sha256=${hex}`
-}
+/** The one event this plugin registers for: the wake (wake.ts). */
+export const HANDOFF_EVENT = 'items.handedOff'
 
 export async function registerWithDsul(
   cfg: PluginConfig,
   webhookUrl: string,
   logger: { info: (s: string) => void; warn: (s: string) => void }
 ): Promise<void> {
+  // The wake refuses anything unsigned (wake.ts), so registering without a
+  // secret would only have dsul send requests this plugin turns away.
+  const secret = cfg.webhookSecret?.trim()
+  if (!secret) {
+    logger.warn(
+      'dsul-context: webhookSecret not set — the hand-off wake is off. Run `openclaw dsul-context setup` ' +
+      'again (it adds one), or set webhookSecret in your dsul-context plugin config in openclaw.json.'
+    )
+    // An older build's registration would otherwise keep dsul POSTing change
+    // events here that nothing reads.
+    await deregisterFromDsul(cfg, logger)
+    return
+  }
   const res = await fetch(`${cfg.dsulUrl}/api/agent/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.apiKey}` },
     body: JSON.stringify({
       pluginId: 'dsul-context',
       webhookUrl,
-      secret: cfg.webhookSecret ?? '',
-      events: ['tasks.updated', 'habits.updated', 'projects.updated', 'habitGroups.updated'],
+      secret,
+      // Only the wake. Nothing is cached any more, so the change events this
+      // used to list would only cost dsul a POST each. `notifyPlugins` sends a
+      // registration nothing it did not list.
+      events: [HANDOFF_EVENT],
     }),
   })
   if (res.ok) {
-    logger.info(`dsul-context: webhook registered → ${webhookUrl}`)
+    logger.info(`dsul-context: hand-off wake registered → ${webhookUrl}`)
   } else {
-    logger.warn(`dsul-context: webhook registration failed (${res.status}) — change events won't invalidate cache`)
+    logger.warn(`dsul-context: webhook registration failed (${res.status}) — hand-offs wait for the agent's next poll`)
   }
 }
 
@@ -82,17 +88,4 @@ export function readBody(req: IncomingMessage): Promise<string> {
     req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
     req.on('error', reject)
   })
-}
-
-/** Parse webhook body and return event name + raw body string */
-export async function parseWebhookBody(
-  req: IncomingMessage
-): Promise<{ body: string; eventName: string }> {
-  const body = await readBody(req)
-  let eventName = 'unknown'
-  try {
-    const parsed = DsulChangeEventSchema.safeParse(JSON.parse(body))
-    if (parsed.success) eventName = parsed.data.event
-  } catch { /* ignore parse errors */ }
-  return { body, eventName }
 }

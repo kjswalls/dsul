@@ -426,4 +426,11 @@ export type DsulEvent =
   | 'habits.updated'
   | 'projects.updated'
   | 'habitGroups.updated'
+  /**
+   * The wake: an item was just handed to the agent (`POST /api/agent/handoff-wake`).
+   * `data` is `{ itemId, title, type }` and nothing else. Like every name here it
+   * reaches only a registration that listed it (or `*`): `notifyPlugins` drops
+   * the rest, so a plugin build from before the wake never sees it.
+   */
+  | 'items.handedOff'
   | '*'
