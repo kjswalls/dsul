@@ -171,7 +171,13 @@ test.describe('Mod panels', () => {
     await page.getByRole('button', { name: 'Your mod panels' }).click();
     await expect(modRail(page)).toBeVisible();
     await expect(page.locator('main')).toHaveAttribute('inert', '');
-    await page.mouse.click(200, 600);
+    // On the covered canvas, between the braindump and the overlay: never a
+    // fixed x. At 1000px wide (200, 600) is in the braindump, on this mod's own
+    // card, and once the card has drawn that is its +1 button, which is not
+    // empty space, so the click counted a glass and the panel stayed.
+    const main = (await page.locator('main').boundingBox())!;
+    const rail = (await modRail(page).boundingBox())!;
+    await page.mouse.click((main.x + rail.x) / 2, 600);
     await expect(modRail(page)).toBeHidden();
     await expect(page.locator('main')).not.toHaveAttribute('inert', '');
   });
