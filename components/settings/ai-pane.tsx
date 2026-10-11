@@ -32,6 +32,7 @@ import { settingById, type SettingCtx, type SettingRecord } from '@/lib/settings
 import { highlightRuns, type MatchRange } from '@/lib/settings/search';
 import { cn } from '@/lib/utils';
 import { ConnectedAppsSection } from './connected-apps';
+import { AgentKeysSection } from './agent-keys';
 import { useDisconnect, useUnpair } from './disconnect';
 import { ModelConnectionPanel } from './model-connection-panel';
 import { ScopeChip } from './scope-chip';
@@ -190,6 +191,7 @@ export function AIPane({
       {/* Shown with AI on or off: an app connected over MCP is not dsul's
           own AI, and Disconnect has to be reachable either way. */}
       <ConnectedAppsSection />
+      <AgentKeysSection />
     </div>
   );
 }

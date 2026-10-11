@@ -19,6 +19,13 @@ plausibly holds one*: the whole point of MCP is that Claude, Cursor or ChatGPT c
 **Current state:** the OpenClaw key is unchanged. Third-party runtimes no longer need it:
 since 2026-10-10 they sign in to `/api/mcp` with OAuth instead, getting hashed, expiring,
 revocable tokens scoped to read or read-and-change ([mcp-oauth.md](mcp-oauth.md)).
+Since 2026-10-11 there are also **named agent keys** (migration 072, `lib/agent-keys.ts`,
+Settings → AI → Agent keys): `dsul_ak_` keys, as many as you like (20 at most), each read only
+or read and change, shown once and stored as a sha256 hash, revocable, with "last used". They
+open what an OAuth token opens at the same two scopes, through `resolveUserIdFromApiKey`'s
+`access` argument, and never a `'key'` route (gateway and webhook registration stay the
+OpenClaw key's). The OpenClaw key itself is untouched, so the plugin needs no release; moving
+it onto a named key is the remaining half of this decision.
 **What it would take:** hashed keys with a prefix, multiple named keys per user, a scope
 field (read-only vs read-write), and revocation. `plugins-themes-store.md` already warns
 that migrating off the single plaintext key needs a **dual-read deprecation window with a

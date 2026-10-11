@@ -23,3 +23,9 @@ export function isScope(s: unknown): s is Scope {
  * (through lib/db.ts), where core.ts's node:crypto cannot go.
  */
 export const ACCESS_PREFIX = 'dsul_at_';
+
+/**
+ * A named agent key's prefix (lib/agent-keys.ts, migration 072), here for the
+ * same reason. The legacy OpenClaw key is `dsul_` and hex, so never this.
+ */
+export const AGENT_KEY_PREFIX = 'dsul_ak_';

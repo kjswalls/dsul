@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
-import { ACCESS_PREFIX } from './mcp-oauth/scopes'
+import { ACCESS_PREFIX, AGENT_KEY_PREFIX } from './mcp-oauth/scopes'
 import { resolveAccessToken } from './mcp-oauth/store'
+import { resolveAgentKey } from './agent-keys'
 
 /**
  * Service-role Supabase client — bypasses RLS.
@@ -110,9 +111,9 @@ function codeOrUnknown(error: { code?: string }): string {
  *   - 'key'   the OpenClaw agent key only. The default, so a route opts IN to
  *             OAuth apps: registering a gateway or a webhook is OpenClaw's
  *             alone, and an app a user connected must never become one.
- *   - 'read'  also an OAuth access token of either scope (the context, an
- *             item's history).
- *   - 'write' also an OAuth access token with the full `planner` scope.
+ *   - 'read'  also an OAuth access token or a named agent key (lib/agent-keys.ts)
+ *             of either scope (the context, an item's history).
+ *   - 'write' also either of those with the full `planner` scope.
  */
 export type AgentAccess = 'key' | 'read' | 'write'
 
@@ -131,6 +132,15 @@ export async function resolveUserIdFromApiKey(
   if (apiKey.startsWith(ACCESS_PREFIX)) {
     if (access === 'key') return null
     const caller = await resolveAccessToken(service, apiKey)
+    if (!caller) return null
+    if (access === 'write' && caller.scope !== 'planner') return null
+    return caller.userId
+  }
+  // A named agent key (lib/agent-keys.ts, migration 072): what an OAuth app's
+  // token opens, at the same scopes. Never 'key': a gateway is OpenClaw's alone.
+  if (apiKey.startsWith(AGENT_KEY_PREFIX)) {
+    if (access === 'key') return null
+    const caller = await resolveAgentKey(service, apiKey)
     if (!caller) return null
     if (access === 'write' && caller.scope !== 'planner') return null
     return caller.userId
