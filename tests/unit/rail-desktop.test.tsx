@@ -1637,7 +1637,7 @@ describe('the Ask button', () => {
     // key 8px into it.
     expect(opener()).toHaveAttribute('data-form', 'full');
     expect(pill()).toHaveClass('mt-0', 'ml-auto');
-    expect(opener()).toHaveClass('py-2');
+    expect(opener()).toHaveClass('p-2');
     act(() => useViewStore.setState({ scope: 'week', layout: 'buckets' }));
     expect(headerRow).toHaveAttribute('data-wide', 'true');
     // WeekScale holds the far end there; two auto margins would split the room between them.
@@ -1646,7 +1646,7 @@ describe('the Ask button', () => {
     // 4px above it and the key 4px into it.
     act(() => useLookStore.setState({ layout: 'notepad' }));
     expect(pill()).toHaveClass('-mt-1');
-    expect(opener()).toHaveClass('py-1');
+    expect(opener()).toHaveClass('p-1');
   });
 
   it('opens Ask with its box focused, as Ctrl+J does, and hides while the column shows', async () => {
