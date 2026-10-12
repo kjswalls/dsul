@@ -160,13 +160,13 @@ describe('when it shows', () => {
     // The capsule (Classic): the rail row sits mt-2 under the capsule's p-2;
     // the 48px plate's py-2 puts its 32px key there from the row's top.
     expect(pill()).toHaveClass('mt-0');
-    expect(opener()).toHaveClass('h-12', 'p-2');
-    expect(key()).toHaveClass('h-8');
+    expect(opener()).toHaveClass('h-11', 'p-2');
+    expect(key()).toHaveClass('h-7');
     // The plain and masthead headers: the rail row at the top, the 40px
     // plate's py-1 under a -4px margin, and the key drawn on the page.
     act(() => useLookStore.setState({ layout: 'writer' }));
     expect(pill()).toHaveClass('-mt-1');
-    expect(opener()).toHaveClass('h-10', 'p-1');
+    expect(opener()).toHaveClass('h-9', 'p-1');
     act(() => useLookStore.setState({ layout: 'notebook' }));
     expect(pill()).toHaveClass('-mt-1');
   });
@@ -593,8 +593,8 @@ describe('room on the header row', () => {
     expect(opener()).toHaveAttribute('data-form', 'icon');
     expect(opener()).not.toHaveTextContent('Ask');
     expect(opener()?.querySelector('[data-ask-opener-chord]')).toBeNull();
-    expect(opener()).toHaveClass('size-8', 'titlebar-hole');
-    expect(key()).toHaveClass('w-8', 'h-8');
+    expect(opener()).toHaveClass('size-7', 'titlebar-hole');
+    expect(key()).toHaveClass('w-7', 'h-7');
     // The mark carries it, still decorative: the name and title do the naming.
     expect(mark()).toHaveAttribute('aria-hidden', 'true');
     expect(screen.getByRole('button', { name: 'Open Ask' })).toHaveAttribute('title', 'Open Ask (Ctrl+J)');
@@ -677,19 +677,19 @@ describe('room on the header row', () => {
     expect(key()).toHaveTextContent(/^Ask$/);
     expect(key()).toContainElement(mark() as unknown as HTMLElement);
     expect(mark()).toHaveAttribute('aria-hidden', 'true');
-    expect(key()).toHaveClass('h-8', 'pr-[11px]', 'pl-[9px]', 'rounded-[10px]');
+    expect(key()).toHaveClass('h-7', 'pr-[11px]', 'pl-[9px]', 'rounded-[8px]');
     expect(key()).not.toHaveClass('w-8');
     // The capsule's plate: 48px, 8px round the key on every side, the key on the date's line.
-    expect(button).toHaveClass('h-12', 'rounded-[10px]', 'p-2');
-    expect(button).not.toHaveClass('size-8');
+    expect(button).toHaveClass('h-11', 'rounded-[10px]', 'p-2');
+    expect(button).not.toHaveClass('size-7');
     expect(pill()).toHaveClass('mt-0');
     // Drawn on the page: the 40px plate, 4px round the key, and the 14px inset.
     for (const layout of ['notebook', 'notepad', 'writer'] as const) {
       act(() => useLookStore.setState({ layout }));
       expect(opener(), layout).toHaveAttribute('data-form', 'key');
-      expect(opener(), layout).toHaveClass('h-10', 'rounded-[12px]', 'p-1', 'mr-3.5');
+      expect(opener(), layout).toHaveClass('h-9', 'rounded-[11px]', 'p-1', 'mr-3.5');
       expect(opener(), layout).not.toHaveClass('pr-2');
-      expect(key(), layout).toHaveClass('rounded-[8px]');
+      expect(key(), layout).toHaveClass('rounded-[7px]');
       expect(pill(), layout).toHaveClass('-mt-1');
       expect(opener(), layout).toHaveAttribute('title', 'Open Ask (Ctrl+J)');
     }
@@ -837,7 +837,7 @@ describe('room on the header row', () => {
       act(() => useLookStore.setState({ layout }));
       resized();
       expect(opener(), layout).toHaveAttribute('data-form', 'icon');
-      expect(opener(), layout).toHaveClass('size-8', 'mr-3.5');
+      expect(opener(), layout).toHaveClass('size-7', 'mr-3.5');
     }
     layOut(600, 374);
     resized();

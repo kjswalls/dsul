@@ -2206,7 +2206,7 @@ body {
   initial-value: transparent;
 }
 
-:is([data-ask-opener], [data-ask-mark]) {
+:is([data-ask-opener], [data-ask-mark], [data-do-key]) {
   --ask-icon-ink: oklch(0.62 0.135 85);
   --ask-icon-lit: var(--ai);
   --ask-icon-accent: var(--lime-solid);
@@ -2216,7 +2216,7 @@ body {
   --ask-icon-unlit: var(--ink-1);
   --ask-icon-unlit-mid: var(--ink-2);
 }
-.dark :is([data-ask-opener], [data-ask-mark]) {
+.dark :is([data-ask-opener], [data-ask-mark], [data-do-key]) {
   --ask-icon-ink: var(--ai);
   --ask-icon-pair: oklch(0.84 0.12 190);
   --ask-icon-pair-ink: var(--ask-icon-pair);
@@ -2224,26 +2224,26 @@ body {
 /* Each look's partner: light from its light relay colour, dark from its glow
    (Sorbet's is a deep rose beside the pink; an apricot read rust there). The
    tints keep Paper's and Night's. */
-:root[data-look-light='studio']:not(.dark) :is([data-ask-opener], [data-ask-mark]) {
+:root[data-look-light='studio']:not(.dark) :is([data-ask-opener], [data-ask-mark], [data-do-key]) {
   --ask-icon-pair: oklch(0.65 0.13 225);
   --ask-icon-pair-ink: var(--ask-icon-pair);
 }
-:root[data-look-light='sorbet']:not(.dark) :is([data-ask-opener], [data-ask-mark]) {
+:root[data-look-light='sorbet']:not(.dark) :is([data-ask-opener], [data-ask-mark], [data-do-key]) {
   --ask-icon-pair: oklch(0.64 0.15 18);
 }
-:root[data-look-dark='terminal'].dark :is([data-ask-opener], [data-ask-mark]) {
+:root[data-look-dark='terminal'].dark :is([data-ask-opener], [data-ask-mark], [data-do-key]) {
   --ask-icon-pair: oklch(0.86 0.12 90);
 }
-:root[data-look-dark='dusk'].dark :is([data-ask-opener], [data-ask-mark]) {
+:root[data-look-dark='dusk'].dark :is([data-ask-opener], [data-ask-mark], [data-do-key]) {
   --ask-icon-pair: oklch(0.76 0.12 350);
 }
 /* After the looks, and as specific: Notepad Retro's skin re-points the accent
    under whichever look is on, so its partner has to win over theirs too. */
-:root:not(.dark) [data-layout-skin='retro'] :is([data-ask-opener], [data-ask-mark]) {
+:root:not(.dark) [data-layout-skin='retro'] :is([data-ask-opener], [data-ask-mark], [data-do-key]) {
   --ask-icon-pair: oklch(0.66 0.11 210);
   --ask-icon-pair-ink: var(--ask-icon-pair);
 }
-:root.dark [data-layout-skin='retro'] :is([data-ask-opener], [data-ask-mark]) {
+:root.dark [data-layout-skin='retro'] :is([data-ask-opener], [data-ask-mark], [data-do-key]) {
   --ask-icon-pair: oklch(0.8 0.1 215);
 }
 
@@ -2259,6 +2259,18 @@ body {
   --ask-focus-rim: var(--success-text);
   --ask-focus-rim-offset: 0px;
   --ask-wash: color-mix(in oklab, var(--foreground) 4%, transparent);
+}
+/* The keycaps' bevel (Ask's key and the do stuff key): the face is a little
+   brighter at the top than at the skirt, as a lit key is. In light the top is
+   the fill and the foot darkens; in dark the top brightens and the foot is
+   the fill. Percentages of the foreground mixed into the fill. */
+:root {
+  --key-bevel-top: 0%;
+  --key-bevel-bottom: 4%;
+}
+.dark {
+  --key-bevel-top: 5%;
+  --key-bevel-bottom: 0%;
 }
 .dark [data-ask-opener] {
   --ask-key-rim: color-mix(in oklab, var(--surface-2), var(--foreground) 7%);
@@ -2316,7 +2328,12 @@ body {
   --ask-key-tail: 26px;
   --ask-key-reach: 40px;
   background:
-    linear-gradient(var(--ask-key-fill), var(--ask-key-fill)) padding-box,
+    linear-gradient(
+        180deg,
+        color-mix(in oklab, var(--ask-key-fill), var(--foreground) var(--key-bevel-top)),
+        color-mix(in oklab, var(--ask-key-fill), var(--foreground) var(--key-bevel-bottom))
+      )
+      padding-box,
     radial-gradient(
         circle at calc(var(--ask-key-x) + var(--ask-light-x, 0px)) calc(50% - 1px + var(--ask-light-y, 0px)) in oklab,
         var(--ask-key-accent) 0px,
@@ -2349,6 +2366,7 @@ body {
 /* The chord, printed on the key as a small inset: --ink-1 at rest (the
    button's colour), the foreground once engaged, on the well's timing. */
 [data-ask-opener-chord] {
+  color: var(--ink-2);
   background-color: color-mix(in oklab, var(--surface-2), var(--foreground) 6%);
   transition: color 160ms var(--ease-fade);
 }
@@ -2610,18 +2628,18 @@ body {
    THE BOLT IS THE LIGHT. The rim (a transparent border, the skirt included)
    is painted by a radial gradient centred on the bolt, under a padding-box
    fill, as Ask's is centred on its mark: at rest the accent holds over the
-   bolt's corner (to 12px), hands off to the deep partner (by 19px), and the
-   partner steps down to the hairline before the word (by 43px), the same three
-   front-loaded steps as Ask's. Engaged (hover, keyboard focus, a press, or
-   doing stuff) the light runs round the whole rim and the chord turns lime.
-   The accent is the raw token, mixed with nothing; only the partner steps
-   toward the hairline. The partner is the lime part way to its deep ink in
-   light, so a pale head sits on a darker tail, and part way to the key in
-   dark, so the light still falls off before the word.
+   bolt's corner (to 12px), hands off to Ask's aurora partner (by 19px), and
+   the partner steps down to the hairline before the word (by 43px), the same
+   three front-loaded steps as Ask's. Engaged (hover, keyboard focus, a press,
+   or doing stuff) the light runs round the whole rim and the chord turns
+   lime. The accent is the raw token, mixed with nothing; only the partner
+   steps toward the hairline. The partner is Ask's own, look by look (the
+   key shares Ask's slot tokens), so the two keys carry one light. Like Ask's,
+   the face has a bevel (--key-bevel-*).
 
    It gives way by the braindump's width (the `braindump` container,
    braindump.tsx), so the header's title and controls keep their room down to
-   the 280px minimum: the chord goes first, then the word, leaving the 32px
+   the 280px minimum: the chord goes first, then the word, leaving the 28px
    key with the light caught on the bolt. */
 @property --do-key-hold {
   syntax: '<length-percentage>';
@@ -2639,8 +2657,10 @@ body {
   initial-value: 43px;
 }
 [data-do-key] {
-  --do-key-accent: var(--lime-solid);
-  --do-key-pair: color-mix(in oklch, var(--lime-solid), var(--lime-ink) 45%);
+  --do-key-accent: var(--ask-icon-accent);
+  /* Ask's own partner, look by look, so the two keys carry one light. */
+  --do-key-pair: var(--ask-icon-pair);
+  --do-key-bolt: color-mix(in oklch, var(--lime-solid), var(--lime-ink) 45%);
   --do-key-rim: color-mix(in oklab, var(--surface-2), var(--foreground) 9%);
   --do-key-fill: var(--surface-2);
   /* The bolt's centre: the 1px border, 8px padding and half the 14px glyph;
@@ -2653,7 +2673,12 @@ body {
   border: 1px solid transparent;
   border-bottom-width: 3px;
   background:
-    linear-gradient(var(--do-key-fill), var(--do-key-fill)) padding-box,
+    linear-gradient(
+        180deg,
+        color-mix(in oklab, var(--do-key-fill), var(--foreground) var(--key-bevel-top)),
+        color-mix(in oklab, var(--do-key-fill), var(--foreground) var(--key-bevel-bottom))
+      )
+      padding-box,
     radial-gradient(
         circle at var(--do-key-x) calc(50% - 1px) in oklab,
         var(--do-key-accent) 0px,
@@ -2678,20 +2703,16 @@ body {
     border-bottom-width 60ms var(--ease-out-soft);
 }
 .dark [data-do-key] {
-  --do-key-pair: color-mix(in oklab, var(--lime-solid), var(--surface-2) 40%);
+  --do-key-bolt: var(--do-key-accent);
   --do-key-rim: color-mix(in oklab, var(--surface-2), var(--foreground) 7%);
 }
-/* The bolt: drawn in the deep partner at rest, filled with the accent and
-   outlined in the partner engaged, so in light the lime keeps an edge. */
+/* The bolt: deep lime at rest, filled with the accent and outlined in the
+   deep lime engaged, so in light the lime keeps an edge. In dark it glows at
+   rest: the accent itself (--do-key-bolt above). */
 [data-do-key-bolt] {
-  color: var(--do-key-pair);
-  fill: var(--do-key-pair);
+  color: var(--do-key-bolt);
+  fill: var(--do-key-bolt);
   transition: fill 160ms var(--ease-fade);
-}
-/* In dark the bolt glows at rest: the accent itself. */
-.dark [data-do-key-bolt] {
-  color: var(--do-key-accent);
-  fill: var(--do-key-accent);
 }
 [data-do-key-chord] {
   color: var(--ink-2);
@@ -2758,7 +2779,7 @@ body {
     --do-key-hold: 6px;
     --do-key-tail: 10px;
     --do-key-reach: 24px;
-    width: 32px;
+    width: 28px;
     padding: 0;
     justify-content: center;
   }

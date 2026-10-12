@@ -28,7 +28,7 @@ export function isUserThemeSlug(value: unknown): value is `u-${string}` {
   return typeof value === 'string' && USER_THEME_SLUG_RE.test(value);
 }
 
-const ASK = ':is([data-ask-opener],[data-ask-mark])';
+const ASK = ':is([data-ask-opener],[data-ask-mark],[data-do-key])';
 
 /** `%s` is the slug. Shapes per mode, as the built-in blocks in app/globals.css scope theirs. */
 export const USER_THEME_SELECTORS: Record<ThemeMode, { root: string; body: string; ask: string; preview: string }> = {
