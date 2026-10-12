@@ -69,11 +69,13 @@ import { useUIStore, closeItemPanel, openAddDialog, openBulkAdd, openNewContaine
 import {
   goalsEnabled,
   groupByOptionsFor,
+  doStuffEnabled,
   organizeEnabled,
   resolvedCanvasGroupBy,
   streaksEnabled,
 } from '../extension-gates';
 import { useSidebarStore } from '../sidebar-store';
+import { useDoStuffStore } from '../do-stuff';
 import { revealDock } from '../look-store';
 import { useSelectionStore, selectableIdsInDom } from '../selection-store';
 import { setupPageShown, useMobileNavStore } from '../mobile-nav-store';
@@ -1080,6 +1082,30 @@ export const STATIC_COMMANDS: Command[] = [
       return ai.canChat || (!ctx.isMobile && (ai.askInvite || ai.askFix));
     },
     run: () => toggleRail(),
+  },
+  {
+    id: 'workspace.doStuff',
+    // Static, like Toggle Zen's: the shortcuts table renders this label.
+    label: 'Do stuff',
+    dynamicLabel: () => (useDoStuffStore.getState().on ? 'Stop doing stuff' : 'Do stuff'),
+    description: 'Walk the braindump, quickest things first',
+    group: 'workspace',
+    icon: Zap,
+    keywords: 'do stuff power mode start go work through braindump quick wins',
+    // The do stuff key in the braindump's header prints this chord. Not in an
+    // input: there ⌘↵ is the field's own submit (the omnibar, the item
+    // dialog, bulk add).
+    shortcut: {
+      id: 'do_stuff',
+      keys: ['meta', 'enter'],
+      context: 'Not while typing, where it submits the field.',
+    },
+    availableWhen: () => doStuffEnabled(),
+    run: () => {
+      const s = useDoStuffStore.getState();
+      if (s.on) s.stop();
+      else s.start();
+    },
   },
   {
     id: 'workspace.toggleSidebar',

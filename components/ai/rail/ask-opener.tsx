@@ -23,6 +23,9 @@ type Fit = 'full' | 'key' | 'icon' | 'none';
 /** The key alone: the capsule's square controls' size (h-8 w-8). */
 const ICON_PX = 32;
 
+/** The key's end padding after the word, with no chord on it (pr-[11px]). */
+const KEY_END_PX = 11;
+
 /** A frame at 60Hz, rounded up. */
 const FRAME_MS = 17;
 
@@ -76,15 +79,26 @@ function naturalWidth(el: HTMLElement, own: CSSStyleDeclaration): number {
  * The 'key' form's natural width, without its margins, read off the whole
  * button while it is drawn: from its left edge to the key's far edge, plus
  * the key form's end padding and the border. The key form is the whole
- * button less the chord and the gap before it, with its well even all round
- * (8px round the raised key, 4px round the drawn one), so its end padding is
- * the start padding both forms share. Drawn as the key form, naturalWidth
- * reads the same width straight, to the subpixel.
+ * button less the chord, so the key's far edge is read as it would stand
+ * without it: less the chord, which is printed on the key, the key's gap
+ * before it, and the narrower end padding beside it, plus the end padding
+ * after the word (KEY_END_PX). Its well is even all round (8px round the
+ * raised key, 4px round the drawn one), so its end padding is the start
+ * padding both forms share. Drawn as the key form, naturalWidth reads the
+ * same width straight, to the subpixel. A DOM that lays nothing out (a
+ * test's) draws the chord 0 wide, and the key is read as it stands.
  */
 function keyFormWidth(el: HTMLElement, own: CSSStyleDeclaration): number {
-  const key = el.firstElementChild;
+  const key = el.querySelector<HTMLElement>('[data-ask-key]');
   if (!key) return 0;
-  return key.getBoundingClientRect().right - el.getBoundingClientRect().left + px(own.paddingLeft) + px(own.borderRightWidth);
+  let right = key.getBoundingClientRect().right;
+  const chord = key.querySelector<HTMLElement>('[data-ask-opener-chord]');
+  const chordPx = chord?.getBoundingClientRect().width ?? 0;
+  if (chordPx > 0) {
+    const keyStyle = getComputedStyle(key);
+    right -= chordPx + px(keyStyle.columnGap) + px(keyStyle.paddingRight) - KEY_END_PX;
+  }
+  return right - el.getBoundingClientRect().left + px(own.paddingLeft) + px(own.borderRightWidth);
 }
 
 /**
@@ -244,8 +258,8 @@ function useHeaderFit(ref: RefObject<HTMLButtonElement | null>, active: boolean,
 }
 
 /**
- * The Ask button: a raised key reading "Ask" with the mark in it, and the
- * chord printed beside it on the plate ("Ctrl+J"), on the canvas's header row
+ * The Ask button: a raised keycap reading "Ask" with the mark in it and the
+ * chord printed on it ("Ctrl+J"), the twin of the braindump's do stuff key, on the canvas's header row
  * while Ask is closed. Ask starts closed (sidebar-store ASK_OPEN_DEFAULT), and
  * this is the way to it that does not need the chord.
  *
@@ -303,15 +317,16 @@ function useHeaderFit(ref: RefObject<HTMLButtonElement | null>, active: boolean,
  *
  * HOW IT LOOKS (the CSS is app/globals.css, "Ask's key"):
  *  - 'full': the plate holds the raised key (--surface-2, the omnibar's
- *    key-press shadow pair) and the chord beside it in --ink-1. Hover and
- *    press fade the header capsule's own well in under both, and press sinks
- *    the key into it. The mark is the light source: the key's 1px rim glows
+ *    key-press shadow pair, a 3px skirt under it) with the chord printed on
+ *    it as a small inset in --ink-1. Hover and press fade the header
+ *    capsule's own well in under it, and press sinks the key 2px into its
+ *    skirt. The mark is the light source: the key's rim glows
  *    in the accent beside the mark's lit tile (ASK_MARK_LIGHT) and hands off
  *    through the look's aurora partner to the hairline; engaged, the light
  *    travels round the whole rim. The plain and masthead headers, which have
  *    no capsule material, draw the key on the page instead.
- *  - 'key': the same plate, key and light with the chord gone, the well
- *    even all round the key (8px; 4px drawn on the page), the design study's
+ *  - 'key': the same plate, key and light with the chord gone (the well is
+ *    even all round the key in every form: 8px; 4px drawn on the page), the design study's
  *    narrow step: "Ask" stays where the chord does not fit (1280px Week x
  *    Schedule in Classic, its capsule 392px against Week x Buckets' 384px,
  *    which still fits whole). The chord stays in the title.
@@ -392,13 +407,13 @@ export function AskOpener({ className }: { className?: string }) {
         style={light}
         className={cn(
           'titlebar-hole group/ask-key relative isolate flex min-w-0 cursor-pointer items-center gap-2 text-[12px] leading-[17px] font-medium whitespace-nowrap text-[var(--ink-1)]',
-          // Without the chord the well is even all round the key: its end
-          // padding is the start padding (keyFormWidth counts on it).
+          // The well is even all round the key in every form, the chord being
+          // on the key (keyFormWidth counts on it).
           !plate
             ? 'size-8 rounded-[10px]'
             : raised
-              ? cn('h-12 rounded-[10px] py-2 pl-2', full ? 'pr-2.5' : 'pr-2')
-              : cn('h-10 rounded-[12px] py-1 pl-1', full ? 'pr-2' : 'pr-1'),
+              ? 'h-12 rounded-[10px] p-2'
+              : 'h-10 rounded-[12px] p-1',
           // The drawn key keeps its inset off the row's end in every form
           // (Notebook's ribbon sits just past it), and the fit counts it.
           !raised && 'mr-3.5'
@@ -408,18 +423,23 @@ export function AskOpener({ className }: { className?: string }) {
           data-ask-key=""
           className={cn(
             'inline-flex h-8 shrink-0 items-center gap-1.5 border border-transparent text-foreground',
-            plate ? 'pr-[11px] pl-[9px]' : 'w-8 justify-center',
+            // KEY_END_PX after the word; less beside the chord's own inset.
+            plate ? (full ? 'pr-[5px] pl-[9px]' : 'pr-[11px] pl-[9px]') : 'w-8 justify-center',
             plate && !raised ? 'rounded-[8px]' : 'rounded-[10px]'
           )}
         >
           <AskMark lit={canChat} />
           {plate && <span>{word}</span>}
+          {full && (
+            <kbd
+              data-ask-opener-chord=""
+              aria-hidden
+              className="inline-flex h-[18px] items-center rounded-[5px] px-[5px] font-sans text-[10.5px] font-medium tracking-[0.01em] tabular-nums"
+            >
+              {chord}
+            </kbd>
+          )}
         </span>
-        {full && (
-          <span data-ask-opener-chord="" aria-hidden className="text-[11px] font-normal tracking-[0.01em] tabular-nums">
-            {chord}
-          </span>
-        )}
       </button>
     </span>
   );

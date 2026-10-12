@@ -2106,9 +2106,10 @@ body {
    Tailwind on the elements; what is here needs a registered property, a
    gradient, a state or a layout selector.
 
-     [data-ask-opener]          the plate: the key, and the chord beside it
-     [data-ask-opener]::before  the well that fades in under both
-     [data-ask-key]             the raised key: the mark and "Ask"
+     [data-ask-opener]          the plate the key stands on
+     [data-ask-opener]::before  the well that fades in under it
+     [data-ask-key]             the raised key, a keycap with a 3px skirt: the
+                                mark, "Ask" and the chord printed on it
      [data-form='key']          the same plate and key without the chord, when
                                 the row has no room for it
      [data-form='icon']         the key alone, when the row has no room for more
@@ -2317,7 +2318,7 @@ body {
   background:
     linear-gradient(var(--ask-key-fill), var(--ask-key-fill)) padding-box,
     radial-gradient(
-        circle at calc(var(--ask-key-x) + var(--ask-light-x, 0px)) calc(50% + var(--ask-light-y, 0px)) in oklab,
+        circle at calc(var(--ask-key-x) + var(--ask-light-x, 0px)) calc(50% - 1px + var(--ask-light-y, 0px)) in oklab,
         var(--ask-key-accent) 0px,
         var(--ask-key-accent) var(--ask-key-hold),
         var(--ask-key-pair) var(--ask-key-tail),
@@ -2330,6 +2331,10 @@ body {
         var(--ask-key-rim) var(--ask-key-reach)
       )
       border-box;
+  /* A keycap: a 3px skirt under the face, the rim's light running into it
+     too, which a press sinks into (below). The light's centre is a hair above
+     the key's middle, the face's. */
+  border-bottom-width: 3px;
   box-shadow: var(--shadow-key-rest);
   transition:
     --ask-key-hold 160ms var(--ease-fade),
@@ -2341,9 +2346,10 @@ body {
     translate 150ms var(--ease-out-soft);
 }
 
-/* The chord: --ink-1 on the plate at rest (the button's colour), the
-   foreground once the well is under it, on the well's timing. */
+/* The chord, printed on the key as a small inset: --ink-1 at rest (the
+   button's colour), the foreground once engaged, on the well's timing. */
 [data-ask-opener-chord] {
+  background-color: color-mix(in oklab, var(--surface-2), var(--foreground) 6%);
   transition: color 160ms var(--ease-fade);
 }
 
@@ -2384,10 +2390,11 @@ body {
   transition-duration: 60ms;
   transition-timing-function: var(--ease-out-soft);
 }
-/* Pressed: the omnibar's key-press pair, a 1px sink, the fill settling toward
-   the well. The light keeps its own 160ms. */
+/* Pressed: the omnibar's key-press pair, the key sinking 2px into its skirt,
+   the fill settling toward the well. The light keeps its own 160ms. */
 [data-ask-opener]:active [data-ask-key] {
-  translate: 0 1px;
+  translate: 0 2px;
+  border-bottom-width: 1px;
   --ask-key-fill: var(--surface-2-pressed);
   box-shadow: var(--shadow-key-pressed);
   transition-duration: 160ms, 160ms, 160ms, 60ms, 60ms, 60ms, 60ms;
@@ -2588,6 +2595,198 @@ body {
 [data-reduce-motion='true'] [data-ask-mark] * {
   transition: none !important;
   animation: none !important;
+}
+
+/* ─── The do stuff key: a keycap lit from its bolt ───────────────────────────
+   components/sidebar/do-stuff.tsx DoStuffKey, in the braindump's header. The
+   twin of Ask's key (above), as a keycap: a 3px skirt under it that a press
+   sinks into, and the chord printed inside it.
+
+     [data-do-key]          the keycap: the bolt, "do stuff", the chord
+     [data-do-key-bolt]     the light source
+     [data-do-key-word]     "do stuff"
+     [data-do-key-chord]    the chord, an inset on the key
+
+   THE BOLT IS THE LIGHT. The rim (a transparent border, the skirt included)
+   is painted by a radial gradient centred on the bolt, under a padding-box
+   fill, as Ask's is centred on its mark: at rest the accent holds over the
+   bolt's corner (to 12px), hands off to the deep partner (by 19px), and the
+   partner steps down to the hairline before the word (by 43px), the same three
+   front-loaded steps as Ask's. Engaged (hover, keyboard focus, a press, or
+   doing stuff) the light runs round the whole rim and the chord turns lime.
+   The accent is the raw token, mixed with nothing; only the partner steps
+   toward the hairline. The partner is the lime part way to its deep ink in
+   light, so a pale head sits on a darker tail, and part way to the key in
+   dark, so the light still falls off before the word.
+
+   It gives way by the braindump's width (the `braindump` container,
+   braindump.tsx), so the header's title and controls keep their room down to
+   the 280px minimum: the chord goes first, then the word, leaving the 32px
+   key with the light caught on the bolt. */
+@property --do-key-hold {
+  syntax: '<length-percentage>';
+  inherits: false;
+  initial-value: 12px;
+}
+@property --do-key-tail {
+  syntax: '<length-percentage>';
+  inherits: false;
+  initial-value: 19px;
+}
+@property --do-key-reach {
+  syntax: '<length-percentage>';
+  inherits: false;
+  initial-value: 43px;
+}
+[data-do-key] {
+  --do-key-accent: var(--lime-solid);
+  --do-key-pair: color-mix(in oklch, var(--lime-solid), var(--lime-ink) 45%);
+  --do-key-rim: color-mix(in oklab, var(--surface-2), var(--foreground) 9%);
+  --do-key-fill: var(--surface-2);
+  /* The bolt's centre: the 1px border, 8px padding and half the 14px glyph;
+     a hair above the middle, which is the face's, not the skirt's. */
+  --do-key-x: 16px;
+  --do-key-hold: 12px;
+  --do-key-tail: 19px;
+  --do-key-reach: 43px;
+  padding: 0 5px 0 8px;
+  border: 1px solid transparent;
+  border-bottom-width: 3px;
+  background:
+    linear-gradient(var(--do-key-fill), var(--do-key-fill)) padding-box,
+    radial-gradient(
+        circle at var(--do-key-x) calc(50% - 1px) in oklab,
+        var(--do-key-accent) 0px,
+        var(--do-key-accent) var(--do-key-hold),
+        var(--do-key-pair) var(--do-key-tail),
+        color-mix(in oklab, var(--do-key-pair) 58%, var(--do-key-rim))
+          calc(var(--do-key-tail) + (var(--do-key-reach) - var(--do-key-tail)) * 0.25),
+        color-mix(in oklab, var(--do-key-pair) 30%, var(--do-key-rim))
+          calc(var(--do-key-tail) + (var(--do-key-reach) - var(--do-key-tail)) * 0.5),
+        color-mix(in oklab, var(--do-key-pair) 12%, var(--do-key-rim))
+          calc(var(--do-key-tail) + (var(--do-key-reach) - var(--do-key-tail)) * 0.75),
+        var(--do-key-rim) var(--do-key-reach)
+      )
+      border-box;
+  box-shadow: var(--shadow-key-rest);
+  transition:
+    --do-key-hold 160ms var(--ease-fade),
+    --do-key-tail 160ms var(--ease-fade),
+    --do-key-reach 160ms var(--ease-fade),
+    box-shadow 150ms var(--ease-out-soft),
+    translate 60ms var(--ease-out-soft),
+    border-bottom-width 60ms var(--ease-out-soft);
+}
+.dark [data-do-key] {
+  --do-key-pair: color-mix(in oklab, var(--lime-solid), var(--surface-2) 40%);
+  --do-key-rim: color-mix(in oklab, var(--surface-2), var(--foreground) 7%);
+}
+/* The bolt: drawn in the deep partner at rest, filled with the accent and
+   outlined in the partner engaged, so in light the lime keeps an edge. */
+[data-do-key-bolt] {
+  color: var(--do-key-pair);
+  fill: var(--do-key-pair);
+  transition: fill 160ms var(--ease-fade);
+}
+/* In dark the bolt glows at rest: the accent itself. */
+.dark [data-do-key-bolt] {
+  color: var(--do-key-accent);
+  fill: var(--do-key-accent);
+}
+[data-do-key-chord] {
+  color: var(--ink-2);
+  background-color: color-mix(in oklab, var(--surface-2), var(--foreground) 6%);
+  transition:
+    background-color 160ms var(--ease-fade),
+    color 160ms var(--ease-fade);
+}
+
+/* Engaged. Hover is pointer-only, so a tap never leaves it lit. */
+@media (hover: hover) {
+  [data-do-key]:hover {
+    --do-key-hold: 30px;
+    --do-key-tail: 54px;
+    --do-key-reach: 92px;
+    transition-duration: 240ms, 240ms, 240ms, 150ms, 60ms, 60ms;
+  }
+  [data-do-key]:hover [data-do-key-bolt] {
+    fill: var(--do-key-accent);
+  }
+  [data-do-key]:hover [data-do-key-chord] {
+    color: var(--lime-ink);
+    background-color: var(--lime-solid);
+  }
+}
+[data-do-key]:is(:focus-visible, :active, [data-on='true']) {
+  --do-key-hold: 30px;
+  --do-key-tail: 54px;
+  --do-key-reach: 92px;
+}
+[data-do-key]:is(:focus-visible, :active, [data-on='true']) [data-do-key-bolt] {
+  fill: var(--do-key-accent);
+}
+[data-do-key]:is(:focus-visible, :active, [data-on='true']) [data-do-key-chord] {
+  color: var(--lime-ink);
+  background-color: var(--lime-solid);
+}
+/* Pressed, and held down while doing stuff: the key sinks 2px into its skirt. */
+[data-do-key]:is(:active, [data-on='true']) {
+  translate: 0 2px;
+  border-bottom-width: 1px;
+  box-shadow: var(--shadow-key-pressed);
+}
+[data-do-key]:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+/* Giving way: the chord first, then the word. */
+@container braindump (width < 360px) {
+  [data-do-key-chord] {
+    display: none;
+  }
+  [data-do-key] {
+    padding-right: 9px;
+  }
+}
+@container braindump (width < 330px) {
+  [data-do-key-word] {
+    display: none;
+  }
+  [data-do-key] {
+    --do-key-x: 50%;
+    --do-key-hold: 6px;
+    --do-key-tail: 10px;
+    --do-key-reach: 24px;
+    width: 32px;
+    padding: 0;
+    justify-content: center;
+  }
+  [data-do-key]:is(:focus-visible, :active, [data-on='true']) {
+    --do-key-hold: 14px;
+    --do-key-tail: 26px;
+    --do-key-reach: 44px;
+  }
+}
+@container braindump (width < 330px) {
+  @media (hover: hover) {
+    [data-do-key]:hover {
+      --do-key-hold: 14px;
+      --do-key-tail: 26px;
+      --do-key-reach: 44px;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-do-key],
+  [data-do-key] * {
+    transition: none !important;
+  }
+}
+[data-reduce-motion='true'] [data-do-key],
+[data-reduce-motion='true'] [data-do-key] * {
+  transition: none !important;
 }
 
 /* ─── Notices in place ────────────────────────────────────────────────────────

@@ -150,6 +150,8 @@ export function formatKeys(keys: string[], isMac: boolean): string[] {
         return 'Space';
       case 'backspace':
         return isMac ? '⌫' : 'Backspace';
+      case 'enter':
+        return isMac ? '↵' : 'Enter';
       default:
         return key.length === 1 ? key.toUpperCase() : key.charAt(0).toUpperCase() + key.slice(1);
     }

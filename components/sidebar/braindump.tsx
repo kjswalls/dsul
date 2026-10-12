@@ -39,7 +39,7 @@ import {
   useGoalFilterIds,
   useOrganizeEnabled,
 } from '@/lib/extension-gates';
-import { DoStuffList, DoStuffRow, SizeControl, wantsDoStuffRow } from '@/components/sidebar/do-stuff';
+import { DoStuffKey, DoStuffList, DoStuffRow, SizeControl, wantsDoStuffRow } from '@/components/sidebar/do-stuff';
 import { useDoStuffStore } from '@/lib/do-stuff';
 import { groupRows, type RowGroup } from '@/lib/grouping';
 import { isRowCompletedOn, orderRows } from '@/lib/sort-rows';
@@ -871,7 +871,9 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
       // scope (app/globals.css). Not inert here: the section's scroller, notice
       // slot and quick-add stay live, and the rows below carry their own.
       data-preview={previewing ? 'true' : undefined}
-      className="flex min-h-0 flex-1 flex-col gap-2"
+      // `@container/braindump`: the do stuff key gives way by this width
+      // (globals.css, "The do stuff key").
+      className="@container/braindump flex min-h-0 flex-1 flex-col gap-2"
     >
       {/* Header — the shared double-card capsule (SurfaceHeader). The phone
           shell insets it off the screen edge; the sidebar column has no gutter
@@ -937,6 +939,9 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
             constrains its 240px panel. The shelf under the pill is the one
             part of the Display surface that spends the column's width, and it
             wraps rather than overflow. */}
+        {/* Do stuff's key: first of the controls, so the title gives way to it
+            and it gives way, by the column's width, before they do. */}
+        {showDoStuffRow && <DoStuffKey touch={isMobile} />}
         <span className={cn('flex', isMobile && '[&>button]:size-7')}>
           <DisplayMenu ref={displayRef} surface="braindump" trigger="icon" align="start" />
         </span>
@@ -993,7 +998,7 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
           falls back to the dock's line by itself. */}
       <NoticeSlot anchor="braindump" className={cn(isMobile ? 'mx-[10px]' : 'px-[6px]')} />
 
-      {/* Do stuff's row: below the header, above the list (design board C). */}
+      {/* Do stuff's row while it runs: below the header, above the list. */}
       {showDoStuffRow && <DoStuffRow rows={doStuffRows} />}
 
       {/* List — sits directly on the paper backdrop, no card. A plain

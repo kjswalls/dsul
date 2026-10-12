@@ -126,7 +126,7 @@ const key = () => opener()?.querySelector<HTMLElement>('[data-ask-key]') ?? null
 const mark = () => opener()?.querySelector<SVGElement>('[data-ask-mark]') ?? null;
 
 describe('when it shows', () => {
-  it('shows, Ask closed by default, as the key "Ask" and the chord beside it, named for what it does', () => {
+  it('shows, Ask closed by default, as the keycap "Ask" with the chord on it, named for what it does', () => {
     expect(useSidebarStore.getState().askOpen).toBe(false);
     renderRow();
     const button = screen.getByRole('button', { name: 'Open Ask' });
@@ -142,10 +142,10 @@ describe('when it shows', () => {
     // Clickable in the desktop app's drag band, at the row's far end.
     expect(button).toHaveClass('titlebar-hole');
     expect(pill()).toHaveClass('ml-auto');
-    // The key holds the mark and the word; the chord is printed beside it, on the plate.
-    expect(key()).toHaveTextContent(/^Ask$/);
+    // The key holds the mark, the word and the chord, printed on it.
+    expect(key()).toHaveTextContent(`Ask${chordLabel(['meta', 'j'], false)}`);
     expect(key()).toContainElement(mark() as unknown as HTMLElement);
-    expect(button.querySelector('[data-ask-opener-chord]')?.closest('[data-ask-key]')).toBeNull();
+    expect(button.querySelector('[data-ask-opener-chord]')?.closest('[data-ask-key]')).toBe(key());
     // The mark is decorative: the button is named by its label, not by a picture.
     expect(mark()).toHaveAttribute('aria-hidden', 'true');
     expect(button.querySelector('[data-ask-opener-chord]')).toHaveAttribute('aria-hidden');
@@ -160,13 +160,13 @@ describe('when it shows', () => {
     // The capsule (Classic): the rail row sits mt-2 under the capsule's p-2;
     // the 48px plate's py-2 puts its 32px key there from the row's top.
     expect(pill()).toHaveClass('mt-0');
-    expect(opener()).toHaveClass('h-12', 'py-2');
+    expect(opener()).toHaveClass('h-12', 'p-2');
     expect(key()).toHaveClass('h-8');
     // The plain and masthead headers: the rail row at the top, the 40px
     // plate's py-1 under a -4px margin, and the key drawn on the page.
     act(() => useLookStore.setState({ layout: 'writer' }));
     expect(pill()).toHaveClass('-mt-1');
-    expect(opener()).toHaveClass('h-10', 'py-1');
+    expect(opener()).toHaveClass('h-10', 'p-1');
     act(() => useLookStore.setState({ layout: 'notebook' }));
     expect(pill()).toHaveClass('-mt-1');
   });
@@ -231,13 +231,13 @@ describe('when it shows', () => {
 });
 
 describe('unlit: nothing answers, and the gate offers to set AI up or fix it', () => {
-  it('reads "Set up AI" while the gate invites: the same key, unlit, named for its word, the chord beside it', () => {
+  it('reads "Set up AI" while the gate invites: the same key, unlit, named for its word, the chord on it', () => {
     seed(NOTHING_CONNECTED);
     renderRow();
     const button = screen.getByRole('button', { name: 'Set up AI' });
     expect(button).toBe(opener());
     expect(button).toHaveAttribute('title', 'Set up AI (Ctrl+J)');
-    expect(key()).toHaveTextContent(/^Set up AI$/);
+    expect(key()).toHaveTextContent(/^Set up AICtrl\+J$/);
     // The chord from day one: no "Set up" note in its place.
     expect(button.querySelector('[data-ask-opener-chord]')).toHaveTextContent(/^Ctrl\+J$/);
     expect(button).toHaveAttribute('data-form', 'full');
@@ -262,7 +262,7 @@ describe('unlit: nothing answers, and the gate offers to set AI up or fix it', (
     const button = screen.getByRole('button', { name: 'Fix AI' });
     expect(button).toHaveAttribute('title', 'Fix AI (Ctrl+J)');
     expect(button).toHaveAttribute('data-tour', 'ask-key');
-    expect(key()).toHaveTextContent(/^Fix AI$/);
+    expect(key()).toHaveTextContent(/^Fix AICtrl\+J$/);
     expect(button).toHaveAttribute('data-lit', 'false');
     expect(mark()).toHaveAttribute('data-lit', 'false');
     // A connection saved with no model picked needs the fix too.
@@ -680,14 +680,14 @@ describe('room on the header row', () => {
     expect(key()).toHaveClass('h-8', 'pr-[11px]', 'pl-[9px]', 'rounded-[10px]');
     expect(key()).not.toHaveClass('w-8');
     // The capsule's plate: 48px, 8px round the key on every side, the key on the date's line.
-    expect(button).toHaveClass('h-12', 'rounded-[10px]', 'py-2', 'pl-2', 'pr-2');
-    expect(button).not.toHaveClass('size-8', 'pr-2.5');
+    expect(button).toHaveClass('h-12', 'rounded-[10px]', 'p-2');
+    expect(button).not.toHaveClass('size-8');
     expect(pill()).toHaveClass('mt-0');
     // Drawn on the page: the 40px plate, 4px round the key, and the 14px inset.
     for (const layout of ['notebook', 'notepad', 'writer'] as const) {
       act(() => useLookStore.setState({ layout }));
       expect(opener(), layout).toHaveAttribute('data-form', 'key');
-      expect(opener(), layout).toHaveClass('h-10', 'rounded-[12px]', 'py-1', 'pl-1', 'pr-1', 'mr-3.5');
+      expect(opener(), layout).toHaveClass('h-10', 'rounded-[12px]', 'p-1', 'mr-3.5');
       expect(opener(), layout).not.toHaveClass('pr-2');
       expect(key(), layout).toHaveClass('rounded-[8px]');
       expect(pill(), layout).toHaveClass('-mt-1');
@@ -857,18 +857,27 @@ describe('room on the header row', () => {
     expect(pill()).toHaveAttribute('data-fit', 'full');
 
     // 7px short (a 485px row, 99px of room): the slot squeezes the button
-    // to 99px. It still draws its chord out to 96px, with 10px of end
-    // padding past that (106 whole), but its scrollWidth says 96, which
+    // to 99px. It still draws its key out to 118px, with 10px of end
+    // padding past that (128 whole), but its scrollWidth says 96, which
     // would "fit" in 99.
     layOut(485, 374);
     const button = opener() as HTMLButtonElement;
     button.style.paddingRight = '10px';
     Object.defineProperty(button, 'scrollWidth', { configurable: true, get: () => 96 });
     button.getBoundingClientRect = () => ({ left: 1000, right: 1099, width: 99 }) as DOMRect;
-    (key() as HTMLElement).getBoundingClientRect = () => ({ left: 1008, right: 1072, width: 64 }) as DOMRect;
+    // The chord is printed on the key, so the key is the last child: whole,
+    // its far edge is past the chord (46px after a 6px gap) and its 5px end
+    // padding; as the key form it ends 11px past "Ask", 72px in.
+    const k = key() as HTMLElement;
+    expect(button.lastElementChild).toBe(k);
+    k.style.columnGap = '6px';
+    k.style.paddingRight = '5px';
+    k.getBoundingClientRect = () => {
+      const right = k.querySelector('[data-ask-opener-chord]') ? 1072 - 11 + 6 + 46 + 5 : 1072;
+      return { left: 1008, right, width: right - 1008 } as DOMRect;
+    };
     const chord = button.querySelector('[data-ask-opener-chord]') as HTMLElement;
-    expect(button.lastElementChild).toBe(chord);
-    chord.getBoundingClientRect = () => ({ left: 1050, right: 1096, width: 46 }) as DOMRect;
+    chord.getBoundingClientRect = () => ({ left: 1067, right: 1113, width: 46 }) as DOMRect;
     resized();
     // Not whole: the key without its chord (80px, read off the whole button) fits.
     expect(pill()).toHaveAttribute('data-fit', 'key');
@@ -883,22 +892,30 @@ describe('room on the header row', () => {
     const button = opener() as HTMLButtonElement;
     /**
      * Laid out (in layout's 1/64px units, as a browser reports them): the
-     * key's far edge 73.640625px in, the chord's 96.375px; the scrollWidth
-     * rounded up.
+     * key form's far edge 73.640625px in, the whole key's past its 46.375px
+     * chord; the scrollWidth rounded up.
      */
     const drawAt = (room: number, endPad: string, scroll: number) => {
       layOut(374 + 12 + room, 374);
       button.style.paddingRight = endPad;
       Object.defineProperty(button, 'scrollWidth', { configurable: true, get: () => scroll });
       button.getBoundingClientRect = () => ({ left: 1000, right: 1000 + room, width: room }) as DOMRect;
-      (key() as HTMLElement).getBoundingClientRect = () => ({ left: 1008, right: 1073.640625, width: 65.640625 }) as DOMRect;
+      const k = key() as HTMLElement;
       const chord = button.querySelector('[data-ask-opener-chord]');
-      if (chord) chord.getBoundingClientRect = () => ({ left: 1050, right: 1096.375, width: 46.375 }) as DOMRect;
+      // Whole, the chord (46.375px) is printed on the key after a 6px gap,
+      // with 5px of end padding beside it; the key form ends 11px past "Ask".
+      k.style.columnGap = '6px';
+      k.style.paddingRight = chord ? '5px' : '11px';
+      k.getBoundingClientRect = () => {
+        const right = k.querySelector('[data-ask-opener-chord]') ? 1073.640625 - 11 + 6 + 46.375 + 5 : 1073.640625;
+        return { left: 1008, right, width: right - 1008 } as DOMRect;
+      };
+      if (chord) chord.getBoundingClientRect = () => ({ left: 1068.640625, right: 1115.015625, width: 46.375 }) as DOMRect;
       resized();
       return pill()?.dataset.fit;
     };
-    // 106.375px whole: that much room holds it, though the scrollWidth says 107.
-    expect(drawAt(106.375, '10px', 107)).toBe('full');
+    // 128.015625px whole: that much room holds it, though the scrollWidth says 129.
+    expect(drawAt(128.015625, '8px', 129)).toBe('full');
     // 81.640625px as the key, read off the whole button and then off the key
     // form alike (its well even, 8px), though the key form's scrollWidth says 82.
     expect(drawAt(81.640625, '8px', 82)).toBe('key');
@@ -975,7 +992,7 @@ describe('room on the header row', () => {
     renderRow();
     const button = opener() as HTMLElement;
     /** How much wider each form draws with the longer word. */
-    const extra = () => (key()?.textContent === 'Set up AI' ? 54 : 0);
+    const extra = () => (key()?.textContent?.startsWith('Set up AI') ? 54 : 0);
     const draw = (room: number) => {
       layOut(374 + 12 + room, 374);
       Object.defineProperty(button, 'scrollWidth', {

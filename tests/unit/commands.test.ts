@@ -158,6 +158,7 @@ describe('command registry', () => {
       'week_columns_narrower',
       'week_columns_reset',
       'toggle_zen',
+      'do_stuff',
     ];
     const actual = DEFAULT_SHORTCUTS.map((s) => s.id);
     for (const id of expected) expect(actual).toContain(id);

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronRight, X } from 'lucide-react';
+import { ChevronRight, X, Zap } from 'lucide-react';
 import { Button, ButtonKey } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -32,6 +32,8 @@ import {
   useDoStuffStore,
 } from '@/lib/do-stuff';
 import type { Task } from '@/lib/planner-types';
+import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
+import { chordLabel, isApplePlatform } from '@/lib/commands/keys';
 import { cn } from '@/lib/utils';
 
 /**
@@ -73,11 +75,11 @@ function Cap({ children }: { children: React.ReactNode }) {
   );
 }
 
-/* ── the row that starts it (C) ───────────────────────────────────────── */
+/* ── the key that starts it ──────────────────────────────────────────── */
 
 /**
- * Whether the row shows at all. A short, unsized braindump reads fine as it
- * is, and a fresh account must see the braindump it always saw; the row
+ * Whether the key (and, once it is pressed, the row) shows at all. A short, unsized braindump reads fine as it
+ * is, and a fresh account must see the braindump it always saw; the key
  * arrives once the list is long enough to need it, or once something is sized.
  */
 export function wantsDoStuffRow(rows: readonly RowItem[]): boolean {
@@ -85,42 +87,72 @@ export function wantsDoStuffRow(rows: readonly RowItem[]): boolean {
   return open.length >= DO_STUFF_MIN_OPEN || open.some((r) => itemSizeOf(r.item));
 }
 
+/**
+ * The do stuff key: a small keycap in the braindump's header, the twin of
+ * Ask's (components/ai/rail/ask-opener.tsx). The bolt is its light: at rest the
+ * rim is lit over the bolt's corner and steps down to the hairline before the
+ * word, and engaged (hover, focus, press, or doing stuff) the light runs round
+ * the whole rim and the chord turns lime. The CSS is app/globals.css, "The do
+ * stuff key".
+ *
+ * It gives way to the header's title and controls by the braindump's own
+ * width (the `braindump` container): the key with its chord, then without it,
+ * then the bolt alone at the 280px minimum. No chord on the phone, where there
+ * is no keyboard to press it on. The chord is the live `do_stuff` binding,
+ * never typed by hand.
+ */
+export function DoStuffKey({ touch }: { touch?: boolean }) {
+  const on = useDoStuffStore((s) => s.on);
+  const keys = useShortcutKeys('do_stuff');
+  const isMac = useMemo(() => isApplePlatform(), []);
+  const chord = chordLabel(keys, isMac);
+  return (
+    <button
+      type="button"
+      data-do-key=""
+      data-on={on ? 'true' : undefined}
+      data-testid="do-stuff-start"
+      aria-pressed={on}
+      aria-label={on ? 'Stop doing stuff' : 'Do stuff'}
+      title={`${on ? 'Stop doing stuff' : 'Do stuff'} (${chord})`}
+      onClick={() => {
+        const s = useDoStuffStore.getState();
+        if (s.on) s.stop();
+        else s.start();
+      }}
+      className="titlebar-hole flex h-8 shrink-0 cursor-pointer items-center gap-[7px] rounded-[8px] text-[12px] leading-[17px] font-medium whitespace-nowrap text-foreground"
+    >
+      <Zap aria-hidden data-do-key-bolt="" className="size-3.5 shrink-0" />
+      <span data-do-key-word="">do stuff</span>
+      {!touch && (
+        <kbd
+          aria-hidden
+          data-do-key-chord=""
+          className="inline-flex h-[18px] items-center rounded-[5px] px-[5px] font-sans text-[11px] leading-none font-medium tabular-nums"
+        >
+          {chord}
+        </kbd>
+      )}
+    </button>
+  );
+}
+
+/* ── the row while doing stuff ────────────────────────────────────────── */
+
 export function DoStuffRow({ rows }: { rows: readonly RowItem[] }) {
   const on = useDoStuffStore((s) => s.on);
   const doneCount = useDoStuffStore((s) => s.doneCount);
   const skipped = useDoStuffStore((s) => s.skipped);
-  const { start, stop } = useDoStuffStore.getState();
+  const { stop } = useDoStuffStore.getState();
 
   const { sized } = useMemo(() => bySize(rows), [rows]);
-  const counts = SIZES.map((s) => ({ ...s, n: sized[s.key].filter(isOpen).length }));
   const next = on ? nextUp(sized, isOpen, skipped) : undefined;
   const nextSize = next ? itemSizeOf(next.item) : undefined;
   const left = nextSize ? sized[nextSize].filter(isOpen).length : 0;
 
-  if (!on) {
-    return (
-      <button
-        type="button"
-        onClick={start}
-        data-testid="do-stuff-start"
-        className="group/do mx-[14px] flex h-[34px] shrink-0 items-center gap-2 rounded-[8px] border border-border px-3 text-left text-sm font-medium text-foreground hover-wash"
-      >
-        do stuff
-        <span className="font-num ml-auto flex items-center gap-2.5 text-[11.5px] text-muted-foreground">
-          {counts
-            .filter((c) => c.n > 0)
-            .map((c) => (
-              <span key={c.key} className="flex items-center gap-1">
-                <SizeDot size={c.key} />
-                {c.n}
-                {/* Names on hover: the dots alone are a legend you have to learn. */}
-                <span className="hidden group-hover/do:inline group-focus-visible/do:inline">{c.plural}</span>
-              </span>
-            ))}
-        </span>
-      </button>
-    );
-  }
+  // Started from the key in the header (DoStuffKey) or its chord; off, there
+  // is no row.
+  if (!on) return null;
 
   // On: the dots become progress through the size being walked, filled for
   // what was done this run and hollow for what is left, eight at most.
