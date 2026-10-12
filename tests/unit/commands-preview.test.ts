@@ -109,6 +109,7 @@ const GATED_DURING_PREVIEW: Record<string, boolean> = {
   'make.write-mod': false,
   'rituals.eod': true,
   'workspace.toggleChat': false,
+  'workspace.doStuff': false,
   'workspace.toggleSidebar': false,
   'workspace.focusItemPanel': false,
   'workspace.focusOmnibar': false,
