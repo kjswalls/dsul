@@ -248,7 +248,7 @@ const SizeHead = ({ color, label, count }: { color: string; label: string; count
 const DoStuff: Scene = () => (
   <div className={s.stage}>
     <div className={s.col} style={{ gap: '0.4em' }}>
-      <SizeHead color="var(--size-quick)" label="quick" count={3} />
+      <SizeHead color="var(--foreground)" label="do now" count={3} />
       <div className={s.row}>
         <span className={cn(s.box, s.done, s.tick)}>{CHECK}</span>
         <span className={s.strike}>Email the landlord</span>
@@ -258,8 +258,8 @@ const DoStuff: Scene = () => (
         <span className={s.box}>{CHECK}</span>
         <span>Book a haircut</span>
       </div>
-      <SizeHead color="var(--size-errand)" label="errands" count={2} />
-      <SizeHead color="var(--size-big)" label="big" count={4} />
+      <SizeHead color="var(--size-errand)" label="on the calendar" count={2} />
+      <SizeHead color="var(--size-fuzzy)" label="handed off" count={1} />
     </div>
   </div>
 );

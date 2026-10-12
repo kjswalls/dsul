@@ -4297,3 +4297,21 @@ body {
 [data-reduce-motion='true'] .do-stuff-rule::after {
   display: none;
 }
+/* A lane header pops in as the rows shuffle into place (do-stuff.tsx
+   useShuffle). Scale only, never opacity: the done-for-you dot is lime. */
+.do-stuff-pop {
+  animation: do-stuff-pop 0.22s cubic-bezier(0.3, 1.6, 0.5, 1) var(--pop-delay, 0ms) both;
+}
+@keyframes do-stuff-pop {
+  from {
+    transform: scale(0.6);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .do-stuff-pop {
+    animation: none;
+  }
+}
+[data-reduce-motion='true'] .do-stuff-pop {
+  animation: none;
+}

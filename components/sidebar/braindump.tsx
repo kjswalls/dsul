@@ -39,7 +39,7 @@ import {
   useGoalFilterIds,
   useOrganizeEnabled,
 } from '@/lib/extension-gates';
-import { DoStuffKey, DoStuffList, DoStuffRow, SizeControl, wantsDoStuffRow } from '@/components/sidebar/do-stuff';
+import { DoStuffKey, DoStuffList, DoStuffRow, wantsDoStuffRow } from '@/components/sidebar/do-stuff';
 import { useDoStuffStore } from '@/lib/do-stuff';
 import { groupRows, type RowGroup } from '@/lib/grouping';
 import { isRowCompletedOn, orderRows } from '@/lib/sort-rows';
@@ -479,7 +479,8 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
   const organizeOn = useOrganizeEnabled();
   /**
    * Do stuff (lib/do-stuff.ts). Switched off, the braindump is exactly the old
-   * list: no row, no size control, and a walk in progress ends.
+   * list: no key, no strip, and a run in progress ends. At rest it draws
+   * nothing on the rows (no size dots, no lane chips).
    */
   const doStuffOn = useDoStuffEnabled();
   const doingStuff = useDoStuffStore((s) => s.on) && doStuffOn;
@@ -806,18 +807,16 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
   // The first incoming row scrolls itself into view, so a slot below the fold
   // still shows. Only one: several revealing at once would fight.
   const firstLanding = grouped.flatMap((g) => g.rows).find((r) => landingIds.has(r.item.id))?.item.id;
-  const sizeControl = (row: RowItem) =>
-    doStuffOn && row.itemType === 'task' ? <SizeControl item={row.item} /> : undefined;
   const renderRow = (row: RowItem) =>
     landingIds.has(row.item.id) ? (
       <LandingRow key={row.item.id} title={row.item.title} reveal={row.item.id === firstLanding} />
     ) : (
-      <TaskRow key={row.item.id} row={row} context="braindump" trailing={sizeControl(row)} />
+      <TaskRow key={row.item.id} row={row} context="braindump" />
     );
 
   /**
    * The list Do stuff sorts: what the braindump shows, in its order, with the
-   * Display grouping set aside (sizes are the grouping while it runs). Built
+   * Display grouping set aside (lanes are the grouping while it runs). Built
    * from `rows`, not `shownRows`: a drag's landing preview is not something to
    * walk to.
    */
@@ -1016,6 +1015,7 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
           to nothing. */}
       <div
         ref={listRef}
+        data-braindump-list=""
         className={cn(
           'min-h-0 overflow-y-auto overflow-x-hidden rounded-card transition-colors',
           // Fill the column only when there is genuinely nothing here — a

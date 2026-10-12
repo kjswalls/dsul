@@ -73,7 +73,7 @@ interface TaskRowProps {
   date?: Date;
   /**
    * The braindump's own trailing control, at the row's right edge after the
-   * hover capsule: the Do stuff size control (components/sidebar/do-stuff.tsx).
+   * hover capsule: Do stuff's lane chip (components/sidebar/do-stuff.tsx).
    * Drawn only in the braindump, where the quiet rail is gated off and the
    * edge is free.
    */

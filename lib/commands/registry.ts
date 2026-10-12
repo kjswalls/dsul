@@ -1088,10 +1088,10 @@ export const STATIC_COMMANDS: Command[] = [
     // Static, like Toggle Zen's: the shortcuts table renders this label.
     label: 'Do stuff',
     dynamicLabel: () => (useDoStuffStore.getState().on ? 'Stop doing stuff' : 'Do stuff'),
-    description: 'Walk the braindump, quickest things first',
+    description: 'Sort the braindump into a plan in lanes',
     group: 'workspace',
     icon: Zap,
-    keywords: 'do stuff power mode start go work through braindump quick wins',
+    keywords: 'do stuff power mode start go work through braindump quick wins plan lanes calendar hand off',
     // The do stuff key in the braindump's header prints this chord. Not in an
     // input: there ⌘↵ is the field's own submit (the omnibar, the item
     // dialog, bulk add).
