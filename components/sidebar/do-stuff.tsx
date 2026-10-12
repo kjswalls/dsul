@@ -1,64 +1,76 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronRight, X, Zap } from 'lucide-react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Check, ChevronDown, X, Zap } from 'lucide-react';
 import { Button, ButtonKey } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { TaskRow, type RowItem } from '@/components/primitives/task-row';
 import { isRowCompletedOn } from '@/lib/sort-rows';
-import {
-  bySize,
-  guessSize,
-  itemSizeOf,
-  nextUp,
-  sizeDef,
-  sizeForDigit,
-  SIZES,
-  type ItemSize,
-} from '@/lib/item-size';
+import { itemSizeOf } from '@/lib/item-size';
 import {
   DO_STUFF_MIN_OPEN,
   doneNext,
+  makeItSo,
   putOnToday,
-  setSize,
-  setSizes,
   skipNext,
+  takeShuffleFrom,
   useDoStuffStore,
 } from '@/lib/do-stuff';
-import type { Task } from '@/lib/planner-types';
+import {
+  LANES,
+  laneDef,
+  laneForDigit,
+  laneOf,
+  laneOffered,
+  nextNow,
+  placeOnDays,
+  stepLane,
+  type Lane,
+  type LaneFacts,
+} from '@/lib/do-stuff-plan';
+import { canHandOff, delegateName } from '@/lib/agent-handoff';
+import { useAICapabilities } from '@/lib/ai-connection-store';
+import { inactiveItemIdsOn } from '@/lib/active';
+import { useAwayStore } from '@/lib/away-store';
+import { usePlannerStore } from '@/lib/planner-store';
+import { toDateStr } from '@/lib/recurrence';
+import { addDaysStr } from '@/lib/container-schedule';
+import { prefersReducedMotion } from '@/lib/zen-transition';
 import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
 import { chordLabel, isApplePlatform } from '@/lib/commands/keys';
 import { cn } from '@/lib/utils';
 
 /**
- * Do stuff: the braindump sorted by size and walked quick-first.
+ * Do stuff: the braindump sorted into a plan in lanes, then walked
+ * (memory/plans/power-mode.md, build order 2).
  *
- * Four pieces, each drawn from the design boards (memory/handoffs/
- * stale-braindump.md): the hairline row that starts it (C), the size section
- * headers with a dot and a tinted hairline (H2), the next thing lifted in place
- * inside its section with its actions under it (N2), and unsized things sized
- * in place, guess outlined (S1). The size menu on a row (S2) is SizeControl.
+ * The key in the header starts it, and the rows shuffle from where they stood
+ * into their lanes (lib/do-stuff-plan.ts decides which). Each row carries a
+ * lane chip, shown on hover; the number keys move the row under the pointer or
+ * focus, and a swipe moves it on the phone. "Do now" lifts its next thing in
+ * place with its actions under it, and the strip above the list carries "make
+ * it so", which puts the calendar lane on its days and hands the handed-off
+ * lane to the agent.
  *
- * Colour lives only in 6px dots and the header hairline, the row rail's rule
- * (pills.tsx). The lime appears as the quick size's dot, the Enter keycap and
- * the "on" ring, and never under anything whose opacity changes.
+ * Nothing shows at rest: no size dots, no chips. Colour lives only in 6px dots
+ * and the lane headers' hairlines, the row rail's rule (pills.tsx). The lime
+ * appears as the done-for-you dot, the Enter keycap and the "on" ring, and
+ * never under anything whose opacity changes.
  */
 
 const isOpen = (row: RowItem) => !isRowCompletedOn(row, null);
 
-function SizeDot({ size, hollow, className }: { size: ItemSize | null; hollow?: boolean; className?: string }) {
-  const color = size ? sizeDef(size).color : 'var(--muted-foreground)';
+function Dot({ color, hollow, className }: { color: string; hollow?: boolean; className?: string }) {
   return (
     <span
       aria-hidden
       className={cn('size-1.5 shrink-0 rounded-full', className)}
-      style={hollow || !size ? { boxShadow: `inset 0 0 0 1.5px ${color}` } : { background: color }}
+      style={hollow ? { boxShadow: `inset 0 0 0 1.5px ${color}` } : { background: color }}
     />
   );
 }
@@ -137,47 +149,136 @@ export function DoStuffKey({ touch }: { touch?: boolean }) {
   );
 }
 
-/* ── the row while doing stuff ────────────────────────────────────────── */
+/* ── the plan ─────────────────────────────────────────────────────────── */
+
+interface Plan {
+  lanes: Record<Lane, RowItem[]>;
+  facts: ReadonlyMap<string, LaneFacts>;
+  laneById: ReadonlyMap<string, Lane>;
+  /** The calendar lane's days, by id. */
+  days: ReadonlyMap<string, string>;
+  /** Rows in the handed-off lane the agent does not hold yet. */
+  handOff: readonly string[];
+  todayStr: string;
+}
+
+/**
+ * The rows sorted into lanes. The gates are asked here, at render time, never
+ * re-derived: `canHandOff` is the agent's own queue filter, so a row offered
+ * the handed-off lane is a row the agent will see.
+ */
+function usePlan(rows: readonly RowItem[]): Plan {
+  const moved = useDoStuffStore((s) => s.moved);
+  const { canDelegate } = useAICapabilities();
+  const items = usePlannerStore((s) => s.items);
+  const tz = usePlannerStore((s) => s.userTimezone) ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const routines = usePlannerStore((s) => s.routines);
+  const seasons = usePlannerStore((s) => s.seasons);
+  const away = useAwayStore((s) => s.periods);
+  const todayStr = toDateStr(new Date(), tz);
+
+  return useMemo(() => {
+    const byId = new Map(items.map((i) => [i.id, i]));
+    const inactiveIds = inactiveItemIdsOn(
+      rows.map((r) => byId.get(r.item.id)).filter((i) => i !== undefined),
+      todayStr,
+      { userTimezone: tz, routines, seasons, away }
+    );
+    const lanes: Record<Lane, RowItem[]> = { done: [], now: [], calendar: [], handoff: [], leave: [] };
+    const facts = new Map<string, LaneFacts>();
+    const laneById = new Map<string, Lane>();
+    for (const row of rows) {
+      const item = byId.get(row.item.id);
+      const assignee = item && 'assignee' in item ? item.assignee : undefined;
+      const f: LaneFacts = {
+        plannable: row.itemType === 'task',
+        canHandOff: !!item && canHandOff(item, { canDelegate, todayStr, inactiveIds }),
+        handedOff: !!assignee,
+      };
+      // A done row stays where it was drawn, in its lane, struck through.
+      const lane = laneOf(row.item, f, moved);
+      facts.set(row.item.id, f);
+      laneById.set(row.item.id, lane);
+      lanes[lane].push(row);
+    }
+    const days = placeOnDays(
+      lanes.calendar.filter(isOpen).map((r) => r.item),
+      todayStr
+    );
+    const handOff = lanes.handoff
+      .filter((r) => isOpen(r) && !facts.get(r.item.id)?.handedOff)
+      .map((r) => r.item.id);
+    return { lanes, facts, laneById, days, handOff, todayStr };
+  }, [rows, moved, canDelegate, items, tz, routines, seasons, away, todayStr]);
+}
+
+/** "tomorrow", or the weekday within the week, or "Oct 20". */
+function dayLabel(day: string, todayStr: string): string {
+  if (day === addDaysStr(todayStr, 1)) return 'tomorrow';
+  const [y, m, d] = day.split('-').map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d));
+  for (let n = 2; n < 7; n++) {
+    if (day === addDaysStr(todayStr, n)) return date.toLocaleDateString(undefined, { weekday: 'short', timeZone: 'UTC' });
+  }
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
+
+/* ── the strip while doing stuff ──────────────────────────────────────── */
 
 export function DoStuffRow({ rows }: { rows: readonly RowItem[] }) {
   const on = useDoStuffStore((s) => s.on);
   const doneCount = useDoStuffStore((s) => s.doneCount);
-  const skipped = useDoStuffStore((s) => s.skipped);
   const { stop } = useDoStuffStore.getState();
-
-  const { sized } = useMemo(() => bySize(rows), [rows]);
-  const next = on ? nextUp(sized, isOpen, skipped) : undefined;
-  const nextSize = next ? itemSizeOf(next.item) : undefined;
-  const left = nextSize ? sized[nextSize].filter(isOpen).length : 0;
+  const plan = usePlan(rows);
 
   // Started from the key in the header (DoStuffKey) or its chord; off, there
-  // is no row.
+  // is no strip.
   if (!on) return null;
 
-  // On: the dots become progress through the size being walked, filled for
-  // what was done this run and hollow for what is left, eight at most.
+  const left = plan.lanes.now.filter(isOpen).length;
+  // The dots are progress through "do now": filled for what was done this
+  // run and hollow for what is left, eight at most.
   const filled = Math.min(doneCount, 8);
   const hollow = Math.max(0, Math.min(left, 8 - filled));
-  const label = nextSize
-    ? `${doneCount} done · ${left} ${sizeDef(nextSize).plural} left`
-    : doneCount > 0
-      ? `${doneCount} done`
-      : '';
+  const label = [doneCount > 0 && `${doneCount} done`, left > 0 && `${left} to do now`].filter(Boolean).join(' · ');
+
+  const pending = plan.days.size + plan.handOff.length;
+  const detail = [
+    plan.days.size > 0 && `${plan.days.size} on the calendar`,
+    plan.handOff.length > 0 && `${plan.handOff.length} to ${delegateName()}`,
+  ]
+    .filter(Boolean)
+    .join(', ');
   return (
     <div
       data-testid="do-stuff-on"
       className="mx-[14px] flex h-[34px] shrink-0 items-center gap-2 rounded-[8px] border border-[var(--size-quick)] bg-surface-2 pl-3 pr-1 text-sm font-medium shadow-[0_0_0_3px_color-mix(in_oklab,var(--size-quick)_18%,transparent)]"
     >
-      doing stuff
-      <span className="truncate text-xs font-normal text-muted-foreground">{label}</span>
-      <span aria-hidden className="ml-auto flex shrink-0 items-center gap-[3px]">
+      <span className="shrink-0">doing stuff</span>
+      <span className="min-w-0 truncate text-xs font-normal text-muted-foreground">{label}</span>
+      {/* While there is a plan to make so, its button takes the room. */}
+      <span aria-hidden className={cn('ml-auto shrink-0 items-center gap-[3px]', pending > 0 ? 'hidden' : 'flex')}>
         {Array.from({ length: filled }, (_, i) => (
-          <SizeDot key={`f${i}`} size="quick" />
+          <Dot key={`f${i}`} color="var(--size-quick)" />
         ))}
         {Array.from({ length: hollow }, (_, i) => (
-          <SizeDot key={`h${i}`} size={nextSize ?? 'quick'} hollow />
+          <Dot key={`h${i}`} color="var(--muted-foreground)" hollow />
         ))}
       </span>
+      {pending > 0 && (
+        <Button
+          size="sm"
+          onClick={() => makeItSo({ days: plan.days, handOff: plan.handOff })}
+          data-testid="do-stuff-make-it-so"
+          title={`Make it so: ${detail}`}
+          aria-label={`Make it so: ${detail}`}
+          className="ml-auto h-[26px] shrink-0 gap-1 px-2 text-xs"
+        >
+          <Check aria-hidden className="size-3" />
+          make it so
+          <span className="font-num font-normal opacity-80">{pending}</span>
+        </Button>
+      )}
       <button
         type="button"
         onClick={stop}
@@ -191,48 +292,20 @@ export function DoStuffRow({ rows }: { rows: readonly RowItem[] }) {
   );
 }
 
-/* ── section headers (H2) ─────────────────────────────────────────────── */
+/* ── lane headers ─────────────────────────────────────────────────────── */
 
-function SectionHeader({
-  size,
-  label,
-  count,
-  hint,
-  open,
-  onToggle,
-  index,
-  action,
-}: {
-  size: ItemSize | null;
-  label: string;
-  count: number;
-  hint?: string;
-  open: boolean;
-  onToggle: () => void;
-  index: number;
-  action?: React.ReactNode;
-}) {
-  const color = size ? sizeDef(size).color : 'var(--muted-foreground)';
+function LaneHeader({ lane, count, index }: { lane: Lane; count: number; index: number }) {
+  const def = laneDef(lane);
   return (
-    <div className="flex flex-col">
-      <div className="flex items-center">
-        <button
-          type="button"
-          aria-expanded={open}
-          onClick={onToggle}
-          data-testid={`do-stuff-section-${size ?? 'new'}`}
-          className="flex h-[30px] min-w-0 flex-1 items-center gap-2 rounded-[8px] px-2 text-left text-[13px] hover:bg-accent"
-        >
-          <ChevronRight
-            aria-hidden
-            className={cn('size-3 shrink-0 text-muted-foreground transition-transform', open && 'rotate-90')}
-          />
-          <SizeDot size={size} />
-          <span className="font-semibold">{label}</span>
-          <span className="font-num text-[12.5px] text-muted-foreground">{count}</span>
-          {hint && !action && <span className="ml-auto truncate text-xs text-muted-foreground">{hint}</span>}
-        </button>
-        {action}
+    <div
+      className="do-stuff-pop flex flex-col"
+      style={{ '--pop-delay': `${index * 80}ms` } as React.CSSProperties}
+      data-testid={`do-stuff-lane-${lane}`}
+    >
+      <div className="flex h-[30px] items-center gap-2 px-2 text-[13px]">
+        <Dot color={def.color} />
+        <span className="font-semibold">{def.label}</span>
+        <span className="font-num text-[12.5px] text-muted-foreground">{count}</span>
       </div>
       {/* The tinted hairline, and the one shimmer that runs along it when the
           mode opens (do-stuff-rule in globals.css: once, staggered, and off
@@ -240,18 +313,80 @@ function SectionHeader({
       <div
         aria-hidden
         className="do-stuff-rule mx-1 h-[1.5px] rounded-full"
-        style={
-          {
-            '--rule': color,
-            '--rule-delay': `${index * 80}ms`,
-          } as React.CSSProperties
-        }
+        style={{ '--rule': def.color, '--rule-delay': `${index * 80}ms` } as React.CSSProperties}
       />
     </div>
   );
 }
 
-/* ── the next thing, lifted (N2) ──────────────────────────────────────── */
+/* ── the lane chip ────────────────────────────────────────────────────── */
+
+/**
+ * The row's lane, as a quiet chip in its trailing slot: out of the layout at
+ * rest, so it costs the title nothing, and shown on hover or focus (always on
+ * a touch screen, which has no hover). Opens the lanes this row may take, each
+ * with its number key.
+ */
+function LaneChip({ id, lane, facts }: { id: string; lane: Lane; facts: LaneFacts }) {
+  const move = useDoStuffStore.getState().move;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label={`Lane: ${laneDef(lane).label}. Move to another lane`}
+          data-testid="do-stuff-lane-chip"
+          data-lane={lane}
+          onKeyDown={(e) => e.stopPropagation()}
+          className="-my-1.5 hidden h-[22px] shrink-0 items-center gap-1 rounded-full border border-border px-2 text-[11.5px] whitespace-nowrap text-muted-foreground group-hover:flex group-has-[:focus-visible]:flex hover:text-foreground data-[state=open]:flex [@media(hover:none)]:flex"
+        >
+          {laneDef(lane).label}
+          <ChevronDown aria-hidden className="size-3" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        className="w-[196px]"
+        onKeyDown={(e) => {
+          const picked = laneForDigit(e.key);
+          if (!picked || !laneOffered(picked, facts)) return;
+          e.preventDefault();
+          move(id, picked);
+        }}
+      >
+        {LANES.filter((l) => laneOffered(l.key, facts) || l.key === lane).map((l) => (
+          <DropdownMenuItem
+            key={l.key}
+            onSelect={() => move(id, l.key)}
+            data-testid={`do-stuff-move-${l.key}`}
+            className={cn(lane === l.key && 'font-medium')}
+          >
+            <Dot color={l.color} />
+            {l.label}
+            <span className="ml-auto">
+              <Cap>{l.digit}</Cap>
+            </span>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function Trailing({ id, lane, facts, day, todayStr }: { id: string; lane: Lane; facts: LaneFacts; day?: string; todayStr: string }) {
+  return (
+    <span className="flex items-center gap-1.5">
+      {day && (
+        <span className="whitespace-nowrap text-[11.5px] text-muted-foreground" data-testid="do-stuff-day">
+          {dayLabel(day, todayStr)}
+        </span>
+      )}
+      <LaneChip id={id} lane={lane} facts={facts} />
+    </span>
+  );
+}
+
+/* ── the next thing, lifted ───────────────────────────────────────────── */
 
 /**
  * Focus follows the walk: the card takes focus when it appears, but only if
@@ -266,18 +401,21 @@ function useWalkFocus(ref: React.RefObject<HTMLDivElement | null>, id: string) {
     const list = el.closest('[data-do-stuff-list]');
     if (!active || active === document.body || (list && list.contains(active))) {
       el.focus({ preventScroll: true });
-      el.scrollIntoView({ block: 'nearest' });
+      el.scrollIntoView?.({ block: 'nearest' });
     }
   }, [ref, id]);
 }
 
-function plainKey(e: React.KeyboardEvent): boolean {
-  if (e.metaKey || e.ctrlKey || e.altKey) return false;
-  const t = e.target as HTMLElement;
-  return !(t.isContentEditable || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA');
+function typing(e: { target: EventTarget | null }): boolean {
+  const t = e.target as HTMLElement | null;
+  return !!t && (t.isContentEditable || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT');
 }
 
-function NextCard({ row }: { row: RowItem }) {
+function plainKey(e: React.KeyboardEvent | KeyboardEvent): boolean {
+  return !(e.metaKey || e.ctrlKey || e.altKey) && !typing(e);
+}
+
+function NextCard({ row, trailing }: { row: RowItem; trailing: React.ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   const id = row.item.id;
   useWalkFocus(ref, id);
@@ -299,7 +437,7 @@ function NextCard({ row }: { row: RowItem }) {
       aria-label={`Up next: ${row.item.title}`}
       className="my-1 rounded-[10px] border border-border bg-surface-2 pb-2 shadow-elev-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
-      <TaskRow row={row} context="braindump" trailing={<SizeControl item={row.item as Task} />} />
+      <TaskRow row={row} context="braindump" trailing={trailing} />
       <div className="flex items-center gap-1 pl-[30px] pr-2">
         <Button size="sm" onClick={() => doneNext(id)} data-testid="do-stuff-done" aria-keyshortcuts="Enter">
           done
@@ -330,67 +468,134 @@ function NextCard({ row }: { row: RowItem }) {
   );
 }
 
-/* ── sizing in place (S1) ─────────────────────────────────────────────── */
+/* ── a row in a lane: number keys and the swipe ───────────────────────── */
 
-function SizingCard({ row }: { row: RowItem }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const id = row.item.id;
-  useWalkFocus(ref, id);
-  const guess = guessSize(row.item.title);
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    if (!plainKey(e)) return;
-    const size = sizeForDigit(e.key);
-    if (!size) return;
-    e.preventDefault();
-    setSize(id, size);
+/** How far a finger travels sideways before a swipe moves the row. */
+const SWIPE_PX = 64;
+
+function LaneRow({
+  id,
+  lane,
+  facts,
+  hoveredRef,
+  children,
+}: {
+  id: string;
+  lane: Lane;
+  facts: LaneFacts;
+  hoveredRef: React.RefObject<string | null>;
+  children: React.ReactNode;
+}) {
+  const [dx, setDx] = useState(0);
+  const start = useRef<{ x: number; y: number } | null>(null);
+  const end = () => {
+    start.current = null;
+    setDx(0);
   };
   return (
     <div
-      ref={ref}
-      tabIndex={-1}
-      onKeyDown={onKeyDown}
-      data-testid="do-stuff-sizing"
-      aria-label={`How big is ${row.item.title}?`}
-      className="my-1 rounded-[10px] border border-border bg-surface-2 pb-2 shadow-elev-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      data-lane-row={id}
+      onMouseEnter={() => (hoveredRef.current = id)}
+      onMouseLeave={() => {
+        if (hoveredRef.current === id) hoveredRef.current = null;
+      }}
+      // The phone's swipe: right moves the row a lane up, left a lane down.
+      // Touch only; a mouse drags rows, and long-press is drag on touch.
+      onPointerDown={(e) => {
+        if (e.pointerType === 'touch') start.current = { x: e.clientX, y: e.clientY };
+      }}
+      onPointerMove={(e) => {
+        const s = start.current;
+        if (!s) return;
+        const x = e.clientX - s.x;
+        const y = e.clientY - s.y;
+        if (Math.abs(y) > 24 && Math.abs(y) > Math.abs(x)) return end();
+        setDx(Math.max(-96, Math.min(96, x)));
+      }}
+      onPointerUp={() => {
+        if (Math.abs(dx) >= SWIPE_PX) {
+          const to = stepLane(lane, dx > 0 ? -1 : 1, facts);
+          if (to !== lane) useDoStuffStore.getState().move(id, to);
+        }
+        end();
+      }}
+      onPointerCancel={end}
+      className="touch-pan-y"
+      style={dx ? { transform: `translateX(${dx}px)` } : undefined}
     >
-      <TaskRow row={row} context="braindump" />
-      <div className="grid grid-cols-2 gap-1 pl-[30px] pr-2">
-        {SIZES.map((s) => (
-          <button
-            key={s.key}
-            type="button"
-            onClick={() => setSize(id, s.key)}
-            data-testid={`do-stuff-size-${s.key}`}
-            aria-keyshortcuts={s.digit}
-            className={cn(
-              'flex h-[30px] items-center gap-1.5 rounded-[7px] border bg-surface-2 px-2 text-left text-[12.5px] font-medium hover-wash',
-              guess === s.key ? 'border-[1.5px]' : 'border-border'
-            )}
-            style={guess === s.key ? { borderColor: s.color } : undefined}
-          >
-            <SizeDot size={s.key} />
-            {s.label}
-            {guess === s.key && <span className="text-[11px] font-normal text-muted-foreground">guess</span>}
-            <span className="ml-auto">
-              <Cap>{s.digit}</Cap>
-            </span>
-          </button>
-        ))}
-      </div>
+      {children}
     </div>
   );
 }
 
-/** An unsized row's guess, drawn in the trailing slot while the mode is on. */
-function GuessHint({ title }: { title: string }) {
-  const guess = guessSize(title);
-  if (!guess) return null;
-  return (
-    <span className="flex items-center gap-1 text-[11.5px] text-muted-foreground" data-testid="do-stuff-guess">
-      <SizeDot size={guess} hollow />
-      {sizeDef(guess).label}?
-    </span>
-  );
+/**
+ * The number keys: 1 to 5 move the row that has focus, or else the one under
+ * the pointer, to that lane. Never while typing or with a modifier held, and
+ * never when focus is somewhere other than the list (a dialog, the dock).
+ */
+function useLaneKeys(
+  listRef: React.RefObject<HTMLDivElement | null>,
+  hoveredRef: React.RefObject<string | null>,
+  facts: ReadonlyMap<string, LaneFacts>
+) {
+  const factsRef = useRef(facts);
+  useEffect(() => {
+    factsRef.current = facts;
+  }, [facts]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || !plainKey(e)) return;
+      const lane = laneForDigit(e.key);
+      if (!lane) return;
+      const list = listRef.current;
+      if (!list) return;
+      const active = document.activeElement as HTMLElement | null;
+      let id: string | null | undefined;
+      if (active && active !== document.body) {
+        if (!list.contains(active)) return;
+        id = active.closest<HTMLElement>('[data-lane-row]')?.dataset.laneRow;
+      }
+      id ??= hoveredRef.current;
+      const f = id ? factsRef.current.get(id) : undefined;
+      if (!id || !f || !laneOffered(lane, f)) return;
+      e.preventDefault();
+      useDoStuffStore.getState().move(id, lane);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [listRef, hoveredRef]);
+}
+
+/**
+ * The shuffle: each row flies from where it stood in the braindump to its
+ * place in its lane, lifting and tilting a little on the way, staggered. Once,
+ * when the mode opens, and not under either motion veto.
+ */
+function useShuffle(listRef: React.RefObject<HTMLDivElement | null>) {
+  useLayoutEffect(() => {
+    const from = takeShuffleFrom();
+    const list = listRef.current;
+    if (!from || !list || prefersReducedMotion()) return;
+    list.querySelectorAll<HTMLElement>('[data-lane-row]').forEach((el, i) => {
+      const top = from.get(el.dataset.laneRow ?? '');
+      if (top === undefined || typeof el.animate !== 'function') return;
+      const dy = top - el.getBoundingClientRect().top;
+      const side = i % 2 ? 1 : -1;
+      el.animate(
+        [
+          { transform: `translate(0, ${dy}px)` },
+          {
+            transform: `translate(${side * 12}px, ${dy * 0.5}px) rotate(${side * 1.2}deg) scale(1.02)`,
+            boxShadow: 'var(--shadow-elev-sm)',
+            background: 'var(--surface-2)',
+            offset: 0.45,
+          },
+          { transform: 'none' },
+        ],
+        { duration: 620, delay: i * 25, easing: 'cubic-bezier(.3,.7,.2,1)', fill: 'backwards' }
+      );
+    });
+  }, [listRef]);
 }
 
 /* ── the list ─────────────────────────────────────────────────────────── */
@@ -398,203 +603,64 @@ function GuessHint({ title }: { title: string }) {
 /**
  * The braindump while the mode is on. `rows` is the list as the braindump
  * would draw it, already narrowed by the Display menu and in its order; only
- * the grouping is replaced (by size), never what is in it.
+ * the grouping is replaced (by lane), never what is in it.
  */
 export function DoStuffList({ rows }: { rows: readonly RowItem[] }) {
   const skipped = useDoStuffStore((s) => s.skipped);
-  const opened = useDoStuffStore((s) => s.opened);
-  const toggle = useDoStuffStore.getState().open;
+  const plan = usePlan(rows);
+  const listRef = useRef<HTMLDivElement>(null);
+  const hoveredRef = useRef<string | null>(null);
+  useShuffle(listRef);
+  useLaneKeys(listRef, hoveredRef, plan.facts);
 
-  // Habits never take a size (they recur), so they never wait to be sized.
-  const sizeable = useMemo(() => rows.filter((r) => r.itemType === 'task'), [rows]);
-  const others = useMemo(() => rows.filter((r) => r.itemType !== 'task'), [rows]);
-  const { sized, unsized } = useMemo(() => bySize(sizeable), [sizeable]);
-  const unsizedOpen = unsized.filter(isOpen);
-  const next = nextUp(sized, isOpen, skipped);
-  const nextSize = next ? itemSizeOf(next.item) : undefined;
+  const next = nextNow(plan.lanes.now, isOpen, skipped);
+  const pending = plan.days.size + plan.handOff.length;
+  const trailing = (r: RowItem) => (
+    <Trailing
+      id={r.item.id}
+      lane={plan.laneById.get(r.item.id)!}
+      facts={plan.facts.get(r.item.id)!}
+      day={plan.days.get(r.item.id)}
+      todayStr={plan.todayStr}
+    />
+  );
 
-  // Sizing comes first: an unsized thing cannot be walked to.
-  const auto: ItemSize | 'new' | null = unsizedOpen.length > 0 ? 'new' : (nextSize ?? null);
-  const current = opened ?? auto;
-
-  const guesses = useMemo(() => {
-    const map = new Map<string, ItemSize>();
-    for (const r of unsizedOpen) {
-      const g = guessSize(r.item.title);
-      if (g) map.set(r.item.id, g);
-    }
-    return map;
-  }, [unsizedOpen]);
-
-  const fuzzyOpen = sized.fuzzy.filter(isOpen).length;
-  const walkedOpen = sized.quick.filter(isOpen).length + sized.errand.filter(isOpen).length + sized.big.filter(isOpen).length;
-
+  let shown = 0;
   return (
-    <div data-do-stuff-list className="flex flex-col gap-1" data-testid="do-stuff-list">
-      {unsized.length > 0 && (
-        <section>
-          <SectionHeader
-            size={null}
-            label="new"
-            count={unsizedOpen.length}
-            open={current === 'new'}
-            onToggle={() => toggle('new')}
-            index={0}
-            action={
-              guesses.size > 0 ? (
-                <button
-                  type="button"
-                  onClick={() => setSizes(guesses)}
-                  data-testid="do-stuff-keep-guesses"
-                  className="h-6 shrink-0 rounded-[6px] px-2 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
-                >
-                  keep all guesses
-                </button>
-              ) : undefined
-            }
-          />
-          {current === 'new' && (
-            <div className="pt-1">
-              {unsized.map((r) =>
-                r === unsizedOpen[0] ? (
-                  <SizingCard key={r.item.id} row={r} />
-                ) : (
-                  <TaskRow
-                    key={r.item.id}
-                    row={r}
-                    context="braindump"
-                    trailing={isOpen(r) ? <GuessHint title={r.item.title} /> : <SizeControl item={r.item as Task} />}
-                  />
-                )
-              )}
-            </div>
-          )}
-        </section>
-      )}
-
-      {SIZES.map((s, i) => {
-        const list = sized[s.key];
+    <div ref={listRef} data-do-stuff-list className="flex flex-col gap-1" data-testid="do-stuff-list">
+      {LANES.map((l) => {
+        const list = plan.lanes[l.key];
         if (list.length === 0) return null;
-        const open = current === s.key;
+        const index = shown++;
         return (
-          <section key={s.key} className="pt-2">
-            <SectionHeader
-              size={s.key}
-              label={s.plural}
-              count={list.filter(isOpen).length}
-              hint={s.hint}
-              open={open}
-              onToggle={() => toggle(s.key)}
-              index={i + 1}
-            />
-            {open && (
-              <div className="pt-1">
-                {list.map((r) =>
-                  r === next ? (
-                    <NextCard key={r.item.id} row={r} />
+          <section key={l.key} className={cn(index > 0 && 'pt-2')} data-lane={l.key}>
+            <LaneHeader lane={l.key} count={list.filter(isOpen).length} index={index} />
+            <div className="pt-1">
+              {list.map((r) => (
+                <LaneRow
+                  key={r.item.id}
+                  id={r.item.id}
+                  lane={l.key}
+                  facts={plan.facts.get(r.item.id)!}
+                  hoveredRef={hoveredRef}
+                >
+                  {r === next ? (
+                    <NextCard row={r} trailing={trailing(r)} />
                   ) : (
-                    <TaskRow
-                      key={r.item.id}
-                      row={r}
-                      context="braindump"
-                      trailing={<SizeControl item={r.item as Task} />}
-                    />
-                  )
-                )}
-              </div>
-            )}
+                    <TaskRow row={r} context="braindump" trailing={trailing(r)} />
+                  )}
+                </LaneRow>
+              ))}
+            </div>
           </section>
         );
       })}
 
-      {others.length > 0 && (
-        <section className="pt-3">
-          {others.map((r) => (
-            <TaskRow key={r.item.id} row={r} context="braindump" />
-          ))}
-        </section>
-      )}
-
-      {!next && unsizedOpen.length === 0 && (
+      {!next && pending === 0 && (
         <p className="px-2 pt-4 text-sm text-muted-foreground" data-testid="do-stuff-clear">
-          {walkedOpen === 0 && fuzzyOpen > 0
-            ? 'nothing ready to do. the fuzzy ones each need a first step.'
-            : 'all done here. nice.'}
+          {plan.lanes.leave.some(isOpen) ? 'nothing to do now. the rest can wait.' : 'all done here. nice.'}
         </p>
       )}
     </div>
-  );
-}
-
-/* ── the size on a row (S2) ───────────────────────────────────────────── */
-
-/**
- * The trailing size control on a braindump row. A sized row shows its dot at
- * rest; an unsized one shows nothing until hovered, so a braindump nobody has
- * sized looks exactly as it always did. Opens the size menu: four sizes on
- * 1–4, and "no size" on 0.
- */
-export function SizeControl({ item }: { item: Task }) {
-  const size = itemSizeOf(item) ?? null;
-  const [open, setOpen] = useState(false);
-  return (
-    <DropdownMenu open={open} onOpenChange={setOpen}>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          aria-label={size ? `Size: ${size}. Change size` : 'Give this a size'}
-          data-testid="item-size-button"
-          data-size={size ?? undefined}
-          onKeyDown={(e) => e.stopPropagation()}
-          className={cn(
-            '-my-1.5 flex h-[22px] shrink-0 items-center gap-1 rounded-[6px] px-1.5 text-[11.5px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground data-[state=open]:bg-accent',
-            !size &&
-              'opacity-0 group-hover:opacity-100 group-has-[:focus-visible]:opacity-100 data-[state=open]:opacity-100'
-          )}
-        >
-          <SizeDot size={size} hollow={!size} />
-          <span className={cn(size && 'hidden group-hover:inline')}>{size ? sizeDef(size).label : 'size'}</span>
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="end"
-        className="w-[196px]"
-        onKeyDown={(e) => {
-          const picked = sizeForDigit(e.key);
-          if (picked === undefined) return;
-          e.preventDefault();
-          setSize(item.id, picked);
-          setOpen(false);
-        }}
-      >
-        {SIZES.map((s) => (
-          <DropdownMenuItem
-            key={s.key}
-            onSelect={() => setSize(item.id, s.key)}
-            data-testid={`item-size-${s.key}`}
-            className={cn(size === s.key && 'font-medium')}
-          >
-            <SizeDot size={s.key} />
-            {s.label}
-            <span className="ml-auto">
-              <Cap>{s.digit}</Cap>
-            </span>
-          </DropdownMenuItem>
-        ))}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onSelect={() => setSize(item.id, null)}
-          disabled={!size}
-          data-testid="item-size-none"
-          className="text-muted-foreground"
-        >
-          <SizeDot size={null} hollow />
-          no size
-          <span className="ml-auto">
-            <Cap>0</Cap>
-          </span>
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
   );
 }

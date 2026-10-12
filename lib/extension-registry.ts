@@ -226,7 +226,7 @@ export const OFFICIAL_EXTENSIONS: ExtensionManifest[] = [
     slug: EXT_DO_STUFF,
     name: 'Do stuff',
     description:
-      'Sort the braindump by size and walk the quick ones first. A size is your call, made once and kept.',
+      'Sort the braindump into a plan: what to do now, what goes on the calendar, what to hand off. One tap makes it so.',
     icon: Zap,
     category: 'planning',
     // ON by default: see EXT_DO_STUFF above. It adds nothing to a short or
@@ -235,9 +235,9 @@ export const OFFICIAL_EXTENSIONS: ExtensionManifest[] = [
     tagline: 'Get the pile moving',
     shelf: 'plan',
     whatChanges: [
-      'A "do stuff" row above the braindump once it gets long.',
-      'Turn it on and the list sorts into quick, errands, big and fuzzy, with the next thing lifted to the top.',
-      'Hover a row to give it a size.',
+      'A "do stuff" key in the braindump\'s header once the list gets long.',
+      'Press it and the list shuffles into lanes: do now, on the calendar, handed off, left alone, with the next thing lifted to the top.',
+      'Move a row with its lane chip, the number keys, or a swipe. Nothing is written until you make it so.',
     ],
     makerNote:
       'Fifteen undated things all look the same weight, so none of them gets picked. Splitting off the quick ones is usually all it takes to start.',

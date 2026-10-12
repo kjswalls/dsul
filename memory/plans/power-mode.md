@@ -55,5 +55,19 @@ reference: https://claude.ai/artifact/SqoYpgGefDTEvuByBKZdua (private to Kirby).
    card in the block.
 5. Assignees beyond OpenClaw in the handed-off lane.
 
+### What build order 2 shipped
+
+Rules first, no AI (Kirby's decision card, 2026-10-12): lib/do-stuff-plan.ts
+sorts each row by the size the user gave it or its title's guess. Quick goes
+to "do now"; errands and big to "on the calendar"; fuzzy to "handed off" when
+`canHandOff` says the agent would take it, else "left alone"; habits, what the
+rules cannot read, and anything else are left alone. "Done for you" keeps key
+1 but is offered nothing until packs exist, so the other keys never renumber.
+Moves are memory only. "Make it so" (in the strip above the list) puts the
+calendar lane on days, errands together on tomorrow and everything else a day
+each from tomorrow, one undo per day, and hands the handed-off lane to the
+agent; "do now" and "left alone" write nothing. The size menu on rows is gone:
+sizes still sort, but nothing shows at rest.
+
 Gaps found while designing, not yet scheduled: no free-slot finder on the grid
 (for "on the calendar"), no web search for the model (for research packs).

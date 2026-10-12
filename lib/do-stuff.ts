@@ -3,17 +3,20 @@ import { usePlannerStore } from './planner-store';
 import { ITEM_VERBS, occurrenceOn, type VerbContext } from './item-verbs';
 import { milestoneItemIds } from './goals';
 import { toDateStr } from './recurrence';
-import type { ItemSize } from './item-size';
+import type { Lane } from './do-stuff-plan';
+import { handOffItem } from './agent-handoff';
 import type { Item } from './planner-types';
 
 /**
- * Do stuff mode: the braindump sorted by size and walked quick-first
- * (lib/item-size.ts holds the sizes; components/sidebar/do-stuff.tsx draws it).
+ * Do stuff mode: the braindump sorted into a plan in lanes, then walked
+ * (lib/do-stuff-plan.ts holds the lanes and their rules;
+ * components/sidebar/do-stuff.tsx draws it).
  *
  * The mode is MEMORY ONLY, never persisted: it is something you do for a while,
  * not a setting, and a reload that lands back in a half-finished walk would
  * read as the app having an opinion about what you should be doing. The same
- * goes for what you skipped.
+ * goes for what you skipped and the lanes you moved things to: only "make it
+ * so" writes anything.
  */
 
 /**
@@ -28,45 +31,60 @@ interface DoStuffState {
   on: boolean;
   /** Ids skipped this session, oldest first. Skipped means later, never gone. */
   skipped: string[];
-  /**
-   * A section the user opened by hand. Null follows the walk: the section the
-   * next item is in (or the unsized ones, while there are any).
-   */
-  opened: ItemSize | 'new' | null;
+  /** Lanes the user moved rows to this run, by id. The rules decide the rest. */
+  moved: Record<string, Lane>;
   /** How many things were done in this run, for the row's progress. */
   doneCount: number;
   start: () => void;
   stop: () => void;
   skip: (id: string) => void;
-  open: (section: ItemSize | 'new' | null) => void;
+  move: (id: string, lane: Lane) => void;
   countDone: () => void;
 }
 
 export const useDoStuffStore = create<DoStuffState>((set) => ({
   on: false,
   skipped: [],
-  opened: null,
+  moved: {},
   doneCount: 0,
-  start: () => set({ on: true, skipped: [], opened: null, doneCount: 0 }),
-  stop: () => set({ on: false, skipped: [], opened: null, doneCount: 0 }),
+  start: () => {
+    snapshotRows();
+    set({ on: true, skipped: [], moved: {}, doneCount: 0 });
+  },
+  stop: () => set({ on: false, skipped: [], moved: {}, doneCount: 0 }),
   skip: (id) => set((s) => ({ skipped: [...s.skipped.filter((x) => x !== id), id] })),
-  open: (section) => set((s) => ({ opened: s.opened === section ? null : section })),
+  move: (id, lane) => set((s) => ({ moved: { ...s.moved, [id]: lane } })),
   countDone: () => set((s) => ({ doneCount: s.doneCount + 1 })),
 }));
+
+/* ── the shuffle ──────────────────────────────────────────────────────── */
+
+/**
+ * Where each braindump row stood the moment the mode started, so the plan can
+ * shuffle them from there into their lanes. Taken once, read once.
+ */
+let shuffleFrom: Map<string, number> | null = null;
+
+function snapshotRows(): void {
+  if (typeof document === 'undefined') return;
+  const from = new Map<string, number>();
+  for (const el of document.querySelectorAll<HTMLElement>('[data-braindump-list] [data-item-id]')) {
+    const id = el.dataset.itemId;
+    if (id && !from.has(id)) from.set(id, el.getBoundingClientRect().top);
+  }
+  shuffleFrom = from.size > 0 ? from : null;
+}
+
+/** The tops the rows started from, once; null when there is nothing to play. */
+export function takeShuffleFrom(): Map<string, number> | null {
+  const from = shuffleFrom;
+  shuffleFrom = null;
+  return from;
+}
 
 /* ── writes ───────────────────────────────────────────────────────────── */
 
 const planner = () => usePlannerStore.getState();
-
-/** One item's size; `null` clears it. */
-export function setSize(id: string, size: ItemSize | null): void {
-  planner().setItemsSize(new Map([[id, size ?? undefined]]));
-}
-
-/** Several at once, one undo ("keep all guesses"). */
-export function setSizes(sizes: ReadonlyMap<string, ItemSize>): void {
-  if (sizes.size > 0) planner().setItemsSize(sizes);
-}
 
 function todayContext(item: Item): VerbContext {
   const state = planner();
@@ -104,6 +122,27 @@ export function putOnToday(id: string): void {
   const ctx = todayContext(item);
   if (!ITEM_VERBS.reschedule.eligible(item, ctx)) return;
   ITEM_VERBS.reschedule.run(item, ctx, ctx.todayStr);
+}
+
+/**
+ * Make it so: every calendar row onto its day (one undo per day, the bulk
+ * carry), and every row in the handed-off lane that the agent does not hold
+ * yet handed to it. "Do now" and "left alone" write nothing. Re-checked at
+ * click time against the store, like every verb.
+ */
+export function makeItSo(plan: { days: ReadonlyMap<string, string>; handOff: readonly string[] }): void {
+  const byDay = new Map<string, string[]>();
+  for (const [id, day] of plan.days) {
+    const item = fresh(id);
+    if (!item) continue;
+    if (!ITEM_VERBS.reschedule.eligible(item, todayContext(item))) continue;
+    byDay.set(day, [...(byDay.get(day) ?? []), id]);
+  }
+  for (const [day, ids] of byDay) planner().moveTasksToDate(ids, day);
+  for (const id of plan.handOff) {
+    const item = fresh(id);
+    if (item && !('assignee' in item && item.assignee)) handOffItem(item);
+  }
 }
 
 export function skipNext(id: string): void {
