@@ -135,7 +135,7 @@ export function DoStuffKey({ touch }: { touch?: boolean }) {
         if (s.on) s.stop();
         else s.start();
       }}
-      className="titlebar-hole flex h-8 shrink-0 cursor-pointer items-center gap-[7px] rounded-[8px] text-[12px] leading-[17px] font-medium whitespace-nowrap text-foreground"
+      className="titlebar-hole flex h-7 shrink-0 cursor-pointer items-center gap-[7px] rounded-[7px] text-[12px] leading-[17px] font-medium whitespace-nowrap text-foreground"
     >
       <Zap aria-hidden data-do-key-bolt="" className="size-3.5 shrink-0" />
       <span data-do-key-word="">do stuff</span>
@@ -143,7 +143,7 @@ export function DoStuffKey({ touch }: { touch?: boolean }) {
         <kbd
           aria-hidden
           data-do-key-chord=""
-          className="inline-flex h-[18px] items-center rounded-[5px] px-[5px] font-sans text-[11px] leading-none font-medium tabular-nums"
+          className="inline-flex h-4 items-center rounded-[4px] px-[4px] pt-px font-sans text-[10.5px] leading-none font-medium tabular-nums"
         >
           {chord}
         </kbd>

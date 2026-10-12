@@ -72,7 +72,7 @@ describe('ThemeInjector', () => {
       `:root[data-look-light='${SLUG}'][data-look-light='${SLUG}']:not(.dark) body{--font-ui:var(--font-source-serif), 'Source Serif 4', Georgia, serif}`
     );
     expect(css).toContain(
-      `:where(:root[data-look-light='${SLUG}']:not(.dark)) :is([data-ask-opener],[data-ask-mark]){--ask-icon-pair:oklch(0.64 0.1 195)}`
+      `:where(:root[data-look-light='${SLUG}']:not(.dark)) :is([data-ask-opener],[data-ask-mark],[data-do-key]){--ask-icon-pair:oklch(0.64 0.1 195)}`
     );
     expect(css).toContain(`[data-theme-preview][data-preview-light='${SLUG}'][data-preview-light='${SLUG}']:not(.dark){--paper-0:#fafafa;`);
     // Kept last in <head>.
@@ -83,7 +83,7 @@ describe('ThemeInjector', () => {
     seedRows([themeRow({ manifest: { version: 1, mode: 'dark', base: 'dusk', tokens: {} } })]);
     render(<ThemeInjector />);
     expect(sheet()).toContain(`:root[data-look-dark='${SLUG}'][data-look-dark='${SLUG}'].dark{`);
-    expect(sheet()).toContain(`:where(:root[data-look-dark='${SLUG}']).dark :is([data-ask-opener],[data-ask-mark]){`);
+    expect(sheet()).toContain(`:where(:root[data-look-dark='${SLUG}']).dark :is([data-ask-opener],[data-ask-mark],[data-do-key]){`);
     expect(sheet()).not.toContain('data-look-light');
   });
 

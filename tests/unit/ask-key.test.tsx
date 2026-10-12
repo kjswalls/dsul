@@ -889,7 +889,7 @@ describe("the key's paint (app/globals.css)", () => {
       '--ask-key-pair',
     ]);
     // The unlit mark's inks are the look's own text inks, not a colour of their own.
-    const slot = all.find((r) => r.selectors.includes(':is([data-ask-opener], [data-ask-mark])'));
+    const slot = all.find((r) => r.selectors.includes(':is([data-ask-opener], [data-ask-mark], [data-do-key])'));
     expect(values(slot!.body, '--ask-icon-unlit')).toEqual(['var(--ink-1)']);
     expect(values(slot!.body, '--ask-icon-unlit-mid')).toEqual(['var(--ink-2)']);
   });
@@ -1012,7 +1012,7 @@ describe("the key's paint (app/globals.css)", () => {
     // The specificity reader, against the selectors it judges.
     expect(specificity("[data-ask-opener]:focus-visible::before")).toEqual([0, 2, 1]);
     expect(specificity(":is([data-layout-header='plain'], [data-layout-header='masthead']) [data-ask-opener]:hover::before")).toEqual([0, 3, 1]);
-    expect(specificity(":root:not(.dark) [data-layout-skin='retro'] :is([data-ask-opener], [data-ask-mark])")).toEqual([0, 4, 0]);
+    expect(specificity(":root:not(.dark) [data-layout-skin='retro'] :is([data-ask-opener], [data-ask-mark], [data-do-key])")).toEqual([0, 4, 0]);
     expect(specificity(':where(.a) b')).toEqual([0, 0, 1]);
 
     const all = rules(stripComments(askBlock()));

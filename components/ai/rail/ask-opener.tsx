@@ -410,10 +410,10 @@ export function AskOpener({ className }: { className?: string }) {
           // The well is even all round the key in every form, the chord being
           // on the key (keyFormWidth counts on it).
           !plate
-            ? 'size-8 rounded-[10px]'
+            ? 'size-7 rounded-[8px]'
             : raised
-              ? 'h-12 rounded-[10px] p-2'
-              : 'h-10 rounded-[12px] p-1',
+              ? 'h-11 rounded-[10px] p-2'
+              : 'h-9 rounded-[11px] p-1',
           // The drawn key keeps its inset off the row's end in every form
           // (Notebook's ribbon sits just past it), and the fit counts it.
           !raised && 'mr-3.5'
@@ -422,10 +422,10 @@ export function AskOpener({ className }: { className?: string }) {
         <span
           data-ask-key=""
           className={cn(
-            'inline-flex h-8 shrink-0 items-center gap-1.5 border border-transparent text-foreground',
+            'inline-flex h-7 shrink-0 items-center gap-1.5 border border-transparent text-foreground',
             // KEY_END_PX after the word; less beside the chord's own inset.
-            plate ? (full ? 'pr-[5px] pl-[9px]' : 'pr-[11px] pl-[9px]') : 'w-8 justify-center',
-            plate && !raised ? 'rounded-[8px]' : 'rounded-[10px]'
+            plate ? (full ? 'pr-[5px] pl-[9px]' : 'pr-[11px] pl-[9px]') : 'w-7 justify-center',
+            plate && !raised ? 'rounded-[7px]' : 'rounded-[8px]'
           )}
         >
           <AskMark lit={canChat} />
@@ -434,7 +434,7 @@ export function AskOpener({ className }: { className?: string }) {
             <kbd
               data-ask-opener-chord=""
               aria-hidden
-              className="inline-flex h-[18px] items-center rounded-[5px] px-[5px] font-sans text-[10.5px] font-medium tracking-[0.01em] tabular-nums"
+              className="inline-flex h-4 items-center rounded-[4px] px-[4px] pt-px font-sans text-[10.5px] leading-none font-medium tracking-[0.01em] tabular-nums"
             >
               {chord}
             </kbd>

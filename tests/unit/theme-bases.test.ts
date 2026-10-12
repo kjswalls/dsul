@@ -84,7 +84,7 @@ function declsFor(selector: string): Map<string, string> {
   return out;
 }
 
-const ASK = ':is([data-ask-opener], [data-ask-mark])';
+const ASK = ':is([data-ask-opener], [data-ask-mark], [data-do-key])';
 const LIGHT_ROOT = declsFor(':root');
 const DARK_ROOT = new Map([...LIGHT_ROOT, ...declsFor('.dark')]);
 const BODY = declsFor('body');
