@@ -1359,6 +1359,12 @@ conversation is saved to the account.
   - an item's conversation is titled with the item's title at the time, and deleting the
     item (even its 30-day purge) deletes neither the conversation nor that title; only
     Delete on the conversation does.
+  - prep packs (Do stuff's "done for you", migration 074): the draft your model wrote for an
+    item (an email or message, a call script, or first steps), the item's title it was written
+    for, and the model's id. One per item, replaced when it is made again; "Not needed" deletes
+    it, and so does deleting the item (even its 30-day purge). Your edits in the card are never
+    stored. To write them your model is sent the titles and notes (up to 1,500 characters) of at
+    most eight open braindump things at a time, each asked about once a session.
 - *Not stored:*
   - the planner context sent with each message;
   - your custom instructions;

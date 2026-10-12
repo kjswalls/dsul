@@ -49,6 +49,13 @@ export interface AICapabilities {
    * (D14: never send to a model the person did not pick).
    */
   canMake: boolean;
+  /**
+   * Do stuff's prep packs (memory/plans/power-mode.md, build order 3): the
+   * person's own model writes drafts for their braindump. The same rule as
+   * Make: the model answers here, never OpenClaw, and nothing is sent to a
+   * model a device did not pick.
+   */
+  canPrep: boolean;
   proposeTarget: 'model' | 'openclaw' | null;
   openclawTransport: 'gateway' | 'plugin' | null;
   answererName: 'AI' | 'OpenClaw' | null;
@@ -80,6 +87,7 @@ export const NO_AI: AICapabilities = Object.freeze({
   canPropose: false,
   canDelegate: false,
   canMake: false,
+  canPrep: false,
   proposeTarget: null,
   openclawTransport: null,
   answererName: null,
@@ -163,6 +171,7 @@ export function resolveAICapabilities(i: AIInputs): AICapabilities {
     canPropose: proposeTarget !== null,
     canDelegate: i.openclaw.agent,
     canMake: target === 'model',
+    canPrep: target === 'model',
     proposeTarget,
     openclawTransport,
     answererName: target === 'model' ? 'AI' : target === 'openclaw' ? 'OpenClaw' : null,

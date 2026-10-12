@@ -41,6 +41,9 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { toDateStr } from '@/lib/recurrence';
 import { addDaysStr } from '@/lib/container-schedule';
 import { prefersReducedMotion } from '@/lib/zen-transition';
+import { packIsStale, type PrepPack } from '@/lib/prep-packs';
+import { usePrepPacksStore, type PrepItem } from '@/lib/prep-packs-store';
+import { PackChip, PackInline, PackPeek } from '@/components/sidebar/prep-pack';
 import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
 import { chordLabel, isApplePlatform } from '@/lib/commands/keys';
 import { cn } from '@/lib/utils';
@@ -160,6 +163,10 @@ interface Plan {
   /** Rows in the handed-off lane the agent does not hold yet. */
   handOff: readonly string[];
   todayStr: string;
+  /** Packs written for the row's current title, by id. */
+  packs: ReadonlyMap<string, PrepPack>;
+  /** Open rows the AI might get ready, in the order worth asking: do now first. */
+  prepCandidates: readonly PrepItem[];
 }
 
 /**
@@ -175,6 +182,7 @@ function usePlan(rows: readonly RowItem[]): Plan {
   const routines = usePlannerStore((s) => s.routines);
   const seasons = usePlannerStore((s) => s.seasons);
   const away = useAwayStore((s) => s.periods);
+  const stored = usePrepPacksStore((s) => s.packs);
   const todayStr = toDateStr(new Date(), tz);
 
   return useMemo(() => {
@@ -187,13 +195,17 @@ function usePlan(rows: readonly RowItem[]): Plan {
     const lanes: Record<Lane, RowItem[]> = { done: [], now: [], calendar: [], handoff: [], leave: [] };
     const facts = new Map<string, LaneFacts>();
     const laneById = new Map<string, Lane>();
+    const packs = new Map<string, PrepPack>();
     for (const row of rows) {
       const item = byId.get(row.item.id);
       const assignee = item && 'assignee' in item ? item.assignee : undefined;
+      const pack = stored[row.item.id];
+      if (pack && !packIsStale(pack, row.item.title)) packs.set(row.item.id, pack);
       const f: LaneFacts = {
         plannable: row.itemType === 'task',
         canHandOff: !!item && canHandOff(item, { canDelegate, todayStr, inactiveIds }),
         handedOff: !!assignee,
+        hasPack: packs.has(row.item.id),
       };
       // A done row stays where it was drawn, in its lane, struck through.
       const lane = laneOf(row.item, f, moved);
@@ -208,8 +220,16 @@ function usePlan(rows: readonly RowItem[]): Plan {
     const handOff = lanes.handoff
       .filter((r) => isOpen(r) && !facts.get(r.item.id)?.handedOff)
       .map((r) => r.item.id);
-    return { lanes, facts, laneById, days, handOff, todayStr };
-  }, [rows, moved, canDelegate, items, tz, routines, seasons, away, todayStr]);
+    const prepCandidates = (['now', 'leave', 'calendar'] as const).flatMap((lane) =>
+      lanes[lane]
+        .filter((r) => isOpen(r) && r.itemType === 'task' && !facts.get(r.item.id)?.handedOff)
+        .map((r) => {
+          const notes = (byId.get(r.item.id) as { notes?: string } | undefined)?.notes;
+          return { id: r.item.id, title: r.item.title, ...(notes ? { notes } : {}) };
+        })
+    );
+    return { lanes, facts, laneById, days, handOff, todayStr, packs, prepCandidates };
+  }, [rows, moved, canDelegate, items, tz, routines, seasons, away, todayStr, stored]);
 }
 
 /** "tomorrow", or the weekday within the week, or "Oct 20". */
@@ -230,6 +250,7 @@ export function DoStuffRow({ rows }: { rows: readonly RowItem[] }) {
   const doneCount = useDoStuffStore((s) => s.doneCount);
   const { stop } = useDoStuffStore.getState();
   const plan = usePlan(rows);
+  const preparing = usePrepPacksStore((s) => Object.keys(s.preparing).length);
 
   // Started from the key in the header (DoStuffKey) or its chord; off, there
   // is no strip.
@@ -240,7 +261,13 @@ export function DoStuffRow({ rows }: { rows: readonly RowItem[] }) {
   // run and hollow for what is left, eight at most.
   const filled = Math.min(doneCount, 8);
   const hollow = Math.max(0, Math.min(left, 8 - filled));
-  const label = [doneCount > 0 && `${doneCount} done`, left > 0 && `${left} to do now`].filter(Boolean).join(' · ');
+  const label = [
+    doneCount > 0 && `${doneCount} done`,
+    left > 0 && `${left} to do now`,
+    preparing > 0 && 'getting things ready…',
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   const pending = plan.days.size + plan.handOff.length;
   const detail = [
@@ -373,9 +400,24 @@ function LaneChip({ id, lane, facts }: { id: string; lane: Lane; facts: LaneFact
   );
 }
 
-function Trailing({ id, lane, facts, day, todayStr }: { id: string; lane: Lane; facts: LaneFacts; day?: string; todayStr: string }) {
+function Trailing({
+  id,
+  lane,
+  facts,
+  day,
+  todayStr,
+  pack,
+}: {
+  id: string;
+  lane: Lane;
+  facts: LaneFacts;
+  day?: string;
+  todayStr: string;
+  pack?: React.ReactNode;
+}) {
   return (
     <span className="flex items-center gap-1.5">
+      {pack}
       {day && (
         <span className="whitespace-nowrap text-[11.5px] text-muted-foreground" data-testid="do-stuff-day">
           {dayLabel(day, todayStr)}
@@ -598,6 +640,33 @@ function useShuffle(listRef: React.RefObject<HTMLDivElement | null>) {
   }, [listRef]);
 }
 
+/**
+ * When the mode starts, the AI gets what it can ready: the packs already made
+ * are read, and the open rows not yet asked about this session are sent to
+ * the person's own model, a batch at a time (lib/prep-packs-store.ts). Only
+ * while that model is who answers (`canPrep`); otherwise packs already made
+ * still show, and nothing is sent anywhere.
+ */
+function usePrepOnStart(candidates: readonly PrepItem[]) {
+  const { canPrep } = useAICapabilities();
+  const userId = usePlannerStore((s) => s.userId);
+  const candidatesRef = useRef(candidates);
+  useEffect(() => {
+    candidatesRef.current = candidates;
+  }, [candidates]);
+  useEffect(() => {
+    if (!userId) return;
+    let live = true;
+    const packs = usePrepPacksStore.getState();
+    void packs.load(userId).then(() => {
+      if (live && canPrep) void usePrepPacksStore.getState().prepare(candidatesRef.current);
+    });
+    return () => {
+      live = false;
+    };
+  }, [userId, canPrep]);
+}
+
 /* ── the list ─────────────────────────────────────────────────────────── */
 
 /**
@@ -605,29 +674,66 @@ function useShuffle(listRef: React.RefObject<HTMLDivElement | null>) {
  * would draw it, already narrowed by the Display menu and in its order; only
  * the grouping is replaced (by lane), never what is in it.
  */
-export function DoStuffList({ rows }: { rows: readonly RowItem[] }) {
+export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?: boolean }) {
   const skipped = useDoStuffStore((s) => s.skipped);
   const plan = usePlan(rows);
   const listRef = useRef<HTMLDivElement>(null);
   const hoveredRef = useRef<string | null>(null);
   useShuffle(listRef);
   useLaneKeys(listRef, hoveredRef, plan.facts);
+  usePrepOnStart(plan.prepCandidates);
+  const prepError = usePrepPacksStore((s) => s.error);
+
+  // The one pack open, by item id. ↑ ↓ walk the "done for you" lane.
+  const [peek, setPeek] = useState<string | null>(null);
+  const ready = plan.lanes.done.filter((r) => plan.packs.has(r.item.id));
+  const peekIndex = ready.findIndex((r) => r.item.id === peek);
+  const openPeek = peekIndex >= 0 ? peek : null;
+  const go = (dir: -1 | 1) => {
+    if (ready.length === 0) return;
+    const i = (Math.max(0, peekIndex) + dir + ready.length) % ready.length;
+    setPeek(ready[i].item.id);
+  };
 
   const next = nextNow(plan.lanes.now, isOpen, skipped);
   const pending = plan.days.size + plan.handOff.length;
-  const trailing = (r: RowItem) => (
-    <Trailing
-      id={r.item.id}
-      lane={plan.laneById.get(r.item.id)!}
-      facts={plan.facts.get(r.item.id)!}
-      day={plan.days.get(r.item.id)}
-      todayStr={plan.todayStr}
-    />
-  );
+  const trailing = (r: RowItem) => {
+    const pack = plan.packs.get(r.item.id);
+    return (
+      <Trailing
+        id={r.item.id}
+        lane={plan.laneById.get(r.item.id)!}
+        facts={plan.facts.get(r.item.id)!}
+        day={plan.days.get(r.item.id)}
+        todayStr={plan.todayStr}
+        pack={
+          pack && isOpen(r) ? (
+            <PackChip
+              stored={pack}
+              open={openPeek === r.item.id}
+              onToggle={() => setPeek((p) => (p === r.item.id ? null : r.item.id))}
+            />
+          ) : undefined
+        }
+      />
+    );
+  };
+  const card = (r: RowItem) => ({
+    itemId: r.item.id,
+    title: r.item.title,
+    stored: plan.packs.get(r.item.id)!,
+    nav: ready.length > 1 ? { index: peekIndex, count: ready.length, go } : undefined,
+    onClose: () => setPeek(null),
+  });
 
   let shown = 0;
   return (
     <div ref={listRef} data-do-stuff-list className="flex flex-col gap-1" data-testid="do-stuff-list">
+      {prepError && (
+        <p className="px-2 pb-1 text-xs text-muted-foreground" data-testid="prep-pack-error">
+          {prepError}
+        </p>
+      )}
       {LANES.map((l) => {
         const list = plan.lanes[l.key];
         if (list.length === 0) return null;
@@ -646,9 +752,16 @@ export function DoStuffList({ rows }: { rows: readonly RowItem[] }) {
                 >
                   {r === next ? (
                     <NextCard row={r} trailing={trailing(r)} />
+                  ) : plan.packs.has(r.item.id) && !touch ? (
+                    <PackPeek open={openPeek === r.item.id} {...card(r)}>
+                      <div>
+                        <TaskRow row={r} context="braindump" trailing={trailing(r)} />
+                      </div>
+                    </PackPeek>
                   ) : (
                     <TaskRow row={r} context="braindump" trailing={trailing(r)} />
                   )}
+                  {touch && openPeek === r.item.id && <PackInline {...card(r)} />}
                 </LaneRow>
               ))}
             </div>

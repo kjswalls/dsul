@@ -25,8 +25,8 @@ export interface LaneDef {
 
 /**
  * In the order the plan draws them. "Done for you" is the prep packs' lane
- * (build order 3): it keeps key 1 so the other four never renumber, and
- * nothing lands in it or is offered it until packs exist.
+ * (build order 3, lib/prep-packs.ts): a row lands there once the AI has got it
+ * ready, and only such a row is offered it.
  */
 export const LANES: readonly LaneDef[] = [
   { key: 'done', label: 'done for you', digit: '1', color: 'var(--lime-solid)' },
@@ -54,13 +54,15 @@ export interface LaneFacts {
   canHandOff: boolean;
   /** The agent already holds it: queued, working, or waiting on you. */
   handedOff: boolean;
+  /** The AI got it ready: a prep pack written for its current title. */
+  hasPack?: boolean;
 }
 
 /** May the user put this row in this lane? */
 export function laneOffered(lane: Lane, facts: LaneFacts): boolean {
   switch (lane) {
     case 'done':
-      return false;
+      return !!facts.hasPack && facts.plannable && !facts.handedOff;
     case 'handoff':
       return facts.handedOff || facts.canHandOff;
     case 'leave':
@@ -76,7 +78,7 @@ export function sizeForPlan(item: { title: string; size?: unknown }): ItemSize |
 }
 
 /**
- * The rule. Quick things are done now; errands and big ones go on a day;
+ * The rule. Anything the AI got ready is done for you; quick things are done now; errands and big ones go on a day;
  * fuzzy ones go to the agent when it can take them (a first step is exactly
  * what it is for), and are left alone otherwise. Anything the rules cannot
  * read is left alone rather than pushed at the user.
@@ -84,6 +86,7 @@ export function sizeForPlan(item: { title: string; size?: unknown }): ItemSize |
 export function ruleLane(item: { title: string; size?: unknown }, facts: LaneFacts): Lane {
   if (facts.handedOff) return 'handoff';
   if (!facts.plannable) return 'leave';
+  if (facts.hasPack) return 'done';
   switch (sizeForPlan(item)) {
     case 'quick':
       return 'now';

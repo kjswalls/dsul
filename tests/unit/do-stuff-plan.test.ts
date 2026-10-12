@@ -35,8 +35,10 @@ describe('the lanes', () => {
     expect(laneForDigit('6')).toBeUndefined();
   });
 
-  it('offer nothing in "done for you" until prep packs exist', () => {
+  it('offer "done for you" only to what the AI got ready', () => {
     for (const f of [task, agentOn, held, habit]) expect(laneOffered('done', f)).toBe(false);
+    expect(laneOffered('done', { ...task, hasPack: true })).toBe(true);
+    expect(laneOffered('done', { ...held, hasPack: true })).toBe(false);
   });
 
   it('offer "handed off" only to what the agent can take or already holds', () => {
@@ -61,6 +63,11 @@ describe('the rule', () => {
   it('hands fuzzy things to the agent when it can take them, and leaves them otherwise', () => {
     expect(ruleLane({ title: 'figure out the budget' }, agentOn)).toBe('handoff');
     expect(ruleLane({ title: 'figure out the budget' }, task)).toBe('leave');
+  });
+
+  it('puts what the AI got ready in "done for you", whatever its size', () => {
+    expect(ruleLane({ title: 'pick up stamps' }, { ...task, hasPack: true })).toBe('done');
+    expect(ruleLane({ title: 'pick up stamps' }, { ...held, hasPack: true })).toBe('handoff');
   });
 
   it('leaves alone what it cannot read, and every habit', () => {
