@@ -1944,6 +1944,40 @@ body {
   opacity: 0.5;
 }
 
+/* Every native scrollbar draws like the Radix <ScrollArea> one the planner
+   uses (components/ui/scroll-area.tsx): a 10px gutter with no track and a
+   rounded --border thumb inset 1px. Without this, a plain overflow-y-auto box
+   (the braindump, the dock, menus) gets the OS scrollbar, which with "always
+   show scrollbars" on is a bright thumb in a boxed track. Chromium (and so the
+   desktop shell) and Safari take the ::-webkit-scrollbar rules; Chromium
+   ignores those rules on any element where scrollbar-width or scrollbar-color
+   is set, so the standard properties are given only to browsers without the
+   pseudo-element (Firefox). .scrollbar-hide and Radix's own viewport rule are
+   more specific and still win. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+  background: transparent;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: var(--border);
+  background-clip: padding-box;
+  border: 1px solid transparent;
+  border-radius: 9999px;
+}
+@supports not selector(::-webkit-scrollbar) {
+  html {
+    scrollbar-color: var(--border) transparent;
+  }
+  * {
+    scrollbar-width: thin;
+  }
+}
+
 /* Hide scrollbar while keeping scroll functionality */
 .scrollbar-hide {
   -ms-overflow-style: none;
