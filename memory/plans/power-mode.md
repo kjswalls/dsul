@@ -69,7 +69,7 @@ each from tomorrow, one undo per day, and hands the handed-off lane to the
 agent; "do now" and "left alone" write nothing. The size menu on rows is gone:
 sizes still sort, but nothing shows at rest.
 
-### What build order 3 shipped (first half)
+### What build order 3 shipped
 
 Drafts first (Kirby's decision card, 2026-10-12): the model works from title
 and notes alone, so the kinds are an email or message draft, a call script
@@ -81,8 +81,9 @@ and deletes them. Do stuff asks when it starts, at most eight open rows, each
 once a session. A row with a pack for its current title lands in "done for
 you" with a "draft ready" chip that opens the peek card (desktop) or the card
 in place (phone); the card's fields are editable but never saved, and its
-primary action opens mail or the dialler, or copies. Still to build: the
-phone's review deck.
+primary action opens mail or the dialler, or copies. On the phone, with two
+or more ready, "review N" on the lane deals them in a sheet: swipe right (or
+tap) to take one out, swipe left for the next.
 
 Gaps found while designing, not yet scheduled: no free-slot finder on the grid
 (for "on the calendar"), no web search for the model (for research packs).

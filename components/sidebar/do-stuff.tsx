@@ -43,7 +43,7 @@ import { addDaysStr } from '@/lib/container-schedule';
 import { prefersReducedMotion } from '@/lib/zen-transition';
 import { packIsStale, type PrepPack } from '@/lib/prep-packs';
 import { usePrepPacksStore, type PrepItem } from '@/lib/prep-packs-store';
-import { PackChip, PackInline, PackPeek } from '@/components/sidebar/prep-pack';
+import { PackChip, PackDeck, PackInline, PackPeek } from '@/components/sidebar/prep-pack';
 import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
 import { chordLabel, isApplePlatform } from '@/lib/commands/keys';
 import { cn } from '@/lib/utils';
@@ -321,7 +321,17 @@ export function DoStuffRow({ rows }: { rows: readonly RowItem[] }) {
 
 /* ── lane headers ─────────────────────────────────────────────────────── */
 
-function LaneHeader({ lane, count, index }: { lane: Lane; count: number; index: number }) {
+function LaneHeader({
+  lane,
+  count,
+  index,
+  action,
+}: {
+  lane: Lane;
+  count: number;
+  index: number;
+  action?: React.ReactNode;
+}) {
   const def = laneDef(lane);
   return (
     <div
@@ -333,6 +343,7 @@ function LaneHeader({ lane, count, index }: { lane: Lane; count: number; index: 
         <Dot color={def.color} />
         <span className="font-semibold">{def.label}</span>
         <span className="font-num text-[12.5px] text-muted-foreground">{count}</span>
+        {action && <span className="ml-auto">{action}</span>}
       </div>
       {/* The tinted hairline, and the one shimmer that runs along it when the
           mode opens (do-stuff-rule in globals.css: once, staggered, and off
@@ -695,6 +706,12 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
     setPeek(ready[i].item.id);
   };
 
+  // The phone deals every pack ready in a deck, once there is more than one.
+  const [deckOpen, setDeckOpen] = useState(false);
+  const deckCards = ready
+    .filter(isOpen)
+    .map((r) => ({ itemId: r.item.id, title: r.item.title, stored: plan.packs.get(r.item.id)! }));
+
   const next = nextNow(plan.lanes.now, isOpen, skipped);
   const pending = plan.days.size + plan.handOff.length;
   const trailing = (r: RowItem) => {
@@ -740,7 +757,23 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
         const index = shown++;
         return (
           <section key={l.key} className={cn(index > 0 && 'pt-2')} data-lane={l.key}>
-            <LaneHeader lane={l.key} count={list.filter(isOpen).length} index={index} />
+            <LaneHeader
+              lane={l.key}
+              count={list.filter(isOpen).length}
+              index={index}
+              action={
+                l.key === 'done' && touch && deckCards.length > 1 ? (
+                  <button
+                    type="button"
+                    onClick={() => setDeckOpen(true)}
+                    data-testid="prep-pack-review"
+                    className="h-6 rounded-[6px] px-2 text-xs font-medium text-foreground hover:bg-accent"
+                  >
+                    review {deckCards.length}
+                  </button>
+                ) : undefined
+              }
+            />
             <div className="pt-1">
               {list.map((r) => (
                 <LaneRow
@@ -768,6 +801,8 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
           </section>
         );
       })}
+
+      {touch && <PackDeck open={deckOpen} onOpenChange={setDeckOpen} cards={deckCards} />}
 
       {!next && pending === 0 && (
         <p className="px-2 pt-4 text-sm text-muted-foreground" data-testid="do-stuff-clear">
