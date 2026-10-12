@@ -63,6 +63,7 @@ vi.mock('@/lib/supabase', () => ({ createClient: vi.fn(() => ({})) }));
 import { Braindump } from '@/components/sidebar/braindump';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useDoStuffStore } from '@/lib/do-stuff';
+import { usePrepPacksStore } from '@/lib/prep-packs-store';
 import { useViewStore } from '@/lib/view-store';
 import { useKeyboardShortcutsStore } from '@/lib/keyboard-shortcuts-store';
 import { EMPTY_VIEW_FILTERS } from '@/lib/filters';
@@ -129,6 +130,8 @@ beforeEach(() => {
   enableExtensions(EXT_DO_STUFF);
   useKeyboardShortcutsStore.setState({ overrides: {} });
   useDoStuffStore.getState().stop();
+  usePrepPacksStore.setState({ userId: 'user-1', packs: {}, loaded: true, available: true, preparing: {}, tried: {}, error: null });
+  vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200 })));
 });
 afterEach(cleanup);
 
@@ -186,5 +189,30 @@ describe('do stuff: the plan in lanes', () => {
     expect(byId.get('d')?.startDate).toBe(tomorrow);
     for (const id of ['a', 'b', 'e', 'f']) expect(byId.get(id)?.startDate).toBeUndefined();
     expect(screen.queryByTestId('do-stuff-make-it-so')).toBeNull();
+  });
+
+  it('puts what the AI got ready in "done for you", with its chip and card', () => {
+    seed(SIX);
+    usePrepPacksStore.setState({
+      packs: {
+        b: { itemId: 'b', pack: { kind: 'call', who: 'the dentist', script: ['Hi, I need a cleaning'] }, madeFor: 'call the dentist', updatedAt: 't' },
+        // Written for an older title: stale, so it sorts by the rules.
+        f: { itemId: 'f', pack: { kind: 'steps', steps: ['a', 'b'] }, madeFor: 'old zebra', updatedAt: 't' },
+      },
+    });
+    renderBraindump();
+    fireEvent.click(screen.getByTestId('do-stuff-start'));
+    expect(laneOfRow('call the dentist')).toBe('done');
+    expect(laneOfRow('zebra')).toBe('leave');
+    fireEvent.click(screen.getByTestId('prep-pack-chip'));
+    const card = screen.getByTestId('prep-pack-card');
+    expect(card).toHaveTextContent('Call script');
+    // No number was given, so the tap out is Copy, never a guessed call.
+    expect(screen.getByTestId('prep-pack-primary')).toHaveTextContent('Copy script');
+    act(() => {
+      fireEvent.click(screen.getByTestId('prep-pack-dismiss'));
+    });
+    expect(usePrepPacksStore.getState().packs.b).toBeUndefined();
+    expect(fetch).toHaveBeenCalledWith('/api/ai/prep?item=b', { method: 'DELETE' });
   });
 });

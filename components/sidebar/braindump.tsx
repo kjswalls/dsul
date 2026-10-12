@@ -1034,7 +1034,7 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
           {!visible ? (
             <PlannerSkeleton variant="braindump" />
           ) : doingStuff ? (
-            <DoStuffList rows={doStuffRows} />
+            <DoStuffList rows={doStuffRows} touch={isMobile} />
           ) : (
             grouped.map((g) =>
               g.label ? (
