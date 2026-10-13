@@ -1000,8 +1000,7 @@ useMobileNavStore.subscribe((s, prev) => {
  * Whether arriving on the phone's Ask tab puts the caret in the dock's box:
  * only where typing is the point, a conversation (a new chat's draft
  * included) or an item. Ask home and History are full of tap targets, and on
- * Android a deferred programmatic focus raises the keyboard over them. The
- * mode sheet's focus return asks the same question (mode-switcher-sheet.tsx).
+ * Android a deferred programmatic focus raises the keyboard over them.
  */
 export function phoneArrivalFocuses(stack: readonly AskView[]): boolean {
   const top = stack.at(-1);

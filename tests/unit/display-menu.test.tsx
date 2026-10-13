@@ -666,18 +666,6 @@ describe('the mobile header mount', () => {
 
   afterEach(() => useMobileNavStore.setState({ activeTab: 'today' }));
 
-  it('does not ride the Braindump tab, where a second identical trigger already sits', () => {
-    // MobileShell renders MobileHeader above every activeTab guard
-    // (mobile-shell.tsx:55), so an ungated mount appears on all three tabs. On
-    // Braindump that is two pixel-identical triggers with the same accessible
-    // name, the header one writing canvasFilters while the list below reads
-    // braindumpFilters — "Hide finished" would move nothing.
-    useMobileNavStore.setState({ activeTab: 'braindump' });
-    renderHeader();
-
-    expect(screen.queryByTestId('display-trigger-canvas')).toBeNull();
-  });
-
   it('does not ride the Chat tab, which reads no view store at all', () => {
     // The chat tab is on screen only while something can answer.
     const unseed = seedAI(CONNECTED_MODEL);

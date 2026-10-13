@@ -301,7 +301,7 @@ describe('the mark', () => {
       'components/ai/ask/ask-greeting.tsx',
       'components/ai/ask/history-view.tsx',
       'components/ai/proposal-card.tsx',
-      'components/mobile/mode-switcher-sheet.tsx',
+      'components/mobile/mobile-bottom-dock.tsx',
       'components/notices/ai-notice.tsx',
       'components/planner/item-context-menu.tsx',
       'components/planner/item-detail-sections.tsx',

@@ -228,10 +228,8 @@ export async function currentDateStr(page: Page): Promise<string> {
  * - DESKTOP steps one day per chevron click. Requires day scope (the seeded
  *   default): under week scope a chevron steps seven days, which is how the old
  *   helper could overshoot in the first place.
- * - MOBILE has no chevrons — the redesigned header is a week strip, so a day
- *   inside the shown week is one tap, and anything further out goes through the
- *   calendar popover, which is also the only route a real user has for a jump
- *   of more than a week.
+ * - MOBILE has no chevrons — the title opens Go to date, a calendar popover,
+ *   which is the route a real user has to any other day.
  */
 export async function navigateToDate(page: Page, targetDateStr: string): Promise<void> {
   await expect(page.getByTestId('view-root')).toHaveAttribute('data-view-scope', 'day');
@@ -259,8 +257,8 @@ export async function navigateToDate(page: Page, targetDateStr: string): Promise
 }
 
 /**
- * The mobile route to a date: the week strip's own cell if the date is in the
- * week on screen, the calendar popover otherwise.
+ * The mobile route to a date: the calendar popover the title opens (there is
+ * no week strip since mobile web round 3).
  *
  * Both are controls a thumb can reach — nothing here is mounted for the tests'
  * benefit. The popover is driven the way a person drives it: page to the target
@@ -270,12 +268,6 @@ export async function navigateToDate(page: Page, targetDateStr: string): Promise
  * with "Today, " and ", selected" glued on either side.
  */
 async function pickDateOnMobile(page: Page, targetDateStr: string): Promise<void> {
-  const cell = page.locator(`[data-testid="week-day"][data-date="${targetDateStr}"]`);
-  if (await cell.count()) {
-    await cell.first().click();
-    return;
-  }
-
   const [fromY, fromM] = (await currentDateStr(page)).split('-').map(Number);
   const [toY, toM] = targetDateStr.split('-').map(Number);
   // Calendar months, not elapsed time: the picker opens on the cursor's month
@@ -294,43 +286,32 @@ async function pickDateOnMobile(page: Page, targetDateStr: string): Promise<void
 
 /* ── mobile surfaces ───────────────────────────────────────────────────── */
 
-/** The three surfaces the phone shell can show. */
+/** The three surfaces the phone shell can show: two tabs and the braindump sheet. */
 export type MobileTabName = 'braindump' | 'today' | 'chat';
 
 /**
  * Switch the mobile shell's surface.
  *
- * Was one click on the bottom tab bar. That bar is retired — the dock carries a
- * single mode card showing the CURRENT surface's glyph, and the three
- * `[data-tour="tab-*"]` handles moved onto the entries of the sheet it opens. So
- * this is two interactions now, and the entry only exists while the sheet is
- * open; every @mobile spec that used to click a tab goes through here rather
- * than each one re-deriving the sequence.
- *
- * Returns early when the surface is already showing: the sheet has no entry for
- * "stay put", and opening it to pick the row you are already on would leave the
- * drawer's own close animation racing the next assertion.
+ * Today and Ask are keys in the dock's tab pill; Braindump is the sheet the
+ * capture bar's count opens over Today (mobile web round 3). The pill's
+ * `data-surface` says which is on screen, the sheet included, so every
+ * @mobile spec goes through here rather than re-deriving the sequence.
  */
 export async function switchMobileTab(page: Page, tab: MobileTabName): Promise<void> {
-  const card = page.getByTestId('mobile-mode-card');
+  const pill = page.getByTestId('mobile-tab-pill');
   await expect(
-    card,
-    'no mobile mode card — is this running in the mobile project?'
+    pill,
+    'no mobile tab pill — is this running in the mobile project?'
   ).toBeVisible({ timeout: 10_000 });
-  if ((await card.getAttribute('data-surface')) === tab) return;
+  if ((await pill.getAttribute('data-surface')) === tab) return;
 
-  await card.click();
-  const entry = page.locator(`[data-tour="tab-${tab}"]`);
-  await expect(entry, `the mode switcher sheet never offered "${tab}"`).toBeVisible({
-    timeout: 5_000,
-  });
-  await entry.click();
-
-  // Both halves matter. The sheet unmounting is what frees the next click from
-  // the drawer's overlay; `data-surface` is what proves the pick actually moved
-  // the shell rather than merely dismissing the sheet.
-  await expect(entry).toHaveCount(0);
-  await expect(card).toHaveAttribute('data-surface', tab);
+  if (tab === 'braindump') {
+    await page.getByTestId('mobile-braindump-count').click();
+    await expect(page.getByTestId('braindump-sheet')).toBeVisible();
+  } else {
+    await page.getByTestId(`mobile-tab-${tab}`).click();
+  }
+  await expect(pill).toHaveAttribute('data-surface', tab);
 }
 
 /* ── omnibar / commands ────────────────────────────────────────────────── */

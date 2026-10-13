@@ -112,6 +112,9 @@ export { EMPTY_VIEW_FILTERS };
 export type BraindumpFilters = ViewFilters;
 export type CanvasFilters = ViewFilters;
 
+/** The phone's row height (see `phoneDensity`). */
+export type PhoneDensity = 'comfortable' | 'compact';
+
 interface ViewStore {
   scope: ViewScope;
   layout: ViewLayout;
@@ -181,6 +184,13 @@ interface ViewStore {
    * forces it off.
    */
   zenMoving: boolean;
+  /**
+   * How tall the phone's rows are: `compact` is 30px rows and flat buckets
+   * (the mobile shell's `data-density`, styled in app/globals.css). Phone web
+   * only, and kept on this device like the rest of this store: the iPhone app
+   * has no density setting, and the desktop never reads it.
+   */
+  phoneDensity: PhoneDensity;
   /** One-time adoption of legacy planner-store view prefs (see adoptLegacyViewPrefs). */
   adoptedLegacy: boolean;
 
@@ -215,6 +225,7 @@ interface ViewStore {
   /** Move along the ladder by `delta` stops; +1 is one step wider. */
   stepWeekDaysVisible: (delta: number) => void;
   setBucketStyle: (style: BucketStyle) => void;
+  setPhoneDensity: (density: PhoneDensity) => void;
   setZenOpen: (open: boolean) => void;
   toggleZen: () => void;
   toggleBucketCollapsed: (bucket: TimeBucket) => void;
@@ -281,6 +292,7 @@ const INERT_DEFAULTS = {
   weekDaysVisible: null,
   bucketStyle: 'spine',
   collapsedBuckets: [],
+  phoneDensity: 'comfortable',
   zenOpen: false,
   zenMoving: false,
 } satisfies Partial<ViewStore>;
@@ -353,6 +365,7 @@ export const useViewStore = create<ViewStore>()(
       stepWeekDaysVisible: (delta) =>
         set((s) => ({ weekDaysVisible: stepWeekDaysFromLastCanvas(s.weekDaysVisible, delta) })),
       setBucketStyle: (bucketStyle) => set({ bucketStyle }),
+      setPhoneDensity: (phoneDensity) => set({ phoneDensity }),
       setZenOpen: (zenOpen) => set((s) => zenSwitch(s, zenOpen)),
       toggleZen: () => set((s) => zenSwitch(s, !s.zenOpen)),
       toggleBucketCollapsed: (bucket) =>
@@ -434,6 +447,9 @@ export const useViewStore = create<ViewStore>()(
           // makes every non-boolean read as closed; a blob that predates the field
           // is `undefined` and lands on the same answer.
           zenOpen: p.zenOpen === true,
+          // A closed pair, coerced like the enums above: anything else reads
+          // as the default rows.
+          phoneDensity: p.phoneDensity === 'compact' ? 'compact' : 'comfortable',
           // A reload lands on a surface, never mid-animation.
           zenMoving: false,
         };

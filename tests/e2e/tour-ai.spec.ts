@@ -244,7 +244,7 @@ test.describe('The tour’s last card on the phone @mobile', () => {
   }) => {
     const { gate, completions } = await openTour(page);
     const card = await toTheLastCard(page, { phone: true });
-    const mode = page.getByTestId('mobile-mode-card');
+    const mode = page.getByTestId('mobile-tab-pill');
 
     // On Today, with the mode button its last line names lit, and the card
     // above the dock.
@@ -281,7 +281,7 @@ test.describe('The tour’s last card on the phone @mobile', () => {
 
     await expect(tourRoot(page)).toHaveCount(0);
     await expect(page.locator('[data-setup-tab="invite"]')).toBeVisible();
-    await expect(page.getByTestId('mobile-mode-card')).toHaveAttribute('data-surface', 'chat');
+    await expect(page.getByTestId('mobile-tab-pill')).toHaveAttribute('data-surface', 'chat');
     await expect.poll(completions).toEqual([true]);
     await expect(toast(page, DONE_TITLE)).toHaveCount(0);
     expect(gate.patches).toEqual([]);

@@ -2,21 +2,16 @@ import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } 
 import { act, render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 
 /**
- * The redesigned mobile dock — the mode card, the sheet behind it, and the two
- * contracts that leave this file.
+ * The phone dock as the iPhone app lays it out (mobile web round 3): the
+ * capture bar (the dock's omnibar as a capsule, with the braindump count that
+ * opens the braindump sheet), the Today · Ask · Organize tab pill, the Search
+ * circle, and the fold to one row.
  *
- * The interesting part is not the styling. It is that retiring the tab bar moved
- * three `[data-tour="tab-*"]` handles INSIDE a sheet that is closed by default,
- * and two things outside this component read them: the onboarding tour, which
- * now spotlights the card instead, and three @mobile e2e specs, which go through
- * `switchMobileTab` and open the sheet first. A test that only asserted the
- * handles exist would pass with them mounted anywhere, including the one place
- * that breaks both readers — so the assertion here is that they are ABSENT until
- * the card is tapped.
+ * The tab pill carries `data-tour="mode-card"`, the onboarding tour's phone
+ * spotlight, and `data-surface`, which the e2e helper `switchMobileTab` reads.
  *
- * The toast anchor is here for the other reason a phase-2 change could go
- * quietly wrong: the dock lost ~55px of height, and the undo toast is placed
- * from a measurement of it.
+ * The toast anchor is here for the other reason a dock change could go quietly
+ * wrong: the undo toast is placed from a measurement of the dock.
  */
 
 vi.mock('@/lib/db', () => ({
@@ -114,7 +109,7 @@ afterAll(() => {
  */
 let unseed: () => void = () => {};
 beforeEach(() => {
-  useMobileNavStore.setState({ activeTab: 'today' });
+  useMobileNavStore.setState({ activeTab: 'today', braindumpOpen: false, dockMinimized: false });
   useRailStore.getState().reset();
   unseed = seedAI(CONNECTED_MODEL);
   document.documentElement.style.removeProperty('--toast-bottom');
@@ -124,33 +119,38 @@ afterEach(() => {
   unseed();
 });
 
-const card = () => screen.getByTestId('mobile-mode-card');
-/** The AI's mark on the card (components/ai/ask-mark.tsx), when the card wears it. */
-const cardMark = () => card().querySelector('[data-ask-mark]');
-/** The accent, by any of its names: the mark's foot, the key's rim, the lime itself. */
-const ACCENT = /--(?:lime-solid|ask-icon-accent|ask-key-accent)\b|primary|lime/;
+const pill = () => screen.getByTestId('mobile-tab-pill');
+const askKey = () => screen.queryByTestId('mobile-tab-chat');
+/** The AI's mark on the Ask key (components/ai/ask-mark.tsx). */
+const askMark = () => askKey()?.querySelector('[data-ask-mark]') ?? null;
 
-describe('the mode card', () => {
-  it('names the surface it is showing', () => {
+describe('the tab pill', () => {
+  it('shows Today, Ask and Organize, with the one you are on selected', () => {
     render(<MobileBottomDock />);
-    expect(card()).toHaveAttribute('data-surface', 'today');
-    expect(card()).toHaveAttribute('aria-label', 'Surface: Today. Change surface.');
+    expect(pill()).toHaveAttribute('data-surface', 'today');
+    expect(screen.getByTestId('mobile-tab-today')).toHaveAttribute('aria-current', 'page');
+    expect(askKey()).toHaveTextContent('Ask');
+    expect(askKey()).not.toHaveAttribute('aria-current');
+    expect(screen.getByTestId('mobile-tab-organize')).toHaveTextContent('Organize');
   });
 
   it("is the tour's spotlight on the phone, at every mobile step", () => {
     // onboarding-tour.tsx `tourSpotlightSelector`: renamed, every phone step
     // would draw a plain scrim with nothing lit, the AI card's included.
     render(<MobileBottomDock />);
-    expect(card()).toHaveAttribute('data-tour', 'mode-card');
+    expect(pill()).toHaveAttribute('data-tour', 'mode-card');
     expect(document.querySelectorAll('[data-tour="mode-card"]')).toHaveLength(1);
   });
 
-  it('follows the active surface, and calls the chat surface Ask', () => {
-    useMobileNavStore.setState({ activeTab: 'chat' });
+  it('switches tab on a tap, and says the braindump sheet is on screen while it is', () => {
     render(<MobileBottomDock />);
+    fireEvent.click(askKey()!);
+    expect(useMobileNavStore.getState().activeTab).toBe('chat');
+    expect(pill()).toHaveAttribute('data-surface', 'chat');
 
-    expect(card()).toHaveAttribute('data-surface', 'chat');
-    expect(card()).toHaveAttribute('aria-label', 'Surface: Ask. Change surface.');
+    fireEvent.click(screen.getByTestId('mobile-tab-today'));
+    act(() => useMobileNavStore.getState().setBraindumpOpen(true));
+    expect(pill()).toHaveAttribute('data-surface', 'braindump');
   });
 
   it('calls it Ask whoever answers: the label under the bar names the answerer (D11)', () => {
@@ -159,38 +159,37 @@ describe('the mode card', () => {
     useMobileNavStore.setState({ activeTab: 'chat' });
     render(<MobileBottomDock />);
 
-    expect(card()).toHaveAttribute('aria-label', 'Surface: Ask. Change surface.');
+    expect(askKey()).toHaveTextContent('Ask');
     expect(screen.getByTestId('answerer-label')).toHaveTextContent('OpenClaw · kirby-1');
   });
 
-  it('wears Ask\'s one-ink mark on the Ask tab, not the lit aurora', () => {
-    useMobileNavStore.setState({ activeTab: 'chat' });
+  it("wears Ask's one-ink mark on the Ask key, not the lit aurora", () => {
     render(<MobileBottomDock />);
-
-    expect(cardMark()).toHaveAttribute('data-tone', 'ink');
-    expect(cardMark()).not.toHaveAttribute('data-lit');
+    expect(askMark()).toHaveAttribute('data-tone', 'ink');
+    expect(askMark()).not.toHaveAttribute('data-lit');
   });
 
   it.each<[string, SeedAI | undefined]>([
     ['the account has said No AI', AI_HIDDEN],
     ['the gate has not answered', undefined],
-  ])('never says it is on a chat tab that is not offered: %s', (_, s) => {
+  ])('has no Ask key, and never says it is on Ask, while it is not offered: %s', (_, s) => {
     unseed();
     unseed = seedAI(s);
     useMobileNavStore.setState({ activeTab: 'chat' });
     render(<MobileBottomDock />);
 
-    // The shell shows Today for this stored tab in the same frame; the card
+    // The shell shows Today for this stored tab in the same frame; the pill
     // and the bar agree with what is on screen, not with the stale store.
-    expect(card()).toHaveAttribute('data-surface', 'today');
+    expect(pill()).toHaveAttribute('data-surface', 'today');
+    expect(askKey()).toBeNull();
     expect(screen.queryByTestId('chat-dock-input')).toBeNull();
     expect(screen.getByTestId('omnibar-input')).toBeInTheDocument();
   });
 
-  // Nothing answers, but the gate invites or offers the fix: the chat tab
-  // holds the setup page, and the card says so, in the unlit mark the
-  // desktop's key wears. The bar stays the omnibar: there is no conversation
-  // to type into, and capture still belongs to it.
+  // Nothing answers, but the gate invites or offers the fix: the Ask key
+  // holds the setup page, named for it, in the unlit mark the desktop's key
+  // wears. The bar stays the omnibar: there is no conversation to type into,
+  // and capture still belongs to it.
   it.each<[string, SeedAI, string]>([
     ['invited', NOTHING_CONNECTED, 'Set up AI'],
     ['offering the fix', KEY_TURNED_DOWN, 'Fix AI'],
@@ -200,116 +199,54 @@ describe('the mode card', () => {
     useMobileNavStore.setState({ activeTab: 'chat' });
     render(<MobileBottomDock />);
 
-    expect(card()).toHaveAttribute('data-surface', 'chat');
-    expect(card()).toHaveAttribute('aria-label', `Surface: ${word}. Change surface.`);
-    expect(cardMark()).toHaveAttribute('data-tone', 'aurora');
-    expect(cardMark()).toHaveAttribute('data-lit', 'false');
+    expect(pill()).toHaveAttribute('data-surface', 'chat');
+    expect(askKey()).toHaveTextContent(word);
+    expect(askMark()).toHaveAttribute('data-tone', 'aurora');
+    expect(askMark()).toHaveAttribute('data-lit', 'false');
     expect(screen.getByTestId('omnibar-input')).toBeInTheDocument();
     expect(screen.queryByTestId('chat-dock-input')).toBeNull();
     expect(screen.queryByTestId('answerer-label')).toBeNull();
   });
-
-  it('carries no lime: the glyph alone says where you are', () => {
-    render(<MobileBottomDock />);
-    // Round 6 removed the highlight. `text-foreground` and nothing tinted —
-    // spelled out because the tint is the kind of thing a later restyle
-    // reintroduces "for affordance" without knowing it was decided against.
-    expect(card().className).toContain('text-foreground');
-    expect(card().className).not.toMatch(/primary|lime|text-ai/);
-  });
-
-  // The mark's paint is in its tiles, which the className check above cannot
-  // see: on Ask and on the setup page alike, nothing in the card is the accent.
-  it.each<[string, SeedAI]>([
-    ['Ask', CONNECTED_MODEL],
-    ['the setup page', NOTHING_CONNECTED],
-    ['the fix home', KEY_TURNED_DOWN],
-  ])('carries no lime in its mark either, on %s', (_, s) => {
-    unseed();
-    unseed = seedAI(s);
-    useMobileNavStore.setState({ activeTab: 'chat' });
-    render(<MobileBottomDock />);
-
-    expect(cardMark()).not.toBeNull();
-    expect(card().innerHTML).not.toMatch(ACCENT);
-  });
 });
 
-describe('the switcher sheet', () => {
-  it('keeps the tab handles out of the DOM until it is opened', async () => {
+describe('the capture bar', () => {
+  it('is the dock omnibar, as the capsule, leading with the iPhone line', () => {
     render(<MobileBottomDock />);
-    expect(document.querySelectorAll('[data-tour^="tab-"]')).toHaveLength(0);
-
-    fireEvent.click(card());
-
-    await waitFor(() => {
-      expect(document.querySelectorAll('[data-tour^="tab-"]')).toHaveLength(3);
-    });
-    for (const tab of ['braindump', 'today', 'chat']) {
-      expect(document.querySelector(`[data-tour="tab-${tab}"]`)).not.toBeNull();
-    }
-    expect(screen.getByTestId('mode-option-chat')).toHaveTextContent('Ask');
-    expect(screen.getByTestId('mode-switcher-sheet')).toHaveTextContent(
-      'Switch between the Braindump, Today and Ask surfaces.'
-    );
+    expect(screen.getByTestId('omnibar-input')).toHaveAttribute('placeholder', 'Get it out of your head');
+    expect(document.querySelector('[data-omnibar-variant="dock"]')).not.toBeNull();
   });
 
-  it('lists only the surfaces that exist when nothing is offered', async () => {
-    unseed();
-    unseed = seedAI(AI_HIDDEN);
+  it('opens and closes the braindump sheet from its count', () => {
     render(<MobileBottomDock />);
-    fireEvent.click(card());
-
-    await waitFor(() => {
-      expect(document.querySelectorAll('[data-tour^="tab-"]')).toHaveLength(2);
-    });
-    expect(screen.queryByTestId('mode-option-chat')).toBeNull();
+    const count = screen.getByTestId('mobile-braindump-count');
+    expect(count).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(count);
+    expect(useMobileNavStore.getState().braindumpOpen).toBe(true);
+    expect(count).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(count);
+    expect(useMobileNavStore.getState().braindumpOpen).toBe(false);
   });
 
-  it('offers the setup page as the third while nothing answers: "Set up AI", optional', async () => {
-    unseed();
-    unseed = seedAI(NOTHING_CONNECTED);
+  it('folds to one row on Today, keeping the same field, and a tap on the lime circle unfolds it', () => {
     render(<MobileBottomDock />);
-    fireEvent.click(card());
+    const input = screen.getByTestId('omnibar-input');
+    act(() => useMobileNavStore.getState().setDockMinimized(true));
 
-    await waitFor(() => {
-      expect(document.querySelectorAll('[data-tour^="tab-"]')).toHaveLength(3);
-    });
-    const row = screen.getByTestId('mode-option-chat');
-    expect(row).toHaveTextContent('Set up AI Optional');
-    expect(row.querySelector('[data-ask-mark]')).toHaveAttribute('data-lit', 'false');
-    expect(screen.getByTestId('mode-switcher-sheet')).toHaveTextContent(
-      'Switch between the Braindump, Today and Set up AI surfaces.'
-    );
+    expect(screen.getByTestId('mobile-dock')).toHaveAttribute('data-minimized', 'true');
+    expect(screen.queryByTestId('mobile-tab-pill')).toBeNull();
+    // The same element: a fold never drops what is typed.
+    expect(screen.getByTestId('omnibar-input')).toBe(input);
+    expect(input).toHaveAttribute('placeholder', 'Capture');
 
-    fireEvent.click(row);
-    expect(useMobileNavStore.getState().activeTab).toBe('chat');
-    expect(card()).toHaveAttribute('data-surface', 'chat');
+    fireEvent.click(screen.getByTestId('mobile-dock-unfold'));
+    expect(screen.getByTestId('mobile-dock')).toHaveAttribute('data-minimized', 'false');
+    expect(pill()).toBeInTheDocument();
   });
 
-  it('marks the surface you are on', async () => {
+  it('never folds on Ask', () => {
+    useMobileNavStore.setState({ activeTab: 'chat', dockMinimized: true });
     render(<MobileBottomDock />);
-    fireEvent.click(card());
-
-    const today = await screen.findByTestId('mode-option-today');
-    expect(today).toHaveAttribute('aria-current', 'true');
-    expect(screen.getByTestId('mode-option-braindump')).not.toHaveAttribute('aria-current');
-  });
-
-  it('switches surface and closes', async () => {
-    render(<MobileBottomDock />);
-    fireEvent.click(card());
-    const sheet = await screen.findByTestId('mode-switcher-sheet');
-
-    fireEvent.click(screen.getByTestId('mode-option-braindump'));
-
-    expect(useMobileNavStore.getState().activeTab).toBe('braindump');
-    expect(card()).toHaveAttribute('data-surface', 'braindump');
-    // `data-state`, not unmounting: vaul holds the content through its exit
-    // transition, and jsdom fires no transitionend, so it never leaves the tree
-    // here. The e2e helper waits for the real unmount because there the overlay
-    // it takes with it is what would eat the next click.
-    await waitFor(() => expect(sheet).toHaveAttribute('data-state', 'closed'));
+    expect(screen.getByTestId('mobile-dock')).toHaveAttribute('data-minimized', 'false');
   });
 });
 

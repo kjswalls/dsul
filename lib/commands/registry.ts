@@ -555,7 +555,8 @@ export const STATIC_COMMANDS: Command[] = [
     keywords: 'inbox backlog unscheduled capture notes',
     aliases: ['braindump', 'inbox'],
     run: (ctx) => {
-      if (ctx.isMobile) useMobileNavStore.getState().setActiveTab('braindump');
+      // The phone's braindump is a sheet over Today (lib/mobile-nav-store.ts).
+      if (ctx.isMobile) useMobileNavStore.getState().setBraindumpOpen(true);
       else useSidebarStore.getState().setLeftSidebarOpen(true);
     },
   },

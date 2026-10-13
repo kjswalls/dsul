@@ -60,7 +60,6 @@ vi.mock('next/navigation', () => ({
 }));
 
 import { Omnibar } from '@/components/sidebar/omnibar';
-import { ModeSwitcherSheet } from '@/components/mobile/mode-switcher-sheet';
 import { SwipeRow } from '@/components/mobile/swipe-row';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { usePlannerStore } from '@/lib/planner-store';
@@ -189,23 +188,6 @@ describe('the capture relay in the phone’s command bar', () => {
     expect(addTask).toHaveBeenCalledWith({ title: 'milk' });
     expect(field()).toHaveAttribute('data-burst', '0');
     expect(field()).toHaveAttribute('data-place', expect.stringContaining('-inset-3'));
-  });
-});
-
-describe('the switcher sheet in dark mode', () => {
-  it('marks the current surface with the latched-selection wash, not the well', async () => {
-    render(<ModeSwitcherSheet />);
-    fireEvent.click(screen.getByTestId('mobile-mode-card'));
-
-    const current = await screen.findByTestId('mode-option-today');
-    // bg-surface-3 on the sheet's --modal ground is 0.945-on-0.996 in light and
-    // 0.245-on-0.21 in dark — and dark's hover wash (white 6%) is a bigger step
-    // than that, so the row you were passing over read stronger than the row you
-    // were on. --row-selected is the token whose whole job is sitting a notch
-    // above the hover in both themes.
-    expect(current.className).toContain('var(--row-selected)');
-    expect(current.className).not.toContain('bg-surface-3');
-    expect(screen.getByTestId('mode-option-braindump').className).toContain('hover-wash');
   });
 });
 

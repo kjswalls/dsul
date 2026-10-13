@@ -73,8 +73,8 @@ const UNLIT_HEAD = cn(
  *              wherever the AI is named in colour.
  *  - 'ink'     one solid ink, `currentColor`, for a slot that colours its
  *              glyph itself: a row of line icons in one muted ink, a notice
- *              tinted red for a failure, the phone's mode card, which carries
- *              no colour on purpose (mobile-redesign.md).
+ *              tinted red for a failure, the phone's tab pill, whose Ask key
+ *              carries no colour of its own (the lime fill marks selection).
  */
 export type AskMarkTone = 'aurora' | 'ink';
 

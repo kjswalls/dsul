@@ -225,6 +225,8 @@ export const PERSISTED_USER_STORES: readonly PersistedUserStore[] = [
       'weekDaysVisible',
       'bucketStyle',
       'collapsedBuckets',
+      // The phone's row height: a closed pair about the screen, not the person.
+      'phoneDensity',
       // Inert on the same test every field above it passes: a boolean saying
       // which of two screens is showing, and nothing whatever about the person
       // looking at it. The sharper reason to spare it under 'disclosive' is

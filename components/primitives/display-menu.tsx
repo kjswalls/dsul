@@ -394,9 +394,8 @@ function SheetRow({ spec, onDismiss }: { spec: RowSpec; onDismiss: () => void })
         SHEET_ROW,
         spec.checked && 'font-semibold',
         // --row-selected, not a lime fill: the lime budget is one mark per
-        // surface and it is spent on the trigger dot. See mode-switcher-sheet
-        // for why this token and not bg-surface-3 (dark mode orders the hover
-        // wash above it otherwise).
+        // surface and it is spent on the trigger dot. This token and not
+        // bg-surface-3, because dark mode orders the hover wash above that.
         spec.checked && !spec.disabled && 'bg-[var(--row-selected)]',
         spec.disabled ? 'opacity-50' : 'hover-wash'
       )}
@@ -1342,8 +1341,8 @@ function DisplaySheet({
         }
       }}
       // vaul defaults autoFocus to false, which leaves focus on the trigger
-      // while the app root is aria-hidden around it — the same trap
-      // mode-switcher-sheet documents. This sheet is the only route to grouping
+      // while the app root is aria-hidden around it: a screen reader lands on a
+      // hidden node and Tab goes behind the scrim. This sheet is the only route to grouping
       // and filtering on a phone.
       autoFocus
     >

@@ -833,23 +833,19 @@ describe('the phone mount, at the foot of the Today card', () => {
     expect(queryShelf() !== null).toBe(lit);
   });
 
-  it('sits last in the card, under the week strip, with touch targets and no floor', () => {
+  it('sits last under the top row, with touch targets and no floor', () => {
     // Four ✕s, so Reset is drawn after the settings' own.
     seed(FOUR_ENDING_IN_A_PHRASE);
     renderPhoneHeader();
 
-    // Last, so the date row, its week and the review notice about that date
-    // stay one cluster, and the line sits over the content it describes. No
-    // review is owed here, so the week strip is right above it.
-    const card = shelf().parentElement!;
-    expect(card).toContainElement(screen.getByTestId('header-date'));
-    expect(card.lastElementChild).toBe(shelf());
-    const strip = shelf().previousElementSibling!;
-    expect(strip.querySelectorAll('[data-testid="week-day"]')).toHaveLength(7);
+    // Last, under the date row and the review notice about that date, so the
+    // line sits over the content it describes.
+    const block = shelf().parentElement!;
+    expect(block.lastElementChild).toBe(shelf());
+    expect(block.closest('header')).toContainElement(screen.getByTestId('header-date'));
 
-    // The card is as wide as the screen, so no containment; the text sits on
-    // the date's edge.
-    expect(shelf()).toHaveClass('px-0', 'pt-0', 'pb-px');
+    // The row is as wide as the screen, so no containment.
+    expect(shelf()).toHaveClass('px-1', 'pt-0', 'pb-1');
     expect(shelf()).not.toHaveClass('contain-inline-size');
     expect(shelf().style.minWidth).toBe('');
     // 28px targets on a thumb's surface, as the Braindump tab's: the text and
@@ -909,11 +905,11 @@ describe('the phone mount, at the foot of the Today card', () => {
     }
   });
 
-  it('is not on the Braindump or Chat tab, whatever the canvas holds', () => {
+  it('is not on the Ask tab, whatever the canvas holds', () => {
     // The chat tab is on screen only while something can answer.
     const unseed = seedAI(CONNECTED_MODEL);
     try {
-      for (const tab of ['braindump', 'chat'] as const) {
+      for (const tab of ['chat'] as const) {
         seed({ canvasGroupBy: 'project', canvasFilters: filters({ hideFinished: true }) });
         useMobileNavStore.setState({ activeTab: tab });
         renderPhoneHeader();
@@ -929,15 +925,17 @@ describe('the phone mount, at the foot of the Today card', () => {
   it('comes and goes with the tab, with its hooks above the early return', async () => {
     // A hook below the Today-only return runs on Today and not on the others,
     // and React throws the moment the count changes between renders.
+    const unseed = seedAI(CONNECTED_MODEL);
     seed({ canvasGroupBy: 'project' });
     renderPhoneHeader();
     expect(shelf()).toBeInTheDocument();
 
-    act(() => useMobileNavStore.setState({ activeTab: 'braindump' }));
+    act(() => useMobileNavStore.setState({ activeTab: 'chat' }));
     expect(queryShelf()).toBeNull();
 
     act(() => useMobileNavStore.setState({ activeTab: 'today' }));
     expect(shelf()).toBeInTheDocument();
+    unseed();
 
     // And the ref still reaches the menu across the round trip.
     fireEvent.click(opener());

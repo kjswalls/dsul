@@ -25,10 +25,10 @@ const SPOTLIGHT_PADDING = 8;
 
 /**
  * @param revision re-measures when the selector has NOT changed but the target
- *   may have moved. All three mobile steps spotlight the same mode card while
- *   switching the tab underneath it, and the dock the card rides is only as tall
+ *   may have moved. All three mobile steps spotlight the same tab pill while
+ *   switching the tab underneath it, and the dock the pill rides is only as tall
  *   as its notice stack: one notice arriving or clearing between steps slides
- *   the card without the selector changing a character, and the cutout would sit
+ *   the pill without the selector changing a character, and the cutout would sit
  *   a few px off the control it is pointing at. Step 4 adds its AI variant, so a
  *   key that comes back after the gate flapped is found and measured again.
  *
@@ -84,7 +84,7 @@ const EDGE_BLUR = 24; // blur radius for soft edge fade
  *
  * It used to be a flat `bottom-20`, chosen when the mobile steps spotlighted the
  * tab bar and the card only had to not cover the tab bar's LABELS. The spotlight
- * target is now the dock's mode card, so a card overlapping the dock would cover
+ * target is now the dock's tab pill, so a card overlapping the dock would cover
  * the cutout the step exists to point at.
  *
  * `--toast-bottom` is the dock's own measured top edge plus 8px
@@ -127,8 +127,8 @@ export const TOUR_AI_OFF_BODY = 'You turned AI off, so dsul won’t bring it up.
  *  - 'ready': something answers. The card says how to ask, beside Ask's
  *    column on the desktop, on the Ask tab on the phone.
  *  - 'invite': nothing answers and the gate offers setup (`askInvite`). The
- *    spotlight is on the unlit key (the mode card on the phone, whose switcher
- *    holds the setup row), and the card says what AI could do, previews two
+ *    spotlight is on the unlit key (the tab pill on the phone, whose Ask key
+ *    reads Set up AI), and the card says what AI could do, previews two
  *    things to ask, and offers Set up AI, Not now and No AI, thanks.
  *  - 'off': a replay on an account that said "No AI, thanks". A quiet card
  *    that says AI stays off, and how to turn it back on.
@@ -211,10 +211,10 @@ function useIsDarkMode() {
  *   tour is up. The hole is click-through by default because the desktop steps
  *   spotlight panels, and the retired mobile tab bar was idempotent: a tap fell
  *   through to `setActiveTab(<the tab the step had just switched to>)`. The
- *   mobile steps now spotlight the dock's mode card, which is a Drawer trigger:
- *   the sheet portals to body at z-50, this overlay is z-[100], so a tap through
- *   the hole opens a modal UNDER a scrim the user cannot dismiss, and its rows
- *   land on the catcher rather than the sheet. Step 4 seals it on the desktop
+ *   mobile steps now spotlight the dock's tab pill, whose Organize key opens
+ *   a Drawer: the sheet portals to body at z-50, this overlay is z-[100], so a
+ *   tap through the hole opens a modal UNDER a scrim the user cannot dismiss,
+ *   and its rows land on the catcher rather than the sheet. Step 4 seals it on the desktop
  *   too: a click through to the key would open setup under the tour. The step's
  *   own buttons are the only controls while the tour owns the screen.
  */
@@ -495,7 +495,7 @@ export function OnboardingTour({ userId, onComplete, onExpandChat, onCollapseCha
 
   // Switch to the Ask tab (id 'chat') when reaching step 4 on mobile while
   // something answers, where the card says to type in the bar below. Otherwise
-  // the step stays on Today, pointing at the mode card it already lit, since
+  // the step stays on Today, pointing at the tab pill it already lit, since
   // that is where the card says setup waits.
   useEffect(() => {
     if (isVisible && step === 4 && isMobile && canChat) {
