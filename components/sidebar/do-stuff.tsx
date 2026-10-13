@@ -118,7 +118,7 @@ export function wantsDoStuffRow(rows: readonly RowItem[]): boolean {
  * is no keyboard to press it on. The chord is the live `do_stuff` binding,
  * never typed by hand.
  */
-export function DoStuffKey({ touch }: { touch?: boolean }) {
+export function DoStuffKey({ touch, place = 'header' }: { touch?: boolean; place?: 'header' | 'dock' }) {
   const on = useDoStuffStore((s) => s.on);
   const keys = useShortcutKeys('do_stuff');
   const isMac = useMemo(() => isApplePlatform(), []);
@@ -127,6 +127,7 @@ export function DoStuffKey({ touch }: { touch?: boolean }) {
     <button
       type="button"
       data-do-key=""
+      data-do-key-place={place}
       data-on={on ? 'true' : undefined}
       data-testid="do-stuff-start"
       aria-pressed={on}
@@ -137,7 +138,12 @@ export function DoStuffKey({ touch }: { touch?: boolean }) {
         if (s.on) s.stop();
         else s.start();
       }}
-      className="titlebar-hole flex h-7 shrink-0 cursor-pointer items-center gap-[7px] rounded-[7px] text-[12px] leading-[17px] font-medium whitespace-nowrap text-foreground"
+      className={cn(
+        'titlebar-hole flex shrink-0 cursor-pointer items-center gap-[7px] font-medium whitespace-nowrap text-foreground',
+        place === 'dock'
+          ? 'h-9 min-w-0 flex-1 rounded-[9px] text-[13px] leading-[18px]'
+          : 'h-7 rounded-[7px] text-[12px] leading-[17px]'
+      )}
     >
       <Zap aria-hidden data-do-key-bolt="" className="size-3.5 shrink-0" />
       <span data-do-key-word="">do stuff</span>
@@ -678,32 +684,42 @@ function useLaneKeys(
 }
 
 /**
- * The shuffle: each row flies from where it stood in the braindump to its
- * place in its lane, lifting and tilting a little on the way, staggered. Once,
- * when the mode opens, and not under either motion veto.
+ * The ripple (Kirby's pick, 2026-10-13): the dock's relay field flares out of
+ * the key (components/sidebar/sidebar-dock.tsx, `starts`), and the wave climbs
+ * the list from the bottom. Each row holds where it stood in the braindump
+ * until the wave reaches it, lights for a beat, then glides to its place in its
+ * lane, so the plan reads in the order the light passes. Once, when the mode
+ * opens, and not under either motion veto. The light is a tint of the accent
+ * at full strength mixed into the row's ground, never an opacity.
  */
-function useShuffle(listRef: React.RefObject<HTMLDivElement | null>) {
+function useRipple(listRef: React.RefObject<HTMLDivElement | null>) {
   useLayoutEffect(() => {
     const from = takeShuffleFrom();
     const list = listRef.current;
     if (!from || !list || prefersReducedMotion()) return;
-    list.querySelectorAll<HTMLElement>('[data-lane-row]').forEach((el, i) => {
-      const top = from.get(el.dataset.laneRow ?? '');
+    const rows = [...list.querySelectorAll<HTMLElement>('[data-lane-row]')];
+    const tops = rows.map((el) => from.get(el.dataset.laneRow ?? ''));
+    const known = tops.filter((t): t is number => t !== undefined);
+    if (known.length === 0) return;
+    const bottom = Math.max(...known);
+    rows.forEach((el, i) => {
+      const top = tops[i];
       if (top === undefined || typeof el.animate !== 'function') return;
       const dy = top - el.getBoundingClientRect().top;
-      const side = i % 2 ? 1 : -1;
+      // The wave's arrival: ~1.4ms a pixel up from the lowest row, so a long
+      // list still lands inside a second.
+      const delay = Math.min(700, (bottom - top) * 1.4);
       el.animate(
         [
-          { transform: `translate(0, ${dy}px)` },
+          { transform: `translate(0, ${dy}px)`, background: 'transparent' },
           {
-            transform: `translate(${side * 12}px, ${dy * 0.5}px) rotate(${side * 1.2}deg) scale(1.02)`,
-            boxShadow: 'var(--shadow-elev-sm)',
-            background: 'var(--surface-2)',
-            offset: 0.45,
+            transform: `translate(0, ${dy}px)`,
+            background: 'color-mix(in oklab, var(--lime-solid) 22%, var(--surface-1))',
+            offset: 0.3,
           },
-          { transform: 'none' },
+          { transform: 'none', background: 'transparent' },
         ],
-        { duration: 620, delay: i * 25, easing: 'cubic-bezier(.3,.7,.2,1)', fill: 'backwards' }
+        { duration: 620, delay, easing: 'cubic-bezier(.3,.7,.2,1)', fill: 'backwards' }
       );
     });
   }, [listRef]);
@@ -752,10 +768,27 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
   const plan = usePlan(rows);
   const listRef = useRef<HTMLDivElement>(null);
   const hoveredRef = useRef<string | null>(null);
-  useShuffle(listRef);
+  useRipple(listRef);
   useLaneKeys(listRef, hoveredRef, plan.facts);
   usePrepOnStart(plan.prepCandidates);
   const prepError = usePrepPacksStore((s) => s.error);
+  const docked = useDoStuffStore((s) => s.docked);
+  const doneCount = useDoStuffStore((s) => s.doneCount);
+  const preparing = usePrepPacksStore((s) => Object.keys(s.preparing).length);
+  const left = plan.lanes.now.filter(isOpen).length;
+
+  // What make it so would write, for the dock's key, which has no rows of its
+  // own. Republished whenever the plan changes; stop() clears it.
+  useEffect(() => {
+    useDoStuffStore.setState({
+      commit: {
+        days: plan.days,
+        handOff: plan.handOff,
+        to: plan.target ? { assignee: plan.target.assignee, name: plan.target.name } : null,
+        left,
+      },
+    });
+  }, [plan.days, plan.handOff, plan.target, left]);
 
   // The one pack open, by item id. ↑ ↓ walk the "done for you" lane.
   const [peek, setPeek] = useState<string | null>(null);
@@ -808,6 +841,15 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
   let shown = 0;
   return (
     <div ref={listRef} data-do-stuff-list className="flex flex-col gap-1" data-testid="do-stuff-list">
+      {/* With the dock carrying the key there is no strip: what it said is a
+          quiet line above the lanes, and only while there is something to say. */}
+      {docked && (doneCount > 0 || preparing > 0) && (
+        <p className="px-2 pb-1 text-xs text-muted-foreground" data-testid="do-stuff-progress">
+          {[doneCount > 0 && `${doneCount} done`, left > 0 && `${left} to do now`, preparing > 0 && 'getting things ready…']
+            .filter(Boolean)
+            .join(' · ')}
+        </p>
+      )}
       {prepError && (
         <p className="px-2 pb-1 text-xs text-muted-foreground" data-testid="prep-pack-error">
           {prepError}

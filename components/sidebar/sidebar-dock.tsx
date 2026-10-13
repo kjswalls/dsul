@@ -1,16 +1,19 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ProposalCard } from '@/components/ai/proposal-card';
 import { DockNotices } from '@/components/sidebar/dock-notices';
 import { UndoStrip } from '@/components/notices/undo-strip';
 import { UserCard } from '@/components/sidebar/user-card';
 import { Omnibar } from '@/components/sidebar/omnibar';
+import { DoStuffDockKeys } from '@/components/sidebar/do-stuff-dock';
 import { RelayField } from '@/components/primitives/relay-field';
 import { useToastAnchor } from '@/hooks/use-toast-anchor';
 import { RELAY } from '@/lib/relay-config';
 import { useLayoutDef } from '@/lib/look-store';
 import { useAICapabilities } from '@/lib/ai-connection-store';
+import { useDoStuffEnabled } from '@/lib/extension-gates';
+import { useDoStuffStore } from '@/lib/do-stuff';
 import { useChatCardHomeShown, useChatCardSurface, useChatHostCard } from '@/lib/open-chat';
 
 /**
@@ -102,6 +105,27 @@ export function SidebarDock({ placement = 'sidebar' }: { placement?: 'sidebar' |
   // input, this marks the instant you arrived.
   const [burst, setBurst] = useState(0);
   const pulse = useCallback(() => setBurst((n) => n + 1), []);
+
+  /**
+   * The do stuff keys in place of the capture bar (components/sidebar/
+   * do-stuff-dock.tsx; Kirby's pick, 2026-10-13). Only in the sidebar's own
+   * dock (a layout that lays the dock across the foot, or draws it as a page's
+   * ruled line, keeps its bar and the key stays in the braindump's header),
+   * and only once the braindump wants the key at all (`available`, its own
+   * gate: a fresh account's dock is the bar it always was). The bar never
+   * vanishes from under someone typing in it: the swap waits for it to blur.
+   * While doing stuff the keys stay, whatever the braindump says.
+   */
+  const doStuffOn = useDoStuffEnabled();
+  const doStuffAvailable = useDoStuffStore((s) => s.available || s.on);
+  const starts = useDoStuffStore((s) => s.starts);
+  const wantKeys = doStuffOn && doStuffAvailable && !bottom && !pageFoot;
+  const [keys, setKeys] = useState(false);
+  if (keys !== wantKeys && (!focused || !wantKeys)) setKeys(wantKeys);
+  useEffect(() => {
+    useDoStuffStore.setState({ docked: keys });
+    return () => useDoStuffStore.setState({ docked: false });
+  }, [keys]);
 
   // What sonner's remaining toasts (item dialog, bug report, store errors) sit
   // above. The ref is on the WRAPPER, not the capsule, so it clears the strip
@@ -202,7 +226,7 @@ export function SidebarDock({ placement = 'sidebar' }: { placement?: 'sidebar' |
             activeIntensity={0.6}
             activeIntensityLight={0.4}
             active={focused}
-            burst={burst}
+            burst={burst + starts}
             mask="radial-gradient(135% 120% at 50% 62%, black 30%, transparent 100%)"
           />
         )}
@@ -218,12 +242,16 @@ export function SidebarDock({ placement = 'sidebar' }: { placement?: 'sidebar' |
           <UserCard />
         </div>
         <div className="relative z-10 mt-5">
-          <Omnibar
-            variant="dock"
-            onFocusChange={setFocused}
-            onPulse={pulse}
-            placeholder={pageFoot ? 'write a line…' : undefined}
-          />
+          {keys ? (
+            <DoStuffDockKeys />
+          ) : (
+            <Omnibar
+              variant="dock"
+              onFocusChange={setFocused}
+              onPulse={pulse}
+              placeholder={pageFoot ? 'write a line…' : undefined}
+            />
+          )}
         </div>
       </div>
     </div>

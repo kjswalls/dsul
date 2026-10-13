@@ -825,6 +825,16 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
     [doingStuff, rows, braindumpSortBy, completedAs]
   );
   const showDoStuffRow = doStuffOn && visible && (doingStuff || wantsDoStuffRow(rows));
+  // The dock carries the key (and make it so) in the sidebar once the
+  // braindump wants it (components/sidebar/do-stuff-dock.tsx): published for
+  // it here, since the dock has no rows. The phone's tab keeps its own key.
+  const wantsKey = doStuffOn && visible && wantsDoStuffRow(rows);
+  useEffect(() => {
+    if (isMobile) return;
+    useDoStuffStore.setState({ available: wantsKey });
+    return () => useDoStuffStore.setState({ available: false });
+  }, [wantsKey, isMobile]);
+  const keyDocked = useDoStuffStore((s) => s.docked) && !isMobile;
 
   const organizeButton = (
     <Button
@@ -940,7 +950,7 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
             wraps rather than overflow. */}
         {/* Do stuff's key: first of the controls, so the title gives way to it
             and it gives way, by the column's width, before they do. */}
-        {showDoStuffRow && <DoStuffKey touch={isMobile} />}
+        {showDoStuffRow && !keyDocked && <DoStuffKey touch={isMobile} />}
         <span className={cn('flex', isMobile && '[&>button]:size-7')}>
           <DisplayMenu ref={displayRef} surface="braindump" trigger="icon" align="start" />
         </span>
@@ -998,7 +1008,7 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
       <NoticeSlot anchor="braindump" className={cn(isMobile ? 'mx-[10px]' : 'px-[6px]')} />
 
       {/* Do stuff's row while it runs: below the header, above the list. */}
-      {showDoStuffRow && <DoStuffRow rows={doStuffRows} />}
+      {showDoStuffRow && !keyDocked && <DoStuffRow rows={doStuffRows} />}
 
       {/* List — sits directly on the paper backdrop, no card. A plain
           overflow-y-auto container, NOT Radix <ScrollArea>: it shrinks (flex) so

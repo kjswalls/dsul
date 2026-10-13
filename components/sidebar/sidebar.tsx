@@ -52,6 +52,7 @@ import { Wordmark } from '@/components/primitives/wordmark';
 import {
   clampSidebarGrowth,
   clampSidebarWidth,
+  doStuffSidebarWidth,
   renderedSidebarWidth,
   SIDEBAR_DEFAULT_WIDTH,
   SIDEBAR_MAX_WIDTH,
@@ -59,6 +60,7 @@ import {
   useSidebarStore,
 } from '@/lib/sidebar-store';
 import { useRailStore } from '@/lib/rail-store';
+import { useDoStuffStore } from '@/lib/do-stuff';
 import { prefersReducedMotion } from '@/lib/zen-transition';
 import { cn } from '@/lib/utils';
 import { useLayoutDef } from '@/lib/look-store';
@@ -73,8 +75,11 @@ import { useLayoutDef } from '@/lib/look-store';
 const railReserve = () => useRailStore.getState().reservePx;
 
 /** What the column renders at right now: the stored width, yielded beside a docked rail. */
-const renderedNow = () =>
-  renderedSidebarWidth(useSidebarStore.getState().leftSidebarWidth, window.innerWidth, railReserve());
+const renderedNow = () => {
+  const px = renderedSidebarWidth(useSidebarStore.getState().leftSidebarWidth, window.innerWidth, railReserve());
+  // Doing stuff, the column opens to about half the window (doStuffSidebarWidth).
+  return useDoStuffStore.getState().on ? doStuffSidebarWidth(px, window.innerWidth, railReserve()) : px;
+};
 
 /** Arrow-key step on the focused handle, and its shift-held coarse step. */
 const NUDGE_PX = 8;
@@ -296,7 +301,7 @@ export const Sidebar = memo(function Sidebar() {
   useEffect(() => {
     const apply = (instant = false) => {
       if (dragRef.current) return; // a live drag owns the variable
-      const px = renderedSidebarWidth(leftSidebarWidth, window.innerWidth, railReserve());
+      const px = renderedNow();
       if (instant) publishInstant(px);
       else publish(px);
       showRendered(px);
@@ -311,9 +316,14 @@ export const Sidebar = memo(function Sidebar() {
       if (rail.reservePx === prev.reservePx) return;
       apply(rail.reserveInstant || prefersReducedMotion());
     });
+    // Starting and stopping do stuff open and close the column, over its ease.
+    const unsubscribeDoStuff = useDoStuffStore.subscribe((d, prev) => {
+      if (d.on !== prev.on) apply(prefersReducedMotion());
+    });
     return () => {
       window.removeEventListener('resize', onResize);
       unsubscribe();
+      unsubscribeDoStuff();
     };
   }, [leftSidebarWidth, publish, publishInstant, showRendered]);
 
