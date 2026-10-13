@@ -38,6 +38,8 @@ export function braindumpMembers(
   const unscheduledTasks = tasks.filter((task) => {
     if (suppressedIds.has(task.id)) return false;
     if (task.isScheduled || task.timeBucket) return false;
+    // Let go (do stuff's "whatever", or the agent API): nothing left to do.
+    if (task.status === 'cancelled') return false;
     return true;
   });
 

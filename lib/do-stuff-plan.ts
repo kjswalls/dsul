@@ -11,17 +11,27 @@ import { addDaysStr } from './container-schedule';
  * nothing is written until "make it so". Pure: no store, no React.
  */
 
-export type Lane = 'done' | 'now' | 'calendar' | 'handoff' | 'leave';
+/**
+ * The seven lanes (Kirby's picks, 2026-10-13). The keys predate the words:
+ * 'done' reads "ready", 'calendar' "another day", 'handoff' "do it for me",
+ * 'leave' "later". 'archive' ("whatever") is offered and never suggested.
+ */
+export type Lane = 'done' | 'now' | 'today' | 'calendar' | 'handoff' | 'leave' | 'archive';
 
 export interface LaneDef {
   key: Lane;
   /** The lane header and the chip's word. */
   label: string;
   /** The key that moves a row here. Fixed, so muscle memory survives new lanes. */
-  digit: '1' | '2' | '3' | '4' | '5';
+  digit: '1' | '2' | '3' | '4' | '5' | '6' | '7';
   /** The header dot: a token, so it follows the theme. */
   color: string;
+  /** A word under the header, said once. */
+  note?: string;
 }
+
+/** "Do it now" holds three at most: past that it is a list, not a nudge. */
+export const NOW_MAX = 3;
 
 /**
  * In the order the plan draws them. "Done for you" is the prep packs' lane
@@ -29,11 +39,13 @@ export interface LaneDef {
  * ready, and only such a row is offered it.
  */
 export const LANES: readonly LaneDef[] = [
-  { key: 'done', label: 'done for you', digit: '1', color: 'var(--lime-solid)' },
-  { key: 'now', label: 'do now', digit: '2', color: 'var(--foreground)' },
-  { key: 'calendar', label: 'on the calendar', digit: '3', color: 'var(--size-errand)' },
-  { key: 'handoff', label: 'handed off', digit: '4', color: 'var(--size-fuzzy)' },
-  { key: 'leave', label: 'left alone', digit: '5', color: 'var(--muted-foreground)' },
+  { key: 'done', label: 'ready', digit: '1', color: 'var(--lime-solid)' },
+  { key: 'now', label: 'do it now', digit: '2', color: 'var(--foreground)', note: 'yes u can' },
+  { key: 'today', label: 'today', digit: '3', color: 'var(--size-big)' },
+  { key: 'calendar', label: 'another day', digit: '4', color: 'var(--size-errand)' },
+  { key: 'handoff', label: 'do it for me', digit: '5', color: 'var(--size-fuzzy)' },
+  { key: 'leave', label: 'later', digit: '6', color: 'var(--muted-foreground)' },
+  { key: 'archive', label: 'whatever', digit: '7', color: 'var(--border)' },
 ];
 
 const BY_KEY = new Map(LANES.map((l) => [l.key, l]));
@@ -78,7 +90,8 @@ export function sizeForPlan(item: { title: string; size?: unknown }): ItemSize |
 }
 
 /**
- * The rule. Anything the AI got ready is done for you; quick things are done now; errands and big ones go on a day;
+ * The rule. It never says "whatever": letting something go is the user's call
+ * alone. Anything the AI got ready is ready; quick things are done now; errands and big ones go on a day;
  * fuzzy ones go to the agent when it can take them (a first step is exactly
  * what it is for), and are left alone otherwise. Anything the rules cannot
  * read is left alone rather than pushed at the user.
@@ -111,9 +124,32 @@ export function laneOf(
   return ruleLane(item, facts);
 }
 
+/**
+ * Holds "do it now" to {@link NOW_MAX} open rows: past that, rows spill onto
+ * "today", the rule's picks before the user's own moves, from the bottom up.
+ * Rows already done stay where they are drawn. Mutates the lanes it is given.
+ */
+export function capNow<R extends { item: { id: string } }>(
+  lanes: Record<Lane, R[]>,
+  isOpen: (row: R) => boolean,
+  moved: Readonly<Record<string, Lane>>
+): void {
+  const open = lanes.now.filter(isOpen);
+  if (open.length <= NOW_MAX) return;
+  const keep = new Set(
+    [...open.filter((r) => moved[r.item.id] === 'now'), ...open.filter((r) => moved[r.item.id] !== 'now')]
+      .slice(0, NOW_MAX)
+      .map((r) => r.item.id)
+  );
+  const spill = open.filter((r) => !keep.has(r.item.id));
+  lanes.now = lanes.now.filter((r) => !spill.includes(r));
+  lanes.today = [...spill, ...lanes.today];
+}
+
 /** The next offered lane up (-1) or down (+1) from this one: a swipe's move. */
 export function stepLane(lane: Lane, dir: -1 | 1, facts: LaneFacts): Lane {
-  const keys = LANES.map((l) => l.key);
+  // A swipe never lands on "whatever": letting go takes the 7 key or the chip.
+  const keys = LANES.map((l) => l.key).filter((k) => k !== 'archive' || lane === 'archive');
   for (let i = keys.indexOf(lane) + dir; i >= 0 && i < keys.length; i += dir) {
     if (laneOffered(keys[i], facts)) return keys[i];
   }

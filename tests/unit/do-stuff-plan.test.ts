@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
+  capNow,
   LANES,
+  laneDef,
   laneForDigit,
+  NOW_MAX,
   laneOf,
   laneOffered,
   nextNow,
@@ -23,16 +26,19 @@ const held: LaneFacts = { ...task, handedOff: true };
 const habit: LaneFacts = { plannable: false, canHandOff: false, handedOff: false };
 
 describe('the lanes', () => {
-  it('keep their keys 1 to 5 in the order they draw', () => {
-    expect(LANES.map((l) => [l.key, l.digit])).toEqual([
-      ['done', '1'],
-      ['now', '2'],
-      ['calendar', '3'],
-      ['handoff', '4'],
-      ['leave', '5'],
+  it('keep their keys 1 to 7 in the order they draw, in Kirby\'s words', () => {
+    expect(LANES.map((l) => [l.key, l.digit, l.label])).toEqual([
+      ['done', '1', 'ready'],
+      ['now', '2', 'do it now'],
+      ['today', '3', 'today'],
+      ['calendar', '4', 'another day'],
+      ['handoff', '5', 'do it for me'],
+      ['leave', '6', 'later'],
+      ['archive', '7', 'whatever'],
     ]);
-    expect(laneForDigit('3')).toBe('calendar');
-    expect(laneForDigit('6')).toBeUndefined();
+    expect(laneDef('now').note).toBe('yes u can');
+    expect(laneForDigit('4')).toBe('calendar');
+    expect(laneForDigit('8')).toBeUndefined();
   });
 
   it('offer "done for you" only to what the AI got ready', () => {
@@ -85,11 +91,41 @@ describe('the rule', () => {
 
 describe('the swipe', () => {
   it('steps to the next offered lane, skipping what is not', () => {
-    expect(stepLane('now', 1, task)).toBe('calendar');
+    expect(stepLane('now', 1, task)).toBe('today');
     expect(stepLane('calendar', 1, task)).toBe('leave');
     expect(stepLane('calendar', 1, agentOn)).toBe('handoff');
     expect(stepLane('now', -1, task)).toBe('now');
+    // A swipe never lets go: "whatever" takes the 7 key or the chip.
     expect(stepLane('leave', 1, task)).toBe('leave');
+    expect(stepLane('archive', -1, task)).toBe('leave');
+  });
+});
+
+describe('whatever and the cap', () => {
+  it('never suggests "whatever", but offers it for a task', () => {
+    for (const title of ['email the landlord', 'buy stamps', 'plan the trip', 'figure out the budget', 'zebra']) {
+      expect(ruleLane({ title }, task)).not.toBe('archive');
+      expect(ruleLane({ title }, agentOn)).not.toBe('archive');
+    }
+    expect(laneOffered('archive', task)).toBe(true);
+    expect(laneOffered('archive', { ...task, plannable: false })).toBe(false);
+  });
+
+  it('holds "do it now" to three, spilling the rule\'s picks onto today before the user\'s', () => {
+    const row = (id: string) => ({ item: { id } });
+    const lanes = { done: [], now: ['a', 'b', 'c', 'd', 'e'].map(row), today: [row('t')], calendar: [], handoff: [], leave: [], archive: [] };
+    capNow(lanes, () => true, { e: 'now' });
+    expect(NOW_MAX).toBe(3);
+    expect(lanes.now.map((r) => r.item.id)).toEqual(['a', 'b', 'e']);
+    expect(lanes.today.map((r) => r.item.id)).toEqual(['c', 'd', 't']);
+  });
+
+  it('counts only open rows against the cap', () => {
+    const row = (id: string) => ({ item: { id } });
+    const lanes = { done: [], now: ['x', 'a', 'b', 'c'].map(row), today: [], calendar: [], handoff: [], leave: [], archive: [] };
+    capNow(lanes, (r) => r.item.id !== 'x', {});
+    expect(lanes.now).toHaveLength(4);
+    expect(lanes.today).toHaveLength(0);
   });
 });
 

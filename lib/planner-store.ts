@@ -467,6 +467,13 @@ interface PlannerStore {
   /** `undefined` clears. Habits (no priority field) and cancelled items are skipped. */
   setItemsPriority: (ids: string[], priority: Priority | undefined) => void;
   /**
+   * Let go: do stuff's "whatever" lane (lib/do-stuff.ts makeItSo). Each open,
+   * one-shot item whose type allows it is marked `cancelled`, which leaves the
+   * braindump (lib/braindump-members.ts) and every surface that asks for
+   * pending work. One set(), one history entry, one undo with the toast.
+   */
+  letGoItems: (ids: string[]) => void;
+  /**
    * Sizes several items at once, each to its own size (`undefined` clears), in
    * one set() and one undo: "keep all guesses" sizes a batch to different
    * sizes. Habits (no size) and items already at their size are skipped.
@@ -4445,6 +4452,31 @@ export const usePlannerStore = create<PlannerStore>()(
         // Key present with `undefined` on a clear: the spread must erase the
         // field locally, and taskUpdatesToRow turns it into a null.
         const patch = { priority };
+        const targetIds = new Set(targets.map((i) => i.id));
+        set((state) =>
+          projectItems(
+            state.items.map((i) => (targetIds.has(i.id) ? ({ ...i, ...patch } as Item) : i))
+          )
+        );
+        targets.forEach((item) =>
+          dbUpdateItem(item.id, dbTypeOf(item), patch).catch(console.error)
+        );
+      },
+
+      letGoItems: (ids) => {
+        const idSet = new Set(ids);
+        const targets = get().items.filter(
+          (i) =>
+            idSet.has(i.id) &&
+            (i as { status?: string }).status === 'pending' &&
+            !isRecurring(i as Parameters<typeof isRecurring>[0]) &&
+            getItemTypeConfig(itemTypeName(i)).allowedStatuses.includes('cancelled')
+        );
+        if (targets.length === 0) return;
+        setNextActionLabel(
+          targets.length === 1 ? `Let go: ${targets[0].title}` : `Let go: ${itemCount(targets.length)}`
+        );
+        const patch = { status: 'cancelled' } as const;
         const targetIds = new Set(targets.map((i) => i.id));
         set((state) =>
           projectItems(
