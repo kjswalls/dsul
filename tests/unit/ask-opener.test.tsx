@@ -126,14 +126,14 @@ const key = () => opener()?.querySelector<HTMLElement>('[data-ask-key]') ?? null
 const mark = () => opener()?.querySelector<SVGElement>('[data-ask-mark]') ?? null;
 
 describe('when it shows', () => {
-  it('shows, Ask closed by default, as the keycap "Ask" with the chord on it, named for what it does', () => {
+  it('shows, Ask closed by default, as the keycap "ask stuff" with the chord on it, named for what it does', () => {
     expect(useSidebarStore.getState().askOpen).toBe(false);
     renderRow();
     const button = screen.getByRole('button', { name: 'Open Ask' });
     expect(button).toBe(opener());
     expect(pill()).not.toHaveAttribute('hidden');
     expect(pill()).toContainElement(button);
-    expect(button).toHaveTextContent(`Ask${chordLabel(['meta', 'j'], false)}`);
+    expect(button).toHaveTextContent(`ask stuff${chordLabel(['meta', 'j'], false)}`);
     expect(button).toHaveAttribute('title', `Open Ask (${chordLabel(['meta', 'j'], false)})`);
     expect(button).toHaveAttribute('title', 'Open Ask (Ctrl+J)');
     expect(button).toHaveAttribute('data-form', 'full');
@@ -143,7 +143,7 @@ describe('when it shows', () => {
     expect(button).toHaveClass('titlebar-hole');
     expect(pill()).toHaveClass('ml-auto');
     // The key holds the mark, the word and the chord, printed on it.
-    expect(key()).toHaveTextContent(`Ask${chordLabel(['meta', 'j'], false)}`);
+    expect(key()).toHaveTextContent(`ask stuff${chordLabel(['meta', 'j'], false)}`);
     expect(key()).toContainElement(mark() as unknown as HTMLElement);
     expect(button.querySelector('[data-ask-opener-chord]')?.closest('[data-ask-key]')).toBe(key());
     // The mark is decorative: the button is named by its label, not by a picture.
@@ -488,7 +488,7 @@ describe('the chord', () => {
     expect(label).toBe('Ctrl+Shift+K');
     expect(opener()).toHaveAttribute('title', `Open Ask (${label})`);
     expect(opener()?.querySelector('[data-ask-opener-chord]')).toHaveTextContent(label);
-    expect(opener()).toHaveTextContent(`Ask${label}`);
+    expect(opener()).toHaveTextContent(`ask stuff${label}`);
     expect(opener()).toHaveAccessibleName('Open Ask');
   });
 
@@ -555,7 +555,7 @@ describe('room on the header row', () => {
       get: () => {
         const chord = button.querySelector('[data-ask-opener-chord]');
         if (chord) return wholeFor(chord.textContent ?? '');
-        return key()?.textContent === 'Ask' ? keyForm : 32;
+        return key()?.textContent === 'ask stuff' ? keyForm : 32;
       },
     });
     (key() as HTMLElement).getBoundingClientRect = () => ({ left: 8, right: 72, width: 64 }) as DOMRect;
@@ -575,7 +575,7 @@ describe('room on the header row', () => {
     resized();
     expect(pill()).toHaveAttribute('data-fit', 'full');
     expect(opener()).toHaveAttribute('data-form', 'full');
-    expect(opener()).toHaveTextContent('Ask');
+    expect(opener()).toHaveTextContent('ask stuff');
     expect(opener()?.querySelector('[data-ask-opener-chord]')).not.toBeNull();
 
     // 374 + 12 + 80 = 466 fits, 492 does not: the key and "Ask", no chord.
@@ -583,7 +583,7 @@ describe('room on the header row', () => {
     resized();
     expect(pill()).toHaveAttribute('data-fit', 'key');
     expect(opener()).toHaveAttribute('data-form', 'key');
-    expect(opener()).toHaveTextContent(/^Ask$/);
+    expect(opener()).toHaveTextContent(/^ask stuff$/);
     expect(opener()?.querySelector('[data-ask-opener-chord]')).toBeNull();
 
     // 374 + 12 + 32 = 418 fits, 466 does not: the 32px key alone, still named.
@@ -591,7 +591,7 @@ describe('room on the header row', () => {
     resized();
     expect(pill()).toHaveAttribute('data-fit', 'icon');
     expect(opener()).toHaveAttribute('data-form', 'icon');
-    expect(opener()).not.toHaveTextContent('Ask');
+    expect(opener()).not.toHaveTextContent('ask stuff');
     expect(opener()?.querySelector('[data-ask-opener-chord]')).toBeNull();
     expect(opener()).toHaveClass('size-7', 'titlebar-hole');
     expect(key()).toHaveClass('w-7', 'h-7');
@@ -672,9 +672,9 @@ describe('room on the header row', () => {
     expect(button).toHaveAccessibleName('Open Ask');
     expect(button).toHaveClass('titlebar-hole');
     // The key holds the mark and "Ask", as whole; only the chord has gone.
-    expect(button).toHaveTextContent(/^Ask$/);
+    expect(button).toHaveTextContent(/^ask stuff$/);
     expect(button.querySelector('[data-ask-opener-chord]')).toBeNull();
-    expect(key()).toHaveTextContent(/^Ask$/);
+    expect(key()).toHaveTextContent(/^ask stuff$/);
     expect(key()).toContainElement(mark() as unknown as HTMLElement);
     expect(mark()).toHaveAttribute('aria-hidden', 'true');
     expect(key()).toHaveClass('h-7', 'pr-[11px]', 'pl-[9px]', 'rounded-[8px]');
@@ -954,7 +954,7 @@ describe('room on the header row', () => {
         configurable: true,
         get: () => {
           if (button.querySelector('[data-ask-opener-chord]')) return font().whole;
-          return key()?.textContent === 'Ask' ? font().keyRight + 8 : 32;
+          return key()?.textContent === 'ask stuff' ? font().keyRight + 8 : 32;
         },
       });
       (key() as HTMLElement).getBoundingClientRect = () => ({ left: 8, right: font().keyRight, width: 64 }) as DOMRect;
@@ -1019,7 +1019,7 @@ describe('room on the header row', () => {
     // form fits in 100px, and shows.
     act(() => seed(CONNECTED_MODEL));
     expect(draw(100)).toBe('key');
-    expect(key()).toHaveTextContent(/^Ask$/);
+    expect(key()).toHaveTextContent(/^ask stuff$/);
   });
 
   it('gives way to the row and never the other way: it shrinks first, and to nothing', () => {

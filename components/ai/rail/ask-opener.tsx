@@ -345,7 +345,8 @@ export function AskOpener({ className }: { className?: string }) {
   const { canChat, askInvite, askFix } = useAICapabilities();
   // The gate says which, at most one of the three (lib/ai-registry.ts).
   const offered = canChat || askInvite || askFix;
-  const word = canChat ? 'Ask' : askFix ? 'Fix AI' : 'Set up AI';
+  // "ask stuff" beside "do stuff" (Kirby, 2026-10-13); the rail still names itself Ask.
+  const word = canChat ? 'ask stuff' : askFix ? 'Fix AI' : 'Set up AI';
   const isMobile = useIsMobile();
   const zen = useViewStore((s) => s.zenOpen);
   const columnShown = useRailMode(usePanelOverlays()) !== 'hidden';
@@ -356,7 +357,7 @@ export function AskOpener({ className }: { className?: string }) {
   const hidden = columnShown || zen;
   const chord = chordLabel(keys, isMac);
   // A rebinding is a change of face too: the chord's width is read afresh.
-  // So is the word: "Set up AI" is wider than "Ask", and a width read for
+  // So is the word: "Set up AI" is wider than "ask stuff", and a width read for
   // one must never place the other.
   const fit = useHeaderFit(ref, offered && !isMobile && !hidden, `${slots.header} ${chord} ${word}`);
 

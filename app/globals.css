@@ -2277,13 +2277,29 @@ body {
   --ask-icon-pair: oklch(0.8 0.1 215);
 }
 
+/* Ask's own light (Kirby, 2026-10-13): violet into sky in every look, so Ask
+   reads apart from the do stuff key beside it, which keeps the theme accent and
+   the look's partner (the slot tokens above). The violet is Ask's light: full
+   strength, never faded, never mixed toward anything. The sky's ink deepens 14%
+   toward the ink in light, as the partner's does, to carry 3:1 on the key. */
+:is([data-ask-opener], [data-ask-mark]) {
+  --ask-violet: oklch(0.59 0.15 290);
+  --ask-sky: oklch(0.7 0.12 245);
+  --ask-sky-ink: color-mix(in oklch, var(--ask-sky), var(--foreground) 14%);
+}
+.dark :is([data-ask-opener], [data-ask-mark]) {
+  --ask-violet: oklch(0.69 0.14 292);
+  --ask-sky: oklch(0.79 0.1 240);
+  --ask-sky-ink: var(--ask-sky);
+}
+
 /* The plate. The rim's colours: the accent, the partner, and the hairline the
    light steps down to, a solid mix (the colour a 9% foreground hairline
    paints on the key). Focus, in light, adds a 1px --success-text line inside
    the ring so the pair reads at 3:1 on paper; in dark the ring alone does. */
 [data-ask-opener] {
-  --ask-key-accent: var(--ask-icon-accent);
-  --ask-key-pair: var(--ask-icon-pair);
+  --ask-key-accent: var(--ask-violet);
+  --ask-key-pair: var(--ask-sky);
   --ask-key-rim: color-mix(in oklab, var(--surface-2), var(--foreground) 9%);
   --ask-focus-line: var(--success-text);
   --ask-focus-rim: var(--success-text);

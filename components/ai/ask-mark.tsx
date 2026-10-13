@@ -16,8 +16,8 @@ export const ASK_MARK_LIGHT = { x: -4, y: 4 } as const;
  * The tiles' paint. Every colour is a theme token from the mark's slot
  * contract (app/globals.css, "Ask's key", declared on [data-ask-mark] and on
  * the key), so every look and tint follows:
- *   --ask-icon-accent    the theme accent, the light: full strength, never faded
- *   --ask-icon-pair-ink  the look's aurora partner, deep enough to carry 3:1
+ *   --ask-violet         Ask's light (violet, Kirby 2026-10-13): full strength, never faded
+ *   --ask-sky-ink        its sky partner, deep enough to carry 3:1
  * The middle tile is a solid blend 40% of the way from the accent to the
  * head, in oklch so the hue keeps its chroma. Nothing is faded: every step is
  * a different solid colour.
@@ -30,16 +30,16 @@ export const ASK_MARK_LIGHT = { x: -4, y: 4 } as const;
  * nothing moves at rest, under reduced motion, or anywhere outside the key
  * (Ask's header and every other place the mark is drawn show it still).
  */
-const FOOT = 'fill-[var(--ask-icon-accent)]';
+const FOOT = 'fill-[var(--ask-violet)]';
 const MID = cn(
-  'fill-[color-mix(in_oklch,var(--ask-icon-accent),var(--ask-icon-pair-ink)_40%)]',
+  'fill-[color-mix(in_oklch,var(--ask-violet),var(--ask-sky-ink)_40%)]',
   'transition-[fill] delay-[60ms] duration-[160ms] ease-[var(--ease-out-soft)] motion-reduce:transition-none',
-  'group-hover/ask-key:fill-[var(--ask-icon-accent)] group-hover/ask-key:delay-0',
-  'group-focus-visible/ask-key:fill-[var(--ask-icon-accent)] group-focus-visible/ask-key:delay-0',
-  'group-active/ask-key:fill-[var(--ask-icon-accent)] group-active/ask-key:delay-0'
+  'group-hover/ask-key:fill-[var(--ask-violet)] group-hover/ask-key:delay-0',
+  'group-focus-visible/ask-key:fill-[var(--ask-violet)] group-focus-visible/ask-key:delay-0',
+  'group-active/ask-key:fill-[var(--ask-violet)] group-active/ask-key:delay-0'
 );
 const HEAD = cn(
-  'origin-top-right fill-[var(--ask-icon-pair-ink)] [transform-box:fill-box]',
+  'origin-top-right fill-[var(--ask-sky-ink)] [transform-box:fill-box]',
   'transition-[scale] duration-[160ms] ease-[var(--ease-out-soft)] motion-reduce:transition-none',
   'group-hover/ask-key:scale-125 group-hover/ask-key:delay-[60ms]',
   'group-focus-visible/ask-key:scale-125 group-focus-visible/ask-key:delay-[60ms]',
