@@ -1,6 +1,6 @@
 # Handoff: mobile web to match the iPhone app
 
-Thread: "Mobile web to match iOS" (started 2026-10-02). Status as of 2026-10-09: **design only, waiting on Kirby.** Nothing is built, no branch, no PR.
+Thread: "Mobile web to match iOS" (started 2026-10-02). Status as of 2026-10-13: **round 3 built.** Kirby answered "all recommended" to A to E on 2026-10-13; the build is on branch `claude/project-thread-2adsza` (see Built, below).
 
 ## Goal
 
@@ -17,16 +17,24 @@ Decide how the phone web app (the `md:hidden` MobileShell) should look now that 
    - The web's real DayBuckets / DayList / DaySchedule views and schedule blocks underneath.
    - Compact density changes rows only (30px rows, flat buckets that keep the lime edge on the current one). Web-only for now; the iOS app has no density setting.
 
-Kirby has not reacted to round 3 yet.
+Kirby took round 3 with every recommendation (2026-10-13).
 
-## Open questions for Kirby (A to D, from round 1, still open)
+## Questions A to E (answered 2026-10-13: all recommended)
 
 - **A.** Move mobile web to the iOS structure (braindump becomes capture bar plus sheet, chat becomes Ask, Organize gets a tab)? Recommend yes.
 - **B.** Keep the week strip as a web option, or drop it to match iOS (title opens Go to date, a Today button shows on other days)? Recommend drop. Round 3 shows both.
 - **C.** Ask with no model connected: show a setup screen (Connect a model or Pair OpenClaw) or hide the tab? Recommend setup screen; a device that turned chat off hides the tab; a failing key gets its repair screen.
 - **D.** In a browser tab, fold the bottom chrome on scroll (like the app) or always one row? Recommend fold on scroll. Round 3's minimized dock is the folded state.
 
-Plus implicit: is Compact density wanted at all?
+- **E.** Compact density: yes, as an option (30px rows), comfortable stays the default.
+
+## Built (2026-10-13)
+
+- Tabs are Today and Ask (`lib/mobile-nav-store.ts`); Braindump is `braindumpOpen`, a sheet (`components/mobile/braindump-sheet.tsx`) inside the content area so the dock stays visible; Organize is a key that opens the existing console.
+- The dock (`mobile-bottom-dock.tsx`): capture bar (Omnibar dock variant with a `capsule` prop), tab pill (`data-tour="mode-card"` kept for the tour) and Search (opens the ⌘K launcher). It folds on scroll (`dockMinimized`, driven from mobile-shell's scroll capture); Ask never folds.
+- The header (`mobile-header.tsx`): no week strip; title opens Go to date, a Today key on other days, the layout capsule (tap steps, hold opens Layouts / Rows / Display…).
+- Compact is `phoneDensity` in view-store (device-local), CSS under `[data-density=compact]` in globals.css.
+- Follow-ups not built: Organize as full-page panes, a dedicated Search screen, Compact in Settings.
 
 ## Links
 

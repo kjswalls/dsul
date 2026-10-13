@@ -145,10 +145,9 @@ function PanelShell({ isLauncher, children }: { isLauncher: boolean; children: R
  *   time an item files itself. Off by default, which is desktop: there the
  *   field is a halo around the pill and the dock behind it carries the ambient
  *   one, so a second lit surface in the same 48px would be two fields arguing.
- *   The phone's dock has no such slack — the 44px mode card and the bar cover
- *   the well end to end, leaving a 10px picture-frame no ripple can be read in
- *   — so there the bar itself is the surface, and the one thing it lights for
- *   is the app's core verb. See memory/plans/mobile-redesign.md § Motion.
+ *   The phone's dock has no well behind the capture bar at all (round 3), so
+ *   there the bar itself is the surface, and the one thing it lights for is
+ *   the app's core verb. See memory/plans/mobile-redesign.md § Motion.
  *
  *   Dock-only, and ignored under variant="launcher": a summoned modal closes on
  *   the add it would be answering, so the field would unmount before the ripple
@@ -165,6 +164,7 @@ export function Omnibar({
   onPulse,
   captureRelay = false,
   placeholder: placeholderOverride,
+  capsule,
 }: {
   variant?: OmnibarVariant;
   initialQuery?: string;
@@ -175,6 +175,14 @@ export function Omnibar({
   captureRelay?: boolean;
   /** Dock only: a layout's own resting line ("write a line…"). Commands still name theirs. */
   placeholder?: string;
+  /**
+   * Dock only: draw the bar as the phone's capture capsule (mobile web round
+   * 3, the iPhone app's capture bar) rather than the desktop's keycap: fully
+   * round, raised on the paper, with `leading` in front of the text (the lime
+   * + disc) and `trailing` after it (the braindump count). Behaviour is the
+   * dock's, unchanged.
+   */
+  capsule?: { leading?: ReactNode; trailing?: ReactNode };
 } = {}) {
   const isLauncher = variant === 'launcher';
   const {
@@ -1448,7 +1456,15 @@ export function Omnibar({
               'relative z-10 flex w-full items-center',
               isLauncher
                 ? cn('h-[54px] gap-3 bg-transparent', activeCommand ? 'pl-3 pr-4' : 'px-4')
-                : cn(
+                : capsule
+                  ? cn(
+                      'h-[50px] gap-2.5 rounded-full bg-[var(--paper-3)] pl-[13px] pr-1.5',
+                      'shadow-[0_1px_2px_rgb(0_0_0/6%),0_4px_14px_rgb(0_0_0/7%)] dark:shadow-[0_1px_2px_rgb(0_0_0/40%),0_6px_18px_rgb(0_0_0/35%)]',
+                      'transition-[translate] duration-150 ease-[var(--ease-out-soft)]',
+                      focused && 'translate-y-px',
+                      relayOnCapture && 'isolate overflow-hidden',
+                    )
+                  : cn(
                     'h-[48px] gap-2 rounded-[10px] bg-surface-2',
                     activeCommand ? 'pl-2.5 pr-[22px]' : 'px-[22px]',
                     'translate-y-0 shadow-[var(--shadow-key-rest)]',
@@ -1472,6 +1488,7 @@ export function Omnibar({
                 mockup's icon chip, in the input row. Decorative (aria-hidden);
                 pointer-events-none lets a click fall through to the wrapper's
                 focus handler. Hidden while an argument chip owns the lead slot. */}
+            {!isLauncher && !activeCommand && capsule?.leading}
             {isLauncher && !activeCommand && (
               <span
                 aria-hidden
@@ -1730,11 +1747,9 @@ export function Omnibar({
                       //
                       // Desktop: SIDEBAR_MIN_WIDTH is 280px, less the dock's
                       // px-[10px] well and the pill's px-[22px] = 216px of text
-                      // column. Phone: the row pays px-[10px] outside, p-[10px]
-                      // inside, the 44px mode card and its gap-2, then the pill's
-                      // own px-[22px] — viewport − 136, so 254px on a 390pt phone
-                      // and 184px at 320pt. 320pt is the tightest case and still
-                      // leaves ~22px. Fits everywhere without a fallback. A
+                      // column. The phone passes its own placeholder (the capture
+                      // bar's "Get it out of your head"), so this line is
+                      // measured against the desktop only. A
                       // longer line does not break the layout (a placeholder clips
                       // rather than overflows) but it does get truncated mid-word,
                       // which is worse copy than a shorter honest one. Measure
@@ -1764,8 +1779,14 @@ export function Omnibar({
               // lands in the text and places the caret, rather than hitting the
               // wrapper. An input centres its own text, so this costs nothing
               // visually. See the wrapper's onMouseDown for the side padding.
-              className="-mx-1 min-w-0 flex-1 self-stretch bg-transparent px-1 text-sm text-foreground outline-none placeholder:text-muted-foreground/70"
+              className={cn(
+                '-mx-1 min-w-0 flex-1 self-stretch bg-transparent px-1 text-foreground outline-none',
+                capsule
+                  ? 'text-[16px] placeholder:text-muted-foreground'
+                  : 'text-sm placeholder:text-muted-foreground/70'
+              )}
             />
+            {!isLauncher && capsule?.trailing}
           </div>
         </div>
         {/* Launcher footer: a persistent hint bar pinned to the card bottom

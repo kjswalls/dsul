@@ -43,7 +43,7 @@ import { SettleHost } from '@/components/shell/settle-host';
 import { batchHistory, usePlannerStore } from '@/lib/planner-store';
 import { milestoneItemIds } from '@/lib/goals';
 import { tourHideAsk, tourShowAsk, usePanelOverlays, useRailMode } from '@/lib/rail-store';
-import { setupPageShown, useMobileNavStore } from '@/lib/mobile-nav-store';
+import { setupPageShown, showMobileSurface, useMobileNavStore } from '@/lib/mobile-nav-store';
 import { useAICapabilities } from '@/lib/ai-connection-store';
 import { useUndoStripStore } from '@/lib/undo-strip-store';
 import { useItWorksShown } from '@/components/ai/ask/it-works-card';
@@ -81,7 +81,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { useOneTimeNudge } from '@/hooks/use-one-time-nudge';
 import { isOnboardingComplete } from '@/lib/user-profile';
 import { watchOnboardingAfterLoad } from '@/lib/onboarding-watch';
-import type { MobileTab } from '@/lib/mobile-nav-store';
+import type { MobileSurface } from '@/lib/mobile-nav-store';
 import { BOOT_SIDEBAR_VAR } from '@/lib/shell-prepaint';
 
 function DraggableTaskOverlay({ title, count = 0 }: { title: string; count?: number }) {
@@ -720,27 +720,24 @@ export function AppShell() {
           />
           <main className="flex-1 rounded-panel bg-canvas" />
         </div>
-        {/* Mobile skeleton — the redesigned silhouette: one header card, content
-            straight on the paper backdrop, one dock well. The content band is
-            deliberately bare; drawing a panel here flashes a surface the shell
-            no longer has. Geometry tracks mobile-header.tsx and
-            mobile-bottom-dock.tsx — if either card's inset or radius moves, this
-            moves with it or the first paint jumps. */}
+        {/* Mobile skeleton: the round-3 silhouette (mobile-header.tsx,
+            mobile-bottom-dock.tsx), so the first paint does not jump. The top
+            row's title block and capsule, bare content, then the dock's two
+            capsule rows: the 50px capture bar and the 62px tab pill beside
+            the Search circle. If either moves, this moves with it. */}
         <div className="flex h-[100dvh] flex-col bg-surface-0 pt-safe md:hidden">
-          {/* 106px is the real card at rest (106.5, rounded down), added up:
-              10 top padding + 32 (the user menu sets the date row's height) + 8
-              gap + 46.5 week strip + 8 bottom padding + its two 1px borders; its
-              10px top margin is this block's own mt-[10px]. The review notice
-              and the Display shelf add to it when they show, which a skeleton
-              rendered on the server cannot know, so a first paint with either
-              up grows the card downward by that much; the date and its week
-              never move. The border is not decoration either — surface-2 on
-              surface-0 is ΔL 0.014 in light, four 8-bit levels, so without it
-              this block is invisible in one theme and the skeleton shows bare
-              paper where the card is about to appear. */}
-          <div className="mx-[10px] mt-[10px] h-[106px] flex-shrink-0 rounded-[20px] border border-surface-3 bg-surface-2" />
+          <div className="flex flex-shrink-0 items-center justify-between pb-2 pl-5 pr-4 pt-[10px]">
+            <div className="h-10 w-36 rounded-lg bg-surface-2" />
+            <div className="h-[34px] w-[62px] rounded-full bg-surface-3" />
+          </div>
           <div className="flex-1" />
-          <div className="mx-[10px] mb-3 h-[72px] flex-shrink-0 rounded-[10px] bg-surface-3" />
+          <div className="flex flex-shrink-0 flex-col gap-2 px-3 pb-3 pt-2">
+            <div className="h-[50px] rounded-full bg-surface-2" />
+            <div className="flex gap-2.5">
+              <div className="h-[62px] flex-1 rounded-full bg-surface-2" />
+              <div className="size-[62px] rounded-full bg-surface-2" />
+            </div>
+          </div>
         </div>
       </>
     );
@@ -839,7 +836,7 @@ export function AppShell() {
           // `askOpen` (lib/rail-store.ts tourShowAsk, tourHideAsk).
           onExpandChat={tourShowAsk}
           onCollapseChat={tourHideAsk}
-          onSetActiveTab={(tab) => useMobileNavStore.getState().setActiveTab(tab as MobileTab)}
+          onSetActiveTab={(tab) => showMobileSurface(tab as MobileSurface)}
         />
       )}
 

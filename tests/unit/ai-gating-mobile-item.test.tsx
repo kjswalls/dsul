@@ -24,11 +24,11 @@ const swipe = vi.hoisted(() => ({
   handlers: null as null | { onSwipedLeft?: () => void; onSwipedRight?: () => void },
 }));
 
-// Only the shell calls useSwipeable in what these tests mount (the header, the
-// braindump and Today's rows are stubbed), so the last call is the shell's.
+// The shell's swipe is the one with an onSwipedRight (the braindump sheet's
+// is a swipe down, and Today's rows are stubbed).
 vi.mock('react-swipeable', () => ({
   useSwipeable: (handlers: { onSwipedLeft?: () => void; onSwipedRight?: () => void }) => {
-    swipe.handlers = handlers;
+    if (handlers.onSwipedRight) swipe.handlers = handlers;
     return {};
   },
 }));
@@ -97,7 +97,6 @@ vi.mock('@/components/mobile/setup-tab', () => ({
 
 import { MobileShell } from '@/components/shell/mobile-shell';
 import { MobileBottomDock } from '@/components/mobile/mobile-bottom-dock';
-import { ModeSwitcherSheet } from '@/components/mobile/mode-switcher-sheet';
 import { ItemDetailSections } from '@/components/planner/item-detail-sections';
 import ItemPage from '@/app/item/[id]/page';
 import { mobileTabOrder, useMobileNavStore, type MobileTab } from '@/lib/mobile-nav-store';
@@ -178,61 +177,39 @@ const seed = (o?: Parameters<typeof seedAI>[0]) => {
 
 describe('mobileTabOrder', () => {
   it('drops chat, and only chat, while it is not offered', () => {
-    expect(mobileTabOrder(true)).toEqual(['braindump', 'today', 'chat']);
-    expect(mobileTabOrder(false)).toEqual(['braindump', 'today']);
+    expect(mobileTabOrder(true)).toEqual(['today', 'chat']);
+    expect(mobileTabOrder(false)).toEqual(['today']);
   });
 });
 
-describe('the switcher sheet', () => {
-  const open = () => fireEvent.click(screen.getByTestId('mobile-mode-card'));
-  const entries = () => document.querySelectorAll('[data-testid^="mode-option-"]');
+describe("the tab pill's Ask key", () => {
+  const askKey = () => screen.queryByTestId('mobile-tab-chat');
 
   it.each<[string, SeedAI, string]>([
     ['invited', NOTHING_CONNECTED, 'Set up AI'],
     ['offering the fix', KEY_TURNED_DOWN, 'Fix AI'],
-  ])('lists three surfaces while the gate is %s, the third named for the page it holds', async (_, s, word) => {
+  ])('is there while the gate is %s, named for the page it holds', (_, s, word) => {
     seed(s);
-    render(<ModeSwitcherSheet />);
-    open();
-
-    await waitFor(() => expect(entries()).toHaveLength(3));
-    expect(screen.getByTestId('mode-option-chat')).toHaveTextContent(word);
-    expect(screen.getByTestId('mode-option-chat')).not.toHaveTextContent('Ask');
-    expect(screen.getByText(`Switch between the Braindump, Today and ${word} surfaces.`)).toBeInTheDocument();
-  });
-
-  it('lists two surfaces once the account has said No AI', async () => {
-    seed(AI_HIDDEN);
-    render(<ModeSwitcherSheet />);
-    open();
-
-    await waitFor(() => expect(entries()).toHaveLength(2));
-    expect(screen.queryByTestId('mode-option-chat')).toBeNull();
-    expect(screen.getByText('Switch between the Braindump and Today surfaces.')).toBeInTheDocument();
+    render(<MobileBottomDock />);
+    expect(askKey()).toHaveTextContent(word);
+    expect(askKey()).not.toHaveTextContent('Ask');
   });
 
   it.each<[string, SeedAI | undefined]>([
-    ['has not answered yet', undefined],
-    ['could not be read', { phase: 'error' }],
-  ])('lists two while the gate %s (fail closed)', async (_, s) => {
+    ['the account has said No AI', AI_HIDDEN],
+    ['the gate has not answered yet', undefined],
+    ['the gate could not be read', { phase: 'error' }],
+  ])('is gone while %s (fail closed)', (_, s) => {
     seed(s);
-    render(<ModeSwitcherSheet />);
-    open();
-
-    await waitFor(() => expect(entries()).toHaveLength(2));
-    expect(screen.queryByTestId('mode-option-chat')).toBeNull();
+    render(<MobileBottomDock />);
+    expect(askKey()).toBeNull();
+    expect(screen.getByTestId('mobile-tab-today')).toBeInTheDocument();
   });
 
-  it('lists three with a model, the third named Ask', async () => {
+  it('is named Ask with a model', () => {
     seed(CONNECTED_MODEL);
-    render(<ModeSwitcherSheet />);
-    open();
-
-    await waitFor(() => expect(entries()).toHaveLength(3));
-    expect(screen.getByTestId('mode-option-chat')).toHaveTextContent('Ask');
-    expect(
-      screen.getByText('Switch between the Braindump, Today and Ask surfaces.')
-    ).toBeInTheDocument();
+    render(<MobileBottomDock />);
+    expect(askKey()).toHaveTextContent('Ask');
   });
 });
 
@@ -304,17 +281,12 @@ describe('the shell', () => {
     expect(tab()).toBe('chat');
   });
 
-  it('swipes past where chat would be while it is not offered', () => {
-    seed(AI_HIDDEN);
+  it('changes no tab on a swipe: tabs are keys in the pill', () => {
+    seed(CONNECTED_MODEL);
     render(<MobileShell />);
-
-    act(() => swipe.handlers?.onSwipedLeft?.());
-    expect(tab()).toBe('today');
-
     act(() => swipe.handlers?.onSwipedRight?.());
-    expect(tab()).toBe('braindump');
-    act(() => swipe.handlers?.onSwipedLeft?.());
     expect(tab()).toBe('today');
+    expect(swipe.handlers?.onSwipedLeft).toBeUndefined();
   });
 
   it("keeps the preview's sync line outside the keyed tab, so a tab change neither remounts nor fades it", () => {
@@ -330,16 +302,16 @@ describe('the shell', () => {
     expect(content.firstElementChild).toBe(line);
     expect(within(content).getByTestId('surface-today')).toBeInTheDocument();
 
-    act(() => swipe.handlers?.onSwipedRight?.());
-    expect(tab()).toBe('braindump');
+    fireEvent.click(screen.getByTestId('mobile-tab-chat'));
+    expect(tab()).toBe('chat');
     expect(screen.getByTestId('planner-sync-line')).toBe(line);
   });
 
-  it('swipes onto chat when something can answer', () => {
+  it('goes to Ask from its key when something can answer', () => {
     seed(CONNECTED_MODEL);
     render(<MobileShell />);
 
-    act(() => swipe.handlers?.onSwipedLeft?.());
+    fireEvent.click(screen.getByTestId('mobile-tab-chat'));
     expect(tab()).toBe('chat');
     expect(screen.getByTestId('surface-chat')).toBeInTheDocument();
   });
@@ -347,11 +319,11 @@ describe('the shell', () => {
   it.each<[string, SeedAI]>([
     ['invited', NOTHING_CONNECTED],
     ['offering the fix', KEY_TURNED_DOWN],
-  ])('swipes onto the setup page while the gate is %s', (_, s) => {
+  ])('goes to the setup page from the Ask key while the gate is %s', (_, s) => {
     seed(s);
     render(<MobileShell />);
 
-    act(() => swipe.handlers?.onSwipedLeft?.());
+    fireEvent.click(screen.getByTestId('mobile-tab-chat'));
     expect(tab()).toBe('chat');
     expect(screen.getByTestId('surface-setup')).toBeInTheDocument();
   });
@@ -362,7 +334,7 @@ describe('the shell', () => {
   it.each<[string, SeedAI]>([
     ['the setup page', NOTHING_CONNECTED],
     ['the fix home', KEY_TURNED_DOWN],
-  ])('swipes right from %s to Today, leaving the stack it does not show alone', (_, s) => {
+  ])('takes no Back swipe on %s, leaving the stack it does not show alone', (_, s) => {
     seed(s);
     useMobileNavStore.setState({ activeTab: 'chat' });
     useRailStore.getState().push('phone', { kind: 'history' });
@@ -370,7 +342,7 @@ describe('the shell', () => {
     render(<MobileShell />);
 
     act(() => swipe.handlers?.onSwipedRight?.());
-    expect(tab()).toBe('today');
+    expect(tab()).toBe('chat');
     expect(phone()).toEqual([{ kind: 'history' }, { kind: 'conversation', id: 'c1' }]);
   });
 

@@ -1141,6 +1141,36 @@
   --bkt-tray-armed: color-mix(in oklab, var(--primary) 10%, var(--bkt-tray));
 }
 
+/* Compact rows on the phone (the layout capsule's menu → Rows → Compact;
+   view-store's phoneDensity, stamped on the mobile shell as data-density).
+   Rows come down to 30px, and a bucket's card flattens to a ruled section:
+   no fill, no float, the hairline above it the only division, with the lime
+   rule kept down the current bucket's edge. Rows only: headers, notices and
+   the dock are the same at both densities. A bucket that is a drop target
+   keeps its card, so a drag still shows where it will land. Phone web only;
+   the desktop never sets the attribute. */
+.mobile-ground[data-density="compact"] [data-testid="item-card"] {
+  padding-top: 3px;
+  padding-bottom: 3px;
+  min-height: 30px;
+}
+.mobile-ground[data-density="compact"]
+  [data-testid="bucket-card"]:not([data-drop-target="true"])
+  [data-bucket-body] {
+  background: transparent;
+  box-shadow: none;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  padding-top: 6px;
+  padding-bottom: 4px;
+}
+.mobile-ground[data-density="compact"]
+  [data-testid="bucket-card"][data-current="true"]:not([data-drop-target="true"])
+  [data-bucket-body] {
+  box-shadow: inset 2px 0 0 var(--primary);
+}
+
 /* ── Themes ───────────────────────────────────────────────────────────────────
    A theme sits UNDER a mode: one light pick and one dark pick, both stamped on
    <html> at all times (data-look-light / data-look-dark, written by

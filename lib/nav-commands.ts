@@ -3,7 +3,7 @@ import { usePlannerStore } from './planner-store';
 import { useViewStore } from './view-store';
 
 /**
- * Date navigation, extracted so the header capsule, the mobile week strip, and
+ * Date navigation, extracted so the header capsule, the mobile header, and
  * the command palette all move the date cursor the same way.
  *
  * The dance being shared is the nav-direction one: `navDirection` drives the
@@ -43,8 +43,8 @@ export function goToDate(date: Date, direction: 'left' | 'right' | null = null):
 /**
  * Step the cursor by whole days regardless of scope — the unit `stepScope`
  * below is built from, and its only caller. The mobile week strip used to be
- * the other one; its cells call `goToDate` outright now (a tap jumps to the
- * cell's own date, a swipe pages ±7), so a change here reaches the desktop
+ * the other one; it is gone, and the phone calls `goToDate` outright (Go to
+ * date and the Today key), so a change here reaches the desktop
  * chevrons and the palette's Next/Previous, not the phone.
  */
 export function stepDays(delta: number): void {

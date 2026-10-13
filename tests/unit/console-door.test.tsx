@@ -226,6 +226,9 @@ const DIRECT_ARM_ALLOWED: Readonly<Record<string, string>> = {
     'module-scope run() closures, so no hook — safe only while the omnibar and ' +
     'useCommandShortcuts mount solely inside AppShell, which they do today',
   'components/sidebar/braindump.tsx': 'Sidebar → DesktopShell → AppShell',
+  'components/mobile/mobile-bottom-dock.tsx':
+    'caught by the coarse matcher: it READS the organize slot to light its tab key, ' +
+    'arms only the launcher, and opens Organize through useOpenConsole()',
   'components/sidebar/user-card.tsx': 'Sidebar → DesktopShell → AppShell',
   'components/views/season-notice.tsx': 'a day view, so always inside AppShell',
 };

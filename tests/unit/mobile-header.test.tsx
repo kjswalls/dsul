@@ -1,16 +1,15 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, fireEvent, within } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 
 /**
- * The redesigned mobile header — the week strip and the view cycler.
+ * The phone's top row (mobile web round 3) — the title that is the date
+ * control, the Today key, and the layout capsule.
  *
- * Both are render-and-write tests for the same reason the display-menu ones
- * are: the risk here is in the WIRING, not the arithmetic. The strip is the
- * phone's only date control now that the chevrons are gone, so "seven cells,
- * each addressable by the date it moves to" is a contract two e2e specs and
- * tests/e2e/helpers/app.ts navigate by; and the cycler is a button that has to
- * both READ and ADVANCE one store field, which a props-level test of an icon
- * would pass with either half wrong.
+ * Render-and-write tests for the same reason the display-menu ones are: the
+ * risk here is in the WIRING. The title carries the machine-readable date
+ * tests/e2e/helpers/app.ts navigates by, and the capsule has to both READ and
+ * ADVANCE one store field, which a props-level test of an icon would pass with
+ * either half wrong.
  */
 
 vi.mock('@/lib/db', () => ({
@@ -84,78 +83,25 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-describe('the week strip', () => {
-  it('is the calendar week around the cursor, one addressable cell per day', () => {
+describe('the title', () => {
+  it('names the day and the layout, and carries the date for the e2e helpers', () => {
     renderHeader();
-
-    // Seven, and the WEEK's seven — not a rolling window from the cursor. The
-    // weekday initials have to stay in their columns as the cursor moves.
-    expect(screen.getAllByTestId('week-day').map((c) => c.getAttribute('data-date'))).toEqual([
-      '2026-08-23',
-      '2026-08-24',
-      '2026-08-25',
-      '2026-08-26',
-      '2026-08-27',
-      '2026-08-28',
-      '2026-08-29',
-    ]);
-  });
-
-  it('follows the week-start preference rather than assuming Sunday', () => {
-    usePlannerStore.setState({ weekStartDay: 'monday' });
-    renderHeader();
-
-    const dates = screen.getAllByTestId('week-day').map((c) => c.getAttribute('data-date'));
-    expect(dates[0]).toBe('2026-08-24');
-    expect(dates[6]).toBe('2026-08-30');
-  });
-
-  it('marks exactly the cursor, and moves it on tap', () => {
-    renderHeader();
-
-    const marked = screen
-      .getAllByTestId('week-day')
-      .filter((c) => c.getAttribute('data-selected') === 'true');
-    expect(marked.map((c) => c.getAttribute('data-date'))).toEqual(['2026-08-24']);
-
-    fireEvent.click(screen.getAllByTestId('week-day')[4]);
-    expect(usePlannerStore.getState().selectedDate).toEqual(new Date(2026, 7, 27));
-  });
-
-  it('marks today as well as the cursor, so a paged-away week still says where now is', () => {
-    // Pinned to a Wednesday inside the cursor's own Sun-start week: the mark
-    // has to show while the cursor sits on some OTHER day, which is the one
-    // case the artboard cannot arbitrate — there the selected day IS today.
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    vi.setSystemTime(new Date('2026-08-26T12:00:00Z'));
-    try {
-      renderHeader();
-
-      const cells = screen.getAllByTestId('week-day');
-      const cellFor = (date: string) =>
-        cells.find((c) => c.getAttribute('data-date') === date)!;
-
-      const today = cellFor('2026-08-26');
-      expect(today).toHaveAttribute('data-selected', 'false');
-      expect(today).toHaveAttribute('aria-label', 'Today, Wednesday, August 26');
-      // Weight and ink, not a second badge — the lime underline stays the one
-      // mark that means "selected".
-      expect(within(today).getByText('26')).toHaveClass('font-semibold');
-      expect(within(cellFor('2026-08-27')).getByText('27')).not.toHaveClass('font-semibold');
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it('stays off the dateless tabs, which have no cursor to show', () => {
-    useMobileNavStore.setState({ activeTab: 'braindump' });
-    renderHeader();
-
+    const title = screen.getByTestId('header-date');
+    expect(title).toHaveAttribute('data-date', '2026-08-24');
+    expect(title).toHaveTextContent('Monday');
+    expect(title).toHaveTextContent('Mon, Aug 24 · Buckets');
+    // There is no week strip any more: the title is the date control.
     expect(screen.queryAllByTestId('week-day')).toHaveLength(0);
-    // The whole card goes, not only the strip: Braindump and Ask each bring
-    // their own header, and a date row stacked above one of those is a second
-    // header offering a calendar for a surface that has no date.
-    expect(screen.queryByTestId('header-date')).toBeNull();
+  });
+
+  it('offers a Today key on another day, and none on today', () => {
+    renderHeader();
+    fireEvent.click(screen.getByTestId('header-today'));
+    const now = usePlannerStore.getState().selectedDate;
+    expect(now.toDateString()).toBe(new Date().toDateString());
+    cleanup();
+    renderHeader();
+    expect(screen.queryByTestId('header-today')).toBeNull();
   });
 });
 
@@ -166,7 +112,7 @@ describe('the view cycler', () => {
     // The button IS the readout, so its label has to name where you are AND
     // where a tap goes; a picker's "Layout" said neither.
     const cycle = () => screen.getByTestId('mobile-view-cycle');
-    expect(cycle()).toHaveAttribute('aria-label', 'View: Buckets. Tap for List.');
+    expect(cycle()).toHaveAttribute('aria-label', 'View: Buckets. Tap for List, hold for more.');
 
     fireEvent.click(cycle());
     expect(useViewStore.getState().layout).toBe('list');
@@ -177,6 +123,17 @@ describe('the view cycler', () => {
     // …and round, rather than dead-ending on the last one.
     fireEvent.click(cycle());
     expect(useViewStore.getState().layout).toBe('buckets');
+  });
+
+  it('opens its menu on a right-click (or a hold) without stepping, and sets Compact rows', async () => {
+    useViewStore.setState({ phoneDensity: 'comfortable' });
+    renderHeader();
+    const cycle = screen.getByTestId('mobile-view-cycle');
+    fireEvent.contextMenu(cycle);
+    const compact = await screen.findByTestId('mobile-density-compact');
+    expect(useViewStore.getState().layout).toBe('buckets');
+    fireEvent.click(compact);
+    expect(useViewStore.getState().phoneDensity).toBe('compact');
   });
 
   // The chat tab is on screen only while the gate offers it: Ask while

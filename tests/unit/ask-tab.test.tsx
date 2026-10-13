@@ -43,7 +43,7 @@ vi.mock('react-swipeable', () => ({
     onSwipedRight?: (e?: Swiped) => void;
     onSwipeStart?: unknown;
   }) => {
-    if (!handlers.onSwipeStart) swipe.handlers = handlers;
+    if (!handlers.onSwipeStart && handlers.onSwipedRight) swipe.handlers = handlers;
     return {};
   },
 }));
@@ -399,7 +399,7 @@ describe('leaving the tab', () => {
   // The phone's close: Ask closing spends it on the desktop (✕, Ctrl+J, a
   // park), and here the tab is what closes. Only that: the stack and every
   // draft are the tab's to come back to.
-  it('spends "It works." by the sheet, a swipe or any write, and keeps the stack and drafts', () => {
+  it('spends "It works." by a tab change, the braindump sheet or any write, and keeps the stack and drafts', () => {
     seedConversation('c1');
     renderShell([{ kind: 'history' }, { kind: 'conversation', id: 'c1' }]);
     fireEvent.change(dockInput(), { target: { value: 'and after lunch?' } });
@@ -412,15 +412,7 @@ describe('leaving the tab', () => {
 
     act(() => useMobileNavStore.getState().setActiveTab('chat'));
     say();
-    act(() => useMobileNavStore.setState({ activeTab: 'braindump' }));
-    expect(said()).toEqual([null, null]);
-
-    // From Ask home a swipe right walks to Today.
-    act(() => useMobileNavStore.getState().setActiveTab('chat'));
-    act(() => rail().popToHome('phone'));
-    say();
-    act(() => swipe.handlers?.onSwipedRight?.());
-    expect(tab()).toBe('today');
+    act(() => useMobileNavStore.getState().setBraindumpOpen(true));
     expect(said()).toEqual([null, null]);
   });
 
@@ -433,8 +425,8 @@ describe('leaving the tab', () => {
 
     act(() => useMobileNavStore.getState().setActiveTab('today'));
     say();
-    act(() => useMobileNavStore.getState().setActiveTab('braindump'));
-    act(() => useMobileNavStore.getState().setActiveTab('today'));
+    act(() => useMobileNavStore.getState().setBraindumpOpen(true));
+    act(() => useMobileNavStore.getState().setBraindumpOpen(false));
     expect(said()).not.toEqual([null, null]);
   });
 });
@@ -694,7 +686,7 @@ describe("an item's conversation opened over the look-only preview", () => {
 });
 
 describe('swipe right', () => {
-  it('is Back while anything is pushed, and walks to Today only from Ask home', () => {
+  it('is Back while anything is pushed, and nothing at Ask home: tabs are not a swipe apart', () => {
     seedConversation('c1');
     renderShell([{ kind: 'history' }, { kind: 'conversation', id: 'c1' }]);
 
@@ -707,7 +699,7 @@ describe('swipe right', () => {
     expect(tab()).toBe('chat');
 
     act(() => swipe.handlers?.onSwipedRight?.());
-    expect(tab()).toBe('today');
+    expect(tab()).toBe('chat');
   });
 
   // A drag along a reply's long code line scrolls that line; it is not Back.
@@ -723,7 +715,6 @@ describe('swipe right', () => {
     const inLine = pre.querySelector('code') ?? pre;
 
     act(() => swipe.handlers?.onSwipedRight?.({ event: { target: inLine } }));
-    act(() => swipe.handlers?.onSwipedLeft?.({ event: { target: inLine } }));
     expect(phone()).toEqual([{ kind: 'history' }, { kind: 'conversation', id: 'c1' }]);
     expect(tab()).toBe('chat');
 
@@ -741,17 +732,16 @@ describe('swipe right', () => {
     Object.defineProperty(strip, 'scrollWidth', { value: 900, configurable: true });
     Object.defineProperty(strip, 'clientWidth', { value: 390, configurable: true });
     screen.getByTestId('today-row').after(strip);
-    act(() => swipe.handlers?.onSwipedLeft?.({ event: { target: strip } }));
     act(() => swipe.handlers?.onSwipedRight?.({ event: { target: strip } }));
     expect(tab()).toBe('today');
     strip.remove();
   });
 
-  it('on Today is the plain tab walk, whatever the Ask stack holds', () => {
+  it('on Today does nothing, whatever the Ask stack holds', () => {
     useMobileNavStore.setState({ activeTab: 'today' });
     renderShell([{ kind: 'history' }]);
     act(() => swipe.handlers?.onSwipedRight?.());
-    expect(tab()).toBe('braindump');
+    expect(tab()).toBe('today');
     expect(phone()).toEqual([{ kind: 'history' }]);
   });
 });

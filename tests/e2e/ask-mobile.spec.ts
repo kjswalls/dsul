@@ -59,15 +59,13 @@ test.describe('Ask on the phone @mobile', () => {
       await reloadApp(page);
       await answered;
 
-      // 1. The mode sheet offers "Ask", and the card names it once there.
-      const card = page.getByTestId('mobile-mode-card');
-      await card.click();
-      const option = page.getByTestId('mode-option-chat');
-      await expect(option).toContainText('Ask');
-      await option.click();
-      await expect(option).toHaveCount(0);
-      await expect(card).toHaveAttribute('data-surface', 'chat');
-      await expect(card).toHaveAttribute('aria-label', 'Surface: Ask. Change surface.');
+      // 1. The tab pill offers "Ask", and selects it once there.
+      const pill = page.getByTestId('mobile-tab-pill');
+      const askKey = page.getByTestId('mobile-tab-chat');
+      await expect(askKey).toContainText('Ask');
+      await askKey.click();
+      await expect(pill).toHaveAttribute('data-surface', 'chat');
+      await expect(askKey).toHaveAttribute('aria-current', 'page');
       const tab = page.locator('[data-ask-tab]');
       const home = tab.locator('[data-ask-home]');
       await expect(home).toBeVisible();
@@ -134,16 +132,12 @@ test.describe('Set up AI on the phone @mobile', () => {
     await loginTestUser(page);
     await answered;
 
-    // 1. The sheet's third row is "Set up AI", with its quiet note.
-    const card = page.getByTestId('mobile-mode-card');
-    await card.click();
-    const option = page.getByTestId('mode-option-chat');
-    await expect(option).toContainText('Set up AI');
-    await expect(option.locator('[data-mode-note]')).toHaveText('Optional');
-    await option.click();
-    await expect(option).toHaveCount(0);
-    await expect(card).toHaveAttribute('data-surface', 'chat');
-    await expect(card).toHaveAttribute('aria-label', 'Surface: Set up AI. Change surface.');
+    // 1. The tab pill's second key is "Set up AI".
+    const pill = page.getByTestId('mobile-tab-pill');
+    const askKey = page.getByTestId('mobile-tab-chat');
+    await expect(askKey).toContainText('Set up AI');
+    await askKey.click();
+    await expect(pill).toHaveAttribute('data-surface', 'chat');
 
     // 2. The setup page, not Ask: the word in its capsule, the key card, the
     //    foot at the end, nothing lime, and the dock's omnibar, no composer.
@@ -167,7 +161,8 @@ test.describe('Set up AI on the phone @mobile', () => {
     await expect(home).toBeVisible();
     await expect(setup).toHaveCount(0);
     await expect(home.getByTestId('it-works').getByRole('heading', { name: 'It works.' })).toBeVisible();
-    await expect(card).toHaveAttribute('aria-label', 'Surface: Ask. Change surface.');
+    await expect(askKey).toContainText('Ask');
+    await expect(askKey).not.toContainText('Set up');
     // Ask's box replaces the omnibar, and the keyboard stays down over the card.
     const box = page.getByTestId('chat-dock-input');
     await expect(box).toBeVisible();

@@ -7,7 +7,14 @@ import { describe, it, expect } from 'vitest';
  * How the shell, the sheet and the dock read it is ai-gating-mobile-item's.
  */
 
-import { chatOffered, mobileTabOrder, setupPageShown, shownMobileTab } from '@/lib/mobile-nav-store';
+import {
+  chatOffered,
+  mobileTabOrder,
+  setupPageShown,
+  showMobileSurface,
+  shownMobileTab,
+  useMobileNavStore,
+} from '@/lib/mobile-nav-store';
 import {
   AI_HIDDEN,
   CONNECTED_MODEL,
@@ -33,8 +40,30 @@ describe('the offered rule', () => {
     const caps = capsFor(seed);
     expect(chatOffered(caps)).toBe(offered);
     expect(setupPageShown(caps)).toBe(setupPage);
-    expect(mobileTabOrder(chatOffered(caps))).toEqual(offered ? ['braindump', 'today', 'chat'] : ['braindump', 'today']);
+    expect(mobileTabOrder(chatOffered(caps))).toEqual(offered ? ['today', 'chat'] : ['today']);
     expect(shownMobileTab('chat', chatOffered(caps))).toBe(offered ? 'chat' : 'today');
-    expect(shownMobileTab('braindump', chatOffered(caps))).toBe('braindump');
+    expect(shownMobileTab('today', chatOffered(caps))).toBe('today');
+  });
+});
+
+/**
+ * Braindump is a sheet over Today, not a tab (mobile web round 3): opening it
+ * lands on Today, any tab change closes it, and the dock unfolds on a tab
+ * change.
+ */
+describe('the braindump sheet and the fold', () => {
+  it('opens over Today and closes on a tab change', () => {
+    useMobileNavStore.setState({ activeTab: 'chat', braindumpOpen: false, dockMinimized: true });
+    showMobileSurface('braindump');
+    expect(useMobileNavStore.getState()).toMatchObject({ activeTab: 'today', braindumpOpen: true });
+    showMobileSurface('chat');
+    expect(useMobileNavStore.getState()).toMatchObject({
+      activeTab: 'chat',
+      braindumpOpen: false,
+      dockMinimized: false,
+    });
+    showMobileSurface('braindump');
+    useMobileNavStore.getState().setBraindumpOpen(false);
+    expect(useMobileNavStore.getState()).toMatchObject({ activeTab: 'today', braindumpOpen: false });
   });
 });

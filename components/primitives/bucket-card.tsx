@@ -560,6 +560,9 @@ export function BucketCard({
 
         {showSlot && (
           <div
+            // The card's body, for the phone's Compact rows (app/globals.css),
+            // which flatten it to a ruled section.
+            data-bucket-body=""
             className={cn(
               'relative transition-[min-height,background-color,box-shadow] duration-150 ease-[var(--ease-out-soft)]',
               g.body,
