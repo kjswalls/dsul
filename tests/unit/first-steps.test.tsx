@@ -216,6 +216,17 @@ describe('first steps', () => {
     expect(byId.get('big')?.assignee).toBeFalsy();
   });
 
+  it('drops its steps when closed without saving, so the item panel never shows them', () => {
+    const dismiss = vi.fn();
+    useProposalStore.setState({ dismiss } as never);
+    render(<FirstSteps />);
+    act(() => void openFirstSteps('big'));
+    fireEvent.click(screen.getByTestId('first-steps-get'));
+    stepsArrive();
+    act(() => useDoStuffStore.setState({ firstSteps: null }));
+    expect(dismiss).toHaveBeenCalledTimes(1);
+  });
+
   it('offers no hand-off when there is no one to hand to', () => {
     useAgentsStore.setState({ agents: [], loaded: true });
     render(<FirstSteps />);

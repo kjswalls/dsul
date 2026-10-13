@@ -70,6 +70,16 @@ function FirstStepsCard({ item, close }: { item: Item; close: () => void }) {
   const free = !('assignee' in item && item.assignee);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => inputRef.current?.focus(), []);
+  // Like ProposalCard's item-surface cleanup (components/ai/proposal-card.tsx):
+  // a proposal this dialog asked for never outlives it, or the item panel's
+  // card (the same `item:<id>` surface) would show it later, unasked.
+  useEffect(
+    () => () => {
+      const store = useProposalStore.getState();
+      if (store.lastRequest?.surface === surface) store.dismiss();
+    },
+    [surface]
+  );
 
   const steps =
     asked && mine && status === 'ready' && proposal
@@ -99,7 +109,6 @@ function FirstStepsCard({ item, close }: { item: Item; close: () => void }) {
 
   const doItForMe = () => {
     if (!target) return;
-    if (mine) useProposalStore.getState().dismiss();
     handOffItem(item, target.assignee);
     close();
   };
