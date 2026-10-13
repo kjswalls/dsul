@@ -60,6 +60,10 @@ grant and every token under it at once. An app can sign itself out through
 - **069's tables are service-role only**, like user_secrets; Settings reads them through
   `/api/oauth/grants`, which checks the session. Every user column cascades from auth.users.
 
+- **Each app has its own queue.** `dsul_my_work` serves an app or a named key only the items
+  assigned to its own name, and the OpenClaw key only `openclaw`'s (power-mode.md, build order
+  5; lib/agent-assignees.ts). Work can be handed to an app from Do stuff's handed-off lane.
+
 ## Not done yet
 
 - A real-client probe (#261): connect Claude to a preview or prod once 069 is applied.

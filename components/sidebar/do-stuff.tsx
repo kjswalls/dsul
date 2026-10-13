@@ -33,7 +33,9 @@ import {
   type Lane,
   type LaneFacts,
 } from '@/lib/do-stuff-plan';
-import { canHandOff, delegateName } from '@/lib/agent-handoff';
+import { canHandOff } from '@/lib/agent-handoff';
+import { sameAssignee, type AgentAssignee } from '@/lib/agent-assignees';
+import { useAgentsStore, useHandOffTargets } from '@/lib/agents-store';
 import { useAICapabilities } from '@/lib/ai-connection-store';
 import { inactiveItemIdsOn } from '@/lib/active';
 import { useAwayStore } from '@/lib/away-store';
@@ -162,6 +164,10 @@ interface Plan {
   days: ReadonlyMap<string, string>;
   /** Rows in the handed-off lane the agent does not hold yet. */
   handOff: readonly string[];
+  /** Who they go to; null while nobody can take work. */
+  target: AgentAssignee | null;
+  /** Everyone who could. */
+  targets: readonly AgentAssignee[];
   todayStr: string;
   /** Packs written for the row's current title, by id. */
   packs: ReadonlyMap<string, PrepPack>;
@@ -176,7 +182,11 @@ interface Plan {
  */
 function usePlan(rows: readonly RowItem[]): Plan {
   const moved = useDoStuffStore((s) => s.moved);
-  const { canDelegate } = useAICapabilities();
+  // Any agent at all, OpenClaw or a connected app (lib/agents-store.ts): the
+  // lane is offered when someone could take the row.
+  const targets = useHandOffTargets();
+  const handTo = useDoStuffStore((s) => s.handTo);
+  const canDelegate = targets.length > 0;
   const items = usePlannerStore((s) => s.items);
   const tz = usePlannerStore((s) => s.userTimezone) ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const routines = usePlannerStore((s) => s.routines);
@@ -228,8 +238,9 @@ function usePlan(rows: readonly RowItem[]): Plan {
           return { id: r.item.id, title: r.item.title, ...(notes ? { notes } : {}) };
         })
     );
-    return { lanes, facts, laneById, days, handOff, todayStr, packs, prepCandidates };
-  }, [rows, moved, canDelegate, items, tz, routines, seasons, away, todayStr, stored]);
+    const target = targets.find((t) => sameAssignee(t.assignee, handTo)) ?? targets[0] ?? null;
+    return { lanes, facts, laneById, days, handOff, target, targets, todayStr, packs, prepCandidates };
+  }, [rows, moved, canDelegate, targets, handTo, items, tz, routines, seasons, away, todayStr, stored]);
 }
 
 /** "tomorrow", or the weekday within the week, or "Oct 20". */
@@ -272,7 +283,7 @@ export function DoStuffRow({ rows }: { rows: readonly RowItem[] }) {
   const pending = plan.days.size + plan.handOff.length;
   const detail = [
     plan.days.size > 0 && `${plan.days.size} on the calendar`,
-    plan.handOff.length > 0 && `${plan.handOff.length} to ${delegateName()}`,
+    plan.handOff.length > 0 && plan.target && `${plan.handOff.length} to ${plan.target.name}`,
   ]
     .filter(Boolean)
     .join(', ');
@@ -295,7 +306,7 @@ export function DoStuffRow({ rows }: { rows: readonly RowItem[] }) {
       {pending > 0 && (
         <Button
           size="sm"
-          onClick={() => makeItSo({ days: plan.days, handOff: plan.handOff })}
+          onClick={() => makeItSo({ days: plan.days, handOff: plan.handOff, to: plan.target?.assignee })}
           data-testid="do-stuff-make-it-so"
           title={`Make it so: ${detail}`}
           aria-label={`Make it so: ${detail}`}
@@ -354,6 +365,53 @@ function LaneHeader({
         style={{ '--rule': def.color, '--rule-delay': `${index * 80}ms` } as React.CSSProperties}
       />
     </div>
+  );
+}
+
+/* ── who the handed-off lane goes to ──────────────────────────────────── */
+
+/**
+ * "to OpenClaw", in the handed-off lane's header: who "make it so" hands the
+ * lane to (lib/agent-assignees.ts). A menu once there is more than one agent
+ * to pick from, OpenClaw and every connected app that may change the planner;
+ * the pick is remembered for the next run.
+ */
+function HandToPicker({ target, targets }: { target: AgentAssignee; targets: readonly AgentAssignee[] }) {
+  const setHandTo = useDoStuffStore.getState().setHandTo;
+  if (targets.length < 2) {
+    return (
+      <span data-testid="do-stuff-hand-to" className="text-xs text-muted-foreground">
+        to {target.name}
+      </span>
+    );
+  }
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          data-testid="do-stuff-hand-to"
+          aria-label={`Hand off to ${target.name}. Change who`}
+          className="inline-flex h-6 items-center gap-1 rounded-[6px] px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+        >
+          to {target.name}
+          <ChevronDown aria-hidden className="size-3" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-[160px]">
+        {targets.map((t) => (
+          <DropdownMenuItem
+            key={t.assignee}
+            data-testid="do-stuff-hand-to-option"
+            onSelect={() => setHandTo(t.assignee)}
+            className="gap-2 text-sm"
+          >
+            <span className="min-w-0 flex-1 truncate">{t.name}</span>
+            {t.assignee === target.assignee && <Check aria-hidden className="size-3.5" />}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -660,6 +718,10 @@ function useShuffle(listRef: React.RefObject<HTMLDivElement | null>) {
  */
 function usePrepOnStart(candidates: readonly PrepItem[]) {
   const { canPrep } = useAICapabilities();
+  // Who else could take the handed-off lane: asked once each start.
+  useEffect(() => {
+    void useAgentsStore.getState().load();
+  }, []);
   const userId = usePlannerStore((s) => s.userId);
   const candidatesRef = useRef(candidates);
   useEffect(() => {
@@ -771,6 +833,8 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
                   >
                     review {deckCards.length}
                   </button>
+                ) : l.key === 'handoff' && plan.target ? (
+                  <HandToPicker target={plan.target} targets={plan.targets} />
                 ) : undefined
               }
             />

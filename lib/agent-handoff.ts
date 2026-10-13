@@ -78,14 +78,19 @@ export function canTakeBack(item: Item): boolean {
  * Hand it off: one undoable write, named so the undo strip offers ⌘Z. Once the
  * write lands, the store wakes the agent (lib/handoff-wake.ts, hooked at
  * planner-store's `dbUpdateItem`), so it need not wait for its next poll.
+ *
+ * `to` is OpenClaw unless the caller names another agent
+ * (lib/agent-assignees.ts): a connected app reads its own queue through MCP's
+ * `dsul_my_work` and is never woken, so it finds the item the next time it
+ * looks.
  */
-export function handOffItem(item: Item): void {
+export function handOffItem(item: Item, to: string = DELEGATE_ASSIGNEE): void {
   usePlannerStore
     .getState()
     .updateTask(
       item.id,
-      { assignee: DELEGATE_ASSIGNEE, aiStatus: 'queued' },
-      { label: `Hand off to ${delegateName()}: ${item.title}` }
+      { assignee: to, aiStatus: 'queued' },
+      { label: `Hand off to ${assigneeLabel(to)}: ${item.title}` }
     );
 }
 
