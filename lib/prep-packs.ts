@@ -17,7 +17,7 @@ import { z } from 'zod';
  */
 
 /** How many items one ask may prepare. Small: each costs the user's own tokens. */
-export const PREP_BATCH = 8;
+export const PREP_BATCH = 4;
 
 const line = (max: number) => z.string().trim().max(max);
 

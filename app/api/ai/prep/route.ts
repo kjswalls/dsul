@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { isSameOrigin, NO_STORE, readJson, requireSession } from '@/app/api/ai/_shared/guard'
 import type { ChatErrorCode } from '@/lib/ai-types'
 import { extractJsonObject } from '@/lib/json-extract'
-import { appendInstructions, clipText, MAX_OUTPUT_TOKENS } from '@/lib/ai-limits'
+import { appendInstructions, clipText, PREP_OUTPUT_TOKENS } from '@/lib/ai-limits'
 import {
   AiDbError,
   openModelConnection,
@@ -78,6 +78,9 @@ Rules:
 - Steps: two to five concrete actions; the first one takes under five minutes.
 - Skip any item a draft would not genuinely help (an errand, a chore, something already small). Skipping is fine.
 - If nothing on the list can be prepared, return {"packs":[]}.`
+
+const PREP_EMPTY =
+  "Your model ran out of room before anything was ready. A model that doesn't reason first gets there sooner."
 
 const NOT_CONNECTED = 'Connect a model in Settings to get things ready.'
 
@@ -192,7 +195,7 @@ export async function POST(req: Request): Promise<Response> {
       modelMeta: row.model_meta ?? {},
       system: [[appendInstructions(SYSTEM_PROMPT, body.customInstructions), JSON_ONLY_LINE].join('\n\n')],
       messages: [{ role: 'user', content: userTurn }],
-      maxOutputTokens: MAX_OUTPUT_TOKENS,
+      maxOutputTokens: PREP_OUTPUT_TOKENS,
       signal,
       json: true,
     })
@@ -205,6 +208,9 @@ export async function POST(req: Request): Promise<Response> {
       await setConnectionLimit(user.id, row.key_ciphertext, e.resetAt ?? null).catch(() => {})
     }
     if (e.kind === 'aborted') return new Response(null, { status: 204, headers: NO_STORE })
+    // Chat's copy for this one talks about "a shorter message", which there is
+    // none of here: say what happened in Do stuff's own words.
+    if (e.kind === 'empty') return jsonError(httpStatusFor(e.kind), PREP_EMPTY, toChatErrorCode(e.kind))
     return jsonError(httpStatusFor(e.kind), e.message, toChatErrorCode(e.kind))
   }
 

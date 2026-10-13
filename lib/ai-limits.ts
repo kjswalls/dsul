@@ -26,6 +26,12 @@ export const MAX_CONTEXT_CHARS = 24_000
 export const MAX_CHAT_CONTEXT_CHARS = 60_000
 /** Output ceiling for every provider; input caps alone bound only half the bill. */
 export const MAX_OUTPUT_TOKENS = 2_000
+/**
+ * /api/ai/prep: a batch of drafts is several emails' worth, and a model that
+ * reasons first spends much of its answer before writing any of them; at the
+ * shared 2,000 such a model often answered nothing at all.
+ */
+export const PREP_OUTPUT_TOKENS = 6_000
 /** One turn: a long pasted note fits, a pasted book does not. */
 export const MAX_MESSAGE_CHARS = 8_000
 /**
