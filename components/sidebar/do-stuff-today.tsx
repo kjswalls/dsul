@@ -18,6 +18,13 @@ const ARRIVING_SHOWN = 2;
  * max(children) and the capsule already sets it: nothing here may grow it
  * (components/shell/desktop-shell.tsx has the rule). The plan publishes what
  * it shows (components/sidebar/do-stuff.tsx); nothing at rest.
+ *
+ * The row beside the date is narrow while the sidebar is at half the window,
+ * so the card measures the room it was given (a container) and sheds in
+ * order: the arriving chips, then "first steps", then the "up next" label. The
+ * title keeps a few letters in every case. A container has no width of its
+ * own, so it asks for a fixed one and shrinks from there; the Ask button's slot
+ * still gives way first (ask-opener.tsx), since it reads this width as laid out.
  */
 export function DoStuffToday({ className }: { className?: string }) {
   const on = useDoStuffStore((s) => s.on);
@@ -28,14 +35,17 @@ export function DoStuffToday({ className }: { className?: string }) {
   const shown = arriving.filter((a) => a.id !== next?.id);
   const rest = shown.length - ARRIVING_SHOWN;
   return (
-    <div className={cn('flex min-w-0 items-center gap-1.5', className)} data-testid="do-stuff-today">
+    <div
+      className={cn('@container/today flex w-[560px] min-w-0 items-center gap-1.5', className)}
+      data-testid="do-stuff-today"
+    >
       {next && (
         <div
           className="flex h-8 min-w-0 items-center gap-2 rounded-[9px] border border-border bg-surface-2 pr-1 pl-3 text-[13px]"
           data-testid="do-stuff-up-next"
         >
-          <span className="shrink-0 text-[11.5px] text-muted-foreground">up next</span>
-          <span className="min-w-0 truncate font-medium">{next.title}</span>
+          <span className="hidden shrink-0 text-[11.5px] text-muted-foreground @min-[360px]/today:inline">up next</span>
+          <span className="min-w-16 truncate font-medium">{next.title}</span>
           <button
             type="button"
             onClick={() => doneNext(next.id)}
@@ -59,7 +69,7 @@ export function DoStuffToday({ className }: { className?: string }) {
               type="button"
               onClick={() => openFirstSteps(next.id)}
               data-testid="do-stuff-up-next-first-steps"
-              className="h-6 shrink-0 rounded-[6px] px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+              className="hidden h-6 shrink-0 @min-[440px]/today:block rounded-[6px] px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
             >
               first steps
             </button>
@@ -69,7 +79,7 @@ export function DoStuffToday({ className }: { className?: string }) {
       {shown.slice(0, ARRIVING_SHOWN).map((a) => (
         <span
           key={a.id}
-          className="flex h-8 min-w-0 max-w-[180px] items-center gap-1 rounded-[9px] border border-dashed border-border px-2.5 text-[12.5px] text-muted-foreground"
+          className="hidden h-8 min-w-0 max-w-[180px] shrink items-center gap-1 rounded-[9px] border border-dashed @min-[540px]/today:flex border-border px-2.5 text-[12.5px] text-muted-foreground"
           data-testid="do-stuff-arriving"
           title={`${a.title}: onto today when you make it so`}
         >
@@ -78,7 +88,10 @@ export function DoStuffToday({ className }: { className?: string }) {
         </span>
       ))}
       {rest > 0 && (
-        <span className="shrink-0 text-[12px] text-muted-foreground" data-testid="do-stuff-arriving-more">
+        <span
+          className="hidden shrink-0 text-[12px] text-muted-foreground @min-[540px]/today:inline"
+          data-testid="do-stuff-arriving-more"
+        >
           +{rest} more
         </span>
       )}
