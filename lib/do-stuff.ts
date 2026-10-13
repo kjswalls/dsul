@@ -40,6 +40,13 @@ interface DoStuffState {
   skip: (id: string) => void;
   move: (id: string, lane: Lane) => void;
   countDone: () => void;
+  /**
+   * Who the handed-off lane goes to (an assignee, lib/agent-assignees.ts), as
+   * last picked. Kept across runs, memory only; null, or someone no longer
+   * connected, means the first agent offered.
+   */
+  handTo: string | null;
+  setHandTo: (assignee: string) => void;
 }
 
 export const useDoStuffStore = create<DoStuffState>((set) => ({
@@ -55,6 +62,8 @@ export const useDoStuffStore = create<DoStuffState>((set) => ({
   skip: (id) => set((s) => ({ skipped: [...s.skipped.filter((x) => x !== id), id] })),
   move: (id, lane) => set((s) => ({ moved: { ...s.moved, [id]: lane } })),
   countDone: () => set((s) => ({ doneCount: s.doneCount + 1 })),
+  handTo: null,
+  setHandTo: (assignee) => set({ handTo: assignee }),
 }));
 
 /* ── the shuffle ──────────────────────────────────────────────────────── */
@@ -130,7 +139,12 @@ export function putOnToday(id: string): void {
  * yet handed to it. "Do now" and "left alone" write nothing. Re-checked at
  * click time against the store, like every verb.
  */
-export function makeItSo(plan: { days: ReadonlyMap<string, string>; handOff: readonly string[] }): void {
+export function makeItSo(plan: {
+  days: ReadonlyMap<string, string>;
+  handOff: readonly string[];
+  /** Who the handed-off lane goes to; OpenClaw when not said. */
+  to?: string;
+}): void {
   const byDay = new Map<string, string[]>();
   for (const [id, day] of plan.days) {
     const item = fresh(id);
@@ -141,7 +155,7 @@ export function makeItSo(plan: { days: ReadonlyMap<string, string>; handOff: rea
   for (const [day, ids] of byDay) planner().moveTasksToDate(ids, day);
   for (const id of plan.handOff) {
     const item = fresh(id);
-    if (item && !('assignee' in item && item.assignee)) handOffItem(item);
+    if (item && !('assignee' in item && item.assignee)) handOffItem(item, plan.to);
   }
 }
 

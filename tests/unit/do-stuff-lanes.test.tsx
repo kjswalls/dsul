@@ -64,6 +64,7 @@ import { Braindump } from '@/components/sidebar/braindump';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useDoStuffStore } from '@/lib/do-stuff';
 import { usePrepPacksStore } from '@/lib/prep-packs-store';
+import { useAgentsStore } from '@/lib/agents-store';
 import { useViewStore } from '@/lib/view-store';
 import { useKeyboardShortcutsStore } from '@/lib/keyboard-shortcuts-store';
 import { EMPTY_VIEW_FILTERS } from '@/lib/filters';
@@ -132,6 +133,7 @@ beforeEach(() => {
   useDoStuffStore.getState().stop();
   usePrepPacksStore.setState({ userId: 'user-1', packs: {}, loaded: true, available: true, preparing: {}, tried: {}, error: null });
   vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200 })));
+  useAgentsStore.setState({ agents: [], loaded: false });
 });
 afterEach(cleanup);
 
@@ -189,6 +191,27 @@ describe('do stuff: the plan in lanes', () => {
     expect(byId.get('d')?.startDate).toBe(tomorrow);
     for (const id of ['a', 'b', 'e', 'f']) expect(byId.get(id)?.startDate).toBeUndefined();
     expect(screen.queryByTestId('do-stuff-make-it-so')).toBeNull();
+  });
+
+  it('hands the lane to a connected app when OpenClaw is not paired', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        String(url).includes('/api/ai/agents')
+          ? Response.json({ agents: [{ assignee: 'Claude', name: 'Claude', kind: 'app' }] })
+          : new Response('{}', { status: 200 })
+      )
+    );
+    seed(SIX);
+    renderBraindump();
+    fireEvent.click(screen.getByTestId('do-stuff-start'));
+    expect(await screen.findByTestId('do-stuff-hand-to')).toHaveTextContent('to Claude');
+    expect(laneOfRow('figure out the budget')).toBe('handoff');
+    act(() => {
+      fireEvent.click(screen.getByTestId('do-stuff-make-it-so'));
+    });
+    const e = usePlannerStore.getState().items.find((i) => i.id === 'e') as { assignee?: string; aiStatus?: string };
+    expect(e).toMatchObject({ assignee: 'Claude', aiStatus: 'queued' });
   });
 
   it('puts what the AI got ready in "done for you", with its chip and card', () => {

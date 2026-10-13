@@ -90,6 +90,7 @@ vi.mock('@/app/api/agent/context/route', () => ({
       items: [
         { id: 'a', title: 'Book dentist', type: 'task', status: 'pending', isScheduled: false, order: 0, completedDates: [], assignee: 'openclaw', aiStatus: 'queued' },
         { id: 'b', title: 'Mine to do', type: 'task', status: 'pending', isScheduled: false, order: 0, completedDates: [] },
+        { id: 'c', title: 'Draft the brief', type: 'task', status: 'pending', isScheduled: false, order: 0, completedDates: [], assignee: 'Claude', aiStatus: 'queued' },
       ],
     });
   },
@@ -344,6 +345,27 @@ describe('the delegation loop, end to end through the route', () => {
     expect(payload.assigned[0]).toMatchObject({ id: 'a', title: 'Book dentist', aiStatus: 'queued' });
     // The unassigned item never reaches the model — that is the whole point.
     expect(body.result.content[0].text).not.toContain('Mine to do');
+  });
+
+  it("serves each agent its own queue: OpenClaw's to OpenClaw, Claude's to an app named Claude", async () => {
+    const openclaw = JSON.parse((await (await POST(call('dsul_my_work'))).json()).result.content[0].text);
+    expect(openclaw.assigned.map((i: { id: string }) => i.id)).toEqual(['a']);
+
+    const { createServiceClient } = await import('@/lib/supabase-service');
+    const named = (client_name: string) => ({
+      from: () => ({
+        select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { mcp_oauth_clients: { client_name } }, error: null }) }) }),
+      }),
+    });
+    vi.mocked(createServiceClient).mockReturnValueOnce(named('claude ') as never);
+    const asApp = rpc({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'dsul_my_work', arguments: {} } }, 'Bearer dsul_at_full');
+    const claude = JSON.parse((await (await POST(asApp)).json()).result.content[0].text);
+    expect(claude.assigned.map((i: { id: string }) => i.id)).toEqual(['c']);
+
+    // An app calling itself OpenClaw does not get OpenClaw's queue.
+    vi.mocked(createServiceClient).mockReturnValueOnce(named('OpenClaw') as never);
+    const impostor = rpc({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'dsul_my_work', arguments: {} } }, 'Bearer dsul_at_full');
+    expect(JSON.parse((await (await POST(impostor)).json()).result.content[0].text).assigned).toEqual([]);
   });
 
   it('still reads through the ordinary context endpoint', async () => {

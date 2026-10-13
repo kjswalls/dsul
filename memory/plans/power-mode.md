@@ -105,3 +105,20 @@ enough for a third line shows "◐ OpenClaw: the question", and its first three
 choices given two more; a choice answers with the same Undo, and the question
 opens the inbox on that item (the item itself on the phone, which has no
 badge). Ask home's own Needs-you cards are unchanged.
+
+### What build order 5 shipped
+
+An app connected over MCP (Claude, Cursor) or a named agent key is an agent
+too once it may change the planner (lib/agent-assignees.ts). Its assignee is
+its name as the user knows it ("Claude"), compared without case, so it
+survives reconnecting and two Claude apps share one queue; names that already
+mean something (openclaw, beacon, ai) are never an app's. `dsul_my_work` now
+serves each caller its own queue (app/api/mcp/route.ts): the OpenClaw key gets
+`openclaw` and the legacy `beacon`, an app or key gets items under its own
+name, so nothing handed to Claude is picked up by OpenClaw. `/api/ai/agents`
+lists who can take work (planner-scope apps and keys, by name). Do stuff's
+handed-off lane is offered when anyone can, and its header says "to OpenClaw"
+or opens a menu of everyone; "make it so" hands the lane to the pick, which is
+remembered for the session. Apps are never woken (lib/handoff-wake.ts is
+OpenClaw's); they find the item the next time they read their queue. The
+right-click menu still hands off to OpenClaw only.
