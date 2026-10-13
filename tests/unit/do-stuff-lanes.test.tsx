@@ -215,4 +215,28 @@ describe('do stuff: the plan in lanes', () => {
     expect(usePrepPacksStore.getState().packs.b).toBeUndefined();
     expect(fetch).toHaveBeenCalledWith('/api/ai/prep?item=b', { method: 'DELETE' });
   });
+
+  it('deals the packs in a deck on the phone, the next one after each', () => {
+    seed(SIX);
+    usePrepPacksStore.setState({
+      packs: {
+        a: { itemId: 'a', pack: { kind: 'email', subject: 'The boiler', body: 'Hi' }, madeFor: 'email the landlord', updatedAt: 't' },
+        b: { itemId: 'b', pack: { kind: 'call', who: 'the dentist', script: ['Hi'] }, madeFor: 'call the dentist', updatedAt: 't' },
+      },
+    });
+    render(
+      <DndContext>
+        <Braindump variant="mobile" />
+      </DndContext>
+    );
+    fireEvent.click(screen.getByTestId('do-stuff-start'));
+    fireEvent.click(screen.getByTestId('prep-pack-review'));
+    expect(screen.getByTestId('prep-pack-deck')).toHaveTextContent('1 of 2');
+    expect(screen.getByTestId('prep-pack-card')).toHaveTextContent('Email draft');
+    act(() => {
+      fireEvent.click(screen.getByTestId('prep-pack-dismiss'));
+    });
+    // The deck stays open and deals the call script in its place.
+    expect(screen.getByTestId('prep-pack-card')).toHaveTextContent('Call script');
+  });
 });

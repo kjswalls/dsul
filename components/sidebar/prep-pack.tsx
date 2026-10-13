@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { ChevronDown, ChevronUp, X } from 'lucide-react';
 import { AskMark } from '@/components/ai/ask-mark';
 import { toast } from 'sonner';
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
+import { Drawer, DrawerContent, DrawerTitle } from '@/components/ui/drawer';
 import {
   packAction,
   packHref,
@@ -150,10 +151,22 @@ interface CardProps {
   /** "2 of 3" and the ↑ ↓ between packs; absent with only one. */
   nav?: { index: number; count: number; go: (dir: -1 | 1) => void };
   onClose: () => void;
+  /**
+   * The phone's deck: a swipe right takes the pack out (its primary action),
+   * a swipe left leaves it for later (the next one). Never from inside a field.
+   */
+  swipe?: boolean;
+  /** After Done or Not needed; the deck stays open to deal the next. Defaults to onClose. */
+  onSettled?: () => void;
 }
 
 /** The pack itself: a header, the fields, and the one tap that takes it out. */
-export function PackCard({ itemId, title, stored, nav, onClose }: CardProps) {
+/** How far a finger travels sideways before the deck acts on a swipe. */
+const SWIPE_PX = 80;
+
+export function PackCard({ itemId, title, stored, nav, onClose, swipe, onSettled = onClose }: CardProps) {
+  const [dx, setDx] = useState(0);
+  const start = useRef<{ x: number; y: number } | null>(null);
   // Keyed by the caller on the pack (packKey), so ↑ ↓ or a fresh pack landing
   // starts again from what the AI wrote.
   const [pack, setPack] = useState<Pack>(stored.pack);
@@ -172,9 +185,38 @@ export function PackCard({ itemId, title, stored, nav, onClose }: CardProps) {
     else void copy();
   };
 
+  const endSwipe = () => {
+    start.current = null;
+    setDx(0);
+  };
+  const swipeHandlers = swipe
+    ? {
+        onPointerDown: (e: React.PointerEvent) => {
+          const t = e.target as HTMLElement;
+          if (e.pointerType !== 'touch' || t.closest('input, textarea, button, a')) return;
+          start.current = { x: e.clientX, y: e.clientY };
+        },
+        onPointerMove: (e: React.PointerEvent) => {
+          const st = start.current;
+          if (!st) return;
+          const x = e.clientX - st.x;
+          if (Math.abs(e.clientY - st.y) > 32 && Math.abs(e.clientY - st.y) > Math.abs(x)) return endSwipe();
+          setDx(Math.max(-140, Math.min(140, x)));
+        },
+        onPointerUp: () => {
+          if (dx >= SWIPE_PX) primary();
+          else if (dx <= -SWIPE_PX) nav?.go(1);
+          endSwipe();
+        },
+        onPointerCancel: endSwipe,
+      }
+    : {};
+
   return (
     <div
       data-testid="prep-pack-card"
+      {...swipeHandlers}
+      style={dx ? { transform: `translateX(${dx}px) rotate(${dx / 40}deg)` } : undefined}
       onKeyDown={(e) => {
         const t = e.target as HTMLElement;
         const typing = t.tagName === 'INPUT' || t.tagName === 'TEXTAREA';
@@ -187,7 +229,7 @@ export function PackCard({ itemId, title, stored, nav, onClose }: CardProps) {
           nav.go(e.key === 'ArrowDown' ? 1 : -1);
         }
       }}
-      className="flex max-h-[min(560px,80vh)] flex-col"
+      className={cn('flex max-h-[min(560px,80vh)] flex-col', swipe && 'touch-pan-y')}
     >
       <div className="flex items-start gap-2 px-4 pt-4 pb-2">
         <div className="min-w-0 flex-1">
@@ -254,7 +296,7 @@ export function PackCard({ itemId, title, stored, nav, onClose }: CardProps) {
           size="sm"
           variant="ghost"
           onClick={() => {
-            onClose();
+            onSettled();
             void usePrepPacksStore.getState().dismiss(itemId);
           }}
           data-testid="prep-pack-dismiss"
@@ -266,7 +308,7 @@ export function PackCard({ itemId, title, stored, nav, onClose }: CardProps) {
           size="sm"
           variant="outline"
           onClick={() => {
-            onClose();
+            onSettled();
             doneNext(itemId);
           }}
           data-testid="prep-pack-done"
@@ -312,5 +354,46 @@ export function PackInline(card: CardProps) {
     <div className="my-1 rounded-[12px] border border-border bg-surface-2 shadow-[var(--shadow-elev-sm)]">
       <PackCard key={packKey(card)} {...card} />
     </div>
+  );
+}
+
+/**
+ * The phone's review deck: every pack ready, dealt one at a time in a sheet.
+ * Swipe right or tap to take one out, swipe left (or "Later") for the next.
+ * "Done" and "Not needed" deal the next one in its place.
+ */
+export function PackDeck({
+  open,
+  onOpenChange,
+  cards,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  cards: readonly Omit<CardProps, 'nav' | 'onClose' | 'swipe' | 'onSettled'>[];
+}) {
+  const [index, setIndex] = useState(0);
+  const count = cards.length;
+  const at = count > 0 ? Math.min(index, count - 1) : 0;
+  const card = cards[at];
+  return (
+    <Drawer open={open && count > 0} onOpenChange={onOpenChange}>
+      <DrawerContent data-testid="prep-pack-deck">
+        <DrawerTitle className="sr-only">Things ready</DrawerTitle>
+        {card && (
+          <div className="px-3 pb-4">
+            <PackCard
+              key={`${card.itemId}:${card.stored.updatedAt}`}
+              {...card}
+              swipe
+              nav={count > 1 ? { index: at, count, go: (dir) => setIndex((at + dir + count) % count) } : undefined}
+              onClose={() => onOpenChange(false)}
+              onSettled={() => {
+                if (count <= 1) onOpenChange(false);
+              }}
+            />
+          </div>
+        )}
+      </DrawerContent>
+    </Drawer>
   );
 }
