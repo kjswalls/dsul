@@ -92,7 +92,8 @@ function items(value: string): string[] {
   return out;
 }
 
-const ACCENT = /--(?:lime-solid|ask-icon-accent|ask-key-accent)\b/;
+// Ask's light is its own violet (Kirby, 2026-10-13); the do stuff key's is the theme accent.
+const ACCENT = /--(?:lime-solid|ask-icon-accent|ask-key-accent|ask-violet)\b/;
 
 interface Rule {
   /** Its selector list, split at the top level. */
@@ -442,6 +443,9 @@ describe('the mark', () => {
       '--ask-icon-key',
       '--ask-icon-unlit',
       '--ask-icon-unlit-mid',
+      // Ask's own light, violet into sky (globals.css, "Ask's own light").
+      '--ask-violet',
+      '--ask-sky-ink',
     ]);
 
     /** Why `el` would fade what it paints (opacity, alpha, filter, mask, blend), or null. */
