@@ -225,8 +225,8 @@ public func deriveTimedEntries(_ day: DayItems) -> [TimedEntry] {
     }.map(\.element)
 }
 
-/// lib/braindump-members.ts `braindumpMembers`: tasks with no `isScheduled`
-/// and no bucket, then habits with no bucket and no repeat, minus `suppressed`.
+/// lib/braindump-members.ts `braindumpMembers`: tasks with no `isScheduled`,
+/// no bucket and not let go (`cancelled`), then habits with no bucket and no repeat, minus `suppressed`.
 /// The caller resolves `suppressed` at TODAY, never the selected day: the
 /// braindump has no date of its own, so a paused row must not come and go as
 /// the user walks the week. `startDate` is not consulted.
@@ -234,6 +234,7 @@ public func braindumpMembers(tasks: [Item], habits: [Item], suppressed: Set<UUID
     let unscheduledTasks = tasks.filter { task in
         if suppressed.contains(task.id) { return false }
         if task.isScheduled == true || nonEmpty(task.timeBucket) != nil { return false }
+        if task.status == "cancelled" { return false }
         return true
     }
     let unscheduledHabits = habits.filter { habit in

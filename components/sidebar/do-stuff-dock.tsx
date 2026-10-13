@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 import { Check, Search, X } from 'lucide-react';
 import { DoStuffKey } from '@/components/sidebar/do-stuff';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { commitCount, finishRun, useDoStuffStore } from '@/lib/do-stuff';
+import { commitCount, commitLines, finishRun, useDoStuffStore } from '@/lib/do-stuff';
 import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
 import { chordLabel, isApplePlatform } from '@/lib/commands/keys';
 import { useUIStore } from '@/lib/ui-store';
@@ -69,10 +69,7 @@ function MakeItSoKeys() {
   const stop = useDoStuffStore((s) => s.stop);
   const chord = useChord('do_stuff');
   const pending = commitCount(commit);
-  const lines = [
-    commit && commit.days.size > 0 && `${commit.days.size} onto days`,
-    commit && commit.handOff.length > 0 && commit.to && `${commit.handOff.length} to ${commit.to.name}`,
-  ].filter((l): l is string => !!l);
+  const lines = commitLines(commit);
 
   const key = (
     <button

@@ -141,7 +141,14 @@ Mocks: https://claude.ai/artifact/U4NbXhEeMHroAZd6KvMLYS (v5). Built in four PRs
    floor, never written back). No "doing stuff" strip while docked.
 2. Ask reads "ask stuff", its light and mark violet into sky.
 3. Seven lanes: ready / do it now ("yes u can", max 3) / today / another day / do it for me /
-   later / whatever (archive, with Undo, and the plan never suggests it). Keys 1 to 7.
+   later / whatever. Keys 1 to 7; the lane keys predate the words (`done` is ready, `calendar`
+   another day, `handoff` do it for me, `leave` later, `archive` whatever). Past three open rows,
+   do it now spills onto today, the rule's picks before the user's moves (`capNow`). Today lands
+   today at make it so. **Whatever** is never suggested by the rules and never reached by a
+   swipe (7 or the chip only); make it so lets it go: `letGoItems` marks the task `cancelled`
+   (one undo, "Let go:" raises the toast), and the braindump drops cancelled tasks
+   (lib/braindump-members.ts). dsul has no archive view yet; cancelled was the closest state
+   with no new table, and the agent API already wrote it.
 4. One do stuff over the braindump plus today's unfixed open items: "today" tags, lane dots,
    "→ Thu" and ghost "+" blocks on the grid, and do it now as the up-next card on today.
 5. First steps: one question, then 3 to 5 steps with step 1 lit; do it for me on both

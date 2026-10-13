@@ -17,11 +17,14 @@ import {
   doneNext,
   makeItSo,
   putOnToday,
+  commitCount,
+  commitLines,
   skipNext,
   takeShuffleFrom,
   useDoStuffStore,
 } from '@/lib/do-stuff';
 import {
+  capNow,
   LANES,
   laneDef,
   laneForDigit,
@@ -168,8 +171,12 @@ interface Plan {
   laneById: ReadonlyMap<string, Lane>;
   /** The calendar lane's days, by id. */
   days: ReadonlyMap<string, string>;
+  /** Open rows in "today". */
+  today: readonly string[];
   /** Rows in the handed-off lane the agent does not hold yet. */
   handOff: readonly string[];
+  /** Open rows in "whatever". */
+  letGo: readonly string[];
   /** Who they go to; null while nobody can take work. */
   target: AgentAssignee | null;
   /** Everyone who could. */
@@ -208,7 +215,7 @@ function usePlan(rows: readonly RowItem[]): Plan {
       todayStr,
       { userTimezone: tz, routines, seasons, away }
     );
-    const lanes: Record<Lane, RowItem[]> = { done: [], now: [], calendar: [], handoff: [], leave: [] };
+    const lanes: Record<Lane, RowItem[]> = { done: [], now: [], today: [], calendar: [], handoff: [], leave: [], archive: [] };
     const facts = new Map<string, LaneFacts>();
     const laneById = new Map<string, Lane>();
     const packs = new Map<string, PrepPack>();
@@ -229,6 +236,10 @@ function usePlan(rows: readonly RowItem[]): Plan {
       laneById.set(row.item.id, lane);
       lanes[lane].push(row);
     }
+    capNow(lanes, isOpen, moved);
+    for (const r of lanes.today) laneById.set(r.item.id, 'today');
+    const today = lanes.today.filter(isOpen).map((r) => r.item.id);
+    const letGo = lanes.archive.filter(isOpen).map((r) => r.item.id);
     const days = placeOnDays(
       lanes.calendar.filter(isOpen).map((r) => r.item),
       todayStr
@@ -236,7 +247,7 @@ function usePlan(rows: readonly RowItem[]): Plan {
     const handOff = lanes.handoff
       .filter((r) => isOpen(r) && !facts.get(r.item.id)?.handedOff)
       .map((r) => r.item.id);
-    const prepCandidates = (['now', 'leave', 'calendar'] as const).flatMap((lane) =>
+    const prepCandidates = (['now', 'today', 'leave', 'calendar'] as const).flatMap((lane) =>
       lanes[lane]
         .filter((r) => isOpen(r) && r.itemType === 'task' && !facts.get(r.item.id)?.handedOff)
         .map((r) => {
@@ -245,7 +256,7 @@ function usePlan(rows: readonly RowItem[]): Plan {
         })
     );
     const target = targets.find((t) => sameAssignee(t.assignee, handTo)) ?? targets[0] ?? null;
-    return { lanes, facts, laneById, days, handOff, target, targets, todayStr, packs, prepCandidates };
+    return { lanes, facts, laneById, days, today, handOff, letGo, target, targets, todayStr, packs, prepCandidates };
   }, [rows, moved, canDelegate, targets, handTo, items, tz, routines, seasons, away, todayStr, stored]);
 }
 
@@ -286,13 +297,9 @@ export function DoStuffRow({ rows }: { rows: readonly RowItem[] }) {
     .filter(Boolean)
     .join(' · ');
 
-  const pending = plan.days.size + plan.handOff.length;
-  const detail = [
-    plan.days.size > 0 && `${plan.days.size} on the calendar`,
-    plan.handOff.length > 0 && plan.target && `${plan.handOff.length} to ${plan.target.name}`,
-  ]
-    .filter(Boolean)
-    .join(', ');
+  const commit = { days: plan.days, today: plan.today, handOff: plan.handOff, letGo: plan.letGo };
+  const pending = commitCount({ ...commit, to: null, left });
+  const detail = commitLines({ ...commit, to: plan.target, left }).join(', ');
   return (
     <div
       data-testid="do-stuff-on"
@@ -312,7 +319,7 @@ export function DoStuffRow({ rows }: { rows: readonly RowItem[] }) {
       {pending > 0 && (
         <Button
           size="sm"
-          onClick={() => makeItSo({ days: plan.days, handOff: plan.handOff, to: plan.target?.assignee })}
+          onClick={() => makeItSo({ ...commit, to: plan.target?.assignee })}
           data-testid="do-stuff-make-it-so"
           title={`Make it so: ${detail}`}
           aria-label={`Make it so: ${detail}`}
@@ -360,6 +367,11 @@ function LaneHeader({
         <Dot color={def.color} />
         <span className="font-semibold">{def.label}</span>
         <span className="font-num text-[12.5px] text-muted-foreground">{count}</span>
+        {def.note && (
+          <span className="text-[12px] text-muted-foreground" data-testid="do-stuff-lane-note">
+            {def.note}
+          </span>
+        )}
         {action && <span className="ml-auto">{action}</span>}
       </div>
       {/* The tinted hairline, and the one shimmer that runs along it when the
@@ -646,7 +658,7 @@ function LaneRow({
 }
 
 /**
- * The number keys: 1 to 5 move the row that has focus, or else the one under
+ * The number keys: 1 to 7 move the row that has focus, or else the one under
  * the pointer, to that lane. Never while typing or with a modifier held, and
  * never when focus is somewhere other than the list (a dialog, the dock).
  */
@@ -783,12 +795,14 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
     useDoStuffStore.setState({
       commit: {
         days: plan.days,
+        today: plan.today,
         handOff: plan.handOff,
+        letGo: plan.letGo,
         to: plan.target ? { assignee: plan.target.assignee, name: plan.target.name } : null,
         left,
       },
     });
-  }, [plan.days, plan.handOff, plan.target, left]);
+  }, [plan.days, plan.today, plan.handOff, plan.letGo, plan.target, left]);
 
   // The one pack open, by item id. ↑ ↓ walk the "done for you" lane.
   const [peek, setPeek] = useState<string | null>(null);
@@ -808,7 +822,7 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
     .map((r) => ({ itemId: r.item.id, title: r.item.title, stored: plan.packs.get(r.item.id)! }));
 
   const next = nextNow(plan.lanes.now, isOpen, skipped);
-  const pending = plan.days.size + plan.handOff.length;
+  const pending = plan.days.size + plan.today.length + plan.handOff.length + plan.letGo.length;
   const trailing = (r: RowItem) => {
     const pack = plan.packs.get(r.item.id);
     return (

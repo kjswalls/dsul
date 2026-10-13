@@ -32,6 +32,8 @@ const SIGNIFICANT_ACTIONS = [
   'Move all tasks',
   'Reset streak:',
   'Delete items',
+  // Do stuff's "whatever": the rows leave the braindump on the spot.
+  'Let go:',
   'Complete items',
   'Uncomplete items',
   // Bulk membership. Collecting into a container that is currently off hides

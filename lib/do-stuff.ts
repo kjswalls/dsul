@@ -68,6 +68,10 @@ interface DoStuffState {
 /** The plan's writes, as the dock's make it so key needs them. */
 export interface Commit {
   days: ReadonlyMap<string, string>;
+  /** Rows going onto today. */
+  today: readonly string[];
+  /** Rows let go ("whatever"). */
+  letGo: readonly string[];
   handOff: readonly string[];
   /** Who the handed-off lane goes to: its assignee and its name. */
   to: { assignee: string; name: string } | null;
@@ -96,9 +100,20 @@ export const useDoStuffStore = create<DoStuffState>((set) => ({
   commit: null,
 }));
 
-/** How many things make it so would move: the calendar lane and the hand-offs. */
+/** How many things make it so would move: today, the other days, the hand-offs and the let-go. */
 export function commitCount(c: Commit | null): number {
-  return c ? c.days.size + c.handOff.length : 0;
+  return c ? c.days.size + c.today.length + c.handOff.length + c.letGo.length : 0;
+}
+
+/** What make it so will do, a line each, for its tooltip and its name. */
+export function commitLines(c: Commit | null): string[] {
+  if (!c) return [];
+  return [
+    c.today.length > 0 && `${c.today.length} onto today`,
+    c.days.size > 0 && `${c.days.size} onto days`,
+    c.handOff.length > 0 && c.to && `${c.handOff.length} to ${c.to.name}`,
+    c.letGo.length > 0 && `${c.letGo.length} let go`,
+  ].filter((l): l is string => !!l);
 }
 
 /* ── the shuffle ──────────────────────────────────────────────────────── */
@@ -169,19 +184,28 @@ export function putOnToday(id: string): void {
 }
 
 /**
- * Make it so: every calendar row onto its day (one undo per day, the bulk
- * carry), and every row in the handed-off lane that the agent does not hold
- * yet handed to it. "Do now" and "left alone" write nothing. Re-checked at
- * click time against the store, like every verb.
+ * Make it so: "today" onto today and every "another day" row onto its day (one
+ * undo per day, the bulk carry), every row in "do it for me" that the agent
+ * does not hold yet handed to it, and "whatever" let go (one undo). "Do it
+ * now" and "later" write nothing. Re-checked at click time against the store,
+ * like every verb.
  */
 export function makeItSo(plan: {
   days: ReadonlyMap<string, string>;
+  today?: readonly string[];
   handOff: readonly string[];
+  letGo?: readonly string[];
   /** Who the handed-off lane goes to; OpenClaw when not said. */
   to?: string;
 }): void {
   const byDay = new Map<string, string[]>();
-  for (const [id, day] of plan.days) {
+  const all = new Map(plan.days);
+  if (plan.today?.length) {
+    const first = fresh(plan.today[0]);
+    const todayStr = first ? todayContext(first).todayStr : undefined;
+    if (todayStr) for (const id of plan.today) all.set(id, todayStr);
+  }
+  for (const [id, day] of all) {
     const item = fresh(id);
     if (!item) continue;
     if (!ITEM_VERBS.reschedule.eligible(item, todayContext(item))) continue;
@@ -192,6 +216,7 @@ export function makeItSo(plan: {
     const item = fresh(id);
     if (item && !('assignee' in item && item.assignee)) handOffItem(item, plan.to);
   }
+  if (plan.letGo?.length) planner().letGoItems([...plan.letGo]);
 }
 
 export function skipNext(id: string): void {
@@ -205,7 +230,7 @@ export function skipNext(id: string): void {
 export function finishRun(): void {
   const { commit, stop } = useDoStuffStore.getState();
   if (commit && commitCount(commit) > 0) {
-    makeItSo({ days: commit.days, handOff: commit.handOff, to: commit.to?.assignee });
+    makeItSo({ ...commit, to: commit.to?.assignee });
   }
   stop();
 }

@@ -170,12 +170,17 @@ describe('do stuff: the plan in lanes', () => {
     fireEvent.mouseEnter(screen.getByText('zebra').closest('[data-lane-row]')!);
     fireEvent.keyDown(window, { key: '2' });
     expect(laneOfRow('zebra')).toBe('now');
-    // Not offered: the agent is not paired, so 4 does nothing.
-    fireEvent.keyDown(window, { key: '4' });
+    // Not offered: the agent is not paired, so 5 does nothing.
+    fireEvent.keyDown(window, { key: '5' });
     expect(laneOfRow('zebra')).toBe('now');
+    // 3 is today, and 7 lets it go.
+    fireEvent.keyDown(window, { key: '3' });
+    expect(laneOfRow('zebra')).toBe('today');
+    fireEvent.keyDown(window, { key: '7' });
+    expect(laneOfRow('zebra')).toBe('archive');
     // A modifier is never a lane move.
-    fireEvent.keyDown(window, { key: '5', metaKey: true });
-    expect(laneOfRow('zebra')).toBe('now');
+    fireEvent.keyDown(window, { key: '6', metaKey: true });
+    expect(laneOfRow('zebra')).toBe('archive');
   });
 
   it('makes it so: the calendar lane lands on its days, and nothing else is written', () => {
@@ -191,6 +196,36 @@ describe('do stuff: the plan in lanes', () => {
     expect(byId.get('d')?.startDate).toBe(tomorrow);
     for (const id of ['a', 'b', 'e', 'f']) expect(byId.get(id)?.startDate).toBeUndefined();
     expect(screen.queryByTestId('do-stuff-make-it-so')).toBeNull();
+  });
+
+  it('says "yes u can" over do it now, and holds it to three, the rest onto today', () => {
+    seed(['q1', 'q2', 'q3', 'q4', 'q5', 'q6'].map((id) => task(id, { title: `quick ${id}`, size: 'quick' })));
+    renderBraindump();
+    fireEvent.click(screen.getByTestId('do-stuff-start'));
+    expect(screen.getByTestId('do-stuff-lane-note')).toHaveTextContent('yes u can');
+    expect(['q1', 'q2', 'q3'].map((id) => laneOfRow(`quick ${id}`))).toEqual(['now', 'now', 'now']);
+    expect(['q4', 'q5', 'q6'].map((id) => laneOfRow(`quick ${id}`))).toEqual(['today', 'today', 'today']);
+  });
+
+  it('makes it so: today lands today, and whatever is let go with one undo', () => {
+    seed(SIX);
+    renderBraindump();
+    fireEvent.click(screen.getByTestId('do-stuff-start'));
+    (document.activeElement as HTMLElement | null)?.blur();
+    fireEvent.mouseEnter(screen.getByText('zebra').closest('[data-lane-row]')!);
+    fireEvent.keyDown(window, { key: '7' });
+    fireEvent.mouseEnter(screen.getByText('figure out the budget').closest('[data-lane-row]')!);
+    fireEvent.keyDown(window, { key: '3' });
+    act(() => {
+      fireEvent.click(screen.getByTestId('do-stuff-make-it-so'));
+    });
+    const byId = new Map(usePlannerStore.getState().items.map((i) => [i.id, i as { startDate?: string; status?: string }]));
+    const today = new Date().toISOString().slice(0, 10);
+    expect(byId.get('e')?.startDate).toBe(today);
+    expect(byId.get('f')?.status).toBe('cancelled');
+    expect(byId.get('a')?.status).toBe('pending');
+    // Let go leaves the braindump.
+    expect(screen.queryByText('zebra')).toBeNull();
   });
 
   it('hands the lane to a connected app when OpenClaw is not paired', async () => {
