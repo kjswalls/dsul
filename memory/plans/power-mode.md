@@ -87,3 +87,21 @@ tap) to take one out, swipe left for the next.
 
 Gaps found while designing, not yet scheduled: no free-slot finder on the grid
 (for "on the calendar"), no web search for the model (for research packs).
+
+### What build order 4 shipped
+
+The questions already reached dsul (`dsul_ask_user` blocks the item and logs
+an `agent_question` event with its options; lib/agent-question.ts reads them
+back), so this is the surfaces. The canvas header shows a badge while any
+agent waits on the user: the askers' avatars (their initial) and "N to
+answer". It opens an inbox with one options card per asker
+(components/ai/needs-you/): who asked and about which item, the question,
+lettered choices (A to H on the keyboard), a pencil row for the user's own
+words, Clear and Submit, and "1 of 2" paging for an asker with several. A
+submitted answer folds to one line with Undo and goes to the agent after six
+seconds, or when the page hides (lib/needs-you-store.ts); until then the item
+is still `blocked`, and Ask home's list leaves it out. A grid block tall
+enough for a third line shows "◐ OpenClaw: the question", and its first three
+choices given two more; a choice answers with the same Undo, and the question
+opens the inbox on that item (the item itself on the phone, which has no
+badge). Ask home's own Needs-you cards are unchanged.

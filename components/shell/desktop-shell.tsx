@@ -29,6 +29,7 @@ import { HelpMenu } from '@/components/shell/help-menu';
 import { RightRail } from '@/components/ai/rail/right-rail';
 import { AskSetup } from '@/components/ai/rail/ask-setup';
 import { AskOpener } from '@/components/ai/rail/ask-opener';
+import { NeedsYouBadge, useNeedsYouShown } from '@/components/ai/needs-you/needs-you-badge';
 import { useBackLabel } from '@/components/ai/rail/rail-header';
 import { ModOpener } from '@/components/mods/mod-opener';
 import { ModRail } from '@/components/mods/mod-rail';
@@ -83,6 +84,7 @@ export const DesktopShell = memo(function DesktopShell() {
   );
   const closeDialog = useUIStore((s) => s.closeDialog);
   const canvasWide = useCanvasWide();
+  const needsYouShown = useNeedsYouShown();
   const layout = useLayoutDef();
   const { slots } = layout;
   const plate = slots.canvas === 'plate';
@@ -280,7 +282,11 @@ export const DesktopShell = memo(function DesktopShell() {
               on the date's line, past WeekScale in the week views (which hold
               the far end themselves). It gives way to everything else here
               (ask-opener.tsx has the rules). */}
-          <AskOpener className={canvasWide ? undefined : 'ml-auto'} />
+          {/* Needs you: agents' questions, the askers' avatars and "N to
+              answer" (needs-you-badge.tsx). Only while something waits, and
+              then it takes the row's far end ahead of the Ask button. */}
+          <NeedsYouBadge className={canvasWide ? undefined : 'ml-auto'} />
+          <AskOpener className={canvasWide || needsYouShown ? undefined : 'ml-auto'} />
           {/* The key to a mod's panels, after the Ask button: it takes the
               row's far end itself only when the Ask button is not offered
               (mod-opener.tsx). */}

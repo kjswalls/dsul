@@ -10,6 +10,7 @@ import { AIActivity } from '@/components/ai/ask/ai-activity';
 import { AskFlowNote, ItWorksCard, useItWorksShown } from '@/components/ai/ask/it-works-card';
 import { usePlannerStore } from '@/lib/planner-store';
 import { usePlannerLoaded } from '@/lib/planner-ready';
+import { useNeedsYouStore } from '@/lib/needs-you-store';
 import { useConversationsStore } from '@/lib/conversations-store';
 import { useEODStore } from '@/lib/eod-store';
 import { buildChatOpeners, HOME_OPENERS, type ChatOpener } from '@/lib/ai-openers';
@@ -133,7 +134,13 @@ export function AskHome({ variant = 'rail' }: { variant?: 'rail' | 'mobile' }) {
   // look-only preview it would offer a question already answered elsewhere,
   // and the write barrier would refuse the re-queue after the reply had gone.
   const loaded = usePlannerLoaded();
-  const waiting = useMemo(() => (loaded ? needsYou(items) : []), [loaded, items]);
+  // An answer held for Undo in the header's inbox (lib/needs-you-store.ts)
+  // is already answered as far as this list goes.
+  const held = useNeedsYouStore((s) => s.pending);
+  const waiting = useMemo(
+    () => (loaded ? needsYou(items).filter((i) => !held[i.id]) : []),
+    [loaded, items, held]
+  );
 
   // The conversations History lists, not every summary ever cached: one
   // deleted on another device leaves both at the same refresh. Today's are
