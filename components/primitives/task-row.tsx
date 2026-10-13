@@ -7,6 +7,7 @@ import { Check, Trash2, Minus, Plus, SkipForward, ArrowLeftToLine, Redo2, Undo2,
 } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
 import { ItemContextMenu } from '@/components/planner/item-context-menu';
+import { DoStuffMark } from '@/components/sidebar/do-stuff-mark';
 import { Button } from '@/components/ui/button';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useAwayStore } from '@/lib/away-store';
@@ -972,6 +973,9 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
           )}
 
           {inBraindump && trailing}
+
+          {/* While doing stuff, where today's row is going (do-stuff-mark.tsx). */}
+          {!inBraindump && dateStr === todayStr && <DoStuffMark id={item.id} todayStr={todayStr} />}
 
           {!compact && !inBraindump && (
             <>

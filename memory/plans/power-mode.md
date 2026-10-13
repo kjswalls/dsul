@@ -149,7 +149,15 @@ Mocks: https://claude.ai/artifact/U4NbXhEeMHroAZd6KvMLYS (v5). Built in four PRs
    (one undo, "Let go:" raises the toast), and the braindump drops cancelled tasks
    (lib/braindump-members.ts). dsul has no archive view yet; cancelled was the closest state
    with no new table, and the agent API already wrote it.
-4. One do stuff over the braindump plus today's unfixed open items: "today" tags, lane dots,
-   "→ Thu" and ghost "+" blocks on the grid, and do it now as the up-next card on today.
+4. One do stuff over the braindump plus today's open one-shot tasks at no fixed time (a row
+   with a start time stays out). They join the plan after the braindump's, wear a "today" tag,
+   and the rules keep them on today (quick ones go to do it now). Their lane says where they go
+   from today: another day moves them, later sends them back to the braindump
+   (`unscheduleTasks`), whatever lets go, do it for me hands off; do it now and today write
+   nothing. The plan publishes `marks`, and a today row in the grid draws its lane dot and
+   "→ Thu" / "→ later" (components/sidebar/do-stuff-mark.tsx, in TaskRow). Do it now's next
+   and the braindump rows coming onto today show in the canvas header as the up-next card and
+   ghost "+" chips (components/sidebar/do-stuff-today.tsx), in the header row rather than on
+   the grid, because nothing between the header and the timeline may change height.
 5. First steps: one question, then 3 to 5 steps with step 1 lit; do it for me on both
    screens, and a single agent-doable step can be handed off on its own.

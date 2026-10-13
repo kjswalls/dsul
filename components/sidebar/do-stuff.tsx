@@ -19,12 +19,14 @@ import {
   putOnToday,
   commitCount,
   commitLines,
+  type Mark,
   skipNext,
   takeShuffleFrom,
   useDoStuffStore,
 } from '@/lib/do-stuff';
 import {
   capNow,
+  dayLabel,
   LANES,
   laneDef,
   laneForDigit,
@@ -43,8 +45,7 @@ import { useAICapabilities } from '@/lib/ai-connection-store';
 import { inactiveItemIdsOn } from '@/lib/active';
 import { useAwayStore } from '@/lib/away-store';
 import { usePlannerStore } from '@/lib/planner-store';
-import { toDateStr } from '@/lib/recurrence';
-import { addDaysStr } from '@/lib/container-schedule';
+import { isRecurring, toDateStr } from '@/lib/recurrence';
 import { prefersReducedMotion } from '@/lib/zen-transition';
 import { packIsStale, type PrepPack } from '@/lib/prep-packs';
 import { usePrepPacksStore, type PrepItem } from '@/lib/prep-packs-store';
@@ -177,6 +178,12 @@ interface Plan {
   handOff: readonly string[];
   /** Open rows in "whatever". */
   letGo: readonly string[];
+  /** Today's open rows going back to the braindump ("later"). */
+  unschedule: readonly string[];
+  /** Where every row is going, for the grid. */
+  marks: ReadonlyMap<string, Mark>;
+  /** Braindump rows coming onto today (do it now and today). */
+  arriving: readonly { id: string; title: string }[];
   /** Who they go to; null while nobody can take work. */
   target: AgentAssignee | null;
   /** Everyone who could. */
@@ -193,7 +200,7 @@ interface Plan {
  * re-derived: `canHandOff` is the agent's own queue filter, so a row offered
  * the handed-off lane is a row the agent will see.
  */
-function usePlan(rows: readonly RowItem[]): Plan {
+function usePlan(dumpRows: readonly RowItem[]): Plan {
   const moved = useDoStuffStore((s) => s.moved);
   // Any agent at all, OpenClaw or a connected app (lib/agents-store.ts): the
   // lane is offered when someone could take the row.
@@ -201,6 +208,7 @@ function usePlan(rows: readonly RowItem[]): Plan {
   const handTo = useDoStuffStore((s) => s.handTo);
   const canDelegate = targets.length > 0;
   const items = usePlannerStore((s) => s.items);
+  const tasks = usePlannerStore((s) => s.tasks);
   const tz = usePlannerStore((s) => s.userTimezone) ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const routines = usePlannerStore((s) => s.routines);
   const seasons = usePlannerStore((s) => s.seasons);
@@ -210,6 +218,20 @@ function usePlan(rows: readonly RowItem[]): Plan {
 
   return useMemo(() => {
     const byId = new Map(items.map((i) => [i.id, i]));
+    // One do stuff (Kirby, 2026-10-13): today's open one-shot rows at no fixed
+    // time join the braindump's, after it. A row at a time stays where it is.
+    const inDump = new Set(dumpRows.map((r) => r.item.id));
+    const onToday = tasks.filter(
+      (t) =>
+        !inDump.has(t.id) &&
+        t.startDate === todayStr &&
+        (t.isScheduled || !!t.timeBucket) &&
+        !t.startTime &&
+        t.status === 'pending' &&
+        !isRecurring(t)
+    );
+    const todayIds = new Set(onToday.map((t) => t.id));
+    const rows: RowItem[] = [...dumpRows, ...onToday.map((t) => ({ itemType: 'task' as const, item: t }))];
     const inactiveIds = inactiveItemIdsOn(
       rows.map((r) => byId.get(r.item.id)).filter((i) => i !== undefined),
       todayStr,
@@ -229,6 +251,7 @@ function usePlan(rows: readonly RowItem[]): Plan {
         canHandOff: !!item && canHandOff(item, { canDelegate, todayStr, inactiveIds }),
         handedOff: !!assignee,
         hasPack: packs.has(row.item.id),
+        onToday: todayIds.has(row.item.id),
       };
       // A done row stays where it was drawn, in its lane, struck through.
       const lane = laneOf(row.item, f, moved);
@@ -238,8 +261,12 @@ function usePlan(rows: readonly RowItem[]): Plan {
     }
     capNow(lanes, isOpen, moved);
     for (const r of lanes.today) laneById.set(r.item.id, 'today');
-    const today = lanes.today.filter(isOpen).map((r) => r.item.id);
+    const today = lanes.today.filter((r) => isOpen(r) && !todayIds.has(r.item.id)).map((r) => r.item.id);
     const letGo = lanes.archive.filter(isOpen).map((r) => r.item.id);
+    const unschedule = lanes.leave.filter((r) => isOpen(r) && todayIds.has(r.item.id)).map((r) => r.item.id);
+    const arriving = [...lanes.now, ...lanes.today]
+      .filter((r) => isOpen(r) && !todayIds.has(r.item.id))
+      .map((r) => ({ id: r.item.id, title: r.item.title }));
     const days = placeOnDays(
       lanes.calendar.filter(isOpen).map((r) => r.item),
       todayStr
@@ -256,19 +283,26 @@ function usePlan(rows: readonly RowItem[]): Plan {
         })
     );
     const target = targets.find((t) => sameAssignee(t.assignee, handTo)) ?? targets[0] ?? null;
-    return { lanes, facts, laneById, days, today, handOff, letGo, target, targets, todayStr, packs, prepCandidates };
-  }, [rows, moved, canDelegate, targets, handTo, items, tz, routines, seasons, away, todayStr, stored]);
-}
-
-/** "tomorrow", or the weekday within the week, or "Oct 20". */
-function dayLabel(day: string, todayStr: string): string {
-  if (day === addDaysStr(todayStr, 1)) return 'tomorrow';
-  const [y, m, d] = day.split('-').map(Number);
-  const date = new Date(Date.UTC(y, m - 1, d));
-  for (let n = 2; n < 7; n++) {
-    if (day === addDaysStr(todayStr, n)) return date.toLocaleDateString(undefined, { weekday: 'short', timeZone: 'UTC' });
-  }
-  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
+    const marks = new Map<string, Mark>();
+    for (const [id, lane] of laneById) marks.set(id, { lane, day: days.get(id), onToday: todayIds.has(id) });
+    return {
+      lanes,
+      facts,
+      laneById,
+      days,
+      today,
+      handOff,
+      letGo,
+      unschedule,
+      marks,
+      arriving,
+      target,
+      targets,
+      todayStr,
+      packs,
+      prepCandidates,
+    };
+  }, [dumpRows, tasks, moved, canDelegate, targets, handTo, items, tz, routines, seasons, away, todayStr, stored]);
 }
 
 /* ── the strip while doing stuff ──────────────────────────────────────── */
@@ -297,7 +331,7 @@ export function DoStuffRow({ rows }: { rows: readonly RowItem[] }) {
     .filter(Boolean)
     .join(' · ');
 
-  const commit = { days: plan.days, today: plan.today, handOff: plan.handOff, letGo: plan.letGo };
+  const commit = { days: plan.days, today: plan.today, handOff: plan.handOff, letGo: plan.letGo, unschedule: plan.unschedule };
   const pending = commitCount({ ...commit, to: null, left });
   const detail = commitLines({ ...commit, to: plan.target, left }).join(', ');
   return (
@@ -505,6 +539,15 @@ function Trailing({
   return (
     <span className="flex items-center gap-1.5">
       {pack}
+      {/* Already on today: it joined the plan from the grid, not the braindump. */}
+      {facts.onToday && (
+        <span
+          className="whitespace-nowrap rounded-full border border-border px-1.5 text-[11px] leading-[16px] text-muted-foreground"
+          data-testid="do-stuff-today-tag"
+        >
+          today
+        </span>
+      )}
       {day && (
         <span className="whitespace-nowrap text-[11.5px] text-muted-foreground" data-testid="do-stuff-day">
           {dayLabel(day, todayStr)}
@@ -798,11 +841,14 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
         today: plan.today,
         handOff: plan.handOff,
         letGo: plan.letGo,
+        unschedule: plan.unschedule,
         to: plan.target ? { assignee: plan.target.assignee, name: plan.target.name } : null,
         left,
       },
+      marks: plan.marks,
+      arriving: plan.arriving,
     });
-  }, [plan.days, plan.today, plan.handOff, plan.letGo, plan.target, left]);
+  }, [plan.days, plan.today, plan.handOff, plan.letGo, plan.unschedule, plan.marks, plan.arriving, plan.target, left]);
 
   // The one pack open, by item id. ↑ ↓ walk the "done for you" lane.
   const [peek, setPeek] = useState<string | null>(null);
@@ -822,7 +868,13 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
     .map((r) => ({ itemId: r.item.id, title: r.item.title, stored: plan.packs.get(r.item.id)! }));
 
   const next = nextNow(plan.lanes.now, isOpen, skipped);
-  const pending = plan.days.size + plan.today.length + plan.handOff.length + plan.letGo.length;
+  const pending = plan.days.size + plan.today.length + plan.handOff.length + plan.letGo.length + plan.unschedule.length;
+  // Do it now's next, for the up-next card on today (do-stuff-today.tsx).
+  const nextId = next?.item.id;
+  const nextTitle = next?.item.title;
+  useEffect(() => {
+    useDoStuffStore.setState({ next: nextId && nextTitle !== undefined ? { id: nextId, title: nextTitle } : null });
+  }, [nextId, nextTitle]);
   const trailing = (r: RowItem) => {
     const pack = plan.packs.get(r.item.id);
     return (

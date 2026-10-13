@@ -68,6 +68,12 @@ export interface LaneFacts {
   handedOff: boolean;
   /** The AI got it ready: a prep pack written for its current title. */
   hasPack?: boolean;
+  /**
+   * Already on today, at no fixed time (one do stuff reads today's open items
+   * beside the braindump's). Its lane says where it goes from today: do it now
+   * and today keep it there, later sends it back to the braindump.
+   */
+  onToday?: boolean;
 }
 
 /** May the user put this row in this lane? */
@@ -100,6 +106,9 @@ export function ruleLane(item: { title: string; size?: unknown }, facts: LaneFac
   if (facts.handedOff) return 'handoff';
   if (!facts.plannable) return 'leave';
   if (facts.hasPack) return 'done';
+  // Today's own: quick ones are do it now, the rest stay today. The rules
+  // never move something off the day it was put on.
+  if (facts.onToday) return sizeForPlan(item) === 'quick' ? 'now' : 'today';
   switch (sizeForPlan(item)) {
     case 'quick':
       return 'now';
@@ -193,4 +202,15 @@ export function nextNow<R extends { item: { id: string } }>(
     if (again) return again;
   }
   return undefined;
+}
+
+/** "tomorrow", or the weekday within the week, or "Oct 20". */
+export function dayLabel(day: string, todayStr: string): string {
+  if (day === addDaysStr(todayStr, 1)) return 'tomorrow';
+  const [y, m, d] = day.split('-').map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d));
+  for (let n = 2; n < 7; n++) {
+    if (day === addDaysStr(todayStr, n)) return date.toLocaleDateString(undefined, { weekday: 'short', timeZone: 'UTC' });
+  }
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
 }
