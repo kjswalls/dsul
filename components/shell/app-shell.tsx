@@ -29,6 +29,7 @@ import {
 import { ItemDialog, type ItemDialogState } from '@/components/planner/item-dialog';
 import { ContainerDialog } from '@/components/planner/container-dialog';
 import { BulkAddDialog } from '@/components/planner/bulk-add-dialog';
+import { FirstSteps } from '@/components/sidebar/first-steps';
 import { OrganizeConsole } from '@/components/planner/organize/organize-console';
 import { KeyboardShortcutsModal } from '@/components/planner/keyboard-shortcuts-modal';
 import { EODReview } from '@/components/ai/eod-review';
@@ -824,6 +825,10 @@ export function AppShell() {
         seed={activeDialog?.type === 'bulk-add' ? activeDialog : null}
         onOpenChange={(open) => !open && closeDialog()}
       />
+
+      {/* Do stuff's first steps: its own memory-only slot (lib/do-stuff.ts),
+          opened from the up-next card, F, or the item menu's AI row. */}
+      <FirstSteps />
 
       {/* ⌘K launcher — reads its own `launcher` slot off activeDialog. */}
       <OmniLauncher />

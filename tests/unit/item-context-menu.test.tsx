@@ -1042,7 +1042,14 @@ describe('the item menu\'s AI row', () => {
       unseed = seedAI(CONNECTED_MODEL);
       render(<LiveRow id="once" />);
       const content = openAsk(rightClick(cardOf('once')));
-      expect(rows(content)).toEqual(['item-menu-ask-ask', 'item-menu-ask-breakdown', 'item-menu-ask-start', 'item-menu-ask-findTime']);
+      // First steps is do stuff's (on by default), after the asks.
+      expect(rows(content)).toEqual([
+        'item-menu-ask-ask',
+        'item-menu-ask-breakdown',
+        'item-menu-ask-start',
+        'item-menu-ask-findTime',
+        'item-menu-first-steps',
+      ]);
       expect(within(content).queryByTestId('item-menu-handoff')).toBeNull();
       expect(within(content).queryByTestId('item-menu-takeback')).toBeNull();
     });
@@ -1056,6 +1063,7 @@ describe('the item menu\'s AI row', () => {
         'item-menu-ask-breakdown',
         'item-menu-ask-start',
         'item-menu-ask-findTime',
+        'item-menu-first-steps',
         LINE,
         'item-menu-handoff',
       ]);

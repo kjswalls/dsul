@@ -159,5 +159,14 @@ Mocks: https://claude.ai/artifact/U4NbXhEeMHroAZd6KvMLYS (v5). Built in four PRs
    and the braindump rows coming onto today show in the canvas header as the up-next card and
    ghost "+" chips (components/sidebar/do-stuff-today.tsx), in the header row rather than on
    the grid, because nothing between the header and the timeline may change height.
-5. First steps: one question, then 3 to 5 steps with step 1 lit; do it for me on both
-   screens, and a single agent-doable step can be handed off on its own.
+5. First steps (components/sidebar/first-steps.tsx): a dialog over one item, its own
+   memory-only slot (`firstSteps` in the do stuff store), mounted once in AppShell. Screen 1
+   asks "Anything I should know first?" (optional); the answer rides along with Break it
+   down's own request (proposal-store, `item:<id>`, the same surface the item panel's card
+   uses). Screen 2 lists the create ops, step 1 lit in lime; "Start step 1" saves them as
+   subtasks (one undo) and opens the item, "save as subtasks" just saves. "do it for me" hands
+   the whole item to the do it for me pick on both screens, and each step's "hand off" saves
+   the steps and hands that one subtask off. Opened by F (the hovered or focused row while
+   doing stuff), "first steps" on both up-next cards, and "First steps" in the item menu's AI
+   row while do stuff is on; everywhere only where Break it down is offered (`canBreakDown`),
+   so it never shows without AI.
