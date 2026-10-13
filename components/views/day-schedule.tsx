@@ -62,6 +62,12 @@ import { rowScope } from '@/lib/slot-add';
 import type { DayItems } from '@/lib/day-items';
 import type { Task, HabitItem, TimeBucket, Item } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
+import { BlockAsk, hasOpenQuestion } from '@/components/ai/needs-you/block-ask';
+import type { AgentItem } from '@/lib/ask-home';
+
+/** Block heights that hold the question's line, and then its choices too. */
+const BLOCK_ASK_H = 76;
+const BLOCK_ASK_CHOICES_H = 104;
 
 /**
  * Day × Schedule (P5d, per desktop_day_scheduleView.png): untimed items in
@@ -867,6 +873,9 @@ export function ScheduleBlock({
   // two-row block, and a 40px band inside a tall pane is not.
   const contentH = L?.contentHeight ?? height;
   const tall = contentH >= PANE_TALL_H;
+  // An agent waiting on the user gets its question in the block, given a
+  // third line (and its choices, given a fourth and fifth).
+  const asking = !!task && !done && contentH >= BLOCK_ASK_H && hasOpenQuestion(task);
 
   // How many lines of the title actually fit — the week column's answer to long
   // titles. text-content is 12/17, and the pane pays 6px of padding top and
@@ -1452,6 +1461,9 @@ export function ScheduleBlock({
                   </MetaText>
                   {task?.priority && <PriorityGlyph priority={task.priority} className={cn(done && 'opacity-60')} />}
                 </div>
+                {/* An agent's open question: the short Needs-you card, where
+                    the block has a third line to give it (block-ask.tsx). */}
+                {asking && <BlockAsk item={task as unknown as AgentItem} choices={contentH >= BLOCK_ASK_CHOICES_H} />}
               </>
             ) : (
               <div className="relative flex min-w-0 items-center gap-2">
