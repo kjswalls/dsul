@@ -47,6 +47,32 @@ interface DoStuffState {
    */
   handTo: string | null;
   setHandTo: (assignee: string) => void;
+  /**
+   * Whether the braindump wants the key at all (components/sidebar/do-stuff.tsx
+   * wantsDoStuffRow), published by the braindump for the dock, which has no
+   * rows of its own.
+   */
+  available: boolean;
+  /**
+   * Whether the sidebar dock is carrying the key (and make it so) in place of
+   * the capture bar, published by the dock. While it is, the braindump's header
+   * draws no key and the list draws no strip.
+   */
+  docked: boolean;
+  /** Bumped by every start: the dock's relay field ripples out from the key. */
+  starts: number;
+  /** What "make it so" would do right now, published by the plan while it is drawn. */
+  commit: Commit | null;
+}
+
+/** The plan's writes, as the dock's make it so key needs them. */
+export interface Commit {
+  days: ReadonlyMap<string, string>;
+  handOff: readonly string[];
+  /** Who the handed-off lane goes to: its assignee and its name. */
+  to: { assignee: string; name: string } | null;
+  /** Open rows left in "do now". */
+  left: number;
 }
 
 export const useDoStuffStore = create<DoStuffState>((set) => ({
@@ -56,15 +82,24 @@ export const useDoStuffStore = create<DoStuffState>((set) => ({
   doneCount: 0,
   start: () => {
     snapshotRows();
-    set({ on: true, skipped: [], moved: {}, doneCount: 0 });
+    set((s) => ({ on: true, skipped: [], moved: {}, doneCount: 0, starts: s.starts + 1 }));
   },
-  stop: () => set({ on: false, skipped: [], moved: {}, doneCount: 0 }),
+  stop: () => set({ on: false, skipped: [], moved: {}, doneCount: 0, commit: null }),
   skip: (id) => set((s) => ({ skipped: [...s.skipped.filter((x) => x !== id), id] })),
   move: (id, lane) => set((s) => ({ moved: { ...s.moved, [id]: lane } })),
   countDone: () => set((s) => ({ doneCount: s.doneCount + 1 })),
   handTo: null,
   setHandTo: (assignee) => set({ handTo: assignee }),
+  available: false,
+  docked: false,
+  starts: 0,
+  commit: null,
 }));
+
+/** How many things make it so would move: the calendar lane and the hand-offs. */
+export function commitCount(c: Commit | null): number {
+  return c ? c.days.size + c.handOff.length : 0;
+}
 
 /* ── the shuffle ──────────────────────────────────────────────────────── */
 
@@ -161,4 +196,16 @@ export function makeItSo(plan: {
 
 export function skipNext(id: string): void {
   useDoStuffStore.getState().skip(id);
+}
+
+/**
+ * The key's second press (and its chord's): make it so with the plan as the
+ * list last published it, then stop. With nothing to move it only stops.
+ */
+export function finishRun(): void {
+  const { commit, stop } = useDoStuffStore.getState();
+  if (commit && commitCount(commit) > 0) {
+    makeItSo({ days: commit.days, handOff: commit.handOff, to: commit.to?.assignee });
+  }
+  stop();
 }

@@ -2799,6 +2799,54 @@ body {
   }
 }
 
+/* In the dock (components/sidebar/do-stuff-dock.tsx), in place of the
+   capture bar: the do stuff key runs the dock's width, its legend at the left
+   where the bolt's light sits (so the light never has to find a centred
+   glyph) and its chord at the far end. Engaged, the light runs round a key
+   far longer than the header's, so the run is a share of the rim, not px.
+   Beside it the launcher key lights from its own glyph the same way. The
+   dock is not in the braindump's container, so the header's give-way rules
+   above never reach it. */
+[data-do-key-place='dock'] {
+  padding: 0 6px 0 9px;
+  --do-key-x: 16px;
+}
+[data-do-key-place='dock'] [data-do-key-chord] {
+  margin-left: auto;
+}
+[data-do-key-place='launcher'] {
+  padding: 0 6px 0 9px;
+}
+[data-do-key-glyph] {
+  color: var(--do-key-bolt);
+  transition: color 160ms var(--ease-fade);
+}
+@media (hover: hover) {
+  [data-do-key-place='dock']:hover {
+    --do-key-hold: 22%;
+    --do-key-tail: 48%;
+    --do-key-reach: 100%;
+  }
+  [data-do-key]:hover [data-do-key-glyph] {
+    color: var(--do-key-accent);
+  }
+}
+[data-do-key-place='dock']:is(:focus-visible, :active, [data-on='true']) {
+  --do-key-hold: 22%;
+  --do-key-tail: 48%;
+  --do-key-reach: 100%;
+}
+/* Make it so: the same key with no light in it, at rest or engaged; it only
+   sinks when pressed. */
+[data-do-key][data-do-key-plain] {
+  --do-key-accent: var(--do-key-rim);
+  --do-key-pair: var(--do-key-rim);
+}
+[data-do-key][data-do-key-plain]:is(:hover, :focus-visible, :active) [data-do-key-chord] {
+  color: var(--ink-2);
+  background-color: color-mix(in oklab, var(--surface-2), var(--foreground) 6%);
+}
+
 @media (prefers-reduced-motion: reduce) {
   [data-do-key],
   [data-do-key] * {

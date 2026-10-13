@@ -92,6 +92,26 @@ export function renderedSidebarWidth(stored: number, viewportWidth?: number, res
 }
 
 /**
+ * The width the braindump takes while doing stuff (Kirby's pick, 2026-10-13):
+ * about half of what the rail leaves, so the plan's lanes and the planner sit
+ * side by side, never narrower than it already was and never taking the
+ * canvas below SIDEBAR_MIN_CANVAS. Past SIDEBAR_MAX_WIDTH on purpose: the cap
+ * is a taste for a resting list, and this is not one. Below the docking width
+ * (1180px, rail-store's PANEL_OVERLAY_QUERY) there is no room to split, and
+ * the column stays as it is. Like the rail's yield, it is never written back:
+ * stopping puts the user's own width back.
+ */
+export const DO_STUFF_SPLIT_MIN_VIEWPORT = 1180
+
+export function doStuffSidebarWidth(rendered: number, viewportWidth: number, reservePx = 0): number {
+  if (!Number.isFinite(viewportWidth) || viewportWidth < DO_STUFF_SPLIT_MIN_VIEWPORT) return rendered
+  const reserve = Number.isFinite(reservePx) && reservePx > 0 ? reservePx : 0
+  const half = Math.round((viewportWidth - reserve) / 2)
+  const ceiling = viewportWidth - SIDEBAR_MIN_CANVAS - reserve
+  return Math.max(rendered, Math.min(half, ceiling))
+}
+
+/**
  * A sash gesture's target width, `candidate`, for a column that was `from`
  * wide when it began: the drag (from the width it is laid out at) and the
  * arrow, Home and End nudges (from the rendered width). Both start from what

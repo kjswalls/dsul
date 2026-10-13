@@ -122,3 +122,27 @@ or opens a menu of everyone; "make it so" hands the lane to the pick, which is
 remembered for the session. Apps are never woken (lib/handoff-wake.ts is
 OpenClaw's); they find the item the next time they read their queue. The
 right-click menu still hands off to OpenClaw only.
+
+## Round 5 (Kirby's picks, 2026-10-13)
+
+Mocks: https://claude.ai/artifact/U4NbXhEeMHroAZd6KvMLYS (v5). Built in four PRs:
+
+1. **The dock carries the key** (this section's first PR). Once the braindump wants the key
+   (`wantsDoStuffRow`, published as `available`), the sidebar dock swaps the capture bar for
+   the do stuff key, wide, and a small ⌘K launcher key with its chord, both keycaps with the
+   aurora arc at rest and the whole rim lit on hover. The dock's RelayField stays, and ripples
+   out from the key on every start (`starts`). Never while the bar is focused, never in a
+   bottom-dock or page-foot layout, never on the phone (those keep the header key and strip).
+   ⌘I, which focused the bar, opens the launcher in add mode while the keys are docked.
+   While doing stuff the same place is **make it so**: a plain keycap (no light in the rim),
+   the same chord, its plan in a tooltip, ✕ beside it to stop without writing, "finish" when
+   nothing would move. The list ripples into lanes from the bottom, and the column opens to
+   half the window (`doStuffSidebarWidth`, ≥1180px, never narrower, never below the canvas
+   floor, never written back). No "doing stuff" strip while docked.
+2. Ask reads "ask stuff", its light and mark violet into sky.
+3. Seven lanes: ready / do it now ("yes u can", max 3) / today / another day / do it for me /
+   later / whatever (archive, with Undo, and the plan never suggests it). Keys 1 to 7.
+4. One do stuff over the braindump plus today's unfixed open items: "today" tags, lane dots,
+   "→ Thu" and ghost "+" blocks on the grid, and do it now as the up-next card on today.
+5. First steps: one question, then 3 to 5 steps with step 1 lit; do it for me on both
+   screens, and a single agent-doable step can be handed off on its own.

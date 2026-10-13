@@ -75,7 +75,7 @@ import {
   streaksEnabled,
 } from '../extension-gates';
 import { useSidebarStore } from '../sidebar-store';
-import { useDoStuffStore } from '../do-stuff';
+import { finishRun, useDoStuffStore } from '../do-stuff';
 import { revealDock } from '../look-store';
 import { useSelectionStore, selectableIdsInDom } from '../selection-store';
 import { setupPageShown, useMobileNavStore } from '../mobile-nav-store';
@@ -1087,7 +1087,7 @@ export const STATIC_COMMANDS: Command[] = [
     id: 'workspace.doStuff',
     // Static, like Toggle Zen's: the shortcuts table renders this label.
     label: 'Do stuff',
-    dynamicLabel: () => (useDoStuffStore.getState().on ? 'Stop doing stuff' : 'Do stuff'),
+    dynamicLabel: () => (useDoStuffStore.getState().on ? 'Make it so' : 'Do stuff'),
     description: 'Sort the braindump into a plan in lanes',
     group: 'workspace',
     icon: Zap,
@@ -1101,9 +1101,11 @@ export const STATIC_COMMANDS: Command[] = [
       context: 'Not while typing, where it submits the field.',
     },
     availableWhen: () => doStuffEnabled(),
+    // Pressed again while doing stuff it is make it so (lib/do-stuff.ts
+    // finishRun), as the key in the dock is: plan, then commit, one chord.
     run: () => {
       const s = useDoStuffStore.getState();
-      if (s.on) s.stop();
+      if (s.on) finishRun();
       else s.start();
     },
   },
@@ -1214,9 +1216,14 @@ export const STATIC_COMMANDS: Command[] = [
     // sidebar swallows every binding without allowInInput (n / e / Backspace / ⌘Z)
     // until you blur. Mobile switches off the Chat tab where Ask unmounts the
     // omnibar, and stays on the setup page, which keeps it (leaveAskForOmnibar).
+    // While the dock carries the do stuff keys there is no bar to focus: quick
+    // add opens the launcher in add mode instead (openQuickCapture's seed).
     run: (ctx) => {
       if (ctx.isMobile) {
         leaveAskForOmnibar();
+      } else if (useDoStuffStore.getState().docked) {
+        useUIStore.getState().openDialog({ type: 'launcher', query: '+' });
+        return;
       } else {
         revealDock();
       }
