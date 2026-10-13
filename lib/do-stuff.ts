@@ -73,6 +73,11 @@ interface DoStuffState {
   next: { id: string; title: string } | null;
   /** Braindump rows coming onto today: the card's ghost "+" rows. */
   arriving: readonly { id: string; title: string }[];
+  /**
+   * The item whose first steps are open (components/sidebar/first-steps.tsx),
+   * from the up-next card, the F key or the item menu. Memory only.
+   */
+  firstSteps: string | null;
 }
 
 /** Where one row is going. */
@@ -122,6 +127,7 @@ export const useDoStuffStore = create<DoStuffState>((set) => ({
   marks: NO_MARKS,
   next: null,
   arriving: [],
+  firstSteps: null,
 }));
 
 /** How many things make it so would move: today, the other days, the hand-offs and the let-go. */

@@ -14,6 +14,7 @@ import {
   FolderTree,
   Footprints,
   Link2,
+  ListOrdered,
   Maximize2,
   MessageSquare,
   PanelRight,
@@ -71,9 +72,11 @@ import { STATIC_COMMANDS, type Command } from '@/lib/commands';
 import { useAICapabilities } from '@/lib/ai-connection-store';
 import { useConversationsStore } from '@/lib/conversations-store';
 import { inactiveItemIdsOn } from '@/lib/active';
-import { itemAsksFor, type ItemAsk, type ItemAskContext, type ItemAskId } from '@/lib/item-asks';
+import { canBreakDown, itemAsksFor, type ItemAsk, type ItemAskContext, type ItemAskId } from '@/lib/item-asks';
 import { askAboutItem, breakDownItem, composeNew, proposeForItem } from '@/lib/open-chat';
 import { SELECTION_ASK_LABEL, selectionAskText } from '@/lib/container-asks';
+import { openFirstSteps } from '@/components/sidebar/first-steps';
+import { useDoStuffEnabled } from '@/lib/extension-gates';
 import { canHandOff, canTakeBack, delegateName, handOffItem, heldState, takeBackItem } from '@/lib/agent-handoff';
 import { refreshAgentFreshness } from '@/hooks/use-agent-freshness';
 import { agentStatusView } from '@/lib/agent-status';
@@ -440,7 +443,9 @@ const ASK_ICON: Record<ItemAskId, ReactNode> = {
  * own page, as "Open item" does here. Two asks are not offered there: "Ask
  * about this…" would be "Open item" again (the page shows the conversation and
  * its box), and "Find a time" answers in Ask, which that page does not show.
- * The hand-off opens nothing, so it is offered there too.
+ * The hand-off opens nothing, so it is offered there too. "First steps"
+ * (do stuff's, components/sidebar/first-steps.tsx) follows Break it down where
+ * do stuff is on, and not there either: it is a dialog over the planner.
  *
  * The hand-off row follows the item: "Hand off to OpenClaw" while the agent
  * could take it (lib/agent-handoff.ts canHandOff, the agent's own queue
@@ -455,6 +460,7 @@ function AskSection({ item, todayStr, tz, page }: { item: Item; todayStr: string
   const router = useRouter();
   const isMobile = useIsMobile();
   const { canChat, canPropose, canDelegate } = useAICapabilities();
+  const doStuff = useDoStuffEnabled();
   const hasConversation = useConversationsStore((s) => typeof s.itemIndex[item.id] === 'string');
   const routines = usePlannerStore((s) => s.routines);
   const seasons = usePlannerStore((s) => s.seasons);
@@ -489,7 +495,8 @@ function AskSection({ item, todayStr, tz, page }: { item: Item; todayStr: string
   };
   const asks = itemAsksFor(item, ctx).filter((a) => !(page && (a.kind === 'propose' || a.kind === 'compose')));
   const handOff = !takeBack && canHandOff(item, { canDelegate, todayStr, inactiveIds });
-  if (asks.length === 0 && !handOff && !takeBack) return null;
+  const firstSteps = doStuff && !page && canBreakDown(item, canPropose);
+  if (asks.length === 0 && !firstSteps && !handOff && !takeBack) return null;
 
   const run = (ask: ItemAsk) => () => {
     returnFocusToOpener();
@@ -522,7 +529,18 @@ function AskSection({ item, todayStr, tz, page }: { item: Item; todayStr: string
           onSelect={run(ask)}
         />
       ))}
-      {asks.length > 0 && (handOff || takeBack) && <ContextMenuSeparator />}
+      {firstSteps && (
+        <Row
+          icon={<ListOrdered className="size-3.5" />}
+          label="First steps"
+          testId="item-menu-first-steps"
+          onSelect={() => {
+            returnFocusToOpener();
+            openFirstSteps(item.id);
+          }}
+        />
+      )}
+      {(asks.length > 0 || firstSteps) && (handOff || takeBack) && <ContextMenuSeparator />}
       {handOff && (
         <Row
           icon={<Bot className="size-3.5" />}

@@ -2,6 +2,7 @@
 
 import { Check, Plus } from 'lucide-react';
 import { doneNext, skipNext, useDoStuffStore } from '@/lib/do-stuff';
+import { openFirstSteps, useCanFirstSteps } from '@/components/sidebar/first-steps';
 import { cn } from '@/lib/utils';
 
 /** How many arriving rows the card names before it counts the rest. */
@@ -22,6 +23,7 @@ export function DoStuffToday({ className }: { className?: string }) {
   const on = useDoStuffStore((s) => s.on);
   const next = useDoStuffStore((s) => s.next);
   const arriving = useDoStuffStore((s) => s.arriving);
+  const steps = useCanFirstSteps(next?.id);
   if (!on || (!next && arriving.length === 0)) return null;
   const shown = arriving.filter((a) => a.id !== next?.id);
   const rest = shown.length - ARRIVING_SHOWN;
@@ -52,6 +54,16 @@ export function DoStuffToday({ className }: { className?: string }) {
           >
             skip
           </button>
+          {steps && (
+            <button
+              type="button"
+              onClick={() => openFirstSteps(next.id)}
+              data-testid="do-stuff-up-next-first-steps"
+              className="h-6 shrink-0 rounded-[6px] px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              first steps
+            </button>
+          )}
         </div>
       )}
       {shown.slice(0, ARRIVING_SHOWN).map((a) => (

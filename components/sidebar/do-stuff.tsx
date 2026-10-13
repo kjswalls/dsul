@@ -53,6 +53,7 @@ import { PackChip, PackDeck, PackInline, PackPeek } from '@/components/sidebar/p
 import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
 import { chordLabel, isApplePlatform } from '@/lib/commands/keys';
 import { cn } from '@/lib/utils';
+import { openFirstSteps, useCanFirstSteps } from '@/components/sidebar/first-steps';
 
 /**
  * Do stuff: the braindump sorted into a plan in lanes, then walked
@@ -591,13 +592,16 @@ function NextCard({ row, trailing }: { row: RowItem; trailing: React.ReactNode }
   const ref = useRef<HTMLDivElement>(null);
   const id = row.item.id;
   useWalkFocus(ref, id);
+  const steps = useCanFirstSteps(id);
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (!plainKey(e)) return;
     const k = e.key.toLowerCase();
     if (k === 'enter' && e.target === e.currentTarget) doneNext(id);
     else if (k === 's') skipNext(id);
     else if (k === 't') putOnToday(id);
-    else return;
+    else if (k === 'f' && openFirstSteps(id)) {
+      /* first steps, where the AI can break it down */
+    } else return;
     e.preventDefault();
   };
   return (
@@ -635,6 +639,18 @@ function NextCard({ row, trailing }: { row: RowItem; trailing: React.ReactNode }
         >
           today <Cap>T</Cap>
         </Button>
+        {steps && (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => openFirstSteps(id)}
+            data-testid="do-stuff-first-steps"
+            aria-keyshortcuts="F"
+            className="text-muted-foreground"
+          >
+            first steps <Cap>F</Cap>
+          </Button>
+        )}
       </div>
     </div>
   );
@@ -704,6 +720,7 @@ function LaneRow({
  * The number keys: 1 to 7 move the row that has focus, or else the one under
  * the pointer, to that lane. Never while typing or with a modifier held, and
  * never when focus is somewhere other than the list (a dialog, the dock).
+ * F opens that row's first steps (components/sidebar/first-steps.tsx).
  */
 function useLaneKeys(
   listRef: React.RefObject<HTMLDivElement | null>,
@@ -718,7 +735,8 @@ function useLaneKeys(
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented || !plainKey(e)) return;
       const lane = laneForDigit(e.key);
-      if (!lane) return;
+      const steps = e.key.toLowerCase() === 'f';
+      if (!lane && !steps) return;
       const list = listRef.current;
       if (!list) return;
       const active = document.activeElement as HTMLElement | null;
@@ -728,6 +746,11 @@ function useLaneKeys(
         id = active.closest<HTMLElement>('[data-lane-row]')?.dataset.laneRow;
       }
       id ??= hoveredRef.current;
+      if (steps) {
+        if (id && factsRef.current.has(id) && openFirstSteps(id)) e.preventDefault();
+        return;
+      }
+      if (!lane) return;
       const f = id ? factsRef.current.get(id) : undefined;
       if (!id || !f || !laneOffered(lane, f)) return;
       e.preventDefault();
