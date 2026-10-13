@@ -63,7 +63,26 @@ interface DoStuffState {
   starts: number;
   /** What "make it so" would do right now, published by the plan while it is drawn. */
   commit: Commit | null;
+  /**
+   * Where each planned row is going, for the grid's rows while doing stuff
+   * (components/primitives/task-row.tsx): its lane and, for another day, the
+   * day. Published by the plan; cleared by stop().
+   */
+  marks: ReadonlyMap<string, Mark>;
+  /** Do it now's next row, for the up-next card on today (components/sidebar/do-stuff-today.tsx). */
+  next: { id: string; title: string } | null;
+  /** Braindump rows coming onto today: the card's ghost "+" rows. */
+  arriving: readonly { id: string; title: string }[];
 }
+
+/** Where one row is going. */
+export interface Mark {
+  lane: Lane;
+  day?: string;
+  onToday: boolean;
+}
+
+const NO_MARKS: ReadonlyMap<string, Mark> = new Map();
 
 /** The plan's writes, as the dock's make it so key needs them. */
 export interface Commit {
@@ -72,6 +91,8 @@ export interface Commit {
   today: readonly string[];
   /** Rows let go ("whatever"). */
   letGo: readonly string[];
+  /** Today's rows sent back to the braindump ("later"). */
+  unschedule: readonly string[];
   handOff: readonly string[];
   /** Who the handed-off lane goes to: its assignee and its name. */
   to: { assignee: string; name: string } | null;
@@ -88,7 +109,7 @@ export const useDoStuffStore = create<DoStuffState>((set) => ({
     snapshotRows();
     set((s) => ({ on: true, skipped: [], moved: {}, doneCount: 0, starts: s.starts + 1 }));
   },
-  stop: () => set({ on: false, skipped: [], moved: {}, doneCount: 0, commit: null }),
+  stop: () => set({ on: false, skipped: [], moved: {}, doneCount: 0, commit: null, marks: NO_MARKS, next: null, arriving: [] }),
   skip: (id) => set((s) => ({ skipped: [...s.skipped.filter((x) => x !== id), id] })),
   move: (id, lane) => set((s) => ({ moved: { ...s.moved, [id]: lane } })),
   countDone: () => set((s) => ({ doneCount: s.doneCount + 1 })),
@@ -98,11 +119,14 @@ export const useDoStuffStore = create<DoStuffState>((set) => ({
   docked: false,
   starts: 0,
   commit: null,
+  marks: NO_MARKS,
+  next: null,
+  arriving: [],
 }));
 
 /** How many things make it so would move: today, the other days, the hand-offs and the let-go. */
 export function commitCount(c: Commit | null): number {
-  return c ? c.days.size + c.today.length + c.handOff.length + c.letGo.length : 0;
+  return c ? c.days.size + c.today.length + c.handOff.length + c.letGo.length + c.unschedule.length : 0;
 }
 
 /** What make it so will do, a line each, for its tooltip and its name. */
@@ -112,6 +136,7 @@ export function commitLines(c: Commit | null): string[] {
     c.today.length > 0 && `${c.today.length} onto today`,
     c.days.size > 0 && `${c.days.size} onto days`,
     c.handOff.length > 0 && c.to && `${c.handOff.length} to ${c.to.name}`,
+    c.unschedule.length > 0 && `${c.unschedule.length} back to the braindump`,
     c.letGo.length > 0 && `${c.letGo.length} let go`,
   ].filter((l): l is string => !!l);
 }
@@ -195,6 +220,7 @@ export function makeItSo(plan: {
   today?: readonly string[];
   handOff: readonly string[];
   letGo?: readonly string[];
+  unschedule?: readonly string[];
   /** Who the handed-off lane goes to; OpenClaw when not said. */
   to?: string;
 }): void {
@@ -216,6 +242,7 @@ export function makeItSo(plan: {
     const item = fresh(id);
     if (item && !('assignee' in item && item.assignee)) handOffItem(item, plan.to);
   }
+  if (plan.unschedule?.length) planner().unscheduleTasks([...plan.unschedule]);
   if (plan.letGo?.length) planner().letGoItems([...plan.letGo]);
 }
 

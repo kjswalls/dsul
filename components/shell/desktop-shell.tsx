@@ -6,6 +6,7 @@ import { ViewRouter } from '@/components/views/view-router';
 import { AwayNotice } from '@/components/views/away-notice';
 import { SeasonNotice } from '@/components/views/season-notice';
 import { DayHeaderNotice } from '@/components/notices/notice-slot';
+import { DoStuffToday } from '@/components/sidebar/do-stuff-today';
 import { HeaderCapsule } from '@/components/canvas/header-capsule';
 import { WeekScale } from '@/components/canvas/week-scale';
 import { ItemDialog, type ItemDialogState } from '@/components/planner/item-dialog';
@@ -277,6 +278,10 @@ export const DesktopShell = memo(function DesktopShell() {
               line falls back to the dock. WeekScale only renders in week scope,
               so in day scope these two share the row with room to spare. */}
           <DayHeaderNotice className="mt-2 h-8 min-w-0 max-w-[280px]" />
+          {/* While doing stuff: do it now's next, and what is coming onto
+              today (do-stuff-today.tsx). h-8 like the lines above, so the row
+              never grows. */}
+          <DoStuffToday className="mt-2 h-8 min-w-0 max-w-[560px]" />
           <WeekScale className="ml-auto" />
           {/* The Ask button, while Ask is closed: the row's far end, its key
               on the date's line, past WeekScale in the week views (which hold
