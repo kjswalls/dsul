@@ -136,7 +136,9 @@ Mocks: https://claude.ai/artifact/U4NbXhEeMHroAZd6KvMLYS (v5). Built in four PRs
    ⌘I, which focused the bar, opens the launcher in add mode while the keys are docked.
    While doing stuff the same place is **make it so**: a plain keycap (no light in the rim),
    the same chord, its plan in a tooltip, ✕ beside it to stop without writing, "finish" when
-   nothing would move. The list ripples into lanes from the bottom, and the column opens to
+   nothing would move. The column opens, then the rows glide into their lanes together, then
+   the lane labels rise into the gaps and their rules draw (`useSort`: sort, then label, Kirby's
+   pick 2026-10-14 over the first ripple, whose labels landed before the rows moved). The column opens to
    half the window (`doStuffSidebarWidth`, ≥1180px, never narrower, never below the canvas
    floor, never written back). No "doing stuff" strip while docked.
 2. Ask reads "ask stuff", its light and mark violet into sky.
