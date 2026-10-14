@@ -112,6 +112,21 @@ controls do, with `occurrenceOn` so a day the item does not fall on shows no che
 of the fold, laid over the strip, never inside its clip: the lime keeps its own element. A tick is not a
 tap on the strip, so the details stay folded.
 
+**Note 2026-10-14: OpenClaw connects with no plugin, and the plugin's wake is retired.** Kirby chose it.
+Settings → AI → OpenClaw → Connect (`POST /api/ai/openclaw`) mints an agent key named OpenClaw (scope
+`planner`, replacing any earlier one; `queueForName` gives a KEY by that name OpenClaw's queue, never an
+OAuth app) and shows three commands (lib/openclaw-setup.ts): save the key to `~/.openclaw/dsul.key`,
+`openclaw mcp add dsul` for the tools, and `openclaw automations add` with a stream command that curls
+`GET /api/agent/events` in a loop. That feed (lib/agent-caller.ts resolves the bearer) says `data: work`
+and nothing more each time a new `id@ai_status_at` lands in the caller's queue, and the automation starts
+an isolated run that works the queue through MCP. dsul never calls the gateway, so a tailnet-only gateway
+works. `/api/agent/handoff-wake` is deleted and the store wakes only connected apps; `items.handedOff`
+stays a registrable event name that is no longer sent. The plugin stays, run from a checkout, for chat
+from Ask only, until browser-direct chat (`@openclaw/gateway-client/browser`) is settled: a spike paired
+from a setup code, but a page calling itself `webchat` is refused on every reconnect, so it waits on
+OpenClaw confirming the `ui` client mode. npm publishing is dropped (`npm-publish.yml` deleted). The
+2026-10-11 note below describes the wake as it was.
+
 **Note 2026-10-11: the hand-off wakes OpenClaw, and the plugin shrinks to two jobs.** Kirby decided
 ai-vision-decisions.md's 2 and 4. A hand-off (the menu's Hand off, the panel's Assign, an undo that puts
 an assignment back) wakes the agent once the write lands: planner-store's `dbUpdateItem` calls

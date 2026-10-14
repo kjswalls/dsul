@@ -22,19 +22,9 @@ change emitted output — regenerate and commit when that happens.
 
 ## Publishing
 
-No automation exists yet; publishing is manual and **order matters**:
-
-1. `pnpm publish` **this package first** (`prepublishOnly` rebuilds dist).
-2. Then `pnpm publish` the `openclaw-plugin/` package. Use **pnpm**, not npm —
-   the plugin depends on `@dsul/types` via `workspace:*`, which pnpm
-   rewrites to the released version at publish time and npm would ship
-   verbatim (breaking installs).
-
-## Install
-
-```bash
-npm install @dsul/types
-```
+Not published. It is a workspace package: the app and `openclaw-plugin/`
+take it through `workspace:*`. (OpenClaw connects without the plugin since
+2026-10-14, so npm publishing was dropped.)
 
 ## Usage
 

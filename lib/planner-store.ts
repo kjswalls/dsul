@@ -1611,9 +1611,10 @@ function insertNewRows(
 
 // The store's only doors to these six item writes: each waits behind the
 // item's insert when that insert was held (above), and leaves at once otherwise.
-// An update that hands the item to the agent wakes it once the row has landed
-// (lib/handoff-wake.ts), so every hand-off surface, and an undo that puts an
-// assignment back, wakes from this one place. A failed write never wakes.
+// An update that hands the item to a connected app wakes it once the row has
+// landed (lib/handoff-wake.ts), so every hand-off surface, and an undo that puts
+// an assignment back, wakes from this one place. A failed write never wakes.
+// OpenClaw hears its own work (GET /api/agent/events).
 const dbUpdateItem: typeof rawUpdateItem = (id, ...rest) =>
   afterHeldItemCreate(id, () => rawUpdateItem(id, ...rest)).then((result) => {
     wakeIfHandedOff(id, rest[1]);

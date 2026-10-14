@@ -427,10 +427,9 @@ export type DsulEvent =
   | 'projects.updated'
   | 'habitGroups.updated'
   /**
-   * The wake: an item was just handed to the agent (`POST /api/agent/handoff-wake`).
-   * `data` is `{ itemId, title, type }` and nothing else. Like every name here it
-   * reaches only a registration that listed it (or `*`): `notifyPlugins` drops
-   * the rest, so a plugin build from before the wake never sees it.
+   * The plugin's old hand-off wake. dsul no longer sends it (OpenClaw hears its
+   * work on GET /api/agent/events); the name stays so a plugin that still lists
+   * it registers as before.
    */
   | 'items.handedOff'
   | '*'

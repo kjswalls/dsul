@@ -19,12 +19,10 @@ pnpm db:new <name>  # supabase migration new
 
 pnpm workspace (Node 24). `packages/types` is `@dsul/types`, and its `dist/` is
 **committed** — CI rebuilds it and fails on any drift from `src`, so a schema edit
-without `pnpm --filter @dsul/types build` is a red build. `openclaw-plugin/` is a
-separate consumer of the agent API; its `dist/` is gitignored and built at publish time,
-so CI does not gate it — a plugin `src` change reaches users only when the npm package
-is republished. Both packages publish from the hand-dispatched `npm publish` workflow
-([npm-publish.yml](.github/workflows/npm-publish.yml), main only, Kirby approves each run);
-bump the version in a PR first, since a version already on npm is skipped.
+without `pnpm --filter @dsul/types build` is a red build. Nothing is published to npm
+(dropped 2026-10-14, when OpenClaw began connecting with no plugin through MCP and
+`GET /api/agent/events`). `openclaw-plugin/` survives only for OpenClaw chat from Ask,
+run from a checkout; its `dist/` is gitignored and CI does not gate it.
 
 ## Setting up a new machine
 

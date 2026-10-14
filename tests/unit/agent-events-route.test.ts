@@ -37,7 +37,8 @@ vi.mock('@/lib/supabase-service', () => ({
   },
 }));
 
-import { GET, HOLD_MS, POLL_MS, RECENT_MS } from '@/app/api/agent/events/route';
+import { GET } from '@/app/api/agent/events/route';
+import { HOLD_MS, POLL_MS, RECENT_MS } from '@/lib/agent-events';
 
 const NOW = Date.parse('2026-10-14T12:00:00Z');
 const row = (id: string, assignee: string, atMsAgo: number, extra: Record<string, unknown> = {}) => ({
