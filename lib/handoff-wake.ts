@@ -72,7 +72,25 @@ export function wakeAppFor(itemId: string): void {
   gatherTimer = setTimeout(flushAppWake, GATHER_MS);
 }
 
-/** The store's hook: after a row update resolved, wake if it was a hand-off to an app. */
+/**
+ * Does this patch put the item back in its agent's queue without naming the
+ * agent? Answering a blocked question (lib/agent-question.ts) and Try again
+ * write only `{aiStatus: 'queued'}`. OpenClaw hears that on its event feed, but
+ * a connected app runs only when woken, so without this an answer to Claude
+ * sat on the trail and nothing ever read it. The patch cannot say whose queue
+ * it is; the route re-reads the row and wakes only an app, so a re-queue for
+ * OpenClaw costs one call that wakes nothing.
+ */
+export function requeues(updates: unknown): boolean {
+  return (
+    typeof updates === 'object' &&
+    updates !== null &&
+    !('assignee' in updates) &&
+    (updates as { aiStatus?: unknown }).aiStatus === 'queued'
+  );
+}
+
+/** The store's hook: after a row update resolved, wake if it handed the item to an app, or re-queued it. */
 export function wakeIfHandedOff(itemId: string, updates: unknown): void {
-  if (handsOffToApp(updates)) wakeAppFor(itemId);
+  if (handsOffToApp(updates) || requeues(updates)) wakeAppFor(itemId);
 }

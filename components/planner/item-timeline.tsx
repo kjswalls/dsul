@@ -35,7 +35,12 @@ const NO_MESSAGES: ChatMessage[] = [];
 /** Fetched again this long after the item last changed, so a save shows up without a reload. */
 const REFETCH_MS = 800;
 
-function Avatar({ who }: { who: TimelineActor }) {
+/** "OC" for OpenClaw, the first letter for any other agent ("C" for Claude). */
+function agentInitials(name: string): string {
+  return name === 'OpenClaw' ? 'OC' : (name.trim()[0] ?? '?').toUpperCase();
+}
+
+function Avatar({ who, agent = 'OpenClaw' }: { who: TimelineActor; agent?: string }) {
   const base = 'grid size-5 shrink-0 place-items-center rounded-full text-[9px] font-semibold';
   if (who === 'ai')
     return (
@@ -46,7 +51,7 @@ function Avatar({ who }: { who: TimelineActor }) {
   if (who === 'agent')
     return (
       <span className={cn(base, 'bg-foreground text-background')} aria-hidden>
-        OC
+        {agentInitials(agent)}
       </span>
     );
   if (who === 'recipe')
@@ -171,9 +176,11 @@ export function ItemTimeline({ item }: { item: Item }) {
                       data-testid="item-timeline-change"
                       data-by={entry.by}
                     >
-                      <Avatar who={entry.by} />
+                      <Avatar who={entry.by} agent={entry.agent} />
                       <span className="min-w-0 flex-1 truncate text-xs">
-                        <span className="text-foreground font-medium">{ACTOR_LABEL[entry.by]}</span>{' '}
+                        <span className="text-foreground font-medium">
+                          {entry.by === 'agent' && entry.agent ? entry.agent : ACTOR_LABEL[entry.by]}
+                        </span>{' '}
                         <span className="text-muted-foreground">{entry.text}</span>
                       </span>
                       <time className="text-muted-foreground/70 shrink-0 font-mono text-[10px]">
