@@ -1,6 +1,9 @@
 import { isSameOrigin, jsonError, jsonOk, requireSessionUser } from '@/app/api/ai/_shared/guard'
 import { AiDbError, readOpenClawStatus, unpairOpenClaw } from '@/lib/ai-server/connections'
-import type { OpenClawView, UnpairResponse } from '@/lib/ai-types'
+import type { OpenClawConnectResponse, OpenClawView, UnpairResponse } from '@/lib/ai-types'
+import { createAgentKey, listAgentKeys, revokeAgentKey } from '@/lib/agent-keys'
+import { OPENCLAW_KEY_NAME, queueForName } from '@/lib/agent-assignees'
+import { createServiceClient } from '@/lib/supabase-service'
 
 /**
  * DELETE /api/ai/openclaw: Unpair, from Settings → AI.
@@ -19,6 +22,39 @@ import type { OpenClawView, UnpairResponse } from '@/lib/ai-types'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+
+/**
+ * POST /api/ai/openclaw: Connect, from Settings → AI → OpenClaw.
+ *
+ * Mints the agent key a plugin-free OpenClaw uses for both halves of the
+ * connection (app/docs/openclaw): dsul's tools over MCP, and the work feed it
+ * holds open (/api/agent/events). The key is named OpenClaw, which is what
+ * puts it on OpenClaw's own queue (`queueForName`, lib/agent-assignees.ts).
+ *
+ * Connecting again replaces it: every live key by that name is revoked first,
+ * so a lost key is fixed by pressing Connect, and there is only ever one. The
+ * response is the only place the key appears; Settings shows it once inside
+ * the commands to paste and forgets it.
+ *
+ *   201 { key }            the new key
+ *   409 conflict           the account already holds the most keys it may
+ *   503 server             the keys table could not be read or written
+ */
+export async function POST(req: Request): Promise<Response> {
+  const user = await requireSessionUser()
+  if (!user) return jsonError(401, 'unauthorized')
+  if (!isSameOrigin(req)) return jsonError(403, 'forbidden')
+
+  const db = createServiceClient()
+  const keys = await listAgentKeys(db, user.id)
+  if (!keys) return jsonError(503, 'server')
+  for (const k of keys) {
+    if (queueForName(k.name) === 'openclaw' && !(await revokeAgentKey(db, user.id, k.id))) return jsonError(503, 'server')
+  }
+  const made = await createAgentKey(db, user.id, OPENCLAW_KEY_NAME, 'planner')
+  if (!made.ok) return made.error === 'limit' ? jsonError(409, 'conflict') : jsonError(503, 'server')
+  return jsonOk({ key: made.key } satisfies OpenClawConnectResponse, 201)
+}
 
 export async function DELETE(req: Request): Promise<Response> {
   const user = await requireSessionUser()
