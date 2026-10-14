@@ -383,19 +383,17 @@ export function DoStuffRow({ rows }: { rows: readonly RowItem[] }) {
 function LaneHeader({
   lane,
   count,
-  index,
   action,
 }: {
   lane: Lane;
   count: number;
-  index: number;
   action?: React.ReactNode;
 }) {
   const def = laneDef(lane);
   return (
     <div
-      className="do-stuff-pop flex flex-col"
-      style={{ '--pop-delay': `${index * 80}ms` } as React.CSSProperties}
+      className="flex flex-col"
+      data-lane-head={lane}
       data-testid={`do-stuff-lane-${lane}`}
     >
       <div className="flex h-[30px] items-center gap-2 px-2 text-[13px]">
@@ -409,13 +407,13 @@ function LaneHeader({
         )}
         {action && <span className="ml-auto">{action}</span>}
       </div>
-      {/* The tinted hairline, and the one shimmer that runs along it when the
-          mode opens (do-stuff-rule in globals.css: once, staggered, and off
-          under either motion veto). */}
+      {/* The tinted hairline. When the mode opens it draws in after the rows
+          land and one glint runs along it (useSort, and do-stuff-rule in
+          globals.css; off under either motion veto). */}
       <div
         aria-hidden
-        className="do-stuff-rule mx-1 h-[1.5px] rounded-full"
-        style={{ '--rule': def.color, '--rule-delay': `${index * 80}ms` } as React.CSSProperties}
+        className="do-stuff-rule mx-1 h-[1.5px] origin-left rounded-full"
+        style={{ '--rule': def.color } as React.CSSProperties}
       />
     </div>
   );
@@ -761,44 +759,89 @@ function useLaneKeys(
   }, [listRef, hoveredRef]);
 }
 
+/** The column's widen to half the window (braindump-pane.tsx, duration-300). */
+const WIDEN_MS = 300;
+const GLIDE_MS = 420;
+const LANE_STAGGER_MS = 40;
+const LABEL_MS = 220;
+const LABEL_STAGGER_MS = 50;
+
 /**
- * The ripple (Kirby's pick, 2026-10-13): the dock's relay field flares out of
- * the key (components/sidebar/sidebar-dock.tsx, `starts`), and the wave climbs
- * the list from the bottom. Each row holds where it stood in the braindump
- * until the wave reaches it, lights for a beat, then glides to its place in its
- * lane, so the plan reads in the order the light passes. Once, when the mode
- * opens, and not under either motion veto. The light is a tint of the accent
- * at full strength mixed into the row's ground, never an opacity.
+ * Sort, then label (Kirby's pick, 2026-10-14, over the ripple, whose labels
+ * landed on rows that had not moved yet). In order, never overlapping: the
+ * column widens with every row held where it stood in the braindump; then the
+ * rows glide to their lanes together, a light stagger by lane; then, once they
+ * have landed, each lane's label rises into the gap it left and its rule draws
+ * left to right, with one glint along it. Once, when the mode opens, and not
+ * under either motion veto. The label is revealed with a clip, never an
+ * opacity: the do-it-for-me dot is lime.
  */
-function useRipple(listRef: React.RefObject<HTMLDivElement | null>) {
+function useSort(listRef: React.RefObject<HTMLDivElement | null>) {
   useLayoutEffect(() => {
     const from = takeShuffleFrom();
     const list = listRef.current;
-    if (!from || !list || prefersReducedMotion()) return;
-    const rows = [...list.querySelectorAll<HTMLElement>('[data-lane-row]')];
-    const tops = rows.map((el) => from.get(el.dataset.laneRow ?? ''));
-    const known = tops.filter((t): t is number => t !== undefined);
-    if (known.length === 0) return;
-    const bottom = Math.max(...known);
-    rows.forEach((el, i) => {
-      const top = tops[i];
-      if (top === undefined || typeof el.animate !== 'function') return;
-      const dy = top - el.getBoundingClientRect().top;
-      // The wave's arrival: ~1.4ms a pixel up from the lowest row, so a long
-      // list still lands inside a second.
-      const delay = Math.min(700, (bottom - top) * 1.4);
+    if (!from || !list || prefersReducedMotion() || typeof list.animate !== 'function') return;
+    const moves: { el: HTMLElement; dy: number; lane: number }[] = [];
+    const arrivals: { el: HTMLElement; lane: number }[] = [];
+    const heads: HTMLElement[] = [];
+    for (const el of list.querySelectorAll<HTMLElement>('[data-lane-head], [data-lane-row]')) {
+      if (el.dataset.laneHead !== undefined) {
+        heads.push(el);
+        continue;
+      }
+      const top = from.get(el.dataset.laneRow ?? '');
+      const lane = Math.max(0, heads.length - 1);
+      if (top === undefined) arrivals.push({ el, lane });
+      else moves.push({ el, dy: top - el.getBoundingClientRect().top, lane });
+    }
+    if (moves.length === 0) return;
+    // A row the braindump never showed (today's, from the grid) has nowhere to
+    // glide from: it rises into its lane as that lane's rows arrive, instead
+    // of sitting under the rows still on their way.
+    for (const { el, lane } of arrivals) {
       el.animate(
         [
-          { transform: `translate(0, ${dy}px)`, background: 'transparent' },
-          {
-            transform: `translate(0, ${dy}px)`,
-            background: 'color-mix(in oklab, var(--lime-solid) 22%, var(--surface-1))',
-            offset: 0.3,
-          },
-          { transform: 'none', background: 'transparent' },
+          { transform: 'translate(0, 6px)', clipPath: 'inset(100% 0 0 0)' },
+          { transform: 'none', clipPath: 'inset(0)' },
         ],
-        { duration: 620, delay, easing: 'cubic-bezier(.3,.7,.2,1)', fill: 'backwards' }
+        {
+          duration: LABEL_MS,
+          delay: WIDEN_MS + lane * LANE_STAGGER_MS + GLIDE_MS * 0.5,
+          easing: 'ease-out',
+          fill: 'backwards',
+        }
       );
+    }
+    for (const { el, dy, lane } of moves) {
+      el.animate([{ transform: `translate(0, ${dy}px)` }, { transform: 'none' }], {
+        duration: GLIDE_MS,
+        delay: WIDEN_MS + lane * LANE_STAGGER_MS,
+        easing: 'cubic-bezier(.2,.8,.2,1)',
+        fill: 'backwards',
+      });
+    }
+    // The labels start as the last lane's rows settle, not after the tail of
+    // the ease, which reads as a pause.
+    const landed = WIDEN_MS + Math.max(...moves.map((m) => m.lane)) * LANE_STAGGER_MS + GLIDE_MS * 0.85;
+    heads.forEach((el, i) => {
+      const delay = landed + i * LABEL_STAGGER_MS;
+      el.animate(
+        [
+          { transform: 'translate(0, 6px)', clipPath: 'inset(100% 0 0 0)' },
+          { transform: 'none', clipPath: 'inset(0)' },
+        ],
+        { duration: LABEL_MS, delay, easing: 'ease-out', fill: 'backwards' }
+      );
+      const rule = el.querySelector<HTMLElement>('.do-stuff-rule');
+      if (!rule) return;
+      rule.animate([{ transform: 'scaleX(0)' }, { transform: 'none' }], {
+        duration: 360,
+        delay: delay + 80,
+        easing: 'cubic-bezier(.2,.8,.2,1)',
+        fill: 'backwards',
+      });
+      rule.style.setProperty('--glint-delay', `${delay + 440}ms`);
+      rule.dataset.glint = '';
     });
   }, [listRef]);
 }
@@ -846,7 +889,7 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
   const plan = usePlan(rows);
   const listRef = useRef<HTMLDivElement>(null);
   const hoveredRef = useRef<string | null>(null);
-  useRipple(listRef);
+  useSort(listRef);
   useLaneKeys(listRef, hoveredRef, plan.facts);
   usePrepOnStart(plan.prepCandidates);
   const prepError = usePrepPacksStore((s) => s.error);
@@ -953,7 +996,6 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
             <LaneHeader
               lane={l.key}
               count={list.filter(isOpen).length}
-              index={index}
               action={
                 l.key === 'done' && touch && deckCards.length > 1 ? (
                   <button

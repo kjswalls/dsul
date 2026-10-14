@@ -4372,7 +4372,7 @@ body {
    The size's colour, solid for the first third and fading to nothing, so the
    header reads as a quiet rule rather than a band. The fade is a colour mix,
    never an opacity: quick's colour is the lime. One glint runs along it when
-   the mode opens, staggered down the sections by --rule-delay, and is gone
+   the mode opens (data-glint, set by useSort, with its --glint-delay), and is gone
    under either motion veto (the global clamp would snap it to its end frame,
    which is off the right edge, so removing it outright is the same frame). */
 .do-stuff-rule {
@@ -4385,7 +4385,7 @@ body {
     color-mix(in oklab, var(--rule) 0%, transparent) 100%
   );
 }
-.do-stuff-rule::after {
+.do-stuff-rule[data-glint]::after {
   content: '';
   position: absolute;
   inset: 0;
@@ -4396,7 +4396,7 @@ body {
     transparent 60%
   );
   transform: translateX(-100%);
-  animation: do-stuff-glint 1.1s ease-out var(--rule-delay, 0ms) 1 both;
+  animation: do-stuff-glint 1.1s ease-out var(--glint-delay, 0ms) 1 both;
   pointer-events: none;
 }
 @keyframes do-stuff-glint {
@@ -4411,22 +4411,4 @@ body {
 }
 [data-reduce-motion='true'] .do-stuff-rule::after {
   display: none;
-}
-/* A lane header pops in as the rows shuffle into place (do-stuff.tsx
-   useShuffle). Scale only, never opacity: the done-for-you dot is lime. */
-.do-stuff-pop {
-  animation: do-stuff-pop 0.22s cubic-bezier(0.3, 1.6, 0.5, 1) var(--pop-delay, 0ms) both;
-}
-@keyframes do-stuff-pop {
-  from {
-    transform: scale(0.6);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .do-stuff-pop {
-    animation: none;
-  }
-}
-[data-reduce-motion='true'] .do-stuff-pop {
-  animation: none;
 }
