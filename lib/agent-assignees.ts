@@ -32,6 +32,12 @@ export interface AgentAssignee {
   /** As the user reads it. */
   name: string;
   kind: 'openclaw' | 'app' | 'key';
+  /**
+   * Started the moment work is handed to it (lib/agent-wake.ts). Absent for an
+   * app that finds its work the next time it is opened, and for OpenClaw,
+   * whose wake is its own (lib/handoff-wake.ts).
+   */
+  wake?: boolean;
 }
 
 /** A name, trimmed and with inner runs of space collapsed, compared without case. */

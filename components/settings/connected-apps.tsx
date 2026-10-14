@@ -3,12 +3,19 @@
 import { useCallback, useEffect, useState } from 'react';
 import { DANGER_TEXT_ACTION } from '@/components/ai/connect/connect-shared';
 import { SCOPE_WORDS, type Scope } from '@/lib/mcp-oauth/scopes';
+import { assigneeForName, type AgentAssignee } from '@/lib/agent-assignees';
+import { wakeKey } from '@/lib/agent-wake';
+import { AppWake, canWake } from './app-wake';
 
 /**
  * Settings → AI → Connected apps: the apps signed in to dsul's MCP server over
  * OAuth (memory/plans/mcp-oauth.md), each with what it may do and a Disconnect
  * that stops its tokens at once. Also where someone learns the address to
  * give Claude or Cursor.
+ *
+ * A connected Claude that may change the planner also offers to be woken when
+ * work is handed to it (app-wake.tsx); two Claude apps share one queue, so the
+ * offer sits under the first of them only.
  *
  * Fetched when shown, never stored: the list is the server's, and a stale one
  * would show an app as connected after it was disconnected elsewhere.
@@ -33,6 +40,18 @@ export function ConnectedAppsSection() {
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [origin, setOrigin] = useState('');
+  const [wakes, setWakes] = useState<ReadonlySet<string>>(new Set());
+
+  const refreshWakes = useCallback(async () => {
+    try {
+      const res = await fetch('/api/ai/agents', { cache: 'no-store' });
+      if (!res.ok) return;
+      const body = (await res.json()) as { agents?: AgentAssignee[] };
+      setWakes(new Set((body.agents ?? []).filter((a) => a.wake).map((a) => wakeKey(a.assignee))));
+    } catch {
+      // Unknown reads as no wake: the offer shows, and saving says what is wrong.
+    }
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
@@ -43,7 +62,8 @@ export function ConnectedAppsSection() {
     } catch {
       setLoad({ kind: 'unavailable' });
     }
-  }, []);
+    void refreshWakes();
+  }, [refreshWakes]);
 
   useEffect(() => {
     setOrigin(window.location.origin);
@@ -85,7 +105,16 @@ export function ConnectedAppsSection() {
 
       {load.kind === 'ready' && load.apps.length > 0 && (
         <ul className="border-border divide-border divide-y rounded-[8px] border">
-          {load.apps.map((app) => (
+          {load.apps.map((app, i) => {
+            const assignee = assigneeForName(app.name);
+            // A Claude that may change the planner, the first of its name only:
+            // two Claude apps are one queue.
+            const wakeable =
+              !!assignee &&
+              app.scope === 'planner' &&
+              canWake(app.name) &&
+              !load.apps.slice(0, i).some((a) => a.scope === 'planner' && wakeKey(a.name) === wakeKey(app.name));
+            return (
             <li key={app.id} className="flex flex-wrap items-center justify-between gap-3 p-4" data-testid="connected-app">
               <div className="min-w-0 flex-1 basis-48">
                 <p className="text-foreground truncate text-sm">{app.name}</p>
@@ -123,8 +152,19 @@ export function ConnectedAppsSection() {
                   Disconnect
                 </button>
               )}
+              {wakeable && (
+                <div className="flex basis-full flex-col">
+                  <AppWake
+                    name={app.name}
+                    assignee={assignee}
+                    wake={wakes.has(wakeKey(assignee))}
+                    onChange={() => void refreshWakes()}
+                  />
+                </div>
+              )}
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
       {error && (

@@ -425,13 +425,21 @@ function LaneHeader({
  * "to OpenClaw", in the handed-off lane's header: who "make it so" hands the
  * lane to (lib/agent-assignees.ts). A menu once there is more than one agent
  * to pick from, OpenClaw and every connected app that may change the planner;
- * the pick is remembered for the next run.
+ * the pick is remembered for the next run. An app with no wake
+ * (lib/agent-wake.ts) says it waits to be opened, so nobody expects work to
+ * start that will not.
  */
+const waitsToBeOpened = (t: AgentAssignee) => t.kind !== 'openclaw' && !t.wake;
+
 function HandToPicker({ target, targets }: { target: AgentAssignee; targets: readonly AgentAssignee[] }) {
   const setHandTo = useDoStuffStore.getState().setHandTo;
   if (targets.length < 2) {
     return (
-      <span data-testid="do-stuff-hand-to" className="text-xs text-muted-foreground">
+      <span
+        data-testid="do-stuff-hand-to"
+        className="text-xs text-muted-foreground"
+        title={waitsToBeOpened(target) ? `${target.name} picks this up the next time you open it` : undefined}
+      >
         to {target.name}
       </span>
     );
@@ -458,6 +466,11 @@ function HandToPicker({ target, targets }: { target: AgentAssignee; targets: rea
             className="gap-2 text-sm"
           >
             <span className="min-w-0 flex-1 truncate">{t.name}</span>
+            {waitsToBeOpened(t) && (
+              <span className="text-xs text-muted-foreground" data-testid="do-stuff-hand-to-later">
+                when opened
+              </span>
+            )}
             {t.assignee === target.assignee && <Check aria-hidden className="size-3.5" />}
           </DropdownMenuItem>
         ))}

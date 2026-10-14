@@ -119,9 +119,36 @@ name, so nothing handed to Claude is picked up by OpenClaw. `/api/ai/agents`
 lists who can take work (planner-scope apps and keys, by name). Do stuff's
 handed-off lane is offered when anyone can, and its header says "to OpenClaw"
 or opens a menu of everyone; "make it so" hands the lane to the pick, which is
-remembered for the session. Apps are never woken (lib/handoff-wake.ts is
-OpenClaw's); they find the item the next time they read their queue. The
-right-click menu still hands off to OpenClaw only.
+remembered for the session. Apps find the item the next time they read their
+queue, unless they have a wake (below). The right-click menu offers a "Hand off
+to …" row per agent (2026-10-14).
+
+### Waking an app (2026-10-14)
+
+Kirby asked whether a hand-off to Claude could start it at once, as OpenClaw's
+does. MCP cannot: the app always calls dsul, and only while a chat is open. A
+Claude Code routine can be started over HTTP (a POST to its own /fire URL with
+its own bearer token, https://code.claude.com/docs/en/routines), so a connected
+Claude offers "Wake Claude when I hand it work" in Settings → AI → Connected apps
+(components/settings/app-wake.tsx): make a routine with the dsul connector and
+the instructions shown there, add an API trigger, paste its URL and token.
+Saving fires it once as a test; a refused fire saves nothing. The pair lives in
+`user_secrets.agent_wakes` (migration 075, service role only, never read back),
+keyed by the app's folded name; only a routine URL on api.anthropic.com is
+accepted, since dsul's server makes the call (lib/agent-wake.ts).
+
+A hand-off to an app (any surface: every assignment leaves through
+planner-store's `dbUpdateItem`) is gathered in the browser for 800ms, so make it
+so's burst is one call to `/api/agent/app-wake`, which reads the items as the
+user, groups the ones still queued by app, and fires each app's routine once
+(at most once a minute per app; a routine allows 30 runs an hour). The fire
+text names item ids only. `/api/ai/agents` marks an app with a wake, and Do
+stuff's picker says "when opened" beside an app without one.
+
+No other MCP app known on 2026-10-14 can be started from outside. A generic
+"call this URL on hand-off" (any webhook, signed like OpenClaw's) would cover
+self-built agents, n8n and Zapier; it is left until someone asks, since the
+server would then call any address a user types.
 
 ## Round 5 (Kirby's picks, 2026-10-13)
 
