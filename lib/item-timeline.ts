@@ -9,7 +9,14 @@
  * 2026-10-11 (lib/db.ts `recordItemEvent`): 'you', 'ai' (a card you accepted),
  * 'agent' (OpenClaw or another agent through the agent API or MCP) or 'recipe'
  * (your own automation). Older rows have none and read as you, except the two
- * kinds only an agent writes: its question, and its status.
+ * kinds only an agent writes: its question, and its status. A hand-off (any
+ * change of assignee) and a re-queue are yours even though they carry a status:
+ * your own "Hand off to Claude" writes `{assignee, aiStatus: 'queued'}` with no
+ * `by`, and read as the agent assigning itself.
+ *
+ * WHICH agent. An item can be handed to OpenClaw, then to Claude, so "agent"
+ * is named by whoever held the item when the line was written, read off the
+ * trail's own assignee changes (`ChangeEntry.agent`).
  */
 
 import { format, isSameDay, subDays } from 'date-fns';
@@ -34,8 +41,17 @@ export function actorOf(e: Pick<ItemEvent, 'action' | 'payload'>): TimelineActor
   const by = e.payload?.[ACTOR_KEY];
   if (typeof by === 'string' && (ACTORS as readonly string[]).includes(by)) return by as TimelineActor;
   if (e.action === 'agent_question') return 'agent';
-  if (e.action === 'update' && e.payload && 'aiStatus' in e.payload && e.payload.aiStatus) return 'agent';
+  if (e.action !== 'update' || !e.payload) return 'you';
+  if ('assignee' in e.payload) return 'you';
+  if (e.payload.aiStatus && e.payload.aiStatus !== 'queued') return 'agent';
   return 'you';
+}
+
+/** The name an agent goes by on the timeline: OpenClaw, or the connected app it was handed to. */
+export function agentName(assignee: unknown): string {
+  const a = typeof assignee === 'string' ? assignee.trim() : '';
+  if (!a || a.toLowerCase() === 'openclaw') return ACTOR_LABEL.agent;
+  return assigneeLabel(a);
 }
 
 const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null);
@@ -139,6 +155,8 @@ export interface ChangeEntry {
   key: string;
   at: number;
   by: TimelineActor;
+  /** Who "agent" was when this line was written (`agentName`); set only when `by` is 'agent'. */
+  agent?: string;
   text: string;
 }
 
@@ -179,8 +197,20 @@ export function buildTimeline(
 ): TimelineDay[] {
   const entries: TimelineEntry[] = [];
   if (opts.filter !== 'talk') {
-    for (const e of events) {
-      entries.push({ kind: 'change', key: e.id, at: new Date(e.createdAt).getTime(), by: actorOf(e), text: changeLine(e) });
+    // Oldest first, so each line knows who held the item when it was written.
+    const oldestFirst = [...events].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    let holder: unknown = null;
+    for (const e of oldestFirst) {
+      if (e.payload && 'assignee' in e.payload) holder = e.payload.assignee;
+      const by = actorOf(e);
+      entries.push({
+        kind: 'change',
+        key: e.id,
+        at: new Date(e.createdAt).getTime(),
+        by,
+        ...(by === 'agent' ? { agent: agentName(holder) } : {}),
+        text: changeLine(e),
+      });
     }
   }
   if (opts.filter !== 'changes') {

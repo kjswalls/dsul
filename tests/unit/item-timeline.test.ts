@@ -29,6 +29,38 @@ describe('who', () => {
     expect(actorOf(ev({ action: 'update', payload: { aiStatus: 'working' } }))).toBe('agent');
     expect(actorOf(ev({ action: 'agent_reply', payload: { text: 'Monday' } }))).toBe('you');
   });
+  it('reads your own hand-off and re-queue as you, though they carry a status', () => {
+    // "Hand off to Claude" writes this with no `by`; it once read "OpenClaw assigned it to Claude".
+    expect(actorOf(ev({ action: 'update', payload: { assignee: 'Claude', aiStatus: 'queued' } }))).toBe('you');
+    expect(actorOf(ev({ action: 'update', payload: { assignee: null, aiStatus: null } }))).toBe('you');
+    expect(actorOf(ev({ action: 'update', payload: { aiStatus: 'queued' } }))).toBe('you');
+    expect(actorOf(ev({ action: 'update', payload: { aiStatus: 'blocked', by: 'agent' } }))).toBe('agent');
+  });
+
+  it('names the agent by who held the item when the line was written', () => {
+    const days = buildTimeline(
+      [
+        // Newest first, as fetchItemEvents returns them.
+        ev({ action: 'agent_question', payload: { question: 'Which dentist?' } }, '2026-10-14T02:55:58'),
+        ev({ action: 'update', payload: { aiStatus: 'working', by: 'agent' } }, '2026-10-14T02:55:52'),
+        ev({ action: 'update', payload: { assignee: 'Claude', aiStatus: 'queued' } }, '2026-10-14T02:55:15'),
+        ev({ action: 'update', payload: { assignee: null, aiStatus: null } }, '2026-10-13T22:12:00'),
+        ev({ action: 'update', payload: { aiStatus: 'working', by: 'agent' } }, '2026-10-13T18:40:00'),
+        ev({ action: 'update', payload: { assignee: 'openclaw', aiStatus: 'queued' } }, '2026-10-13T18:36:00'),
+      ],
+      [],
+      { filter: 'all', now: new Date('2026-10-14T12:00:00') }
+    );
+    const lines = days.flatMap((d) => d.entries).map((e) => (e.kind === 'change' ? [e.by, e.agent ?? null, e.text] : null));
+    expect(lines).toEqual([
+      ['you', null, 'handed it to OpenClaw'],
+      ['agent', 'OpenClaw', 'marked it working'],
+      ['you', null, 'took it back'],
+      ['you', null, 'assigned it to Claude'],
+      ['agent', 'Claude', 'marked it working'],
+      ['agent', 'Claude', 'asked: “Which dentist?”'],
+    ]);
+  });
 });
 
 describe('what', () => {
