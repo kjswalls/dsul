@@ -93,6 +93,10 @@ take something on (no new credential, but the kickoff only happens inside a conv
 **My lean:** the hooks path, because "delegate" should work from the item without opening a
 chat. But it is the first place delegation costs you setup, so it is your call.
 
+**Superseded 2026-10-14 (Kirby): no plugin.** OpenClaw holds `GET /api/agent/events` open
+from an OpenClaw stream automation and hears its work there; `/api/agent/handoff-wake` is
+deleted (ai-vision.md's 2026-10-14 note). The decision below is kept as history.
+
 **Decided 2026-10-11 (Kirby): neither — the plugin's own webhook wakes it.** No hooks token
 (`user_secrets.openclaw_hooks_token` stays unused). A hand-off that lands in the database
 makes the planner store POST `/api/agent/handoff-wake` (`lib/handoff-wake.ts`, hooked at the

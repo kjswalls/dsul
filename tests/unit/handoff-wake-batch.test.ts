@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { APP_WAKE_PATH, HANDOFF_WAKE_PATH, handsOffToApp, wakeIfHandedOff } from '@/lib/handoff-wake';
+import { APP_WAKE_PATH, handsOffToApp, wakeIfHandedOff } from '@/lib/handoff-wake';
 
 /**
- * The browser half of the wakes (lib/handoff-wake.ts). OpenClaw is woken per
- * item, as before; a connected app's wake starts a whole run, so a burst of
- * hand-offs (make it so hands a lane over at once) leaves as ONE call once it
- * goes quiet.
+ * The browser half of the app wake (lib/handoff-wake.ts). A connected app's
+ * wake starts a whole run, so a burst of hand-offs (make it so hands a lane
+ * over at once) leaves as ONE call once it goes quiet. OpenClaw is never woken
+ * from the browser: it hears its work on /api/agent/events.
  */
 
 const fetchMock = vi.fn(async () => new Response('{}'));
@@ -45,11 +45,10 @@ describe('wakeIfHandedOff', () => {
     expect(bodies(APP_WAKE_PATH)).toEqual([{ itemIds: ['a', 'b'] }]);
   });
 
-  it('still wakes OpenClaw per item, at once', () => {
+  it('never calls out for OpenClaw: it hears its own work', () => {
     wakeIfHandedOff('a', { assignee: 'openclaw' });
-    expect(bodies(HANDOFF_WAKE_PATH)).toEqual([{ itemId: 'a' }]);
     vi.advanceTimersByTime(1000);
-    expect(bodies(APP_WAKE_PATH)).toEqual([]);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('wakes nothing for a take-back or an unrelated edit', () => {

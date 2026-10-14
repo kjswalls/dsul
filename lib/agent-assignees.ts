@@ -35,7 +35,7 @@ export interface AgentAssignee {
   /**
    * Started the moment work is handed to it (lib/agent-wake.ts). Absent for an
    * app that finds its work the next time it is opened, and for OpenClaw,
-   * whose wake is its own (lib/handoff-wake.ts).
+   * which hears its own work (/api/agent/events).
    */
   wake?: boolean;
 }

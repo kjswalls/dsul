@@ -413,11 +413,11 @@ describe('handOffItem / takeBackItem', () => {
 
 /* ── The wake (lib/handoff-wake.ts) ──────────────────────────────────── */
 
-describe('the hand-off wakes the agent once the write has landed', () => {
-  const fetchSpy = vi.fn(async () => new Response(JSON.stringify({ woken: true })));
-  const wakes = () =>
-    fetchSpy.mock.calls.filter((c) => (c as unknown[])[0] === '/api/agent/handoff-wake');
+describe('a hand-off to an app wakes it once the write has landed', () => {
+  const fetchSpy = vi.fn(async () => new Response(JSON.stringify({ woken: [] })));
+  const wakes = () => fetchSpy.mock.calls.filter((c) => (c as unknown[])[0] === '/api/agent/app-wake');
   const flush = () => new Promise<void>((resolve) => queueMicrotask(resolve)).then(() => Promise.resolve());
+  const WAIT = { timeout: 3000 };
 
   beforeEach(async () => {
     store().clearStore();
@@ -432,48 +432,47 @@ describe('the hand-off wakes the agent once the write has landed', () => {
     vi.unstubAllGlobals();
   });
 
-  it('POSTs { itemId } after the row update resolves, never before', async () => {
+  it('POSTs { itemIds } after the row update resolves, never before', async () => {
     let land!: () => void;
     vi.mocked(db.updateItem).mockImplementationOnce(() => new Promise<void>((resolve) => (land = resolve)));
 
-    handOffItem(byId('plain'));
+    handOffItem(byId('plain'), 'Claude');
     await flush();
     // The write is still out: no wake yet.
     expect(db.updateItem).toHaveBeenCalledTimes(1);
     expect(wakes()).toHaveLength(0);
 
     land();
-    await vi.waitFor(() => expect(wakes()).toHaveLength(1));
+    await vi.waitFor(() => expect(wakes()).toHaveLength(1), WAIT);
     const [, init] = wakes()[0] as unknown as [string, RequestInit];
     expect(init.method).toBe('POST');
-    expect(JSON.parse(String(init.body))).toEqual({ itemId: 'plain' });
+    expect(JSON.parse(String(init.body))).toEqual({ itemIds: ['plain'] });
   });
 
   it('a write that failed never wakes, and the failure stays where it was', async () => {
     vi.mocked(db.updateItem).mockRejectedValueOnce(new Error('offline'));
     const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    handOffItem(byId('plain'));
+    handOffItem(byId('plain'), 'Claude');
     await vi.waitFor(() => expect(logged).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 1000));
     expect(wakes()).toHaveLength(0);
     logged.mockRestore();
   });
 
-  it('a wake that fails surfaces nothing and undoes nothing', async () => {
-    fetchSpy.mockRejectedValueOnce(new Error('network'));
-
+  it('a hand-off to OpenClaw calls out to nothing: it hears its own work on /api/agent/events', async () => {
     handOffItem(byId('plain'));
-    await vi.waitFor(() => expect(wakes()).toHaveLength(1));
-    await flush();
+    await vi.waitFor(() => expect(db.updateItem).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    expect(fetchSpy).not.toHaveBeenCalled();
     expect(byId('plain')).toMatchObject({ assignee: 'openclaw', aiStatus: 'queued' });
-    expect(store().canUndo).toBe(true);
   });
 
   it('taking back never wakes', async () => {
     takeBackItem(byId('run'));
     await vi.waitFor(() => expect(db.updateItem).toHaveBeenCalled());
     await flush();
-    expect(wakes()).toHaveLength(0);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
 

@@ -75,9 +75,10 @@ export function canTakeBack(item: Item): boolean {
 }
 
 /**
- * Hand it off: one undoable write, named so the undo strip offers ⌘Z. Once the
- * write lands, the store wakes the agent (lib/handoff-wake.ts, hooked at
- * planner-store's `dbUpdateItem`), so it need not wait for its next poll.
+ * Hand it off: one undoable write, named so the undo strip offers ⌘Z. OpenClaw
+ * hears it within seconds on GET /api/agent/events; an app with a wake is
+ * woken once the write lands (lib/handoff-wake.ts, hooked at planner-store's
+ * `dbUpdateItem`).
  *
  * `to` is OpenClaw unless the caller names another agent
  * (lib/agent-assignees.ts): a connected app reads its own queue through MCP's

@@ -6,7 +6,7 @@ import { createServiceClient } from '@/lib/supabase-service';
 
 /**
  * POST /api/agent/app-wake — wake the connected apps that work was just handed
- * to (lib/agent-wake.ts). OpenClaw's own wake is /api/agent/handoff-wake.
+ * to (lib/agent-wake.ts). OpenClaw hears its own work on /api/agent/events.
  *
  * Body `{ itemIds }`, up to 50: the browser gathers a burst of hand-offs (make
  * it so hands a whole lane over at once) into one call, so one hand-off is one
