@@ -26,6 +26,8 @@ import {
 } from '@/lib/ai-types';
 import { deregisterAllPlugins } from '@/lib/openclaw-registry';
 import { clearAgentKey, createServiceClient } from '@/lib/supabase-service';
+import { listAgentKeys, revokeAgentKey } from '@/lib/agent-keys';
+import { queueForName } from '@/lib/agent-assignees';
 import { ProviderError } from './errors';
 import { credentialsFor } from './providers';
 import type { ModelMeta, ProviderCredentials } from './providers/types';
@@ -477,12 +479,31 @@ export async function readOpenClawStatus(userId: string): Promise<OpenClawView> 
   const s = (settings.error ? null : settings.data) as Record<string, unknown> | null;
   const sec = (secrets.error ? null : secrets.data) as Record<string, unknown> | null;
   const apiKey = present(sec?.openclaw_api_key) || present(s?.openclaw_api_key);
+  const connect = await readConnectKey(svc, userId);
   return {
     gateway: present(s?.openclaw_gateway_url) && present(sec?.openclaw_gateway_token),
     pluginChat: apiKey && present(s?.openclaw_chat_url),
-    agent: apiKey,
+    agent: apiKey || connect.connected,
     agentId: present(s?.openclaw_agent_id) ? (s?.openclaw_agent_id as string) : null,
+    connect,
   };
+}
+
+/**
+ * The Connect key (app/api/ai/openclaw POST): a live agent key named OpenClaw,
+ * and when OpenClaw last used it. The newest wins if there are somehow two.
+ * A keys table that is not there yet (072) or cannot be read reads as no key:
+ * the plugin's key still pairs, and a failed read must not unpair anyone.
+ */
+async function readConnectKey(
+  svc: ReturnType<typeof service>,
+  userId: string
+): Promise<{ connected: boolean; lastSeenAt: string | null }> {
+  const keys = await listAgentKeys(svc, userId).catch(() => null);
+  const mine = (keys ?? []).filter((k) => k.scope === 'planner' && queueForName(k.name) === 'openclaw');
+  if (mine.length === 0) return { connected: false, lastSeenAt: null };
+  const seen = mine.map((k) => k.lastUsedAt).filter((at): at is string => !!at).sort();
+  return { connected: true, lastSeenAt: seen.at(-1) ?? null };
 }
 
 /**
@@ -493,10 +514,12 @@ export async function readOpenClawStatus(userId: string): Promise<OpenClawView> 
  *   2. The chat URL and agent id the plugin registered.
  *   3. Any authorized device session still holding a copy of the key, so a
  *      late poll can't hand it out.
- *   4. The agent key itself (`clearAgentKey`, either column before 059):
+ *   4. The Connect key, if OpenClaw was connected without the plugin
+ *      (app/api/ai/openclaw POST): every live agent key named OpenClaw.
+ *   5. The agent key itself (`clearAgentKey`, either column before 059):
  *      /api/agent/*, /api/mcp and the context route stop answering it.
- *   5. The registrations once more: a plugin that registered between 1 and 4
- *      did it with the key 4 just deleted, and none can follow.
+ *   6. The registrations once more: a plugin that registered between 1 and 5
+ *      did it with the key 5 just deleted, and none can follow.
  *
  * The key goes LAST because it is what makes OpenClaw read as paired: a
  * failure before it leaves the Unpair button on screen to try again.
@@ -524,8 +547,17 @@ export async function unpairOpenClaw(userId: string): Promise<void> {
     .eq('status', 'authorized');
   if (sessions.error && !isNoSchema(sessions.error)) fail(codeOf(sessions.error));
 
+  // The Connect key (a live agent key named OpenClaw), the plugin-free way to
+  // pair: revoked before the plugin's key, which keeps its place as the last.
+  const keys = await listAgentKeys(svc, userId);
+  if (keys === null) fail('agent_keys');
+  for (const k of keys!) {
+    if (queueForName(k.name) === 'openclaw' && !(await revokeAgentKey(svc, userId, k.id))) fail('agent_keys');
+  }
+
   const key = await clearAgentKey(userId, svc);
   if (key.error !== null) fail(key.error);
+
 
   if (!(await deregisterAllPlugins(userId)).ok) fail('registry');
 }

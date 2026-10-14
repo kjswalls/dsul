@@ -128,6 +128,7 @@ interface Server {
   del: () => Response;
   /** DELETE /api/ai/openclaw */
   unpair: () => Response;
+  connect: () => Response;
 }
 
 let server: Server;
@@ -157,6 +158,7 @@ beforeEach(() => {
     patch: () => json({ error: 'server' }, 503),
     del: () => json({ ok: true }),
     unpair: () => unpaired(),
+    connect: () => connected(),
   };
   vi.stubGlobal(
     'fetch',
@@ -171,6 +173,7 @@ beforeEach(() => {
       if (url === '/api/ai/connection' && method === 'PATCH') return server.patch(body);
       if (url === '/api/ai/connection' && method === 'DELETE') return server.del();
       if (url === '/api/ai/openclaw' && method === 'DELETE') return server.unpair();
+      if (url === '/api/ai/openclaw' && method === 'POST') return server.connect();
       return json({ error: 'server' }, 404);
     })
   );
@@ -224,6 +227,16 @@ function unpaired(): Response {
   const openclaw: OpenClawView = { gateway: now.openclaw.gateway, pluginChat: false, agent: false, agentId: null };
   server.status = { ...now, openclaw };
   return json({ openclaw });
+}
+
+/** Connect lands: a key named OpenClaw exists, so the server reads as paired from then on. */
+function connected(): Response {
+  const now = server.status as AIConnectionResponse;
+  server.status = {
+    ...now,
+    openclaw: { ...now.openclaw, agent: true, connect: { connected: true, lastSeenAt: null } },
+  };
+  return json({ key: `dsul_ak_${'k'.repeat(43)}` }, 201);
 }
 
 const unpairs = () => calls.filter((c) => c.url === '/api/ai/openclaw' && c.method === 'DELETE').length;
@@ -1057,18 +1070,32 @@ describe('OpenClaw', () => {
   const copy = () => screen.getByTestId('openclaw-copy').textContent;
   const pill = () => screen.getByTestId('openclaw-status');
 
-  it('not paired: an invitation, and a link to pair from the docs', async () => {
+  it('not paired: an invitation to Connect, and a link to how it works', async () => {
     await mount(NOTHING_CONNECTED);
     const section = screen.getByTestId('ai-openclaw');
     expect(within(section).getByRole('heading', { name: 'OpenClaw' })).toBeInTheDocument();
     expect(pill()).toHaveTextContent('Not paired');
     expect(pill()).toHaveAttribute('data-tone', 'grey');
     expect(section).toHaveTextContent(
-      'Run your own OpenClaw agent? Pair it, and it can answer in Ask and take on tasks you hand it.'
+      'Run your own OpenClaw agent? Connect it, and it can take on tasks you hand it. Nothing to install, and your gateway stays private.'
     );
     expect(within(section).getByTestId('openclaw-pair')).toHaveAttribute('href', '/docs/openclaw');
-    expect(within(section).getByTestId('openclaw-pair')).toHaveTextContent('Pair OpenClaw');
+    expect(within(section).getByTestId('openclaw-connect')).toHaveTextContent('Connect');
     expect(screen.queryByTestId('openclaw-copy')).toBeNull();
+  });
+
+  it('Connect shows the commands once, with the key, and the pane reads as paired', async () => {
+    await mount(NOTHING_CONNECTED);
+    fireEvent.click(screen.getByTestId('openclaw-connect'));
+    await settle();
+    const commands = await screen.findByTestId('openclaw-connect-commands');
+    expect(commands).toHaveTextContent(`dsul_ak_${'k'.repeat(43)}`);
+    expect(commands).toHaveTextContent('openclaw mcp add dsul');
+    expect(commands).toHaveTextContent('/api/agent/events');
+    expect(pill()).toHaveTextContent('Paired');
+    expect(screen.getByTestId('openclaw-last-seen')).toHaveTextContent('Waiting to hear from it');
+    fireEvent.click(screen.getByTestId('openclaw-connect-done'));
+    expect(screen.queryByText(`dsul_ak_${'k'.repeat(43)}`, { exact: false })).toBeNull();
   });
 
   it('paired and answering here: lime, by its name', async () => {

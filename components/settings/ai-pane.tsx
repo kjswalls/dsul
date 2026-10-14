@@ -12,7 +12,7 @@ import {
   settingAnchor,
 } from '@/components/ai/connect/connect-shared';
 import { KeyCap } from '@/components/planner/organize/primitives';
-import { Button, buttonVariants } from '@/components/ui/button';
+import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { useAIConnectionStore, useAICapabilities } from '@/lib/ai-connection-store';
 import {
@@ -33,6 +33,7 @@ import { highlightRuns, type MatchRange } from '@/lib/settings/search';
 import { cn } from '@/lib/utils';
 import { ConnectedAppsSection } from './connected-apps';
 import { AgentKeysSection } from './agent-keys';
+import { OpenClawConnect } from './openclaw-connect';
 import { useDisconnect, useUnpair } from './disconnect';
 import { ModelConnectionPanel } from './model-connection-panel';
 import { ScopeChip } from './scope-chip';
@@ -573,6 +574,16 @@ function AIOffCard({ active, highlightId }: { active: readonly AliasId[]; highli
 
 /* ── OpenClaw ───────────────────────────────────────────────────────────── */
 
+/** "3 minutes ago", for the Connect key's last use (written at most every ten minutes). */
+function heardAgo(iso: string, now = Date.now()): string {
+  const mins = Math.max(0, Math.round((now - Date.parse(iso)) / 60_000));
+  if (mins < 15) return 'it in the last few minutes';
+  if (mins < 60) return `it ${mins} minutes ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 48) return `it ${hours} hour${hours === 1 ? '' : 's'} ago`;
+  return `it on ${new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+}
+
 function recordFor(id: string): SettingRecord {
   const record = settingById(id);
   if (!record) throw new Error(`No setting record ${id}`);
@@ -618,6 +629,11 @@ function OpenClawSection({
       ? `${status.name} can answer in Ask and take on tasks you hand it.`
       : `${status.name} takes on tasks you hand it.`
     : 'OpenClaw can answer in Ask through your gateway.';
+  const connect = openclaw.connect;
+  // Held here: Connect flips the card from not paired to paired, and the
+  // commands must survive that (components/settings/openclaw-connect.tsx).
+  const [connectScript, setConnectScript] = useState<string | null>(null);
+  const refreshConnection = useCallback(() => void useAIConnectionStore.getState().refresh(), []);
 
   return (
     <section
@@ -642,6 +658,19 @@ function OpenClawSection({
           <p data-testid="openclaw-copy" className="text-muted-foreground text-xs">
             {copy}
           </p>
+          {connect?.connected && (
+            <p data-testid="openclaw-last-seen" className="text-muted-foreground text-xs">
+              {connect.lastSeenAt
+                ? `Last heard from ${heardAgo(connect.lastSeenAt)}.`
+                : 'Waiting to hear from it. Run the commands from Connect on the machine OpenClaw runs on.'}
+            </p>
+          )}
+          <OpenClawConnect
+            label={connect?.connected ? 'Connect again' : 'Connect without the plugin'}
+            script={connectScript}
+            onScript={setConnectScript}
+            onConnected={refreshConnection}
+          />
           {status.agent && (
             <div>
               <button
@@ -664,15 +693,18 @@ function OpenClawSection({
       ) : (
         <div className="border-border flex flex-wrap items-center justify-between gap-3 rounded-[8px] border p-4">
           <p className="text-muted-foreground min-w-0 flex-1 basis-60 text-xs">
-            Run your own OpenClaw agent? Pair it, and it can answer in Ask and take on tasks you hand it.
+            Run your own OpenClaw agent? Connect it, and it can take on tasks you hand it. Nothing to install, and
+            your gateway stays private.{' '}
+            <Link href="/docs/openclaw" data-testid="openclaw-pair" className="underline underline-offset-2">
+              How it works
+            </Link>
           </p>
-          <Link
-            href="/docs/openclaw"
-            data-testid="openclaw-pair"
-            className={buttonVariants({ variant: 'outline', size: 'sm' })}
-          >
-            Pair OpenClaw
-          </Link>
+          <OpenClawConnect
+            label="Connect"
+            script={connectScript}
+            onScript={setConnectScript}
+            onConnected={refreshConnection}
+          />
         </div>
       )}
 

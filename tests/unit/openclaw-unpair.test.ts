@@ -87,7 +87,29 @@ vi.mock('@/lib/openclaw-registry', () => ({
   }),
 }));
 
-import { DELETE } from '@/app/api/ai/openclaw/route';
+// The Connect key (a live agent key named OpenClaw), revoked before the plugin's key.
+const keys = vi.hoisted(() => ({
+  live: [] as { id: string; name: string; scope: 'planner' | 'planner:read'; createdAt: string; lastUsedAt: string | null }[],
+  list: true,
+  create: 'ok' as 'ok' | 'limit' | 'unavailable',
+}));
+vi.mock('@/lib/agent-keys', () => ({
+  listAgentKeys: vi.fn(async () => (keys.list ? keys.live.slice() : null)),
+  createAgentKey: vi.fn(async (_db: unknown, _user: string, name: string, scope: 'planner') => {
+    if (keys.create !== 'ok') return { ok: false, error: keys.create };
+    const agentKey = { id: `k${keys.live.length + 10}`, name, scope, createdAt: '2026-10-14T12:00:00Z', lastUsedAt: null };
+    db.current.log.push({ table: 'agent_keys', op: 'insert', filters: [['name', name]] });
+    keys.live.push(agentKey);
+    return { ok: true, key: `dsul_ak_${'x'.repeat(43)}`, agentKey };
+  }),
+  revokeAgentKey: vi.fn(async (_db: unknown, _user: string, id: string) => {
+    db.current.log.push({ table: 'agent_keys', op: 'revoke', filters: [['id', id]] });
+    keys.live = keys.live.filter((k) => k.id !== id);
+    return true;
+  }),
+}));
+
+import { DELETE, POST } from '@/app/api/ai/openclaw/route';
 import { createServiceClient } from '@/lib/supabase-service';
 import { deregisterAllPlugins } from '@/lib/openclaw-registry';
 
@@ -100,6 +122,9 @@ let logs: unknown[][];
 beforeEach(() => {
   h.user = { id: 'user-1' };
   registry.ok = [];
+  keys.live = [];
+  keys.list = true;
+  keys.create = 'ok';
   db.current = {
     settings: {
       openclaw_chat_url: 'https://claw.example/plugins/dsul/chat',
@@ -140,7 +165,7 @@ describe('DELETE /api/ai/openclaw', () => {
     ]);
     for (const w of writes()) expect(w.filters[0]).toEqual(['user_id', 'user-1']);
     expect(await res.json()).toEqual({
-      openclaw: { gateway: false, pluginChat: false, agent: false, agentId: null },
+      openclaw: { gateway: false, pluginChat: false, agent: false, agentId: null, connect: { connected: false, lastSeenAt: null } },
     });
   });
 
@@ -152,7 +177,7 @@ describe('DELETE /api/ai/openclaw', () => {
     expect(settings.values).toEqual({ openclaw_chat_url: null, openclaw_agent_id: null });
     const secrets = writes().find((w) => w.table === 'user_secrets')!;
     expect(secrets.values).toEqual({ openclaw_api_key: null });
-    expect((await res.json()).openclaw).toEqual({ gateway: true, pluginChat: false, agent: false, agentId: null });
+    expect((await res.json()).openclaw).toEqual({ gateway: true, pluginChat: false, agent: false, agentId: null, connect: { connected: false, lastSeenAt: null } });
   });
 
   it('expires only authorized device sessions, and drops their copy of the key', async () => {
@@ -187,7 +212,7 @@ describe('DELETE /api/ai/openclaw', () => {
     for (let i = 0; i < 2; i += 1) {
       const res = await call();
       expect(res.status).toBe(200);
-      expect((await res.json()).openclaw).toEqual({ gateway: false, pluginChat: false, agent: false, agentId: null });
+      expect((await res.json()).openclaw).toEqual({ gateway: false, pluginChat: false, agent: false, agentId: null, connect: { connected: false, lastSeenAt: null } });
     }
   });
 
@@ -261,4 +286,94 @@ describe('DELETE /api/ai/openclaw', () => {
       expect(deregisterAllPlugins).not.toHaveBeenCalled();
     }
   );
+});
+
+describe('DELETE /api/ai/openclaw, connected without the plugin', () => {
+  it('revokes every key named OpenClaw before the plugin key, and leaves other keys alone', async () => {
+    keys.live = [
+      { id: 'k1', name: 'OpenClaw', scope: 'planner', createdAt: '2026-10-14T00:00:00Z', lastUsedAt: null },
+      { id: 'k2', name: 'openclaw ', scope: 'planner', createdAt: '2026-10-13T00:00:00Z', lastUsedAt: null },
+      { id: 'k3', name: 'Cursor', scope: 'planner', createdAt: '2026-10-12T00:00:00Z', lastUsedAt: null },
+    ];
+    const res = await call();
+    expect(res.status).toBe(200);
+    const order = steps();
+    expect(order.filter((s) => s === 'agent_keys.revoke')).toHaveLength(2);
+    expect(order.lastIndexOf('agent_keys.revoke')).toBeLessThan(order.indexOf('user_secrets.update'));
+    expect(keys.live.map((k) => k.id)).toEqual(['k3']);
+  });
+
+  it('a keys table it cannot read stops before the plugin key, so Unpair stays on screen', async () => {
+    keys.list = false;
+    const res = await call();
+    expect(res.status).toBe(503);
+    expect(db.current.secrets!.openclaw_api_key).toBe(SENTINEL_KEY);
+  });
+});
+
+describe('POST /api/ai/openclaw (Connect)', () => {
+  const connect = (headers: Record<string, string> = {}) =>
+    POST(new Request(`${ORIGIN}/api/ai/openclaw`, { method: 'POST', headers }));
+
+  it('mints one key named OpenClaw, replacing any earlier one, and shows it once', async () => {
+    keys.live = [
+      { id: 'k1', name: 'OpenClaw', scope: 'planner', createdAt: '2026-10-13T00:00:00Z', lastUsedAt: null },
+      { id: 'k3', name: 'Cursor', scope: 'planner', createdAt: '2026-10-12T00:00:00Z', lastUsedAt: null },
+    ];
+    const res = await connect();
+    expect(res.status).toBe(201);
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    expect(await res.json()).toEqual({ key: `dsul_ak_${'x'.repeat(43)}` });
+    expect(steps()).toEqual(['agent_keys.revoke', 'agent_keys.insert']);
+    expect(keys.live.map((k) => k.name)).toEqual(['Cursor', 'OpenClaw']);
+  });
+
+  it('never touches the plugin key or the gateway', async () => {
+    await connect();
+    expect(db.current.secrets!.openclaw_api_key).toBe(SENTINEL_KEY);
+    expect(steps().some((s) => s.startsWith('user_'))).toBe(false);
+  });
+
+  it('a full key list is a 409, and a keys table it cannot reach a 503', async () => {
+    keys.create = 'limit';
+    expect((await connect()).status).toBe(409);
+    keys.create = 'unavailable';
+    expect((await connect()).status).toBe(503);
+    keys.create = 'ok';
+    keys.list = false;
+    expect((await connect()).status).toBe(503);
+  });
+
+  it('no session is a 401, and a cross-site request a 403, with nothing made', async () => {
+    expect((await connect({ origin: 'https://evil.example' })).status).toBe(403);
+    h.user = null;
+    expect((await connect()).status).toBe(401);
+    expect(steps()).toEqual([]);
+  });
+});
+
+describe('readOpenClawStatus, with a Connect key', () => {
+  it('reads as paired with no plugin key, and says when OpenClaw last used it', async () => {
+    const { readOpenClawStatus } = await import('@/lib/ai-server/connections');
+    db.current.secrets = { openclaw_api_key: null, openclaw_gateway_token: null };
+    db.current.settings = { openclaw_chat_url: null, openclaw_agent_id: null, openclaw_gateway_url: null, openclaw_api_key: null };
+    keys.live = [
+      { id: 'k1', name: 'OpenClaw', scope: 'planner', createdAt: '2026-10-14T00:00:00Z', lastUsedAt: '2026-10-14T11:50:00Z' },
+      { id: 'k2', name: 'Claude', scope: 'planner', createdAt: '2026-10-14T00:00:00Z', lastUsedAt: '2026-10-14T11:59:00Z' },
+    ];
+    expect(await readOpenClawStatus('user-1')).toEqual({
+      gateway: false,
+      pluginChat: false,
+      agent: true,
+      agentId: null,
+      connect: { connected: true, lastSeenAt: '2026-10-14T11:50:00Z' },
+    });
+  });
+
+  it('a read-only key named OpenClaw does not pair: it could never report back', async () => {
+    const { readOpenClawStatus } = await import('@/lib/ai-server/connections');
+    db.current.secrets = { openclaw_api_key: null, openclaw_gateway_token: null };
+    keys.live = [{ id: 'k1', name: 'OpenClaw', scope: 'planner:read', createdAt: '2026-10-14T00:00:00Z', lastUsedAt: null }];
+    expect((await readOpenClawStatus('user-1')).agent).toBe(false);
+  });
 });

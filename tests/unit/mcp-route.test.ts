@@ -113,6 +113,13 @@ vi.mock('@/lib/mcp-oauth/store', () => ({
   ),
 }));
 
+// Named agent keys (lib/agent-keys.ts): resolved, then named per call.
+vi.mock('@/lib/agent-keys', () => ({
+  resolveAgentKey: vi.fn(async (_db: unknown, token: string) =>
+    token.startsWith('dsul_ak_') ? { userId: 'user-1', scope: 'planner', keyId: 'k1' } : null
+  ),
+}));
+
 import { POST } from '@/app/api/mcp/route';
 import { MCP_TOOLS, READ_TOOL_NAMES } from '@/lib/mcp/tools';
 import { NextRequest } from 'next/server';
@@ -366,6 +373,15 @@ describe('the delegation loop, end to end through the route', () => {
     vi.mocked(createServiceClient).mockReturnValueOnce(named('OpenClaw') as never);
     const impostor = rpc({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'dsul_my_work', arguments: {} } }, 'Bearer dsul_at_full');
     expect(JSON.parse((await (await POST(impostor)).json()).result.content[0].text).assigned).toEqual([]);
+
+    // A KEY named OpenClaw is the user's own naming (Settings → AI → OpenClaw →
+    // Connect), so it is OpenClaw, and works OpenClaw's queue.
+    const keyNamed = (name: string) => ({
+      from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { name }, error: null }) }) }) }),
+    });
+    vi.mocked(createServiceClient).mockReturnValueOnce(keyNamed('OpenClaw') as never);
+    const connected = rpc({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'dsul_my_work', arguments: {} } }, 'Bearer dsul_ak_connect');
+    expect(JSON.parse((await (await POST(connected)).json()).result.content[0].text).assigned.map((i: { id: string }) => i.id)).toEqual(['a']);
   });
 
   it('still reads through the ordinary context endpoint', async () => {

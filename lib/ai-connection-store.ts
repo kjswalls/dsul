@@ -300,12 +300,17 @@ function readModelView(v: unknown): ModelConnectionView | null {
 
 function readOpenClaw(v: unknown): OpenClawView {
   if (!isObj(v)) return EMPTY_OPENCLAW;
-  return {
+  const view: OpenClawView = {
     gateway: v.gateway === true,
     pluginChat: v.pluginChat === true,
     agent: v.agent === true,
     agentId: strOrNull(v.agentId),
   };
+  // The Connect key (Settings → AI → OpenClaw → Connect); absent from older builds.
+  if (isObj(v.connect)) {
+    view.connect = { connected: v.connect.connected === true, lastSeenAt: strOrNull(v.connect.lastSeenAt) };
+  }
+  return view;
 }
 
 function readHidden(v: unknown): boolean | null {

@@ -57,6 +57,25 @@ export function assigneeForName(raw: unknown): string | null {
   return name;
 }
 
+/**
+ * The name an OpenClaw connection's agent key carries (Settings → AI →
+ * OpenClaw → Connect, app/api/ai/openclaw/route.ts). A KEY by this name
+ * answers to OpenClaw's own queue rather than to a queue of its own name, so a
+ * plugin-free OpenClaw and the plugin's key are one agent to the planner. Only
+ * a key: its name is the user's, where an OAuth app names itself
+ * (lib/agent-caller.ts).
+ */
+export const OPENCLAW_KEY_NAME = 'OpenClaw';
+
+/**
+ * The queue an agent KEY works from: OpenClaw's for the name OpenClaw (any
+ * case), otherwise its own name (`assigneeForName`).
+ */
+export function queueForName(raw: unknown): string | null {
+  if (typeof raw === 'string' && fold(raw) === fold(OPENCLAW_KEY_NAME)) return OPENCLAW;
+  return assigneeForName(raw);
+}
+
 /** Whether two assignee values name the same agent. */
 export function sameAssignee(a: string | null | undefined, b: string | null | undefined): boolean {
   if (!a || !b) return false;
