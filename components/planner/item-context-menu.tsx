@@ -78,6 +78,7 @@ import { SELECTION_ASK_LABEL, selectionAskText } from '@/lib/container-asks';
 import { openFirstSteps } from '@/components/sidebar/first-steps';
 import { useDoStuffEnabled } from '@/lib/extension-gates';
 import { canHandOff, canTakeBack, delegateName, handOffItem, heldState, takeBackItem } from '@/lib/agent-handoff';
+import { useAgentsStore, useHandOffTargets } from '@/lib/agents-store';
 import { refreshAgentFreshness } from '@/hooks/use-agent-freshness';
 import { agentStatusView } from '@/lib/agent-status';
 import { assigneeLabel } from '@/lib/chat-utils';
@@ -447,8 +448,9 @@ const ASK_ICON: Record<ItemAskId, ReactNode> = {
  * (do stuff's, components/sidebar/first-steps.tsx) follows Break it down where
  * do stuff is on, and not there either: it is a dialog over the planner.
  *
- * The hand-off row follows the item: "Hand off to OpenClaw" while the agent
- * could take it (lib/agent-handoff.ts canHandOff, the agent's own queue
+ * The hand-off row follows the item: "Hand off to OpenClaw" (and a row for
+ * each connected app that may change the planner, "Hand off to Claude") while
+ * the agent could take it (lib/agent-handoff.ts canHandOff, the agent's own queue
  * filter), "Take back from OpenClaw" with its status beside it while the agent
  * holds it. Taking back is never gated on the agent being paired.
  *
@@ -459,7 +461,7 @@ const ASK_ICON: Record<ItemAskId, ReactNode> = {
 function AskSection({ item, todayStr, tz, page }: { item: Item; todayStr: string; tz: string; page: boolean }) {
   const router = useRouter();
   const isMobile = useIsMobile();
-  const { canChat, canPropose, canDelegate } = useAICapabilities();
+  const { canChat, canPropose } = useAICapabilities();
   const doStuff = useDoStuffEnabled();
   const hasConversation = useConversationsStore((s) => typeof s.itemIndex[item.id] === 'string');
   const routines = usePlannerStore((s) => s.routines);
@@ -481,9 +483,17 @@ function AskSection({ item, todayStr, tz, page }: { item: Item; todayStr: string
   useEffect(() => {
     if (delegated) void refreshAgentFreshness();
   }, [delegated]);
+  // Who could take it: OpenClaw while paired, then every connected app and
+  // agent key that may change the planner (lib/agents-store.ts). Asked once a
+  // session, the first time a menu opens, if Do stuff has not asked already.
+  const targets = useHandOffTargets();
+  const agentsLoaded = useAgentsStore((s) => s.loaded);
+  useEffect(() => {
+    if (!agentsLoaded) void useAgentsStore.getState().load();
+  }, [agentsLoaded]);
 
   const takeBack = canTakeBack(item);
-  if (!canChat && !canPropose && !canDelegate && !takeBack) return null;
+  if (!canChat && !canPropose && targets.length === 0 && !takeBack) return null;
   const inactiveIds = inactiveItemIdsOn([item], todayStr, { userTimezone: tz, routines, seasons, away });
   const ctx: ItemAskContext = {
     todayStr,
@@ -494,7 +504,7 @@ function AskSection({ item, todayStr, tz, page }: { item: Item; todayStr: string
     canPropose,
   };
   const asks = itemAsksFor(item, ctx).filter((a) => !(page && (a.kind === 'propose' || a.kind === 'compose')));
-  const handOff = !takeBack && canHandOff(item, { canDelegate, todayStr, inactiveIds });
+  const handOff = !takeBack && canHandOff(item, { canDelegate: targets.length > 0, todayStr, inactiveIds });
   const firstSteps = doStuff && !page && canBreakDown(item, canPropose);
   if (asks.length === 0 && !firstSteps && !handOff && !takeBack) return null;
 
@@ -541,17 +551,19 @@ function AskSection({ item, todayStr, tz, page }: { item: Item; todayStr: string
         />
       )}
       {(asks.length > 0 || firstSteps) && (handOff || takeBack) && <ContextMenuSeparator />}
-      {handOff && (
-        <Row
-          icon={<Bot className="size-3.5" />}
-          label={`Hand off to ${who}`}
-          testId="item-menu-handoff"
-          onSelect={() => {
-            returnFocusToOpener();
-            handOffItem(item);
-          }}
-        />
-      )}
+      {handOff &&
+        targets.map((t) => (
+          <Row
+            key={t.assignee}
+            icon={<Bot className="size-3.5" />}
+            label={`Hand off to ${t.name}`}
+            testId={targets.length === 1 ? 'item-menu-handoff' : `item-menu-handoff-${t.assignee}`}
+            onSelect={() => {
+              returnFocusToOpener();
+              handOffItem(item, t.assignee);
+            }}
+          />
+        ))}
       {takeBack && (
         <Row
           icon={<Undo2 className="size-3.5" />}

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { useAgentsStore } from '@/lib/agents-store';
 import { act, render, screen, cleanup, fireEvent, within } from '@testing-library/react';
 
 /**
@@ -1069,6 +1070,33 @@ describe('the item menu\'s AI row', () => {
       ]);
       expect(within(content).getByTestId('item-menu-handoff')).toHaveTextContent(/^Hand off to OpenClaw$/);
       expect(within(content).queryByTestId('item-menu-takeback')).toBeNull();
+    });
+
+    it('offers a row per agent: OpenClaw, then each connected app, and hands off to the one picked', () => {
+      unseed = seedAI(MODEL_AND_AGENT);
+      useAgentsStore.setState({ agents: [{ assignee: 'Claude', name: 'Claude', kind: 'app' }], loaded: true });
+      try {
+        render(<LiveRow id="once" />);
+        const content = openAsk(rightClick(cardOf('once')));
+        expect(rows(content).slice(-3)).toEqual([LINE, 'item-menu-handoff-openclaw', 'item-menu-handoff-Claude']);
+        expect(within(content).getByTestId('item-menu-handoff-Claude')).toHaveTextContent(/^Hand off to Claude$/);
+        fireEvent.click(within(content).getByTestId('item-menu-handoff-Claude'));
+        expect(itemById('once')).toMatchObject({ assignee: 'Claude', aiStatus: 'queued' });
+      } finally {
+        useAgentsStore.setState({ agents: [], loaded: false });
+      }
+    });
+
+    it('with no agent paired but an app connected, offers the app alone', () => {
+      unseed = seedAI(CONNECTED_MODEL);
+      useAgentsStore.setState({ agents: [{ assignee: 'Claude', name: 'Claude', kind: 'app' }], loaded: true });
+      try {
+        render(<LiveRow id="once" />);
+        const content = openAsk(rightClick(cardOf('once')));
+        expect(within(content).getByTestId('item-menu-handoff')).toHaveTextContent(/^Hand off to Claude$/);
+      } finally {
+        useAgentsStore.setState({ agents: [], loaded: false });
+      }
     });
 
     it('offers no hand-off the agent would never pick up: a habit, a repeating task, a finished one-off, a paused one', () => {
