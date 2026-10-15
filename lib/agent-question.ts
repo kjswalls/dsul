@@ -11,8 +11,11 @@
  * Client-safe (tests/unit/ai-server-boundary.test.ts).
  */
 
+import { create } from 'zustand'
 import { recordAgentReply, type ItemEvent } from './db'
+import type { SentAnswer } from './agent-exchange'
 import { itemTypeName } from './item-registry'
+import { assigneeLabel } from './chat-utils'
 import { usePlannerStore } from './planner-store'
 import { isPlannerPreviewing } from './planner-ready'
 import type { Item } from './planner-types'
@@ -69,6 +72,79 @@ export function answerAgentQuestion(item: Item, text: string): boolean {
   const trimmed = text.trim()
   if (!trimmed || isPlannerPreviewing()) return false
   recordAgentReply(item.id, itemTypeName(item), trimmed)
+  useAgentAnswers.getState().sent(item.id, { text: trimmed, at: Date.now() })
   usePlannerStore.getState().updateTask(item.id, { aiStatus: 'queued' })
   return true
+}
+
+/**
+ * Answers sent from this device, per item, so the item's exchange
+ * (lib/agent-exchange.ts) shows one the moment it is sent: the trail's write is
+ * fire and forget, and a re-read straight after can miss it. Memory only; the
+ * trail is the record. And, per item, whether the item's box has been turned
+ * back to the user's own model while an agent's question is open.
+ */
+interface AgentAnswersState {
+  byItem: Record<string, SentAnswer[]>
+  /** Items whose box the user pointed back at their own model. */
+  toModel: Record<string, true>
+  sent: (itemId: string, answer: SentAnswer) => void
+  setToModel: (itemId: string, on: boolean) => void
+}
+
+export const useAgentAnswers = create<AgentAnswersState>((set) => ({
+  byItem: {},
+  toModel: {},
+  sent: (itemId, answer) =>
+    set((s) => ({ byItem: { ...s.byItem, [itemId]: [...(s.byItem[itemId] ?? []), answer].slice(-10) } })),
+  setToModel: (itemId, on) =>
+    set((s) => {
+      const toModel = { ...s.toModel }
+      if (on) toModel[itemId] = true
+      else delete toModel[itemId]
+      return { toModel }
+    }),
+}))
+
+/** An agent holds this item and is waiting on the user's answer. */
+export function awaitsAnswer(item: Item | undefined | null): item is Item & { assignee: string } {
+  const held = item as { assignee?: string; aiStatus?: string } | null | undefined
+  return !!held?.assignee && held.aiStatus === 'blocked'
+}
+
+/**
+ * Does the item's box answer the agent rather than the model? While its
+ * question is open, by default: the box under an agent's question is where the
+ * answer goes (Kirby, 2026-10-15). The user can point it back at their own
+ * model for this item (`useAgentAnswers.setToModel`).
+ */
+export function boxAnswersAgent(item: Item | undefined | null, toModel: Record<string, true>): boolean {
+  return awaitsAnswer(item) && !toModel[item.id]
+}
+
+/**
+ * The one place the item's box hands a message to the agent instead of the
+ * model (lib/open-chat.ts `sendFrom` asks this first). True when it did.
+ */
+export function routeItemSendToAgent(itemId: string, text: string): boolean {
+  const item = usePlannerStore.getState().items.find((i) => i.id === itemId)
+  if (!boxAnswersAgent(item, useAgentAnswers.getState().toModel)) return false
+  return answerAgentQuestion(item as Item, text)
+}
+
+/**
+ * The agent the item's box answers right now, by name ("Claude"), or null when
+ * it talks to the model as usual. For the box's placeholder and its "Answering
+ * Claude" line (components/ai/agent-exchange.tsx `AgentRouteLine`).
+ */
+export function useBoxAnswersAgent(itemId: string | null): string | null {
+  const item = usePlannerStore((s) => (itemId ? s.items.find((i) => i.id === itemId) : undefined))
+  const toModel = useAgentAnswers((s) => s.toModel)
+  if (!itemId || !boxAnswersAgent(item, toModel)) return null
+  return assigneeLabel((item as { assignee: string }).assignee)
+}
+
+/** An agent is waiting on the user's answer on this item (whichever way the box points). */
+export function useAgentQuestionOpen(itemId: string | null): boolean {
+  return usePlannerStore((s) => (itemId ? awaitsAnswer(s.items.find((i) => i.id === itemId)) : false))
 }

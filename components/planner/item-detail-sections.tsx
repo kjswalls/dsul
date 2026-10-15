@@ -5,13 +5,13 @@ import { addDays, format, isAfter, startOfDay, startOfWeek, subWeeks } from 'dat
 import { Check, Plus, Split, X } from 'lucide-react';
 import { AskMark } from '@/components/ai/ask-mark';
 import { Input } from '@/components/ui/input';
-import { RelayField } from '@/components/primitives/relay-field';
 import { usePlannerStore } from '@/lib/planner-store';
 import { answerAgentQuestion } from '@/lib/agent-question';
 import { useAgentQuestion } from '@/hooks/use-agent-question';
 import { useAICapabilities } from '@/lib/ai-connection-store';
 import { assigneeLabel } from '@/lib/chat-utils';
 import { AgentChip } from '@/components/primitives/pills';
+import { AgentExchangeFor } from '@/components/ai/agent-exchange';
 import { useProposalStore } from '@/lib/proposal-store';
 import { canBreakDown, canOfferBreakDown } from '@/lib/item-asks';
 import { openSetup } from '@/lib/open-chat';
@@ -256,24 +256,13 @@ function SubtasksSection({ item, offerSetup }: { item: Item; offerSetup: boolean
 // ── Agent assignment ─────────────────────────────────────────────────────────
 
 /**
- * Beacon's honey-keyed relay palette, for the ambient field behind its working
- * block. Beacon's hue is honey (--ai/--warning), not the app's lime `--primary`
- * — so this is passed as `darkPalette` to override the lime tokens the field
- * reads by default. Module constant on purpose: RelayField treats it as an
- * effect dependency, so a fresh array each render would re-init the canvas.
- * (Honey-dominant, with a lime and a teal for a little spectral life.)
+ * Who has the item, its status chip (lit like the Ask key), and the way out.
+ * What the agent and the user said is its exchange (components/ai/
+ * agent-exchange.tsx): drawn here with its own answer box where the item has
+ * no conversation on screen, else in the item's conversation, whose box
+ * answers the agent while its question is open.
  */
-const BEACON_RELAY_DARK = [
-  'oklch(0.80 0.11 85)',
-  'oklch(0.85 0.13 88)',
-  'oklch(0.80 0.11 85)',
-  'oklch(0.87 0.19 125)',
-  'oklch(0.74 0.13 62)',
-  'oklch(0.72 0.09 190)',
-] as const;
-
-/** Honey is the agent's hue everywhere in dsul (--ai tokens). */
-function AgentSection({ item }: { item: Item }) {
+function AgentSection({ item, inConversation }: { item: Item; inConversation: boolean }) {
   const { items, updateTask } = usePlannerStore();
   const { canDelegate } = useAICapabilities();
   const live = (items.find((i) => i.id === item.id) ?? item) as TaskItem;
@@ -331,45 +320,15 @@ function AgentSection({ item }: { item: Item }) {
     );
   }
 
-  // Only the actively-streaming state gets the ambient field; queued/blocked/
-  // done/failed are static.
-  const working = live.aiStatus === 'working';
-
   return (
-    <div
-      className="bg-warning/10 relative overflow-hidden rounded-md px-2.5 py-2"
-      data-testid="agent-block"
-      data-working={working || undefined}
-    >
-      {/* While Beacon works, a RelayField blooms behind the block — honey-keyed
-          (Beacon's hue), not the app's lime primary. Pure decoration:
-          pointer-events-none + aria-hidden, paused offscreen and frozen under
-          reduced motion (all inherited from RelayField). */}
-      {working && (
-        <RelayField
-          active
-          className="absolute inset-0 z-0"
-          darkPalette={BEACON_RELAY_DARK}
-          // Warm 'harvest' (amber→terracotta→lime) in light mode so Beacon keeps
-          // its honey identity there too, harmonising with the warm block rather
-          // than laying a cool-gray sonar over it.
-          lightPalette="harvest"
-          pitch={30}
-          focalY={0.5}
-          // Kept modest so the assignee/result/Unassign text stays legible over
-          // the bloom (the field peaks under the content baseline at focalY 0.5).
-          activeIntensity={0.6}
-          activeIntensityLight={0.4}
-          mask="radial-gradient(135% 135% at 50% 45%, #000 40%, transparent 92%)"
-        />
-      )}
-      <div className="relative z-10 flex flex-col gap-1">
+    <div className="flex flex-col gap-3" data-testid="agent-block" data-agent-state={live.aiStatus}>
+      <div className="flex flex-col gap-1">
         <div className="flex items-center gap-2">
           <AskMark className="size-3.5" />
           {/* assigneeLabel, not CSS capitalize: a stored `beacon` (from before
               the AI lost its name) has to read as "AI", and the stored value is
               a contract that is never rewritten. */}
-          <span className="text-warning-text text-xs font-semibold">
+          <span className="text-foreground text-xs font-semibold">
             {assigneeLabel(live.assignee)}
           </span>
           {/* The row's own chip (pills.tsx AgentChip), lit like the Ask key:
@@ -390,7 +349,7 @@ function AgentSection({ item }: { item: Item }) {
               type="button"
               onClick={() => updateTask(item.id, { aiStatus: 'queued', aiResult: undefined })}
               data-testid="agent-requeue"
-              className="text-warning-text hover:text-foreground ml-auto text-[10px] font-medium"
+              className="text-foreground hover:text-muted-foreground ml-auto text-[10px] font-medium"
             >
               Try again
             </button>
@@ -410,14 +369,9 @@ function AgentSection({ item }: { item: Item }) {
           </button>
         </div>
         {/* Why the button is there, in words. */}
-        {view?.stalled && (
-          <p className="text-warning-text text-xs leading-relaxed">{view.detail}</p>
-        )}
-        {live.aiResult && (
-          <p className="text-warning-text/85 text-xs leading-relaxed">{live.aiResult}</p>
-        )}
-        {live.aiStatus === 'blocked' && <AgentReply item={live} />}
+        {view?.stalled && <p className="text-muted-foreground text-xs leading-relaxed">{view.detail}</p>}
       </div>
+      {!inConversation && <AgentExchangeFor item={live} withAnswerBox />}
     </div>
   );
 }
@@ -610,8 +564,11 @@ export function ItemDetailSections({
   // body stack omits it to avoid rendering the same feed twice.
   withActivity = true,
   offerSetup = false,
+  conversationElsewhere = false,
 }: {
   item: Item;
+  /** The item's conversation is drawn by the host, outside these sections (the rail's pinned one). */
+  conversationElsewhere?: boolean;
   /** True where AI setup can open from here (the item panel, on both shells),
    *  so an item that could be broken down offers it before AI is set up. */
   offerSetup?: boolean;
@@ -624,6 +581,8 @@ export function ItemDetailSections({
   // Extension gate + capability gate: the heatmap is opt-in (Settings →
   // Extensions) and only meaningful where the registry says a streak exists.
   const heatmapOn = useExtensionsStore((s) => resolveEnabled(s.enabled, EXT_HABIT_HEATMAP));
+  // Where a conversation is on screen, the agent's exchange is drawn in it (ItemConversation).
+  const { canChat } = useAICapabilities();
   return (
     // data-sub-input on the CONTAINER: the dialog's Enter-submit guard checks
     // closest('[data-sub-input]'), and everything in here — inputs AND buttons
@@ -631,7 +590,9 @@ export function ItemDetailSections({
     // this, Enter on a focused subtask checkbox saves-and-closes the panel.
     <div className="flex flex-col gap-4" data-sub-input>
       {config.subtasks && <SubtasksSection item={item} offerSetup={offerSetup} />}
-      {config.agentAssignable && <AgentSection item={item} />}
+      {config.agentAssignable && (
+        <AgentSection item={item} inConversation={canChat && (conversation !== 'none' || conversationElsewhere)} />
+      )}
       <ItemFilesSection itemId={item.id} />
       {heatmapOn && config.counters.streak && <HeatmapSection item={item} />}
       {withActivity && <ItemTimeline item={item} />}
