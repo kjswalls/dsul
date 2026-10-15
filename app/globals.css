@@ -2282,12 +2282,12 @@ body {
    the look's partner (the slot tokens above). The violet is Ask's light: full
    strength, never faded, never mixed toward anything. The sky's ink deepens 14%
    toward the ink in light, as the partner's does, to carry 3:1 on the key. */
-:is([data-ask-opener], [data-ask-mark]) {
+:is([data-ask-opener], [data-ask-mark], [data-agent-chip]) {
   --ask-violet: oklch(0.59 0.15 290);
   --ask-sky: oklch(0.7 0.12 245);
   --ask-sky-ink: color-mix(in oklch, var(--ask-sky), var(--foreground) 14%);
 }
-.dark :is([data-ask-opener], [data-ask-mark]) {
+.dark :is([data-ask-opener], [data-ask-mark], [data-agent-chip]) {
   --ask-violet: oklch(0.69 0.14 292);
   --ask-sky: oklch(0.79 0.1 240);
   --ask-sky-ink: var(--ask-sky);
@@ -2659,6 +2659,110 @@ body {
 [data-reduce-motion='true'] [data-ask-mark] * {
   transition: none !important;
   animation: none !important;
+}
+
+/* ─── Agent status chips ─────────────────────────────────────────────── */
+
+/* An agent's status chip (components/primitives/pills.tsx AgentPill and the
+   item panel's badge), lit like the Ask key (Kirby, 2026-10-15): a white key
+   whose 1px rim carries Ask's violet into sky, a dot of light as the source.
+   Queued: the light rests by the dot. Working: it runs round the rim. Needs
+   you: the whole rim lit, breathing a soft sky glow (the partner, as the key's own
+   rule allows: the violet is never mixed). Quiet or failed: the
+   rim goes unlit and the dot hollow. Like the key, nothing here fades the
+   light itself: no opacity, filter or blend on the rim or the dot; only the
+   glow's own shadow eases in and out, and all motion stops under reduced
+   motion. */
+@property --agent-rim-spin {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+@keyframes agent-rim-run {
+  to {
+    --agent-rim-spin: 360deg;
+  }
+}
+@keyframes agent-chip-call {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--ask-sky) 0%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 12px 1px color-mix(in oklab, var(--ask-sky) 45%, transparent);
+  }
+}
+[data-agent-chip] {
+  --agent-chip-fill: var(--surface-2);
+  --agent-chip-rim: color-mix(in oklab, var(--surface-2), var(--foreground) 12%);
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding-inline: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: var(--foreground);
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+  background:
+    linear-gradient(var(--agent-chip-fill), var(--agent-chip-fill)) padding-box,
+    radial-gradient(circle at 10px 50%, var(--ask-violet) 0, var(--ask-sky) 18px, var(--agent-chip-rim) 40px)
+      border-box;
+}
+[data-agent-chip] [data-agent-chip-dot] {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: var(--ask-violet);
+}
+[data-agent-chip][data-agent-state='queued'] [data-agent-chip-dot] {
+  background: var(--ask-sky);
+}
+[data-agent-chip][data-agent-state='working'] {
+  background:
+    linear-gradient(var(--agent-chip-fill), var(--agent-chip-fill)) padding-box,
+    conic-gradient(
+        from var(--agent-rim-spin),
+        var(--ask-violet),
+        var(--ask-sky) 18%,
+        var(--agent-chip-rim) 34%,
+        var(--agent-chip-rim) 100%
+      )
+      border-box;
+  animation: agent-rim-run 2.4s linear infinite;
+}
+[data-agent-chip][data-agent-state='blocked'] {
+  font-weight: 600;
+  background:
+    linear-gradient(var(--agent-chip-fill), var(--agent-chip-fill)) padding-box,
+    linear-gradient(90deg, var(--ask-violet), var(--ask-sky)) border-box;
+  animation: agent-chip-call 2.8s ease-in-out infinite;
+}
+[data-agent-chip][data-agent-state='blocked'] [data-agent-chip-dot] {
+  background: linear-gradient(135deg, var(--ask-violet), var(--ask-sky));
+}
+:is([data-agent-chip][data-agent-stalled], [data-agent-chip][data-agent-state='failed']) {
+  color: var(--muted-foreground);
+  background:
+    linear-gradient(var(--agent-chip-fill), var(--agent-chip-fill)) padding-box,
+    linear-gradient(var(--agent-chip-rim), var(--agent-chip-rim)) border-box;
+  animation: none;
+}
+:is([data-agent-chip][data-agent-stalled], [data-agent-chip][data-agent-state='failed']) [data-agent-chip-dot] {
+  background: none;
+  box-shadow: inset 0 0 0 1.5px var(--muted-foreground);
+}
+.dark [data-agent-chip]:not([data-agent-stalled], [data-agent-state='failed']) [data-agent-chip-dot] {
+  box-shadow: 0 0 6px var(--ask-violet);
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-agent-chip] {
+    animation: none !important;
+  }
 }
 
 /* ─── The do stuff key: a keycap lit from its bolt ───────────────────────────
