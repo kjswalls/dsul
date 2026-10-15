@@ -24,6 +24,7 @@ import {
   type PillTone,
 } from '@/lib/ai-pane-state';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
+import { useOpenClawBrowserStore } from '@/lib/openclaw-browser-store';
 import { chordLabel, isApplePlatform } from '@/lib/commands/keys';
 import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
 import { chatOffered } from '@/lib/mobile-nav-store';
@@ -34,6 +35,7 @@ import { cn } from '@/lib/utils';
 import { ConnectedAppsSection } from './connected-apps';
 import { AgentKeysSection } from './agent-keys';
 import { OpenClawConnect } from './openclaw-connect';
+import { OpenClawBrowserChat } from './openclaw-browser-chat';
 import { useDisconnect, useUnpair } from './disconnect';
 import { ModelConnectionPanel } from './model-connection-panel';
 import { ScopeChip } from './scope-chip';
@@ -87,9 +89,10 @@ export function useAIPaneLayout(keepDevice = false): AIPaneLayout {
   const openclaw = useAIConnectionStore((s) => s.openclaw);
   const aiHidden = useAIConnectionStore((s) => s.aiHidden);
   const choice = useAISettingsStore((s) => s.chatTarget);
+  const browserChat = useOpenClawBrowserStore((s) => s.paired !== null);
   return useMemo(
-    () => aiPaneLayout({ phase, available, model, openclaw, aiHidden, choice, keepDevice }),
-    [phase, available, model, openclaw, aiHidden, choice, keepDevice]
+    () => aiPaneLayout({ phase, available, model, openclaw, aiHidden, choice, keepDevice, browserChat }),
+    [phase, available, model, openclaw, aiHidden, choice, keepDevice, browserChat]
   );
 }
 
@@ -608,8 +611,9 @@ function OpenClawSection({
   onToggleGateway: () => void;
 }) {
   const openclaw = useAIConnectionStore((s) => s.openclaw);
+  const browserChat = useOpenClawBrowserStore((s) => s.paired !== null);
   const { canChat } = useAICapabilities();
-  const status = openClawStatus(openclaw);
+  const status = openClawStatus(openclaw, browserChat);
   const sectionRef = useRef<HTMLElement>(null);
   // Unpaired, the card and its button go (or keep only the gateway's line):
   // focus lands on the section rather than on <body>.
@@ -628,7 +632,9 @@ function OpenClawSection({
     ? status.answers
       ? `${status.name} can answer in Ask and take on tasks you hand it.`
       : `${status.name} takes on tasks you hand it.`
-    : 'OpenClaw can answer in Ask through your gateway.';
+    : browserChat
+      ? 'OpenClaw answers in Ask on this browser.'
+      : 'OpenClaw can answer in Ask through your gateway.';
   const connect = openclaw.connect;
   // Held here: Connect flips the card from not paired to paired, and the
   // commands must survive that (components/settings/openclaw-connect.tsx).
@@ -707,6 +713,10 @@ function OpenClawSection({
           />
         </div>
       )}
+
+      <div className="border-border rounded-[8px] border p-4">
+        <OpenClawBrowserChat />
+      </div>
 
       <div>
         <button

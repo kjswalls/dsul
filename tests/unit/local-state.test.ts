@@ -807,10 +807,13 @@ describe('nothing persists per-user state outside the registry', () => {
   });
 
   it('every IndexedDB database in the app is accounted for', () => {
-    // IndexedDB is invisible to every scan above. The planner snapshot is the
-    // one database, wholly disclosive, and cleared through RAW_CLEARERS (its
-    // own describe in this file). A second entry here is per-user state that
+    // IndexedDB is invisible to every scan above. The planner snapshot is
+    // wholly disclosive and the OpenClaw chat pairing is a credential; both are
+    // cleared through RAW_CLEARERS. A third entry here is per-user state that
     // nothing has been told to clear.
-    expect(filesMatching(/\bindexedDB\.(open|deleteDatabase)\(/)).toEqual(['lib/planner-snapshot.ts']);
+    expect(filesMatching(/\bindexedDB\.(open|deleteDatabase)\(/)).toEqual([
+      'lib/openclaw-browser/device-store.ts',
+      'lib/planner-snapshot.ts',
+    ]);
   });
 });

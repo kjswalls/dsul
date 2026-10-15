@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
+import { BROWSER_CAN, BROWSER_CANNOT, IF_DSUL_IS_COMPROMISED } from '@/lib/openclaw-browser-copy';
 
 export const metadata: Metadata = {
   title: 'Connect OpenClaw - dsul',
@@ -130,6 +131,44 @@ export default function OpenClawDocsPage() {
             automation. Your saved conversations stay.
           </p>
         </div>
+
+        <section id="chat" className="space-y-3 rounded-lg border border-border bg-card p-4">
+          <p className="text-sm font-medium text-foreground">Chat with it in Ask</p>
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            Under OpenClaw in Settings → AI, <span className="text-foreground">Set up chat</span> pairs this
+            browser with your gateway, the way OpenClaw&apos;s own Control UI pairs. Three steps: allow dsul&apos;s
+            address in <code className="font-mono text-xs text-foreground">gateway.controlUi.allowedOrigins</code>,
+            enter your gateway&apos;s address and token, then approve the browser with{' '}
+            <code className="font-mono text-xs text-foreground">openclaw devices approve</code>. Your messages go
+            from this browser straight to your gateway, so it has to be reachable from this device (on your
+            tailnet, say). Each browser and phone sets up its own.
+          </p>
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            The token is used once, in your browser, to introduce it. It is never saved and never sent to
+            dsul&apos;s servers. After you approve, the browser signs in with its own key, which can&apos;t be
+            copied off it. Changing your gateway token signs every browser out, and so does signing out of dsul; you set chat up again.
+          </p>
+          <p className="text-sm font-medium text-foreground">What an approved browser can do</p>
+          <ul className="list-disc space-y-1 pl-5 text-sm leading-relaxed text-muted-foreground">
+            {BROWSER_CAN.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+          <p className="text-sm leading-relaxed text-muted-foreground">It can&apos;t:</p>
+          <ul className="list-disc space-y-1 pl-5 text-sm leading-relaxed text-muted-foreground">
+            {BROWSER_CANNOT.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            That is the narrowest access OpenClaw offers a chat client on a personal gateway. {IF_DSUL_IS_COMPROMISED}
+          </p>
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            To stop, press <span className="text-foreground">Forget this browser</span>, and run{' '}
+            <code className="font-mono text-xs text-foreground">openclaw devices remove</code> with its id to take it
+            off your gateway too.
+          </p>
+        </section>
 
         <p className="text-xs leading-relaxed text-muted-foreground">
           Needs <code className="font-mono text-foreground">curl</code> on the gateway machine and

@@ -1,5 +1,6 @@
 'use client';
 
+import { clearBrowserPairings } from './openclaw-browser/device-store';
 import { useAISettingsStore } from './ai-settings-store';
 import { clearKeptQuestionState } from './ask-pending';
 import { useCommandUsageStore } from './command-usage-store';
@@ -291,7 +292,9 @@ export const PERSISTED_USER_STORES: readonly PersistedUserStore[] = [
  * it goes too, with any device pick naming one of them
  * (lib/user-themes/forget-picks.ts). So does a question kept from `?`
  * (lib/ask-pending.ts): sessionStorage, and the memory mirror a reader may have
- * filled before this ran.
+ * filled before this ran. This browser's OpenClaw chat pairing
+ * (lib/openclaw-browser/device-store.ts) is IndexedDB too, and a credential for
+ * the person's own agent, so it goes with the rest.
  */
 const RAW_CLEARERS: readonly (() => void)[] = [
   clearChatState,
@@ -300,6 +303,7 @@ const RAW_CLEARERS: readonly (() => void)[] = [
   clearPlannerSnapshot,
   clearUserThemeCache,
   forgetUserThemePicks,
+  clearBrowserPairings,
 ];
 
 /** The account whose local state is on disk right now, or null for none. */

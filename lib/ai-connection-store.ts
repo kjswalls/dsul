@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import { create, type StoreApi, type UseBoundStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { resolveAICapabilities, type AICapabilities } from './ai-registry';
+import { useOpenClawBrowserStore } from './openclaw-browser-store';
 import type { DetectedProvider } from './ai-key-prefix';
 import type { FlowResult } from './connect-flow';
 import { useAISettingsStore } from './ai-settings-store';
@@ -883,6 +884,7 @@ function gateFields(s: AIConnectionState) {
 export function useAICapabilities(): AICapabilities {
   const f = useAIConnectionStore(useShallow(gateFields));
   const choice = useAISettingsStore((s) => s.chatTarget);
+  const browserChat = useOpenClawBrowserStore((s) => s.paired !== null);
   return useMemo(
     () =>
       resolveAICapabilities({
@@ -913,8 +915,9 @@ export function useAICapabilities(): AICapabilities {
         },
         choice,
         aiHidden: f.aiHidden,
+        browserChat,
       }),
-    [f, choice]
+    [f, choice, browserChat]
   );
 }
 
@@ -928,5 +931,6 @@ export function getAICapabilities(): AICapabilities {
     openclaw: s.openclaw,
     choice: useAISettingsStore.getState().chatTarget,
     aiHidden: s.aiHidden,
+    browserChat: useOpenClawBrowserStore.getState().paired !== null,
   });
 }

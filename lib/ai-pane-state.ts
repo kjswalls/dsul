@@ -150,6 +150,8 @@ export interface AIPaneInput {
   choice: ChatTarget;
   /** AIPane's latch: On this device was shown earlier in this visit (section 1.0). Default false. */
   keepDevice?: boolean;
+  /** This browser is paired with the gateway for chat (lib/openclaw-browser-store.ts). Default false. */
+  browserChat?: boolean;
 }
 
 export type AliasId = Exclude<AIPaneRecordId, 'beacon.useAi'>;
@@ -203,7 +205,7 @@ const OFF_CARD_IDS: readonly AliasId[] = Object.freeze([
 export function aiPaneLayout(i: AIPaneInput): AIPaneLayout {
   const known = i.phase === 'ready';
   const aiOff = isAIOff(i);
-  const nothing = known && nothingConnected(i.model, i.openclaw);
+  const nothing = known && nothingConnected(i.model, i.openclaw, i.browserChat);
 
   const explainer: AIPaneLayout['explainer'] = !known || aiOff ? 'none' : nothing ? 'tiles' : 'sentence';
 
@@ -253,7 +255,7 @@ export function aiPaneLayout(i: AIPaneInput): AIPaneLayout {
 export interface OpenClawStatus {
   /** agent || gateway */
   paired: boolean;
-  /** gateway || pluginChat */
+  /** gateway || pluginChat || this browser's own pairing */
   answers: boolean;
   agent: boolean;
   /**
@@ -265,8 +267,8 @@ export interface OpenClawStatus {
   name: string;
 }
 
-export function openClawStatus(o: OpenClawView): OpenClawStatus {
-  const answers = o.gateway || o.pluginChat;
+export function openClawStatus(o: OpenClawView, browserChat = false): OpenClawStatus {
+  const answers = o.gateway || o.pluginChat || browserChat;
   const name = answers && o.agentId && o.agentId !== 'main' ? o.agentId : 'OpenClaw';
   return { paired: o.agent || o.gateway, answers, agent: o.agent, name };
 }
