@@ -690,4 +690,28 @@ final class FakeAccount: NotificationAccount {
         #expect(String(decoding: body, as: UTF8.self)
                 == "{\"action\":\"snooze\",\"date\":\"\(PlannerJSON.today)\",\"minutes\":15}")
     }
+
+    // MARK: Pushed notifications (PR-3c)
+
+    /// The server's wake is recognised by its payload, and nothing else is.
+    @Test func theWakeIsItsPayload() {
+        #expect(NotificationKeys.isWake(["aps": ["content-available": 1], "dsul": ["reason": "items"]]))
+        #expect(!NotificationKeys.isWake(["aps": ["content-available": 1]]))
+        #expect(!NotificationKeys.isWake(["dsul": ["reason": "other"]]))
+        #expect(!NotificationKeys.isWake(["dsul": "items"]))
+    }
+
+    /// A pushed last call about one item is dsul's whatever iOS named it; one
+    /// naming several habits, or a local request, keeps its own identifier.
+    @Test func aPushedLastCallIsDsuls() {
+        let item = PlannerJSON.meds.uuidString
+        let pushed = NotificationKeys.identity(of: "8C1A", pushed: true, userInfo: ["itemId": item])
+        #expect(pushed == "dsul-push-8C1A")
+        #expect(NotificationKeys.isDsul(pushed))
+        #expect(NotificationKeys.identity(of: "8C1A", pushed: true, userInfo: [:]) == "8C1A")
+        #expect(NotificationKeys.identity(of: "8C1A", pushed: true, userInfo: ["itemId": "nope"]) == "8C1A")
+        #expect(NotificationKeys.identity(of: "8C1A", pushed: false, userInfo: ["itemId": item]) == "8C1A")
+        #expect(NotificationKeys.identity(of: "dsul-item-\(item)", pushed: true, userInfo: ["itemId": item])
+                == "dsul-item-\(item)")
+    }
 }

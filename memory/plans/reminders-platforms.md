@@ -530,6 +530,35 @@
 >    **[unverified]** and is on the device checklist. If it is not given, `NotificationKeys.isDsul`
 >    ignores the tap and a plain open still works.
 
+> **Addendum (2026-10-15): what PR-3c changed on the way in.** PR-3c is the background wake:
+> migration 076, `lib/devices/wake.ts` as the reminder tick's last tier, `wake()` on the APNs
+> transport, and on the phone `remote-notification` plus `didReceiveRemoteNotification` running
+> the same pass as the background refresh. Where it departs from §4.4 and §5.4:
+>
+> 1. **No `device_wakes` table and no `dsul_post`.** 076 adds `wake_requested_at` and
+>    `last_background_push_at` to `devices`. An `items` trigger (SECURITY DEFINER, empty
+>    search_path, errors swallowed) stamps the user's apns rows when an item that has or had a
+>    `reminder_time` is inserted, deleted, or changes in a column the phone plans from. It never
+>    fires on `reminder_sent_key`, the scan's own claim. The 5-minute tick is the clock, so an
+>    item write costs one UPDATE and never an HTTP request; a wake lands up to five minutes later.
+> 2. **Claim, then send.** The tier moves `last_background_push_at` with an update conditional on
+>    the value it read, and pushes only rows the database changed. At most one wake per phone per
+>    30 minutes; one asked for inside the window is sent when it ends.
+> 3. **Not narrowed to "a planned cue in the next 24 h", and the writer is not skipped.** A write
+>    does not say which device made it, and the trigger's `reminder_time` condition already limits
+>    wakes to items that ring. A wake to the phone that wrote re-plans what it already planned.
+> 4. **`apns-expiration: 0`, priority 5, push type `background`,** body
+>    `{"aps":{"content-available":1},"dsul":{"reason":"items"}}`. No item ids: the phone refetches
+>    the whole planner. Expiration 0 because APNs holds one notification per app for a phone that
+>    is off, and a held wake would replace a held last call.
+> 5. **No Notification Service Extension.** The server's alerts are computed at send time, so
+>    there is nothing stale for an NSE to withdraw, and a second target means signing and an App
+>    Group for no gain. No `mutable-content`.
+> 6. **The pushed last call's Done and Snooze no longer depend on the request identifier.**
+>    `NotificationKeys.identity` treats a pushed notification that carries an `itemId` as dsul's
+>    whatever identifier iOS gave it, which settles PR-3b's **[unverified]** item 3.
+> 7. **Deploy leads migration.** Until 076 is applied the tier reads 42703 and does nothing.
+
 2026-10-05. **Status: plan, decided 2026-10-06 — Kirby took every default in §7; nothing in it has been built yet, nothing was written to prod.** Phase 0 is next. Every code citation is tree-level (`main` at `b8d480c`, 2026-10-04; every cited `file:line` holds at `3200896`, #405, 2026-10-05 — six cited files changed between the two commits, `electron/main.cjs`, `electron/preload.cjs`, `lib/desktop.ts`, `desktop-app.md`, `ios-app.md`, `CLAUDE.md`, but not at the cited lines; `preload.cjs` gained `authProviders`): the live project was read on 2026-10-05, read-only, and the observed values sit at the top of §5.1.1: the organisation is on the **Pro** plan, both ticks are paused exactly as 045 left them, no ritual is enabled by any of the four accounts, and Kirby is the only user, so the runbook's EXPECT lines are now observations and the §5.1 writes have no one to disturb. Kirby also holds a paid Apple Developer Program membership (confirmed 2026-10-05), which removes the purchase gate the brief assumed (decision 5, resolved). Facts taken from search snippets of pages the planning sessions could not open are marked `[S]`; facts no source verified are marked **[unverified]** inline and collected in §6. Sibling plans: [habit-reminders.md](habit-reminders.md) (the reminder model this builds on — read it first), [desktop-app.md](desktop-app.md), [ios-app.md](ios-app.md).
 
 ---

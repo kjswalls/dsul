@@ -12,6 +12,9 @@ import UserNotifications
 /// - **didReceive**: Done and Snooze go to the hub, which writes them to the
 ///   outbox before anything else; a tap on the notification opens its item.
 ///   iOS keeps the app awake until this returns.
+///
+/// A pushed last call about one item counts as dsul's whatever identifier
+/// iOS gave it (`NotificationKeys.identity`), so its Done and Snooze work too.
 final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate, Sendable {
     /// Held here: the center keeps its delegate weakly.
     static let shared = NotificationDelegate()
@@ -43,8 +46,11 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate, Se
 
     nonisolated private static func info(_ notification: UNNotification) -> NotificationInfo {
         let request = notification.request
-        return NotificationInfo(id: request.identifier,
-                                userInfo: LiveNotificationCenter.strings(request.content.userInfo),
+        let userInfo = LiveNotificationCenter.strings(request.content.userInfo)
+        let id = NotificationKeys.identity(of: request.identifier,
+                                           pushed: request.trigger is UNPushNotificationTrigger,
+                                           userInfo: userInfo)
+        return NotificationInfo(id: id, userInfo: userInfo,
                                 date: notification.date, title: request.content.title,
                                 body: request.content.body)
     }
