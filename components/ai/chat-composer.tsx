@@ -12,6 +12,7 @@ import { resolveConversationId, useConversationsStore, type ConversationsState }
 import { bindingKey, sendFrom, type ComposerBinding } from '@/lib/open-chat';
 import type { AskSurface } from '@/lib/rail-store';
 import { chatAssistantName, chatPlaceholder, itemChatPlaceholder } from '@/lib/chat-utils';
+import { useBoxAnswersAgent } from '@/lib/agent-question';
 import { activeMention, insertMention, mentionChoices } from '@/lib/chat-mentions';
 import { activeSlash } from '@/lib/chat-slash';
 import { SlashCommands, type SlashCommandsHandle } from './chat-slash-commands';
@@ -159,10 +160,17 @@ export function ChatComposer({
     });
   };
 
-  const displayName = chatAssistantName(target);
+  // An agent's open question on this item takes the box (lib/agent-question.ts).
+  const answeringAgent = useBoxAnswersAgent(binding.kind === 'item' ? binding.itemId : null);
+  const displayName = answeringAgent ?? chatAssistantName(target);
   // A box bound to an item says so: it looks like every other box.
   const placeholder =
-    placeholderOverride ?? (binding.kind === 'item' ? itemChatPlaceholder(target) : chatPlaceholder(target));
+    placeholderOverride ??
+    (answeringAgent
+      ? `Answer ${answeringAgent}…`
+      : binding.kind === 'item'
+        ? itemChatPlaceholder(target)
+        : chatPlaceholder(target));
   const hasText = input.trim().length > 0;
 
   // Auto-grow, measured while the field can be: a field with no box (hidden,

@@ -2,6 +2,8 @@
 
 import { createContext, useContext, useEffect, useRef } from 'react';
 import { ChatComposer } from '@/components/ai/chat-composer';
+import { AgentRouteLine } from '@/components/ai/agent-exchange';
+import { useAgentQuestionOpen } from '@/lib/agent-question';
 import { useAICapabilities, useAIConnectionStore } from '@/lib/ai-connection-store';
 import { modelName } from '@/lib/ai-model-names';
 import { chatAssistantLabel } from '@/lib/chat-utils';
@@ -68,6 +70,8 @@ export function BoundComposer({
   const text = useRailStore((s) => s.drafts[key] ?? '');
   const pending = useRailStore((s) => s.pendingFocus);
   const awake = useContext(ComposerAwakeContext);
+  // While an agent's question is open the line under the box says who it answers.
+  const answersAgent = useAgentQuestionOpen(binding.kind === 'item' ? binding.itemId : null);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -109,7 +113,12 @@ export function BoundComposer({
         awake={awake}
         placeholder={placeholder}
       />
-      {label && <AnswererLabel className="px-2" />}
+      {label &&
+        (binding.kind === 'item' && answersAgent ? (
+          <AgentRouteLine itemId={binding.itemId} className="px-2" />
+        ) : (
+          <AnswererLabel className="px-2" />
+        ))}
     </div>
   );
 }
