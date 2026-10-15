@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { getAICapabilities, useAICapabilities } from './ai-connection-store';
+import { routeItemSendToAgent } from './agent-question';
 import { resolveConversationId, useConversationsStore } from './conversations-store';
 import { useMobileNavStore } from './mobile-nav-store';
 import { useProposalStore, type ProposalSurface } from './proposal-store';
@@ -554,6 +555,9 @@ export async function sendFrom(
   } = {}
 ): Promise<boolean> {
   if (!getAICapabilities().canChat || typeof text !== 'string' || !text.trim()) return false;
+  // An agent's open question on this item takes the item's box (lib/agent-question.ts):
+  // the answer goes on the item's trail and wakes the agent, never to the model.
+  if (binding.kind === 'item' && !o.images?.length && routeItemSendToAgent(binding.itemId, text)) return true;
   const store = useConversationsStore.getState();
   const key = bindingKey(binding);
   if (!store.beginSend(key)) return false;

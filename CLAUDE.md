@@ -466,9 +466,11 @@ right rail, or anything under `components/ai/`.
 tokens through `resolveUserIdFromApiKey`'s `access` argument. Read it before touching any of those.
 [sign-in-with-apple.md](memory/plans/sign-in-with-apple.md) holds the Apple provider: why the web's
 button follows Supabase's own settings (the iPhone's is always shown), the desktop shell's provider
-list, the iPhone's native id_token flow, the dashboard setup, and the client secret that must be
-re-minted every six months (`scripts/apple-client-secret.mjs`) or Apple sign-in stops on the web
-and the desktop (the iPhone's id_token grant needs no secret).
+list, the iPhone's native id_token flow, the dashboard setup, and the client secret that lapses
+every six months or Apple sign-in stops on the web and the desktop (the iPhone's id_token grant
+needs no secret). A scheduled workflow (`apple-secret-rotate.yml`) renews it every other month
+and opens an issue when it fails; it writes to prod's auth config with a Supabase access token,
+so it runs only from `main`, never on a pull request.
 [account-deletion.md](memory/plans/account-deletion.md) holds Delete account on the iPhone and the
 web: the one rule (one admin delete, every user column cascades, migration 063 and the test that
 pins it), the account guard and the "gone" answers, exchange then delete then revoke for Sign in
@@ -491,6 +493,8 @@ fills it: the scan opens a row at every claim and closes it after the send
 (`lib/reminders/cue-log-write.ts`), and a row a cut-off send left undelivered is re-sent to devices
 only, after a conditional claim on `attempts` (`lib/reminders/retry.ts`). Phase 3's APNs transport is built
 (`lib/devices/transports/apns.ts`): the iPhone app's rows are held until all four `APNS_*` env vars
-are set in Vercel, and then take the last call and the pledge notice. Read it before touching `lib/reminders/**`, `lib/devices/**`,
+are set in Vercel, and then take the last call and the pledge notice. PR-3c's background wake is built
+too (migration 076, `lib/devices/wake.ts`): a change to an item with a reminder stamps the user's apns
+rows, and the tick sends each phone at most one silent push per 30 minutes so it re-plans. Read it before touching `lib/reminders/**`, `lib/devices/**`,
 `lib/sw/**`, `lib/push-send.ts`, `app/api/cron/**`, `/api/reminders/**`, `/api/devices/**`,
 `push_subscriptions`, or notification code in `electron/` or `ios/`.

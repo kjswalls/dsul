@@ -586,6 +586,14 @@ a delete, a reset or a chip.
      With dsul's notifications off in the phone's Settings: "Notifications for
      dsul are off in this iPhone's Settings, so this won't ring here." and
      neither of the first two.
+   - Push (a build with the APNs token, and migration 076 applied): give a
+     habit a reminder 15 minutes away, send dsul to the background (don't
+     force-quit it), and tick the habit on the web. Within about five
+     minutes the phone re-plans in the background, and the cue does not ring.
+     A force-quit app gets no wake: it re-plans when opened.
+   - Push: with the last call on and one habit still open, the last call
+     arrives from the server. Its Done ticks the habit (check on the web) and
+     its Snooze rings it again in 15 minutes.
    - Signed in, on a habit of your own with a reminder and cue words: open its
      Remind sheet on the phone and leave it up. On the web, change its cue
      words. Without refreshing the phone (leave the app in the foreground, so

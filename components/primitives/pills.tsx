@@ -1,9 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Bot, Flame, Loader2 } from 'lucide-react';
+import { Flame } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { agentStatusView, hasAgentState } from '@/lib/agent-status';
+import { agentStatusView, hasAgentState, type AgentStatusView } from '@/lib/agent-status';
+import { assigneeLabel } from '@/lib/chat-utils';
 import { streakRunText } from '@/lib/item-edit';
 import type { Priority, RepeatFrequency } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
@@ -767,42 +768,49 @@ function AgentClock({
 
   return (
     <RailTooltip label="Agent" detail={view.detail}>
-      <span
-        data-testid="item-agent-status"
-        data-agent-state={item.aiStatus}
-        data-agent-stalled={view.stalled || undefined}
-        className={cn(
-          'flex flex-shrink-0 items-center gap-1 text-[10px] font-medium',
-          // Honey is reserved for the ONE state that wants something from the
-          // user. Everything else is the agent's business and stays muted —
-          // a row that shouts about work proceeding normally is a row that
-          // teaches you to stop reading it.
-          // Honey for the one state that wants something from the user, and
-          // for a run that has stopped — because that one now wants something
-          // too. Everything else is progress they are free to ignore.
-          view.needsUser || view.stalled ? 'text-warning-text' : 'text-muted-foreground/70',
-          className
-        )}
-      >
-        {view.stalled ? (
-          // No spinner on a run that has stopped — a spinner is a claim that
-          // something is happening, and this is the row saying it is not.
-          <Bot aria-hidden className="size-3 flex-shrink-0" />
-        ) : view.active ? (
-          <Loader2
-            aria-hidden
-            className={cn('size-3 flex-shrink-0', item.aiStatus === 'working' && 'animate-spin')}
-          />
-        ) : (
-          <Bot aria-hidden className="size-3 flex-shrink-0" />
-        )}
-        <span>{view.label}</span>
-        {view.elapsed && view.elapsed !== 'just now' && (
-          <span className="tabular-nums opacity-70">{view.elapsed}</span>
-        )}
-        {/* The tooltip never fires on touch and never reaches a screen reader. */}
-        <span className="sr-only">{view.detail}</span>
-      </span>
+      <AgentChip item={item} view={view} className={className} />
     </RailTooltip>
+  );
+}
+
+/**
+ * The chip itself, lit like the Ask key (globals.css `[data-agent-chip]`): the
+ * light runs round the rim while the agent works, and the whole rim lights and
+ * breathes when it asks something. Shared by the row (above) and the item
+ * panel's agent block, so the two never disagree about a state.
+ *
+ * A question names its asker ("Claude asks"): it is the one state that wants
+ * something from the user, and with more than one agent "Needs you" does not
+ * say who.
+ */
+export function AgentChip({
+  item,
+  view,
+  className,
+  ...rest
+}: {
+  item: { aiStatus?: string; assignee?: string };
+  view: AgentStatusView;
+  className?: string;
+  // RailTooltip clones its trigger (asChild): its ref and handlers land here.
+} & Omit<React.ComponentPropsWithRef<'span'>, 'children'>) {
+  const label = item.aiStatus === 'blocked' && item.assignee ? `${assigneeLabel(item.assignee)} asks` : view.label;
+  return (
+    <span
+      {...rest}
+      data-testid="item-agent-status"
+      data-agent-chip=""
+      data-agent-state={item.aiStatus}
+      data-agent-stalled={view.stalled || undefined}
+      className={className}
+    >
+      <span data-agent-chip-dot="" aria-hidden />
+      <span>{label}</span>
+      {view.elapsed && view.elapsed !== 'just now' && (
+        <span className="text-muted-foreground tabular-nums">{view.elapsed}</span>
+      )}
+      {/* The tooltip never fires on touch and never reaches a screen reader. */}
+      <span className="sr-only">{view.detail}</span>
+    </span>
   );
 }

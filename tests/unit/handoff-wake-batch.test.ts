@@ -51,8 +51,20 @@ describe('wakeIfHandedOff', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('wakes nothing for a take-back or an unrelated edit', () => {
+  it('wakes on a re-queue (an answer to a blocked question, Try again), so a connected app reads the answer', () => {
+    // answerAgentQuestion and Try again write no assignee. The route re-reads
+    // the row and wakes only an app, so an OpenClaw item costs one empty call.
+    wakeIfHandedOff('a', { aiStatus: 'queued' });
+    wakeIfHandedOff('b', { aiStatus: 'queued', aiResult: undefined });
+    vi.advanceTimersByTime(1000);
+    expect(bodies(APP_WAKE_PATH)).toEqual([{ itemIds: ['a', 'b'] }]);
+  });
+
+  it('wakes nothing for a take-back, an agent status that is not queued, or an unrelated edit', () => {
     wakeIfHandedOff('a', { assignee: undefined });
+    wakeIfHandedOff('a', { assignee: undefined, aiStatus: undefined });
+    wakeIfHandedOff('a', { assignee: 'openclaw', aiStatus: 'queued' });
+    wakeIfHandedOff('a', { aiStatus: 'blocked' });
     wakeIfHandedOff('a', { title: 'x' });
     vi.advanceTimersByTime(1000);
     expect(fetchMock).not.toHaveBeenCalled();

@@ -40,6 +40,7 @@ import { BugReportDialog } from '@/components/bug-report/bug-report-dialog';
 import { VacationDialog } from '@/components/planner/vacation-dialog';
 import { OneTimeNudge } from '@/components/primitives/one-time-nudge';
 import { SettleHost } from '@/components/shell/settle-host';
+import { AgentFreshnessHost } from '@/components/ai/agent-freshness-host';
 
 import { batchHistory, usePlannerStore } from '@/lib/planner-store';
 import { milestoneItemIds } from '@/lib/goals';
@@ -774,6 +775,7 @@ export function AppShell() {
           child of either shell, so a desktop⇄mobile or Zen switch mid-preview
           neither drops the landing edge nor announces it twice. */}
       <SettleHost />
+      <AgentFreshnessHost />
 
       <DragGhost />
 

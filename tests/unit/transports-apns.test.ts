@@ -6,6 +6,8 @@ import {
   APNS_MAX_PAYLOAD_BYTES,
   apnsConfig,
   apnsRequestOf,
+  apnsWakeRequest,
+  APNS_WAKE_REASON,
   createApnsTransport,
   mintProviderToken,
   outcomeOf,
@@ -228,5 +230,33 @@ describe('the transport', () => {
     expect(await transport.send(phone({ token: 'not-hex' }), lastCall)).toMatchObject({ code: 'no_token' });
     expect(await transport.send(phone({ apns_environment: null }), lastCall)).toMatchObject({ code: 'no_environment' });
     expect(post).not.toHaveBeenCalled();
+  });
+});
+
+describe('the wake', () => {
+  it('is a silent background push at priority 5, now or never', () => {
+    const { headers, body } = apnsWakeRequest('app.dsul.ios');
+    expect(headers).toEqual({
+      'apns-push-type': 'background',
+      'apns-topic': 'app.dsul.ios',
+      'apns-priority': '5',
+      // A held wake would replace a held last call: APNs keeps one per app.
+      'apns-expiration': '0',
+    });
+    expect(JSON.parse(body)).toEqual({ aps: { 'content-available': 1 }, dsul: { reason: APNS_WAKE_REASON } });
+    expect(JSON.parse(body).aps).not.toHaveProperty('alert');
+    expect(JSON.parse(body).aps).not.toHaveProperty('sound');
+  });
+
+  it('goes to the same host, path and bearer as an alert, and reads Apple the same way', async () => {
+    const post = vi.fn<ApnsPost>(async () => ({ status: 410, timestamp: Date.parse('2026-10-05T00:00:00Z') }));
+    const tokens = { get: vi.fn(() => 'jwt-1'), renew: vi.fn(() => 'jwt-2') };
+    const transport = createApnsTransport({ config: () => CONFIG, post, tokens, now: () => NOW });
+    expect(await transport.wake(phone({ apns_environment: 'sandbox' }))).toEqual({ ok: false, terminal: true, code: 'gone_410' });
+    const [origin, headers, body] = post.mock.calls[0];
+    expect(origin).toBe(APNS_HOSTS.sandbox);
+    expect(headers).toMatchObject({ ':path': `/3/device/${TOKEN}`, authorization: 'bearer jwt-1', 'apns-push-type': 'background' });
+    expect(body).toBe(apnsWakeRequest('app.dsul.ios').body);
+    expect(await transport.wake(phone({ token: null }))).toMatchObject({ code: 'no_token' });
   });
 });

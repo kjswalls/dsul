@@ -19,6 +19,10 @@ import { useConversationReceipts } from '@/lib/chat-receipts';
 import { useAICapabilities } from '@/lib/ai-connection-store';
 import type { Item } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
+import { AgentExchangeView, AgentRouteLine } from '@/components/ai/agent-exchange';
+import { useBoxAnswersAgent } from '@/lib/agent-question';
+import { useAgentExchange } from '@/hooks/use-agent-exchange';
+import { usePlannerStore } from '@/lib/planner-store';
 
 /** One empty transcript, so a selector for an item nobody has chatted about is stable. */
 const NO_MESSAGES: ChatMessage[] = [];
@@ -90,6 +94,11 @@ export function ItemConversation({
   className?: string;
 }) {
   const threadId = useConversationsStore((s) => itemThreadId(s, item.id));
+  // The agent's side of the item (components/ai/agent-exchange.tsx), read
+  // live: an agent's question or result moves the store, not this prop.
+  const live = usePlannerStore((s) => s.items.find((i) => i.id === item.id)) ?? item;
+  const exchange = useAgentExchange(live as Parameters<typeof useAgentExchange>[0]);
+  const answeringAgent = useBoxAnswersAgent(item.id);
   const messages = useConversationsStore((s) => (threadId ? s.threads[threadId]?.messages : undefined) ?? NO_MESSAGES);
   const isTyping = useConversationsStore((s) => !!(threadId && s.threads[threadId]?.typing));
   const saved = useConversationsStore((s) => !!(threadId && s.summaries[threadId]));
@@ -174,8 +183,10 @@ export function ItemConversation({
   // gated by this.
   if (!canChat) return null;
 
+  const agentSide = exchange && <AgentExchangeView item={live} exchange={exchange} />;
+
   if (!inline) {
-    if (messages.length === 0) return null;
+    if (messages.length === 0 && !exchange) return null;
     return (
       <div ref={listRef} data-testid="item-conversation" className={cn('flex flex-col gap-3', className)}>
         <div className="flex min-h-6 items-center justify-between gap-2">
@@ -183,13 +194,14 @@ export function ItemConversation({
           {saved && threadId && <ItemConversationMenu id={threadId} />}
         </div>
         {gone && <GoneNotice />}
+        {agentSide}
         <TranscriptMessages messages={messages} typing={isTyping} busy={isLoading} retryVia={retryVia} receipts={receipts} />
         <ReplyStatus messages={messages} />
       </div>
     );
   }
 
-  const placeholder = itemChatPlaceholder(target);
+  const placeholder = answeringAgent ? `Answer ${answeringAgent}…` : itemChatPlaceholder(target);
 
   return (
     <div className={cn('flex min-h-0 flex-col gap-1.5', className)} data-testid="item-thread">
@@ -199,8 +211,9 @@ export function ItemConversation({
         {saved && threadId && <ItemConversationMenu id={threadId} fallbackFocus={() => inputRef.current?.focus()} />}
       </div>
       {gone && <GoneNotice />}
-      {messages.length > 0 && (
+      {(messages.length > 0 || exchange) && (
         <div ref={listRef} className="flex max-h-64 min-h-0 flex-col gap-3 overflow-y-auto pr-1">
+          {agentSide}
           <TranscriptMessages messages={messages} typing={isTyping} busy={isLoading} retryVia={retryVia} receipts={receipts} />
         </div>
       )}
@@ -231,6 +244,7 @@ export function ItemConversation({
           <ArrowUp className="size-3.5" />
         </Button>
       </div>
+      <AgentRouteLine itemId={item.id} />
     </div>
   );
 }

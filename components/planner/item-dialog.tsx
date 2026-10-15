@@ -3722,6 +3722,7 @@ function ItemDialogInner({
                   // The pinned conversation is drawn below the fold instead, so
                   // folding the details leaves the chat on screen.
                   conversation={foldable ? 'none' : conversation}
+                  conversationElsewhere={foldable}
                   offerSetup
                 />
               )}

@@ -187,3 +187,18 @@ node scripts/apple-client-secret.mjs --team <Team ID> --key-id <Key ID> \
 Nothing is sent anywhere, and the .p8 never belongs in the repo. The full setup and
 rotation are in `memory/plans/sign-in-with-apple.md`;
 `tests/unit/apple-client-secret.test.ts` checks the claims and the signature.
+
+## `apple-secret-rotate.mjs`
+
+The unattended version of the above, run every other month by
+`.github/workflows/apple-secret-rotate.yml`. It mints a secret, has Apple confirm it,
+checks Supabase's Apple provider is the expected one, then writes only
+`external_apple_secret` through the Management API. Any failed check writes nothing.
+
+```bash
+APPLE_TEAM_ID=… APPLE_KEY_ID=… APPLE_PRIVATE_KEY="$(cat AuthKey_….p8)" \
+  SUPABASE_ACCESS_TOKEN=… node scripts/apple-secret-rotate.mjs --dry-run
+```
+
+`--dry-run` does every check and writes nothing. `tests/unit/apple-secret-rotate.test.ts`
+locks the checks that stand before the write.

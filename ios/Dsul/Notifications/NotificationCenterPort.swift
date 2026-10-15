@@ -31,6 +31,27 @@ enum NotificationKeys {
     static let prefix = "dsul-"
 
     static func isDsul(_ id: String) -> Bool { id.hasPrefix(prefix) }
+
+    /// A pushed notification (the server's last call) is dsul's when it is
+    /// about one item: whether iOS gives it the push's `apns-collapse-id` as
+    /// its identifier is not documented, so it is never relied on. One
+    /// without an itemId (a last call naming several habits) keeps its own
+    /// identifier and is only ever opened.
+    static func identity(of id: String, pushed: Bool, userInfo: [String: String]) -> String {
+        guard pushed, !isDsul(id), let itemId = userInfo["itemId"], UUID(uuidString: itemId) != nil else { return id }
+        return "\(prefix)push-\(id)"
+    }
+
+    /// The silent wake's payload key and reason (lib/devices/transports/apns.ts
+    /// `apnsWakeRequest`): `{"aps":{"content-available":1},"dsul":{"reason":"items"}}`.
+    static let wakeKey = "dsul"
+    static let wakeReason = "items"
+
+    /// Is this remote notification the server's wake: an item changed
+    /// elsewhere, so fetch the planner and re-plan.
+    static func isWake(_ userInfo: [AnyHashable: Any]) -> Bool {
+        (userInfo[wakeKey] as? [String: Any])?["reason"] as? String == wakeReason
+    }
 }
 
 /// Whether this iPhone lets dsul notify. `provisional` and `ephemeral` are

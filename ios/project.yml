@@ -42,10 +42,12 @@ targets:
               - app.dsul.ios
         # Phase 2c (memory/plans/reminders-platforms.md §5.3): a background
         # refresh re-plans the iPhone's notifications while dsul isn't
-        # opened (BackgroundRefresh.swift). No `remote-notification` until the
-        # background wake (Phase 3c); CI stays unsigned.
+        # opened (BackgroundRefresh.swift). `remote-notification` is the
+        # server's silent wake (PR-3c, AppDelegate): the same re-plan, sent
+        # when an item changed on another device. CI stays unsigned.
         UIBackgroundModes:
           - fetch
+          - remote-notification
         BGTaskSchedulerPermittedIdentifiers:
           - app.dsul.ios.reconcile
         UTExportedTypeDeclarations:

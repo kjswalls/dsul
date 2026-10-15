@@ -5,7 +5,9 @@
  * What reaches a phone this way is what its own triggers do not cover: the
  * last call and the pledge notice. Cues, snoozes and the review are armed on
  * the phone itself (`delivery 'local'`), and selectDevices() holds those
- * kinds back before a send ever gets here.
+ * kinds back before a send ever gets here. The one other thing it sends is a
+ * silent wake (`wake()`, lib/devices/wake.ts), which tells the phone to
+ * re-plan those triggers after an item changed somewhere else.
  *
  * Five rules, each from Apple's documentation or from the way the obvious
  * version goes wrong:
@@ -280,35 +282,77 @@ export interface ApnsDeps {
   now: () => number
 }
 
+/** What a send needs of a row: its token, its host, and when it was registered. */
+export type ApnsTarget = Pick<DeviceRow, 'token' | 'apns_environment' | 'registered_at'>
+
+/** What a wake carries for the app: why it was sent (ios AppDelegate reads `dsul.reason`). */
+export const APNS_WAKE_REASON = 'items'
+
+/**
+ * The background wake (PR-3c): no alert, no sound, only `content-available`,
+ * so iOS launches the app in the background to fetch and re-plan
+ * (lib/devices/wake.ts sends it).
+ *
+ *   · `apns-push-type: background` at priority 5: Apple refuses 10 for a push
+ *     with no alert.
+ *   · `apns-expiration: 0`, now or never. APNs holds ONE notification per app
+ *     for a phone that is off, and a held wake would replace a held last call.
+ *     A phone that missed its wake re-plans when it is next opened anyway.
+ */
+export function apnsWakeRequest(bundleId: string): ApnsRequest {
+  return {
+    headers: {
+      'apns-push-type': 'background',
+      'apns-topic': bundleId,
+      'apns-priority': '5',
+      'apns-expiration': '0',
+    },
+    body: JSON.stringify({ aps: { 'content-available': 1 }, dsul: { reason: APNS_WAKE_REASON } }),
+  }
+}
+
 export function createApnsTransport(deps: ApnsDeps) {
+  /** One request to one row: the checks every send makes, the one re-mint, Apple's answer as an outcome. */
+  async function deliver(
+    device: ApnsTarget,
+    build: (config: ApnsConfig, nowMs: number) => ApnsRequest | null,
+  ): Promise<TransportOutcome> {
+    const config = deps.config()
+    if (!config) return { ok: false, terminal: false, code: 'not_configured' }
+    if (!device.token || !APNS_TOKEN.test(device.token)) return { ok: false, terminal: false, code: 'no_token' }
+    const env = device.apns_environment
+    if (env !== 'production' && env !== 'sandbox') return { ok: false, terminal: false, code: 'no_environment' }
+
+    const nowMs = deps.now()
+    const request = build(config, nowMs)
+    if (!request) return { ok: false, terminal: false, code: 'payload_too_large' }
+    const origin = APNS_HOSTS[env]
+    const path = `/3/device/${device.token.toLowerCase()}`
+
+    const attempt = async (token: string) =>
+      deps.post(origin, { ':path': path, authorization: `bearer ${token}`, ...request.headers }, request.body)
+
+    try {
+      let res = await attempt(deps.tokens.get(config, nowMs))
+      if (res.status === 403 && res.reason === 'ExpiredProviderToken') {
+        res = await attempt(deps.tokens.renew(config, nowMs))
+      }
+      return outcomeOf(res, device.registered_at)
+    } catch {
+      return { ok: false, terminal: false, code: 'network' }
+    }
+  }
+
   return {
     available: () => deps.config() !== null,
 
-    async send(device: DeviceRow, message: DeviceMessage): Promise<TransportOutcome> {
-      const config = deps.config()
-      if (!config) return { ok: false, terminal: false, code: 'not_configured' }
-      if (!device.token || !APNS_TOKEN.test(device.token)) return { ok: false, terminal: false, code: 'no_token' }
-      const env = device.apns_environment
-      if (env !== 'production' && env !== 'sandbox') return { ok: false, terminal: false, code: 'no_environment' }
+    send(device: DeviceRow, message: DeviceMessage): Promise<TransportOutcome> {
+      return deliver(device, (config, nowMs) => apnsRequestOf(message.payload, nowMs, config.bundleId))
+    },
 
-      const nowMs = deps.now()
-      const request = apnsRequestOf(message.payload, nowMs, config.bundleId)
-      if (!request) return { ok: false, terminal: false, code: 'payload_too_large' }
-      const origin = APNS_HOSTS[env]
-      const path = `/3/device/${device.token.toLowerCase()}`
-
-      const attempt = async (token: string) =>
-        deps.post(origin, { ':path': path, authorization: `bearer ${token}`, ...request.headers }, request.body)
-
-      try {
-        let res = await attempt(deps.tokens.get(config, nowMs))
-        if (res.status === 403 && res.reason === 'ExpiredProviderToken') {
-          res = await attempt(deps.tokens.renew(config, nowMs))
-        }
-        return outcomeOf(res, device.registered_at)
-      } catch {
-        return { ok: false, terminal: false, code: 'network' }
-      }
+    /** The silent wake: the phone fetches its planner and re-plans its own triggers. */
+    wake(device: ApnsTarget): Promise<TransportOutcome> {
+      return deliver(device, (config) => apnsWakeRequest(config.bundleId))
     },
   }
 }
