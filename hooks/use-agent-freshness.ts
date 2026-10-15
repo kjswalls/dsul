@@ -64,3 +64,42 @@ export function useAgentFreshness(active: boolean): void {
     };
   }, [active]);
 }
+
+/** An agent still owes this item something: its next status, or your answer's pickup. */
+const IN_FLIGHT = new Set(['queued', 'working', 'blocked']);
+
+/**
+ * The planner's own freshness, beside Ask home's: while any item is with an
+ * agent and not finished, read the agent columns on mount, on focus, on the tab
+ * becoming visible, and once a minute while the tab shows.
+ *
+ * Without it the agent's writes reached the planner only through Ask home, so
+ * an item handed to Claude kept saying "queued" on its row and in its panel
+ * (no question, no answer box) until Ask was opened, while the panel's
+ * timeline, which reads item_events itself, already showed the question.
+ * The same throttle as Ask home's, so the two never double a read; quiet, and
+ * reading nothing, while nothing is delegated.
+ */
+export function useDelegatedFreshness(): void {
+  const inFlight = usePlannerStore((s) =>
+    s.items.some((item) => {
+      const held = item as { assignee?: string; aiStatus?: string };
+      return !!held.assignee && IN_FLIGHT.has(held.aiStatus ?? '');
+    })
+  );
+  useEffect(() => {
+    if (!inFlight) return;
+    void refreshAgentFreshness();
+    const tick = () => {
+      if (document.visibilityState === 'visible') void refreshAgentFreshness();
+    };
+    const timer = setInterval(tick, AGENT_FRESHNESS_MS);
+    window.addEventListener('focus', tick);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', tick);
+      document.removeEventListener('visibilitychange', tick);
+    };
+  }, [inFlight]);
+}

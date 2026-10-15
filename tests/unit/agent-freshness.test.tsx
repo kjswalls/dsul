@@ -62,6 +62,7 @@ import {
   refreshAgentFreshness,
   resetAgentFreshness,
   useAgentFreshness,
+  useDelegatedFreshness,
 } from '@/hooks/use-agent-freshness';
 import * as db from '@/lib/db';
 import type { AgentStateRow } from '@/lib/db';
@@ -282,5 +283,40 @@ describe('useAgentFreshness', () => {
     resetAgentFreshness();
     window.dispatchEvent(new Event('focus'));
     expect(db.fetchAgentStates).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('useDelegatedFreshness', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    resetAgentFreshness();
+  });
+
+  it('keeps an in-flight hand-off current with Ask closed: on mount, then once a minute', () => {
+    // The dentist bug: Claude asked, and the item panel kept saying "queued"
+    // until Ask home was opened, the only reader of the agent columns.
+    vi.useFakeTimers();
+    resetAgentFreshness();
+    const { unmount } = renderHook(() => useDelegatedFreshness());
+    expect(db.fetchAgentStates).toHaveBeenCalledTimes(1);
+
+    act(() => void vi.advanceTimersByTime(AGENT_FRESHNESS_MS));
+    expect(db.fetchAgentStates).toHaveBeenCalledTimes(2);
+
+    unmount();
+    act(() => void vi.advanceTimersByTime(AGENT_FRESHNESS_MS * 3));
+    expect(db.fetchAgentStates).toHaveBeenCalledTimes(2);
+  });
+
+  it('reads nothing while nothing is with an agent', () => {
+    vi.useFakeTimers();
+    act(() => {
+      usePlannerStore.setState({ items: store().items.filter((i) => i.id !== 'run') });
+    });
+    resetAgentFreshness();
+    renderHook(() => useDelegatedFreshness());
+    act(() => void vi.advanceTimersByTime(AGENT_FRESHNESS_MS * 3));
+    window.dispatchEvent(new Event('focus'));
+    expect(db.fetchAgentStates).not.toHaveBeenCalled();
   });
 });
