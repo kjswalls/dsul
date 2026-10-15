@@ -425,8 +425,7 @@ the AI-off card's "{name} is still paired · … Unpair it to stop that." row, b
 confirm (`useUnpair`, `components/settings/disconnect.ts`). It is `DELETE /api/ai/openclaw`
 (session and same origin, `app/api/ai/openclaw/route.ts`) running `unpairOpenClaw`
 (`lib/ai-server/connections.ts`) in this order: every `plugin_registrations` row
-(`deregisterAllPlugins`), `openclaw_chat_url` and `openclaw_agent_id`, any authorized
-`connect_sessions` row still holding a copy of the key (expired, key nulled), the agent key
+(`deregisterAllPlugins`), `openclaw_agent_id`, every live Connect key named OpenClaw, the agent key
 itself (`clearAgentKey`, `lib/supabase-service.ts`, in either column before 059), then the
 registrations once more. The key goes last because it is what reads as paired: a failure part
 way answers 503 with the Unpair button still on screen, and every step is idempotent. The

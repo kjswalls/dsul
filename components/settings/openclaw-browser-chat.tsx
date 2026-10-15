@@ -25,6 +25,7 @@ import {
   removeCommand,
 } from '@/lib/openclaw-browser-copy';
 import { useOpenClawBrowserStore } from '@/lib/openclaw-browser-store';
+import { thisBrowserName } from '@/lib/openclaw-browser/device-name';
 import { cn } from '@/lib/utils';
 import { StatusPill } from './status-pill';
 
@@ -89,8 +90,9 @@ export function OpenClawBrowserChat() {
         </StatusPill>
       </div>
       <CapabilityList />
-      <p className="text-muted-foreground text-xs">
-        To take it off your gateway as well, run <Code>{removeCommand(paired.deviceId)}</Code>.
+      <p className="text-muted-foreground text-xs" data-testid="openclaw-browser-listed-as">
+        OpenClaw lists it as “{thisBrowserName()}”. To take it off your gateway as well, run{' '}
+        <Code>{removeCommand(paired.deviceId)}</Code>.
       </p>
       <div>
         <button
@@ -338,7 +340,8 @@ function SetupDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (ope
             />
             <p className="text-muted-foreground text-xs">
               It asks for read and write access, which is what the first step described, and never admin. Or approve it
-              under Devices in OpenClaw’s Control UI. This moves on by itself.
+              under Devices in OpenClaw’s Control UI, where it is listed as “{thisBrowserName()}”. This moves on by
+              itself.
             </p>
             <ResponsiveModalFooter>
               <button

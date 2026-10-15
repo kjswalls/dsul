@@ -127,7 +127,6 @@ beforeEach(() => {
   keys.create = 'ok';
   db.current = {
     settings: {
-      openclaw_chat_url: 'https://claw.example/plugins/dsul/chat',
       openclaw_agent_id: 'atlas',
       openclaw_gateway_url: null,
       openclaw_api_key: null,
@@ -159,7 +158,6 @@ describe('DELETE /api/ai/openclaw', () => {
     expect(steps()).toEqual([
       'plugin_registrations.delete',
       'user_settings.update',
-      'connect_sessions.update',
       'user_secrets.update',
       'plugin_registrations.delete',
     ]);
@@ -169,25 +167,15 @@ describe('DELETE /api/ai/openclaw', () => {
     });
   });
 
-  it('clears the chat URL and agent id, and never touches the gateway', async () => {
+  it('clears the agent id, and never touches the gateway', async () => {
     db.current.settings!.openclaw_gateway_url = 'https://gw.example';
     db.current.secrets!.openclaw_gateway_token = 'gw-token';
     const res = await call();
     const settings = writes().find((w) => w.table === 'user_settings')!;
-    expect(settings.values).toEqual({ openclaw_chat_url: null, openclaw_agent_id: null });
+    expect(settings.values).toEqual({ openclaw_agent_id: null });
     const secrets = writes().find((w) => w.table === 'user_secrets')!;
     expect(secrets.values).toEqual({ openclaw_api_key: null });
     expect((await res.json()).openclaw).toEqual({ gateway: true, agent: false, agentId: null, connect: { connected: false, lastSeenAt: null } });
-  });
-
-  it('expires only authorized device sessions, and drops their copy of the key', async () => {
-    await call();
-    const sessions = writes().find((w) => w.table === 'connect_sessions')!;
-    expect(sessions.values).toEqual({ status: 'expired', api_key: null });
-    expect(sessions.filters).toEqual([
-      ['user_id', 'user-1'],
-      ['status', 'authorized'],
-    ]);
   });
 
   it('before 059, clears the key where it still lives', async () => {
@@ -198,12 +186,11 @@ describe('DELETE /api/ai/openclaw', () => {
     expect(steps()).toEqual([
       'plugin_registrations.delete',
       'user_settings.update',
-      'connect_sessions.update',
       'user_secrets.update',
       'user_settings.update',
       'plugin_registrations.delete',
     ]);
-    expect(writes()[4].values).toEqual({ openclaw_api_key: null });
+    expect(writes()[3].values).toEqual({ openclaw_api_key: null });
   });
 
   it('nothing paired answers the same 200, every time', async () => {
@@ -218,8 +205,7 @@ describe('DELETE /api/ai/openclaw', () => {
 
   it.each([
     ['the webhooks', () => void registry.ok.push(false), 'registry'],
-    ['the chat URL', () => void (db.current.errors['user_settings.update'] = { code: 'PGRST301' }), 'PGRST301'],
-    ['the device sessions', () => void (db.current.errors['connect_sessions.update'] = { code: '57014' }), '57014'],
+    ['the agent id', () => void (db.current.errors['user_settings.update'] = { code: 'PGRST301' }), 'PGRST301'],
   ])('a failure at %s answers 503 and leaves the key, so Unpair stays', async (_step, arrange, code) => {
     arrange();
     const res = await call();
@@ -356,7 +342,7 @@ describe('readOpenClawStatus, with a Connect key', () => {
   it('reads as paired with no plugin key, and says when OpenClaw last used it', async () => {
     const { readOpenClawStatus } = await import('@/lib/ai-server/connections');
     db.current.secrets = { openclaw_api_key: null, openclaw_gateway_token: null };
-    db.current.settings = { openclaw_chat_url: null, openclaw_agent_id: null, openclaw_gateway_url: null, openclaw_api_key: null };
+    db.current.settings = { openclaw_agent_id: null, openclaw_gateway_url: null, openclaw_api_key: null };
     keys.live = [
       { id: 'k1', name: 'OpenClaw', scope: 'planner', createdAt: '2026-10-14T00:00:00Z', lastUsedAt: '2026-10-14T11:50:00Z' },
       { id: 'k2', name: 'Claude', scope: 'planner', createdAt: '2026-10-14T00:00:00Z', lastUsedAt: '2026-10-14T11:59:00Z' },
