@@ -100,6 +100,19 @@ describe('what it asks the gateway for', () => {
   });
 });
 
+describe('how the gateway lists it', () => {
+  it('names this browser, and keeps the pinned id and platform', () => {
+    new GatewayLink({ userId: 'u1', url: 'wss://claw.example', displayName: 'dsul · Firefox on Linux' }).start();
+    const opts = fake.instances.at(-1)!.opts as unknown as { buildConnectParams: (p: object) => { client: Record<string, string> } };
+    expect(opts.buildConnectParams({}).client).toMatchObject({
+      id: 'webchat',
+      mode: 'webchat',
+      platform: 'web',
+      displayName: 'dsul · Firefox on Linux',
+    });
+  });
+});
+
 describe('refusalFor', () => {
   it('reads the gateway codes the way the person needs them', () => {
     expect(refusalFor('PAIRING_REQUIRED', true)).toBe('pairing');

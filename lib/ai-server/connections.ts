@@ -507,20 +507,17 @@ async function readConnectKey(
 
 /**
  * Unpair: take back the access OpenClaw was given, by Connect or by the
- * retired plugin's device authorization (whose leftovers, steps 2 and 3,
- * are still swept for accounts paired that way). Idempotent, so a failure
- * part way is fixed by asking again.
+ * retired plugin. Idempotent, so a failure part way is fixed by asking again.
+ * (The plugin's chat URL and device sessions went with migration 077.)
  *
  *   1. Every webhook registration: dsul stops sending item changes.
- *   2. The chat URL and agent id the plugin registered.
- *   3. Any authorized device session still holding a copy of the key, so a
- *      late poll can't hand it out.
- *   4. The Connect key, if OpenClaw was connected without the plugin
+ *   2. The agent id the plugin registered.
+ *   3. The Connect key, if OpenClaw was connected without the plugin
  *      (app/api/ai/openclaw POST): every live agent key named OpenClaw.
- *   5. The agent key itself (`clearAgentKey`, either column before 059):
+ *   4. The agent key itself (`clearAgentKey`, either column before 059):
  *      /api/agent/*, /api/mcp and the context route stop answering it.
- *   6. The registrations once more: a plugin that registered between 1 and 5
- *      did it with the key 5 just deleted, and none can follow.
+ *   5. The registrations once more: a plugin that registered between 1 and 4
+ *      did it with the key 4 just deleted, and none can follow.
  *
  * The key goes LAST because it is what makes OpenClaw read as paired: a
  * failure before it leaves the Unpair button on screen to try again.
@@ -537,16 +534,9 @@ export async function unpairOpenClaw(userId: string): Promise<void> {
 
   const settings = await svc
     .from('user_settings')
-    .update({ openclaw_chat_url: null, openclaw_agent_id: null })
+    .update({ openclaw_agent_id: null })
     .eq('user_id', userId);
   if (settings.error && !isNoSchema(settings.error)) fail(codeOf(settings.error));
-
-  const sessions = await svc
-    .from('connect_sessions')
-    .update({ status: 'expired', api_key: null })
-    .eq('user_id', userId)
-    .eq('status', 'authorized');
-  if (sessions.error && !isNoSchema(sessions.error)) fail(codeOf(sessions.error));
 
   // The Connect key (a live agent key named OpenClaw), the plugin-free way to
   // pair: revoked before the plugin's key, which keeps its place as the last.

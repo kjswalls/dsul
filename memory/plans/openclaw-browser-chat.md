@@ -57,6 +57,15 @@ Approving makes OpenClaw the answerer on this browser (`chooseChatTarget('opencl
 - `openclaw devices remove <id>` closes the socket at once and is read the same way.
 - From an https page a plain `ws://` socket only reaches loopback (mixed content), so setup asks for `wss://`.
 
+## How OpenClaw lists a paired browser
+
+The connect frame's `client.displayName` is this browser's own name, "dsul · Chrome on macOS" and the like
+(`lib/openclaw-browser/device-name.ts`, from the user agent, never stored), so `openclaw devices list` and Devices in
+the Control UI can tell two paired browsers apart. The gateway stores it as display metadata and refreshes it on
+every connect; it pins only `platform` and `deviceFamily`, so the name can change (a browser update) without asking
+for approval again. `id`, `mode` and `platform: 'web'` stay fixed. Settings shows the name on the paired card and in
+setup's approve step.
+
 ## The plugin, retired (2026-10-15)
 
 Removed with it: `openclaw-plugin/`, the `'plugin'` transport and `openclaw.pluginChat` on the gate, the
@@ -64,13 +73,14 @@ Removed with it: `openclaw-plugin/`, the `'plugin'` transport and `openclaw.plug
 `/connect` page, `/api/agent/connect/{init,authorize,poll}`, `GET /api/openclaw/status`). OpenClaw now answers in Ask
 from this browser's pairing or through dsul's server gateway (Advanced), and pairs for hand-offs through Connect.
 
+Migration 077 then dropped `connect_sessions` (017) and `user_settings.openclaw_chat_url` (004): Kirby was the only
+account that used them (2026-10-15). Apply it only after the code that stopped writing them is live.
+
 Kept on purpose:
-- `connect_sessions` (017) and `user_settings.openclaw_chat_url` stay as ballast; dropping them is a prod write.
-  Unpair still sweeps both, so an account paired the old way unpairs cleanly.
 - An older plugin pairing's key in `user_secrets.openclaw_api_key` still counts as paired and still works on the
   agent API, MCP and `/api/agent/events`, until the person unpairs.
-- `POST /api/agent/register` (webhooks) still accepts `chatUrl`, so an older install keeps registering; nothing
-  reads it.
+- `POST /api/agent/register` (webhooks) still accepts `chatUrl`, so an older install keeps registering; the URL is
+  dropped and only its `agentId` is stored.
 - The `plugin_*` error codes and their copy stay in `lib/chat-errors.ts`, since saved turns may carry them.
 
 ## Not done here

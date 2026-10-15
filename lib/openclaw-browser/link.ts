@@ -6,6 +6,7 @@ import {
   type GatewayBrowserDeviceIdentity,
 } from '@openclaw/gateway-client/browser';
 import { readDevice, updateDevice } from './device-store';
+import { thisBrowserName } from './device-name';
 
 /**
  * One browser's connection to the user's OpenClaw gateway: the documented
@@ -31,14 +32,20 @@ import { readDevice, updateDevice } from './device-store';
  * words (components/settings/openclaw-browser-chat.tsx).
  */
 
-/** OpenClaw's own browser chat identity. Kept stable: a change asks for re-approval. */
-const CLIENT = Object.freeze({
-  id: 'webchat',
-  mode: 'webchat',
-  displayName: 'dsul',
-  version: '1',
-  platform: 'web',
-});
+/**
+ * OpenClaw's own browser chat identity. The id, mode and platform stay fixed:
+ * the gateway pins the platform, so changing it asks for approval again. The
+ * display name is this browser's own (lib/openclaw-browser/device-name.ts), so
+ * OpenClaw's device list can tell two paired browsers apart.
+ */
+const clientFor = (displayName: string) =>
+  Object.freeze({
+    id: 'webchat',
+    mode: 'webchat',
+    displayName,
+    version: '1',
+    platform: 'web',
+  });
 
 /**
  * What dsul asks for. Never `operator.admin`, `operator.pairing` or
@@ -158,6 +165,8 @@ export interface LinkOptions {
   /** Setup only: the gateway's shared token, used until the first approved connect. */
   sharedToken?: string;
   onStatus?: (status: LinkStatus) => void;
+  /** How OpenClaw's device list names this browser. Defaults to `thisBrowserName()`. */
+  displayName?: string;
 }
 
 export class GatewayLink {
@@ -165,6 +174,7 @@ export class GatewayLink {
   readonly url: string;
   private sharedToken: string | undefined;
   private readonly onStatus: (status: LinkStatus) => void;
+  private readonly identity: ReturnType<typeof clientFor>;
   private client: GatewayProtocolClient<GatewayBrowserDeviceAuthPlan> | null = null;
   private current: LinkStatus = { kind: 'connecting' };
   private readonly waiters = new Set<() => void>();
@@ -175,6 +185,7 @@ export class GatewayLink {
     this.url = opts.url;
     this.sharedToken = opts.sharedToken || undefined;
     this.onStatus = opts.onStatus ?? (() => {});
+    this.identity = clientFor(opts.displayName ?? thisBrowserName());
   }
 
   get status(): LinkStatus {
@@ -229,7 +240,7 @@ export class GatewayLink {
       reconnect: { initialMs: 1_000, multiplier: 2, maxMs: 30_000 },
       buildConnectPlan: ({ nonce, challengeTs }) =>
         lifecycle.buildPlan({
-          client: CLIENT as never,
+          client: this.identity as never,
           role: ROLE,
           defaultScopes: BROWSER_SCOPES,
           token: this.sharedToken,
@@ -239,7 +250,7 @@ export class GatewayLink {
       buildConnectParams: (plan) => ({
         minProtocol: PROTOCOL,
         maxProtocol: PROTOCOL,
-        client: CLIENT,
+        client: this.identity,
         role: plan.role,
         scopes: plan.scopes,
         caps: [],

@@ -8,9 +8,10 @@ import { assertSafeOutboundUrl } from '@/lib/openclaw-gateway'
  *
  * Called on OpenClaw plugin startup. Registers the plugin's webhook URL so
  * dsul pushes change events when data mutates. Also accepts optional chatUrl,
- * which the retired plugin registered for its chat in Ask. It is still stored
- * (with agentId, which every OpenClaw chat path reads) so an older install
- * keeps registering cleanly, but nothing reads the URL any more.
+ * which the retired plugin registered for its chat in Ask. The URL itself is
+ * dropped (its column went in migration 077); only the agentId that comes
+ * with it is stored, which every OpenClaw chat path reads, so an older
+ * install keeps registering cleanly.
  *
  * Auth: Bearer <openclaw_api_key>  — userId resolved from the key automatically.
  *
@@ -60,23 +61,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Provide webhookUrl+events or chatUrl' }, { status: 400 })
   }
 
-  // Persist chat URL + agent on user_settings.
+  // A chat registration stores only its agent; the URL has nowhere to go.
   if (hasChatUrl) {
     const service = createServiceClient()
     const { error: upsertError } = await service.from('user_settings').upsert(
       {
         user_id: userId,
-        openclaw_chat_url: chatUrl,
         openclaw_agent_id: typeof agentId === 'string' && agentId.trim() ? agentId.trim() : 'main',
       },
       { onConflict: 'user_id' }
     )
     if (upsertError) {
-      console.error(`[agent/register] Failed to store chatUrl for user ${userId}:`, upsertError.message)
+      console.error(`[agent/register] Failed to store agentId for user ${userId}:`, upsertError.message)
       return NextResponse.json({ error: upsertError.message }, { status: 500 })
     }
 
-    console.log(`[agent/register] chatUrl stored for user ${userId} → ${chatUrl}`)
+    console.log(`[agent/register] agentId stored for user ${userId}`)
   }
 
   // Register webhook if provided

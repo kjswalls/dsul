@@ -764,7 +764,7 @@ describe('readOpenClawStatus', () => {
 
   it('reports booleans and the agent id, never a key or URL', async () => {
     respondWith(
-      { openclaw_gateway_url: 'https://gw.example', openclaw_agent_id: 'kirby-1', openclaw_api_key: 'dsul_SENTINEL', openclaw_chat_url: 'https://gw.example/chat' },
+      { openclaw_gateway_url: 'https://gw.example', openclaw_agent_id: 'kirby-1', openclaw_api_key: 'dsul_SENTINEL' },
       { openclaw_gateway_token: 'tok_SENTINEL' }
     );
     const status = await readOpenClawStatus(USER);
@@ -774,15 +774,15 @@ describe('readOpenClawStatus', () => {
     for (const c of mock.state.calls) expect(c.ops).toContainEqual(['eq', ['user_id', USER]]);
   });
 
-  it('a gateway needs both the URL and the token; plugin chat needs both the key and the chat URL', async () => {
-    respondWith({ openclaw_gateway_url: 'https://gw.example', openclaw_api_key: 'k', openclaw_chat_url: '' }, null);
+  it('a gateway needs both the URL and the token', async () => {
+    respondWith({ openclaw_gateway_url: 'https://gw.example', openclaw_api_key: 'k' }, null);
     expect(await readOpenClawStatus(USER)).toEqual({ gateway: false, agent: true, agentId: null, connect: NOT_CONNECTED });
     respondWith(null, { openclaw_gateway_token: 'tok' });
     expect(await readOpenClawStatus(USER)).toEqual({ gateway: false, agent: false, agentId: null, connect: NOT_CONNECTED });
   });
 
   it('the agent key counts from user_secrets (059 on)', async () => {
-    respondWith({ openclaw_chat_url: 'https://claw.example/chat' }, { openclaw_api_key: 'dsul_k' });
+    respondWith({}, { openclaw_api_key: 'dsul_k' });
     expect(await readOpenClawStatus(USER)).toEqual({ gateway: false, agent: true, agentId: null, connect: NOT_CONNECTED });
   });
 
