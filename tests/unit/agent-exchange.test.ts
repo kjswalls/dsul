@@ -109,6 +109,15 @@ describe('buildAgentExchange', () => {
     ])!;
     expect(landed.entries.filter((e) => e.kind === 'you')).toHaveLength(1);
   });
+
+  it('drops an answer sent before the current hand-off', () => {
+    const x = buildAgentExchange(
+      newestFirst(handoff('2026-10-13T10:00:00Z'), handoff('2026-10-14T10:00:00Z')),
+      { assignee: 'claude', aiStatus: 'queued' },
+      [{ text: 'Dr. Lee', at: Date.parse('2026-10-13T11:00:00Z') }]
+    );
+    expect(x).toBeNull();
+  });
 });
 
 describe('routeItemSendToAgent', () => {

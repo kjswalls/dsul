@@ -118,8 +118,11 @@ export function buildAgentExchange(
     }
   }
 
-  // Answers sent here that the trail does not show yet (its write is fire and forget).
+  // Answers sent here that the trail does not show yet (its write is fire and forget),
+  // and only those sent since this hand-off: the store outlives a re-hand-off.
+  const handoffAt = entries.find((e) => e.kind === 'handoff')?.at ?? 0
   for (const s of sent) {
+    if (s.at < handoffAt) continue
     const known = entries.some((e) => e.kind === 'you' && e.text === s.text && Math.abs(e.at - s.at) < 5 * 60_000)
     if (!known) entries.push({ kind: 'you', key: `sent-${s.at}`, at: s.at, text: s.text })
   }
