@@ -29,7 +29,6 @@ import {
   chatTransport,
   outgoingTurns,
   resetBrowserContext,
-  resetPluginTransport,
   type ChatTransport,
   type TurnInput,
   type TurnOutcome,
@@ -53,7 +52,7 @@ import { MAX_CHAT_IMAGES, type ChatImage } from './chat-images';
  * THE WRITE. Each FINISHED turn is saved once, by this client, in one POST:
  * the user's message and the reply (or the stopped partial, or the failed
  * reply's error CODE), never per token. The client is the writer because the
- * OpenClaw plugin path never reaches dsul's server; /api/chat stays stateless.
+ * browser's own OpenClaw link never reaches dsul's server; /api/chat stays stateless.
  * Message ids are minted here, so a retried or keepalive save lands once.
  *
  * Four rules hold the writes honest:
@@ -227,8 +226,6 @@ const MAX_SAVE_TRIES = 3;
 export const KEEPALIVE_BUDGET_BYTES = 60_000;
 /** A thread refetches on open when older than this. */
 const THREAD_STALE_MS = 30_000;
-/** The plugin path's OpenClaw sessions archive after about an hour idle. */
-const PLUGIN_SESSION_IDLE_MS = 50 * 60_000;
 const CONTINUITY_TURNS = 12;
 const CONTINUITY_CHARS = 8_000;
 /** A reply's action lines, at most: the loop's 4 rounds of 4 lookups. */
@@ -306,8 +303,7 @@ const opening = new Map<string, Promise<void>>();
  * Conversations OpenClaw was ASKED in from this browser: a turn handed to it,
  * or a plan asked of an OpenClaw gateway from the conversation. The server's
  * `openclawSeen` is set only by a saved OpenClaw REPLY, and a turn stopped
- * before its first token saves none (the plugin answers in one piece, so a
- * Stop there almost always is one), yet OpenClaw has the message all the
+ * before its first token saves none, yet OpenClaw has the message all the
  * same, and maybe a continuity note of earlier turns. The delete confirm's
  * "OpenClaw may keep its own copy" reads this too (openclawWasAsked).
  */
@@ -553,17 +549,14 @@ function itemTitle(itemId: string | null): string {
  * What OpenClaw needs to pick up a conversation it has not seen whole.
  *
  * The gateway is sent only the newest turn (SEND_FULL_TRANSCRIPT_TO_GATEWAY,
- * lib/openclaw-gateway.ts) and remembers the rest in its own session; the
- * plugin's sessions archive after about an hour idle. So when OpenClaw answers
- * a conversation that holds the other answerer's replies, or the plugin's
- * session has likely lapsed, the context carries the last few turns.
+ * lib/openclaw-gateway.ts) and remembers the rest in its own session. So when
+ * OpenClaw answers a conversation that holds the other answerer's replies, the
+ * context carries the last few turns.
  */
-function continuityNote(prior: ChatMessage[], answerer: Answerer, via: TurnInput['via'], now: number): string {
+function continuityNote(prior: ChatMessage[], answerer: Answerer): string {
   if (answerer !== 'openclaw' || prior.length === 0) return '';
   const otherAnswerer = prior.some((m) => m.role === 'assistant' && m.answerer !== null && m.answerer !== 'openclaw');
-  const last = prior[prior.length - 1];
-  const lapsed = via === 'plugin' && now - last.createdAt > PLUGIN_SESSION_IDLE_MS;
-  if (!otherAnswerer && !lapsed) return '';
+  if (!otherAnswerer) return '';
 
   const turns = outgoingTurns(prior).slice(-CONTINUITY_TURNS);
   const lines: string[] = [];
@@ -1305,8 +1298,8 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
       const id = resolveId(rawId);
       const existing = get().threads[id];
       if (existing?.streaming || existing?.load === 'gone') return;
-      // Clipped ONCE, here: the transcript, every transport (the plugin's
-      // `message` too) and the saved row all agree on what was said.
+      // Clipped ONCE, here: the transcript, every transport (the browser
+      // link's `message` too) and the saved row all agree on what was said.
       const content = cleanText(trimmed, CHAT_LIMITS.userChars);
       if (!/[^ \t\r\n]/.test(content)) return;
 
@@ -1317,14 +1310,7 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
       const ai = useAIConnectionStore.getState();
 
       const answerer: Answerer = caps.target === 'openclaw' ? 'openclaw' : 'model';
-      const via =
-        answerer !== 'openclaw'
-          ? 'chat'
-          : caps.openclawTransport === 'browser'
-            ? 'browser'
-            : caps.openclawTransport === 'plugin'
-              ? 'plugin'
-              : 'chat';
+      const via = answerer === 'openclaw' && caps.openclawTransport === 'browser' ? 'browser' : 'chat';
       const connected = ai.model?.model;
       const modelId = answerer === 'model' && isModelId(connected) ? connected : null;
       // Only a model is shown pictures; OpenClaw's transports carry words.
@@ -1403,7 +1389,7 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
           outcome = { content: '', status: 'stopped', errorCode: null, model: modelId };
         } else {
           const { context, contextBeyond, typeNouns } = plannerContext(base.itemId, content);
-          const note = continuityNote(prior, answerer, via, now);
+          const note = continuityNote(prior, answerer);
           // Whatever comes back, OpenClaw has the message from here on.
           if (answerer === 'openclaw') noteOpenclawAsked(id);
           outcome = await deps.transport.streamTurn({
@@ -1823,7 +1809,7 @@ function retryQueued(): void {
 /**
  * Drop every conversation this browser holds, in memory, and the views and
  * drafts over them; abort every stream; drop the proposal card and the request
- * behind it; forget the plugin transport; sweep the pre-2a transcript keys.
+ * behind it; forget the browser link's context; sweep the pre-2a transcript keys.
  * Two callers: the sign-out clear (RAW_CLEARERS in lib/local-state.ts) and any
  * account switch it covers. Nothing on the server is touched: nothing in the
  * app deletes a saved conversation except the user's own Delete.
@@ -1841,7 +1827,6 @@ export function clearChatState(): void {
   useRailStore.getState().reset();
   useProposalStore.getState().dismiss();
   useChatReceipts.getState().reset();
-  resetPluginTransport();
   resetBrowserContext();
   useOpenClawBrowserStore.getState().reset();
   sweepLegacyTranscripts();

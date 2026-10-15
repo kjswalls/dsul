@@ -345,7 +345,7 @@ export default function SettingsPage() {
   const aiConnTick = useAIConnectionStore(
     (s) =>
       `${s.phase}|${s.available}|${s.model?.provider}|${s.model?.model}|${s.model?.status}|` +
-      `${s.model?.authMethod}|${s.openclaw.gateway}|${s.openclaw.pluginChat}` +
+      `${s.model?.authMethod}|${s.openclaw.gateway}` +
       `|${s.aiHidden}|${s.model?.limitedUntil}|${s.model?.modelLabel}|${s.openclaw.agent}|${s.openclaw.agentId}`
   );
   const paletteTick = usePaletteStore((s) => s.palette);
@@ -456,10 +456,6 @@ export default function SettingsPage() {
 
   const openDestination = useCallback(
     (record: DestinationRecord) => {
-      if (record.action === 'connect-openclaw') {
-        router.push('/connect');
-        return;
-      }
       if (record.action === 'openclaw-docs') {
         router.push('/docs/openclaw');
         return;

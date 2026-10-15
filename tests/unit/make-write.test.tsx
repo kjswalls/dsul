@@ -98,7 +98,7 @@ const MODEL_OK = {
   problem: null,
   checkedAt: null,
 };
-const NO_OPENCLAW = { gateway: false, pluginChat: false, agent: false, agentId: null };
+const NO_OPENCLAW = { gateway: false, agent: false, agentId: null };
 const READY = { phase: 'ready', available: true, model: MODEL_OK, openclaw: NO_OPENCLAW, choice: 'model', aiHidden: false };
 
 const ACTIONS = {
@@ -146,10 +146,10 @@ describe('the gate', () => {
   it.each([
     ['unknown', { phase: 'unknown' }],
     ['a failed status read', { phase: 'error' }],
-    ['OpenClaw only', { model: null, openclaw: { gateway: true, pluginChat: false, agent: true, agentId: 'a' } }],
+    ['OpenClaw only', { model: null, openclaw: { gateway: true, agent: true, agentId: 'a' } }],
     ['a failing model', { model: { ...MODEL_OK, status: 'failing' } }],
     ['"No AI, thanks"', { aiHidden: true }],
-    ['OpenClaw chosen on this device', { choice: 'openclaw', openclaw: { gateway: true, pluginChat: false, agent: true, agentId: 'a' } }],
+    ['OpenClaw chosen on this device', { choice: 'openclaw', openclaw: { gateway: true, agent: true, agentId: 'a' } }],
   ])('hidden while %s', (_label, over) => {
     h.inputs = { ...READY, ...over };
     write();

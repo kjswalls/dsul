@@ -64,7 +64,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useRailStore } from '@/lib/rail-store';
 import type { TurnInput } from '@/lib/chat-transport';
 import type { TurnRequest } from '@/lib/conversation-types';
-import { CONNECTED_MODEL, OPENCLAW_PLUGIN, NOTHING_CONNECTED, SEED_USER_ID, seedAI } from './helpers/ai-fixtures';
+import { CONNECTED_MODEL, OPENCLAW_CHAT, NOTHING_CONNECTED, SEED_USER_ID, seedAI } from './helpers/ai-fixtures';
 import { fail, fakeApi, fakeTransport, flush, hangs, summary, type FakeApi, type FakeTransport } from './helpers/conversations-fakes';
 
 const store = () => useConversationsStore.getState();
@@ -300,7 +300,7 @@ describe('the save', () => {
 
   it("saves a 50,000-character OpenClaw reply as 40,000, with no model", async () => {
     unseed();
-    unseed = seedAI({ ...OPENCLAW_PLUGIN, openclaw: { gateway: true, agent: true } });
+    unseed = seedAI({ ...OPENCLAW_CHAT, openclaw: { gateway: true, agent: true }, browserChat: false });
     store().ensureOwner();
     tx.next = () => ({ content: 'y'.repeat(50_000), status: 'complete', errorCode: null, model: null });
     const id = await sendNew('long one please');
@@ -688,44 +688,11 @@ describe('sending', () => {
       },
     });
     unseed();
-    unseed = seedAI({ ...OPENCLAW_PLUGIN, openclaw: { gateway: true, agent: true } });
+    unseed = seedAI({ ...OPENCLAW_CHAT, openclaw: { gateway: true, agent: true }, browserChat: false });
     await store().send(id, 'and Tuesday?');
     expect(tx.inputs[0].context).toBe(
       '## dsul Context\n\n## Earlier in this conversation\nUser: Plan my week\nAssistant: Monday: writing.'
     );
-  });
-
-  it('on the plugin path, recaps only once its session has likely lapsed', async () => {
-    unseed();
-    unseed = seedAI(OPENCLAW_PLUGIN);
-    const seed = (age: number) =>
-      useConversationsStore.setState({
-        threads: {
-          c: {
-            id: 'c',
-            itemId: null,
-            draftTitle: null,
-            saved: true,
-            messages: [
-              msg({ id: 'u1', role: 'user', content: 'q', createdAt: Date.now() - age }),
-              msg({ id: 'a1', role: 'assistant', content: 'a', replyTo: 'u1', answerer: 'openclaw', createdAt: Date.now() - age }),
-            ],
-            load: 'loaded',
-            hasEarlier: false,
-            streaming: false,
-            typing: false,
-            fetchedAt: Date.now(),
-          },
-        },
-      });
-    seed(10 * 60_000);
-    await store().send('c', 'fresh');
-    expect(tx.inputs[0]).toMatchObject({ via: 'plugin', context: '## dsul Context' });
-
-    await conversationsSettled();
-    seed(51 * 60_000);
-    await store().send('c', 'later');
-    expect(tx.inputs[1].context).toContain('## Earlier in this conversation\nUser: q\nAssistant: a');
   });
 
   /**
@@ -792,7 +759,7 @@ describe('sending', () => {
 
   it('a Stop while the send waits leaves OpenClaw unasked: the message never went', async () => {
     unseed();
-    unseed = seedAI(OPENCLAW_PLUGIN);
+    unseed = seedAI(OPENCLAW_CHAT);
     planner.isPreview = true;
     const id = store().newDraft();
     const sent = store().send(id, 'take this on');
@@ -1628,14 +1595,14 @@ describe('pagehide', () => {
 });
 
 describe('OpenClaw was asked', () => {
-  it('a message handed to OpenClaw and stopped before its one-piece reply still counts, with no reply saved', async () => {
+  it('a message handed to OpenClaw and stopped before its first token still counts, with no reply saved', async () => {
     unseed();
-    unseed = seedAI(OPENCLAW_PLUGIN);
+    unseed = seedAI(OPENCLAW_CHAT);
     tx.next = hangs('').run;
     const id = store().newDraft();
     const sending = store().send(id, 'My biopsy came back positive');
     await flush();
-    expect(tx.inputs[0]).toMatchObject({ target: 'openclaw', via: 'plugin' });
+    expect(tx.inputs[0]).toMatchObject({ target: 'openclaw', via: 'browser' });
     store().stop(id);
     await sending;
     await conversationsSettled();
@@ -1657,7 +1624,7 @@ describe('OpenClaw was asked', () => {
 
   it('follows a draft rebound to its item conversation', async () => {
     unseed();
-    unseed = seedAI(OPENCLAW_PLUGIN);
+    unseed = seedAI(OPENCLAW_CHAT);
     planner.items = [{ id: 'i1', type: 'task', title: 'Dentist' }];
     api.rows.set('c-existing', summary({ id: 'c-existing', itemId: 'i1' }));
     api.answer.appendTurn = (_id, body) => (body.create ? fail(409, 'conflict', 'c-existing') : undefined);

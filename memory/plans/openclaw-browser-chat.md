@@ -1,7 +1,8 @@
 # OpenClaw chat from the browser
 
 Status: built (2026-10-15). Kirby asked for it on 2026-10-15 ("ok let's build this") after the hi-fi mocks. The
-risk decision (this browser holds `operator.write`) was put to Kirby on the same day; see "What we tell people".
+risk decision (this browser holds `operator.write`) was put to Kirby on the same day, and Kirby chose "Build browser
+chat" over keeping plugin chat; see "What we tell people". The plugin was removed the same day (see "The plugin, retired").
 
 ## What it is
 
@@ -56,9 +57,23 @@ Approving makes OpenClaw the answerer on this browser (`chooseChatTarget('opencl
 - `openclaw devices remove <id>` closes the socket at once and is read the same way.
 - From an https page a plain `ws://` socket only reaches loopback (mixed content), so setup asks for `wss://`.
 
+## The plugin, retired (2026-10-15)
+
+Removed with it: `openclaw-plugin/`, the `'plugin'` transport and `openclaw.pluginChat` on the gate, the
+`dsulchat_` token (`lib/plugin-chat-token.ts`, `GET /api/agent/chat-url`), and the device-code sign-in (the
+`/connect` page, `/api/agent/connect/{init,authorize,poll}`, `GET /api/openclaw/status`). OpenClaw now answers in Ask
+from this browser's pairing or through dsul's server gateway (Advanced), and pairs for hand-offs through Connect.
+
+Kept on purpose:
+- `connect_sessions` (017) and `user_settings.openclaw_chat_url` stay as ballast; dropping them is a prod write.
+  Unpair still sweeps both, so an account paired the old way unpairs cleanly.
+- An older plugin pairing's key in `user_secrets.openclaw_api_key` still counts as paired and still works on the
+  agent API, MCP and `/api/agent/events`, until the person unpairs.
+- `POST /api/agent/register` (webhooks) still accepts `chatUrl`, so an older install keeps registering; nothing
+  reads it.
+- The `plugin_*` error codes and their copy stay in `lib/chat-errors.ts`, since saved turns may carry them.
+
 ## Not done here
 
-- Retiring the plugin, its chat transport, the `dsulchat_` token and the device-code sign-in. Kirby's decision
-  card offers to keep it as a stricter option.
 - Tool events (`caps: ['tool-events']`) for action lines in Ask.
 - Proposals over the browser link (they still need the server gateway).

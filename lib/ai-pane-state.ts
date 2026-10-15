@@ -255,20 +255,19 @@ export function aiPaneLayout(i: AIPaneInput): AIPaneLayout {
 export interface OpenClawStatus {
   /** agent || gateway */
   paired: boolean;
-  /** gateway || pluginChat || this browser's own pairing */
+  /** gateway || this browser's own pairing */
   answers: boolean;
   agent: boolean;
   /**
-   * agentId only while a chat transport is live: (pluginChat || gateway) &&
-   * agentId && agentId !== 'main'; else 'OpenClaw'. The column outlives the
-   * chat URL (lib/ai-server/connections.ts), and the status route already
-   * ignores a stale one (tests/unit/openclaw-status-route.test.ts).
+   * agentId only while a chat transport is live: (gateway || this browser) &&
+   * agentId && agentId !== 'main'; else 'OpenClaw'. The column can outlive the
+   * connection that set it, so a stale one is ignored.
    */
   name: string;
 }
 
 export function openClawStatus(o: OpenClawView, browserChat = false): OpenClawStatus {
-  const answers = o.gateway || o.pluginChat || browserChat;
+  const answers = o.gateway || browserChat;
   const name = answers && o.agentId && o.agentId !== 'main' ? o.agentId : 'OpenClaw';
   return { paired: o.agent || o.gateway, answers, agent: o.agent, name };
 }

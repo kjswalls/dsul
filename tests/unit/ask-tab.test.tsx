@@ -129,7 +129,7 @@ import { openEditFor, useUIStore } from '@/lib/ui-store';
 import type { TaskItem } from '@/lib/planner-types';
 import { matchCommands, STATIC_COMMANDS, type CommandContext } from '@/lib/commands';
 import { useAIConnectionStore } from '@/lib/ai-connection-store';
-import { CONNECTED_MODEL, NOTHING_CONNECTED, OPENCLAW_PLUGIN, seedAI } from './helpers/ai-fixtures';
+import { CONNECTED_MODEL, NOTHING_CONNECTED, OPENCLAW_CHAT, seedAI } from './helpers/ai-fixtures';
 import { fakeApi, fakeTransport, flush, summary, type FakeApi, type FakeTransport } from './helpers/conversations-fakes';
 
 beforeAll(() => {
@@ -438,7 +438,7 @@ describe('the setup page in Ask\'s place', () => {
     json: async () => ({
       available: true,
       model: null,
-      openclaw: { gateway: false, pluginChat: false, agent: false, agentId: null },
+      openclaw: { gateway: false, agent: false, agentId: null },
       aiHidden: false,
     }),
   }));
@@ -788,7 +788,7 @@ describe("the dock's box", () => {
 
   it.each([
     ['the model, by name', CONNECTED_MODEL, 'GPT-4o mini'],
-    ['OpenClaw and its agent', OPENCLAW_PLUGIN, 'OpenClaw · kirby-1'],
+    ['OpenClaw and its agent', OPENCLAW_CHAT, 'OpenClaw · kirby-1'],
   ])('names who answers under it, at home and in a conversation: %s', (_, seed, label) => {
     unseed();
     unseed = seedAI(seed);

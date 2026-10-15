@@ -53,7 +53,7 @@ import {
   KEY_TURNED_DOWN,
   NOTHING_CONNECTED,
   NO_MODEL_PICKED,
-  OPENCLAW_PLUGIN,
+  OPENCLAW_CHAT,
 } from './helpers/ai-fixtures';
 import { OFFICIAL_EXTENSIONS } from '@/lib/extension-registry';
 import { EXTENSION_SETTINGS } from '@/lib/extension-settings';
@@ -488,7 +488,7 @@ describe('the model key never reaches a record', () => {
       [{ phase: 'error' }, 'Couldn’t check'],
       [{ ...NOTHING_CONNECTED, available: false }, 'Not available on this server'],
       [NOTHING_CONNECTED, 'Not set up'],
-      [OPENCLAW_PLUGIN, 'Not set up'],
+      [OPENCLAW_CHAT, 'Not set up'],
       [CONNECTED_MODEL, 'Saved (OpenAI)'],
       [GEMINI_WORKING, 'Saved (Google Gemini)'],
       [{ ...CONNECTED_MODEL, model: { provider: 'openrouter', authMethod: 'oauth' } }, 'Signed in (OpenRouter)'],
@@ -630,7 +630,7 @@ describe('the AI pane', () => {
     expect(record.unavailable!(ctx)).toBeNull();
 
     cleanup();
-    cleanup = seedAI(OPENCLAW_PLUGIN);
+    cleanup = seedAI(OPENCLAW_CHAT);
     expect(record.unavailable!(ctx)).toBeNull();
     expect(record.read(ctx)).toBe('openclaw');
   });

@@ -6,7 +6,6 @@ import ReactMarkdown, { type Components, type ExtraProps } from 'react-markdown'
 import remarkGfm from 'remark-gfm';
 import { ProposalCard } from '@/components/ai/proposal-card';
 import { ChatOptionsCard } from '@/components/ai/chat-options-card';
-import { TypingIndicator } from '@/components/ui/typing-indicator';
 import { useConversationsStore, type ChatMessage } from '@/lib/conversations-store';
 import { useAICapabilities, useAIConnectionStore } from '@/lib/ai-connection-store';
 import { usePlannerStore } from '@/lib/planner-store';
@@ -141,14 +140,12 @@ export function editableQuestionIndex(messages: readonly ChatMessage[]): number 
  */
 export function TranscriptMessages({
   messages,
-  typing,
   busy,
   planFor,
   retryVia,
   receipts,
 }: {
   messages: readonly ChatMessage[];
-  typing: boolean;
   busy: boolean;
   planFor?: string;
   retryVia?: ComposerBinding;
@@ -172,10 +169,6 @@ export function TranscriptMessages({
           ) : (
             <Reply
               m={m}
-              // Only the reply still arriving cares; every other one keeps its
-              // props, so a streamed delta re-renders (and re-parses) one reply,
-              // not the whole thread.
-              typing={typing && m.status === 'streaming'}
               notSaved={endsUnsavedTurn(messages, i)}
               planFrom={planFor && i === messages.length - 1 && !busy ? { conversationId: planFor, messages } : undefined}
               retry={again && retryVia && i === messages.length - 1 ? { via: retryVia, text: again } : undefined}
@@ -420,7 +413,6 @@ const REPLY_COMPONENTS: Components = {
 
 const Reply = memo(function Reply({
   m,
-  typing,
   notSaved,
   planFrom,
   retry,
@@ -428,7 +420,6 @@ const Reply = memo(function Reply({
   answerVia,
 }: {
   m: ChatMessage;
-  typing: boolean;
   notSaved: boolean;
   /** Set on the latest reply only, once it has finished. */
   planFrom?: { conversationId: string; messages: readonly ChatMessage[] };
@@ -439,7 +430,7 @@ const Reply = memo(function Reply({
   /** Set on the latest reply only, while nothing is arriving: where an option card's answer goes. */
   answerVia?: ComposerBinding;
 }) {
-  const { canChat, canPropose, openclawTransport } = useAICapabilities();
+  const { canChat, canPropose } = useAICapabilities();
   const userTimezone = usePlannerStore((s) => s.userTimezone);
   const timeFormat = usePlannerStore((s) => s.timeFormat);
   // When today's limit lifts, while one holds: the server's word, read with
@@ -466,9 +457,7 @@ const Reply = memo(function Reply({
           </ReactMarkdown>
         </div>
       ) : streaming ? (
-        // The plugin answers in one piece, so it types; a stream that has not
-        // started yet waits.
-        typing && m.answerer === 'openclaw' && openclawTransport === 'plugin' ? <TypingIndicator /> : <LoadingDots />
+        <LoadingDots />
       ) : null}
       {options?.questions && states && (
         <ChatOptionsCard questions={options.questions} states={states} via={canChat ? answerVia : undefined} />
@@ -909,7 +898,6 @@ export function ChatTranscript({ id }: { id: string }) {
           )}
           <TranscriptMessages
             messages={messages}
-            typing={typing}
             busy={busy}
             planFor={id}
             retryVia={{ kind: 'conversation', id }}

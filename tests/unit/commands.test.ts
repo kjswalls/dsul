@@ -25,7 +25,7 @@ import { useUndoStripStore } from '@/lib/undo-strip-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { AskMarkUnlitIcon } from '@/components/ai/ask-mark';
 import type { Item, ItemTypeDef } from '@/lib/planner-types';
-import { AI_HIDDEN, CONNECTED_MODEL, KEY_TURNED_DOWN, NOTHING_CONNECTED, OPENCLAW_PLUGIN, seedAI } from './helpers/ai-fixtures';
+import { AI_HIDDEN, CONNECTED_MODEL, KEY_TURNED_DOWN, NOTHING_CONNECTED, OPENCLAW_CHAT, seedAI } from './helpers/ai-fixtures';
 
 /**
  * The palette's load-bearing invariants: every rendered row has a unique cmdk
@@ -968,7 +968,7 @@ describe('make.write: "Write a recipe with AI"', () => {
   it('shows only with a connected model (canMake), never for OpenClaw alone', () => {
     for (const [seed, shown] of [
       [CONNECTED_MODEL, true],
-      [OPENCLAW_PLUGIN, false],
+      [OPENCLAW_CHAT, false],
       [{ ...CONNECTED_MODEL, openclaw: { gateway: true, agent: true, agentId: 'a' }, choice: 'openclaw' as const }, false],
       [KEY_TURNED_DOWN, false],
       [AI_HIDDEN, false],
@@ -1008,7 +1008,7 @@ describe('make.write-mod: "Write a mod with AI"', () => {
   it('shares make.write\'s gate: a connected model only', () => {
     for (const [seed, shown] of [
       [CONNECTED_MODEL, true],
-      [OPENCLAW_PLUGIN, false],
+      [OPENCLAW_CHAT, false],
       [KEY_TURNED_DOWN, false],
       [AI_HIDDEN, false],
       [undefined, false],
@@ -1072,7 +1072,7 @@ describe('ai.setup and ai.fix: "Set up AI" and "Fix AI"', () => {
       ['the server cannot say whether AI is hidden', { ...NOTHING_CONNECTED, aiHidden: null }, null],
       ['chat Off on this device', { ...NOTHING_CONNECTED, choice: 'none' as const }, null],
       ['a connected model', CONNECTED_MODEL, null],
-      ['OpenClaw answering', OPENCLAW_PLUGIN, null],
+      ['OpenClaw answering', OPENCLAW_CHAT, null],
       ['the status read failed', { phase: 'error' as const }, null],
       ['the status unknown', undefined, null],
     ] as const) {

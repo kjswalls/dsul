@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
  * It used to wipe every transcript (the global thread and every item thread,
  * in memory and on disk). Conversations are the account's now, kept until the
  * user's own Delete, so `chooseChatTarget` (lib/chat-target.ts) only sets the
- * choice, drops the cached plugin transport and takes both Ask stacks home:
+ * choice and takes both Ask stacks home:
  * the next ask is a new conversation with the new answerer, and the old one is
  * still there to continue.
  *
@@ -31,12 +31,12 @@ vi.mock('@/lib/planner-store', () => ({
 
 vi.mock('@/lib/ai-context', () => ({ buildDsulContextParts: () => ({ today: '## dsul Context', beyond: '' }) }));
 
-import { chatTransport, resetPluginTransport } from '@/lib/chat-transport';
+import { chatTransport } from '@/lib/chat-transport';
 import { chooseChatTarget } from '@/lib/chat-target';
 import { clearChatState, configureConversations, conversationsSettled, useConversationsStore } from '@/lib/conversations-store';
 import { useRailStore } from '@/lib/rail-store';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
-import { seedAI, CONNECTED_MODEL, OPENCLAW_PLUGIN } from './helpers/ai-fixtures';
+import { seedAI, CONNECTED_MODEL, OPENCLAW_CHAT } from './helpers/ai-fixtures';
 import { fakeApi, fakeTransport, flush, type FakeApi } from './helpers/conversations-fakes';
 
 const store = () => useConversationsStore.getState();
@@ -49,7 +49,6 @@ beforeEach(() => {
   api = fakeApi();
   configureConversations({ api: api.api, transport: fakeTransport().transport });
   clearChatState();
-  resetPluginTransport();
   useAISettingsStore.setState({ chatTarget: 'model' });
 });
 
@@ -121,24 +120,6 @@ describe('roads that must NOT act', () => {
 });
 
 describe('chooseChatTarget', () => {
-  /** A plugin-path fetch that counts the chat-url reads. */
-  function stubPlugin() {
-    const urls: string[] = [];
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (url: string) => {
-        urls.push(url);
-        return url === '/api/agent/chat-url'
-          ? {
-              ok: true,
-              json: async () => ({ chatUrl: 'https://claw.example/chat', agentId: null, chatToken: 'k' }),
-            }
-          : { ok: true, json: async () => ({ content: 'ok' }) };
-      })
-    );
-    return () => urls.filter((u) => u === '/api/agent/chat-url').length;
-  }
-
   it('(c) deletes nothing: no API delete, no thread or summary dropped', async () => {
     const { a, b } = await seedConversations();
     chooseChatTarget('openclaw');
@@ -153,32 +134,10 @@ describe('chooseChatTarget', () => {
     expect(rail().stacks).toEqual({ desktop: [], phone: [] });
   });
 
-  it('(c) resets the plugin transport cache', async () => {
-    unseed = seedAI(OPENCLAW_PLUGIN);
-    configureConversations({ transport: chatTransport });
-    const chatUrlReads = stubPlugin();
-    const id = store().newDraft();
-
-    await store().send(id, 'one');
-    await store().send(id, 'two');
-    expect(chatUrlReads()).toBe(1);
-
-    // A real change of answerer. With no model connected the effective target
-    // is still the plugin, so the next send shows whether the cache survived.
-    chooseChatTarget('model');
-    await store().send(id, 'three');
-    expect(chatUrlReads()).toBe(2);
-    // ...and the conversation it was said in is still whole.
-    expect(store().threads[id]?.messages.map((m) => m.content)).toEqual(['one', 'ok', 'two', 'ok', 'three', 'ok']);
-  });
-
-  it('(d) the same value is a no-op: stacks and cache kept', async () => {
-    unseed = seedAI(OPENCLAW_PLUGIN);
-    configureConversations({ transport: chatTransport });
-    const chatUrlReads = stubPlugin();
+  it('(d) the same value is a no-op: stacks kept', async () => {
+    unseed = seedAI(OPENCLAW_CHAT);
     const id = store().newDraft();
     await store().send(id, 'one');
-    expect(chatUrlReads()).toBe(1);
 
     rail().push('desktop', { kind: 'conversation', id });
     rail().push('phone', { kind: 'conversation', id });
@@ -186,8 +145,6 @@ describe('chooseChatTarget', () => {
 
     expect(rail().stacks.desktop).toEqual([{ kind: 'conversation', id }]);
     expect(rail().stacks.phone).toEqual([{ kind: 'conversation', id }]);
-    await store().send(id, 'two');
-    expect(chatUrlReads()).toBe(1);
     expect(api.removes).toEqual([]);
   });
 });

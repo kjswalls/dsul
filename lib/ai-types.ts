@@ -55,18 +55,17 @@ export interface ModelConnectionView {
 export interface OpenClawView {
   /** user_settings.openclaw_gateway_url AND user_secrets.openclaw_gateway_token present. */
   gateway: boolean;
-  /** The agent key (user_secrets, 059) AND user_settings.openclaw_chat_url present. */
-  pluginChat: boolean;
   /**
-   * An agent can pull delegated work: the plugin's key, or a live agent key
-   * named OpenClaw (Settings → AI → OpenClaw → Connect).
+   * An agent can pull delegated work: a live agent key named OpenClaw
+   * (Settings → AI → OpenClaw → Connect), or the key an older plugin pairing
+   * left in user_secrets.
    */
   agent: boolean;
   agentId: string | null;
   /**
    * The Connect key (a live agent key named OpenClaw): when OpenClaw last used
    * it, to call a tool or to hold the work feed open. `connected` false means
-   * no such key; the plugin's key alone never sets it. Absent on an answer
+   * no such key; an older plugin pairing's key alone never sets it. Absent on an answer
    * from a build before Connect existed.
    */
   connect?: { connected: boolean; lastSeenAt: string | null };

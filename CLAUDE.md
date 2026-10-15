@@ -21,8 +21,8 @@ pnpm workspace (Node 24). `packages/types` is `@dsul/types`, and its `dist/` is
 **committed** — CI rebuilds it and fails on any drift from `src`, so a schema edit
 without `pnpm --filter @dsul/types build` is a red build. Nothing is published to npm
 (dropped 2026-10-14, when OpenClaw began connecting with no plugin through MCP and
-`GET /api/agent/events`). `openclaw-plugin/` survives only for OpenClaw chat from Ask,
-run from a checkout; its `dist/` is gitignored and CI does not gate it.
+`GET /api/agent/events`). The OpenClaw plugin itself was removed on 2026-10-15, once Ask
+could chat with OpenClaw straight from the browser (see Plans).
 
 ## Setting up a new machine
 
@@ -128,8 +128,8 @@ it is a string edit. The kind folds case (`caseFold: true`), which is why `Work`
 
 **Legacy projections are permanent.** `/api/agent/context` still serves `tasks[]` and
 `habits[]` as exact-legacy-schema views over items, and webhooks still emit
-`tasks.updated`/`habits.updated`. The OpenClaw plugin `safeParse`s these and *throws* on
-drift, so status vocabularies (`pending|completed|cancelled` for tasks,
+`tasks.updated`/`habits.updated`. Older OpenClaw plugin installs `safeParse` these and
+*throw* on drift, so status vocabularies (`pending|completed|cancelled` for tasks,
 `pending|done|skipped` for habits) are external contracts — don't merge or translate them.
 `habits[].group` and the required `habitGroups[]` array are the same kind of contract: a
 habit answers with `project` internally and `toLegacyHabit` renames it on the way out
@@ -202,8 +202,8 @@ https base URL. Five rules are load-bearing:
   [conversations-store.ts](lib/conversations-store.ts) writes each finished turn (user
   message plus reply, or the stopped or failed reply with an error *code*) in one
   `POST /api/ai/conversations/[id]/turns`, never per token, through the session client
-  and RLS, never the service role. `/api/chat` stays stateless; the OpenClaw plugin path
-  never reaches dsul's server, which is why the client is the writer. Error copy is never
+  and RLS, never the service role. `/api/chat` stays stateless; Ask's own OpenClaw link
+  (lib/openclaw-browser/) never reaches dsul's server, which is why the client is the writer. Error copy is never
   stored as content and never re-sent to a model. One conversation per item is a
   database rule (migration 057's partial unique index); a `409 conflict` rebinds the
   client to the existing one. The gateway session key is

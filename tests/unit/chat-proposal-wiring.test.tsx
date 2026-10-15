@@ -4,7 +4,7 @@ import {
   seedAI,
   CONNECTED_MODEL,
   NOTHING_CONNECTED,
-  OPENCLAW_PLUGIN,
+  OPENCLAW_CHAT,
   type SeedAI,
 } from './helpers/ai-fixtures';
 
@@ -231,7 +231,7 @@ describe('conversation openers', () => {
   it('shows for OpenClaw plugin chat, which can answer but not propose', async () => {
     // An opener is a plain send(), so it needs chat, not a proposal transport.
     // Gating it on proposing stripped the openers from plugin users.
-    seed(OPENCLAW_PLUGIN);
+    seed(OPENCLAW_CHAT);
     renderChat();
     expect((await screen.findByTestId('chat-openers')).querySelectorAll('button').length).toBeGreaterThan(0);
   });
@@ -246,7 +246,7 @@ describe('the empty state', () => {
   });
 
   it('names OpenClaw in the box when OpenClaw answers', () => {
-    seed(OPENCLAW_PLUGIN);
+    seed(OPENCLAW_CHAT);
     renderChat();
     expect(screen.getByText('How can I help?')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Message OpenClaw…')).toBeInTheDocument();
@@ -323,10 +323,10 @@ describe('turning a conversation into a plan', () => {
     expect(screen.queryByTestId(PLAN_BUTTON)).toBeNull();
   });
 
-  it('is absent on OpenClaw plugin chat, which has no proposal transport', () => {
+  it('is absent on OpenClaw browser chat, which has no proposal transport', () => {
     // The propose route never reroutes an OpenClaw user's planner to a model
-    // they did not pick, and the plugin path cannot carry a proposal.
-    seed(OPENCLAW_PLUGIN);
+    // they did not pick, and the browser link cannot carry a proposal.
+    seed(OPENCLAW_CHAT);
     setThread([msg('user', 'a'), msg('assistant', 'b')]);
     renderChat();
     expect(screen.queryByTestId(PLAN_BUTTON)).toBeNull();

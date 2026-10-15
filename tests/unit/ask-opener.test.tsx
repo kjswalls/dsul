@@ -51,7 +51,7 @@ import {
   CONNECTED_MODEL,
   KEY_TURNED_DOWN,
   NOTHING_CONNECTED,
-  OPENCLAW_PLUGIN,
+  OPENCLAW_CHAT,
   type SeedAI,
 } from './helpers/ai-fixtures';
 
@@ -196,7 +196,7 @@ describe('when it shows', () => {
       expect(opener(), JSON.stringify(nothing)).toBeNull();
     }
     // OpenClaw answering is something answering.
-    act(() => seed(OPENCLAW_PLUGIN));
+    act(() => seed(OPENCLAW_CHAT));
     expect(opener()).not.toBeNull();
   });
 

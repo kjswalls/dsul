@@ -93,27 +93,27 @@ describe('retryQuestion', () => {
 
 describe('the Try again button', () => {
   it('sends the same question again through the conversation’s own binding', () => {
-    render(<TranscriptMessages messages={failed('upstream')} typing={false} busy={false} retryVia={VIA} />);
+    render(<TranscriptMessages messages={failed('upstream')} busy={false} retryVia={VIA} />);
     fireEvent.click(screen.getByTestId('chat-retry'));
     expect(sendFrom).toHaveBeenCalledWith(VIA, 'what next?');
   });
 
   it('is not offered under a failure the same words would hit again', () => {
-    render(<TranscriptMessages messages={failed('bad_model')} typing={false} busy={false} retryVia={VIA} />);
+    render(<TranscriptMessages messages={failed('bad_model')} busy={false} retryVia={VIA} />);
     expect(screen.queryByTestId('chat-retry')).toBeNull();
   });
 
   it('waits while the conversation is busy, and needs a binding to send through', () => {
-    const { rerender } = render(<TranscriptMessages messages={failed('timeout')} typing={false} busy retryVia={VIA} />);
+    const { rerender } = render(<TranscriptMessages messages={failed('timeout')} busy retryVia={VIA} />);
     expect(screen.queryByTestId('chat-retry')).toBeNull();
-    rerender(<TranscriptMessages messages={failed('timeout')} typing={false} busy={false} />);
+    rerender(<TranscriptMessages messages={failed('timeout')} busy={false} />);
     expect(screen.queryByTestId('chat-retry')).toBeNull();
   });
 
   it('hides while nothing can answer', () => {
     unseed();
     unseed = seedAI(NOTHING_CONNECTED);
-    render(<TranscriptMessages messages={failed('timeout')} typing={false} busy={false} retryVia={VIA} />);
+    render(<TranscriptMessages messages={failed('timeout')} busy={false} retryVia={VIA} />);
     expect(screen.queryByTestId('chat-retry')).toBeNull();
   });
 });

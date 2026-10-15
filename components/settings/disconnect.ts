@@ -4,8 +4,8 @@ import { useState } from 'react';
 import { connectErrorCopy, labelName } from '@/components/ai/connect/connect-shared';
 import { useAIConnectionStore } from '@/lib/ai-connection-store';
 import { openClawStatus } from '@/lib/ai-pane-state';
+import { useOpenClawBrowserStore } from '@/lib/openclaw-browser-store';
 import type { ModelConnectionView } from '@/lib/ai-types';
-import { resetPluginTransport } from '@/lib/chat-transport';
 import { useUIStore } from '@/lib/ui-store';
 
 /**
@@ -93,14 +93,14 @@ export function useUnpair(opts?: {
     const { openclaw } = useAIConnectionStore.getState();
     if (!openclaw.agent) return;
     setError(null);
-    const { name } = openClawStatus(openclaw);
+    const { name } = openClawStatus(openclaw, useOpenClawBrowserStore.getState().paired !== null);
     const gateway = openclaw.gateway
       ? ' Your Gateway URL stays saved under Advanced, so OpenClaw can still answer in Ask. Clear it there to stop that too.'
       : '';
     const onDone = opts?.onDone;
     useUIStore.getState().confirm({
       title: `Unpair ${name}?`,
-      description: `dsul will delete the key OpenClaw uses and stop sending it your changes, so it can no longer read or change your planner. Your saved conversations stay. To pair again, run setup from OpenClaw.${gateway}`,
+      description: `dsul will delete the key OpenClaw uses and stop sending it your changes, so it can no longer read or change your planner. Your saved conversations stay. To pair again, choose Connect in Settings → AI.${gateway}`,
       confirmLabel: 'Unpair',
       destructive: true,
       testId: 'openclaw-unpair-confirm',
@@ -112,10 +112,7 @@ export function useUnpair(opts?: {
           .getState()
           .unpair()
           .then((result) => {
-            // The chat token this browser holds is derived from the key
-            // that is gone; a later pairing mints a new one.
-            if (result.ok) resetPluginTransport();
-            else setError(UNPAIR_FAILED);
+            if (!result.ok) setError(UNPAIR_FAILED);
             onDone?.(result.ok);
           });
       },

@@ -449,7 +449,7 @@ function present(v: unknown): boolean {
 }
 
 /**
- * user_settings (openclaw_gateway_url, openclaw_agent_id, openclaw_chat_url)
+ * user_settings (openclaw_gateway_url, openclaw_agent_id)
  * + user_secrets (openclaw_gateway_token, openclaw_api_key) via the service
  * client. Booleans + agentId only. Missing schema => all false. Other errors
  * THROW.
@@ -466,7 +466,7 @@ export async function readOpenClawStatus(userId: string): Promise<OpenClawView> 
   const [settings, firstSecrets] = await Promise.all([
     svc
       .from('user_settings')
-      .select('openclaw_gateway_url, openclaw_agent_id, openclaw_api_key, openclaw_chat_url')
+      .select('openclaw_gateway_url, openclaw_agent_id, openclaw_api_key')
       .eq('user_id', userId)
       .maybeSingle(),
     readSecrets('openclaw_gateway_token, openclaw_api_key'),
@@ -482,7 +482,6 @@ export async function readOpenClawStatus(userId: string): Promise<OpenClawView> 
   const connect = await readConnectKey(svc, userId);
   return {
     gateway: present(s?.openclaw_gateway_url) && present(sec?.openclaw_gateway_token),
-    pluginChat: apiKey && present(s?.openclaw_chat_url),
     agent: apiKey || connect.connected,
     agentId: present(s?.openclaw_agent_id) ? (s?.openclaw_agent_id as string) : null,
     connect,
@@ -493,7 +492,7 @@ export async function readOpenClawStatus(userId: string): Promise<OpenClawView> 
  * The Connect key (app/api/ai/openclaw POST): a live agent key named OpenClaw,
  * and when OpenClaw last used it. The newest wins if there are somehow two.
  * A keys table that is not there yet (072) or cannot be read reads as no key:
- * the plugin's key still pairs, and a failed read must not unpair anyone.
+ * an older plugin pairing's key still pairs, and a failed read must not unpair anyone.
  */
 async function readConnectKey(
   svc: ReturnType<typeof service>,
@@ -507,8 +506,10 @@ async function readConnectKey(
 }
 
 /**
- * Unpair: take back the access the plugin's device authorization gave
- * OpenClaw. Idempotent, so a failure part way is fixed by asking again.
+ * Unpair: take back the access OpenClaw was given, by Connect or by the
+ * retired plugin's device authorization (whose leftovers, steps 2 and 3,
+ * are still swept for accounts paired that way). Idempotent, so a failure
+ * part way is fixed by asking again.
  *
  *   1. Every webhook registration: dsul stops sending item changes.
  *   2. The chat URL and agent id the plugin registered.

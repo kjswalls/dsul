@@ -80,7 +80,7 @@ vi.mock('@/lib/ai-server/connections', async (importOriginal) => {
     setConnectionStatus: vi.fn(actual.setConnectionStatus),
     setConnectionLimit: vi.fn(actual.setConnectionLimit),
     deleteModelConnection: vi.fn(actual.deleteModelConnection),
-    readOpenClawStatus: vi.fn(async () => ({ gateway: false, pluginChat: false, agent: false, agentId: null })),
+    readOpenClawStatus: vi.fn(async () => ({ gateway: false, agent: false, agentId: null })),
     readAIHidden: vi.fn(async () => false),
     writeAIHidden: vi.fn(async () => true),
   };
@@ -597,7 +597,7 @@ describe('a missing or invalid encryption key (real secret-box + connections)', 
     expect(await get.json()).toEqual({
       available: false,
       model: null,
-      openclaw: { gateway: false, pluginChat: false, agent: false, agentId: null },
+      openclaw: { gateway: false, agent: false, agentId: null },
       aiHidden: false,
     });
 

@@ -56,7 +56,7 @@ import {
   CONNECTED_MODEL,
   KEY_TURNED_DOWN,
   NOTHING_CONNECTED,
-  OPENCLAW_PLUGIN,
+  OPENCLAW_CHAT,
   seedAI,
   type SeedAI,
 } from './helpers/ai-fixtures';
@@ -155,7 +155,7 @@ describe('the tab pill', () => {
 
   it('calls it Ask whoever answers: the label under the bar names the answerer (D11)', () => {
     unseed();
-    unseed = seedAI(OPENCLAW_PLUGIN);
+    unseed = seedAI(OPENCLAW_CHAT);
     useMobileNavStore.setState({ activeTab: 'chat' });
     render(<MobileBottomDock />);
 

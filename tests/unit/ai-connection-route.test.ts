@@ -146,7 +146,7 @@ vi.mock('@/lib/ai-server/providers', async (importOriginal) => {
   };
 });
 
-const OPENCLAW = { gateway: false, pluginChat: true, agent: true, agentId: 'kirby-1' };
+const OPENCLAW = { gateway: true, agent: true, agentId: 'kirby-1' };
 const CIPHER = 'v1:aXZpdml2aXZpdml2:dGFndGFndGFndGFndGFn:Y2lwaGVy';
 
 function rowOf(o: Partial<ModelConnectionRow> = {}): ModelConnectionRow {

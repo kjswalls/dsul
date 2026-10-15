@@ -112,7 +112,7 @@ import {
   CONNECTED_MODEL,
   KEY_TURNED_DOWN,
   NOTHING_CONNECTED,
-  OPENCLAW_PLUGIN,
+  OPENCLAW_CHAT,
   seedAI,
   type SeedAI,
 } from './helpers/ai-fixtures';
@@ -635,7 +635,7 @@ describe('the item panel', () => {
   });
 
   it('assigns to OpenClaw, and only to OpenClaw, when an agent is paired', () => {
-    seed(OPENCLAW_PLUGIN);
+    seed(OPENCLAW_CHAT);
     renderSections();
 
     const assign = screen.getByTestId('assign-agent');
@@ -643,8 +643,8 @@ describe('the item panel', () => {
     fireEvent.click(assign);
     expect(updateTask).toHaveBeenCalledWith('item-1', { assignee: 'openclaw', aiStatus: 'queued' });
 
-    // The plugin path has no proposal transport, so no breakdown; its thread
-    // is named after the agent.
+    // The browser link has no proposal transport, so no breakdown; its
+    // thread is named after the agent.
     expect(screen.queryByTestId('break-it-down')).toBeNull();
     expect(screen.getByTestId('item-thread-input')).toHaveAttribute(
       'placeholder',

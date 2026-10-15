@@ -68,9 +68,9 @@ describe('chatErrorCopy', () => {
     expect(ROUTE_ERROR_COPY.forbidden).toBe("That request wasn't allowed.");
   });
 
-  it("keeps today's plugin and fallback lines", () => {
+  it("keeps the retired plugin's lines readable, and the fallbacks", () => {
     expect(chatErrorCopy('plugin_setup', 'openclaw')).toBe(
-      "OpenClaw isn't reachable yet. Run `openclaw dsul-context setup` and set publicUrl in openclaw.json."
+      "OpenClaw wasn't set up to answer here yet. Set up chat in Settings → AI."
     );
     expect(chatErrorCopy('plugin_unreachable', 'openclaw')).toBe("Couldn't reach OpenClaw. Check that it is running.");
     expect(chatErrorCopy('no_response', 'model')).toBe('No response received.');

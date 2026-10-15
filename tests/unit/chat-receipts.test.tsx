@@ -106,7 +106,6 @@ describe('the receipt line', () => {
     render(
       <TranscriptMessages
         messages={THREAD}
-        typing={false}
         busy={false}
         receipts={{ conversationId: 'c1', list: useChatReceipts.getState().byConversation.c1 ?? [] }}
       />
@@ -127,7 +126,7 @@ describe('the receipt line', () => {
   it('offers no Undo once something else has been done since', () => {
     plannerAt(['act-1', 'act-2', 'act-3'], 2);
     render(
-      <TranscriptMessages messages={THREAD} typing={false} busy={false} receipts={{ conversationId: 'c1', list: [receipt()] }} />
+      <TranscriptMessages messages={THREAD} busy={false} receipts={{ conversationId: 'c1', list: [receipt()] }} />
     );
     expect(screen.getByTestId('chat-receipt')).toBeTruthy();
     expect(screen.queryByTestId('chat-receipt-undo')).toBeNull();
@@ -136,7 +135,7 @@ describe('the receipt line', () => {
   it('offers it again when the later change is itself undone', () => {
     plannerAt(['act-1', 'act-2', 'act-3'], 1);
     render(
-      <TranscriptMessages messages={THREAD} typing={false} busy={false} receipts={{ conversationId: 'c1', list: [receipt()] }} />
+      <TranscriptMessages messages={THREAD} busy={false} receipts={{ conversationId: 'c1', list: [receipt()] }} />
     );
     expect(screen.getByTestId('chat-receipt-undo')).toBeTruthy();
   });

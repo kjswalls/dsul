@@ -697,7 +697,7 @@ describe('the watcher', () => {
     it('OpenClaw answering: waits, and the answerer is left as the gate chose it', async () => {
       keepConsented();
       watch();
-      useAIConnectionStore.setState({ model: { ...MODEL, status: 'failing' }, openclaw: { gateway: true, pluginChat: false, agent: true, agentId: 'kirby-1' } });
+      useAIConnectionStore.setState({ model: { ...MODEL, status: 'failing' }, openclaw: { gateway: true, agent: true, agentId: 'kirby-1' } });
       await expectWaitsInTheBox();
       expect(useAISettingsStore.getState().chatTarget).toBe('model');
     });

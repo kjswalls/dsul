@@ -8,8 +8,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
  * prompt rides in a body any more, because all four live server-side. These
  * cases pin what a body may carry, what reaches the transcript when nothing
  * can answer (nothing), how a refusal reads (a CODE, its words in
- * lib/chat-errors.ts), and the plugin path's lazy, per-account cache of its
- * URL and key.
+ * lib/chat-errors.ts).
  *
  * The conversations API is a fake (configureConversations), so the only
  * fetches here are the transport's own: `calls.map(c => c.url)` is exactly
@@ -43,12 +42,12 @@ import {
   useConversationsStore,
   type ChatMessage,
 } from '@/lib/conversations-store';
-import { chatTransport, outgoingTurns, pluginSessionKey, resetPluginTransport } from '@/lib/chat-transport';
+import { chatTransport, outgoingTurns } from '@/lib/chat-transport';
 import { chatErrorCopy } from '@/lib/chat-errors';
 import { useAIConnectionStore } from '@/lib/ai-connection-store';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { useProposalStore } from '@/lib/proposal-store';
-import { seedAI, CONNECTED_MODEL, NOTHING_CONNECTED, OPENCLAW_PLUGIN } from './helpers/ai-fixtures';
+import { seedAI, CONNECTED_MODEL, NOTHING_CONNECTED, OPENCLAW_CHAT } from './helpers/ai-fixtures';
 import { fakeApi, type FakeApi } from './helpers/conversations-fakes';
 
 type Call = { url: string; init: RequestInit };
@@ -99,7 +98,6 @@ beforeEach(() => {
   api = fakeApi();
   configureConversations({ api: api.api, transport: chatTransport });
   clearChatState();
-  resetPluginTransport();
   id = store().newDraft();
 });
 
@@ -214,7 +212,7 @@ describe('the model path (/api/chat)', () => {
   });
 
   it('sends an OpenClaw gateway user through /api/chat with target openclaw', async () => {
-    unseed = seedAI({ ...OPENCLAW_PLUGIN, openclaw: { gateway: true, agent: true } });
+    unseed = seedAI({ ...OPENCLAW_CHAT, openclaw: { gateway: true, agent: true }, browserChat: false });
     const calls = stubFetch(() => ({ ok: true, body: sse({ content: 'ok' }) }));
 
     await store().send(id, 'hello');
@@ -368,182 +366,6 @@ describe('the model path (/api/chat)', () => {
     stubFetch(() => ({ ok: true, body: sse() }));
     await store().send(id, 'hello');
     expect(last(id)).toMatchObject({ status: 'error', errorCode: 'no_response' });
-  });
-});
-
-describe('the plugin path (OpenClaw with no gateway)', () => {
-  const pluginRoute = (url: string) =>
-    url === '/api/agent/chat-url'
-      ? {
-          ok: true,
-          json: async () => ({
-            chatUrl: 'https://claw.example/plugins/dsul/chat',
-            agentId: 'kirby-1',
-            chatToken: 'dsulchat_plugin-token',
-          }),
-        }
-      : { ok: true, json: async () => ({ content: 'From OpenClaw.' }) };
-
-  it('posts exactly {message, sessionKey, context} to the plugin, with the bearer', async () => {
-    unseed = seedAI(OPENCLAW_PLUGIN);
-    const calls = stubFetch(pluginRoute);
-
-    await store().send(id, '  how am I doing  ');
-
-    expect(calls.map((c) => c.url)).toEqual(['/api/agent/chat-url', 'https://claw.example/plugins/dsul/chat']);
-    const post = calls[1];
-    expect(bodyOf(post)).toEqual({
-      message: 'how am I doing',
-      sessionKey: `dsul-chat-${id}`,
-      context: '## dsul Context',
-    });
-    expect(pluginSessionKey(id)).toBe(`dsul-chat-${id}`);
-    expect((post.init.headers as Record<string, string>).Authorization).toBe('Bearer dsulchat_plugin-token');
-    expect(last(id)).toMatchObject({ content: 'From OpenClaw.', answerer: 'openclaw', model: null });
-  });
-
-  it('gives the plugin the whole planner in its one context', async () => {
-    unseed = seedAI(OPENCLAW_PLUGIN);
-    plannerContext.beyond = '### Braindump\n- Fix the bike';
-    const calls = stubFetch(pluginRoute);
-    await store().send(id, 'hi');
-    expect(bodyOf(calls[1]).context).toBe('## dsul Context\n\n### Braindump\n- Fix the bike');
-  });
-
-  it('sends the message already clipped to the user cap', async () => {
-    unseed = seedAI(OPENCLAW_PLUGIN);
-    const calls = stubFetch(pluginRoute);
-    await store().send(id, 'z'.repeat(9_000));
-    expect((bodyOf(calls[1]).message as string).length).toBe(8_000);
-  });
-
-  it("puts the user's own instructions in the context, not a new field", async () => {
-    unseed = seedAI(OPENCLAW_PLUGIN);
-    useAISettingsStore.setState({ systemPrompt: '  Call me Kirby.  ' });
-    const calls = stubFetch(pluginRoute);
-
-    await store().send(id, 'hi');
-
-    const body = bodyOf(calls[1]);
-    expect(Object.keys(body).sort()).toEqual(['context', 'message', 'sessionKey']);
-    expect(body.context).toBe("## dsul Context\n\n## The user's own instructions\nCall me Kirby.");
-  });
-
-  it('reads the chat URL once per account, shared by every conversation', async () => {
-    unseed = seedAI(OPENCLAW_PLUGIN);
-    const calls = stubFetch(pluginRoute);
-    const other = await store().resolveItemThread('i1');
-
-    await store().send(id, 'one');
-    await store().send(id, 'two');
-    await store().send(other, 'three');
-    expect(calls.filter((c) => c.url === '/api/agent/chat-url')).toHaveLength(1);
-    // One OpenClaw session per conversation.
-    const keys = calls.filter((c) => c.url !== '/api/agent/chat-url').map((c) => bodyOf(c).sessionKey);
-    expect(keys).toEqual([`dsul-chat-${id}`, `dsul-chat-${id}`, `dsul-chat-${other}`]);
-
-    // Another account on this browser never reuses the last one's key.
-    useAIConnectionStore.setState({ hydratedUserId: 'someone-else' });
-    await store().send(store().newDraft(), 'four');
-    expect(calls.filter((c) => c.url === '/api/agent/chat-url')).toHaveLength(2);
-  });
-
-  it('does not cache a failed read', async () => {
-    unseed = seedAI(OPENCLAW_PLUGIN);
-    let fail = true;
-    const calls = stubFetch((url) =>
-      url === '/api/agent/chat-url' && fail ? { ok: false, status: 500, json: async () => ({}) } : pluginRoute(url)
-    );
-
-    await store().send(id, 'one');
-    // The gate already knows a chat URL is registered, so a failed READ is
-    // "can't reach", never the setup instructions.
-    expect(last(id)).toMatchObject({ status: 'error', errorCode: 'plugin_unreachable' });
-    expect(shown(id)).toBe("Couldn't reach OpenClaw. Check that it is running.");
-    expect(store().threads[id].streaming).toBe(false);
-
-    fail = false;
-    await store().send(id, 'two');
-    expect(calls.filter((c) => c.url === '/api/agent/chat-url')).toHaveLength(2);
-    expect(last(id)).toMatchObject({ content: 'From OpenClaw.', status: 'complete' });
-  });
-
-  it('shows the setup copy only for a read that succeeds with no URL, and re-reads next time', async () => {
-    unseed = seedAI(OPENCLAW_PLUGIN);
-    let registered = false;
-    const calls = stubFetch((url) =>
-      url === '/api/agent/chat-url' && !registered
-        ? { ok: true, json: async () => ({ chatUrl: null, agentId: null, chatToken: 'dsulchat_plugin-token' }) }
-        : pluginRoute(url)
-    );
-
-    await store().send(id, 'one');
-    expect(last(id)).toMatchObject({ errorCode: 'plugin_setup' });
-    expect(shown(id)).toBe(
-      "OpenClaw isn't reachable yet. Run `openclaw dsul-context setup` and set publicUrl in openclaw.json."
-    );
-    expect(calls.map((c) => c.url)).toEqual(['/api/agent/chat-url']);
-
-    registered = true;
-    await store().send(id, 'two');
-    expect(calls.filter((c) => c.url === '/api/agent/chat-url')).toHaveLength(2);
-    expect(last(id)).toMatchObject({ content: 'From OpenClaw.' });
-  });
-
-  it('a stop during the URL read leaves no bubble behind, even when the read then fails', async () => {
-    unseed = seedAI(OPENCLAW_PLUGIN);
-    let failRead: (e: Error) => void = () => {};
-    stubFetch((url) =>
-      url === '/api/agent/chat-url'
-        ? new Promise((_, reject) => {
-            failRead = reject;
-          })
-        : pluginRoute(url)
-    );
-
-    const sending = store().send(id, 'one');
-    await Promise.resolve();
-    store().stop(id);
-    failRead(new TypeError('Failed to fetch'));
-    await sending;
-
-    expect(messagesOf(id).map((m) => m.role)).toEqual(['user']);
-    expect(store().threads[id].streaming).toBe(false);
-  });
-
-  it("says what to check when the plugin can't be reached, never the browser's error", async () => {
-    unseed = seedAI(OPENCLAW_PLUGIN);
-    stubFetch((url) => {
-      if (url === '/api/agent/chat-url') return pluginRoute(url);
-      throw new TypeError('Failed to fetch: ECONNREFUSED 10.0.0.5');
-    });
-
-    await store().send(id, 'hi');
-
-    expect(shown(id)).toBe("Couldn't reach OpenClaw. Check that it is running.");
-    expect(JSON.stringify(store().threads[id])).not.toContain('ECONNREFUSED');
-    expect(store().threads[id].streaming).toBe(false);
-  });
-
-  it("never keeps the plugin's own error text", async () => {
-    unseed = seedAI(OPENCLAW_PLUGIN);
-    stubFetch((url) =>
-      url === '/api/agent/chat-url' ? pluginRoute(url) : { ok: true, json: async () => ({ error: 'agent kirby-1 crashed at /srv' }) }
-    );
-    await store().send(id, 'hi');
-    expect(last(id)).toMatchObject({ errorCode: 'plugin_error', content: '' });
-    expect(JSON.stringify(store().threads[id])).not.toContain('/srv');
-  });
-
-  it('never touches /api/chat or the old readiness endpoints', async () => {
-    unseed = seedAI(OPENCLAW_PLUGIN);
-    const calls = stubFetch(pluginRoute);
-
-    await store().send(id, 'hi');
-
-    const urls = calls.map((c) => c.url);
-    expect(urls).not.toContain('/api/chat');
-    expect(urls).not.toContain('/api/agent/gateway');
   });
 });
 

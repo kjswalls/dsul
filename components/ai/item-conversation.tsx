@@ -195,7 +195,7 @@ export function ItemConversation({
         </div>
         {gone && <GoneNotice />}
         {agentSide}
-        <TranscriptMessages messages={messages} typing={isTyping} busy={isLoading} retryVia={retryVia} receipts={receipts} />
+        <TranscriptMessages messages={messages} busy={isLoading} retryVia={retryVia} receipts={receipts} />
         <ReplyStatus messages={messages} />
       </div>
     );
@@ -214,7 +214,7 @@ export function ItemConversation({
       {(messages.length > 0 || exchange) && (
         <div ref={listRef} className="flex max-h-64 min-h-0 flex-col gap-3 overflow-y-auto pr-1">
           {agentSide}
-          <TranscriptMessages messages={messages} typing={isTyping} busy={isLoading} retryVia={retryVia} receipts={receipts} />
+          <TranscriptMessages messages={messages} busy={isLoading} retryVia={retryVia} receipts={receipts} />
         </div>
       )}
       <ReplyStatus messages={messages} />

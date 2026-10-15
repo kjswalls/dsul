@@ -57,19 +57,12 @@ afterEach(() => cleanup());
 
 describe('a streamed delta', () => {
   it('re-parses the reply it grew, not every reply in the thread', () => {
-    const { rerender } = render(<TranscriptMessages messages={THREAD} typing={false} busy />);
+    const { rerender } = render(<TranscriptMessages messages={THREAD} busy />);
     expect(calls.n).toBe(3);
 
     calls.n = 0;
     const grown = [...THREAD.slice(0, 5), { ...THREAD[5], content: 'Third' }];
-    rerender(<TranscriptMessages messages={grown} typing={false} busy />);
-    expect(calls.n).toBe(1);
-  });
-
-  it('hands `typing` to the reply still arriving only, so it moves no other reply', () => {
-    const { rerender } = render(<TranscriptMessages messages={THREAD} typing={false} busy />);
-    calls.n = 0;
-    rerender(<TranscriptMessages messages={THREAD} typing busy />);
+    rerender(<TranscriptMessages messages={grown} busy />);
     expect(calls.n).toBe(1);
   });
 });

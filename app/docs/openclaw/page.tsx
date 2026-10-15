@@ -173,7 +173,8 @@ export default function OpenClawDocsPage() {
         <p className="text-xs leading-relaxed text-muted-foreground">
           Needs <code className="font-mono text-foreground">curl</code> on the gateway machine and
           an OpenClaw with stream automations (tested with 2026.10.2). Set up the older dsul
-          plugin before? It keeps working until you press Connect.
+          plugin before? Its chat in Ask has stopped, so set up chat above, and press Connect to
+          move hand-offs over too.
         </p>
       </div>
     </div>

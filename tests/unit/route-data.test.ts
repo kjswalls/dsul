@@ -183,14 +183,14 @@ describe('routeNeedsItems', () => {
     expect(routeNeedsItems('/settings/day')).toBe(false);
     expect(routeNeedsItems('/settings/extensions/beemindr')).toBe(false);
     expect(routeNeedsItems('/ledger')).toBe(false);
-    expect(routeNeedsItems('/connect')).toBe(false);
+    expect(routeNeedsItems('/docs/openclaw')).toBe(false);
   });
 
   it('matches on segment boundaries, not bare prefixes', () => {
     // A future sibling route must not inherit an opt-out by spelling.
     expect(routeNeedsItems('/settings-import')).toBe(true);
     expect(routeNeedsItems('/ledgers')).toBe(true);
-    expect(routeNeedsItems('/connective')).toBe(true);
+    expect(routeNeedsItems('/docsets')).toBe(true);
   });
 
   it('never names a route whose page tree reads item data', () => {

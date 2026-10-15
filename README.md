@@ -41,7 +41,6 @@ pnpm workspace, Node 24.
 | `components/`       | The UI (`views/`, `shell/`, `planner/`, `sidebar/`, `mobile/`, …)  |
 | `lib/`              | Stores, registries, and domain logic                               |
 | `packages/types`    | `@dsul/types` — shared Zod schemas; its `dist/` is committed       |
-| `openclaw-plugin/`  | `@dsul/openclaw-context` — brings your plan into an AI conversation |
 | `supabase/`         | Migrations — the single source of truth for the schema             |
 | `memory/plans/`     | Longer-running design docs                                         |
 

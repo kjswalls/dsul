@@ -96,7 +96,7 @@ const OPENROUTER_SENTINEL = 'sk-or-v1-SENTINEL-9876';
 
 /* ── A fake server ──────────────────────────────────────────────────────── */
 
-const CLAW_OFF = { gateway: false, pluginChat: false, agent: false, agentId: null };
+const CLAW_OFF = { gateway: false, agent: false, agentId: null };
 
 function view(over: Partial<ModelConnectionView> = {}): ModelConnectionView {
   return {

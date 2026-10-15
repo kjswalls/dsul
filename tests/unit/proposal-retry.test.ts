@@ -83,7 +83,7 @@ vi.mock('@/lib/ai-connection-store', () => ({
 }));
 
 import { useProposalStore } from '@/lib/proposal-store';
-import { capsFor, CONNECTED_MODEL, OPENCLAW_PLUGIN } from './helpers/ai-fixtures';
+import { capsFor, CONNECTED_MODEL, OPENCLAW_CHAT } from './helpers/ai-fixtures';
 
 gate.caps = capsFor(CONNECTED_MODEL);
 
@@ -188,7 +188,7 @@ describe('retry', () => {
     expect(before.status).toBe('ready');
 
     // The model was disconnected (or chat moved to the plugin) while the card was up.
-    gate.caps = capsFor(OPENCLAW_PLUGIN);
+    gate.caps = capsFor(OPENCLAW_CHAT);
     expect(gate.caps).toMatchObject({ proposeTarget: null });
     await useProposalStore.getState().retry();
 
@@ -523,7 +523,7 @@ describe('the request body', () => {
   it('asks nothing when the gate has no one to propose', async () => {
     // OpenClaw on the plugin path: chat works, but there is no structured
     // proposal transport, and the route never reroutes to a model (D14).
-    gate.caps = capsFor(OPENCLAW_PLUGIN);
+    gate.caps = capsFor(OPENCLAW_CHAT);
     const bodies = mockPropose(draft('Plan A'));
     await useProposalStore.getState().request('ask', 'plan my day');
 

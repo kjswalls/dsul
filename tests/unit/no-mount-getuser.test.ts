@@ -22,11 +22,12 @@ import path from 'node:path';
  * nothing client-side imports it. It is named in SERVER_ONLY rather than
  * skipped by path, so the exception stays visible and the second test pins it
  * to keeping its call. The allowlist is for a client page where a
- * server-validated user is the point.
+ * server-validated user is the point (none today).
  */
 const ROOT = path.resolve(__dirname, '../..');
 const SCAN = ['components', 'app', 'lib', 'hooks'];
-const ALLOWED = new Set(['app/connect/page.tsx']);
+// Empty since the /connect pairing page went with the OpenClaw plugin (2026-10-15).
+const ALLOWED = new Set<string>();
 const SERVER_ONLY = new Set(['lib/app-auth.ts']);
 
 function walk(dir: string, out: string[]) {

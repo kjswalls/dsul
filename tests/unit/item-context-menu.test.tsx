@@ -81,7 +81,7 @@ import {
 } from '@/lib/conversations-store';
 import { useRailStore } from '@/lib/rail-store';
 import { useProposalStore } from '@/lib/proposal-store';
-import { CONNECTED_MODEL, NOTHING_CONNECTED, OPENCLAW_PLUGIN, seedAI, type SeedAI } from './helpers/ai-fixtures';
+import { CONNECTED_MODEL, NOTHING_CONNECTED, OPENCLAW_CHAT, seedAI, type SeedAI } from './helpers/ai-fixtures';
 import { fakeApi, fakeTransport, flush, summary, type FakeApi, type FakeTransport } from './helpers/conversations-fakes';
 import * as db from '@/lib/db';
 import type { HabitItem, Item, Task } from '@/lib/planner-types';
@@ -781,7 +781,7 @@ describe('the item menu\'s AI row', () => {
     cleanup();
     unseed();
 
-    unseed = seedAI(OPENCLAW_PLUGIN);
+    unseed = seedAI(OPENCLAW_CHAT);
     render(<LiveRow id="once" />);
     expect(within(rightClick(cardOf('once'))).getByTestId('item-menu-ask')).toHaveTextContent(/^AI$/);
   });
@@ -860,7 +860,7 @@ describe('the item menu\'s AI row', () => {
   });
 
   it('drops the asks that need a plan card when OpenClaw answers over the plugin', () => {
-    unseed = seedAI(OPENCLAW_PLUGIN);
+    unseed = seedAI(OPENCLAW_CHAT);
     render(<LiveRow id="once" />);
     expect(askIds(openAsk(rightClick(cardOf('once'))))).toEqual(['ask', 'start']);
   });

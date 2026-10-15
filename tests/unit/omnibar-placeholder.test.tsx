@@ -51,7 +51,7 @@ vi.mock('next/navigation', () => ({
 }));
 
 import { Omnibar } from '@/components/sidebar/omnibar';
-import { seedAI, CONNECTED_MODEL, NOTHING_CONNECTED, OPENCLAW_PLUGIN } from './helpers/ai-fixtures';
+import { seedAI, CONNECTED_MODEL, NOTHING_CONNECTED, OPENCLAW_CHAT } from './helpers/ai-fixtures';
 
 beforeAll(() => {
   if (!('PointerEvent' in globalThis)) {
@@ -110,7 +110,7 @@ describe('the resting omnibar placeholder', () => {
 
   it('keeps the dock line identical whatever the AI gate says', () => {
     const seen = new Set<string>();
-    for (const seed of [undefined, { phase: 'error' as const }, NOTHING_CONNECTED, CONNECTED_MODEL, OPENCLAW_PLUGIN]) {
+    for (const seed of [undefined, { phase: 'error' as const }, NOTHING_CONNECTED, CONNECTED_MODEL, OPENCLAW_CHAT]) {
       unseed = seedAI(seed);
       const { unmount } = render(<Omnibar variant="dock" />);
       seen.add(placeholderOf('dock'));
@@ -134,7 +134,7 @@ describe('the resting omnibar placeholder', () => {
   });
 
   it('names OpenClaw in the launcher when OpenClaw is who answers', () => {
-    unseed = seedAI(OPENCLAW_PLUGIN);
+    unseed = seedAI(OPENCLAW_CHAT);
     render(<Omnibar variant="launcher" />);
     expect(placeholderOf('launcher')).toBe('Search, add a task, run a command, or ask OpenClaw…');
   });

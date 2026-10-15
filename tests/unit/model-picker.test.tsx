@@ -39,7 +39,7 @@ import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { connectErrorCopy } from '@/components/settings/model-connection-panel';
 import { useAIConnectionStore } from '@/lib/ai-connection-store';
 import { modelName } from '@/lib/ai-model-names';
-import { CONNECTED_MODEL, GEMINI_WORKING, OPENCLAW_PLUGIN, seedAI } from './helpers/ai-fixtures';
+import { CONNECTED_MODEL, GEMINI_WORKING, OPENCLAW_CHAT, seedAI } from './helpers/ai-fixtures';
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -62,7 +62,7 @@ beforeEach(() => {
       return json({
         available: true,
         model: useAIConnectionStore.getState().model,
-        openclaw: { gateway: false, pluginChat: false, agent: false, agentId: null },
+        openclaw: { gateway: false, agent: false, agentId: null },
       });
     })
   );
@@ -202,7 +202,7 @@ describe('in the chat box', () => {
     expect(screen.queryByTestId('chat-model-chip')).toBeNull();
     unmount();
     cleanupAI?.();
-    cleanupAI = seedAI({ ...OPENCLAW_PLUGIN, choice: 'openclaw' });
+    cleanupAI = seedAI({ ...OPENCLAW_CHAT, choice: 'openclaw' });
     render(<ChatComposer variant="panel" binding={{ kind: 'home' }} />);
     expect(useAISettingsStore.getState().chatTarget).toBe('openclaw');
     expect(screen.queryByTestId('chat-model-chip')).toBeNull();

@@ -1,5 +1,4 @@
 import { useAISettingsStore } from './ai-settings-store';
-import { resetPluginTransport } from './chat-transport';
 import { useRailStore } from './rail-store';
 import type { ChatTarget } from './ai-types';
 
@@ -8,9 +7,8 @@ import type { ChatTarget } from './ai-types';
  * NOTHING: nothing in the app deletes a saved conversation except the user's
  * own Delete.
  *
- * It sets the device-local choice, drops the cached plugin transport, and
- * returns both Ask stacks to home, so the next ask starts a new conversation
- * with the new answerer. An old conversation can still be continued: each
+ * It sets the device-local choice and returns both Ask stacks to home, so the
+ * next ask starts a new conversation with the new answerer. An old conversation can still be continued: each
  * message records who answered it, and the store folds a continuity note into
  * the context for OpenClaw (lib/conversations-store.ts).
  *
@@ -23,7 +21,6 @@ export function chooseChatTarget(next: ChatTarget): void {
   const settings = useAISettingsStore.getState();
   if (settings.chatTarget === next) return;
   settings.setChatTarget(next);
-  resetPluginTransport();
   useRailStore.getState().popToHome('desktop');
   useRailStore.getState().popToHome('phone');
 }

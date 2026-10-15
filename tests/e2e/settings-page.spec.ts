@@ -246,14 +246,14 @@ test.describe('Settings page', () => {
     const off = page.getByTestId('mcp-ai-off');
     const paired = off.getByTestId('ai-off-paired');
 
-    await expect(paired).toContainText('atlas is still paired');
+    await expect(paired).toContainText('OpenClaw is still paired');
     await expect(paired).toContainText(
       'OpenClaw reads your planner through its own pairing, which this switch doesn’t touch. Unpair it to stop that.'
     );
     await expect(off.getByTestId('ai-off-connected')).toHaveCount(0);
 
     await paired.getByTestId('ai-off-unpair').click();
-    await expect(page.getByTestId('confirm-dialog')).toContainText('Unpair atlas?');
+    await expect(page.getByTestId('confirm-dialog')).toContainText('Unpair OpenClaw?');
     await page.getByTestId('openclaw-unpair-confirm').click();
 
     // The row goes once the DELETE lands; the card stays, since AI is still off.

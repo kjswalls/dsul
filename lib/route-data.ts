@@ -38,8 +38,6 @@ export const LEAN_ROUTES = [
   '/ledger',
   // The store's old address; it only redirects to Settings → Extensions.
   '/extensions',
-  // Device-pairing flow — talks to /api/agent/connect, not to the store.
-  '/connect',
   '/docs',
   '/login',
   '/auth',
