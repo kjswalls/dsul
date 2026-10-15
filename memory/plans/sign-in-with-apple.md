@@ -1,7 +1,7 @@
 # Sign in with Apple
 
 Apple joins Google and the email link as a way into dsul. This doc holds what shipped, the
-one-time setup in Apple's and Supabase's dashboards, and the six-monthly secret rotation.
+one-time setup in Apple's and Supabase's dashboards, and the secret's automatic rotation.
 
 ## What ships
 
@@ -69,8 +69,8 @@ Identifiers & Profiles at developer.apple.com/account, then in Supabase.
      --client-id app.dsul.web --p8 ~/Downloads/AuthKey_<Key ID>.p8
    ```
 
-   It prints the secret, and the date it expires (180 days out). Put a reminder a week before
-   that date.
+   It prints the secret, and the date it expires (180 days out). After this first time the
+   rotation job below renews it.
 6. **Supabase.** Dashboard → Authentication → Sign In / Providers → Apple. Enable it.
    - Client IDs: `app.dsul.web,app.dsul.ios`
    - Secret Key (for OAuth): the secret from step 5
@@ -91,9 +91,38 @@ Identifiers & Profiles at developer.apple.com/account, then in Supabase.
 
 Apple's client secret lives at most six months, and when it lapses Apple sign-in fails while
 Google and email carry on. The iPhone's sign-in needs no client secret (GoTrue checks its token
-against Apple's public keys), so it carries on. Before the date step 5 printed, rerun step 5 with
-the same .p8 and paste the new secret into Supabase (step 6). Nothing else changes, and nobody is
-signed out.
+against Apple's public keys), so it carries on. Nobody is signed out by a renewal.
+
+**It renews itself.** `.github/workflows/apple-secret-rotate.yml` runs
+`scripts/apple-secret-rotate.mjs` at 09:17 UTC on the 1st of every other month. It mints a new
+secret, has Apple confirm it (a token request with a code that cannot exist: `invalid_grant`
+means Apple accepted the client, `invalid_client` means it refused the secret), checks that
+Supabase's Apple provider is enabled with `app.dsul.web` as its first Client ID, and only then
+writes the single field `external_apple_secret` through the Management API
+(`PATCH /v1/projects/<ref>/config/auth`). Any failed check writes nothing. A secret lives 180
+days and is replaced every ~60, so a failed run leaves about four months to fix it, and the
+failure opens a GitHub issue assigned to Kirby (a scheduled run's failure email goes to whoever
+last edited the cron line, which may be a bot).
+
+It needs four repository secrets (Settings → Secrets and variables → Actions):
+
+| Secret | Value |
+|---|---|
+| `APPLE_TEAM_ID` | step 1 |
+| `APPLE_KEY_ID` | step 4 |
+| `APPLE_PRIVATE_KEY` | the .p8 file's whole text |
+| `SUPABASE_ACCESS_TOKEN` | a personal access token from supabase.com/dashboard/account/tokens |
+
+The Supabase token is the sensitive one: it can change anything in every project the account
+owns, not only Apple sign-in. That is why the job runs only on a schedule or by hand from `main`,
+never on a pull request, and why it lives in GitHub's secrets rather than Vercel's, where the web
+app's own runtime could read it. If Supabase ever offers a narrower token, swap it in. To check
+the setup, run the workflow by hand (Actions → Apple secret rotation → Run workflow): a manual
+run defaults to a dry run, which does every check and writes nothing. Untick it to renew now.
+
+**By hand**, if the job is broken: rerun step 5 with the same .p8 and paste the new secret into
+Supabase (step 6), or `node scripts/apple-secret-rotate.mjs` with the four values above in the
+environment.
 
 Deletion's revocation has no secret to rotate. If the key itself is ever revoked in Apple's
 portal, make a new one (step 4) and replace `APPLE_KEY_ID` and `APPLE_PRIVATE_KEY`, and step 5's

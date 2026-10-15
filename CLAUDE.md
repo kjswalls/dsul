@@ -466,9 +466,11 @@ right rail, or anything under `components/ai/`.
 tokens through `resolveUserIdFromApiKey`'s `access` argument. Read it before touching any of those.
 [sign-in-with-apple.md](memory/plans/sign-in-with-apple.md) holds the Apple provider: why the web's
 button follows Supabase's own settings (the iPhone's is always shown), the desktop shell's provider
-list, the iPhone's native id_token flow, the dashboard setup, and the client secret that must be
-re-minted every six months (`scripts/apple-client-secret.mjs`) or Apple sign-in stops on the web
-and the desktop (the iPhone's id_token grant needs no secret).
+list, the iPhone's native id_token flow, the dashboard setup, and the client secret that lapses
+every six months or Apple sign-in stops on the web and the desktop (the iPhone's id_token grant
+needs no secret). A scheduled workflow (`apple-secret-rotate.yml`) renews it every other month
+and opens an issue when it fails; it writes to prod's auth config with a Supabase access token,
+so it runs only from `main`, never on a pull request.
 [account-deletion.md](memory/plans/account-deletion.md) holds Delete account on the iPhone and the
 web: the one rule (one admin delete, every user column cascades, migration 063 and the test that
 pins it), the account guard and the "gone" answers, exchange then delete then revoke for Sign in
