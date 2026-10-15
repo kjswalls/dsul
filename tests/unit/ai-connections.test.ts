@@ -768,7 +768,7 @@ describe('readOpenClawStatus', () => {
       { openclaw_gateway_token: 'tok_SENTINEL' }
     );
     const status = await readOpenClawStatus(USER);
-    expect(status).toEqual({ gateway: true, pluginChat: true, agent: true, agentId: 'kirby-1', connect: NOT_CONNECTED });
+    expect(status).toEqual({ gateway: true, agent: true, agentId: 'kirby-1', connect: NOT_CONNECTED });
     expect(JSON.stringify(status)).not.toContain('SENTINEL');
     expect(mock.state.calls.map((c) => c.table).sort()).toEqual(['user_secrets', 'user_settings']);
     for (const c of mock.state.calls) expect(c.ops).toContainEqual(['eq', ['user_id', USER]]);
@@ -776,14 +776,14 @@ describe('readOpenClawStatus', () => {
 
   it('a gateway needs both the URL and the token; plugin chat needs both the key and the chat URL', async () => {
     respondWith({ openclaw_gateway_url: 'https://gw.example', openclaw_api_key: 'k', openclaw_chat_url: '' }, null);
-    expect(await readOpenClawStatus(USER)).toEqual({ gateway: false, pluginChat: false, agent: true, agentId: null, connect: NOT_CONNECTED });
+    expect(await readOpenClawStatus(USER)).toEqual({ gateway: false, agent: true, agentId: null, connect: NOT_CONNECTED });
     respondWith(null, { openclaw_gateway_token: 'tok' });
-    expect(await readOpenClawStatus(USER)).toEqual({ gateway: false, pluginChat: false, agent: false, agentId: null, connect: NOT_CONNECTED });
+    expect(await readOpenClawStatus(USER)).toEqual({ gateway: false, agent: false, agentId: null, connect: NOT_CONNECTED });
   });
 
   it('the agent key counts from user_secrets (059 on)', async () => {
     respondWith({ openclaw_chat_url: 'https://claw.example/chat' }, { openclaw_api_key: 'dsul_k' });
-    expect(await readOpenClawStatus(USER)).toEqual({ gateway: false, pluginChat: true, agent: true, agentId: null, connect: NOT_CONNECTED });
+    expect(await readOpenClawStatus(USER)).toEqual({ gateway: false, agent: true, agentId: null, connect: NOT_CONNECTED });
   });
 
   it('before 059 the secrets read retries without the key column and the old column counts', async () => {
@@ -794,13 +794,13 @@ describe('readOpenClawStatus', () => {
         ? { data: null, error: { code: '42703' } }
         : { data: { openclaw_gateway_token: 'tok' }, error: null };
     });
-    expect(await readOpenClawStatus(USER)).toEqual({ gateway: false, pluginChat: false, agent: true, agentId: null, connect: NOT_CONNECTED });
+    expect(await readOpenClawStatus(USER)).toEqual({ gateway: false, agent: true, agentId: null, connect: NOT_CONNECTED });
     expect(mock.state.calls.filter((c) => c.table === 'user_secrets')).toHaveLength(2);
   });
 
   it('missing schema → all false', async () => {
     respondWith(null, null, { settings: { code: '42703' }, secrets: { code: '42P01' } });
-    expect(await readOpenClawStatus(USER)).toEqual({ gateway: false, pluginChat: false, agent: false, agentId: null, connect: NOT_CONNECTED });
+    expect(await readOpenClawStatus(USER)).toEqual({ gateway: false, agent: false, agentId: null, connect: NOT_CONNECTED });
   });
 
   it('another error throws', async () => {

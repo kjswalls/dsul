@@ -73,7 +73,7 @@ import {
   CONNECTED_MODEL,
   KEY_TURNED_DOWN,
   NOTHING_CONNECTED,
-  OPENCLAW_PLUGIN,
+  OPENCLAW_CHAT,
   type SeedAI,
 } from './helpers/ai-fixtures';
 
@@ -770,7 +770,7 @@ describe('the rules, pure', () => {
     expect(tourAIStep({ canChat: false, askInvite: false, aiHidden: false })).toBeNull();
 
     expect(tourAIStep(capsFor(CONNECTED_MODEL))).toBe('ready');
-    expect(tourAIStep(capsFor(OPENCLAW_PLUGIN))).toBe('ready');
+    expect(tourAIStep(capsFor(OPENCLAW_CHAT))).toBe('ready');
     expect(tourAIStep(capsFor(NOTHING_CONNECTED))).toBe('invite');
     expect(tourAIStep(capsFor(AI_HIDDEN))).toBe('off');
     expect(tourAIStep(capsFor({ ...CONNECTED_MODEL, aiHidden: true }))).toBe('off');

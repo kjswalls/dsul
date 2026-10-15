@@ -74,7 +74,7 @@ import {
   CONNECTED_MODEL,
   KEY_TURNED_DOWN,
   NOTHING_CONNECTED,
-  OPENCLAW_PLUGIN,
+  OPENCLAW_CHAT,
   SEED_USER_ID,
   type SeedAI,
 } from './helpers/ai-fixtures';
@@ -888,7 +888,7 @@ describe('with a connected model', () => {
 });
 
 describe('with OpenClaw on the plugin path', () => {
-  beforeEach(() => seed(OPENCLAW_PLUGIN));
+  beforeEach(() => seed(OPENCLAW_CHAT));
 
   it('names OpenClaw everywhere chat is offered', () => {
     renderDock('foo');
@@ -1215,7 +1215,7 @@ describe('what does not move with the gate', () => {
     for (const [, state] of [
       ...NO_CHAT,
       ['model', CONNECTED_MODEL] as [string, SeedAI],
-      ['openclaw', OPENCLAW_PLUGIN] as [string, SeedAI],
+      ['openclaw', OPENCLAW_CHAT] as [string, SeedAI],
     ]) {
       seed(state);
       const { unmount } = render(<Omnibar variant="dock" />);

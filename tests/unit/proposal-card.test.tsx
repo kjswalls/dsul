@@ -104,7 +104,7 @@ import {
   seedAI,
   CONNECTED_MODEL,
   NOTHING_CONNECTED,
-  OPENCLAW_PLUGIN,
+  OPENCLAW_CHAT,
   type SeedAI,
 } from './helpers/ai-fixtures';
 
@@ -468,7 +468,7 @@ describe('retry needs something to answer it', () => {
     ['"Who answers" is Off', { ...CONNECTED_MODEL, choice: 'none' }],
     ['the model was disconnected', NOTHING_CONNECTED],
     // Plugin-path OpenClaw chats but cannot propose (no structured transport).
-    ['only plugin-path OpenClaw is left', OPENCLAW_PLUGIN],
+    ['only plugin-path OpenClaw is left', OPENCLAW_CHAT],
     ['the status read failed', { phase: 'error' }],
   ];
 
@@ -489,7 +489,7 @@ describe('retry needs something to answer it', () => {
   });
 
   it('offers it again with OpenClaw on its gateway, which can propose', () => {
-    seed({ ...OPENCLAW_PLUGIN, openclaw: { gateway: true, agent: true, agentId: 'kirby-1' } });
+    seed({ ...OPENCLAW_CHAT, openclaw: { gateway: true, agent: true, agentId: 'kirby-1' }, browserChat: false });
     status = 'error';
     render(<ProposalCard />);
     fireEvent.click(screen.getByTestId('proposal-retry'));

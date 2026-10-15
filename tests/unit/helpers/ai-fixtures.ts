@@ -21,6 +21,7 @@ import {
   type ConnectionPhase,
 } from '@/lib/ai-connection-store';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
+import { useOpenClawBrowserStore } from '@/lib/openclaw-browser-store';
 
 export interface SeedAI {
   phase?: ConnectionPhase;
@@ -31,6 +32,8 @@ export interface SeedAI {
   /** "No AI, thanks" on the account. Defaults to false: the answer said nothing was hidden. */
   aiHidden?: boolean | null;
   legacyNotice?: boolean;
+  /** This browser is paired with OpenClaw's gateway (lib/openclaw-browser-store.ts). Defaults to false. */
+  browserChat?: boolean;
 }
 
 /** The account a seed signs in as (every phase but 'unknown'). */
@@ -50,7 +53,6 @@ const MODEL_DEFAULTS: ModelConnectionView = {
 
 const OPENCLAW_DEFAULTS: OpenClawView = {
   gateway: false,
-  pluginChat: false,
   agent: false,
   agentId: null,
 };
@@ -63,6 +65,7 @@ interface ResolvedSeed {
   choice: ChatTarget;
   aiHidden: boolean | null;
   legacyNotice: boolean;
+  browserChat: boolean;
 }
 
 function resolveSeed(o: SeedAI = {}): ResolvedSeed {
@@ -74,6 +77,7 @@ function resolveSeed(o: SeedAI = {}): ResolvedSeed {
     choice: o.choice ?? 'model',
     aiHidden: o.aiHidden === undefined ? false : o.aiHidden,
     legacyNotice: o.legacyNotice ?? false,
+    browserChat: o.browserChat ?? false,
   };
 }
 
@@ -86,13 +90,14 @@ export const CONNECTED_MODEL: SeedAI = Object.freeze<SeedAI>({
   choice: 'model',
 });
 
-/** Phase ready, OpenClaw plugin chat + agent key, chosen; agentId 'kirby-1'; no model. */
-export const OPENCLAW_PLUGIN: SeedAI = Object.freeze<SeedAI>({
+/** Phase ready, OpenClaw chat from this browser + agent key, chosen; agentId 'kirby-1'; no model. */
+export const OPENCLAW_CHAT: SeedAI = Object.freeze<SeedAI>({
   phase: 'ready',
   available: true,
   model: null,
-  openclaw: { pluginChat: true, agent: true, agentId: 'kirby-1' },
+  openclaw: { agent: true, agentId: 'kirby-1' },
   choice: 'openclaw',
+  browserChat: true,
 });
 
 /** Phase ready, available, no model, OpenClaw all false: the gate invites (`askInvite`). */
@@ -131,11 +136,12 @@ export const DAILY_LIMIT: SeedAI = Object.freeze<SeedAI>({
 /** GEMINI_WORKING on an account that said "No AI, thanks": the key is kept (F22). */
 export const AI_OFF_CONNECTED: SeedAI = Object.freeze<SeedAI>({ ...GEMINI_WORKING, aiHidden: true });
 
-/** AI off with OpenClaw paired and chatting through the plugin, so its 'atlas' is a live name. */
+/** AI off with OpenClaw paired and chatting from this browser, so its 'atlas' is a live name. */
 export const AI_OFF_PAIRED: SeedAI = Object.freeze<SeedAI>({
   ...NOTHING_CONNECTED,
   aiHidden: true,
-  openclaw: { agent: true, pluginChat: true, agentId: 'atlas' },
+  openclaw: { agent: true, agentId: 'atlas' },
+  browserChat: true,
 });
 
 /** An OpenClaw agent key and no chat transport: paired, but nothing answers (the e2e account). */
@@ -165,6 +171,7 @@ export function paneInputFor(seed?: SeedAI, keepDevice = false): AIPaneInput {
     aiHidden: s.aiHidden,
     choice: s.choice,
     keepDevice,
+    browserChat: s.browserChat,
   };
 }
 
@@ -183,6 +190,7 @@ export function capsFor(o?: SeedAI): AICapabilities {
     openclaw: s.openclaw,
     choice: s.choice,
     aiHidden: s.aiHidden,
+    browserChat: s.browserChat,
   });
 }
 
@@ -219,8 +227,13 @@ export function seedAI(o?: SeedAI): () => void {
     busy: null,
   });
   useAISettingsStore.setState({ chatTarget: s.choice, legacyNotice: s.legacyNotice });
+  useOpenClawBrowserStore.setState({
+    userId: s.phase === 'unknown' ? null : SEED_USER_ID,
+    paired: s.browserChat ? { url: 'wss://claw.example', pairedAt: 1, deviceId: 'a'.repeat(64) } : null,
+  });
   return () => {
     useAIConnectionStore.getState().reset();
     useAISettingsStore.getState().clearUserScopedState();
+    useOpenClawBrowserStore.getState().reset();
   };
 }

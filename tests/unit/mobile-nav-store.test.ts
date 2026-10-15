@@ -20,7 +20,7 @@ import {
   CONNECTED_MODEL,
   KEY_TURNED_DOWN,
   NOTHING_CONNECTED,
-  OPENCLAW_PLUGIN,
+  OPENCLAW_CHAT,
   capsFor,
   type SeedAI,
 } from './helpers/ai-fixtures';
@@ -28,7 +28,7 @@ import {
 describe('the offered rule', () => {
   it.each<[string, SeedAI | undefined, boolean, boolean]>([
     ['connected', CONNECTED_MODEL, true, false],
-    ['OpenClaw answering', OPENCLAW_PLUGIN, true, false],
+    ['OpenClaw answering', OPENCLAW_CHAT, true, false],
     ['invited', NOTHING_CONNECTED, true, true],
     ['a key to fix', KEY_TURNED_DOWN, true, true],
     ['No AI', AI_HIDDEN, false, false],

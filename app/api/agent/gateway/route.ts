@@ -10,11 +10,6 @@ import { assertAllowedGatewayUrl } from '@/lib/openclaw-gateway'
  * OPERATOR ACCESS to the gateway, lives in user_secrets (no anon/authenticated
  * policies — service role only, migration 012), and is NEVER returned: GET
  * reports whether one is stored, never what it is.
- *
- * Contrast /api/agent/chat-url, which hands the browser a plugin chat token
- * (an HMAC of the agent key, good on the plugin's chat route only) so it can
- * POST at the plugin itself. That is the arrangement this transport exists to
- * retire; it stays only until the plugin chat path is removed.
  */
 
 /** PostgREST's shape for "that column/table isn't there yet". */
@@ -111,8 +106,8 @@ export async function POST(req: NextRequest) {
         url = allowed.url
       }
       // upsert, not update: an account with no user_settings row yet would get
-      // a successful no-op — the settings page would say saved, the transport
-      // would stay on the plugin path, and nothing anywhere would disagree.
+      // a successful no-op — the settings page would say saved, OpenClaw would
+      // still not answer, and nothing anywhere would disagree.
       const { error } = await supabase
         .from('user_settings')
         .upsert({ user_id: user.id, openclaw_gateway_url: url }, { onConflict: 'user_id' })

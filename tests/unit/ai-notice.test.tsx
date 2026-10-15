@@ -53,7 +53,7 @@ import {
   seedAI,
   CONNECTED_MODEL,
   NOTHING_CONNECTED,
-  OPENCLAW_PLUGIN,
+  OPENCLAW_CHAT,
   type SeedAI,
 } from './helpers/ai-fixtures';
 
@@ -104,7 +104,7 @@ describe('the failing-key notice', () => {
   });
 
   it('says nothing for a working model, nothing connected, or an unknown gate', () => {
-    for (const s of [CONNECTED_MODEL, NOTHING_CONNECTED, OPENCLAW_PLUGIN, undefined]) {
+    for (const s of [CONNECTED_MODEL, NOTHING_CONNECTED, OPENCLAW_CHAT, undefined]) {
       seed(s);
       const { result, unmount } = renderHook(() => useAINotice());
       expect(result.current).toBeNull();
@@ -187,7 +187,7 @@ describe('the failing-key notice while OpenClaw answers', () => {
   });
 
   it('says the same on the plugin path, which chats without proposing', () => {
-    seed({ ...FAILING, openclaw: { pluginChat: true, agent: true, agentId: 'kirby-1' } });
+    seed({ ...FAILING, openclaw: { gateway: true, agent: true, agentId: 'kirby-1' } });
     const { result } = renderHook(() => useAINotice());
     expect(result.current?.id).toBe('ai-failing');
     render(<>{result.current?.label}</>);
@@ -231,7 +231,7 @@ describe('the legacy notice', () => {
       { ...CONNECTED_MODEL, legacyNotice: true },
       { ...FAILING, legacyNotice: true },
       // OpenClaw answers: AI did not go quiet.
-      { ...OPENCLAW_PLUGIN, legacyNotice: true },
+      { ...OPENCLAW_CHAT, legacyNotice: true },
       // The gate has not answered: never claim anything before it does.
       { legacyNotice: true },
       { phase: 'error', legacyNotice: true },

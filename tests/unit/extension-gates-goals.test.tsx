@@ -77,7 +77,7 @@ import { TaskRow, type RowItem } from '@/components/primitives/task-row';
 import { chatTransport } from '@/lib/chat-transport';
 import { configureConversations, conversationsSettled, useConversationsStore } from '@/lib/conversations-store';
 import { fakeApi } from './helpers/conversations-fakes';
-import { seedAI, OPENCLAW_PLUGIN } from './helpers/ai-fixtures';
+import { seedAI, OPENCLAW_CHAT } from './helpers/ai-fixtures';
 import { useDayItemsForDates } from '@/hooks/use-day-items';
 import {
   extensionEnabled,
@@ -471,17 +471,11 @@ describe('Goals switched off — the remaining surfaces', () => {
     const posted: string[] = [];
     const original = globalThis.fetch;
     globalThis.fetch = vi.fn(async (url: unknown, init: { body?: string } = {}) => {
-      // The plugin path reads its URL and key lazily, once per account.
-      if (url === '/api/agent/chat-url') {
-        return {
-          ok: true,
-          json: async () => ({ chatUrl: 'https://example.test/chat', agentId: null, chatToken: 'k' }),
-        } as never;
-      }
-      posted.push(JSON.parse(init.body ?? '{}').context ?? '');
+      if (url === '/api/chat') posted.push(JSON.parse(init.body ?? '{}').context ?? '');
       return { ok: true, json: async () => ({ content: 'ok' }) } as never;
     }) as never;
-    const unseed = seedAI(OPENCLAW_PLUGIN);
+    // OpenClaw through its gateway: /api/chat carries the context as its own field.
+    const unseed = seedAI({ ...OPENCLAW_CHAT, openclaw: { gateway: true, agent: true }, browserChat: false });
     // The real transport (it is what posts the context); the saves go to a fake.
     configureConversations({ api: fakeApi().api, transport: chatTransport });
     const chat = useConversationsStore.getState();

@@ -43,14 +43,14 @@ const MODEL_OK: ModelConnectionView = {
 const CONNECTED: AIConnectionResponse = {
   available: true,
   model: MODEL_OK,
-  openclaw: { gateway: false, pluginChat: false, agent: false, agentId: null },
+  openclaw: { gateway: false, agent: false, agentId: null },
   aiHidden: false,
 };
 
 const NOTHING: AIConnectionResponse = {
   available: true,
   model: null,
-  openclaw: { gateway: false, pluginChat: false, agent: false, agentId: null },
+  openclaw: { gateway: false, agent: false, agentId: null },
   aiHidden: false,
 };
 
@@ -240,7 +240,7 @@ describe('dedupe', () => {
     // The OpenClaw plugin registered its chat url server-side meanwhile.
     await answer({
       ...NOTHING,
-      openclaw: { gateway: false, pluginChat: true, agent: true, agentId: 'kirby-1' },
+      openclaw: { gateway: true, agent: true, agentId: 'kirby-1' },
     });
     expect(getAICapabilities().canChat).toBe(true);
     expect(DEDUPE_WINDOW_NOTHING_MS).toBe(30_000);
@@ -580,9 +580,9 @@ describe('unpair', () => {
   const UNPAIR = '/api/ai/openclaw';
   const PAIRED: AIConnectionResponse = {
     ...CONNECTED,
-    openclaw: { gateway: true, pluginChat: true, agent: true, agentId: 'atlas' },
+    openclaw: { gateway: true, agent: true, agentId: 'atlas' },
   };
-  const LEFT = { gateway: true, pluginChat: false, agent: false, agentId: null };
+  const LEFT = { gateway: true, agent: false, agentId: null };
 
   it('applies what the route read back, and touches nothing else', async () => {
     await hydrated(A, PAIRED);
@@ -679,7 +679,7 @@ describe('the legacy notice goes once a model has been seen, by any road', () =>
     useAISettingsStore.setState({ legacyNotice: true });
     await hydrated(A, NOTHING);
     const r = store().refresh();
-    await answer({ ...NOTHING, openclaw: { gateway: true, pluginChat: true, agent: false, agentId: null } });
+    await answer({ ...NOTHING, openclaw: { gateway: true, agent: false, agentId: null } });
     await r;
     // OpenClaw answering hides the notice, but is not the move it explains.
     expect(useAISettingsStore.getState().legacyNotice).toBe(true);
@@ -1391,7 +1391,7 @@ describe('useAICapabilities', () => {
 
     await hydrated(A, {
       ...CONNECTED,
-      openclaw: { gateway: false, pluginChat: true, agent: true, agentId: 'kirby-1' },
+      openclaw: { gateway: true, agent: true, agentId: 'kirby-1' },
     });
     expect(result.current).toEqual(getAICapabilities());
     expect(result.current.target).toBe('model');

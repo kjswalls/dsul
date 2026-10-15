@@ -61,7 +61,7 @@ export async function stubConnectedModel(page: Page, o: { agent?: boolean } = {}
           problem: null,
           checkedAt: '2026-10-01T00:00:00.000Z',
         },
-        openclaw: { gateway: false, pluginChat: false, agent: !!o.agent, agentId: null },
+        openclaw: { gateway: false, agent: !!o.agent, agentId: null },
       }),
     })
   );
@@ -92,14 +92,15 @@ export type GateStub = {
  */
 const STUB_LIMITED_UNTIL = '2099-01-01T15:00:00.000Z';
 
-/** OpenClaw, as the gate reports it: none, paired and answering in chat, or pull-only. */
+/** OpenClaw, as the gate reports it: none, paired through Connect, or pull-only. */
 const STUB_OPENCLAW = {
-  none: { gateway: false, pluginChat: false, agent: false, agentId: null },
-  // A live chat transport, so `atlas` is a name the pane shows.
-  paired: { gateway: false, pluginChat: true, agent: true, agentId: 'atlas' },
+  none: { gateway: false, agent: false, agentId: null },
+  // Paired, with an agent id. No chat transport on dsul's server (this
+  // browser's own pairing is device-local), so the pane names it OpenClaw.
+  paired: { gateway: false, agent: true, agentId: 'atlas' },
   // The agent key alone: the shape the real e2e account has, since global
   // setup seeds an agent key for it.
-  'pull-only': { gateway: false, pluginChat: false, agent: true, agentId: null },
+  'pull-only': { gateway: false, agent: true, agentId: null },
 } as const;
 
 /** The saved Gemini key each `model` option starts from (none for `'none'`). */
@@ -127,8 +128,8 @@ function stubModel(kind: 'none' | 'failing' | 'ok' | 'limited'): Record<string, 
  *   working, last checked 2026-10-01) or `'limited'` (working, with today's
  *   limit used up until `STUB_LIMITED_UNTIL`).
  * - `aiHidden`: the account's "No AI, thanks" (default false).
- * - `openclaw`: `'none'` (the default), `'paired'` (agent `atlas`, answering
- *   in chat through the plugin) or `'pull-only'` (the agent key alone).
+ * - `openclaw`: `'none'` (the default), `'paired'` (agent `atlas`, paired
+ *   through Connect) or `'pull-only'` (the agent key alone).
  *
  * Stateful, because "No AI, thanks", the Use AI switch, a connect, a model
  * pick and a disconnect are all account writes: each is answered here and the
@@ -169,7 +170,7 @@ export async function stubAIGate(
   let deletes = 0;
   let unpairs = 0;
   let model = stubModel(o.model ?? 'none');
-  let openclaw: { gateway: boolean; pluginChat: boolean; agent: boolean; agentId: string | null } =
+  let openclaw: { gateway: boolean; agent: boolean; agentId: string | null } =
     STUB_OPENCLAW[o.openclaw ?? 'none'];
   const json = (status: number, body: unknown) => ({
     status,
@@ -188,7 +189,7 @@ export async function stubAIGate(
   await page.route('**/api/ai/openclaw', (route) => {
     if (route.request().method() !== 'DELETE') return route.fulfill(json(405, { error: 'invalid' }));
     unpairs += 1;
-    openclaw = { gateway: openclaw.gateway, pluginChat: false, agent: false, agentId: null };
+    openclaw = { gateway: openclaw.gateway, agent: false, agentId: null };
     return route.fulfill(json(200, { openclaw }));
   });
   await page.route('**/api/ai/connection', (route) => {

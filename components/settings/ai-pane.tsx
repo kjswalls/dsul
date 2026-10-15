@@ -487,7 +487,8 @@ function AIOffCard({ active, highlightId }: { active: readonly AliasId[]; highli
     },
     fallbackFocus: focusCard,
   });
-  const paired = openClawStatus(openclaw);
+  const browserChat = useOpenClawBrowserStore((s) => s.paired !== null);
+  const paired = openClawStatus(openclaw, browserChat);
 
   return (
     <AliasSlots ids={OFF_CARD_IDS} active={active} highlightId={highlightId}>
@@ -672,7 +673,7 @@ function OpenClawSection({
             </p>
           )}
           <OpenClawConnect
-            label={connect?.connected ? 'Connect again' : 'Connect without the plugin'}
+            label={connect?.connected ? 'Connect again' : 'Connect'}
             script={connectScript}
             onScript={setConnectScript}
             onConnected={refreshConnection}

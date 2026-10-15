@@ -110,7 +110,7 @@ export interface AIConnectionStore extends AIConnectionState {
   refresh(): Promise<void>;
   /**
    * refresh() after a write this store did not make (an OpenClaw gateway save,
-   * a plugin authorization): a status read begun before that write is stale,
+   * a Connect key): a status read begun before that write is stale,
    * so it is neither joined nor applied, and a fresh one is asked for.
    */
   serverChanged(): Promise<void>;
@@ -141,7 +141,6 @@ export interface AIConnectionStore extends AIConnectionState {
 
 export const EMPTY_OPENCLAW: OpenClawView = Object.freeze({
   gateway: false,
-  pluginChat: false,
   agent: false,
   agentId: null,
 }) as OpenClawView;
@@ -172,8 +171,8 @@ const MODELS_URL = '/api/ai/connection/models';
  * Supabase re-emits SIGNED_IN on every hidden → visible transition, so without
  * a window every tab return is a GET. Two speeds, because the answer that most
  * needs re-checking is "nothing can answer": setup finishes off-device or
- * server-side with no client signal (an OpenClaw plugin registering its chat
- * URL when its gateway restarts; a model connected on another device), and a
+ * server-side with no client signal (OpenClaw first using its Connect key; a
+ * model connected on another device), and a
  * user mid-setup should see it on their next return, not five minutes later.
  * 30 s still swallows the burst of auth events one visibility change emits.
  */
@@ -303,7 +302,6 @@ function readOpenClaw(v: unknown): OpenClawView {
   if (!isObj(v)) return EMPTY_OPENCLAW;
   const view: OpenClawView = {
     gateway: v.gateway === true,
-    pluginChat: v.pluginChat === true,
     agent: v.agent === true,
     agentId: strOrNull(v.agentId),
   };
@@ -869,7 +867,6 @@ function gateFields(s: AIConnectionState) {
     modelId: s.model?.model ?? null,
     modelStatus: s.model?.status ?? null,
     gateway: s.openclaw.gateway,
-    pluginChat: s.openclaw.pluginChat,
     agent: s.openclaw.agent,
     agentId: s.openclaw.agentId,
     aiHidden: s.aiHidden,
@@ -909,7 +906,6 @@ export function useAICapabilities(): AICapabilities {
               },
         openclaw: {
           gateway: f.gateway,
-          pluginChat: f.pluginChat,
           agent: f.agent,
           agentId: f.agentId,
         },

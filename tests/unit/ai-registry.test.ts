@@ -22,9 +22,10 @@ const MODEL_OK: ModelConnectionView = {
   modelLabel: null,
 };
 
-const NO_OPENCLAW: OpenClawView = { gateway: false, pluginChat: false, agent: false, agentId: null };
-const GATEWAY: OpenClawView = { gateway: true, pluginChat: false, agent: true, agentId: 'kirby-1' };
-const PLUGIN: OpenClawView = { gateway: false, pluginChat: true, agent: true, agentId: 'kirby-1' };
+const NO_OPENCLAW: OpenClawView = { gateway: false, agent: false, agentId: null };
+const GATEWAY: OpenClawView = { gateway: true, agent: true, agentId: 'kirby-1' };
+/** Paired through Connect, with chat from this browser's own pairing (`browserChat`). */
+const PAIRED: OpenClawView = { gateway: false, agent: true, agentId: 'kirby-1' };
 
 function inputs(over: Partial<AIInputs> = {}): AIInputs {
   return {
@@ -43,7 +44,7 @@ describe('fail closed', () => {
     // A status read that has not answered, or failed, is not permission. The
     // surfaces hide for a moment rather than offer something that may not answer.
     const caps = resolveAICapabilities(
-      inputs({ phase, model: MODEL_OK, openclaw: { ...GATEWAY, pluginChat: true } })
+      inputs({ phase, model: MODEL_OK, openclaw: GATEWAY, browserChat: true })
     );
     expect(caps).toBe(NO_AI);
     expect(caps.known).toBe(false);
@@ -103,12 +104,10 @@ describe('modelUsable', () => {
 });
 
 describe('openclawTransport', () => {
-  it('prefers the gateway, then the plugin chat url', () => {
+  it('prefers this browser, then the gateway', () => {
     expect(resolveAICapabilities(inputs({ openclaw: GATEWAY })).openclawTransport).toBe('gateway');
-    expect(resolveAICapabilities(inputs({ openclaw: PLUGIN })).openclawTransport).toBe('plugin');
-    expect(
-      resolveAICapabilities(inputs({ openclaw: { ...GATEWAY, pluginChat: true } })).openclawTransport
-    ).toBe('gateway');
+    expect(resolveAICapabilities(inputs({ openclaw: PAIRED, browserChat: true })).openclawTransport).toBe('browser');
+    expect(resolveAICapabilities(inputs({ openclaw: GATEWAY, browserChat: true })).openclawTransport).toBe('browser');
     expect(resolveAICapabilities(inputs()).openclawTransport).toBeNull();
   });
 
@@ -143,7 +142,7 @@ describe('the effective target (precedence table)', () => {
 
   it.each(table)('choice %s, model %s, openclaw %s → %s', (choice, model, openclaw, expected) => {
     const caps = resolveAICapabilities(
-      inputs({ choice, model: model ? MODEL_OK : null, openclaw: openclaw ? PLUGIN : NO_OPENCLAW })
+      inputs({ choice, model: model ? MODEL_OK : null, openclaw: openclaw ? PAIRED : NO_OPENCLAW, browserChat: openclaw })
     );
     expect(caps.target).toBe(expected);
     expect(caps.canChat).toBe(expected !== 'none');
@@ -167,11 +166,11 @@ describe('proposeTarget (D14)', () => {
     expect(caps.canPropose).toBe(true);
   });
 
-  it('never reroutes an OpenClaw plugin user to the model to propose', () => {
+  it('never reroutes an OpenClaw browser-chat user to the model to propose', () => {
     // The propose route promises never to reroute an OpenClaw user's planner
-    // to a model they did not pick. The plugin path has no proposal transport.
+    // to a model they did not pick. The browser link has no proposal transport.
     const caps = resolveAICapabilities(
-      inputs({ choice: 'openclaw', openclaw: PLUGIN, model: MODEL_OK })
+      inputs({ choice: 'openclaw', openclaw: PAIRED, browserChat: true, model: MODEL_OK })
     );
     expect(caps.target).toBe('openclaw');
     expect(caps.canChat).toBe(true);
@@ -190,14 +189,14 @@ describe('canDelegate', () => {
   it('follows the agent key, independent of who answers chat', () => {
     for (const choice of ['model', 'openclaw', 'none'] as const) {
       expect(
-        resolveAICapabilities(inputs({ choice, model: MODEL_OK, openclaw: PLUGIN })).canDelegate
+        resolveAICapabilities(inputs({ choice, model: MODEL_OK, openclaw: PAIRED, browserChat: true })).canDelegate
       ).toBe(true);
       expect(resolveAICapabilities(inputs({ choice, model: MODEL_OK })).canDelegate).toBe(false);
     }
   });
 
   it('carries the agent id through', () => {
-    expect(resolveAICapabilities(inputs({ openclaw: PLUGIN })).agentId).toBe('kirby-1');
+    expect(resolveAICapabilities(inputs({ openclaw: PAIRED, browserChat: true })).agentId).toBe('kirby-1');
     expect(resolveAICapabilities(inputs()).agentId).toBeNull();
   });
 });
@@ -227,7 +226,7 @@ describe('"No AI, thanks"', () => {
   });
 
   it("leaves the person's own agent its hand-off: the pairing is not dsul's AI", () => {
-    const caps = resolveAICapabilities(inputs({ openclaw: PLUGIN, choice: 'openclaw', aiHidden: true }));
+    const caps = resolveAICapabilities(inputs({ openclaw: PAIRED, browserChat: true, choice: 'openclaw', aiHidden: true }));
     expect(caps.canChat).toBe(false);
     expect(caps.canDelegate).toBe(true);
   });
@@ -254,10 +253,10 @@ describe('the invitation ("Set up AI") and the fix ("Fix AI")', () => {
     ['chat is Off on this device', { choice: 'none' }],
     ['a model is connected and working', { model: MODEL_OK }],
     ['OpenClaw answers through its gateway', { openclaw: GATEWAY }],
-    ['OpenClaw answers through its plugin', { openclaw: PLUGIN }],
+    ['OpenClaw answers through this browser', { openclaw: PAIRED, browserChat: true }],
     ['an OpenClaw agent is paired, with no chat', { openclaw: { ...NO_OPENCLAW, agent: true } }],
     ['OpenClaw has a gateway and no agent key', { openclaw: { ...NO_OPENCLAW, gateway: true } }],
-    ['OpenClaw has a chat URL and no agent key', { openclaw: { ...NO_OPENCLAW, pluginChat: true } }],
+    ['this browser is paired and no agent key', { browserChat: true }],
     ['a saved model needs attention', { model: { ...MODEL_OK, status: 'failing', problem: 'key_rejected' } }],
   ])('never invites when %s', (_why, over) => {
     expect(resolveAICapabilities(inputs(over)).askInvite).toBe(false);
@@ -297,7 +296,7 @@ describe('the invitation ("Set up AI") and the fix ("Fix AI")', () => {
       for (const available of flags)
         for (const model of models)
           for (const gateway of flags)
-            for (const pluginChat of flags)
+            for (const browserChat of flags)
               for (const agent of flags)
                 for (const choice of ['model', 'openclaw', 'none'] as const)
                   for (const aiHidden of [false, true, null]) {
@@ -305,7 +304,8 @@ describe('the invitation ("Set up AI") and the fix ("Fix AI")', () => {
                       phase,
                       available,
                       model,
-                      openclaw: { gateway, pluginChat, agent, agentId: null },
+                      openclaw: { gateway, agent, agentId: null },
+                      browserChat,
                       choice,
                       aiHidden,
                     });
@@ -334,7 +334,7 @@ describe('canMake ("Write with AI" in Settings → Make)', () => {
     const openclawOnly = resolveAICapabilities(inputs({ openclaw: GATEWAY, choice: 'openclaw' }));
     expect(openclawOnly.canChat).toBe(true);
     expect(openclawOnly.canMake).toBe(false);
-    expect(resolveAICapabilities(inputs({ openclaw: PLUGIN, choice: 'openclaw' })).canMake).toBe(false);
+    expect(resolveAICapabilities(inputs({ openclaw: PAIRED, browserChat: true, choice: 'openclaw' })).canMake).toBe(false);
     // A working model, but this device chose OpenClaw: the literal rule (D14).
     expect(resolveAICapabilities(inputs({ model: MODEL_OK, openclaw: GATEWAY, choice: 'openclaw' })).canMake).toBe(false);
     // Chose OpenClaw, OpenClaw unusable: the model answers, so Make is offered.
@@ -368,7 +368,7 @@ describe('nothingConnected (Settings → AI asks it too)', () => {
     expect(nothingConnected({ ...MODEL_OK, status: 'failing', problem: 'key_rejected' }, NO_OPENCLAW)).toBe(false);
     expect(nothingConnected({ ...MODEL_OK, model: null }, NO_OPENCLAW)).toBe(false);
     expect(nothingConnected(null, { ...NO_OPENCLAW, gateway: true })).toBe(false);
-    expect(nothingConnected(null, { ...NO_OPENCLAW, pluginChat: true })).toBe(false);
+    expect(nothingConnected(null, NO_OPENCLAW, true)).toBe(false);
     // An agent key alone (pull-only) is paired: something.
     expect(nothingConnected(null, { ...NO_OPENCLAW, agent: true })).toBe(false);
   });
@@ -378,7 +378,6 @@ describe('nothingConnected (Settings → AI asks it too)', () => {
       [null, NO_OPENCLAW],
       [MODEL_OK, NO_OPENCLAW],
       [null, { ...NO_OPENCLAW, agent: true }],
-      [null, PLUGIN],
       [null, GATEWAY],
     ] as const) {
       const caps = resolveAICapabilities(inputs({ model, openclaw }));

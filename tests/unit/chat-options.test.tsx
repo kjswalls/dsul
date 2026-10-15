@@ -126,7 +126,7 @@ describe('the card in a conversation', () => {
   });
 
   it('under the latest reply, one tap sends the answer', () => {
-    render(<TranscriptMessages messages={[msg('u1', 'user', 'when?'), msg('a1', 'assistant', SINGLE)]} typing={false} busy={false} retryVia={VIA} />);
+    render(<TranscriptMessages messages={[msg('u1', 'user', 'when?'), msg('a1', 'assistant', SINGLE)]} busy={false} retryVia={VIA} />);
     expect(screen.queryByText(/clawboy-options/)).toBeNull();
     expect(screen.getByTestId('chat-options')).toHaveAttribute('data-live', 'true');
     fireEvent.click(screen.getByRole('button', { name: /Thursday/ }));
@@ -137,7 +137,7 @@ describe('the card in a conversation', () => {
   });
 
   it('several questions page through and go as one message', () => {
-    render(<TranscriptMessages messages={[msg('u1', 'user', 'plan it'), msg('a1', 'assistant', MULTI)]} typing={false} busy={false} retryVia={VIA} />);
+    render(<TranscriptMessages messages={[msg('u1', 'user', 'plan it'), msg('a1', 'assistant', MULTI)]} busy={false} retryVia={VIA} />);
     expect(screen.getByTestId('chat-options-page')).toHaveTextContent('1 of 2');
     fireEvent.click(screen.getByRole('button', { name: /Tue/ }));
     expect(screen.getByTestId('chat-options-page')).toHaveTextContent('2 of 2');
@@ -151,7 +151,6 @@ describe('the card in a conversation', () => {
     render(
       <TranscriptMessages
         messages={[msg('u1', 'user', 'when?'), msg('a1', 'assistant', SINGLE), msg('u2', 'user', answer), msg('a2', 'assistant', 'Done.')]}
-        typing={false}
         busy={false}
         retryVia={VIA}
       />
@@ -164,7 +163,7 @@ describe('the card in a conversation', () => {
   });
 
   it('is not live while a reply is still arriving or chat cannot send', () => {
-    render(<TranscriptMessages messages={[msg('u1', 'user', 'when?'), msg('a1', 'assistant', SINGLE)]} typing={false} busy retryVia={VIA} />);
+    render(<TranscriptMessages messages={[msg('u1', 'user', 'when?'), msg('a1', 'assistant', SINGLE)]} busy retryVia={VIA} />);
     expect(screen.getByTestId('chat-options')).toHaveAttribute('data-live', 'false');
   });
 });

@@ -7,8 +7,10 @@ import { assertSafeOutboundUrl } from '@/lib/openclaw-gateway'
  * POST /api/agent/register
  *
  * Called on OpenClaw plugin startup. Registers the plugin's webhook URL so
- * dsul pushes change events when data mutates. Also accepts optional chatUrl
- * (plugin endpoint URL, e.g. …/plugins/dsul/chat) for plugin chat in Ask.
+ * dsul pushes change events when data mutates. Also accepts optional chatUrl,
+ * which the retired plugin registered for its chat in Ask. It is still stored
+ * (with agentId, which every OpenClaw chat path reads) so an older install
+ * keeps registering cleanly, but nothing reads the URL any more.
  *
  * Auth: Bearer <openclaw_api_key>  — userId resolved from the key automatically.
  *

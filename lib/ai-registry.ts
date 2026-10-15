@@ -62,8 +62,8 @@ export interface AICapabilities {
    */
   canPrep: boolean;
   proposeTarget: 'model' | 'openclaw' | null;
-  /** How OpenClaw answers chat here: this browser directly, dsul's server, or the plugin. */
-  openclawTransport: 'browser' | 'gateway' | 'plugin' | null;
+  /** How OpenClaw answers chat here: this browser directly, or dsul's server. */
+  openclawTransport: 'browser' | 'gateway' | null;
   answererName: 'AI' | 'OpenClaw' | null;
   agentId: string | null;
   modelUsable: boolean;
@@ -108,7 +108,7 @@ export const NO_AI: AICapabilities = Object.freeze({
 }) as AICapabilities;
 
 /**
- * Nothing at all: no model saved, no gateway, no plugin chat, no agent key,
+ * Nothing at all: no model saved, no gateway, no agent key,
  * and no browser pairing here.
  * resolveAICapabilities uses it for `askInvite`, and Settings → AI asks it
  * (lib/ai-pane-state.ts) for the tiles and the "No AI, thanks" button, so the
@@ -120,7 +120,7 @@ export function nothingConnected(
   openclaw: OpenClawView,
   browserChat = false
 ): boolean {
-  return !model && !openclaw.gateway && !openclaw.pluginChat && !openclaw.agent && !browserChat;
+  return !model && !openclaw.gateway && !openclaw.agent && !browserChat;
 }
 
 /**
@@ -144,9 +144,7 @@ export function resolveAICapabilities(i: AIInputs): AICapabilities {
     ? 'browser'
     : i.openclaw.gateway
       ? 'gateway'
-      : i.openclaw.pluginChat
-        ? 'plugin'
-        : null;
+      : null;
   const openclawUsable = openclawTransport !== null;
 
   // "No AI, thanks" answers before the device's choice: nothing answers chat.
@@ -169,7 +167,7 @@ export function resolveAICapabilities(i: AIInputs): AICapabilities {
       target = 'none';
   }
 
-  // OpenClaw proposes only through its gateway. On the plugin path there is
+  // OpenClaw proposes only through dsul's server gateway. The browser link has
   // no structured-proposal transport, and the propose route promises never to
   // reroute an OpenClaw user's planner to a model they did not pick (D14).
   const proposeTarget: AICapabilities['proposeTarget'] =

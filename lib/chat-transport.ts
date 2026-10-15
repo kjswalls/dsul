@@ -10,7 +10,6 @@ import {
 } from './ai-limits';
 import { isModelId } from './ai-types';
 import { isChatErrorCode, replyErrorCode, type ReplyErrorCode } from './chat-errors';
-import { stripReasoningTags } from './chat-utils';
 import { parseSseFrames } from './sse';
 import { browserLink } from './openclaw-browser-store';
 import { ProposalDraftSchema } from '@dsul/types';
@@ -22,12 +21,11 @@ import type { ChatImage } from './chat-images';
  * One chat turn, on whichever transport answers it, and nothing about storage.
  *
  * Moved out of the old chat store (deleted in AI step 2a): the /api/chat
- * stream, the OpenClaw plugin call and its per-account URL cache. What
- * changed on the way:
+ * stream and the OpenClaw call. What changed on the way:
  *   - a turn names its saved conversation (`conversationId`), never an item:
  *     the server builds the gateway session key from it and the verified user
- *     (`conversationSessionKey`, lib/openclaw-gateway.ts), and the plugin path
- *     keys its session `dsul-chat-<id>`. One gateway session per conversation,
+ *     (`conversationSessionKey`, lib/openclaw-gateway.ts), and the browser link
+ *     uses the same key. One gateway session per conversation,
  *     so a new chat really is new on OpenClaw.
  *   - a failure is a CODE (lib/chat-errors.ts), never words in the reply.
  *     Error copy is not content: it is never saved as the AI's words and never
@@ -47,11 +45,10 @@ export interface TurnInput {
   target: 'model' | 'openclaw';
   /**
    * OpenClaw only: `browser` is this browser's own pairing with the gateway
-   * (lib/openclaw-browser/link.ts); the server's gateway rides /api/chat; the
-   * plugin is called directly.
+   * (lib/openclaw-browser/link.ts); the server's gateway rides /api/chat.
    */
-  via: 'chat' | 'plugin' | 'browser';
-  /** The new message, already clipped to the user cap (the plugin path sends it alone). */
+  via: 'chat' | 'browser';
+  /** The new message, already clipped to the user cap (the browser path sends it alone). */
   message: string;
   /** The transcript for /api/chat, ending with `message` (see `outgoingTurns`). */
   turns: ChatTurn[];
@@ -85,7 +82,7 @@ export interface TurnOutcome {
   status: MessageStatus;
   /** Set exactly when `status` is 'error'; always a code a saved reply may carry. */
   errorCode: ReplyErrorCode | null;
-  /** The connection's model id on the model path; null for OpenClaw (gateway or plugin). */
+  /** The connection's model id on the model path; null for OpenClaw. */
   model: string | null;
 }
 
@@ -142,85 +139,9 @@ export function outgoingTurns(
   return kept.slice(-MAX_MESSAGES).map((t) => ({ role: t.role, content: clipText(t.content, MAX_MESSAGE_CHARS) }));
 }
 
-// ── The plugin path's URL and key ─────────────────────────────────────────────
-
-/** What the plugin path needs to reach the user's OpenClaw directly. */
-interface PluginTransport {
-  chatUrl: string | null;
-  /**
-   * The plugin chat token, sent as the bearer: an HMAC of the agent key that
-   * the plugin's chat route accepts and dsul's agent API does not
-   * (lib/plugin-chat-token.ts). Never the agent key itself (#123, #142).
-   */
-  chatToken: string | null;
-}
-
 /**
- * The plugin transport, fetched lazily and shared by every conversation.
- *
- * Only the plugin path needs `/api/agent/chat-url`: the gate already knows a
- * chat URL is registered (`openclaw.pluginChat`), but the browser still needs
- * the URL itself and the chat token to call it. Fetched on the first plugin
- * send, not on every mount, and keyed by the account the gate answered for,
- * so a different user on this browser never reuses the last one's token. A
- * failure is not cached: the next send asks again.
- */
-let pluginTransport: { userId: string | null; promise: Promise<PluginTransport> } | null = null;
-
-const strOrNull = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null);
-
-function loadPluginTransport(): Promise<PluginTransport> {
-  const userId = useAIConnectionStore.getState().hydratedUserId;
-  if (pluginTransport && pluginTransport.userId === userId) return pluginTransport.promise;
-
-  const entry = {
-    userId,
-    promise: fetch('/api/agent/chat-url', { cache: 'no-store', credentials: 'same-origin' })
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json() as Promise<unknown>;
-      })
-      .then((body): PluginTransport => {
-        const b = (body && typeof body === 'object' ? body : {}) as Record<string, unknown>;
-        return { chatUrl: strOrNull(b.chatUrl), chatToken: strOrNull(b.chatToken) };
-      }),
-  };
-  pluginTransport = entry;
-  // A failed read, or an answer with no URL yet (the plugin registers it when
-  // its gateway restarts), must not stick: drop it so the next send re-reads.
-  entry.promise.then(
-    (t) => {
-      if (!t.chatUrl) dropPluginTransport(entry);
-    },
-    () => dropPluginTransport(entry)
-  );
-  return entry.promise;
-}
-
-function dropPluginTransport(entry: NonNullable<typeof pluginTransport>) {
-  if (pluginTransport === entry) pluginTransport = null;
-}
-
-/**
- * Forget the cached plugin URL and chat token. The sign-out clear (`clearChatState`,
- * lib/conversations-store.ts) and a user's change of answerer
- * (`chooseChatTarget`, lib/chat-target.ts) both call it.
- */
-export function resetPluginTransport(): void {
-  pluginTransport = null;
-}
-
-/** The plugin path's session key: one OpenClaw session per saved conversation. */
-export function pluginSessionKey(conversationId: string): string {
-  return `dsul-chat-${conversationId}`;
-}
-
-/**
- * The user's own instructions, folded into the context the plugin forwards.
- *
- * The plugin body is a fixed contract (`{message, sessionKey, context}`) and
- * the plugin passes `context` on as its extra system prompt
- * (openclaw-plugin/src/chat.ts), so this reaches the agent with no republish.
+ * The user's own instructions, folded into the context the browser link sends
+ * in the message (chat.send has no system prompt).
  */
 function withInstructions(context: string, systemPrompt: string): string {
   const instructions = clipText(systemPrompt.trim(), MAX_INSTRUCTIONS_CHARS);
@@ -253,66 +174,6 @@ const failed = (content: string, code: unknown, model: string | null): TurnOutco
   errorCode: replyErrorCode(code),
   model,
 });
-
-/**
- * The plugin path: POST straight at the user's OpenClaw plugin. Only for an
- * account with no gateway; a gateway rides /api/chat. The plugin answers with
- * one JSON body, not a stream (#149), so there is nothing to show until it
- * has finished.
- */
-async function viaPlugin(input: TurnInput): Promise<TurnOutcome> {
-  const { signal } = input;
-  try {
-    // A read that fails (an expired session, a 500, offline) lands in the
-    // catch below as "can't reach": the gate already knows this account
-    // registered a chat URL, so sending it back to setup would be wrong.
-    const transport = await loadPluginTransport();
-    if (signal.aborted) return { content: '', status: 'stopped', errorCode: null, model: null };
-    // Only a read that SUCCEEDED with no URL means setup is unfinished.
-    if (!transport.chatUrl) return failed('', 'plugin_setup', null);
-
-    const { systemPrompt } = useAISettingsStore.getState();
-    const res = await fetch(transport.chatUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(transport.chatToken ? { Authorization: `Bearer ${transport.chatToken}` } : {}),
-      },
-      signal,
-      // The plugin contract, exactly. Nothing else rides along.
-      body: JSON.stringify({
-        message: input.message,
-        sessionKey: pluginSessionKey(input.conversationId),
-        context: withInstructions(wholeContext(input), systemPrompt),
-      }),
-    });
-    // The plugin may have re-registered (a new URL or key) since this was
-    // cached; a refused call re-reads both on the next send.
-    if (!res.ok) resetPluginTransport();
-    let parsed: { content?: unknown; error?: unknown };
-    try {
-      parsed = (await res.json()) as typeof parsed;
-    } catch (err) {
-      if (isAbort(err, signal)) return { content: '', status: 'stopped', errorCode: null, model: null };
-      return failed('', 'plugin_error', null);
-    }
-    // The plugin's own error text is never shown or saved: it is OpenClaw's
-    // words about OpenClaw's state. Our copy says what to do.
-    if (!res.ok || (typeof parsed?.error === 'string' && parsed.error)) return failed('', 'plugin_error', null);
-    const content = typeof parsed?.content === 'string' ? stripReasoningTags(parsed.content) : '';
-    if (!content) return failed('', 'no_response', null);
-    input.onDelta(content);
-    return { content, status: 'complete', errorCode: null, model: null };
-  } catch (err) {
-    // The URL read takes no signal, so a stop during it shows up here as a
-    // plain rejection on an aborted controller, not an AbortError.
-    if (isAbort(err, signal)) return { content: '', status: 'stopped', errorCode: null, model: null };
-    resetPluginTransport();
-    // The browser's own wording ("Failed to fetch", "Load failed") says
-    // nothing a person can act on; ours says what to check.
-    return failed('', 'plugin_unreachable', null);
-  }
-}
 
 /** /api/chat: the connected model, or the user's OpenClaw gateway, streamed as dsul frames. */
 async function viaChatRoute(input: TurnInput): Promise<TurnOutcome> {
@@ -481,7 +342,5 @@ export const chatTransport: ChatTransport = {
   streamTurn: (input) =>
     input.target === 'openclaw' && input.via === 'browser'
       ? viaBrowser(input)
-      : input.target === 'openclaw' && input.via === 'plugin'
-        ? viaPlugin(input)
-        : viaChatRoute(input),
+      : viaChatRoute(input),
 };

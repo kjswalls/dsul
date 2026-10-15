@@ -17,8 +17,9 @@ import { resetClock } from './format-chat-timestamp';
  */
 
 /**
- * Codes only the browser can produce: the plugin path and this browser's own
- * gateway link (lib/openclaw-browser/link.ts) never reach dsul's server.
+ * Codes only the browser can produce: this browser's own gateway link
+ * (lib/openclaw-browser/link.ts) never reaches dsul's server. The `plugin_*`
+ * codes are the retired plugin's, kept for saved turns.
  */
 export type ClientChatErrorCode =
   | 'plugin_setup'
@@ -96,8 +97,8 @@ export const ROUTE_ERROR_COPY = Object.freeze({
 });
 
 export const CLIENT_ERROR_COPY: Readonly<Record<ClientChatErrorCode, string>> = Object.freeze({
-  plugin_setup:
-    "OpenClaw isn't reachable yet. Run `openclaw dsul-context setup` and set publicUrl in openclaw.json.",
+  // The retired plugin's codes: kept so a saved turn that carries one still reads.
+  plugin_setup: "OpenClaw wasn't set up to answer here yet. Set up chat in Settings → AI.",
   plugin_unreachable: "Couldn't reach OpenClaw. Check that it is running.",
   plugin_error: "OpenClaw couldn't answer that. Try again.",
   gateway_offline: "Couldn't reach your OpenClaw gateway from this browser. Check that it's running and that this device can reach it.",

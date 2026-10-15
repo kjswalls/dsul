@@ -135,7 +135,7 @@ const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
     json: async () => ({
       available: true,
       model: null,
-      openclaw: { gateway: false, pluginChat: false, agent: false, agentId: null },
+      openclaw: { gateway: false, agent: false, agentId: null },
       aiHidden: serverHidden,
     }),
   };

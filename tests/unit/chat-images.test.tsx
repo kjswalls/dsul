@@ -37,7 +37,7 @@ import {
 } from '@/lib/conversations-store';
 import { useRailStore } from '@/lib/rail-store';
 import type { StoredMessage } from '@/lib/conversation-types';
-import { seedAI, CONNECTED_MODEL, OPENCLAW_PLUGIN } from './helpers/ai-fixtures';
+import { seedAI, CONNECTED_MODEL, OPENCLAW_CHAT } from './helpers/ai-fixtures';
 import { fakeApi, fakeTransport, flush, summary, type FakeApi, type FakeTransport } from './helpers/conversations-fakes';
 
 beforeAll(() => {
@@ -174,7 +174,7 @@ describe('attaching pictures in the chat box', () => {
   });
 
   it('offers nothing to attach while OpenClaw answers, and sends it no picture', async () => {
-    unseed = seedAI({ ...OPENCLAW_PLUGIN, choice: 'openclaw' });
+    unseed = seedAI({ ...OPENCLAW_CHAT, choice: 'openclaw' });
     render(<ChatComposer variant="panel" binding={{ kind: 'home' }} />);
     expect(screen.getByTestId('chat-attach')).toBeDisabled();
     fireEvent.paste(box(), { clipboardData: { files: [picture()], getData: () => '' } });

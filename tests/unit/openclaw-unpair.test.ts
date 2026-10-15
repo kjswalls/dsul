@@ -165,7 +165,7 @@ describe('DELETE /api/ai/openclaw', () => {
     ]);
     for (const w of writes()) expect(w.filters[0]).toEqual(['user_id', 'user-1']);
     expect(await res.json()).toEqual({
-      openclaw: { gateway: false, pluginChat: false, agent: false, agentId: null, connect: { connected: false, lastSeenAt: null } },
+      openclaw: { gateway: false, agent: false, agentId: null, connect: { connected: false, lastSeenAt: null } },
     });
   });
 
@@ -177,7 +177,7 @@ describe('DELETE /api/ai/openclaw', () => {
     expect(settings.values).toEqual({ openclaw_chat_url: null, openclaw_agent_id: null });
     const secrets = writes().find((w) => w.table === 'user_secrets')!;
     expect(secrets.values).toEqual({ openclaw_api_key: null });
-    expect((await res.json()).openclaw).toEqual({ gateway: true, pluginChat: false, agent: false, agentId: null, connect: { connected: false, lastSeenAt: null } });
+    expect((await res.json()).openclaw).toEqual({ gateway: true, agent: false, agentId: null, connect: { connected: false, lastSeenAt: null } });
   });
 
   it('expires only authorized device sessions, and drops their copy of the key', async () => {
@@ -212,7 +212,7 @@ describe('DELETE /api/ai/openclaw', () => {
     for (let i = 0; i < 2; i += 1) {
       const res = await call();
       expect(res.status).toBe(200);
-      expect((await res.json()).openclaw).toEqual({ gateway: false, pluginChat: false, agent: false, agentId: null, connect: { connected: false, lastSeenAt: null } });
+      expect((await res.json()).openclaw).toEqual({ gateway: false, agent: false, agentId: null, connect: { connected: false, lastSeenAt: null } });
     }
   });
 
@@ -363,7 +363,6 @@ describe('readOpenClawStatus, with a Connect key', () => {
     ];
     expect(await readOpenClawStatus('user-1')).toEqual({
       gateway: false,
-      pluginChat: false,
       agent: true,
       agentId: null,
       connect: { connected: true, lastSeenAt: '2026-10-14T11:50:00Z' },

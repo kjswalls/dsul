@@ -8,7 +8,6 @@ export default defineConfig([
     '.next/**',
     'public/**',
     'packages/**/dist/**',
-    'openclaw-plugin/**',
     'electron/**',
     'ios/**',
     'memory/**',

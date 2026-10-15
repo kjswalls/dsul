@@ -1,6 +1,5 @@
 packages:
   - 'packages/*'
-  - 'openclaw-plugin'
 allowBuilds:
   koffi: true
   protobufjs: true

@@ -59,14 +59,14 @@ describe('editableQuestionIndex', () => {
 
 describe('Edit', () => {
   it('is offered on the latest question only', () => {
-    render(<TranscriptMessages messages={THREAD} typing={false} busy={false} retryVia={VIA} />);
+    render(<TranscriptMessages messages={THREAD} busy={false} retryVia={VIA} />);
     const edits = screen.getAllByTestId('chat-edit');
     expect(edits).toHaveLength(1);
     expect(edits[0].closest('[data-message-id]')?.getAttribute('data-message-id')).toBe('u2');
   });
 
   it('sends the edited words as a new turn and keeps the question as it was', () => {
-    render(<TranscriptMessages messages={THREAD} typing={false} busy={false} retryVia={VIA} />);
+    render(<TranscriptMessages messages={THREAD} busy={false} retryVia={VIA} />);
     fireEvent.click(screen.getByTestId('chat-edit'));
     const box = screen.getByLabelText('Edit your question') as HTMLTextAreaElement;
     expect(box.value).toBe('plan my mornig');
@@ -79,7 +79,7 @@ describe('Edit', () => {
   });
 
   it('puts it back on Escape or Cancel, sending nothing', () => {
-    render(<TranscriptMessages messages={THREAD} typing={false} busy={false} retryVia={VIA} />);
+    render(<TranscriptMessages messages={THREAD} busy={false} retryVia={VIA} />);
     fireEvent.click(screen.getByTestId('chat-edit'));
     fireEvent.keyDown(screen.getByLabelText('Edit your question'), { key: 'Escape' });
     expect(screen.queryByTestId('chat-edit-box')).toBeNull();
@@ -90,7 +90,7 @@ describe('Edit', () => {
   });
 
   it('will not send an empty question, and Shift+Enter is a new line', () => {
-    render(<TranscriptMessages messages={THREAD} typing={false} busy={false} retryVia={VIA} />);
+    render(<TranscriptMessages messages={THREAD} busy={false} retryVia={VIA} />);
     fireEvent.click(screen.getByTestId('chat-edit'));
     const box = screen.getByLabelText('Edit your question');
     fireEvent.keyDown(box, { key: 'Enter', shiftKey: true });
@@ -101,13 +101,13 @@ describe('Edit', () => {
   });
 
   it('waits while a reply is arriving, needs a binding, and hides while nothing can answer', () => {
-    const { rerender } = render(<TranscriptMessages messages={THREAD} typing={false} busy retryVia={VIA} />);
+    const { rerender } = render(<TranscriptMessages messages={THREAD} busy retryVia={VIA} />);
     expect(screen.queryByTestId('chat-edit')).toBeNull();
-    rerender(<TranscriptMessages messages={THREAD} typing={false} busy={false} />);
+    rerender(<TranscriptMessages messages={THREAD} busy={false} />);
     expect(screen.queryByTestId('chat-edit')).toBeNull();
     unseed();
     unseed = seedAI(NOTHING_CONNECTED);
-    rerender(<TranscriptMessages messages={THREAD} typing={false} busy={false} retryVia={VIA} />);
+    rerender(<TranscriptMessages messages={THREAD} busy={false} retryVia={VIA} />);
     expect(screen.queryByTestId('chat-edit')).toBeNull();
   });
 });
@@ -117,7 +117,6 @@ describe('action lines', () => {
     render(
       <TranscriptMessages
         messages={[msg('u1', 'user', 'dentist?'), msg('a1', 'assistant', 'Thursday.', { actions: ['Looked for "dentist" (1 found)'] }), msg('u2', 'user', 'thanks'), msg('a2', 'assistant', 'Any time.')]}
-        typing={false}
         busy={false}
       />
     );

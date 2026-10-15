@@ -10,7 +10,7 @@ import { UUID_RE } from '@/lib/conversation-types'
  *   { ownerId, create?: { itemId, title }, messages: [user] | [user, reply] | [reply] }
  *   → { conversation, inserted }
  *
- * The client is the only writer (the OpenClaw plugin path never reaches this
+ * The client is the only writer (Ask's own OpenClaw link never reaches this
  * server), once per turn, never per token; `/api/chat` stays stateless. Ids
  * are minted by the client, so a retry or a pagehide keepalive re-send lands
  * once (`inserted: 0`).

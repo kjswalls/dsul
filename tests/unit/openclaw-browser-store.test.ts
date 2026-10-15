@@ -143,7 +143,7 @@ describe('the gate', () => {
     phase: 'ready' as const,
     available: true,
     model: null,
-    openclaw: { gateway: false, pluginChat: false, agent: false, agentId: null },
+    openclaw: { gateway: false, agent: false, agentId: null },
     choice: 'openclaw' as const,
     aiHidden: false,
   };
@@ -158,7 +158,7 @@ describe('the gate', () => {
   it('wins over the server gateway and the plugin on this browser', () => {
     const caps = resolveAICapabilities({
       ...base,
-      openclaw: { ...base.openclaw, gateway: true, pluginChat: true },
+      openclaw: { ...base.openclaw, gateway: true },
       browserChat: true,
     });
     expect(caps.openclawTransport).toBe('browser');

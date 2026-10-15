@@ -1447,7 +1447,7 @@ export const SETTINGS: SettingRecord[] = [
     pane: 'beacon',
     label: 'Gateway URL',
     description:
-      'Talk to your gateway directly instead of through the plugin. Conversations keep their memory between sessions.',
+      "Let dsul's server talk to your gateway, so OpenClaw answers in Ask on every device without pairing each browser. Conversations keep their memory between sessions.",
     control: 'text',
     textVariant: 'line',
     placeholder: 'https://gateway.example.ts.net:8787',
@@ -1794,7 +1794,7 @@ export interface DestinationRecord {
    * when the two dialogs became one console — the split was never about what
    * the user wanted, only about which dialog happened to own the row.
    */
-  action: 'organize' | 'connect-openclaw' | 'openclaw-docs' | 'ledger';
+  action: 'organize' | 'openclaw-docs' | 'ledger';
   /** For `organize`: which section to land on. */
   section?: string;
 }

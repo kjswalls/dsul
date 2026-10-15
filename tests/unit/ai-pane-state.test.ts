@@ -33,7 +33,7 @@ import {
   KEY_TURNED_DOWN,
   NOTHING_CONNECTED,
   NO_MODEL_PICKED,
-  OPENCLAW_PLUGIN,
+  OPENCLAW_CHAT,
   OPENCLAW_PULL_ONLY,
   paneInputFor,
   type SeedAI,
@@ -77,7 +77,7 @@ describe('connectionPill', () => {
     ['no model picked', conn(NO_MODEL_PICKED), 'needs_attention'],
     ['daily limit', conn(DAILY_LIMIT), 'daily_limit'],
     ['working', conn(GEMINI_WORKING), 'working'],
-    ['OpenClaw only: still not set up', conn(OPENCLAW_PLUGIN), 'not_set_up'],
+    ['OpenClaw only: still not set up', conn(OPENCLAW_CHAT), 'not_set_up'],
   ];
   it.each(cases)('%s', (_name, s, expected) => {
     expect(connectionPill(s, BEFORE_RESET)).toBe(expected);
@@ -162,7 +162,7 @@ describe('connectionBody', () => {
     ['error', { ...NOTHING_CONNECTED, phase: 'error' as const }, 'failed'],
     ['not available', { ...GEMINI_WORKING, available: false }, 'unavailable'],
     ['no model', NOTHING_CONNECTED, 'connect'],
-    ['OpenClaw only', OPENCLAW_PLUGIN, 'connect'],
+    ['OpenClaw only', OPENCLAW_CHAT, 'connect'],
     ['failing', KEY_TURNED_DOWN, 'fix'],
     ['failing with a limit', withModel(KEY_TURNED_DOWN, { limitedUntil: FUTURE }), 'fix'],
     ['daily limit', DAILY_LIMIT, 'limit'],
@@ -355,7 +355,7 @@ const TABLE: [string, AIPaneInput, AIPaneLayout][] = [
       connectionAliases: DEVICE,
     }),
   ],
-  ['OpenClaw plugin chat', paneInputFor(OPENCLAW_PLUGIN), layout({})],
+  ['OpenClaw plugin chat', paneInputFor(OPENCLAW_CHAT), layout({})],
   ['OpenClaw pull-only', paneInputFor(OPENCLAW_PULL_ONLY), layout({})],
   ['a model on a device with chat Off', paneInputFor({ ...CONNECTED_MODEL, choice: 'none' }), layout({})],
 ];
@@ -430,7 +430,6 @@ describe('aiPaneLayout', () => {
 describe('openClawStatus', () => {
   const o = (over: Partial<OpenClawView>): OpenClawView => ({
     gateway: false,
-    pluginChat: false,
     agent: false,
     agentId: null,
     ...over,
@@ -445,8 +444,8 @@ describe('openClawStatus', () => {
     });
   });
 
-  it('names the agent while its plugin chat is live', () => {
-    expect(openClawStatus(paneInputFor(AI_OFF_PAIRED).openclaw)).toEqual({
+  it('names the agent while this browser chats with it', () => {
+    expect(openClawStatus(paneInputFor(AI_OFF_PAIRED).openclaw, true)).toEqual({
       paired: true,
       answers: true,
       agent: true,
@@ -464,12 +463,12 @@ describe('openClawStatus', () => {
   });
 
   it("'main' and no id read OpenClaw", () => {
-    expect(openClawStatus(o({ agent: true, pluginChat: true, agentId: 'main' })).name).toBe('OpenClaw');
-    expect(openClawStatus(o({ agent: true, pluginChat: true, agentId: null })).name).toBe('OpenClaw');
+    expect(openClawStatus(o({ agent: true, gateway: true, agentId: 'main' })).name).toBe('OpenClaw');
+    expect(openClawStatus(o({ agent: true, gateway: true, agentId: null })).name).toBe('OpenClaw');
   });
 
-  it('the plugin fixture is kirby-1 and answers', () => {
-    const s = openClawStatus(paneInputFor(OPENCLAW_PLUGIN).openclaw);
+  it('the browser-chat fixture is kirby-1 and answers', () => {
+    const s = openClawStatus(paneInputFor(OPENCLAW_CHAT).openclaw, paneInputFor(OPENCLAW_CHAT).browserChat);
     expect(s.name).toBe('kirby-1');
     expect(s.answers).toBe(true);
   });

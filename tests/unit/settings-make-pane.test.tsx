@@ -348,13 +348,13 @@ describe('MakePane: Looks', () => {
 
 describe('Write with AI in Make', () => {
   it('is there only while the gate says canMake: hidden while unknown and for OpenClaw alone', async () => {
-    const { seedAI, CONNECTED_MODEL, OPENCLAW_PLUGIN } = await import('./helpers/ai-fixtures');
+    const { seedAI, CONNECTED_MODEL, OPENCLAW_CHAT } = await import('./helpers/ai-fixtures');
     seed({});
     render(<MakePane ctx={ctx} />);
     expect(screen.queryByTestId('make-write')).toBeNull();
     cleanup();
 
-    let unseed = seedAI(OPENCLAW_PLUGIN);
+    let unseed = seedAI(OPENCLAW_CHAT);
     render(<MakePane ctx={ctx} />);
     expect(screen.queryByTestId('make-write')).toBeNull();
     cleanup();

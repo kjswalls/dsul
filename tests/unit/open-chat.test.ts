@@ -78,7 +78,7 @@ import {
   CONNECTED_MODEL,
   KEY_TURNED_DOWN,
   NOTHING_CONNECTED,
-  OPENCLAW_PLUGIN,
+  OPENCLAW_CHAT,
   capsFor,
   seedAI,
 } from './helpers/ai-fixtures';
@@ -703,7 +703,7 @@ describe("usePhoneComposerBinding (C5): the dock's box follows the phone's stack
 
   it("says OpenClaw's name when OpenClaw answers", () => {
     unseed();
-    unseed = seedAI(OPENCLAW_PLUGIN);
+    unseed = seedAI(OPENCLAW_CHAT);
     const { result } = renderHook(() => usePhoneComposerBinding());
     expect(result.current.placeholder).toBe('Message OpenClaw…');
     act(() => rail().push('phone', { kind: 'item', itemId: 'i1' }));
@@ -975,7 +975,7 @@ describe("asked from an item's own menu (the item right-click menu's Ask AI)", (
   });
 
   it('the fixtures this block leans on: OpenClaw over its plugin chats but cannot propose', () => {
-    expect(capsFor(OPENCLAW_PLUGIN)).toMatchObject({ canChat: true, canPropose: false });
+    expect(capsFor(OPENCLAW_CHAT)).toMatchObject({ canChat: true, canPropose: false });
     expect(capsFor(CONNECTED_MODEL)).toMatchObject({ canChat: true, canPropose: true });
   });
 
@@ -1284,7 +1284,7 @@ describe("asked from an item's own menu (the item right-click menu's Ask AI)", (
 
     it('does nothing when nothing can propose, even with chat (OpenClaw over its plugin)', () => {
       unseed();
-      unseed = seedAI(OPENCLAW_PLUGIN);
+      unseed = seedAI(OPENCLAW_CHAT);
       breakDownItem(task, { isMobile: false });
       breakDownItem(task, { isMobile: true });
       breakDownItem(task, { isMobile: false, page: true });
@@ -1382,7 +1382,7 @@ describe("asked from an item's own menu (the item right-click menu's Ask AI)", (
 
     it('does nothing when nothing can propose, even with chat (OpenClaw over its plugin)', () => {
       unseed();
-      unseed = seedAI(OPENCLAW_PLUGIN);
+      unseed = seedAI(OPENCLAW_CHAT);
       const flushPanel = vi.fn();
       offs.push(registerItemPanelFlush(flushPanel));
       rail().push('desktop', { kind: 'history' });
@@ -1594,7 +1594,7 @@ describe('openSetup', () => {
   });
 
   it('false, and nothing moves, with neither setup nor a fix on offer', () => {
-    for (const nothing of [AI_HIDDEN, CONNECTED_MODEL, OPENCLAW_PLUGIN, { ...NOTHING_CONNECTED, choice: 'none' as const }, {}]) {
+    for (const nothing of [AI_HIDDEN, CONNECTED_MODEL, OPENCLAW_CHAT, { ...NOTHING_CONNECTED, choice: 'none' as const }, {}]) {
       unseed();
       unseed = seedAI(nothing);
       openItem();

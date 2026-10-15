@@ -75,7 +75,7 @@ import {
 } from '@/lib/conversations-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useRailStore } from '@/lib/rail-store';
-import { CONNECTED_MODEL, OPENCLAW_PLUGIN, seedAI } from './helpers/ai-fixtures';
+import { CONNECTED_MODEL, OPENCLAW_CHAT, seedAI } from './helpers/ai-fixtures';
 import { fakeApi, fakeTransport } from './helpers/conversations-fakes';
 
 let unseed: () => void = () => {};
@@ -182,7 +182,7 @@ describe('the Braindump header, shared by the sidebar and the phone tab', () => 
 describe('the Ask tab shell', () => {
   it('titles the capsule "Ask" whoever answers, and carries the user menu', () => {
     unseed();
-    unseed = seedAI(OPENCLAW_PLUGIN);
+    unseed = seedAI(OPENCLAW_CHAT);
     render(<AskTab headerAccessory={AVATAR} />);
 
     // The answerer is named under the dock's bar (mobile-dock.test.tsx), not here.
