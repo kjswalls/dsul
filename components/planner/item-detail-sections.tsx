@@ -11,6 +11,7 @@ import { answerAgentQuestion } from '@/lib/agent-question';
 import { useAgentQuestion } from '@/hooks/use-agent-question';
 import { useAICapabilities } from '@/lib/ai-connection-store';
 import { assigneeLabel } from '@/lib/chat-utils';
+import { AgentChip } from '@/components/primitives/pills';
 import { useProposalStore } from '@/lib/proposal-store';
 import { canBreakDown, canOfferBreakDown } from '@/lib/item-asks';
 import { openSetup } from '@/lib/open-chat';
@@ -371,27 +372,9 @@ function AgentSection({ item }: { item: Item }) {
           <span className="text-warning-text text-xs font-semibold">
             {assigneeLabel(live.assignee)}
           </span>
-          {view && (
-            <span
-              className={cn(
-                'rounded-full px-2 py-0.5 font-mono text-[9px] font-semibold tracking-wider uppercase',
-                // 'blocked' is the only state that wants something FROM you, so
-                // it's the only one that gets to raise its voice. The rest are
-                // progress you're free to ignore.
-                live.aiStatus === 'blocked'
-                  ? 'bg-destructive text-destructive-foreground'
-                  : 'bg-warning text-warning-foreground'
-              )}
-              title={view.detail}
-            >
-              {/* The VIEW's label, not the raw status. This panel used to print
-                  "WORKING" beside a Try again button that appeared from nowhere —
-                  so the evidence the button's safety depends on was the one thing
-                  the surface offering it never showed. On /item/[id] there is no
-                  row pill either, so this was the only place it could come from. */}
-              {view.label}
-            </span>
-          )}
+          {/* The row's own chip (pills.tsx AgentChip), lit like the Ask key:
+              the same view, so the panel and the row never disagree. */}
+          {view && <AgentChip item={live} view={view} title={view.detail} />}
           {/* The LIGHT recovery, offered only once a run has actually gone quiet
               or failed.
 
