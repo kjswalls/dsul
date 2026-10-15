@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Flame } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { agentStatusView, hasAgentState, type AgentStatusView } from '@/lib/agent-status';
+import { agentStatusView, showsAgentChip, type AgentStatusView } from '@/lib/agent-status';
 import { assigneeLabel } from '@/lib/chat-utils';
 import { streakRunText } from '@/lib/item-edit';
 import type { Priority, RepeatFrequency } from '@/lib/planner-types';
@@ -731,7 +731,7 @@ export function AgentPill({
   item,
   className,
 }: {
-  item: { aiStatus?: string; aiStatusAt?: string; assignee?: string };
+  item: { aiStatus?: string; aiStatusAt?: string; assignee?: string; status?: string };
   className?: string;
 }) {
   // NO HOOKS HERE. This runs on every task row in the app, and hooks cannot be
@@ -745,7 +745,7 @@ export function AgentPill({
   // `Date.now()` during render is impure, and nothing about WHETHER to show the
   // pill depends on the time. Only the elapsed reading does, and that lives
   // below the mount boundary.
-  if (!hasAgentState(item)) return null;
+  if (!showsAgentChip(item)) return null;
   return <AgentClock item={item} className={className} />;
 }
 

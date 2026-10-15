@@ -60,6 +60,18 @@ export interface AgentStatusView {
  */
 export const AGENT_QUIET_AFTER_MS = 60 * 60 * 1000
 
+/**
+ * How long a `queued` item may wait before it reads as not picked up.
+ *
+ * Shorter than a working run's hour, because nothing is running yet to be
+ * mistaken for dead: a connected app is woken the moment an item is handed to
+ * it or answered (lib/handoff-wake.ts), and OpenClaw hears it on its event
+ * feed, so a pick-up comes in seconds or not at all. Kirby, 2026-10-15: an
+ * answered item sat "queued" for a day with its chip still lit, reading as
+ * activity nobody was doing.
+ */
+export const AGENT_PICKUP_AFTER_MS = 15 * 60 * 1000
+
 const LABELS: Record<AgentState, string> = {
   queued: 'Queued',
   working: 'Working',
@@ -123,6 +135,19 @@ export function hasAgentState(item: { aiStatus?: string; assignee?: string }): b
   return item.aiStatus !== 'done'
 }
 
+/**
+ * Should the status chip show at all? `hasAgentState`, and the item is not
+ * finished: a task ticked off or cancelled (by the user, or by the agent
+ * through dsul_complete) is done whatever the agent last reported, and a chip
+ * still lit on it is activity nobody is doing. Kept apart from `hasAgentState`
+ * because Take back (lib/agent-handoff.ts) still wants a finished item the
+ * agent holds.
+ */
+export function showsAgentChip(item: { aiStatus?: string; assignee?: string; status?: string }): boolean {
+  if (item.status === 'completed' || item.status === 'cancelled') return false
+  return hasAgentState(item)
+}
+
 export function agentStatusView(
   item: { aiStatus?: string; aiStatusAt?: string; assignee?: string },
   now: number
@@ -138,13 +163,15 @@ export function agentStatusView(
   // malfunction would blame them for it. And with no stamp there is no
   // evidence either way, so the honest answer is no.
   const since = item.aiStatusAt ? Date.parse(item.aiStatusAt) : NaN
-  const stalled =
-    active && Number.isFinite(since) && now - since >= AGENT_QUIET_AFTER_MS
+  const quietAfter = state === 'queued' ? AGENT_PICKUP_AFTER_MS : AGENT_QUIET_AFTER_MS
+  const stalled = active && Number.isFinite(since) && now - since >= quietAfter
 
   const label = stalled ? 'Gone quiet' : LABELS[state]
 
   const detail = stalled
-    ? `No update for ${elapsed}, so that run has probably stopped`
+    ? state === 'queued'
+      ? `Not picked up in ${elapsed}`
+      : `No update for ${elapsed}, so that run has probably stopped`
     : state === 'blocked'
       ? elapsed
         ? `Waiting on your answer (asked ${elapsed === 'just now' ? 'just now' : `${elapsed} ago`})`
