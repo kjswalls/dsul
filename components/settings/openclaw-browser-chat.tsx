@@ -90,8 +90,7 @@ export function OpenClawBrowserChat() {
       </div>
       <CapabilityList />
       <p className="text-muted-foreground text-xs">
-        To take it off your gateway as well, run <Code>{removeCommand(paired.deviceId.slice(0, 12))}</Code> (the start of
-        the id is enough to find it in <Code>openclaw devices list</Code>).
+        To take it off your gateway as well, run <Code>{removeCommand(paired.deviceId)}</Code>.
       </p>
       <div>
         <button
@@ -338,8 +337,8 @@ function SetupDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (ope
               testId="openclaw-browser-approve-command"
             />
             <p className="text-muted-foreground text-xs">
-              It asks for chat (read and write), nothing more. Or approve it under Devices in OpenClaw’s Control UI.
-              This moves on by itself.
+              It asks for read and write access, which is what the first step described, and never admin. Or approve it
+              under Devices in OpenClaw’s Control UI. This moves on by itself.
             </p>
             <ResponsiveModalFooter>
               <button

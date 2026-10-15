@@ -112,6 +112,20 @@ export async function deleteDevice(userId: string): Promise<void> {
   await run('readwrite', (s) => s.delete(userId));
 }
 
+/**
+ * Every pairing on this browser, gone: the sign-out and account-switch clear
+ * (lib/local-state.ts RAW_CLEARERS). A device token is a credential for the
+ * person's own agent, so it does not outlive their session on a shared
+ * machine. Never throws; a blocked delete finishes when the other tab closes.
+ */
+export function clearBrowserPairings(): void {
+  try {
+    if (typeof indexedDB !== 'undefined') indexedDB.deleteDatabase(DB_NAME);
+  } catch {
+    // Storage blocked: nothing was written either.
+  }
+}
+
 /** A fresh device key. The private half can sign here and can never be exported. */
 export async function generateDeviceKeys(): Promise<CryptoKeyPair> {
   return (await crypto.subtle.generateKey({ name: 'Ed25519' }, false, ['sign', 'verify'])) as CryptoKeyPair;

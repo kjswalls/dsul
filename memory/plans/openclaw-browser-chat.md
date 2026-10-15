@@ -30,7 +30,7 @@ Approving makes OpenClaw the answerer on this browser (`chooseChatTarget('opencl
   `error` or `aborted`), and a stop sends `chat.abort`.
 - `lib/openclaw-browser-store.ts`: zustand, device-local. `paired` feeds the gate (`browserChat` on
   `AIInputs`, transport `'browser'`, ahead of the server gateway and the plugin). `browserLink()` is the one
-  live connection. It hydrates at sign-in beside the AI connection store and resets in `clearChatState`.
+  live connection. It hydrates at sign-in beside the AI connection store and resets in `clearChatState`. Sign-out and an account switch delete the whole database (`clearBrowserPairings` in `lib/local-state.ts`'s RAW_CLEARERS). A device token is a credential for the person's agent, so it does not outlive their session on a shared machine.
 - `lib/chat-transport.ts` `viaBrowser`:
   - The session key is the server path's `dsul:u:<uid>:chat:<conversationId>`.
   - chat.send has no system prompt, so the planner rides in the message inside `<dsul_planner>`. The first send

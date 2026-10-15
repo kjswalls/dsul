@@ -146,7 +146,7 @@ export default function OpenClawDocsPage() {
           <p className="text-sm leading-relaxed text-muted-foreground">
             The token is used once, in your browser, to introduce it. It is never saved and never sent to
             dsul&apos;s servers. After you approve, the browser signs in with its own key, which can&apos;t be
-            copied off it. Changing your gateway token signs every browser out, and you set chat up again.
+            copied off it. Changing your gateway token signs every browser out, and so does signing out of dsul; you set chat up again.
           </p>
           <p className="text-sm font-medium text-foreground">What an approved browser can do</p>
           <ul className="list-disc space-y-1 pl-5 text-sm leading-relaxed text-muted-foreground">
