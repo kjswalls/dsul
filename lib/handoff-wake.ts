@@ -23,11 +23,16 @@ export const APP_WAKE_PATH = '/api/agent/app-wake';
 /** Assignee values that are never a connected app (lib/agent-assignees.ts RESERVED). */
 const NOT_AN_APP = new Set(['openclaw', 'beacon', 'ai', 'you', 'me']);
 
+/** Is this assignee a connected app (Claude, Cursor), the kind a wake reaches? */
+export function isAppAssignee(assignee: string | undefined | null): boolean {
+  return typeof assignee === 'string' && assignee.trim() !== '' && !NOT_AN_APP.has(assignee.trim().toLowerCase());
+}
+
 /** Does this patch hand the item to a connected app (Claude, Cursor), not OpenClaw? */
 export function handsOffToApp(updates: unknown): boolean {
   if (typeof updates !== 'object' || updates === null || !('assignee' in updates)) return false;
   const to = (updates as { assignee?: unknown }).assignee;
-  return typeof to === 'string' && to.trim() !== '' && !NOT_AN_APP.has(to.trim().toLowerCase());
+  return typeof to === 'string' && isAppAssignee(to);
 }
 
 /**

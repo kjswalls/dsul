@@ -25,7 +25,8 @@ import { ItemTimeline } from '@/components/planner/item-timeline';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { EXT_HABIT_HEATMAP, resolveEnabled } from '@/lib/extension-registry';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
-import { agentStatusView } from '@/lib/agent-status';
+import { agentStatusView, showsAgentChip } from '@/lib/agent-status';
+import { isAppAssignee } from '@/lib/handoff-wake';
 import { BandLabel } from '@/components/planner/item-bands';
 import { isBulkPaste, splitBulkLinesWithMeta } from '@/lib/bulk-add';
 import { EDIT_COPY } from '@/lib/item-edit';
@@ -286,7 +287,14 @@ function AgentSection({ item, inConversation }: { item: Item; inConversation: bo
     return () => clearInterval(id);
   }, []);
 
-  const view = agentStatusView(live, now);
+  const view = showsAgentChip(live) ? agentStatusView(live, now) : null;
+  // A connected app that never picked the item up can be woken again: it runs
+  // only when woken (lib/handoff-wake.ts), so a lost or refused wake leaves the
+  // item queued forever. Re-queueing stamps it fresh and wakes the app (the
+  // store's `requeues` path), and the wake route's cooldown and the agent's
+  // own claim keep a double tap from starting two runs. OpenClaw listens on its
+  // event feed instead, so there it would be a placebo and is not offered.
+  const wakeable = !!view?.stalled && live.aiStatus === 'queued' && isAppAssignee(live.assignee);
 
   // No type test here on purpose: the call site gates on the registry's
   // `agentAssignable`, which is the single answer to "may this be delegated"
@@ -354,6 +362,16 @@ function AgentSection({ item, inConversation }: { item: Item; inConversation: bo
               Try again
             </button>
           )}
+          {wakeable && (
+            <button
+              type="button"
+              onClick={() => updateTask(item.id, { aiStatus: 'queued' })}
+              data-testid="agent-wake"
+              className="text-foreground hover:text-muted-foreground ml-auto text-[10px] font-medium"
+            >
+              Wake {assigneeLabel(live.assignee)}
+            </button>
+          )}
           <button
             type="button"
             onClick={() =>
@@ -362,7 +380,7 @@ function AgentSection({ item, inConversation }: { item: Item; inConversation: bo
             className={cn(
               'text-muted-foreground hover:text-foreground text-[10px]',
               // Keeps its right-hand anchor when it is the only control.
-              !view?.recoverable && 'ml-auto'
+              !view?.recoverable && !wakeable && 'ml-auto'
             )}
           >
             Unassign

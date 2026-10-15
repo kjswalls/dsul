@@ -298,14 +298,14 @@ describe('activityRows', () => {
   it('words each run: in flight, gone quiet, back, couldn’t finish', () => {
     const got = rows([
       task('flight', { title: 'Gift for Ari', assignee: 'openclaw', aiStatus: 'working', aiStatusAt: ago(12 * MIN) }),
-      task('queued', { assignee: 'beacon', aiStatus: 'queued', aiStatusAt: ago(30 * MIN) }),
+      task('queued', { assignee: 'beacon', aiStatus: 'queued', aiStatusAt: ago(13 * MIN) }),
       task('quiet', { assignee: 'openclaw', aiStatus: 'working', aiStatusAt: ago(2 * HOUR) }),
       task('back', { title: 'Phone plans', assignee: 'openclaw', aiStatus: 'done', aiStatusAt: ago(3 * HOUR) }),
       task('failed', { assignee: 'openclaw', aiStatus: 'failed', aiStatusAt: ago(4 * HOUR) }),
     ]);
     expect(got).toEqual([
       { kind: 'agent', itemId: 'flight', title: 'Gift for Ari', state: 'working', meta: 'OpenClaw · 12m', at: NOW - 12 * MIN },
-      { kind: 'agent', itemId: 'queued', title: 'queued', state: 'working', meta: 'AI · 30m', at: NOW - 30 * MIN },
+      { kind: 'agent', itemId: 'queued', title: 'queued', state: 'working', meta: 'AI · 13m', at: NOW - 13 * MIN },
       { kind: 'agent', itemId: 'quiet', title: 'quiet', state: 'quiet', meta: 'Gone quiet', at: NOW - 2 * HOUR },
       { kind: 'agent', itemId: 'back', title: 'Phone plans', state: 'back', meta: 'back', at: NOW - 3 * HOUR },
       { kind: 'agent', itemId: 'failed', title: 'failed', state: 'failed', meta: "Couldn't finish", at: NOW - 4 * HOUR },

@@ -1,10 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
+  AGENT_PICKUP_AFTER_MS,
   AGENT_QUIET_AFTER_MS,
   agentStatusView,
   formatElapsed,
   hasAgentState,
   isAgentState,
+  showsAgentChip,
 } from '@/lib/agent-status';
 
 /**
@@ -292,5 +294,27 @@ describe('recoverable — what the user can usefully do', () => {
 
   it('does not offer it on a blocked item — that is waiting on the user', () => {
     expect(view({ aiStatus: 'blocked', aiStatusAt: ago(3 * DAY) })!.recoverable).toBe(false);
+  });
+});
+
+describe('a pick-up that never came, and finished items (Kirby, 2026-10-15)', () => {
+  it('reads a queued item as not picked up after AGENT_PICKUP_AFTER_MS, well before an hour', () => {
+    expect(view({ aiStatus: 'queued', aiStatusAt: ago(AGENT_PICKUP_AFTER_MS - MINUTE) })!.stalled).toBe(false);
+    const waited = view({ aiStatus: 'queued', aiStatusAt: ago(AGENT_PICKUP_AFTER_MS + MINUTE) })!;
+    expect(waited.stalled).toBe(true);
+    expect(waited.detail).toBe('Not picked up in 16m');
+  });
+
+  it('keeps the hour for a working run', () => {
+    expect(view({ aiStatusAt: ago(AGENT_PICKUP_AFTER_MS + MINUTE) })!.stalled).toBe(false);
+  });
+
+  it('shows no chip on an item that is ticked off or cancelled', () => {
+    for (const status of ['completed', 'cancelled']) {
+      expect(showsAgentChip({ assignee: 'claude', aiStatus: 'working', status })).toBe(false);
+      // Take back still sees the agent holding it.
+      expect(hasAgentState({ assignee: 'claude', aiStatus: 'working' })).toBe(true);
+    }
+    expect(showsAgentChip({ assignee: 'claude', aiStatus: 'working', status: 'pending' })).toBe(true);
   });
 });

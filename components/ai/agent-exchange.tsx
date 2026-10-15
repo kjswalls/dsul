@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowUp } from 'lucide-react';
 import { useAgentExchange } from '@/hooks/use-agent-exchange';
 import { useAgentQuestion } from '@/hooks/use-agent-question';
 import { answerAgentQuestion, awaitsAnswer, useAgentAnswers } from '@/lib/agent-question';
+import { agentStatusView } from '@/lib/agent-status';
 import { assigneeLabel } from '@/lib/chat-utils';
 import { usePlannerStore } from '@/lib/planner-store';
 import type { AgentExchange, ExchangeEntry } from '@/lib/agent-exchange';
@@ -95,15 +96,7 @@ export function AgentExchangeView({
           onOption={answer}
         />
       ))}
-      {exchange.working && (
-        <div className="flex items-center gap-2" data-testid="agent-exchange-working">
-          <AgentAvatar name={exchange.agent} />
-          <span data-agent-chip="" data-agent-state="working">
-            <span data-agent-chip-dot="" aria-hidden />
-            {exchange.agent} is on it
-          </span>
-        </div>
-      )}
+      {exchange.working && <WorkingLine item={item as HeldItem} agent={exchange.agent} />}
       {withAnswerBox && exchange.openQuestion && (
         <form
           className="field flex items-center gap-1.5 border px-2 py-1"
@@ -133,6 +126,46 @@ export function AgentExchangeView({
         </form>
       )}
     </section>
+  );
+}
+
+/**
+ * Where the agent is, after the last thing said: its real state, read the way
+ * the row's chip reads it (lib/agent-status.ts), so the light runs only while
+ * the agent is actually at it. Waiting to be picked up rests; a pick-up that
+ * never came, or a run gone quiet, goes unlit and says so. Kirby, 2026-10-15:
+ * this line spun "Claude is on it" for a day over an answer no run ever read.
+ */
+function WorkingLine({ item, agent }: { item: HeldItem; agent: string }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  const view = agentStatusView(item, now);
+  if (!view) return null;
+  const queued = item.aiStatus === 'queued';
+  const text = view.stalled
+    ? queued
+      ? `${agent} hasn't picked this up`
+      : `${agent} has gone quiet`
+    : queued
+      ? `Waiting for ${agent} to pick it up`
+      : `${agent} is on it`;
+  return (
+    <div className="flex items-center gap-2" data-testid="agent-exchange-working">
+      <AgentAvatar name={agent} />
+      <span
+        data-agent-chip=""
+        data-agent-state={item.aiStatus}
+        data-agent-stalled={view.stalled || undefined}
+        title={view.detail}
+      >
+        <span data-agent-chip-dot="" aria-hidden />
+        {text}
+        {view.stalled && view.elapsed && <span className="text-muted-foreground tabular-nums">{view.elapsed}</span>}
+      </span>
+    </div>
   );
 }
 
