@@ -493,6 +493,8 @@ fills it: the scan opens a row at every claim and closes it after the send
 (`lib/reminders/cue-log-write.ts`), and a row a cut-off send left undelivered is re-sent to devices
 only, after a conditional claim on `attempts` (`lib/reminders/retry.ts`). Phase 3's APNs transport is built
 (`lib/devices/transports/apns.ts`): the iPhone app's rows are held until all four `APNS_*` env vars
-are set in Vercel, and then take the last call and the pledge notice. Read it before touching `lib/reminders/**`, `lib/devices/**`,
+are set in Vercel, and then take the last call and the pledge notice. PR-3c's background wake is built
+too (migration 076, `lib/devices/wake.ts`): a change to an item with a reminder stamps the user's apns
+rows, and the tick sends each phone at most one silent push per 30 minutes so it re-plans. Read it before touching `lib/reminders/**`, `lib/devices/**`,
 `lib/sw/**`, `lib/push-send.ts`, `app/api/cron/**`, `/api/reminders/**`, `/api/devices/**`,
 `push_subscriptions`, or notification code in `electron/` or `ios/`.

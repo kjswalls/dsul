@@ -23,6 +23,9 @@ vi.mock('@/lib/recipes/server', () => ({ runRecipeTick: (...args: unknown[]) => 
 const sweepItemFiles = vi.fn();
 vi.mock('@/lib/item-files-sweep', () => ({ sweepItemFiles: (...args: unknown[]) => sweepItemFiles(...args) }));
 
+const sendWakes = vi.fn();
+vi.mock('@/lib/devices/wake', () => ({ sendWakes: (...args: unknown[]) => sendWakes(...args) }));
+
 const SERVICE = { stand: 'in for the service client' };
 vi.mock('@/lib/supabase-service', () => ({ createServiceClient: () => SERVICE }));
 
@@ -53,6 +56,7 @@ const summary = (over: Partial<ScanSummary> = {}): ScanSummary => ({
 
 const RECIPES = { users: 1, runs: 2, notes: [] as string[] };
 const FILES = { removed: 0, stale: 0, notes: [] as string[] };
+const WAKES = { asked: 0, sent: 0, waiting: 0, failed: 0, pruned: 0, notes: [] as string[] };
 
 let log: ReturnType<typeof vi.spyOn>;
 let error: ReturnType<typeof vi.spyOn>;
@@ -65,6 +69,8 @@ beforeEach(() => {
   runRecipeTick.mockResolvedValue(RECIPES);
   sweepItemFiles.mockReset();
   sweepItemFiles.mockResolvedValue(FILES);
+  sendWakes.mockReset();
+  sendWakes.mockResolvedValue(WAKES);
   log = vi.spyOn(console, 'log').mockImplementation(() => {});
   error = vi.spyOn(console, 'error').mockImplementation(() => {});
 });
@@ -114,7 +120,7 @@ describe('GET /api/cron/reminders', () => {
     const res = await get(`Bearer ${SECRET}`);
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, ...partial, recipes: RECIPES, files: FILES });
+    expect(await res.json()).toEqual({ ok: true, ...partial, recipes: RECIPES, files: FILES, wakes: WAKES });
   });
 
   // A database without migration 032 degrades to silence, not to an alarm
@@ -138,6 +144,7 @@ describe('GET /api/cron/reminders', () => {
       notes: ['migration 034 not applied — settling is off, reminders continue'],
       recipes: RECIPES,
       files: FILES,
+      wakes: WAKES,
     });
     expect(error).toHaveBeenCalledWith('[cron/reminders] scan failed:', expect.any(ReminderScanError));
   });
@@ -146,7 +153,7 @@ describe('GET /api/cron/reminders', () => {
     runReminderScan.mockRejectedValue(new Error('supabaseUrl is required.'));
     const res = await get(`Bearer ${SECRET}`);
     expect(res.status).toBe(500);
-    expect(await res.json()).toEqual({ error: 'supabaseUrl is required.', notes: [], recipes: RECIPES, files: FILES });
+    expect(await res.json()).toEqual({ error: 'supabaseUrl is required.', notes: [], recipes: RECIPES, files: FILES, wakes: WAKES });
   });
 
   // One line per tick, in the function log, whatever the tick held: the
@@ -215,6 +222,7 @@ describe('GET /api/cron/reminders: the recipe tier', () => {
       ...summary(),
       recipes: { users: 0, runs: 0, notes: ['recipe tier failed'] },
       files: FILES,
+      wakes: WAKES,
     });
     expect(log).toHaveBeenNthCalledWith(
       1,
@@ -261,5 +269,42 @@ describe('GET /api/cron/reminders: the files tier', () => {
     runReminderScan.mockRejectedValue(new ReminderScanError('Gateway Timeout', []));
     await get(`Bearer ${SECRET}`);
     expect(sweepItemFiles).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * The wake tier (lib/devices/wake.ts, migration 076) rides after the files,
+ * isolated the same way, and logs only when it did something.
+ */
+describe('GET /api/cron/reminders: the wake tier', () => {
+  it('runs last with the service client and the tick clock, quiet when there was nothing to do', async () => {
+    const order: string[] = [];
+    sweepItemFiles.mockImplementation(async () => (order.push('files'), FILES));
+    sendWakes.mockImplementation(async () => (order.push('wakes'), WAKES));
+    await get(`Bearer ${SECRET}`);
+    expect(order).toEqual(['files', 'wakes']);
+    expect(sendWakes.mock.calls[0][0]).toBe(SERVICE);
+    expect(typeof sendWakes.mock.calls[0][1].nowMs).toBe('number');
+    expect(log.mock.calls.map((c: unknown[]) => String(c[0])).some((l: string) => l.startsWith('[cron/wakes]'))).toBe(false);
+  });
+
+  it('logs a line when it sent something', async () => {
+    sendWakes.mockResolvedValue({ ...WAKES, asked: 3, sent: 2, waiting: 1 });
+    const res = await get(`Bearer ${SECRET}`);
+    expect(log).toHaveBeenCalledWith('[cron/wakes] sent=2 waiting=1 failed=0 pruned=0 notes=0');
+    expect((await res.json()).wakes).toMatchObject({ sent: 2 });
+  });
+
+  it('a wake tier that throws costs the tick nothing', async () => {
+    sendWakes.mockRejectedValue(new Error('boom'));
+    const res = await get(`Bearer ${SECRET}`);
+    expect(res.status).toBe(200);
+    expect((await res.json()).wakes).toEqual({ ...WAKES, notes: ['wake tier failed'] });
+  });
+
+  it('still runs when the scan could not start', async () => {
+    runReminderScan.mockRejectedValue(new ReminderScanError('Gateway Timeout', []));
+    await get(`Bearer ${SECRET}`);
+    expect(sendWakes).toHaveBeenCalledTimes(1);
   });
 });
