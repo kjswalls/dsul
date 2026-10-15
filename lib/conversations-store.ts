@@ -28,11 +28,14 @@ import { httpConversationsApi, type ApiCallResult, type ConversationsApi } from 
 import {
   chatTransport,
   outgoingTurns,
+  resetBrowserContext,
   resetPluginTransport,
   type ChatTransport,
+  type TurnInput,
   type TurnOutcome,
 } from './chat-transport';
 import { addChanges, hasChanges } from './conversation-summary';
+import { useOpenClawBrowserStore } from './openclaw-browser-store';
 import { spendJustConnected, useRailStore } from './rail-store';
 import { useProposalStore } from './proposal-store';
 import { useChatReceipts } from './chat-receipts';
@@ -555,7 +558,7 @@ function itemTitle(itemId: string | null): string {
  * a conversation that holds the other answerer's replies, or the plugin's
  * session has likely lapsed, the context carries the last few turns.
  */
-function continuityNote(prior: ChatMessage[], answerer: Answerer, via: 'chat' | 'plugin', now: number): string {
+function continuityNote(prior: ChatMessage[], answerer: Answerer, via: TurnInput['via'], now: number): string {
   if (answerer !== 'openclaw' || prior.length === 0) return '';
   const otherAnswerer = prior.some((m) => m.role === 'assistant' && m.answerer !== null && m.answerer !== 'openclaw');
   const last = prior[prior.length - 1];
@@ -1314,7 +1317,14 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
       const ai = useAIConnectionStore.getState();
 
       const answerer: Answerer = caps.target === 'openclaw' ? 'openclaw' : 'model';
-      const via = answerer === 'openclaw' && caps.openclawTransport === 'plugin' ? 'plugin' : 'chat';
+      const via =
+        answerer !== 'openclaw'
+          ? 'chat'
+          : caps.openclawTransport === 'browser'
+            ? 'browser'
+            : caps.openclawTransport === 'plugin'
+              ? 'plugin'
+              : 'chat';
       const connected = ai.model?.model;
       const modelId = answerer === 'model' && isModelId(connected) ? connected : null;
       // Only a model is shown pictures; OpenClaw's transports carry words.
@@ -1832,6 +1842,8 @@ export function clearChatState(): void {
   useProposalStore.getState().dismiss();
   useChatReceipts.getState().reset();
   resetPluginTransport();
+  resetBrowserContext();
+  useOpenClawBrowserStore.getState().reset();
   sweepLegacyTranscripts();
 }
 

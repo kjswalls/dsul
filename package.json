@@ -28,6 +28,8 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@dsul/types": "workspace:*",
     "@hookform/resolvers": "^3.9.1",
+    "@openclaw/gateway-client": "2026.10.3",
+    "@openclaw/gateway-protocol": "2026.10.3",
     "@radix-ui/react-accordion": "1.2.12",
     "@radix-ui/react-alert-dialog": "1.1.15",
     "@radix-ui/react-aspect-ratio": "1.1.8",

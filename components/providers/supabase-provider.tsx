@@ -30,6 +30,7 @@ import { APP_ICON_STORAGE_KEY, isAppIcon } from '@/lib/app-icons';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { useModsStore } from '@/lib/mods-store';
 import { useAIConnectionStore } from '@/lib/ai-connection-store';
+import { useOpenClawBrowserStore } from '@/lib/openclaw-browser-store';
 import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
 import { useGatewayStore } from '@/lib/gateway-store';
 import { useNudgeStore } from '@/lib/nudge-store';
@@ -600,6 +601,8 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       // must not queue behind the item load, and it must never be able to
       // fail that load. Its own window absorbs the SIGNED_IN re-emits.
       void useAIConnectionStore.getState().hydrate(userId);
+      // This browser's own pairing with an OpenClaw gateway (IndexedDB, device-local).
+      void useOpenClawBrowserStore.getState().hydrate(userId);
       // Channel secrets, gateway, dismissed nudges: AFTER the load, not beside
       // it — see hydrateAfterLoad. Where no load runs (a lean route), or it
       // has already settled (a visibility SIGNED_IN, a retry event), there is

@@ -30,6 +30,11 @@ export interface AIInputs {
    * nobody is invited, since a "No AI" that cannot be kept would be a nag.
    */
   aiHidden: boolean | null;
+  /**
+   * This browser is paired with the person's gateway and chats with it
+   * directly (lib/openclaw-browser-store.ts). Device-local, like `choice`.
+   */
+  browserChat?: boolean;
 }
 
 export interface AICapabilities {
@@ -57,7 +62,8 @@ export interface AICapabilities {
    */
   canPrep: boolean;
   proposeTarget: 'model' | 'openclaw' | null;
-  openclawTransport: 'gateway' | 'plugin' | null;
+  /** How OpenClaw answers chat here: this browser directly, dsul's server, or the plugin. */
+  openclawTransport: 'browser' | 'gateway' | 'plugin' | null;
   answererName: 'AI' | 'OpenClaw' | null;
   agentId: string | null;
   modelUsable: boolean;
@@ -102,14 +108,19 @@ export const NO_AI: AICapabilities = Object.freeze({
 }) as AICapabilities;
 
 /**
- * Nothing at all: no model saved, no gateway, no plugin chat, no agent key.
+ * Nothing at all: no model saved, no gateway, no plugin chat, no agent key,
+ * and no browser pairing here.
  * resolveAICapabilities uses it for `askInvite`, and Settings → AI asks it
  * (lib/ai-pane-state.ts) for the tiles and the "No AI, thanks" button, so the
  * pane and the invitation can never disagree about what "nothing" means.
  * A pull-only agent key is something: it is paired, and it takes on tasks.
  */
-export function nothingConnected(model: ModelConnectionView | null, openclaw: OpenClawView): boolean {
-  return !model && !openclaw.gateway && !openclaw.pluginChat && !openclaw.agent;
+export function nothingConnected(
+  model: ModelConnectionView | null,
+  openclaw: OpenClawView,
+  browserChat = false
+): boolean {
+  return !model && !openclaw.gateway && !openclaw.pluginChat && !openclaw.agent && !browserChat;
 }
 
 /**
@@ -127,11 +138,15 @@ export function resolveAICapabilities(i: AIInputs): AICapabilities {
 
   const model = i.model;
   const modelUsable = i.available && model?.status === 'ok' && !!model.model;
-  const openclawTransport: AICapabilities['openclawTransport'] = i.openclaw.gateway
-    ? 'gateway'
-    : i.openclaw.pluginChat
-      ? 'plugin'
-      : null;
+  // This browser's own pairing first: it is the one the person set up here,
+  // and it needs nothing of dsul's server.
+  const openclawTransport: AICapabilities['openclawTransport'] = i.browserChat
+    ? 'browser'
+    : i.openclaw.gateway
+      ? 'gateway'
+      : i.openclaw.pluginChat
+        ? 'plugin'
+        : null;
   const openclawUsable = openclawTransport !== null;
 
   // "No AI, thanks" answers before the device's choice: nothing answers chat.
@@ -181,7 +196,7 @@ export function resolveAICapabilities(i: AIInputs): AICapabilities {
     modelFailing,
     modelNeedsAttention,
     aiHidden,
-    askInvite: mayInvite && nothingConnected(model, i.openclaw),
+    askInvite: mayInvite && nothingConnected(model, i.openclaw, i.browserChat),
     askFix: mayInvite && modelNeedsAttention && target === 'none',
   };
 }

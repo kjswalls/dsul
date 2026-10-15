@@ -16,11 +16,17 @@ import { resetClock } from './format-chat-timestamp';
  * rewording here reaches both the route's JSON and a saved reply's note.
  */
 
-/** Codes only the browser can produce: the plugin path never reaches dsul's server. */
+/**
+ * Codes only the browser can produce: the plugin path and this browser's own
+ * gateway link (lib/openclaw-browser/link.ts) never reach dsul's server.
+ */
 export type ClientChatErrorCode =
   | 'plugin_setup'
   | 'plugin_unreachable'
   | 'plugin_error'
+  | 'gateway_offline'
+  | 'gateway_unpaired'
+  | 'gateway_error'
   | 'no_response'
   | 'client';
 
@@ -94,6 +100,9 @@ export const CLIENT_ERROR_COPY: Readonly<Record<ClientChatErrorCode, string>> = 
     "OpenClaw isn't reachable yet. Run `openclaw dsul-context setup` and set publicUrl in openclaw.json.",
   plugin_unreachable: "Couldn't reach OpenClaw. Check that it is running.",
   plugin_error: "OpenClaw couldn't answer that. Try again.",
+  gateway_offline: "Couldn't reach your OpenClaw gateway from this browser. Check that it's running and that this device can reach it.",
+  gateway_unpaired: "This browser isn't paired with your OpenClaw gateway anymore. Set up chat again in Settings.",
+  gateway_error: "OpenClaw couldn't answer that. Try again.",
   no_response: 'No response received.',
   client: 'Something went wrong. Try again.',
 });
@@ -151,6 +160,8 @@ const RETRYABLE: ReadonlySet<ReplyErrorCode> = new Set<ReplyErrorCode>([
   'server',
   'plugin_unreachable',
   'plugin_error',
+  'gateway_offline',
+  'gateway_error',
   'no_response',
   'client',
 ]);
