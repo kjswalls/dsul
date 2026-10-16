@@ -5,6 +5,7 @@ import { Check, Maximize2 } from 'lucide-react';
 import { doneNext, openDesk, skipNext, sortDelay, useDoStuffStore } from '@/lib/do-stuff';
 import { freeStretch, sprintFor, stretchLabel, type WalkBlock } from '@/lib/do-stuff-walk';
 import { SprintButton, SprintRing } from '@/components/sidebar/sprint-ring';
+import { PocketButton } from '@/components/sidebar/do-stuff-pocket';
 import { openFirstSteps, useCanFirstSteps } from '@/components/sidebar/first-steps';
 import { prefersReducedMotion } from '@/lib/zen-transition';
 import { cn } from '@/lib/utils';
@@ -167,6 +168,7 @@ function SlotFace({
         </button>
       )}
       {!compact && <SprintButton offer={sprint} />}
+      {!compact && <PocketButton />}
       {!desk && (
         <button
           type="button"

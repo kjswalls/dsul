@@ -9,6 +9,7 @@ import { openFirstSteps, useCanFirstSteps } from '@/components/sidebar/first-ste
 import { closeDesk, doneNext, skipNext, useDoStuffStore } from '@/lib/do-stuff';
 import { freeStretch, sprintFor, stretchLabel } from '@/lib/do-stuff-walk';
 import { SprintButton, SprintRing } from '@/components/sidebar/sprint-ring';
+import { PocketButton } from '@/components/sidebar/do-stuff-pocket';
 import { laneDef } from '@/lib/do-stuff-plan';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useDayItems } from '@/hooks/use-day-items';
@@ -202,7 +203,8 @@ function DeskItem({ item }: { item: Item }) {
           </Button>
         )}
         <SprintButton offer={sprint} />
-        <span className="ml-auto">
+        <span className="ml-auto flex items-center gap-1">
+          <PocketButton />
           <BackToDay />
         </span>
       </div>

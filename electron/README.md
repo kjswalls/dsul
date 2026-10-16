@@ -16,11 +16,14 @@ Never add electron to the root `package.json` either.
 | `preload.cjs` | `window.dsulDesktop`, the only bridge the page gets (mirrored by `lib/desktop.ts`) |
 | `find-bar.html` | The find bar's page. No script; shown as a data: URL in a view over the window's top-right corner |
 | `find-preload.cjs` | Wires the find bar from its isolated world. Exposes nothing |
+| `pocket.html` | Do stuff's pocket: the current item in a small always-on-top window. No script; shown as a data: URL |
+| `pocket-preload.cjs` | Wires the pocket from its isolated world. Exposes nothing |
 | `lib/policy.cjs` | Every URL decision, pure, tested by `tests/unit/electron-policy.test.ts` at the root |
 | `lib/window-chrome.cjs` | The macOS title bar: the band the traffic lights share with the page, and where they sit at each page zoom (main moves them as the zoom changes). Pure, tested by `tests/unit/electron-window-chrome.test.ts` |
 | `lib/window-state.cjs` | Where the window reopens: parses `window-state.json`, fits it to the displays connected now and decides what to save. Pure, tested by `tests/unit/electron-window-state.test.ts` |
 | `lib/login-item.cjs` | What the tray's Open at login box shows on each platform (what dsul registered, read back) and the exact requests main sends. Pure, tested by `tests/unit/electron-login-item.test.ts` |
 | `lib/find-bar.cjs` | The find bar's place (and stepping aside for a match), count label and Edit-menu items. Pure, tested by `tests/unit/electron-find-bar.test.ts` |
+| `lib/pocket.cjs` | What the pocket shows (shaped from the page's state), its buttons' messages and where it opens. Pure, tested by `tests/unit/electron-pocket.test.ts` |
 | `offline.html` | Shown when the app can't be reached; it retries when the computer comes back online, and main retries on a backoff |
 | `electron-builder.config.cjs` | Packaging, fuses and signing |
 | `build/` | Icons, the macOS entitlements and the NSIS include that registers `dsul://` on Windows, and on uninstall (not update) removes it and Open at login's Run value |

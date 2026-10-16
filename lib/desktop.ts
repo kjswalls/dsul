@@ -50,6 +50,43 @@ export interface DsulDesktop {
   onNotification?(cb: (event: DesktopNotificationEvent) => void): () => void;
   /** The computer woke or was unlocked. Returns an unsubscribe. */
   onWake?(cb: () => void): () => void;
+  /*
+   * Do stuff's pocket (electron/main.cjs "Pocket"): a small always-on-top
+   * window with the current item. Optional like setAppIcon; feature-detect
+   * with `desktopPocket`.
+   */
+  /** What the pocket shows, or null when nothing is current (which closes it). */
+  setPocket?(state: PocketState | null): void;
+  /** Shows the pocket without taking the focus. False when there is nothing to show. */
+  openPocket?(): Promise<boolean>;
+  /** A pocket button pressed on the item `id`. Returns an unsubscribe. */
+  onPocketAction?(cb: (message: { action: 'done' | 'skip'; id: string }) => void): () => void;
+}
+
+/** What the pocket shows: main keeps only these fields (electron/lib/pocket.cjs shapePocket). */
+export interface PocketState {
+  id: string;
+  title: string;
+  /** Done this run. */
+  done: number;
+  /** The running sprint, as epoch ms (lib/do-stuff.ts Sprint). */
+  sprint: { startedAt: number; endsAt: number; until: string | null } | null;
+}
+
+export type DesktopPocket = Required<Pick<DsulDesktop, 'setPocket' | 'openPocket' | 'onPocketAction'>>;
+
+/** The bridge's pocket members, all present, or null when this shell has none. */
+export function desktopPocket(bridge: DsulDesktop | null = getDesktopBridge()): DesktopPocket | null {
+  if (!bridge) return null;
+  const { setPocket, openPocket, onPocketAction } = bridge;
+  if (typeof setPocket !== 'function' || typeof openPocket !== 'function' || typeof onPocketAction !== 'function') {
+    return null;
+  }
+  return {
+    setPocket: setPocket.bind(bridge),
+    openPocket: openPocket.bind(bridge),
+    onPocketAction: onPocketAction.bind(bridge),
+  };
 }
 
 export interface DesktopNotificationSpec {

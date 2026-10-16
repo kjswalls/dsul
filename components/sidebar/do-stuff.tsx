@@ -56,6 +56,7 @@ import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
 import { chordLabel, isApplePlatform } from '@/lib/commands/keys';
 import { cn } from '@/lib/utils';
 import { openFirstSteps, useCanFirstSteps } from '@/components/sidebar/first-steps';
+import { PocketButton } from '@/components/sidebar/do-stuff-pocket';
 
 /**
  * Do stuff: the braindump sorted into a plan in lanes, then walked
@@ -754,6 +755,7 @@ function NextCard({ row, trailing, slim }: { row: RowItem; trailing: React.React
           >
             desk <Cap>D</Cap>
           </Button>
+          <PocketButton />
         </div>
       )}
     </div>
