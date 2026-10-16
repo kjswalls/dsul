@@ -126,8 +126,15 @@ const SIX = [
   task('f', { title: 'zebra' }),
 ];
 
-const laneOfRow = (title: string) =>
-  screen.getByText(title, { selector: '[data-lane-row] *' }).closest('[data-lane]')?.getAttribute('data-lane');
+// The lanes fold to peeks while doing stuff (L1); these tests read every lane.
+const unfold = () => {
+  for (const peek of screen.queryAllByTestId(/^do-stuff-peek-/)) fireEvent.click(peek);
+};
+
+const laneOfRow = (title: string) => {
+  unfold();
+  return screen.getByText(title, { selector: '[data-lane-row] *' }).closest('[data-lane]')?.getAttribute('data-lane');
+};
 
 const today = new Date().toISOString().slice(0, 10);
 const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
@@ -162,6 +169,7 @@ const start = () => {
 };
 
 const hoverKey = (title: string, key: string) => {
+  unfold();
   (document.activeElement as HTMLElement | null)?.blur();
   fireEvent.mouseEnter(screen.getByText(title, { selector: '[data-lane-row] *' }).closest('[data-lane-row]')!);
   fireEvent.keyDown(window, { key });

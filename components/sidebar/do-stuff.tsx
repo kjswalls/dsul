@@ -402,10 +402,13 @@ function LaneHeader({
   lane,
   count,
   action,
+  onFold,
 }: {
   lane: Lane;
   count: number;
   action?: React.ReactNode;
+  /** Folds an unfolded lane back to its peek; absent on the lane being walked. */
+  onFold?: () => void;
 }) {
   const def = laneDef(lane);
   return (
@@ -423,11 +426,80 @@ function LaneHeader({
             {def.note}
           </span>
         )}
-        {action && <span className="ml-auto">{action}</span>}
+        {(action || onFold) && (
+          <span className="ml-auto flex items-center gap-1">
+            {action}
+            {onFold && (
+              <button
+                type="button"
+                onClick={onFold}
+                aria-label={`Fold ${def.label}`}
+                aria-expanded
+                data-testid={`do-stuff-fold-${lane}`}
+                className="flex size-6 items-center justify-center rounded-[6px] text-muted-foreground hover:bg-accent hover:text-foreground"
+              >
+                <ChevronDown aria-hidden className="size-3.5" />
+              </button>
+            )}
+          </span>
+        )}
       </div>
       {/* The tinted hairline. When the mode opens it draws in after the rows
           land and one glint runs along it (useSort, and do-stuff-rule in
           globals.css; off under either motion veto). */}
+      <div
+        aria-hidden
+        className="do-stuff-rule mx-1 h-[1.5px] origin-left rounded-full"
+        style={{ '--rule': def.color } as React.CSSProperties}
+      />
+    </div>
+  );
+}
+
+/**
+ * A lane folded to one line (L1, Kirby's pick, 2026-10-16): its name, how many,
+ * and the first few titles, so the list says what is there without asking to
+ * be read. Only the lane being walked is open; a click unfolds any other for
+ * the rest of the run. Its rule is still drawn, so the start's sort lands the
+ * same way.
+ */
+function LanePeek({
+  lane,
+  count,
+  titles,
+  doneHere,
+  onOpen,
+  action,
+}: {
+  lane: Lane;
+  count: number;
+  titles: readonly string[];
+  doneHere: number;
+  onOpen: () => void;
+  /** The lane's own header action (who it goes to, review), kept in reach while folded. */
+  action?: React.ReactNode;
+}) {
+  const def = laneDef(lane);
+  const peek = [titles.slice(0, 3).join(', '), doneHere > 0 && `${doneHere} done`].filter(Boolean).join(' · ');
+  return (
+    <div className="flex flex-col" data-lane-head={lane} data-testid={`do-stuff-lane-${lane}`} data-folded>
+      <div className="flex min-w-0 items-center gap-1">
+        <button
+          type="button"
+          onClick={onOpen}
+          aria-expanded={false}
+          aria-label={`${def.label}, ${count}. Unfold`}
+          data-testid={`do-stuff-peek-${lane}`}
+          className="flex h-[30px] min-w-0 flex-1 items-center gap-2 rounded-[7px] px-2 text-left text-[13px] hover:bg-accent/60"
+        >
+          <Dot color={def.color} />
+          <span className="shrink-0 font-semibold">{def.label}</span>
+          <span className="font-num shrink-0 text-[12.5px] text-muted-foreground">{count}</span>
+          <span className="min-w-0 flex-1 truncate text-[12px] text-muted-foreground">{peek}</span>
+          <ChevronDown aria-hidden className="size-3.5 shrink-0 -rotate-90 text-muted-foreground" />
+        </button>
+        {action && <span className="shrink-0 pr-2">{action}</span>}
+      </div>
       <div
         aria-hidden
         className="do-stuff-rule mx-1 h-[1.5px] origin-left rounded-full"
@@ -1139,6 +1211,19 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
     onClose: () => setPeek(null),
   });
 
+  // L1: the lane being walked is open, every other folds to a peek until it
+  // is asked for. Unfolded lanes stay open for the run (memory only, like the
+  // mode). With nothing left to walk, do it now stays the open one.
+  const walking: Lane = next && plan.laneById.get(next.item.id) === 'today' ? 'today' : 'now';
+  const [unfolded, setUnfolded] = useState<ReadonlySet<Lane>>(() => new Set());
+  const setFold = (lane: Lane, open: boolean) =>
+    setUnfolded((prev) => {
+      const nextSet = new Set(prev);
+      if (open) nextSet.add(lane);
+      else nextSet.delete(lane);
+      return nextSet;
+    });
+
   let shown = 0;
   return (
     <div ref={listRef} data-do-stuff-list className="flex flex-col gap-1" data-testid="do-stuff-list">
@@ -1161,25 +1246,41 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
         const doneHere = l.key === 'now' || l.key === 'today' ? plan.doneHere[l.key] : 0;
         if (list.length === 0 && doneHere === 0) return null;
         const index = shown++;
+        const open = list.filter(isOpen);
+        const action =
+          l.key === 'done' && touch && deckCards.length > 1 ? (
+            <button
+              type="button"
+              onClick={() => setDeckOpen(true)}
+              data-testid="prep-pack-review"
+              className="h-6 rounded-[6px] px-2 text-xs font-medium text-foreground hover:bg-accent"
+            >
+              review {deckCards.length}
+            </button>
+          ) : l.key === 'handoff' && plan.target ? (
+            <HandToPicker target={plan.target} targets={plan.targets} />
+          ) : undefined;
+        if (l.key !== walking && !unfolded.has(l.key)) {
+          return (
+            <section key={l.key} className={cn(index > 0 && 'pt-1')} data-lane={l.key}>
+              <LanePeek
+                lane={l.key}
+                count={open.length}
+                titles={open.map((r) => r.item.title)}
+                doneHere={doneHere}
+                onOpen={() => setFold(l.key, true)}
+                action={action}
+              />
+            </section>
+          );
+        }
         return (
           <section key={l.key} className={cn(index > 0 && 'pt-2')} data-lane={l.key}>
             <LaneHeader
               lane={l.key}
-              count={list.filter(isOpen).length}
-              action={
-                l.key === 'done' && touch && deckCards.length > 1 ? (
-                  <button
-                    type="button"
-                    onClick={() => setDeckOpen(true)}
-                    data-testid="prep-pack-review"
-                    className="h-6 rounded-[6px] px-2 text-xs font-medium text-foreground hover:bg-accent"
-                  >
-                    review {deckCards.length}
-                  </button>
-                ) : l.key === 'handoff' && plan.target ? (
-                  <HandToPicker target={plan.target} targets={plan.targets} />
-                ) : undefined
-              }
+              count={open.length}
+              onFold={l.key === walking ? undefined : () => setFold(l.key, false)}
+              action={action}
             />
             <div className="pt-1">
               {list.map((r) => (

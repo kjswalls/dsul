@@ -281,3 +281,14 @@ PR3 Sprint, PR4 Pocket, PR5 L1.
 - Bridge members `setPocket`, `openPocket`, `onPocketAction` are optional (`desktopPocket` in
   lib/desktop.ts), so it reaches people only with the next shell release; until then the
   button never renders. No global chord yet: the pocket opens from the app.
+
+### What PR5 shipped (L1, the calmer list)
+
+- While doing stuff, only the lane being walked is open (do it now, or today once the walk has
+  moved there). Every other lane folds to one line: its name, its count, the first three
+  titles, and "N done" where rows were done there. A click unfolds a lane for the rest of the
+  run (memory only), and a chevron in its header folds it again; the walked lane has none.
+- A folded lane keeps its header action in reach: "to OpenClaw" on do it for me, and "review
+  N" on the phone's ready lane. Its rule is still drawn, so the start's sort lands as before.
+- `LanePeek` in components/sidebar/do-stuff.tsx; the lane tests unfold every lane before
+  reading rows (`unfold()` in do-stuff-lanes and do-stuff-today tests).
