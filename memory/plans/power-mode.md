@@ -292,3 +292,17 @@ PR3 Sprint, PR4 Pocket, PR5 L1.
   N" on the phone's ready lane. Its rule is still drawn, so the start's sort lands as before.
 - `LanePeek` in components/sidebar/do-stuff.tsx; the lane tests unfold every lane before
   reading rows (`unfold()` in do-stuff-lanes and do-stuff-today tests).
+
+### What PR6 shipped (walking the day: heads-up and a missed block)
+
+- **Heads-up.** Within 5 minutes of a block (`HEADS_UP_MIN`, `headsUp()` in
+  lib/do-stuff-walk.ts) the slot says "Standup in 3m". By then the stretch is a sliver and the
+  slot is one line, so it sits beside the title; on a roomy slot it replaces the heading with
+  "… · wrap up here". It asks nothing and makes no sound.
+- **A missed block, offered once.** A one-off timed task that ended undone within the last 3
+  hours (`missedBlock()`, `MISSED_WINDOW_MIN`) takes the slot's heading: "missed Call the
+  bank? fit it in · let it go". Fit it in moves it to now (or after the block running now),
+  keeping its length, in one undo labelled "Fit it in"; let it go writes nothing. Either way
+  it is never asked about again this session (store `missedSeen`, memory only, kept across
+  runs). Habits, series and project blocks are never offered (`WalkBlock.movable`): their
+  time is every day's.

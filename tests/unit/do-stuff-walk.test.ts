@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { freeStretch, spanLabel, sprintFor, stretchLabel, type WalkBlock } from '@/lib/do-stuff-walk';
+import {
+  fitInStart,
+  freeStretch,
+  headsUp,
+  missedBlock,
+  spanLabel,
+  sprintFor,
+  stretchLabel,
+  type WalkBlock,
+} from '@/lib/do-stuff-walk';
 
 /**
  * The walk's free stretch (lib/do-stuff-walk.ts): where "In the day" opens the
@@ -80,5 +89,34 @@ describe('sprintFor', () => {
     expect(sprintFor(freeStretch(day, 770), 770)).toBeNull();
     expect(sprintFor(freeStretch(day, 738), 738)).toBeNull();
     expect(sprintFor(null, 670)).toBeNull();
+  });
+});
+
+describe('headsUp', () => {
+  it('names the block starting within five minutes, and nothing earlier or later', () => {
+    expect(headsUp(day, 746)).toEqual({ title: 'Lunch with Ana', inMin: 4 });
+    expect(headsUp(day, 744)).toBeNull();
+    expect(headsUp(day, 750)).toBeNull();
+    expect(headsUp([{ ...lunch, done: true }], 746)).toBeNull();
+  });
+});
+
+describe('missedBlock', () => {
+  const bank: WalkBlock = { title: 'Call the bank', startMin: 600, duration: 30, id: 'm1', movable: true };
+  const gym: WalkBlock = { title: 'Gym', startMin: 640, duration: 20, id: 'm2', movable: true };
+  it('offers the latest movable block that ended undone, within three hours', () => {
+    expect(missedBlock([bank, gym], 670, new Set())?.id).toBe('m2');
+    expect(missedBlock([bank, gym], 670, new Set(['m2']))?.id).toBe('m1');
+    // Still on, done, not movable, or long gone.
+    expect(missedBlock([bank], 620, new Set())).toBeNull();
+    expect(missedBlock([{ ...bank, done: true }], 670, new Set())).toBeNull();
+    expect(missedBlock([{ ...bank, movable: false }], 670, new Set())).toBeNull();
+    expect(missedBlock([bank], 630 + 181, new Set())).toBeNull();
+  });
+
+  it('fits it in at the free stretch: now, or after the block running now', () => {
+    expect(fitInStart(freeStretch(day, 671), 671)).toBe(671);
+    expect(fitInStart(freeStretch(day, 770), 770)).toBe(810);
+    expect(fitInStart(null, 671)).toBeNull();
   });
 });

@@ -130,6 +130,7 @@ beforeEach(() => {
   enableExtensions(EXT_DO_STUFF);
   useKeyboardShortcutsStore.setState({ overrides: {} });
   useDoStuffStore.getState().stop();
+  useDoStuffStore.setState({ missedSeen: [] });
   usePrepPacksStore.setState({ userId: 'user-1', packs: {}, loaded: true, available: true, preparing: {}, tried: {}, error: null });
   vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200 })));
   useAgentsStore.setState({ agents: [], loaded: false });
@@ -152,6 +153,44 @@ function start(blocks: WalkBlock[] = BLOCKS) {
 const nowLane = () => [...useDoStuffStore.getState().marks].filter(([, m]) => m.lane === 'now').map(([id]) => id);
 
 describe('in the day: the current item on today\'s schedule', () => {
+  it('says a block is coming five minutes before it', () => {
+    seed(ITEMS);
+    start([{ title: 'Standup', startMin: NOW + 3, duration: 15 }, ...BLOCKS]);
+    // Three minutes is a sliver: the slot is one line, the heads-up beside the title.
+    expect(screen.getByTestId('do-stuff-slot').dataset.compact).toBe('true');
+    expect(screen.getByTestId('do-stuff-heads-up').textContent).toBe('Standup in 3m');
+  });
+
+  it('offers a missed block once: fit it in moves it to now, let it go writes nothing', () => {
+    const missed = task('m1', { title: 'Call the bank', startDate: today, isScheduled: true, startTime: '10:00', timeBucket: 'morning' });
+    seed([...ITEMS, missed]);
+    const blocks: WalkBlock[] = [{ title: 'Call the bank', startMin: 600, duration: 30, id: 'm1', movable: true }, ...BLOCKS];
+    start(blocks);
+    expect(screen.getByTestId('do-stuff-missed').textContent).toContain('missed Call the bank?');
+    act(() => {
+      fireEvent.click(screen.getByTestId('do-stuff-missed-fit'));
+    });
+    const moved = usePlannerStore.getState().items.find((i) => i.id === 'm1') as unknown as Record<string, unknown>;
+    expect(moved.startTime).toBe('11:10');
+    expect(useDoStuffStore.getState().missedSeen).toEqual(['m1']);
+    expect(screen.queryByTestId('do-stuff-missed')).toBeNull();
+  });
+
+  it("lets a missed block go, and doesn't ask about a habit or a series", () => {
+    seed(ITEMS);
+    start([
+      { title: 'Stretch', startMin: 540, duration: 15, id: 'h1', movable: false },
+      { title: 'Call the bank', startMin: 600, duration: 30, id: 'm1', movable: true },
+      ...BLOCKS,
+    ]);
+    expect(screen.getByTestId('do-stuff-missed').textContent).toContain('Call the bank');
+    act(() => {
+      fireEvent.click(screen.getByTestId('do-stuff-missed-let-go'));
+    });
+    expect(screen.queryByTestId('do-stuff-missed')).toBeNull();
+    expect(useDoStuffStore.getState().missedSeen).toEqual(['m1']);
+  });
+
   it('opens in the free stretch, and the header card and the list card stand down', () => {
     seed(ITEMS);
     start();
