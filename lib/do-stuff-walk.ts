@@ -18,6 +18,14 @@ export interface WalkBlock {
   duration: number;
   /** Done blocks do not hold the clock: their time is free again. */
   done?: boolean;
+  /** The item's id, for the missed-block offer. */
+  id?: string;
+  /**
+   * May the walk move this block to another time? Only a one-off task: a
+   * habit's or a series' time is every day's, and a project block's is the
+   * project's.
+   */
+  movable?: boolean;
 }
 
 export interface FreeStretch {
@@ -108,4 +116,56 @@ export function sprintFor(s: FreeStretch | null, nowMin: number): { minutes: num
   const minutes = s.until ? s.endMin - SPRINT_LEAD_MIN - nowMin : Math.min(SPRINT_OPEN_MIN, s.endMin - nowMin);
   if (minutes < SPRINT_MIN) return null;
   return { minutes, until: s.until?.title ?? null };
+}
+
+/** How long before a block the slot says it is coming. */
+export const HEADS_UP_MIN = 5;
+
+/**
+ * The block about to start (Kirby's walk, 2026-10-16): the next one not done
+ * that starts within HEADS_UP_MIN of now, so the slot can say "Lunch with Ana in
+ * 4m" while there is time to wrap up. Null otherwise. It never asks anything.
+ */
+export function headsUp(blocks: readonly WalkBlock[], nowMin: number): { title: string; inMin: number } | null {
+  let best: WalkBlock | null = null;
+  for (const b of blocks) {
+    if (b.done || b.startMin <= nowMin || b.startMin - nowMin > HEADS_UP_MIN) continue;
+    if (!best || b.startMin < best.startMin) best = b;
+  }
+  return best ? { title: best.title, inMin: best.startMin - nowMin } : null;
+}
+
+/** How far back a missed block is still worth offering. */
+export const MISSED_WINDOW_MIN = 180;
+
+/**
+ * A block that came and went without being done, offered once with no guilt:
+ * "fit it in" or "let it go". The most recent one that ended within
+ * MISSED_WINDOW_MIN, is movable, and was not offered already (`seen`, ids).
+ * Null when there is none.
+ */
+export function missedBlock(
+  blocks: readonly WalkBlock[],
+  nowMin: number,
+  seen: ReadonlySet<string>
+): (WalkBlock & { id: string }) | null {
+  let best: (WalkBlock & { id: string }) | null = null;
+  for (const b of blocks) {
+    const end = b.startMin + b.duration;
+    if (b.done || !b.movable || !b.id || seen.has(b.id)) continue;
+    if (end > nowMin || nowMin - end > MISSED_WINDOW_MIN) continue;
+    if (!best || end > best.startMin + best.duration) best = { ...b, id: b.id };
+  }
+  return best;
+}
+
+/**
+ * Where "fit it in" puts a block: the free stretch's start, which is now when
+ * the stretch is free now. Never rounded up: a gap of a few minutes before it
+ * would be a sliver the slot covers.
+ */
+export function fitInStart(s: FreeStretch | null, nowMin: number): number | null {
+  if (!s) return null;
+  const at = Math.max(s.startMin, nowMin);
+  return at < 24 * 60 ? at : null;
 }

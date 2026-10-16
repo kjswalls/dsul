@@ -2,8 +2,16 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { Check, Maximize2 } from 'lucide-react';
-import { doneNext, openDesk, skipNext, sortDelay, useDoStuffStore } from '@/lib/do-stuff';
-import { freeStretch, sprintFor, stretchLabel, type WalkBlock } from '@/lib/do-stuff-walk';
+import { doneNext, fitMissedIn, letMissedGo, openDesk, skipNext, sortDelay, useDoStuffStore } from '@/lib/do-stuff';
+import {
+  fitInStart,
+  freeStretch,
+  headsUp,
+  missedBlock,
+  sprintFor,
+  stretchLabel,
+  type WalkBlock,
+} from '@/lib/do-stuff-walk';
 import { SprintButton, SprintRing } from '@/components/sidebar/sprint-ring';
 import { PocketButton } from '@/components/sidebar/do-stuff-pocket';
 import { openFirstSteps, useCanFirstSteps } from '@/components/sidebar/first-steps';
@@ -47,7 +55,9 @@ export function DoStuffSlot({
 }) {
   const next = useDoStuffStore((s) => (s.on ? s.next : null));
   const doneCount = useDoStuffStore((s) => s.doneCount);
+  const missedSeen = useDoStuffStore((s) => s.missedSeen);
   const stretch = useMemo(() => freeStretch(blocks, nowMin), [blocks, nowMin]);
+  const missed = useMemo(() => missedBlock(blocks, nowMin, new Set(missedSeen)), [blocks, nowMin, missedSeen]);
   const gridStart = gridStartHour * 60;
   const gridEnd = gridEndHour * 60;
   const shown = !!next && !!stretch && stretch.startMin >= gridStart && stretch.startMin < gridEnd;
@@ -74,6 +84,8 @@ export function DoStuffSlot({
       rest={label.rest}
       doneCount={doneCount}
       sprint={sprintFor(stretch, nowMin)}
+      heads={headsUp(blocks, nowMin)}
+      missed={missed ? { id: missed.id, title: missed.title, at: fitInStart(stretch, nowMin) } : null}
     />
   );
 }
@@ -88,6 +100,8 @@ function SlotFace({
   rest,
   doneCount,
   sprint,
+  heads,
+  missed,
 }: {
   id: string;
   title: string;
@@ -98,6 +112,10 @@ function SlotFace({
   rest: string;
   doneCount: number;
   sprint: { minutes: number; until: string | null } | null;
+  /** The block about to start, said instead of the stretch. */
+  heads: { title: string; inMin: number } | null;
+  /** A block that came and went, offered once: fit it in at `at`, or let it go. */
+  missed: { id: string; title: string; at: number | null } | null;
 }) {
   const running = useDoStuffStore((s) => !!s.sprint);
   const ref = useRef<HTMLDivElement>(null);
@@ -199,14 +217,52 @@ function SlotFace({
         ref={bodyRef}
         className={cn('flex h-full min-w-0 pl-4 pr-2', compact ? 'items-center gap-3' : 'flex-col justify-center gap-1.5 py-2')}
       >
-        {!compact && running && <SprintRing size={14} className="h-[17px] self-start" />}
-        {!compact && !running && (
+        {!compact && missed && (
+          <p className="flex min-w-0 items-center gap-1 text-[11.5px] text-muted-foreground" data-testid="do-stuff-missed">
+            <span className="min-w-0 truncate">
+              missed <span className="font-medium text-foreground">{missed.title}</span>?
+            </span>
+            {missed.at !== null && (
+              <button
+                type="button"
+                onClick={() => fitMissedIn(missed.id, missed.at!)}
+                data-testid="do-stuff-missed-fit"
+                className="shrink-0 rounded-[5px] px-1.5 hover:bg-accent hover:text-foreground"
+              >
+                fit it in
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => letMissedGo(missed.id)}
+              data-testid="do-stuff-missed-let-go"
+              className="shrink-0 rounded-[5px] px-1.5 hover:bg-accent hover:text-foreground"
+            >
+              let it go
+            </button>
+          </p>
+        )}
+        {/* The offer takes the heading's place until it is answered. */}
+        {!compact && !missed && running && <SprintRing size={14} className="h-[17px] self-start" />}
+        {!compact && !missed && !running && heads && (
+          <p className="truncate text-[11.5px] text-muted-foreground" data-testid="do-stuff-heads-up">
+            <span className="font-medium text-foreground">{heads.title}</span> in {heads.inMin}m · wrap up here
+          </p>
+        )}
+        {!compact && !missed && !running && !heads && (
           <p className="truncate text-[11.5px] text-muted-foreground" data-testid="do-stuff-slot-stretch">
             <span className="font-medium text-success-text">{lead}</span> · {rest}
             {doneCount > 0 && <span> · {doneCount} done</span>}
           </p>
         )}
         <p className={cn('min-w-0 truncate font-medium', compact ? 'flex-1 text-[13px]' : 'text-[15px]')}>{title}</p>
+        {/* A block about to start leaves a sliver of a stretch, so the slot is
+            one line by then: the heads-up rides beside the title. */}
+        {compact && heads && (
+          <span className="shrink-0 text-[11.5px] text-muted-foreground" data-testid="do-stuff-heads-up">
+            <span className="font-medium text-foreground">{heads.title}</span> in {heads.inMin}m
+          </span>
+        )}
         {/* At the Desk the actions are the desk's: the slot only marks the time. */}
         {!desk && actions}
       </div>

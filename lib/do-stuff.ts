@@ -98,6 +98,13 @@ interface DoStuffState {
    * the gap before the next block, as epoch ms. Memory only; stop() ends it.
    */
   sprint: Sprint | null;
+  /**
+   * Missed blocks already offered (components/sidebar/do-stuff-slot.tsx), by
+   * id: each is offered once, fitted in or let go, and never asked about again
+   * this session. Memory only, and kept across runs, so stopping and starting
+   * the mode doesn't bring the question back.
+   */
+  missedSeen: readonly string[];
 }
 
 export interface Sprint {
@@ -169,6 +176,7 @@ export const useDoStuffStore = create<DoStuffState>((set) => ({
   startedAt: 0,
   desk: false,
   sprint: null,
+  missedSeen: [],
 }));
 
 /** Start a sprint of `minutes` from now, stopping ahead of `until`. */
@@ -325,6 +333,24 @@ export function makeItSo(plan: {
   }
   if (plan.unschedule?.length) planner().unscheduleTasks([...plan.unschedule]);
   if (plan.letGo?.length) planner().letGoItems([...plan.letGo]);
+}
+
+/** "let it go": a missed block is not asked about again, and nothing is written. */
+export function letMissedGo(id: string): void {
+  useDoStuffStore.setState((s) => ({ missedSeen: [...s.missedSeen.filter((x) => x !== id), id] }));
+}
+
+/**
+ * "fit it in": a missed one-off block moves to `startMin` today, keeping its
+ * length, in one undo. Never a habit or a series (lib/do-stuff-walk.ts
+ * WalkBlock.movable): their time is every day's.
+ */
+export function fitMissedIn(id: string, startMin: number): void {
+  letMissedGo(id);
+  const h = Math.floor(startMin / 60);
+  const startTime = `${String(h).padStart(2, '0')}:${String(startMin % 60).padStart(2, '0')}`;
+  const timeBucket = h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening';
+  planner().updateTask(id, { startTime, timeBucket }, { label: 'Fit it in' });
 }
 
 export function skipNext(id: string): void {

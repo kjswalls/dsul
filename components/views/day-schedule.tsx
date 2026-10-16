@@ -1606,6 +1606,8 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
         startMin: e.startMin,
         duration: e.duration,
         done: isRowCompletedOn({ itemType: e.itemType, item: e.item }, completionDateStr),
+        id: e.item.id,
+        movable: e.itemType === 'task' && !(e.item as Task).inProjectBlock && !isRecurring(e.item),
       })),
     [timed, completionDateStr]
   );
