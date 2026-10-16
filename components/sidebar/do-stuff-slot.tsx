@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
-import { Check } from 'lucide-react';
-import { doneNext, skipNext, sortDelay, useDoStuffStore } from '@/lib/do-stuff';
+import { Check, Maximize2 } from 'lucide-react';
+import { doneNext, openDesk, skipNext, sortDelay, useDoStuffStore } from '@/lib/do-stuff';
 import { freeStretch, stretchLabel, type WalkBlock } from '@/lib/do-stuff-walk';
 import { openFirstSteps, useCanFirstSteps } from '@/components/sidebar/first-steps';
 import { prefersReducedMotion } from '@/lib/zen-transition';
@@ -97,6 +97,7 @@ function SlotFace({
   const ref = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const steps = useCanFirstSteps(id);
+  const desk = useDoStuffStore((s) => s.desk);
 
   // Arrive once the sort has landed: a clip from the top edge, never an
   // opacity, since the notch is lime.
@@ -160,6 +161,18 @@ function SlotFace({
           first steps
         </button>
       )}
+      {!desk && (
+        <button
+          type="button"
+          onClick={openDesk}
+          aria-label={`Open the desk: ${title}`}
+          title="Open the desk (D)"
+          data-testid="do-stuff-slot-desk"
+          className="flex size-7 items-center justify-center rounded-[7px] text-muted-foreground hover:bg-accent hover:text-foreground"
+        >
+          <Maximize2 aria-hidden className="size-3.5" />
+        </button>
+      )}
     </div>
   );
 
@@ -185,7 +198,8 @@ function SlotFace({
           </p>
         )}
         <p className={cn('min-w-0 truncate font-medium', compact ? 'flex-1 text-[13px]' : 'text-[15px]')}>{title}</p>
-        {actions}
+        {/* At the Desk the actions are the desk's: the slot only marks the time. */}
+        {!desk && actions}
       </div>
     </div>
   );

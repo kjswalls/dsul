@@ -237,3 +237,18 @@ PR3 Sprint, PR4 Pocket, PR5 L1.
   list card's chrome, notch and actions, and the slot. On done the slot and the card stay
   still and the next item's content rises in place; the other rows, labels and counts
   glide to where they now stand (`useReflow`, measured every commit).
+
+### What PR2 shipped (the Desk)
+
+- `components/sidebar/do-stuff-desk.tsx`, mounted by the view router in place of the canvas's
+  view while doing stuff with the store's `desk` set (memory only; `stop()` clears it). Opened
+  from the slot's ⤢, the list card's "desk" (D), closed by Esc or "back to the day".
+  `openDesk()` brings the canvas to today first: the desk is always today, as Zen is.
+- Left: a kicker (lane · the free stretch · done count), the title with its lime notch, the
+  notes, the steps (subtasks, read from `items` since `tasks` leaves them out, ticked through
+  `toggleRowDone` on today), a jot box (↵ appends a line to the notes, one undo each), done /
+  skip / first steps (↵ S F while nothing is being typed), and `ItemConversation` inline: the
+  item's own conversation, with whoever answers (the model or OpenClaw), the agent's side
+  when handed off, and nothing when nobody can answer.
+- Right: the real `DaySchedule`, its slot showing the time and title only (the desk has the
+  actions). It follows the walk: done or skip and the next item rises in.

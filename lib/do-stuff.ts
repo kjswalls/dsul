@@ -87,6 +87,12 @@ interface DoStuffState {
   slot: boolean;
   /** When the run started (performance.now()), for the slot to arrive after the sort. */
   startedAt: number;
+  /**
+   * Whether the canvas is the Desk (components/sidebar/do-stuff-desk.tsx): the
+   * current item set large beside today's day column, with its notes, steps,
+   * a jot box and its conversation. Memory only, like the mode; stop() closes it.
+   */
+  desk: boolean;
 }
 
 /**
@@ -132,7 +138,8 @@ export const useDoStuffStore = create<DoStuffState>((set) => ({
     const startedAt = typeof performance === 'undefined' ? 0 : performance.now();
     set((s) => ({ on: true, skipped: [], moved: {}, doneCount: 0, starts: s.starts + 1, startedAt }));
   },
-  stop: () => set({ on: false, skipped: [], moved: {}, doneCount: 0, commit: null, marks: NO_MARKS, next: null, arriving: [] }),
+  stop: () =>
+    set({ on: false, skipped: [], moved: {}, doneCount: 0, commit: null, marks: NO_MARKS, next: null, arriving: [], desk: false }),
   skip: (id) => set((s) => ({ skipped: [...s.skipped.filter((x) => x !== id), id] })),
   move: (id, lane) => set((s) => ({ moved: { ...s.moved, [id]: lane } })),
   countDone: () => set((s) => ({ doneCount: s.doneCount + 1 })),
@@ -148,7 +155,25 @@ export const useDoStuffStore = create<DoStuffState>((set) => ({
   firstSteps: null,
   slot: false,
   startedAt: 0,
+  desk: false,
 }));
+
+/**
+ * Open the Desk on the current item. The desk is always today (its day column
+ * is today's, as Zen's room is), so the canvas comes back to today first.
+ */
+export function openDesk(): void {
+  const { on, next } = useDoStuffStore.getState();
+  if (!on || !next) return;
+  const state = planner();
+  const tz = state.userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  if (toDateStr(state.selectedDate, tz) !== toDateStr(new Date(), tz)) state.setSelectedDate(new Date());
+  useDoStuffStore.setState({ desk: true });
+}
+
+export function closeDesk(): void {
+  useDoStuffStore.setState({ desk: false });
+}
 
 /** How long the current item still waits for the sort to land. */
 export function sortDelay(): number {
