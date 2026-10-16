@@ -124,8 +124,15 @@ const SIX = [
   task('f', { title: 'zebra' }),
 ];
 
-const laneOfRow = (title: string) =>
-  screen.getByText(title).closest('[data-lane]')?.getAttribute('data-lane');
+// The lanes fold to peeks while doing stuff (L1); these tests read every lane.
+const unfold = () => {
+  for (const peek of screen.queryAllByTestId(/^do-stuff-peek-/)) fireEvent.click(peek);
+};
+
+const laneOfRow = (title: string) => {
+  unfold();
+  return screen.getByText(title).closest('[data-lane]')?.getAttribute('data-lane');
+};
 
 beforeEach(() => {
   enableExtensions(EXT_DO_STUFF);
@@ -162,11 +169,29 @@ describe('do stuff: the plan in lanes', () => {
     expect(screen.getAllByTestId('do-stuff-day').map((d) => d.textContent)).toEqual(['tomorrow', 'tomorrow']);
   });
 
+  it('keeps the lane being walked open and folds the rest to peeks (L1)', () => {
+    seed(SIX);
+    renderBraindump();
+    fireEvent.click(screen.getByTestId('do-stuff-start'));
+    // Do it now is open, with its rows; the others are one line each.
+    expect(screen.getByTestId('do-stuff-lane-now')).not.toHaveAttribute('data-folded');
+    expect(screen.queryByTestId('do-stuff-fold-now')).toBeNull();
+    expect(screen.getByTestId('do-stuff-lane-calendar')).toHaveAttribute('data-folded');
+    expect(screen.getByTestId('do-stuff-peek-calendar')).toHaveTextContent('another day2pick up stamps, declutter the garage');
+    expect(screen.queryByText('pick up stamps', { selector: '[data-lane-row] *' })).toBeNull();
+    // Unfolded on ask, and folded again.
+    fireEvent.click(screen.getByTestId('do-stuff-peek-calendar'));
+    expect(screen.getByText('pick up stamps', { selector: '[data-lane-row] *' })).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('do-stuff-fold-calendar'));
+    expect(screen.getByTestId('do-stuff-lane-calendar')).toHaveAttribute('data-folded');
+  });
+
   it('moves the row under the pointer with a number key', () => {
     seed(SIX);
     renderBraindump();
     fireEvent.click(screen.getByTestId('do-stuff-start'));
     (document.activeElement as HTMLElement | null)?.blur();
+    unfold();
     fireEvent.mouseEnter(screen.getByText('zebra').closest('[data-lane-row]')!);
     fireEvent.keyDown(window, { key: '2' });
     expect(laneOfRow('zebra')).toBe('now');
@@ -212,8 +237,10 @@ describe('do stuff: the plan in lanes', () => {
     renderBraindump();
     fireEvent.click(screen.getByTestId('do-stuff-start'));
     (document.activeElement as HTMLElement | null)?.blur();
+    unfold();
     fireEvent.mouseEnter(screen.getByText('zebra').closest('[data-lane-row]')!);
     fireEvent.keyDown(window, { key: '7' });
+    unfold();
     fireEvent.mouseEnter(screen.getByText('figure out the budget').closest('[data-lane-row]')!);
     fireEvent.keyDown(window, { key: '3' });
     act(() => {
