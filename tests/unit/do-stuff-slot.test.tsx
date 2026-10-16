@@ -203,4 +203,30 @@ describe('in the day: the current item on today\'s schedule', () => {
     expect(screen.getByTestId('do-stuff-up-next')).toBeTruthy();
     expect(screen.getByTestId('do-stuff-next').dataset.slim).toBeUndefined();
   });
+
+  it('starts a sprint sized to the gap, and ends it on a tap', () => {
+    seed(ITEMS);
+    start();
+    act(() => {
+      fireEvent.click(screen.getByTestId('sprint-start'));
+    });
+    const sprint = useDoStuffStore.getState().sprint!;
+    expect(sprint.until).toBe('Lunch with Ana');
+    expect(Math.round((sprint.endsAt - sprint.startedAt) / 60_000)).toBe(75);
+    expect(screen.getByTestId('sprint-label').textContent).toBe('1h 15m left · till Lunch with Ana');
+    expect(screen.queryByTestId('sprint-start')).toBeNull();
+    act(() => {
+      fireEvent.click(screen.getByTestId('sprint-ring'));
+    });
+    expect(useDoStuffStore.getState().sprint).toBeNull();
+  });
+
+  it('says time is up, without fuss, and stopping the mode ends it', () => {
+    seed(ITEMS);
+    start();
+    act(() => useDoStuffStore.setState({ sprint: { startedAt: Date.now() - 60_000, endsAt: Date.now() - 1, until: 'Lunch with Ana' } }));
+    expect(screen.getByTestId('sprint-label').textContent).toBe("time's up · Lunch with Ana next");
+    act(() => useDoStuffStore.getState().stop());
+    expect(useDoStuffStore.getState().sprint).toBeNull();
+  });
 });

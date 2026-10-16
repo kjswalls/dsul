@@ -3,7 +3,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { Check, Maximize2 } from 'lucide-react';
 import { doneNext, openDesk, skipNext, sortDelay, useDoStuffStore } from '@/lib/do-stuff';
-import { freeStretch, stretchLabel, type WalkBlock } from '@/lib/do-stuff-walk';
+import { freeStretch, sprintFor, stretchLabel, type WalkBlock } from '@/lib/do-stuff-walk';
+import { SprintButton, SprintRing } from '@/components/sidebar/sprint-ring';
 import { openFirstSteps, useCanFirstSteps } from '@/components/sidebar/first-steps';
 import { prefersReducedMotion } from '@/lib/zen-transition';
 import { cn } from '@/lib/utils';
@@ -71,6 +72,7 @@ export function DoStuffSlot({
       lead={label.lead}
       rest={label.rest}
       doneCount={doneCount}
+      sprint={sprintFor(stretch, nowMin)}
     />
   );
 }
@@ -84,6 +86,7 @@ function SlotFace({
   lead,
   rest,
   doneCount,
+  sprint,
 }: {
   id: string;
   title: string;
@@ -93,7 +96,9 @@ function SlotFace({
   lead: string;
   rest: string;
   doneCount: number;
+  sprint: { minutes: number; until: string | null } | null;
 }) {
+  const running = useDoStuffStore((s) => !!s.sprint);
   const ref = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const steps = useCanFirstSteps(id);
@@ -161,6 +166,7 @@ function SlotFace({
           first steps
         </button>
       )}
+      {!compact && <SprintButton offer={sprint} />}
       {!desk && (
         <button
           type="button"
@@ -191,7 +197,8 @@ function SlotFace({
         ref={bodyRef}
         className={cn('flex h-full min-w-0 pl-4 pr-2', compact ? 'items-center gap-3' : 'flex-col justify-center gap-1.5 py-2')}
       >
-        {!compact && (
+        {!compact && running && <SprintRing size={14} className="h-[17px] self-start" />}
+        {!compact && !running && (
           <p className="truncate text-[11.5px] text-muted-foreground" data-testid="do-stuff-slot-stretch">
             <span className="font-medium text-success-text">{lead}</span> · {rest}
             {doneCount > 0 && <span> · {doneCount} done</span>}

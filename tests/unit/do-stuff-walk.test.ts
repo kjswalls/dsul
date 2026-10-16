@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { freeStretch, spanLabel, stretchLabel, type WalkBlock } from '@/lib/do-stuff-walk';
+import { freeStretch, spanLabel, sprintFor, stretchLabel, type WalkBlock } from '@/lib/do-stuff-walk';
 
 /**
  * The walk's free stretch (lib/do-stuff-walk.ts): where "In the day" opens the
@@ -64,5 +64,21 @@ describe('labels', () => {
       rest: 'after Lunch with Ana, until Deep work',
     });
     expect(stretchLabel(freeStretch(day, 1000)!, 1000)).toEqual({ lead: 'free', rest: 'for the rest of the day' });
+  });
+});
+
+describe('sprintFor', () => {
+  it('runs to five minutes before the next block', () => {
+    expect(sprintFor(freeStretch(day, 670), 670)).toEqual({ minutes: 75, until: 'Lunch with Ana' });
+  });
+
+  it('is an open 25 with nothing after it', () => {
+    expect(sprintFor(freeStretch(day, 1000), 1000)).toEqual({ minutes: 25, until: null });
+  });
+
+  it('is offered only while the stretch is free now, and long enough', () => {
+    expect(sprintFor(freeStretch(day, 770), 770)).toBeNull();
+    expect(sprintFor(freeStretch(day, 738), 738)).toBeNull();
+    expect(sprintFor(null, 670)).toBeNull();
   });
 });

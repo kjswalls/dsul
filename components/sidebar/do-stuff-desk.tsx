@@ -7,7 +7,8 @@ import { DaySchedule, deriveTimedEntries } from '@/components/views/day-schedule
 import { ItemConversation } from '@/components/ai/item-conversation';
 import { openFirstSteps, useCanFirstSteps } from '@/components/sidebar/first-steps';
 import { closeDesk, doneNext, skipNext, useDoStuffStore } from '@/lib/do-stuff';
-import { freeStretch, stretchLabel } from '@/lib/do-stuff-walk';
+import { freeStretch, sprintFor, stretchLabel } from '@/lib/do-stuff-walk';
+import { SprintButton, SprintRing } from '@/components/sidebar/sprint-ring';
 import { laneDef } from '@/lib/do-stuff-plan';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useDayItems } from '@/hooks/use-day-items';
@@ -57,7 +58,7 @@ export function DoStuffDesk({ activeId }: { activeId: string | null }) {
   }, []);
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_minmax(260px,38%)]" data-testid="do-stuff-desk">
+    <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_minmax(300px,40%)]" data-testid="do-stuff-desk">
       <div className="min-h-0 overflow-y-auto">
         {item ? (
           <DeskItem key={item.id} item={item} />
@@ -70,7 +71,14 @@ export function DoStuffDesk({ activeId }: { activeId: string | null }) {
           </div>
         )}
       </div>
-      <div className="flex min-h-0 flex-col border-l border-border" data-testid="do-stuff-desk-day">
+      {/* The column sets the day's width, as the phone's screen does: it is
+          its own `canvas` container, so the rows' columns size to it rather
+          than to the whole canvas, and Radix's table layout (which grows to the
+          widest row's min-content) is a block here. */}
+      <div
+        className="@container/canvas flex min-h-0 min-w-0 flex-col overflow-hidden border-l border-border [&_[data-slot=scroll-area-viewport]>div]:!block"
+        data-testid="do-stuff-desk-day"
+      >
         <DaySchedule activeId={activeId} />
       </div>
     </div>
@@ -92,7 +100,7 @@ function BackToDay() {
 }
 
 /** "do it now · 1h 20m free until Lunch with Ana · 2 done" */
-function useKicker(id: string): string {
+function useKicker(id: string): { kicker: string; sprint: { minutes: number; until: string | null } | null } {
   const lane = useDoStuffStore((s) => s.marks.get(id)?.lane);
   const doneCount = useDoStuffStore((s) => s.doneCount);
   const tz = usePlannerStore((s) => s.userTimezone) ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -110,19 +118,16 @@ function useKicker(id: string): string {
     return freeStretch(blocks, nowMin);
   }, [day, nowMin, todayStr]);
   const label = stretch && nowMin !== null ? stretchLabel(stretch, nowMin) : null;
-  return [
-    lane && laneDef(lane).label,
-    label && `${label.lead} ${label.rest}`,
-    doneCount > 0 && `${doneCount} done`,
-  ]
+  const kicker = [lane && laneDef(lane).label, label && `${label.lead} ${label.rest}`, doneCount > 0 && `${doneCount} done`]
     .filter(Boolean)
     .join(' · ');
+  return { kicker, sprint: nowMin === null ? null : sprintFor(stretch, nowMin) };
 }
 
 function DeskItem({ item }: { item: Item }) {
   const ref = useRef<HTMLDivElement>(null);
   const id = item.id;
-  const kicker = useKicker(id);
+  const { kicker, sprint } = useKicker(id);
   const steps = useCanFirstSteps(id);
   const notes = (item as { notes?: string }).notes?.trim();
 
@@ -164,6 +169,7 @@ function DeskItem({ item }: { item: Item }) {
       <p className="text-xs text-muted-foreground" data-testid="do-stuff-desk-kicker">
         {kicker}
       </p>
+      <SprintRing size={44} className="-my-1 self-start pr-2" />
       <div className="relative">
         {/* The notch: its own element at full strength (lime is never faded). */}
         <span aria-hidden className="absolute -left-4 bottom-1 top-1 w-[3px] rounded-full bg-primary" />
@@ -195,6 +201,7 @@ function DeskItem({ item }: { item: Item }) {
             first steps
           </Button>
         )}
+        <SprintButton offer={sprint} />
         <span className="ml-auto">
           <BackToDay />
         </span>
