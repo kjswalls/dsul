@@ -7,6 +7,8 @@ import { WeekSchedule } from '@/components/views/week-schedule';
 import { DayBuckets } from '@/components/views/day-buckets';
 import { DayList } from '@/components/views/day-list';
 import { DaySchedule } from '@/components/views/day-schedule';
+import { DoStuffDesk } from '@/components/sidebar/do-stuff-desk';
+import { useDoStuffStore } from '@/lib/do-stuff';
 import { PlannerSkeleton } from '@/components/primitives/planner-skeleton';
 import { useCanvasWide, useViewStore } from '@/lib/view-store';
 import { useDragStore } from '@/lib/drag-store';
@@ -41,8 +43,12 @@ export const ViewRouter = memo(function ViewRouter() {
   const visible = settled || previewing;
   const wide = useCanvasWide();
   const { scope, layout } = useViewStore();
+  // Doing stuff at the Desk: the canvas is the current item beside today's day
+  // column, whatever the scope and layout (components/sidebar/do-stuff-desk.tsx).
+  const desk = useDoStuffStore((s) => s.on && s.desk);
 
   const view = (() => {
+    if (desk) return <DoStuffDesk activeId={activeId} />;
     if (scope === 'week') {
       if (layout === 'list') return <WeekList />;
       if (layout === 'schedule') return <WeekSchedule activeId={activeId} />;

@@ -16,6 +16,7 @@ import {
   DO_STUFF_MIN_OPEN,
   doneNext,
   makeItSo,
+  openDesk,
   putOnToday,
   commitCount,
   commitLines,
@@ -669,6 +670,7 @@ function NextCard({ row, trailing, slim }: { row: RowItem; trailing: React.React
     if (k === 'enter' && e.target === e.currentTarget) doneNext(id);
     else if (k === 's') skipNext(id);
     else if (k === 't') putOnToday(id);
+    else if (k === 'd') openDesk();
     else if (k === 'f' && openFirstSteps(id)) {
       /* first steps, where the AI can break it down */
     } else return;
@@ -742,6 +744,16 @@ function NextCard({ row, trailing, slim }: { row: RowItem; trailing: React.React
               first steps <Cap>F</Cap>
             </Button>
           )}
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={openDesk}
+            data-testid="do-stuff-open-desk"
+            aria-keyshortcuts="D"
+            className="text-muted-foreground"
+          >
+            desk <Cap>D</Cap>
+          </Button>
         </div>
       )}
     </div>
