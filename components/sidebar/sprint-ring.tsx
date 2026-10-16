@@ -31,7 +31,9 @@ export function SprintRing({ size = 22, className }: { size?: number; className?
   const now = useSecondClock(!!sprint);
   if (!sprint) return null;
   const total = sprint.endsAt - sprint.startedAt;
-  const left = Math.max(0, sprint.endsAt - now);
+  // The clock only ticks while a sprint runs, so the first second of a new one
+  // can read an older `now`: never earlier than the sprint itself.
+  const left = Math.max(0, sprint.endsAt - Math.max(now, sprint.startedAt));
   const pct = total > 0 ? 1 - left / total : 1;
   const up = left === 0;
   const stroke = size >= 40 ? 3.5 : 2.5;
