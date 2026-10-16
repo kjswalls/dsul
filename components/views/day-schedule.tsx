@@ -49,7 +49,8 @@ import { useSelectionStore, rangeIds } from '@/lib/selection-store';
 import { useNowMinutes } from '@/lib/use-now-minutes';
 import { useTimeFormat } from '@/lib/use-time-format';
 import { isRecurring, isCompletedOnDate, isSkippedOnDate, toDateStr } from '@/lib/recurrence';
-import { sinkCompleted } from '@/lib/sort-rows';
+import { isRowCompletedOn, sinkCompleted } from '@/lib/sort-rows';
+import { DoStuffSlot } from '@/components/sidebar/do-stuff-slot';
 import { useSinkHold } from '@/hooks/use-sink-hold';
 import { suppressionReason } from '@/lib/active';
 import { BUCKET_ORDER } from '@/lib/day-items';
@@ -1597,6 +1598,17 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
   // nothing to switch; this is the thing it switches.
   const isToday = toDateStr(selectedDate, timezone) === toDateStr(new Date(), timezone);
   const markerMin = showCurrentTimeIndicator && isToday ? nowMin : null;
+  // Today's blocks as the walk reads them: a done block gives its time back.
+  const walkBlocks = useMemo(
+    () =>
+      timed.map((e) => ({
+        title: e.item.title,
+        startMin: e.startMin,
+        duration: e.duration,
+        done: isRowCompletedOn({ itemType: e.itemType, item: e.item }, completionDateStr),
+      })),
+    [timed, completionDateStr]
+  );
 
   // Content-fit hour window when idle; the full day while dragging (every hour a
   // drop target) or resizing (see/reach any target time). Rows shrink to fit the
@@ -1844,6 +1856,15 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
                 receded={isReceded(lanePlan, focusedKey, entry.item.id)}
               />
             ))}
+            {isToday && nowMin !== null && !dragging && !resizing && (
+              <DoStuffSlot
+                blocks={walkBlocks}
+                nowMin={nowMin}
+                gridStartHour={gridStartHour}
+                gridEndHour={gridEndHour}
+                hourPx={hourPx}
+              />
+            )}
             {nowY !== null && (
               <NowMarker
                 top={nowY}

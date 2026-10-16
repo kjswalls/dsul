@@ -199,3 +199,41 @@ Mocks: https://claude.ai/artifact/U4NbXhEeMHroAZd6KvMLYS (v5). Built in four PRs
    doing stuff), "first steps" on both up-next cards, and "First steps" in the item menu's AI
    row while do stuff is on; everywhere only where Break it down is offered (`canBreakDown`),
    so it never shows without AI.
+
+## The polish round (Kirby's picks, 2026-10-16)
+
+Mocks in four rounds (the thread "Power mode polish"). Kirby turned down the floating
+player (disconnected from the sidebar and from the day) and picked:
+
+- **In the day.** While doing stuff, the current item opens inside today's schedule, in
+  the free stretch between now and the next thing on the clock; its row in the list keeps
+  a lime notch. The walk is do it now, then today's anytime rows.
+- **Desk.** A room: the item on the left (notes, steps, a jot box), the real day column on
+  the right, and chat about the task with the person's model, Claude or OpenClaw (the
+  item's own conversation and the agent exchange, never a second chat).
+- **Sprint**, an add-on: a ring sized to the gap before the next block.
+- **Pocket**: an always-on-top mini window in the desktop app.
+- **L1**, later: do it now open, the other lanes folded to one-line peeks.
+- Still to come for the walk: a heads-up before a block, a missed block offered once with
+  no guilt.
+
+Build order: PR1 In the day (with the start and done motion fixes), PR2 Desk with chat,
+PR3 Sprint, PR4 Pocket, PR5 L1.
+
+### What PR1 shipped
+
+- `lib/do-stuff-walk.ts`: `freeStretch(blocks, nowMin)` (a block on now pushes the start to
+  its end, chained through back-to-back blocks; done blocks give their time back) and the
+  slot's heading.
+- `components/sidebar/do-stuff-slot.tsx`, drawn in DaySchedule's events field on today,
+  never while dragging or resizing. It publishes the store's `slot`; while it is up, the
+  header's up-next card stands down (the arriving chips stay) and the list's card is a
+  row with a lime notch and no actions (its keys still work). With no free time left on
+  the grid it is not drawn, and the card comes back.
+- The walk falls back to the today lane once do it now is through.
+- A done row leaves the walked lanes (now, today) for a "N done here" count under the
+  lane. A struck row that stayed put was what slid through the others.
+- Motion: the current item arrives after the sort (`SORT_SETTLE_MS`, `sortDelay()`): the
+  list card's chrome, notch and actions, and the slot. On done the slot and the card stay
+  still and the next item's content rises in place; the other rows, labels and counts
+  glide to where they now stand (`useReflow`, measured every commit).
