@@ -78,7 +78,24 @@ interface DoStuffState {
    * from the up-next card, the F key or the item menu. Memory only.
    */
   firstSteps: string | null;
+  /**
+   * Whether today's schedule is showing the walk's slot ("In the day",
+   * components/sidebar/do-stuff-slot.tsx), published by the slot. While it is,
+   * the current item lives there: the header drops its up-next card and the
+   * list's card becomes a row with a lime notch.
+   */
+  slot: boolean;
+  /** When the run started (performance.now()), for the slot to arrive after the sort. */
+  startedAt: number;
 }
+
+/**
+ * How long the sort takes to land, from the start of a run: the column's widen,
+ * the rows' glide and the lane labels (components/sidebar/do-stuff.tsx useSort).
+ * The current item arrives after it, never during: a card drawn at full size
+ * while the rows are still moving was the start's weirdness.
+ */
+export const SORT_SETTLE_MS = 1100;
 
 /** Where one row is going. */
 export interface Mark {
@@ -112,7 +129,8 @@ export const useDoStuffStore = create<DoStuffState>((set) => ({
   doneCount: 0,
   start: () => {
     snapshotRows();
-    set((s) => ({ on: true, skipped: [], moved: {}, doneCount: 0, starts: s.starts + 1 }));
+    const startedAt = typeof performance === 'undefined' ? 0 : performance.now();
+    set((s) => ({ on: true, skipped: [], moved: {}, doneCount: 0, starts: s.starts + 1, startedAt }));
   },
   stop: () => set({ on: false, skipped: [], moved: {}, doneCount: 0, commit: null, marks: NO_MARKS, next: null, arriving: [] }),
   skip: (id) => set((s) => ({ skipped: [...s.skipped.filter((x) => x !== id), id] })),
@@ -128,7 +146,16 @@ export const useDoStuffStore = create<DoStuffState>((set) => ({
   next: null,
   arriving: [],
   firstSteps: null,
+  slot: false,
+  startedAt: 0,
 }));
+
+/** How long the current item still waits for the sort to land. */
+export function sortDelay(): number {
+  if (typeof performance === 'undefined') return 0;
+  const since = performance.now() - useDoStuffStore.getState().startedAt;
+  return Math.max(0, SORT_SETTLE_MS - since);
+}
 
 /** How many things make it so would move: today, the other days, the hand-offs and the let-go. */
 export function commitCount(c: Commit | null): number {

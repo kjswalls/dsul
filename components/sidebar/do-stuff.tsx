@@ -21,6 +21,7 @@ import {
   commitLines,
   type Mark,
   skipNext,
+  sortDelay,
   takeShuffleFrom,
   useDoStuffStore,
 } from '@/lib/do-stuff';
@@ -185,6 +186,11 @@ interface Plan {
   marks: ReadonlyMap<string, Mark>;
   /** Braindump rows coming onto today (do it now and today). */
   arriving: readonly { id: string; title: string }[];
+  /**
+   * Rows done in the walked lanes, counted rather than drawn: a ticked row
+   * leaves its lane, so nothing slides past the rows still to do.
+   */
+  doneHere: Readonly<Record<'now' | 'today', number>>;
   /** Who they go to; null while nobody can take work. */
   target: AgentAssignee | null;
   /** Everyone who could. */
@@ -254,7 +260,7 @@ function usePlan(dumpRows: readonly RowItem[]): Plan {
         hasPack: packs.has(row.item.id),
         onToday: todayIds.has(row.item.id),
       };
-      // A done row stays where it was drawn, in its lane, struck through.
+      // A done row keeps its lane here; the walked lanes count theirs below.
       const lane = laneOf(row.item, f, moved);
       facts.set(row.item.id, f);
       laneById.set(row.item.id, lane);
@@ -262,6 +268,15 @@ function usePlan(dumpRows: readonly RowItem[]): Plan {
     }
     capNow(lanes, isOpen, moved);
     for (const r of lanes.today) laneById.set(r.item.id, 'today');
+    // The walk goes through do it now, then today. A row done there leaves
+    // the lane for a count under it (the polish round, 2026-10-16): a struck
+    // row that stayed put sat between the card and the rows still to do.
+    const doneHere = { now: 0, today: 0 };
+    for (const k of ['now', 'today'] as const) {
+      const open = lanes[k].filter(isOpen);
+      doneHere[k] = lanes[k].length - open.length;
+      lanes[k] = open;
+    }
     const today = lanes.today.filter((r) => isOpen(r) && !todayIds.has(r.item.id)).map((r) => r.item.id);
     const letGo = lanes.archive.filter(isOpen).map((r) => r.item.id);
     const unschedule = lanes.leave.filter((r) => isOpen(r) && todayIds.has(r.item.id)).map((r) => r.item.id);
@@ -297,6 +312,7 @@ function usePlan(dumpRows: readonly RowItem[]): Plan {
       unschedule,
       marks,
       arriving,
+      doneHere,
       target,
       targets,
       todayStr,
@@ -599,10 +615,53 @@ function plainKey(e: React.KeyboardEvent | KeyboardEvent): boolean {
   return !(e.metaKey || e.ctrlKey || e.altKey) && !typing(e);
 }
 
-function NextCard({ row, trailing }: { row: RowItem; trailing: React.ReactNode }) {
+/**
+ * The current item's card arrives after the sort has landed (SORT_SETTLE_MS):
+ * the row glides with the others, and only then does its card draw in around
+ * it and its actions rise. On done it is a new row's card, in the same place
+ * (the done row has left), so its content rises where the last one was.
+ */
+function useCardArrival(ref: React.RefObject<HTMLDivElement | null>, id: string) {
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || prefersReducedMotion() || typeof el.animate !== 'function') return;
+    const delay = sortDelay();
+    const chrome = el.querySelector<HTMLElement>('[data-next-chrome]');
+    const notch = el.querySelector<HTMLElement>('[data-next-notch]');
+    const actions = el.querySelector<HTMLElement>('[data-next-actions]');
+    const rise = [
+      { transform: 'translate(0, 6px)', clipPath: 'inset(100% 0 0 0)' },
+      { transform: 'none', clipPath: 'inset(0)' },
+    ];
+    const ease = 'cubic-bezier(.2,.8,.2,1)';
+    if (delay > 0) {
+      // Never an opacity on the notch or anything holding lime: the chrome is
+      // a plain surface, the notch scales in.
+      chrome?.animate([{ opacity: 0, transform: 'scale(.98)' }, { opacity: 1, transform: 'none' }], {
+        duration: 240,
+        delay,
+        easing: ease,
+        fill: 'backwards',
+      });
+      notch?.animate([{ transform: 'scaleY(0)' }, { transform: 'none' }], {
+        duration: 240,
+        delay: delay + 80,
+        easing: ease,
+        fill: 'backwards',
+      });
+      actions?.animate(rise, { duration: 220, delay: delay + 120, easing: 'ease-out', fill: 'backwards' });
+    } else {
+      el.querySelector<HTMLElement>('[data-next-body]')?.animate(rise, { duration: 260, easing: ease });
+      notch?.animate([{ transform: 'scaleY(0)' }, { transform: 'none' }], { duration: 240, easing: ease });
+    }
+  }, [ref, id]);
+}
+
+function NextCard({ row, trailing, slim }: { row: RowItem; trailing: React.ReactNode; slim?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   const id = row.item.id;
   useWalkFocus(ref, id);
+  useCardArrival(ref, id);
   const steps = useCanFirstSteps(id);
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (!plainKey(e)) return;
@@ -621,48 +680,70 @@ function NextCard({ row, trailing }: { row: RowItem; trailing: React.ReactNode }
       tabIndex={-1}
       onKeyDown={onKeyDown}
       data-testid="do-stuff-next"
-      aria-label={`Up next: ${row.item.title}`}
-      className="my-1 rounded-[10px] border border-border bg-surface-2 pb-2 shadow-elev-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      data-slim={slim || undefined}
+      aria-label={`${slim ? 'Now' : 'Up next'}: ${row.item.title}`}
+      className={cn(
+        'relative isolate rounded-[10px] outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        !slim && 'my-1 pb-2'
+      )}
     >
-      <TaskRow row={row} context="braindump" trailing={trailing} />
-      <div className="flex items-center gap-1 pl-[30px] pr-2">
-        <Button size="sm" onClick={() => doneNext(id)} data-testid="do-stuff-done" aria-keyshortcuts="Enter">
-          done
-          <ButtonKey />
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => skipNext(id)}
-          data-testid="do-stuff-skip"
-          aria-keyshortcuts="S"
-          className="text-muted-foreground"
-        >
-          skip <Cap>S</Cap>
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => putOnToday(id)}
-          data-testid="do-stuff-today"
-          aria-keyshortcuts="T"
-          className="text-muted-foreground"
-        >
-          today <Cap>T</Cap>
-        </Button>
-        {steps && (
+      {/* While today's schedule holds the current item (do-stuff-slot.tsx),
+          this is a row with a lime notch: the slot has the actions. */}
+      {!slim && (
+        <span
+          aria-hidden
+          data-next-chrome
+          className="absolute inset-0 -z-10 rounded-[10px] border border-border bg-surface-2 shadow-elev-sm"
+        />
+      )}
+      <span
+        aria-hidden
+        data-next-notch
+        className="absolute bottom-2 left-0 top-2 w-[3px] rounded-r-full bg-primary"
+      />
+      <div data-next-body>
+        <TaskRow row={row} context="braindump" trailing={trailing} />
+      </div>
+      {!slim && (
+        <div data-next-actions className="flex items-center gap-1 pl-[30px] pr-2">
+          <Button size="sm" onClick={() => doneNext(id)} data-testid="do-stuff-done" aria-keyshortcuts="Enter">
+            done
+            <ButtonKey />
+          </Button>
           <Button
             size="sm"
             variant="ghost"
-            onClick={() => openFirstSteps(id)}
-            data-testid="do-stuff-first-steps"
-            aria-keyshortcuts="F"
+            onClick={() => skipNext(id)}
+            data-testid="do-stuff-skip"
+            aria-keyshortcuts="S"
             className="text-muted-foreground"
           >
-            first steps <Cap>F</Cap>
+            skip <Cap>S</Cap>
           </Button>
-        )}
-      </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => putOnToday(id)}
+            data-testid="do-stuff-today"
+            aria-keyshortcuts="T"
+            className="text-muted-foreground"
+          >
+            today <Cap>T</Cap>
+          </Button>
+          {steps && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => openFirstSteps(id)}
+              data-testid="do-stuff-first-steps"
+              aria-keyshortcuts="F"
+              className="text-muted-foreground"
+            >
+              first steps <Cap>F</Cap>
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -770,6 +851,63 @@ function useLaneKeys(
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [listRef, hoveredRef]);
+}
+
+/**
+ * When rows leave or join (a done row leaving its lane, a move), the rest
+ * glide to where they now stand instead of jumping. The current item's row is
+ * left out: its card stays put and its content rises (useCardArrival). Before
+ * useSort in the list, so it measures the rows before the sort transforms them.
+ */
+function useReflow(listRef: React.RefObject<HTMLDivElement | null>, order: string, still: string | undefined) {
+  const tops = useRef<Map<string, number> | null>(null);
+  const lastOrder = useRef(order);
+  // Measured after every commit, so the tops it glides from are the ones on
+  // screen the moment before the rows changed (a progress line appearing
+  // above the lanes moves them too); it only animates when the rows changed.
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (!list) return;
+    const base = list.getBoundingClientRect().top;
+    // Rows, lane labels and the done counts: every piece that moves on its
+    // own, never a section, which would carry its rows twice.
+    const keyOf = (el: HTMLElement) => {
+      if (el.dataset.laneRow !== undefined) return `r:${el.dataset.laneRow}`;
+      const lane = el.closest<HTMLElement>('[data-lane]')?.dataset.lane ?? '';
+      return el.dataset.laneHead !== undefined ? `h:${lane}` : `d:${lane}`;
+    };
+    const els = [...list.querySelectorAll<HTMLElement>('[data-lane-row], [data-lane-head], [data-done-here]')];
+    const now = new Map(els.map((el) => [keyOf(el), el.getBoundingClientRect().top - base]));
+    const prev = tops.current;
+    tops.current = now;
+    const changed = lastOrder.current !== order;
+    lastOrder.current = order;
+    if (!prev || !changed || prefersReducedMotion()) return;
+    for (const el of els) {
+      const id = keyOf(el);
+      const was = prev.get(id);
+      if (id === `r:${still}` || typeof el.animate !== 'function') continue;
+      if (was === undefined) {
+        // A done count appearing rises into the room the done row left.
+        if (id.startsWith('d:')) {
+          el.animate(
+            [
+              { transform: 'translate(0, 4px)', clipPath: 'inset(100% 0 0 0)' },
+              { transform: 'none', clipPath: 'inset(0)' },
+            ],
+            { duration: 220, delay: 120, easing: 'ease-out', fill: 'backwards' }
+          );
+        }
+        continue;
+      }
+      const dy = was - now.get(id)!;
+      if (Math.abs(dy) < 1) continue;
+      el.animate([{ transform: `translate(0, ${dy}px)` }, { transform: 'none' }], {
+        duration: 280,
+        easing: 'cubic-bezier(.2,.8,.2,1)',
+      });
+    }
+  });
 }
 
 /** The column's widen to half the window (braindump-pane.tsx, duration-300). */
@@ -902,6 +1040,11 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
   const plan = usePlan(rows);
   const listRef = useRef<HTMLDivElement>(null);
   const hoveredRef = useRef<string | null>(null);
+  // The walk: do it now, then today when do it now is through.
+  const next = nextNow(plan.lanes.now, isOpen, skipped) ?? nextNow(plan.lanes.today, isOpen, skipped);
+  const slot = useDoStuffStore((s) => s.slot);
+  const order = LANES.map((l) => plan.lanes[l.key].map((r) => r.item.id).join(',')).join('|');
+  useReflow(listRef, order, next?.item.id);
   useSort(listRef);
   useLaneKeys(listRef, hoveredRef, plan.facts);
   usePrepOnStart(plan.prepCandidates);
@@ -946,7 +1089,6 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
     .filter(isOpen)
     .map((r) => ({ itemId: r.item.id, title: r.item.title, stored: plan.packs.get(r.item.id)! }));
 
-  const next = nextNow(plan.lanes.now, isOpen, skipped);
   const pending = plan.days.size + plan.today.length + plan.handOff.length + plan.letGo.length + plan.unschedule.length;
   // Do it now's next, for the up-next card on today (do-stuff-today.tsx).
   const nextId = next?.item.id;
@@ -1002,7 +1144,8 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
       )}
       {LANES.map((l) => {
         const list = plan.lanes[l.key];
-        if (list.length === 0) return null;
+        const doneHere = l.key === 'now' || l.key === 'today' ? plan.doneHere[l.key] : 0;
+        if (list.length === 0 && doneHere === 0) return null;
         const index = shown++;
         return (
           <section key={l.key} className={cn(index > 0 && 'pt-2')} data-lane={l.key}>
@@ -1034,7 +1177,7 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
                   hoveredRef={hoveredRef}
                 >
                   {r === next ? (
-                    <NextCard row={r} trailing={trailing(r)} />
+                    <NextCard row={r} trailing={trailing(r)} slim={slot} />
                   ) : plan.packs.has(r.item.id) && !touch ? (
                     <PackPeek open={openPeek === r.item.id} {...card(r)}>
                       <div>
@@ -1047,6 +1190,16 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
                   {touch && openPeek === r.item.id && <PackInline {...card(r)} />}
                 </LaneRow>
               ))}
+              {doneHere > 0 && (
+                <p
+                  className="flex items-center gap-1.5 px-2 pt-1 text-xs text-muted-foreground"
+                  data-testid="do-stuff-done-here"
+                  data-done-here
+                >
+                  <Check aria-hidden className="size-3" />
+                  {doneHere} done here
+                </p>
+              )}
             </div>
           </section>
         );
