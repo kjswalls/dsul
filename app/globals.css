@@ -2236,7 +2236,7 @@ body {
   initial-value: transparent;
 }
 
-:is([data-ask-opener], [data-ask-mark], [data-do-key]) {
+:is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip]) {
   --ask-icon-ink: oklch(0.62 0.135 85);
   --ask-icon-lit: var(--ai);
   --ask-icon-accent: var(--lime-solid);
@@ -2246,7 +2246,7 @@ body {
   --ask-icon-unlit: var(--ink-1);
   --ask-icon-unlit-mid: var(--ink-2);
 }
-.dark :is([data-ask-opener], [data-ask-mark], [data-do-key]) {
+.dark :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip]) {
   --ask-icon-ink: var(--ai);
   --ask-icon-pair: oklch(0.84 0.12 190);
   --ask-icon-pair-ink: var(--ask-icon-pair);
@@ -2254,43 +2254,27 @@ body {
 /* Each look's partner: light from its light relay colour, dark from its glow
    (Sorbet's is a deep rose beside the pink; an apricot read rust there). The
    tints keep Paper's and Night's. */
-:root[data-look-light='studio']:not(.dark) :is([data-ask-opener], [data-ask-mark], [data-do-key]) {
+:root[data-look-light='studio']:not(.dark) :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip]) {
   --ask-icon-pair: oklch(0.65 0.13 225);
   --ask-icon-pair-ink: var(--ask-icon-pair);
 }
-:root[data-look-light='sorbet']:not(.dark) :is([data-ask-opener], [data-ask-mark], [data-do-key]) {
+:root[data-look-light='sorbet']:not(.dark) :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip]) {
   --ask-icon-pair: oklch(0.64 0.15 18);
 }
-:root[data-look-dark='terminal'].dark :is([data-ask-opener], [data-ask-mark], [data-do-key]) {
+:root[data-look-dark='terminal'].dark :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip]) {
   --ask-icon-pair: oklch(0.86 0.12 90);
 }
-:root[data-look-dark='dusk'].dark :is([data-ask-opener], [data-ask-mark], [data-do-key]) {
+:root[data-look-dark='dusk'].dark :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip]) {
   --ask-icon-pair: oklch(0.76 0.12 350);
 }
 /* After the looks, and as specific: Notepad Retro's skin re-points the accent
    under whichever look is on, so its partner has to win over theirs too. */
-:root:not(.dark) [data-layout-skin='retro'] :is([data-ask-opener], [data-ask-mark], [data-do-key]) {
+:root:not(.dark) [data-layout-skin='retro'] :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip]) {
   --ask-icon-pair: oklch(0.66 0.11 210);
   --ask-icon-pair-ink: var(--ask-icon-pair);
 }
-:root.dark [data-layout-skin='retro'] :is([data-ask-opener], [data-ask-mark], [data-do-key]) {
+:root.dark [data-layout-skin='retro'] :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip]) {
   --ask-icon-pair: oklch(0.8 0.1 215);
-}
-
-/* Ask's own light (Kirby, 2026-10-13): violet into sky in every look, so Ask
-   reads apart from the do stuff key beside it, which keeps the theme accent and
-   the look's partner (the slot tokens above). The violet is Ask's light: full
-   strength, never faded, never mixed toward anything. The sky's ink deepens 14%
-   toward the ink in light, as the partner's does, to carry 3:1 on the key. */
-:is([data-ask-opener], [data-ask-mark], [data-agent-chip]) {
-  --ask-violet: oklch(0.59 0.15 290);
-  --ask-sky: oklch(0.7 0.12 245);
-  --ask-sky-ink: color-mix(in oklch, var(--ask-sky), var(--foreground) 14%);
-}
-.dark :is([data-ask-opener], [data-ask-mark], [data-agent-chip]) {
-  --ask-violet: oklch(0.69 0.14 292);
-  --ask-sky: oklch(0.79 0.1 240);
-  --ask-sky-ink: var(--ask-sky);
 }
 
 /* The plate. The rim's colours: the accent, the partner, and the hairline the
@@ -2298,8 +2282,8 @@ body {
    paints on the key). Focus, in light, adds a 1px --success-text line inside
    the ring so the pair reads at 3:1 on paper; in dark the ring alone does. */
 [data-ask-opener] {
-  --ask-key-accent: var(--ask-violet);
-  --ask-key-pair: var(--ask-sky);
+  --ask-key-accent: var(--ask-icon-accent);
+  --ask-key-pair: var(--ask-icon-pair);
   --ask-key-rim: color-mix(in oklab, var(--surface-2), var(--foreground) 9%);
   --ask-focus-line: var(--success-text);
   --ask-focus-rim: var(--success-text);
@@ -2665,10 +2649,11 @@ body {
 
 /* An agent's status chip (components/primitives/pills.tsx AgentPill and the
    item panel's badge), lit like the Ask key (Kirby, 2026-10-15): a white key
-   whose 1px rim carries Ask's violet into sky, a dot of light as the source.
-   Queued: the light rests by the dot. Working: it runs round the rim. Needs
-   you: the whole rim lit, breathing a soft sky glow (the partner, as the key's own
-   rule allows: the violet is never mixed). Quiet or failed: the
+   whose 1px rim carries Ask's light (the theme accent into the look's partner,
+   the slot tokens above), a dot of light as the source. Queued: the light
+   rests by the dot. Working: it runs round the rim. Needs you: the whole rim
+   lit, breathing a soft glow in the partner (as the key's own rule allows:
+   the accent is never mixed). Quiet or failed: the
    rim goes unlit and the dot hollow. Like the key, nothing here fades the
    light itself: no opacity, filter or blend on the rim or the dot; only the
    glow's own shadow eases in and out, and all motion stops under reduced
@@ -2686,10 +2671,10 @@ body {
 @keyframes agent-chip-call {
   0%,
   100% {
-    box-shadow: 0 0 0 0 color-mix(in oklab, var(--ask-sky) 0%, transparent);
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--ask-icon-pair) 0%, transparent);
   }
   50% {
-    box-shadow: 0 0 12px 1px color-mix(in oklab, var(--ask-sky) 45%, transparent);
+    box-shadow: 0 0 12px 1px color-mix(in oklab, var(--ask-icon-pair) 45%, transparent);
   }
 }
 [data-agent-chip] {
@@ -2709,7 +2694,7 @@ body {
   white-space: nowrap;
   background:
     linear-gradient(var(--agent-chip-fill), var(--agent-chip-fill)) padding-box,
-    radial-gradient(circle at 10px 50%, var(--ask-violet) 0, var(--ask-sky) 18px, var(--agent-chip-rim) 40px)
+    radial-gradient(circle at 10px 50%, var(--ask-icon-accent) 0, var(--ask-icon-pair) 18px, var(--agent-chip-rim) 40px)
       border-box;
 }
 [data-agent-chip] [data-agent-chip-dot] {
@@ -2717,18 +2702,18 @@ body {
   height: 6px;
   flex-shrink: 0;
   border-radius: 999px;
-  background: var(--ask-violet);
+  background: var(--ask-icon-accent);
 }
 [data-agent-chip][data-agent-state='queued'] [data-agent-chip-dot] {
-  background: var(--ask-sky);
+  background: var(--ask-icon-pair);
 }
 [data-agent-chip][data-agent-state='working'] {
   background:
     linear-gradient(var(--agent-chip-fill), var(--agent-chip-fill)) padding-box,
     conic-gradient(
         from var(--agent-rim-spin),
-        var(--ask-violet),
-        var(--ask-sky) 18%,
+        var(--ask-icon-accent),
+        var(--ask-icon-pair) 18%,
         var(--agent-chip-rim) 34%,
         var(--agent-chip-rim) 100%
       )
@@ -2739,11 +2724,11 @@ body {
   font-weight: 600;
   background:
     linear-gradient(var(--agent-chip-fill), var(--agent-chip-fill)) padding-box,
-    linear-gradient(90deg, var(--ask-violet), var(--ask-sky)) border-box;
+    linear-gradient(90deg, var(--ask-icon-accent), var(--ask-icon-pair)) border-box;
   animation: agent-chip-call 2.8s ease-in-out infinite;
 }
 [data-agent-chip][data-agent-state='blocked'] [data-agent-chip-dot] {
-  background: linear-gradient(135deg, var(--ask-violet), var(--ask-sky));
+  background: linear-gradient(135deg, var(--ask-icon-accent), var(--ask-icon-pair));
 }
 :is([data-agent-chip][data-agent-stalled], [data-agent-chip][data-agent-state='failed']) {
   color: var(--muted-foreground);
@@ -2757,7 +2742,7 @@ body {
   box-shadow: inset 0 0 0 1.5px var(--muted-foreground);
 }
 .dark [data-agent-chip]:not([data-agent-stalled], [data-agent-state='failed']) [data-agent-chip-dot] {
-  box-shadow: 0 0 6px var(--ask-violet);
+  box-shadow: 0 0 6px var(--ask-icon-accent);
 }
 @media (prefers-reduced-motion: reduce) {
   [data-agent-chip] {
@@ -2781,8 +2766,8 @@ body {
    bolt's corner (to 12px), hands off to Ask's aurora partner (by 19px), and
    the partner steps down to the hairline before the word (by 43px), the same
    three front-loaded steps as Ask's. Engaged (hover, keyboard focus, a press,
-   or doing stuff) the light runs round the whole rim and the chord turns
-   lime. The accent is the raw token, mixed with nothing; only the partner
+   or doing stuff) the light runs round the whole rim and the chord's ink
+   brightens to the foreground, as Ask's does. The accent is the raw token, mixed with nothing; only the partner
    steps toward the hairline. The partner is Ask's own, look by look (the
    key shares Ask's slot tokens), so the two keys carry one light. Like Ask's,
    the face has a bevel (--key-bevel-*).
@@ -2884,8 +2869,8 @@ body {
     fill: var(--do-key-accent);
   }
   [data-do-key]:hover [data-do-key-chord] {
-    color: var(--lime-ink);
-    background-color: var(--lime-solid);
+    color: var(--foreground);
+    transition-duration: 240ms;
   }
 }
 [data-do-key]:is(:focus-visible, :active, [data-on='true']) {
@@ -2897,8 +2882,7 @@ body {
   fill: var(--do-key-accent);
 }
 [data-do-key]:is(:focus-visible, :active, [data-on='true']) [data-do-key-chord] {
-  color: var(--lime-ink);
-  background-color: var(--lime-solid);
+  color: var(--foreground);
 }
 /* Pressed, and held down while doing stuff: the key sinks 2px into its skirt. */
 [data-do-key]:is(:active, [data-on='true']) {
@@ -2954,7 +2938,7 @@ body {
    where the bolt's light sits (so the light never has to find a centred
    glyph) and its chord at the far end. Engaged, the light runs round a key
    far longer than the header's, so the run is a share of the rim, not px.
-   Beside it the launcher key lights from its own glyph the same way. The
+   Beside it the launcher key is the same keycap with no light (below). The
    dock is not in the braindump's container, so the header's give-way rules
    above never reach it. */
 [data-do-key-place='dock'] {
@@ -2964,8 +2948,13 @@ body {
 [data-do-key-place='dock'] [data-do-key-chord] {
   margin-left: auto;
 }
+/* The launcher key carries no light (Kirby, 2026-10-16): its rim is the
+   hairline at rest and engaged, and its glyph the chord's ink, brightening to
+   the foreground with the chord. Only the do stuff key beside it is lit. */
 [data-do-key-place='launcher'] {
   padding: 0 6px 0 9px;
+  --do-key-accent: var(--do-key-rim);
+  --do-key-pair: var(--do-key-rim);
 }
 [data-do-key-glyph] {
   color: var(--do-key-bolt);
@@ -2986,6 +2975,18 @@ body {
   --do-key-tail: 48%;
   --do-key-reach: 100%;
 }
+/* The launcher's glyph, after the lit glyph's rules above so it wins them. */
+[data-do-key-place='launcher'] [data-do-key-glyph] {
+  color: var(--ink-2);
+}
+@media (hover: hover) {
+  [data-do-key-place='launcher']:hover [data-do-key-glyph] {
+    color: var(--foreground);
+  }
+}
+[data-do-key-place='launcher']:is(:focus-visible, :active) [data-do-key-glyph] {
+  color: var(--foreground);
+}
 /* Make it so: the same key with no light in it, at rest or engaged; it only
    sinks when pressed. */
 [data-do-key][data-do-key-plain] {
@@ -2994,7 +2995,6 @@ body {
 }
 [data-do-key][data-do-key-plain]:is(:hover, :focus-visible, :active) [data-do-key-chord] {
   color: var(--ink-2);
-  background-color: color-mix(in oklab, var(--surface-2), var(--foreground) 6%);
 }
 
 @media (prefers-reduced-motion: reduce) {

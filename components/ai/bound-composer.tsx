@@ -8,6 +8,7 @@ import { useAICapabilities, useAIConnectionStore } from '@/lib/ai-connection-sto
 import { modelName } from '@/lib/ai-model-names';
 import { chatAssistantLabel } from '@/lib/chat-utils';
 import { bindingKey, useRailStore, type AskSurface, type ComposerBinding } from '@/lib/rail-store';
+import { chooseChatTarget } from '@/lib/chat-target';
 import { cn } from '@/lib/utils';
 
 /**
@@ -117,7 +118,7 @@ export function BoundComposer({
         (binding.kind === 'item' && answersAgent ? (
           <AgentRouteLine itemId={binding.itemId} className="px-2" />
         ) : (
-          <AnswererLabel className="px-2" />
+          <AnswererLabel className="px-2" switchable={binding.kind === 'home'} />
         ))}
     </div>
   );
@@ -127,22 +128,57 @@ export function BoundComposer({
  * Who answers, under the box: the connected model by name ("GPT-4o mini",
  * lib/ai-model-names.ts: the catalog, an id's shape, or the name the provider
  * listed it under when it was saved; the raw id only when none of those names
- * it) or the paired agent ("OpenClaw · kirby-1"). Plain text, not a control:
- * 2c turns it into the picker, and until then nothing about it may look
- * clickable (no hover, focus or cursor change). Nothing when nothing answers,
- * which is never, since every composer it sits under mounts behind the gate.
+ * it) or the paired agent ("OpenClaw · kirby-1"). Plain text, not a control,
+ * except on Ask's home (`switchable`) while BOTH answer: there it is the two
+ * names side by side, and picking the other one is `chooseChatTarget`, the
+ * same choice as Settings → AI's "Who answers in chat". Only on home, because
+ * a choice starts the next conversation with the new answerer and returns Ask
+ * home, which under a conversation would take it away. Nothing when nothing
+ * answers, which is never, since every composer it sits under mounts behind
+ * the gate.
  */
-export function AnswererLabel({ className }: { className?: string }) {
-  const { target, agentId } = useAICapabilities();
+export function AnswererLabel({ className, switchable = false }: { className?: string; switchable?: boolean }) {
+  const { target, agentId, modelUsable, openclawUsable } = useAICapabilities();
   const provider = useAIConnectionStore((s) => s.model?.provider ?? null);
   const model = useAIConnectionStore((s) => s.model?.model ?? null);
   const listed = useAIConnectionStore((s) => s.model?.modelLabel ?? null);
-  const label =
-    target === 'openclaw'
-      ? chatAssistantLabel('openclaw', agentId)
-      : target === 'model' && provider && model
-        ? modelName(provider, model, listed).name
-        : null;
+  const modelLabel = provider && model ? modelName(provider, model, listed).name : null;
+  const openclawLabel = chatAssistantLabel('openclaw', agentId);
+  if (switchable && modelUsable && openclawUsable && modelLabel && target !== 'none') {
+    const options = [
+      { value: 'model' as const, label: modelLabel },
+      { value: 'openclaw' as const, label: openclawLabel },
+    ];
+    return (
+      <div
+        role="group"
+        aria-label="Who answers"
+        data-testid="answerer-switch"
+        className={cn('flex min-w-0 items-center gap-0.5 text-[11px]', className)}
+      >
+        {options.map((o) => {
+          const on = target === o.value;
+          return (
+            <button
+              key={o.value}
+              type="button"
+              aria-pressed={on}
+              data-testid={`answerer-switch-${o.value}`}
+              title={on ? `${o.label} answers` : `Ask ${o.label} instead`}
+              onClick={() => chooseChatTarget(o.value)}
+              className={cn(
+                'min-w-0 truncate rounded-full px-2 py-0.5 transition-colors',
+                on ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              {o.label}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+  const label = target === 'openclaw' ? openclawLabel : target === 'model' ? modelLabel : null;
   if (!label) return null;
   return (
     <p data-testid="answerer-label" className={cn('truncate text-[11px] text-muted-foreground', className)}>
