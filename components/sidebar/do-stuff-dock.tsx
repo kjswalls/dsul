@@ -38,7 +38,7 @@ function useChord(id: string): string {
   return chordLabel(keys, isMac);
 }
 
-/** The ⌘K launcher, as a keycap: the glyph is its light, like the do stuff key's bolt. */
+/** The ⌘K launcher, as a keycap with no light in its rim (globals.css, the dock's keys). */
 function LauncherKey() {
   const chord = useChord('system_search');
   return (

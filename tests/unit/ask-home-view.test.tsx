@@ -55,6 +55,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useSessionUserStore } from '@/lib/session-user-store';
 import { useEODStore } from '@/lib/eod-store';
 import { useRailStore } from '@/lib/rail-store';
+import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { useUIStore } from '@/lib/ui-store';
 import { useProposalStore } from '@/lib/proposal-store';
 import { chatTransport } from '@/lib/chat-transport';
@@ -558,6 +559,27 @@ describe('the foot', () => {
     expect(chips.map((c) => c.textContent)).toEqual(['Plan my day', "What's been sitting?"]);
     expect(home().querySelector('[data-ask-composer] textarea')).not.toBeNull();
     expect(within(home()).getByTestId('answerer-label')).toHaveTextContent('GPT-4o mini');
+  });
+
+  it('switches between the model and OpenClaw from under the box when both answer', () => {
+    unseed();
+    unseed = seedAI({ ...CONNECTED_MODEL, openclaw: { gateway: true, agent: true, agentId: 'kirby-1' } });
+    render(<AskHome />);
+    const sw = within(home()).getByTestId('answerer-switch');
+    const model = within(sw).getByTestId('answerer-switch-model');
+    const claw = within(sw).getByTestId('answerer-switch-openclaw');
+    expect(model).toHaveTextContent('GPT-4o mini');
+    expect(model).toHaveAttribute('aria-pressed', 'true');
+    expect(claw).toHaveTextContent('OpenClaw · kirby-1');
+    fireEvent.click(claw);
+    expect(useAISettingsStore.getState().chatTarget).toBe('openclaw');
+    expect(within(home()).getByTestId('answerer-switch-openclaw')).toHaveAttribute('aria-pressed', 'true');
+    expect(within(home()).queryByTestId('answerer-label')).toBeNull();
+  });
+
+  it('keeps a plain label when only one answers', () => {
+    render(<AskHome />);
+    expect(within(home()).queryByTestId('answerer-switch')).toBeNull();
   });
 
   it('turns to tomorrow in the evening', () => {

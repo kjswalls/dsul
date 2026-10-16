@@ -92,8 +92,7 @@ function items(value: string): string[] {
   return out;
 }
 
-// Ask's light is its own violet (Kirby, 2026-10-13); the do stuff key's is the theme accent.
-const ACCENT = /--(?:lime-solid|ask-icon-accent|ask-key-accent|ask-violet)\b/;
+const ACCENT = /--(?:lime-solid|ask-icon-accent|ask-key-accent)\b/;
 
 interface Rule {
   /** Its selector list, split at the top level. */
@@ -443,9 +442,6 @@ describe('the mark', () => {
       '--ask-icon-key',
       '--ask-icon-unlit',
       '--ask-icon-unlit-mid',
-      // Ask's own light, violet into sky (globals.css, "Ask's own light").
-      '--ask-violet',
-      '--ask-sky-ink',
     ]);
 
     /** Why `el` would fade what it paints (opacity, alpha, filter, mask, blend), or null. */
@@ -893,7 +889,7 @@ describe("the key's paint (app/globals.css)", () => {
       '--ask-key-pair',
     ]);
     // The unlit mark's inks are the look's own text inks, not a colour of their own.
-    const slot = all.find((r) => r.selectors.includes(':is([data-ask-opener], [data-ask-mark], [data-do-key])'));
+    const slot = all.find((r) => r.selectors.includes(':is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip])'));
     expect(values(slot!.body, '--ask-icon-unlit')).toEqual(['var(--ink-1)']);
     expect(values(slot!.body, '--ask-icon-unlit-mid')).toEqual(['var(--ink-2)']);
   });
