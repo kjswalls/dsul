@@ -88,3 +88,24 @@ export function stretchLabel(s: FreeStretch, nowMin: number): { lead: string; re
   const until = s.until ? `until ${s.until.title}` : 'for the rest of the day';
   return { lead, rest: s.startMin > nowMin && s.after ? `after ${s.after.title}, ${until}` : until };
 }
+
+/** How long before the next block a sprint stops: a breath to wrap up and get there. */
+export const SPRINT_LEAD_MIN = 5;
+/** A sprint with nothing after it on the clock is one ordinary focus block. */
+export const SPRINT_OPEN_MIN = 25;
+/** Below this there is no sprint worth starting. */
+export const SPRINT_MIN = 10;
+
+/**
+ * The sprint the free stretch offers right now (Kirby's add-on, 2026-10-16): a
+ * ring sized to the gap, stopping SPRINT_LEAD_MIN before the next block, or an
+ * open SPRINT_OPEN_MIN when nothing is on the clock after now. Only while the
+ * stretch is free now (not waiting on a block that is on), and only when it
+ * leaves at least SPRINT_MIN.
+ */
+export function sprintFor(s: FreeStretch | null, nowMin: number): { minutes: number; until: string | null } | null {
+  if (!s || s.startMin > nowMin) return null;
+  const minutes = s.until ? s.endMin - SPRINT_LEAD_MIN - nowMin : Math.min(SPRINT_OPEN_MIN, s.endMin - nowMin);
+  if (minutes < SPRINT_MIN) return null;
+  return { minutes, until: s.until?.title ?? null };
+}

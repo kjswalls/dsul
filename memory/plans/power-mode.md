@@ -252,3 +252,15 @@ PR3 Sprint, PR4 Pocket, PR5 L1.
   when handed off, and nothing when nobody can answer.
 - Right: the real `DaySchedule`, its slot showing the time and title only (the desk has the
   actions). It follows the walk: done or skip and the next item rises in.
+
+### What PR3 shipped (Sprint)
+
+- `sprintFor(stretch, nowMin)` in `lib/do-stuff-walk.ts`: a sprint runs to 5 minutes before
+  the next block (`SPRINT_LEAD_MIN`), or an open 25 with nothing after it, offered only while
+  the stretch is free now and at least 10 minutes long.
+- `components/sidebar/sprint-ring.tsx`: "sprint till Lunch with Ana" in the slot and the
+  desk, then a lime ring that fills with the minutes left (in the slot's heading, and large
+  on the desk). Time up says so ("time's up · Lunch with Ana next") and waits for a tap: no
+  sound, no red. Store `sprint` (epoch ms, memory only); a tap or `stop()` ends it.
+- The desk's day column is its own `canvas` container and turns Radix's table layout into a
+  block, so its rows size to the column instead of overflowing it.

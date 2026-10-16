@@ -93,6 +93,18 @@ interface DoStuffState {
    * a jot box and its conversation. Memory only, like the mode; stop() closes it.
    */
   desk: boolean;
+  /**
+   * The running sprint (components/sidebar/sprint-ring.tsx): a ring sized to
+   * the gap before the next block, as epoch ms. Memory only; stop() ends it.
+   */
+  sprint: Sprint | null;
+}
+
+export interface Sprint {
+  startedAt: number;
+  endsAt: number;
+  /** The block it stops ahead of; null for an open one. */
+  until: string | null;
 }
 
 /**
@@ -139,7 +151,7 @@ export const useDoStuffStore = create<DoStuffState>((set) => ({
     set((s) => ({ on: true, skipped: [], moved: {}, doneCount: 0, starts: s.starts + 1, startedAt }));
   },
   stop: () =>
-    set({ on: false, skipped: [], moved: {}, doneCount: 0, commit: null, marks: NO_MARKS, next: null, arriving: [], desk: false }),
+    set({ on: false, skipped: [], moved: {}, doneCount: 0, commit: null, marks: NO_MARKS, next: null, arriving: [], desk: false, sprint: null }),
   skip: (id) => set((s) => ({ skipped: [...s.skipped.filter((x) => x !== id), id] })),
   move: (id, lane) => set((s) => ({ moved: { ...s.moved, [id]: lane } })),
   countDone: () => set((s) => ({ doneCount: s.doneCount + 1 })),
@@ -156,7 +168,18 @@ export const useDoStuffStore = create<DoStuffState>((set) => ({
   slot: false,
   startedAt: 0,
   desk: false,
+  sprint: null,
 }));
+
+/** Start a sprint of `minutes` from now, stopping ahead of `until`. */
+export function startSprint(minutes: number, until: string | null): void {
+  const startedAt = Date.now();
+  useDoStuffStore.setState({ sprint: { startedAt, endsAt: startedAt + minutes * 60_000, until } });
+}
+
+export function stopSprint(): void {
+  useDoStuffStore.setState({ sprint: null });
+}
 
 /**
  * Open the Desk on the current item. The desk is always today (its day column
