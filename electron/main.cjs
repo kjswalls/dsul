@@ -28,6 +28,7 @@ const {
 const policy = require('./lib/policy.cjs');
 const { TITLE_BAND_PX, windowChrome, macLights, nextZoomLevel } = require('./lib/window-chrome.cjs');
 const findBar = require('./lib/find-bar.cjs');
+const pocket = require('./lib/pocket.cjs');
 const windowState = require('./lib/window-state.cjs');
 const {
   LOGIN_ITEM_ID,
@@ -83,6 +84,7 @@ const dataUrl = (file) =>
   `data:text/html;charset=utf-8;base64,${fs.readFileSync(path.join(__dirname, file)).toString('base64')}`;
 const OFFLINE_URL = dataUrl('offline.html');
 const FIND_URL = dataUrl('find-bar.html');
+const POCKET_URL = dataUrl('pocket.html');
 
 let win = null;
 let tray = null;
@@ -130,6 +132,12 @@ let findOpen = false;
 let findText = '';
 let findSession = 0; // the request id of the findInPage call that started the shown search
 let findMatch = null; // the active match's selectionArea, which the bar steps aside for
+
+// The Do stuff pocket (see "Pocket"). Made when the page asks for it, closed when the page says
+// nothing is current, and made again the next time. pocketAt is where it was last left, in memory.
+let pocketWin = null;
+let pocketState = null; // what the page last published, through pocket.shapePocket
+let pocketAt = null;
 
 // While the window shows the offline page, main keeps trying the app on this schedule, repeating
 // the last step. The page's own retry is the `online` event, which never fires if the machine
@@ -344,6 +352,7 @@ function createWindow() {
   nativeTheme.on('updated', () => {
     if (!win.isDestroyed()) win.setBackgroundColor(backgroundColor());
     if (findContents()) findView.setBackgroundColor(findBackground());
+    if (pocketWin && !pocketWin.isDestroyed()) pocketWin.setBackgroundColor(pocketBackground());
   });
   // Coming back to dsul is a cheap moment to catch an Open at login change made in System
   // Settings or Task Manager, before the tray menu next opens.
@@ -365,8 +374,10 @@ function createWindow() {
       if (offlineTries > 0) checkForUpdate();
       stopOfflineRetry();
     }
-    // A new document, the offline page included, has nothing the bar was finding.
+    // A new document, the offline page included, has nothing the bar was finding, and no Do stuff
+    // run for the pocket to show: the mode is memory only.
     closeFind();
+    setPocketState(null);
     // Each document comes in at its own zoom: Chromium keeps one per host, saved across launches,
     // and the offline page has its own, normally 100%. Electron has applied it by the time this
     // fires. Last, so a throw here can't skip the bookkeeping above.
@@ -401,6 +412,7 @@ function createWindow() {
     if (details.reason === 'clean-exit') return;
     captureReady = false;
     closeFind();
+    setPocketState(null);
     const now = Date.now();
     while (crashes.length && now - crashes[0] > 60_000) crashes.shift();
     crashes.push(now);
@@ -859,6 +871,101 @@ function sendFindCount(label) {
   if (contents && findReady) contents.send('dsul-find:count', label);
 }
 
+// ── Pocket ───────────────────────────────────────────────────────────────────
+
+// Do stuff's pocket (memory/plans/power-mode.md, the polish round): a small window that floats
+// over every app with the current item, done and skip, so the item stays in view while the work
+// happens somewhere else. Its page is pocket.html, like the find bar a page of the shell's own,
+// never do.dsul.app: it holds no session, and the window's page stays the only thing that decides
+// what is current or writes anything. The page publishes (dsul:pocket-state), main shapes it
+// (lib/pocket.cjs) and passes it on; the pocket's done and skip go back to the page with the id
+// they were pressed on, and the page acts only if that is still its current item.
+
+function isPocket(contents) {
+  return !!pocketWin && !pocketWin.isDestroyed() && contents === pocketWin.webContents;
+}
+
+function pocketBackground() {
+  return nativeTheme.shouldUseDarkColors ? pocket.POCKET_BG.dark : pocket.POCKET_BG.light;
+}
+
+// The page asked for the pocket. It shows without taking the focus, so the person stays in
+// whatever they were doing; with nothing current there is nothing to show.
+function openPocket() {
+  if (!pocketState) return false;
+  if (pocketWin && !pocketWin.isDestroyed()) {
+    pocketWin.showInactive();
+    return true;
+  }
+  const area = screen.getPrimaryDisplay().workArea;
+  pocketWin = new BrowserWindow({
+    ...pocket.pocketBounds(area, pocketAt, screen.getAllDisplays()),
+    show: false,
+    frame: false,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    title: 'dsul pocket',
+    backgroundColor: pocketBackground(),
+    webPreferences: {
+      preload: path.join(__dirname, 'pocket-preload.cjs'),
+      contextIsolation: true,
+      sandbox: true,
+      nodeIntegration: false,
+      navigateOnDragDrop: false,
+      spellcheck: false,
+    },
+  });
+  // Above ordinary windows, and on macOS over every Space and full-screen app too.
+  pocketWin.setAlwaysOnTop(true, 'floating');
+  if (IS_MAC) pocketWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  const opened = pocketWin;
+  opened.once('ready-to-show', () => {
+    if (!opened.isDestroyed()) opened.showInactive();
+  });
+  opened.on('moved', () => {
+    if (!opened.isDestroyed()) pocketAt = opened.getBounds();
+  });
+  opened.on('closed', () => {
+    if (pocketWin === opened) pocketWin = null;
+  });
+  opened.webContents.on('render-process-gone', () => closePocket());
+  load(opened.webContents, POCKET_URL);
+  return true;
+}
+
+function closePocket() {
+  if (pocketWin && !pocketWin.isDestroyed()) pocketWin.close();
+  pocketWin = null;
+}
+
+// What the page published. Nothing current closes the pocket; anything else goes to an open one.
+function setPocketState(raw) {
+  pocketState = pocket.shapePocket(raw);
+  if (!pocketState) {
+    closePocket();
+    return;
+  }
+  sendPocket();
+}
+
+function sendPocket() {
+  if (pocketWin && !pocketWin.isDestroyed()) pocketWin.webContents.send('dsul-pocket:state', pocketState);
+}
+
+// A pocket button. done and skip are the page's to do, open and close are main's.
+function onPocketAction(message) {
+  if (!message) return;
+  if (message.action === 'close') closePocket();
+  else if (message.action === 'open') reveal();
+  else if (win && !win.isDestroyed() && pocketState && message.id === pocketState.id) {
+    win.webContents.send('dsul:pocket-action', { action: message.action, id: message.id });
+  }
+}
+
 // ── Guards ───────────────────────────────────────────────────────────────────
 
 function harden(contents) {
@@ -879,15 +986,15 @@ function harden(contents) {
     // A same-origin new window (⌘-click, middle-click) does nothing in v1: a load in the main
     // window would tear down the store and the undo stack. The find bar has no links; whatever
     // asks from there opens nothing.
-    if (!isApp(url) && !isFindBar(contents)) openOutside(url);
+    if (!isApp(url) && !isFindBar(contents) && !isPocket(contents)) openOutside(url);
     return { action: 'deny' };
   });
 }
 
 function guardNavigation(event, contents) {
-  // The find bar never navigates. Without this an app URL would pass below, and the offline
-  // retry would load the app into the bar.
-  if (isFindBar(contents)) {
+  // The find bar and the pocket never navigate. Without this an app URL would pass below, and the
+  // offline retry would load the app into the bar.
+  if (isFindBar(contents) || isPocket(contents)) {
     event.preventDefault();
     return;
   }
@@ -1045,6 +1152,18 @@ function registerIpc() {
     });
   });
 
+  // Do stuff's pocket (see "Pocket").
+  ipcMain.on('dsul:pocket-state', (event, raw) => {
+    if (fromApp(event)) setPocketState(raw);
+  });
+  ipcMain.handle('dsul:pocket-open', (event) => (fromApp(event) ? openPocket() : false));
+  ipcMain.on('dsul-pocket:ready', (event) => {
+    if (fromPocket(event)) sendPocket();
+  });
+  ipcMain.on('dsul-pocket:action', (event, raw) => {
+    if (fromPocket(event)) onPocketAction(pocket.parseAction(raw));
+  });
+
   // The page's Settings → Look choice. A repeat (every sign-in sends one) touches nothing.
   ipcMain.handle('dsul:set-app-icon', (event, look) => {
     if (!fromApp(event)) return false;
@@ -1069,6 +1188,19 @@ function fromFindBar(event) {
     frame.processId === main.processId &&
     frame.routingId === main.routingId &&
     frame.url === FIND_URL
+  );
+}
+
+// The pocket's channels answer only the pocket's own page, as fromFindBar does for the bar.
+function fromPocket(event) {
+  if (!pocketWin || pocketWin.isDestroyed() || event.sender !== pocketWin.webContents) return false;
+  const frame = event.senderFrame;
+  const main = event.sender.mainFrame;
+  return (
+    !!frame &&
+    frame.processId === main.processId &&
+    frame.routingId === main.routingId &&
+    frame.url === POCKET_URL
   );
 }
 

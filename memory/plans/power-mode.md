@@ -264,3 +264,20 @@ PR3 Sprint, PR4 Pocket, PR5 L1.
   sound, no red. Store `sprint` (epoch ms, memory only); a tap or `stop()` ends it.
 - The desk's day column is its own `canvas` container and turns Radix's table layout into a
   block, so its rows size to the column instead of overflowing it.
+
+### What PR4 shipped (Pocket)
+
+- In the desktop app, a pocket button (picture-in-picture icon) on the list's card, the slot
+  and the desk opens a 320×104 window that floats over every app (`alwaysOnTop` 'floating',
+  every Space on macOS) with the current item, done, skip, open dsul and ×. It shows without
+  taking the focus, opens in the top-right corner of the primary display, and comes back where
+  it was dragged to while the app runs. A running sprint shows its minutes left and a lime bar.
+- The pocket is the shell's own page (`electron/pocket.html` + `pocket-preload.cjs`, a data:
+  URL like the find bar), never do.dsul.app: it has no session and writes nothing. The page
+  publishes `{ id, title, done, sprint }` through `setPocket` (`PocketSync`, mounted by
+  `DesktopBridge`), main keeps only those fields (`electron/lib/pocket.cjs shapePocket`), and
+  done/skip come back to the page with the id they were pressed on; the page acts only if that
+  is still its current item. Stopping the mode, a reload or a crash closes it.
+- Bridge members `setPocket`, `openPocket`, `onPocketAction` are optional (`desktopPocket` in
+  lib/desktop.ts), so it reaches people only with the next shell release; until then the
+  button never renders. No global chord yet: the pocket opens from the app.

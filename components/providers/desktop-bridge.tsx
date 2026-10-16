@@ -13,6 +13,7 @@ import { settingsBelongToUser } from '@/lib/settings/hydration';
 import { useSessionUserStore } from '@/lib/session-user-store';
 import { isSignedOutPath } from '@/lib/signed-out-redirect';
 import { openQuickCapture } from '@/lib/ui-store';
+import { PocketSync } from '@/components/sidebar/do-stuff-pocket';
 
 /**
  * Where the launcher lives. OmniLauncher is mounted by AppShell, which only
@@ -156,5 +157,5 @@ function DesktopBridgeLive({ bridge }: { bridge: DsulDesktop }) {
     bridge.setAppIcon(appIcon).catch(() => {});
   }, [bridge, appIcon, appIconKnown, settingsReady]);
 
-  return null;
+  return <PocketSync />;
 }

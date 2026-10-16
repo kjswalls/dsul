@@ -363,6 +363,47 @@ A checkbox in the tray menu, on macOS and Windows. It starts unticked. Ticking i
 - Queue a link until the window has loaded.
 - Test deep links on packaged builds only.
 
+## Do stuff's pocket (next release after 0.1.3)
+
+A small window that floats over every app with Do stuff's current item, so it stays in view while
+the work happens elsewhere (Kirby's pick, 2026-10-16; [power-mode.md](power-mode.md), the polish
+round). The rules are in electron/lib/pocket.cjs, which is pure and tested
+(`tests/unit/electron-pocket.test.ts`); main.cjs "Pocket" holds the window.
+
+- **Its page is the shell's, never the site's.** `pocket.html` goes in as a data: URL, wired by
+  `pocket-preload.cjs` from the isolated world (script-src 'none'), exactly like the find bar. It
+  holds no cookies' worth of anything and makes no request, so the main window's page stays the
+  only thing that decides what is current and the only writer.
+- **The flow.** The page publishes `setPocket({ id, title, done, sprint })` (or null) on every
+  change that matters; main passes it through `shapePocket`, which keeps those fields as cut
+  strings and finite numbers and turns anything else into null, and null closes the pocket. done
+  and skip go back to the page as `dsul:pocket-action` with the id they were pressed on, only
+  when it is the id main is showing, and the page checks again against its own current item.
+  open is `reveal()`; close and Escape close the window. `openPocket` with nothing current is
+  false and opens nothing.
+- **The window.** 320×104, frameless, not resizable, no taskbar entry, `setAlwaysOnTop(true,
+  'floating')`, and on macOS `setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })`.
+  It is shown with `showInactive()`, never focused, so asking for it doesn't pull anyone out of
+  what they are in. It is dragged by its body (`-webkit-app-region: drag`; buttons `no-drag`).
+  It opens at the primary work area's top-right corner, or where it was last left while that is
+  still wholly on a display; that place is memory only.
+- **Guards.** `harden()` reaches it through `web-contents-created`; `guardNavigation` refuses
+  every navigation from it and the window-open handler opens nothing for it, as for the find bar.
+  Its channels answer only its own page (`fromPocket`: the window's main frame at `POCKET_URL`),
+  and `dsul:pocket-state` / `dsul:pocket-open` only the app (`fromApp`). Permissions are denied
+  (a data: URL is not an app URL).
+- **It closes** when the page says nothing is current (the mode stopped), on any main-frame
+  document change (Do stuff is memory only, so a reload has no run), on a page crash, and on its
+  own renderer going.
+- **Bridge.** `setPocket`, `openPocket` and `onPocketAction` were added after version 1, like
+  `setAppIcon`: the page feature-detects them (`desktopPocket`), so an older shell simply shows
+  no pocket button.
+- **Checked** in a dev build of Electron 44.5.1 under Xvfb on Linux against a stand-in page:
+  opens beside the window without focus, counts a sprint down, done and skip reach the page with
+  the right ids, and the last done closes it. **[unverified on macOS and Windows]**: the
+  floating level over full-screen apps, and how a frameless window's corners draw on Windows.
+- **Later:** a global chord to show or hide it, and remembering its place across launches.
+
 ## Find in page (v0.1.2)
 
 Ctrl+F on Windows, or ⌘F on a Mac, opens a small find bar at the window's top-right corner. Chromium's find bar is browser UI, so Electron ships none. The shell's is a page of its own, `find-bar.html`, shown as a data: URL in a `WebContentsView` over the page. Electron 44.5.1 and Chromium 152 line numbers below are from those sources.

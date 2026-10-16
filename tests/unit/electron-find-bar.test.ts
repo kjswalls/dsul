@@ -343,7 +343,7 @@ describe('main.cjs: find in page', () => {
 
   it('closes on a new document before the lights are placed, and on a page crash', () => {
     const navigate = handlerSource(main, "contents.on('did-navigate',");
-    expect(navigate).toMatch(/\n {4}closeFind\(\);\n(?: {4}\/\/[^\n]*\n)* {4}placeLights\(\);\n {2}\}\);$/);
+    expect(navigate).toMatch(/\n {4}closeFind\(\);\n {4}setPocketState\(null\);\n(?: {4}\/\/[^\n]*\n)* {4}placeLights\(\);\n {2}\}\);$/);
     expect(navigate.indexOf('closeFind();')).toBeGreaterThan(navigate.indexOf('stopOfflineRetry();'));
     const gone = handlerSource(main, "contents.on('render-process-gone', (_event, details) => {\n    if (details.reason === 'clean-exit') return;\n    captureReady = false;");
     expect(gone).toContain('closeFind();');
@@ -390,9 +390,9 @@ describe('main.cjs: find in page', () => {
 
   it('keeps the find bar from navigating or opening anything', () => {
     expect(fnSource(main, 'guardNavigation')).toMatch(
-      /^function guardNavigation\(event, contents\) \{\n(?: {2}\/\/[^\n]*\n)* {2}if \(isFindBar\(contents\)\) \{\n {4}event\.preventDefault\(\);\n {4}return;/,
+      /^function guardNavigation\(event, contents\) \{\n(?: {2}\/\/[^\n]*\n)* {2}if \(isFindBar\(contents\) \|\| isPocket\(contents\)\) \{\n {4}event\.preventDefault\(\);\n {4}return;/,
     );
-    expect(main).toContain('if (!isApp(url) && !isFindBar(contents)) openOutside(url);');
+    expect(main).toContain('if (!isApp(url) && !isFindBar(contents) && !isPocket(contents)) openOutside(url);');
   });
 
   it('packs every file main.cjs loads', () => {

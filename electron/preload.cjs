@@ -36,12 +36,24 @@ ipcRenderer.on('dsul:quick-capture', () => {
 // Reminder clicks and wakes, each to the page's callbacks with only the plain data main sent.
 const notificationListeners = new Set();
 const wakeListeners = new Set();
+const pocketListeners = new Set();
 ipcRenderer.on('dsul:notification', (_event, message) => {
   for (const listener of [...notificationListeners]) {
     try {
       listener(message);
     } catch (err) {
       console.error('[dsul] notification listener failed', err);
+    }
+  }
+});
+// A pocket button, as { action, id }: main has already checked the id is the one it shows.
+ipcRenderer.on('dsul:pocket-action', (_event, message) => {
+  const plain = { action: message && message.action, id: message && message.id };
+  for (const listener of [...pocketListeners]) {
+    try {
+      listener(plain);
+    } catch (err) {
+      console.error('[dsul] pocket listener failed', err);
     }
   }
 });
@@ -134,6 +146,23 @@ contextBridge.exposeInMainWorld('dsulDesktop', {
     notificationListeners.add(listener);
     return () => {
       notificationListeners.delete(listener);
+    };
+  },
+
+  // Do stuff's pocket (main.cjs "Pocket"). Added after version 1 shipped, like setAppIcon, so the
+  // page feature-detects each one. setPocket(null) says nothing is current, which closes it.
+  setPocket(state) {
+    ipcRenderer.send('dsul:pocket-state', state && typeof state === 'object' ? state : null);
+  },
+  openPocket() {
+    return ipcRenderer.invoke('dsul:pocket-open').then((ok) => ok === true);
+  },
+  onPocketAction(cb) {
+    if (typeof cb !== 'function') return () => {};
+    const listener = (message) => cb(message);
+    pocketListeners.add(listener);
+    return () => {
+      pocketListeners.delete(listener);
     };
   },
   onWake(cb) {
