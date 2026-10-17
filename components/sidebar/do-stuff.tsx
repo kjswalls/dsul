@@ -61,20 +61,26 @@ import { openFirstSteps, useCanFirstSteps } from '@/components/sidebar/first-ste
 import { PocketButton } from '@/components/sidebar/do-stuff-pocket';
 
 /**
- * Do stuff: the braindump sorted into a plan in lanes, then walked
- * (memory/plans/power-mode.md, build order 2).
+ * Do stuff: the braindump, and today's anytime rows, sorted into a plan in
+ * seven lanes, then walked (memory/plans/power-mode.md, build order 2 and
+ * round 5).
  *
- * The key in the header starts it, and the rows shuffle from where they stood
- * into their lanes (lib/do-stuff-plan.ts decides which). Each row carries a
- * lane chip, shown on hover; the number keys move the row under the pointer or
- * focus, and a swipe moves it on the phone. "Do now" lifts its next thing in
- * place with its actions under it, and the strip above the list carries "make
- * it so", which puts the calendar lane on its days and hands the handed-off
- * lane to the agent.
+ * The key in the header (or the dock) starts it, and the rows glide from where
+ * they stood into their lanes: ready / do it now / today / another day / do it
+ * for me / later / whatever (lib/do-stuff-plan.ts decides which). Each row
+ * carries a lane chip, shown on hover; the keys 1 to 7 move the row under the
+ * pointer or the one reached by keyboard, and a swipe moves it on the phone.
+ * Only the lane being walked is open; the rest fold to one line (L1). The walk
+ * is do it now, then today: the next thing is lifted in place with its actions
+ * under it, or opens in today's free stretch on the schedule (do-stuff-slot.tsx)
+ * with this row kept as a notch. "Make it so" (the strip, or the dock) puts
+ * today on today, another day on its days, hands do it for me to the agent,
+ * sends later's today rows back to the braindump and lets whatever go; done,
+ * skip, today and first steps write as you go.
  *
  * Nothing shows at rest: no size dots, no chips. Colour lives only in 6px dots
  * and the lane headers' hairlines, the row rail's rule (pills.tsx). The lime
- * appears as the done-for-you dot, the Enter keycap and the "on" ring, and
+ * appears as the ready dot, the Enter keycap, the notch and the "on" ring, and
  * never under anything whose opacity changes.
  */
 
@@ -225,6 +231,7 @@ function usePlan(dumpRows: readonly RowItem[]): Plan {
   const seasons = usePlannerStore((s) => s.seasons);
   const away = useAwayStore((s) => s.periods);
   const stored = usePrepPacksStore((s) => s.packs);
+  const doneIds = useDoStuffStore((s) => s.doneIds);
   const todayStr = toDateStr(new Date(), tz);
 
   return useMemo(() => {
@@ -238,7 +245,10 @@ function usePlan(dumpRows: readonly RowItem[]): Plan {
         t.startDate === todayStr &&
         (t.isScheduled || !!t.timeBucket) &&
         !t.startTime &&
-        t.status === 'pending' &&
+        // Open, or done during this run: a today row ticked on the walk stays
+        // on the list so "N done here" counts it, as a braindump row does.
+        // One done before the run was never the plan's to count.
+        (t.status === 'pending' || doneIds.includes(t.id)) &&
         !isRecurring(t)
     );
     const todayIds = new Set(onToday.map((t) => t.id));
@@ -323,7 +333,7 @@ function usePlan(dumpRows: readonly RowItem[]): Plan {
       packs,
       prepCandidates,
     };
-  }, [dumpRows, tasks, moved, canDelegate, targets, handTo, items, tz, routines, seasons, away, todayStr, stored]);
+  }, [dumpRows, tasks, moved, canDelegate, targets, handTo, items, tz, routines, seasons, away, todayStr, stored, doneIds]);
 }
 
 /* ── the strip while doing stuff ──────────────────────────────────────── */
@@ -906,10 +916,14 @@ function LaneRow({
 }
 
 /**
- * The number keys: 1 to 7 move the row that has focus, or else the one under
- * the pointer, to that lane. Never while typing or with a modifier held, and
- * never when focus is somewhere other than the list (a dialog, the dock).
- * F opens that row's first steps (components/sidebar/first-steps.tsx).
+ * The number keys: 1 to 7 move the row under the pointer, or else the row
+ * that has focus, to that lane. The pointer wins because the card takes focus
+ * on every step of the walk (useWalkFocus): with focus first, hovering a row
+ * in "later" and pressing 4 moved the card's item instead. Focus wins only
+ * when the user put it there by keyboard (a Tab since the pointer last
+ * moved). Never while typing or with a modifier held, and never when focus is
+ * somewhere other than the list (a dialog, the dock). F opens that row's first
+ * steps (components/sidebar/first-steps.tsx).
  */
 function useLaneKeys(
   listRef: React.RefObject<HTMLDivElement | null>,
@@ -920,8 +934,12 @@ function useLaneKeys(
   useEffect(() => {
     factsRef.current = facts;
   }, [facts]);
+  // Whether focus was last moved by the keyboard: set on Tab, cleared when
+  // the pointer moves.
+  const byKeyboard = useRef(false);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Tab') byKeyboard.current = true;
       if (e.defaultPrevented || !plainKey(e)) return;
       const lane = laneForDigit(e.key);
       const steps = e.key.toLowerCase() === 'f';
@@ -929,12 +947,12 @@ function useLaneKeys(
       const list = listRef.current;
       if (!list) return;
       const active = document.activeElement as HTMLElement | null;
-      let id: string | null | undefined;
+      let focused: string | undefined;
       if (active && active !== document.body) {
         if (!list.contains(active)) return;
-        id = active.closest<HTMLElement>('[data-lane-row]')?.dataset.laneRow;
+        focused = active.closest<HTMLElement>('[data-lane-row]')?.dataset.laneRow;
       }
-      id ??= hoveredRef.current;
+      const id = focused && byKeyboard.current ? focused : (hoveredRef.current ?? focused);
       if (steps) {
         if (id && factsRef.current.has(id) && openFirstSteps(id)) e.preventDefault();
         return;
@@ -945,8 +963,15 @@ function useLaneKeys(
       e.preventDefault();
       useDoStuffStore.getState().move(id, lane);
     };
+    const onPointer = () => {
+      byKeyboard.current = false;
+    };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('pointermove', onPointer);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('pointermove', onPointer);
+    };
   }, [listRef, hoveredRef]);
 }
 
@@ -1141,6 +1166,13 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
   const next = nextNow(plan.lanes.now, isOpen, skipped) ?? nextNow(plan.lanes.today, isOpen, skipped);
   const slot = useDoStuffStore((s) => s.slot);
   const order = LANES.map((l) => plan.lanes[l.key].map((r) => r.item.id).join(',')).join('|');
+  // A row that leaves the list under the pointer (done, let go) fires no
+  // mouseleave: the next digit must not move a row that is gone. A row that
+  // only changed lanes keeps the pointer, so 2 then 3 on one row still works.
+  useEffect(() => {
+    const id = hoveredRef.current;
+    if (id && !order.split(/[,|]/).includes(id)) hoveredRef.current = null;
+  }, [order]);
   useReflow(listRef, order, next?.item.id);
   useSort(listRef);
   useLaneKeys(listRef, hoveredRef, plan.facts);
@@ -1169,21 +1201,23 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
     });
   }, [plan.days, plan.today, plan.handOff, plan.letGo, plan.unschedule, plan.marks, plan.arriving, plan.target, left]);
 
-  // The one pack open, by item id. ↑ ↓ walk the "done for you" lane.
+  // The one pack open, by item id. ↑ ↓ walk every open row with a pack, in
+  // the lanes' order: a pack follows its row out of "ready" (moved to do it
+  // now, or the current card), so its chip must still open it.
   const [peek, setPeek] = useState<string | null>(null);
-  const ready = plan.lanes.done.filter((r) => plan.packs.has(r.item.id));
-  const peekIndex = ready.findIndex((r) => r.item.id === peek);
+  const packed = LANES.flatMap((l) => plan.lanes[l.key]).filter((r) => isOpen(r) && plan.packs.has(r.item.id));
+  const peekIndex = packed.findIndex((r) => r.item.id === peek);
   const openPeek = peekIndex >= 0 ? peek : null;
   const go = (dir: -1 | 1) => {
-    if (ready.length === 0) return;
-    const i = (Math.max(0, peekIndex) + dir + ready.length) % ready.length;
-    setPeek(ready[i].item.id);
+    if (packed.length === 0) return;
+    const i = (Math.max(0, peekIndex) + dir + packed.length) % packed.length;
+    setPeek(packed[i].item.id);
   };
 
-  // The phone deals every pack ready in a deck, once there is more than one.
+  // The phone deals every pack in the ready lane in a deck, once there is more than one.
   const [deckOpen, setDeckOpen] = useState(false);
-  const deckCards = ready
-    .filter(isOpen)
+  const deckCards = plan.lanes.done
+    .filter((r) => isOpen(r) && plan.packs.has(r.item.id))
     .map((r) => ({ itemId: r.item.id, title: r.item.title, stored: plan.packs.get(r.item.id)! }));
 
   const pending = plan.days.size + plan.today.length + plan.handOff.length + plan.letGo.length + plan.unschedule.length;
@@ -1218,7 +1252,7 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
     itemId: r.item.id,
     title: r.item.title,
     stored: plan.packs.get(r.item.id)!,
-    nav: ready.length > 1 ? { index: peekIndex, count: ready.length, go } : undefined,
+    nav: packed.length > 1 ? { index: peekIndex, count: packed.length, go } : undefined,
     onClose: () => setPeek(null),
   });
 
@@ -1294,28 +1328,34 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
               action={action}
             />
             <div className="pt-1">
-              {list.map((r) => (
-                <LaneRow
-                  key={r.item.id}
-                  id={r.item.id}
-                  lane={l.key}
-                  facts={plan.facts.get(r.item.id)!}
-                  hoveredRef={hoveredRef}
-                >
-                  {r === next ? (
+              {list.map((r) => {
+                const inner =
+                  r === next ? (
                     <NextCard row={r} trailing={trailing(r)} slim={slot} />
-                  ) : plan.packs.has(r.item.id) && !touch ? (
-                    <PackPeek open={openPeek === r.item.id} {...card(r)}>
-                      <div>
-                        <TaskRow row={r} context="braindump" trailing={trailing(r)} />
-                      </div>
-                    </PackPeek>
                   ) : (
                     <TaskRow row={r} context="braindump" trailing={trailing(r)} />
-                  )}
-                  {touch && openPeek === r.item.id && <PackInline {...card(r)} />}
-                </LaneRow>
-              ))}
+                  );
+                return (
+                  <LaneRow
+                    key={r.item.id}
+                    id={r.item.id}
+                    lane={l.key}
+                    facts={plan.facts.get(r.item.id)!}
+                    hoveredRef={hoveredRef}
+                  >
+                    {/* Any row with a pack, the card included, opens its peek.
+                        It anchors to a plain div: neither forwards a ref. */}
+                    {plan.packs.has(r.item.id) && !touch ? (
+                      <PackPeek open={openPeek === r.item.id} {...card(r)}>
+                        <div>{inner}</div>
+                      </PackPeek>
+                    ) : (
+                      inner
+                    )}
+                    {touch && openPeek === r.item.id && <PackInline {...card(r)} />}
+                  </LaneRow>
+                );
+              })}
               {doneHere > 0 && (
                 <p
                   className="flex items-center gap-1.5 px-2 pt-1 text-xs text-muted-foreground"
