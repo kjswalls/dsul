@@ -88,6 +88,17 @@ tap) to take one out, swipe left for the next.
 Gaps found while designing, not yet scheduled: no free-slot finder on the grid
 (for "on the calendar"), no web search for the model (for research packs).
 
+**Packs never saved until 2026-10-17.** The route upserted, and PostgREST's upsert assigns
+every payload column in its ON CONFLICT DO UPDATE, `item_id` and `updated_at` among them; 074
+grants `authenticated` INSERT on five named columns and UPDATE on four plus `updated_at`, and
+Postgres checks the whole statement up front, so every save was refused (42501), the client
+showed "Couldn't get things ready.", and no pack ever reached the table from the app. The route
+now inserts with ON CONFLICT DO NOTHING (supabase-js's `upsert` + `ignoreDuplicates`; new items,
+which is what the 200 cap counts) and
+updates the four columns of each item the insert skipped. Not delete-then-insert: the cap
+trigger spares only an item whose pack still exists, so a mixed batch at the cap would have
+lost the regenerated packs. No migration.
+
 ### What build order 4 shipped
 
 The questions already reached dsul (`dsul_ask_user` blocks the item and logs
