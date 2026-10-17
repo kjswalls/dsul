@@ -135,6 +135,10 @@ describe('POST /api/ai/prep', () => {
         model: 'm-1',
       }),
     ]);
+    // Never `updated_at`: 074 grants authenticated INSERT on five named columns,
+    // and an INSERT naming any other column is refused whole (42501). The row's
+    // default and 078's trigger stamp it instead.
+    expect(Object.keys((h.upserts[0] as Record<string, unknown>[])[0])).not.toContain('updated_at');
   });
 
   it('sends the model the titles and notes, and asks for JSON', async () => {

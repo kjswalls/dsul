@@ -88,6 +88,13 @@ tap) to take one out, swipe left for the next.
 Gaps found while designing, not yet scheduled: no free-slot finder on the grid
 (for "on the calendar"), no web search for the model (for research packs).
 
+**Packs never saved until 2026-10-17.** The route's upsert named `updated_at`, and 074
+grants `authenticated` INSERT on five named columns; Postgres refuses the whole INSERT
+(42501), so every run ended in "Couldn't get things ready." and no pack ever reached the
+table from the app. The route now sends no timestamp; the row's default stamps an insert and
+migration 078's trigger stamps an update (until 078 is applied on prod, an update keeps its
+old `updated_at`, which only re-keys the card's unsaved edits).
+
 ### What build order 4 shipped
 
 The questions already reached dsul (`dsul_ask_user` blocks the item and logs

@@ -235,12 +235,14 @@ export async function POST(req: Request): Promise<Response> {
   }
   if (rows.size === 0) return ok({ packs: [] })
 
+  // No `updated_at` in the payload: the row's own default stamps an insert and
+  // migration 078's trigger stamps an update. 074 granted authenticated INSERT
+  // on five named columns only, and Postgres checks every column an INSERT
+  // names, so naming `updated_at` here made every save fail with 42501 and the
+  // client show "Couldn't get things ready." on every run (found 2026-10-17).
   const { data, error } = await db
     .from('prep_packs')
-    .upsert(
-      [...rows.values()].map((r) => ({ ...r, updated_at: new Date().toISOString() })),
-      { onConflict: 'item_id' }
-    )
+    .upsert([...rows.values()], { onConflict: 'item_id' })
     .select(SELECT)
   if (error) {
     if (error.code === '42P01' || error.code === 'PGRST205') {
