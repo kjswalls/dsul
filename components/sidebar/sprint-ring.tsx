@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Timer } from 'lucide-react';
-import { startSprint, stopSprint, useDoStuffStore } from '@/lib/do-stuff';
+import { startSprint, stopSprint, useDoStuffStore, type Sprint } from '@/lib/do-stuff';
 import { spanLabel } from '@/lib/do-stuff-walk';
 import { cn } from '@/lib/utils';
 
@@ -14,28 +14,44 @@ import { cn } from '@/lib/utils';
  * day goes on whether or not the thing got done.
  */
 
-/** The wall clock, once a second while a sprint is running. */
-function useSecondClock(on: boolean): number {
+/**
+ * The wall clock, once a second while a sprint is running and not yet up. A
+ * sprint at 0 says "time's up" and changes no more until it is tapped or
+ * clears itself (lib/do-stuff.ts startSprint), so the clock stops with it.
+ */
+function useSecondClock(sprint: Sprint): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    if (!on) return;
-    const t = setInterval(() => setNow(Date.now()), 1000);
+    if (Date.now() >= sprint.endsAt) return;
+    const t = setInterval(() => {
+      const at = Date.now();
+      setNow(at);
+      if (at >= sprint.endsAt) clearInterval(t);
+    }, 1000);
     return () => clearInterval(t);
-  }, [on]);
+  }, [sprint]);
   return now;
 }
 
-/** The ring itself, with the minutes left in it; tapping it ends the sprint. */
+/**
+ * The ring itself, with the minutes left in it; tapping it ends the sprint.
+ * Keyed on the sprint, so a new one mounts with a fresh clock: one already up
+ * when it arrives starts no interval that would correct a stale reading.
+ */
 export function SprintRing({ size = 22, className }: { size?: number; className?: string }) {
   const sprint = useDoStuffStore((s) => s.sprint);
-  const now = useSecondClock(!!sprint);
   if (!sprint) return null;
+  return <Ring key={`${sprint.startedAt}:${sprint.endsAt}`} sprint={sprint} size={size} className={className} />;
+}
+
+function Ring({ sprint, size, className }: { sprint: Sprint; size: number; className?: string }) {
+  const now = useSecondClock(sprint);
   const total = sprint.endsAt - sprint.startedAt;
-  // The clock only ticks while a sprint runs, so the first second of a new one
-  // can read an older `now`: never earlier than the sprint itself.
+  // Never earlier than the sprint itself: the clock is read on mount, which
+  // can be the same millisecond.
   const left = Math.max(0, sprint.endsAt - Math.max(now, sprint.startedAt));
-  const pct = total > 0 ? 1 - left / total : 1;
   const up = left === 0;
+  const pct = total > 0 ? 1 - left / total : 1;
   const stroke = size >= 40 ? 3.5 : 2.5;
   const r = size / 2 - stroke;
   const c = 2 * Math.PI * r;
@@ -89,12 +105,17 @@ export function SprintRing({ size = 22, className }: { size?: number; className?
   );
 }
 
-/** "sprint till Lunch with Ana", offered when the gap is worth one and none is running. */
+/**
+ * "sprint till Lunch with Ana", offered when the gap is worth one and none is
+ * running. `forItem` is the item it is for: done or skip on it ends the sprint.
+ */
 export function SprintButton({
   offer,
+  forItem,
   className,
 }: {
   offer: { minutes: number; until: string | null } | null;
+  forItem?: string;
   className?: string;
 }) {
   const running = useDoStuffStore((s) => !!s.sprint);
@@ -102,7 +123,7 @@ export function SprintButton({
   return (
     <button
       type="button"
-      onClick={() => startSprint(offer.minutes, offer.until)}
+      onClick={() => startSprint(offer.minutes, offer.until, forItem)}
       title={`A ${spanLabel(offer.minutes)} sprint${offer.until ? `, ending 5 minutes before ${offer.until}` : ''}`}
       data-testid="sprint-start"
       className={cn(

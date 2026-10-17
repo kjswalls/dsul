@@ -2,20 +2,21 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { Check, Maximize2 } from 'lucide-react';
-import { doneNext, fitMissedIn, letMissedGo, openDesk, skipNext, sortDelay, useDeskHosted, useDoStuffStore } from '@/lib/do-stuff';
 import {
-  fitInStart,
-  freeStretch,
-  headsUp,
-  missedBlock,
-  sprintFor,
-  stretchLabel,
-  type WalkBlock,
-} from '@/lib/do-stuff-walk';
+  doneNext,
+  fitMissedIn,
+  letMissedGo,
+  openDesk,
+  skipNext,
+  useDeskHosted,
+  useDoStuffStore,
+  useSortArrival,
+} from '@/lib/do-stuff';
+import { fitIn, freeStretch, headsUp, missedBlocks, sprintFor, stretchLabel, type WalkBlock } from '@/lib/do-stuff-walk';
 import { SprintButton, SprintRing } from '@/components/sidebar/sprint-ring';
 import { PocketButton } from '@/components/sidebar/do-stuff-pocket';
-import { openFirstSteps, useCanFirstSteps } from '@/components/sidebar/first-steps';
 import { prefersReducedMotion } from '@/lib/zen-transition';
+import { openFirstSteps, useCanFirstSteps } from '@/components/sidebar/first-steps';
 import { cn } from '@/lib/utils';
 
 /** Room the slot keeps for its full face; a shorter stretch gets one line. */
@@ -57,7 +58,9 @@ export function DoStuffSlot({
   const doneCount = useDoStuffStore((s) => s.doneCount);
   const missedSeen = useDoStuffStore((s) => s.missedSeen);
   const stretch = useMemo(() => freeStretch(blocks, nowMin), [blocks, nowMin]);
-  const missed = useMemo(() => missedBlock(blocks, nowMin, new Set(missedSeen)), [blocks, nowMin, missedSeen]);
+  // Every block missed right now, the latest first: the first is offered, and
+  // answering it marks the rest seen (one question a run, not a chain).
+  const missed = useMemo(() => missedBlocks(blocks, nowMin, new Set(missedSeen)), [blocks, nowMin, missedSeen]);
   const gridStart = gridStartHour * 60;
   const gridEnd = gridEndHour * 60;
   const shown = !!next && !!stretch && stretch.startMin >= gridStart && stretch.startMin < gridEnd;
@@ -73,6 +76,8 @@ export function DoStuffSlot({
   const span = ((Math.min(stretch.endMin, gridEnd) - stretch.startMin) / 60) * hourPx;
   const height = Math.max(MIN_PX, span - INSET_PX * 2);
   const label = stretchLabel(stretch, nowMin);
+  const heads = headsUp(blocks, nowMin);
+  const first = missed[0];
   return (
     <SlotFace
       id={next.id}
@@ -84,8 +89,20 @@ export function DoStuffSlot({
       rest={label.rest}
       doneCount={doneCount}
       sprint={sprintFor(stretch, nowMin)}
-      heads={headsUp(blocks, nowMin)}
-      missed={missed ? { id: missed.id, title: missed.title, at: fitInStart(stretch, nowMin) } : null}
+      // "wrap up here" only when the user is in the slot: a stretch that waits
+      // on a block that is on now (`after`) is a meeting they are in, not time
+      // they are spending here.
+      heads={heads ? { ...heads, wrapUp: !stretch.after } : null}
+      missed={
+        first
+          ? {
+              id: first.id,
+              title: first.title,
+              at: fitIn(stretch, nowMin, first.duration),
+              others: missed.slice(1).map((b) => b.id),
+            }
+          : null
+      }
     />
   );
 }
@@ -112,10 +129,14 @@ function SlotFace({
   rest: string;
   doneCount: number;
   sprint: { minutes: number; until: string | null } | null;
-  /** The block about to start, said instead of the stretch. */
-  heads: { title: string; inMin: number } | null;
-  /** A block that came and went, offered once: fit it in at `at`, or let it go. */
-  missed: { id: string; title: string; at: number | null } | null;
+  /** The block about to start, said instead of the stretch; `wrapUp` when the user is here to wrap up. */
+  heads: { title: string; inMin: number; wrapUp: boolean } | null;
+  /**
+   * A block that came and went, offered once: fit it in at `at` (null when
+   * nothing worth it fits, and the offer is "let it go" alone), or let it go.
+   * `others` are the rest missed right now, marked seen with it.
+   */
+  missed: { id: string; title: string; at: { startMin: number; duration: number } | null; others: readonly string[] } | null;
 }) {
   const running = useDoStuffStore((s) => !!s.sprint);
   const ref = useRef<HTMLDivElement>(null);
@@ -126,19 +147,8 @@ function SlotFace({
   const deskHosted = useDeskHosted();
   const ring = running && !desk;
 
-  // Arrive once the sort has landed: a clip from the top edge, never an
-  // opacity, since the notch is lime.
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el || prefersReducedMotion() || typeof el.animate !== 'function') return;
-    el.animate(
-      [
-        { clipPath: 'inset(0 0 100% 0)', transform: 'translate(0, -4px)' },
-        { clipPath: 'inset(0)', transform: 'none' },
-      ],
-      { duration: 320, delay: sortDelay(), easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'backwards' }
-    );
-  }, []);
+  // Arrive once the sort has landed (the up-next card does the same).
+  useSortArrival(ref);
 
   // A new item rises into the slot in place; the slot stays where it is.
   const first = useRef(true);
@@ -188,7 +198,7 @@ function SlotFace({
           first steps
         </button>
       )}
-      {!compact && <SprintButton offer={sprint} />}
+      {!compact && <SprintButton offer={sprint} forItem={id} />}
       {!compact && <PocketButton />}
       {deskHosted && !desk && (
         <button
@@ -228,7 +238,7 @@ function SlotFace({
             {missed.at !== null && (
               <button
                 type="button"
-                onClick={() => fitMissedIn(missed.id, missed.at!)}
+                onClick={() => fitMissedIn(missed.id, missed.at!, missed.others)}
                 data-testid="do-stuff-missed-fit"
                 className="shrink-0 rounded-[5px] px-1.5 hover:bg-accent hover:text-foreground"
               >
@@ -237,7 +247,7 @@ function SlotFace({
             )}
             <button
               type="button"
-              onClick={() => letMissedGo(missed.id)}
+              onClick={() => letMissedGo(missed.id, missed.others)}
               data-testid="do-stuff-missed-let-go"
               className="shrink-0 rounded-[5px] px-1.5 hover:bg-accent hover:text-foreground"
             >
@@ -251,7 +261,8 @@ function SlotFace({
         {!compact && !missed && ring && <SprintRing size={14} className="h-[17px] self-start" />}
         {!compact && !missed && !ring && heads && (
           <p className="truncate text-[11.5px] text-muted-foreground" data-testid="do-stuff-heads-up">
-            <span className="font-medium text-foreground">{heads.title}</span> in {heads.inMin}m · wrap up here
+            <span className="font-medium text-foreground">{heads.title}</span> in {heads.inMin}m
+            {heads.wrapUp && ' · wrap up here'}
           </p>
         )}
         {!compact && !missed && !ring && !heads && (
@@ -262,8 +273,12 @@ function SlotFace({
         )}
         <p className={cn('min-w-0 truncate font-medium', compact ? 'flex-1 text-[13px]' : 'text-[15px]')}>{title}</p>
         {/* A block about to start leaves a sliver of a stretch, so the slot is
-            one line by then: the heads-up rides beside the title. */}
-        {compact && heads && (
+            one line by then: the heads-up rides beside the title. So does a
+            running sprint, which ends exactly then (five minutes before the
+            block): the ring, its minutes and "time's up" must not vanish at
+            the end. */}
+        {compact && ring && <SprintRing size={14} className="shrink-0" />}
+        {compact && !ring && heads && (
           <span className="shrink-0 text-[11.5px] text-muted-foreground" data-testid="do-stuff-heads-up">
             <span className="font-medium text-foreground">{heads.title}</span> in {heads.inMin}m
           </span>

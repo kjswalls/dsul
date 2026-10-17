@@ -139,33 +139,58 @@ export function headsUp(blocks: readonly WalkBlock[], nowMin: number): { title: 
 export const MISSED_WINDOW_MIN = 180;
 
 /**
+ * The blocks that came and went without being done, latest first: movable,
+ * ended within MISSED_WINDOW_MIN, and not offered already (`seen`, ids). The
+ * slot offers the first and, once that one is answered, marks the rest seen
+ * too: the walk asks once a run, never a chain of "missed X? … missed Y?".
+ */
+export function missedBlocks(
+  blocks: readonly WalkBlock[],
+  nowMin: number,
+  seen: ReadonlySet<string>
+): (WalkBlock & { id: string })[] {
+  const out: (WalkBlock & { id: string })[] = [];
+  for (const b of blocks) {
+    const end = b.startMin + b.duration;
+    if (b.done || !b.movable || !b.id || seen.has(b.id)) continue;
+    if (end > nowMin || nowMin - end > MISSED_WINDOW_MIN) continue;
+    out.push({ ...b, id: b.id });
+  }
+  return out.sort((a, b) => b.startMin + b.duration - (a.startMin + a.duration));
+}
+
+/**
  * A block that came and went without being done, offered once with no guilt:
- * "fit it in" or "let it go". The most recent one that ended within
- * MISSED_WINDOW_MIN, is movable, and was not offered already (`seen`, ids).
- * Null when there is none.
+ * "fit it in" or "let it go". The most recent of {@link missedBlocks}, or null.
  */
 export function missedBlock(
   blocks: readonly WalkBlock[],
   nowMin: number,
   seen: ReadonlySet<string>
 ): (WalkBlock & { id: string }) | null {
-  let best: (WalkBlock & { id: string }) | null = null;
-  for (const b of blocks) {
-    const end = b.startMin + b.duration;
-    if (b.done || !b.movable || !b.id || seen.has(b.id)) continue;
-    if (end > nowMin || nowMin - end > MISSED_WINDOW_MIN) continue;
-    if (!best || end > best.startMin + best.duration) best = { ...b, id: b.id };
-  }
-  return best;
+  return missedBlocks(blocks, nowMin, seen)[0] ?? null;
 }
 
+/** Below this there is no room worth fitting a missed block into. */
+export const FIT_MIN = 10;
+
 /**
- * Where "fit it in" puts a block: the free stretch's start, which is now when
- * the stretch is free now. Never rounded up: a gap of a few minutes before it
- * would be a sliver the slot covers.
+ * Where "fit it in" puts a block, and how long it gets: the free stretch's
+ * start (now when the stretch is free now, never rounded up: a gap of a few
+ * minutes before it would be a sliver the slot covers), at its own length or
+ * the room before the next block or midnight, whichever is less. Null when
+ * less than FIT_MIN fits, and the offer is "let it go" alone: a block moved
+ * into a gap it overruns is a block on top of the next meeting.
  */
-export function fitInStart(s: FreeStretch | null, nowMin: number): number | null {
+export function fitIn(
+  s: FreeStretch | null,
+  nowMin: number,
+  duration: number
+): { startMin: number; duration: number } | null {
   if (!s) return null;
-  const at = Math.max(s.startMin, nowMin);
-  return at < 24 * 60 ? at : null;
+  const startMin = Math.max(s.startMin, nowMin);
+  const room = Math.min(s.endMin, DAY_END) - startMin;
+  const fitted = Math.min(duration, room);
+  if (fitted < FIT_MIN) return null;
+  return { startMin, duration: fitted };
 }

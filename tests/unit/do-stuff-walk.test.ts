@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
-  fitInStart,
+  fitIn,
   freeStretch,
   headsUp,
   missedBlock,
+  missedBlocks,
   spanLabel,
   sprintFor,
   stretchLabel,
@@ -114,9 +115,24 @@ describe('missedBlock', () => {
     expect(missedBlock([bank], 630 + 181, new Set())).toBeNull();
   });
 
-  it('fits it in at the free stretch: now, or after the block running now', () => {
-    expect(fitInStart(freeStretch(day, 671), 671)).toBe(671);
-    expect(fitInStart(freeStretch(day, 770), 770)).toBe(810);
-    expect(fitInStart(null, 671)).toBeNull();
+  it('lists every missed block, latest first, so one answer can cover them all', () => {
+    expect(missedBlocks([bank, gym], 670, new Set()).map((b) => b.id)).toEqual(['m2', 'm1']);
+    expect(missedBlocks([bank, gym], 670, new Set(['m1', 'm2']))).toEqual([]);
+  });
+
+  it('fits it in at the free stretch: now, or after the block running now, at its own length', () => {
+    expect(fitIn(freeStretch(day, 671), 671, 30)).toEqual({ startMin: 671, duration: 30 });
+    expect(fitIn(freeStretch(day, 770), 770, 30)).toEqual({ startMin: 810, duration: 30 });
+    expect(fitIn(null, 671, 30)).toBeNull();
+  });
+
+  it('shortens a block to the gap before the next block or midnight, and gives up under ten minutes', () => {
+    // 20 minutes before lunch: a 30-minute block gets 20.
+    expect(fitIn(freeStretch(day, 730), 730, 30)).toEqual({ startMin: 730, duration: 20 });
+    // Eight minutes before lunch: nothing worth it fits.
+    expect(fitIn(freeStretch(day, 742), 742, 30)).toBeNull();
+    // Late in the day the room ends at midnight.
+    expect(fitIn(freeStretch(day, 1425), 1425, 60)).toEqual({ startMin: 1425, duration: 15 });
+    expect(fitIn(freeStretch(day, 1435), 1435, 60)).toBeNull();
   });
 });

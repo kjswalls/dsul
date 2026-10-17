@@ -41,6 +41,12 @@ function wire() {
     $('line').textContent = line.text;
     $('sprint').hidden = line.left === null;
     $('left').style.transform = `scaleX(${line.left === null ? 1 : line.left})`;
+    // At 0 the line says "time's up" and changes no more until the page clears
+    // the sprint (a new state arrives): nothing left to paint each second.
+    if (line.left === 0) {
+      clearInterval(timer);
+      timer = null;
+    }
   };
 
   ipcRenderer.on('dsul-pocket:state', (_event, next) => {
