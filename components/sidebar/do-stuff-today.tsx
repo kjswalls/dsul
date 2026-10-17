@@ -1,7 +1,8 @@
 'use client';
 
+import { useRef } from 'react';
 import { Check, Plus } from 'lucide-react';
-import { doneNext, skipNext, useDoStuffStore } from '@/lib/do-stuff';
+import { doneNext, skipNext, useDoStuffStore, useSortArrival } from '@/lib/do-stuff';
 import { openFirstSteps, useCanFirstSteps } from '@/components/sidebar/first-steps';
 import { cn } from '@/lib/utils';
 
@@ -37,7 +38,6 @@ export function DoStuffToday({ className }: { className?: string }) {
   const desk = useDoStuffStore((s) => s.desk);
   const next = slot || desk ? null : current;
   const arriving = useDoStuffStore((s) => s.arriving);
-  const steps = useCanFirstSteps(next?.id);
   const shown = arriving.filter((a) => a.id !== current?.id);
   if (!on || (!next && shown.length === 0)) return null;
   const rest = shown.length - ARRIVING_SHOWN;
@@ -46,43 +46,7 @@ export function DoStuffToday({ className }: { className?: string }) {
       className={cn('@container/today flex w-[560px] min-w-0 items-center gap-1.5', className)}
       data-testid="do-stuff-today"
     >
-      {next && (
-        <div
-          className="flex h-8 min-w-0 items-center gap-2 rounded-[9px] border border-border bg-surface-2 pr-1 pl-3 text-[13px]"
-          data-testid="do-stuff-up-next"
-        >
-          <span className="hidden shrink-0 text-[11.5px] text-muted-foreground @min-[360px]/today:inline">up next</span>
-          <span className="min-w-16 truncate font-medium">{next.title}</span>
-          <button
-            type="button"
-            onClick={() => doneNext(next.id)}
-            aria-label={`Done: ${next.title}`}
-            data-testid="do-stuff-up-next-done"
-            className="flex h-6 shrink-0 items-center gap-1 rounded-[6px] px-2 text-xs font-medium hover:bg-accent"
-          >
-            <Check aria-hidden className="size-3" />
-            done
-          </button>
-          <button
-            type="button"
-            onClick={() => skipNext(next.id)}
-            data-testid="do-stuff-up-next-skip"
-            className="h-6 shrink-0 rounded-[6px] px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
-          >
-            skip
-          </button>
-          {steps && (
-            <button
-              type="button"
-              onClick={() => openFirstSteps(next.id)}
-              data-testid="do-stuff-up-next-first-steps"
-              className="hidden h-6 shrink-0 @min-[440px]/today:block rounded-[6px] px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
-            >
-              first steps
-            </button>
-          )}
-        </div>
-      )}
+      {next && <UpNext next={next} />}
       {shown.slice(0, ARRIVING_SHOWN).map((a) => (
         <span
           key={a.id}
@@ -101,6 +65,55 @@ export function DoStuffToday({ className }: { className?: string }) {
         >
           +{rest} more
         </span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The card itself. Like the slot and the list's card it arrives once the sort
+ * has landed (useSortArrival): drawn at t=0 it sat still in the header while
+ * the rows were still gliding into their lanes.
+ */
+function UpNext({ next }: { next: { id: string; title: string } }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useSortArrival(ref);
+  const steps = useCanFirstSteps(next.id);
+  return (
+    <div
+      ref={ref}
+      className="flex h-8 min-w-0 items-center gap-2 rounded-[9px] border border-border bg-surface-2 pr-1 pl-3 text-[13px]"
+      data-testid="do-stuff-up-next"
+    >
+      <span className="hidden shrink-0 text-[11.5px] text-muted-foreground @min-[360px]/today:inline">up next</span>
+      <span className="min-w-16 truncate font-medium">{next.title}</span>
+      <button
+        type="button"
+        onClick={() => doneNext(next.id)}
+        aria-label={`Done: ${next.title}`}
+        data-testid="do-stuff-up-next-done"
+        className="flex h-6 shrink-0 items-center gap-1 rounded-[6px] px-2 text-xs font-medium hover:bg-accent"
+      >
+        <Check aria-hidden className="size-3" />
+        done
+      </button>
+      <button
+        type="button"
+        onClick={() => skipNext(next.id)}
+        data-testid="do-stuff-up-next-skip"
+        className="h-6 shrink-0 rounded-[6px] px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+      >
+        skip
+      </button>
+      {steps && (
+        <button
+          type="button"
+          onClick={() => openFirstSteps(next.id)}
+          data-testid="do-stuff-up-next-first-steps"
+          className="hidden h-6 shrink-0 @min-[440px]/today:block rounded-[6px] px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+        >
+          first steps
+        </button>
       )}
     </div>
   );

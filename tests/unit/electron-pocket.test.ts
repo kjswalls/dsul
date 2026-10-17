@@ -136,6 +136,10 @@ describe('electron/pocket-preload.cjs', () => {
     expect($('line').textContent).toBe('30m left · till Lunch with Ana');
     vi.advanceTimersByTime(30 * 60_000);
     expect($('line').textContent).toBe("time's up · Lunch with Ana next");
+    // Nothing changes until the page clears the sprint: the second paint stops.
+    expect(vi.getTimerCount()).toBe(0);
+    emit('dsul-pocket:state', { id: 'a', title: 'Text Priya', done: 0, sprint: null });
+    expect($('line').textContent).toBe('now');
   });
 
   it('sends each button with the id it was pressed on, and Escape closes', () => {

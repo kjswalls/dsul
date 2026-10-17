@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, fireEvent, act } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, act, within } from '@testing-library/react';
 import { DndContext } from '@dnd-kit/core';
 
 // RelayField (the braindump's empty-state backdrop) reads prefers-reduced-motion.
@@ -62,7 +62,7 @@ vi.mock('@/lib/supabase', () => ({ createClient: vi.fn(() => ({})) }));
 
 import { Braindump } from '@/components/sidebar/braindump';
 import { usePlannerStore } from '@/lib/planner-store';
-import { useDoStuffStore } from '@/lib/do-stuff';
+import { makeItSo, useDoStuffStore } from '@/lib/do-stuff';
 import { usePrepPacksStore } from '@/lib/prep-packs-store';
 import { useAgentsStore } from '@/lib/agents-store';
 import { useViewStore } from '@/lib/view-store';
@@ -208,6 +208,60 @@ describe('do stuff: the plan in lanes', () => {
     expect(laneOfRow('zebra')).toBe('archive');
   });
 
+  it('lets the row under the pointer win a digit over the card that took focus', () => {
+    seed(SIX);
+    renderBraindump();
+    fireEvent.click(screen.getByTestId('do-stuff-start'));
+    // The walk gave the card focus; the pointer is on a row in "later".
+    expect(document.activeElement).toBe(screen.getByTestId('do-stuff-next'));
+    unfold();
+    fireEvent.mouseEnter(screen.getByText('zebra').closest('[data-lane-row]')!);
+    fireEvent.keyDown(window, { key: '4' });
+    expect(laneOfRow('zebra')).toBe('calendar');
+    expect(laneOfRow('email the landlord')).toBe('now');
+    // Focus put there by keyboard wins, until the pointer moves again.
+    fireEvent.keyDown(window, { key: 'Tab' });
+    fireEvent.keyDown(window, { key: '6' });
+    expect(laneOfRow('email the landlord')).toBe('leave');
+    expect(laneOfRow('zebra')).toBe('calendar');
+    fireEvent.pointerMove(window);
+    fireEvent.keyDown(window, { key: '3' });
+    expect(laneOfRow('zebra')).toBe('today');
+  });
+
+  it('forgets the hovered row once it has left the list, and keeps it across a lane change', () => {
+    seed(SIX);
+    renderBraindump();
+    fireEvent.click(screen.getByTestId('do-stuff-start'));
+    (document.activeElement as HTMLElement | null)?.blur();
+    unfold();
+    fireEvent.mouseEnter(screen.getByText('zebra').closest('[data-lane-row]')!);
+    fireEvent.keyDown(window, { key: '2' });
+    expect(laneOfRow('zebra')).toBe('now');
+    // Done from the store (the grid, a checkbox): the row leaves the lane list
+    // but stays a fact of the plan, so the stale hover must not steer a digit.
+    act(() => usePlannerStore.getState().toggleTaskStatus('f', 'completed'));
+    expect(screen.queryByText('zebra')).toBeNull();
+    fireEvent.keyDown(window, { key: '4' });
+    expect(useDoStuffStore.getState().moved['f']).toBe('now');
+  });
+
+  it('makes it so: today lands today even when the lane\'s first row is gone', () => {
+    seed(SIX);
+    makeItSo({ days: new Map(), handOff: [], today: ['gone', 'e'] });
+    const tz = usePlannerStore.getState().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    expect(usePlannerStore.getState().items.find((i) => i.id === 'e')).toMatchObject({ startDate: today });
+  });
+
+  it('stop() takes the run\'s leftovers with it: first steps, the slot flag, the sort clock', () => {
+    useDoStuffStore.getState().start();
+    useDoStuffStore.setState({ firstSteps: 'a', slot: true });
+    expect(useDoStuffStore.getState().startedAt).toBeGreaterThan(0);
+    useDoStuffStore.getState().stop();
+    expect(useDoStuffStore.getState()).toMatchObject({ on: false, firstSteps: null, slot: false, startedAt: 0, doneIds: [] });
+  });
+
   it('makes it so: the calendar lane lands on its days, and nothing else is written', () => {
     seed(SIX);
     renderBraindump();
@@ -299,6 +353,32 @@ describe('do stuff: the plan in lanes', () => {
     });
     expect(usePrepPacksStore.getState().packs.b).toBeUndefined();
     expect(fetch).toHaveBeenCalledWith('/api/ai/prep?item=b', { method: 'DELETE' });
+  });
+
+  it('opens a pack from any row that has one: the card, and a row moved out of ready', () => {
+    seed(SIX);
+    usePrepPacksStore.setState({
+      packs: {
+        a: { itemId: 'a', pack: { kind: 'email', subject: 'The boiler', body: 'Hi' }, madeFor: 'email the landlord', updatedAt: 't' },
+        b: { itemId: 'b', pack: { kind: 'call', who: 'the dentist', script: ['Hi'] }, madeFor: 'call the dentist', updatedAt: 't' },
+      },
+    });
+    renderBraindump();
+    fireEvent.click(screen.getByTestId('do-stuff-start'));
+    (document.activeElement as HTMLElement | null)?.blur();
+    // Both land in ready; the landlord's moves to do it now and becomes the card.
+    unfold();
+    fireEvent.mouseEnter(screen.getByText('email the landlord').closest('[data-lane-row]')!);
+    fireEvent.keyDown(window, { key: '2' });
+    expect(laneOfRow('email the landlord')).toBe('now');
+    const card = screen.getByTestId('do-stuff-next');
+    expect(card).toHaveAccessibleName('Up next: email the landlord');
+    fireEvent.click(within(card).getByTestId('prep-pack-chip'));
+    expect(screen.getByTestId('prep-pack-card')).toHaveTextContent('Email draft');
+    // ↓ walks on to the dentist's, still in ready: the pair counts in the lanes' order.
+    expect(screen.getByTestId('prep-pack-card')).toHaveTextContent('2 of 2');
+    fireEvent.keyDown(screen.getByTestId('prep-pack-card'), { key: 'ArrowDown' });
+    expect(screen.getByTestId('prep-pack-card')).toHaveTextContent('Call script');
   });
 
   it('deals the packs in a deck on the phone, the next one after each', () => {

@@ -64,8 +64,9 @@ vi.mock('@/lib/supabase', () => ({ createClient: vi.fn(() => ({})) }));
 import { Braindump } from '@/components/sidebar/braindump';
 import { DoStuffToday } from '@/components/sidebar/do-stuff-today';
 import { DoStuffSlot } from '@/components/sidebar/do-stuff-slot';
+import { SprintRing } from '@/components/sidebar/sprint-ring';
 import { usePlannerStore } from '@/lib/planner-store';
-import { useDeskHost, useDoStuffStore } from '@/lib/do-stuff';
+import { doneNext, skipNext, startSprint, useDeskHost, useDoStuffStore } from '@/lib/do-stuff';
 import { usePrepPacksStore } from '@/lib/prep-packs-store';
 import { useAgentsStore } from '@/lib/agents-store';
 import { useViewStore } from '@/lib/view-store';
@@ -137,13 +138,14 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-function start(blocks: WalkBlock[] = BLOCKS) {
+/** `hourPx` is the grid's zoom: a short stretch is a roomy slot only zoomed well in. */
+function start(blocks: WalkBlock[] = BLOCKS, hourPx = 120) {
   render(
     <DndContext>
       <Braindump />
       <DoStuffToday />
       <div style={{ position: 'relative' }}>
-        <DoStuffSlot blocks={blocks} nowMin={NOW} gridStartHour={8} gridEndHour={20} hourPx={120} />
+        <DoStuffSlot blocks={blocks} nowMin={NOW} gridStartHour={8} gridEndHour={20} hourPx={hourPx} />
       </div>
     </DndContext>
   );
@@ -161,7 +163,7 @@ describe('in the day: the current item on today\'s schedule', () => {
     expect(screen.getByTestId('do-stuff-heads-up').textContent).toBe('Standup in 3m');
   });
 
-  it('offers a missed block once: fit it in moves it to now, let it go writes nothing', () => {
+  it('offers a missed block once: fit it in moves it to now at its length, let it go writes nothing', () => {
     const missed = task('m1', { title: 'Call the bank', startDate: today, isScheduled: true, startTime: '10:00', timeBucket: 'morning' });
     seed([...ITEMS, missed]);
     const blocks: WalkBlock[] = [{ title: 'Call the bank', startMin: 600, duration: 30, id: 'm1', movable: true }, ...BLOCKS];
@@ -172,8 +174,78 @@ describe('in the day: the current item on today\'s schedule', () => {
     });
     const moved = usePlannerStore.getState().items.find((i) => i.id === 'm1') as unknown as Record<string, unknown>;
     expect(moved.startTime).toBe('11:10');
+    expect(moved.duration).toBe(30);
     expect(useDoStuffStore.getState().missedSeen).toEqual(['m1']);
     expect(screen.queryByTestId('do-stuff-missed')).toBeNull();
+  });
+
+  it('shortens a fitted block to the gap before the next block, and offers only "let it go" under ten minutes', () => {
+    const missed = task('m1', { title: 'Call the bank', startDate: today, isScheduled: true, startTime: '10:00', timeBucket: 'morning' });
+    seed([...ITEMS, missed]);
+    const bank: WalkBlock = { title: 'Call the bank', startMin: 600, duration: 30, id: 'm1', movable: true };
+    // 11:10 with lunch at 11:30 (zoomed in enough for the offer): twenty minutes, not thirty.
+    start([bank, { title: 'Lunch', startMin: 690, duration: 60 }], 300);
+    act(() => {
+      fireEvent.click(screen.getByTestId('do-stuff-missed-fit'));
+    });
+    const moved = usePlannerStore.getState().items.find((i) => i.id === 'm1') as unknown as Record<string, unknown>;
+    expect(moved).toMatchObject({ startTime: '11:10', duration: 20 });
+    cleanup();
+    // Eight minutes before lunch: nothing worth fitting, so no "fit it in".
+    useDoStuffStore.getState().stop();
+    useDoStuffStore.setState({ missedSeen: [] });
+    start([bank, { title: 'Lunch', startMin: NOW + 8, duration: 60 }], 800);
+    expect(screen.getByTestId('do-stuff-missed')).toBeTruthy();
+    expect(screen.queryByTestId('do-stuff-missed-fit')).toBeNull();
+    expect(screen.getByTestId('do-stuff-missed-let-go')).toBeTruthy();
+  });
+
+  it('asks about fitting in only where the shared reschedule gate allows a move', () => {
+    // Inside a project block: reschedule is not offered, so fit it in writes nothing, and the question is still answered.
+    const missed = task('m1', { title: 'Call the bank', startDate: today, isScheduled: true, startTime: '10:00', timeBucket: 'morning', inProjectBlock: true });
+    seed([...ITEMS, missed]);
+    start([{ title: 'Call the bank', startMin: 600, duration: 30, id: 'm1', movable: true }, ...BLOCKS]);
+    act(() => {
+      fireEvent.click(screen.getByTestId('do-stuff-missed-fit'));
+    });
+    const kept = usePlannerStore.getState().items.find((i) => i.id === 'm1') as unknown as Record<string, unknown>;
+    expect(kept.startTime).toBe('10:00');
+    expect(useDoStuffStore.getState().missedSeen).toEqual(['m1']);
+  });
+
+  it('asks about missed blocks once a run: answering one answers the rest', () => {
+    seed(ITEMS);
+    start([
+      { title: 'Call the bank', startMin: 600, duration: 30, id: 'm1', movable: true },
+      { title: 'Gym', startMin: 640, duration: 20, id: 'm2', movable: true },
+      ...BLOCKS,
+    ]);
+    // The latest is offered; letting it go takes the earlier one with it.
+    expect(screen.getByTestId('do-stuff-missed').textContent).toContain('missed Gym?');
+    act(() => {
+      fireEvent.click(screen.getByTestId('do-stuff-missed-let-go'));
+    });
+    expect(screen.queryByTestId('do-stuff-missed')).toBeNull();
+    expect([...useDoStuffStore.getState().missedSeen].sort()).toEqual(['m1', 'm2']);
+  });
+
+  it('says only "<block> in 3m" when the stretch waits on a block that is on: the user is in it, not here', () => {
+    seed(ITEMS);
+    // Standup is on until 11:40 and lunch starts in 3m, over it: the free stretch
+    // starts after both, roomy, and the heads-up names lunch without "wrap up here".
+    start([
+      { title: 'Standup', startMin: 660, duration: 40 },
+      { title: 'Lunch with Ana', startMin: NOW + 3, duration: 60 },
+      { title: 'Deep work', startMin: 900, duration: 90 },
+    ]);
+    expect(screen.getByTestId('do-stuff-slot').dataset.compact).toBeUndefined();
+    expect(screen.getByTestId('do-stuff-heads-up').textContent).toBe('Lunch with Ana in 3m');
+    cleanup();
+    useDoStuffStore.getState().stop();
+    // Free now, and zoomed in enough for a roomy slot: it says where to wrap up.
+    start([{ title: 'Lunch with Ana', startMin: NOW + 3, duration: 60 }, { title: 'Deep work', startMin: 900, duration: 600 }], 2000);
+    expect(screen.getByTestId('do-stuff-slot').dataset.compact).toBeUndefined();
+    expect(screen.getByTestId('do-stuff-heads-up').textContent).toBe('Lunch with Ana in 3m · wrap up here');
   });
 
   it("lets a missed block go, and doesn't ask about a habit or a series", () => {
@@ -267,6 +339,70 @@ describe('in the day: the current item on today\'s schedule', () => {
     expect(screen.getByTestId('sprint-label').textContent).toBe("time's up · Lunch with Ana next");
     act(() => useDoStuffStore.getState().stop());
     expect(useDoStuffStore.getState().sprint).toBeNull();
+  });
+
+  it('keeps the ring beside the title when the slot is a sliver: a sprint ends exactly then', () => {
+    seed(ITEMS);
+    // Three minutes to the block: one line.
+    start([{ title: 'Lunch with Ana', startMin: NOW + 3, duration: 60 }, ...BLOCKS.slice(1)]);
+    expect(screen.getByTestId('do-stuff-slot').dataset.compact).toBe('true');
+    act(() => useDoStuffStore.setState({ sprint: { startedAt: Date.now() - 60_000, endsAt: Date.now() + 120_000, until: 'Lunch with Ana' } }));
+    const slot = screen.getByTestId('do-stuff-slot');
+    expect(slot.contains(screen.getByTestId('sprint-ring'))).toBe(true);
+    expect(screen.getByTestId('sprint-label').textContent).toBe('2m left · till Lunch with Ana');
+    // The ring takes the heads-up's place: one line says one thing.
+    expect(screen.queryByTestId('do-stuff-heads-up')).toBeNull();
+    act(() => useDoStuffStore.setState({ sprint: { startedAt: Date.now() - 60_000, endsAt: Date.now() - 1, until: 'Lunch with Ana' } }));
+    expect(screen.getByTestId('sprint-label').textContent).toBe("time's up · Lunch with Ana next");
+  });
+});
+
+describe('a sprint lets go of itself', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('clears once the block it ran to has started: five minutes after time is up', () => {
+    startSprint(10, 'Lunch with Ana', 'a');
+    vi.advanceTimersByTime(10 * 60_000);
+    // At 0 it waits for a tap.
+    expect(useDoStuffStore.getState().sprint).not.toBeNull();
+    vi.advanceTimersByTime(5 * 60_000 - 1);
+    expect(useDoStuffStore.getState().sprint).not.toBeNull();
+    vi.advanceTimersByTime(1);
+    expect(useDoStuffStore.getState().sprint).toBeNull();
+  });
+
+  it('an open 25 clears five minutes after it ends, too', () => {
+    startSprint(25, null, 'a');
+    vi.advanceTimersByTime(30 * 60_000);
+    expect(useDoStuffStore.getState().sprint).toBeNull();
+  });
+
+  it('ends with done or skip on the item it was started for, and not on another', () => {
+    seed(ITEMS);
+    useDoStuffStore.getState().start();
+    startSprint(25, null, 'a');
+    skipNext('b');
+    expect(useDoStuffStore.getState().sprint).not.toBeNull();
+    skipNext('a');
+    expect(useDoStuffStore.getState().sprint).toBeNull();
+    startSprint(25, null, 'b');
+    doneNext('b');
+    expect(useDoStuffStore.getState().sprint).toBeNull();
+    // Its timer went with it: nothing fires later.
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('stops the ring\'s second clock once time is up', () => {
+    const now = Date.now();
+    useDoStuffStore.setState({ sprint: { startedAt: now - 60_000, endsAt: now + 2_000, until: null } });
+    render(<SprintRing />);
+    expect(vi.getTimerCount()).toBe(1);
+    act(() => {
+      vi.advanceTimersByTime(2_000);
+    });
+    expect(screen.getByTestId('sprint-label').textContent).toBe("time's up");
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
 

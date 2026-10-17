@@ -326,3 +326,25 @@ PR3 Sprint, PR4 Pocket, PR5 L1.
   it is never asked about again this session (store `missedSeen`, memory only, kept across
   runs). Habits, series and project blocks are never offered (`WalkBlock.movable`): their
   time is every day's.
+
+#### Fixes (2026-10-17, after a code audit)
+
+- A sprint stays in view to its end: the one-line slot draws the small ring and its label
+  beside the title (a sprint ends five minutes before the block, exactly when the stretch is
+  a sliver), "time's up · Lunch next" included.
+- A sprint that has ended clears itself once the block it ran to has started (five minutes
+  after time is up; an open 25 gets the same), and done or skip on the item it was started
+  for ends it. Until then it still says time's up and waits for a tap. The ring's and the
+  pocket's second clocks stop at 0.
+- Fit it in fits: the block is shortened to the gap before the next block or midnight
+  (`fitIn`, never below ten minutes; under that the offer is "let it go" alone), and the
+  write asks the shared reschedule gate first.
+- One missed-block offer a run: answering it marks every block missed right now seen.
+- The header's up-next card arrives after the sort, as the slot and the list card do
+  (`useSortArrival`).
+- The heads-up says "wrap up here" only when the stretch is free now; after a block that is
+  on it just names what is coming.
+- "N done" counts whatever got done in the walked lanes while the mode is on, from the
+  planner store's own changes (the card, the slot, the desk, the pocket, a row's checkbox,
+  the grid), and a today row ticked on the walk stays on the list for "N done here".
+

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, fireEvent, act } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, act, within } from '@testing-library/react';
 import { DndContext } from '@dnd-kit/core';
 
 // RelayField (the braindump's empty-state backdrop) reads prefers-reduced-motion.
@@ -64,7 +64,7 @@ import { Braindump } from '@/components/sidebar/braindump';
 import { DoStuffToday } from '@/components/sidebar/do-stuff-today';
 import { TaskRow } from '@/components/primitives/task-row';
 import { usePlannerStore } from '@/lib/planner-store';
-import { useDoStuffStore } from '@/lib/do-stuff';
+import { startSprint, useDoStuffStore } from '@/lib/do-stuff';
 import { usePrepPacksStore } from '@/lib/prep-packs-store';
 import { useAgentsStore } from '@/lib/agents-store';
 import { useViewStore } from '@/lib/view-store';
@@ -236,6 +236,89 @@ describe('one do stuff: today joins the plan', () => {
     const mark = screen.getByTestId('do-stuff-mark');
     expect(mark).toHaveAttribute('data-lane', 'calendar');
     expect(mark).toHaveTextContent('→ tomorrow');
+  });
+});
+
+describe('the up-next card arrives after the sort', () => {
+  const animated: { el: Element; delay: number }[] = [];
+  beforeEach(() => {
+    animated.length = 0;
+    HTMLElement.prototype.animate = vi.fn(function (this: HTMLElement, _k: unknown, o?: number | KeyframeAnimationOptions) {
+      animated.push({ el: this, delay: typeof o === 'object' && o ? Number(o.delay ?? 0) : 0 });
+      return {} as Animation;
+    });
+  });
+  afterEach(() => {
+    delete (HTMLElement.prototype as { animate?: unknown }).animate;
+    document.documentElement.removeAttribute('data-reduce-motion');
+  });
+
+  it('waits for the rows to land, like the slot and the list card', () => {
+    seed([...SIX, ...TODAY]);
+    start();
+    const card = screen.getByTestId('do-stuff-up-next');
+    const arrival = animated.find((a) => a.el === card);
+    expect(arrival).toBeDefined();
+    expect(arrival!.delay).toBeGreaterThan(0);
+  });
+
+  it('and not under reduced motion', () => {
+    document.documentElement.setAttribute('data-reduce-motion', '');
+    seed([...SIX, ...TODAY]);
+    start();
+    const card = screen.getByTestId('do-stuff-up-next');
+    expect(animated.some((a) => a.el === card)).toBe(false);
+  });
+});
+
+describe('what counts as done this run', () => {
+  const tick = (title: string) => {
+    unfold();
+    const row = screen.getByText(title, { selector: '[data-lane-row] *' }).closest('[data-lane-row]')!;
+    act(() => {
+      fireEvent.click(within(row).getByTestId('item-complete-button'));
+    });
+  };
+
+  it('counts a today row ticked on its own checkbox, and keeps it on the list for "done here"', () => {
+    seed([...SIX, ...TODAY]);
+    start();
+    expect(laneOfRow('text sam back')).toBe('now');
+    tick('text sam back');
+    expect(byId().get('t2')?.status).toBe('completed');
+    expect(useDoStuffStore.getState().doneCount).toBe(1);
+    expect(screen.getByTestId('do-stuff-done-here')).toHaveTextContent('1 done here');
+    // Not a second time when the card's own done is used on the next one.
+    act(() => {
+      fireEvent.click(screen.getByTestId('do-stuff-up-next-done'));
+    });
+    expect(useDoStuffStore.getState().doneCount).toBe(2);
+    expect(screen.getByTestId('do-stuff-done-here')).toHaveTextContent('2 done here');
+  });
+
+  it('counts a completion from the grid or the store while on, in a walked lane only, and never one from before the run', () => {
+    seed([...SIX, ...TODAY, onToday('t9', { title: 'already done', size: 'quick', status: 'completed' })]);
+    start();
+    expect(useDoStuffStore.getState().doneCount).toBe(0);
+    expect(screen.queryByText('already done')).toBeNull();
+    act(() => usePlannerStore.getState().toggleTaskStatus('t2', 'completed'));
+    expect(useDoStuffStore.getState().doneCount).toBe(1);
+    // A row in "later" is not being walked: done there is not the run's.
+    act(() => usePlannerStore.getState().toggleTaskStatus('f', 'completed'));
+    expect(useDoStuffStore.getState().doneCount).toBe(1);
+    // Unticked again, it leaves the count.
+    act(() => usePlannerStore.getState().toggleTaskStatus('t2', 'pending'));
+    expect(useDoStuffStore.getState().doneCount).toBe(0);
+  });
+
+  it('a tick from the grid ends the sprint started for that item, and leaves another\'s alone', () => {
+    seed([...SIX, ...TODAY]);
+    start();
+    act(() => startSprint(25, null, 't2'));
+    act(() => usePlannerStore.getState().toggleTaskStatus('t1', 'completed'));
+    expect(useDoStuffStore.getState().sprint?.forItem).toBe('t2');
+    act(() => usePlannerStore.getState().toggleTaskStatus('t2', 'completed'));
+    expect(useDoStuffStore.getState().sprint).toBeNull();
   });
 });
 

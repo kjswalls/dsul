@@ -271,7 +271,7 @@ function DeskItem({ item }: { item: Item }) {
             first steps <Cap>F</Cap>
           </Button>
         )}
-        <SprintButton offer={sprint} />
+        <SprintButton offer={sprint} forItem={id} />
         <PocketButton />
       </div>
       {/* Talk it through: the item's own conversation, with whoever answers

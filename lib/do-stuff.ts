@@ -1,23 +1,29 @@
-import { useEffect } from 'react';
+import { useEffect, useLayoutEffect, type RefObject } from 'react';
 import { create } from 'zustand';
 import { usePlannerStore } from './planner-store';
 import { ITEM_VERBS, occurrenceOn, type VerbContext } from './item-verbs';
 import { milestoneItemIds } from './goals';
 import { toDateStr } from './recurrence';
+import { isRowCompletedOn, type SortableRow } from './sort-rows';
+import { prefersReducedMotion } from './zen-transition';
+import { SPRINT_LEAD_MIN } from './do-stuff-walk';
 import type { Lane } from './do-stuff-plan';
 import { handOffItem } from './agent-handoff';
 import type { Item } from './planner-types';
 
 /**
- * Do stuff mode: the braindump sorted into a plan in lanes, then walked
- * (lib/do-stuff-plan.ts holds the lanes and their rules;
- * components/sidebar/do-stuff.tsx draws it).
+ * Do stuff mode: the braindump (and today's anytime rows) sorted into a plan
+ * in seven lanes, then walked (lib/do-stuff-plan.ts holds the lanes and their
+ * rules; components/sidebar/do-stuff.tsx draws it; the walk itself is
+ * components/sidebar/do-stuff-slot.tsx, the desk and the up-next card).
  *
  * The mode is MEMORY ONLY, never persisted: it is something you do for a while,
  * not a setting, and a reload that lands back in a half-finished walk would
  * read as the app having an opinion about what you should be doing. The same
- * goes for what you skipped and the lanes you moved things to: only "make it
- * so" writes anything.
+ * goes for what you skipped and the lanes you moved things to. What writes at
+ * once is what you did to one thing with your own hands (done, the Desk's T key,
+ * first steps, fit it in; skip writes nothing, it is memory like the lanes); the plan's moves (another day, do it for me, later,
+ * whatever) wait for "make it so".
  */
 
 /**
@@ -34,13 +40,26 @@ interface DoStuffState {
   skipped: string[];
   /** Lanes the user moved rows to this run, by id. The rules decide the rest. */
   moved: Record<string, Lane>;
-  /** How many things were done in this run, for the row's progress. */
+  /**
+   * How many things were done in this run, for the row's progress: the length
+   * of `doneIds`, kept as a number for its many readers.
+   */
   doneCount: number;
+  /**
+   * The rows done this run, in the walked lanes (do it now, today), whichever
+   * surface ticked them: the card, the slot, the desk, the pocket, the row's
+   * own checkbox or the grid. Counted from the planner store's own changes
+   * (watchCompletions below), never by the surface that asked, so every way
+   * of finishing a thing counts once. A row unticked again leaves the list.
+   * The plan also keeps a today-origin row in these on the list once it is
+   * done, so "N done here" can count it: a done row leaving `tasks`' pending
+   * set is a row the plan never saw finish.
+   */
+  doneIds: readonly string[];
   start: () => void;
   stop: () => void;
   skip: (id: string) => void;
   move: (id: string, lane: Lane) => void;
-  countDone: () => void;
   /**
    * Who the handed-off lane goes to (an assignee, lib/agent-assignees.ts), as
    * last picked. Kept across runs, memory only; null, or someone no longer
@@ -122,6 +141,24 @@ export interface Sprint {
   endsAt: number;
   /** The block it stops ahead of; null for an open one. */
   until: string | null;
+  /**
+   * The item it was started for. Done or skip on that item ends the sprint:
+   * the ring was for the thing, not the clock. The pocket never sees it
+   * (electron/lib/pocket.cjs shapePocket keeps the three fields above).
+   */
+  forItem?: string;
+}
+
+/**
+ * When a sprint that has ended clears itself, with no tap: SPRINT_LEAD_MIN
+ * after it ends. A sprint run to a block stops that long before the block, so
+ * this is the block's start (lib/do-stuff-walk.ts sprintFor); an open one gets
+ * the same five minutes. Until then it says "time's up" and waits (Kirby's
+ * rule: no sound, no red); after it, a stale "time's up · Lunch next" over a
+ * lunch that already happened would be the app not noticing the time.
+ */
+export function sprintClearsAt(sprint: Sprint): number {
+  return sprint.endsAt + SPRINT_LEAD_MIN * 60_000;
 }
 
 /**
@@ -162,16 +199,37 @@ export const useDoStuffStore = create<DoStuffState>((set) => ({
   skipped: [],
   moved: {},
   doneCount: 0,
+  doneIds: [],
   start: () => {
     snapshotRows();
+    watchCompletionsWhileOn();
     const startedAt = typeof performance === 'undefined' ? 0 : performance.now();
-    set((s) => ({ on: true, skipped: [], moved: {}, doneCount: 0, starts: s.starts + 1, startedAt }));
+    set((s) => ({ on: true, skipped: [], moved: {}, doneCount: 0, doneIds: [], starts: s.starts + 1, startedAt }));
   },
-  stop: () =>
-    set({ on: false, skipped: [], moved: {}, doneCount: 0, commit: null, marks: NO_MARKS, next: null, arriving: [], desk: false, sprint: null }),
+  // Everything the run held goes with it: a First steps dialog left open, the
+  // slot's flag and the sort clock included, so nothing of a run outlives it.
+  stop: () => {
+    disarmSprintClear();
+    unwatchCompletions();
+    set({
+      on: false,
+      skipped: [],
+      moved: {},
+      doneCount: 0,
+      doneIds: [],
+      commit: null,
+      marks: NO_MARKS,
+      next: null,
+      arriving: [],
+      firstSteps: null,
+      slot: false,
+      startedAt: 0,
+      desk: false,
+      sprint: null,
+    });
+  },
   skip: (id) => set((s) => ({ skipped: [...s.skipped.filter((x) => x !== id), id] })),
   move: (id, lane) => set((s) => ({ moved: { ...s.moved, [id]: lane } })),
-  countDone: () => set((s) => ({ doneCount: s.doneCount + 1 })),
   handTo: null,
   setHandTo: (assignee) => set({ handTo: assignee }),
   available: false,
@@ -212,14 +270,40 @@ export function useDeskHosted(): boolean {
   return useDoStuffStore((s) => s.deskHosts > 0);
 }
 
-/** Start a sprint of `minutes` from now, stopping ahead of `until`. */
-export function startSprint(minutes: number, until: string | null): void {
+/** The one timer that clears a finished sprint (sprintClearsAt); armed by startSprint. */
+let sprintClearTimer: ReturnType<typeof setTimeout> | null = null;
+
+function disarmSprintClear(): void {
+  if (sprintClearTimer !== null) clearTimeout(sprintClearTimer);
+  sprintClearTimer = null;
+}
+
+/**
+ * Start a sprint of `minutes` from now, stopping ahead of `until`, for the
+ * item `forItem`. It clears itself at sprintClearsAt unless a tap, done or
+ * skip on its item, or stop() gets there first. The timer is the store's, not
+ * a ring's: the ring is not drawn at the desk's slot, and nothing should
+ * depend on a component being mounted to let go of a sprint that is over.
+ */
+export function startSprint(minutes: number, until: string | null, forItem?: string): void {
   const startedAt = Date.now();
-  useDoStuffStore.setState({ sprint: { startedAt, endsAt: startedAt + minutes * 60_000, until } });
+  const sprint: Sprint = { startedAt, endsAt: startedAt + minutes * 60_000, until, ...(forItem ? { forItem } : {}) };
+  disarmSprintClear();
+  sprintClearTimer = setTimeout(() => {
+    sprintClearTimer = null;
+    if (useDoStuffStore.getState().sprint === sprint) useDoStuffStore.setState({ sprint: null });
+  }, sprintClearsAt(sprint) - startedAt);
+  useDoStuffStore.setState({ sprint });
 }
 
 export function stopSprint(): void {
+  disarmSprintClear();
   useDoStuffStore.setState({ sprint: null });
+}
+
+/** Done or skip on the item a sprint was started for ends it; another item's leaves it. */
+function endSprintFor(id: string): void {
+  if (useDoStuffStore.getState().sprint?.forItem === id) stopSprint();
 }
 
 /**
@@ -245,6 +329,26 @@ export function sortDelay(): number {
   if (typeof performance === 'undefined') return 0;
   const since = performance.now() - useDoStuffStore.getState().startedAt;
   return Math.max(0, SORT_SETTLE_MS - since);
+}
+
+/**
+ * The current item arrives after the sort has landed (sortDelay), wherever it
+ * is drawn: the slot, the header's up-next card. A clip from the top edge and
+ * a short drop, never an opacity, since the slot's notch is lime. Once, on
+ * mount; off under reduced motion, and where there is no `animate` (jsdom).
+ */
+export function useSortArrival(ref: RefObject<HTMLElement | null>): void {
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || prefersReducedMotion() || typeof el.animate !== 'function') return;
+    el.animate(
+      [
+        { clipPath: 'inset(0 0 100% 0)', transform: 'translate(0, -4px)' },
+        { clipPath: 'inset(0)', transform: 'none' },
+      ],
+      { duration: 320, delay: sortDelay(), easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'backwards' }
+    );
+  }, [ref]);
 }
 
 /** How many things make it so would move: today, the other days, the hand-offs and the let-go. */
@@ -293,6 +397,12 @@ export function takeShuffleFrom(): Map<string, number> | null {
 
 const planner = () => usePlannerStore.getState();
 
+/** Today, in the user's own zone: the day the plan was made for. */
+function todayStrNow(): string {
+  const tz = planner().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return toDateStr(new Date(), tz);
+}
+
 function todayContext(item: Item): VerbContext {
   const state = planner();
   const tz = state.userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -312,14 +422,70 @@ function fresh(id: string): Item | undefined {
   return planner().items.find((i) => i.id === id);
 }
 
-/** Done: the shared COMPLETE verb, asked at click time like every surface. */
+/**
+ * Done: the shared COMPLETE verb, asked at click time like every surface. The
+ * count is not bumped here: watchCompletions sees the store change, as it
+ * does for a checkbox or the grid.
+ */
 export function doneNext(id: string): void {
   const item = fresh(id);
   if (!item) return;
   const ctx = todayContext(item);
   if (!ITEM_VERBS.complete.eligible(item, ctx)) return;
   ITEM_VERBS.complete.run(item, ctx);
-  useDoStuffStore.getState().countDone();
+  endSprintFor(id);
+}
+
+/** The walked lanes: a row done in one of these counts for the run. */
+const WALKED: ReadonlySet<Lane> = new Set<Lane>(['now', 'today']);
+
+/**
+ * Counts what gets done during a run, from the planner store's own changes:
+ * a row in a walked lane that goes from open to done joins `doneIds`, one
+ * unticked again leaves it, whichever surface did it. Watched from start()
+ * to stop(), and only for rows the plan has marked (the plan's `marks` still
+ * hold the row at the moment it changes, since the plan recomputes after).
+ */
+function watchCompletions(items: readonly Item[], prev: readonly Item[]): void {
+  const ds = useDoStuffStore.getState();
+  if (!ds.on || items === prev) return;
+  const todayStr = todayStrNow();
+  const before = new Map(prev.map((i) => [i.id, i]));
+  const done = new Set(ds.doneIds);
+  let changed = false;
+  for (const item of items) {
+    const was = before.get(item.id);
+    if (!was || was === item) continue;
+    const lane = ds.marks.get(item.id)?.lane;
+    if (!lane || !WALKED.has(lane)) continue;
+    // The walked lanes hold task-likes (a habit is left alone by the rules),
+    // and the item is the ITEM shape the row carries, so the row is built here.
+    const itemType = item.type === 'habit' ? 'habit' : 'task';
+    const wasDone = isRowCompletedOn({ itemType, item: was as SortableRow['item'] }, todayStr);
+    const isDone = isRowCompletedOn({ itemType, item: item as SortableRow['item'] }, todayStr);
+    if (isDone === wasDone) continue;
+    if (isDone) {
+      done.add(item.id);
+      // Ticked on the grid or the row's own checkbox: the sprint started for
+      // it is over too, the same as done in the slot.
+      endSprintFor(item.id);
+    } else done.delete(item.id);
+    changed = true;
+  }
+  if (!changed) return;
+  const doneIds = [...done];
+  useDoStuffStore.setState({ doneIds, doneCount: doneIds.length });
+}
+
+let unwatch: (() => void) | null = null;
+
+function watchCompletionsWhileOn(): void {
+  unwatch ??= usePlannerStore.subscribe((s, prev) => watchCompletions(s.items, prev.items));
+}
+
+function unwatchCompletions(): void {
+  unwatch?.();
+  unwatch = null;
 }
 
 /** Put on today: the shared RESCHEDULE verb, landing on today. */
@@ -349,10 +515,11 @@ export function makeItSo(plan: {
 }): void {
   const byDay = new Map<string, string[]>();
   const all = new Map(plan.days);
+  // Today is the clock's, not the first row's: a row gone since the plan was
+  // drawn must not keep the rest of the lane off the day.
   if (plan.today?.length) {
-    const first = fresh(plan.today[0]);
-    const todayStr = first ? todayContext(first).todayStr : undefined;
-    if (todayStr) for (const id of plan.today) all.set(id, todayStr);
+    const todayStr = todayStrNow();
+    for (const id of plan.today) all.set(id, todayStr);
   }
   for (const [id, day] of all) {
     const item = fresh(id);
@@ -369,26 +536,37 @@ export function makeItSo(plan: {
   if (plan.letGo?.length) planner().letGoItems([...plan.letGo]);
 }
 
-/** "let it go": a missed block is not asked about again, and nothing is written. */
-export function letMissedGo(id: string): void {
-  useDoStuffStore.setState((s) => ({ missedSeen: [...s.missedSeen.filter((x) => x !== id), id] }));
+/**
+ * "let it go": a missed block is not asked about again, and nothing is
+ * written. `alsoSeen` are the other blocks missed right now: answering one
+ * answers the run's question, so they are not asked about either (the plan
+ * promises one offer, not a chain).
+ */
+export function letMissedGo(id: string, alsoSeen: readonly string[] = []): void {
+  const ids = [id, ...alsoSeen];
+  useDoStuffStore.setState((s) => ({ missedSeen: [...s.missedSeen.filter((x) => !ids.includes(x)), ...ids] }));
 }
 
 /**
- * "fit it in": a missed one-off block moves to `startMin` today, keeping its
- * length, in one undo. Never a habit or a series (lib/do-stuff-walk.ts
- * WalkBlock.movable): their time is every day's.
+ * "fit it in": a missed one-off block moves to `startMin` today, `duration`
+ * long (its own length, or what fits before the next block: lib/do-stuff-walk.ts
+ * fitIn), in one undo. Never a habit or a series (WalkBlock.movable): their
+ * time is every day's. Gated like every other write here, on the shared
+ * RESCHEDULE verb's eligibility, re-read at click time.
  */
-export function fitMissedIn(id: string, startMin: number): void {
-  letMissedGo(id);
-  const h = Math.floor(startMin / 60);
-  const startTime = `${String(h).padStart(2, '0')}:${String(startMin % 60).padStart(2, '0')}`;
+export function fitMissedIn(id: string, at: { startMin: number; duration: number }, alsoSeen: readonly string[] = []): void {
+  letMissedGo(id, alsoSeen);
+  const item = fresh(id);
+  if (!item || !ITEM_VERBS.reschedule.eligible(item, todayContext(item))) return;
+  const h = Math.floor(at.startMin / 60);
+  const startTime = `${String(h).padStart(2, '0')}:${String(at.startMin % 60).padStart(2, '0')}`;
   const timeBucket = h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening';
-  planner().updateTask(id, { startTime, timeBucket }, { label: 'Fit it in' });
+  planner().updateTask(id, { startTime, duration: at.duration, timeBucket }, { label: 'Fit it in' });
 }
 
 export function skipNext(id: string): void {
   useDoStuffStore.getState().skip(id);
+  endSprintFor(id);
 }
 
 /**
