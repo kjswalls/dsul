@@ -21,8 +21,8 @@ import type { Item } from './planner-types';
  * not a setting, and a reload that lands back in a half-finished walk would
  * read as the app having an opinion about what you should be doing. The same
  * goes for what you skipped and the lanes you moved things to. What writes at
- * once is what you did to one thing with your own hands (done, skip, today,
- * first steps, fit it in); the plan's moves (another day, do it for me, later,
+ * once is what you did to one thing with your own hands (done, the Desk's T key,
+ * first steps, fit it in; skip writes nothing, it is memory like the lanes); the plan's moves (another day, do it for me, later,
  * whatever) wait for "make it so".
  */
 
@@ -464,8 +464,12 @@ function watchCompletions(items: readonly Item[], prev: readonly Item[]): void {
     const wasDone = isRowCompletedOn({ itemType, item: was as SortableRow['item'] }, todayStr);
     const isDone = isRowCompletedOn({ itemType, item: item as SortableRow['item'] }, todayStr);
     if (isDone === wasDone) continue;
-    if (isDone) done.add(item.id);
-    else done.delete(item.id);
+    if (isDone) {
+      done.add(item.id);
+      // Ticked on the grid or the row's own checkbox: the sprint started for
+      // it is over too, the same as done in the slot.
+      endSprintFor(item.id);
+    } else done.delete(item.id);
     changed = true;
   }
   if (!changed) return;

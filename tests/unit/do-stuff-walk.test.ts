@@ -134,5 +134,9 @@ describe('missedBlock', () => {
     // Late in the day the room ends at midnight.
     expect(fitIn(freeStretch(day, 1425), 1425, 60)).toEqual({ startMin: 1425, duration: 15 });
     expect(fitIn(freeStretch(day, 1435), 1435, 60)).toBeNull();
+    // A five-minute block with room to spare is a five-minute block, not a refusal.
+    expect(fitIn(freeStretch(day, 671), 671, 5)).toEqual({ startMin: 671, duration: 5 });
+    // Cut to three minutes, it is refused like any sliver.
+    expect(fitIn(freeStretch(day, 747), 747, 5)).toBeNull();
   });
 });

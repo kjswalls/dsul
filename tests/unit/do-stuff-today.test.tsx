@@ -64,7 +64,7 @@ import { Braindump } from '@/components/sidebar/braindump';
 import { DoStuffToday } from '@/components/sidebar/do-stuff-today';
 import { TaskRow } from '@/components/primitives/task-row';
 import { usePlannerStore } from '@/lib/planner-store';
-import { useDoStuffStore } from '@/lib/do-stuff';
+import { startSprint, useDoStuffStore } from '@/lib/do-stuff';
 import { usePrepPacksStore } from '@/lib/prep-packs-store';
 import { useAgentsStore } from '@/lib/agents-store';
 import { useViewStore } from '@/lib/view-store';
@@ -309,6 +309,16 @@ describe('what counts as done this run', () => {
     // Unticked again, it leaves the count.
     act(() => usePlannerStore.getState().toggleTaskStatus('t2', 'pending'));
     expect(useDoStuffStore.getState().doneCount).toBe(0);
+  });
+
+  it('a tick from the grid ends the sprint started for that item, and leaves another\'s alone', () => {
+    seed([...SIX, ...TODAY]);
+    start();
+    act(() => startSprint(25, null, 't2'));
+    act(() => usePlannerStore.getState().toggleTaskStatus('t1', 'completed'));
+    expect(useDoStuffStore.getState().sprint?.forItem).toBe('t2');
+    act(() => usePlannerStore.getState().toggleTaskStatus('t2', 'completed'));
+    expect(useDoStuffStore.getState().sprint).toBeNull();
   });
 });
 

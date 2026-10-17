@@ -238,7 +238,7 @@ export const OFFICIAL_EXTENSIONS: ExtensionManifest[] = [
     whatChanges: [
       'A "do stuff" key in the braindump\'s header once the list gets long.',
       'Press it and the list sorts into lanes: ready, do it now, today, another day, do it for me, later, whatever. The next thing opens in today\'s free time, with done and skip.',
-      'Move a row with its lane chip, the keys 1 to 7, or a swipe. Done, skip and today write as you go; the other lanes wait for "make it so".',
+      'Move a row with its lane chip, the keys 1 to 7, or a swipe. Done and first steps write as you go; the lanes wait for "make it so".',
     ],
     makerNote:
       'Fifteen undated things all look the same weight, so none of them gets picked. Splitting off the quick ones is usually all it takes to start.',

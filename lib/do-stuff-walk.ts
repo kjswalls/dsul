@@ -179,7 +179,7 @@ export const FIT_MIN = 10;
  * start (now when the stretch is free now, never rounded up: a gap of a few
  * minutes before it would be a sliver the slot covers), at its own length or
  * the room before the next block or midnight, whichever is less. Null when
- * less than FIT_MIN fits, and the offer is "let it go" alone: a block moved
+ * less than FIT_MIN of a longer block fits, and the offer is "let it go" alone: a block moved
  * into a gap it overruns is a block on top of the next meeting.
  */
 export function fitIn(
@@ -191,6 +191,8 @@ export function fitIn(
   const startMin = Math.max(s.startMin, nowMin);
   const room = Math.min(s.endMin, DAY_END) - startMin;
   const fitted = Math.min(duration, room);
-  if (fitted < FIT_MIN) return null;
+  // A block shorter than FIT_MIN that fits whole is fine; the floor is for a
+  // block the gap would cut down to a sliver.
+  if (fitted < Math.min(FIT_MIN, duration)) return null;
   return { startMin, duration: fitted };
 }

@@ -238,17 +238,19 @@ describe('do stuff: the plan in lanes', () => {
     fireEvent.mouseEnter(screen.getByText('zebra').closest('[data-lane-row]')!);
     fireEvent.keyDown(window, { key: '2' });
     expect(laneOfRow('zebra')).toBe('now');
-    // Let go, it leaves the braindump: the next digit has no row.
-    act(() => usePlannerStore.getState().letGoItems(['f']));
+    // Done from the store (the grid, a checkbox): the row leaves the lane list
+    // but stays a fact of the plan, so the stale hover must not steer a digit.
+    act(() => usePlannerStore.getState().toggleTaskStatus('f', 'completed'));
     expect(screen.queryByText('zebra')).toBeNull();
     fireEvent.keyDown(window, { key: '4' });
-    expect(Object.keys(useDoStuffStore.getState().moved)).toEqual(['f']);
+    expect(useDoStuffStore.getState().moved['f']).toBe('now');
   });
 
   it('makes it so: today lands today even when the lane\'s first row is gone', () => {
     seed(SIX);
     makeItSo({ days: new Map(), handOff: [], today: ['gone', 'e'] });
-    const today = new Date().toISOString().slice(0, 10);
+    const tz = usePlannerStore.getState().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
     expect(usePlannerStore.getState().items.find((i) => i.id === 'e')).toMatchObject({ startDate: today });
   });
 
