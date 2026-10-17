@@ -238,3 +238,15 @@ describe('one do stuff: today joins the plan', () => {
     expect(mark).toHaveTextContent('→ tomorrow');
   });
 });
+
+describe('the up-next card and the desk', () => {
+  it('stands down while the desk is open, with the slot off the grid', () => {
+    seed([...SIX, ...TODAY]);
+    start();
+    expect(screen.getByTestId('do-stuff-up-next')).toBeTruthy();
+    act(() => useDoStuffStore.setState({ desk: true, slot: false }));
+    expect(screen.queryByTestId('do-stuff-up-next')).toBeNull();
+    act(() => useDoStuffStore.setState({ desk: false }));
+    expect(screen.getByTestId('do-stuff-up-next')).toBeTruthy();
+  });
+});

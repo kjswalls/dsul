@@ -8,7 +8,7 @@ import { DayBuckets } from '@/components/views/day-buckets';
 import { DayList } from '@/components/views/day-list';
 import { DaySchedule } from '@/components/views/day-schedule';
 import { DoStuffDesk } from '@/components/sidebar/do-stuff-desk';
-import { useDoStuffStore } from '@/lib/do-stuff';
+import { useDeskHost, useDoStuffStore } from '@/lib/do-stuff';
 import { PlannerSkeleton } from '@/components/primitives/planner-skeleton';
 import { useCanvasWide, useViewStore } from '@/lib/view-store';
 import { useDragStore } from '@/lib/drag-store';
@@ -46,6 +46,9 @@ export const ViewRouter = memo(function ViewRouter() {
   // Doing stuff at the Desk: the canvas is the current item beside today's day
   // column, whatever the scope and layout (components/sidebar/do-stuff-desk.tsx).
   const desk = useDoStuffStore((s) => s.on && s.desk);
+  // This router is what draws the desk, so it says so (the phone's router
+  // never does, and there openDesk() is a no-op and the ⤢ is not drawn).
+  useDeskHost();
 
   const view = (() => {
     if (desk) return <DoStuffDesk activeId={activeId} />;

@@ -30,9 +30,12 @@ export function DoStuffToday({ className }: { className?: string }) {
   const on = useDoStuffStore((s) => s.on);
   const current = useDoStuffStore((s) => s.next);
   // While the schedule shows the walk's slot the current item lives there
-  // (do-stuff-slot.tsx): the card stands down and only the chips stay.
+  // (do-stuff-slot.tsx): the card stands down and only the chips stay. So
+  // does it at the Desk (do-stuff-desk.tsx), whose slot can be off the grid
+  // (no free stretch left) while the item is set large beside it.
   const slot = useDoStuffStore((s) => s.slot);
-  const next = slot ? null : current;
+  const desk = useDoStuffStore((s) => s.desk);
+  const next = slot || desk ? null : current;
   const arriving = useDoStuffStore((s) => s.arriving);
   const steps = useCanFirstSteps(next?.id);
   const shown = arriving.filter((a) => a.id !== current?.id);

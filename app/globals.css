@@ -1502,6 +1502,16 @@ body {
   }
 }
 
+/* The Desk's day column (components/sidebar/do-stuff-desk.tsx, `data-dense`)
+   is a day at about a phone's width inside a desktop canvas, so it takes the
+   phone's gutter: the 2rem one cost 36px of a 320px column. Safe to do in CSS
+   alone: CANVAS_PAD_PX, the JS mirror of the 2rem, is read only by the week
+   column views (week-schedule.tsx and lib/week-columns.ts, checked 2026-10-17),
+   which never mount inside the desk. */
+[data-dense] .canvas-container {
+  padding-inline: 0.875rem;
+}
+
 /* ── The day on a narrow canvas ───────────────────────────────────────────
    Beside a docked right rail the day can be as narrow as ~380px (the braindump
    yields down to its minimum, lib/sidebar-store.ts renderedSidebarWidth), and

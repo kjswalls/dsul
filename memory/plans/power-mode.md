@@ -252,6 +252,15 @@ PR3 Sprint, PR4 Pocket, PR5 L1.
   when handed off, and nothing when nobody can answer.
 - Right: the real `DaySchedule`, its slot showing the time and title only (the desk has the
   actions). It follows the walk: done or skip and the next item rises in.
+- Polish (2026-10-17, after a code audit): the desk has one host, the desktop `ViewRouter`
+  (`useDeskHost`, a count like the console's), so on the phone, whose router never mounts it,
+  `openDesk()` is a no-op and the ⤢ and "desk" keys are not drawn; the last host leaving
+  closes it. While it is open the braindump is the user's own width again
+  (`doStuffSidebarWidth(…, desk)`), the day column is `minmax(320px,38%)` with the phone's
+  gutter (`data-dense`), the header's up-next card stands down, the list card's D reads "back
+  to the day" and toggles, and leaving today closes it. The jot writes on ↵ only (blur keeps
+  the draft, Esc clears it) and grows from two lines to six. The kicker row is always drawn,
+  the sprint ring at its start and the exit at its end, and T puts the item on today.
 
 ### What PR3 shipped (Sprint)
 

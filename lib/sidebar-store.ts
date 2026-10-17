@@ -100,10 +100,17 @@ export function renderedSidebarWidth(stored: number, viewportWidth?: number, res
  * (1180px, rail-store's PANEL_OVERLAY_QUERY) there is no room to split, and
  * the column stays as it is. Like the rail's yield, it is never written back:
  * stopping puts the user's own width back.
+ *
+ * At the Desk (`desk`, components/sidebar/do-stuff-desk.tsx) the column is
+ * the user's own width again: the desk is a room for the current item beside
+ * today's day column, and at 1180–1440 the split left it ~174–304px for the
+ * item with the day pinned at its floor. The lanes still show beside it, at
+ * the width the braindump always had; closing the desk opens the split back.
  */
 export const DO_STUFF_SPLIT_MIN_VIEWPORT = 1180
 
-export function doStuffSidebarWidth(rendered: number, viewportWidth: number, reservePx = 0): number {
+export function doStuffSidebarWidth(rendered: number, viewportWidth: number, reservePx = 0, desk = false): number {
+  if (desk) return rendered
   if (!Number.isFinite(viewportWidth) || viewportWidth < DO_STUFF_SPLIT_MIN_VIEWPORT) return rendered
   const reserve = Number.isFinite(reservePx) && reservePx > 0 ? reservePx : 0
   const half = Math.round((viewportWidth - reserve) / 2)

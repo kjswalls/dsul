@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { Check, Maximize2 } from 'lucide-react';
-import { doneNext, fitMissedIn, letMissedGo, openDesk, skipNext, sortDelay, useDoStuffStore } from '@/lib/do-stuff';
+import { doneNext, fitMissedIn, letMissedGo, openDesk, skipNext, sortDelay, useDeskHosted, useDoStuffStore } from '@/lib/do-stuff';
 import {
   fitInStart,
   freeStretch,
@@ -122,6 +122,9 @@ function SlotFace({
   const bodyRef = useRef<HTMLDivElement>(null);
   const steps = useCanFirstSteps(id);
   const desk = useDoStuffStore((s) => s.desk);
+  // The ⤢ only where a desk can open: the phone's router has no desk.
+  const deskHosted = useDeskHosted();
+  const ring = running && !desk;
 
   // Arrive once the sort has landed: a clip from the top edge, never an
   // opacity, since the notch is lime.
@@ -187,7 +190,7 @@ function SlotFace({
       )}
       {!compact && <SprintButton offer={sprint} />}
       {!compact && <PocketButton />}
-      {!desk && (
+      {deskHosted && !desk && (
         <button
           type="button"
           onClick={openDesk}
@@ -242,14 +245,16 @@ function SlotFace({
             </button>
           </p>
         )}
-        {/* The offer takes the heading's place until it is answered. */}
-        {!compact && !missed && running && <SprintRing size={14} className="h-[17px] self-start" />}
-        {!compact && !missed && !running && heads && (
+        {/* The offer takes the heading's place until it is answered. At the
+            Desk the ring is the desk's (one ring for one sprint): the slot
+            keeps its stretch line. */}
+        {!compact && !missed && ring && <SprintRing size={14} className="h-[17px] self-start" />}
+        {!compact && !missed && !ring && heads && (
           <p className="truncate text-[11.5px] text-muted-foreground" data-testid="do-stuff-heads-up">
             <span className="font-medium text-foreground">{heads.title}</span> in {heads.inMin}m · wrap up here
           </p>
         )}
-        {!compact && !missed && !running && !heads && (
+        {!compact && !missed && !ring && !heads && (
           <p className="truncate text-[11.5px] text-muted-foreground" data-testid="do-stuff-slot-stretch">
             <span className="font-medium text-success-text">{lead}</span> · {rest}
             {doneCount > 0 && <span> · {doneCount} done</span>}
