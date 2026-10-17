@@ -235,15 +235,19 @@ export async function POST(req: Request): Promise<Response> {
   }
   if (rows.size === 0) return ok({ packs: [] })
 
-  // No `updated_at` in the payload: the row's own default stamps an insert and
-  // migration 078's trigger stamps an update. 074 granted authenticated INSERT
-  // on five named columns only, and Postgres checks every column an INSERT
-  // names, so naming `updated_at` here made every save fail with 42501 and the
-  // client show "Couldn't get things ready." on every run (found 2026-10-17).
-  const { data, error } = await db
-    .from('prep_packs')
-    .upsert([...rows.values()], { onConflict: 'item_id' })
-    .select(SELECT)
+  // Not an upsert. PostgREST's ON CONFLICT DO UPDATE assigns every payload
+  // column, `item_id` included, and 074 grants `authenticated` UPDATE on four
+  // named columns only; Postgres checks the SET list up front, so the upsert
+  // was refused whole (42501) on the FIRST save too, and no pack ever reached
+  // the table from the app (found 2026-10-17). Delete, then insert, stays
+  // inside the grants 074 gives: own rows out, five named columns in, and the
+  // row's own default stamps `updated_at`. RLS scopes the delete to the user.
+  const ids = [...rows.keys()]
+  const { error: dropError } = await db.from('prep_packs').delete().in('item_id', ids)
+  const { data, error: insertError } = dropError
+    ? { data: null, error: dropError }
+    : await db.from('prep_packs').insert([...rows.values()]).select(SELECT)
+  const error = insertError
   if (error) {
     if (error.code === '42P01' || error.code === 'PGRST205') {
       return jsonError(503, 'Prep packs are not set up yet.', 'server', { available: false })

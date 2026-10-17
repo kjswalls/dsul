@@ -17,8 +17,9 @@ const STRANGER = '33333333-3333-4333-8333-333333333333';
 
 const h = vi.hoisted(() => ({
   user: { id: 'user-1' } as { id: string } | null,
-  upserts: [] as unknown[][],
+  inserts: [] as unknown[][],
   deleted: [] as string[],
+  dropped: [] as string[][],
   error: null as { code: string; message?: string } | null,
   stored: [] as unknown[],
 }));
@@ -30,8 +31,8 @@ vi.mock('@/lib/supabase-server', () => ({
       select: () => ({
         order: () => ({ limit: async () => ({ data: h.error ? null : h.stored, error: h.error }) }),
       }),
-      upsert: (rows: Record<string, unknown>[]) => {
-        h.upserts.push(rows);
+      insert: (rows: Record<string, unknown>[]) => {
+        h.inserts.push(rows);
         return {
           select: async () => ({
             data: h.error ? null : rows.map((r) => ({ ...r, updated_at: '2026-10-12T00:00:00Z' })),
@@ -42,6 +43,10 @@ vi.mock('@/lib/supabase-server', () => ({
       delete: () => ({
         eq: async (_col: string, id: string) => {
           h.deleted.push(id);
+          return { error: h.error };
+        },
+        in: async (_col: string, ids: string[]) => {
+          h.dropped.push(ids);
           return { error: h.error };
         },
       }),
@@ -96,8 +101,9 @@ const ITEMS = [
 
 beforeEach(() => {
   h.user = { id: 'user-1' };
-  h.upserts = [];
+  h.inserts = [];
   h.deleted = [];
+  h.dropped = [];
   h.error = null;
   h.stored = [];
   connected();
@@ -126,7 +132,7 @@ describe('POST /api/ai/prep', () => {
       madeFor: 'email the landlord about the boiler',
       pack: { kind: 'email', subject: 'The boiler' },
     });
-    expect(h.upserts[0]).toEqual([
+    expect(h.inserts[0]).toEqual([
       expect.objectContaining({
         item_id: A,
         kind: 'email',
@@ -135,10 +141,12 @@ describe('POST /api/ai/prep', () => {
         model: 'm-1',
       }),
     ]);
-    // Never `updated_at`: 074 grants authenticated INSERT on five named columns,
-    // and an INSERT naming any other column is refused whole (42501). The row's
-    // default and 078's trigger stamp it instead.
-    expect(Object.keys((h.upserts[0] as Record<string, unknown>[])[0])).not.toContain('updated_at');
+    // Never `updated_at`, and never an upsert: 074 grants authenticated INSERT
+    // on five named columns and UPDATE on four, and PostgREST's upsert assigns
+    // `item_id` in its SET list, so either is refused whole (42501). The route
+    // drops the user's old rows for these ids and inserts; the default stamps.
+    expect(Object.keys((h.inserts[0] as Record<string, unknown>[])[0])).not.toContain('updated_at');
+    expect(h.dropped).toEqual([[A]]);
   });
 
   it('sends the model the titles and notes, and asks for JSON', async () => {
@@ -155,7 +163,7 @@ describe('POST /api/ai/prep', () => {
     adapter.completeText.mockResolvedValue('not json at all');
     const res = await post({ items: ITEMS });
     expect(await res.json()).toEqual({ packs: [] });
-    expect(h.upserts).toHaveLength(0);
+    expect(h.inserts).toHaveLength(0);
   });
 
   it(`refuses a batch over ${PREP_BATCH}, a bad id, and a stranger`, async () => {
