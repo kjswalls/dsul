@@ -27,6 +27,7 @@ vi.mock('next-themes', () => ({ useTheme: () => ({ theme: 'system', setTheme: ()
 import {
   EXT_ACCOUNTABILITY_PARTNER,
   EXT_BEEMINDER,
+  EXT_DO_STUFF,
   EXT_ORGANIZE,
   EXT_PHONE_CALL,
   EXT_SMS_NUDGE,
@@ -59,6 +60,18 @@ describe('every extension reaches the store whole', () => {
       expect(extension.whatChanges.length, extension.slug).toBeGreaterThanOrEqual(1);
       expect(extension.whatChanges.length, extension.slug).toBeLessThanOrEqual(3);
       expect(extension.makerNote.trim().length, extension.slug).toBeGreaterThan(20);
+    }
+  });
+
+  it('describes Do stuff as it is: the seven lanes, and what writes when', () => {
+    const doStuff = OFFICIAL_EXTENSIONS.find((e) => e.slug === EXT_DO_STUFF)!;
+    const copy = [doStuff.description, ...doStuff.whatChanges].join(' ');
+    for (const lane of ['ready', 'do it now', 'today', 'another day', 'do it for me', 'later', 'whatever']) {
+      expect(copy).toContain(lane);
+    }
+    // The lanes it replaced, and a promise that was never true: done writes at once.
+    for (const stale of ['on the calendar', 'handed off', 'left alone', 'Nothing is written', 'size dots']) {
+      expect(copy).not.toContain(stale);
     }
   });
 

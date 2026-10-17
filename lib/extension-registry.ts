@@ -129,18 +129,19 @@ export const EXT_ORGANIZE = 'organize';
 export const EXT_STREAKS = 'streaks';
 
 /**
- * Do stuff (default ON) — the braindump sorted by size, walked quick-first.
+ * Do stuff (default ON) — the braindump sorted into a plan in seven lanes,
+ * then walked (memory/plans/power-mode.md).
  *
  * An idea rather than a peripheral, like Organize, and on by default for the
  * same reason Organize is: it costs nothing until it is used. A braindump that
  * has not grown past a handful of rows, and has nothing sized, draws exactly as
- * it did before this existed; the one "do stuff" row appears only once the list
- * is long enough to need it (DO_STUFF_MIN_OPEN in lib/do-stuff.ts), and a size
- * shows on a row only after the user gave it one.
+ * it did before this existed; the "do stuff" key appears only once the list is
+ * long enough to need it (DO_STUFF_MIN_OPEN in lib/do-stuff.ts), and nothing
+ * shows on a row at rest.
  *
- * Off is inert, as everywhere here: the row, the size dots and the menu go,
- * the braindump is exactly the old list, and every stored size stays on its
- * item, so switching back on brings them all back.
+ * Off is inert, as everywhere here: the key, the lanes and the item menu's
+ * first steps go, the braindump is exactly the old list, and every stored size
+ * stays on its item, so switching back on brings them all back.
  */
 export const EXT_DO_STUFF = 'do-stuff';
 
@@ -226,7 +227,7 @@ export const OFFICIAL_EXTENSIONS: ExtensionManifest[] = [
     slug: EXT_DO_STUFF,
     name: 'Do stuff',
     description:
-      'Sort the braindump into a plan: what to do now, what goes on the calendar, what to hand off. One tap makes it so.',
+      'Sort the braindump into lanes: what to do now, what goes on a day, what to hand off, what can wait. Then do the first thing.',
     icon: Zap,
     category: 'planning',
     // ON by default: see EXT_DO_STUFF above. It adds nothing to a short or
@@ -236,8 +237,8 @@ export const OFFICIAL_EXTENSIONS: ExtensionManifest[] = [
     shelf: 'plan',
     whatChanges: [
       'A "do stuff" key in the braindump\'s header once the list gets long.',
-      'Press it and the list shuffles into lanes: do now, on the calendar, handed off, left alone, with the next thing lifted to the top.',
-      'Move a row with its lane chip, the number keys, or a swipe. Nothing is written until you make it so.',
+      'Press it and the list sorts into lanes: ready, do it now, today, another day, do it for me, later, whatever. The next thing opens in today\'s free time, with done and skip.',
+      'Move a row with its lane chip, the keys 1 to 7, or a swipe. Done, skip and today write as you go; the other lanes wait for "make it so".',
     ],
     makerNote:
       'Fifteen undated things all look the same weight, so none of them gets picked. Splitting off the quick ones is usually all it takes to start.',

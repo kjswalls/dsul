@@ -1703,9 +1703,9 @@ export const SETTINGS: SettingRecord[] = [
     pane: extensionPaneId(EXT_DO_STUFF),
     label: 'Do stuff',
     description:
-      'Sort the braindump by size and walk the quick ones first. Off hides the row and the size dots; every size you set is kept.',
+      'Sort the braindump into lanes and do the first thing. Off hides the key and the lanes; every size you set is kept.',
     control: 'switch',
-    keywords: ['size', 'quick', 'errand', 'braindump', 'stale', 'momentum', 'focus'],
+    keywords: ['size', 'quick', 'errand', 'braindump', 'lanes', 'make it so', 'momentum', 'focus'],
     unavailable: extUnavailable,
     // Defaults ON, so extPending matters for the reason the Streaks row gives.
     pending: extPending,
