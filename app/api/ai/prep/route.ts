@@ -235,19 +235,44 @@ export async function POST(req: Request): Promise<Response> {
   }
   if (rows.size === 0) return ok({ packs: [] })
 
-  // Not an upsert. PostgREST's ON CONFLICT DO UPDATE assigns every payload
-  // column, `item_id` included, and 074 grants `authenticated` UPDATE on four
-  // named columns only; Postgres checks the SET list up front, so the upsert
-  // was refused whole (42501) on the FIRST save too, and no pack ever reached
-  // the table from the app (found 2026-10-17). Delete, then insert, stays
-  // inside the grants 074 gives: own rows out, five named columns in, and the
-  // row's own default stamps `updated_at`. RLS scopes the delete to the user.
-  const ids = [...rows.keys()]
-  const { error: dropError } = await db.from('prep_packs').delete().in('item_id', ids)
-  const { data, error: insertError } = dropError
-    ? { data: null, error: dropError }
-    : await db.from('prep_packs').insert([...rows.values()]).select(SELECT)
-  const error = insertError
+  // Not an upsert, and not delete-then-insert. PostgREST's ON CONFLICT DO
+  // UPDATE assigns every payload column, `item_id` included, and 074 grants
+  // `authenticated` UPDATE on four named columns only; Postgres checks the SET
+  // list up front, so the upsert was refused whole (42501) on the FIRST save
+  // too, and no pack ever reached the table from the app (found 2026-10-17).
+  // Deleting first would lose a pack at the 200 cap: 074's cap trigger spares
+  // only an item whose pack still exists, and a multi-row insert that trips
+  // the cap on a new item rolls the regenerated ones back after their delete
+  // committed. So: INSERT ... ON CONFLICT DO NOTHING (supabase-js spells it
+  // `upsert` + `ignoreDuplicates`; it has no SET list, so no UPDATE grant is
+  // asked) takes the new items, which is exactly what the cap counts, and each
+  // item it skipped gets an UPDATE of the four columns 074 lets us set, plus
+  // `updated_at`, which it also grants.
+  const { data: inserted, error: insertError } = await db
+    .from('prep_packs')
+    .upsert([...rows.values()], { onConflict: 'item_id', ignoreDuplicates: true })
+    .select(SELECT)
+  let error = insertError
+  const saved = [...(inserted ?? [])]
+  if (!error) {
+    const fresh = new Set(saved.map((r) => (r as { item_id: string }).item_id))
+    const stamp = new Date().toISOString()
+    for (const [itemId, row] of rows) {
+      if (fresh.has(itemId)) continue
+      const { kind, body, made_for, model } = row
+      const { data: updated, error: updateError } = await db
+        .from('prep_packs')
+        .update({ kind, body, made_for, model, updated_at: stamp })
+        .eq('item_id', itemId)
+        .select(SELECT)
+      if (updateError) {
+        error = updateError
+        break
+      }
+      saved.push(...(updated ?? []))
+    }
+  }
+  const data = error ? null : saved
   if (error) {
     if (error.code === '42P01' || error.code === 'PGRST205') {
       return jsonError(503, 'Prep packs are not set up yet.', 'server', { available: false })

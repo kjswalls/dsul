@@ -18,8 +18,9 @@ const STRANGER = '33333333-3333-4333-8333-333333333333';
 const h = vi.hoisted(() => ({
   user: { id: 'user-1' } as { id: string } | null,
   inserts: [] as unknown[][],
+  updates: [] as { id: string; patch: Record<string, unknown> }[],
   deleted: [] as string[],
-  dropped: [] as string[][],
+  existing: new Set<string>(),
   error: null as { code: string; message?: string } | null,
   stored: [] as unknown[],
 }));
@@ -31,22 +32,34 @@ vi.mock('@/lib/supabase-server', () => ({
       select: () => ({
         order: () => ({ limit: async () => ({ data: h.error ? null : h.stored, error: h.error }) }),
       }),
-      insert: (rows: Record<string, unknown>[]) => {
+      upsert: (rows: Record<string, unknown>[], opts?: { onConflict?: string; ignoreDuplicates?: boolean }) => {
         h.inserts.push(rows);
+        // ON CONFLICT DO NOTHING is the only upsert the grants allow: a DO UPDATE
+        // would name `item_id` in its SET list. Rows whose item already has a
+        // pack come back absent.
+        if (!opts?.ignoreDuplicates) throw new Error('an upsert with a SET list is refused by 074 (42501)');
+        const kept = rows.filter((r) => !h.existing.has(r.item_id as string));
         return {
           select: async () => ({
-            data: h.error ? null : rows.map((r) => ({ ...r, updated_at: '2026-10-12T00:00:00Z' })),
+            data: h.error ? null : kept.map((r) => ({ ...r, updated_at: '2026-10-12T00:00:00Z' })),
             error: h.error,
           }),
         };
       },
+      update: (patch: Record<string, unknown>) => ({
+        eq: (_col: string, id: string) => {
+          h.updates.push({ id, patch });
+          return {
+            select: async () => ({
+              data: h.error ? null : [{ item_id: id, ...patch }],
+              error: h.error,
+            }),
+          };
+        },
+      }),
       delete: () => ({
         eq: async (_col: string, id: string) => {
           h.deleted.push(id);
-          return { error: h.error };
-        },
-        in: async (_col: string, ids: string[]) => {
-          h.dropped.push(ids);
           return { error: h.error };
         },
       }),
@@ -102,8 +115,9 @@ const ITEMS = [
 beforeEach(() => {
   h.user = { id: 'user-1' };
   h.inserts = [];
+  h.updates = [];
   h.deleted = [];
-  h.dropped = [];
+  h.existing = new Set();
   h.error = null;
   h.stored = [];
   connected();
@@ -141,12 +155,13 @@ describe('POST /api/ai/prep', () => {
         model: 'm-1',
       }),
     ]);
-    // Never `updated_at`, and never an upsert: 074 grants authenticated INSERT
-    // on five named columns and UPDATE on four, and PostgREST's upsert assigns
-    // `item_id` in its SET list, so either is refused whole (42501). The route
-    // drops the user's old rows for these ids and inserts; the default stamps.
+    // Never `updated_at` on the insert, and never an upsert: 074 grants
+    // authenticated INSERT on five named columns and UPDATE on four plus
+    // `updated_at`, and PostgREST's upsert puts `item_id` in its SET list, so
+    // it is refused whole (42501). New items go in with ON CONFLICT DO NOTHING.
+    // The mock throws on any other upsert.
     expect(Object.keys((h.inserts[0] as Record<string, unknown>[])[0])).not.toContain('updated_at');
-    expect(h.dropped).toEqual([[A]]);
+    expect(h.updates).toEqual([]);
   });
 
   it('sends the model the titles and notes, and asks for JSON', async () => {
@@ -157,6 +172,31 @@ describe('POST /api/ai/prep', () => {
     expect(req.messages[0].content).toContain(`id ${A}: email the landlord about the boiler`);
     expect(req.messages[0].content).toContain('notes: landlord is sam@example.com');
     expect(req.system[0]).toMatch(/Never invent an email address, a phone number/);
+  });
+
+  it('updates an item that already has a pack instead of deleting it first', async () => {
+    // Delete-then-insert loses a pack at the 200 cap: 074's cap trigger spares
+    // only an item whose pack still exists, and a multi-row insert that trips
+    // the cap on a new item rolls the regenerated ones back after their delete
+    // committed. So the skipped rows of the insert get an UPDATE each.
+    h.existing = new Set([A]);
+    adapter.completeText.mockResolvedValue(
+      JSON.stringify({
+        packs: [
+          { itemId: A, kind: 'email', subject: 'The boiler, again', body: 'Hi Sam, still cold.' },
+          { itemId: B, kind: 'call', who: 'the dentist', script: ['Ask for the next free slot.'] },
+        ],
+      }),
+    );
+    const res = await post({ items: ITEMS });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.packs.map((p: { itemId: string }) => p.itemId).sort()).toEqual([A, B].sort());
+    expect(h.inserts).toHaveLength(1);
+    expect(h.updates).toHaveLength(1);
+    expect(h.updates[0].id).toBe(A);
+    expect(Object.keys(h.updates[0].patch).sort()).toEqual(['body', 'kind', 'made_for', 'model', 'updated_at']);
+    expect(h.deleted).toEqual([]);
   });
 
   it('writes nothing when the model prepares nothing', async () => {
