@@ -150,7 +150,11 @@ function NoticeRow({
       </span>
       {notice.actionLabel && (
         <span className="flex flex-shrink-0 items-center gap-1 font-num text-xs tracking-[0.04em] text-muted-foreground">
-          {open && hasTray ? 'Close' : notice.actionLabel}
+          {/* Underlined so the verb reads as the thing to press (Kirby,
+              2026-10-17), though the whole row takes the click. */}
+          <span className="underline decoration-muted-foreground/50 underline-offset-[3px]">
+            {open && hasTray ? 'Close' : notice.actionLabel}
+          </span>
           {hasTray && <Chevron className="h-3.5 w-3.5" />}
         </span>
       )}

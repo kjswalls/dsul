@@ -5,6 +5,20 @@ stack's two-row height ladder. Does **not** supersede the dock's membership rule
 which is unchanged and still load-bearing — see the doc comment on `DockNotice`
 in [lib/dock-notices.ts](../../lib/dock-notices.ts).
 
+**Addendum (2026-10-17): the day's notes moved into the date capsule.** Kirby
+found the planner saying the same thing in two places (the season line beside
+the capsule AND at the top of the Schedule and List day views) and asked for one
+place per kind of message. The split: what is about the day on screen goes in the
+date capsule, everything else stays in the dock. The three day lines (season,
+vacation, `eod-review` on the `day-header` anchor) are now glyphs at the end of the
+capsule's date row, with the sentences in a popover on click
+([components/notices/day-messages.tsx](../../components/notices/day-messages.tsx)),
+on the desktop and in the phone's date row alike. The in-view season copies are
+gone. The `day-header` anchor is held by the glyph itself (`useDayHeaderNotices`),
+so a closed popover does not send the review line back to the dock. The waiting
+line now reads "N things left from earlier · Sort", and every notice verb is
+underlined so it reads as pressable.
+
 ---
 
 ## What this actually is, and what it is not

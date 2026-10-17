@@ -66,6 +66,7 @@ import { DayHeaderNotice } from '@/components/notices/notice-slot';
 import { useEODStore } from '@/lib/eod-store';
 import { useViewStore } from '@/lib/view-store';
 import { NoticeSlot } from '@/components/notices/notice-slot';
+import { DayMessages } from '@/components/notices/day-messages';
 import { UndoStrip } from '@/components/notices/undo-strip';
 import { TypewriterText } from '@/components/primitives/typewriter-text';
 
@@ -593,6 +594,39 @@ describe('the end-of-day line', () => {
       'eod-review'
     );
   });
+
+  it('lives behind the date capsule’s glyph, and keeps the dock clear while shut', () => {
+    // The popover is closed, so the slot inside it is not mounted. The anchor
+    // must still be held, or the line falls back to the dock every time the
+    // popover shuts (useDayHeaderNotices).
+    render(
+      <>
+        <DayMessages />
+        <DockNotices />
+      </>
+    );
+
+    const key = screen.getByTestId('day-messages');
+    expect(key).toHaveAttribute('data-count', '1');
+    expect(screen.queryByTestId('dock-notice')).toBeNull();
+    expect(screen.queryByTestId('in-place-notice')).toBeNull();
+
+    fireEvent.click(key);
+    expect(screen.getByTestId('in-place-notice')).toHaveAttribute('data-notice-id', 'eod-review');
+  });
+
+  it('shows no glyph on another day, where the dock takes the line', () => {
+    usePlannerStore.setState({ selectedDate: new Date('2026-09-17T12:00:00Z') });
+    render(
+      <>
+        <DayMessages />
+        <DockNotices />
+      </>
+    );
+
+    expect(screen.queryByTestId('day-messages')).toBeNull();
+    expect(screen.getByTestId('dock-notice')).toHaveAttribute('data-notice-id', 'eod-review');
+  });
 });
 
 /* ── the dock's one line, and where the strip hangs ──────────────────── */
@@ -915,7 +949,7 @@ describe('the notice verbs wait for the planner to load', () => {
     it('appears once loaded', () => {
       usePlannerStore.setState(loaded);
       render(<DockNotices />);
-      expect(screen.getByTestId('morning-bar')).toHaveTextContent('1 item waiting');
+      expect(screen.getByTestId('morning-bar')).toHaveTextContent('1 thing left from earlier');
     });
   });
 });

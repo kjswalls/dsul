@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { DisplayMenu, type DisplayMenuHandle } from '@/components/primitives/display-menu';
 import { DisplayShelf } from '@/components/primitives/display-shelf';
+import { DayMessages } from '@/components/notices/day-messages';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
 import { LAYOUT_OPTIONS, SCOPE_OPTIONS, type ViewOption } from '@/lib/view-options';
@@ -271,6 +272,11 @@ export const HeaderCapsule = memo(function HeaderCapsule() {
             <span data-narrow-sr="">Today</span>
           </button>
         )}
+
+        {/* What the planner has to say about this day (the season holding
+            items, a trip, today's review) as glyphs at the row's end, the
+            sentences in a popover (components/notices/day-messages.tsx). */}
+        <DayMessages className="ml-auto" />
       </div>
 
       {/* Row 2 — white pill: shape on the left, content on the right.
