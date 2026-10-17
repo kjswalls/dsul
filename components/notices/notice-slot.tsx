@@ -52,7 +52,7 @@ function InPlaceNotice({ notice }: { notice: DockNotice }) {
           {notice.label}
         </TypewriterText>
         {notice.actionLabel && (
-          <span className="flex-shrink-0 font-num text-xs tracking-[0.04em] text-muted-foreground">
+          <span className="flex-shrink-0 font-num text-xs tracking-[0.04em] text-muted-foreground underline decoration-muted-foreground/50 underline-offset-[3px]">
             {notice.actionLabel}
           </span>
         )}
@@ -123,7 +123,9 @@ export function NoticeSlot({
 }
 
 /**
- * Beside the date, in the canvas header row.
+ * The day-header slot: the end-of-day line, in the date capsule's popover
+ * (components/notices/day-messages.tsx) on the desktop and the phone alike.
+ * (It sat beside the capsule, in the canvas header row, until 2026-10-17.)
  *
  * The end-of-day line's object is the DAY, and the day's canonical handle is its
  * date — not the geometric foot of a grid. This is the address SeasonNotice
@@ -164,4 +166,28 @@ export function DayHeaderNotice({
   return (
     <NoticeSlot anchor="day-header" active={scope === 'day' && isToday} className={className} />
   );
+}
+
+/**
+ * The notices placed on the day-header anchor right now, registering that
+ * anchor while it is live (day scope, on today) exactly as `DayHeaderNotice`
+ * does. The date capsule's icon (components/notices/day-messages.tsx) calls
+ * this so the anchor stays registered while its popover is closed and the
+ * slot inside it is not mounted; without it the end-of-day line would fall
+ * back to the dock every time the popover shut.
+ */
+export function useDayHeaderNotices(scopeOverride?: 'day' | 'week'): DockNotice[] {
+  const selectedDate = usePlannerStore((s) => s.selectedDate);
+  const userTimezone = usePlannerStore((s) => s.userTimezone);
+  const storeScope = useViewStore((s) => s.scope);
+  const scope = scopeOverride ?? storeScope;
+
+  const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const active = scope === 'day' && toDateStr(selectedDate, tz) === toDateStr(new Date(), tz);
+
+  useNoticeAnchor('day-header', active);
+  const live = useLiveNoticeAnchors();
+  const notices = useAnchorableNotices();
+  if (!active) return [];
+  return placeNotices(notices, live).anchored.get('day-header') ?? [];
 }

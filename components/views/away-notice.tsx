@@ -10,17 +10,16 @@ import { toDateStr } from '@/lib/recurrence';
 import { cn } from '@/lib/utils';
 
 /**
- * Vacation mode's one line, beside the date: "Away until Tue, Oct 20 · 2 still
- * running · I'm back".
- *
- * Like SeasonNotice it is a statement of where things are, never a warning:
- * muted, no count badge, no colour. Unlike it, it shows on every date and in
- * every scope, because a trip is about you rather than about a day. Before a
- * trip it says when it starts; after one, while habits are still easing back,
- * it offers to bring everything back now. The words open the card; the verb
- * at the end does the one thing the line is for.
+ * The vacation line's words and verb, or null when no trip is current, coming
+ * up, or easing back. Shared by the line below and by the date capsule's icon
+ * (components/notices/day-messages.tsx), which shows a palm while this is
+ * non-null.
  */
-export function AwayNotice({ className }: { className?: string }) {
+export function useAwayLine(): {
+  text: string;
+  verb?: { label: string; run: () => void };
+  state: 'away' | 'upcoming' | 'easing';
+} | null {
   const periods = useAwayStore((s) => s.periods);
   const available = useAwayStore((s) => s.available);
   const items = usePlannerStore((s) => s.items);
@@ -54,6 +53,25 @@ export function AwayNotice({ className }: { className?: string }) {
   } else {
     return null;
   }
+  return { text, verb, state };
+}
+
+
+/**
+ * Vacation mode's one line, in the date capsule's popover (day-messages.tsx): "Away until Tue, Oct 20 · 2 still
+ * running · I'm back".
+ *
+ * Like SeasonNotice it is a statement of where things are, never a warning:
+ * muted, no count badge, no colour. Unlike it, it shows on every date and in
+ * every scope, because a trip is about you rather than about a day. Before a
+ * trip it says when it starts; after one, while habits are still easing back,
+ * it offers to bring everything back now. The words open the card; the verb
+ * at the end does the one thing the line is for.
+ */
+export function AwayNotice({ className }: { className?: string }) {
+  const line = useAwayLine();
+  if (!line) return null;
+  const { text, verb, state } = line;
 
   return (
     <div

@@ -838,8 +838,8 @@ describe('the phone mount, at the foot of the Today card', () => {
     seed(FOUR_ENDING_IN_A_PHRASE);
     renderPhoneHeader();
 
-    // Last, under the date row and the review notice about that date, so the
-    // line sits over the content it describes.
+    // Last, under the date row, so the line sits over the content it
+    // describes.
     const block = shelf().parentElement!;
     expect(block.lastElementChild).toBe(shelf());
     expect(block.closest('header')).toContainElement(screen.getByTestId('header-date'));
@@ -882,7 +882,10 @@ describe('the phone mount, at the foot of the Today card', () => {
     }
   });
 
-  it('comes after the review notice while one is owed, so the date keeps its cluster', () => {
+  it('leaves the review notice to the date row, so the shelf is alone under it', () => {
+    // Since 2026-10-17 the day's notes (today's review among them) are a glyph
+    // beside the date with the sentences in a popover (day-messages.tsx), so
+    // nothing about the day sits between the top row and the shelf.
     resetNoticeAnchors();
     seed({ canvasGroupBy: 'project' }, { selectedDate: new Date() });
     useEODStore.setState({
@@ -896,10 +899,10 @@ describe('the phone mount, at the foot of the Today card', () => {
       renderPhoneHeader();
 
       const card = shelf().parentElement!;
-      const notice = screen.getByTestId('notice-slot');
-      expect(card).toContainElement(notice);
-      expect(card.lastElementChild).toBe(shelf());
-      expect(shelf().previousElementSibling).toBe(notice);
+      expect(card.firstElementChild).toBe(shelf());
+      expect(screen.queryByTestId('notice-slot')).toBeNull();
+      const key = screen.getByTestId('day-messages');
+      expect(screen.getByTestId('header-date').parentElement?.parentElement).toContainElement(key);
     } finally {
       useEODStore.setState({ eodReviewEnabled: false, _hasHydrated: false });
     }

@@ -3,9 +3,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Sidebar } from '@/components/sidebar/sidebar';
 import { ViewRouter } from '@/components/views/view-router';
-import { AwayNotice } from '@/components/views/away-notice';
-import { SeasonNotice } from '@/components/views/season-notice';
-import { DayHeaderNotice } from '@/components/notices/notice-slot';
 import { DoStuffToday } from '@/components/sidebar/do-stuff-today';
 import { HeaderCapsule } from '@/components/canvas/header-capsule';
 import { WeekScale } from '@/components/canvas/week-scale';
@@ -255,32 +252,11 @@ export const DesktopShell = memo(function DesktopShell() {
           )}
         >
           <HeaderCapsule />
-          {/* "6 items are away with Summer" — the day's own suppression line,
-              beside the day it is about. It costs this row nothing: the row's
-              height is max(children), which the capsule already sets — 96 at
-              rest, more while its Display shelf shows — and mt-2 + h-8 lands
-              its centre on the date row's (the capsule's p-2 plus half of its
-              32px nav row = 24px from the top, both ways; the shelf grows the
-              capsule at the bottom, so this never moves).
-              Being here rather than inside a view is what gets it into `buckets`
-              too — it used to exist only in day-schedule and day-list. */}
-          {/* max-w bounds the truncate: season names are user data, and an
-              unbounded line here would push WeekScale off the row's right end
-              before it ever thought about eliding. */}
-          <SeasonNotice className="mt-2 h-8 min-w-0 max-w-[260px]" />
-          {/* Vacation mode's line: on every date and scope, since a trip is
-              about you and not about a day (away-notice.tsx). */}
-          <AwayNotice className="mt-2 h-8 max-w-[360px]" />
-          {/* "Today's review is waiting" — beside the date it is about, on the
-              same argument and in the same row as the line above it. Free, for
-              the same reason: the row's height is max(children) and the capsule
-              is never shorter than 96. It goes dark on any other date and the
-              line falls back to the dock. WeekScale only renders in week scope,
-              so in day scope these two share the row with room to spare. */}
-          <DayHeaderNotice className="mt-2 h-8 min-w-0 max-w-[280px]" />
+          {/* The day's own lines (season, vacation, today's review) used to
+              sit here beside the capsule. They live inside it now, behind the
+              glyphs at the end of its date row (day-messages.tsx). */}
           {/* While doing stuff: do it now's next, and what is coming onto
-              today (do-stuff-today.tsx). h-8 like the lines above, so the row
-              never grows. */}
+              today (do-stuff-today.tsx). h-8, so the row never grows. */}
           <DoStuffToday className="mt-2 h-8 min-w-0 max-w-[560px]" />
           <WeekScale className="ml-auto" />
           {/* The Ask button, while Ask is closed: the row's far end, its key

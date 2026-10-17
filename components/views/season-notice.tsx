@@ -11,6 +11,40 @@ import { toDateStr } from '@/lib/recurrence';
 import { cn } from '@/lib/utils';
 
 /**
+ * The day's suppression, or null when there is nothing to say: no season off
+ * that hides anything on the selected date, or not in day scope. Shared by the
+ * line below and by the date capsule's icon (components/notices/day-messages.tsx),
+ * which shows a moon while this is non-null.
+ *
+ * `scope` overrides the view store for the phone, whose day-only router can sit
+ * under a stale persisted `scope: 'week'`.
+ */
+export function useSeasonSuppression(scopeOverride?: 'day' | 'week') {
+  const items = usePlannerStore((s) => s.items);
+  const routines = usePlannerStore((s) => s.routines);
+  const seasons = usePlannerStore((s) => s.seasons);
+  const selectedDate = usePlannerStore((s) => s.selectedDate);
+  const userTimezone = usePlannerStore((s) => s.userTimezone);
+  const storeScope = useViewStore((s) => s.scope);
+  const scope = scopeOverride ?? storeScope;
+
+  const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const dateStr = toDateStr(selectedDate, tz);
+
+  const suppression = useMemo(() => {
+    if (seasons.length === 0) return null;
+    return seasonSuppressionOn(dateStr, items, { userTimezone: tz, routines, seasons });
+  }, [dateStr, items, routines, seasons, tz]);
+
+  // Day scope only. In a week view `selectedDate` is one column of seven, so a
+  // line reporting its suppression sits above six other days it is not about —
+  // and those views already have the honest form of this, a boundary marker
+  // drawn between the columns where the change actually happens.
+  if (scope !== 'day' || !suppression) return null;
+  return { dateStr, ...suppression };
+}
+
+/**
  * The day view's answer to "where did everything go?"
  *
  * The week grid can show a boundary, because it renders the days on either side
@@ -33,42 +67,30 @@ import { cn } from '@/lib/utils';
  * WHY IT IS NOT A DOCK NOTICE. The dock holds things the user has to ANSWER
  * (lib/dock-notices.ts). This is bound to a date — it changes as you arrow
  * through the week and means nothing without the date it is about — so it
- * belongs beside the date, in the canvas header row, and not on a dateless
- * surface at the other end of the screen. Moving it there also cost it nothing
- * and gained it a layout: the row's height is max(children) = the capsule's 96
- * or more, so an h-8 line beside it is free, and it now renders in `buckets`
- * too, where it never has.
+ * belongs with the date. It lives in the date capsule's popover
+ * (components/notices/day-messages.tsx), which shows a moon while there is
+ * something to say. It used to be a line beside the capsule AND a line at the
+ * top of the Schedule and List day views at once; Kirby asked for one place,
+ * quiet until opened (2026-10-17).
  *
  * The PERMANENT half of the same fact — "Summer is off", true on every date —
  * is not here either. Turning a scope back on lives on the group-header switch
  * (components/primitives/gate-switch.tsx) and the Display menu's "Paused
  * scopes" list (components/primitives/display-menu.tsx).
  */
-export function SeasonNotice({ className }: { className?: string }) {
-  const items = usePlannerStore((s) => s.items);
-  const routines = usePlannerStore((s) => s.routines);
-  const seasons = usePlannerStore((s) => s.seasons);
-  const selectedDate = usePlannerStore((s) => s.selectedDate);
-  const userTimezone = usePlannerStore((s) => s.userTimezone);
-  const scope = useViewStore((s) => s.scope);
+export function SeasonNotice({
+  className,
+  scope,
+}: {
+  className?: string;
+  scope?: 'day' | 'week';
+}) {
   const openDialog = useUIStore((s) => s.openDialog);
   const organizeOn = useOrganizeEnabled();
+  const suppression = useSeasonSuppression(scope);
+  if (!suppression) return null;
 
-  const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const dateStr = toDateStr(selectedDate, tz);
-
-  const suppression = useMemo(() => {
-    if (seasons.length === 0) return null;
-    return seasonSuppressionOn(dateStr, items, { userTimezone: tz, routines, seasons });
-  }, [dateStr, items, routines, seasons, tz]);
-
-  // Day scope only. In a week view `selectedDate` is one column of seven, so a
-  // line reporting its suppression sits above six other days it is not about —
-  // and those views already have the honest form of this, a boundary marker
-  // drawn between the columns where the change actually happens.
-  if (scope !== 'day' || !suppression) return null;
-
-  const { seasons: off, hidden } = suppression;
+  const { dateStr, seasons: off, hidden } = suppression;
   const names = off.map((p) => p.name).join(' and ');
 
   return (

@@ -56,7 +56,6 @@ import { suppressionReason } from '@/lib/active';
 import { BUCKET_ORDER } from '@/lib/day-items';
 import { groupRows } from '@/lib/grouping';
 import { groupBySupport } from '@/lib/view-options';
-import { SeasonNotice } from '@/components/views/season-notice';
 import { SlotLayer } from '@/components/planner/slot-layer';
 import { AddRow } from '@/components/planner/slot-composer';
 import { rowScope } from '@/lib/slot-add';
@@ -1716,11 +1715,6 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
           navDirection && `animate-slide-in-from-${navDirection === 'left' ? 'right' : 'left'}`
         )}
       >
-        {/* Above everything, because it qualifies everything below it: this day
-            is missing work, and here is what is holding it. Renders on no other
-            day — see SeasonNotice. */}
-        <SeasonNotice className="px-1" />
-
         {/* ANYTIME — untimed items; drop here to keep something time-free.
             On desktop it is always there, even empty, because its last row is
             where you add one (the phone keeps its own capture bar). */}

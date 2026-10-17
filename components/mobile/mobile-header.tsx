@@ -21,8 +21,7 @@ import { chatOffered, useMobileNavStore, shownMobileTab } from '@/lib/mobile-nav
 import { useAICapabilities } from '@/lib/ai-connection-store';
 import { useViewStore, type PhoneDensity, type ViewLayout } from '@/lib/view-store';
 import { goToDate } from '@/lib/nav-commands';
-import { DayHeaderNotice } from '@/components/notices/notice-slot';
-import { AwayNotice } from '@/components/views/away-notice';
+import { DayMessages } from '@/components/notices/day-messages';
 
 interface MobileHeaderProps {
   /** Passed straight through to UserProfileDropdown — see its note. */
@@ -145,52 +144,58 @@ export function MobileHeader({ settingsHref, onOpenBugReport }: MobileHeaderProp
   return (
     <header className="pt-safe">
       <div className="flex items-center justify-between gap-2 pb-2 pl-5 pr-4 pt-[10px]">
-        <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
-          <PopoverTrigger asChild>
-            <button
-              type="button"
-              data-testid="header-date"
-              // Same machine-readable date as the desktop capsule, so one
-              // navigation helper works across both shells. The visible copy
-              // is a relative word as often as not, which no format-string
-              // assertion could match.
-              data-date={mounted ? format(selectedDate, 'yyyy-MM-dd') : ''}
-              // Composed FROM the visible words, not instead of them (WCAG
-              // 2.5.3): the readout is the whole of what this button says.
-              aria-label={mounted ? `${title}, ${subtitle}. Go to date.` : 'Go to date'}
-              className="-ml-1.5 flex min-w-0 flex-col items-start rounded-lg px-1.5 py-0.5 text-left transition-colors hover:bg-accent"
-            >
-              {mounted ? (
-                <>
-                  <span className="truncate text-[17px] font-semibold leading-6 tracking-[-0.01em] text-foreground">
-                    {title}
-                  </span>
-                  <span className="truncate text-[12px] leading-4 text-muted-foreground">{subtitle}</span>
-                </>
-              ) : (
-                // Pre-mount the date is whatever the server rendered; hold the
-                // space rather than paint a value the client may replace.
-                <span className="h-10 w-40" />
-              )}
-            </button>
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-0" align="start">
-            <CalendarComponent
-              mode="single"
-              selected={selectedDate}
-              // Without this the picker opens on the CURRENT month whatever
-              // the cursor is on (react-day-picker takes `today`, not
-              // `selected`, as its initial month).
-              defaultMonth={selectedDate}
-              weekStartsOn={weekStartIndex(weekStartDay)}
-              onSelect={(date) => {
-                if (date) setSelectedDate(date);
-                setCalendarOpen(false);
-              }}
-              initialFocus
-            />
-          </PopoverContent>
-        </Popover>
+        <div className="flex min-w-0 items-center gap-0.5">
+          <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                data-testid="header-date"
+                // Same machine-readable date as the desktop capsule, so one
+                // navigation helper works across both shells. The visible copy
+                // is a relative word as often as not, which no format-string
+                // assertion could match.
+                data-date={mounted ? format(selectedDate, 'yyyy-MM-dd') : ''}
+                // Composed FROM the visible words, not instead of them (WCAG
+                // 2.5.3): the readout is the whole of what this button says.
+                aria-label={mounted ? `${title}, ${subtitle}. Go to date.` : 'Go to date'}
+                className="-ml-1.5 flex min-w-0 flex-col items-start rounded-lg px-1.5 py-0.5 text-left transition-colors hover:bg-accent"
+              >
+                {mounted ? (
+                  <>
+                    <span className="truncate text-[17px] font-semibold leading-6 tracking-[-0.01em] text-foreground">
+                      {title}
+                    </span>
+                    <span className="truncate text-[12px] leading-4 text-muted-foreground">{subtitle}</span>
+                  </>
+                ) : (
+                  // Pre-mount the date is whatever the server rendered; hold the
+                  // space rather than paint a value the client may replace.
+                  <span className="h-10 w-40" />
+                )}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <CalendarComponent
+                mode="single"
+                selected={selectedDate}
+                // Without this the picker opens on the CURRENT month whatever
+                // the cursor is on (react-day-picker takes `today`, not
+                // `selected`, as its initial month).
+                defaultMonth={selectedDate}
+                weekStartsOn={weekStartIndex(weekStartDay)}
+                onSelect={(date) => {
+                  if (date) setSelectedDate(date);
+                  setCalendarOpen(false);
+                }}
+                initialFocus
+              />
+            </PopoverContent>
+          </Popover>
+          {/* The day's notes (season, trip, today's review) as glyphs beside
+              the date, the sentences on tap: the desktop capsule's key, here
+              (components/notices/day-messages.tsx). */}
+          <DayMessages scope="day" />
+        </div>
 
         <div className="flex shrink-0 items-center gap-2">
           {/* The way home from another day, now that no strip marks today. */}
@@ -311,12 +316,6 @@ export function MobileHeader({ settingsHref, onOpenBugReport }: MobileHeaderProp
       </div>
 
       <div className="flex flex-col gap-1 px-4 empty:hidden">
-        {/* "Today's review is waiting", under the date it is about. Renders
-            nothing on any other date, and nothing at all when the review is
-            not owed. */}
-        <DayHeaderNotice scope="day" />
-        {/* Vacation mode's line, on every date (away-notice.tsx). */}
-        <AwayNotice className="px-1 py-1" />
         {/* The Display shelf: what the Display menu has set, in words, while
             anything is. In flow, so the day under it re-fits its hour rows as
             the shelf comes and goes. */}

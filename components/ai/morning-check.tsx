@@ -194,21 +194,20 @@ function useDismissWithFocus() {
  *    exactly why April items once sat in a list titled "yesterday".
  *  - an unconditional "Good morning!" was a LIE — visibility gates on
  *    enabled && !dismissed && n > 0, never on the clock, so it greeted you at
- *    3pm. Conditioned on the hour it stays, because a greeting is the one thing
- *    on this line that costs the reader nothing.
+ *    3pm. It was conditioned on the hour for a while, and then dropped (below).
  *  - "carry forward or clear them out?" is a question a collapsed row can't answer.
+ *  - "Good morning. N items waiting · Review" became "N things left from
+ *    earlier · Sort" (Kirby, 2026-10-17): it says where they came from, and
+ *    Sort names all four answers the tray offers (done, today, a date, the
+ *    braindump) where "reschedule" would have named one. The greeting went
+ *    with it, to keep the line to the words Kirby chose.
  */
 function BarCopy({ summary }: { summary: OverdueSummary }) {
   const n = summary.count;
-  if (n === 0) return <>All clear, nothing waiting</>;
-
-  const beforeNoon = new Date().getHours() < 12;
+  if (n === 0) return <>All clear, nothing left from earlier</>;
 
   return (
-    <>
-      {beforeNoon && 'Good morning. '}
-      <span className="font-semibold">{n === 1 ? '1 item' : `${n} items`} waiting</span>
-    </>
+    <span className="font-semibold">{n === 1 ? '1 thing' : `${n} things`} left from earlier</span>
   );
 }
 
@@ -234,7 +233,7 @@ export function useWaitingNotice(): DockNotice | null {
     // strip. See the --sunrise-* note in app/globals.css.
     iconClassName: 'text-sunrise-glyph',
     label: <BarCopy summary={summary} />,
-    actionLabel: 'Review',
+    actionLabel: 'Sort',
     tray: (variant) => (
       // The page is NOT dimmed: there is no in-canvas scrim precedent, a scrim
       // would make this modal, and the day beside it is the DESTINATION of
@@ -246,9 +245,9 @@ export function useWaitingNotice(): DockNotice | null {
         onDismiss={dismissAndMoveFocus}
       />
     ),
-    trayTitle: 'Still waiting',
+    trayTitle: 'Left from earlier',
     trayDescription:
-      'Items still waiting from earlier days. Complete them, carry them to today, pick a new date, or move them to your Braindump.',
+      'Things left from earlier days. Complete them, carry them to today, pick a new date, or move them to your Braindump.',
     open: trayOpen,
     onOpenChange: (o) => (o ? open() : close()),
     // Suppressed on touch by the mobile stack — a 24px destructive target

@@ -13,7 +13,6 @@ import { toDateStr } from '@/lib/recurrence';
 import { groupRows, type RowGroup } from '@/lib/grouping';
 import { orderRows } from '@/lib/sort-rows';
 import { useSinkHold } from '@/hooks/use-sink-hold';
-import { SeasonNotice } from '@/components/views/season-notice';
 import { ListDropZone } from '@/components/views/list-drop-zone';
 import { AddRow } from '@/components/planner/slot-composer';
 import { rowScope } from '@/lib/slot-add';
@@ -96,11 +95,6 @@ export function DayList() {
           navDirection && `animate-slide-in-from-${navDirection === 'left' ? 'right' : 'left'}`
         )}
       >
-        {/* Before the empty state, not after it: "nothing planned yet" is a
-            lie on a day whose work is real and merely away, and that is exactly
-            the day this line exists for. */}
-        <SeasonNotice />
-
         {/* The floor gives an empty or short day a target worth aiming at;
             the negative margin lets the drop tint breathe past the rows. */}
         <ListDropZone dateStr={dateStr} className="-mx-2 min-h-[50vh] space-y-5 px-2">
