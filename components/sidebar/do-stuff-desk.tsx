@@ -215,8 +215,8 @@ function DeskItem({ item }: { item: Item }) {
       {/* The kicker row is always drawn, at a height, so the title stands still
           when the kicker arrives after hydration or a sprint's ring joins it.
           The exit sits at its right end: the room's door, top right. */}
-      <div className="flex min-h-7 items-center gap-3">
-        <SprintRing size={28} className="shrink-0 pr-1" />
+      <div className="flex min-h-9 items-center gap-3">
+        <SprintRing size={36} className="shrink-0 pr-1" />
         <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground" data-testid="do-stuff-desk-kicker">
           {kicker}
         </p>
