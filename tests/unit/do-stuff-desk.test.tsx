@@ -69,7 +69,8 @@ vi.mock('@/lib/supabase', () => ({ createClient: vi.fn(() => ({})) }));
 import { Braindump } from '@/components/sidebar/braindump';
 import { ViewRouter } from '@/components/views/view-router';
 import { usePlannerStore } from '@/lib/planner-store';
-import { useDoStuffStore } from '@/lib/do-stuff';
+import { openDesk, useDoStuffStore } from '@/lib/do-stuff';
+import { seedAI, CONNECTED_MODEL } from './helpers/ai-fixtures';
 import { usePrepPacksStore } from '@/lib/prep-packs-store';
 import { useAgentsStore } from '@/lib/agents-store';
 import { useViewStore } from '@/lib/view-store';
@@ -135,15 +136,22 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-function start() {
+function start({ host = true }: { host?: boolean } = {}) {
   render(
     <DndContext>
       <Braindump />
-      <ViewRouter />
+      {host && <ViewRouter />}
     </DndContext>
   );
   fireEvent.click(screen.getByTestId('do-stuff-start'));
 }
+
+const open = () =>
+  act(() => {
+    fireEvent.click(screen.getByTestId('do-stuff-open-desk'));
+  });
+
+const today = () => new Date().toISOString().slice(0, 10);
 
 const byId = (id: string) => usePlannerStore.getState().items.find((i) => i.id === id) as Record<string, unknown>;
 
@@ -215,6 +223,179 @@ describe('the desk', () => {
     act(() => useDoStuffStore.getState().stop());
     expect(screen.queryByTestId('do-stuff-desk')).toBeNull();
     act(() => useDoStuffStore.getState().start());
+    expect(useDoStuffStore.getState().desk).toBe(false);
+  });
+
+  it('takes the focus as it opens, and ↵ S T F work from it', () => {
+    const unseed = seedAI(CONNECTED_MODEL);
+    try {
+      seed(ITEMS);
+      start();
+      open();
+      const pane = screen.getByRole('region', { name: 'Desk' });
+      expect(document.activeElement).toBe(pane);
+      // T: onto today, the card's own key. The row leaves do it now for the
+      // today lane, so the walk moves on.
+      expect(screen.getByTestId('do-stuff-desk-today').getAttribute('aria-keyshortcuts')).toBe('T');
+      act(() => {
+        fireEvent.keyDown(pane, { key: 't' });
+      });
+      expect(byId('a').startDate).toBe(today());
+      const second = useDoStuffStore.getState().next!.id;
+      expect(second).not.toBe('a');
+      // F: first steps, offered since the model can propose.
+      expect(screen.getByTestId('do-stuff-desk-first-steps').getAttribute('aria-keyshortcuts')).toBe('F');
+      act(() => {
+        fireEvent.keyDown(pane, { key: 'f' });
+      });
+      expect(useDoStuffStore.getState().firstSteps).toBe(second);
+      act(() => useDoStuffStore.setState({ firstSteps: null }));
+      // S: skip, and the next item takes the desk.
+      expect(screen.getByTestId('do-stuff-desk-skip').getAttribute('aria-keyshortcuts')).toBe('S');
+      act(() => {
+        fireEvent.keyDown(pane, { key: 's' });
+      });
+      expect(useDoStuffStore.getState().skipped).toEqual([second]);
+      const third = useDoStuffStore.getState().next!.id;
+      expect(third).not.toBe(second);
+      // ↵: done.
+      act(() => {
+        fireEvent.keyDown(pane, { key: 'Enter' });
+      });
+      expect(byId(third).status).toBe('completed');
+    } finally {
+      unseed();
+    }
+  });
+
+  it('the jot writes on ↵ only: blur keeps the draft, Esc clears it, and neither touches the notes', () => {
+    seed(ITEMS);
+    start();
+    open();
+    const jot = screen.getByTestId('do-stuff-desk-jot') as HTMLTextAreaElement;
+    fireEvent.change(jot, { target: { value: 'half a tho' } });
+    act(() => {
+      fireEvent.blur(jot);
+    });
+    expect(byId('a').notes).toBe('renewal or month to month?');
+    expect(jot.value).toBe('half a tho');
+    jot.focus();
+    act(() => {
+      fireEvent.keyDown(jot, { key: 'Escape' });
+    });
+    expect(byId('a').notes).toBe('renewal or month to month?');
+    expect(jot.value).toBe('');
+    // Esc in the box left the box, not the desk.
+    expect(screen.getByTestId('do-stuff-desk')).toBeTruthy();
+    expect(document.activeElement).not.toBe(jot);
+    fireEvent.change(jot, { target: { value: 'landlord prefers email' } });
+    act(() => {
+      fireEvent.keyDown(jot, { key: 'Enter' });
+    });
+    expect(byId('a').notes).toBe('renewal or month to month?\nlandlord prefers email');
+    act(() => {
+      fireEvent.keyDown(jot, { key: 'Enter' });
+    });
+    expect(byId('a').notes).toBe('renewal or month to month?\nlandlord prefers email');
+  });
+
+  it('grows with the lines typed, from two to six', () => {
+    seed(ITEMS);
+    start();
+    open();
+    const jot = screen.getByTestId('do-stuff-desk-jot') as HTMLTextAreaElement;
+    expect(jot.rows).toBe(2);
+    fireEvent.change(jot, { target: { value: 'one\ntwo\nthree\nfour' } });
+    expect(jot.rows).toBe(4);
+    fireEvent.change(jot, { target: { value: Array.from({ length: 9 }, (_, i) => `line ${i}`).join('\n') } });
+    expect(jot.rows).toBe(6);
+  });
+
+  it('is empty only when the plan says there is nothing; an item gone from the store draws nothing', () => {
+    seed(ITEMS);
+    start();
+    open();
+    // The plan still names 'a', but the store has lost it.
+    act(() => {
+      usePlannerStore.setState((s) => ({ items: s.items.filter((i) => i.id !== 'a') }));
+    });
+    expect(useDoStuffStore.getState().next?.id).toBe('a');
+    expect(screen.queryByTestId('do-stuff-desk-clear')).toBeNull();
+    expect(screen.queryByTestId('do-stuff-desk-item')).toBeNull();
+    act(() => useDoStuffStore.setState({ next: null }));
+    expect(screen.getByTestId('do-stuff-desk-clear')).toBeTruthy();
+  });
+
+  it('closes when the canvas leaves today', () => {
+    seed(ITEMS);
+    start();
+    open();
+    expect(useDoStuffStore.getState().desk).toBe(true);
+    act(() => usePlannerStore.getState().setSelectedDate(new Date(Date.now() + 86_400_000)));
+    expect(useDoStuffStore.getState().desk).toBe(false);
+    expect(screen.queryByTestId('do-stuff-desk')).toBeNull();
+  });
+
+  it('the list card reads "back to the day" while the desk is open, and D toggles', () => {
+    seed(ITEMS);
+    start();
+    open();
+    // With the slot off the grid (no free stretch left today) the card keeps
+    // its actions; while the slot is drawn it is a slim row with none.
+    act(() => useDoStuffStore.setState({ slot: false }));
+    expect(screen.queryByTestId('do-stuff-open-desk')).toBeNull();
+    const back = screen.getByTestId('do-stuff-close-desk');
+    expect(back.textContent).toContain('back to the day');
+    act(() => {
+      fireEvent.click(back);
+    });
+    expect(useDoStuffStore.getState().desk).toBe(false);
+    expect(screen.getByTestId('do-stuff-open-desk')).toBeTruthy();
+    act(() => {
+      fireEvent.keyDown(screen.getByTestId('do-stuff-next'), { key: 'd' });
+    });
+    expect(useDoStuffStore.getState().desk).toBe(true);
+    act(() => {
+      fireEvent.keyDown(screen.getByTestId('do-stuff-next'), { key: 'd' });
+    });
+    expect(useDoStuffStore.getState().desk).toBe(false);
+  });
+
+  it('the exit sits in the kicker row, the actions hold the verbs, and the day column is dense', () => {
+    seed(ITEMS);
+    start();
+    open();
+    const item = screen.getByTestId('do-stuff-desk-item');
+    const close = screen.getByTestId('do-stuff-desk-close');
+    expect(close.parentElement).toBe(screen.getByTestId('do-stuff-desk-kicker').parentElement);
+    expect(screen.getByTestId('do-stuff-desk-done').parentElement!.contains(close)).toBe(false);
+    expect(item.querySelector('kbd')?.className).toContain('font-num');
+    expect(screen.getByTestId('do-stuff-desk-day').hasAttribute('data-dense')).toBe(true);
+  });
+});
+
+describe('the desk needs a host', () => {
+  it('with no view that draws it, there is no desk button and openDesk is a no-op', () => {
+    seed(ITEMS);
+    start({ host: false });
+    expect(useDoStuffStore.getState().deskHosts).toBe(0);
+    expect(screen.queryByTestId('do-stuff-open-desk')).toBeNull();
+    act(() => {
+      fireEvent.keyDown(screen.getByTestId('do-stuff-next'), { key: 'd' });
+    });
+    expect(useDoStuffStore.getState().desk).toBe(false);
+    act(() => openDesk());
+    expect(useDoStuffStore.getState().desk).toBe(false);
+  });
+
+  it('the host leaving closes the desk', () => {
+    seed(ITEMS);
+    start();
+    expect(useDoStuffStore.getState().deskHosts).toBe(1);
+    open();
+    expect(useDoStuffStore.getState().desk).toBe(true);
+    cleanup();
+    expect(useDoStuffStore.getState().deskHosts).toBe(0);
     expect(useDoStuffStore.getState().desk).toBe(false);
   });
 });

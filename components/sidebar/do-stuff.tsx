@@ -16,8 +16,10 @@ import {
   DO_STUFF_MIN_OPEN,
   doneNext,
   makeItSo,
+  closeDesk,
   openDesk,
   putOnToday,
+  useDeskHosted,
   commitCount,
   commitLines,
   type Mark,
@@ -88,8 +90,8 @@ function Dot({ color, hollow, className }: { color: string; hollow?: boolean; cl
   );
 }
 
-/** A small keycap beside a secondary action; the primary one uses ButtonKey. */
-function Cap({ children }: { children: React.ReactNode }) {
+/** A small keycap beside a secondary action; the primary one uses ButtonKey. The desk's too. */
+export function Cap({ children }: { children: React.ReactNode }) {
   return (
     <kbd
       aria-hidden
@@ -737,13 +739,20 @@ function NextCard({ row, trailing, slim }: { row: RowItem; trailing: React.React
   useWalkFocus(ref, id);
   useCardArrival(ref, id);
   const steps = useCanFirstSteps(id);
+  // The desk key only where a desk can open (the phone's router has none),
+  // and a toggle: at the desk the same key is the way back to the day.
+  const deskHosted = useDeskHosted();
+  const desk = useDoStuffStore((s) => s.desk);
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (!plainKey(e)) return;
     const k = e.key.toLowerCase();
     if (k === 'enter' && e.target === e.currentTarget) doneNext(id);
     else if (k === 's') skipNext(id);
     else if (k === 't') putOnToday(id);
-    else if (k === 'd') openDesk();
+    else if (k === 'd' && deskHosted) {
+      if (desk) closeDesk();
+      else openDesk();
+    }
     else if (k === 'f' && openFirstSteps(id)) {
       /* first steps, where the AI can break it down */
     } else return;
@@ -817,16 +826,18 @@ function NextCard({ row, trailing, slim }: { row: RowItem; trailing: React.React
               first steps <Cap>F</Cap>
             </Button>
           )}
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={openDesk}
-            data-testid="do-stuff-open-desk"
-            aria-keyshortcuts="D"
-            className="text-muted-foreground"
-          >
-            desk <Cap>D</Cap>
-          </Button>
+          {deskHosted && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={desk ? closeDesk : openDesk}
+              data-testid={desk ? 'do-stuff-close-desk' : 'do-stuff-open-desk'}
+              aria-keyshortcuts="D"
+              className="text-muted-foreground"
+            >
+              {desk ? 'back to the day' : 'desk'} <Cap>D</Cap>
+            </Button>
+          )}
           <PocketButton />
         </div>
       )}

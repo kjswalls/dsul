@@ -77,8 +77,10 @@ const railReserve = () => useRailStore.getState().reservePx;
 /** What the column renders at right now: the stored width, yielded beside a docked rail. */
 const renderedNow = () => {
   const px = renderedSidebarWidth(useSidebarStore.getState().leftSidebarWidth, window.innerWidth, railReserve());
-  // Doing stuff, the column opens to about half the window (doStuffSidebarWidth).
-  return useDoStuffStore.getState().on ? doStuffSidebarWidth(px, window.innerWidth, railReserve()) : px;
+  // Doing stuff, the column opens to about half the window (doStuffSidebarWidth);
+  // at the Desk it is the user's width again, so the room has its room.
+  const { on, desk } = useDoStuffStore.getState();
+  return on ? doStuffSidebarWidth(px, window.innerWidth, railReserve(), desk) : px;
 };
 
 /** Arrow-key step on the focused handle, and its shift-held coarse step. */
@@ -316,9 +318,10 @@ export const Sidebar = memo(function Sidebar() {
       if (rail.reservePx === prev.reservePx) return;
       apply(rail.reserveInstant || prefersReducedMotion());
     });
-    // Starting and stopping do stuff open and close the column, over its ease.
+    // Starting and stopping do stuff open and close the column, over its ease;
+    // so do opening and closing the desk.
     const unsubscribeDoStuff = useDoStuffStore.subscribe((d, prev) => {
-      if (d.on !== prev.on) apply(prefersReducedMotion());
+      if (d.on !== prev.on || d.desk !== prev.desk) apply(prefersReducedMotion());
     });
     return () => {
       window.removeEventListener('resize', onResize);

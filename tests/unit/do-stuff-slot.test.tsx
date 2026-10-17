@@ -65,7 +65,7 @@ import { Braindump } from '@/components/sidebar/braindump';
 import { DoStuffToday } from '@/components/sidebar/do-stuff-today';
 import { DoStuffSlot } from '@/components/sidebar/do-stuff-slot';
 import { usePlannerStore } from '@/lib/planner-store';
-import { useDoStuffStore } from '@/lib/do-stuff';
+import { useDeskHost, useDoStuffStore } from '@/lib/do-stuff';
 import { usePrepPacksStore } from '@/lib/prep-packs-store';
 import { useAgentsStore } from '@/lib/agents-store';
 import { useViewStore } from '@/lib/view-store';
@@ -267,5 +267,39 @@ describe('in the day: the current item on today\'s schedule', () => {
     expect(screen.getByTestId('sprint-label').textContent).toBe("time's up · Lunch with Ana next");
     act(() => useDoStuffStore.getState().stop());
     expect(useDoStuffStore.getState().sprint).toBeNull();
+  });
+});
+
+/** Stands in for the desktop view router, the one view that draws the desk. */
+function Host() {
+  useDeskHost();
+  return null;
+}
+
+describe('the slot and the desk', () => {
+  it('draws the ⤢ only where a desk can open', () => {
+    seed(ITEMS);
+    start();
+    expect(screen.getByTestId('do-stuff-slot')).toBeTruthy();
+    expect(screen.queryByTestId('do-stuff-slot-desk')).toBeNull();
+    const { unmount } = render(<Host />);
+    expect(screen.getByTestId('do-stuff-slot-desk')).toBeTruthy();
+    unmount();
+    expect(screen.queryByTestId('do-stuff-slot-desk')).toBeNull();
+  });
+
+  it('keeps its stretch line at the desk while a sprint runs: the ring is the desk\'s', () => {
+    seed(ITEMS);
+    start();
+    render(<Host />);
+    act(() => {
+      fireEvent.click(screen.getByTestId('sprint-start'));
+    });
+    expect(screen.getByTestId('sprint-ring')).toBeTruthy();
+    expect(screen.queryByTestId('do-stuff-slot-stretch')).toBeNull();
+    act(() => useDoStuffStore.setState({ desk: true }));
+    expect(screen.queryByTestId('sprint-ring')).toBeNull();
+    expect(screen.getByTestId('do-stuff-slot-stretch')).toBeTruthy();
+    expect(screen.queryByTestId('do-stuff-slot-done')).toBeNull();
   });
 });

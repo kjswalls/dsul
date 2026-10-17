@@ -245,4 +245,10 @@ describe('the column while doing stuff', () => {
   it('stays as it is below the docking width', () => {
     expect(doStuffSidebarWidth(320, 1100)).toBe(320);
   });
+
+  it('is the user\'s own width again at the desk, so the room has its room', () => {
+    expect(doStuffSidebarWidth(320, 1600, 0, true)).toBe(320);
+    expect(doStuffSidebarWidth(320, 1280, 300, true)).toBe(320);
+    expect(doStuffSidebarWidth(320, 1280, 300, false)).toBe(1280 - 300 - SIDEBAR_MIN_CANVAS);
+  });
 });

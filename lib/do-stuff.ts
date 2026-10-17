@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { create } from 'zustand';
 import { usePlannerStore } from './planner-store';
 import { ITEM_VERBS, occurrenceOn, type VerbContext } from './item-verbs';
@@ -94,6 +95,15 @@ interface DoStuffState {
    */
   desk: boolean;
   /**
+   * Live desk hosts: the canvas views that mount the Desk in a view's place
+   * (the desktop ViewRouter, through useDeskHost). The phone's router never
+   * does, so with no host openDesk() is a no-op and the ⤢ and "desk" keys are
+   * not drawn: a desk set with nobody to draw it stranded the phone, the slot
+   * hiding its actions for a room that never opened. A count, not a flag, so
+   * StrictMode's mount → cleanup → mount cannot leave it stuck at none.
+   */
+  deskHosts: number;
+  /**
    * The running sprint (components/sidebar/sprint-ring.tsx): a ring sized to
    * the gap before the next block, as epoch ms. Memory only; stop() ends it.
    */
@@ -175,9 +185,32 @@ export const useDoStuffStore = create<DoStuffState>((set) => ({
   slot: false,
   startedAt: 0,
   desk: false,
+  deskHosts: 0,
   sprint: null,
   missedSeen: [],
 }));
+
+/**
+ * Called by the canvas view that mounts the Desk (components/views/view-router.tsx),
+ * and by nothing else, for as long as it is mounted. The last host leaving
+ * closes the desk with it: nothing is left set that nothing can draw.
+ */
+export function useDeskHost(): void {
+  useEffect(() => {
+    useDoStuffStore.setState((s) => ({ deskHosts: s.deskHosts + 1 }));
+    return () => {
+      useDoStuffStore.setState((s) => {
+        const deskHosts = Math.max(0, s.deskHosts - 1);
+        return deskHosts === 0 ? { deskHosts, desk: false } : { deskHosts };
+      });
+    };
+  }, []);
+}
+
+/** Whether something on screen can draw the Desk right now. */
+export function useDeskHosted(): boolean {
+  return useDoStuffStore((s) => s.deskHosts > 0);
+}
 
 /** Start a sprint of `minutes` from now, stopping ahead of `until`. */
 export function startSprint(minutes: number, until: string | null): void {
@@ -192,10 +225,11 @@ export function stopSprint(): void {
 /**
  * Open the Desk on the current item. The desk is always today (its day column
  * is today's, as Zen's room is), so the canvas comes back to today first.
+ * Nothing happens with no host mounted (useDeskHost): the phone has none.
  */
 export function openDesk(): void {
-  const { on, next } = useDoStuffStore.getState();
-  if (!on || !next) return;
+  const { on, next, deskHosts } = useDoStuffStore.getState();
+  if (!on || !next || deskHosts === 0) return;
   const state = planner();
   const tz = state.userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   if (toDateStr(state.selectedDate, tz) !== toDateStr(new Date(), tz)) state.setSelectedDate(new Date());
