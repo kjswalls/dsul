@@ -66,8 +66,9 @@ const USER = 'user-1';
 /** The real "today" for every test here. */
 const TODAY = '2026-07-14';
 const TOMORROW = '2026-07-15';
-/** A future week column (Thursday) and an overdue day. */
+/** A future week column (Thursday) and two overdue days. */
 const THURSDAY = '2026-07-16';
+const YESTERDAY = '2026-07-13';
 const LAST_WEEK = '2026-07-07';
 
 const asDate = (ymd: string) => new Date(`${ymd}T12:00:00Z`);
@@ -196,10 +197,16 @@ describe('day row: where the item goes', () => {
     expect(taskById('one-off').startDate).toBe('2026-07-17');
   });
 
-  it('an overdue day → real tomorrow, never another past day', () => {
+  it("yesterday → today, the day after it", () => {
+    renderRow('one-off', asDate(YESTERDAY));
+    fireEvent.click(tomorrowBtn()!);
+    expect(taskById('one-off').startDate).toBe(TODAY);
+  });
+
+  it('an older overdue day → today, never another past day', () => {
     renderRow('one-off', asDate(LAST_WEEK));
     fireEvent.click(tomorrowBtn()!);
-    expect(taskById('one-off').startDate).toBe(TOMORROW);
+    expect(taskById('one-off').startDate).toBe(TODAY);
   });
 
   it('braindump clears the date and the slot', () => {
@@ -272,6 +279,26 @@ describe('reschedule: pick any day', () => {
     const t = taskById('one-off');
     expect(t.startDate).toBe('2026-07-22');
     expect(t.timeBucket).toBe('anytime');
+  });
+
+  it('Today sits beside Schedule on a braindump row and lands it on today', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(`${TODAY}T12:00:00Z`));
+    store().unscheduleTask('one-off');
+    render(<LiveRow id="one-off" context="braindump" />);
+    const today = screen.getByTestId('item-today-button');
+    expect(today).toHaveAttribute('aria-label', 'Move to today');
+    expect(today.closest('span.shadow-sm')).toBe(rescheduleBtn()!.closest('span.shadow-sm'));
+    fireEvent.click(today);
+    const t = taskById('one-off');
+    expect(t.startDate).toBe(TODAY);
+    expect(t.timeBucket).toBe('anytime');
+  });
+
+  it('the day rows keep Move to tomorrow and get no Today button', () => {
+    renderRow('one-off');
+    expect(tomorrowBtn()).not.toBeNull();
+    expect(screen.queryByTestId('item-today-button')).toBeNull();
   });
 
   it('a timed block keeps its clock time', () => {

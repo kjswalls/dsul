@@ -352,8 +352,9 @@ enum ItemSheetModel {
 
     /// The bar's short words for a verb. The web's own label (DsulCore
     /// `verbLabel`) where it fits, shortened where it doesn't: a one-off's
-    /// "Mark done" is "Done", "Move to tomorrow" is "Tomorrow" ("Next day"
-    /// when the carry lands later), and " today" goes off today.
+    /// "Mark done" is "Done", "Move to tomorrow" is "Tomorrow" ("Today" when
+    /// an overdue carry lands on today, "Next day" when it lands later), and
+    /// " today" goes off today.
     static func barLabel(_ verb: SheetVerb, _ item: SampleItem, _ ctx: VerbContext) -> String {
         switch verb {
         case .tick:
@@ -368,7 +369,11 @@ enum ItemSheetModel {
         case .resume:
             return "Resume"
         case .nextDay:
-            return verbLabel(.nextDay, item, ctx) == "Move to tomorrow" ? "Tomorrow" : "Next day"
+            switch verbLabel(.nextDay, item, ctx) {
+            case "Move to tomorrow": return "Tomorrow"
+            case "Move to today": return "Today"
+            default: return "Next day"
+            }
         case .reschedule:
             return verbLabel(.reschedule, item, ctx)
         case .delete:

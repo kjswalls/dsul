@@ -13,10 +13,16 @@
       "expected": "2026-10-09"
     },
     {
-      "name": "an overdue row goes to real tomorrow, not its next day",
+      "name": "yesterday's row goes to today, its next day",
+      "rowDateStr": "2026-10-01",
+      "todayStr": "2026-10-02",
+      "expected": "2026-10-02"
+    },
+    {
+      "name": "an older overdue row goes to today, never another past day",
       "rowDateStr": "2026-09-28",
       "todayStr": "2026-10-02",
-      "expected": "2026-10-03"
+      "expected": "2026-10-02"
     },
     {
       "name": "month end",
@@ -66,7 +72,7 @@
       "name": "today itself",
       "target": "2026-10-02",
       "todayStr": "2026-10-02",
-      "expected": "Move to next day"
+      "expected": "Move to today"
     },
     {
       "name": "tomorrow across a month",

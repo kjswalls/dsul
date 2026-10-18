@@ -12,10 +12,12 @@ const base = { id: 't', status: 'pending' as const, completedDates: [] as string
 const none = new Set<string>();
 
 describe('nextDayTarget', () => {
-  it('is the day after the later of the row day and today', () => {
+  it('is the day after the row day, never earlier than today', () => {
     expect(nextDayTarget('2026-07-14', '2026-07-14')).toBe('2026-07-15');
     expect(nextDayTarget('2026-07-16', '2026-07-14')).toBe('2026-07-17');
-    expect(nextDayTarget('2026-07-01', '2026-07-14')).toBe('2026-07-15');
+    // Yesterday's row lands on today, the day after it; older ones on today too.
+    expect(nextDayTarget('2026-07-13', '2026-07-14')).toBe('2026-07-14');
+    expect(nextDayTarget('2026-07-01', '2026-07-14')).toBe('2026-07-14');
   });
 
   it('crosses month, year and DST boundaries on the calendar', () => {
@@ -27,7 +29,8 @@ describe('nextDayTarget', () => {
 });
 
 describe('labels', () => {
-  it('says tomorrow only when it is', () => {
+  it('says today and tomorrow only when they are', () => {
+    expect(nextDayLabel('2026-07-14', '2026-07-14')).toBe('Move to today');
     expect(nextDayLabel('2026-07-15', '2026-07-14')).toBe('Move to tomorrow');
     expect(nextDayLabel('2026-07-17', '2026-07-14')).toBe('Move to next day');
   });

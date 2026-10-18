@@ -191,7 +191,7 @@ private func isPausedToday(_ item: Item, _ ctx: VerbContext) -> Bool {
 }
 
 /// lib/item-verbs.ts `nextDayOf`: where the carry lands, the day after the
-/// later of the row's day and today (lib/row-moves.ts `nextDayTarget`).
+/// row's own day, never earlier than today (lib/row-moves.ts `nextDayTarget`).
 public func nextDayOf(_ item: Item, _ ctx: VerbContext) -> String {
     return nextDayTarget(rowDateOf(item, ctx), today: ctx.todayStr)
 }

@@ -133,7 +133,7 @@ function kindOf(item: Item): 'task' | 'habit' {
 }
 
 /**
- * NEXT DAY's target: the day after the later of the row's own day and today,
+ * NEXT DAY's target: the day after the row's own day, never earlier than today,
  * so an overdue carry never lands in the past.
  */
 export function nextDayOf(item: Item, ctx: VerbContext): string {

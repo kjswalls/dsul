@@ -1104,7 +1104,8 @@ function buildRowMoves(): RowMovesFixture {
     [
       ['a row on today goes to tomorrow', T, T],
       ['a future row goes to its next day', '2026-10-08', T],
-      ['an overdue row goes to real tomorrow, not its next day', '2026-09-28', T],
+      ["yesterday's row goes to today, its next day", '2026-10-01', T],
+      ['an older overdue row goes to today, never another past day', '2026-09-28', T],
       ['month end', '2026-10-31', '2026-10-31'],
       ['year end', '2026-12-31', '2026-12-30'],
       ['into a leap day', '2028-02-28', '2028-02-28'],
@@ -2035,7 +2036,7 @@ describe('day fixtures shared with DsulCore', () => {
     for (const label of ['Mark done', 'Mark not done', 'Done today', 'Undo today', 'Count one (1/3)']) {
       expect(tickLabels, label).toContain(label);
     }
-    expect(new Set(verbs.map((c) => c.verbs.nextDay.label))).toEqual(new Set(['Move to tomorrow', 'Move to next day']));
+    expect(new Set(verbs.map((c) => c.verbs.nextDay.label))).toEqual(new Set(['Move to today', 'Move to tomorrow', 'Move to next day']));
     expect(new Set(verbs.map((c) => c.verbs.reschedule.label))).toEqual(new Set(['Reschedule', 'Schedule']));
 
     const moves = generated['row-moves'] as RowMovesFixture;
@@ -2043,7 +2044,7 @@ describe('day fixtures shared with DsulCore', () => {
     expect(new Set(moves.canReschedule.map((c) => c.expected))).toEqual(both);
     // At least one row where the two gates part: a recurring task.
     expect(moves.canReschedule.some((c, i) => c.expected !== moves.canMoveToNextDay[i].expected)).toBe(true);
-    expect(new Set(moves.nextDayLabel.map((c) => c.expected))).toEqual(new Set(['Move to tomorrow', 'Move to next day']));
+    expect(new Set(moves.nextDayLabel.map((c) => c.expected))).toEqual(new Set(['Move to today', 'Move to tomorrow', 'Move to next day']));
 
     const occurs = (generated.occurs as { cases: OccursCase[] }).cases;
     expect(new Set(occurs.map((c) => c.occursOn))).toEqual(both);

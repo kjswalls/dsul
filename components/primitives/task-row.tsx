@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactM
 import { Check, Trash2, Minus, Plus, SkipForward, ArrowLeftToLine, Redo2, Undo2, MoreHorizontal,
   Flag,
   Repeat,
+  Sun,
 } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
 import { ItemContextMenu } from '@/components/planner/item-context-menu';
@@ -936,8 +937,8 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
             </Button>
           )}
 
-          {/* Braindump (sidebar) controls: Schedule (the row's way onto a day
-              without a drag) and Delete, in the same capsule the planner rows
+          {/* Braindump (sidebar) controls: Today and Schedule (the row's ways
+              onto a day without a drag) and Delete, in the same capsule the planner rows
               use, so the two read at one spacing. Revealed on hover, pinned
               while the calendar is open.
               -my-1.5 is a height neutralizer, not spacing: the 24px capsule
@@ -957,6 +958,19 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
               )}
             >
               <RowControlGroup>
+                {/* The braindump's one-tap carry, as Move to tomorrow is the
+                    day rows': Reschedule's gate, so it shows exactly where
+                    Schedule does, and its picked day is always today. Sun is
+                    the phone's Today tab. */}
+                {canReschedule && (
+                  <RowControl
+                    icon={Sun}
+                    label="Move to today"
+                    detail={formatTargetDay(todayStr)}
+                    testId="item-today-button"
+                    onClick={() => moveTaskToDate(item.id, todayStr)}
+                  />
+                )}
                 {canReschedule && (
                   <RescheduleControl
                     open={picking}
