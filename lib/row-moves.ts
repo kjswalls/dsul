@@ -26,17 +26,20 @@ import { isCompletedOnDate, isRecurring } from '@/lib/recurrence';
 import type { Item, Task } from '@/lib/planner-types';
 
 /**
- * Where "move to tomorrow" sends an item drawn on `rowDateStr`: the day after
- * the later of the row's day and today. On today, or on a future week column,
- * that is the next day; on an overdue day it is real tomorrow, so a carry never
- * lands in the past.
+ * Where "move to next day" sends an item drawn on `rowDateStr`: the day after
+ * the row's own day, never earlier than today. On today that is tomorrow, on a
+ * future week column it is the day after that column, and on a past day it is
+ * the day after it too (yesterday's row lands on today), except that a carry
+ * never lands in the past: anything older than yesterday comes to today.
  */
 export function nextDayTarget(rowDateStr: string, todayStr: string): string {
-  return addDaysToDateStr(rowDateStr > todayStr ? rowDateStr : todayStr, 1);
+  const next = addDaysToDateStr(rowDateStr, 1);
+  return next > todayStr ? next : todayStr;
 }
 
-/** Tooltip copy for the carry: "tomorrow" only when it is. */
+/** Tooltip copy for the carry: "today" and "tomorrow" only when they are. */
 export function nextDayLabel(target: string, todayStr: string): string {
+  if (target === todayStr) return 'Move to today';
   return target === addDaysToDateStr(todayStr, 1) ? 'Move to tomorrow' : 'Move to next day';
 }
 

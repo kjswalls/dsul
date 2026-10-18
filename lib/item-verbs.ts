@@ -178,8 +178,8 @@ const resume: ItemVerb = {
  * recurring item (its date is the series anchor, and there is no per-occurrence
  * override), a habit, finished work or a task inside a project block. Only a
  * DATED item: an undated one has no day to be put off from, so its verb is
- * `reschedule`. Lands on the day after the later of its own day and today, so
- * an overdue carry never lands in the past.
+ * `reschedule`. Lands on the day after its own day, never earlier than today,
+ * so an overdue carry never lands in the past.
  */
 
 const nextDay: ItemVerb = {

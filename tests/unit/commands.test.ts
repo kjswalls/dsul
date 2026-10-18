@@ -532,10 +532,10 @@ describe('entity arguments: several at once', () => {
       expect([dateOf('t1'), dateOf('t2')]).toEqual(['2026-03-11', '2026-03-21']);
     });
 
-    it('carries an overdue item to tomorrow, never to another past day', () => {
+    it('carries an overdue item to today, never to another past day', () => {
       seedStore([task({ id: 'late', title: 'Late', startDate: '2026-03-02' })]);
       entityArg('items.snooze').runMany(ctx, ['late']);
-      expect(dateOf('late')).toBe('2026-03-11');
+      expect(dateOf('late')).toBe('2026-03-10');
     });
 
     it('offers only what the rows may carry', () => {

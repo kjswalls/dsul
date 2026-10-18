@@ -704,9 +704,9 @@
         },
         "nextDay": {
           "eligible": false,
-          "label": "Move to tomorrow",
-          "detail": "Sat, Oct 3",
-          "target": "2026-10-03"
+          "label": "Move to today",
+          "detail": "Fri, Oct 2",
+          "target": "2026-10-02"
         },
         "reschedule": {
           "eligible": false,
@@ -770,9 +770,9 @@
         },
         "nextDay": {
           "eligible": false,
-          "label": "Move to tomorrow",
-          "detail": "Sat, Oct 3",
-          "target": "2026-10-03"
+          "label": "Move to today",
+          "detail": "Fri, Oct 2",
+          "target": "2026-10-02"
         },
         "reschedule": {
           "eligible": false,
@@ -899,9 +899,9 @@
         },
         "nextDay": {
           "eligible": false,
-          "label": "Move to tomorrow",
-          "detail": "Sat, Oct 3",
-          "target": "2026-10-03"
+          "label": "Move to today",
+          "detail": "Fri, Oct 2",
+          "target": "2026-10-02"
         },
         "reschedule": {
           "eligible": false,
@@ -1489,9 +1489,9 @@
         },
         "nextDay": {
           "eligible": false,
-          "label": "Move to tomorrow",
-          "detail": "Sat, Oct 3",
-          "target": "2026-10-03"
+          "label": "Move to today",
+          "detail": "Fri, Oct 2",
+          "target": "2026-10-02"
         },
         "reschedule": {
           "eligible": true,
@@ -1558,9 +1558,9 @@
         },
         "nextDay": {
           "eligible": false,
-          "label": "Move to tomorrow",
-          "detail": "Sat, Oct 3",
-          "target": "2026-10-03"
+          "label": "Move to today",
+          "detail": "Fri, Oct 2",
+          "target": "2026-10-02"
         },
         "reschedule": {
           "eligible": true,
@@ -1626,9 +1626,9 @@
         },
         "nextDay": {
           "eligible": false,
-          "label": "Move to tomorrow",
-          "detail": "Sat, Oct 3",
-          "target": "2026-10-03"
+          "label": "Move to today",
+          "detail": "Fri, Oct 2",
+          "target": "2026-10-02"
         },
         "reschedule": {
           "eligible": true,
@@ -1691,9 +1691,9 @@
         },
         "nextDay": {
           "eligible": false,
-          "label": "Move to tomorrow",
-          "detail": "Sat, Oct 3",
-          "target": "2026-10-03"
+          "label": "Move to today",
+          "detail": "Fri, Oct 2",
+          "target": "2026-10-02"
         },
         "reschedule": {
           "eligible": true,
@@ -1824,9 +1824,9 @@
         },
         "nextDay": {
           "eligible": false,
-          "label": "Move to tomorrow",
-          "detail": "Sat, Oct 3",
-          "target": "2026-10-03"
+          "label": "Move to today",
+          "detail": "Fri, Oct 2",
+          "target": "2026-10-02"
         },
         "reschedule": {
           "eligible": true,
@@ -1951,9 +1951,9 @@
         },
         "nextDay": {
           "eligible": false,
-          "label": "Move to tomorrow",
-          "detail": "Sat, Oct 3",
-          "target": "2026-10-03"
+          "label": "Move to today",
+          "detail": "Fri, Oct 2",
+          "target": "2026-10-02"
         },
         "reschedule": {
           "eligible": false,
@@ -2016,9 +2016,9 @@
         },
         "nextDay": {
           "eligible": false,
-          "label": "Move to tomorrow",
-          "detail": "Sat, Oct 3",
-          "target": "2026-10-03"
+          "label": "Move to today",
+          "detail": "Fri, Oct 2",
+          "target": "2026-10-02"
         },
         "reschedule": {
           "eligible": true,
@@ -2083,9 +2083,9 @@
         },
         "nextDay": {
           "eligible": false,
-          "label": "Move to tomorrow",
-          "detail": "Sat, Oct 3",
-          "target": "2026-10-03"
+          "label": "Move to today",
+          "detail": "Fri, Oct 2",
+          "target": "2026-10-02"
         },
         "reschedule": {
           "eligible": false,
@@ -2337,9 +2337,9 @@
         },
         "nextDay": {
           "eligible": true,
-          "label": "Move to tomorrow",
-          "detail": "Sat, Oct 3",
-          "target": "2026-10-03"
+          "label": "Move to today",
+          "detail": "Fri, Oct 2",
+          "target": "2026-10-02"
         },
         "reschedule": {
           "eligible": true,
@@ -2402,9 +2402,9 @@
         },
         "nextDay": {
           "eligible": true,
-          "label": "Move to tomorrow",
-          "detail": "Sat, Oct 3",
-          "target": "2026-10-03"
+          "label": "Move to today",
+          "detail": "Fri, Oct 2",
+          "target": "2026-10-02"
         },
         "reschedule": {
           "eligible": true,
@@ -3178,9 +3178,9 @@
         },
         "nextDay": {
           "eligible": false,
-          "label": "Move to tomorrow",
-          "detail": "Sat, Oct 3",
-          "target": "2026-10-03"
+          "label": "Move to today",
+          "detail": "Fri, Oct 2",
+          "target": "2026-10-02"
         },
         "reschedule": {
           "eligible": true,
@@ -3248,9 +3248,9 @@
         },
         "nextDay": {
           "eligible": false,
-          "label": "Move to tomorrow",
-          "detail": "Sat, Oct 3",
-          "target": "2026-10-03"
+          "label": "Move to today",
+          "detail": "Fri, Oct 2",
+          "target": "2026-10-02"
         },
         "reschedule": {
           "eligible": true,
@@ -3317,9 +3317,9 @@
         },
         "nextDay": {
           "eligible": false,
-          "label": "Move to tomorrow",
-          "detail": "Sat, Oct 3",
-          "target": "2026-10-03"
+          "label": "Move to today",
+          "detail": "Fri, Oct 2",
+          "target": "2026-10-02"
         },
         "reschedule": {
           "eligible": true,
@@ -3383,9 +3383,9 @@
         },
         "nextDay": {
           "eligible": false,
-          "label": "Move to tomorrow",
-          "detail": "Sat, Oct 3",
-          "target": "2026-10-03"
+          "label": "Move to today",
+          "detail": "Fri, Oct 2",
+          "target": "2026-10-02"
         },
         "reschedule": {
           "eligible": true,

@@ -32,15 +32,17 @@ func addDaysToDateStr(_ dateStr: String, _ days: Int) -> String {
     return day.adding(days: days).description
 }
 
-/// lib/row-moves.ts `nextDayTarget`: the day after the later of the row's day
-/// and today, so an overdue carry never lands in the past.
+/// lib/row-moves.ts `nextDayTarget`: the day after the row's own day, never
+/// earlier than today, so an overdue carry never lands in the past.
 public func nextDayTarget(_ rowDateStr: String, today todayStr: String) -> String {
-    return addDaysToDateStr(rowDateStr > todayStr ? rowDateStr : todayStr, 1)
+    let next = addDaysToDateStr(rowDateStr, 1)
+    return next > todayStr ? next : todayStr
 }
 
-/// lib/row-moves.ts `nextDayLabel`: "Move to tomorrow" only when the target is
-/// tomorrow, else "Move to next day".
+/// lib/row-moves.ts `nextDayLabel`: "Move to today" or "Move to tomorrow" only
+/// when the target is that day, else "Move to next day".
 public func nextDayLabel(_ target: String, today todayStr: String) -> String {
+    if target == todayStr { return "Move to today" }
     return target == addDaysToDateStr(todayStr, 1) ? "Move to tomorrow" : "Move to next day"
 }
 
