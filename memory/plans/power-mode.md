@@ -365,9 +365,12 @@ doing stuff. Mockups: https://claude.ai/artifact/5ruP7iqrFH3s7vLRLcdso4.
 - **The do stuff key:** the relay in the bolt's place while anything is being
   worked on, and "N ready" while packs wait (lib/ai-work.ts, the same rules as
   the rows). Packs are read at sign-in, a GET that asks no model.
-- **Built (PR 1):** the marks (components/ai/ai-work-badge.tsx), the rows, the
-  blocks, the pack chip and the key. **Next:** packs as chips on rows outside
-  the mode plus an updates list in the item panel, then the all-day background
+- **Built (PR 1, #543):** the marks (components/ai/ai-work-badge.tsx), the rows,
+  the blocks, the pack chip and the key. **PR 2:** a pack's ready chip on any
+  row outside the mode (a tap opens the item, it is not a button of its own),
+  the pack in the item panel (PackInPanel, above the agent's block), Not needed
+  with an undo (the delete waits UNDO_MS), and packs read at sign-in from the
+  app shell (PrepPacksBoot). **Next:** the all-day background
   worker (prep only, once per item until it changes, a daily cap, off by
   default) and a default-worker setting (model, OpenClaw or an MCP app; "Hand
   off to…" overrides per item).

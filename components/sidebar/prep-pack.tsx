@@ -14,11 +14,12 @@ import {
   packHref,
   packKindName,
   packLabel,
+  packIsStale,
   packText,
   type Pack,
   type PrepPack,
 } from '@/lib/prep-packs';
-import { usePrepPacksStore } from '@/lib/prep-packs-store';
+import { UNDO_MS, usePrepPacksStore } from '@/lib/prep-packs-store';
 import { doneNext } from '@/lib/do-stuff';
 import { cn } from '@/lib/utils';
 
@@ -156,13 +157,18 @@ interface CardProps {
   swipe?: boolean;
   /** After Done or Not needed; the deck stays open to deal the next. Defaults to onClose. */
   onSettled?: () => void;
+  /**
+   * Inside the item panel (PackInPanel): the panel already names the item and
+   * has its own close, so the card drops its title and ✕.
+   */
+  embedded?: boolean;
 }
 
 /** The pack itself: a header, the fields, and the one tap that takes it out. */
 /** How far a finger travels sideways before the deck acts on a swipe. */
 const SWIPE_PX = 80;
 
-export function PackCard({ itemId, title, stored, nav, onClose, swipe, onSettled = onClose }: CardProps) {
+export function PackCard({ itemId, title, stored, nav, onClose, swipe, onSettled = onClose, embedded }: CardProps) {
   const [dx, setDx] = useState(0);
   const start = useRef<{ x: number; y: number } | null>(null);
   // Keyed by the caller on the pack (packKey), so ↑ ↓ or a fresh pack landing
@@ -229,10 +235,10 @@ export function PackCard({ itemId, title, stored, nav, onClose, swipe, onSettled
       }}
       className={cn('flex max-h-[min(560px,80vh)] flex-col', swipe && 'touch-pan-y')}
     >
-      <div className="flex items-start gap-2 px-4 pt-4 pb-2">
+      <div className={cn('flex items-start gap-2', embedded ? 'px-3 pt-3 pb-1' : 'px-4 pt-4 pb-2')}>
         <div className="min-w-0 flex-1">
-          <div className="text-[15px] leading-snug font-semibold">{title}</div>
-          <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+          {!embedded && <div className="text-[15px] leading-snug font-semibold">{title}</div>}
+          <div className={cn('flex items-center gap-1.5 text-xs text-muted-foreground', !embedded && 'mt-0.5')}>
             <AskMark tone="ink" className="size-3" />
             {packKindName(pack)} · written by your AI
           </div>
@@ -262,16 +268,18 @@ export function PackCard({ itemId, title, stored, nav, onClose, swipe, onSettled
             </button>
           </div>
         )}
-        <button
-          type="button"
-          aria-label="Close"
-          onClick={onClose}
-          className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent"
-        >
-          <X className="size-4" />
-        </button>
+        {!embedded && (
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={onClose}
+            className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent"
+          >
+            <X className="size-4" />
+          </button>
+        )}
       </div>
-      <div className="flex min-h-0 flex-col gap-3 overflow-y-auto px-4 pb-3">
+      <div className={cn('flex min-h-0 flex-col gap-3 overflow-y-auto pb-3', embedded ? 'px-3' : 'px-4')}>
         <PackFields pack={pack} onChange={setPack} />
       </div>
       <div className="flex items-center gap-1.5 border-t border-border px-3 py-2.5">
@@ -295,7 +303,7 @@ export function PackCard({ itemId, title, stored, nav, onClose, swipe, onSettled
           variant="ghost"
           onClick={() => {
             onSettled();
-            void usePrepPacksStore.getState().dismiss(itemId);
+            dismissWithUndo(itemId);
           }}
           data-testid="prep-pack-dismiss"
           className="text-muted-foreground"
@@ -319,6 +327,35 @@ export function PackCard({ itemId, title, stored, nav, onClose, swipe, onSettled
 }
 
 const packKey = (card: CardProps) => `${card.itemId}:${card.stored.updatedAt}`;
+
+/**
+ * Not needed, with an undo: the pack leaves at once and the toast can put it
+ * back for as long as it shows (lib/prep-packs-store.ts holds the delete
+ * until then). Every surface's Not needed goes through here.
+ */
+function dismissWithUndo(itemId: string): void {
+  const undo = usePrepPacksStore.getState().dismiss(itemId);
+  if (!undo) return;
+  toast('Let it go', { action: { label: 'Undo', onClick: undo }, duration: UNDO_MS });
+}
+
+/**
+ * The pack in the item panel (item-detail-sections.tsx): where a ready chip
+ * on any row leads. Nothing when the item has no pack, or one written for an
+ * older title.
+ */
+export function PackInPanel({ itemId, title }: { itemId: string; title: string }) {
+  const stored = usePrepPacksStore((s) => s.packs[itemId]);
+  if (!stored || packIsStale(stored, title)) return null;
+  return (
+    <section
+      data-testid="item-pack"
+      className="rounded-[12px] border border-border bg-surface-2 shadow-[var(--shadow-elev-sm)]"
+    >
+      <PackCard key={`${itemId}:${stored.updatedAt}`} itemId={itemId} title={title} stored={stored} onClose={() => {}} embedded />
+    </section>
+  );
+}
 
 /**
  * The card beside its row on desktop. Anchored to the row (the wrapper the

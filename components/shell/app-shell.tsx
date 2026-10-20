@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { PrepPacksBoot } from '@/components/ai/ai-work-badge';
 import { toast } from 'sonner';
 import {
   DndContext,
@@ -197,6 +198,7 @@ export function FirstRunNudges({
   }, [tourShowing]);
   return (
     <>
+      <PrepPacksBoot />
       <OneTimeNudge id={NUDGE_STREAKS_ON} enabled={streakNudgeOn} />
       <OneTimeNudge id={NUDGE_RITUALS_INTRO} enabled={ritualsNudgeOn && !streaksNudgeUp} />
     </>
