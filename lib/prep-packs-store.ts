@@ -1,5 +1,8 @@
 import { create } from 'zustand';
 import { useAISettingsStore } from './ai-settings-store';
+import { researchOn } from './background-prep';
+import { EXT_DO_STUFF } from './extension-registry';
+import { useExtensionsStore } from './extensions-store';
 import type { Item } from './planner-types';
 import { usePlannerStore } from './planner-store';
 import { answerNote, PREP_BATCH, type PrepPack } from './prep-packs';
@@ -137,6 +140,11 @@ export const usePrepPacksStore = create<PrepPacksState>((set, get) => ({
           items: ask,
           ...(opts.today ? { today: opts.today } : {}),
           customInstructions: useAISettingsStore.getState().systemPrompt,
+          // The research switch (lib/background-prep.ts); the route asks only
+          // a provider that can search.
+          ...(researchOn(useExtensionsStore.getState().configs[EXT_DO_STUFF])
+            ? { research: true, timezone: usePlannerStore.getState().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone }
+            : {}),
         }),
       });
       const body = (await res.json().catch(() => ({}))) as {

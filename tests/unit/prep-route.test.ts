@@ -23,6 +23,8 @@ const h = vi.hoisted(() => ({
   existing: new Set<string>(),
   error: null as { code: string; message?: string } | null,
   stored: [] as unknown[],
+  /** Kinds the kind check refuses, as before 078 and 079 (23514). */
+  rejectKinds: new Set<string>(),
 }));
 
 vi.mock('@/lib/supabase-server', () => ({
@@ -34,6 +36,9 @@ vi.mock('@/lib/supabase-server', () => ({
       }),
       upsert: (rows: Record<string, unknown>[], opts?: { onConflict?: string; ignoreDuplicates?: boolean }) => {
         h.inserts.push(rows);
+        if (rows.some((r) => h.rejectKinds.has(r.kind as string))) {
+          return { select: async () => ({ data: null, error: { code: '23514', message: 'prep_packs_kind_check' } }) };
+        }
         // ON CONFLICT DO NOTHING is the only upsert the grants allow: a DO UPDATE
         // would name `item_id` in its SET list. Rows whose item already has a
         // pack come back absent.
@@ -77,12 +82,12 @@ vi.mock('@/lib/ai-server/stream', () => ({
 const adapter = vi.hoisted(() => ({ completeText: vi.fn() }));
 vi.mock('@/lib/ai-server/providers', () => ({ getAdapter: vi.fn(() => adapter), credentialsFor: vi.fn() }));
 
-function connected() {
+function connected(provider = 'openai') {
   vi.mocked(openModelConnection).mockResolvedValue({
     ok: true,
     row: {
       user_id: 'user-1',
-      provider: 'openai',
+      provider,
       base_url: null,
       model: 'm-1',
       model_meta: {},
@@ -93,7 +98,7 @@ function connected() {
       checked_at: null,
       limited_until: null,
     },
-    creds: { provider: 'openai', apiKey: 'sk', baseUrl: 'https://example.test/v1' },
+    creds: { provider, apiKey: 'sk', baseUrl: 'https://example.test/v1' },
     model: 'm-1',
   } as never);
 }
@@ -120,6 +125,7 @@ beforeEach(() => {
   h.existing = new Set();
   h.error = null;
   h.stored = [];
+  h.rejectKinds = new Set();
   connected();
   adapter.completeText.mockReset();
 });
@@ -220,6 +226,55 @@ describe('POST /api/ai/prep', () => {
     const res = await post({ items: ITEMS });
     expect(res.status).toBe(409);
     expect((await res.json()).code).toBe('not_connected');
+  });
+});
+
+describe('research (the "look things up" switch)', () => {
+  const lastReq = () => adapter.completeText.mock.calls.at(-1)![1] as { webSearch?: { maxUses: number; timezone?: string }; system: string[] };
+
+  it('lets the model search only when asked, and only on a provider that can', async () => {
+    adapter.completeText.mockResolvedValue('{"packs":[]}');
+    await post({ items: ITEMS });
+    expect(lastReq().webSearch).toBeUndefined();
+
+    await post({ items: ITEMS, research: true, timezone: 'Europe/London' });
+    expect(lastReq().webSearch).toEqual({ maxUses: 5, timezone: 'Europe/London' });
+    expect(lastReq().system.join('\n')).toMatch(/never invent/i);
+
+    await post({ items: ITEMS, research: true, timezone: 'not a zone; drop table' });
+    expect(lastReq().webSearch).toEqual({ maxUses: 5 });
+
+    connected('gemini');
+    await post({ items: ITEMS, research: true });
+    expect(lastReq().webSearch).toBeUndefined();
+  });
+
+  it('asks again without search when the provider refuses the tool', async () => {
+    const { ProviderError } = await import('@/lib/ai-server/errors');
+    adapter.completeText
+      .mockRejectedValueOnce(new ProviderError('bad_request', 400))
+      .mockResolvedValueOnce(JSON.stringify({ packs: [{ itemId: A, kind: 'list', items: ['milk'] }] }));
+    const res = await post({ items: ITEMS, research: true });
+    expect(res.status).toBe(200);
+    expect(adapter.completeText).toHaveBeenCalledTimes(2);
+    expect(lastReq().webSearch).toBeUndefined();
+    expect((await res.json()).packs[0].pack).toMatchObject({ kind: 'list', items: ['milk'] });
+  });
+
+  it('keeps the drafts when the database does not take the new kinds yet', async () => {
+    h.rejectKinds = new Set(['options', 'list', 'form', 'draft', 'question']);
+    adapter.completeText.mockResolvedValue(
+      JSON.stringify({
+        packs: [
+          { itemId: A, kind: 'email', subject: 'The boiler', body: 'Hi Sam.' },
+          { itemId: B, kind: 'options', options: [{ title: 'Tue 3pm', url: 'https://dentist.example/book' }] },
+        ],
+      })
+    );
+    const res = await post({ items: ITEMS, research: true });
+    const body = await res.json();
+    expect(body.packs.map((p: { itemId: string }) => p.itemId)).toEqual([A]);
+    expect(h.inserts.at(-1)!.map((r) => (r as { kind: string }).kind)).toEqual(['email']);
   });
 });
 

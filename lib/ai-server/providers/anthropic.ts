@@ -28,6 +28,7 @@ import type {
   ContentBlockParam,
   MessageParam,
   RawMessageStreamEvent,
+  WebSearchTool20250305,
 } from '@anthropic-ai/sdk/resources/messages';
 import type { ModelInfo } from '@anthropic-ai/sdk/resources/models';
 import { isModelId } from '@/lib/ai-types';
@@ -115,6 +116,20 @@ function imageBlock(image: ChatImage): ContentBlockParam {
 
 function asBlocks(content: MessageParam['content']): ContentBlockParam[] {
   return typeof content === 'string' ? (content.trim() ? [{ type: 'text', text: content }] : []) : content;
+}
+
+/**
+ * The web search server tool. The basic variant, which every model that takes
+ * tools accepts; the person picks the model, so a newer-only variant would
+ * fail on some. Its errors come back as result blocks, never as a throw.
+ */
+function webSearchTool(search: NonNullable<CompletionRequest['webSearch']>): WebSearchTool20250305 {
+  return {
+    type: 'web_search_20250305',
+    name: 'web_search',
+    max_uses: search.maxUses,
+    ...(search.timezone ? { user_location: { type: 'approximate' as const, timezone: search.timezone } } : {}),
+  };
 }
 
 function baseParams(req: CompletionRequest) {
@@ -249,14 +264,26 @@ export function createAnthropicAdapter(): ProviderAdapter {
 
     async completeText(creds, req) {
       const client = makeClient(creds, CALL);
-      const params: MessageCreateParamsNonStreaming = baseParams(req);
+      const params: MessageCreateParamsNonStreaming = {
+        ...baseParams(req),
+        ...(req.webSearch ? { tools: [webSearchTool(req.webSearch)] } : {}),
+      };
       let message: Message;
       try {
         message = await client.messages.create(params, { signal: req.signal });
+        // A turn with server tools can pause mid-search; hand it back once to
+        // let it finish, rather than reading half an answer.
+        if (message.stop_reason === 'pause_turn') {
+          message = await client.messages.create(
+            { ...params, messages: [...params.messages, { role: 'assistant', content: message.content }] },
+            { signal: req.signal }
+          );
+        }
       } catch (err) {
         throw fail(err, 'call', req.signal);
       }
       if (message.stop_reason === 'refusal') throw new ProviderError('refused');
+      // Search results arrive as their own blocks; the answer is the text.
       const text = message.content
         .map((b) => (b.type === 'text' ? b.text : ''))
         .join('')

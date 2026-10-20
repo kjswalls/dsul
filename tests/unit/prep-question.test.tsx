@@ -68,3 +68,32 @@ describe('a question pack', () => {
     expect(updateTask).toHaveBeenCalledWith('a', { notes: 'Which invoice? the May one' }, expect.anything());
   });
 });
+
+describe('a researched pack', () => {
+  it('shows its options and sources as outward links that open a new tab', () => {
+    const stored: PrepPack = {
+      itemId: 'a',
+      madeFor: 'Book the dentist',
+      updatedAt: '2026-10-20T12:00:00.000Z',
+      pack: {
+        kind: 'options',
+        options: [{ title: 'Dr Patel', when: 'Tue 3pm', url: 'https://www.clinic.example/book' }],
+        sources: [{ title: 'Clinic hours', url: 'https://clinic.example/hours' }],
+      },
+    };
+    const task = { type: 'task', id: 'a', title: 'Book the dentist', status: 'pending', isScheduled: false, order: 0 } as Item;
+    usePlannerStore.setState({ items: [task], userTimezone: 'UTC' } as never);
+    usePrepPacksStore.setState({ packs: { a: stored }, available: true, preparing: {}, tried: {} });
+    render(<PackCard itemId="a" title="Book the dentist" stored={stored} onClose={() => {}} />);
+    expect(screen.getByTestId('prep-pack-options').textContent).toContain('Dr Patel');
+    const links = screen.getAllByRole('link');
+    expect(links.map((l) => l.getAttribute('href'))).toEqual(
+      expect.arrayContaining(['https://www.clinic.example/book', 'https://clinic.example/hours'])
+    );
+    for (const l of links) {
+      expect(l.getAttribute('target')).toBe('_blank');
+      expect(l.getAttribute('rel')).toContain('noopener');
+    }
+    expect(screen.getByTestId('prep-pack-sources').textContent).toContain('clinic.example');
+  });
+});
