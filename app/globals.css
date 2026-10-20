@@ -2874,8 +2874,8 @@ body {
 }
 
 [data-ai-chip] {
-  --ai-chip-a: color-mix(in oklch, var(--lime-tint), var(--ask-icon-accent) 22%);
-  --ai-chip-b: color-mix(in oklch, var(--surface-2), var(--ask-icon-pair) 20%);
+  --ai-chip-a: color-mix(in oklab, var(--lime-tint), var(--ask-icon-accent) 22%);
+  --ai-chip-b: color-mix(in oklab, var(--surface-2), var(--ask-icon-pair) 20%);
   display: inline-flex;
   flex-shrink: 0;
   align-items: center;
@@ -2889,16 +2889,16 @@ body {
   background: linear-gradient(90deg, var(--ai-chip-a), var(--ai-chip-b));
 }
 .dark [data-ai-chip] {
-  --ai-chip-a: color-mix(in oklch, var(--surface-2), var(--ask-icon-accent) 18%);
-  --ai-chip-b: color-mix(in oklch, var(--surface-2), var(--ask-icon-pair) 16%);
+  --ai-chip-a: color-mix(in oklab, var(--surface-2), var(--ask-icon-accent) 24%);
+  --ai-chip-b: color-mix(in oklab, var(--surface-2), var(--ask-icon-pair) 24%);
 }
 [data-ai-chip='question'] {
   --ai-chip-a: var(--honey-tint);
   --ai-chip-b: var(--coral-tint);
 }
 .dark [data-ai-chip='question'] {
-  --ai-chip-a: color-mix(in oklch, var(--surface-2), var(--honey-solid) 20%);
-  --ai-chip-b: color-mix(in oklch, var(--surface-2), var(--coral-solid) 20%);
+  --ai-chip-a: color-mix(in oklab, var(--surface-2), var(--honey-solid) 20%);
+  --ai-chip-b: color-mix(in oklab, var(--surface-2), var(--coral-solid) 20%);
 }
 button[data-ai-chip]:hover,
 button[data-ai-chip][aria-expanded='true'] {
