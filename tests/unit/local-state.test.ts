@@ -788,6 +788,10 @@ describe('nothing persists per-user state outside the registry', () => {
       'lib/account-client.ts',
       // the per-tab crash marker (sessionStorage, '1'): tab-scoped and says nothing about anyone
       'lib/planner-snapshot.ts',
+      // `dsul.backgroundPrep.v1.<userId>`: background prep's daily count and,
+      // per item id, a hash of what it was last asked about as. Keyed by the
+      // account, so nobody else reads it, and it holds no word anyone wrote.
+      'hooks/use-background-prep.ts',
       // `dsul-user-themes`: the account's own themes, printed, for the pre-paint
       // script. Per user, so clearUserThemeCache is in RAW_CLEARERS.
       'lib/user-themes/store.ts',

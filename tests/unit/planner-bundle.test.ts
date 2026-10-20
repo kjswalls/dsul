@@ -317,6 +317,7 @@ describe('fetchProjects', () => {
 const MAPPER_OUTPUT_BY_FORMAT: Record<number, string> = {
   1: '2b7f5b75',
   2: '889d0ba3',
+  3: '0ade6f0f',
 };
 
 const T1 = '2026-01-09T12:00:00+00:00';
@@ -327,7 +328,7 @@ const fullTaskColumns = {
   completed_dates: ['2026-01-05'], skipped_dates: ['2026-01-06'], priority: 'high',
   project: 'Health', project_id: 'p1', start_date: '2026-01-04', duration: 45, is_scheduled: true,
   order: 7, in_project_block: true, previous_start_time: '08:00', previous_start_date: '2026-01-03',
-  parent_item_id: 'i1', assignee: 'beacon', ai_status: 'done', ai_result: 'ok', ai_status_at: T1,
+  parent_item_id: 'i1', assignee: 'beacon', ai_status: 'done', ai_result: 'ok', ai_status_at: T1, ai_mode: 'prepare',
   paused_at: '2026-01-10', paused_until: '2026-01-20', reminder_time: '08:45', reminder_anchor: 'start',
   size: 'errand', created_at: T0, deleted_at: null,
 };

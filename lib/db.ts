@@ -61,6 +61,7 @@ interface ItemRow {
   ai_status?: string | null;
   ai_result?: string | null;
   ai_status_at?: string | null;
+  ai_mode?: string | null;
   // habit-side
   group?: string | null;
   streak?: number | null;
@@ -112,6 +113,7 @@ function itemFromRow(row: ItemRow): Item {
       aiStatus: row.ai_status ?? undefined,
       aiResult: row.ai_result ?? undefined,
       aiStatusAt: row.ai_status_at ?? undefined,
+      aiMode: noteAiMode(row),
       size: row.size ?? undefined,
       pausedAt: row.paused_at ?? undefined,
       pausedUntil: row.paused_until ?? undefined,
@@ -187,6 +189,7 @@ function itemFromRow(row: ItemRow): Item {
     aiStatus: row.ai_status ?? undefined,
     aiResult: row.ai_result ?? undefined,
     aiStatusAt: row.ai_status_at ?? undefined,
+    aiMode: noteAiMode(row),
     size: row.size ?? undefined,
     pausedAt: row.paused_at ?? undefined,
     pausedUntil: row.paused_until ?? undefined,
@@ -273,6 +276,31 @@ function sizeColumn(item: Item): Partial<Pick<ItemRow, 'size'>> {
   return size !== undefined ? { size } : {};
 }
 
+/**
+ * The hand-off mode, emitted ONLY when set: the PGRST204 guard again, for
+ * migration 078. Nearly every item has none.
+ */
+function aiModeColumn(item: Item): Partial<Pick<ItemRow, 'ai_mode'>> {
+  const mode = item.type === 'habit' ? undefined : (item as { aiMode?: string }).aiMode;
+  return mode !== undefined ? { ai_mode: mode } : {};
+}
+
+/**
+ * Whether a read has shown `items.ai_mode` (migration 078). `select('*')`
+ * returns the key, null or not, once the column exists, so the first loaded
+ * row answers it for this page. Background prep hands an item to an agent only
+ * after this says yes: before 078 the mode would be dropped by the deferrable
+ * retry and the agent would get a plain hand-off, free to do the task.
+ */
+let aiModeSeen = false;
+export function aiModeColumnSeen(): boolean {
+  return aiModeSeen;
+}
+function noteAiMode(row: ItemRow): string | undefined {
+  if (!aiModeSeen && 'ai_mode' in row) aiModeSeen = true;
+  return row.ai_mode ?? undefined;
+}
+
 function itemToRow(userId: string, item: Item): ItemRow {
   if (item.type === 'habit') {
     return {
@@ -337,6 +365,7 @@ function itemToRow(userId: string, item: Item): ItemRow {
     ai_result: item.aiResult ?? null,
     ...pauseColumns(item),
     ...agentStampColumn(item),
+    ...aiModeColumn(item),
     ...containerColumns(item),
     ...reminderColumns(item),
     ...sizeColumn(item),
@@ -402,6 +431,11 @@ function taskUpdatesToRow(updates: Partial<Task>): Record<string, unknown> {
     row.ai_status_at = explicit ?? new Date().toISOString();
   }
   if ('aiResult' in updates) row.ai_result = updates.aiResult ?? null;
+  // How the hand-off may be worked (migration 078). Deferrable like size: a
+  // write ahead of the migration drops it and keeps the rest, which is why the
+  // one writer that depends on it, background prep's agent hand-off, first asks
+  // `aiModeColumnSeen()`.
+  if ('aiMode' in updates) row.ai_mode = (updates as { aiMode?: string }).aiMode ?? null;
   // Size (migration 066). Null is "not sized" and a real write: the braindump's
   // size menu offers it, and undo restores it.
   if ('size' in updates) row.size = updates.size ?? null;
@@ -1134,7 +1168,7 @@ async function withResolvedContainer(
  * not-yet-migrated columns and try once more, so the write lands and only the
  * reminder half (or the size) is deferred.
  */
-const DEFERRABLE_WRITE_COLUMNS = ['reminder_time', 'reminder_anchor', 'size'] as const;
+const DEFERRABLE_WRITE_COLUMNS = ['reminder_time', 'reminder_anchor', 'size', 'ai_mode'] as const;
 
 /** True only for "the database doesn't have a column we asked for". */
 export function isMissingColumnError(error: { code?: string; message?: string } | null): boolean {

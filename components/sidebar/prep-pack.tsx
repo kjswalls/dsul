@@ -14,6 +14,7 @@ import {
   packHref,
   packKindName,
   packLabel,
+  packIsQuestion,
   packIsStale,
   packText,
   type Pack,
@@ -51,10 +52,10 @@ export function PackChip({
       onClick={onToggle}
       onKeyDown={(e) => e.stopPropagation()}
       aria-expanded={open}
-      aria-label={`${packKindName(stored.pack)} ready. ${open ? 'Close' : 'Open'} it`}
+      aria-label={`${packIsQuestion(stored.pack) ? 'Your AI has a question' : `${packKindName(stored.pack)} ready`}. ${open ? 'Close' : 'Open'} it`}
       data-testid="prep-pack-chip"
       // The ready chip (components/ai/ai-work-badge.tsx): the aurora fill.
-      data-ai-chip="ready"
+      data-ai-chip={packIsQuestion(stored.pack) ? 'question' : 'ready'}
       className="-my-1.5 cursor-pointer"
     >
       {packLabel(stored.pack)}
@@ -140,7 +141,54 @@ function PackFields({ pack, onChange }: { pack: Pack; onChange: (next: Pack) => 
           />
         </Field>
       );
+    case 'question':
+      return null;
   }
+}
+
+/**
+ * A question pack: the one thing the AI needs to know before it can get the
+ * item ready. A tap on a likely answer, or a typed one, goes into the item's
+ * notes and the AI tries again (prep-packs-store's `answer`).
+ */
+function QuestionBody({ itemId, question, options }: { itemId: string; question: string; options?: string[] }) {
+  const [text, setText] = useState('');
+  const send = (answer: string) => {
+    if (!answer.trim()) return;
+    usePrepPacksStore.getState().answer(itemId, answer);
+  };
+  return (
+    <div className="flex flex-col gap-3" data-testid="prep-pack-question">
+      <p className="text-[14px] leading-snug">{question}</p>
+      {options && options.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {options.map((o) => (
+            <Button key={o} size="sm" variant="outline" onClick={() => send(o)} data-testid="prep-pack-option">
+              {o}
+            </Button>
+          ))}
+        </div>
+      )}
+      <form
+        className="flex items-center gap-1.5"
+        onSubmit={(e) => {
+          e.preventDefault();
+          send(text);
+        }}
+      >
+        <Input
+          value={text}
+          placeholder={options?.length ? 'Or say it your way' : 'Your answer'}
+          aria-label="Your answer"
+          onChange={(e) => setText(e.target.value)}
+          data-testid="prep-pack-answer"
+        />
+        <Button size="sm" type="submit" disabled={!text.trim()}>
+          Answer
+        </Button>
+      </form>
+    </div>
+  );
 }
 
 interface CardProps {
@@ -185,6 +233,7 @@ export function PackCard({ itemId, title, stored, nav, onClose, swipe, onSettled
     }
   };
   const primary = () => {
+    if (pack.kind === 'question') return;
     if (href) window.location.href = href;
     else void copy();
   };
@@ -240,7 +289,7 @@ export function PackCard({ itemId, title, stored, nav, onClose, swipe, onSettled
           {!embedded && <div className="text-[15px] leading-snug font-semibold">{title}</div>}
           <div className={cn('flex items-center gap-1.5 text-xs text-muted-foreground', !embedded && 'mt-0.5')}>
             <AskMark tone="ink" className="size-3" />
-            {packKindName(pack)} · written by your AI
+            {pack.kind === 'question' ? 'Your AI needs one thing first' : `${packKindName(pack)} · written by your AI`}
           </div>
         </div>
         {nav && (
@@ -280,10 +329,14 @@ export function PackCard({ itemId, title, stored, nav, onClose, swipe, onSettled
         )}
       </div>
       <div className={cn('flex min-h-0 flex-col gap-3 overflow-y-auto pb-3', embedded ? 'px-3' : 'px-4')}>
-        <PackFields pack={pack} onChange={setPack} />
+        {pack.kind === 'question' ? (
+          <QuestionBody itemId={itemId} question={pack.question} options={pack.options} />
+        ) : (
+          <PackFields pack={pack} onChange={setPack} />
+        )}
       </div>
       <div className="flex items-center gap-1.5 border-t border-border px-3 py-2.5">
-        {href ? (
+        {pack.kind === 'question' ? null : href ? (
           <Button size="sm" asChild data-testid="prep-pack-primary">
             <a href={href}>{packAction(pack)}</a>
           </Button>
@@ -292,7 +345,7 @@ export function PackCard({ itemId, title, stored, nav, onClose, swipe, onSettled
             {packAction(pack)}
           </Button>
         )}
-        {href && (
+        {href && pack.kind !== 'question' && (
           <Button size="sm" variant="ghost" onClick={() => void copy()} className="text-muted-foreground">
             Copy
           </Button>

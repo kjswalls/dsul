@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { z } from 'zod'
 import { isSameOrigin, NO_STORE, readJson, requireSession } from '@/app/api/ai/_shared/guard'
 import type { ChatErrorCode } from '@/lib/ai-types'
@@ -27,15 +28,18 @@ import { PackSchema, packBody, packFromRow, PREP_BATCH, type PrepPack } from '@/
  * build order 3).
  *
  *   GET            the account's packs.
- *   POST           `{ items: [{ id, title, notes? }] }`, at most PREP_BATCH:
+ *   POST           `{ items: [{ id, title, notes?, project?, day?, subtasks? }],
+ *                  today?, customInstructions? }`, at most PREP_BATCH:
  *                  the user's own model writes a pack for each item it can
  *                  honestly get ready, and the route keeps them. Answers the
  *                  packs it kept; an item it chose to skip simply has none.
  *   DELETE ?item=  drops one pack (the card's "not needed").
  *
  * The answerer is always the model the user connected, never OpenClaw (an
- * agent takes a whole item through the hand-off, not a draft), and the client
- * asks only while that model is who answers (`canPrep`). Every write goes
+ * agent gets an item ready through the hand-off, with `aiMode: 'prepare'`, not
+ * through here), and the client asks only while that model is who answers
+ * (`canPrep`): Do stuff when it starts, and background prep
+ * (hooks/use-background-prep.ts) when the person turned it on. Every write goes
  * through the session client under RLS, never the service role. Failures
  * answer `{ error, code }` in our own words; a provider's text never reaches
  * the response.
@@ -49,13 +53,19 @@ const PREP_TIMEOUT_MS = 45_000
 const MAX_BODY_BYTES = 64_000
 const MAX_TITLE_CHARS = 500
 const MAX_NOTES_CHARS = 1_500
+const MAX_PROJECT_CHARS = 120
+const MAX_SUBTASK_CHARS = 200
+const MAX_SUBTASKS = 10
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 const JSON_ONLY_LINE = 'Whatever the instructions above say, reply with the JSON object only.'
 
 const SYSTEM_PROMPT = `You are the assistant inside dsul, a daily planner for neurodivergent people.
 
-The user has a list of things they keep not doing. For each one you can honestly get ready from its title and notes alone, write a PREP PACK: the draft or script that turns it into a one-tap job. You never send, call or book anything; the user takes it from there.
+The user has a list of things they keep not doing. For each one you can honestly get ready from what the list says about it, write a PREP PACK: the draft or script that turns it into a one-tap job. You never send, call, buy or book anything; the user takes it from there.
+
+Each item comes with its title and may come with notes, the project it belongs to, the day it is planned for, and its subtasks. Today's date is given above the list.
 
 Reply with a JSON object and nothing else — no prose before or after it, no markdown fences.
 
@@ -65,7 +75,8 @@ The shape, exactly:
     { "itemId": "<id>", "kind": "email", "to": "address, only if given", "subject": "...", "body": "..." },
     { "itemId": "<id>", "kind": "message", "to": "who, if given", "body": "..." },
     { "itemId": "<id>", "kind": "call", "who": "who to call", "number": "only if given", "script": ["what to say first", "what to ask", "..."] },
-    { "itemId": "<id>", "kind": "steps", "steps": ["first step, under five minutes", "..."] }
+    { "itemId": "<id>", "kind": "steps", "steps": ["first step, under five minutes", "..."] },
+    { "itemId": "<id>", "kind": "question", "question": "the one thing you need to know", "options": ["a likely answer", "another"] }
   ]
 }
 
@@ -75,7 +86,10 @@ Rules:
 - Never invent an email address, a phone number, a name, a price, a date or a fact. Use only what the title and notes say. Leave "to" and "number" out when they are not given.
 - Emails and messages: short, warm, plain, ready to send as they are. No placeholders in brackets. No sign-off name.
 - Call scripts: two to six short lines, in the order they would be said.
-- Steps: two to five concrete actions; the first one takes under five minutes.
+- Steps: two to five concrete actions; the first one takes under five minutes. Build on subtasks that are already there rather than repeating them.
+- Question: when one missing fact is all that stands between the item and a real draft (who to write to, which day, what it is about), ask it instead of guessing. One short, plain question; "options" is two to four likely answers of a few words, or left out when you cannot guess any. Never ask what the notes already answer, and never ask more than one.
+- Use the planned day and today's date to get the timing right ("by Friday", "this week"), never to scold. Never call anything late or overdue.
+- Write the way a kind friend would: plain words, no exclamation marks, no pep talk, no guilt.
 - Skip any item a draft would not genuinely help (an errand, a chore, something already small). Skipping is fine.
 - If nothing on the list can be prepared, return {"packs":[]}.`
 
@@ -96,6 +110,9 @@ const ItemsSchema = z
       id: z.string().regex(UUID_RE),
       title: z.string(),
       notes: z.string().optional(),
+      project: z.string().optional(),
+      day: z.string().regex(DAY_RE).optional(),
+      subtasks: z.array(z.string()).max(50).optional(),
     })
   )
   .min(1)
@@ -138,6 +155,24 @@ export async function DELETE(req: Request): Promise<Response> {
 interface PrepBody {
   items?: unknown
   customInstructions?: unknown
+  /** The user's own today, yyyy-MM-dd: the server's clock is in another zone. */
+  today?: unknown
+}
+
+/** One item as the model reads it: title, then whatever context it has. */
+function itemLine(i: z.infer<typeof ItemsSchema>[number], title: string): string {
+  const lines = [`- id ${i.id}: ${title}`]
+  const project = clipText(i.project, MAX_PROJECT_CHARS).trim()
+  if (project) lines.push(`  project: ${project}`)
+  if (i.day) lines.push(`  planned for: ${i.day}`)
+  const notes = clipText(i.notes, MAX_NOTES_CHARS).trim()
+  if (notes) lines.push(`  notes: ${notes.replace(/\n+/g, ' ')}`)
+  const subtasks = (i.subtasks ?? [])
+    .map((t) => clipText(t, MAX_SUBTASK_CHARS).trim())
+    .filter(Boolean)
+    .slice(0, MAX_SUBTASKS)
+  if (subtasks.length > 0) lines.push(`  subtasks: ${subtasks.join('; ')}`)
+  return lines.join('\n')
 }
 
 export async function POST(req: Request): Promise<Response> {
@@ -158,12 +193,11 @@ export async function POST(req: Request): Promise<Response> {
 
   // The titles the packs are written for, clipped as the model is sent them.
   const titles = new Map(items.data.map((i) => [i.id, clipText(i.title, MAX_TITLE_CHARS).trim()]))
+  const today = typeof body.today === 'string' && DAY_RE.test(body.today) ? body.today : null
   const userTurn = [
+    ...(today ? [`Today is ${today}.`, ''] : []),
     'The list:',
-    ...items.data.map((i) => {
-      const notes = clipText(i.notes, MAX_NOTES_CHARS).trim()
-      return `- id ${i.id}: ${titles.get(i.id)}${notes ? `\n  notes: ${notes.replace(/\n+/g, ' ')}` : ''}`
-    }),
+    ...items.data.map((i) => itemLine(i, titles.get(i.id)!)),
   ].join('\n')
 
   let conn: Opened
@@ -218,7 +252,7 @@ export async function POST(req: Request): Promise<Response> {
   // dropped, never the batch.
   const parsed = extractJsonObject(raw) as { packs?: unknown } | null
   const list = Array.isArray(parsed?.packs) ? parsed.packs : []
-  const rows = new Map<string, { item_id: string; kind: string; body: Record<string, unknown>; made_for: string; model: string | null }>()
+  const rows = new Map<string, PackRow>()
   for (const entry of list) {
     if (!entry || typeof entry !== 'object') continue
     const itemId = (entry as { itemId?: unknown }).itemId
@@ -235,42 +269,13 @@ export async function POST(req: Request): Promise<Response> {
   }
   if (rows.size === 0) return ok({ packs: [] })
 
-  // Not an upsert, and not delete-then-insert. PostgREST's ON CONFLICT DO
-  // UPDATE assigns every payload column, `item_id` included, and 074 grants
-  // `authenticated` UPDATE on four named columns only; Postgres checks the SET
-  // list up front, so the upsert was refused whole (42501) on the FIRST save
-  // too, and no pack ever reached the table from the app (found 2026-10-17).
-  // Deleting first would lose a pack at the 200 cap: 074's cap trigger spares
-  // only an item whose pack still exists, and a multi-row insert that trips
-  // the cap on a new item rolls the regenerated ones back after their delete
-  // committed. So: INSERT ... ON CONFLICT DO NOTHING (supabase-js spells it
-  // `upsert` + `ignoreDuplicates`; it has no SET list, so no UPDATE grant is
-  // asked) takes the new items, which is exactly what the cap counts, and each
-  // item it skipped gets an UPDATE of the four columns 074 lets us set, plus
-  // `updated_at`, which it also grants.
-  const { data: inserted, error: insertError } = await db
-    .from('prep_packs')
-    .upsert([...rows.values()], { onConflict: 'item_id', ignoreDuplicates: true })
-    .select(SELECT)
-  let error = insertError
-  const saved = [...(inserted ?? [])]
-  if (!error) {
-    const fresh = new Set(saved.map((r) => (r as { item_id: string }).item_id))
-    const stamp = new Date().toISOString()
-    for (const [itemId, row] of rows) {
-      if (fresh.has(itemId)) continue
-      const { kind, body, made_for, model } = row
-      const { data: updated, error: updateError } = await db
-        .from('prep_packs')
-        .update({ kind, body, made_for, model, updated_at: stamp })
-        .eq('item_id', itemId)
-        .select(SELECT)
-      if (updateError) {
-        error = updateError
-        break
-      }
-      saved.push(...(updated ?? []))
-    }
+  let { saved, error } = await saveRows(db, rows)
+  // Before 078 the kind check refuses a question. Drop the questions and keep
+  // the rest, rather than losing every draft in the batch to one of them.
+  if (error?.code === '23514' && [...rows.values()].some((r) => r.kind === 'question')) {
+    for (const [itemId, r] of rows) if (r.kind === 'question') rows.delete(itemId)
+    if (rows.size === 0) return ok({ packs: [] })
+    ;({ saved, error } = await saveRows(db, rows))
   }
   const data = error ? null : saved
   if (error) {
@@ -283,6 +288,50 @@ export async function POST(req: Request): Promise<Response> {
     console.warn('[ai] prep save failed', error.code)
     return jsonError(503, USER_MESSAGES.upstream, 'server')
   }
-  const packs = (data ?? []).map(packFromRow).filter((p): p is PrepPack => p !== null)
+  const packs = (data ?? []).map((r) => packFromRow(r as Parameters<typeof packFromRow>[0])).filter((p): p is PrepPack => p !== null)
   return ok({ packs })
+}
+
+type PackRow = { item_id: string; kind: string; body: Record<string, unknown>; made_for: string; model: string | null }
+type Db = SupabaseClient
+
+/**
+ * Keeps the packs. Not an upsert, and not delete-then-insert. PostgREST's ON
+ * CONFLICT DO UPDATE assigns every payload column, `item_id` included, and 074
+ * grants `authenticated` UPDATE on four named columns only; Postgres checks the
+ * SET list up front, so the upsert was refused whole (42501) on the FIRST save
+ * too, and no pack ever reached the table from the app (found 2026-10-17).
+ * Deleting first would lose a pack at the 200 cap: 074's cap trigger spares
+ * only an item whose pack still exists, and a multi-row insert that trips the
+ * cap on a new item rolls the regenerated ones back after their delete
+ * committed. So: INSERT ... ON CONFLICT DO NOTHING (supabase-js spells it
+ * `upsert` + `ignoreDuplicates`; it has no SET list, so no UPDATE grant is
+ * asked) takes the new items, which is exactly what the cap counts, and each
+ * item it skipped gets an UPDATE of the four columns 074 lets us set, plus
+ * `updated_at`, which it also grants.
+ */
+async function saveRows(
+  db: Db,
+  rows: Map<string, PackRow>
+): Promise<{ saved: unknown[]; error: { code?: string; message?: string } | null }> {
+  const { data: inserted, error: insertError } = await db
+    .from('prep_packs')
+    .upsert([...rows.values()], { onConflict: 'item_id', ignoreDuplicates: true })
+    .select(SELECT)
+  if (insertError) return { saved: [], error: insertError }
+  const saved: unknown[] = [...(inserted ?? [])]
+  const fresh = new Set(saved.map((r) => (r as { item_id: string }).item_id))
+  const stamp = new Date().toISOString()
+  for (const [itemId, row] of rows) {
+    if (fresh.has(itemId)) continue
+    const { kind, body, made_for, model } = row
+    const { data: updated, error: updateError } = await db
+      .from('prep_packs')
+      .update({ kind, body, made_for, model, updated_at: stamp })
+      .eq('item_id', itemId)
+      .select(SELECT)
+    if (updateError) return { saved, error: updateError }
+    saved.push(...(updated ?? []))
+  }
+  return { saved, error: null }
 }

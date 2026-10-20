@@ -46,9 +46,17 @@ export interface HandOffContext {
 export function canHandOff(item: Item, ctx: HandOffContext): boolean {
   if (!ctx.canDelegate) return false;
   if (!getItemTypeConfig(itemTypeName(item)).agentAssignable) return false;
-  if ('assignee' in item && item.assignee) return false;
+  // Held by someone, unless it was only to get it ready and that is over:
+  // "Hand off to…" then gives the whole job (background prep never does).
+  if ('assignee' in item && item.assignee && !prepFinished(item)) return false;
   if (isRecurring(item)) return false;
   return isOpenLoopOn(item, ctx.todayStr) && !ctx.inactiveIds.has(item.id);
+}
+
+/** A get-it-ready hand-off whose run has ended, done or not. */
+function prepFinished(item: Item): boolean {
+  const status = (item as { aiStatus?: string }).aiStatus;
+  return aiModeOf(item) === 'prepare' && (status === 'done' || status === 'failed');
 }
 
 /**
@@ -85,14 +93,37 @@ export function canTakeBack(item: Item): boolean {
  * `dsul_my_work` and is never woken, so it finds the item the next time it
  * looks.
  */
-export function handOffItem(item: Item, to: string = DELEGATE_ASSIGNEE): void {
+export function handOffItem(item: Item, to: string = DELEGATE_ASSIGNEE, opts: { mode?: AiMode } = {}): void {
   usePlannerStore
     .getState()
     .updateTask(
       item.id,
-      { assignee: to, aiStatus: 'queued' },
-      { label: `Hand off to ${assigneeLabel(to)}: ${item.title}` }
+      { assignee: to, aiStatus: 'queued', ...modeWrite(item, opts.mode) },
+      { label: opts.mode ? `Get ready with ${assigneeLabel(to)}: ${item.title}` : `Hand off to ${assigneeLabel(to)}: ${item.title}` }
     );
+}
+
+/**
+ * How a hand-off may be worked (migration 078). 'prepare' is background
+ * prep's: the agent drafts, plans and asks, and never sends, books, pays or
+ * deletes (MCP's `dsul_my_work` says so to the agent).
+ */
+export type AiMode = 'prepare';
+
+/** The item's mode, or none: a plain hand-off does the task. */
+export function aiModeOf(item: Item): AiMode | undefined {
+  return (item as { aiMode?: string }).aiMode === 'prepare' ? 'prepare' : undefined;
+}
+
+/**
+ * The mode half of a hand-off or a take-back. Written only when it changes, so
+ * a plain hand-off of an item that never had one names no new column, and an
+ * item that was handed off to get ready loses the limit when it is handed off
+ * to be done.
+ */
+function modeWrite(item: Item, mode: AiMode | undefined): { aiMode?: AiMode } {
+  if (mode) return { aiMode: mode };
+  return aiModeOf(item) ? { aiMode: undefined } : {};
 }
 
 /**
@@ -106,7 +137,7 @@ export function takeBackItem(item: Item): void {
     .getState()
     .updateTask(
       item.id,
-      { assignee: undefined, aiStatus: undefined, aiResult: undefined },
+      { assignee: undefined, aiStatus: undefined, aiResult: undefined, ...modeWrite(item, undefined) },
       { label: `Take back from ${who}: ${item.title}` }
     );
 }

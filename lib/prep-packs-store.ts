@@ -1,5 +1,9 @@
 import { create } from 'zustand';
-import { PREP_BATCH, type PrepPack } from './prep-packs';
+import { useAISettingsStore } from './ai-settings-store';
+import type { Item } from './planner-types';
+import { usePlannerStore } from './planner-store';
+import { answerNote, PREP_BATCH, type PrepPack } from './prep-packs';
+import { toDateStr } from './recurrence';
 
 /** How long Not needed can be undone before the pack is deleted for good. */
 export const UNDO_MS = 6000;
@@ -19,6 +23,32 @@ export interface PrepItem {
   id: string;
   title: string;
   notes?: string;
+  /** The project it is filed under, for tone and who it is for. */
+  project?: string;
+  /** The day it is planned for, yyyy-MM-dd. */
+  day?: string;
+  /** Its open subtasks' titles, so steps build on them. */
+  subtasks?: string[];
+}
+
+/** An item as prep reads it: its own words plus the context around it. */
+export function prepItemFor(item: Item, all: readonly Item[]): PrepItem {
+  const notes = (item as { notes?: string }).notes?.trim();
+  const project = (item as { project?: string }).project?.trim();
+  const day = (item as { startDate?: string }).startDate;
+  const subtasks = all
+    .filter((c) => (c as { parentItemId?: string }).parentItemId === item.id && c.type !== 'habit')
+    .filter((c) => (c as { status?: string }).status !== 'completed' && (c as { status?: string }).status !== 'cancelled')
+    .map((c) => c.title)
+    .slice(0, 10);
+  return {
+    id: item.id,
+    title: item.title,
+    ...(notes ? { notes } : {}),
+    ...(project ? { project } : {}),
+    ...(day ? { day } : {}),
+    ...(subtasks.length > 0 ? { subtasks } : {}),
+  };
 }
 
 interface PrepPacksState {
@@ -35,9 +65,20 @@ interface PrepPacksState {
   /** The last ask's failure, in our own words, until the next ask. */
   error: string | null;
   load: (userId: string) => Promise<void>;
-  prepare: (items: readonly PrepItem[]) => Promise<void>;
+  /**
+   * Asks for packs. `today` is the user's own day, for timing. `again` asks
+   * about items already tried or prepared: an answered question, or an item
+   * that changed since its last ask.
+   */
+  prepare: (items: readonly PrepItem[], opts?: { today?: string; again?: boolean }) => Promise<void>;
   /** Lets a pack go; returns its undo, or null when there was none. */
   dismiss: (itemId: string) => (() => void) | null;
+  /**
+   * Answers a question pack: the answer goes into the item's notes (where the
+   * user can see and change it, and the next ask reads it), the question is
+   * deleted, and the item is asked about again.
+   */
+  answer: (itemId: string, answer: string) => void;
 }
 
 const EMPTY = {
@@ -75,10 +116,12 @@ export const usePrepPacksStore = create<PrepPacksState>((set, get) => ({
     }
   },
 
-  prepare: async (items) => {
+  prepare: async (items, opts = {}) => {
     const s = get();
     if (s.available === false) return;
-    const ask = items.filter((i) => !s.tried[i.id] && !s.packs[i.id] && !s.preparing[i.id]).slice(0, PREP_BATCH);
+    const ask = items
+      .filter((i) => !s.preparing[i.id] && (opts.again || (!s.tried[i.id] && !s.packs[i.id])))
+      .slice(0, PREP_BATCH);
     if (ask.length === 0) return;
     const ids = Object.fromEntries(ask.map((i) => [i.id, true as const]));
     set((st) => ({ preparing: { ...st.preparing, ...ids }, tried: { ...st.tried, ...ids }, error: null }));
@@ -90,7 +133,11 @@ export const usePrepPacksStore = create<PrepPacksState>((set, get) => ({
       const res = await fetch('/api/ai/prep', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: ask }),
+        body: JSON.stringify({
+          items: ask,
+          ...(opts.today ? { today: opts.today } : {}),
+          customInstructions: useAISettingsStore.getState().systemPrompt,
+        }),
       });
       const body = (await res.json().catch(() => ({}))) as {
         packs?: PrepPack[];
@@ -107,6 +154,31 @@ export const usePrepPacksStore = create<PrepPacksState>((set, get) => ({
     } finally {
       done();
     }
+  },
+
+  answer: (itemId, answer) => {
+    const was = get().packs[itemId];
+    const text = answer.trim();
+    if (!was || was.pack.kind !== 'question' || !text) return;
+    const planner = usePlannerStore.getState();
+    const item = planner.items.find((i) => i.id === itemId);
+    if (!item || item.type === 'habit') return;
+    const notes = answerNote((item as { notes?: string }).notes, was.pack.question, text);
+    planner.updateTask(itemId, { notes }, { label: `Answer: ${item.title}` });
+    set((s) => {
+      const packs = { ...s.packs };
+      delete packs[itemId];
+      return { packs };
+    });
+    // The ask after it replaces the row anyway, so the question goes now; a
+    // delete that fails leaves it for the next load, under the new pack.
+    void fetch(`/api/ai/prep?item=${encodeURIComponent(itemId)}`, { method: 'DELETE' }).catch(() => {});
+    const tz = planner.userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const next = { ...item, notes } as Item;
+    void get().prepare([prepItemFor(next, usePlannerStore.getState().items)], {
+      today: toDateStr(new Date(), tz),
+      again: true,
+    });
   },
 
   dismiss: (itemId) => {

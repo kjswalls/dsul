@@ -18,6 +18,7 @@ export interface AiWorkItem {
   assignee?: string;
   aiStatus?: string;
   aiStatusAt?: string;
+  aiMode?: string;
 }
 
 export interface AiWorkSummary {
@@ -32,6 +33,16 @@ export function agentWorking(item: AiWorkItem, now: number): boolean {
   if (!showsAgentChip(item)) return false;
   const view = agentStatusView(item, now);
   return !!view && view.active && !view.stalled;
+}
+
+/**
+ * Did an agent finish getting an open item ready? Background prep hands an
+ * item over with aiMode 'prepare' (lib/background-prep.ts); 'done' then means
+ * the prep is done, never the item, so it reads as ready like a pack.
+ */
+export function agentPrepReady(item: Pick<AiWorkItem, 'assignee' | 'aiStatus' | 'aiMode' | 'status'>): boolean {
+  if (item.status === 'completed' || item.status === 'cancelled') return false;
+  return !!item.assignee && item.aiMode === 'prepare' && item.aiStatus === 'done';
 }
 
 /** Handed-off items with a live state at all: whether the key needs a clock. */
@@ -49,7 +60,7 @@ export function aiWorkSummary(
   let ready = 0;
   for (const item of open) {
     const pack = prep.packs[item.id];
-    if (pack && !packIsStale(pack, item.title)) ready += 1;
+    if ((pack && !packIsStale(pack, item.title)) || agentPrepReady(item)) ready += 1;
   }
   return { working, ready };
 }

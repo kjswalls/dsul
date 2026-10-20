@@ -2,7 +2,8 @@
 
 import { useEffect } from 'react';
 import { usePlannerStore } from '@/lib/planner-store';
-import { packIsStale, packLabel } from '@/lib/prep-packs';
+import { useBackgroundPrep } from '@/hooks/use-background-prep';
+import { packIsQuestion, packIsStale, packLabel } from '@/lib/prep-packs';
 import { usePrepPacksStore } from '@/lib/prep-packs-store';
 import { cn } from '@/lib/utils';
 
@@ -85,7 +86,7 @@ export function PackReady({
   if (!stored || item.status === 'completed' || item.status === 'cancelled') return null;
   if (packIsStale(stored, item.title)) return null;
   return (
-    <AiChip className={className} data-testid="row-pack-ready">
+    <AiChip tone={packIsQuestion(stored.pack) ? 'question' : 'ready'} className={className} data-testid="row-pack-ready">
       {packLabel(stored.pack)}
     </AiChip>
   );
@@ -95,9 +96,11 @@ export function PackReady({
  * Reads the account's packs once at sign-in (a GET that asks no model), so a
  * row's ready chip and the do stuff key's count are there on every surface,
  * the phone's Today included, before Do stuff is ever started. Mounted once,
- * in the app shell; renders nothing.
+ * in the app shell; renders nothing. It also runs background prep
+ * (hooks/use-background-prep.ts), which does nothing until the person turns it on.
  */
 export function PrepPacksBoot() {
+  useBackgroundPrep();
   const userId = usePlannerStore((s) => s.userId);
   useEffect(() => {
     if (userId) void usePrepPacksStore.getState().load(userId);

@@ -52,7 +52,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { isRecurring, toDateStr } from '@/lib/recurrence';
 import { prefersReducedMotion } from '@/lib/zen-transition';
 import { packIsStale, type PrepPack } from '@/lib/prep-packs';
-import { usePrepPacksStore, type PrepItem } from '@/lib/prep-packs-store';
+import { prepItemFor, usePrepPacksStore, type PrepItem } from '@/lib/prep-packs-store';
 import { aiWorkSummary, hasLiveRun, type AiWorkSummary } from '@/lib/ai-work';
 import { AiChip, RelayRow } from '@/components/ai/ai-work-badge';
 import { PackChip, PackDeck, PackInline, PackPeek } from '@/components/sidebar/prep-pack';
@@ -342,8 +342,8 @@ function usePlan(dumpRows: readonly RowItem[]): Plan {
       lanes[lane]
         .filter((r) => isOpen(r) && r.itemType === 'task' && !facts.get(r.item.id)?.handedOff)
         .map((r) => {
-          const notes = (byId.get(r.item.id) as { notes?: string } | undefined)?.notes;
-          return { id: r.item.id, title: r.item.title, ...(notes ? { notes } : {}) };
+          const item = byId.get(r.item.id);
+          return item ? prepItemFor(item, items) : { id: r.item.id, title: r.item.title };
         })
     );
     const target = targets.find((t) => sameAssignee(t.assignee, handTo)) ?? targets[0] ?? null;
@@ -1160,7 +1160,7 @@ function useSort(listRef: React.RefObject<HTMLDivElement | null>) {
  * while that model is who answers (`canPrep`); otherwise packs already made
  * still show, and nothing is sent anywhere.
  */
-function usePrepOnStart(candidates: readonly PrepItem[]) {
+function usePrepOnStart(candidates: readonly PrepItem[], todayStr: string) {
   const { canPrep } = useAICapabilities();
   // Who else could take the handed-off lane: asked once each start.
   useEffect(() => {
@@ -1168,15 +1168,17 @@ function usePrepOnStart(candidates: readonly PrepItem[]) {
   }, []);
   const userId = usePlannerStore((s) => s.userId);
   const candidatesRef = useRef(candidates);
+  const todayRef = useRef(todayStr);
   useEffect(() => {
     candidatesRef.current = candidates;
-  }, [candidates]);
+    todayRef.current = todayStr;
+  }, [candidates, todayStr]);
   useEffect(() => {
     if (!userId) return;
     let live = true;
     const packs = usePrepPacksStore.getState();
     void packs.load(userId).then(() => {
-      if (live && canPrep) void usePrepPacksStore.getState().prepare(candidatesRef.current);
+      if (live && canPrep) void usePrepPacksStore.getState().prepare(candidatesRef.current, { today: todayRef.current });
     });
     return () => {
       live = false;
@@ -1210,7 +1212,7 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
   useReflow(listRef, order, next?.item.id);
   useSort(listRef);
   useLaneKeys(listRef, hoveredRef, plan.facts);
-  usePrepOnStart(plan.prepCandidates);
+  usePrepOnStart(plan.prepCandidates, plan.todayStr);
   const prepError = usePrepPacksStore((s) => s.error);
   const docked = useDoStuffStore((s) => s.docked);
   const doneCount = useDoStuffStore((s) => s.doneCount);

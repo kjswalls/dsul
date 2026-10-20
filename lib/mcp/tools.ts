@@ -227,6 +227,12 @@ interface AssignedItem {
    * still going" and "that run died and nobody noticed".
    */
   aiStatusAt?: string
+  /**
+   * How the user wants it worked (migration 078). 'prepare' means get it ready
+   * and stop: draft, research, plan or ask, and never send, book, pay or
+   * delete. Absent means do the task.
+   */
+  aiMode?: string
   /** The item's own status, so the worker can see it was not just un-queued. */
   status?: string
   startDate?: string
@@ -351,7 +357,7 @@ export function selectAssignedWork(
       // due, how urgent, and whatever the user wrote down. Deliberately NOT the
       // whole row — the point of this tool is to be small.
       for (const key of [
-        'assignee', 'aiStatus', 'aiResult', 'aiStatusAt', 'status',
+        'assignee', 'aiStatus', 'aiResult', 'aiStatusAt', 'aiMode', 'status',
         'startDate', 'startTime', 'timeBucket', 'priority', 'notes',
       ] as const) {
         if (typeof item[key] === 'string') picked[key] = item[key] as string
@@ -383,6 +389,10 @@ export const MCP_TOOLS: McpTool[] = [
       'It refuses when someone else has touched the item, which is what stops two of you ' +
       'working the same task and overwriting each other. ' +
       'Never touch an item assigned to someone else. ' +
+      "An item with aiMode 'prepare' is one to get ready, not to do: draft the message, " +
+      'research and plan, or ask the user one question, then report what you prepared with ' +
+      'dsul_report_progress. Never send, book, buy, pay, submit, post or delete anything for ' +
+      'it, and never mark it complete. ' +
       'If nothing comes back, there is nothing to do. Stop, and do not go looking ' +
       'for work in the rest of the planner.',
     inputSchema: obj({

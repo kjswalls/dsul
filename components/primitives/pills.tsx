@@ -5,6 +5,7 @@ import { Flame } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { AiChip, RelayRow } from '@/components/ai/ai-work-badge';
 import { agentStatusView, showsAgentChip, type AgentStatusView } from '@/lib/agent-status';
+import { agentPrepReady } from '@/lib/ai-work';
 import { assigneeLabel } from '@/lib/chat-utils';
 import { streakRunText } from '@/lib/item-edit';
 import type { Priority, RepeatFrequency } from '@/lib/planner-types';
@@ -733,11 +734,21 @@ export function AgentPill({
   className,
   workingOnly = false,
 }: {
-  item: { aiStatus?: string; aiStatusAt?: string; assignee?: string; status?: string };
+  item: { aiStatus?: string; aiStatusAt?: string; assignee?: string; status?: string; aiMode?: string };
   className?: string;
   /** Only the relay, for a live run: a schedule block has no room for the chips. */
   workingOnly?: boolean;
 }) {
+  // An agent that got an item ready (background prep's hand-off, aiMode
+  // 'prepare') is done when it reports, but the item is not: the ready chip
+  // says there is something to look at, in the item panel's agent block.
+  if (agentPrepReady(item)) {
+    return workingOnly ? null : (
+      <AiChip className={className} data-testid="agent-prep-ready">
+        ready
+      </AiChip>
+    );
+  }
   // NO HOOKS HERE. This runs on every task row in the app, and hooks cannot be
   // skipped by an early return — an interval declared above this line would run
   // for all of them, ticking every minute to re-render a component that returns
