@@ -321,6 +321,14 @@ const taskShape = {
      */
     aiStatusAt: z.string().optional(),
     /**
+     * How a handed-off item may be worked (migration 078): absent does the task,
+     * 'prepare' only gets it ready (drafts, steps, a question) and never sends,
+     * books, pays or deletes. Background prep writes it with the hand-off. The
+     * READ shape stays loose like `aiStatus`; no agent write schema accepts it,
+     * so an agent can never lift its own limit.
+     */
+    aiMode: z.string().optional(),
+    /**
      * How big an undated item is (migration 066): one of ItemSizeSchema's
      * values, or absent for "not sized yet". Set in the braindump by the Do stuff
      * extension and read nowhere else. A LOOSE string on read for the reason the
@@ -599,7 +607,10 @@ export const TaskCreateSchema = z
     // of 400ing here (the rule the `aiStatus` line beside it states outright), and
     // a well-formed past value manufactures a fake "Working 3h". The stamp is
     // written by lib/db.ts alongside the status it describes, and by nothing else.
-    .omit({ pausedAt: true, pausedUntil: true, projectId: true, aiStatusAt: true })
+    //
+    // `aiMode` is the user's limit on an agent, so an agent may not set it, on
+    // create any more than on update (TaskUpdateSchema never lists it).
+    .omit({ pausedAt: true, pausedUntil: true, projectId: true, aiStatusAt: true, aiMode: true })
     .superRefine(requireCustomDays);
 export const HabitCreateSchema = z
     .object({

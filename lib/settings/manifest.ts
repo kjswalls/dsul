@@ -1,3 +1,4 @@
+import { BACKGROUND_PREP_KEY, BACKGROUND_WORKER_KEY, backgroundPrepWorker } from '../background-prep';
 import {
   Sunrise,
   Contrast,
@@ -1714,6 +1715,47 @@ export const SETTINGS: SettingRecord[] = [
       if (ctx.userId) ext().setEnabled(ctx.userId, EXT_DO_STUFF, Boolean(v));
     },
     defaultValue: true,
+  },
+  {
+    // Background prep (lib/background-prep.ts). Off by default: it spends the
+    // person's own model or agent, and the extension rule says nothing that
+    // costs money starts on.
+    id: 'extensions.doStuff.background',
+    pane: extensionPaneId(EXT_DO_STUFF),
+    label: 'Get things ready in the background',
+    description:
+      "While dsul is open, your AI drafts and plans the things you've been putting off, so they're ready when you look. It never sends, books or buys anything. Up to 20 a day.",
+    control: 'switch',
+    dependsOn: 'extensions.doStuff',
+    keywords: ['prep', 'prepare', 'draft', 'background', 'ready', 'ai', 'agent', 'openclaw'],
+    unavailable: extUnavailable,
+    pending: extPending,
+    read: () => ext().configs[EXT_DO_STUFF]?.[BACKGROUND_PREP_KEY] === true,
+    write: (v, ctx) => {
+      if (ctx.userId) ext().setConfigValue(ctx.userId, EXT_DO_STUFF, BACKGROUND_PREP_KEY, Boolean(v));
+    },
+    defaultValue: false,
+  },
+  {
+    id: 'extensions.doStuff.worker',
+    pane: extensionPaneId(EXT_DO_STUFF),
+    label: 'Who gets them ready',
+    description:
+      'Your AI writes drafts, steps and questions. An agent gets the item handed over to get ready only, and reports back. Hand off to… on an item still gives it the whole job.',
+    control: 'enum',
+    dependsOn: 'extensions.doStuff.background',
+    options: [
+      { value: 'model', label: 'Your AI' },
+      { value: 'agent', label: 'Your agent' },
+    ],
+    keywords: ['openclaw', 'agent', 'mcp', 'model', 'who'],
+    unavailable: extUnavailable,
+    pending: extPending,
+    read: () => backgroundPrepWorker(ext().configs[EXT_DO_STUFF]),
+    write: (v, ctx) => {
+      if (ctx.userId) ext().setConfigValue(ctx.userId, EXT_DO_STUFF, BACKGROUND_WORKER_KEY, v === 'agent' ? 'agent' : 'model');
+    },
+    defaultValue: 'model',
   },
   {
     id: 'extensions.streaks',

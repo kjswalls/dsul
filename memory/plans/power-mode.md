@@ -370,7 +370,40 @@ doing stuff. Mockups: https://claude.ai/artifact/5ruP7iqrFH3s7vLRLcdso4.
   row outside the mode (a tap opens the item, it is not a button of its own),
   the pack in the item panel (PackInPanel, above the agent's block), Not needed
   with an undo (the delete waits UNDO_MS), and packs read at sign-in from the
-  app shell (PrepPacksBoot). **Next:** the all-day background
-  worker (prep only, once per item until it changes, a daily cap, off by
-  default) and a default-worker setting (model, OpenClaw or an MCP app; "Hand
-  off to…" overrides per item).
+  app shell (PrepPacksBoot). **PR 3:** background prep, below.
+
+### Background prep (PR 3, Kirby's "all together", 2026-10-20)
+
+- **Rules:** prep only, never sends, books, buys or deletes; each item once
+  until its title or notes change; DAILY_CAP (20) asks a day per browser; off by
+  default (`extensions.doStuff.background`, Do stuff's config key `background`);
+  "Hand off to…" still gives the whole job, and is offered again on an item
+  whose get-it-ready run is over. lib/background-prep.ts is the pure half,
+  hooks/use-background-prep.ts runs it (mounted in PrepPacksBoot) on mount, on
+  becoming visible and every 10 minutes, only while the page is visible.
+- **Candidates:** open, one-off, top-level tasks nobody holds, not paused or
+  switched off: today's first, then the braindump's.
+- **Who does it** (`extensions.doStuff.worker`): the person's model (only while
+  it answers here, `canPrep`, D14) writes packs; an agent is handed the item
+  with `aiMode: 'prepare'` (migration 078, `items.ai_mode`). MCP's
+  `dsul_my_work` serves the mode and says what it forbids; agents cannot write
+  it (no create or update schema takes it). Nothing is handed to an agent until
+  a read has shown the column (`aiModeColumnSeen()` in lib/db.ts), because
+  before 078 the deferrable-column retry would drop the limit and keep the
+  hand-off. A finished prepare run reads as a ready chip ("ready", in the
+  row's agent slot) and counts in the key's total.
+- **The question kind** (078 widens `prep_packs_kind_check`): when one missing
+  fact is all that stands between an item and a draft, the model asks it. The
+  card offers its likely answers and a box; the answer is appended to the
+  item's notes as "question answer" (`answerNote`), the question is deleted and
+  the item is asked again. Before 078 the route drops question rows and keeps
+  the rest of the batch (a 23514 retry).
+- **Prompt pass:** every ask carries the person's today, each item's project,
+  planned day and open subtasks, and their Custom instructions (Settings → AI,
+  which prep had never sent before). Timing is used to get "by Friday" right,
+  never to call anything late.
+- **Next (PR 3b, Kirby asked 2026-10-20):** web research behind its own switch
+  (off by default, billed per search on the person's key: Anthropic and
+  OpenRouter as the adapters stand, OpenAI through the Responses API, a custom
+  host never), and pack kinds for options (slots, products, with links), lists
+  and form answers.

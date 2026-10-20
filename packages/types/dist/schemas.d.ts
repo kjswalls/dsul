@@ -372,6 +372,14 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
      */
     aiStatusAt: z.ZodOptional<z.ZodString>;
     /**
+     * How a handed-off item may be worked (migration 078): absent does the task,
+     * 'prepare' only gets it ready (drafts, steps, a question) and never sends,
+     * books, pays or deletes. Background prep writes it with the hand-off. The
+     * READ shape stays loose like `aiStatus`; no agent write schema accepts it,
+     * so an agent can never lift its own limit.
+     */
+    aiMode: z.ZodOptional<z.ZodString>;
+    /**
      * How big an undated item is (migration 066): one of ItemSizeSchema's
      * values, or absent for "not sized yet". Set in the braindump by the Do stuff
      * extension and read nowhere else. A LOOSE string on read for the reason the
@@ -410,6 +418,7 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
+    aiMode?: string | undefined;
     size?: string | undefined;
 }, {
     status: "pending" | "completed" | "cancelled";
@@ -442,6 +451,7 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
+    aiMode?: string | undefined;
     size?: string | undefined;
 }>, {
     status: "pending" | "completed" | "cancelled";
@@ -474,6 +484,7 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
+    aiMode?: string | undefined;
     size?: string | undefined;
 }, {
     status: "pending" | "completed" | "cancelled";
@@ -506,6 +517,7 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
+    aiMode?: string | undefined;
     size?: string | undefined;
 }>;
 export declare const HabitSchema: z.ZodEffects<z.ZodObject<{
@@ -739,6 +751,14 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
      */
     aiStatusAt: z.ZodOptional<z.ZodString>;
     /**
+     * How a handed-off item may be worked (migration 078): absent does the task,
+     * 'prepare' only gets it ready (drafts, steps, a question) and never sends,
+     * books, pays or deletes. Background prep writes it with the hand-off. The
+     * READ shape stays loose like `aiStatus`; no agent write schema accepts it,
+     * so an agent can never lift its own limit.
+     */
+    aiMode: z.ZodOptional<z.ZodString>;
+    /**
      * How big an undated item is (migration 066): one of ItemSizeSchema's
      * values, or absent for "not sized yet". Set in the braindump by the Do stuff
      * extension and read nowhere else. A LOOSE string on read for the reason the
@@ -779,6 +799,7 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
+    aiMode?: string | undefined;
     size?: string | undefined;
 }, {
     type: "task";
@@ -812,6 +833,7 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
+    aiMode?: string | undefined;
     size?: string | undefined;
 }>, {
     type: "task";
@@ -845,6 +867,7 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
+    aiMode?: string | undefined;
     size?: string | undefined;
 }, {
     type: "task";
@@ -878,6 +901,7 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
+    aiMode?: string | undefined;
     size?: string | undefined;
 }>;
 export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
@@ -1112,6 +1136,14 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
      */
     aiStatusAt: z.ZodOptional<z.ZodString>;
     /**
+     * How a handed-off item may be worked (migration 078): absent does the task,
+     * 'prepare' only gets it ready (drafts, steps, a question) and never sends,
+     * books, pays or deletes. Background prep writes it with the hand-off. The
+     * READ shape stays loose like `aiStatus`; no agent write schema accepts it,
+     * so an agent can never lift its own limit.
+     */
+    aiMode: z.ZodOptional<z.ZodString>;
+    /**
      * How big an undated item is (migration 066): one of ItemSizeSchema's
      * values, or absent for "not sized yet". Set in the braindump by the Do stuff
      * extension and read nowhere else. A LOOSE string on read for the reason the
@@ -1163,6 +1195,7 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
+    aiMode?: string | undefined;
     size?: string | undefined;
 }, {
     type: "custom";
@@ -1197,6 +1230,7 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
+    aiMode?: string | undefined;
     size?: string | undefined;
 }>, {
     type: "custom";
@@ -1231,6 +1265,7 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
+    aiMode?: string | undefined;
     size?: string | undefined;
 }, {
     type: "custom";
@@ -1265,6 +1300,7 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
+    aiMode?: string | undefined;
     size?: string | undefined;
 }>;
 export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z.ZodObject<{
@@ -1348,6 +1384,14 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
      */
     aiStatusAt: z.ZodOptional<z.ZodString>;
     /**
+     * How a handed-off item may be worked (migration 078): absent does the task,
+     * 'prepare' only gets it ready (drafts, steps, a question) and never sends,
+     * books, pays or deletes. Background prep writes it with the hand-off. The
+     * READ shape stays loose like `aiStatus`; no agent write schema accepts it,
+     * so an agent can never lift its own limit.
+     */
+    aiMode: z.ZodOptional<z.ZodString>;
+    /**
      * How big an undated item is (migration 066): one of ItemSizeSchema's
      * values, or absent for "not sized yet". Set in the braindump by the Do stuff
      * extension and read nowhere else. A LOOSE string on read for the reason the
@@ -1388,6 +1432,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
+    aiMode?: string | undefined;
     size?: string | undefined;
 }, {
     type: "task";
@@ -1421,6 +1466,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
+    aiMode?: string | undefined;
     size?: string | undefined;
 }>, z.ZodObject<{
     /**
@@ -1605,6 +1651,14 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
      */
     aiStatusAt: z.ZodOptional<z.ZodString>;
     /**
+     * How a handed-off item may be worked (migration 078): absent does the task,
+     * 'prepare' only gets it ready (drafts, steps, a question) and never sends,
+     * books, pays or deletes. Background prep writes it with the hand-off. The
+     * READ shape stays loose like `aiStatus`; no agent write schema accepts it,
+     * so an agent can never lift its own limit.
+     */
+    aiMode: z.ZodOptional<z.ZodString>;
+    /**
      * How big an undated item is (migration 066): one of ItemSizeSchema's
      * values, or absent for "not sized yet". Set in the braindump by the Do stuff
      * extension and read nowhere else. A LOOSE string on read for the reason the
@@ -1656,6 +1710,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
+    aiMode?: string | undefined;
     size?: string | undefined;
 }, {
     type: "custom";
@@ -1690,6 +1745,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
+    aiMode?: string | undefined;
     size?: string | undefined;
 }>]>, {
     type: "habit";
@@ -1747,6 +1803,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
+    aiMode?: string | undefined;
     size?: string | undefined;
 } | {
     type: "custom";
@@ -1781,6 +1838,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
+    aiMode?: string | undefined;
     size?: string | undefined;
 }, {
     type: "habit";
@@ -1838,6 +1896,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
+    aiMode?: string | undefined;
     size?: string | undefined;
 } | {
     type: "custom";
@@ -1872,6 +1931,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
+    aiMode?: string | undefined;
     size?: string | undefined;
 }>;
 export declare const ItemTypeDefSchema: z.ZodObject<{
@@ -1985,6 +2045,14 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
      */
     aiStatusAt: z.ZodOptional<z.ZodString>;
     /**
+     * How a handed-off item may be worked (migration 078): absent does the task,
+     * 'prepare' only gets it ready (drafts, steps, a question) and never sends,
+     * books, pays or deletes. Background prep writes it with the hand-off. The
+     * READ shape stays loose like `aiStatus`; no agent write schema accepts it,
+     * so an agent can never lift its own limit.
+     */
+    aiMode: z.ZodOptional<z.ZodString>;
+    /**
      * How big an undated item is (migration 066): one of ItemSizeSchema's
      * values, or absent for "not sized yet". Set in the braindump by the Do stuff
      * extension and read nowhere else. A LOOSE string on read for the reason the
@@ -1992,7 +2060,7 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
      * safeParse. App code narrows it with `itemSizeOf` (lib/item-size.ts).
      */
     size: z.ZodOptional<z.ZodString>;
-}, "pausedAt" | "pausedUntil" | "projectId" | "aiStatusAt">, "strip", z.ZodTypeAny, {
+}, "pausedAt" | "pausedUntil" | "projectId" | "aiStatusAt" | "aiMode">, "strip", z.ZodTypeAny, {
     title: string;
     status?: "pending" | "completed" | "cancelled" | undefined;
     repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
@@ -3390,6 +3458,14 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
          */
         aiStatusAt: z.ZodOptional<z.ZodString>;
         /**
+         * How a handed-off item may be worked (migration 078): absent does the task,
+         * 'prepare' only gets it ready (drafts, steps, a question) and never sends,
+         * books, pays or deletes. Background prep writes it with the hand-off. The
+         * READ shape stays loose like `aiStatus`; no agent write schema accepts it,
+         * so an agent can never lift its own limit.
+         */
+        aiMode: z.ZodOptional<z.ZodString>;
+        /**
          * How big an undated item is (migration 066): one of ItemSizeSchema's
          * values, or absent for "not sized yet". Set in the braindump by the Do stuff
          * extension and read nowhere else. A LOOSE string on read for the reason the
@@ -3428,6 +3504,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
+        aiMode?: string | undefined;
         size?: string | undefined;
     }, {
         status: "pending" | "completed" | "cancelled";
@@ -3460,6 +3537,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
+        aiMode?: string | undefined;
         size?: string | undefined;
     }>, {
         status: "pending" | "completed" | "cancelled";
@@ -3492,6 +3570,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
+        aiMode?: string | undefined;
         size?: string | undefined;
     }, {
         status: "pending" | "completed" | "cancelled";
@@ -3524,6 +3603,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
+        aiMode?: string | undefined;
         size?: string | undefined;
     }>, "many">;
     habits: z.ZodArray<z.ZodEffects<z.ZodObject<{
@@ -3805,6 +3885,14 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
          */
         aiStatusAt: z.ZodOptional<z.ZodString>;
         /**
+         * How a handed-off item may be worked (migration 078): absent does the task,
+         * 'prepare' only gets it ready (drafts, steps, a question) and never sends,
+         * books, pays or deletes. Background prep writes it with the hand-off. The
+         * READ shape stays loose like `aiStatus`; no agent write schema accepts it,
+         * so an agent can never lift its own limit.
+         */
+        aiMode: z.ZodOptional<z.ZodString>;
+        /**
          * How big an undated item is (migration 066): one of ItemSizeSchema's
          * values, or absent for "not sized yet". Set in the braindump by the Do stuff
          * extension and read nowhere else. A LOOSE string on read for the reason the
@@ -3845,6 +3933,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
+        aiMode?: string | undefined;
         size?: string | undefined;
     }, {
         type: "task";
@@ -3878,6 +3967,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
+        aiMode?: string | undefined;
         size?: string | undefined;
     }>, z.ZodObject<{
         /**
@@ -4062,6 +4152,14 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
          */
         aiStatusAt: z.ZodOptional<z.ZodString>;
         /**
+         * How a handed-off item may be worked (migration 078): absent does the task,
+         * 'prepare' only gets it ready (drafts, steps, a question) and never sends,
+         * books, pays or deletes. Background prep writes it with the hand-off. The
+         * READ shape stays loose like `aiStatus`; no agent write schema accepts it,
+         * so an agent can never lift its own limit.
+         */
+        aiMode: z.ZodOptional<z.ZodString>;
+        /**
          * How big an undated item is (migration 066): one of ItemSizeSchema's
          * values, or absent for "not sized yet". Set in the braindump by the Do stuff
          * extension and read nowhere else. A LOOSE string on read for the reason the
@@ -4113,6 +4211,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
+        aiMode?: string | undefined;
         size?: string | undefined;
     }, {
         type: "custom";
@@ -4147,6 +4246,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
+        aiMode?: string | undefined;
         size?: string | undefined;
     }>]>, {
         type: "habit";
@@ -4204,6 +4304,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
+        aiMode?: string | undefined;
         size?: string | undefined;
     } | {
         type: "custom";
@@ -4238,6 +4339,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
+        aiMode?: string | undefined;
         size?: string | undefined;
     }, {
         type: "habit";
@@ -4295,6 +4397,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
+        aiMode?: string | undefined;
         size?: string | undefined;
     } | {
         type: "custom";
@@ -4329,6 +4432,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
+        aiMode?: string | undefined;
         size?: string | undefined;
     }>, "many">>;
     routines: z.ZodOptional<z.ZodArray<z.ZodObject<{
@@ -4562,6 +4666,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
+        aiMode?: string | undefined;
         size?: string | undefined;
     }[];
     habits: {
@@ -4664,6 +4769,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
+        aiMode?: string | undefined;
         size?: string | undefined;
     } | {
         type: "custom";
@@ -4698,6 +4804,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
+        aiMode?: string | undefined;
         size?: string | undefined;
     })[] | undefined;
     routines?: {
@@ -4776,6 +4883,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
+        aiMode?: string | undefined;
         size?: string | undefined;
     }[];
     habits: {
@@ -4878,6 +4986,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
+        aiMode?: string | undefined;
         size?: string | undefined;
     } | {
         type: "custom";
@@ -4912,6 +5021,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
+        aiMode?: string | undefined;
         size?: string | undefined;
     })[] | undefined;
     routines?: {

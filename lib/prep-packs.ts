@@ -47,11 +47,26 @@ export const StepsPackSchema = z.object({
   steps: z.array(line(200)).min(2).max(6),
 });
 
+/**
+ * The one thing the AI needs to know before it can get the item ready
+ * ("Which dentist do you usually see?"). Answering writes the answer into the
+ * item's notes, so the next ask is about a changed item and can draft it.
+ * Saved only once migration 078 lets the kind in; before that the route drops
+ * questions and keeps the rest of the batch.
+ */
+export const QuestionPackSchema = z.object({
+  kind: z.literal('question'),
+  question: line(300).min(1),
+  /** Two to four short likely answers, when there are obvious ones. */
+  options: z.array(line(80).min(1)).min(2).max(4).optional(),
+});
+
 export const PackSchema = z.discriminatedUnion('kind', [
   EmailPackSchema,
   MessagePackSchema,
   CallPackSchema,
   StepsPackSchema,
+  QuestionPackSchema,
 ]);
 
 export type Pack = z.infer<typeof PackSchema>;
@@ -66,6 +81,21 @@ export interface PrepPack {
   updatedAt: string;
 }
 
+/** A question wants the person, so its chip is the warm one. */
+export function packIsQuestion(pack: Pack): boolean {
+  return pack.kind === 'question';
+}
+
+/**
+ * The answer, as the line it adds to the item's notes: the question kept with
+ * it, so the next ask (and the person, later) reads both together.
+ */
+export function answerNote(notes: string | undefined, question: string, answer: string): string {
+  const line = `${question.trim()} ${answer.trim()}`;
+  const before = (notes ?? '').trimEnd();
+  return before ? `${before}\n${line}` : line;
+}
+
 /** The row's chip and the peek card's subtitle: what is ready. */
 export function packLabel(pack: Pack): string {
   switch (pack.kind) {
@@ -77,6 +107,8 @@ export function packLabel(pack: Pack): string {
       return 'script ready';
     case 'steps':
       return 'steps ready';
+    case 'question':
+      return '1 question';
   }
 }
 
@@ -91,6 +123,8 @@ export function packKindName(pack: Pack): string {
       return 'Call script';
     case 'steps':
       return 'First steps';
+    case 'question':
+      return 'A question first';
   }
 }
 
@@ -105,6 +139,8 @@ export function packText(pack: Pack): string {
       return [`${pack.who}${pack.number ? ` · ${pack.number}` : ''}`, '', ...pack.script.map((s) => `- ${s}`)].join('\n');
     case 'steps':
       return pack.steps.map((s, i) => `${i + 1}. ${s}`).join('\n');
+    case 'question':
+      return pack.question;
   }
 }
 
