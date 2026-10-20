@@ -41,6 +41,7 @@ import {
   formatDuration,
   formatDurationLong,
 } from '@/components/primitives/pills';
+import { PrepWorking } from '@/components/ai/ai-work-badge';
 import type { Task, HabitItem, HabitStatus, Item } from '@/lib/planner-types';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
@@ -743,6 +744,8 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
             space. The pill returns null on its own for an unassigned or finished
             item, so most rows render nothing and start no timer. */}
         {task && typeConfig.agentAssignable && <AgentPill item={task} className="-ml-0.5" />}
+        {/* The AI getting this row ready (a prep pack): the same relay. */}
+        {task && <PrepWorking itemId={task.id} className="-ml-0.5" />}
 
         {/* Trailing metadata — the "quiet rail". Fixed order, innermost to the
             right edge: [occasional] → [days] → [identity] → [glyph] → [quantity].

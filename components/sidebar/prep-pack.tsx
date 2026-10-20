@@ -52,12 +52,10 @@ export function PackChip({
       aria-expanded={open}
       aria-label={`${packKindName(stored.pack)} ready. ${open ? 'Close' : 'Open'} it`}
       data-testid="prep-pack-chip"
-      className={cn(
-        '-my-1.5 flex h-[22px] shrink-0 items-center gap-1 rounded-full border px-2 text-[11.5px] font-medium whitespace-nowrap hover:bg-accent',
-        open ? 'border-foreground/30 bg-accent text-foreground' : 'border-border text-foreground'
-      )}
+      // The ready chip (components/ai/ai-work-badge.tsx): the aurora fill.
+      data-ai-chip="ready"
+      className="-my-1.5 cursor-pointer"
     >
-      <span className="text-muted-foreground"><AskMark tone="ink" className="size-3" /></span>
       {packLabel(stored.pack)}
     </button>
   );

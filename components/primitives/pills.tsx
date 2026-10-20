@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Flame } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { AiChip, RelayRow } from '@/components/ai/ai-work-badge';
 import { agentStatusView, showsAgentChip, type AgentStatusView } from '@/lib/agent-status';
 import { assigneeLabel } from '@/lib/chat-utils';
 import { streakRunText } from '@/lib/item-edit';
@@ -730,9 +731,12 @@ const AGENT_CLOCK_MS = 60_000;
 export function AgentPill({
   item,
   className,
+  workingOnly = false,
 }: {
   item: { aiStatus?: string; aiStatusAt?: string; assignee?: string; status?: string };
   className?: string;
+  /** Only the relay, for a live run: a schedule block has no room for the chips. */
+  workingOnly?: boolean;
 }) {
   // NO HOOKS HERE. This runs on every task row in the app, and hooks cannot be
   // skipped by an early return — an interval declared above this line would run
@@ -746,15 +750,18 @@ export function AgentPill({
   // pill depends on the time. Only the elapsed reading does, and that lives
   // below the mount boundary.
   if (!showsAgentChip(item)) return null;
-  return <AgentClock item={item} className={className} />;
+  if (workingOnly && item.aiStatus !== 'queued' && item.aiStatus !== 'working') return null;
+  return <AgentClock item={item} className={className} workingOnly={workingOnly} />;
 }
 
 function AgentClock({
   item,
   className,
+  workingOnly,
 }: {
   item: { aiStatus?: string; aiStatusAt?: string; assignee?: string };
   className?: string;
+  workingOnly: boolean;
 }) {
   const [now, setNow] = useState(() => Date.now());
 
@@ -764,11 +771,26 @@ function AgentClock({
   }, []);
 
   const view = agentStatusView(item, now);
-  if (!view) return null;
+  if (!view || (workingOnly && (!view.active || view.stalled))) return null;
 
+  // The row's AI work badges (components/ai/ai-work-badge.tsx): a live run is
+  // the relay (and the title's sheen), a question the warm chip naming who
+  // asks. A run gone quiet, or one that failed, keeps the plain chip: it is
+  // not work happening, and the relay would say it was.
+  const badge =
+    view.active && !view.stalled ? (
+      <RelayRow label={view.detail} className={className} />
+    ) : view.needsUser && item.assignee ? (
+      <AiChip tone="question" className={className}>
+        {assigneeLabel(item.assignee)} asks
+        <span className="sr-only">{view.detail}</span>
+      </AiChip>
+    ) : (
+      <AgentChip item={item} view={view} className={className} />
+    );
   return (
     <RailTooltip label="Agent" detail={view.detail}>
-      <AgentChip item={item} view={view} className={className} />
+      {badge}
     </RailTooltip>
   );
 }
