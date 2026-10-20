@@ -348,3 +348,26 @@ PR3 Sprint, PR4 Pocket, PR5 L1.
   planner store's own changes (the card, the slot, the desk, the pocket, a row's checkbox,
   the grid), and a today row ticked on the walk stays on the list for "N done here".
 
+
+## AI work badges (Kirby's picks, 2026-10-20)
+
+Ask's morning and last-night cards go; the AI's work shows on the rows it is
+about, everywhere (braindump, today's lists, schedule blocks), not only while
+doing stuff. Mockups: https://claude.ai/artifact/5ruP7iqrFH3s7vLRLcdso4.
+
+- **Working = C + D:** the relay in one row (six tiles, a glowing wave) beside
+  the title, and the title shimmering lime into teal. The title takes the sheen
+  from the relay being its sibling (`[data-row-title='open']:has(~ [data-ai-relay])`),
+  so a row only renders the mark. A run gone quiet or failed keeps the plain
+  agent chip: the relay never claims work nobody is doing.
+- **Ready = aurora fill:** a still word chip ("draft ready"); a question is the
+  same chip warm, honey into coral, naming who asks.
+- **The do stuff key:** the relay in the bolt's place while anything is being
+  worked on, and "N ready" while packs wait (lib/ai-work.ts, the same rules as
+  the rows). Packs are read at sign-in, a GET that asks no model.
+- **Built (PR 1):** the marks (components/ai/ai-work-badge.tsx), the rows, the
+  blocks, the pack chip and the key. **Next:** packs as chips on rows outside
+  the mode plus an updates list in the item panel, then the all-day background
+  worker (prep only, once per item until it changes, a daily cap, off by
+  default) and a default-worker setting (model, OpenClaw or an MCP app; "Hand
+  off to…" overrides per item).

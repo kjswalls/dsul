@@ -2246,7 +2246,7 @@ body {
   initial-value: transparent;
 }
 
-:is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip]) {
+:is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip]) {
   --ask-icon-ink: oklch(0.62 0.135 85);
   --ask-icon-lit: var(--ai);
   --ask-icon-accent: var(--lime-solid);
@@ -2256,7 +2256,7 @@ body {
   --ask-icon-unlit: var(--ink-1);
   --ask-icon-unlit-mid: var(--ink-2);
 }
-.dark :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip]) {
+.dark :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip]) {
   --ask-icon-ink: var(--ai);
   --ask-icon-pair: oklch(0.84 0.12 190);
   --ask-icon-pair-ink: var(--ask-icon-pair);
@@ -2264,26 +2264,26 @@ body {
 /* Each look's partner: light from its light relay colour, dark from its glow
    (Sorbet's is a deep rose beside the pink; an apricot read rust there). The
    tints keep Paper's and Night's. */
-:root[data-look-light='studio']:not(.dark) :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip]) {
+:root[data-look-light='studio']:not(.dark) :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip]) {
   --ask-icon-pair: oklch(0.65 0.13 225);
   --ask-icon-pair-ink: var(--ask-icon-pair);
 }
-:root[data-look-light='sorbet']:not(.dark) :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip]) {
+:root[data-look-light='sorbet']:not(.dark) :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip]) {
   --ask-icon-pair: oklch(0.64 0.15 18);
 }
-:root[data-look-dark='terminal'].dark :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip]) {
+:root[data-look-dark='terminal'].dark :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip]) {
   --ask-icon-pair: oklch(0.86 0.12 90);
 }
-:root[data-look-dark='dusk'].dark :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip]) {
+:root[data-look-dark='dusk'].dark :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip]) {
   --ask-icon-pair: oklch(0.76 0.12 350);
 }
 /* After the looks, and as specific: Notepad Retro's skin re-points the accent
    under whichever look is on, so its partner has to win over theirs too. */
-:root:not(.dark) [data-layout-skin='retro'] :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip]) {
+:root:not(.dark) [data-layout-skin='retro'] :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip]) {
   --ask-icon-pair: oklch(0.66 0.11 210);
   --ask-icon-pair-ink: var(--ask-icon-pair);
 }
-:root.dark [data-layout-skin='retro'] :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip]) {
+:root.dark [data-layout-skin='retro'] :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip]) {
   --ask-icon-pair: oklch(0.8 0.1 215);
 }
 
@@ -2760,6 +2760,182 @@ body {
   }
 }
 
+/* ─── AI work badges ─────────────────────────────────────────────────────────
+   components/ai/ai-work-badge.tsx (Kirby's picks, 2026-10-20). What a row
+   says while the AI works on it, and once something waits for the person.
+
+     [data-ai-relay]   working: the relay field in one row, six tiles a
+                       glowing wave walks across. A title with the relay as
+                       a following sibling shimmers lime into teal beside it.
+     [data-ai-chip]    ready: a few words on the aurora fill, still.
+                       ='question' is the warm one, honey into coral.
+
+   The lime. A tile is the raw accent at every frame: the wave scales it
+   (never an opacity) and its glow is a halo AROUND it, so the mark itself
+   never dims. The chip's fill is a tint, like every other lime wash; its
+   words are the foreground.
+
+   Off under reduced motion (the OS or the app's switch): the tiles rest a
+   little smaller than the crest with no glow, and the title is plain ink
+   (the sheen's ground at rest is the foreground). Forced colours drop the
+   clipped ground for the system's own text colour. */
+[data-ai-relay] {
+  --ai-relay-glow: 55%;
+  --ai-relay-mid: color-mix(in oklch, var(--ask-icon-accent), var(--ask-icon-pair) 40%);
+  display: inline-grid;
+  flex-shrink: 0;
+  align-self: center;
+  grid-template-columns: repeat(6, 4px);
+  grid-auto-rows: 4px;
+  gap: 2px;
+  padding-inline: 2px;
+}
+.dark [data-ai-relay] {
+  --ai-relay-glow: 90%;
+}
+[data-ai-relay] > i {
+  --c: var(--ask-icon-pair);
+  display: block;
+  border-radius: 1px;
+  background: var(--c);
+  scale: 0.55;
+  animation: ai-relay-wave 1.6s ease-in-out infinite;
+}
+[data-ai-relay] > i:nth-child(3n + 1) {
+  --c: var(--ask-icon-accent);
+}
+[data-ai-relay] > i:nth-child(3n + 2) {
+  --c: var(--ai-relay-mid);
+}
+[data-ai-relay] > i:nth-child(2) {
+  animation-delay: 0.1s;
+}
+[data-ai-relay] > i:nth-child(3) {
+  animation-delay: 0.2s;
+}
+[data-ai-relay] > i:nth-child(4) {
+  animation-delay: 0.3s;
+}
+[data-ai-relay] > i:nth-child(5) {
+  animation-delay: 0.4s;
+}
+[data-ai-relay] > i:nth-child(6) {
+  animation-delay: 0.5s;
+}
+@keyframes ai-relay-wave {
+  0%,
+  60%,
+  100% {
+    scale: 0.55;
+    box-shadow: 0 0 0 0 transparent;
+  }
+  25% {
+    scale: 1.15;
+    box-shadow: 0 0 4px 1px color-mix(in oklch, var(--c) var(--ai-relay-glow), transparent);
+  }
+}
+
+/* The title's sheen: its own ink, clipped to its glyphs, with one band of
+   lime into teal crossing it. Light needs inks, not the raw accent, to read
+   on paper. The planner's waiting shimmer (below) outranks this while a
+   preview waits, so the two never fight over one title. */
+[data-row-title='open']:has(~ [data-ai-relay]) {
+  --ai-sheen-a: var(--success-text);
+  --ai-sheen-b: color-mix(in oklch, oklch(0.64 0.1 195), var(--foreground) 14%);
+  background-image: linear-gradient(
+    90deg,
+    var(--foreground) 0 35%,
+    var(--ai-sheen-a) 45%,
+    var(--ai-sheen-b) 55%,
+    var(--foreground) 65% 100%
+  );
+  background-size: 300% 100%;
+  background-position: 0% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: ai-title-sheen 2.6s linear infinite;
+}
+.dark [data-row-title='open']:has(~ [data-ai-relay]) {
+  --ai-sheen-a: var(--lime-solid);
+  --ai-sheen-b: oklch(0.84 0.12 190);
+}
+/* An emoji keeps its own colours: through a clipped ground it is only a mask. */
+[data-row-title='open']:has(~ [data-ai-relay]) [data-row-emoji] {
+  -webkit-text-fill-color: currentColor;
+}
+@keyframes ai-title-sheen {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0% 0;
+  }
+}
+
+[data-ai-chip] {
+  --ai-chip-a: color-mix(in oklch, var(--lime-tint), var(--ask-icon-accent) 22%);
+  --ai-chip-b: color-mix(in oklch, var(--surface-2), var(--ask-icon-pair) 20%);
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  height: 20px;
+  padding-inline: 8px;
+  border-radius: 999px;
+  color: var(--foreground);
+  font-size: 10.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  background: linear-gradient(90deg, var(--ai-chip-a), var(--ai-chip-b));
+}
+.dark [data-ai-chip] {
+  --ai-chip-a: color-mix(in oklch, var(--surface-2), var(--ask-icon-accent) 18%);
+  --ai-chip-b: color-mix(in oklch, var(--surface-2), var(--ask-icon-pair) 16%);
+}
+[data-ai-chip='question'] {
+  --ai-chip-a: var(--honey-tint);
+  --ai-chip-b: var(--coral-tint);
+}
+.dark [data-ai-chip='question'] {
+  --ai-chip-a: color-mix(in oklch, var(--surface-2), var(--honey-solid) 20%);
+  --ai-chip-b: color-mix(in oklch, var(--surface-2), var(--coral-solid) 20%);
+}
+button[data-ai-chip]:hover,
+button[data-ai-chip][aria-expanded='true'] {
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 22%, transparent);
+}
+button[data-ai-chip]:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-ai-relay] > i {
+    animation: none;
+    scale: 0.8;
+  }
+  [data-row-title='open']:has(~ [data-ai-relay]) {
+    animation: none;
+  }
+}
+[data-reduce-motion='true'] [data-ai-relay] > i {
+  animation: none !important;
+  scale: 0.8;
+}
+[data-reduce-motion='true'] [data-row-title='open']:has(~ [data-ai-relay]) {
+  animation: none !important;
+  background-position: 0% 0;
+}
+@media (forced-colors: active) {
+  [data-row-title='open']:has(~ [data-ai-relay]) {
+    background: none;
+    -webkit-text-fill-color: CanvasText;
+  }
+  [data-ai-relay] > i {
+    background: CanvasText;
+  }
+}
+
 /* ─── The do stuff key: a keycap lit from its bolt ───────────────────────────
    components/sidebar/do-stuff.tsx DoStuffKey, in the braindump's header. The
    twin of Ask's key (above), as a keycap: a 3px skirt under it that a press
@@ -2907,7 +3083,8 @@ body {
 
 /* Giving way: the chord first, then the word. */
 @container braindump (width < 360px) {
-  [data-do-key-chord] {
+  [data-do-key-chord],
+  [data-do-key-place='header'] [data-do-key-ready] {
     display: none;
   }
   [data-do-key] {

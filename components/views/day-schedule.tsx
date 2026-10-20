@@ -8,7 +8,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { GroupSection } from '@/components/primitives/group-section';
 import { TaskRow, type RowItem } from '@/components/primitives/task-row';
 import { RowTitleText } from '@/components/primitives/row-title-text';
-import { PriorityGlyph, MetaText, RollingMetaText, formatDuration } from '@/components/primitives/pills';
+import { AgentPill, PriorityGlyph, MetaText, RollingMetaText, formatDuration } from '@/components/primitives/pills';
+import { PrepWorking } from '@/components/ai/ai-work-badge';
 import { useDayItems } from '@/hooks/use-day-items';
 import { useFieldWidth, useFitHourPx, useResizeScrollCompensation } from '@/lib/use-fit-hour-px';
 import { useScheduleResizeStore } from '@/lib/schedule-resize-store';
@@ -672,6 +673,16 @@ export function ScheduleBlock({
   const projected = item as { type?: string; customType?: string };
   const typeName = projected.type === 'custom' ? projected.customType! : itemType;
   const typeConfig = getItemTypeConfig(typeName);
+  // The AI working on this block (components/ai/ai-work-badge.tsx): only the
+  // relay, beside the title so the title takes its sheen. The chips need a
+  // row's width; a tall block's question already has its card (BlockAsk).
+  const aiWorking =
+    task && !done ? (
+      <>
+        {typeConfig.agentAssignable && <AgentPill item={task} workingOnly />}
+        <PrepWorking itemId={task.id} />
+      </>
+    ) : null;
   const canResize = typeConfig.schedule.resizable && !!item.startTime && !task?.inProjectBlock;
   // Same capability + recurrence gate the row uses (lib/item-registry
   // isSkippable), resolved against the projection's runtime discriminator.
@@ -1442,6 +1453,7 @@ export function ScheduleBlock({
                   <span data-row-title={titleMark} className={cn(titleClass, 'truncate')}>
                     <RowTitleText text={item.title} />
                   </span>
+                  {aiWorking}
                   {effDuration > 0 && (
                     <RollingMetaText
                       value={effDuration}
@@ -1471,6 +1483,7 @@ export function ScheduleBlock({
                 <span data-row-title={titleMark} className={cn(titleClass, 'truncate')}>
                   <RowTitleText text={item.title} />
                 </span>
+                {aiWorking}
                 <span className={cn('flex flex-shrink-0 items-center gap-2', done && 'opacity-60')}>
                   {task?.priority && <PriorityGlyph priority={task.priority} />}
                   {effDuration > 0 && (

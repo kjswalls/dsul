@@ -53,6 +53,8 @@ import { isRecurring, toDateStr } from '@/lib/recurrence';
 import { prefersReducedMotion } from '@/lib/zen-transition';
 import { packIsStale, type PrepPack } from '@/lib/prep-packs';
 import { usePrepPacksStore, type PrepItem } from '@/lib/prep-packs-store';
+import { aiWorkSummary, hasLiveRun, type AiWorkSummary } from '@/lib/ai-work';
+import { AiChip, RelayRow } from '@/components/ai/ai-work-badge';
 import { PackChip, PackDeck, PackInline, PackPeek } from '@/components/sidebar/prep-pack';
 import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
 import { chordLabel, isApplePlatform } from '@/lib/commands/keys';
@@ -134,8 +136,35 @@ export function wantsDoStuffRow(rows: readonly RowItem[]): boolean {
  * is no keyboard to press it on. The chord is the live `do_stuff` binding,
  * never typed by hand.
  */
+/**
+ * What the key says about the AI's work (lib/ai-work.ts): the relay in the
+ * bolt's place while anything is being worked on, and "N ready" while packs
+ * wait. Packs are read once at sign-in (a GET, no model is asked), so the
+ * count is there before the mode is first started. The clock ticks only while
+ * a handed-off run is live, since only that can go quiet.
+ */
+function useAiWork(): AiWorkSummary {
+  const userId = usePlannerStore((s) => s.userId);
+  const items = usePlannerStore((s) => s.items);
+  const preparing = usePrepPacksStore((s) => s.preparing);
+  const packs = usePrepPacksStore((s) => s.packs);
+  useEffect(() => {
+    if (userId) void usePrepPacksStore.getState().load(userId);
+  }, [userId]);
+  const live = useMemo(() => hasLiveRun(items), [items]);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!live) return;
+    const id = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, [live]);
+  return useMemo(() => aiWorkSummary(items, { preparing, packs }, now), [items, preparing, packs, now]);
+}
+
 export function DoStuffKey({ touch, place = 'header' }: { touch?: boolean; place?: 'header' | 'dock' }) {
   const on = useDoStuffStore((s) => s.on);
+  const work = useAiWork();
+  const ready = on ? 0 : work.ready;
   const keys = useShortcutKeys('do_stuff');
   const isMac = useMemo(() => isApplePlatform(), []);
   const chord = chordLabel(keys, isMac);
@@ -147,7 +176,7 @@ export function DoStuffKey({ touch, place = 'header' }: { touch?: boolean; place
       data-on={on ? 'true' : undefined}
       data-testid="do-stuff-start"
       aria-pressed={on}
-      aria-label={on ? 'Stop doing stuff' : 'Do stuff'}
+      aria-label={on ? 'Stop doing stuff' : ready > 0 ? `Do stuff, ${ready} ready` : 'Do stuff'}
       title={`${on ? 'Stop doing stuff' : 'Do stuff'} (${chord})`}
       onClick={() => {
         const s = useDoStuffStore.getState();
@@ -161,8 +190,17 @@ export function DoStuffKey({ touch, place = 'header' }: { touch?: boolean; place
           : 'h-7 rounded-[7px] text-[12px] leading-[17px]'
       )}
     >
-      <Zap aria-hidden data-do-key-bolt="" className="size-3.5 shrink-0" />
+      {work.working ? (
+        <RelayRow label="The AI is working" data-do-key-bolt="" />
+      ) : (
+        <Zap aria-hidden data-do-key-bolt="" className="size-3.5 shrink-0" />
+      )}
       <span data-do-key-word="">do stuff</span>
+      {ready > 0 && (
+        <AiChip aria-hidden data-do-key-ready="" style={{ height: 18, paddingInline: 7 }}>
+          {ready} ready
+        </AiChip>
+      )}
       {!touch && (
         <kbd
           aria-hidden
