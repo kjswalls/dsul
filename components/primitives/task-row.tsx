@@ -41,7 +41,7 @@ import {
   formatDuration,
   formatDurationLong,
 } from '@/components/primitives/pills';
-import { PrepWorking } from '@/components/ai/ai-work-badge';
+import { PackReady, PrepWorking } from '@/components/ai/ai-work-badge';
 import type { Task, HabitItem, HabitStatus, Item } from '@/lib/planner-types';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
@@ -746,6 +746,9 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
         {task && typeConfig.agentAssignable && <AgentPill item={task} className="-ml-0.5" />}
         {/* The AI getting this row ready (a prep pack): the same relay. */}
         {task && <PrepWorking itemId={task.id} className="-ml-0.5" />}
+        {/* Something ready on it. Do stuff's lanes pass their own trailing
+            chip (which opens the card in place), so a row there skips this. */}
+        {task && trailing === undefined && <PackReady item={task} className="-ml-0.5" />}
 
         {/* Trailing metadata — the "quiet rail". Fixed order, innermost to the
             right edge: [occasional] → [days] → [identity] → [glyph] → [quantity].

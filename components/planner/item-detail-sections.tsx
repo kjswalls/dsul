@@ -11,6 +11,7 @@ import { useAgentQuestion } from '@/hooks/use-agent-question';
 import { useAICapabilities } from '@/lib/ai-connection-store';
 import { assigneeLabel } from '@/lib/chat-utils';
 import { AgentChip } from '@/components/primitives/pills';
+import { PackInPanel } from '@/components/sidebar/prep-pack';
 import { AgentExchangeFor } from '@/components/ai/agent-exchange';
 import { useProposalStore } from '@/lib/proposal-store';
 import { canBreakDown, canOfferBreakDown } from '@/lib/item-asks';
@@ -608,6 +609,8 @@ export function ItemDetailSections({
     // this, Enter on a focused subtask checkbox saves-and-closes the panel.
     <div className="flex flex-col gap-4" data-sub-input>
       {config.subtasks && <SubtasksSection item={item} offerSetup={offerSetup} />}
+      {/* What the AI got ready for it (a prep pack): where a row's ready chip leads. */}
+      {item.type === 'task' && <PackInPanel itemId={item.id} title={item.title} />}
       {config.agentAssignable && (
         <AgentSection item={item} inConversation={canChat && (conversation !== 'none' || conversationElsewhere)} />
       )}

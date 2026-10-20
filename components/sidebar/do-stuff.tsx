@@ -139,18 +139,14 @@ export function wantsDoStuffRow(rows: readonly RowItem[]): boolean {
 /**
  * What the key says about the AI's work (lib/ai-work.ts): the relay in the
  * bolt's place while anything is being worked on, and "N ready" while packs
- * wait. Packs are read once at sign-in (a GET, no model is asked), so the
+ * wait. Packs are read at sign-in (PrepPacksBoot, in the app shell), so the
  * count is there before the mode is first started. The clock ticks only while
  * a handed-off run is live, since only that can go quiet.
  */
 function useAiWork(): AiWorkSummary {
-  const userId = usePlannerStore((s) => s.userId);
   const items = usePlannerStore((s) => s.items);
   const preparing = usePrepPacksStore((s) => s.preparing);
   const packs = usePrepPacksStore((s) => s.packs);
-  useEffect(() => {
-    if (userId) void usePrepPacksStore.getState().load(userId);
-  }, [userId]);
   const live = useMemo(() => hasLiveRun(items), [items]);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {

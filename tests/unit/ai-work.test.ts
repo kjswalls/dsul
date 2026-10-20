@@ -80,3 +80,26 @@ describe('the badges in the stylesheet', () => {
     expect(section).toMatch(/\[data-reduce-motion='true'\] \[data-ai-relay\]/);
   });
 });
+
+describe('letting a pack go', () => {
+  it('can be undone until the delete goes, and never deletes once undone', async () => {
+    const { usePrepPacksStore, UNDO_MS } = await import('@/lib/prep-packs-store');
+    const { vi } = await import('vitest');
+    const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      usePrepPacksStore.setState({ packs: { a: pack('a', 'Email Mara') } });
+      const undo = usePrepPacksStore.getState().dismiss('a');
+      expect(usePrepPacksStore.getState().packs.a).toBeUndefined();
+      undo!();
+      expect(usePrepPacksStore.getState().packs.a).toBeDefined();
+      vi.advanceTimersByTime(UNDO_MS);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(usePrepPacksStore.getState().dismiss('missing')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+});

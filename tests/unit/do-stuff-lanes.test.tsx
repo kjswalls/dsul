@@ -63,7 +63,7 @@ vi.mock('@/lib/supabase', () => ({ createClient: vi.fn(() => ({})) }));
 import { Braindump } from '@/components/sidebar/braindump';
 import { usePlannerStore } from '@/lib/planner-store';
 import { makeItSo, useDoStuffStore } from '@/lib/do-stuff';
-import { usePrepPacksStore } from '@/lib/prep-packs-store';
+import { UNDO_MS, usePrepPacksStore } from '@/lib/prep-packs-store';
 import { useAgentsStore } from '@/lib/agents-store';
 import { useViewStore } from '@/lib/view-store';
 import { useKeyboardShortcutsStore } from '@/lib/keyboard-shortcuts-store';
@@ -348,11 +348,21 @@ describe('do stuff: the plan in lanes', () => {
     expect(card).toHaveTextContent('Call script');
     // No number was given, so the tap out is Copy, never a guessed call.
     expect(screen.getByTestId('prep-pack-primary')).toHaveTextContent('Copy script');
-    act(() => {
-      fireEvent.click(screen.getByTestId('prep-pack-dismiss'));
-    });
-    expect(usePrepPacksStore.getState().packs.b).toBeUndefined();
-    expect(fetch).toHaveBeenCalledWith('/api/ai/prep?item=b', { method: 'DELETE' });
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      act(() => {
+        fireEvent.click(screen.getByTestId('prep-pack-dismiss'));
+      });
+      expect(usePrepPacksStore.getState().packs.b).toBeUndefined();
+      // The delete waits out the toast's Undo, then goes.
+      expect(fetch).not.toHaveBeenCalledWith('/api/ai/prep?item=b', { method: 'DELETE' });
+      act(() => {
+        vi.advanceTimersByTime(UNDO_MS);
+      });
+      expect(fetch).toHaveBeenCalledWith('/api/ai/prep?item=b', { method: 'DELETE' });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('opens a pack from any row that has one: the card, and a row moved out of ready', () => {

@@ -1,6 +1,9 @@
 import { create } from 'zustand';
 import { PREP_BATCH, type PrepPack } from './prep-packs';
 
+/** How long Not needed can be undone before the pack is deleted for good. */
+export const UNDO_MS = 6000;
+
 /**
  * The prep packs the account has, and the asks in flight (lib/prep-packs.ts;
  * /api/ai/prep is the one reader and writer). Memory only: the packs live in
@@ -33,7 +36,8 @@ interface PrepPacksState {
   error: string | null;
   load: (userId: string) => Promise<void>;
   prepare: (items: readonly PrepItem[]) => Promise<void>;
-  dismiss: (itemId: string) => Promise<void>;
+  /** Lets a pack go; returns its undo, or null when there was none. */
+  dismiss: (itemId: string) => (() => void) | null;
 }
 
 const EMPTY = {
@@ -105,20 +109,33 @@ export const usePrepPacksStore = create<PrepPacksState>((set, get) => ({
     }
   },
 
-  dismiss: async (itemId) => {
+  dismiss: (itemId) => {
     const was = get().packs[itemId];
-    if (!was) return;
+    if (!was) return null;
     set((s) => {
       const packs = { ...s.packs };
       delete packs[itemId];
       return { packs };
     });
-    try {
-      const res = await fetch(`/api/ai/prep?item=${encodeURIComponent(itemId)}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error(String(res.status));
-    } catch {
-      // Put it back: a pack that comes back on the next load reads as a ghost.
+    // The delete waits out the undo: until it goes, Undo only has to put the
+    // pack back in memory, and nothing is ever re-written to the server.
+    let undone = false;
+    const timer = setTimeout(() => {
+      if (undone) return;
+      void (async () => {
+        try {
+          const res = await fetch(`/api/ai/prep?item=${encodeURIComponent(itemId)}`, { method: 'DELETE' });
+          if (!res.ok) throw new Error(String(res.status));
+        } catch {
+          // Put it back: a pack that comes back on the next load reads as a ghost.
+          set((s) => ({ packs: { ...s.packs, [itemId]: was } }));
+        }
+      })();
+    }, UNDO_MS);
+    return () => {
+      undone = true;
+      clearTimeout(timer);
       set((s) => ({ packs: { ...s.packs, [itemId]: was } }));
-    }
+    };
   },
 }));
