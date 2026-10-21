@@ -152,7 +152,74 @@ export const DraftPackSchema = z.object({
   ...withSources,
 });
 
-/** The kinds 074 allowed; the rest wait on 078 and 079 (the route's 23514 retry). */
+/**
+ * Subtasks to add with one tap (Kirby's pick, 2026-10-21): the item broken
+ * into real rows, where steps are only text. Nothing is added until the tap.
+ */
+export const SubtasksPackSchema = z.object({
+  kind: z.literal('subtasks'),
+  subtasks: z.array(line(200).min(1)).min(2).max(8),
+});
+
+/** For a "find out…" item: the answer itself, and where it came from. */
+export const AnswerPackSchema = z.object({
+  kind: z.literal('answer'),
+  answer: line(1500).min(1),
+  ...withSources,
+});
+
+/** Where to go: the place, its hours and number when a source had them. */
+export const PlacePackSchema = z.object({
+  kind: z.literal('place'),
+  name: line(160).min(1),
+  address: line(300).optional(),
+  hours: line(200).optional(),
+  phone: line(40).optional(),
+  url: Url.optional().catch(undefined),
+  ...withSources,
+});
+
+const DATE_RE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/**
+ * A time to do it, which one tap puts on the day grid. `date` is the person's
+ * own day (yyyy-MM-dd); without one it is today. Never a time in the past is
+ * a prompt rule, not a check here: the card shows the time and the tap is the
+ * person's.
+ */
+export const TimePackSchema = z.object({
+  kind: z.literal('time'),
+  date: z.string().regex(DATE_RE).optional().catch(undefined),
+  time: z.string().regex(TIME_RE),
+  /** Minutes, 5 to 8 hours. */
+  duration: z.number().int().min(5).max(480).optional().catch(undefined),
+  why: line(200).optional(),
+});
+
+/** Two to four choices side by side, and the one the AI would pick. */
+export const PickPackSchema = z.object({
+    kind: z.literal('pick'),
+    question: line(200).optional(),
+    choices: z
+      .array(
+        z.object({
+          name: line(120).min(1),
+          pros: z.array(line(120).min(1)).max(4).default([]),
+          cons: z.array(line(120).min(1)).max(4).default([]),
+          price: line(40).optional(),
+          url: Url.optional().catch(undefined),
+        })
+      )
+      .min(2)
+      .max(4),
+    /** The index of the AI's pick in `choices`. */
+    recommended: z.number().int().min(0),
+    why: line(300),
+    ...withSources,
+  });
+
+/** The kinds 074 allowed; the rest wait on 078, 079 and 080 (the route's 23514 retry). */
 export const ORIGINAL_PACK_KINDS: ReadonlySet<string> = new Set(['email', 'message', 'call', 'steps']);
 
 export const PackSchema = z.discriminatedUnion('kind', [
@@ -165,7 +232,45 @@ export const PackSchema = z.discriminatedUnion('kind', [
   ListPackSchema,
   FormPackSchema,
   DraftPackSchema,
+  SubtasksPackSchema,
+  AnswerPackSchema,
+  PlacePackSchema,
+  TimePackSchema,
+  PickPackSchema,
+]).refine((p) => p.kind !== 'pick' || p.recommended < p.choices.length);
+
+/** The kinds 079 allowed; the five after it wait on 080. */
+export const RESEARCH_PACK_KINDS: ReadonlySet<string> = new Set([
+  ...ORIGINAL_PACK_KINDS,
+  'question',
+  'options',
+  'list',
+  'form',
+  'draft',
 ]);
+
+/**
+ * The kinds whose tap changes the planner itself (subtasks added, the answer
+ * kept in the notes, the item put on the day) rather than leaving the app.
+ * prep-packs-store's `apply` is the one writer.
+ */
+export function packApplies(pack: Pack): boolean {
+  return pack.kind === 'subtasks' || pack.kind === 'answer' || pack.kind === 'time';
+}
+
+/** "15:30" as the card says it: "3:30pm". */
+export function clockLabel(time: string): string {
+  const [h, m] = time.split(':').map(Number);
+  const suffix = h < 12 ? 'am' : 'pm';
+  const hour = h % 12 || 12;
+  return m ? `${hour}:${String(m).padStart(2, '0')}${suffix}` : `${hour}${suffix}`;
+}
+
+/** A map search for a place, which opens the person's own maps on a phone. */
+export function mapHref(pack: { name: string; address?: string }): string {
+  const q = [pack.name, pack.address].filter(Boolean).join(', ');
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
+}
 
 export type Pack = z.infer<typeof PackSchema>;
 export type PackKind = Pack['kind'];
@@ -215,6 +320,16 @@ export function packLabel(pack: Pack): string {
       return 'answers ready';
     case 'draft':
       return 'draft ready';
+    case 'subtasks':
+      return `${pack.subtasks.length} subtasks`;
+    case 'answer':
+      return 'answer found';
+    case 'place':
+      return 'place found';
+    case 'time':
+      return clockLabel(pack.time);
+    case 'pick':
+      return 'pick ready';
   }
 }
 
@@ -239,6 +354,16 @@ export function packKindName(pack: Pack): string {
       return 'Form answers';
     case 'draft':
       return 'A draft';
+    case 'subtasks':
+      return 'Subtasks';
+    case 'answer':
+      return 'The answer';
+    case 'place':
+      return 'A place';
+    case 'time':
+      return 'A time for it';
+    case 'pick':
+      return 'A pick';
   }
 }
 
@@ -268,6 +393,28 @@ export function packText(pack: Pack): string {
       return pack.fields.map((f) => `${f.label}: ${f.value}`).join('\n');
     case 'draft':
       return [...(pack.title ? [pack.title, ''] : []), pack.body].join('\n');
+    case 'subtasks':
+      return pack.subtasks.map((s) => `- ${s}`).join('\n');
+    case 'answer':
+      return pack.answer;
+    case 'place':
+      return [pack.name, pack.address, pack.hours, pack.phone, pack.url].filter(Boolean).join('\n');
+    case 'time':
+      return [`${pack.date ? `${pack.date} ` : ''}${clockLabel(pack.time)}${pack.duration ? ` · ${pack.duration} min` : ''}`, ...(pack.why ? [pack.why] : [])].join('\n');
+    case 'pick':
+      return [
+        ...(pack.question ? [pack.question, ''] : []),
+        ...pack.choices.map((c, i) =>
+          [
+            `${i === pack.recommended ? '★ ' : ''}${c.name}${c.price ? ` · ${c.price}` : ''}`,
+            ...c.pros.map((p) => `  + ${p}`),
+            ...c.cons.map((p) => `  - ${p}`),
+            ...(c.url ? [`  ${c.url}`] : []),
+          ].join('\n')
+        ),
+        '',
+        pack.why,
+      ].join('\n');
   }
 }
 
@@ -289,6 +436,8 @@ export function packHref(pack: Pack): string | null {
     }
     case 'form':
       return pack.url ?? null;
+    case 'place':
+      return mapHref(pack);
     default:
       return null;
   }
@@ -305,6 +454,14 @@ export function packAction(pack: Pack): string {
       return pack.url ? 'Open the form' : 'Copy answers';
     case 'list':
       return 'Copy list';
+    case 'subtasks':
+      return 'Add subtasks';
+    case 'answer':
+      return 'Keep in notes';
+    case 'place':
+      return 'Open in maps';
+    case 'time':
+      return 'Put it on the day';
     default:
       return 'Copy';
   }
