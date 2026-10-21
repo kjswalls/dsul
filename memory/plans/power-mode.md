@@ -492,3 +492,18 @@ that order.
   built-in rules and before the person's own instructions, so a drafted email
   opens and signs off the way they do.
 - **Settings → Do stuff** shows the switch and the note, to change or to clear.
+
+### Unstick (PR 2)
+
+- **Stuck means moved to another day on three different days** in the last 30
+  (lib/stuck.ts, `STUCK_AT`). The moves come from the activity feed: update
+  events whose payload set `startDate` (`fetchMoveEvents` in lib/db.ts reads
+  only the id and the moment). Nothing new is stored; lib/stuck-store.ts keeps
+  the counts in memory and reads the feed at most once an hour.
+- **Nothing on screen says it.** No count, no badge, no "still". What changes is
+  the ask: the item goes to prep with `stuck: true`, and the prompt makes it
+  smaller rather than better (a first step under two minutes that needs no
+  decision, or the one question in the way).
+- **Background prep takes stuck items first, on any day,** and an item already
+  asked about is asked once more when it becomes stuck (the ledger signature
+  gains a stuck mark). Do stuff's own start marks the stuck lanes' items too.

@@ -828,6 +828,33 @@ export async function fetchItemEventsFor(
   }));
 }
 
+/**
+ * Every move to a day since `sinceIso`: the update events that set a
+ * `startDate` (lib/stuck.ts counts them). Only the id and the moment come
+ * back, never the rest of the payload.
+ */
+export async function fetchMoveEvents(sinceIso: string, client?: DbClient): Promise<{ itemId: string; createdAt: string }[]> {
+  if (!itemEventsAvailable) return [];
+  const supabase = client ?? createClient();
+  const { data, error } = await supabase
+    .from('item_events')
+    .select('item_id, created_at')
+    .eq('action', 'update')
+    .gte('created_at', sinceIso)
+    .not('payload->>startDate', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(2000);
+  if (error) {
+    if (missingEventsTable(error)) itemEventsAvailable = false;
+    else console.error('item_events fetch failed', error);
+    return [];
+  }
+  return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+    itemId: row.item_id as string,
+    createdAt: row.created_at as string,
+  }));
+}
+
 // ---- Item CRUD ----
 
 /**
