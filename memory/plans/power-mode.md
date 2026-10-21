@@ -447,3 +447,22 @@ doing stuff. Mockups: https://claude.ai/artifact/5ruP7iqrFH3s7vLRLcdso4.
   take a number from a page it lists in `sources`.
 - Before 080 is applied the save's 23514 ladder drops these five first, then
   the research kinds, then a question.
+
+### The room, round two (Kirby's picks 2026-10-18, built 2026-10-21)
+
+- **Lanes are colorless:** no dot, no tinted rule (the rule draws in
+  `var(--border)`), and the grid's lane mark keeps only "→ Thu". A folded lane
+  is its name and its count, with its action (who it goes to, review) or ›.
+- **The desk's strip says one thing:** "1h 34m till Standup", or nothing while
+  a sprint's ring runs. The lane and the done count live in the lanes. The exit
+  is a ✕ (Esc).
+- **The bar:** done ↵, skip S, today T and Pocket sit in a sticky bar at the
+  foot of the room, with "next · <title>" (the store's `then`, published with
+  `next`). First steps and the sprint stay under the jot box.
+- **The pack is on the desk** (PackInPanel), between the steps and the jot box.
+- **The day column hides Anytime** while walking (`DaySchedule hideAnytime`,
+  shown again for a drag): those rows are the lanes' already.
+- **The end of the walk is a receipt** (EndOfWalk): "N done · N moved · N let
+  go", the first three done and "and N more", a line per move with where it
+  goes, then make it so (↵, `finishRun`, which also ends the mode). With
+  nothing done and nothing to move it still says the rest can wait.

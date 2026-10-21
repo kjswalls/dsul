@@ -1,17 +1,18 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Check } from 'lucide-react';
+import { Check, X } from 'lucide-react';
 import { Button, ButtonKey } from '@/components/ui/button';
 import { DaySchedule, deriveTimedEntries } from '@/components/views/day-schedule';
 import { ItemConversation } from '@/components/ai/item-conversation';
 import { openFirstSteps, useCanFirstSteps } from '@/components/sidebar/first-steps';
 import { Cap } from '@/components/sidebar/do-stuff';
-import { closeDesk, doneNext, putOnToday, skipNext, useDoStuffStore } from '@/lib/do-stuff';
-import { freeStretch, sprintFor, stretchLabel } from '@/lib/do-stuff-walk';
+import { closeDesk, commitCount, doneNext, finishRun, putOnToday, skipNext, useDoStuffStore } from '@/lib/do-stuff';
+import { PackInPanel } from '@/components/sidebar/prep-pack';
+import { freeStretch, spanLabel, sprintFor } from '@/lib/do-stuff-walk';
 import { SprintButton, SprintRing } from '@/components/sidebar/sprint-ring';
 import { PocketButton } from '@/components/sidebar/do-stuff-pocket';
-import { laneDef } from '@/lib/do-stuff-plan';
+import { dayLabel } from '@/lib/do-stuff-plan';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useDayItems } from '@/hooks/use-day-items';
 import { useNowMinutes } from '@/lib/use-now-minutes';
@@ -98,12 +99,7 @@ export function DoStuffDesk({ activeId }: { activeId: string | null }) {
         {item ? (
           <DeskItem key={item.id} item={item} />
         ) : next === null ? (
-          <div className="flex h-full flex-col items-start justify-center gap-4 px-10">
-            <p className="text-sm text-muted-foreground" data-testid="do-stuff-desk-clear">
-              nothing to do now. the rest can wait.
-            </p>
-            <BackToDay />
-          </div>
+          <EndOfWalk />
         ) : null}
       </div>
       {/* The column sets the day's width, as the phone's screen does: it is
@@ -116,37 +112,39 @@ export function DoStuffDesk({ activeId }: { activeId: string | null }) {
         data-testid="do-stuff-desk-day"
         data-dense
       >
-        <DaySchedule activeId={activeId} />
+        <DaySchedule activeId={activeId} hideAnytime />
       </div>
     </div>
   );
 }
 
+/** The room's door, top right: ✕, or Esc. */
 function BackToDay({ className }: { className?: string }) {
   return (
     <button
       type="button"
       onClick={closeDesk}
+      aria-label="Back to the day"
+      aria-keyshortcuts="Escape"
+      title="Back to the day (Esc)"
       data-testid="do-stuff-desk-close"
       className={cn(
-        'flex items-center gap-1.5 rounded-[6px] text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring',
+        'flex size-7 items-center justify-center rounded-[8px] border border-border text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring',
         className
       )}
     >
-      back to the day
-      <kbd className="font-num rounded-[4px] border border-border px-1 text-[10.5px]">Esc</kbd>
+      <X aria-hidden className="size-3.5" />
     </button>
   );
 }
 
 /**
- * "do it now · 1h 20m free until Lunch with Ana · 2 done". While a sprint runs
- * the ring beside it already says "22m left · till Lunch with Ana", so the
- * stretch stays out of the kicker: one clock, not two.
+ * The strip above the title says one thing (the room's round two, Kirby,
+ * 2026-10-18): how long until the next block, "1h 34m till Standup". While a
+ * sprint runs its ring already says "22m left", so the strip stays empty: one
+ * clock, not two. The lane and the done count live in the lanes.
  */
-function useKicker(id: string): { kicker: string; sprint: { minutes: number; until: string | null } | null } {
-  const lane = useDoStuffStore((s) => s.marks.get(id)?.lane);
-  const doneCount = useDoStuffStore((s) => s.doneCount);
+function useKicker(): { kicker: string; sprint: { minutes: number; until: string | null } | null } {
   const running = useDoStuffStore((s) => !!s.sprint);
   const tz = usePlannerStore((s) => s.userTimezone) ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const nowMin = useNowMinutes(tz);
@@ -162,17 +160,18 @@ function useKicker(id: string): { kicker: string; sprint: { minutes: number; unt
     }));
     return freeStretch(blocks, nowMin);
   }, [day, nowMin, todayStr]);
-  const label = stretch && nowMin !== null && !running ? stretchLabel(stretch, nowMin) : null;
-  const kicker = [lane && laneDef(lane).label, label && `${label.lead} ${label.rest}`, doneCount > 0 && `${doneCount} done`]
-    .filter(Boolean)
-    .join(' · ');
+  const kicker =
+    stretch?.until && nowMin !== null && !running && stretch.startMin <= nowMin
+      ? `${spanLabel(stretch.endMin - nowMin)} till ${stretch.until.title}`
+      : '';
   return { kicker, sprint: nowMin === null ? null : sprintFor(stretch, nowMin) };
 }
 
 function DeskItem({ item }: { item: Item }) {
   const ref = useRef<HTMLDivElement>(null);
   const id = item.id;
-  const { kicker, sprint } = useKicker(id);
+  const { kicker, sprint } = useKicker();
+  const then = useDoStuffStore((s) => s.then);
   const steps = useCanFirstSteps(id);
   const notes = (item as { notes?: string }).notes?.trim();
 
@@ -211,13 +210,13 @@ function DeskItem({ item }: { item: Item }) {
   }, [id]);
 
   return (
-    <div ref={ref} className="mx-auto flex max-w-[620px] flex-col gap-5 px-10 py-10" data-testid="do-stuff-desk-item">
-      {/* The kicker row is always drawn, at a height, so the title stands still
-          when the kicker arrives after hydration or a sprint's ring joins it.
+    <div ref={ref} className="mx-auto flex min-h-full max-w-[620px] flex-col gap-5 px-10 pt-10" data-testid="do-stuff-desk-item">
+      {/* The strip is always drawn, at a height, so the title stands still
+          when the time arrives after hydration or a sprint's ring joins it.
           The exit sits at its right end: the room's door, top right. */}
       <div className="flex min-h-9 items-center gap-3">
         <SprintRing size={36} className="shrink-0 pr-1" />
-        <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground" data-testid="do-stuff-desk-kicker">
+        <p className="font-num min-w-0 flex-1 truncate text-xs text-muted-foreground" data-testid="do-stuff-desk-kicker">
           {kicker}
         </p>
         <BackToDay className="shrink-0" />
@@ -233,51 +232,201 @@ function DeskItem({ item }: { item: Item }) {
         </p>
       )}
       <Steps parentId={id} />
+      {/* What the AI got ready for it, where the work happens. */}
+      <PackInPanel itemId={id} title={item.title} />
       <Jot item={item} />
-      <div className="flex flex-wrap items-center gap-1">
-        <Button size="sm" onClick={() => doneNext(id)} data-testid="do-stuff-desk-done" aria-keyshortcuts="Enter">
-          done
-          <ButtonKey />
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => skipNext(id)}
-          data-testid="do-stuff-desk-skip"
-          aria-keyshortcuts="S"
-          className="text-muted-foreground"
-        >
-          skip <Cap>S</Cap>
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => putOnToday(id)}
-          data-testid="do-stuff-desk-today"
-          aria-keyshortcuts="T"
-          className="text-muted-foreground"
-        >
-          today <Cap>T</Cap>
-        </Button>
-        {steps && (
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => openFirstSteps(id)}
-            data-testid="do-stuff-desk-first-steps"
-            aria-keyshortcuts="F"
-            className="text-muted-foreground"
-          >
-            first steps <Cap>F</Cap>
-          </Button>
-        )}
-        <SprintButton offer={sprint} forItem={id} />
-        <PocketButton />
-      </div>
+      {(steps || sprint) && (
+        <div className="flex flex-wrap items-center gap-1">
+          {steps && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => openFirstSteps(id)}
+              data-testid="do-stuff-desk-first-steps"
+              aria-keyshortcuts="F"
+              className="text-muted-foreground"
+            >
+              first steps <Cap>F</Cap>
+            </Button>
+          )}
+          <SprintButton offer={sprint} forItem={id} />
+        </div>
+      )}
       {/* Talk it through: the item's own conversation, with whoever answers
           (the person's model, or OpenClaw), and the agent's side when the
           item is handed off. Nothing at all when nobody can answer. */}
       <ItemConversation item={item} mode="inline" className="pt-2" />
+      {/* The bar (the room's round two): done, skip and today wait at the
+          foot of the room, with what comes up next, so the top of it is the
+          item and nothing else. Sticky, so a long conversation never pushes
+          them out of reach. */}
+      <div className="sticky bottom-0 mt-auto bg-canvas pb-6 pt-2">
+        <div
+          className="flex flex-wrap items-center gap-1 rounded-[14px] bg-muted/60 p-2"
+          data-testid="do-stuff-desk-bar"
+        >
+          <Button size="sm" onClick={() => doneNext(id)} data-testid="do-stuff-desk-done" aria-keyshortcuts="Enter">
+            done
+            <ButtonKey />
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => skipNext(id)}
+            data-testid="do-stuff-desk-skip"
+            aria-keyshortcuts="S"
+            className="text-muted-foreground"
+          >
+            skip <Cap>S</Cap>
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => putOnToday(id)}
+            data-testid="do-stuff-desk-today"
+            aria-keyshortcuts="T"
+            className="text-muted-foreground"
+          >
+            today <Cap>T</Cap>
+          </Button>
+          <PocketButton />
+          {then && (
+            <span className="ml-auto min-w-0 truncate pr-2 text-xs text-muted-foreground" data-testid="do-stuff-desk-then">
+              next · {then.title}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The end of the walk (the room's round two, 2026-10-18: Receipts' receipt
+ * card): what got done, and what make it so is about to do with the rest,
+ * one line each, then make it so (↵) and the mode ends. With nothing done and
+ * nothing to move, it only says the rest can wait.
+ */
+const RECEIPT_DONE_SHOWN = 3;
+
+function EndOfWalk() {
+  const doneIds = useDoStuffStore((s) => s.doneIds);
+  const commit = useDoStuffStore((s) => s.commit);
+  const items = usePlannerStore((s) => s.items);
+  const tz = usePlannerStore((s) => s.userTimezone) ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const todayStr = toDateStr(new Date(), tz);
+  const titleOf = (id: string) => items.find((i) => i.id === id)?.title;
+  const done = doneIds.map(titleOf).filter((t): t is string => !!t);
+  const pending = commitCount(commit);
+
+  useEffect(() => {
+    if (pending === 0) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.key !== 'Enter' || e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target instanceof HTMLElement ? e.target : null;
+      if (t && t !== document.body && !t.closest('[data-desk-pane]')) return;
+      if (t && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes(t.tagName))) return;
+      e.preventDefault();
+      finishRun();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [pending]);
+
+  if (done.length === 0 && pending === 0) {
+    return (
+      <div className="flex h-full flex-col items-start justify-center gap-4 px-10">
+        <p className="text-sm text-muted-foreground" data-testid="do-stuff-desk-clear">
+          nothing to do now. the rest can wait.
+        </p>
+        <BackToDay />
+      </div>
+    );
+  }
+
+  const moved: { id: string; title: string; where: string }[] = [];
+  if (commit) {
+    for (const [id, day] of commit.days) {
+      const title = titleOf(id);
+      if (title) moved.push({ id, title, where: dayLabel(day, todayStr) });
+    }
+    for (const id of commit.today) {
+      const title = titleOf(id);
+      if (title) moved.push({ id, title, where: 'today' });
+    }
+    for (const id of commit.unschedule) {
+      const title = titleOf(id);
+      if (title) moved.push({ id, title, where: 'later' });
+    }
+    for (const id of commit.handOff) {
+      const title = titleOf(id);
+      if (title) moved.push({ id, title, where: commit.to ? `to ${commit.to.name}` : 'for me' });
+    }
+  }
+  const letGo = (commit?.letGo ?? []).map((id) => ({ id, title: titleOf(id) })).filter((r) => r.title);
+  const head = [
+    `${done.length} done`,
+    moved.length > 0 && `${moved.length} moved`,
+    letGo.length > 0 && `${letGo.length} let go`,
+  ].filter(Boolean);
+
+  return (
+    <div className="mx-auto flex max-w-[620px] flex-col gap-4 px-10 py-10" data-testid="do-stuff-receipt">
+      <div className="flex min-h-9 items-center justify-end">
+        <BackToDay />
+      </div>
+      <section className="relative rounded-[16px] border border-border bg-card px-5 pb-4 pt-4 shadow-[var(--shadow-elev-sm)]">
+        <span aria-hidden className="absolute -left-px bottom-4 top-4 w-[3px] rounded-r-full bg-primary" />
+        <h2 className="mb-3 flex flex-wrap gap-x-3 text-[22px] leading-tight font-semibold" data-testid="do-stuff-receipt-head">
+          {head.map((h, i) => (
+            <span key={i} className={cn(i > 0 && 'text-muted-foreground')}>
+              {i > 0 && '· '}
+              {h}
+            </span>
+          ))}
+        </h2>
+        <ul className="flex flex-col">
+          {done.slice(0, RECEIPT_DONE_SHOWN).map((t, i) => (
+            <li key={`d${i}`} className="flex min-w-0 items-center gap-2.5 border-t border-border py-2 text-sm">
+              <span aria-hidden className="flex size-[15px] shrink-0 items-center justify-center rounded-[4px] bg-primary text-primary-foreground">
+                <Check className="size-2.5" strokeWidth={3} />
+              </span>
+              <span className="min-w-0 truncate">{t}</span>
+            </li>
+          ))}
+          {done.length > RECEIPT_DONE_SHOWN && (
+            <li className="border-t border-border py-2 pl-[25px] text-sm text-muted-foreground">
+              and {done.length - RECEIPT_DONE_SHOWN} more
+            </li>
+          )}
+          {moved.map((r) => (
+            <li key={`m${r.id}`} className="flex min-w-0 items-center gap-2.5 border-t border-border py-2 text-sm" data-testid="do-stuff-receipt-moved">
+              <span aria-hidden className="w-[15px] shrink-0 text-center text-muted-foreground">→</span>
+              <span className="min-w-0 truncate">{r.title}</span>
+              <span className="ml-auto shrink-0 text-xs text-muted-foreground">{r.where}</span>
+            </li>
+          ))}
+          {letGo.map((r) => (
+            <li key={`l${r.id}`} className="flex min-w-0 items-center gap-2.5 border-t border-border py-2 text-sm">
+              <span aria-hidden className="w-[15px] shrink-0 text-center text-muted-foreground">–</span>
+              <span className="min-w-0 truncate">{r.title}</span>
+              <span className="ml-auto shrink-0 text-xs text-muted-foreground">let go</span>
+            </li>
+          ))}
+        </ul>
+        <div className="mt-2 flex items-center gap-3 border-t border-border pt-3">
+          {pending > 0 ? (
+            <Button size="sm" onClick={finishRun} data-testid="do-stuff-receipt-commit" aria-keyshortcuts="Enter">
+              make it so
+              <ButtonKey />
+            </Button>
+          ) : (
+            <Button size="sm" variant="outline" onClick={finishRun} data-testid="do-stuff-receipt-commit">
+              that&rsquo;s it for now
+            </Button>
+          )}
+        </div>
+      </section>
     </div>
   );
 }

@@ -177,7 +177,8 @@ describe('do stuff: the plan in lanes', () => {
     expect(screen.getByTestId('do-stuff-lane-now')).not.toHaveAttribute('data-folded');
     expect(screen.queryByTestId('do-stuff-fold-now')).toBeNull();
     expect(screen.getByTestId('do-stuff-lane-calendar')).toHaveAttribute('data-folded');
-    expect(screen.getByTestId('do-stuff-peek-calendar')).toHaveTextContent('another day2pick up stamps, declutter the garage');
+    // Name and count only (the room's round two): nothing else to read.
+    expect(screen.getByTestId('do-stuff-peek-calendar')).toHaveTextContent(/^another day2$/);
     expect(screen.queryByText('pick up stamps', { selector: '[data-lane-row] *' })).toBeNull();
     // Unfolded on ask, and folded again.
     fireEvent.click(screen.getByTestId('do-stuff-peek-calendar'));

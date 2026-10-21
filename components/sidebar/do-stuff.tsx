@@ -464,7 +464,6 @@ function LaneHeader({
       data-testid={`do-stuff-lane-${lane}`}
     >
       <div className="flex h-[30px] items-center gap-2 px-2 text-[13px]">
-        <Dot color={def.color} />
         <span className="font-semibold">{def.label}</span>
         <span className="font-num text-[12.5px] text-muted-foreground">{count}</span>
         {def.note && (
@@ -496,37 +495,32 @@ function LaneHeader({
       <div
         aria-hidden
         className="do-stuff-rule mx-1 h-[1.5px] origin-left rounded-full"
-        style={{ '--rule': def.color } as React.CSSProperties}
+        style={{ '--rule': 'var(--border)' } as React.CSSProperties}
       />
     </div>
   );
 }
 
 /**
- * A lane folded to one line (L1, Kirby's pick, 2026-10-16): its name, how many,
- * and the first few titles, so the list says what is there without asking to
- * be read. Only the lane being walked is open; a click unfolds any other for
- * the rest of the run. Its rule is still drawn, so the start's sort lands the
- * same way.
+ * A lane folded to one line (L1, Kirby's pick, 2026-10-16; trimmed in the
+ * room's round two, 2026-10-18): its name and how many, nothing else to read.
+ * Only the lane being walked is open; a click unfolds any other for the rest
+ * of the run. Lanes are colorless (no dot, no tinted rule): the words carry
+ * them. Its rule is still drawn, so the start's sort lands the same way.
  */
 function LanePeek({
   lane,
   count,
-  titles,
-  doneHere,
   onOpen,
   action,
 }: {
   lane: Lane;
   count: number;
-  titles: readonly string[];
-  doneHere: number;
   onOpen: () => void;
   /** The lane's own header action (who it goes to, review), kept in reach while folded. */
   action?: React.ReactNode;
 }) {
   const def = laneDef(lane);
-  const peek = [titles.slice(0, 3).join(', '), doneHere > 0 && `${doneHere} done`].filter(Boolean).join(' · ');
   return (
     <div className="flex flex-col" data-lane-head={lane} data-testid={`do-stuff-lane-${lane}`} data-folded>
       <div className="flex min-w-0 items-center gap-1">
@@ -536,20 +530,19 @@ function LanePeek({
           aria-expanded={false}
           aria-label={`${def.label}, ${count}. Unfold`}
           data-testid={`do-stuff-peek-${lane}`}
-          className="flex h-[30px] min-w-0 flex-1 items-center gap-2 rounded-[7px] px-2 text-left text-[13px] hover:bg-accent/60"
+          className="flex h-[34px] min-w-0 flex-1 items-center gap-2 rounded-[7px] px-2 text-left text-[13px] hover:bg-accent/60"
         >
-          <Dot color={def.color} />
           <span className="shrink-0 font-semibold">{def.label}</span>
           <span className="font-num shrink-0 text-[12.5px] text-muted-foreground">{count}</span>
-          <span className="min-w-0 flex-1 truncate text-[12px] text-muted-foreground">{peek}</span>
-          <ChevronDown aria-hidden className="size-3.5 shrink-0 -rotate-90 text-muted-foreground" />
+          <span className="flex-1" />
+          {!action && <ChevronDown aria-hidden className="size-3.5 shrink-0 -rotate-90 text-muted-foreground" />}
         </button>
         {action && <span className="shrink-0 pr-2">{action}</span>}
       </div>
       <div
         aria-hidden
         className="do-stuff-rule mx-1 h-[1.5px] origin-left rounded-full"
-        style={{ '--rule': def.color } as React.CSSProperties}
+        style={{ '--rule': 'var(--border)' } as React.CSSProperties}
       />
     </div>
   );
@@ -657,7 +650,6 @@ function LaneChip({ id, lane, facts }: { id: string; lane: Lane; facts: LaneFact
             data-testid={`do-stuff-move-${l.key}`}
             className={cn(lane === l.key && 'font-medium')}
           >
-            <Dot color={l.color} />
             {l.label}
             <span className="ml-auto">
               <Cap>{l.digit}</Cap>
@@ -1200,6 +1192,10 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
   const hoveredRef = useRef<string | null>(null);
   // The walk: do it now, then today when do it now is through.
   const next = nextNow(plan.lanes.now, isOpen, skipped) ?? nextNow(plan.lanes.today, isOpen, skipped);
+  // The one after it, for the desk's bar ("next · Book the dentist"): what a
+  // done or a skip would bring up.
+  const notNext = (r: RowItem) => isOpen(r) && r.item.id !== next?.item.id;
+  const then = nextNow(plan.lanes.now, notNext, skipped) ?? nextNow(plan.lanes.today, notNext, skipped);
   const slot = useDoStuffStore((s) => s.slot);
   const order = LANES.map((l) => plan.lanes[l.key].map((r) => r.item.id).join(',')).join('|');
   // A row that leaves the list under the pointer (done, let go) fires no
@@ -1260,9 +1256,14 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
   // Do it now's next, for the up-next card on today (do-stuff-today.tsx).
   const nextId = next?.item.id;
   const nextTitle = next?.item.title;
+  const thenId = then?.item.id;
+  const thenTitle = then?.item.title;
   useEffect(() => {
-    useDoStuffStore.setState({ next: nextId && nextTitle !== undefined ? { id: nextId, title: nextTitle } : null });
-  }, [nextId, nextTitle]);
+    useDoStuffStore.setState({
+      next: nextId && nextTitle !== undefined ? { id: nextId, title: nextTitle } : null,
+      then: thenId && thenTitle !== undefined ? { id: thenId, title: thenTitle } : null,
+    });
+  }, [nextId, nextTitle, thenId, thenTitle]);
   const trailing = (r: RowItem) => {
     const pack = plan.packs.get(r.item.id);
     return (
@@ -1347,8 +1348,6 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
               <LanePeek
                 lane={l.key}
                 count={open.length}
-                titles={open.map((r) => r.item.title)}
-                doneHere={doneHere}
                 onOpen={() => setFold(l.key, true)}
                 action={action}
               />

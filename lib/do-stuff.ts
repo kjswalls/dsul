@@ -91,6 +91,8 @@ interface DoStuffState {
   marks: ReadonlyMap<string, Mark>;
   /** Do it now's next row, for the up-next card on today (components/sidebar/do-stuff-today.tsx). */
   next: { id: string; title: string } | null;
+  /** The row after `next`: what done or skip brings up, for the desk's bar. */
+  then: { id: string; title: string } | null;
   /** Braindump rows coming onto today: the card's ghost "+" rows. */
   arriving: readonly { id: string; title: string }[];
   /**
@@ -220,6 +222,7 @@ export const useDoStuffStore = create<DoStuffState>((set) => ({
       commit: null,
       marks: NO_MARKS,
       next: null,
+      then: null,
       arriving: [],
       firstSteps: null,
       slot: false,
@@ -238,6 +241,7 @@ export const useDoStuffStore = create<DoStuffState>((set) => ({
   commit: null,
   marks: NO_MARKS,
   next: null,
+  then: null,
   arriving: [],
   firstSteps: null,
   slot: false,
