@@ -466,3 +466,29 @@ doing stuff. Mockups: https://claude.ai/artifact/5ruP7iqrFH3s7vLRLcdso4.
   go", the first three done and "and N more", a line per move with where it
   goes, then make it so (↵, `finishRun`, which also ends the mode). With
   nothing done and nothing to move it still says the rest can wait.
+
+## Five more (Kirby's "all five", 2026-10-21)
+
+Learning how you write, unsticking what keeps being carried, braindump to
+prepped items, a one-tap finish, and an energy-aware walk. One PR each, in
+that order.
+
+### How you write (PR 1)
+
+- **What is kept is a note, never the edits.** lib/writing-style.ts holds the
+  keys (`writingStyle`, `learnStyle` in Do stuff's config, so every device
+  writes the same way) and `styleEdit`, which decides what counts: an email,
+  message, draft or call script, both sides written, more changed than a typo.
+- **Off until the person says yes.** Each lesson is a call on their own model.
+  The first time a changed draft leaves a card (Copy, Open in mail, the swipe),
+  a toast asks once; asking writes `learnStyle: false`, so it never asks again
+  on any device, and Learn writes true and learns from that very edit.
+- **/api/ai/style is stateless:** the note so far, what the AI wrote and what
+  the person sent go to their model, which answers the whole note (style only,
+  at most eight lines, 800 characters). lib/learn-style.ts is the one writer:
+  one lesson out at a time, only the newest waits, and a lesson that lands
+  after the switch went off is dropped.
+- **Prep follows it:** the store sends `style`, and the route adds it after the
+  built-in rules and before the person's own instructions, so a drafted email
+  opens and signs off the way they do.
+- **Settings → Do stuff** shows the switch and the note, to change or to clear.
