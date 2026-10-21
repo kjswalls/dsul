@@ -1562,7 +1562,19 @@ export function ScheduleBlock({
   );
 }
 
-export function DaySchedule({ activeId }: { activeId: string | null }) {
+export function DaySchedule({
+  activeId,
+  hideAnytime = false,
+}: {
+  activeId: string | null;
+  /**
+   * The Desk's day column (do-stuff-desk.tsx) leaves the Anytime strip out
+   * while walking: those rows are the lanes' already, and the column is the
+   * day's clock (the room's round two, 2026-10-18). A drag still shows it, so
+   * it stays a drop target.
+   */
+  hideAnytime?: boolean;
+}) {
   const day = useDayItems();
   const { selectedDate, navDirection, userTimezone, showCurrentTimeIndicator } = usePlannerStore();
   const timeFormatStr = useTimeFormat();
@@ -1731,7 +1743,7 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
         {/* ANYTIME — untimed items; drop here to keep something time-free.
             On desktop it is always there, even empty, because its last row is
             where you add one (the phone keeps its own capture bar). */}
-        {(untimed.length > 0 || dragging || addHere) && (
+        {(dragging || (!hideAnytime && (untimed.length > 0 || addHere))) && (
           <div
             ref={anytimeRootRef}
             data-dnd-id="unscheduled:anytime"

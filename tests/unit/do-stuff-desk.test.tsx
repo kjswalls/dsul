@@ -170,7 +170,8 @@ describe('the desk', () => {
     expect(screen.getByTestId('do-stuff-desk-notes').textContent).toContain('renewal or month to month?');
     const steps = screen.getAllByRole('checkbox', { name: /find the lease|check the renewal date/ });
     expect(steps.map((s) => s.getAttribute('aria-checked'))).toEqual(['true', 'false']);
-    expect(screen.getByTestId('do-stuff-desk-kicker').textContent).toContain('do it now');
+    // The strip says only how long until the next block; never the lane.
+    expect(screen.getByTestId('do-stuff-desk-kicker').textContent).not.toContain('do it now');
     // Always today: the canvas came back from three days out.
     const sel = usePlannerStore.getState().selectedDate;
     expect(sel.toDateString()).toBe(new Date().toDateString());
@@ -322,8 +323,28 @@ describe('the desk', () => {
     expect(useDoStuffStore.getState().next?.id).toBe('a');
     expect(screen.queryByTestId('do-stuff-desk-clear')).toBeNull();
     expect(screen.queryByTestId('do-stuff-desk-item')).toBeNull();
+    // Nothing left to walk: the end of the walk, which here has the plan's
+    // moves to make (the empty "the rest can wait" is for a plan with none).
     act(() => useDoStuffStore.setState({ next: null }));
-    expect(screen.getByTestId('do-stuff-desk-clear')).toBeTruthy();
+    expect(screen.getByTestId('do-stuff-receipt')).toBeTruthy();
+  });
+
+  it('ends the walk on a receipt: what got done, where the rest goes, and make it so', () => {
+    seed(ITEMS);
+    start();
+    open();
+    act(() => useDoStuffStore.setState({ next: null, doneIds: ['a1'], doneCount: 1 }));
+    const commit = useDoStuffStore.getState().commit!;
+    const moves = commit.days.size + commit.today.length + commit.unschedule.length + commit.handOff.length;
+    expect(moves).toBeGreaterThan(0);
+    const receipt = screen.getByTestId('do-stuff-receipt');
+    expect(screen.getByTestId('do-stuff-receipt-head').textContent).toMatch(new RegExp(`^1 done· ${moves} moved`));
+    expect(receipt.textContent).toContain('find the lease');
+    expect(screen.getAllByTestId('do-stuff-receipt-moved')).toHaveLength(moves);
+    act(() => {
+      fireEvent.click(screen.getByTestId('do-stuff-receipt-commit'));
+    });
+    expect(useDoStuffStore.getState().on).toBe(false);
   });
 
   it('closes when the canvas leaves today', () => {
@@ -369,7 +390,14 @@ describe('the desk', () => {
     const close = screen.getByTestId('do-stuff-desk-close');
     expect(close.parentElement).toBe(screen.getByTestId('do-stuff-desk-kicker').parentElement);
     expect(screen.getByTestId('do-stuff-desk-done').parentElement!.contains(close)).toBe(false);
-    expect(item.querySelector('kbd')?.className).toContain('font-num');
+    // Done, skip and today wait in the bar at the foot of the room.
+    const bar = screen.getByTestId('do-stuff-desk-bar');
+    for (const id of ['do-stuff-desk-done', 'do-stuff-desk-skip', 'do-stuff-desk-today']) {
+      expect(bar.contains(screen.getByTestId(id))).toBe(true);
+    }
+    expect(item.contains(bar)).toBe(true);
+    // The day column is the day's clock: no Anytime strip while walking.
+    expect(screen.getByTestId('do-stuff-desk-day').querySelector('[data-dnd-id="unscheduled:anytime"]')).toBeNull();
     expect(screen.getByTestId('do-stuff-desk-day').hasAttribute('data-dense')).toBe(true);
   });
 });
