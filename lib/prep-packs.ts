@@ -434,6 +434,12 @@ export function packHref(pack: Pack): string | null {
       const digits = pack.number?.replace(/[^\d+]/g, '') ?? '';
       return digits.length >= 3 ? `tel:${digits}` : null;
     }
+    case 'message': {
+      // Only to a number: a name has no link, and the card offers the share
+      // sheet or Copy instead. "?&body=" opens filled in on iOS and Android.
+      const number = smsNumber(pack.to);
+      return number ? `sms:${number}?&body=${encodeURIComponent(pack.body)}` : null;
+    }
     case 'form':
       return pack.url ?? null;
     case 'place':
@@ -443,11 +449,26 @@ export function packHref(pack: Pack): string | null {
   }
 }
 
+/** A message's "to" as a number to text, when it is one (7 to 15 digits). */
+export function smsNumber(to: string | undefined): string | null {
+  if (!to || /[a-z@]/i.test(to)) return null;
+  const digits = to.replace(/[^\d+]/g, '');
+  const count = digits.replace(/\D/g, '').length;
+  return count >= 7 && count <= 15 && /^\+?\d+$/.test(digits) ? digits : null;
+}
+
+/** Packs whose primary hands a message to someone: after it, "Sent it?". */
+export function packSends(pack: Pack): boolean {
+  return pack.kind === 'email' || pack.kind === 'message' || (pack.kind === 'call' && packHref(pack) !== null);
+}
+
 /** The primary action's word. */
 export function packAction(pack: Pack): string {
   switch (pack.kind) {
     case 'email':
       return 'Open in mail';
+    case 'message':
+      return packHref(pack) ? 'Open in messages' : 'Copy';
     case 'call':
       return packHref(pack) ? 'Call' : 'Copy script';
     case 'form':

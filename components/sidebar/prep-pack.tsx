@@ -14,6 +14,7 @@ import {
   packAction,
   packHref,
   packKindName,
+  packSends,
   packLabel,
   packIsQuestion,
   packIsStale,
@@ -462,6 +463,34 @@ export function PackCard({ itemId, title, stored, nav, onClose, swipe, onSettled
       duration: 10_000,
     });
   };
+  // The one-tap finish: once a message has gone to the mail or messages app
+  // (or the share sheet), coming back asks "Sent it?" and Done ticks it off.
+  const askSent = () => {
+    const finish = () =>
+      toast('Sent it?', {
+        action: {
+          label: 'Done',
+          onClick: () => {
+            onSettled();
+            doneNext(itemId);
+          },
+        },
+        duration: 15_000,
+      });
+    onReturn(finish);
+  };
+  const share = async () => {
+    try {
+      await navigator.share({ text: packText(pack) });
+      taken();
+      askSent();
+    } catch (err) {
+      // Closing the sheet is a choice; anything else falls back to Copy.
+      if ((err as { name?: string })?.name !== 'AbortError') void copy();
+    }
+  };
+  const canShare =
+    !href && (pack.kind === 'message' || pack.kind === 'draft') && typeof navigator !== 'undefined' && typeof navigator.share === 'function';
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(packText(pack));
@@ -483,8 +512,10 @@ export function PackCard({ itemId, title, stored, nav, onClose, swipe, onSettled
     // A web page (a form's link) opens beside dsul; mail and phone links hand off.
     if (href?.startsWith('https:')) window.open(href, '_blank', 'noopener,noreferrer');
     else if (href) window.location.assign(href);
+    else if (canShare) return void share();
     else return void copy();
     taken();
+    if (packSends(pack)) askSent();
   };
 
   const endSwipe = () => {
@@ -594,18 +625,25 @@ export function PackCard({ itemId, title, stored, nav, onClose, swipe, onSettled
           <Button size="sm" asChild data-testid="prep-pack-primary">
             <a
               href={href}
-              onClick={taken}
+              onClick={() => {
+                taken();
+                if (packSends(pack)) askSent();
+              }}
               {...(href.startsWith('https:') ? { target: '_blank', rel: 'noopener noreferrer nofollow' } : {})}
             >
               {packAction(pack)}
             </a>
+          </Button>
+        ) : canShare ? (
+          <Button size="sm" onClick={() => void share()} data-testid="prep-pack-primary">
+            Share
           </Button>
         ) : (
           <Button size="sm" onClick={() => void copy()} data-testid="prep-pack-primary">
             {packAction(pack)}
           </Button>
         )}
-        {href && pack.kind !== 'question' && (
+        {(href || canShare) && pack.kind !== 'question' && (
           <Button size="sm" variant="ghost" onClick={() => void copy()} className="text-muted-foreground">
             Copy
           </Button>
@@ -638,6 +676,38 @@ export function PackCard({ itemId, title, stored, nav, onClose, swipe, onSettled
     </div>
   );
 }
+
+/**
+ * Runs `then` when the person comes back to the page: the mail or messages
+ * app took the screen and gave it back. On a desktop the page often never
+ * hides (the mail app opens beside it), so it runs after a moment instead.
+ */
+function onReturn(then: () => void): void {
+  let hidden = false;
+  let done = false;
+  const run = () => {
+    if (done) return;
+    done = true;
+    document.removeEventListener('visibilitychange', onChange);
+    then();
+  };
+  const onChange = () => {
+    if (document.visibilityState === 'hidden') hidden = true;
+    else if (hidden) run();
+  };
+  document.addEventListener('visibilitychange', onChange);
+  setTimeout(() => {
+    if (!hidden) run();
+  }, RETURN_GRACE_MS);
+  // Gone for good (never came back this session): stop listening.
+  setTimeout(() => {
+    done = true;
+    document.removeEventListener('visibilitychange', onChange);
+  }, 30 * 60_000);
+}
+
+/** How long a page that never hid waits before asking "Sent it?". */
+const RETURN_GRACE_MS = 1500;
 
 const packKey = (card: CardProps) => `${card.itemId}:${card.stored.updatedAt}`;
 
