@@ -94,6 +94,11 @@ interface PrepPacksState {
   error: string | null;
   load: (userId: string) => Promise<void>;
   /**
+   * Reads the packs again, the server's copy winning: an agent saved one from
+   * outside the browser (MCP's dsul_save_prep), so the store has not seen it.
+   */
+  refresh: (userId: string) => Promise<void>;
+  /**
    * Asks for packs. `today` is the user's own day, for timing. `again` asks
    * about items already tried or prepared: an answered question, or an item
    * that changed since its last ask.
@@ -150,6 +155,24 @@ export const usePrepPacksStore = create<PrepPacksState>((set, get) => ({
       }));
     } catch {
       // Offline or signed out: no packs, and the next start asks again.
+    }
+  },
+
+  refresh: async (userId) => {
+    if (get().userId !== userId || !get().loaded) return get().load(userId);
+    try {
+      const res = await fetch('/api/ai/prep', { cache: 'no-store' });
+      if (!res.ok) return;
+      const body = (await res.json()) as { packs?: PrepPack[] };
+      if (get().userId !== userId) return;
+      set((s) => {
+        const fresh = byItem(body.packs ?? []);
+        // An item being prepared here keeps what this page is about to write.
+        for (const id of Object.keys(s.preparing)) delete fresh[id];
+        return { packs: { ...s.packs, ...fresh } };
+      });
+    } catch {
+      // Offline: the next refresh asks again.
     }
   },
 

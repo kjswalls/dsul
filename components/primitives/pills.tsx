@@ -733,9 +733,12 @@ export function AgentPill({
   item,
   className,
   workingOnly = false,
+  hideReady = false,
 }: {
   item: { aiStatus?: string; aiStatusAt?: string; assignee?: string; status?: string; aiMode?: string };
   className?: string;
+  /** The agent saved a card (dsul_save_prep) that the row already shows as its pack chip. */
+  hideReady?: boolean;
   /** Only the relay, for a live run: a schedule block has no room for the chips. */
   workingOnly?: boolean;
 }) {
@@ -743,7 +746,7 @@ export function AgentPill({
   // 'prepare') is done when it reports, but the item is not: the ready chip
   // says there is something to look at, in the item panel's agent block.
   if (agentPrepReady(item)) {
-    return workingOnly ? null : (
+    return workingOnly || hideReady ? null : (
       <AiChip className={className} data-testid="agent-prep-ready">
         ready
       </AiChip>

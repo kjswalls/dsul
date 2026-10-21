@@ -13,7 +13,7 @@ import { act, renderHook } from '@testing-library/react';
  * real store and its history subscriber run, and every write is observed.
  */
 
-const hoisted = vi.hoisted(() => ({ refreshIfStale: vi.fn() }));
+const hoisted = vi.hoisted(() => ({ refreshIfStale: vi.fn(), refreshPacks: vi.fn(async () => {}) }));
 
 vi.mock('@/lib/db', () => ({
   fetchItems: vi.fn(async () => []),
@@ -52,6 +52,9 @@ vi.mock('@/lib/db', () => ({
   fetchAgentStates: vi.fn(async () => []),
 }));
 vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}) }));
+vi.mock('@/lib/prep-packs-store', () => ({
+  usePrepPacksStore: { getState: () => ({ refresh: hoisted.refreshPacks }) },
+}));
 vi.mock('@/lib/conversations-store', () => ({
   useConversationsStore: { getState: () => ({ refreshIfStale: hoisted.refreshIfStale }) },
 }));
@@ -209,6 +212,16 @@ describe('refreshAgentFreshness', () => {
     expect(db.fetchAgentStates).toHaveBeenCalledTimes(1);
     await refreshAgentFreshness(T + AGENT_FRESHNESS_MS);
     expect(db.fetchAgentStates).toHaveBeenCalledTimes(2);
+  });
+
+  it("reads the prep cards again when an agent finishes, for the card it may have saved", async () => {
+    vi.mocked(db.fetchAgentStates).mockResolvedValue([row()]);
+    await refreshAgentFreshness(T);
+    expect(hoisted.refreshPacks).not.toHaveBeenCalled();
+    resetAgentFreshness();
+    vi.mocked(db.fetchAgentStates).mockResolvedValue([row({ aiStatus: 'done', aiStatusAt: FUTURE })]);
+    await refreshAgentFreshness(T);
+    expect(hoisted.refreshPacks).toHaveBeenCalledWith(USER);
   });
 
   it('takes an undelegation made on another device: the item leaves Needs you', async () => {

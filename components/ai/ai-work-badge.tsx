@@ -107,3 +107,11 @@ export function PrepPacksBoot() {
   }, [userId]);
   return null;
 }
+
+/** Is there a card for this item that its row's pack chip shows? Then the agent's "ready" is the same news. */
+export function usePackShown(item: { id: string; title: string } | undefined): boolean {
+  return usePrepPacksStore((s) => {
+    const stored = item ? s.packs[item.id] : undefined;
+    return !!stored && !packIsStale(stored, item!.title);
+  });
+}

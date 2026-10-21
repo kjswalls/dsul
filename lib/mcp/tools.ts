@@ -390,8 +390,8 @@ export const MCP_TOOLS: McpTool[] = [
       'working the same task and overwriting each other. ' +
       'Never touch an item assigned to someone else. ' +
       "An item with aiMode 'prepare' is one to get ready, not to do: draft the message, " +
-      'research and plan, or ask the user one question, then report what you prepared with ' +
-      'dsul_report_progress. Never send, book, buy, pay, submit, post or delete anything for ' +
+      'research and plan, or ask the user one question. Hand back what you prepared as a card ' +
+      'with dsul_save_prep, then report done with dsul_report_progress. Never send, book, buy, pay, submit, post or delete anything for ' +
       'it, and never mark it complete. ' +
       'If nothing comes back, there is nothing to do. Stop, and do not go looking ' +
       'for work in the rest of the planner.',
@@ -525,6 +525,48 @@ export const MCP_TOOLS: McpTool[] = [
           ...(typeof args.lastSeenAt === 'string' ? { lastSeenAt: args.lastSeenAt } : {}),
         },
       }
+    },
+  },
+  {
+    name: 'dsul_save_prep',
+    description:
+      'Hand back what you got ready for an item assigned to you as a card the user can use in ' +
+      'one tap: an email or message that opens in their own mail or messages app filled in, a ' +
+      'call script, steps, a list, a draft, options with links, and so on. Use it for every ' +
+      "item with aiMode 'prepare', then report done with dsul_report_progress (a one-line " +
+      'summary is enough there). One card per item; saving again replaces it. Nothing is sent ' +
+      'by saving: the user sends it themselves. pack is one of these shapes, by kind: ' +
+      'email {to?, subject, body}; message {to? (a phone number opens their messages app), body}; ' +
+      'call {who, number?, script: 1-8 lines}; steps {steps: 2-6 short steps}; ' +
+      'subtasks {subtasks: 2-8}; list {items: 1-40}; draft {title?, body}; answer {answer}; ' +
+      'options {intro?, options: 1-6 of {title, detail?, when?, price?, url?}}; ' +
+      'form {url?, fields: 1-15 of {label, value}}; ' +
+      'place {name, address?, hours?, phone?, url?}; ' +
+      'time {date? yyyy-MM-dd, time HH:mm, duration? minutes, why?}; ' +
+      'pick {question?, choices: 2-4 of {name, pros[], cons[], price?, url?}, recommended: index, why}. ' +
+      'Any of email, message, call, steps, list, options, form, draft, answer, place and pick ' +
+      'may also carry sources: up to 5 of {title, url}. Links must be https. ' +
+      'Never write a phone number, address or email the item, its notes or your research did ' +
+      'not give you. To ask the user something, use dsul_ask_user instead.',
+    inputSchema: obj(
+      {
+        id: ID,
+        pack: {
+          type: 'object',
+          description: 'The card: a kind and that kind\'s fields, as listed above.',
+          properties: { kind: str('email, message, call, steps, subtasks, list, draft, answer, options, form, place, time or pick.') },
+          required: ['kind'],
+        },
+      },
+      ['id', 'pack']
+    ),
+    plan: (args) => {
+      const id = requireString(args, 'id')
+      if (typeof id !== 'string') return id
+      if (!args.pack || typeof args.pack !== 'object' || Array.isArray(args.pack)) {
+        return { error: 'pack must be an object with a kind' }
+      }
+      return { method: 'POST', path: `/api/agent/items/${id}/prep`, body: { pack: args.pack } }
     },
   },
   {

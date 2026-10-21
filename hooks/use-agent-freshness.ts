@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { fetchAgentStates } from '@/lib/db';
 import { mergeAgentStates, usePlannerStore } from '@/lib/planner-store';
 import { useConversationsStore } from '@/lib/conversations-store';
+import { usePrepPacksStore } from '@/lib/prep-packs-store';
 
 /** At most one agent-state read per this long, however often Ask shows or the window gains focus. */
 export const AGENT_FRESHNESS_MS = 60_000;
@@ -37,7 +38,11 @@ export function refreshAgentFreshness(now: number = Date.now()): Promise<void> {
   return fetchAgentStates()
     .then((rows) => {
       if (usePlannerStore.getState().userId !== userId) return;
-      mergeAgentStates(rows);
+      // A finish may come with a card the agent saved from outside the
+      // browser (MCP's dsul_save_prep): read the packs again when one lands.
+      if (mergeAgentStates(rows) > 0 && rows.some((r) => r.aiStatus === 'done')) {
+        void usePrepPacksStore.getState().refresh(userId);
+      }
     })
     .catch(() => {});
 }

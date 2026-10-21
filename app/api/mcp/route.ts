@@ -12,6 +12,7 @@ import { GET as getItemEvents } from '@/app/api/agent/items/[id]/events/route'
 import { POST as askUser } from '@/app/api/agent/items/[id]/ask/route'
 import { POST as reportProgress } from '@/app/api/agent/items/[id]/progress/route'
 import { POST as actOnItem } from '@/app/api/agent/items/[id]/act/route'
+import { POST as savePrep } from '@/app/api/agent/items/[id]/prep/route'
 import { POST as createProject } from '@/app/api/agent/projects/route'
 import { PATCH as patchProject, DELETE as deleteProject } from '@/app/api/agent/projects/[id]/route'
 import { dispatch, type ToolResult } from '@/lib/mcp/protocol'
@@ -85,7 +86,7 @@ async function runPlan(original: NextRequest, plan: ToolPlan): Promise<Response>
 
   if (collection === 'context') return getContext(proxyRequest(original, plan))
 
-  // /api/agent/items/:id/{events,ask,progress,act} — the delegation verbs and
+  // /api/agent/items/:id/{events,ask,progress,act,prep} — the delegation verbs and
   // the one-day verbs, each with its own handler rather than a CRUD set: they
   // carry preconditions that must not be bolted onto every agent write.
   const ITEM_VERBS: Record<string, (req: NextRequest, ctx: { params: Promise<{ id: string }> }) => Promise<Response>> = {
@@ -93,6 +94,7 @@ async function runPlan(original: NextRequest, plan: ToolPlan): Promise<Response>
     ask: askUser,
     progress: reportProgress,
     act: actOnItem,
+    prep: savePrep,
   }
   if (collection === 'items' && segments[2] && ITEM_VERBS[segments[2]]) {
     if (!id || id.includes('/') || id.includes('..') || id.includes('%')) {
