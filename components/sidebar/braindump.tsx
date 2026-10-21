@@ -30,6 +30,8 @@ import {
 import { captureTask, useHeldCount } from '@/lib/held-captures';
 import { useUIStore, openAddDialog, openBulkAdd } from '@/lib/ui-store';
 import { isBulkPaste } from '@/lib/bulk-add';
+import { isParagraphPaste } from '@/lib/braindump-split';
+import { getAICapabilities } from '@/lib/ai-connection-store';
 import { useViewStore } from '@/lib/view-store';
 import { SIDEBAR_MIN_WIDTH } from '@/lib/sidebar-store';
 import { narrowingClauseCount, passesFilters } from '@/lib/filters';
@@ -179,9 +181,10 @@ function QuickAddRow({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement 
         // in this field — the paste, not the draft, is what's being promoted.
         onPaste={(e) => {
           const pasted = e.clipboardData.getData('text/plain');
-          if (isBulkPaste(pasted)) {
+          const paragraph = !isBulkPaste(pasted) && isParagraphPaste(pasted) && getAICapabilities().canPrep;
+          if (isBulkPaste(pasted) || paragraph) {
             e.preventDefault();
-            openBulkAdd({ text: pasted });
+            openBulkAdd({ text: pasted, ...(paragraph ? { split: true } : {}) });
           }
         }}
         placeholder="Add item"

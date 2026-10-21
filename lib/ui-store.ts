@@ -73,6 +73,8 @@ export type ActiveDialog =
   | {
       type: 'bulk-add';
       text?: string;
+      /** A paragraph paste (lib/braindump-split.ts): lead with the AI's split. */
+      split?: boolean;
       /** 'task' or a custom slug — never 'habit'. */
       itemType?: string;
       project?: string;

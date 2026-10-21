@@ -507,3 +507,18 @@ that order.
 - **Background prep takes stuck items first, on any day,** and an item already
   asked about is asked once more when it becomes stuck (the ledger signature
   gains a stuck mark). Do stuff's own start marks the stuck lanes' items too.
+
+### Braindump to done (PR 3)
+
+- **A paragraph splits into things.** Pasting one into the omnibar or the
+  braindump's quick add, with a model connected, opens the bulk-add dialog
+  leading with "Sort it out with AI" (`split: true` on the seed;
+  `isParagraphPaste` in lib/braindump-split.ts: 120+ characters, one line, more
+  than one sentence or clause). The button is also there for any text in the
+  dialog. Nothing is sent until it is pressed.
+- **/api/ai/split is stateless:** the person's own model answers drafts (a
+  title in their words, notes only with details from the text, at most 30),
+  checked by `splitDrafts`. They land in the dialog's table, "Sorted by your
+  AI. Check it, then add.", and Add is the one write (one ⌘Z).
+- **Then they are got ready.** With Do stuff on and the model answering, the
+  items the split added go straight to prep, like the braindump's.

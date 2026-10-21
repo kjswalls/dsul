@@ -20,7 +20,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { toast } from 'sonner';
+import { AskMark } from '@/components/ai/ask-mark';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useAICapabilities } from '@/lib/ai-connection-store';
+import { useAISettingsStore } from '@/lib/ai-settings-store';
+import { useDoStuffEnabled } from '@/lib/extension-gates';
+import { prepItemFor, usePrepPacksStore } from '@/lib/prep-packs-store';
+import { toDateStr } from '@/lib/recurrence';
+import { MAX_SPLIT_CHARS } from '@/lib/braindump-split';
 import { getItemTypeConfig } from '@/lib/item-registry';
 import {
   MAX_BULK_ITEMS,
@@ -83,6 +91,14 @@ export function BulkAddDialog({
    *  tail — this keeps the cap notice honest for that one path. */
   const [importTruncated, setImportTruncated] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  // Braindump to things (lib/braindump-split.ts): the person's own model
+  // splits a paragraph into drafts, shown in the table to check before Add.
+  const { canPrep } = useAICapabilities();
+  const doStuff = useDoStuffEnabled();
+  const [fromAI, setFromAI] = useState(false);
+  const [splitting, setSplitting] = useState(false);
+  const [lead, setLead] = useState(false);
+  const splitAbort = useRef<AbortController | null>(null);
 
   // Re-seed during render, not in an effect: openDialog mints a fresh seed
   // object per open, so its identity is exactly "a new opening" — the
@@ -101,6 +117,9 @@ export function BulkAddDialog({
     setBucket(seed.bucket);
     setFileError(null);
     setImportTruncated(false);
+    setFromAI(false);
+    setSplitting(false);
+    setLead(seed.split === true);
   }
 
   const parsed = useMemo(() => splitBulkLinesWithMeta(text), [text]);
@@ -164,8 +183,51 @@ export function BulkAddDialog({
     }
   };
 
+  const split = async () => {
+    const source = text.trim();
+    if (!source || splitting) return;
+    splitAbort.current?.abort();
+    const ctrl = new AbortController();
+    splitAbort.current = ctrl;
+    setSplitting(true);
+    setFileError(null);
+    try {
+      const res = await fetch('/api/ai/split', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: source.slice(0, MAX_SPLIT_CHARS), customInstructions: useAISettingsStore.getState().systemPrompt }),
+        signal: ctrl.signal,
+      });
+      const body = (await res.json().catch(() => ({}))) as { drafts?: BulkDraft[]; error?: string };
+      if (ctrl.signal.aborted) return;
+      if (!res.ok) return setFileError(body.error ?? "Your AI couldn't sort that out.");
+      const drafts = body.drafts ?? [];
+      if (drafts.length === 0) return setFileError('Your AI found nothing to do in that.');
+      setTable({ drafts, truncated: false, mappedHeader: false, structured: true });
+      setFromAI(true);
+    } catch {
+      if (!ctrl.signal.aborted) setFileError("Your AI couldn't sort that out.");
+    } finally {
+      if (splitAbort.current === ctrl) setSplitting(false);
+    }
+  };
+
+  /** The things the split made, got ready the way the braindump's are. */
+  const prepareAdded = (before: ReadonlySet<string>) => {
+    if (!fromAI || !doStuff || !canPrep) return;
+    const planner = usePlannerStore.getState();
+    const added = planner.items.filter((i) => !before.has(i.id) && i.type === 'task');
+    if (added.length === 0) return;
+    const tz = planner.userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+    void usePrepPacksStore
+      .getState()
+      .prepare(added.map((i) => prepItemFor(i, planner.items)), { today: toDateStr(new Date(), tz) });
+    toast(added.length === 1 ? 'Added. Getting it ready' : `Added ${added.length}. Getting them ready`);
+  };
+
   const handleSubmit = () => {
     if (count === 0) return;
+    const before = new Set(usePlannerStore.getState().items.map((i) => i.id));
     addTasksBulk(
       itemType,
       drafts.map((draft) => {
@@ -181,6 +243,7 @@ export function BulkAddDialog({
         };
       })
     );
+    prepareAdded(before);
     onOpenChange(false);
   };
 
@@ -188,7 +251,9 @@ export function BulkAddDialog({
     if (!table) return;
     setText(table.drafts.map((d) => d.title).join('\n'));
     setTable(null);
+    setFromAI(false);
   };
+  const canSplit = canPrep && !table && text.trim().length > 0;
 
   return (
     <ResponsiveModal open={open} onOpenChange={onOpenChange}>
@@ -234,6 +299,12 @@ export function BulkAddDialog({
                 ))}
               </div>
               <div className="flex items-center justify-between">
+                {fromAI ? (
+                  <p className="flex items-center gap-1.5 text-xs text-muted-foreground" data-testid="bulk-add-ai-note">
+                    <AskMark tone="ink" className="size-3" />
+                    Sorted by your AI. Check it, then add.
+                  </p>
+                ) : (
                 <p className="text-xs text-muted-foreground">
                   Imported with{' '}
                   {table.drafts.some((d) => d.notes) && 'notes'}
@@ -242,6 +313,7 @@ export function BulkAddDialog({
                     ' and '}
                   {table.drafts.some((d) => d.startDate) && 'dates'} from the file.
                 </p>
+                )}
                 <Button
                   variant="ghost"
                   size="sm"
@@ -249,7 +321,7 @@ export function BulkAddDialog({
                   onClick={editAsText}
                   data-testid="bulk-add-edit-as-text"
                 >
-                  Edit as text (drops notes & dates)
+                  {fromAI ? 'Edit as text (drops notes)' : 'Edit as text (drops notes & dates)'}
                 </Button>
               </div>
             </>
@@ -333,6 +405,19 @@ export function BulkAddDialog({
                 e.target.value = '';
               }}
             />
+            {canSplit && (
+              <Button
+                variant={lead ? 'default' : 'ghost'}
+                size="sm"
+                className="h-7 gap-1.5 text-xs"
+                onClick={() => void split()}
+                disabled={splitting}
+                data-testid="bulk-add-split"
+              >
+                <AskMark tone={lead ? 'aurora' : 'ink'} className="size-3.5" />
+                {splitting ? 'Sorting it out…' : 'Sort it out with AI'}
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="sm"

@@ -1385,6 +1385,8 @@ conversation is saved to the account.
 - *Not stored:*
   - the planner context sent with each message;
   - your custom instructions;
+  - a paragraph you ask your AI to sort out into things (Do stuff's "Sort it out with AI"):
+    it goes to your model once, and nothing is kept until you press Add;
   - proposal cards;
   - pictures attached to a message (sent to your model with it, then gone; only how many is kept,
     so after a reload the transcript shows a blank tile for each, marked "not saved");
