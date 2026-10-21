@@ -522,3 +522,16 @@ that order.
   AI. Check it, then add.", and Add is the one write (one ⌘Z).
 - **Then they are got ready.** With Do stuff on and the model answering, the
   items the split added go straight to prep, like the braindump's.
+
+### The one-tap finish (PR 4)
+
+- **A message opens filled in.** A message pack to a number gets an `sms:` link
+  ("Open in messages", `smsNumber`: 7 to 15 digits, never a name or an
+  address); one to a name, or a draft, offers the share sheet where the device
+  has one ("Share"), and Copy otherwise. Email already opened in mail, and a
+  call with a number already dialled.
+- **Coming back asks "Sent it?"** After a pack that sends (`packSends`: an
+  email, a message, a call with a number) leaves through its primary, the card
+  waits for the page to come back (or 1.5s on a desktop, where the mail app
+  opens beside it) and toasts "Sent it?" with Done, which ticks the item off
+  through `doneNext`. dsul still never sends anything itself.
