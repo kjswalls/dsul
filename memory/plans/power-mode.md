@@ -535,3 +535,16 @@ that order.
   waits for the page to come back (or 1.5s on a desktop, where the mail app
   opens beside it) and toasts "Sent it?" with Done, which ticks the item off
   through `doneNext`. dsul still never sends anything itself.
+
+### The energy-aware walk (PR 5)
+
+- **"energy? low · okay · high"** sits above the lanes as a run starts
+  (`EnergyAsk`). It is optional: until it is answered the walk goes exactly as
+  the rules lay it out. Once answered it is one quiet word ("high energy") that
+  asks again on a click. Memory only, `energy` in the do stuff store, reset by
+  every start: energy is today's, not a setting.
+- **What it changes is the order.** `energyOrder` (lib/do-stuff-plan.ts) is a
+  stable sort by size: low walks quick, then errands, then fuzzy, then big;
+  high the other way round. With an energy said, do it now and today are one
+  walk in that order, so high starts on today's big thing. Okay changes
+  nothing. Lanes, make it so and the three-row cap are untouched.

@@ -204,6 +204,31 @@ export function nextNow<R extends { item: { id: string } }>(
   return undefined;
 }
 
+/** How the person feels this run, asked as the walk starts. */
+export type Energy = 'low' | 'okay' | 'high';
+
+/** Low energy walks the small things first; high, the big ones first. */
+const ENERGY_RANK: Record<'low' | 'high', Record<string, number>> = {
+  low: { quick: 0, errand: 1, fuzzy: 2, none: 2, big: 3 },
+  high: { big: 0, errand: 1, fuzzy: 2, none: 2, quick: 3 },
+};
+
+/**
+ * The rows in the order this energy walks them: a stable sort by size, so
+ * rows of one size keep the plan's order. Okay, or not said, changes nothing.
+ */
+export function energyOrder<R extends { item: { title: string; size?: unknown } }>(
+  rows: readonly R[],
+  energy: Energy | null
+): R[] {
+  if (energy !== 'low' && energy !== 'high') return [...rows];
+  const rank = ENERGY_RANK[energy];
+  return rows
+    .map((r, i) => ({ r, i, k: rank[sizeForPlan(r.item) ?? 'none'] ?? 2 }))
+    .sort((a, b) => a.k - b.k || a.i - b.i)
+    .map((x) => x.r);
+}
+
 /** "tomorrow", or the weekday within the week, or "Oct 20". */
 export function dayLabel(day: string, todayStr: string): string {
   if (day === addDaysStr(todayStr, 1)) return 'tomorrow';

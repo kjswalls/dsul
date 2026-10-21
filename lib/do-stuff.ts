@@ -7,7 +7,7 @@ import { toDateStr } from './recurrence';
 import { isRowCompletedOn, type SortableRow } from './sort-rows';
 import { prefersReducedMotion } from './zen-transition';
 import { SPRINT_LEAD_MIN } from './do-stuff-walk';
-import type { Lane } from './do-stuff-plan';
+import type { Energy, Lane } from './do-stuff-plan';
 import { handOffItem } from './agent-handoff';
 import type { Item } from './planner-types';
 
@@ -56,6 +56,14 @@ interface DoStuffState {
    * set is a row the plan never saw finish.
    */
   doneIds: readonly string[];
+  /**
+   * How the person said they feel this run (lib/do-stuff-plan.ts
+   * `energyOrder`): low walks the small things first, high the big ones. Null
+   * until they say, and the walk goes as the rules lay it out. Memory only,
+   * asked again each run: energy is today's, not a setting.
+   */
+  energy: Energy | null;
+  setEnergy: (energy: Energy | null) => void;
   start: () => void;
   stop: () => void;
   skip: (id: string) => void;
@@ -206,7 +214,7 @@ export const useDoStuffStore = create<DoStuffState>((set) => ({
     snapshotRows();
     watchCompletionsWhileOn();
     const startedAt = typeof performance === 'undefined' ? 0 : performance.now();
-    set((s) => ({ on: true, skipped: [], moved: {}, doneCount: 0, doneIds: [], starts: s.starts + 1, startedAt }));
+    set((s) => ({ on: true, skipped: [], moved: {}, doneCount: 0, doneIds: [], energy: null, starts: s.starts + 1, startedAt }));
   },
   // Everything the run held goes with it: a First steps dialog left open, the
   // slot's flag and the sort clock included, so nothing of a run outlives it.
@@ -229,8 +237,11 @@ export const useDoStuffStore = create<DoStuffState>((set) => ({
       startedAt: 0,
       desk: false,
       sprint: null,
+      energy: null,
     });
   },
+  energy: null,
+  setEnergy: (energy) => set({ energy }),
   skip: (id) => set((s) => ({ skipped: [...s.skipped.filter((x) => x !== id), id] })),
   move: (id, lane) => set((s) => ({ moved: { ...s.moved, [id]: lane } })),
   handTo: null,
