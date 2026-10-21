@@ -7,6 +7,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
  */
 
 let resolvedUser: string | null;
+let callerName: string;
 const tables: Record<string, { data: unknown; error: unknown }> = {};
 const filters: Record<string, [string, unknown][]> = {};
 
@@ -25,7 +26,11 @@ function query(table: string) {
 
 vi.mock('@/lib/supabase-service', () => ({
   createServiceClient: () => ({ from: (t: string) => query(t) }),
-  resolveUserIdFromApiKey: async () => resolvedUser,
+}));
+
+vi.mock('@/lib/agent-caller', () => ({
+  resolveAgentCaller: async () =>
+    resolvedUser ? { userId: resolvedUser, scope: 'planner:read', who: async () => callerName } : null,
 }));
 
 import { GET } from '@/app/api/agent/prep-brief/route';
@@ -36,12 +41,14 @@ const brief = (auth = 'Bearer dsul_key') =>
 
 beforeEach(() => {
   resolvedUser = 'u1';
+  callerName = 'openclaw';
   tables.user_extensions = { data: { config: { writingStyle: 'Short. Starts with "Hi".' } }, error: null };
   tables.items = {
     data: [
-      { id: 'a', title: 'Call the GP', status: 'pending' },
-      { id: 'b', title: 'Email Jo', status: 'pending' },
-      { id: 'c', title: 'Done already', status: 'completed' },
+      { id: 'a', title: 'Call the GP', status: 'pending', assignee: 'openclaw' },
+      { id: 'b', title: 'Email Jo', status: 'pending', assignee: 'openclaw' },
+      { id: 'c', title: 'Done already', status: 'completed', assignee: 'openclaw' },
+      { id: 'd', title: "Claude's errand", status: 'pending', assignee: 'Claude' },
     ],
     error: null,
   };
@@ -55,6 +62,9 @@ beforeEach(() => {
       { item_id: 'c', created_at: '2026-10-01T09:00:00Z' },
       { item_id: 'c', created_at: '2026-10-02T09:00:00Z' },
       { item_id: 'c', created_at: '2026-10-03T09:00:00Z' },
+      { item_id: 'd', created_at: '2026-10-01T09:00:00Z' },
+      { item_id: 'd', created_at: '2026-10-02T09:00:00Z' },
+      { item_id: 'd', created_at: '2026-10-03T09:00:00Z' },
     ],
     error: null,
   };
@@ -74,6 +84,14 @@ describe('GET /api/agent/prep-brief', () => {
     for (const t of ['user_extensions', 'items', 'item_events']) {
       expect(filters[t]).toContainEqual(['eq:user_id', 'u1']);
     }
+  });
+
+  it("names only the caller's own queue, never another agent's items", async () => {
+    expect((await (await brief()).json()).stuck).toEqual([{ id: 'a', title: 'Call the GP' }]);
+    callerName = 'Claude';
+    expect((await (await brief()).json()).stuck).toEqual([{ id: 'd', title: "Claude's errand" }]);
+    callerName = '\u0000';
+    expect((await (await brief()).json()).stuck).toEqual([]);
   });
 
   it('refuses without a key that resolves', async () => {
