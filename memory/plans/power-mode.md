@@ -571,3 +571,14 @@ this gap?". Four pieces were proposed; the first is built.
 - `dsul_my_work`'s description, OpenClaw's work brief and the Claude routine prompt all say: for
   aiMode 'prepare', hand back a card, report done, never send or complete. An agent that skips the
   tool still has its written report, as before.
+
+### Agents get the same brief (PR 2)
+
+- The model's prep rules moved to lib/prep-rules.ts (`PREP_KIND_RULES`, `PREP_QUESTION_RULE_LIST`,
+  `PREP_TONE_RULES`); /api/ai/prep's prompt is the same text, built from them.
+- MCP's `dsul_prep_brief` reads `GET /api/agent/prep-brief`: those rules, with the question line
+  swapped for `dsul_ask_user` and a line saying cards go back through `dsul_save_prep`; the learned
+  style (`user_extensions.config.writingStyle`); and the handed-over open items that are stuck
+  (lib/stuck.ts over item_events, the same 3-days-in-30 rule). Each part is best-effort.
+- Custom instructions are not in it: they live in the browser (ai-settings-store), never on the server.
+- `dsul_my_work`, OpenClaw's brief and the routine prompt say to read it once before preparing.

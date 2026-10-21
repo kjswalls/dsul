@@ -8,6 +8,7 @@ import {
   makeGoalItemHandlers,
 } from '@/lib/agent-api'
 import { GET as getContext } from '@/app/api/agent/context/route'
+import { GET as getPrepBrief } from '@/app/api/agent/prep-brief/route'
 import { GET as getItemEvents } from '@/app/api/agent/items/[id]/events/route'
 import { POST as askUser } from '@/app/api/agent/items/[id]/ask/route'
 import { POST as reportProgress } from '@/app/api/agent/items/[id]/progress/route'
@@ -85,6 +86,7 @@ async function runPlan(original: NextRequest, plan: ToolPlan): Promise<Response>
   const [collection, id] = segments
 
   if (collection === 'context') return getContext(proxyRequest(original, plan))
+  if (collection === 'prep-brief' && !id) return getPrepBrief(proxyRequest(original, plan))
 
   // /api/agent/items/:id/{events,ask,progress,act,prep} — the delegation verbs and
   // the one-day verbs, each with its own handler rather than a CRUD set: they
