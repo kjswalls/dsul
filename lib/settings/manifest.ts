@@ -1,4 +1,5 @@
 import { BACKGROUND_PREP_KEY, BACKGROUND_WORKER_KEY, backgroundPrepWorker, RESEARCH_KEY, researchOn } from '../background-prep';
+import { LEARN_STYLE_KEY, learnStyleOn, WRITING_STYLE_KEY, writingStyleOf } from '../writing-style';
 import { researchSupported } from '../ai-research';
 import {
   Sunrise,
@@ -1783,6 +1784,43 @@ export const SETTINGS: SettingRecord[] = [
       if (ctx.userId) ext().setConfigValue(ctx.userId, EXT_DO_STUFF, BACKGROUND_WORKER_KEY, v === 'agent' ? 'agent' : 'model');
     },
     defaultValue: 'model',
+  },
+  {
+    // How you write (lib/writing-style.ts). Off by default: each lesson is a
+    // call on the person's own model. The card asks once (lib/learn-style.ts).
+    id: 'extensions.doStuff.learnStyle',
+    pane: extensionPaneId(EXT_DO_STUFF),
+    label: 'Learn how you write',
+    description:
+      'When you change a draft before you use it, your AI notes how you write, so the next one needs less changing. Your edits are never kept, only the note below.',
+    control: 'switch',
+    dependsOn: 'extensions.doStuff',
+    keywords: ['style', 'voice', 'tone', 'writing', 'learn', 'drafts', 'sign off', 'emails'],
+    unavailable: extUnavailable,
+    pending: extPending,
+    read: () => learnStyleOn(ext().configs[EXT_DO_STUFF]),
+    write: (v, ctx) => {
+      if (ctx.userId) ext().setConfigValue(ctx.userId, EXT_DO_STUFF, LEARN_STYLE_KEY, Boolean(v));
+    },
+    defaultValue: false,
+  },
+  {
+    id: 'extensions.doStuff.style',
+    pane: extensionPaneId(EXT_DO_STUFF),
+    label: 'How you write',
+    description: 'What your AI follows when it writes for you. Change anything, or clear it to start over.',
+    control: 'text',
+    textVariant: 'multiline',
+    placeholder: 'Short and warm. Opens with "Hi" and the name. Signs off "Thanks, K".',
+    dependsOn: 'extensions.doStuff',
+    keywords: ['style', 'voice', 'tone', 'writing', 'sign off', 'how i write'],
+    unavailable: extUnavailable,
+    pending: extPending,
+    read: () => writingStyleOf(ext().configs[EXT_DO_STUFF]),
+    write: (v, ctx) => {
+      if (ctx.userId) ext().setConfigValue(ctx.userId, EXT_DO_STUFF, WRITING_STYLE_KEY, String(v).trim());
+    },
+    defaultValue: '',
   },
   {
     id: 'extensions.streaks',

@@ -24,6 +24,7 @@ import {
 } from '@/lib/prep-packs';
 import { UNDO_MS, usePrepPacksStore } from '@/lib/prep-packs-store';
 import { doneNext } from '@/lib/do-stuff';
+import { answerLearnStyle, noteTaken } from '@/lib/learn-style';
 import { cn } from '@/lib/utils';
 
 /**
@@ -449,10 +450,23 @@ export function PackCard({ itemId, title, stored, nav, onClose, swipe, onSettled
   const [pack, setPack] = useState<Pack>(stored.pack);
   const href = packHref(pack);
 
+  // A draft leaving the card, changed by the person, is how the AI learns how
+  // they write (lib/learn-style.ts). The first time, it asks.
+  const taken = () => {
+    if (noteTaken(stored.pack, pack) !== 'ask') return;
+    const before = stored.pack;
+    const after = pack;
+    answerLearnStyle(false);
+    toast('Want your AI to learn how you write from changes like this?', {
+      action: { label: 'Learn', onClick: () => answerLearnStyle(true, before, after) },
+      duration: 10_000,
+    });
+  };
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(packText(pack));
       toast('Copied');
+      taken();
     } catch {
       toast("Couldn't copy that.");
     }
@@ -469,7 +483,8 @@ export function PackCard({ itemId, title, stored, nav, onClose, swipe, onSettled
     // A web page (a form's link) opens beside dsul; mail and phone links hand off.
     if (href?.startsWith('https:')) window.open(href, '_blank', 'noopener,noreferrer');
     else if (href) window.location.assign(href);
-    else void copy();
+    else return void copy();
+    taken();
   };
 
   const endSwipe = () => {
@@ -577,7 +592,11 @@ export function PackCard({ itemId, title, stored, nav, onClose, swipe, onSettled
           </Button>
         ) : href ? (
           <Button size="sm" asChild data-testid="prep-pack-primary">
-            <a href={href} {...(href.startsWith('https:') ? { target: '_blank', rel: 'noopener noreferrer nofollow' } : {})}>
+            <a
+              href={href}
+              onClick={taken}
+              {...(href.startsWith('https:') ? { target: '_blank', rel: 'noopener noreferrer nofollow' } : {})}
+            >
               {packAction(pack)}
             </a>
           </Button>

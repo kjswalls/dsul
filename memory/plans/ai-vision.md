@@ -1377,7 +1377,10 @@ conversation is saved to the account.
     item (an email or message, a call script, or first steps), the item's title it was written
     for, and the model's id. One per item, replaced when it is made again; "Not needed" deletes
     it, and so does deleting the item (even its 30-day purge). Your edits in the card are never
-    stored. To write them your model is sent the titles and notes (up to 1,500 characters) of at
+    stored. With "Learn how you write" on (off until you say yes), a draft you changed before
+    taking it out is sent to your model once, beside the note so far, and only the note it
+    writes back is kept: a few lines of style, in Do stuff's settings, where you can change or
+    clear it. To write them your model is sent the titles and notes (up to 1,500 characters) of at
     most eight open braindump things at a time, each asked about once a session.
 - *Not stored:*
   - the planner context sent with each message;

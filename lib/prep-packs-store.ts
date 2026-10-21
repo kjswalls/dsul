@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { useAISettingsStore } from './ai-settings-store';
 import { researchOn } from './background-prep';
+import { writingStyleOf } from './writing-style';
 import { EXT_DO_STUFF } from './extension-registry';
 import { useExtensionsStore } from './extensions-store';
 import type { Item } from './planner-types';
@@ -160,6 +161,7 @@ export const usePrepPacksStore = create<PrepPacksState>((set, get) => ({
       set((st) => ({
         preparing: Object.fromEntries(Object.entries(st.preparing).filter(([id]) => !ids[id])),
       }));
+    const style = writingStyleOf(useExtensionsStore.getState().configs[EXT_DO_STUFF]);
     try {
       const res = await fetch('/api/ai/prep', {
         method: 'POST',
@@ -168,6 +170,8 @@ export const usePrepPacksStore = create<PrepPacksState>((set, get) => ({
           items: ask,
           ...(opts.today ? { today: opts.today, now: clockNow(plannerZone()) } : {}),
           customInstructions: useAISettingsStore.getState().systemPrompt,
+          // How you write (lib/writing-style.ts), when there is any.
+          ...(style ? { style } : {}),
           // The research switch (lib/background-prep.ts); the route asks only
           // a provider that can search.
           ...(researchOn(useExtensionsStore.getState().configs[EXT_DO_STUFF])

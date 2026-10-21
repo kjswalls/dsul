@@ -180,6 +180,18 @@ describe('POST /api/ai/prep', () => {
     expect(req.system[0]).toMatch(/Never invent an email address, a phone number/);
   });
 
+  it('follows how the person writes, when the client sends it, and says nothing when not', async () => {
+    adapter.completeText.mockResolvedValue('{"packs":[]}');
+    await post({ items: ITEMS, style: 'Signs off "Thanks, K".' });
+    const withStyle = adapter.completeText.mock.calls[0][1] as { system: string[] };
+    expect(withStyle.system[0]).toMatch(/How this person writes[\s\S]*Signs off "Thanks, K"\./);
+    // Still ends on the JSON line, whatever the style says.
+    expect(withStyle.system[0].trimEnd().endsWith('reply with the JSON object only.')).toBe(true);
+    await post({ items: ITEMS, style: '   ' });
+    const without = adapter.completeText.mock.calls[1][1] as { system: string[] };
+    expect(without.system[0]).not.toMatch(/How this person writes/);
+  });
+
   it('updates an item that already has a pack instead of deleting it first', async () => {
     // Delete-then-insert loses a pack at the 200 cap: 074's cap trigger spares
     // only an item whose pack still exists, and a multi-row insert that trips

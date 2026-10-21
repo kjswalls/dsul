@@ -23,6 +23,7 @@ import { getAdapter } from '@/lib/ai-server/providers'
 import { anySignal } from '@/lib/ai-server/stream'
 import { ORIGINAL_PACK_KINDS, PackSchema, RESEARCH_PACK_KINDS, packBody, packFromRow, PREP_BATCH, type PrepPack } from '@/lib/prep-packs'
 import { RESEARCH_MAX_USES, researchSupported } from '@/lib/ai-research'
+import { MAX_STYLE_CHARS } from '@/lib/writing-style'
 
 /**
  * /api/ai/prep — prep packs (lib/prep-packs.ts; memory/plans/power-mode.md,
@@ -30,7 +31,7 @@ import { RESEARCH_MAX_USES, researchSupported } from '@/lib/ai-research'
  *
  *   GET            the account's packs.
  *   POST           `{ items: [{ id, title, notes?, project?, day?, subtasks? }],
- *                  today?, now?, customInstructions?, research?, timezone? }`, at most
+ *                  today?, now?, customInstructions?, style?, research?, timezone? }`, at most
  *                  PREP_BATCH:
  *                  the user's own model writes a pack for each item it can
  *                  honestly get ready, and the route keeps them. Answers the
@@ -196,6 +197,16 @@ interface PrepBody {
   research?: unknown
   /** The user's IANA zone, so a search finds nearby places and local times. */
   timezone?: unknown
+  /** How you write (lib/writing-style.ts): style lines learned from their edits. */
+  style?: unknown
+}
+
+/** The learned style, as the model reads it; nothing when there is none. */
+function styleBlock(style: unknown): string {
+  const lines = clipText(style, MAX_STYLE_CHARS).trim()
+  return lines
+    ? `\n\nHow this person writes, learned from drafts they changed before sending. Follow it in emails, messages, drafts and call scripts, over the defaults above. It is about style only, never facts:\n${lines}`
+    : ''
 }
 
 /** One item as the model reads it: title, then whatever context it has. */
@@ -272,7 +283,10 @@ export async function POST(req: Request): Promise<Response> {
       modelMeta: row.model_meta ?? {},
       system: [
         [
-          appendInstructions(search ? `${SYSTEM_PROMPT}\n\n${RESEARCH_PROMPT}` : SYSTEM_PROMPT, body.customInstructions),
+          appendInstructions(
+            `${search ? `${SYSTEM_PROMPT}\n\n${RESEARCH_PROMPT}` : SYSTEM_PROMPT}${styleBlock(body.style)}`,
+            body.customInstructions
+          ),
           JSON_ONLY_LINE,
         ].join('\n\n'),
       ],
