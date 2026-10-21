@@ -390,7 +390,7 @@ export const MCP_TOOLS: McpTool[] = [
       'working the same task and overwriting each other. ' +
       'Never touch an item assigned to someone else. ' +
       "An item with aiMode 'prepare' is one to get ready, not to do: draft the message, " +
-      'research and plan, or ask the user one question. Hand back what you prepared as a card ' +
+      'research and plan, or ask the user one question. Read dsul_prep_brief once first, then hand back what you prepared as a card ' +
       'with dsul_save_prep, then report done with dsul_report_progress. Never send, book, buy, pay, submit, post or delete anything for ' +
       'it, and never mark it complete. ' +
       'If nothing comes back, there is nothing to do. Stop, and do not go looking ' +
@@ -526,6 +526,17 @@ export const MCP_TOOLS: McpTool[] = [
         },
       }
     },
+  },
+  {
+    name: 'dsul_prep_brief',
+    description:
+      "Read this once before getting items ready (aiMode 'prepare'). It is what the user's own " +
+      'model is told for the same job: the rules a card follows (rules), how the user writes, ' +
+      'learned from drafts they changed (style; follow it in emails, messages, drafts and call ' +
+      "scripts, '' when there is none), and which of the items handed to you they keep moving " +
+      'to another day (stuck: write those a smaller first step, and never mention that they moved).',
+    inputSchema: obj({}),
+    plan: () => ({ method: 'GET', path: '/api/agent/prep-brief' }),
   },
   {
     name: 'dsul_save_prep',
