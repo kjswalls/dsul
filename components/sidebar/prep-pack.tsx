@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 import { Drawer, DrawerContent, DrawerTitle } from '@/components/ui/drawer';
 import {
+  packApplies,
   packAction,
   packHref,
   packKindName,
@@ -204,6 +205,116 @@ function PackFields({ pack, onChange }: { pack: Pack; onChange: (next: Pack) => 
           </Field>
         </>
       );
+    case 'subtasks':
+      return (
+        <Field label="Subtasks, one a line">
+          <Textarea
+            value={pack.subtasks.map((s) => `- ${s}`).join('\n')}
+            rows={Math.min(9, Math.max(3, pack.subtasks.length + 1))}
+            onChange={(e) => onChange({ ...pack, subtasks: lines(e.target.value) })}
+          />
+        </Field>
+      );
+    case 'answer':
+      return (
+        <Field label="What your AI found">
+          <Textarea value={pack.answer} rows={5} onChange={(e) => onChange({ ...pack, answer: e.target.value })} />
+        </Field>
+      );
+    case 'place':
+      return (
+        <div className="flex flex-col gap-1.5 rounded-[10px] border border-border px-3 py-2" data-testid="prep-pack-place">
+          <div className="text-[14px] leading-snug font-medium">{pack.name}</div>
+          {pack.address && (
+            <div className="flex items-center gap-1.5 text-[13px]">
+              <span className="min-w-0 flex-1 select-text">{pack.address}</span>
+              <CopyButton text={pack.address} label="Copy the address" />
+            </div>
+          )}
+          {pack.hours && <div className="text-[13px] text-muted-foreground">{pack.hours}</div>}
+          {pack.phone && (
+            <div className="font-num flex items-center gap-1.5 text-[13px]">
+              <span className="min-w-0 flex-1 select-text">{pack.phone}</span>
+              <CopyButton text={pack.phone} label="Copy the number" />
+            </div>
+          )}
+          {pack.url && <SiteLink url={pack.url} title="Their site" />}
+        </div>
+      );
+    case 'time':
+      return (
+        <div className="flex flex-col gap-2" data-testid="prep-pack-time">
+          <div className="flex flex-wrap items-end gap-2">
+            <Field label="Day">
+              <Input
+                type="date"
+                value={pack.date ?? ''}
+                className="w-[150px]"
+                onChange={(e) => onChange({ ...pack, date: e.target.value || undefined })}
+              />
+            </Field>
+            <Field label="At">
+              <Input
+                type="time"
+                value={pack.time}
+                className="w-[110px]"
+                onChange={(e) => e.target.value && onChange({ ...pack, time: e.target.value })}
+              />
+            </Field>
+            <Field label="Minutes">
+              <Input
+                type="number"
+                min={5}
+                max={480}
+                step={5}
+                value={pack.duration ?? ''}
+                className="w-[84px]"
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  onChange({ ...pack, duration: n >= 5 && n <= 480 ? Math.round(n) : undefined });
+                }}
+              />
+            </Field>
+          </div>
+          {pack.why && <p className="text-[13px] leading-snug text-muted-foreground">{pack.why}</p>}
+        </div>
+      );
+    case 'pick':
+      return (
+        <div className="flex flex-col gap-2" data-testid="prep-pack-pick">
+          {pack.question && <p className="text-[13px] text-muted-foreground">{pack.question}</p>}
+          {pack.choices.map((c, i) => (
+            <div
+              key={i}
+              data-recommended={i === pack.recommended || undefined}
+              className={cn(
+                'rounded-[10px] border px-3 py-2',
+                i === pack.recommended ? 'border-foreground/40' : 'border-border'
+              )}
+            >
+              <div className="flex items-baseline gap-2">
+                <span className="min-w-0 flex-1 text-[14px] leading-snug font-medium">{c.name}</span>
+                {i === pack.recommended && <span className="text-[11.5px] font-medium">Your AI&rsquo;s pick</span>}
+                {c.price && <span className="font-num text-xs text-muted-foreground">{c.price}</span>}
+              </div>
+              {(c.pros.length > 0 || c.cons.length > 0) && (
+                <ul className="mt-1 flex flex-col gap-0.5 text-[13px] leading-snug">
+                  {c.pros.map((p, j) => (
+                    <li key={`p${j}`}>+ {p}</li>
+                  ))}
+                  {c.cons.map((p, j) => (
+                    <li key={`c${j}`} className="text-muted-foreground">
+                      − {p}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {c.url && <SiteLink url={c.url} className="mt-1.5" />}
+            </div>
+          ))}
+          <p className="text-[13px] leading-snug">{pack.why}</p>
+        </div>
+      );
   }
 }
 
@@ -346,8 +457,15 @@ export function PackCard({ itemId, title, stored, nav, onClose, swipe, onSettled
       toast("Couldn't copy that.");
     }
   };
+  const apply = () => {
+    const said = usePrepPacksStore.getState().apply(itemId, pack);
+    if (!said) return;
+    toast(said);
+    onSettled();
+  };
   const primary = () => {
     if (pack.kind === 'question') return;
+    if (packApplies(pack)) return apply();
     // A web page (a form's link) opens beside dsul; mail and phone links hand off.
     if (href?.startsWith('https:')) window.open(href, '_blank', 'noopener,noreferrer');
     else if (href) window.location.assign(href);
@@ -453,7 +571,11 @@ export function PackCard({ itemId, title, stored, nav, onClose, swipe, onSettled
         {'sources' in pack && <Sources sources={pack.sources} />}
       </div>
       <div className="flex items-center gap-1.5 border-t border-border px-3 py-2.5">
-        {pack.kind === 'question' ? null : href ? (
+        {pack.kind === 'question' ? null : packApplies(pack) ? (
+          <Button size="sm" onClick={apply} data-testid="prep-pack-primary">
+            {packAction(pack)}
+          </Button>
+        ) : href ? (
           <Button size="sm" asChild data-testid="prep-pack-primary">
             <a href={href} {...(href.startsWith('https:') ? { target: '_blank', rel: 'noopener noreferrer nofollow' } : {})}>
               {packAction(pack)}

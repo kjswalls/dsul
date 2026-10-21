@@ -425,3 +425,25 @@ doing stuff. Mockups: https://claude.ai/artifact/5ruP7iqrFH3s7vLRLcdso4.
   buy, submit or sign in. The person takes every step that leaves the app.
 - **Before 079 (and 078) is applied** the save drops the newest kinds and keeps
   the rest of the batch, so deploy and apply can land in either order.
+
+### Pack kinds that act on the planner (Kirby's ask, 2026-10-21)
+
+- **Five more kinds** (080): `subtasks` (two to eight rows), `answer` (for a
+  "find out…" item, with its sources), `place` (name, and only the address,
+  hours and phone a page gave, plus a map link), `time` (a slot on today or a
+  near day, with minutes) and `pick` (two to four choices with pros and cons,
+  the AI's pick by index and why; a pick that names a choice it doesn't have
+  is refused).
+- **The tap changes the planner, and nothing else.** `packApplies` names the
+  three that do (subtasks, answer, time) and prep-packs-store's `apply` is
+  their one writer: subtasks go in through `addTasksBulk` (one undo), the
+  answer is appended to the notes with its links, a time is
+  `scheduleTaskPatch` on the time's own bucket plus the day and minutes. The
+  pack is then deleted. A goal's milestone takes the time but keeps its target
+  date (long-term-goals.md). The card's edits go with the tap, as with every
+  pack. A place opens a map search; a pick only shows its links.
+- **The model is told the person's clock** (`now`, HH:mm, only with `today`),
+  so a suggested time is later than now. With research on, a call script may
+  take a number from a page it lists in `sources`.
+- Before 080 is applied the save's 23514 ladder drops these five first, then
+  the research kinds, then a question.

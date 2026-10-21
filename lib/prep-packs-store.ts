@@ -5,8 +5,27 @@ import { EXT_DO_STUFF } from './extension-registry';
 import { useExtensionsStore } from './extensions-store';
 import type { Item } from './planner-types';
 import { usePlannerStore } from './planner-store';
-import { answerNote, PREP_BATCH, type PrepPack } from './prep-packs';
+import { milestoneItemIds } from './goals';
+import { scheduleTaskPatch } from './item-edit';
+import { getBucketForTime } from './time-bucket';
+import { answerNote, PREP_BATCH, type Pack, type PrepPack } from './prep-packs';
 import { toDateStr } from './recurrence';
+
+/** The person's clock as HH:mm in their zone, for "a time later than now". */
+function clockNow(tz: string): string | undefined {
+  try {
+    return new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: tz }).format(new Date());
+  } catch {
+    return undefined;
+  }
+}
+
+/** The answer kept in the notes, with the pages it came from under it. */
+export function answerNotes(notes: string | undefined, answer: string, sources?: { url: string }[]): string {
+  const block = [answer.trim(), ...(sources ?? []).map((s) => s.url)].join('\n');
+  const before = (notes ?? '').trimEnd();
+  return before ? `${before}\n\n${block}` : block;
+}
 
 /** How long Not needed can be undone before the pack is deleted for good. */
 export const UNDO_MS = 6000;
@@ -82,6 +101,13 @@ interface PrepPacksState {
    * deleted, and the item is asked about again.
    */
   answer: (itemId: string, answer: string) => void;
+  /**
+   * Takes a pack that acts on the planner (packApplies): adds its subtasks,
+   * keeps its answer in the notes, or puts the item on the day at its time.
+   * The write is one planner action, so ⌘Z undoes it; the pack is then gone.
+   * `pack` is the card's, with the person's edits. Returns what to say.
+   */
+  apply: (itemId: string, pack: Pack) => string | null;
 }
 
 const EMPTY = {
@@ -96,6 +122,8 @@ const EMPTY = {
 function byItem(list: readonly PrepPack[]): Record<string, PrepPack> {
   return Object.fromEntries(list.map((p) => [p.itemId, p]));
 }
+
+const plannerZone = () => usePlannerStore.getState().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 export const usePrepPacksStore = create<PrepPacksState>((set, get) => ({
   userId: null,
@@ -138,7 +166,7 @@ export const usePrepPacksStore = create<PrepPacksState>((set, get) => ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           items: ask,
-          ...(opts.today ? { today: opts.today } : {}),
+          ...(opts.today ? { today: opts.today, now: clockNow(plannerZone()) } : {}),
           customInstructions: useAISettingsStore.getState().systemPrompt,
           // The research switch (lib/background-prep.ts); the route asks only
           // a provider that can search.
@@ -187,6 +215,49 @@ export const usePrepPacksStore = create<PrepPacksState>((set, get) => ({
       today: toDateStr(new Date(), tz),
       again: true,
     });
+  },
+
+  apply: (itemId, pack) => {
+    if (!get().packs[itemId]) return null;
+    const planner = usePlannerStore.getState();
+    const item = planner.items.find((i) => i.id === itemId);
+    if (!item || item.type === 'habit') return null;
+    let said: string;
+    if (pack.kind === 'subtasks') {
+      const titles = pack.subtasks.map((t) => t.trim()).filter(Boolean);
+      if (titles.length === 0) return null;
+      planner.addTasksBulk('task', titles.map((title) => ({ title, parentItemId: itemId })));
+      said = titles.length === 1 ? 'Added 1 subtask' : `Added ${titles.length} subtasks`;
+    } else if (pack.kind === 'answer') {
+      if (!pack.answer.trim()) return null;
+      const notes = answerNotes((item as { notes?: string }).notes, pack.answer, pack.sources);
+      planner.updateTask(itemId, { notes }, { label: `Keep the answer: ${item.title}` });
+      said = 'Kept in its notes';
+    } else if (pack.kind === 'time') {
+      // A goal's milestone keeps its target date (memory/plans/long-term-goals.md):
+      // it takes the time only.
+      const milestone = milestoneItemIds(planner.goals).has(itemId);
+      const date = milestone ? undefined : pack.date ?? toDateStr(new Date(), plannerZone());
+      planner.updateTask(
+        itemId,
+        {
+          ...scheduleTaskPatch(getBucketForTime(pack.time), pack.time),
+          ...(date ? { startDate: date } : {}),
+          ...(pack.duration ? { duration: pack.duration } : {}),
+        },
+        { label: `Schedule task: ${item.title}` }
+      );
+      said = 'On the day';
+    } else {
+      return null;
+    }
+    set((s) => {
+      const packs = { ...s.packs };
+      delete packs[itemId];
+      return { packs };
+    });
+    void fetch(`/api/ai/prep?item=${encodeURIComponent(itemId)}`, { method: 'DELETE' }).catch(() => {});
+    return said;
   },
 
   dismiss: (itemId) => {
