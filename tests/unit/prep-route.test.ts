@@ -192,6 +192,16 @@ describe('POST /api/ai/prep', () => {
     expect(without.system[0]).not.toMatch(/How this person writes/);
   });
 
+  it('tells the model which items are stuck, so their first step gets tiny', async () => {
+    adapter.completeText.mockResolvedValue('{"packs":[]}');
+    await post({ items: [{ ...ITEMS[0], stuck: true }, ITEMS[1]] });
+    const req = adapter.completeText.mock.calls[0][1] as { messages: { content: string }[]; system: string[] };
+    const [first, second] = req.messages[0].content.split(`id ${B}`);
+    expect(first).toContain('stuck: keeps being moved to another day');
+    expect(second).not.toContain('stuck');
+    expect(req.system[0]).toMatch(/Never mention that it moved/);
+  });
+
   it('updates an item that already has a pack instead of deleting it first', async () => {
     // Delete-then-insert loses a pack at the 200 cap: 074's cap trigger spares
     // only an item whose pack still exists, and a multi-row insert that trips

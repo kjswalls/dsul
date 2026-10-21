@@ -22,9 +22,12 @@ import { useDoStuffStore } from '@/lib/do-stuff';
 import { EXT_DO_STUFF } from '@/lib/extension-registry';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { usePlannerStore } from '@/lib/planner-store';
+import type { Item } from '@/lib/planner-types';
 import { packIsStale, PREP_BATCH } from '@/lib/prep-packs';
 import { prepItemFor, usePrepPacksStore } from '@/lib/prep-packs-store';
 import { toDateStr } from '@/lib/recurrence';
+import { isStuck } from '@/lib/stuck';
+import { movesOf, useStuckStore } from '@/lib/stuck-store';
 
 /**
  * Runs background prep (lib/background-prep.ts) while the page is open and
@@ -128,10 +131,13 @@ async function runOnce(userId: string, worker: 'model' | 'agent', assignee: stri
     seasons: planner.seasons,
     away: useAwayStore.getState().periods,
   });
+  await useStuckStore.getState().load(userId);
+  const stuck = (item: Item) => isStuck(movesOf(item.id));
   const all = prepCandidates(planner.items, {
     todayStr,
     inactiveIds,
     ledger,
+    stuck,
     hasPack: (item) => {
       const pack = packs[item.id];
       return !!pack && !packIsStale(pack, item.title);
@@ -141,7 +147,7 @@ async function runOnce(userId: string, worker: 'model' | 'agent', assignee: stri
   if (worker === 'model') {
     const batch = all.slice(0, Math.min(PREP_BATCH, room));
     if (batch.length === 0) return;
-    writeLedger(userId, recordAsked(ledger, batch));
+    writeLedger(userId, recordAsked(ledger, batch, stuck));
     await usePrepPacksStore.getState().prepare(
       batch.map((item) => prepItemFor(item, planner.items)),
       { today: todayStr, again: true }
@@ -155,6 +161,6 @@ async function runOnce(userId: string, worker: 'model' | 'agent', assignee: stri
   if (!assignee || !aiModeColumnSeen()) return;
   const batch = agentCandidates(all, { todayStr, inactiveIds }).slice(0, Math.min(PREP_BATCH, room));
   if (batch.length === 0) return;
-  writeLedger(userId, recordAsked(ledger, batch));
+  writeLedger(userId, recordAsked(ledger, batch, stuck));
   for (const item of batch) handOffItem(item, assignee, { mode: 'prepare' });
 }

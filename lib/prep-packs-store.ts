@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { useAISettingsStore } from './ai-settings-store';
 import { researchOn } from './background-prep';
 import { writingStyleOf } from './writing-style';
+import { isStuck } from './stuck';
+import { movesOf } from './stuck-store';
 import { EXT_DO_STUFF } from './extension-registry';
 import { useExtensionsStore } from './extensions-store';
 import type { Item } from './planner-types';
@@ -52,6 +54,8 @@ export interface PrepItem {
   day?: string;
   /** Its open subtasks' titles, so steps build on them. */
   subtasks?: string[];
+  /** Moved to another day again and again (lib/stuck.ts): the first step gets tiny. */
+  stuck?: true;
 }
 
 /** An item as prep reads it: its own words plus the context around it. */
@@ -71,6 +75,7 @@ export function prepItemFor(item: Item, all: readonly Item[]): PrepItem {
     ...(project ? { project } : {}),
     ...(day ? { day } : {}),
     ...(subtasks.length > 0 ? { subtasks } : {}),
+    ...(isStuck(movesOf(item.id)) ? { stuck: true as const } : {}),
   };
 }
 

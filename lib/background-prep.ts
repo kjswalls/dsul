@@ -55,9 +55,10 @@ export function backgroundPrepWorker(config: Readonly<Record<string, unknown>> |
  * Title and notes are what the ask reads of the item itself. A hash (FNV-1a),
  * so the ledger in browser storage holds no word the person wrote.
  */
-export function prepSignature(item: Item): string {
+export function prepSignature(item: Item, stuck = false): string {
   const notes = (item as { notes?: string }).notes ?? '';
-  const text = `${item.title.trim()}\u0000${notes.trim()}`;
+  // Becoming stuck (lib/stuck.ts) is a change too: asked again, once, for a smaller start.
+  const text = `${item.title.trim()}\u0000${notes.trim()}${stuck ? '\u0000stuck' : ''}`;
   let h = 0x811c9dc5;
   for (let i = 0; i < text.length; i++) {
     h ^= text.charCodeAt(i);
@@ -85,9 +86,9 @@ export function remainingToday(ledger: PrepLedger): number {
 }
 
 /** The ledger after asking about `items`. */
-export function recordAsked(ledger: PrepLedger, items: readonly Item[]): PrepLedger {
+export function recordAsked(ledger: PrepLedger, items: readonly Item[], stuck?: (item: Item) => boolean): PrepLedger {
   const asked = { ...ledger.asked };
-  for (const item of items) asked[item.id] = prepSignature(item);
+  for (const item of items) asked[item.id] = prepSignature(item, stuck?.(item) ?? false);
   // Ids of items long gone would otherwise pile up in the browser forever.
   const ids = Object.keys(asked);
   if (ids.length > 500) for (const id of ids.slice(0, ids.length - 500)) delete asked[id];
@@ -101,14 +102,18 @@ export interface CandidateContext {
   /** Items that already have a pack written for their current title. */
   hasPack: (item: Item) => boolean;
   ledger: PrepLedger;
+  /** Moved to another day again and again (lib/stuck.ts). */
+  stuck?: (item: Item) => boolean;
 }
 
 /**
- * The items worth getting ready, best first: today's, then the braindump's.
- * A task only (the type prep writes for), open, one-off, top-level, held by
- * nobody, wanted today, and not already asked about as it is now.
+ * The items worth getting ready, best first: the stuck ones (on any day), then
+ * today's, then the braindump's. A task only (the type prep writes for), open,
+ * one-off, top-level, held by nobody, wanted today, and not already asked
+ * about as it is now.
  */
 export function prepCandidates(items: readonly Item[], ctx: CandidateContext): Item[] {
+  const stuck: Item[] = [];
   const today: Item[] = [];
   const dump: Item[] = [];
   for (const item of items) {
@@ -116,12 +121,14 @@ export function prepCandidates(items: readonly Item[], ctx: CandidateContext): I
     if (item.status === 'completed' || item.status === 'cancelled') continue;
     if (isRecurring(item) || item.parentItemId || item.assignee) continue;
     if (ctx.inactiveIds.has(item.id)) continue;
-    if (ctx.ledger.asked[item.id] === prepSignature(item)) continue;
+    const isStuck = ctx.stuck?.(item) ?? false;
+    if (ctx.ledger.asked[item.id] === prepSignature(item, isStuck)) continue;
     if (ctx.hasPack(item)) continue;
-    if (item.startDate === ctx.todayStr) today.push(item);
+    if (isStuck) stuck.push(item);
+    else if (item.startDate === ctx.todayStr) today.push(item);
     else if (!item.startDate && !item.isScheduled && !item.timeBucket) dump.push(item);
   }
-  return [...today, ...dump];
+  return [...stuck, ...today, ...dump];
 }
 
 /** The agent's share: what it would see in its queue, the hand-off gate's own rule. */

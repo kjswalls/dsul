@@ -30,7 +30,7 @@ import { MAX_STYLE_CHARS } from '@/lib/writing-style'
  * build order 3).
  *
  *   GET            the account's packs.
- *   POST           `{ items: [{ id, title, notes?, project?, day?, subtasks? }],
+ *   POST           `{ items: [{ id, title, notes?, project?, day?, subtasks?, stuck? }],
  *                  today?, now?, customInstructions?, style?, research?, timezone? }`, at most
  *                  PREP_BATCH:
  *                  the user's own model writes a pack for each item it can
@@ -73,7 +73,7 @@ const SYSTEM_PROMPT = `You are the assistant inside dsul, a daily planner for ne
 
 The user has a list of things they keep not doing. For each one you can honestly get ready from what the list says about it, write a PREP PACK: the draft or script that turns it into a one-tap job. You never send, call, buy or book anything; the user takes it from there.
 
-Each item comes with its title and may come with notes, the project it belongs to, the day it is planned for, and its subtasks. Today's date, and the time now when it is known, are given above the list.
+Each item comes with its title and may come with notes, the project it belongs to, the day it is planned for, its subtasks, and whether it is stuck. Today's date, and the time now when it is known, are given above the list.
 
 Reply with a JSON object and nothing else — no prose before or after it, no markdown fences.
 
@@ -108,6 +108,7 @@ Rules:
 - Call scripts: two to six short lines, in the order they would be said.
 - Steps: two to five concrete actions; the first one takes under five minutes. Build on subtasks that are already there rather than repeating them.
 - Question: when one missing fact is all that stands between the item and a real draft (who to write to, which day, what it is about), ask it instead of guessing. One short, plain question; "options" is two to four likely answers of a few words, or left out when you cannot guess any. Never ask what the notes already answer, and never ask more than one.
+- An item marked stuck keeps being moved to another day: something about starting it is hard. Make it smaller rather than better. Prefer steps whose first one takes under two minutes and needs no decision (open the thing, find the number, write one line), or the one question that is stopping it. Never mention that it moved, never say "finally" or "still".
 - Use the planned day and today's date to get the timing right ("by Friday", "this week"), never to scold. Never call anything late or overdue.
 - Write the way a kind friend would: plain words, no exclamation marks, no pep talk, no guilt.
 - Skip any item a draft would not genuinely help (an errand, a chore, something already small). Skipping is fine.
@@ -147,6 +148,7 @@ const ItemsSchema = z
       project: z.string().optional(),
       day: z.string().regex(DAY_RE).optional(),
       subtasks: z.array(z.string()).max(50).optional(),
+      stuck: z.boolean().optional(),
     })
   )
   .min(1)
@@ -222,6 +224,7 @@ function itemLine(i: z.infer<typeof ItemsSchema>[number], title: string): string
     .filter(Boolean)
     .slice(0, MAX_SUBTASKS)
   if (subtasks.length > 0) lines.push(`  subtasks: ${subtasks.join('; ')}`)
+  if (i.stuck) lines.push('  stuck: keeps being moved to another day')
   return lines.join('\n')
 }
 

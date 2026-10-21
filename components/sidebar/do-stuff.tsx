@@ -53,6 +53,8 @@ import { isRecurring, toDateStr } from '@/lib/recurrence';
 import { prefersReducedMotion } from '@/lib/zen-transition';
 import { packIsStale, type PrepPack } from '@/lib/prep-packs';
 import { prepItemFor, usePrepPacksStore, type PrepItem } from '@/lib/prep-packs-store';
+import { isStuck } from '@/lib/stuck';
+import { movesOf, useStuckStore } from '@/lib/stuck-store';
 import { aiWorkSummary, hasLiveRun, type AiWorkSummary } from '@/lib/ai-work';
 import { AiChip, RelayRow } from '@/components/ai/ai-work-badge';
 import { PackChip, PackDeck, PackInline, PackPeek } from '@/components/sidebar/prep-pack';
@@ -1169,8 +1171,11 @@ function usePrepOnStart(candidates: readonly PrepItem[], todayStr: string) {
     if (!userId) return;
     let live = true;
     const packs = usePrepPacksStore.getState();
-    void packs.load(userId).then(() => {
-      if (live && canPrep) void usePrepPacksStore.getState().prepare(candidatesRef.current, { today: todayRef.current });
+    void Promise.all([packs.load(userId), useStuckStore.getState().load(userId)]).then(() => {
+      if (!live || !canPrep) return;
+      // The moves land after the lanes were built: mark the stuck ones now.
+      const asks = candidatesRef.current.map((c) => (isStuck(movesOf(c.id)) ? { ...c, stuck: true as const } : c));
+      void usePrepPacksStore.getState().prepare(asks, { today: todayRef.current });
     });
     return () => {
       live = false;
