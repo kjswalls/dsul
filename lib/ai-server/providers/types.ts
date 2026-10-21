@@ -47,6 +47,13 @@ export interface CompletionRequest {
   signal: AbortSignal;
   /** propose */
   json?: boolean;
+  /**
+   * Let the model search the web before it answers (prep's research switch).
+   * Only sent to a provider `researchSupported` (lib/ai-research.ts) says yes
+   * to; an adapter that cannot search ignores it. Searches are billed on the
+   * person's own key, so `maxUses` caps them per call.
+   */
+  webSearch?: { maxUses: number; timezone?: string };
 }
 
 export interface ListedModel extends ModelOption {

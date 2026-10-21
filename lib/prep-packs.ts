@@ -6,8 +6,11 @@ import { z } from 'zod';
  * build order 3).
  *
  * Drafts first (Kirby's pick, 2026-10-12): the user's own model works from an
- * item's title and notes alone, with no web search and no inbox, so every
- * kind here is something it can write honestly from those. An email or a
+ * item's title, notes and context, with no inbox, so every kind here is
+ * something it can write honestly from those. With research on (Kirby,
+ * 2026-10-20) it may also look things up on the web, and a pack then carries
+ * the links it used (`sources`); options, lists, form answers and longer
+ * drafts came with it. An email or a
  * message draft, a call script, or the first few steps. Nothing leaves the app
  * without the user's tap: the primary action opens their own mail, messages
  * or phone app with the draft in it, or copies it.
@@ -21,17 +24,54 @@ export const PREP_BATCH = 4;
 
 const line = (max: number) => z.string().trim().max(max);
 
+/** A link the AI found: https only, and short enough to be a real page. */
+export function isSafeUrl(value: unknown): value is string {
+  if (typeof value !== 'string' || value.length > 500) return false;
+  try {
+    const u = new URL(value);
+    return u.protocol === 'https:' && !u.username && !u.password && u.hostname.includes('.');
+  } catch {
+    return false;
+  }
+}
+
+const Url = z.string().trim().refine(isSafeUrl);
+
+/** The site a link goes to, as the card shows it beside the link. */
+export function siteOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Where the facts in a pack came from, when the AI looked them up (the
+ * research switch). A bad link is dropped, never the pack.
+ */
+const Sources = z.preprocess(
+  (v) =>
+    Array.isArray(v)
+      ? v.filter((s) => s && typeof s === 'object' && isSafeUrl((s as { url?: unknown }).url)).slice(0, 5)
+      : undefined,
+  z.array(z.object({ title: line(120).default(''), url: Url })).optional()
+);
+const withSources = { sources: Sources };
+
 export const EmailPackSchema = z.object({
   kind: z.literal('email'),
   to: line(200).optional(),
   subject: line(200),
   body: line(4000),
+  ...withSources,
 });
 
 export const MessagePackSchema = z.object({
   kind: z.literal('message'),
   to: line(200).optional(),
   body: line(1000),
+  ...withSources,
 });
 
 export const CallPackSchema = z.object({
@@ -40,11 +80,13 @@ export const CallPackSchema = z.object({
   /** Only when the item's own title or notes had it; the model never guesses one. */
   number: line(40).optional(),
   script: z.array(line(300)).min(1).max(8),
+  ...withSources,
 });
 
 export const StepsPackSchema = z.object({
   kind: z.literal('steps'),
   steps: z.array(line(200)).min(2).max(6),
+  ...withSources,
 });
 
 /**
@@ -61,12 +103,68 @@ export const QuestionPackSchema = z.object({
   options: z.array(line(80).min(1)).min(2).max(4).optional(),
 });
 
+/**
+ * Things the AI found to choose between: appointment slots, products, places.
+ * Each with its own link, so the user books or buys on the real site.
+ */
+export const OptionsPackSchema = z.object({
+  kind: z.literal('options'),
+  intro: line(300).optional(),
+  options: z
+    .array(
+      z.object({
+        title: line(120).min(1),
+        detail: line(300).optional(),
+        when: line(80).optional(),
+        price: line(40).optional(),
+        url: Url.optional().catch(undefined),
+      })
+    )
+    .min(1)
+    .max(6),
+  ...withSources,
+});
+
+/** A list to work through: shopping, packing, what to bring. */
+export const ListPackSchema = z.object({
+  kind: z.literal('list'),
+  items: z.array(line(120).min(1)).min(1).max(40),
+  ...withSources,
+});
+
+/** A form's answers, filled in to paste, and where the form is. Never submitted. */
+export const FormPackSchema = z.object({
+  kind: z.literal('form'),
+  url: Url.optional().catch(undefined),
+  fields: z
+    // Sized under 074's 16,000-byte body check, sources included.
+    .array(z.object({ label: line(120).min(1), value: line(600) }))
+    .min(1)
+    .max(15),
+  ...withSources,
+});
+
+/** Longer writing than a message: a post, a letter, a bio, a description. */
+export const DraftPackSchema = z.object({
+  kind: z.literal('draft'),
+  title: line(200).optional(),
+  body: line(6000).min(1),
+  ...withSources,
+});
+
+/** The kinds 074 allowed; the rest wait on 078 and 079 (the route's 23514 retry). */
+export const ORIGINAL_PACK_KINDS: ReadonlySet<string> = new Set(['email', 'message', 'call', 'steps']);
+
 export const PackSchema = z.discriminatedUnion('kind', [
   EmailPackSchema,
   MessagePackSchema,
   CallPackSchema,
   StepsPackSchema,
   QuestionPackSchema,
+  OptionsPackSchema,
+  ListPackSchema,
+  FormPackSchema,
+  DraftPackSchema,
 ]);
 
 export type Pack = z.infer<typeof PackSchema>;
@@ -109,6 +207,14 @@ export function packLabel(pack: Pack): string {
       return 'steps ready';
     case 'question':
       return '1 question';
+    case 'options':
+      return pack.options.length === 1 ? '1 option' : `${pack.options.length} options`;
+    case 'list':
+      return 'list ready';
+    case 'form':
+      return 'answers ready';
+    case 'draft':
+      return 'draft ready';
   }
 }
 
@@ -125,6 +231,14 @@ export function packKindName(pack: Pack): string {
       return 'First steps';
     case 'question':
       return 'A question first';
+    case 'options':
+      return 'Options found';
+    case 'list':
+      return 'A list';
+    case 'form':
+      return 'Form answers';
+    case 'draft':
+      return 'A draft';
   }
 }
 
@@ -141,6 +255,19 @@ export function packText(pack: Pack): string {
       return pack.steps.map((s, i) => `${i + 1}. ${s}`).join('\n');
     case 'question':
       return pack.question;
+    case 'options':
+      return [
+        ...(pack.intro ? [pack.intro, ''] : []),
+        ...pack.options.map((o) =>
+          [o.title, o.when, o.price, o.detail, o.url].filter(Boolean).join(' · ')
+        ),
+      ].join('\n');
+    case 'list':
+      return pack.items.map((i) => `- ${i}`).join('\n');
+    case 'form':
+      return pack.fields.map((f) => `${f.label}: ${f.value}`).join('\n');
+    case 'draft':
+      return [...(pack.title ? [pack.title, ''] : []), pack.body].join('\n');
   }
 }
 
@@ -160,6 +287,8 @@ export function packHref(pack: Pack): string | null {
       const digits = pack.number?.replace(/[^\d+]/g, '') ?? '';
       return digits.length >= 3 ? `tel:${digits}` : null;
     }
+    case 'form':
+      return pack.url ?? null;
     default:
       return null;
   }
@@ -172,6 +301,10 @@ export function packAction(pack: Pack): string {
       return 'Open in mail';
     case 'call':
       return packHref(pack) ? 'Call' : 'Copy script';
+    case 'form':
+      return pack.url ? 'Open the form' : 'Copy answers';
+    case 'list':
+      return 'Copy list';
     default:
       return 'Copy';
   }

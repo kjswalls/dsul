@@ -38,6 +38,14 @@ export function backgroundPrepOn(config: Readonly<Record<string, unknown>> | und
   return config?.[BACKGROUND_PREP_KEY] === true;
 }
 
+/** Do stuff's config key for the research switch (prep may search the web). */
+export const RESEARCH_KEY = 'research';
+
+/** Off until the person turns it on: every search is billed on their key. */
+export function researchOn(config: Readonly<Record<string, unknown>> | undefined): boolean {
+  return config?.[RESEARCH_KEY] === true;
+}
+
 export function backgroundPrepWorker(config: Readonly<Record<string, unknown>> | undefined): BackgroundWorker {
   return config?.[BACKGROUND_WORKER_KEY] === 'agent' ? 'agent' : 'model';
 }

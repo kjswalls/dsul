@@ -1694,3 +1694,62 @@ describe('supportsTools', () => {
     expect(await supportsTools('openrouter', 'openai/gpt-5', creds('openrouter'), signal())).toBe(true);
   });
 });
+
+describe('web search (prep research)', () => {
+  const anthropicMessage = (text: string, stop = 'end_turn', extra: unknown[] = []) =>
+    json({
+      id: 'm1',
+      type: 'message',
+      role: 'assistant',
+      model: 'claude-opus-5-5',
+      content: [...extra, { type: 'text', text }],
+      stop_reason: stop,
+      stop_sequence: null,
+      usage: { input_tokens: 1, output_tokens: 1 },
+    });
+
+  it('Anthropic adds its web search tool, with the timezone, and finishes a paused turn', async () => {
+    let n = 0;
+    route = () => (n++ === 0 ? anthropicMessage('', 'pause_turn') : anthropicMessage('{"packs":[]}'));
+    const text = await getAdapter('anthropic').completeText(
+      creds('anthropic'),
+      req({ model: 'claude-opus-5-5', webSearch: { maxUses: 5, timezone: 'Europe/London' } })
+    );
+    expect(text).toBe('{"packs":[]}');
+    expect(seen).toHaveLength(2);
+    const first = JSON.parse(seen[0].body!);
+    expect(first.tools).toEqual([
+      { type: 'web_search_20250305', name: 'web_search', max_uses: 5, user_location: { type: 'approximate', timezone: 'Europe/London' } },
+    ]);
+    expect(lastBody().messages.at(-1).role).toBe('assistant');
+  });
+
+  it('Anthropic sends no tools without the ask', async () => {
+    route = () => anthropicMessage('ok');
+    await getAdapter('anthropic').completeText(creds('anthropic'), req({ model: 'claude-opus-5-5' }));
+    expect(lastBody()).not.toHaveProperty('tools');
+  });
+
+  it('OpenAI searches through the Responses API', async () => {
+    route = () =>
+      json({
+        id: 'r1',
+        object: 'response',
+        created_at: 1,
+        model: 'gpt-5',
+        status: 'completed',
+        output: [{ type: 'message', id: 'o1', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: '{"packs":[]}', annotations: [] }] }],
+      });
+    const text = await getAdapter('openai').completeText(creds('openai'), req({ model: 'gpt-5', webSearch: { maxUses: 5 } }));
+    expect(text).toBe('{"packs":[]}');
+    expect(seen[0].url).toBe('https://api.openai.com/v1/responses');
+    expect(lastBody().tools).toEqual([{ type: 'web_search' }]);
+    expect(lastBody().instructions).toContain('You are the planning assistant.');
+  });
+
+  it("OpenRouter asks for its web plugin", async () => {
+    route = () => json({ id: 'x', object: 'chat.completion', created: 1, model: 'm', choices: [{ index: 0, message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }] });
+    await getAdapter('openrouter').completeText(creds('openrouter'), req({ webSearch: { maxUses: 3 } }));
+    expect(lastBody().plugins).toEqual([{ id: 'web', max_results: 3 }]);
+  });
+});

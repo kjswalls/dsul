@@ -17,6 +17,7 @@ import {
   packIsQuestion,
   packIsStale,
   packText,
+  siteOf,
   type Pack,
   type PrepPack,
 } from '@/lib/prep-packs';
@@ -143,7 +144,120 @@ function PackFields({ pack, onChange }: { pack: Pack; onChange: (next: Pack) => 
       );
     case 'question':
       return null;
+    case 'options':
+      return (
+        <div className="flex flex-col gap-2" data-testid="prep-pack-options">
+          {pack.intro && <p className="text-[13px] text-muted-foreground">{pack.intro}</p>}
+          {pack.options.map((o, i) => (
+            <div key={i} className="rounded-[10px] border border-border px-3 py-2">
+              <div className="text-[14px] leading-snug font-medium">{o.title}</div>
+              {(o.when || o.price) && (
+                <div className="font-num mt-0.5 text-xs text-muted-foreground">
+                  {[o.when, o.price].filter(Boolean).join(' · ')}
+                </div>
+              )}
+              {o.detail && <p className="mt-1 text-[13px] leading-snug">{o.detail}</p>}
+              {o.url && <SiteLink url={o.url} className="mt-1.5" />}
+            </div>
+          ))}
+        </div>
+      );
+    case 'list':
+      return (
+        <Field label="List">
+          <Textarea
+            value={pack.items.map((s) => `- ${s}`).join('\n')}
+            rows={Math.min(10, Math.max(4, pack.items.length + 1))}
+            onChange={(e) => onChange({ ...pack, items: lines(e.target.value) })}
+          />
+        </Field>
+      );
+    case 'form':
+      return (
+        <>
+          {pack.fields.map((f, i) => (
+            <Field key={i} label={f.label}>
+              <div className="flex items-center gap-1.5">
+                <Input
+                  value={f.value}
+                  placeholder="you fill this in"
+                  onChange={(e) =>
+                    onChange({ ...pack, fields: pack.fields.map((g, j) => (j === i ? { ...g, value: e.target.value } : g)) })
+                  }
+                />
+                <CopyButton text={f.value} label={`Copy ${f.label}`} />
+              </div>
+            </Field>
+          ))}
+        </>
+      );
+    case 'draft':
+      return (
+        <>
+          {pack.title !== undefined && (
+            <Field label="Title">
+              <Input value={pack.title} onChange={(e) => onChange({ ...pack, title: e.target.value })} />
+            </Field>
+          )}
+          <Field label="Draft">
+            <Textarea value={pack.body} rows={9} onChange={(e) => onChange({ ...pack, body: e.target.value })} />
+          </Field>
+        </>
+      );
   }
+}
+
+/**
+ * A link the AI found, with the site it goes to written out: the page came
+ * from the web, so the person sees where a tap leads before they tap.
+ */
+function SiteLink({ url, title, className }: { url: string; title?: string; className?: string }) {
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer nofollow"
+      className={cn('inline-flex max-w-full items-center gap-1 text-[12.5px] text-foreground underline underline-offset-2', className)}
+    >
+      <span className="truncate">{title || 'Open'}</span>
+      <span className="shrink-0 text-muted-foreground no-underline">{siteOf(url)}</span>
+    </a>
+  );
+}
+
+function CopyButton({ text, label }: { text: string; label: string }) {
+  return (
+    <Button
+      size="sm"
+      variant="ghost"
+      aria-label={label}
+      disabled={!text.trim()}
+      className="shrink-0 text-muted-foreground"
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(text);
+          toast('Copied');
+        } catch {
+          toast("Couldn't copy that.");
+        }
+      }}
+    >
+      Copy
+    </Button>
+  );
+}
+
+/** Where the facts came from, when the AI looked them up. */
+function Sources({ sources }: { sources?: { title: string; url: string }[] }) {
+  if (!sources?.length) return null;
+  return (
+    <div className="flex flex-col gap-1" data-testid="prep-pack-sources">
+      <span className="text-[11.5px] font-medium text-muted-foreground">Found on</span>
+      {sources.map((src) => (
+        <SiteLink key={src.url} url={src.url} title={src.title} />
+      ))}
+    </div>
+  );
 }
 
 /**
@@ -234,7 +348,9 @@ export function PackCard({ itemId, title, stored, nav, onClose, swipe, onSettled
   };
   const primary = () => {
     if (pack.kind === 'question') return;
-    if (href) window.location.href = href;
+    // A web page (a form's link) opens beside dsul; mail and phone links hand off.
+    if (href?.startsWith('https:')) window.open(href, '_blank', 'noopener,noreferrer');
+    else if (href) window.location.assign(href);
     else void copy();
   };
 
@@ -334,11 +450,14 @@ export function PackCard({ itemId, title, stored, nav, onClose, swipe, onSettled
         ) : (
           <PackFields pack={pack} onChange={setPack} />
         )}
+        {'sources' in pack && <Sources sources={pack.sources} />}
       </div>
       <div className="flex items-center gap-1.5 border-t border-border px-3 py-2.5">
         {pack.kind === 'question' ? null : href ? (
           <Button size="sm" asChild data-testid="prep-pack-primary">
-            <a href={href}>{packAction(pack)}</a>
+            <a href={href} {...(href.startsWith('https:') ? { target: '_blank', rel: 'noopener noreferrer nofollow' } : {})}>
+              {packAction(pack)}
+            </a>
           </Button>
         ) : (
           <Button size="sm" onClick={() => void copy()} data-testid="prep-pack-primary">

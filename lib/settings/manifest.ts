@@ -1,4 +1,5 @@
-import { BACKGROUND_PREP_KEY, BACKGROUND_WORKER_KEY, backgroundPrepWorker } from '../background-prep';
+import { BACKGROUND_PREP_KEY, BACKGROUND_WORKER_KEY, backgroundPrepWorker, RESEARCH_KEY, researchOn } from '../background-prep';
+import { researchSupported } from '../ai-research';
 import {
   Sunrise,
   Contrast,
@@ -1733,6 +1734,32 @@ export const SETTINGS: SettingRecord[] = [
     read: () => ext().configs[EXT_DO_STUFF]?.[BACKGROUND_PREP_KEY] === true,
     write: (v, ctx) => {
       if (ctx.userId) ext().setConfigValue(ctx.userId, EXT_DO_STUFF, BACKGROUND_PREP_KEY, Boolean(v));
+    },
+    defaultValue: false,
+  },
+  {
+    // Research (lib/ai-research.ts). Off by default for the same reason: each
+    // search is billed on the person's key.
+    id: 'extensions.doStuff.research',
+    pane: extensionPaneId(EXT_DO_STUFF),
+    label: 'Let your AI look things up',
+    description:
+      'When getting things ready, your AI may search the web for booking pages, open times, prices and forms, and gives you the links. Each search costs a little on your own AI account.',
+    control: 'switch',
+    dependsOn: 'extensions.doStuff',
+    keywords: ['research', 'search', 'web', 'browse', 'links', 'appointments', 'shopping', 'forms'],
+    unavailable: () => {
+      const gate = extUnavailable();
+      if (gate) return gate;
+      const provider = aiConn().model?.provider;
+      return provider && !researchSupported(provider)
+        ? "Your AI's provider can't search the web from dsul. Anthropic, OpenAI and OpenRouter can."
+        : null;
+    },
+    pending: extPending,
+    read: () => researchOn(ext().configs[EXT_DO_STUFF]),
+    write: (v, ctx) => {
+      if (ctx.userId) ext().setConfigValue(ctx.userId, EXT_DO_STUFF, RESEARCH_KEY, Boolean(v));
     },
     defaultValue: false,
   },

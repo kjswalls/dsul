@@ -148,6 +148,38 @@ function limitParams(p: OpenAICompatibleProviderId, req: Pick<CompletionRequest,
   };
 }
 
+/**
+ * OpenAI's search lives in the Responses API, not Chat Completions, so a prep
+ * ask with research goes there: the same system text and turns, its web
+ * search tool, and the reply's text. No JSON mode, which the search tool does
+ * not take alongside it; the route reads the JSON out of the text either way.
+ */
+async function researchWithResponses(client: OpenAI, req: CompletionRequest): Promise<string> {
+  const instructions = req.system.filter((s) => s.trim() !== '').join('\n\n');
+  let response: OpenAI.Responses.Response;
+  try {
+    response = await client.responses.create(
+      {
+        model: req.model,
+        ...(instructions ? { instructions } : {}),
+        input: req.messages.map((t) => ({ role: t.role, content: t.content })),
+        tools: [{ type: 'web_search' }],
+        max_output_tokens: req.maxOutputTokens,
+        ...(wantsLowReasoning('openai', req.model) ? { reasoning: { effort: 'low' as const } } : {}),
+      },
+      { signal: req.signal }
+    );
+  } catch (err) {
+    throw toProviderErrorFor(err, 'openai', 'call', req.signal);
+  }
+  const text = stripThink(response.output_text ?? '').trim();
+  if (text) return text;
+  const refused = response.output?.some(
+    (o) => o.type === 'message' && o.content.some((c) => c.type === 'refusal')
+  );
+  throw new ProviderError(refused ? 'refused' : 'empty');
+}
+
 function systemMessage(req: Pick<CompletionRequest, 'system'>): ChatCompletionMessageParam[] {
   const system = req.system.filter((s) => s.trim() !== '').join('\n\n');
   return system ? [{ role: 'system', content: system }] : [];
@@ -610,7 +642,15 @@ export function createOpenAICompatibleAdapter(id: OpenAICompatibleProviderId): P
 
     async completeText(creds, req) {
       const client = makeClient(creds, CALL);
-      const params: ChatCompletionCreateParamsNonStreaming = baseParams(id, req);
+      if (req.webSearch && id === 'openai') return researchWithResponses(client, req);
+      const params: ChatCompletionCreateParamsNonStreaming = {
+        ...baseParams(id, req),
+        // OpenRouter's web plugin works on any model it routes to; the other
+        // hosts here have no search on Chat Completions and ignore the ask.
+        ...(req.webSearch && id === 'openrouter'
+          ? ({ plugins: [{ id: 'web', max_results: req.webSearch.maxUses }] } as Record<string, unknown>)
+          : {}),
+      };
       let completion: OpenAI.Chat.Completions.ChatCompletion;
       try {
         completion = await client.chat.completions.create(params, { signal: req.signal });
