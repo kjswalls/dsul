@@ -7,7 +7,9 @@ import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/re
  * gesture and then got ready like anything else in the braindump.
  */
 
-const caps = vi.hoisted(() => ({ canPrep: true }));
+const caps = vi.hoisted(() => ({ canPrep: true, openclawTransport: null as 'browser' | 'gateway' | null }));
+const openclaw = vi.hoisted(() => ({ split: vi.fn() }));
+vi.mock('@/lib/split-via-openclaw', () => ({ splitViaOpenClaw: (...a: unknown[]) => openclaw.split(...a) }));
 vi.mock('@/lib/ai-connection-store', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/ai-connection-store')>();
   return { ...actual, useAICapabilities: () => caps, getAICapabilities: () => caps };
@@ -50,7 +52,7 @@ vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}) }
 import { BulkAddDialog } from '@/components/planner/bulk-add-dialog';
 import { usePlannerStore } from '@/lib/planner-store';
 import { usePrepPacksStore } from '@/lib/prep-packs-store';
-import { isParagraphPaste, MAX_SPLIT_ITEMS, splitDrafts } from '@/lib/braindump-split';
+import { isParagraphPaste, MAX_SPLIT_ITEMS, splitDrafts, splitterFor } from '@/lib/braindump-split';
 import type { Item } from '@/lib/planner-types';
 
 const PARAGRAPH =
@@ -80,6 +82,8 @@ describe('the dialog', () => {
 
   beforeEach(() => {
     caps.canPrep = true;
+    caps.openclawTransport = null;
+    openclaw.split.mockReset();
     prepare.mockClear();
     usePrepPacksStore.setState({ prepare });
     usePlannerStore.setState({
@@ -138,11 +142,34 @@ describe('the dialog', () => {
     expect(screen.queryByTestId('bulk-add-split')).toBeNull();
   });
 
+  it('with no model here but OpenClaw paired in this browser, OpenClaw sorts it out', async () => {
+    caps.canPrep = false;
+    caps.openclawTransport = 'browser';
+    openclaw.split.mockResolvedValue({ ok: true, drafts: [{ title: 'Email Sam' }, { title: 'Book the dentist' }] });
+    mount();
+    const button = screen.getByTestId('bulk-add-split');
+    expect(button).toHaveTextContent('Sort it out with OpenClaw');
+    fireEvent.click(button);
+    await waitFor(() => expect(screen.getByTestId('bulk-add-count')).toHaveTextContent('2 items'));
+    expect(openclaw.split.mock.calls[0][0]).toBe(PARAGRAPH);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(screen.getByTestId('bulk-add-ai-note')).toHaveTextContent('Sorted by OpenClaw');
+  });
+
   it("says so when the AI found nothing, and keeps the text", async () => {
     fetchSpy.mockResolvedValueOnce(new Response(JSON.stringify({ drafts: [] }), { status: 200 }));
     mount();
     fireEvent.click(screen.getByTestId('bulk-add-split'));
     await screen.findByText('Your AI found nothing to do in that.');
     expect(screen.getByTestId('bulk-add-textarea')).toHaveValue(PARAGRAPH);
+  });
+});
+
+describe('splitterFor', () => {
+  it('prefers the model that answers here, then OpenClaw paired in this browser, else nobody', () => {
+    expect(splitterFor({ canPrep: true, openclawTransport: 'browser' })).toBe('model');
+    expect(splitterFor({ canPrep: false, openclawTransport: 'browser' })).toBe('openclaw');
+    expect(splitterFor({ canPrep: false, openclawTransport: 'gateway' })).toBeNull();
+    expect(splitterFor({ canPrep: false, openclawTransport: null })).toBeNull();
   });
 });

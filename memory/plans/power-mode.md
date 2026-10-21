@@ -582,3 +582,15 @@ this gap?". Four pieces were proposed; the first is built.
   (lib/stuck.ts over item_events, the same 3-days-in-30 rule). Each part is best-effort.
 - Custom instructions are not in it: they live in the browser (ai-settings-store), never on the server.
 - `dsul_my_work`, OpenClaw's brief and the routine prompt say to read it once before preparing.
+
+### Braindump split through OpenClaw (PR 3)
+
+- `splitterFor(caps)` (lib/braindump-split.ts) picks who sorts a paragraph out: the model when it
+  answers here (`canPrep`), else OpenClaw when this browser is paired (`openclawTransport ===
+  'browser'`), else nobody (no button, and a paragraph paste stays a plain paste).
+- lib/split-via-openclaw.ts asks OpenClaw over the browser link Ask uses, with /api/ai/split's own
+  prompt (now `SPLIT_SYSTEM_PROMPT` in lib/braindump-split.ts) and `splitDrafts` checking. A fresh
+  session key per split (`dsul:u:<uid>:split:<uuid>`), so one paragraph never leaks into the next.
+  Nothing goes through dsul's server. The dialog says "Sort it out with OpenClaw" / "Sorted by OpenClaw".
+- Claude is not offered: it cannot answer on the spot. A hand-off ("Claude adds the items when it
+  runs") was proposed and is not built.

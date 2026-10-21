@@ -28,7 +28,8 @@ import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { useDoStuffEnabled } from '@/lib/extension-gates';
 import { prepItemFor, usePrepPacksStore } from '@/lib/prep-packs-store';
 import { toDateStr } from '@/lib/recurrence';
-import { MAX_SPLIT_CHARS } from '@/lib/braindump-split';
+import { MAX_SPLIT_CHARS, splitterFor } from '@/lib/braindump-split';
+import { splitViaOpenClaw } from '@/lib/split-via-openclaw';
 import { getItemTypeConfig } from '@/lib/item-registry';
 import {
   MAX_BULK_ITEMS,
@@ -91,9 +92,12 @@ export function BulkAddDialog({
    *  tail — this keeps the cap notice honest for that one path. */
   const [importTruncated, setImportTruncated] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-  // Braindump to things (lib/braindump-split.ts): the person's own model
-  // splits a paragraph into drafts, shown in the table to check before Add.
-  const { canPrep } = useAICapabilities();
+  // Braindump to things (lib/braindump-split.ts): the person's own model, or
+  // OpenClaw from this browser, splits a paragraph into drafts, shown in the
+  // table to check before Add.
+  const caps = useAICapabilities();
+  const { canPrep } = caps;
+  const splitter = splitterFor(caps);
   const doStuff = useDoStuffEnabled();
   const [fromAI, setFromAI] = useState(false);
   const [splitting, setSplitting] = useState(false);
@@ -192,17 +196,25 @@ export function BulkAddDialog({
     setSplitting(true);
     setFileError(null);
     try {
-      const res = await fetch('/api/ai/split', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: source.slice(0, MAX_SPLIT_CHARS), customInstructions: useAISettingsStore.getState().systemPrompt }),
-        signal: ctrl.signal,
-      });
-      const body = (await res.json().catch(() => ({}))) as { drafts?: BulkDraft[]; error?: string };
-      if (ctrl.signal.aborted) return;
-      if (!res.ok) return setFileError(body.error ?? "Your AI couldn't sort that out.");
-      const drafts = body.drafts ?? [];
-      if (drafts.length === 0) return setFileError('Your AI found nothing to do in that.');
+      let drafts: BulkDraft[];
+      if (splitter === 'openclaw') {
+        const out = await splitViaOpenClaw(source, ctrl.signal);
+        if (ctrl.signal.aborted) return;
+        if (!out.ok) return setFileError(out.error);
+        drafts = out.drafts;
+      } else {
+        const res = await fetch('/api/ai/split', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: source.slice(0, MAX_SPLIT_CHARS), customInstructions: useAISettingsStore.getState().systemPrompt }),
+          signal: ctrl.signal,
+        });
+        const body = (await res.json().catch(() => ({}))) as { drafts?: BulkDraft[]; error?: string };
+        if (ctrl.signal.aborted) return;
+        if (!res.ok) return setFileError(body.error ?? "Your AI couldn't sort that out.");
+        drafts = body.drafts ?? [];
+      }
+      if (drafts.length === 0) return setFileError(`${splitter === 'openclaw' ? 'OpenClaw' : 'Your AI'} found nothing to do in that.`);
       setTable({ drafts, truncated: false, mappedHeader: false, structured: true });
       setFromAI(true);
     } catch {
@@ -253,7 +265,7 @@ export function BulkAddDialog({
     setTable(null);
     setFromAI(false);
   };
-  const canSplit = canPrep && !table && text.trim().length > 0;
+  const canSplit = splitter !== null && !table && text.trim().length > 0;
 
   return (
     <ResponsiveModal open={open} onOpenChange={onOpenChange}>
@@ -302,7 +314,7 @@ export function BulkAddDialog({
                 {fromAI ? (
                   <p className="flex items-center gap-1.5 text-xs text-muted-foreground" data-testid="bulk-add-ai-note">
                     <AskMark tone="ink" className="size-3" />
-                    Sorted by your AI. Check it, then add.
+                    Sorted by {splitter === 'openclaw' ? 'OpenClaw' : 'your AI'}. Check it, then add.
                   </p>
                 ) : (
                 <p className="text-xs text-muted-foreground">
@@ -415,7 +427,7 @@ export function BulkAddDialog({
                 data-testid="bulk-add-split"
               >
                 <AskMark tone={lead ? 'aurora' : 'ink'} className="size-3.5" />
-                {splitting ? 'Sorting it out…' : 'Sort it out with AI'}
+                {splitting ? 'Sorting it out…' : splitter === 'openclaw' ? 'Sort it out with OpenClaw' : 'Sort it out with AI'}
               </Button>
             )}
             <Button

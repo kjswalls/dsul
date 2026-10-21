@@ -21,7 +21,7 @@ import { useAwayStore } from '@/lib/away-store';
 import { captureTask } from '@/lib/held-captures';
 import { useUIStore, openEditFor, openAddDialog, openBulkAdd } from '@/lib/ui-store';
 import { isBulkPaste } from '@/lib/bulk-add';
-import { isParagraphPaste } from '@/lib/braindump-split';
+import { isParagraphPaste, splitterFor } from '@/lib/braindump-split';
 import { askFromCommandBar, openSetup } from '@/lib/open-chat';
 import { keepQuestion } from '@/lib/ask-pending';
 import { getAICapabilities, useAICapabilities } from '@/lib/ai-connection-store';
@@ -1702,7 +1702,7 @@ export function Omnibar({
                 const pasted = e.clipboardData.getData('text/plain');
                 // A paragraph, with a model to sort it out, goes the same way,
                 // leading with the AI's split (lib/braindump-split.ts).
-                const paragraph = !isBulkPaste(pasted) && isParagraphPaste(pasted) && getAICapabilities().canPrep;
+                const paragraph = !isBulkPaste(pasted) && isParagraphPaste(pasted) && splitterFor(getAICapabilities()) !== null;
                 if (isBulkPaste(pasted) || paragraph) {
                   e.preventDefault();
                   openBulkAdd({ text: pasted, ...(paragraph ? { split: true } : {}) });
