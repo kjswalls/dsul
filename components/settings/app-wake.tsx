@@ -28,6 +28,7 @@ export const ROUTINE_PROMPT = [
   'For each item: do what you can with the tools you have, and report what you did with dsul_report_progress.',
   'When you need a decision only I can make, ask with dsul_ask_user and move on.',
   'Mark an item done with dsul_complete once it is finished.',
+  "An item with aiMode 'prepare' is only to get ready: hand back what you prepared with dsul_save_prep, report done, and never send anything or complete it.",
   'If your queue is empty, stop.',
 ].join(' ');
 

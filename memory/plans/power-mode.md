@@ -548,3 +548,26 @@ that order.
   high the other way round. With an energy said, do it now and today are one
   walk in that order, so high starts on today's big thing. Okay changes
   nothing. Lanes, make it so and the three-row cap are untouched.
+
+## Agents up to the model (Kirby's ask, 2026-10-21)
+
+Kirby asked how OpenClaw and Claude compare with the person's own model, then "how could we close
+this gap?". Four pieces were proposed; the first is built.
+
+### Agents hand back real cards (PR 1)
+
+- MCP's `dsul_save_prep` (lib/mcp/tools.ts) posts to `/api/agent/items/:id/prep`. The body is one
+  pack in lib/prep-packs.ts's own shapes, checked by `PackSchema`; a bad one is a 400 that names the
+  field, so the agent can fix it.
+- The route is the one place a pack is written by the service role. It checks the item is the key
+  holder's, delegable, and handed to someone, writes `user_id` from the key (never the body),
+  `made_for` from the item's title and `model` as the assignee. One card per item, as for the model.
+  The shared writer (insert, then update; the 074-to-080 kind fallback) is lib/prep-packs-save.ts.
+- A `question` card is refused: its answer re-asks the person's own model. An agent asks with
+  `dsul_ask_user`, which comes back to it.
+- The page reads the packs again when an agent's finish lands (use-agent-freshness, after
+  `mergeAgentStates` folds a 'done'; not PrepPacksBoot, which mounts on lean routes with no items). A row whose card shows
+  drops the agent's own "ready" chip, so it says it once.
+- `dsul_my_work`'s description, OpenClaw's work brief and the Claude routine prompt all say: for
+  aiMode 'prepare', hand back a card, report done, never send or complete. An agent that skips the
+  tool still has its written report, as before.

@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server'
-import type { SupabaseClient } from '@supabase/supabase-js'
 import { z } from 'zod'
 import { isSameOrigin, NO_STORE, readJson, requireSession } from '@/app/api/ai/_shared/guard'
 import type { ChatErrorCode } from '@/lib/ai-types'
@@ -21,7 +20,8 @@ import {
 } from '@/lib/ai-server/errors'
 import { getAdapter } from '@/lib/ai-server/providers'
 import { anySignal } from '@/lib/ai-server/stream'
-import { ORIGINAL_PACK_KINDS, PackSchema, RESEARCH_PACK_KINDS, packBody, packFromRow, PREP_BATCH, type PrepPack } from '@/lib/prep-packs'
+import { PackSchema, packBody, packFromRow, PREP_BATCH, type PrepPack } from '@/lib/prep-packs'
+import { PACK_SELECT, packLimitHit, savePacks, type PackRow } from '@/lib/prep-packs-save'
 import { RESEARCH_MAX_USES, researchSupported } from '@/lib/ai-research'
 import { MAX_STYLE_CHARS } from '@/lib/writing-style'
 
@@ -64,7 +64,6 @@ const MAX_SUBTASKS = 10
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/
 const NOW_RE = /^([01]\d|2[0-3]):[0-5]\d$/
 const TZ_RE = /^[A-Za-z_]+(?:\/[A-Za-z0-9_+-]+){0,2}$/
-const WITH_QUESTION: ReadonlySet<string> = new Set([...ORIGINAL_PACK_KINDS, 'question'])
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 const JSON_ONLY_LINE = 'Whatever the instructions above say, reply with the JSON object only.'
@@ -154,14 +153,13 @@ const ItemsSchema = z
   .min(1)
   .max(PREP_BATCH)
 
-const SELECT = 'item_id, kind, body, made_for, updated_at'
 
 export async function GET(): Promise<Response> {
   const session = await requireSession()
   if (!session) return jsonError(401, 'Your session ended. Sign in again.', 'unauthorized')
   const { data, error } = await session.db
     .from('prep_packs')
-    .select(SELECT)
+    .select(PACK_SELECT)
     .order('updated_at', { ascending: false })
     .limit(200)
   if (error) {
@@ -346,22 +344,14 @@ export async function POST(req: Request): Promise<Response> {
   }
   if (rows.size === 0) return ok({ packs: [] })
 
-  let { saved, error } = await saveRows(db, rows)
-  // Before 080 the kind check refuses subtasks, answers, places, times and
-  // picks, before 079 the research kinds, and before 078 a question too. Drop the newest kinds first and keep the rest, rather than
-  // losing every draft in the batch to one of them.
-  for (const allowed of [RESEARCH_PACK_KINDS, WITH_QUESTION, ORIGINAL_PACK_KINDS]) {
-    if (error?.code !== '23514' || ![...rows.values()].some((r) => !allowed.has(r.kind))) continue
-    for (const [itemId, r] of rows) if (!allowed.has(r.kind)) rows.delete(itemId)
-    if (rows.size === 0) return ok({ packs: [] })
-    ;({ saved, error } = await saveRows(db, rows))
-  }
+  const { saved, error } = await savePacks(db, rows)
+  if (rows.size === 0) return ok({ packs: [] })
   const data = error ? null : saved
   if (error) {
     if (error.code === '42P01' || error.code === 'PGRST205') {
       return jsonError(503, 'Prep packs are not set up yet.', 'server', { available: false })
     }
-    if (error.message?.includes('prep_packs_limit')) {
+    if (packLimitHit(error)) {
       return jsonError(409, 'You have 200 things ready already. Clear a few first.', 'too_large')
     }
     console.warn('[ai] prep save failed', error.code)
@@ -369,48 +359,4 @@ export async function POST(req: Request): Promise<Response> {
   }
   const packs = (data ?? []).map((r) => packFromRow(r as Parameters<typeof packFromRow>[0])).filter((p): p is PrepPack => p !== null)
   return ok({ packs })
-}
-
-type PackRow = { item_id: string; kind: string; body: Record<string, unknown>; made_for: string; model: string | null }
-type Db = SupabaseClient
-
-/**
- * Keeps the packs. Not an upsert, and not delete-then-insert. PostgREST's ON
- * CONFLICT DO UPDATE assigns every payload column, `item_id` included, and 074
- * grants `authenticated` UPDATE on four named columns only; Postgres checks the
- * SET list up front, so the upsert was refused whole (42501) on the FIRST save
- * too, and no pack ever reached the table from the app (found 2026-10-17).
- * Deleting first would lose a pack at the 200 cap: 074's cap trigger spares
- * only an item whose pack still exists, and a multi-row insert that trips the
- * cap on a new item rolls the regenerated ones back after their delete
- * committed. So: INSERT ... ON CONFLICT DO NOTHING (supabase-js spells it
- * `upsert` + `ignoreDuplicates`; it has no SET list, so no UPDATE grant is
- * asked) takes the new items, which is exactly what the cap counts, and each
- * item it skipped gets an UPDATE of the four columns 074 lets us set, plus
- * `updated_at`, which it also grants.
- */
-async function saveRows(
-  db: Db,
-  rows: Map<string, PackRow>
-): Promise<{ saved: unknown[]; error: { code?: string; message?: string } | null }> {
-  const { data: inserted, error: insertError } = await db
-    .from('prep_packs')
-    .upsert([...rows.values()], { onConflict: 'item_id', ignoreDuplicates: true })
-    .select(SELECT)
-  if (insertError) return { saved: [], error: insertError }
-  const saved: unknown[] = [...(inserted ?? [])]
-  const fresh = new Set(saved.map((r) => (r as { item_id: string }).item_id))
-  const stamp = new Date().toISOString()
-  for (const [itemId, row] of rows) {
-    if (fresh.has(itemId)) continue
-    const { kind, body, made_for, model } = row
-    const { data: updated, error: updateError } = await db
-      .from('prep_packs')
-      .update({ kind, body, made_for, model, updated_at: stamp })
-      .eq('item_id', itemId)
-      .select(SELECT)
-    if (updateError) return { saved, error: updateError }
-    saved.push(...(updated ?? []))
-  }
-  return { saved, error: null }
 }

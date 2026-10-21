@@ -35,6 +35,8 @@ export const OPENCLAW_WORK_BRIEF = [
   'Call dsul_my_work to see your queue. For each item: mark it working with dsul_report_progress, ' +
     "do the work, then report the outcome with dsul_report_progress (status 'done', or 'failed' with why).",
   'If you are blocked on something only the user can answer, ask with dsul_ask_user and move on.',
+  "An item with aiMode 'prepare' is only to get ready: hand back what you prepared with dsul_save_prep, " +
+    "report done, and never send anything or complete the item.",
   'If dsul_my_work lists nothing new, do nothing.',
 ].join(' ');
 
