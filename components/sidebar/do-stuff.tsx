@@ -30,6 +30,8 @@ import {
 } from '@/lib/do-stuff';
 import {
   capNow,
+  energyOrder,
+  type Energy,
   dayLabel,
   LANES,
   laneDef,
@@ -255,6 +257,7 @@ interface Plan {
  */
 function usePlan(dumpRows: readonly RowItem[]): Plan {
   const moved = useDoStuffStore((s) => s.moved);
+  const energy = useDoStuffStore((s) => s.energy);
   // Any agent at all, OpenClaw or a connected app (lib/agents-store.ts): the
   // lane is offered when someone could take the row.
   const targets = useHandOffTargets();
@@ -325,7 +328,8 @@ function usePlan(dumpRows: readonly RowItem[]): Plan {
     for (const k of ['now', 'today'] as const) {
       const open = lanes[k].filter(isOpen);
       doneHere[k] = lanes[k].length - open.length;
-      lanes[k] = open;
+      // In the order the person's energy walks them (energyOrder).
+      lanes[k] = energyOrder(open, energy);
     }
     const today = lanes.today.filter((r) => isOpen(r) && !todayIds.has(r.item.id)).map((r) => r.item.id);
     const letGo = lanes.archive.filter(isOpen).map((r) => r.item.id);
@@ -369,7 +373,47 @@ function usePlan(dumpRows: readonly RowItem[]): Plan {
       packs,
       prepCandidates,
     };
-  }, [dumpRows, tasks, moved, canDelegate, targets, handTo, items, tz, routines, seasons, away, todayStr, stored, doneIds]);
+  }, [dumpRows, tasks, moved, canDelegate, targets, handTo, items, tz, routines, seasons, away, todayStr, stored, doneIds, energy]);
+}
+
+/**
+ * "energy?" low · okay · high, above the lanes as a run starts. Optional: the
+ * walk goes as the rules lay it out until it is answered, and once it is, the
+ * row is one quiet word that asks again on a click.
+ */
+const ENERGIES: readonly Energy[] = ['low', 'okay', 'high'];
+
+function EnergyAsk() {
+  const energy = useDoStuffStore((s) => s.energy);
+  const setEnergy = useDoStuffStore((s) => s.setEnergy);
+  if (energy) {
+    return (
+      <button
+        type="button"
+        onClick={() => setEnergy(null)}
+        data-testid="do-stuff-energy"
+        className="self-start rounded-[6px] px-2 pb-1 text-xs text-muted-foreground hover:text-foreground"
+      >
+        {energy} energy
+      </button>
+    );
+  }
+  return (
+    <div className="flex items-center gap-1 px-2 pb-1 text-xs text-muted-foreground" data-testid="do-stuff-energy-ask">
+      <span className="pr-1">energy?</span>
+      {ENERGIES.map((e) => (
+        <button
+          key={e}
+          type="button"
+          onClick={() => setEnergy(e)}
+          data-testid={`do-stuff-energy-${e}`}
+          className="h-6 rounded-[6px] px-2 font-medium text-foreground hover:bg-accent"
+        >
+          {e}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 /* ── the strip while doing stuff ──────────────────────────────────────── */
@@ -1195,12 +1239,17 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
   const plan = usePlan(rows);
   const listRef = useRef<HTMLDivElement>(null);
   const hoveredRef = useRef<string | null>(null);
-  // The walk: do it now, then today when do it now is through.
-  const next = nextNow(plan.lanes.now, isOpen, skipped) ?? nextNow(plan.lanes.today, isOpen, skipped);
+  const energy = useDoStuffStore((s) => s.energy);
+  // The walk: do it now, then today when do it now is through. With an energy
+  // said, the two are one walk in its order: high starts on today's big one.
+  const leaning = energy === 'low' || energy === 'high';
+  const walk = leaning ? energyOrder([...plan.lanes.now, ...plan.lanes.today], energy) : null;
+  const pick = (open: (r: RowItem) => boolean) =>
+    walk ? nextNow(walk, open, skipped) : (nextNow(plan.lanes.now, open, skipped) ?? nextNow(plan.lanes.today, open, skipped));
+  const next = pick(isOpen);
   // The one after it, for the desk's bar ("next · Book the dentist"): what a
   // done or a skip would bring up.
-  const notNext = (r: RowItem) => isOpen(r) && r.item.id !== next?.item.id;
-  const then = nextNow(plan.lanes.now, notNext, skipped) ?? nextNow(plan.lanes.today, notNext, skipped);
+  const then = pick((r: RowItem) => isOpen(r) && r.item.id !== next?.item.id);
   const slot = useDoStuffStore((s) => s.slot);
   const order = LANES.map((l) => plan.lanes[l.key].map((r) => r.item.id).join(',')).join('|');
   // A row that leaves the list under the pointer (done, let go) fires no
@@ -1323,6 +1372,7 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
             .join(' · ')}
         </p>
       )}
+      <EnergyAsk />
       {prepError && (
         <p className="px-2 pb-1 text-xs text-muted-foreground" data-testid="prep-pack-error">
           {prepError}
