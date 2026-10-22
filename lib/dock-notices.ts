@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 
 /**
@@ -68,7 +68,8 @@ export type DockNotice = {
    * anchor is overruled — see {@link placeNotices}.
    */
   anchor?: NoticeAnchor;
-  icon: LucideIcon;
+  /** A lucide glyph, or a mark that sizes itself (the AI line's relay and dot). */
+  icon: LucideIcon | ComponentType<{ className?: string }>;
   /**
    * Colour for the GLYPH only. The label, the verb and the ✕ stay plain body
    * ink: honey (or any warning tint) in body text is what made the old waiting

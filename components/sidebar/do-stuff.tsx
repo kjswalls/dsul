@@ -57,7 +57,7 @@ import { packIsStale, type PrepPack } from '@/lib/prep-packs';
 import { prepItemFor, usePrepPacksStore, type PrepItem } from '@/lib/prep-packs-store';
 import { isStuck } from '@/lib/stuck';
 import { movesOf, useStuckStore } from '@/lib/stuck-store';
-import { aiWorkSummary, hasLiveRun, type AiWorkSummary } from '@/lib/ai-work';
+import { useAiWork } from '@/hooks/use-ai-work';
 import { AiChip, RelayRow } from '@/components/ai/ai-work-badge';
 import { PackChip, PackDeck, PackInline, PackPeek } from '@/components/sidebar/prep-pack';
 import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
@@ -140,27 +140,6 @@ export function wantsDoStuffRow(rows: readonly RowItem[]): boolean {
  * is no keyboard to press it on. The chord is the live `do_stuff` binding,
  * never typed by hand.
  */
-/**
- * What the key says about the AI's work (lib/ai-work.ts): the relay in the
- * bolt's place while anything is being worked on, and "N ready" while packs
- * wait. Packs are read at sign-in (PrepPacksBoot, in the app shell), so the
- * count is there before the mode is first started. The clock ticks only while
- * a handed-off run is live, since only that can go quiet.
- */
-function useAiWork(): AiWorkSummary {
-  const items = usePlannerStore((s) => s.items);
-  const preparing = usePrepPacksStore((s) => s.preparing);
-  const packs = usePrepPacksStore((s) => s.packs);
-  const live = useMemo(() => hasLiveRun(items), [items]);
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!live) return;
-    const id = setInterval(() => setNow(Date.now()), 60_000);
-    return () => clearInterval(id);
-  }, [live]);
-  return useMemo(() => aiWorkSummary(items, { preparing, packs }, now), [items, preparing, packs, now]);
-}
-
 export function DoStuffKey({ touch, place = 'header' }: { touch?: boolean; place?: 'header' | 'dock' }) {
   const on = useDoStuffStore((s) => s.on);
   const work = useAiWork();

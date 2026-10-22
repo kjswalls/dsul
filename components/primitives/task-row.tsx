@@ -41,7 +41,7 @@ import {
   formatDuration,
   formatDurationLong,
 } from '@/components/primitives/pills';
-import { PackReady, PrepWorking, usePackShown } from '@/components/ai/ai-work-badge';
+import { PrepWorking } from '@/components/ai/ai-work-badge';
 import type { Task, HabitItem, HabitStatus, Item } from '@/lib/planner-types';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
@@ -189,8 +189,6 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
   const projected = item as { type?: string; customType?: string };
   const typeName = projected.type === 'custom' ? projected.customType! : itemType;
   const typeConfig = getItemTypeConfig(typeName);
-  // An agent's card shows as the row's pack chip; its "ready" would say it twice.
-  const packShown = usePackShown(task ?? undefined);
 
   // The goal roles this item holds, in LIVE goals only — an achieved goal's
   // milestone is history, and a row should not still wear a flag for work that
@@ -745,12 +743,11 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
             registry-gated so a type that cannot be delegated never reserves the
             space. The pill returns null on its own for an unassigned or finished
             item, so most rows render nothing and start no timer. */}
-        {task && typeConfig.agentAssignable && <AgentPill item={task} hideReady={packShown} className="-ml-0.5" />}
-        {/* The AI getting this row ready (a prep pack): the same relay. */}
-        {task && <PrepWorking itemId={task.id} className="-ml-0.5" />}
-        {/* Something ready on it. Do stuff's lanes pass their own trailing
-            chip (which opens the card in place), so a row there skips this. */}
-        {task && trailing === undefined && <PackReady item={task} className="-ml-0.5" />}
+        {task && typeConfig.agentAssignable && <AgentPill item={task} className="-ml-0.5" />}
+        {/* The AI getting this row ready (a prep pack): the title's sheen. What
+            is ready says so once, in the dock (components/notices/ai-work-notice.tsx),
+            not on the row. Do stuff's lanes pass their own trailing chip. */}
+        {task && <PrepWorking itemId={task.id} />}
 
         {/* Trailing metadata — the "quiet rail". Fixed order, innermost to the
             right edge: [occasional] → [days] → [identity] → [glyph] → [quantity].

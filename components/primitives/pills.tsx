@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Flame } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { AiChip, RelayRow } from '@/components/ai/ai-work-badge';
+import { AiChip, WorkingMark } from '@/components/ai/ai-work-badge';
 import { agentStatusView, showsAgentChip, type AgentStatusView } from '@/lib/agent-status';
 import { agentPrepReady } from '@/lib/ai-work';
 import { assigneeLabel } from '@/lib/chat-utils';
@@ -733,25 +733,17 @@ export function AgentPill({
   item,
   className,
   workingOnly = false,
-  hideReady = false,
 }: {
   item: { aiStatus?: string; aiStatusAt?: string; assignee?: string; status?: string; aiMode?: string };
   className?: string;
-  /** The agent saved a card (dsul_save_prep) that the row already shows as its pack chip. */
-  hideReady?: boolean;
-  /** Only the relay, for a live run: a schedule block has no room for the chips. */
+  /** Only the working mark, for a live run: a schedule block has no room for the chips. */
   workingOnly?: boolean;
 }) {
   // An agent that got an item ready (background prep's hand-off, aiMode
-  // 'prepare') is done when it reports, but the item is not: the ready chip
-  // says there is something to look at, in the item panel's agent block.
-  if (agentPrepReady(item)) {
-    return workingOnly || hideReady ? null : (
-      <AiChip className={className} data-testid="agent-prep-ready">
-        ready
-      </AiChip>
-    );
-  }
+  // 'prepare') is done when it reports, but the item is not. What is ready is
+  // counted once, in the dock (components/notices/ai-work-notice.tsx), and read
+  // in the item panel's agent block, so the row says nothing.
+  if (agentPrepReady(item)) return null;
   // NO HOOKS HERE. This runs on every task row in the app, and hooks cannot be
   // skipped by an early return — an interval declared above this line would run
   // for all of them, ticking every minute to re-render a component that returns
@@ -787,14 +779,13 @@ function AgentClock({
   const view = agentStatusView(item, now);
   if (!view || (workingOnly && (!view.active || view.stalled))) return null;
 
-  // The row's AI work badges (components/ai/ai-work-badge.tsx): a live run is
-  // the relay (and the title's sheen), a question the warm chip naming who
-  // asks. A run gone quiet, or one that failed, keeps the plain chip: it is
-  // not work happening, and the relay would say it was.
+  // The row's AI work marks (components/ai/ai-work-badge.tsx): a live run is
+  // only the title's sheen, a question the warm chip naming who asks. A run
+  // gone quiet, or one that failed, keeps the plain chip: it is not work
+  // happening, and the sheen would say it was.
+  if (view.active && !view.stalled) return <WorkingMark label={view.detail} />;
   const badge =
-    view.active && !view.stalled ? (
-      <RelayRow label={view.detail} className={className} />
-    ) : view.needsUser && item.assignee ? (
+    view.needsUser && item.assignee ? (
       <AiChip tone="question" className={className}>
         {assigneeLabel(item.assignee)} asks
         <span className="sr-only">{view.detail}</span>

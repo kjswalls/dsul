@@ -6,9 +6,10 @@ import { agentWorking, aiWorkSummary, hasLiveRun, type AiWorkItem } from '@/lib/
 import type { PrepPack } from '@/lib/prep-packs';
 
 /**
- * The do stuff key's reading of the AI work badges. It is built from the same
- * rules the rows use, so the key can never show the relay while every row
- * under it is still, or count a pack no row would show.
+ * The account's reading of the AI's work, for the do stuff key and the dock's
+ * line. It is built from the same rules the rows use, so neither can show the
+ * relay while every row under it is still, or count a pack the item panel
+ * would not show.
  */
 
 const NOW = Date.parse('2026-10-20T12:00:00.000Z');
@@ -62,6 +63,13 @@ describe('aiWorkSummary', () => {
     expect(aiWorkSummary(items, { preparing: {}, packs }, NOW).ready).toBe(1);
   });
 
+  it('counts what is being worked on, and the questions among what is ready', () => {
+    const q: PrepPack = { ...pack('b', 'Email Mara'), pack: { kind: 'question', question: 'Which day?', answers: [] } as never };
+    const items = [item({ id: 'a' }), item({ id: 'b' }), item({ id: 'c' })];
+    const sum = aiWorkSummary(items, { preparing: { c: true }, packs: { a: pack('a', 'Email Mara'), b: q } }, NOW);
+    expect(sum).toEqual({ working: true, workingCount: 1, ready: 2, questions: 1 });
+  });
+
   it('ignores a pack whose item is gone', () => {
     expect(aiWorkSummary([], { preparing: {}, packs: { z: pack('z', 'x') } }, NOW).ready).toBe(0);
   });
@@ -78,6 +86,16 @@ describe('the badges in the stylesheet', () => {
   it('stops under reduced motion, from the OS and from the app switch', () => {
     expect(section).toMatch(/prefers-reduced-motion: reduce/);
     expect(section).toMatch(/\[data-reduce-motion='true'\] \[data-ai-relay\]/);
+    expect(section).toMatch(/\[data-reduce-motion='true'\] \[data-ai-sheen-slow\]/);
+  });
+
+  it('shimmers a working row by its title alone: the mark beside it draws nothing', () => {
+    expect(section).toMatch(/\[data-row-title='open'\]:has\(~ \[data-ai-working\]\)/);
+    expect(section).not.toMatch(/:has\(~ \[data-ai-relay\]\)/);
+  });
+
+  it("crosses the dock's ready line once every eight seconds, then rests", () => {
+    expect(section).toMatch(/\[data-ai-sheen-slow\][^}]*animation: ai-sheen-slow 8s/);
   });
 });
 

@@ -1,10 +1,10 @@
 import { agentStatusView, showsAgentChip } from './agent-status';
-import { packIsStale, type PrepPack } from './prep-packs';
+import { packIsQuestion, packIsStale, type PrepPack } from './prep-packs';
 
 /**
- * ai-work.ts — the account-wide reading of the AI work badges
- * (components/ai/ai-work-badge.tsx), for the do stuff key: is anything being
- * worked on right now, and how many things are ready.
+ * ai-work.ts — the account-wide reading of the AI's work, for the do stuff key
+ * and the dock's one line about it (components/notices/ai-work-notice.tsx): is
+ * anything being worked on right now, and how many things are ready.
  *
  * Pure, like agent-status.ts, and built from the same two sources the rows
  * read, so the key never disagrees with the rows under it: an item handed off
@@ -24,8 +24,12 @@ export interface AiWorkItem {
 export interface AiWorkSummary {
   /** Something is being worked on: a prep ask in flight, or a live run. */
   working: boolean;
+  /** How many open items are being worked on. */
+  workingCount: number;
   /** Packs waiting on open items, written for the title the item has now. */
   ready: number;
+  /** Of `ready`, the packs that are a question for the person. */
+  questions: number;
 }
 
 /** Is a handed-off item's run live and not gone quiet? The row's relay rule. */
@@ -56,11 +60,14 @@ export function aiWorkSummary(
   now: number
 ): AiWorkSummary {
   const open = items.filter((i) => i.status !== 'completed' && i.status !== 'cancelled');
-  const working = open.some((i) => prep.preparing[i.id] === true || agentWorking(i, now));
+  const workingCount = open.filter((i) => prep.preparing[i.id] === true || agentWorking(i, now)).length;
   let ready = 0;
+  let questions = 0;
   for (const item of open) {
     const pack = prep.packs[item.id];
-    if ((pack && !packIsStale(pack, item.title)) || agentPrepReady(item)) ready += 1;
+    const fresh = !!pack && !packIsStale(pack, item.title);
+    if (fresh || agentPrepReady(item)) ready += 1;
+    if (fresh && packIsQuestion(pack.pack)) questions += 1;
   }
-  return { working, ready };
+  return { working: workingCount > 0, workingCount, ready, questions };
 }
