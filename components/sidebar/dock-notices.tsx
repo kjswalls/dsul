@@ -18,6 +18,7 @@ import {
   useSyncErrorNotice,
 } from '@/components/notices/notice-sources';
 import { useAINotice } from '@/components/notices/ai-notice';
+import { useAIWorkNotice } from '@/components/notices/ai-work-notice';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { capNotices, placeNotices, type DockNotice } from '@/lib/dock-notices';
 import { useLiveNoticeAnchors } from '@/lib/notice-anchors';
@@ -93,6 +94,8 @@ function useDockNotices(): DockNotice[] {
   // The AI's key stopped working, or it moved to the user's own model. No
   // anchor: the surfaces it would sit on are the ones the AI gate has hidden.
   const ai = useAINotice();
+  // What the AI got ready, said once for the account instead of on every row.
+  const aiWork = useAIWorkNotice();
   const live = useLiveNoticeAnchors();
 
   // What is left after every notice with a mounted object has gone to it. The
@@ -100,7 +103,7 @@ function useDockNotices(): DockNotice[] {
   // question with nowhere else to live, plus anything `blocked` (pinned) and
   // anything carrying a tray (which only the dock can open).
   return placeNotices(
-    [waiting, eod, sweep, syncError, ai].filter((n): n is DockNotice => n !== null),
+    [waiting, eod, sweep, syncError, ai, aiWork].filter((n): n is DockNotice => n !== null),
     live
   ).dock;
 }

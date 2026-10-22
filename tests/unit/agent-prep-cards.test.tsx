@@ -7,7 +7,8 @@ import { usePrepPacksStore } from '@/lib/prep-packs-store';
 
 /**
  * An agent's card (dsul_save_prep) reaches the page: the packs are read again
- * (use-agent-freshness, on a finish), and the row says ready once, not twice.
+ * (use-agent-freshness, on a finish), and the row itself says nothing about
+ * it: what is ready is counted in the dock (components/notices/ai-work-notice.tsx).
  */
 
 const done = (id: string, at: string) => ({ id, title: id, assignee: 'openclaw', aiMode: 'prepare', aiStatus: 'done', aiStatusAt: at, status: 'pending' });
@@ -35,10 +36,17 @@ describe('refresh', () => {
 });
 
 describe('the pill', () => {
-  it("drops its ready when the row's pack chip already says it", () => {
-    const { queryByText, rerender } = render(<AgentPill item={done('a', '2026-10-21T08:00:00Z')} />);
-    expect(queryByText('ready')).not.toBeNull();
-    rerender(<AgentPill item={done('a', '2026-10-21T08:00:00Z')} hideReady />);
-    expect(queryByText('ready')).toBeNull();
+  it('says nothing once the agent got the item ready: the dock counts it', () => {
+    const { container } = render(<AgentPill item={done('a', '2026-10-21T08:00:00Z')} />);
+    expect(container.textContent).toBe('');
+  });
+
+  it('is only the invisible working mark during a live run, so the title alone shimmers', () => {
+    const at = new Date(Date.now() - 60_000).toISOString();
+    const { getByTestId, container } = render(
+      <AgentPill item={{ assignee: 'openclaw', aiStatus: 'working', aiStatusAt: at, status: 'pending' }} />
+    );
+    expect(getByTestId('ai-working').className).toContain('sr-only');
+    expect(container.querySelector('[data-ai-relay]')).toBeNull();
   });
 });

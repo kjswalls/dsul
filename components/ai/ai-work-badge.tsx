@@ -3,24 +3,29 @@
 import { useEffect } from 'react';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useBackgroundPrep } from '@/hooks/use-background-prep';
-import { packIsQuestion, packIsStale, packLabel } from '@/lib/prep-packs';
 import { usePrepPacksStore } from '@/lib/prep-packs-store';
 import { cn } from '@/lib/utils';
 
 /**
- * The AI work badges (Kirby's picks, 2026-10-20, memory/plans/power-mode.md):
- * what a row says while the AI works on it, and once something is waiting.
+ * The AI work badges (Kirby's picks, 2026-10-20, then made quieter on
+ * 2026-10-22, memory/plans/power-mode.md): what the AI is doing, said as
+ * quietly as it can be.
  *
- *   working  the relay in one row, six tiles with a glowing wave walking
- *            across them, and the title beside it shimmering lime into teal
- *            (globals.css, `[data-ai-relay]`). The title takes the sheen from
- *            the relay being its sibling, so a row only has to render this.
- *   ready    a word chip on an aurora fill ("draft ready"), still. A question
- *            is the same chip warm, honey into coral, because it is the one
- *            that wants something from the person.
+ *   working  on a row, the title alone: it shimmers lime into teal while the
+ *            AI works on it (globals.css). WorkingMark is the title's
+ *            invisible sibling that turns the sheen on, and the words a screen
+ *            reader hears.
+ *   relay    six tiles with a glowing wave walking across them. The account's
+ *            mark, never a row's: the do stuff key's bolt and the dock's line
+ *            while anything is being worked on.
+ *   ready    nothing on the rows. One line in the dock counts what is ready
+ *            (components/notices/ai-work-notice.tsx), and the item panel shows
+ *            the pack. AiChip, the aurora word chip, is left to Do stuff's own
+ *            lanes and the key's count.
  *
- * Both are pure marks: what to say is decided by the caller (agent-status.ts
- * for a handed-off item, the prep store for a pack), never here.
+ * All of them are pure marks: what to say is decided by the caller
+ * (agent-status.ts for a handed-off item, the prep store for a pack), never
+ * here.
  */
 
 const TILES = [0, 1, 2, 3, 4, 5];
@@ -59,42 +64,33 @@ export function AiChip({
 }
 
 /**
- * A row the AI is getting ready right now (lib/prep-packs-store.ts). One
- * selector per row, a boolean, so a row re-renders only when its own state
- * flips; nothing ticks.
+ * A row's working mark: the title beside it shimmers (globals.css,
+ * `[data-ai-working]`), and this says what for to assistive tech. Nothing
+ * else is drawn, so a list with work going on reads as a list, not a row of
+ * badges.
  */
-export function PrepWorking({ itemId, className }: { itemId: string; className?: string }) {
-  const preparing = usePrepPacksStore((s) => s.preparing[itemId] === true);
-  if (!preparing) return null;
-  return <RelayRow label="Getting this ready" className={className} />;
-}
-
-/**
- * A pack waiting on this row (lib/prep-packs.ts): the ready chip, on any row
- * outside Do stuff (whose lanes draw their own, which opens the card beside
- * the row). Not a button: a tap falls through to the row, which opens the
- * item, and the item panel is where the pack is read, used or let go.
- */
-export function PackReady({
-  item,
-  className,
-}: {
-  item: { id: string; title: string; status?: string };
-  className?: string;
-}) {
-  const stored = usePrepPacksStore((s) => s.packs[item.id]);
-  if (!stored || item.status === 'completed' || item.status === 'cancelled') return null;
-  if (packIsStale(stored, item.title)) return null;
+export function WorkingMark({ label }: { label: string }) {
   return (
-    <AiChip tone={packIsQuestion(stored.pack) ? 'question' : 'ready'} className={className} data-testid="row-pack-ready">
-      {packLabel(stored.pack)}
-    </AiChip>
+    <span data-ai-working="" data-testid="ai-working" className="sr-only">
+      {label}
+    </span>
   );
 }
 
 /**
+ * A row the AI is getting ready right now (lib/prep-packs-store.ts). One
+ * selector per row, a boolean, so a row re-renders only when its own state
+ * flips; nothing ticks.
+ */
+export function PrepWorking({ itemId }: { itemId: string }) {
+  const preparing = usePrepPacksStore((s) => s.preparing[itemId] === true);
+  if (!preparing) return null;
+  return <WorkingMark label="Getting this ready" />;
+}
+
+/**
  * Reads the account's packs once at sign-in (a GET that asks no model), so a
- * row's ready chip and the do stuff key's count are there on every surface,
+ * the dock's ready line and the do stuff key's count are there on every surface,
  * the phone's Today included, before Do stuff is ever started. Mounted once,
  * in the app shell; renders nothing. It also runs background prep
  * (hooks/use-background-prep.ts), which does nothing until the person turns it on.
@@ -106,12 +102,4 @@ export function PrepPacksBoot() {
     if (userId) void usePrepPacksStore.getState().load(userId);
   }, [userId]);
   return null;
-}
-
-/** Is there a card for this item that its row's pack chip shows? Then the agent's "ready" is the same news. */
-export function usePackShown(item: { id: string; title: string } | undefined): boolean {
-  return usePrepPacksStore((s) => {
-    const stored = item ? s.packs[item.id] : undefined;
-    return !!stored && !packIsStale(stored, item!.title);
-  });
 }

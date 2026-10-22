@@ -594,3 +594,28 @@ this gap?". Four pieces were proposed; the first is built.
   Nothing goes through dsul's server. The dialog says "Sort it out with OpenClaw" / "Sorted by OpenClaw".
 - Claude is not offered: it cannot answer on the spot. A hand-off ("Claude adds the items when it
   runs") was proposed and is not built.
+
+## Quieter AI badges (Kirby's picks, 2026-10-22)
+
+Seen in the app, a word chip on every row the AI had touched was a lot for the
+sidebar. Round 3 of the badges (claude.ai/artifact/1fxYEr6d1cNrcnPRHnDAb2)
+offered five quieter readies; Kirby picked **D, one line in the dock**, with
+the sheen on it but rarer, and **sheen only** for working.
+
+- **Rows say nothing about what is ready.** No pack chip, no agent "ready".
+  The item panel still shows the pack. Do stuff's lanes keep their own chips,
+  and the do stuff key keeps its count: those are inside the mode or on its key.
+- **One dock line counts it** (components/notices/ai-work-notice.tsx): "3 ready ·
+  1 question", the words crossed by the title sheen once every eight seconds
+  (`[data-ai-sheen-slow]`), Look starts Do stuff (whose ready lane holds those
+  rows). Ranked a receipt, no anchor, gone while doing stuff. The glyph is the
+  aurora dot, warm when only questions wait.
+- **A working row is its title's sheen alone.** `WorkingMark` is an sr-only
+  sibling of the title (`[data-ai-working]`) that turns the sheen on and carries
+  the words for a screen reader.
+- **The relay is the account's mark, never a row's.** Kirby likes it, so it
+  stays where it means "the AI is working on your stuff" as a whole: the do
+  stuff key's bolt, and the dock line's glyph ("Getting 2 things ready" while
+  nothing is ready yet, and on the ready line while work goes on).
+- An agent's question ("Claude asks") keeps its warm chip on the row: it is a
+  request for the person, not a status, and it is rare.
