@@ -24,7 +24,8 @@ import { PackSchema, packBody, packFromRow, PREP_BATCH, type PrepPack } from '@/
 import { PACK_SELECT, packLimitHit, savePacks, type PackRow } from '@/lib/prep-packs-save'
 import { RESEARCH_MAX_USES, researchSupported } from '@/lib/ai-research'
 import { MAX_STYLE_CHARS } from '@/lib/writing-style'
-import { PREP_KIND_RULES, PREP_QUESTION_RULE_LIST, PREP_TONE_RULES } from '@/lib/prep-rules'
+import { MAX_KNOWS_CHARS } from '@/lib/ai-knows'
+import { PREP_KIND_RULES, PREP_MEANING_RULES, PREP_QUESTION_RULE_LIST, PREP_TONE_RULES } from '@/lib/prep-rules'
 
 /**
  * /api/ai/prep — prep packs (lib/prep-packs.ts; memory/plans/power-mode.md,
@@ -32,7 +33,7 @@ import { PREP_KIND_RULES, PREP_QUESTION_RULE_LIST, PREP_TONE_RULES } from '@/lib
  *
  *   GET            the account's packs.
  *   POST           `{ items: [{ id, title, notes?, project?, day?, subtasks?, stuck? }],
- *                  today?, now?, customInstructions?, style?, research?, timezone? }`, at most
+ *                  today?, now?, customInstructions?, style?, knows?, research?, timezone? }`, at most
  *                  PREP_BATCH:
  *                  the user's own model writes a pack for each item it can
  *                  honestly get ready, and the route keeps them. Answers the
@@ -69,7 +70,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 const JSON_ONLY_LINE = 'Whatever the instructions above say, reply with the JSON object only.'
 
-const PREP_RULES_TEXT = [...PREP_KIND_RULES, ...PREP_QUESTION_RULE_LIST, ...PREP_TONE_RULES].map((r) => `- ${r}`).join('\n')
+const PREP_RULES_TEXT = [...PREP_MEANING_RULES, ...PREP_KIND_RULES, ...PREP_QUESTION_RULE_LIST, ...PREP_TONE_RULES].map((r) => `- ${r}`).join('\n')
 
 const SYSTEM_PROMPT = `You are the assistant inside dsul, a daily planner for neurodivergent people.
 
@@ -86,7 +87,7 @@ The shape, exactly:
     { "itemId": "<id>", "kind": "message", "to": "who, if given", "body": "..." },
     { "itemId": "<id>", "kind": "call", "who": "who to call", "number": "only if given", "script": ["what to say first", "what to ask", "..."] },
     { "itemId": "<id>", "kind": "steps", "steps": ["first step, under five minutes", "..."] },
-    { "itemId": "<id>", "kind": "question", "question": "the one thing you need to know", "options": ["a likely answer", "another"] },
+    { "itemId": "<id>", "kind": "question", "question": "what you need to know first", "options": ["a likely answer", "another"], "more": [{ "question": "optional, at most two more", "options": ["..."], "multi": true }] },
     { "itemId": "<id>", "kind": "list", "items": ["eggs", "oat milk", "..."] },
     { "itemId": "<id>", "kind": "draft", "title": "optional", "body": "longer writing: a post, a letter, a bio" },
     { "itemId": "<id>", "kind": "options", "intro": "optional one line", "options": [{ "title": "...", "when": "optional", "price": "optional", "detail": "optional", "url": "optional" }] },
@@ -98,6 +99,8 @@ The shape, exactly:
     { "itemId": "<id>", "kind": "pick", "question": "optional", "choices": [{ "name": "...", "pros": ["..."], "cons": ["..."], "price": "optional", "url": "optional" }], "recommended": 0, "why": "one or two lines on why that one" }
   ]
 }
+
+Any card but a question may also carry "reading": "what you took the item to mean" and "alternates": ["another likely meaning", "..."], only when you were fairly sure rather than sure.
 
 Rules:
 - "itemId" MUST be an id from the list, copied exactly. At most one pack per item.
@@ -190,6 +193,16 @@ interface PrepBody {
   timezone?: unknown
   /** How you write (lib/writing-style.ts): style lines learned from their edits. */
   style?: unknown
+  /** What your AI knows (lib/ai-knows.ts): answers the person kept for every item. */
+  knows?: unknown
+}
+
+/** What the person told the AI to keep; nothing when there is none. */
+function knowsBlock(knows: unknown): string {
+  const lines = clipText(knows, MAX_KNOWS_CHARS).trim()
+  return lines
+    ? `\n\nWhat this person has told you before, a line each. Trust it over a guess from a title, use it to decide what an item means, and never ask what it already answers:\n${lines}`
+    : ''
 }
 
 /** The learned style, as the model reads it; nothing when there is none. */
@@ -276,7 +289,7 @@ export async function POST(req: Request): Promise<Response> {
       system: [
         [
           appendInstructions(
-            `${search ? `${SYSTEM_PROMPT}\n\n${RESEARCH_PROMPT}` : SYSTEM_PROMPT}${styleBlock(body.style)}`,
+            `${search ? `${SYSTEM_PROMPT}\n\n${RESEARCH_PROMPT}` : SYSTEM_PROMPT}${styleBlock(body.style)}${knowsBlock(body.knows)}`,
             body.customInstructions
           ),
           JSON_ONLY_LINE,

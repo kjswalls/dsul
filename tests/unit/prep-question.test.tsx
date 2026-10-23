@@ -24,6 +24,13 @@ const question: PrepPack = {
   pack: { kind: 'question', question: 'Which invoice?', options: ['March', 'April'] },
 };
 
+// Radix's checkbox measures itself; jsdom has no ResizeObserver.
+globalThis.ResizeObserver ??= class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+} as never;
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();

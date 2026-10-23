@@ -1,8 +1,9 @@
 'use client';
 
+import { useState } from 'react';
 import { RelayRow } from '@/components/ai/ai-work-badge';
+import { QuestionRound } from '@/components/sidebar/question-round';
 import { useAiWork } from '@/hooks/use-ai-work';
-import { useDoStuffEnabled } from '@/lib/extension-gates';
 import { useDoStuffStore } from '@/lib/do-stuff';
 import { NOTICE_RANK, type DockNotice } from '@/lib/dock-notices';
 
@@ -12,12 +13,17 @@ import { NOTICE_RANK, type DockNotice } from '@/lib/dock-notices';
  * what is ready, and only their titles shimmer while it works; this line says
  * it for the whole account:
  *
- *   ready    "3 ready · 1 question", the words crossed by a slow sheen every
- *            eight seconds (globals.css `[data-ai-sheen-slow]`), and Look,
- *            which starts Do stuff, whose ready lane holds exactly those rows.
+ *   asking   "2 to answer", under a slow sheen (globals.css
+ *            `[data-ai-sheen-slow]`), and Answer: it opens the quick round
+ *            (components/sidebar/question-round.tsx, Kirby's pick D,
+ *            2026-10-23), the questions one card at a time. Do stuff never
+ *            waits on it.
  *   working  "Getting 2 things ready" with the relay as its glyph, while
- *            nothing is ready yet. Once something is, the ready line keeps
- *            the relay as its glyph for as long as work goes on.
+ *            nothing waits on an answer. The questions line keeps the relay
+ *            as its glyph for as long as work goes on.
+ *
+ * What is ready has no line (Kirby, 2026-10-23): the do stuff key says it,
+ * with its own sheen, and a line here only repeated it.
  *
  * No anchor: it is about the account, not a row, so it keeps the dock's line
  * (lib/dock-notices.ts placeNotices). Ranked a receipt, below anything asking
@@ -27,21 +33,22 @@ import { NOTICE_RANK, type DockNotice } from '@/lib/dock-notices';
 export function useAIWorkNotice(): DockNotice | null {
   const work = useAiWork();
   const doing = useDoStuffStore((s) => s.on);
-  const canDoStuff = useDoStuffEnabled();
+  const [round, setRound] = useState(false);
   if (doing) return null;
 
-  const ready = work.ready - work.questions;
-  if (work.ready > 0) {
-    const parts = [
-      ready > 0 ? `${ready} ready` : null,
-      work.questions > 0 ? `${work.questions} ${work.questions === 1 ? 'question' : 'questions'}` : null,
-    ].filter(Boolean);
+  if (work.questions > 0) {
     return {
       id: 'ai-work',
       rank: NOTICE_RANK.receipt,
-      icon: work.working ? RelayGlyph : ready > 0 ? ReadyDot : QuestionDot,
-      label: <span data-ai-sheen-slow="">{parts.join(' · ')}</span>,
-      ...(canDoStuff ? { actionLabel: 'Look', onSelect: () => useDoStuffStore.getState().start() } : {}),
+      icon: work.working ? RelayGlyph : QuestionDot,
+      label: <span data-ai-sheen-slow="">{`${work.questions} to answer`}</span>,
+      actionLabel: 'Answer',
+      tray: () => <QuestionRound onClose={() => setRound(false)} />,
+      trayTitle: 'Your AI has questions',
+      trayDescription: 'Answer what your AI asked, one card at a time, so it can get those things ready.',
+      open: round,
+      onOpenChange: setRound,
+      trayTestId: 'question-round-tray',
       testId: 'ai-work-notice',
     };
   }
@@ -61,10 +68,6 @@ export function useAIWorkNotice(): DockNotice | null {
 
 function RelayGlyph() {
   return <RelayRow label="" aria-hidden />;
-}
-
-function ReadyDot() {
-  return <span data-ai-dot="" aria-hidden />;
 }
 
 function QuestionDot() {

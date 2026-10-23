@@ -1,5 +1,6 @@
 import { BACKGROUND_PREP_KEY, BACKGROUND_WORKER_KEY, backgroundPrepWorker, RESEARCH_KEY, researchOn } from '../background-prep';
 import { LEARN_STYLE_KEY, learnStyleOn, WRITING_STYLE_KEY, writingStyleOf } from '../writing-style';
+import { AI_KNOWS_KEY, aiKnowsOf, MAX_KNOWS_CHARS } from '../ai-knows';
 import { researchSupported } from '../ai-research';
 import {
   Sunrise,
@@ -1819,6 +1820,25 @@ export const SETTINGS: SettingRecord[] = [
     read: () => writingStyleOf(ext().configs[EXT_DO_STUFF]),
     write: (v, ctx) => {
       if (ctx.userId) ext().setConfigValue(ctx.userId, EXT_DO_STUFF, WRITING_STYLE_KEY, String(v).trim());
+    },
+    defaultValue: '',
+  },
+  {
+    id: 'extensions.doStuff.knows',
+    pane: extensionPaneId(EXT_DO_STUFF),
+    label: 'What your AI knows',
+    description:
+      'Answers you told your AI to remember for every task, a line each. It reads them before it gets anything ready. Change or delete any line.',
+    control: 'text',
+    textVariant: 'multiline',
+    placeholder: "Who's Sammy? My dog\nWe moved to Portland in September",
+    dependsOn: 'extensions.doStuff',
+    keywords: ['remember', 'memory', 'knows', 'facts', 'context', 'about me', 'what the ai knows'],
+    unavailable: extUnavailable,
+    pending: extPending,
+    read: () => aiKnowsOf(ext().configs[EXT_DO_STUFF]),
+    write: (v, ctx) => {
+      if (ctx.userId) ext().setConfigValue(ctx.userId, EXT_DO_STUFF, AI_KNOWS_KEY, String(v).trim().slice(0, MAX_KNOWS_CHARS));
     },
     defaultValue: '',
   },
