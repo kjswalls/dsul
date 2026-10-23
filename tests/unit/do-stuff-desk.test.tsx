@@ -231,6 +231,46 @@ describe('the desk', () => {
     expect(useDoStuffStore.getState().desk).toBe(false);
   });
 
+  it('opens by itself on an item with something to work with, once the sort lands, and stays shut once closed', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      seed(ITEMS);
+      start();
+      expect(useDoStuffStore.getState().desk).toBe(false);
+      // 'a' has notes and steps: worth a desk (Kirby, 2026-10-23).
+      act(() => {
+        vi.advanceTimersByTime(5000);
+      });
+      expect(useDoStuffStore.getState().desk).toBe(true);
+      expect(screen.getByTestId('do-stuff-desk-item').textContent).toContain('reply to sam about the lease');
+      // Closed by the person: left closed for the run.
+      act(() => {
+        fireEvent.keyDown(window, { key: 'Escape' });
+      });
+      act(() => {
+        vi.advanceTimersByTime(5000);
+      });
+      expect(useDoStuffStore.getState().desk).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('leaves a bare item as the card in the list', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      seed(ITEMS.filter((t) => !['a', 'a1', 'a2'].includes(t.id)));
+      start();
+      act(() => {
+        vi.advanceTimersByTime(5000);
+      });
+      expect(useDoStuffStore.getState().next?.id).toBe('b');
+      expect(useDoStuffStore.getState().desk).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('closes when the mode stops', () => {
     seed(ITEMS);
     start();

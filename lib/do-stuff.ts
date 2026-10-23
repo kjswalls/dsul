@@ -119,6 +119,12 @@ interface DoStuffState {
    */
   desk: boolean;
   /**
+   * The desk was closed this run (D, ✕, or leaving today): it opens by itself
+   * only until then (`useDeskByDefault`), so it never fights the person's own
+   * choice, nor drags the canvas back to today. Reset by every start.
+   */
+  deskDeclined: boolean;
+  /**
    * Live desk hosts: the canvas views that mount the Desk in a view's place
    * (the desktop ViewRouter, through useDeskHost). The phone's router never
    * does, so with no host openDesk() is a no-op and the ⤢ and "desk" keys are
@@ -209,7 +215,7 @@ export const useDoStuffStore = create<DoStuffState>((set) => ({
     snapshotRows();
     watchCompletionsWhileOn();
     const startedAt = typeof performance === 'undefined' ? 0 : performance.now();
-    set((s) => ({ on: true, skipped: [], moved: {}, doneCount: 0, doneIds: [], energy: null, starts: s.starts + 1, startedAt }));
+    set((s) => ({ on: true, skipped: [], moved: {}, doneCount: 0, doneIds: [], energy: null, deskDeclined: false, starts: s.starts + 1, startedAt }));
   },
   // Everything the run held goes with it: a First steps dialog left open, the
   // slot's flag and the sort clock included, so nothing of a run outlives it.
@@ -230,6 +236,7 @@ export const useDoStuffStore = create<DoStuffState>((set) => ({
       slot: false,
       startedAt: 0,
       desk: false,
+      deskDeclined: false,
       sprint: null,
       energy: null,
     });
@@ -251,6 +258,7 @@ export const useDoStuffStore = create<DoStuffState>((set) => ({
   slot: false,
   startedAt: 0,
   desk: false,
+  deskDeclined: false,
   deskHosts: 0,
   sprint: null,
   missedSeen: [],
@@ -329,7 +337,17 @@ export function openDesk(): void {
 }
 
 export function closeDesk(): void {
-  useDoStuffStore.setState({ desk: false });
+  useDoStuffStore.setState({ desk: false, deskDeclined: true });
+}
+
+/**
+ * Whether the desk is worth opening for this item by itself (Kirby, 2026-10-23):
+ * it has something to work with there, a pack the AI made, steps or notes. A
+ * bare quick task is faster as the card in the list.
+ */
+export function deskWorthIt(item: { id: string; notes?: string }, opts: { hasPack: boolean; items: readonly Item[] }): boolean {
+  if (opts.hasPack || item.notes?.trim()) return true;
+  return opts.items.some((i) => i.type !== 'habit' && 'parentItemId' in i && i.parentItemId === item.id);
 }
 
 /** How long the current item still waits for the sort to land. */

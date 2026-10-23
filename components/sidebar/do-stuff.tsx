@@ -20,6 +20,7 @@ import {
   openDesk,
   putOnToday,
   useDeskHosted,
+  deskWorthIt,
   commitCount,
   commitLines,
   type Mark,
@@ -1179,6 +1180,31 @@ function usePrepOnStart(candidates: readonly PrepItem[], todayStr: string) {
   }, [userId, canPrep]);
 }
 
+/**
+ * The desk opens by itself (Kirby, 2026-10-23) when the walk reaches an item
+ * with something to work with there (`deskWorthIt`: a pack, steps or notes),
+ * after the sort has landed so the rows glide first. Once open it stays for
+ * the walk; once the person closes it, it is left closed for the run
+ * (`deskDeclined`). Only where a desk can be drawn (useDeskHosted), so never
+ * on the phone.
+ */
+function useDeskByDefault(next: RowItem | undefined, hasPack: boolean) {
+  const hosted = useDeskHosted();
+  const declined = useDoStuffStore((s) => s.deskDeclined);
+  const desk = useDoStuffStore((s) => s.desk);
+  const items = usePlannerStore((s) => s.items);
+  const id = next?.item.id;
+  const worth = !!next && deskWorthIt(next.item as { id: string; notes?: string }, { hasPack, items });
+  useEffect(() => {
+    if (!id || !worth || !hosted || declined || desk) return;
+    const t = setTimeout(() => {
+      const s = useDoStuffStore.getState();
+      if (s.on && !s.desk && !s.deskDeclined && s.next?.id === id) openDesk();
+    }, sortDelay());
+    return () => clearTimeout(t);
+  }, [id, worth, hosted, declined, desk]);
+}
+
 /* ── the list ─────────────────────────────────────────────────────────── */
 
 /**
@@ -1202,6 +1228,7 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
   // The one after it, for the desk's bar ("next · Book the dentist"): what a
   // done or a skip would bring up.
   const then = pick((r: RowItem) => isOpen(r) && r.item.id !== next?.item.id);
+  useDeskByDefault(next, plan.packs.has(next?.item.id ?? ''));
   const slot = useDoStuffStore((s) => s.slot);
   const order = LANES.map((l) => plan.lanes[l.key].map((r) => r.item.id).join(',')).join('|');
   // A row that leaves the list under the pointer (done, let go) fires no
