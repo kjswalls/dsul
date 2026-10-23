@@ -147,7 +147,7 @@ export default function ItemPage() {
             : 'grid items-start gap-8'
         }
       >
-        <ItemDetailSections item={item} conversationElsewhere={canChat} />
+        <ItemDetailSections item={item} conversationElsewhere={canChat} agentStatusElsewhere />
         {canChat && <ItemConversation item={item} mode="inline" tall className="lg:border-border lg:border-l lg:pl-6" />}
       </div>
     </main>

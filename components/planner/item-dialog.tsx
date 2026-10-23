@@ -11,14 +11,13 @@ import {
 } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { addDays, format, parseISO, startOfDay, subDays } from 'date-fns';
+import { addDays, format, parseISO, startOfDay } from 'date-fns';
 import {
   CalendarClock,
   CalendarIcon,
   Check,
   Clock,
   Flag,
-  Flame,
   Moon,
   Bell,
   Pause as PauseIcon,
@@ -31,7 +30,6 @@ import {
   Redo2,
   Repeat,
   Repeat2,
-  RotateCcw,
   SkipForward,
   Trash2,
   X,
@@ -70,11 +68,13 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { IconPicker } from '@/components/primitives/icon-picker';
 import { AddIconButton } from '@/components/primitives/add-icon-button';
-import { ClearingFooter, ItemDetailSections } from '@/components/planner/item-detail-sections';
+import { AgentStatus, ClearingFooter, ItemDetailSections } from '@/components/planner/item-detail-sections';
+import { StreakChip } from '@/components/planner/streak-chip';
 import { RailHeader } from '@/components/ai/rail/rail-header';
 import { BoundComposer } from '@/components/ai/bound-composer';
 import { ItemConversation } from '@/components/ai/item-conversation';
@@ -268,13 +268,9 @@ export function InlineCreate({
   );
 }
 
-/** Last 14 days of a habit's completion history, oldest first. */
-function recentStreakDays(habit: HabitItem): boolean[] {
-  const today = startOfDay(new Date());
-  return Array.from({ length: 14 }, (_, i) =>
-    habit.completedDates.includes(format(subDays(today, 13 - i), 'yyyy-MM-dd'))
-  );
-}
+/** How many of an item's verbs the header's control bar shows as icons; the rest go under ⋯. */
+const BAR_SLOTS = 3;
+
 // ── The two shapes of the surface ────────────────────────────────────────────
 // SurfaceRoot / SurfaceContent / SurfaceA11yHeader live in ./surface, shared
 // with ContainerDialog so an organizer's "new" body wears this exact shell.
@@ -1413,7 +1409,7 @@ function ItemDialogInner({
    *    line. A band of its own would have said "Priority" twice; the field says
    *    it once, and only when it applies.
    */
-  const renderChips = (type: string, d: ItemDraft) => {
+  const renderChips = (type: string, d: ItemDraft, lead?: ReactNode) => {
     const config = getItemTypeConfig(type);
     const patch = (updates: Partial<ItemDraft>) => patchDraft(type, updates);
     /**
@@ -2660,6 +2656,7 @@ function ItemDialogInner({
 
     return (
       <div className="flex flex-wrap items-center gap-1.5" data-testid="item-clearing-field">
+        {lead}
         {leadWhen.map((p) => (
           <Fragment key={p.key}>{p.node}</Fragment>
         ))}
@@ -2940,8 +2937,6 @@ function ItemDialogInner({
   const activeConfig = getItemTypeConfig(activeTypeName);
   const activeDraft = mode === 'add' ? draftFor(activeTypeName) : editDraft;
   const titleId = mode === 'add' ? `${activeTypeName}-title` : `edit-${activeTypeName}-title`;
-  const streakDays =
-    editItem && editItem.type === 'habit' ? recentStreakDays(editItem) : [];
 
   // Notes starts one line tall and grows with what you type. `field-sizing-content`
   // alone would do it in Chrome; measuring keeps Safari from trapping a long note
@@ -3019,6 +3014,75 @@ function ItemDialogInner({
     else toggleHabitStatus(paneHabit.id, 'pending', Math.max(0, next), new Date());
   };
 
+  // The control bar (the item conversations design, round 3): the verbs this
+  // item can take right now, in the order they are reached for, the first
+  // BAR_SLOTS of them as icons and the rest under ⋯, with Delete always last
+  // there in red. Eligibility is what makes the bar differ by type: a one-off
+  // task on the grid offers its put-it-off pair, a habit Skip today.
+  type PaneAction = { id: string; icon: LucideIcon; label: string; detail?: string };
+  const paneActions: PaneAction[] = [];
+  if (mode === 'edit' && editItem) {
+    if (canPaneNextDay && paneNextDay)
+      paneActions.push({
+        id: 'item-dialog-tomorrow',
+        icon: Redo2,
+        label: nextDayLabel(paneNextDay, paneToday),
+        detail: formatTargetDay(paneNextDay),
+      });
+    if (canPaneBraindump) paneActions.push({ id: 'item-dialog-unschedule', icon: ArrowLeftToLine, label: 'Move to Braindump' });
+    if (canSkipToday) paneActions.push({ id: 'item-dialog-skip', icon: SkipForward, label: 'Skip today' });
+    // Pause lives here too, beside the other "not now" verbs. Never the
+    // destructive tone: setting something aside is a plan, not a failure.
+    if (canPause) {
+      if (pausedNow) paneActions.push({ id: 'item-dialog-resume', icon: PlayIcon, label: 'Resume' });
+      else {
+        paneActions.push({ id: 'item-dialog-pause', icon: PauseIcon, label: 'Pause' });
+        paneActions.push({ id: 'item-dialog-pause-until', icon: CalendarClock, label: 'Pause until…' });
+      }
+    }
+  }
+  /** What a pane action does, run from its click (bar or ⋯ alike). */
+  const runPaneAction = (id: string) => {
+    if (!editItem) return;
+    switch (id) {
+      case 'item-dialog-tomorrow': {
+        if (!paneNextDay) return;
+        flushNow();
+        moveTaskToDate(editItem.id, paneNextDay);
+        // The modal commits its whole draft on Save and never re-reads
+        // the item underneath it, so its date follows the move here —
+        // or Save would put the task straight back.
+        if (!autosaves) {
+          const [y, m, d] = paneNextDay.split('-').map(Number);
+          setEditDraft((dr) => dr && { ...dr, startDate: new Date(y, m - 1, d) });
+        }
+        return;
+      }
+      case 'item-dialog-unschedule':
+        flushNow();
+        unscheduleTask(editItem.id);
+        // Same as the carry above: Save must not reschedule it.
+        if (!autosaves) {
+          setEditDraft((dr) => dr && { ...dr, startDate: undefined, timeBucket: 'none', startTime: '' });
+        }
+        return;
+      case 'item-dialog-skip':
+        setItemSkipped(editItem.id, true, new Date());
+        return;
+      case 'item-dialog-resume':
+        handleSetPaused(false);
+        return;
+      case 'item-dialog-pause':
+        handleSetPaused(true);
+        return;
+      case 'item-dialog-pause-until':
+        setShowPauseUntil(true);
+        return;
+    }
+  };
+  const barActions = paneActions.slice(0, BAR_SLOTS);
+  const moreActions = paneActions.slice(BAR_SLOTS);
+
   const rowControls =
     mode === 'edit' && editItem ? (
       <RowControlGroup data-testid="item-dialog-row-controls" className="mr-1">
@@ -3038,88 +3102,21 @@ function ItemDialogInner({
               disabled={paneCount >= paneTarget}
               onClick={() => stepCount(paneCount + 1)}
             />
-            <RowControlDivider />
+            {barActions.length > 0 && <RowControlDivider />}
           </>
         )}
-        {canPaneNextDay && paneNextDay && (
+        {barActions.map((a) => (
           <RowControl
-            icon={Redo2}
-            label={nextDayLabel(paneNextDay, paneToday)}
-            detail={formatTargetDay(paneNextDay)}
-            testId="item-dialog-tomorrow"
-            onClick={() => {
-              flushNow();
-              moveTaskToDate(editItem.id, paneNextDay);
-              // The modal commits its whole draft on Save and never re-reads
-              // the item underneath it, so its date follows the move here —
-              // or Save would put the task straight back.
-              if (!autosaves) {
-                const [y, m, d] = paneNextDay.split('-').map(Number);
-                setEditDraft((dr) => dr && { ...dr, startDate: new Date(y, m - 1, d) });
-              }
-            }}
+            key={a.id}
+            icon={a.icon}
+            label={a.label}
+            detail={a.detail}
+            testId={a.id}
+            onClick={() => runPaneAction(a.id)}
           />
-        )}
-        {canPaneBraindump && (
-          <RowControl
-            icon={ArrowLeftToLine}
-            label="Move to Braindump"
-            testId="item-dialog-unschedule"
-            onClick={() => {
-              flushNow();
-              unscheduleTask(editItem.id);
-              // Same as the carry above: Save must not reschedule it.
-              if (!autosaves) {
-                setEditDraft((dr) => dr && { ...dr, startDate: undefined, timeBucket: 'none', startTime: '' });
-              }
-            }}
-          />
-        )}
-        {canSkipToday && (
-          <RowControl
-            icon={SkipForward}
-            label="Skip today"
-            testId="item-dialog-skip"
-            onClick={() => setItemSkipped(editItem.id, true, new Date())}
-          />
-        )}
-        {/* Pause lives here too, beside the other "not now" verbs (a row has
-            no room for it; the pane does). Never the destructive tone: setting
-            something aside is a plan, not a failure. */}
-        {canPause &&
-          (pausedNow ? (
-            <RowControl
-              icon={PlayIcon}
-              label="Resume"
-              testId="item-dialog-resume"
-              onClick={() => handleSetPaused(false)}
-            />
-          ) : (
-            <>
-              <RowControl
-                icon={PauseIcon}
-                label="Pause"
-                testId="item-dialog-pause"
-                onClick={() => handleSetPaused(true)}
-              />
-              <RowControl
-                icon={CalendarClock}
-                label="Pause until…"
-                testId="item-dialog-pause-until"
-                onClick={() => setShowPauseUntil(true)}
-              />
-            </>
-          ))}
-        <RowControl
-          icon={Trash2}
-          label={`Delete ${activeConfig.label.toLowerCase()}`}
-          testId="item-dialog-delete"
-          destructive
-          onClick={() => setShowDeleteConfirm(true)}
-        />
+        ))}
       </RowControlGroup>
     ) : null;
-  const hasMoreActions = streaksOn && !!editConfig?.counters.streak;
 
   const headerActions = (
     <div className="ml-auto flex items-center gap-0.5">
@@ -3141,7 +3138,9 @@ function ItemDialogInner({
         </Button>
       )}
 
-      {mode === 'edit' && hasMoreActions && (
+      {/* Everything the bar has no room for, then Delete, last and in red.
+          Reset streak is not here: it lives with the streak (StreakChip). */}
+      {mode === 'edit' && editItem && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -3155,15 +3154,21 @@ function ItemDialogInner({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-52">
-            {streaksOn && editConfig?.counters.streak && (
-              <DropdownMenuItem
-                data-testid="item-dialog-reset-streak"
-                onSelect={() => setShowResetConfirm(true)}
-              >
-                <RotateCcw className="size-3.5" />
-                Reset streak
+            {moreActions.map((a) => (
+              <DropdownMenuItem key={a.id} data-testid={a.id} onSelect={() => runPaneAction(a.id)}>
+                <a.icon className="size-3.5" />
+                {a.label}
               </DropdownMenuItem>
-            )}
+            ))}
+            {moreActions.length > 0 && <DropdownMenuSeparator />}
+            <DropdownMenuItem
+              data-testid="item-dialog-delete"
+              variant="destructive"
+              onSelect={() => setShowDeleteConfirm(true)}
+            >
+              <Trash2 className="size-3.5" />
+              {`Delete ${activeConfig.label.toLowerCase()}`}
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       )}
@@ -3625,11 +3630,11 @@ function ItemDialogInner({
                     placeholder and the button all already say which mode this
                     is). */}
                 {titleInput}
+                {/* One status, one place: who has the item and how it is going,
+                    under its title (ItemDetailSections is told, and skips it). */}
+                {mode === 'edit' && editItem && editConfig?.agentAssignable && <AgentStatus item={editItem} />}
               </div>
 
-              {/* Streak — the habit's history in the row's own dot vocabulary,
-                  reading the open-time snapshot (stale after a reset until
-                  reopen, as before). */}
               {/* Why an item you can see isn't anywhere else. Without this, a
                   paused item found through search opens, edits and schedules
                   normally while never appearing on the grid — every gesture a
@@ -3655,32 +3660,14 @@ function ItemDialogInner({
                 </div>
               )}
 
-              {streaksOn && editConfig?.counters.streak && editItem && (
-                <div className="bg-warning/10 flex items-center gap-2.5 rounded-md px-2.5 py-2">
-                  <Flame className="text-warning size-4 shrink-0" />
-                  <span className="text-warning-text text-xs font-semibold">
-                    {(editItem as HabitItem).streak} day streak
-                  </span>
-                  {/* Same vocabulary as the row's DayDots: a done day is a
-                      solid bead in the -text role (which flips bright in dark),
-                      a missed day is a 1px RING — which is what --day-off's
-                      per-theme alpha was tuned for. As a fill it made the
-                      misses the loudest marks in the strip in light mode. */}
-                  <span className="ml-auto flex items-center gap-[3px]">
-                    {streakDays.map((done, i) => (
-                      <span
-                        key={i}
-                        className={cn(
-                          'box-border size-[5px] rounded-full',
-                          done ? 'bg-warning-text' : 'border border-day-off'
-                        )}
-                      />
-                    ))}
-                  </span>
-                </div>
+              {renderChips(
+                activeTypeName,
+                activeDraft,
+                // The streak is one more property (StreakChip), with its week and Reset.
+                streaksOn && editConfig?.counters.streak && editItem?.type === 'habit' ? (
+                  <StreakChip habit={editItem} today={paneToday} onReset={() => setShowResetConfirm(true)} />
+                ) : undefined
               )}
-
-              {renderChips(activeTypeName, activeDraft)}
 
               {/* Notes — the field that existed in the schema, the API and the
                   Beacon context from the start and had never had a surface. It
@@ -3723,6 +3710,7 @@ function ItemDialogInner({
                   // folding the details leaves the chat on screen.
                   conversation={foldable ? 'none' : conversation}
                   conversationElsewhere={foldable}
+                  agentStatusElsewhere
                   offerSetup
                 />
               )}
