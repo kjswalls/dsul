@@ -624,3 +624,35 @@ the sheen on it but rarer, and **sheen only** for working.
   nothing is ready yet, and on the ready line while work goes on).
 - An agent's question ("Claude asks") keeps its warm chip on the row: it is a
   request for the person, not a status, and it is rare.
+
+## Sure, fairly sure, or ask (Kirby's pick C + D + E, 2026-10-23)
+
+Kirby: the AI guessed what vague items meant and prepared the wrong thing ("get sammy's license"
+became a text to Sammy, who is a dog). Design panel: claude.ai/artifact/R9mWzcHAjC2Z1koV1f55o2.
+Picked C (with D's quick round and E's memory).
+
+- **The meaning comes first** (`PREP_MEANING_RULES` in lib/prep-rules.ts, shared with agents through
+  dsul_prep_brief). Sure: the card as before. Fairly sure: the card plus `reading` (one line on what
+  it took the item to mean) and `alternates` (up to three other meanings), kept small. Unsure or big
+  and open: ask first. An email or message only when the item is about contacting someone; a name
+  in the title is not enough.
+- **The reading line** sits on top of the card ("I took this as: …"). "Not quite?" offers the
+  alternates and a box; either writes "I meant: …" into the notes (`meantNote`), drops the pack and
+  asks again (prep-packs-store's `reread`). The notes rule tells the model to trust those lines.
+- **Up to three questions** in one card: `question` stays the first (old cards still read), `more`
+  holds two others, `multi` lets several answers be picked ("What's settled already?" for a big
+  plan, after which the card covers only what is left). One plain question still sends on a tap;
+  otherwise taps select and "Get it ready" sends them all, a notes line each (`answersNote`).
+- **No migration:** `reading`, `alternates`, `more` and `multi` live in the pack's jsonb body.
+- **"Not needed" is "Discard"** on the pack card (Kirby, 2026-10-23), with the toast "Discarded".
+- **The quick round (D).** The dock's AI line no longer says what is ready (Kirby, 2026-10-23: the
+  do stuff key says it). While questions wait it reads "2 to answer" and its action is Answer: a tray of the questions one card at a time
+  (components/sidebar/question-round.tsx, `questionsWaiting`: fresh question packs on open items,
+  oldest first). An answer sends the item back to be prepared and deals the next; the arrows skip.
+  Nothing waits on it: Do stuff and the lanes work the same with questions unanswered.
+- **What your AI knows (E).** Under a question, "Remember for other tasks" (off until ticked) keeps
+  the answers for every item, a line each ("Who's Sammy? My dog"), in Do stuff's config
+  (`knows`, lib/ai-knows.ts: no repeats, 3,000 characters, oldest out first), shown and edited in
+  Do stuff's settings as "What your AI knows". Sent with every prep ask (`knows`, the route's
+  `knowsBlock`) and in dsul_prep_brief for agents; not with Ask. The privacy statement in
+  ai-vision.md says so.

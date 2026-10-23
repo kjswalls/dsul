@@ -536,7 +536,9 @@ export const MCP_TOOLS: McpTool[] = [
       "Read this once before getting items ready (aiMode 'prepare'). It is what the user's own " +
       'model is told for the same job: the rules a card follows (rules), how the user writes, ' +
       'learned from drafts they changed (style; follow it in emails, messages, drafts and call ' +
-      "scripts, '' when there is none), and which of the items handed to you they keep moving " +
+      "scripts, '' when there is none), what they told their AI to remember for every item (knows, " +
+      "a line each such as \"Who's Sammy? My dog\"; trust it over a guess from a title, '' when " +
+      'there is none), and which of the items handed to you they keep moving ' +
       'to another day (stuck: write those a smaller first step, and never mention that they moved).',
     inputSchema: obj({}),
     plan: () => ({ method: 'GET', path: '/api/agent/prep-brief' }),
@@ -560,6 +562,9 @@ export const MCP_TOOLS: McpTool[] = [
       'pick {question?, choices: 2-4 of {name, pros[], cons[], price?, url?}, recommended: index, why}. ' +
       'Any of email, message, call, steps, list, options, form, draft, answer, place and pick ' +
       'may also carry sources: up to 5 of {title, url}. Links must be https. ' +
+      'When you were only fairly sure what the item means, any card may carry reading (one line on ' +
+      'what you took it to mean) and alternates (up to 3 other likely meanings): the user sees it on ' +
+      'top and can correct it. When you are unsure, ask with dsul_ask_user before writing a card. ' +
       'Never write a phone number, address or email the item, its notes or your research did ' +
       'not give you. To ask the user something, use dsul_ask_user instead.',
     inputSchema: obj(

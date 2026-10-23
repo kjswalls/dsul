@@ -42,7 +42,10 @@ const brief = (auth = 'Bearer dsul_key') =>
 beforeEach(() => {
   resolvedUser = 'u1';
   callerName = 'openclaw';
-  tables.user_extensions = { data: { config: { writingStyle: 'Short. Starts with "Hi".' } }, error: null };
+  tables.user_extensions = {
+    data: { config: { writingStyle: 'Short. Starts with "Hi".', knows: "Who's Sammy? My dog" } },
+    error: null,
+  };
   tables.items = {
     data: [
       { id: 'a', title: 'Call the GP', status: 'pending', assignee: 'openclaw' },
@@ -80,6 +83,8 @@ describe('GET /api/agent/prep-brief', () => {
     expect(body.rules.join(' ')).toMatch(/dsul_ask_user/);
     expect(body.rules).not.toContain(PREP_QUESTION_RULE_LIST[0]);
     expect(body.style).toBe('Short. Starts with "Hi".');
+    expect(body.knows).toBe("Who's Sammy? My dog");
+    expect(body.rules.join(' ')).toMatch(/A name in the title is not enough/);
     expect(body.stuck).toEqual([{ id: 'a', title: 'Call the GP' }]);
     for (const t of ['user_extensions', 'items', 'item_events']) {
       expect(filters[t]).toContainEqual(['eq:user_id', 'u1']);

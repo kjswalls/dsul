@@ -192,6 +192,18 @@ describe('POST /api/ai/prep', () => {
     expect(without.system[0]).not.toMatch(/How this person writes/);
   });
 
+  it('reads what the person told their AI to remember, and decides the meaning first', async () => {
+    adapter.completeText.mockResolvedValue('{"packs":[]}');
+    await post({ items: ITEMS, knows: "Who's Sammy? My dog" });
+    const req = adapter.completeText.mock.calls[0][1] as { system: string[] };
+    expect(req.system[0]).toMatch(/What this person has told you before[\s\S]*Who's Sammy\? My dog/);
+    expect(req.system[0]).toMatch(/decide what it means/);
+    expect(req.system[0]).toMatch(/A name in the title is not enough/);
+    expect(req.system[0].trimEnd().endsWith('reply with the JSON object only.')).toBe(true);
+    await post({ items: ITEMS });
+    expect((adapter.completeText.mock.calls[1][1] as { system: string[] }).system[0]).not.toMatch(/What this person has told you before/);
+  });
+
   it('tells the model which items are stuck, so their first step gets tiny', async () => {
     adapter.completeText.mockResolvedValue('{"packs":[]}');
     await post({ items: [{ ...ITEMS[0], stuck: true }, ITEMS[1]] });

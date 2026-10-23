@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { useAISettingsStore } from './ai-settings-store';
 import { researchOn } from './background-prep';
 import { writingStyleOf } from './writing-style';
+import { AI_KNOWS_KEY, aiKnowsOf, withKnown } from './ai-knows';
 import { isStuck } from './stuck';
 import { movesOf } from './stuck-store';
 import { EXT_DO_STUFF } from './extension-registry';
@@ -11,7 +12,7 @@ import { usePlannerStore } from './planner-store';
 import { milestoneItemIds } from './goals';
 import { scheduleTaskPatch } from './item-edit';
 import { getBucketForTime } from './time-bucket';
-import { answerNote, PREP_BATCH, type Pack, type PrepPack } from './prep-packs';
+import { answersNote, meantNote, PREP_BATCH, type Pack, type PrepPack } from './prep-packs';
 import { toDateStr } from './recurrence';
 
 /** The person's clock as HH:mm in their zone, for "a time later than now". */
@@ -30,7 +31,7 @@ export function answerNotes(notes: string | undefined, answer: string, sources?:
   return before ? `${before}\n\n${block}` : block;
 }
 
-/** How long Not needed can be undone before the pack is deleted for good. */
+/** How long Discard can be undone before the pack is deleted for good. */
 export const UNDO_MS = 6000;
 
 /**
@@ -107,11 +108,23 @@ interface PrepPacksState {
   /** Lets a pack go; returns its undo, or null when there was none. */
   dismiss: (itemId: string) => (() => void) | null;
   /**
-   * Answers a question pack: the answer goes into the item's notes (where the
-   * user can see and change it, and the next ask reads it), the question is
-   * deleted, and the item is asked about again.
+   * Answers a question pack: the answers go into the item's notes, a line
+   * each (where the user can see and change them, and the next ask reads
+   * them), the question is deleted, and the item is asked about again. A
+   * bare string answers the first question. `remember` also keeps the
+   * answers for every item (lib/ai-knows.ts), the person's own tick.
    */
-  answer: (itemId: string, answer: string) => void;
+  answer: (
+    itemId: string,
+    answers: string | readonly { question: string; answer: string }[],
+    opts?: { remember?: boolean }
+  ) => void;
+  /**
+   * "Not quite?": the person says what the item meant. The line goes into the
+   * notes as "I meant: …", the pack built on the wrong reading is deleted, and
+   * the item is asked about again.
+   */
+  reread: (itemId: string, meant: string) => void;
   /**
    * Takes a pack that acts on the planner (packApplies): adds its subtasks,
    * keeps its answer in the notes, or puts the item on the day at its time.
@@ -132,6 +145,32 @@ const EMPTY = {
 
 function byItem(list: readonly PrepPack[]): Record<string, PrepPack> {
   return Object.fromEntries(list.map((p) => [p.itemId, p]));
+}
+
+/**
+ * Writes what the person told the AI into the item's notes, drops the pack it
+ * replaces, and asks about the changed item again: the one path an answer and
+ * a corrected reading share.
+ */
+function rewriteNotes(itemId: string, write: (notes: string | undefined) => string, label: string): void {
+  const planner = usePlannerStore.getState();
+  const item = planner.items.find((i) => i.id === itemId);
+  if (!item || item.type === 'habit') return;
+  const notes = write((item as { notes?: string }).notes);
+  planner.updateTask(itemId, { notes }, { label: `${label}: ${item.title}` });
+  usePrepPacksStore.setState((s) => {
+    const packs = { ...s.packs };
+    delete packs[itemId];
+    return { packs };
+  });
+  // The ask after it replaces the row anyway, so the pack goes now; a delete
+  // that fails leaves it for the next load, under the new pack.
+  void fetch(`/api/ai/prep?item=${encodeURIComponent(itemId)}`, { method: 'DELETE' }).catch(() => {});
+  const next = { ...item, notes } as Item;
+  void usePrepPacksStore.getState().prepare([prepItemFor(next, usePlannerStore.getState().items)], {
+    today: toDateStr(new Date(), plannerZone()),
+    again: true,
+  });
 }
 
 const plannerZone = () => usePlannerStore.getState().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -190,6 +229,7 @@ export const usePrepPacksStore = create<PrepPacksState>((set, get) => ({
         preparing: Object.fromEntries(Object.entries(st.preparing).filter(([id]) => !ids[id])),
       }));
     const style = writingStyleOf(useExtensionsStore.getState().configs[EXT_DO_STUFF]);
+    const knows = aiKnowsOf(useExtensionsStore.getState().configs[EXT_DO_STUFF]);
     try {
       const res = await fetch('/api/ai/prep', {
         method: 'POST',
@@ -200,6 +240,8 @@ export const usePrepPacksStore = create<PrepPacksState>((set, get) => ({
           customInstructions: useAISettingsStore.getState().systemPrompt,
           // How you write (lib/writing-style.ts), when there is any.
           ...(style ? { style } : {}),
+          // What your AI knows (lib/ai-knows.ts), when there is any.
+          ...(knows ? { knows } : {}),
           // The research switch (lib/background-prep.ts); the route asks only
           // a provider that can search.
           ...(researchOn(useExtensionsStore.getState().configs[EXT_DO_STUFF])
@@ -224,29 +266,27 @@ export const usePrepPacksStore = create<PrepPacksState>((set, get) => ({
     }
   },
 
-  answer: (itemId, answer) => {
+  answer: (itemId, answers, opts = {}) => {
     const was = get().packs[itemId];
-    const text = answer.trim();
-    if (!was || was.pack.kind !== 'question' || !text) return;
-    const planner = usePlannerStore.getState();
-    const item = planner.items.find((i) => i.id === itemId);
-    if (!item || item.type === 'habit') return;
-    const notes = answerNote((item as { notes?: string }).notes, was.pack.question, text);
-    planner.updateTask(itemId, { notes }, { label: `Answer: ${item.title}` });
-    set((s) => {
-      const packs = { ...s.packs };
-      delete packs[itemId];
-      return { packs };
-    });
-    // The ask after it replaces the row anyway, so the question goes now; a
-    // delete that fails leaves it for the next load, under the new pack.
-    void fetch(`/api/ai/prep?item=${encodeURIComponent(itemId)}`, { method: 'DELETE' }).catch(() => {});
-    const tz = planner.userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const next = { ...item, notes } as Item;
-    void get().prepare([prepItemFor(next, usePlannerStore.getState().items)], {
-      today: toDateStr(new Date(), tz),
-      again: true,
-    });
+    if (!was || was.pack.kind !== 'question') return;
+    const list =
+      typeof answers === 'string' ? [{ question: was.pack.question, answer: answers }] : answers;
+    if (!list.some((a) => a.answer.trim())) return;
+    const userId = get().userId;
+    if (opts.remember && userId) {
+      const ext = useExtensionsStore.getState();
+      const known = withKnown(
+        aiKnowsOf(ext.configs[EXT_DO_STUFF]),
+        list.filter((a) => a.answer.trim()).map((a) => `${a.question.trim()} ${a.answer.trim()}`)
+      );
+      ext.setConfigValue(userId, EXT_DO_STUFF, AI_KNOWS_KEY, known);
+    }
+    rewriteNotes(itemId, (notes) => answersNote(notes, list), 'Answer');
+  },
+
+  reread: (itemId, meant) => {
+    if (!get().packs[itemId] || !meant.trim()) return;
+    rewriteNotes(itemId, (notes) => meantNote(notes, meant), 'Meant');
   },
 
   apply: (itemId, pack) => {
