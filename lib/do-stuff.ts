@@ -104,11 +104,6 @@ interface DoStuffState {
   /** Braindump rows coming onto today: the card's ghost "+" rows. */
   arriving: readonly { id: string; title: string }[];
   /**
-   * The item whose first steps are open (components/sidebar/first-steps.tsx),
-   * from the up-next card, the F key or the item menu. Memory only.
-   */
-  firstSteps: string | null;
-  /**
    * Whether today's schedule is showing the walk's slot ("In the day",
    * components/sidebar/do-stuff-slot.tsx), published by the slot. While it is,
    * the current item lives there: the header drops its up-next card and the
@@ -232,7 +227,6 @@ export const useDoStuffStore = create<DoStuffState>((set) => ({
       next: null,
       then: null,
       arriving: [],
-      firstSteps: null,
       slot: false,
       startedAt: 0,
       desk: false,
@@ -254,7 +248,6 @@ export const useDoStuffStore = create<DoStuffState>((set) => ({
   next: null,
   then: null,
   arriving: [],
-  firstSteps: null,
   slot: false,
   startedAt: 0,
   desk: false,

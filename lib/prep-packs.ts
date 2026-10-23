@@ -493,6 +493,20 @@ export function packIsStale(stored: PrepPack, title: string): boolean {
   return stored.madeFor.trim() !== title.trim();
 }
 
+/**
+ * A pack whose whole content is steps to take (first steps, or subtasks): it
+ * is drafted rows in the item panel's Subtasks, not a card
+ * (components/planner/drafted-steps.tsx).
+ */
+export function packIsSteps(pack: Pack): pack is Extract<Pack, { kind: 'steps' | 'subtasks' }> {
+  return pack.kind === 'steps' || pack.kind === 'subtasks';
+}
+
+/** The steps a steps pack drafts, in order. */
+export function packSteps(pack: Extract<Pack, { kind: 'steps' | 'subtasks' }>): string[] {
+  return (pack.kind === 'steps' ? pack.steps : pack.subtasks).map((t) => t.trim()).filter(Boolean);
+}
+
 /** Reads a stored row, dropping any whose body no longer fits the schema. */
 export function packFromRow(row: {
   item_id: string;

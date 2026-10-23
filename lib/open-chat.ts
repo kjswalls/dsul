@@ -780,6 +780,20 @@ export function breakDownItem(item: Item, o: { isMobile: boolean; page?: boolean
 }
 
 /**
+ * An item's drafted steps, from outside it (first steps in Do stuff, the item
+ * menu, a steps pack's card): open the item, whose Subtasks are their one home
+ * (components/planner/drafted-steps.tsx), and ask for a draft when `ask` says
+ * there is none yet and something can propose one.
+ */
+export function showItemSteps(item: Item, o: { ask: boolean; isMobile?: boolean }): void {
+  const isMobile = o.isMobile ?? (typeof window !== 'undefined' && window.innerWidth < 768);
+  showItemForAsk(item, isMobile, { reveal: false });
+  if (o.ask && getAICapabilities().canPropose) {
+    void useProposalStore.getState().request('breakdown', undefined, item.id);
+  }
+}
+
+/**
  * A plan card asked from an item ("Find a time for this"): the catch-up
  * command's route (lib/commands/registry.ts), since a plan card's home is Ask
  * home. An item on top is closed through the one flushing close first, so the

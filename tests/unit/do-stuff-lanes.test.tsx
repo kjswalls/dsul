@@ -277,12 +277,12 @@ describe('do stuff: the plan in lanes', () => {
     expect(usePlannerStore.getState().items.find((i) => i.id === 'e')).toMatchObject({ startDate: today });
   });
 
-  it('stop() takes the run\'s leftovers with it: first steps, the slot flag, the sort clock', () => {
+  it('stop() takes the run\'s leftovers with it: the slot flag, the sort clock', () => {
     useDoStuffStore.getState().start();
-    useDoStuffStore.setState({ firstSteps: 'a', slot: true });
+    useDoStuffStore.setState({ slot: true });
     expect(useDoStuffStore.getState().startedAt).toBeGreaterThan(0);
     useDoStuffStore.getState().stop();
-    expect(useDoStuffStore.getState()).toMatchObject({ on: false, firstSteps: null, slot: false, startedAt: 0, doneIds: [] });
+    expect(useDoStuffStore.getState()).toMatchObject({ on: false, slot: false, startedAt: 0, doneIds: [] });
   });
 
   it('makes it so: the calendar lane lands on its days, and nothing else is written', () => {

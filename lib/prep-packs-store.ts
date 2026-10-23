@@ -119,6 +119,12 @@ interface PrepPacksState {
    * `pack` is the card's, with the person's edits. Returns what to say.
    */
   apply: (itemId: string, pack: Pack) => string | null;
+  /**
+   * The pack's drafted steps were all kept or dropped one by one in the item
+   * panel (components/planner/drafted-steps.tsx), which wrote the subtasks
+   * itself: the pack goes, with nothing to undo here.
+   */
+  settle: (itemId: string) => void;
 }
 
 const EMPTY = {
@@ -247,6 +253,16 @@ export const usePrepPacksStore = create<PrepPacksState>((set, get) => ({
       today: toDateStr(new Date(), tz),
       again: true,
     });
+  },
+
+  settle: (itemId) => {
+    if (!get().packs[itemId]) return;
+    set((s) => {
+      const packs = { ...s.packs };
+      delete packs[itemId];
+      return { packs };
+    });
+    void fetch(`/api/ai/prep?item=${encodeURIComponent(itemId)}`, { method: 'DELETE' }).catch(() => {});
   },
 
   apply: (itemId, pack) => {
