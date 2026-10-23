@@ -612,6 +612,11 @@ this gap?". Four pieces were proposed; the first is built.
 
 ## Quieter AI badges (Kirby's picks, 2026-10-22)
 
+> **Desk by default, 2026-10-23 (Kirby):** the desk opens by itself, once the sort lands, when
+> the walk reaches an item with something to work with (`deskWorthIt`: a pack, steps or notes).
+> Once open it stays for the walk; once closed (D, ✕, Esc, leaving today) it stays closed for the
+> run (`deskDeclined`). Bare items stay as the card in the list. Never on the phone.
+
 > **Lanes, 2026-10-23 (Kirby):** "ready" said how far along a row was while the other lanes say
 > when it gets done, so it is no longer a lane. A prepped row keeps its aurora words wherever it
 > is, leads its lane (`packsFirst`), and the rules send it to do it now (past three it spills to
