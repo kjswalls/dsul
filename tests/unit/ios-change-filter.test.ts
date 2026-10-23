@@ -144,6 +144,8 @@ describe('the iOS change filter', () => {
       'tests/fixtures/organize/container-writes.json',
       'app/api/app/containers/[kind]/[id]/route.ts',
       'lib/gate-toggle.ts',
+      // The create route (O11), whose body and defaults the + menu ports.
+      'app/api/app/containers/[kind]/route.ts',
     ]) {
       expect(filter.test(p), p).toBe(true);
     }
@@ -161,6 +163,12 @@ describe('the iOS change filter', () => {
       'components/planner/organize/use-trashed-names.ts',
       // O9's name_taken words moved to lib/organize-copy.ts (nameTakenSentence).
       'components/planner/organize/sections/labels.tsx',
+      // O10's delete words and O11's create words moved there too
+      // (deleteConsequence, deleteTitle, CONTAINER_CREATE_COPY).
+      'components/planner/organize/sections/seasons.tsx',
+      'components/planner/organize/sections/goals.tsx',
+      'components/planner/organize/container-create-form.tsx',
+      'tests/unit/organize-delete-copy.test.ts',
       // The alternation is anchored: a longer name sharing a prefix is not a port.
       'lib/organize-console.ts',
       'lib/paused-shelf-extra.ts',

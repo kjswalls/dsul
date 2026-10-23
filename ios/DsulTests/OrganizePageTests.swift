@@ -428,10 +428,10 @@ import Testing
         // Every write the phone sends, under each kind the route takes it on,
         // in the server's own order (lib/app-containers.ts CONTAINER_WRITES).
         #expect(OrganizeModel.everyContainerWrite == ContainerWrites(
-            routine: ["pause", "usualTime", "notes", "rename", "icon", "color"],
-            season: ["state", "dates", "notes", "rename", "icon", "color"],
-            goal: ["state", "window", "why", "rename", "icon", "color"],
-            project: ["notes", "rename", "icon", "color"]))
+            routine: ["pause", "usualTime", "notes", "rename", "icon", "color", "delete", "create"],
+            season: ["state", "dates", "notes", "rename", "icon", "color", "delete", "create"],
+            goal: ["state", "window", "why", "rename", "icon", "color", "delete", "create"],
+            project: ["notes", "rename", "icon", "color", "delete", "create"]))
     }
 
     /// A season's Status is its three states, On, Off and Dates, the one it
@@ -936,6 +936,187 @@ import Testing
         let window = RangeEdit(ref: ContainerRef(kind: .goal, id: "g-half"), words: ContainerEditModel.windowWords,
                                start: nil, end: nil)
         #expect(ContainerEditModel.rangeNote(window, dated, season: autumn, today: today) == nil)
+    }
+
+    // MARK: Delete and create (O10, O11)
+
+    /// Delete… on each page: the web's title and button for the kind, and
+    /// the phone's sentence, counted as the web's pane counts it, which
+    /// offers no undo and ends on the Trash. Only where the server takes it.
+    @Test func eachDeleteConfirmSaysTheWebsWords() throws {
+        let every = OrganizeModel.everyContainerWrite
+        let work = Project(id: "p-work", name: "Work")
+        let autumn = Season(id: "s-autumn", name: "Autumn", itemIds: [uid(1), uid(99)],
+                            routineIds: ["r-morning", "r-gone"])
+        let s = snapshot(items: routineItems + projectItems + goalItems, routines: [morning], seasons: [autumn],
+                         goals: [half], projects: [work], takes: every)
+        let trash = { (kind: String) in " The \(kind) stays in the Trash for 30 days." }
+
+        // Morning is live, so taking it away puts nothing back; uid(99) is
+        // in the Trash, so four items stay.
+        let routine = try #require(try routinePage(s).edits?.delete)
+        #expect(routine.ref == ContainerRef(kind: .routine, id: "r-morning"))
+        #expect(routine.title == "Delete this routine?")
+        #expect(routine.confirmLabel == "Delete")
+        #expect(routine.message == "\u{201C}Morning\u{201D} is removed, but its 4 items stay exactly as they are. "
+            + "They just stop being grouped." + trash("routine"))
+        #expect(routine.spoken == "Routine deleted")
+        #expect(try routinePage(s).edits?.hasMenu == true)
+
+        // Paused, its members are off today; taken away, they come back.
+        var paused = morning
+        paused.pausedAt = "2026-09-20T15:00:00+00:00"
+        let held = try #require(try routinePage(snapshot(items: routineItems, routines: [paused],
+                                                         takes: every)).edits?.delete)
+        #expect(held.message == "\u{201C}Morning\u{201D} is removed, but its 4 items stay exactly as they are. "
+            + "They just stop being grouped, and they come back into view." + trash("routine"))
+
+        let season = try #require(try seasonPage(s, "s-autumn").edits?.delete)
+        #expect(season.title == "Delete this season?")
+        #expect(season.confirmLabel == "Delete")
+        #expect(season.message == "\u{201C}Autumn\u{201D} is removed, but the 1 item and 1 routine it holds stay "
+            + "exactly as they are." + trash("season"))
+        var off = autumn
+        off.state = "paused"
+        let hiding = try #require(try seasonPage(snapshot(items: routineItems, routines: [morning], seasons: [off],
+                                                          takes: every), "s-autumn").edits?.delete)
+        #expect(hiding.message == "\u{201C}Autumn\u{201D} is removed, but the 1 item and 1 routine it holds stay "
+            + "exactly as they are. Anything it was hiding comes back into view." + trash("season"))
+
+        let goal = try #require(try goalPage(s).edits?.delete)
+        #expect(goal.title == "Delete Run a half?")
+        #expect(goal.confirmLabel == "Delete goal")
+        #expect(goal.message == "Its habits, tasks and milestones are ordinary items and stay exactly where they "
+            + "are. Only the goal and its links go." + trash("goal"))
+        #expect(goal.spoken == "Goal deleted")
+
+        // The project's count is its page's: "work" folds in, the subtask
+        // is left out.
+        let project = try #require(try projectPage(s).edits?.delete)
+        #expect(project.title == "Delete \u{201C}Work\u{201D}?")
+        #expect(project.confirmLabel == "Delete")
+        #expect(project.message == "Its 3 items stay exactly as they are. They just stop being filed under Work."
+            + trash("project"))
+        #expect(try projectPage(s).chips.first?.text == "3 items")
+        let garden = Project(id: "p-garden", name: "Garden")
+        let empty = try #require(try projectPage(snapshot(items: projectItems, projects: [garden], takes: every),
+                                                 "p-garden").edits?.delete)
+        #expect(empty.message == "Nothing is filed under it, so nothing moves." + trash("project"))
+
+        // A server without the delete: no row, and no menu for it alone.
+        let renameOnly = ContainerWrites(routine: ["rename"])
+        let edits = try #require(try routinePage(snapshot(items: routineItems, routines: [morning],
+                                                          takes: renameOnly)).edits)
+        #expect(edits.delete == nil)
+        #expect(edits.hasMenu)
+        let deleteOnly = try #require(try routinePage(snapshot(items: routineItems, routines: [morning],
+                                                               takes: ContainerWrites(routine: ["delete"]))).edits)
+        #expect(deleteOnly.rename == nil && deleteOnly.look == nil)
+        #expect(deleteOnly.delete != nil)
+        #expect(deleteOnly.hasMenu)
+        #expect(ContainerEditModel.deleteWord == "Delete\u{2026}")
+    }
+
+    /// The + menu's rows: each kind the switches show and the server
+    /// creates, in the list's order, with the web's create words. A goal only
+    /// once goals are read; none before the first fetch, or from a server
+    /// older than the create route.
+    @Test func thePlusMenuOffersWhatTheSwitchesAndTheServerAllow() throws {
+        let every = OrganizeModel.everyContainerWrite
+        let work = Project(id: "p-work", name: "Work")
+        let all = ContainerEditModel.createEdits(snapshot(items: [], goals: [], projects: [work], takes: every))
+        #expect(all.map(\.kind) == [.routine, .season, .goal, .project])
+        #expect(all.map(\.title) == ["New routine", "New season", "New goal", "New project"])
+        let routine = try #require(all.first)
+        #expect(routine.copy.eyebrow == "NEW ROUTINE")
+        #expect(routine.copy.placeholder == "Name your routine\u{2026}")
+        #expect(routine.copy.addLabel == "Create routine")
+        #expect(routine.copy.icon == "icon:Repeat")
+        #expect(routine.siblings.isEmpty)
+        #expect(all.last?.siblings == [work])
+        // Each row wears the glyph its new container starts with: a project's
+        // briefcase, and a season's own calendar, since `CalendarRange` has
+        // no symbol.
+        #expect(all.map(ContainerEditModel.createSymbol) == ["repeat", "calendar", "target", "briefcase"])
+
+        let unread = ContainerEditModel.createEdits(snapshot(items: [], goals: nil, takes: every))
+        #expect(unread.map(\.kind) == [.routine, .season, .project])
+        let organizeOff = ContainerEditModel.createEdits(snapshot(organize: false, items: [], goals: [], takes: every))
+        #expect(organizeOff.map(\.kind) == [.goal])
+        let goalsOff = ContainerEditModel.createEdits(snapshot(goalsOn: false, items: [], goals: [], takes: every))
+        #expect(goalsOff.map(\.kind) == [.routine, .season, .project])
+        let older = ContainerWrites(routine: ["rename", "delete"], season: ["rename"], goal: ["rename"],
+                                   project: ["rename"])
+        #expect(ContainerEditModel.createEdits(snapshot(items: [], goals: [], takes: older)).isEmpty)
+        var loading = snapshot(items: [], goals: [], takes: every)
+        loading.hasLoaded = false
+        #expect(ContainerEditModel.createEdits(loading).isEmpty)
+        #expect(ContainerEditModel.newLabel == "New")
+    }
+
+    /// The name sheet's Create: on once the name cleans to something, and
+    /// for a project, off while it folds onto a live project's name, which
+    /// the field says, naming the project already there. Other kinds' names
+    /// may repeat.
+    @Test func createNeedsACleanNameNoLiveProjectHolds() throws {
+        let work = Project(id: "p-work", name: "Work")
+        let edits = ContainerEditModel.createEdits(snapshot(items: [], goals: [], projects: [work],
+                                                            takes: OrganizeModel.everyContainerWrite))
+        let project = try #require(edits.first { $0.kind == .project })
+        let routine = try #require(edits.first { $0.kind == .routine })
+
+        #expect(!ContainerEditModel.canCreate("", project))
+        #expect(!ContainerEditModel.canCreate(" \n ", project))
+        #expect(!ContainerEditModel.canCreate(" work ", project))
+        #expect(ContainerEditModel.createClashSentence(" work ", project)
+            == "You already have a project called \u{201C}Work\u{201D}.")
+        #expect(ContainerEditModel.canCreate("Home", project))
+        #expect(ContainerEditModel.createClashSentence("Home", project) == nil)
+        #expect(ContainerEditModel.canCreate("Work", routine))
+        #expect(ContainerEditModel.createClashSentence("Work", routine) == nil)
+        #expect(ContainerEditModel.createdName("  Day\njob ") == "Day job")
+        #expect(ContainerEditModel.createdAnnouncement(.season) == "Season created")
+    }
+
+    /// The sample makes and deletes containers at once, sending nothing (it
+    /// has no server): a new routine is last with the routine's glyph and its
+    /// own page, a deleted one's page is gone, a deleted project's items keep
+    /// its name, and a goal's window opens today. A project onto a live
+    /// project's folded name is refused with the route's words.
+    @Test func theSampleCreatesAndDeletesWithoutSending() throws {
+        let planner = makePlanner()
+        #expect(planner.sync == nil)
+        #expect(planner.organizeCreates.map(\.kind) == [.routine, .season, .goal, .project])
+
+        let ref = try #require(planner.createContainer(.routine, name: "  Wind down early "))
+        #expect(ref.id == ref.id.lowercased())
+        #expect(planner.routines.last?.name == "Wind down early")
+        #expect(planner.routines.last?.icon == "icon:Repeat")
+        guard case .page(let page)? = planner.routinePage(ref.id) else {
+            Issue.record("no page")
+            return
+        }
+        #expect(page.edits?.delete?.title == "Delete this routine?")
+        planner.deleteContainer(ref)
+        #expect(planner.isGone(.container(.routine, id: ref.id)))
+
+        let work = try #require(planner.projectRecords.first { $0.name == "Work" })
+        let filed = planner.items.filter { $0.project == "Work" }.map(\.id)
+        #expect(!filed.isEmpty)
+        planner.deleteContainer(ContainerRef(kind: .project, id: work.id))
+        #expect(planner.isGone(.container(.project, id: work.id)))
+        #expect(filed.allSatisfy { planner.item($0)?.project == "Work" })
+        #expect(!planner.projects.contains("Work"))
+
+        let goal = try #require(planner.createContainer(.goal, name: "Learn Spanish"))
+        #expect(planner.goals?.last?.id == goal.id)
+        #expect(planner.goals?.last?.startsOn == "2026-10-01")
+
+        let writing = try #require(planner.projectRecords.first { $0.name == "Writing" })
+        #expect(planner.createContainer(.project, name: "writing") == nil)
+        #expect(planner.projectRecords.filter { $0.name.lowercased() == "writing" } == [writing])
+        #expect(planner.banner?.text == "You already have a project called \u{201C}writing\u{201D}.")
+        #expect(planner.createContainer(.season, name: "   ") == nil)
     }
 
     // MARK: Switched off, and gone

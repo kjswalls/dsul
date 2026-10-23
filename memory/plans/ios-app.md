@@ -25,8 +25,9 @@ summary cards, O5 and O14 the footer's Item types, Paused (with an
 item's Resume) and Trash (with Restore), O8a the first container writes:
 a routine's and a season's Status, and Resume on Paused for both, O8b a
 goal's Status, a routine's usual time, a season's Runs, a goal's window and
-the notes, and O9 Rename… and Icon and color… on every page (see Organize
-below).
+the notes, O9 Rename… and Icon and color… on every page, O10 Delete…
+there, and O11 the list's + menu, which makes a routine, season, goal or
+project from a name (see Organize below).
 Designs, the stack comparison and the board images live in the project's
 shared folder (`ios-app/`): `stack.md` has a SwiftUI build note for every
 interaction, and `expo-vs-swiftui.md` ends with the fact-check.
@@ -172,6 +173,12 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   `resolveGoalStateWrite` ← `lib/goals.ts`; `ContainerWriteBody.swift`
   encodes the new bodies; `OrganizeCopy.swift` the name refusals
   (`nameTakenSentence`); `ContainerLook.swift` `iconToken`.
+  O10 and O11 add `ContainerCreate.swift` ← `lib/app-containers.ts` (the
+  create body, `containerCreateRecord`, `ContainerRoutes.create`), checked
+  against the same fixture's `creates`; `ContainerIntent.swift` gains the
+  `delete` intent (`removesContainer`, `.removed`), and `OrganizeCopy.swift`
+  the delete titles, buttons and `deleteConsequence` and the create sheet's
+  words (`createCopy`) ← `lib/organize-copy.ts`.
   Each cites what it mirrors.
 - `ios/Dsul/App`: `DsulApp` (one `AuthStore`), `AppGate` (sign-in screen,
   sample or the user's planner, keyed on `AuthStore.gateKey`), `AppConfig`.
@@ -209,7 +216,12 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   `ContainerNotesSheet`; `UsualTimeSheet`; `RangeSheet`), `RenameAlert`,
   `LookSheet`, and `ContainerEditModel`, Foundation only, which decides
   what a page may edit and in what words; `ContainerPage` gains the bar's ⋯
-  menu (`PageMenu`), and `NotesText` a VoiceOver hint of the caller's. `ios/Dsul/App` gains
+  menu (`PageMenu`), and `NotesText` a VoiceOver hint of the caller's. O10
+  adds no file: `PageMenu` gains Delete…, the host its confirm, and
+  `ContainerPage` `SettledAnnouncement` (a VoiceOver announcement once a
+  push or pop has settled). O11 adds `CreateSheet` (the name sheet), and
+  `OrganizeView` the bar's + (`CreateMenu`); what each offers and says is
+  `ContainerEditModel`'s (`DeleteEdit`, `CreateEdit`). `ios/Dsul/App` gains
   `AvatarMenu` (moved out of `TodayView`, with the tab's own sections passed
   in) and `PlannerBannerOverlay` (`.plannerBanner()`, Today's banner, also on
   Organize, with `BannerView`).
@@ -877,8 +889,8 @@ The third tab, built as a series of small PRs (O1 to O15). The design, with
 every decision and the PR plan, is the shared folder's
 `ios-app/organize/design.md`; each PR's builders leave notes beside it
 (`organize/o1/`, `organize/o2/` for O2 and O3, built as one PR,
-`organize/o6/` for O6, O7 and O8a, one PR too, and `organize/o8b/` for O8b
-and O9).
+`organize/o6/` for O6, O7 and O8a, one PR too, `organize/o8b/` for O8b
+and O9, and `organize/o10/` for O10 and O11).
 
 - **O1: the list, read-only.** The payload gains `goals` (null when
   unreadable) and `settings.organizeEnabled` / `settings.goalsEnabled`, from
@@ -1175,10 +1187,71 @@ and O9).
   range drafts) are pinned in `OrganizePageTests`; their bodies, the
   rename's re-file and its reverts, the goal state's replay at `sentAt`, the
   local clash and the 409s, and the switches in `PlannerSyncTests`; and the
-  sample's edits in `SamplePlannerTests`.
-- **Waits for later PRs:** the other writes (O10 to O13: Delete… in the ⋯
-  menu, a routine's steps reordered and added, a season's routines added and
-  taken out), the + menu (O11), and Today's
+  sample's edits in `SamplePlannerTests`. O10's and O11's (each delete
+  confirm's words and counts, the + menu's rows, the create clash, the
+  sample's creates and deletes) are in `OrganizePageTests`, the nothing-yet
+  line in `OrganizeTests`, and the bodies and routes, the revert order, the
+  404 rule, the lost create a collect settles and the offline create in
+  `PlannerSyncTests`.
+- **O10: Delete….** Every kind takes `{"action":"delete"}` on the
+  container route: it puts the row in the Trash and touches no item and no
+  join row (a project's members keep their name and id, as after the web's
+  delete). The ⋯ menu ends, under a divider, in a destructive "Delete…"
+  where the page may delete (`"delete"` in `containerWrites`, behind the
+  same gate as the other edits), which opens a `confirmationDialog` with the
+  web's title and button for the kind and the phone's sentence:
+  `deleteConsequence` without the web's ⌘Z clause, every kind's ending
+  naming the kind ("The routine stays in the Trash for 30 days.", so a bare
+  "It" after an item's sentence never reads as the item going). Both shells
+  count one thing in the singular and say only "“Desk” is removed." of an
+  empty routine (the panes said "its 0 items stay" and "the 1 item it holds
+  stay"). It counts as the web's pane does: a
+  routine's live members, and whether removing it brings any back into view
+  (`membersRevealedByRemoving`, with no away, as the pane's ctx); a season's
+  live items and routines, and whether it is live today. A project's count
+  is its page's (the folded name, subtasks left out), where the web's pane
+  counts the exact name with subtasks; the two differ only for a filing in
+  another case or a project holding subtasks. The planner takes the
+  container off at once, the page pops itself (`OrganizePageHost`), and
+  VoiceOver hears "Routine deleted" once the pop has settled. A deleted
+  project's items stay filed by name, so the List puts them under No
+  project and their chip shows the name with a gray dot; on the web a
+  reload still names the deleted project too (a known web limit).
+- **O11: + and the name sheet.** The bar's + (a `Menu` in the label colour,
+  "New" to VoiceOver) lists New routine, New season, New goal and New
+  project, each the switches show and the server creates (`"create"` in
+  `containerWrites`), only after the first fetch, and a goal only once goals
+  are read. With none there is no +. Each opens `CreateSheet`: the web
+  console's create form as a Form, the kind's eyebrow over one field ("Name
+  your routine…"), its hint under it, Cancel and "Create routine". Create is
+  off until the name cleans to something (`cleanTitle`) and, for a project,
+  while a live project's name folds to it, which the field says, naming the
+  project there. Create (or Return) makes it at once
+  (`SamplePlanner.createContainer`: a lowercased UUID of the phone's, the
+  kind's starting glyph, a goal's window opening today), and the list
+  pushes its page once the sheet has gone, VoiceOver hearing "Routine
+  created". `POST /api/app/containers/:kind` takes `{id, name, icon?}`,
+  and a goal's `startsOn?` too: a retry by id answers 200 and writes
+  nothing, a project's name clash is 409 `name_taken`, one the Trash holds
+  `name_in_trash`, each worded by the name sent. The list's nothing-yet
+  line now reads "Make a routine, season, goal or project with +.", naming
+  only the kinds the + offers.
+- **Delete and create in PlannerSync (O10, O11).** A delete is a `.container`
+  write with `Before.container(snapshot, index)`; a create is its own write,
+  `.createContainer(ContainerCreateBody)`, whose Before is
+  `.containerAbsent(created:)`. A failed delete puts the container back in
+  its old place: re-inserts run newest failure first, after the field
+  restores and before memberships, so a failed collect then a failed delete
+  bring the routine back without the item, and the re-insert carries the
+  membership the latest recorded Before holds (a collect that landed meanwhile
+  included). A delete answered 404 `not_found` has landed; any other 404
+  fails and reverts. A failed create is taken back unless a later landed
+  write names or proves the container: collect's `proves` gains
+  `.container(ref)`, since a 200 there proves it exists, so a create whose
+  answer was lost and a collect that landed keep it, while a create and a
+  collect both offline are both undone.
+- **Waits for later PRs:** the other writes (O12 and O13: a routine's steps
+  reordered and added, a season's routines added and taken out), and Today's
   project colours (O15, Kirby's call). A project's time block stays the
   web's (the project union has no time action). Today keeps `ProjectPalette` until
   then, so a project's dot on Today and its tile on Organize can differ.
@@ -1622,6 +1695,17 @@ functions:
   a retry whose first answer was lost still re-files), and a name another
   live project folds to is 409 `name_taken`, one a trashed project holds
   exactly `name_in_trash`.
+  From O10 it takes `delete`: the row goes to the Trash and nothing else is
+  written; one already there answers 200 and keeps its 30 days, and one
+  that isn't there at all is 404 `not_found`, which the phone counts as
+  landed. From O11, `POST /api/app/containers/:kind` creates one from the
+  phone's own id (`{id, name, icon?}`, and a goal's `startsOn?`, strict):
+  an id it already has, live or in the Trash, answers 200 and writes
+  nothing, so a retry is harmless, and a project's name clash is the
+  rename's two 409s. When the unique key refuses a name, both read the
+  folded clash again, so a live project that took the name in between is
+  `name_taken`, never the Trash's sentence. Neither
+  reads `user_extensions`, writes a webhook or an `item_events` row.
 - **Membership is one row at a time** (`collect`): the route adds or removes
   the one row (lib/db.ts `addContainerMember`, `removeContainerMember`) and
   never takes a list, and the web's own whole-list writes carry the list they
@@ -1676,12 +1760,11 @@ animations.
 
 ## Not yet
 Week, density (`DensityMetrics`), swipe actions on rows, the zoom transition
-from the bar to the braindump sheet, the rest of Organize (every container
-write but a container's Status, its own fields, its notes, its name and its
-look: deleting a container, a routine's steps and a season's routines from
-their pages, and creating a project, routine, season or goal from the phone
-included, O10 to O15 in the Organize design; a project's time block stays
-the web's), undo right after a delete (Organize's Trash restores it, O14),
+from the bar to the braindump sheet, the rest of Organize (a routine's steps
+reordered and added from its page, a season's routines added and taken out,
+and Today's project colours: O12, O13 and O15 in the Organize design; a
+project's time block stays the web's), undo right after a delete, an item's
+or a container's (Organize's Trash restores either, O14),
 Change type, Duplicate and Copy link, the rest of the sheet
 (a routine's or a season's hold, the goal chip, which goals in the payload
 since O1 make possible, and any word that a repeat took a goal role away (the

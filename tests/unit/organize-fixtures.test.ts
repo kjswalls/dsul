@@ -56,12 +56,19 @@ import { blockWhen, hasTimeBlock, timeBlockSummary } from '@/lib/project-block';
 import { seasonStateForSwitch } from '@/lib/scope-rail';
 import { toDateStr } from '@/lib/recurrence';
 import {
+  CONTAINER_CREATE_SCHEMAS,
   CONTAINER_WRITE_SCHEMAS,
+  ORGANIZE_KINDS,
+  containerCreateRecord,
   containerIntentPatch,
+  type ContainerCreateTarget,
   type ContainerIntentTarget,
   type OrganizeKind,
 } from '@/lib/app-containers';
 import {
+  CONTAINER_CREATE_COPY,
+  DELETE_CONFIRM_LABELS,
+  DELETE_STAYS_IN_TRASH,
   GOALS_OFF,
   GOAL_STATE_LABELS,
   HELD_BY_NONE,
@@ -86,6 +93,8 @@ import {
   checkinMeta,
   containerRefusal,
   daysUntilPurge,
+  deleteConsequence,
+  deleteTitle,
   goalEndedNote,
   heldByState,
   milestoneTickLabel,
@@ -106,6 +115,7 @@ import {
   weekCardSentence,
   whenGone,
   windDownSentence,
+  type DeleteConsequenceInput,
 } from '@/lib/organize-copy';
 import { cadenceLabel } from '@/lib/cadence';
 import { getCustomTypeDefs, getItemTypeConfig, hydrateCustomTypes } from '@/lib/item-registry';
@@ -1823,6 +1833,58 @@ function buildCopy() {
     { name: 'a name with quotes in it', noun: 'project', heldName: 'Mum’s “stuff”' },
   ].map((c) => ({ ...c, expected: nameTakenSentence(c.noun, c.heldName) }));
 
+  // O10: the delete confirm, in the iPhone's words ('phone'): no undo, and
+  // every kind ends on the Trash. The web's own words, which the panes say,
+  // are pinned in tests/unit/organize-delete-copy.test.ts.
+  const deleteConsequenceAsks: { name: string; input: DeleteConsequenceInput }[] = [
+    { name: 'a routine with items', input: { kind: 'routine', name: 'Morning', liveCount: 3, reappear: false } },
+    { name: 'a routine with one item', input: { kind: 'routine', name: 'Morning', liveCount: 1, reappear: false } },
+    { name: 'a routine with nothing in it', input: { kind: 'routine', name: 'Desk', liveCount: 0, reappear: false } },
+    {
+      name: 'a routine whose items come back into view',
+      input: { kind: 'routine', name: 'Morning', liveCount: 2, reappear: true },
+    },
+    {
+      name: 'a routine whose one item comes back into view',
+      input: { kind: 'routine', name: 'Morning', liveCount: 1, reappear: true },
+    },
+    {
+      name: 'a live season with items and a routine',
+      input: { kind: 'season', name: 'Autumn', itemCount: 2, routineCount: 1, live: true },
+    },
+    { name: 'a live season with one item', input: { kind: 'season', name: 'Autumn', itemCount: 1, routineCount: 0, live: true } },
+    {
+      name: 'an off season: what it was hiding comes back',
+      input: { kind: 'season', name: 'Winter', itemCount: 2, routineCount: 2, live: false },
+    },
+    {
+      name: 'an off season holding only a routine',
+      input: { kind: 'season', name: 'Winter', itemCount: 0, routineCount: 1, live: false },
+    },
+    { name: 'an off season with nothing in it', input: { kind: 'season', name: 'Winter', itemCount: 0, routineCount: 0, live: false } },
+    { name: 'a live season with nothing in it', input: { kind: 'season', name: 'Autumn', itemCount: 0, routineCount: 0, live: true } },
+    { name: 'a goal', input: { kind: 'goal' } },
+    { name: 'a project with items', input: { kind: 'project', name: 'Home', itemCount: 4 } },
+    { name: 'a project with one item', input: { kind: 'project', name: 'Home', itemCount: 1 } },
+    { name: 'a project with nothing filed under it', input: { kind: 'project', name: 'Garden', itemCount: 0 } },
+    {
+      name: 'a project whose habit the web would move: the phone’s delete moves nothing, and says nothing of it',
+      input: { kind: 'project', name: 'Home', itemCount: 2, requiredCount: 1, destination: 'Work' },
+    },
+  ];
+  const deleteConsequenceCases = deleteConsequenceAsks.map((c) => ({ ...c, expected: deleteConsequence(c.input, 'phone') }));
+
+  // The confirm's title per kind (the button is tables.deleteConfirmLabels).
+  const deleteTitleCases = (
+    [
+      { name: 'a routine', kind: 'routine', containerName: 'Morning' },
+      { name: 'a season', kind: 'season', containerName: 'Autumn' },
+      { name: 'a goal: its own name, unquoted', kind: 'goal', containerName: 'Run a half marathon' },
+      { name: 'a project: its name in quotes', kind: 'project', containerName: 'Home' },
+      { name: 'a project whose name has quotes in it', kind: 'project', containerName: 'Mum’s “stuff”' },
+    ] as const
+  ).map((c) => ({ ...c, expected: deleteTitle(c.kind, c.containerName) }));
+
   return {
     tables: {
       stateLabels: { routine: ROUTINE_STATE_LABELS, season: SEASON_STATE_LABELS, goal: GOAL_STATE_LABELS },
@@ -1841,6 +1903,11 @@ function buildCopy() {
       restoreFailed: RESTORE_FAILED,
       restoreGone: RESTORE_GONE,
       pauseRefused: PAUSE_REFUSED,
+      // O10 and O11: the delete confirm's last sentence and buttons, and the
+      // create sheet's words and default glyph per kind.
+      deleteStaysInTrash: DELETE_STAYS_IN_TRASH,
+      deleteConfirmLabels: DELETE_CONFIRM_LABELS,
+      createCopy: CONTAINER_CREATE_COPY,
     },
     heldWorld: { items: HELD_ITEMS },
     switchedOff: switchedOffCases,
@@ -1863,6 +1930,8 @@ function buildCopy() {
     nameInTrashSentence: nameInTrashCases,
     nameTakenSentence: nameTakenCases,
     containerRefusal: containerRefusalCases,
+    deleteTitle: deleteTitleCases,
+    deleteConsequence: deleteConsequenceCases,
   };
 }
 
@@ -2509,16 +2578,122 @@ function buildContainerWrites() {
     { name: 'a colour that is not a ramp token', kind: 'routine', body: { action: 'color', color: '#ff8800' } },
     { name: 'a ramp step past the eighth', kind: 'season', body: { action: 'color', color: 'var(--accent-9)' } },
     { name: 'a colour with no colour key', kind: 'goal', body: { action: 'color' } },
-    // O10's, not yet taken.
-    { name: 'a delete, for now', kind: 'project', body: { action: 'delete' } },
+    // O10: the delete takes nothing but its action.
+    { name: 'a delete with a key it does not take', kind: 'routine', body: { action: 'delete', permanent: true } },
+    { name: 'a delete naming its own id', kind: 'project', body: { action: 'delete', id: CW_NEW(1) } },
   ];
   const invalid = invalidAsks.map((c) => {
     if (CONTAINER_WRITE_SCHEMAS[c.kind].safeParse(c.body).success) throw new Error(`${c.name}: the route would take this body`);
     return { ...c, expected: { status: 400, error: 'invalid' } };
   });
 
-  return { cases, invalid };
+  // O10: the delete, which every kind takes. It writes no field: the route
+  // stamps the row's deleted_at (200, or 200 with no write when it is already
+  // in the bin, 404 with no row at all), and the phone drops the container.
+  const deletes = ORGANIZE_KINDS.map((kind) => {
+    const body = { action: 'delete' };
+    if (!CONTAINER_WRITE_SCHEMAS[kind].safeParse(body).success) throw new Error(`delete a ${kind}: the route would refuse it`);
+    return { name: `delete a ${kind}`, kind, body, expected: { status: 200 } };
+  });
+
+  // O11: POST /api/app/containers/:kind. `body` is what the phone's create
+  // sheet sends: its own lowercase id, the name, the web's default glyph for
+  // the kind (copy.json tables.createCopy), and a goal's first day.
+  // `expected.after` is the container the route stores, as the planner
+  // payload reads it back: the phone's optimistic step makes the same one.
+  const createAsks: { name: string; kind: OrganizeKind; body: Record<string, unknown> }[] = [
+    {
+      name: 'a routine, with the web’s glyph',
+      kind: 'routine',
+      body: { id: CW_NEW(1), name: 'Evening wind-down', icon: CONTAINER_CREATE_COPY.routine.icon },
+    },
+    { name: 'a routine with no glyph', kind: 'routine', body: { id: CW_NEW(2), name: 'Desk' } },
+    {
+      name: 'a name sent with spaces round it is stored trimmed',
+      kind: 'routine',
+      body: { id: CW_NEW(3), name: '  Lunch walk \n', icon: CONTAINER_CREATE_COPY.routine.icon },
+    },
+    {
+      name: 'a season: on its dates, and with none it is always on',
+      kind: 'season',
+      body: { id: CW_NEW(4), name: 'Autumn', icon: CONTAINER_CREATE_COPY.season.icon },
+    },
+    { name: 'a season with no glyph', kind: 'season', body: { id: CW_NEW(5), name: 'Training block' } },
+    {
+      name: 'a goal whose window opens today',
+      kind: 'goal',
+      body: { id: CW_NEW(6), name: 'Run a half marathon', icon: CONTAINER_CREATE_COPY.goal.icon, startsOn: TODAY },
+    },
+    { name: 'a goal sent with no first day', kind: 'goal', body: { id: CW_NEW(7), name: 'Read more' } },
+    {
+      name: 'a project, with the web’s glyph in its emoji column',
+      kind: 'project',
+      body: { id: CW_NEW(8), name: 'Allotment', icon: CONTAINER_CREATE_COPY.project.icon },
+    },
+    { name: 'a project with no glyph: its emoji is empty', kind: 'project', body: { id: CW_NEW(9), name: 'Errands' } },
+    {
+      name: 'a name with an accent and an emoji',
+      kind: 'project',
+      body: { id: CW_NEW(10), name: 'Café ☕', icon: 'icon:Coffee' },
+    },
+    // The id is taken as its lowercase self (the route's Id transform), so
+    // `expected.id` and `after.id` are lowercase whatever case was sent.
+    {
+      name: 'an id sent in capitals is stored lowercase',
+      kind: 'season',
+      body: { id: CW_NEW(11).toUpperCase(), name: 'Garage clear-out' },
+    },
+    // The name is trimmed as JavaScript trims: a no-break space and a byte
+    // order mark go, a next-line character (U+0085) stays.
+    {
+      name: 'a no-break space and a byte order mark round the name are trimmed',
+      kind: 'routine',
+      body: { id: CW_NEW(12), name: '\u00a0Desk\ufeff' },
+    },
+    {
+      name: 'a next-line character before the name is kept: JavaScript does not trim it',
+      kind: 'project',
+      body: { id: CW_NEW(13), name: '\u0085Desk' },
+    },
+  ];
+  const creates = createAsks.map((c) => {
+    const parsed = CONTAINER_CREATE_SCHEMAS[c.kind].safeParse(c.body);
+    if (!parsed.success) throw new Error(`${c.name}: the route would refuse this body`);
+    // The schema of `c.kind` parsed it, so the body is that kind's.
+    const made = containerCreateRecord({ kind: c.kind, body: parsed.data } as ContainerCreateTarget);
+    const after = JSON.parse(JSON.stringify(made.container)) as Record<string, unknown>;
+    return { name: c.name, kind: c.kind, body: c.body, expected: { status: 200, id: parsed.data.id, after } };
+  });
+
+  // Create bodies the route refuses with 400 before reading anything.
+  const createInvalidAsks: { name: string; kind: OrganizeKind; body: unknown }[] = [
+    { name: 'no id', kind: 'routine', body: { name: 'Desk' } },
+    { name: 'an id that is not a uuid (a sample id)', kind: 'routine', body: { id: 'sample-morning-routine', name: 'Desk' } },
+    { name: 'no name', kind: 'season', body: { id: CW_NEW(20) } },
+    { name: 'a name of spaces', kind: 'project', body: { id: CW_NEW(20), name: '   ' } },
+    { name: 'a null name', kind: 'goal', body: { id: CW_NEW(20), name: null } },
+    { name: 'a null icon', kind: 'routine', body: { id: CW_NEW(20), name: 'Desk', icon: null } },
+    { name: 'an icon with no icon: prefix', kind: 'season', body: { id: CW_NEW(20), name: 'Autumn', icon: 'CalendarRange' } },
+    { name: 'a project’s glyph sent as emoji', kind: 'project', body: { id: CW_NEW(20), name: 'Home', emoji: 'icon:House' } },
+    { name: 'a first day on a routine', kind: 'routine', body: { id: CW_NEW(20), name: 'Desk', startsOn: TODAY } },
+    { name: 'a first day on a project', kind: 'project', body: { id: CW_NEW(20), name: 'Home', startsOn: TODAY } },
+    { name: 'a goal’s first day that is not on the calendar', kind: 'goal', body: { id: CW_NEW(20), name: 'Run', startsOn: '2026-02-30' } },
+    { name: 'a null first day', kind: 'goal', body: { id: CW_NEW(20), name: 'Run', startsOn: null } },
+    { name: 'members: a new one is made empty', kind: 'season', body: { id: CW_NEW(20), name: 'Autumn', itemIds: [] } },
+    { name: 'a state: a new season follows its dates', kind: 'season', body: { id: CW_NEW(20), name: 'Autumn', state: 'active' } },
+    { name: 'a colour: the name hash colours a new one', kind: 'goal', body: { id: CW_NEW(20), name: 'Run', color: 'var(--accent-2)' } },
+    { name: 'an action: a create is not a field intent', kind: 'routine', body: { action: 'create', id: CW_NEW(20), name: 'Desk' } },
+  ];
+  const createInvalid = createInvalidAsks.map((c) => {
+    if (CONTAINER_CREATE_SCHEMAS[c.kind].safeParse(c.body).success) throw new Error(`${c.name}: the route would take this body`);
+    return { ...c, expected: { status: 400, error: 'invalid' } };
+  });
+
+  return { cases, invalid, deletes, creates, createInvalid };
 }
+
+/** A new container's id, as the phone mints one: a lowercase uuid. */
+const CW_NEW = (n: number) => `cccccccc-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
 
 /** A routine, a season, a goal and a project as the field cases find them. */
 const CW_ROUTINE = (over: Partial<Routine> = {}) =>

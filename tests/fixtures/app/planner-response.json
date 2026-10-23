@@ -57,7 +57,9 @@
       "notes",
       "rename",
       "icon",
-      "color"
+      "color",
+      "delete",
+      "create"
     ],
     "season": [
       "state",
@@ -65,7 +67,9 @@
       "notes",
       "rename",
       "icon",
-      "color"
+      "color",
+      "delete",
+      "create"
     ],
     "goal": [
       "state",
@@ -73,13 +77,17 @@
       "why",
       "rename",
       "icon",
-      "color"
+      "color",
+      "delete",
+      "create"
     ],
     "project": [
       "notes",
       "rename",
       "icon",
-      "color"
+      "color",
+      "delete",
+      "create"
     ]
   },
   "items": [

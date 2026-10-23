@@ -70,18 +70,23 @@ private struct RawItems: Decodable, Sendable {
         // The container write route's intents (lib/app-containers.ts
         // CONTAINER_WRITES): O8a's routine pause and season state; O8b's usual
         // time, Runs, a goal's Status and window, notes and a why; O9's
-        // rename, icon and colour on every kind.
+        // rename, icon and colour on every kind; O10's delete and O11's
+        // create (the + menu, its own route) on every kind, last.
         #expect(p.containerWrites == ContainerWrites(
-            routine: ["pause", "usualTime", "notes", "rename", "icon", "color"],
-            season: ["state", "dates", "notes", "rename", "icon", "color"],
-            goal: ["state", "window", "why", "rename", "icon", "color"],
-            project: ["notes", "rename", "icon", "color"]
+            routine: ["pause", "usualTime", "notes", "rename", "icon", "color", "delete", "create"],
+            season: ["state", "dates", "notes", "rename", "icon", "color", "delete", "create"],
+            goal: ["state", "window", "why", "rename", "icon", "color", "delete", "create"],
+            project: ["notes", "rename", "icon", "color", "delete", "create"]
         ))
         let writes = try #require(p.containerWrites)
         #expect(writes.takes(.resume(timeZone: nil), on: .routine))
         #expect(writes.takes(.state(.active), on: .season))
         #expect(writes.takes(.goalState(.achieved), on: .goal))
         #expect(writes.takes(.rename("House"), on: .project))
+        for kind in OrganizeKind.allCases {
+            #expect(writes.takes(ContainerIntent.delete, on: kind), "delete on \(kind)")
+            #expect(writes.takes(.create, on: kind), "create on \(kind)")
+        }
         // Every action the server lists is one the phone knows, on the kinds
         // it names, in the server's order; and the phone has none it doesn't
         // list.

@@ -421,12 +421,14 @@ export interface AppPlannerPayload {
    */
   trashWrites: TrashWrite[];
   /**
-   * The field intents POST /api/app/containers/:kind/:id takes, per kind
-   * (lib/app-containers.ts CONTAINER_WRITES, read off each kind's union):
-   * `{ routine, season, goal, project }`, each a list of actions, empty for a
-   * kind with none yet. The phone hides every container control whose action
-   * is not listed. Absent, from an older server, means none: every container
-   * editor is hidden, and Paused offers no Resume for a routine or a season.
+   * The field intents and the delete POST /api/app/containers/:kind/:id
+   * takes, per kind, then `create` when POST /api/app/containers/:kind takes
+   * that kind (lib/app-containers.ts CONTAINER_WRITES, read off each kind's
+   * union and the create schemas): `{ routine, season, goal, project }`, each
+   * a list of actions, empty for a kind with none yet. The phone hides every
+   * container control whose action is not listed. Absent, from an older
+   * server, means none: every container editor is hidden, the + menu offers
+   * nothing, and Paused offers no Resume for a routine or a season.
    */
   containerWrites: ContainerWrites;
   items: Item[];

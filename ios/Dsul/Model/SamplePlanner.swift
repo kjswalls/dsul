@@ -706,7 +706,7 @@ final class SamplePlanner {
         }
     }
 
-    // MARK: Containers (O8a, O8b, O9)
+    // MARK: Containers (O8a, O8b, O9, O10, O11)
 
     /// The container writes the server takes, resolved: every one for the
     /// sample, which sends nothing (`OrganizeModel.everyContainerWrite`); the
@@ -815,6 +815,13 @@ final class SamplePlanner {
     /// the new name (DsulCore `refiledItems`, `refiling`), at once, so Today's
     /// chips say it with no fetch. The write records them (`refiled`), each
     /// with its Before, so a failed rename puts every member's name back.
+    ///
+    /// A delete (O10) takes the container out of its kind's list at once,
+    /// as the route takes it to the Trash, and nothing else: its items keep
+    /// their fields (a project's members their name and id, so their chips
+    /// say it with a gray dot), and the join rows stay on the server, which
+    /// is what a restore brings back. Its Before is the container whole and
+    /// its place, so a failed one comes back where it stood.
     func applyContainer(_ ref: ContainerRef, _ intent: ContainerIntent) {
         guard intent.applies(to: ref.kind), takes(intent.action, on: ref.kind),
               let index = containerIndex(ref), let before = container(ref)
@@ -825,6 +832,10 @@ final class SamplePlanner {
         switch containerIntentPatch(intent, on: before, now: instant, timeZone: zone, today: today.description) {
         case .refused(let code, _):
             if let words = OrganizeCopy.refusal(code: code, for: intent) { show(words, isError: true) }
+        case .removed:
+            removeContainer(ref)
+            sync?.enqueue(.container(ref, intent, refiled: []),
+                          before: [.container(ref): .container(before, index: index)])
         case .patch(let patch):
             guard !patch.isEmpty else { return }
             var befores: [PlannerSync.Subject: PlannerSync.Before] = [.container(ref): .container(before, index: index)]
@@ -908,6 +919,48 @@ final class SamplePlanner {
               let intent = ContainerEditModel.renameIntent(raw, stored: current.name)
         else { return }
         editContainer(ref, intent)
+    }
+
+    /// ⋯ → Delete… (O10), once its confirm is taken: the container to the
+    /// Trash, behind the page's gate (`canWrite(kind:action:)`). Its page
+    /// pops itself once it is gone (`isGone`).
+    func deleteContainer(_ ref: ContainerRef) {
+        editContainer(ref, .delete)
+    }
+
+    /// + → New routine, New season, New goal or New project (O11): a new
+    /// container named `raw`, cleaned as a title is (`cleanTitle`, as the
+    /// sheet's Create button reads it), made at once and sent to the kind's
+    /// route with the phone's own id (`UUID().uuidString.lowercased()`, so
+    /// the next fetch sees the same row). It is the web console's "+ New"
+    /// with nothing picked (DsulCore `containerCreateRecord`): the kind's
+    /// starting glyph, a goal's window opening today, no colour, no members.
+    /// It goes last in its kind's list, where a new row sorts until the next
+    /// fetch places it. Behind the + menu's gate (`canWrite(kind:action:)`);
+    /// a goal waits for goals to be read. A project's name another live
+    /// project folds to is refused here with the route's words
+    /// (`name_taken`), as the sheet's Create already refuses it, and the
+    /// server's 409 is the backstop for one made elsewhere meanwhile. Its
+    /// Before is `.containerAbsent`, so a create that fails takes its page
+    /// with it unless a later write proves it landed. Answers the new
+    /// container's ref, or nil when nothing was made.
+    @discardableResult
+    func createContainer(_ kind: OrganizeKind, name raw: String) -> ContainerRef? {
+        guard canWrite(kind: kind, action: .create),
+              let name = ContainerEditModel.createdName(raw)
+        else { return nil }
+        if kind == .goal && goals == nil { return nil }
+        refreshToday()
+        guard let body = ContainerCreateBody(kind, id: UUID().uuidString.lowercased(), name: name, today: today)
+        else { return nil }
+        if kind == .project, projectNameClash(name, among: projectRecords) != nil {
+            if let words = OrganizeCopy.refusal(code: "name_taken", for: body) { show(words, isError: true) }
+            return nil
+        }
+        let record = containerCreateRecord(body)
+        insertContainer(record, at: nil)
+        sync?.enqueue(.createContainer(body), before: [.container(body.ref): .containerAbsent(created: record)])
+        return body.ref
     }
 
     /// Puts one container back as PlannerSync's rebase found the server

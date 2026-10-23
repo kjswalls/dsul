@@ -76,7 +76,8 @@ enum APIError: Error, Equatable, Sendable {
 /// for the Trash page (views hold no client). And from O8a a container's own
 /// fields (lib/app-containers.ts): a routine's pause and usual time, a
 /// season's state and Runs, a goal's status and window, notes or a why, and
-/// (O9) a rename, icon or colour.
+/// (O9) a rename, icon or colour; from O10 a container's delete, and from O11
+/// a new one.
 ///
 /// Writes are intents, never arrays: a tick or a skip sends the date and the
 /// end state, never `completedDates` or `skippedDates`, because the phone reads
@@ -208,13 +209,26 @@ final class APIClient {
     /// lib/app-containers.ts): one field of one container, as DsulCore's
     /// `ContainerWriteBody` sends it (a routine's Pause, Pause until, Resume
     /// and usual time, a season's state and Runs, a goal's status and window,
-    /// notes or a why, a rename, an icon, a colour). The kind and the id are
-    /// the path (`ContainerRoutes.write`, the id lowercased), never the body.
+    /// notes or a why, a rename, an icon, a colour, and from O10 the delete).
+    /// The kind and the id are the path (`ContainerRoutes.write`, the id
+    /// lowercased), never the body.
     /// A refusal throws `rejected` with the route's code (`pause_refused`,
     /// and a project rename's `name_taken` and `name_in_trash`), which
     /// PlannerSync words.
     func writeContainer(_ ref: ContainerRef, body: ContainerWriteBody) async throws {
         _ = try await send("POST", ContainerRoutes.write(ref), body: try Self.encode(body))
+    }
+
+    /// POST /api/app/containers/:kind (O11, lib/app-containers.ts
+    /// `postContainerCreate`): a new routine, season, goal or project, as
+    /// DsulCore's `ContainerCreateBody` sends it (the phone's own id, the name
+    /// as typed, the kind's starting glyph, a goal's first day). The kind is
+    /// the path (`ContainerRoutes.create`), never the body. The answer,
+    /// `{"ok":true,"id":…}`, names the id the phone sent, so nothing is read
+    /// from it. A refusal throws `rejected` with the route's code (a
+    /// project's `name_taken` and `name_in_trash`), which PlannerSync words.
+    func createContainer(_ body: ContainerCreateBody) async throws {
+        _ = try await send("POST", ContainerRoutes.create(body.kind), body: try Self.encode(body))
     }
 
     /// POST /api/app/devices: this iPhone in the device registry, once a

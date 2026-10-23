@@ -729,14 +729,15 @@ describe('the payload fixture shared with DsulCore', () => {
     expect(generated.trashWrites).toEqual(['list', 'restore']);
     // The field intents the container route takes, per kind (O8a: a routine's
     // pause and a season's state; O8b the other fields; O9 rename, icon and
-    // colour). A kind with none would list none; an older server sends no key,
-    // and the phone then hides every container editor. Each editor shows only
-    // while its own action is listed.
+    // colour), then its delete (O10) and, last, `create` for a kind the create
+    // route takes (O11, the + menu's rows). A kind with none would list none;
+    // an older server sends no key, and the phone then hides every container
+    // editor. Each editor shows only while its own action is listed.
     expect(generated.containerWrites).toEqual({
-      routine: ['pause', 'usualTime', 'notes', 'rename', 'icon', 'color'],
-      season: ['state', 'dates', 'notes', 'rename', 'icon', 'color'],
-      goal: ['state', 'window', 'why', 'rename', 'icon', 'color'],
-      project: ['notes', 'rename', 'icon', 'color'],
+      routine: ['pause', 'usualTime', 'notes', 'rename', 'icon', 'color', 'delete', 'create'],
+      season: ['state', 'dates', 'notes', 'rename', 'icon', 'color', 'delete', 'create'],
+      goal: ['state', 'window', 'why', 'rename', 'icon', 'color', 'delete', 'create'],
+      project: ['notes', 'rename', 'icon', 'color', 'delete', 'create'],
     });
     // The custom type's names, and nothing else of its row.
     expect(generated.itemTypes).toEqual([{ name: 'book', label: 'Book to read', labelPlural: 'Books to read' }]);

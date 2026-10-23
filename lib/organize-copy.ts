@@ -1,5 +1,5 @@
 import { formatDay, seasonResumeDate, isSeasonActiveOn, type RoutineStanding } from './active';
-import { CONTAINER_KINDS } from './container-registry';
+import { CONTAINER_KINDS, type ContainerKind } from './container-registry';
 import type { TrashKind } from './db';
 import type { Goal, Routine, Season } from './planner-types';
 
@@ -405,6 +405,194 @@ export function nameInTrashSentence(noun: string, name: string): string {
  */
 export function nameTakenSentence(noun: string, name: string): string {
   return `You already have a ${noun} called “${name}”.`;
+}
+
+/* ── making one ───────────────────────────────────────────────────────── */
+
+/**
+ * The create form's words, and the glyph a new one starts with: the console's
+ * "+ New" (container-create-form.tsx for a goal, routine or season; labels.tsx
+ * for a project) and the iPhone's create sheet, which opens from its + menu
+ * with nothing but a name.
+ */
+export interface CreateCopy {
+  /** "NEW ROUTINE": names what is being made. */
+  eyebrow: string;
+  /** "Name your routine…" */
+  placeholder: string;
+  /** The form's button: "Create routine". */
+  addLabel: string;
+  /**
+   * The glyph token a new one starts with (lib/category-icons.ts
+   * makeIconToken's `icon:<Name>`, spelled out so a route can read these words
+   * without the icon library). `icon:CalendarRange` is not in the library, so a
+   * new season's glyph derives from its name, on the web and the phone alike.
+   */
+  icon: string;
+  /** What the kind is for, said once under the field. */
+  hint: string;
+}
+
+/** The three nouns come from the registry (CONTAINER_KINDS), so moving one is an edit there. */
+function createCopy(kind: ContainerKind, icon: string, hint: string): CreateCopy {
+  const noun = CONTAINER_KINDS[kind].label.toLowerCase();
+  return { eyebrow: `NEW ${noun.toUpperCase()}`, placeholder: `Name your ${noun}…`, addLabel: `Create ${noun}`, icon, hint };
+}
+
+/** Each kind's create words, as the console's form shows them. */
+export const CONTAINER_CREATE_COPY: Readonly<Record<ContainerKind, CreateCopy>> = {
+  goal: createCopy(
+    'goal',
+    'icon:Target',
+    'A goal is the reason a stretch of work exists. It holds the habits and tasks that serve it, the checkpoints along the way, and a recurring check-in. It never hides anything.',
+  ),
+  routine: createCopy(
+    'routine',
+    'icon:Repeat',
+    'A routine is a set of things you do regularly, in order, like a morning or a workout week. Pause it and they all step off your day together.',
+  ),
+  season: createCopy(
+    'season',
+    'icon:CalendarRange',
+    'A season is a stretch of life (a summer, a term, a training block) that switches whole routines on and off. Without dates it starts always-on, hiding nothing.',
+  ),
+  project: createCopy(
+    'project',
+    'icon:Briefcase',
+    `${CONTAINER_KINDS.project.labelPlural} file your tasks, and can carry a repeating block on the grid.`,
+  ),
+};
+
+/* ── deleting one ─────────────────────────────────────────────────────── */
+
+/**
+ * Which shell a sentence is for. The web has ⌘Z; the iPhone has no undo, so
+ * its delete words never offer one, and every one of them ends on the bin
+ * ({@link DELETE_STAYS_IN_TRASH}, by kind).
+ */
+export type CopyShell = 'web' | 'phone';
+
+/**
+ * How every iPhone delete confirm ends: the Trash, never an undo. It names
+ * the kind, because the sentence before it can end on an item ("It just stops
+ * being grouped."), and a bare "It" would read as the item going.
+ */
+export const DELETE_STAYS_IN_TRASH: Readonly<Record<ContainerKind, string>> = {
+  routine: `The ${CONTAINER_KINDS.routine.label.toLowerCase()} stays in the Trash for ${TRASH_WINDOW_DAYS} days.`,
+  season: `The ${CONTAINER_KINDS.season.label.toLowerCase()} stays in the Trash for ${TRASH_WINDOW_DAYS} days.`,
+  goal: `The ${CONTAINER_KINDS.goal.label.toLowerCase()} stays in the Trash for ${TRASH_WINDOW_DAYS} days.`,
+  project: `The ${CONTAINER_KINDS.project.label.toLowerCase()} stays in the Trash for ${TRASH_WINDOW_DAYS} days.`,
+};
+
+/**
+ * A delete confirm's title: "Delete this routine?", "Delete this season?",
+ * "Delete Run a half marathon?" (the goal's own name, which is the sentence
+ * that has to be there) and `Delete “Home”?`.
+ */
+export function deleteTitle(kind: ContainerKind, name: string): string {
+  switch (kind) {
+    case 'routine':
+    case 'season':
+      return `Delete this ${CONTAINER_KINDS[kind].label.toLowerCase()}?`;
+    case 'goal':
+      return `Delete ${name}?`;
+    case 'project':
+      return `Delete “${name}”?`;
+  }
+}
+
+/** A delete confirm's button: "Delete", and the goal's "Delete goal". */
+export const DELETE_CONFIRM_LABELS: Readonly<Record<ContainerKind, string>> = {
+  routine: 'Delete',
+  season: 'Delete',
+  goal: `Delete ${CONTAINER_KINDS.goal.label.toLowerCase()}`,
+  project: 'Delete',
+};
+
+/**
+ * What a delete confirm says will happen, counted the way the pane counts it.
+ *
+ *   routine  `liveCount` is its live members (countLive); `reappear` is
+ *            whether removing it puts any of them back on the day
+ *            (membersRevealedByRemoving, lib/active.ts): the routine's path
+ *            goes, so items a season was holding off through it come back.
+ *   season   `itemCount` and `routineCount` are its live direct members and
+ *            live routines; `live` is isSeasonActiveOn for today. Deleting an
+ *            off season removes its paths, so what it was hiding comes back.
+ *   goal     nothing to count: its members are ordinary items and stay.
+ *   project  `itemCount` is the items filed under it (the web counts its exact
+ *            name; the iPhone its folded members, subtasks left out, the
+ *            number its page lists). `requiredCount` and `destination` are the
+ *            web store's own move (`unfiled` reassigns a type whose container
+ *            is required); the iPhone's delete stamps the project alone and
+ *            moves nothing, so its sentence never says so.
+ */
+export type DeleteConsequenceInput =
+  | { kind: 'routine'; name: string; liveCount: number; reappear: boolean }
+  | { kind: 'season'; name: string; itemCount: number; routineCount: number; live: boolean }
+  | { kind: 'goal' }
+  | { kind: 'project'; name: string; itemCount: number; requiredCount?: number; destination?: string };
+
+/**
+ * The confirm's sentence. The web's says what ⌘Z can do where it can; the
+ * iPhone's drops any undo and ends every kind on {@link DELETE_STAYS_IN_TRASH}
+ * (the goal's opening "moves to the trash for 30 days" moves there too, so it
+ * is said once). Both shells count in the singular for one thing, and an
+ * empty routine says only that it is removed (the panes once said "its 0
+ * items stay" and "the 1 item it holds stay").
+ */
+export function deleteConsequence(input: DeleteConsequenceInput, shell: CopyShell): string {
+  const onPhone = (said: string) => `${said} ${DELETE_STAYS_IN_TRASH[input.kind]}`;
+  switch (input.kind) {
+    case 'routine': {
+      const n = input.liveCount;
+      // An empty routine has nothing to keep, so it says only that it goes.
+      const said =
+        n === 0
+          ? `“${input.name}” is removed.`
+          : `“${input.name}” is removed, but its ${n} ${n === 1 ? 'item stays' : 'items stay'} exactly as ` +
+            `${n === 1 ? 'it is' : 'they are'}. ${n === 1 ? 'It just stops' : 'They just stop'} being grouped` +
+            `${input.reappear ? `, and ${n === 1 ? 'it comes' : 'they come'} back into view` : ''}.`;
+      return shell === 'phone' ? onPhone(said) : said;
+    }
+    case 'season': {
+      const { itemCount, routineCount } = input;
+      const held = [
+        itemCount > 0 ? `${itemCount} ${itemCount === 1 ? 'item' : 'items'}` : null,
+        routineCount > 0 ? `${routineCount} ${routineCount === 1 ? 'routine' : 'routines'}` : null,
+      ]
+        .filter(Boolean)
+        .join(' and ');
+      const one = itemCount + routineCount === 1;
+      const said =
+        `“${input.name}” is removed` +
+        (held ? `, but the ${held} it holds ${one ? 'stays exactly as it is' : 'stay exactly as they are'}` : '') +
+        (!input.live && (itemCount > 0 || routineCount > 0) ? '. Anything it was hiding comes back into view' : '') +
+        '.';
+      return shell === 'phone' ? onPhone(said) : said;
+    }
+    case 'goal': {
+      const kept =
+        'Its habits, tasks and milestones are ordinary items and stay exactly where they are. ' +
+        'Only the goal and its links go.';
+      return shell === 'phone' ? onPhone(kept) : `The goal moves to the trash for ${TRASH_WINDOW_DAYS} days. ${kept}`;
+    }
+    case 'project': {
+      const n = input.itemCount;
+      const filed =
+        n === 0
+          ? 'Nothing is filed under it, so nothing moves.'
+          : `Its ${n} ${n === 1 ? 'item stays' : 'items stay'} exactly as ${n === 1 ? 'it is' : 'they are'}. ` +
+            `${n === 1 ? 'It just stops' : 'They just stop'} being filed under ${input.name}.`;
+      if (shell === 'phone') return onPhone(filed);
+      const required = input.requiredCount ?? 0;
+      const moved =
+        required > 0 && input.destination
+          ? ` The ${required === 1 ? 'habit moves' : `${required} habits move`} to “${input.destination}”.`
+          : '';
+      return `${filed}${moved} ⌘Z brings it back now, and it stays in the Trash for ${TRASH_WINDOW_DAYS} days.`;
+    }
+  }
 }
 
 /** The iPhone's Trash, when the list could not be read: never an empty bin. */

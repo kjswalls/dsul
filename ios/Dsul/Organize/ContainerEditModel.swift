@@ -2,11 +2,12 @@ import DsulCore
 import Foundation
 
 // What a container's page may edit beyond its Status chip, and in what words
-// (design §6.3, O8b and O9): a routine's usual time, a season's Runs, a goal's
-// window, the notes (a goal's why), and the ⋯ menu's Rename… and Icon and
-// colour…. Worked out apart from the views so the hosted tests pin it
-// (OrganizePageTests), as ContainerPageModel does for what a page shows.
-// Foundation only: the shim compiles it on Linux.
+// (design §6.3, O8b to O11): a routine's usual time, a season's Runs, a goal's
+// window, the notes (a goal's why), the ⋯ menu's Rename…, Icon and colour…
+// and Delete… (O10), and the list's + menu with its name sheet (O11). Worked
+// out apart from the views so the hosted tests pin it (OrganizePageTests), as
+// ContainerPageModel does for what a page shows. Foundation only: the shim
+// compiles it on Linux.
 //
 // Every editor is offered only where the server takes its write and the
 // kind's switch is on (`OrganizeModel.canEdit`), and every rule under it is
@@ -19,11 +20,13 @@ import Foundation
 // The words are the web's where it has them: "Usually at" and "Clear time"
 // (container-page.tsx), "Runs", "Starts", "Ends", "Window", "Started" and
 // "Target" (`DateRangeChip`), "Add a note…" and "Why this matters…" and the
-// notes' field names (container-fields.tsx). No em dashes, and nothing here
-// asks for a hue: the views draw a colour only as a swatch or a tile.
+// notes' field names (container-fields.tsx), and the delete confirms and the
+// create sheet's words (lib/organize-copy.ts, through DsulCore
+// `OrganizeCopy`). No em dashes, and nothing here asks for a hue: the views
+// draw a colour only as a swatch or a tile.
 
-/// What a container page edits beyond its chips (O8b, O9): its notes (a
-/// goal's why) and the ⋯ menu's two rows. Each nil while read-only.
+/// What a container page edits beyond its chips (O8b to O10): its notes (a
+/// goal's why) and the ⋯ menu's three rows. Each nil while read-only.
 struct PageEdits: Hashable, Sendable {
     let ref: ContainerRef
     /// The notes sheet; nil while the server doesn't take `notes` (a goal's
@@ -33,9 +36,47 @@ struct PageEdits: Hashable, Sendable {
     let rename: RenameEdit?
     /// Icon and color…; nil while neither `icon` nor `color` is taken.
     let look: LookEdit?
+    /// Delete… (O10); nil while `delete` isn't taken.
+    var delete: DeleteEdit? = nil
 
     /// The ⋯ menu shows with a row in it.
-    var hasMenu: Bool { rename != nil || look != nil }
+    var hasMenu: Bool { rename != nil || look != nil || delete != nil }
+}
+
+/// Delete… (O10): the confirm, in the web's words per kind, worked out when
+/// the menu is drawn and kept with the confirm, so what it counts is what
+/// was on screen when it was asked.
+struct DeleteEdit: Identifiable, Hashable, Sendable {
+    let ref: ContainerRef
+    /// "Delete this routine?", "Delete this season?", "Delete Run a half
+    /// marathon?", `Delete “Home”?` (`OrganizeCopy.deleteTitle`).
+    let title: String
+    /// What happens, the phone's sentence (`OrganizeCopy.deleteConsequence`),
+    /// which offers no undo and ends on the kind: "The routine stays in the
+    /// Trash for 30 days."
+    let message: String
+    /// The destructive button: "Delete", a goal's "Delete goal".
+    let confirmLabel: String
+    /// What VoiceOver hears once the page has gone: "Routine deleted".
+    let spoken: String
+
+    var id: ContainerRef { ref }
+}
+
+/// + → New routine, New season, New goal or New project (O11): the name
+/// sheet for one kind.
+struct CreateEdit: Identifiable, Hashable, Sendable {
+    let kind: OrganizeKind
+    /// The sheet's eyebrow, placeholder, button and hint, the web's create
+    /// form's (`OrganizeCopy.createCopy`).
+    let copy: CreateCopy
+    /// The + menu's row and the sheet's title: "New routine".
+    let title: String
+    /// The live projects a new project's name may not fold onto; empty for
+    /// every other kind, whose names may repeat.
+    let siblings: [Project]
+
+    var id: OrganizeKind { kind }
 }
 
 /// The notes sheet (O8b): a routine's, a season's or a project's notes, or a
@@ -195,6 +236,10 @@ enum ContainerEditModel {
     /// The rename alert's field: its placeholder and its name to VoiceOver.
     static let nameField = "Name"
     static let saveWord = "Save"
+    /// The ⋯ menu's delete row (O10), which asks before anything goes.
+    static let deleteWord = "Delete\u{2026}"
+    /// The list's + menu to VoiceOver (O11).
+    static let newLabel = "New"
 
     /// The web's notes placeholders.
     static let notePlaceholder = "Add a note\u{2026}"
@@ -300,7 +345,8 @@ enum ContainerEditModel {
             ? nil
             : LookEdit(ref: ref, name: container.name, glyph: glyph(of: container), color: color(of: container),
                        icons: icons, colors: colors)
-        return PageEdits(ref: ref, notes: notes, rename: rename, look: look)
+        let delete = can(.delete) ? deleteEdit(container, s) : nil
+        return PageEdits(ref: ref, notes: notes, rename: rename, look: look, delete: delete)
     }
 
     // MARK: Notes
@@ -495,6 +541,120 @@ enum ContainerEditModel {
         next.startsOn = draft.start?.description
         next.endsOn = draft.end?.description
         return OrganizeCopy.seasonStateNote(next, live: isSeasonActiveOn(next, on: today))
+    }
+
+    // MARK: Delete (O10)
+
+    /// The confirm for deleting `container`: the web's title and button per
+    /// kind, and the phone's consequence sentence, counted as the web's pane
+    /// counts it.
+    static func deleteEdit(_ container: ContainerSnapshot, _ s: OrganizeSnapshot) -> DeleteEdit {
+        let kind = container.ref.kind
+        return DeleteEdit(
+            ref: container.ref,
+            title: OrganizeCopy.deleteTitle(kind, name: container.name),
+            message: OrganizeCopy.deleteConsequence(deleteInput(container, s)),
+            confirmLabel: OrganizeCopy.deleteConfirmLabel(kind),
+            spoken: deletedAnnouncement(kind)
+        )
+    }
+
+    /// What the consequence sentence counts, as the web's pane counts it:
+    /// - a routine: its live members (`countLive`), and whether taking it away
+    ///   puts any of them back on today (`membersRevealedByRemoving`, read
+    ///   against routines and seasons as routines.tsx reads it, with no trip);
+    /// - a season: its live direct members and live routines, and whether it
+    ///   is on today (`isSeasonActiveOn`);
+    /// - a goal: nothing;
+    /// - a project: the items its page and its list row count (filed under
+    ///   its folded name, subtasks left out), so the confirm agrees with the
+    ///   page it is asked from.
+    static func deleteInput(_ container: ContainerSnapshot, _ s: OrganizeSnapshot) -> DeleteConsequenceInput {
+        let liveItems = Set(s.items.map(\.id))
+        switch container {
+        case .routine(let routine):
+            let revealed = membersRevealedByRemoving(
+                routine.id, memberIds: routine.itemIds, items: s.items, on: s.today, timeZone: s.timeZone,
+                routines: s.routines, seasons: s.seasons
+            )
+            return .routine(name: routine.name, liveCount: countLive(routine.itemIds, live: liveItems),
+                            reappear: !revealed.isEmpty)
+        case .season(let season):
+            let liveRoutines = Set(s.routines.map(\.id))
+            return .season(name: season.name, itemCount: countLive(season.itemIds, live: liveItems),
+                           routineCount: countLive(season.routineIds, live: liveRoutines),
+                           live: isSeasonActiveOn(season, on: s.today))
+        case .goal:
+            return .goal
+        case .project(let project):
+            let counts = OrganizeModel.listedByProject(s.items)
+            return .project(name: project.name, itemCount: counts[Array(jsLowercased(project.name).utf16)] ?? 0)
+        }
+    }
+
+    /// "Routine deleted", said once the page has gone.
+    static func deletedAnnouncement(_ kind: OrganizeKind) -> String {
+        return OrganizeModel.noun(kind) + " deleted"
+    }
+
+    // MARK: Create (O11)
+
+    /// The + menu's rows: each kind the server creates and the switches
+    /// show, in the list's order (routine, season, goal, project). A goal only
+    /// once goals are read, as the list shows them. None before the first
+    /// fetch. Empty hides the +.
+    static func createEdits(_ s: OrganizeSnapshot) -> [CreateEdit] {
+        guard s.hasLoaded else { return [] }
+        return OrganizeModel.shownKinds(s)
+            .filter { OrganizeModel.canEdit(.create, on: $0, takes: s.containerTakes, settings: s.settings) }
+            .map { kind in
+                CreateEdit(kind: kind, copy: OrganizeCopy.createCopy(kind), title: OrganizeCopy.newMenuLabel(kind),
+                           siblings: kind == .project ? s.projects : [])
+            }
+    }
+
+    /// The + menu row's glyph: the symbol of the glyph the new container
+    /// starts with (`CreateCopy.icon`), so a project's row shows the
+    /// briefcase its tile will wear; the kind's own (`fallbackSymbol`) where
+    /// that glyph has no symbol, as a season's `CalendarRange` has none.
+    static func createSymbol(_ edit: CreateEdit) -> String {
+        let token = edit.copy.icon
+        let prefix = ContainerLook.iconTokenPrefix
+        guard token.hasPrefix(prefix) else { return edit.kind.fallbackSymbol }
+        return ContainerLook.lucideToSymbol[String(token.dropFirst(prefix.count))] ?? edit.kind.fallbackSymbol
+    }
+
+    /// The name `draft` creates: the title's cleaning, as Rename's
+    /// (`cleanTitle`); nil when nothing is left.
+    static func createdName(_ draft: String) -> String? {
+        return renamedName(draft)
+    }
+
+    /// The live project a new project named `draft` would fold onto, nil
+    /// when none does or the kind isn't a project (the store's guard,
+    /// planner-store.ts `addProject`, and the route's 409).
+    static func createClash(_ draft: String, _ edit: CreateEdit) -> Project? {
+        guard edit.kind == .project, let name = createdName(draft) else { return nil }
+        return projectNameClash(name, among: edit.siblings)
+    }
+
+    /// Under the field while the name clashes: "You already have a project
+    /// called “Work”.", naming the project already there, as the web's
+    /// rename field does (labels.tsx `takenBy`). Nil while there is none.
+    static func createClashSentence(_ draft: String, _ edit: CreateEdit) -> String? {
+        guard let clash = createClash(draft, edit) else { return nil }
+        return OrganizeCopy.nameTakenSentence(noun: jsLowercased(ContainerWords.project), name: clash.name)
+    }
+
+    /// Is Create on? The name cleans to something, and a project's folds
+    /// onto no live project's.
+    static func canCreate(_ draft: String, _ edit: CreateEdit) -> Bool {
+        return createdName(draft) != nil && createClash(draft, edit) == nil
+    }
+
+    /// "Routine created", said once the new page has settled.
+    static func createdAnnouncement(_ kind: OrganizeKind) -> String {
+        return OrganizeModel.noun(kind) + " created"
     }
 
     // MARK: Chips

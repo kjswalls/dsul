@@ -1,3 +1,4 @@
+import Accessibility
 import DsulCore
 import SwiftUI
 
@@ -15,8 +16,9 @@ import SwiftUI
 // a routine's usual time, a season's Runs, a goal's window) and the notes
 // (PageEditors.swift); from O9 the ⋯ menu in the bar, Rename… (an alert,
 // RenameAlert.swift) and Icon and color… (LookSheet.swift), which the host
-// presents so they stay up however far the page has scrolled. The planner
-// steps and sends each one. More edits come with O10 to O13. The footer's
+// presents so they stay up however far the page has scrolled, and from O10
+// its Delete… (a confirmation dialog, the web's words). The planner steps and
+// sends each one. More edits come with O12 and O13. The footer's
 // pages (Paused, a paused routine's or season's
 // detail, Item types and the Trash, O5 and O14) go through the same
 // destination: PausedPage.swift, PausedEntryPage.swift, ItemTypesPage.swift
@@ -66,7 +68,10 @@ struct OrganizeDestination: View {
 /// From O9 the bar carries the ⋯ menu where the page may rename the
 /// container or change its look (`PageEdits.hasMenu`), and only while the
 /// container is there: Rename… opens the alert, Icon and color… the sheet,
-/// each on what the page showed when it was picked.
+/// each on what the page showed when it was picked. From O10 it may also
+/// delete it: Delete… asks first, in the web's words for the kind
+/// (`DeleteEdit`), and once the container is gone the page pops as it does
+/// for a delete from the web, and VoiceOver hears "Routine deleted".
 struct OrganizePageHost<Page: OrganizePageModel, Rows: View>: View {
     let route: OrganizeRoute
     @Binding var path: [OrganizeRoute]
@@ -83,6 +88,8 @@ struct OrganizePageHost<Page: OrganizePageModel, Rows: View>: View {
     @State private var renameDraft = ""
     /// Icon and color…, while its sheet is up.
     @State private var looking: LookEdit? = nil
+    /// Delete…, while its confirm is up.
+    @State private var deleting: DeleteEdit? = nil
     /// How far the list scrolls before the header's name is under the bar:
     /// about the tile and the first line of a large title.
     @ScaledMetric(relativeTo: .largeTitle) private var titleFold: CGFloat = 96
@@ -124,7 +131,8 @@ struct OrganizePageHost<Page: OrganizePageModel, Rows: View>: View {
             }
             if let menu {
                 ToolbarItem(placement: .topBarTrailing) {
-                    PageMenu(edits: menu, onRename: { rename($0) }, onLook: { looking = $0 })
+                    PageMenu(edits: menu, onRename: { rename($0) }, onLook: { looking = $0 },
+                             onDelete: { deleting = $0 })
                 }
             }
         }
@@ -133,6 +141,15 @@ struct OrganizePageHost<Page: OrganizePageModel, Rows: View>: View {
         })
         .sheet(item: $looking) { edit in
             LookSheet(edit: edit)
+        }
+        .confirmationDialog(deleting?.title ?? "", isPresented: Binding(
+            get: { deleting != nil },
+            set: { shown in if !shown { deleting = nil } }
+        ), titleVisibility: .visible, presenting: deleting) { edit in
+            Button(edit.confirmLabel, role: .destructive) { delete(edit) }
+            Button("Cancel", role: .cancel) {}
+        } message: { edit in
+            Text(edit.message)
         }
         .onScrollGeometryChange(for: Bool.self) { [fold = titleFold] geometry in
             geometry.contentOffset.y + geometry.contentInsets.top > fold
@@ -160,15 +177,43 @@ struct OrganizePageHost<Page: OrganizePageModel, Rows: View>: View {
         renameDraft = edit.name
         renaming = edit
     }
+
+    /// Delete…, confirmed: through the planner, which asks its gate again.
+    /// The page pops once the container is gone (`onChange` of `live`), and
+    /// VoiceOver hears it once the page has gone. One already gone (a fetch
+    /// while the confirm was up) has nothing to send or say.
+    private func delete(_ edit: DeleteEdit) {
+        guard planner.container(edit.ref) != nil else { return }
+        withAnimation(.snappy) { planner.deleteContainer(edit.ref) }
+        guard planner.container(edit.ref) == nil else { return }
+        SettledAnnouncement.post(edit.spoken)
+    }
 }
 
-/// The page's ⋯ menu in the bar (O9): Rename… and Icon and color…, each
-/// where the page may write it. The label colour, never the lime tint; to
-/// VoiceOver it is "More".
+/// Says a sentence to VoiceOver once the screen has settled (O10, O11): a
+/// page going or coming, and the focus moving with it, would cut off one said
+/// at once. It waits 600ms, as two private copies of the same rule do:
+/// `ItemDetail.announceSettled` and `SignInView.announceSettled` (which also
+/// checks its message still stands). A change to the delay changes all
+/// three; folding those two into this one is left to a PR that touches them.
+enum SettledAnnouncement {
+    @MainActor static func post(_ spoken: String) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(600))
+            AccessibilityNotification.Announcement(AttributedString(spoken)).post()
+        }
+    }
+}
+
+/// The page's ⋯ menu in the bar (O9, O10): Rename…, Icon and color… and,
+/// last and in red as the system draws a destructive row, Delete…, each where
+/// the page may write it. The label colour, never the lime tint; to VoiceOver
+/// it is "More".
 private struct PageMenu: View {
     let edits: PageEdits
     let onRename: (RenameEdit) -> Void
     let onLook: (LookEdit) -> Void
+    let onDelete: (DeleteEdit) -> Void
 
     var body: some View {
         Menu {
@@ -184,6 +229,14 @@ private struct PageMenu: View {
                     onLook(look)
                 } label: {
                     Label(look.menuLabel, systemImage: "paintpalette")
+                }
+            }
+            if let delete = edits.delete {
+                Divider()
+                Button(role: .destructive) {
+                    onDelete(delete)
+                } label: {
+                    Label(ContainerEditModel.deleteWord, systemImage: "trash")
                 }
             }
         } label: {

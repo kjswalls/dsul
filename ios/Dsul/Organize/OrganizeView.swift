@@ -6,22 +6,32 @@ import SwiftUI
 /// count, under a large "Organize" and the avatar. What shows and what it says
 /// is `OrganizeModel` (Foundation only, pinned by OrganizeTests); this draws it.
 ///
-/// Read-only still, but for the tick, an item's Resume on Paused and a
-/// restore from the Trash. Each row pushes its container's page (O2, O3:
-/// ContainerPage.swift). The summary cards (O4, SummaryCards.swift) open the
-/// list, and the footer (O5, O14) ends it: Item types, Paused and, signed
-/// in, Trash, each pushing its page. The + menu (O11) comes later. The path
-/// is the tab's own: tapping Organize again pops to the list, and a page
-/// whose container goes takes itself off it (`OrganizePageHost`).
+/// Each row pushes its container's page (O2, O3: ContainerPage.swift), where
+/// it is edited. The summary cards (O4, SummaryCards.swift) open the list,
+/// and the footer (O5, O14) ends it: Item types, Paused and, signed in,
+/// Trash, each pushing its page. The + menu in the bar (O11) makes a routine,
+/// a season, a goal or a project, each the switches show and the server
+/// creates (`organizeCreates`), through a name sheet (CreateSheet.swift);
+/// once the sheet has gone the new page is pushed, and VoiceOver hears
+/// "Routine created". With nothing to make there is no +. The path is the
+/// tab's own: tapping Organize again pops to the list, and a page whose
+/// container goes takes itself off it (`OrganizePageHost`), a new one whose
+/// create failed included.
 ///
 /// No stack-wide `.tint`: Organize's lime marks (the banner's check, the
 /// ticks, the strip, the ring and the timeline's nodes) are
 /// `Color.accentColor`, and a stack tint would turn them the label colour.
 /// Each control tints itself instead.
 struct OrganizeView: View {
+    @Environment(SamplePlanner.self) private var planner
     @State private var path: [OrganizeRoute] = []
+    /// The name sheet, while it is up.
+    @State private var creating: CreateEdit? = nil
+    /// What the sheet made, pushed once it has gone.
+    @State private var created: ContainerRef? = nil
 
     var body: some View {
+        let creates = planner.organizeCreates
         NavigationStack(path: $path) {
             OrganizeList(path: $path)
                 // A refused write's sentence shows here too, as on Today.
@@ -29,6 +39,11 @@ struct OrganizeView: View {
                 .navigationTitle("Organize")
                 .navigationBarTitleDisplayMode(.large)
                 .toolbar {
+                    if !creates.isEmpty {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            CreateMenu(edits: creates) { creating = $0 }
+                        }
+                    }
                     ToolbarItem(placement: .topBarTrailing) {
                         AvatarMenu()
                     }
@@ -37,6 +52,45 @@ struct OrganizeView: View {
                     OrganizeDestination(route: route, path: $path)
                 }
         }
+        .sheet(item: $creating, onDismiss: { pushCreated() }) { edit in
+            CreateSheet(edit: edit) { created = $0 }
+                .environment(planner)
+        }
+    }
+
+    /// The sheet has gone: the new container's page goes on the stack, over
+    /// whatever was there, and VoiceOver hears it once it has settled. One
+    /// whose create was already taken back pops itself at once.
+    private func pushCreated() {
+        guard let ref = created else { return }
+        created = nil
+        path.append(.container(ref.kind, id: ref.id))
+        SettledAnnouncement.post(ContainerEditModel.createdAnnouncement(ref.kind))
+    }
+}
+
+/// The list's + (O11): New routine, New season, New goal and New project,
+/// each the switches show and the server creates, in the list's order, with
+/// the glyph the new one starts with (`createSymbol`). The label colour,
+/// never the lime tint; to VoiceOver it is "New".
+private struct CreateMenu: View {
+    let edits: [CreateEdit]
+    let onPick: (CreateEdit) -> Void
+
+    var body: some View {
+        Menu {
+            ForEach(edits) { edit in
+                Button {
+                    onPick(edit)
+                } label: {
+                    Label(edit.title, systemImage: ContainerEditModel.createSymbol(edit))
+                }
+            }
+        } label: {
+            Label(ContainerEditModel.newLabel, systemImage: "plus")
+        }
+        .menuOrder(.fixed)
+        .tint(Color.primary)
     }
 }
 

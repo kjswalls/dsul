@@ -62,6 +62,23 @@ import Foundation
 ///   failure first. A refusal the route words (`pause_refused`, and a project
 ///   rename's `name_taken` and `name_in_trash`) shows its own sentence
 ///   (`OrganizeCopy.refusal`), never the item words.
+/// - **A container delete is a container write** (O10, `.delete`): its
+///   Before is the container whole and its place, so a failed one comes back
+///   whole, newest failure first, with the member lists the latest failed
+///   write naming it recorded, which hold every toggle that landed before the
+///   delete (the membership pass then takes out the toggles that failed). A
+///   landed one replays as the container's end (DsulCore `containerAfter`),
+///   so a failed rename under a landed delete stays gone. A delete answered
+///   404 `not_found` landed, as an item delete's does: the row was never
+///   made, was purged or was deleted elsewhere, and is gone either way. A 404
+///   on any other container write fails and reverts.
+/// - **A create is its own write** (O11, `createContainer`), to the kind's
+///   route with the phone's own id. Its Before is `.containerAbsent`: a
+///   failed create takes its container with it, as a failed capture takes its
+///   item, unless a later write that names or proves it landed. A landed
+///   toggle into it proves it (`collect` proves its container from O11: the
+///   route refuses one it doesn't hold, 409 `container_gone`, so a 200 proves
+///   it is there), which settles a create whose answer was lost.
 /// - **A project rename re-files its items** (O9). The route renames the
 ///   project, then gives every item filed under it by `projectId` the new
 ///   name. The write can't name those items later, so the planner records
@@ -117,7 +134,8 @@ final class PlannerSync {
     /// priority, times a day, reminder, time, repeat and project, Delete, Add
     /// a subtask, Reset streak, and its routine and season toggles), a
     /// notification's Snooze, and from O8a one field of a routine, a season,
-    /// a goal or a project (POST /api/app/containers/:kind/:id).
+    /// a goal or a project (POST /api/app/containers/:kind/:id), from O10 its
+    /// delete, and from O11 a new one (POST /api/app/containers/:kind).
     enum Write: Sendable, Hashable {
         case complete(id: UUID, date: String, done: Bool, count: Int?)
         case schedule(id: UUID, date: String, startTime: String)
@@ -158,8 +176,14 @@ final class PlannerSync {
         /// the write changes besides the container, recorded at enqueue as a
         /// delete records `removed` (DsulCore `refiledItems`): a project
         /// rename's members, filed under it by `projectId`, and empty for
-        /// every other write.
+        /// every other write. From O10 the intent may be `.delete`, which
+        /// takes the container to the Trash and refiles nothing.
         case container(ContainerRef, ContainerIntent, refiled: [UUID])
+        /// (O11) A new routine, season, goal or project from the + menu: the
+        /// body whole (DsulCore `ContainerCreateBody`, the phone's own id
+        /// lowercased, the name as typed, the kind's starting glyph and a
+        /// goal's first day), sent to the kind's route.
+        case createContainer(ContainerCreateBody)
 
         /// What this write changes: its item (a new subtask's is the
         /// subtask, not the parent whose route it goes to), for a delete each
@@ -178,6 +202,8 @@ final class PlannerSync {
                 var named = Set(refiled.map { Subject.item($0) })
                 named.insert(.container(ref))
                 return named
+            case .createContainer(let body):
+                return [.container(body.ref)]
             case .snooze:
                 return []
             case .complete(let id, _, _, _), .schedule(let id, _, _), .capture(let id, _), .skip(let id, _, _),
@@ -190,16 +216,18 @@ final class PlannerSync {
         /// The rows a 200 to this write proves exist without changing them,
         /// as a later write proves a capture whose answer was lost: a new
         /// subtask proves its parent, since the route answers 404 for a parent
-        /// that isn't there, and a toggle its item, for the same reason. No
-        /// other write proves anything it doesn't name.
+        /// that isn't there, and a toggle its item (404 for a missing one) and
+        /// (O11) its container (409 `container_gone` for one the route doesn't
+        /// hold live): what settles a create whose answer was lost. No other
+        /// write proves anything it doesn't name.
         var proves: Set<Subject> {
             switch self {
             case .addSubtask(_, let parent, _):
                 return [.item(parent)]
-            case .collect(let id, _, _, _):
-                return [.item(id)]
+            case .collect(let id, let kind, let containerId, _):
+                return [.item(id), .container(ContainerRef(kind: OrganizeKind(kind), id: containerId))]
             case .complete, .schedule, .capture, .skip, .move, .pause, .edit, .delete, .resetStreak, .snooze,
-                 .container:
+                 .container, .createContainer:
                 return []
             }
         }
@@ -250,8 +278,12 @@ final class PlannerSync {
         case member(index: Int?)
         /// (O8a) The container, whole, and its place in the planner's list of
         /// its kind. A revert onto a container still there takes only its
-        /// fields; one that is gone comes back whole at `index`.
+        /// fields; one that is gone (a delete's, O10) comes back whole at
+        /// `index`.
         case container(ContainerSnapshot, index: Int)
+        /// (O11) The container didn't exist yet: a create, which made
+        /// `created` (DsulCore `containerCreateRecord`).
+        case containerAbsent(created: ContainerSnapshot)
 
         /// The item it holds, made yet or not; nil for a membership or a
         /// container.
@@ -259,7 +291,7 @@ final class PlannerSync {
             switch self {
             case .item(let item, _): item
             case .absent(let created): created
-            case .member, .container: nil
+            case .member, .container, .containerAbsent: nil
             }
         }
     }
@@ -548,7 +580,19 @@ final class PlannerSync {
             guard let body = ContainerWriteBody(intent, for: ref.kind) else {
                 throw APIError.rejected(status: 400, code: "invalid")
             }
-            try await api.writeContainer(ref, body: body)
+            do {
+                try await api.writeContainer(ref, body: body)
+            } catch let error as APIError where intent.removesContainer
+                        && error == .rejected(status: 404, code: "not_found") {
+                // (O10) A delete of a container this user has nowhere, live or
+                // in the Trash: a create refused first, a purge, or a delete
+                // from another device. Gone either way, so it landed. Any
+                // other write answered 404 failed: the field was never set.
+            }
+        case .createContainer(let body):
+            // No 404 exception: a 404 is a kind with no route, and nothing
+            // was made.
+            try await api.createContainer(body)
         }
     }
 
@@ -888,7 +932,7 @@ final class PlannerSync {
                     || ($0.subjects.contains(subject) && !$0.write.refiledSubjects.contains(subject))
             }
             state = proven ? created : nil
-        case .member, .container:
+        case .member, .container, .containerAbsent:
             // Never reached: a membership goes to `rebaseMember`, a
             // container to `rebaseContainer`.
             break
@@ -930,30 +974,55 @@ final class PlannerSync {
 
     /// (O8a) A container from before its earliest failed write, with every
     /// container write naming it that landed since played on it, in order,
-    /// through DsulCore `applyingContainer`, the step `applyContainer` takes:
-    /// each at its own `sentAt`, the instant the server resolved it, and in
-    /// the zone the server read it in (`pauseZone`: the account's stored zone,
-    /// else the one the write carried). Replayed at revert time instead, a
-    /// pause would stamp a different `pausedAt`, and near midnight fall on a
-    /// different day. Its place is the one the latest failed write naming it
-    /// recorded. Nil for a subject that isn't a container's.
+    /// through DsulCore `containerAfter` (`applyingContainer`, the step
+    /// `applyContainer` takes, and from O10 a delete's end): each at its own
+    /// `sentAt`, the instant the server resolved it, and in the zone the
+    /// server read it in (`pauseZone`: the account's stored zone, else the
+    /// one the write carried). Replayed at revert time instead, a pause would
+    /// stamp a different `pausedAt`, and near midnight fall on a different
+    /// day. A failed create (O11, `.containerAbsent`) starts from nothing
+    /// unless a later write that names or proves it landed, as a capture
+    /// does. Its place is the one the latest failed write naming it recorded,
+    /// and so are the member lists it comes back with if it is gone (a failed
+    /// delete's revert): that write saw every toggle that landed before it,
+    /// which the earliest one may not have. Nil for a subject that isn't a
+    /// container's.
     private func rebaseContainer(_ subject: Subject, from start: Before, after seq: Int, ordered: [Failure],
                                  planner: SamplePlanner) -> ContainerTarget? {
-        guard case .container(let ref) = subject, case .container(let snapshot, _) = start else { return nil }
-        var state: ContainerSnapshot? = snapshot
+        guard case .container(let ref) = subject else { return nil }
+        let later = landed.filter { $0.seq > seq }
+        var state: ContainerSnapshot?
+        switch start {
+        case .container(let snapshot, _):
+            state = snapshot
+        case .containerAbsent(let created):
+            // The container route answers 404 for a container it doesn't
+            // hold, and the toggle route 409 `container_gone`, so a later
+            // write either took on this one, or a toggle into it, proves the
+            // create landed after all.
+            let proven = later.contains { $0.proves.contains(subject) || $0.subjects.contains(subject) }
+            state = proven ? created : nil
+        case .item, .absent, .member:
+            return nil
+        }
         let stored = planner.settings.timezone
         let today = planner.today.description
-        for write in landed where write.seq > seq && write.subjects.contains(subject) {
-            guard let current = state, case .container(_, let intent, _) = write.write else { continue }
+        for write in later where write.subjects.contains(subject) {
+            // A landed create names only a container it made itself, so it
+            // can't follow a failure on that container: nothing to play.
+            guard case .container(_, let intent, _) = write.write else { continue }
             let zone = pauseZone(stored: stored, device: intent.timeZone)
-            state = applyingContainer(intent, to: current, at: write.sentAt, timeZone: zone, today: today)
+            state = containerAfter(intent, on: state, at: write.sentAt, timeZone: zone, today: today)
         }
-        var recorded: (index: Int, seq: Int)? = nil
+        var recorded: (snapshot: ContainerSnapshot, index: Int, seq: Int)? = nil
         for failure in ordered.reversed() {
-            if case .container(_, let index)? = failure.before[subject] {
-                recorded = (index, failure.seq)
+            if case .container(let snapshot, let index)? = failure.before[subject] {
+                recorded = (snapshot, index, failure.seq)
                 break
             }
+        }
+        if let lists = recorded?.snapshot, let fields = state {
+            state = fields.withMembership(of: lists)
         }
         return ContainerTarget(ref: ref, snapshot: state, index: recorded?.index, indexSeq: recorded?.seq, seq: seq)
     }
@@ -1058,9 +1127,10 @@ final class PlannerSync {
             // It made the item, so there is nothing to play: a rebase already
             // starts from what it made (`created`).
             return item
-        case .collect, .snooze:
-            // Never asked: a toggle names a membership, not its item, and a
-            // snooze names nothing; neither changes a field of the item.
+        case .collect, .snooze, .createContainer:
+            // Never asked: a toggle names a membership, not its item, a
+            // snooze names nothing, and a create (O11) names only its new
+            // container; none changes a field of the item.
             return item
         case .container(let ref, let intent, _):
             // A project rename (O9) gives each member the new name, by
@@ -1093,13 +1163,21 @@ final class PlannerSync {
 
     // MARK: Words
 
-    /// What the banner says when `write` fails: a container write's refusal
-    /// in the route's own terms when it has words (`OrganizeCopy.refusal`, a
-    /// `pause_refused` among them), else what any failed write says.
+    /// What the banner says when `write` fails: a container write's or a
+    /// create's refusal in the route's own terms when it has words
+    /// (`OrganizeCopy.refusal`, a `pause_refused` among them, and a project
+    /// create's `name_taken` and `name_in_trash` naming the name it sent),
+    /// else what any failed write says.
     static func writeFailureText(_ error: Error, for write: Write) -> String {
-        if case .container(_, let intent, _) = write, case .rejected(_, let code)? = error as? APIError,
-           let words = OrganizeCopy.refusal(code: code, for: intent) {
-            return words
+        if case .rejected(_, let code)? = error as? APIError {
+            switch write {
+            case .container(_, let intent, _):
+                if let words = OrganizeCopy.refusal(code: code, for: intent) { return words }
+            case .createContainer(let body):
+                if let words = OrganizeCopy.refusal(code: code, for: body) { return words }
+            default:
+                break
+            }
         }
         return writeFailureText(error)
     }
@@ -1116,6 +1194,17 @@ final class PlannerSync {
             return "Couldn't reach dsul. Pull down to try again."
         }
         return "Couldn't load your day. Pull down to try again."
+    }
+}
+
+extension OrganizeKind {
+    /// The kind a membership toggle's container is (`ContainerKind`, the item
+    /// sheet's two), as Organize and PlannerSync name containers.
+    init(_ kind: ContainerKind) {
+        switch kind {
+        case .routine: self = .routine
+        case .season: self = .season
+        }
     }
 }
 

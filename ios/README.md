@@ -1065,7 +1065,8 @@ writes: a routine's Status (Pause, Pause until…, Resume), a season's (On,
 Off, Dates), and Resume on Paused for routines and seasons; O8b a goal's
 Status (Active, Achieved, Set aside), a routine's usual time, a season's
 Runs, a goal's window and the notes (a goal's why); O9 the ⋯ menu's
-Rename… and Icon and color… on every page.
+Rename… and Icon and color… on every page; O10 its Delete…; O11 the list's
++ and its name sheet.
 
 1. (O1) Sample: Organize shows Routines, Seasons, Goals and Projects, in that
    order. Morning routine has a honey sunrise tile, Wind down a plum moon,
@@ -1359,6 +1360,84 @@ Rename… and Icon and color… on every page.
     while Goals is on; turn Goals off and it is the switched-off sentence.
     A server older than this PR (the O8a `containerWrites`) shows the O8a
     menus and nothing of O8b or O9.
+56. (O10) Sample: every page's ⋯ menu ends, under a line, in a red
+    "Delete…" with a bin. On Morning routine it asks "Delete this
+    routine?" with "“Morning routine” is removed, but its 3 items stay
+    exactly as they are. They just stop being grouped. The routine stays in
+    the Trash for 30 days.", a red Delete and Cancel. No sentence offers ⌘Z or
+    any other undo. Cancel changes nothing. Delete: the page pops, the row
+    leaves Routines, and Meds, Stretch 10 min and Journal stay on Today,
+    out of the routine's group. Autumn reads "“Autumn” is removed, but the
+    1 item it holds stays exactly as it is. The season stays in the Trash
+    for 30 days.", Run a
+    half marathon "Delete Run a half marathon?" with "Delete goal", and
+    Home "Delete “Home”?" with "Its 4 items stay exactly as they are. They
+    just stop being filed under Home. …". Nothing is sent from the sample.
+57. (O10) Delete Home: on Today's List, Call the dentist, Cook dinner and
+    the rest move to No project at once. Their sheet's project chip still
+    reads "Home", with a gray dot, as any name no project holds does (the
+    agent API check under the item sheet). Signed in, do the same, then
+    reload the web: the items still name the deleted project, exactly as
+    after a delete on the web and a reload (a known web limit), and the
+    web's Trash lists the project.
+58. (O10) Signed in, delete a routine with flight mode on: the page pops
+    and the row leaves, then the banner shows, the refetch fails, and the
+    routine comes back in its old place, members and all, still offline.
+    It was never deleted on the server: the web still shows it. A delete
+    the server refuses comes back in place the same way. Delete it again
+    online: the web's Trash lists it, and Restore on the phone's Trash
+    brings it back to the list.
+59. (O10) Open a routine's page, delete the routine on the web, then
+    Delete… on the phone before any pull: no banner, and nothing comes
+    back. A paused routine's sentence ends "…, and they come back into
+    view."; a season switched Off holding something adds "Anything it was
+    hiding comes back into view."
+60. (O10) With VoiceOver: Delete… is a button in the ⋯ menu; the dialog
+    reads its title and sentence; once the page has gone, VoiceOver says
+    "Routine deleted" ("Season deleted", "Goal deleted", "Project
+    deleted"). A server older than this PR (no `"delete"` in
+    `containerWrites`) shows no Delete…, and a page with nothing else to
+    edit shows no ⋯ at all.
+61. (O11) Sample: the Organize bar has a + beside the avatar, in the label
+    colour (VoiceOver: "New"). Tap it: "New routine", "New season", "New
+    goal" and "New project", in that order, each with the glyph a new one
+    starts with (a repeat, a calendar, a target and a briefcase).
+    New routine: a sheet titled "New routine", "NEW ROUTINE" over a field
+    reading "Name your routine…", the keyboard up, and under it "A routine
+    is a set of things you do regularly, in order, …". Create routine
+    stays off until the name has something in it besides spaces.
+62. (O11) Type "Evenings" and Create routine (or Return): the sheet closes,
+    the new routine's page pushes, with the repeat glyph, "Nothing is in it
+    yet." and a ⋯ menu, and VoiceOver says "Routine created". Back: the row
+    is last under Routines. With a name typed, a swipe down is refused
+    (the sheet springs back) and Cancel asks "Discard changes?"; with
+    nothing typed, either just closes. A new goal's window chip reads
+    "Started" and today's date.
+63. (O11) New project, type "work" (with Work in the list): Create project
+    stays off, and the field says "You already have a project called
+    “Work”.", naming the one there. "Work" under New routine is fine: only a
+    project's name must be its own. Signed in, with a project called Errands
+    in the Trash, create a project "Errands": its page pushes, then the
+    banner reads "A deleted project called “Errands” still has that name.
+    Restore it from Trash, or pick a different one.", and the page pops and
+    the project leaves the list.
+64. (O11) Signed in, with flight mode on, create a routine, then open an
+    item on Today and add it to the routine from its sheet: once the
+    refetch fails, both are undone, the routine gone and the item out of
+    it, and the banner says so. Online, create a routine and add an item to
+    it at once: both land, and the web shows the routine holding the item
+    after a refresh.
+65. (O11) Turn Organize off on the web and pull: the + offers only "New
+    goal" (Goals on), and with Goals off too, the + goes. Before the first
+    fetch lands, and from a server older than this PR (no `"create"` in
+    `containerWrites`), there is no +. A new account with nothing made
+    reads "Nothing here yet." and "Make a routine, season, goal or project
+    with +." (only the kinds the + offers); from an older server it keeps
+    "… you make on the web show up here."
+66. (O10, O11) Dark mode and the largest Dynamic Type: the +, its menu, the
+    name sheet, Delete… and the dialog are never lime (Delete is the
+    system's red), the sheet's hint and the clash sentence wrap, and the
+    field stays above the keyboard at the sheet's medium height.
 
 ## Rules
 

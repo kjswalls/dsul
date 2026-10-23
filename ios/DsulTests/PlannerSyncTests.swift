@@ -271,11 +271,13 @@ enum PlannerJSON {
 
     /// What POST /api/app/containers/:kind/:id takes (lib/app-containers.ts
     /// `CONTAINER_WRITES`: O8a's states, O8b's fields, O9's rename, icon and
-    /// colour), as planner-response.json carries it.
-    static let allContainerWrites = "{\"routine\":[\"pause\",\"usualTime\",\"notes\",\"rename\",\"icon\",\"color\"],"
-        + "\"season\":[\"state\",\"dates\",\"notes\",\"rename\",\"icon\",\"color\"],"
-        + "\"goal\":[\"state\",\"window\",\"why\",\"rename\",\"icon\",\"color\"],"
-        + "\"project\":[\"notes\",\"rename\",\"icon\",\"color\"]}"
+    /// colour, O10's delete), and O11's `create`, POST
+    /// /api/app/containers/:kind, as planner-response.json carries it.
+    static let allContainerWrites =
+        "{\"routine\":[\"pause\",\"usualTime\",\"notes\",\"rename\",\"icon\",\"color\",\"delete\",\"create\"],"
+        + "\"season\":[\"state\",\"dates\",\"notes\",\"rename\",\"icon\",\"color\",\"delete\",\"create\"],"
+        + "\"goal\":[\"state\",\"window\",\"why\",\"rename\",\"icon\",\"color\",\"delete\",\"create\"],"
+        + "\"project\":[\"notes\",\"rename\",\"icon\",\"color\",\"delete\",\"create\"]}"
 
     /// The user's own type that `book` is, as they named it.
     static let bookType = ItemTypeLabel(name: "book", label: "Book to read", labelPlural: "Books to read")
@@ -1230,10 +1232,11 @@ final class DragFlag {
     /// the parent whose route it goes to, and proves a row: its parent, which
     /// the route answers 404 for when it isn't there. A routine or season
     /// toggle names the one membership, never its item, and proves the item,
-    /// for the same reason. A container write (O8a, O8b, O9) names the
-    /// container's own fields and nothing else, and proves nothing; a project
-    /// rename names each item it re-files too.
-    @Test func eachWriteNamesWhatItTouches() {
+    /// for the same reason, and from O11 its container, which the route
+    /// refuses 409 `container_gone` when it doesn't hold it. A container
+    /// write (O8a, O8b, O9) names the container's own fields and nothing else,
+    /// and proves nothing; a project rename names each item it re-files too.
+    @Test func eachWriteNamesWhatItTouches() throws {
         let id = PlannerJSON.groceries
         let own: Set<PlannerSync.Subject> = [.item(id)]
         let writes: [PlannerSync.Write] = [
@@ -1264,14 +1267,17 @@ final class DragFlag {
         #expect(add.subjects == made)
         #expect(add.proves == own)
 
+        // A toggle proves its item and, from O11, its container: the route
+        // answers 404 for a missing item and 409 `container_gone` for a
+        // container it doesn't hold, so a 200 settles a lost create.
         let toggle = PlannerSync.Write.collect(id: id, kind: .routine, containerId: PlannerJSON.morning, member: true)
         let membership: Set<PlannerSync.Subject> = [.member(.routine, containerId: PlannerJSON.morning, item: id)]
         #expect(toggle.subjects == membership)
-        #expect(toggle.proves == own)
+        #expect(toggle.proves == [.item(id), .container(ContainerRef(kind: .routine, id: PlannerJSON.morning))])
         let leave = PlannerSync.Write.collect(id: id, kind: .season, containerId: PlannerJSON.autumn, member: false)
         let season: Set<PlannerSync.Subject> = [.member(.season, containerId: PlannerJSON.autumn, item: id)]
         #expect(leave.subjects == season)
-        #expect(leave.proves == own)
+        #expect(leave.proves == [.item(id), .container(ContainerRef(kind: .season, id: PlannerJSON.autumn))])
 
         let groceries = SampleItem(id: id, title: "Groceries", status: "pending")
         let bags = SampleItem(id: PlannerJSON.bags, title: "Bring the bags", status: "pending",
@@ -1313,6 +1319,12 @@ final class DragFlag {
             (.container(work, .notes(nil), refiled: []), work),
             (.container(work, .color(nil), refiled: []), work),
             (.container(work, .rename("Office"), refiled: []), work),
+            // O10's delete, on every kind: the container alone. Its items
+            // keep every field, a project's members their name and id.
+            (.container(morning, .delete, refiled: []), morning),
+            (.container(autumn, .delete, refiled: []), autumn),
+            (.container(launch, .delete, refiled: []), launch),
+            (.container(work, .delete, refiled: []), work),
         ]
         for (write, ref) in containers {
             let fields: Set<PlannerSync.Subject> = [.container(ref)]
@@ -1330,6 +1342,17 @@ final class DragFlag {
         #expect(refiling.refiledSubjects == [.item(id), .item(PlannerJSON.parked)])
         for (write, _) in containers {
             #expect(write.refiledSubjects.isEmpty)
+        }
+
+        // A create (O11) names the container it makes, and proves nothing.
+        for kind in OrganizeKind.allCases {
+            let body = try #require(ContainerCreateBody(kind, id: "0d000000-0000-4000-8000-0000000000aa",
+                                                        name: "New one", today: DayString("2026-10-01")!))
+            let create = PlannerSync.Write.createContainer(body)
+            let made: Set<PlannerSync.Subject> = [.container(ContainerRef(kind: kind, id: body.id))]
+            #expect(create.subjects == made)
+            #expect(create.proves.isEmpty)
+            #expect(create.refiledSubjects.isEmpty)
         }
     }
 
@@ -2534,11 +2557,326 @@ final class DragFlag {
         planner.rename(workRef, to: "Office")
         planner.setNotes(workRef, "Quarterly")
         planner.setGoalState(PlannerJSON.launch, .achieved)
+        planner.deleteContainer(workRef)
+        #expect(planner.createContainer(.project, name: "Errands") == nil)
+        #expect(planner.createContainer(.goal, name: "Learn Spanish") == nil)
+        #expect(planner.organizeCreates.isEmpty)
         #expect(work(planner)?.name == "Work")
         #expect(goal(planner)?.state == "active")
+        #expect(planner.projectRecords.count == 1)
+        #expect(planner.goals?.count == 1)
         await drain(planner)
         let posts = await postCount(server)
         #expect(posts == 0)
+    }
+
+    // MARK: Delete and create (O10, O11)
+
+    private var morningRef: ContainerRef {
+        return ContainerRef(kind: .routine, id: PlannerJSON.morning)
+    }
+
+    private func createRoute(_ kind: OrganizeKind) -> String {
+        return "POST " + ContainerRoutes.create(kind)
+    }
+
+    /// Delete…: the container leaves its list at once and its route hears the
+    /// action alone. A project's items keep their name and id: they still say
+    /// Work, and the List files them under No project, since no project is
+    /// called that any more.
+    @Test func aDeleteTakesTheContainerAndSendsItsActionAlone() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, editPayload()))
+        await server.on(routineRoute, .status(200, ok))
+        await server.on(projectRoute, .status(200, ok))
+        let planner = await loaded(server)
+        #expect(planner.canWrite(kind: .routine, action: .delete))
+
+        planner.deleteContainer(morningRef)
+        planner.deleteContainer(workRef)
+        #expect(routine(planner) == nil)
+        #expect(work(planner) == nil)
+        #expect(planner.isGone(.container(.routine, id: PlannerJSON.morning)))
+        #expect(filing(planner, PlannerJSON.parked) == "Work")
+        #expect(planner.item(PlannerJSON.parked)?.projectId == PlannerJSON.work)
+        #expect(!planner.projects.contains("Work"))
+        await drain(planner)
+
+        let requests = await server.requests
+        for route in [routineRoute, projectRoute] {
+            let body = try #require(bodyJSON(requests.first { $0.route == route }))
+            #expect(body["action"] as? String == "delete")
+            #expect(body.count == 1)
+        }
+        #expect(requests.filter { $0.route.hasPrefix("POST /api/app/items") }.isEmpty)
+        #expect(planner.banner == nil)
+    }
+
+    /// The revert's order (design §6.4): Groceries added to Morning, then
+    /// Morning deleted, both offline, and the refetch fails. The routine comes
+    /// back first, whole and in its place, and then the membership goes back,
+    /// so Morning holds Water alone, as the server does. Memberships first
+    /// would find no Morning, and it would come back holding Groceries.
+    @Test func aFailedCollectThenAFailedDeleteBringTheRoutineBackWithoutTheItem() async {
+        let server = FakeServer()
+        let wind = PlannerJSON.routineJSON("0d000000-0000-4000-8000-000000000020", "Wind down", [])
+        let morning = PlannerJSON.routineJSON(PlannerJSON.morning, "Morning routine", [PlannerJSON.water])
+        await server.on(plannerRoute, .status(200, containerPayload(routines: [morning, wind])), .offline)
+        await server.on(itemRoute(PlannerJSON.groceries), .offline)
+        await server.on(routineRoute, .offline)
+        let planner = await loaded(server)
+
+        planner.collect(PlannerJSON.groceries, kind: .routine, containerId: PlannerJSON.morning, member: true)
+        #expect(routine(planner)?.itemIds == [PlannerJSON.water, PlannerJSON.groceries])
+        planner.deleteContainer(morningRef)
+        #expect(routine(planner) == nil)
+        await drain(planner)
+
+        #expect(planner.routines.map(\.id) == [PlannerJSON.morning, "0d000000-0000-4000-8000-000000000020"])
+        #expect(routine(planner)?.itemIds == [PlannerJSON.water])
+        #expect(routine(planner)?.name == "Morning routine")
+        #expect(planner.banner?.text == undone)
+    }
+
+    /// Two deletes that never landed come back where they stood, newest
+    /// first, each onto the list it was measured against: Morning (at 0) and
+    /// then Night (at 1 of what was left) out of three. Oldest first would
+    /// put Night before Wind down.
+    @Test func twoFailedDeletesComeBackInTheirOldPlaces() async {
+        let server = FakeServer()
+        let wind = "0d000000-0000-4000-8000-000000000020"
+        let night = "0d000000-0000-4000-8000-000000000021"
+        let routines = [PlannerJSON.routineJSON(PlannerJSON.morning, "Morning routine", [PlannerJSON.water]),
+                        PlannerJSON.routineJSON(wind, "Wind down", []),
+                        PlannerJSON.routineJSON(night, "Night", [])]
+        await server.on(plannerRoute, .status(200, containerPayload(routines: routines)), .offline)
+        await server.on(routineRoute, .offline)
+        await server.on(containerRoute(.routine, night), .offline)
+        let planner = await loaded(server)
+
+        planner.deleteContainer(morningRef)
+        planner.deleteContainer(ContainerRef(kind: .routine, id: night))
+        #expect(planner.routines.map(\.id) == [wind])
+        await drain(planner)
+
+        #expect(planner.routines.map(\.id) == [PlannerJSON.morning, wind, night])
+        #expect(routine(planner)?.itemIds == [PlannerJSON.water])
+        #expect(planner.banner?.text == undone)
+    }
+
+    /// A rename of Morning that never landed, then its delete, which did, and
+    /// the refetch fails. The rename's revert replays the landed delete
+    /// (DsulCore `containerAfter`), so Morning stays gone, as on the server:
+    /// stepped through the fields-only `applyingContainer` instead, it would
+    /// come back into the list from the Trash. Nothing on screen moved, so
+    /// the banner is the failed fetch's, not the undo's.
+    @Test func aFailedRenameUnderALandedDeleteStaysGone() async {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, containerPayload()), .offline)
+        await server.on(routineRoute, .offline, .status(200, ok))
+        let planner = await loaded(server)
+
+        planner.rename(morningRef, to: "Mornings")     // never answered
+        planner.deleteContainer(morningRef)             // lands
+        #expect(routine(planner) == nil)
+        await drain(planner)
+
+        let sent = await server.count(routineRoute)
+        #expect(sent == 2)
+        #expect(routine(planner) == nil)
+        #expect(planner.routines.isEmpty)
+        #expect(planner.isGone(.container(.routine, id: PlannerJSON.morning)))
+        #expect(planner.banner?.text != undone)
+    }
+
+    /// A rename of Morning that never landed, then Groceries added to it,
+    /// which did, then its delete, which never landed, and the refetch fails.
+    /// Morning comes back with its old name, in its old place, holding Water
+    /// and Groceries, as the server does: its member lists are the latest
+    /// failed write's record (the delete's, taken after the collect), not the
+    /// earliest's (the rename's, from before it), which would bring it back
+    /// without Groceries.
+    @Test func aFailedRenameALandedCollectAndAFailedDeleteKeepTheLandedMember() async {
+        let server = FakeServer()
+        let wind = "0d000000-0000-4000-8000-000000000020"
+        let routines = [PlannerJSON.routineJSON(PlannerJSON.morning, "Morning routine", [PlannerJSON.water]),
+                        PlannerJSON.routineJSON(wind, "Wind down", [])]
+        await server.on(plannerRoute, .status(200, containerPayload(routines: routines)), .offline)
+        await server.on(routineRoute, .offline)
+        await server.on(itemRoute(PlannerJSON.groceries), .status(200, ok))
+        let planner = await loaded(server)
+
+        planner.rename(morningRef, to: "Mornings")       // fails
+        planner.collect(PlannerJSON.groceries, kind: .routine, containerId: PlannerJSON.morning, member: true)
+        planner.deleteContainer(morningRef)               // fails
+        #expect(routine(planner) == nil)
+        await drain(planner)
+
+        #expect(planner.routines.map(\.id) == [PlannerJSON.morning, wind])
+        #expect(routine(planner)?.name == "Morning routine")
+        #expect(routine(planner)?.itemIds == [PlannerJSON.water, PlannerJSON.groceries])
+        #expect(planner.banner?.text == undone)
+    }
+
+    /// A delete answered 404 `not_found` landed: the container is gone either
+    /// way, so nothing comes back and nothing is said. Any other write
+    /// answered 404 failed (the field was never set), and so does a delete
+    /// whose 404 isn't the route's own (an edge's, with no code): each comes
+    /// back once the refetch fails.
+    @Test func aDeleteAnswered404LandedAndARenameAnswered404Reverts() async {
+        let gone = FakeServer()
+        await gone.on(plannerRoute, .status(200, containerPayload()), .offline)
+        await gone.on(routineRoute, .status(404, "{\"error\":\"not_found\"}"))
+        let deleted = await loaded(gone)
+        deleted.deleteContainer(morningRef)
+        await drain(deleted)
+        #expect(routine(deleted) == nil)
+        #expect(deleted.banner == nil)
+
+        let renamed = FakeServer()
+        await renamed.on(plannerRoute, .status(200, containerPayload()), .offline)
+        await renamed.on(routineRoute, .status(404, "{\"error\":\"not_found\"}"))
+        let rename = await loaded(renamed)
+        rename.rename(morningRef, to: "Mornings")
+        #expect(routine(rename)?.name == "Mornings")
+        await drain(rename)
+        #expect(routine(rename)?.name == "Morning routine")
+        #expect(rename.banner?.text == undone)
+
+        let edge = FakeServer()
+        await edge.on(plannerRoute, .status(200, containerPayload()), .offline)
+        await edge.on(routineRoute, .status(404, "<html>Not Found</html>"))
+        let unsure = await loaded(edge)
+        unsure.deleteContainer(morningRef)
+        await drain(unsure)
+        #expect(routine(unsure)?.itemIds == [PlannerJSON.water])
+        #expect(unsure.banner?.text == undone)
+    }
+
+    /// + → New routine, New season, New goal, New project: each made at
+    /// once, last in its list, with the kind's starting glyph, and sent to
+    /// its kind's route with the phone's own id, lowercased, and the name
+    /// cleaned; a goal's window opens today. No colour, no member, no state
+    /// is sent: a create can never put back a list.
+    @Test func aCreateSendsItsBodyToItsKindsRoute() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, editPayload()))
+        for kind in OrganizeKind.allCases {
+            await server.on(createRoute(kind), .status(200, ok))
+        }
+        let planner = await loaded(server)
+
+        let routineRef = try #require(planner.createContainer(.routine, name: "  Evening\nwind-down "))
+        let seasonRef = try #require(planner.createContainer(.season, name: "Winter"))
+        let goalRef = try #require(planner.createContainer(.goal, name: "Learn Spanish"))
+        let projectRef = try #require(planner.createContainer(.project, name: "Errands"))
+        #expect(routineRef.id == routineRef.id.lowercased())
+        #expect(UUID(uuidString: routineRef.id) != nil)
+        #expect(planner.routines.last == Routine(id: routineRef.id, name: "Evening wind-down", icon: "icon:Repeat"))
+        #expect(planner.seasons.last?.id == seasonRef.id)
+        #expect(planner.seasons.last?.state == "auto")
+        #expect(planner.goals?.last?.id == goalRef.id)
+        #expect(planner.goals?.last?.state == "active")
+        #expect(planner.goals?.last?.startsOn == PlannerJSON.today)
+        #expect(planner.projectRecords.last == Project(id: projectRef.id, name: "Errands", emoji: "icon:Briefcase"))
+        #expect(!planner.isGone(.container(.goal, id: goalRef.id)))
+        await drain(planner)
+
+        let requests = await server.requests
+        let routineBody = try #require(bodyJSON(requests.first { $0.route == createRoute(.routine) }))
+        #expect(routineBody["id"] as? String == routineRef.id)
+        #expect(routineBody["name"] as? String == "Evening wind-down")
+        #expect(routineBody["icon"] as? String == "icon:Repeat")
+        #expect(routineBody.count == 3)
+        let goalBody = try #require(bodyJSON(requests.first { $0.route == createRoute(.goal) }))
+        #expect(goalBody["startsOn"] as? String == PlannerJSON.today)
+        #expect(goalBody.count == 4)
+        let projectBody = try #require(bodyJSON(requests.first { $0.route == createRoute(.project) }))
+        #expect(projectBody["icon"] as? String == "icon:Briefcase")
+        #expect(projectBody["startsOn"] == nil)
+        #expect(requests.filter { $0.route == createRoute(.season) }.count == 1)
+        #expect(planner.banner == nil)
+    }
+
+    /// A create that never landed takes its container with it once the
+    /// refetch fails: its page is gone, and the banner says the change was
+    /// undone.
+    @Test func aFailedCreateIsTakenBack() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, containerPayload()), .offline)
+        await server.on(createRoute(.routine), .offline)
+        let planner = await loaded(server)
+
+        let ref = try #require(planner.createContainer(.routine, name: "Evening"))
+        #expect(planner.routines.count == 2)
+        await drain(planner)
+
+        #expect(planner.routines.map(\.id) == [PlannerJSON.morning])
+        #expect(planner.isGone(.container(.routine, id: ref.id)))
+        #expect(planner.banner?.text == undone)
+    }
+
+    /// A create whose answer was lost, then Groceries added to it, which
+    /// landed: the route refuses a routine it doesn't hold (409
+    /// `container_gone`), so the toggle proves the create landed after all.
+    /// The failed refetch keeps both, and says what any failed fetch says,
+    /// since nothing moved.
+    @Test func aLandedCollectSettlesACreateWhoseAnswerWasLost() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, containerPayload()), .offline)
+        await server.on(createRoute(.routine), .offline)
+        await server.on(itemRoute(PlannerJSON.groceries), .status(200, ok))
+        let planner = await loaded(server)
+
+        let ref = try #require(planner.createContainer(.routine, name: "Evening"))
+        planner.collect(PlannerJSON.groceries, kind: .routine, containerId: ref.id, member: true)
+        #expect(planner.routines.last?.itemIds == [PlannerJSON.groceries])
+        await drain(planner)
+
+        #expect(planner.routines.map(\.id) == [PlannerJSON.morning, ref.id])
+        #expect(planner.routines.last?.itemIds == [PlannerJSON.groceries])
+        #expect(planner.banner?.text != undone)
+    }
+
+    /// A create offline, then an item added to it from the item sheet, also
+    /// offline: once the refetch fails, both are undone.
+    @Test func aCreateAndACollectOfflineAreBothUndone() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, containerPayload()), .offline)
+        await server.on(createRoute(.routine), .offline)
+        await server.on(itemRoute(PlannerJSON.groceries), .offline)
+        let planner = await loaded(server)
+
+        let ref = try #require(planner.createContainer(.routine, name: "Evening"))
+        planner.collect(PlannerJSON.groceries, kind: .routine, containerId: ref.id, member: true)
+        await drain(planner)
+
+        #expect(planner.routines.map(\.id) == [PlannerJSON.morning])
+        #expect(planner.banner?.text == undone)
+    }
+
+    /// A new project onto another live project's name, folding case, is
+    /// refused here, with the route's words, and nothing is sent. One onto a
+    /// name a project in the Trash still holds is the route's to refuse: its
+    /// 409 says so, naming the name sent, and the refetch takes the project
+    /// back.
+    @Test func aCreateOntoATakenProjectNameSaysWhy() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, editPayload()))
+        await server.on(createRoute(.project), .status(409, "{\"error\":\"name_in_trash\"}"))
+        let planner = await loaded(server)
+
+        #expect(planner.createContainer(.project, name: " work ") == nil)
+        #expect(planner.projectRecords.map(\.name) == ["Work", "Health"])
+        #expect(planner.banner?.text == "You already have a project called \u{201C}work\u{201D}.")
+        let sent = await postCount(server)
+        #expect(sent == 0)
+
+        let ref = try #require(planner.createContainer(.project, name: "Errands "))
+        #expect(work(planner) != nil)
+        await drain(planner)
+        #expect(planner.banner?.text == OrganizeCopy.nameInTrashSentence(noun: "project", name: "Errands"))
+        #expect(!planner.projectRecords.contains { $0.id == ref.id })
     }
 
     // MARK: A new subtask

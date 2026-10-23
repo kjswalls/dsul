@@ -36,7 +36,49 @@
     "trashLoadFailed": "Couldn't load the Trash.",
     "restoreFailed": "Couldn't restore it. Check your connection and try again.",
     "restoreGone": "It's no longer in the Trash.",
-    "pauseRefused": "That day is no longer after today, so nothing was paused."
+    "pauseRefused": "That day is no longer after today, so nothing was paused.",
+    "deleteStaysInTrash": {
+      "routine": "The routine stays in the Trash for 30 days.",
+      "season": "The season stays in the Trash for 30 days.",
+      "goal": "The goal stays in the Trash for 30 days.",
+      "project": "The project stays in the Trash for 30 days."
+    },
+    "deleteConfirmLabels": {
+      "routine": "Delete",
+      "season": "Delete",
+      "goal": "Delete goal",
+      "project": "Delete"
+    },
+    "createCopy": {
+      "goal": {
+        "eyebrow": "NEW GOAL",
+        "placeholder": "Name your goal…",
+        "addLabel": "Create goal",
+        "icon": "icon:Target",
+        "hint": "A goal is the reason a stretch of work exists. It holds the habits and tasks that serve it, the checkpoints along the way, and a recurring check-in. It never hides anything."
+      },
+      "routine": {
+        "eyebrow": "NEW ROUTINE",
+        "placeholder": "Name your routine…",
+        "addLabel": "Create routine",
+        "icon": "icon:Repeat",
+        "hint": "A routine is a set of things you do regularly, in order, like a morning or a workout week. Pause it and they all step off your day together."
+      },
+      "season": {
+        "eyebrow": "NEW SEASON",
+        "placeholder": "Name your season…",
+        "addLabel": "Create season",
+        "icon": "icon:CalendarRange",
+        "hint": "A season is a stretch of life (a summer, a term, a training block) that switches whole routines on and off. Without dates it starts always-on, hiding nothing."
+      },
+      "project": {
+        "eyebrow": "NEW PROJECT",
+        "placeholder": "Name your project…",
+        "addLabel": "Create project",
+        "icon": "icon:Briefcase",
+        "hint": "Projects file your tasks, and can carry a repeating block on the grid."
+      }
+    }
   },
   "heldWorld": {
     "items": [
@@ -1508,6 +1550,201 @@
       "code": "name_taken",
       "sentName": null,
       "expected": null
+    }
+  ],
+  "deleteTitle": [
+    {
+      "name": "a routine",
+      "kind": "routine",
+      "containerName": "Morning",
+      "expected": "Delete this routine?"
+    },
+    {
+      "name": "a season",
+      "kind": "season",
+      "containerName": "Autumn",
+      "expected": "Delete this season?"
+    },
+    {
+      "name": "a goal: its own name, unquoted",
+      "kind": "goal",
+      "containerName": "Run a half marathon",
+      "expected": "Delete Run a half marathon?"
+    },
+    {
+      "name": "a project: its name in quotes",
+      "kind": "project",
+      "containerName": "Home",
+      "expected": "Delete “Home”?"
+    },
+    {
+      "name": "a project whose name has quotes in it",
+      "kind": "project",
+      "containerName": "Mum’s “stuff”",
+      "expected": "Delete “Mum’s “stuff””?"
+    }
+  ],
+  "deleteConsequence": [
+    {
+      "name": "a routine with items",
+      "input": {
+        "kind": "routine",
+        "name": "Morning",
+        "liveCount": 3,
+        "reappear": false
+      },
+      "expected": "“Morning” is removed, but its 3 items stay exactly as they are. They just stop being grouped. The routine stays in the Trash for 30 days."
+    },
+    {
+      "name": "a routine with one item",
+      "input": {
+        "kind": "routine",
+        "name": "Morning",
+        "liveCount": 1,
+        "reappear": false
+      },
+      "expected": "“Morning” is removed, but its 1 item stays exactly as it is. It just stops being grouped. The routine stays in the Trash for 30 days."
+    },
+    {
+      "name": "a routine with nothing in it",
+      "input": {
+        "kind": "routine",
+        "name": "Desk",
+        "liveCount": 0,
+        "reappear": false
+      },
+      "expected": "“Desk” is removed. The routine stays in the Trash for 30 days."
+    },
+    {
+      "name": "a routine whose items come back into view",
+      "input": {
+        "kind": "routine",
+        "name": "Morning",
+        "liveCount": 2,
+        "reappear": true
+      },
+      "expected": "“Morning” is removed, but its 2 items stay exactly as they are. They just stop being grouped, and they come back into view. The routine stays in the Trash for 30 days."
+    },
+    {
+      "name": "a routine whose one item comes back into view",
+      "input": {
+        "kind": "routine",
+        "name": "Morning",
+        "liveCount": 1,
+        "reappear": true
+      },
+      "expected": "“Morning” is removed, but its 1 item stays exactly as it is. It just stops being grouped, and it comes back into view. The routine stays in the Trash for 30 days."
+    },
+    {
+      "name": "a live season with items and a routine",
+      "input": {
+        "kind": "season",
+        "name": "Autumn",
+        "itemCount": 2,
+        "routineCount": 1,
+        "live": true
+      },
+      "expected": "“Autumn” is removed, but the 2 items and 1 routine it holds stay exactly as they are. The season stays in the Trash for 30 days."
+    },
+    {
+      "name": "a live season with one item",
+      "input": {
+        "kind": "season",
+        "name": "Autumn",
+        "itemCount": 1,
+        "routineCount": 0,
+        "live": true
+      },
+      "expected": "“Autumn” is removed, but the 1 item it holds stays exactly as it is. The season stays in the Trash for 30 days."
+    },
+    {
+      "name": "an off season: what it was hiding comes back",
+      "input": {
+        "kind": "season",
+        "name": "Winter",
+        "itemCount": 2,
+        "routineCount": 2,
+        "live": false
+      },
+      "expected": "“Winter” is removed, but the 2 items and 2 routines it holds stay exactly as they are. Anything it was hiding comes back into view. The season stays in the Trash for 30 days."
+    },
+    {
+      "name": "an off season holding only a routine",
+      "input": {
+        "kind": "season",
+        "name": "Winter",
+        "itemCount": 0,
+        "routineCount": 1,
+        "live": false
+      },
+      "expected": "“Winter” is removed, but the 1 routine it holds stays exactly as it is. Anything it was hiding comes back into view. The season stays in the Trash for 30 days."
+    },
+    {
+      "name": "an off season with nothing in it",
+      "input": {
+        "kind": "season",
+        "name": "Winter",
+        "itemCount": 0,
+        "routineCount": 0,
+        "live": false
+      },
+      "expected": "“Winter” is removed. The season stays in the Trash for 30 days."
+    },
+    {
+      "name": "a live season with nothing in it",
+      "input": {
+        "kind": "season",
+        "name": "Autumn",
+        "itemCount": 0,
+        "routineCount": 0,
+        "live": true
+      },
+      "expected": "“Autumn” is removed. The season stays in the Trash for 30 days."
+    },
+    {
+      "name": "a goal",
+      "input": {
+        "kind": "goal"
+      },
+      "expected": "Its habits, tasks and milestones are ordinary items and stay exactly where they are. Only the goal and its links go. The goal stays in the Trash for 30 days."
+    },
+    {
+      "name": "a project with items",
+      "input": {
+        "kind": "project",
+        "name": "Home",
+        "itemCount": 4
+      },
+      "expected": "Its 4 items stay exactly as they are. They just stop being filed under Home. The project stays in the Trash for 30 days."
+    },
+    {
+      "name": "a project with one item",
+      "input": {
+        "kind": "project",
+        "name": "Home",
+        "itemCount": 1
+      },
+      "expected": "Its 1 item stays exactly as it is. It just stops being filed under Home. The project stays in the Trash for 30 days."
+    },
+    {
+      "name": "a project with nothing filed under it",
+      "input": {
+        "kind": "project",
+        "name": "Garden",
+        "itemCount": 0
+      },
+      "expected": "Nothing is filed under it, so nothing moves. The project stays in the Trash for 30 days."
+    },
+    {
+      "name": "a project whose habit the web would move: the phone’s delete moves nothing, and says nothing of it",
+      "input": {
+        "kind": "project",
+        "name": "Home",
+        "itemCount": 2,
+        "requiredCount": 1,
+        "destination": "Work"
+      },
+      "expected": "Its 2 items stay exactly as they are. They just stop being filed under Home. The project stays in the Trash for 30 days."
     }
   ]
 }
