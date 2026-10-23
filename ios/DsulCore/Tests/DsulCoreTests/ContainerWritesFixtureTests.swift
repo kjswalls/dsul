@@ -22,6 +22,14 @@ import DsulCore
 // icon and colour on each kind. A project rename's `after` is the project
 // alone: its members' re-file is `refiledItems` / `refiling`, hand-tested
 // below.
+//
+// From O10, `deletes`: one `{"action":"delete"}` per kind, each 200 (the
+// route's bin and 404 answers depend on rows the phone never holds, so the
+// route's own test pins them). From O11, `creates`: POST
+// /api/app/containers/:kind's body and the container the row reads back as
+// (`after`), which the phone's own (`containerCreateRecord`) must equal; and
+// `createInvalid`, bodies the route answers 400 and the phone never builds
+// (ContainerCreate.swift).
 
 /// One case of `cases`, its containers read as the kind says.
 private struct WriteCase: Decodable, Sendable {
@@ -91,9 +99,64 @@ private struct InvalidExpected: Decodable, Sendable {
     let error: String
 }
 
+/// One row of `deletes`: the delete's body on a kind, and the route's 200.
+private struct DeleteCase: Decodable, Sendable {
+    let name: String
+    let kind: String
+    let body: JSONValue
+    let expected: DeleteExpected
+}
+
+private struct DeleteExpected: Decodable, Sendable {
+    let status: Int
+}
+
+/// One row of `creates`: the body the create sheet sends, and the route's
+/// answer with the container the row reads back as.
+private struct CreateCase: Decodable, Sendable {
+    let name: String
+    let kind: OrganizeKind
+    let body: JSONValue
+    let status: Int
+    let id: String
+    let after: ContainerSnapshot
+
+    private enum Key: String, CodingKey {
+        case name, kind, body, expected
+    }
+
+    private enum ExpectedKey: String, CodingKey {
+        case status, id, after
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: Key.self)
+        name = try c.decode(String.self, forKey: .name)
+        let rawKind = try c.decode(String.self, forKey: .kind)
+        guard let kind = OrganizeKind(rawValue: rawKind) else {
+            throw DecodingError.dataCorruptedError(forKey: .kind, in: c, debugDescription: "kind \(rawKind)")
+        }
+        self.kind = kind
+        body = try c.decode(JSONValue.self, forKey: .body)
+        let e = try c.nestedContainer(keyedBy: ExpectedKey.self, forKey: .expected)
+        status = try e.decode(Int.self, forKey: .status)
+        id = try e.decode(String.self, forKey: .id)
+        switch kind {
+        case .routine: after = .routine(try e.decode(Routine.self, forKey: .after))
+        case .season: after = .season(try e.decode(Season.self, forKey: .after))
+        case .goal: after = .goal(try e.decode(Goal.self, forKey: .after))
+        case .project: after = .project(try e.decode(Project.self, forKey: .after))
+        }
+    }
+}
+
 private struct ContainerWritesFixture: Decodable, Sendable {
     let cases: [WriteCase]
     let invalid: [InvalidCase]
+    let deletes: [DeleteCase]
+    let creates: [CreateCase]
+    /// Shaped as `invalid`: each answered 400 `invalid`.
+    let createInvalid: [InvalidCase]
 }
 
 private func load() throws -> ContainerWritesFixture {
@@ -213,9 +276,63 @@ private func phoneIntent(_ body: JSONValue, kind: OrganizeKind) -> ContainerInte
     case "color":
         guard keys == ["action", "color"], let color = text("color") else { return nil }
         return .color(color)
+    case "delete":
+        guard keys == ["action"] else { return nil }
+        return .delete
     default:
         return nil
     }
+}
+
+/// What a create body carries, read by shape as strictly as the route's
+/// schema reads it: nil for a body no create can carry (not an object, a key
+/// no create schema names, a missing or mistyped id or name, a null icon or
+/// first day, a first day that is no day). Values a well-shaped body can still
+/// get wrong (an id that is not a uuid, a blank name, an icon off the token
+/// rule, a first day on a kind that takes none) are left to
+/// `ContainerCreateBody`'s own answer.
+private struct CreateShape: Sendable {
+    let id: String
+    let name: String
+    let icon: String?
+    let startsOn: DayString?
+}
+
+private func createShape(_ body: JSONValue) -> CreateShape? {
+    guard case .object(let o) = body else { return nil }
+    guard Set(o.keys).isSubset(of: ["id", "name", "icon", "startsOn"]) else { return nil }
+    guard case .string(let id)? = o["id"], case .string(let name)? = o["name"] else { return nil }
+    var icon: String? = nil
+    if let raw = o["icon"] {
+        guard case .string(let token) = raw else { return nil }
+        icon = token
+    }
+    var startsOn: DayString? = nil
+    if let raw = o["startsOn"] {
+        guard case .string(let s) = raw, s.utf8.count == 10, let day = DayString(s) else { return nil }
+        startsOn = day
+    }
+    return CreateShape(id: id, name: name, icon: icon, startsOn: startsOn)
+}
+
+/// The phone's body for a shape on `kind`'s route, or nil where it builds none.
+private func phoneCreate(_ shape: CreateShape, kind: OrganizeKind) -> ContainerCreateBody? {
+    return ContainerCreateBody(kind: kind, id: shape.id, name: shape.name, icon: shape.icon, startsOn: shape.startsOn)
+}
+
+/// `body` as the JSON it encodes to.
+private func json(_ body: ContainerCreateBody) throws -> JSONValue {
+    let data = try JSONEncoder().encode(body)
+    return try JSONDecoder().decode(JSONValue.self, from: data)
+}
+
+/// A create body as the phone sends it: the route takes an id in any case as
+/// its lowercase self, and `ContainerCreateBody` lowercases it at once, so a
+/// row that sends capitals is the same create with its id lowercased.
+private func lowercasedID(_ body: JSONValue) -> JSONValue {
+    guard case .object(var o) = body, case .string(let id)? = o["id"] else { return body }
+    o["id"] = .string(id.lowercased())
+    return .object(o)
 }
 
 /// Every intent the phone could build out of the values the fixture names
@@ -249,6 +366,7 @@ private func buildable(from bodies: [JSONValue]) -> [ContainerIntent] {
         }
     }
     var out: [ContainerIntent] = SeasonState.allCases.map { .state($0) } + GoalState.allCases.map { .goalState($0) }
+    out.append(.delete)
     for zone in zones {
         out.append(.resume(timeZone: zone))
         for day in days { out.append(.pause(until: day, timeZone: zone)) }
@@ -278,10 +396,20 @@ private func buildable(from bodies: [JSONValue]) -> [ContainerIntent] {
         #expect(!f.invalid.isEmpty)
         let intents = f.cases.compactMap { c in phoneIntent(c.body, kind: c.kind).map { (c.kind, $0) } }
         #expect(intents.count == f.cases.count)
-        for action in ContainerAction.allCases {
+        // `cases` are the field intents; the delete and the create have their
+        // own sections, each on every kind.
+        for action in ContainerAction.allCases where action != .delete && action != .create {
             for kind in action.kinds {
                 #expect(intents.contains { $0.0 == kind && $0.1.action == action }, "\(action) on \(kind)")
             }
+        }
+        #expect(!intents.contains { $0.1.action == .delete })
+        for kind in ContainerAction.delete.kinds {
+            #expect(f.deletes.contains { $0.kind == kind.rawValue }, "delete on \(kind)")
+        }
+        for kind in ContainerAction.create.kinds {
+            #expect(f.creates.contains { $0.kind == kind }, "create on \(kind)")
+            #expect(f.createInvalid.contains { $0.kind == kind.rawValue }, "an invalid create on \(kind)")
         }
         #expect(intents.contains { if case .pause = $0.1 { return true }; return false })
         #expect(intents.contains { if case .resume = $0.1 { return true }; return false })
@@ -326,6 +454,8 @@ private func buildable(from bodies: [JSONValue]) -> [ContainerIntent] {
                 #expect(code == c.refused, "\(c.name): refused \(code)")
                 #expect(status == c.status, "\(c.name)")
                 #expect(c.patch == nil, "\(c.name)")
+            case .removed:
+                Issue.record("\(c.name): a field case answered as a delete")
             }
         }
     }
@@ -397,6 +527,132 @@ private func buildable(from bodies: [JSONValue]) -> [ContainerIntent] {
             #expect(built[kind]?.contains(c.body) == false, "\(c.name): the phone builds it")
         }
     }
+
+    /// O10: the phone's delete is the body the route took on every kind, the
+    /// action alone; the rule answers it `.removed` and writes no field, and
+    /// the step that honours it takes the container away.
+    @Test func eachDeleteIsTheWireJSON() throws {
+        let deletes = try load().deletes
+        #expect(Set(deletes.map(\.kind)) == Set(OrganizeKind.allCases.map(\.rawValue)))
+        for c in deletes {
+            let kind = try #require(OrganizeKind(rawValue: c.kind), "\(c.name): kind \(c.kind)")
+            #expect(c.expected.status == 200, "\(c.name)")
+            let intent = try #require(phoneIntent(c.body, kind: kind), "\(c.name): a body the phone can't mean")
+            #expect(intent == .delete, "\(c.name)")
+            #expect(intent.isWellFormed && intent.applies(to: kind), "\(c.name)")
+            let body = try #require(ContainerWriteBody(intent, for: kind), "\(c.name): not one \(kind) takes")
+            #expect(body.action == .delete, "\(c.name)")
+            #expect(try json(body) == c.body, "\(c.name)")
+            let container = try #require(sample(kind))
+            #expect(containerIntentPatch(intent, on: container, now: noon, timeZone: "UTC", today: "2026-10-23")
+                == .removed, "\(c.name)")
+            #expect(containerAfter(intent, on: container, at: noon, timeZone: "UTC", today: "2026-10-23") == nil,
+                    "\(c.name)")
+            // No field moves: the fields-only step hands it back as it was.
+            #expect(applyingContainer(intent, to: container, at: noon, timeZone: "UTC", today: "2026-10-23")
+                == container, "\(c.name)")
+        }
+    }
+
+    /// O11: the phone's create is the body the route took, and the container
+    /// it makes at once is the row the route read back: the name trimmed, a
+    /// season `auto`, a goal `active` from its first day, a project's glyph in
+    /// its `emoji` (empty with none), and nothing in any of them.
+    @Test func eachCreateIsTheWireJSONAndTheRow() throws {
+        let creates = try load().creates
+        // One row sends its id in capitals; the id the route answers is lowercase.
+        #expect(creates.contains { createShape($0.body).map { $0.id != $0.id.lowercased() } ?? false })
+        for c in creates {
+            #expect(c.status == 200, "\(c.name)")
+            let shape = try #require(createShape(c.body), "\(c.name): a body no create carries")
+            let body = try #require(phoneCreate(shape, kind: c.kind), "\(c.name): the phone builds none")
+            #expect(body.kind == c.kind, "\(c.name)")
+            #expect(try json(body) == lowercasedID(c.body), "\(c.name)")
+            #expect(body.id == c.id, "\(c.name): id")
+            #expect(body.ref == ContainerRef(kind: c.kind, id: c.id), "\(c.name): ref")
+            #expect(body.storedName == c.after.name, "\(c.name): name")
+            #expect(containerCreateRecord(body) == c.after, "\(c.name): \(containerCreateRecord(body))")
+            #expect(ContainerRoutes.create(c.kind) == "/api/app/containers/\(c.kind.rawValue)", "\(c.name)")
+            // The record is the planner's new container: its own id, nothing
+            // in it, and every field intent steps it as any other.
+            #expect(containerCreateRecord(body).ref == body.ref, "\(c.name)")
+            #expect(containerCreateRecord(body).withMembership(of: c.after) == c.after, "\(c.name)")
+        }
+    }
+
+    /// The bodies the create route refuses are bodies the phone never builds:
+    /// each either carries no create at all, or one `ContainerCreateBody`
+    /// refuses; and no body the phone can build for that kind, out of every
+    /// value the fixture names, is it.
+    @Test func theRefusedCreatesAreNeverBuilt() throws {
+        let f = try load()
+        let bodies = f.creates.map(\.body) + f.createInvalid.map(\.body)
+        var ids: [String] = []
+        var names: [String] = []
+        var icons: [String?] = [nil]
+        var days: [DayString?] = [nil]
+        func add<T: Equatable>(_ value: T, to list: inout [T]) { if !list.contains(value) { list.append(value) } }
+        for body in bodies {
+            guard case .object(let o) = body else { continue }
+            if case .string(let s)? = o["id"] { add(s, to: &ids); add(s.uppercased(), to: &ids) }
+            if case .string(let s)? = o["name"] { add(s, to: &names) }
+            if case .string(let s)? = o["icon"] { add(s, to: &icons) }
+            if case .string(let s)? = o["startsOn"], s.utf8.count == 10, let d = DayString(s) { add(d, to: &days) }
+        }
+        var built: [OrganizeKind: Set<JSONValue>] = [:]
+        for kind in OrganizeKind.allCases {
+            var out = Set<JSONValue>()
+            for id in ids {
+                for name in names {
+                    for icon in icons {
+                        for day in days {
+                            guard let body = ContainerCreateBody(kind: kind, id: id, name: name, icon: icon, startsOn: day)
+                            else { continue }
+                            out.insert(try json(body))
+                        }
+                    }
+                }
+            }
+            built[kind] = out
+        }
+        for c in f.createInvalid {
+            #expect(c.expected.status == 400 && c.expected.error == "invalid", "\(c.name)")
+            let kind = try #require(OrganizeKind(rawValue: c.kind), "\(c.name): kind \(c.kind)")
+            if let shape = createShape(c.body) {
+                #expect(phoneCreate(shape, kind: kind) == nil, "\(c.name): the phone would build it")
+            }
+            #expect(built[kind]?.contains(c.body) == false, "\(c.name): the phone builds it")
+        }
+        // Every row the route took, the phone builds, on its kind alone where
+        // the body names a first day.
+        for c in f.creates {
+            #expect(built[c.kind]?.contains(lowercasedID(c.body)) == true, "\(c.name)")
+        }
+    }
+
+    /// The create sheet's own body: the kind's starting glyph, and for a goal
+    /// a window that opens on the day given. Where the fixture sent the same,
+    /// it is the same JSON.
+    @Test func theCreateSheetSendsTheWebsDefaults() throws {
+        let f = try load()
+        let today = try #require(DayString("2026-10-23"))
+        for kind in OrganizeKind.allCases {
+            let id = "cccccccc-0000-4000-8000-0000000000f\(OrganizeKind.allCases.firstIndex(of: kind)!)"
+            let body = try #require(ContainerCreateBody(kind, id: id, name: "Evening", today: today), "\(kind)")
+            #expect(body.icon == OrganizeCopy.createCopy(kind).icon, "\(kind)")
+            #expect(body.startsOn == (kind == .goal ? today : nil), "\(kind)")
+        }
+        var matched = 0
+        for c in f.creates {
+            guard let shape = createShape(c.body), shape.icon == OrganizeCopy.createCopy(c.kind).icon,
+                  c.kind != .goal || shape.startsOn == today
+            else { continue }
+            let sheet = try #require(ContainerCreateBody(c.kind, id: shape.id, name: shape.name, today: today), "\(c.name)")
+            #expect(try json(sheet) == lowercasedID(c.body), "\(c.name)")
+            matched += 1
+        }
+        #expect(matched >= OrganizeKind.allCases.count)
+    }
 }
 
 /// A container of `kind` with nothing set, to step a refused intent on.
@@ -426,9 +682,19 @@ private let oct23 = DayString("2026-10-23")!
         #expect(ContainerAction.window.kinds == [.goal])
         #expect(ContainerAction.notes.kinds == [.routine, .season, .project])
         #expect(ContainerAction.why.kinds == [.goal])
-        for action in [ContainerAction.rename, .icon, .color] {
+        for action in [ContainerAction.rename, .icon, .color, .delete, .create] {
             #expect(action.kinds == [.routine, .season, .goal, .project])
         }
+        #expect(ContainerIntent.delete.action == .delete)
+        for kind in OrganizeKind.allCases {
+            #expect(ContainerIntent.delete.applies(to: kind))
+        }
+        #expect(ContainerIntent.delete.isWellFormed)
+        #expect(ContainerIntent.delete.removesContainer)
+        #expect(ContainerIntent.delete.timeZone == nil)
+        #expect(ContainerIntent.delete.renamedTo == nil)
+        #expect(!ContainerIntent.rename("x").removesContainer)
+        #expect(!ContainerIntent.color(nil).removesContainer)
         #expect(ContainerIntent.pause(until: nil, timeZone: nil).action == .pause)
         #expect(ContainerIntent.resume(timeZone: "UTC").action == .pause)
         #expect(ContainerIntent.state(.active).action == .state)
@@ -459,10 +725,10 @@ private let oct23 = DayString("2026-10-23")!
         func list(_ kind: OrganizeKind) -> [String] {
             ContainerAction.allCases.filter { $0.kinds.contains(kind) }.map(\.rawValue)
         }
-        #expect(list(.routine) == ["pause", "usualTime", "notes", "rename", "icon", "color"])
-        #expect(list(.season) == ["state", "dates", "notes", "rename", "icon", "color"])
-        #expect(list(.goal) == ["state", "window", "why", "rename", "icon", "color"])
-        #expect(list(.project) == ["notes", "rename", "icon", "color"])
+        #expect(list(.routine) == ["pause", "usualTime", "notes", "rename", "icon", "color", "delete", "create"])
+        #expect(list(.season) == ["state", "dates", "notes", "rename", "icon", "color", "delete", "create"])
+        #expect(list(.goal) == ["state", "window", "why", "rename", "icon", "color", "delete", "create"])
+        #expect(list(.project) == ["notes", "rename", "icon", "color", "delete", "create"])
     }
 
     /// A body goes only to a route whose union holds its action, and carries
@@ -499,6 +765,11 @@ private let oct23 = DayString("2026-10-23")!
         let off = try #require(ContainerWriteBody(.state(.paused), for: .season))
         #expect(try json(off) == .object(["action": .string("state"), "state": .string("paused")]))
         #expect(off.action == .state)
+        // O10: a delete goes to every kind's route, the action alone.
+        for kind in OrganizeKind.allCases {
+            let delete = try #require(ContainerWriteBody(.delete, for: kind), "\(kind)")
+            #expect(try json(delete) == .object(["action": .string("delete")]), "\(kind)")
+        }
     }
 
     /// From O8b and O9: a clear and an open end are explicit nulls, since
@@ -869,6 +1140,23 @@ private let oct23 = DayString("2026-10-23")!
         #expect(!full.takes(.why(nil), on: .project))
         #expect(!full.takes(.usualTime(nil), on: .project))
         #expect(!ContainerWrites(goal: ["state"]).takes(.window(startsOn: nil, targetOn: nil), on: .goal))
+        // O10 and O11: a delete and a create each where listed, and only there.
+        // (`.delete` names both the action and the intent, so a bare one is
+        // ambiguous between the two `takes`; the intent asks the same list.)
+        #expect(!full.takes(ContainerAction.delete, on: .routine))
+        #expect(!full.takes(ContainerIntent.delete, on: .routine))
+        #expect(!full.takes(.create, on: .season))
+        let o11 = ContainerWrites(routine: ["delete", "create"], season: ["create"], goal: ["delete"], project: [])
+        #expect(o11.takes(ContainerAction.delete, on: .routine))
+        #expect(o11.takes(ContainerIntent.delete, on: .routine))
+        #expect(o11.takes(.create, on: .routine))
+        #expect(o11.takes(.create, on: .season))
+        #expect(!o11.takes(ContainerAction.delete, on: .season))
+        #expect(!o11.takes(ContainerIntent.delete, on: .season))
+        #expect(o11.takes(ContainerIntent.delete, on: .goal))
+        #expect(!o11.takes(.create, on: .goal))
+        #expect(!o11.takes(ContainerAction.delete, on: .project))
+        #expect(!o11.takes(.create, on: .project))
     }
 
     @Test func aRefusedPauseIsWorded() {
@@ -908,6 +1196,129 @@ private let oct23 = DayString("2026-10-23")!
         for token in ContainerLook.ramp {
             #expect(ContainerIntent.color(token).isWellFormed, "\(token)")
         }
+    }
+}
+
+// MARK: - A new container (O11) and the step past a delete (O10)
+
+@Suite struct ContainerCreateTests {
+    private let id = "cccccccc-0000-4000-8000-000000000001"
+
+    /// The schema's `Id`: a uuid in any case, taken lowercased, so the phone's
+    /// new container and the row share one id. A sample id never builds.
+    @Test func theIdIsAUuidTakenLowercased() throws {
+        let upper = "4B1D3C2A-0000-4000-8000-00000000ABCD"
+        let body = try #require(ContainerCreateBody(kind: .season, id: upper, name: "Autumn"))
+        #expect(body.id == "4b1d3c2a-0000-4000-8000-00000000abcd")
+        #expect(body.ref == ContainerRef(kind: .season, id: "4b1d3c2a-0000-4000-8000-00000000abcd"))
+        #expect(try json(body) == .object([
+            "id": .string("4b1d3c2a-0000-4000-8000-00000000abcd"), "name": .string("Autumn"),
+        ]))
+        #expect(containerCreateRecord(body).id == body.id)
+        let minted = UUID().uuidString.lowercased()
+        #expect(ContainerCreateBody(kind: .routine, id: minted, name: "Desk")?.id == minted)
+        for bad in [
+            "sample-morning-routine", "", "cccccccc-0000-4000-8000-00000000000", "cccccccc-0000-4000-8000-0000000000001",
+            "{cccccccc-0000-4000-8000-000000000001}", "cccccccc00000-4000-8000-000000000001",
+            "gccccccc-0000-4000-8000-000000000001", "cccccccc-0000-4000-8000-00000000000\u{FF11}",
+            " cccccccc-0000-4000-8000-000000000001", "cccccccc-0000-4000-8000-000000000001\n",
+        ] {
+            #expect(ContainerCreateBody(kind: .routine, id: bad, name: "Desk") == nil, "\(bad)")
+        }
+    }
+
+    /// The schema's `Name`: trimmed, 1 to the outer title's limit; sent as
+    /// typed, stored trimmed.
+    @Test func theNameIsSentAsTypedAndStoredTrimmed() throws {
+        let padded = try #require(ContainerCreateBody(kind: .routine, id: id, name: "  Lunch walk \n"))
+        #expect(padded.name == "  Lunch walk \n")
+        #expect(padded.storedName == "Lunch walk")
+        #expect(containerCreateRecord(padded).name == "Lunch walk")
+        let limit = String(repeating: "a", count: EditLimits.outerTitle)
+        #expect(ContainerCreateBody(kind: .project, id: id, name: limit) != nil)
+        #expect(ContainerCreateBody(kind: .project, id: id, name: " \(limit)\t") != nil)
+        #expect(ContainerCreateBody(kind: .project, id: id, name: limit + "a") == nil)
+        for blank in ["", "   ", "\n\t", "\u{3000}"] {
+            #expect(ContainerCreateBody(kind: .goal, id: id, name: blank) == nil, "\(blank)")
+        }
+    }
+
+    /// The glyph is a token or nothing; a first day only a goal takes, and only
+    /// a day the route's `DateStrSchema` reads. Neither is ever sent as null.
+    @Test func theGlyphAndTheFirstDayAreTheSchemas() throws {
+        #expect(ContainerCreateBody(kind: .routine, id: id, name: "Desk", icon: "icon:Moon") != nil)
+        for bad in ["Moon", "icon:", "ICON:Moon", "icon:Calendar-Range", ""] {
+            #expect(ContainerCreateBody(kind: .routine, id: id, name: "Desk", icon: bad) == nil, "\(bad)")
+        }
+        let oct23 = try #require(DayString("2026-10-23"))
+        let goal = try #require(ContainerCreateBody(kind: .goal, id: id, name: "Run", startsOn: oct23))
+        #expect(try json(goal) == .object([
+            "id": .string(id), "name": .string("Run"), "startsOn": .string("2026-10-23"),
+        ]))
+        for kind in [OrganizeKind.routine, .season, .project] {
+            #expect(ContainerCreateBody(kind: kind, id: id, name: "Run", startsOn: oct23) == nil, "\(kind)")
+        }
+        #expect(ContainerCreateBody(kind: .goal, id: id, name: "Run", startsOn: DayString("0099-12-31")) == nil)
+        #expect(ContainerCreateBody(kind: .goal, id: id, name: "Run", startsOn: DayString("0100-01-01")) != nil)
+        // No glyph and no first day: neither key at all.
+        let bare = try #require(ContainerCreateBody(kind: .goal, id: id, name: "Read more"))
+        #expect(try json(bare) == .object(["id": .string(id), "name": .string("Read more")]))
+    }
+
+    /// containerCreateRecord: the web's defaults, each kind empty.
+    @Test func theRecordIsTheWebsDefaults() throws {
+        let oct23 = try #require(DayString("2026-10-23"))
+        func record(_ kind: OrganizeKind, icon: String? = nil, startsOn: DayString? = nil) throws -> ContainerSnapshot {
+            let body = try #require(ContainerCreateBody(kind: kind, id: id, name: " Evening ", icon: icon, startsOn: startsOn))
+            return containerCreateRecord(body)
+        }
+        #expect(try record(.routine, icon: "icon:Repeat") == .routine(Routine(id: id, name: "Evening", icon: "icon:Repeat")))
+        #expect(try record(.season) == .season(Season(id: id, name: "Evening", state: "auto")))
+        #expect(try record(.goal, icon: "icon:Target", startsOn: oct23)
+            == .goal(Goal(id: id, name: "Evening", icon: "icon:Target", state: "active", startsOn: "2026-10-23")))
+        #expect(try record(.project, icon: "icon:Briefcase") == .project(Project(id: id, name: "Evening", emoji: "icon:Briefcase")))
+        #expect(try record(.project) == .project(Project(id: id, name: "Evening", emoji: "")))
+        // A new routine is live, a new season is on today, a new goal active.
+        guard case .routine(let routine) = try record(.routine) else { Issue.record("not a routine"); return }
+        #expect(!isPausedOn(routine, on: oct23, timeZone: "UTC"))
+        guard case .season(let season) = try record(.season) else { Issue.record("not a season"); return }
+        #expect(isSeasonActiveOn(season, on: oct23))
+        #expect(ContainerRoutes.create(.goal) == "/api/app/containers/goal")
+        #expect(ContainerRoutes.create(.project) == "/api/app/containers/project")
+    }
+
+    /// A refused create names the project by the name it sent, trimmed as the
+    /// route read it, never the answer's body.
+    @Test func aRefusedCreateNamesWhatWasSent() throws {
+        let work = try #require(ContainerCreateBody(kind: .project, id: id, name: " work\n"))
+        #expect(OrganizeCopy.refusal(code: "name_taken", for: work) == "You already have a project called \u{201C}work\u{201D}.")
+        #expect(OrganizeCopy.refusal(code: "name_in_trash", for: work) ==
+            "A deleted project called \u{201C}work\u{201D} still has that name. Restore it from Trash, or pick a different one.")
+        #expect(OrganizeCopy.refusal(code: "not_found", for: work) == nil)
+        #expect(OrganizeCopy.refusal(code: nil, for: work) == nil)
+        #expect(OrganizeCopy.refusal(code: "invalid", for: work) == nil)
+    }
+
+    /// `containerAfter`: a delete takes the container away, a container
+    /// already gone stays gone, and any other write is `applyingContainer`.
+    @Test func theStepPastADeleteIsNoContainer() {
+        let routine = ContainerSnapshot.routine(Routine(id: "r", name: "Evening", itemIds: [one]))
+        #expect(containerAfter(.delete, on: routine, at: noon, timeZone: "UTC", today: "2026-10-23") == nil)
+        #expect(containerAfter(.delete, on: nil, at: noon, timeZone: "UTC", today: "2026-10-23") == nil)
+        #expect(containerAfter(.rename("Night"), on: nil, at: noon, timeZone: "UTC", today: "2026-10-23") == nil)
+        #expect(containerAfter(.rename("Night"), on: routine, at: noon, timeZone: "UTC", today: "2026-10-23")
+            == .routine(Routine(id: "r", name: "Night", itemIds: [one])))
+        let pause = ContainerIntent.pause(until: nil, timeZone: "UTC")
+        #expect(containerAfter(pause, on: routine, at: noon, timeZone: "UTC", today: "2026-10-23")
+            == applyingContainer(pause, to: routine, at: noon, timeZone: "UTC", today: "2026-10-23"))
+        // A refused write leaves it as it was, still there.
+        #expect(containerAfter(.state(.active), on: routine, at: noon, timeZone: "UTC", today: "2026-10-23") == routine)
+        // A delete is `.removed` on every kind, and no refusal has words for it.
+        for kind in OrganizeKind.allCases {
+            #expect(containerIntentPatch(.delete, on: sample(kind)!, now: noon, timeZone: "UTC", today: "x") == .removed)
+        }
+        #expect(OrganizeCopy.refusal(code: "not_found", for: .delete) == nil)
+        #expect(OrganizeCopy.refusal(code: "name_taken", for: .delete) == nil)
     }
 }
 

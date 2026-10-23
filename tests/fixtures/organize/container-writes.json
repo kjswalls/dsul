@@ -4853,10 +4853,515 @@
       }
     },
     {
-      "name": "a delete, for now",
+      "name": "a delete with a key it does not take",
+      "kind": "routine",
+      "body": {
+        "action": "delete",
+        "permanent": true
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a delete naming its own id",
+      "kind": "project",
+      "body": {
+        "action": "delete",
+        "id": "cccccccc-0000-4000-8000-000000000001"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    }
+  ],
+  "deletes": [
+    {
+      "name": "delete a routine",
+      "kind": "routine",
+      "body": {
+        "action": "delete"
+      },
+      "expected": {
+        "status": 200
+      }
+    },
+    {
+      "name": "delete a season",
+      "kind": "season",
+      "body": {
+        "action": "delete"
+      },
+      "expected": {
+        "status": 200
+      }
+    },
+    {
+      "name": "delete a goal",
+      "kind": "goal",
+      "body": {
+        "action": "delete"
+      },
+      "expected": {
+        "status": 200
+      }
+    },
+    {
+      "name": "delete a project",
       "kind": "project",
       "body": {
         "action": "delete"
+      },
+      "expected": {
+        "status": 200
+      }
+    }
+  ],
+  "creates": [
+    {
+      "name": "a routine, with the web’s glyph",
+      "kind": "routine",
+      "body": {
+        "id": "cccccccc-0000-4000-8000-000000000001",
+        "name": "Evening wind-down",
+        "icon": "icon:Repeat"
+      },
+      "expected": {
+        "status": 200,
+        "id": "cccccccc-0000-4000-8000-000000000001",
+        "after": {
+          "id": "cccccccc-0000-4000-8000-000000000001",
+          "name": "Evening wind-down",
+          "icon": "icon:Repeat",
+          "itemIds": []
+        }
+      }
+    },
+    {
+      "name": "a routine with no glyph",
+      "kind": "routine",
+      "body": {
+        "id": "cccccccc-0000-4000-8000-000000000002",
+        "name": "Desk"
+      },
+      "expected": {
+        "status": 200,
+        "id": "cccccccc-0000-4000-8000-000000000002",
+        "after": {
+          "id": "cccccccc-0000-4000-8000-000000000002",
+          "name": "Desk",
+          "itemIds": []
+        }
+      }
+    },
+    {
+      "name": "a name sent with spaces round it is stored trimmed",
+      "kind": "routine",
+      "body": {
+        "id": "cccccccc-0000-4000-8000-000000000003",
+        "name": "  Lunch walk \n",
+        "icon": "icon:Repeat"
+      },
+      "expected": {
+        "status": 200,
+        "id": "cccccccc-0000-4000-8000-000000000003",
+        "after": {
+          "id": "cccccccc-0000-4000-8000-000000000003",
+          "name": "Lunch walk",
+          "icon": "icon:Repeat",
+          "itemIds": []
+        }
+      }
+    },
+    {
+      "name": "a season: on its dates, and with none it is always on",
+      "kind": "season",
+      "body": {
+        "id": "cccccccc-0000-4000-8000-000000000004",
+        "name": "Autumn",
+        "icon": "icon:CalendarRange"
+      },
+      "expected": {
+        "status": 200,
+        "id": "cccccccc-0000-4000-8000-000000000004",
+        "after": {
+          "id": "cccccccc-0000-4000-8000-000000000004",
+          "name": "Autumn",
+          "icon": "icon:CalendarRange",
+          "state": "auto",
+          "itemIds": [],
+          "routineIds": []
+        }
+      }
+    },
+    {
+      "name": "a season with no glyph",
+      "kind": "season",
+      "body": {
+        "id": "cccccccc-0000-4000-8000-000000000005",
+        "name": "Training block"
+      },
+      "expected": {
+        "status": 200,
+        "id": "cccccccc-0000-4000-8000-000000000005",
+        "after": {
+          "id": "cccccccc-0000-4000-8000-000000000005",
+          "name": "Training block",
+          "state": "auto",
+          "itemIds": [],
+          "routineIds": []
+        }
+      }
+    },
+    {
+      "name": "a goal whose window opens today",
+      "kind": "goal",
+      "body": {
+        "id": "cccccccc-0000-4000-8000-000000000006",
+        "name": "Run a half marathon",
+        "icon": "icon:Target",
+        "startsOn": "2026-10-23"
+      },
+      "expected": {
+        "status": 200,
+        "id": "cccccccc-0000-4000-8000-000000000006",
+        "after": {
+          "id": "cccccccc-0000-4000-8000-000000000006",
+          "name": "Run a half marathon",
+          "icon": "icon:Target",
+          "state": "active",
+          "startsOn": "2026-10-23",
+          "memberIds": [],
+          "milestoneIds": [],
+          "checkinIds": []
+        }
+      }
+    },
+    {
+      "name": "a goal sent with no first day",
+      "kind": "goal",
+      "body": {
+        "id": "cccccccc-0000-4000-8000-000000000007",
+        "name": "Read more"
+      },
+      "expected": {
+        "status": 200,
+        "id": "cccccccc-0000-4000-8000-000000000007",
+        "after": {
+          "id": "cccccccc-0000-4000-8000-000000000007",
+          "name": "Read more",
+          "state": "active",
+          "memberIds": [],
+          "milestoneIds": [],
+          "checkinIds": []
+        }
+      }
+    },
+    {
+      "name": "a project, with the web’s glyph in its emoji column",
+      "kind": "project",
+      "body": {
+        "id": "cccccccc-0000-4000-8000-000000000008",
+        "name": "Allotment",
+        "icon": "icon:Briefcase"
+      },
+      "expected": {
+        "status": 200,
+        "id": "cccccccc-0000-4000-8000-000000000008",
+        "after": {
+          "id": "cccccccc-0000-4000-8000-000000000008",
+          "name": "Allotment",
+          "emoji": "icon:Briefcase"
+        }
+      }
+    },
+    {
+      "name": "a project with no glyph: its emoji is empty",
+      "kind": "project",
+      "body": {
+        "id": "cccccccc-0000-4000-8000-000000000009",
+        "name": "Errands"
+      },
+      "expected": {
+        "status": 200,
+        "id": "cccccccc-0000-4000-8000-000000000009",
+        "after": {
+          "id": "cccccccc-0000-4000-8000-000000000009",
+          "name": "Errands",
+          "emoji": ""
+        }
+      }
+    },
+    {
+      "name": "a name with an accent and an emoji",
+      "kind": "project",
+      "body": {
+        "id": "cccccccc-0000-4000-8000-00000000000a",
+        "name": "Café ☕",
+        "icon": "icon:Coffee"
+      },
+      "expected": {
+        "status": 200,
+        "id": "cccccccc-0000-4000-8000-00000000000a",
+        "after": {
+          "id": "cccccccc-0000-4000-8000-00000000000a",
+          "name": "Café ☕",
+          "emoji": "icon:Coffee"
+        }
+      }
+    },
+    {
+      "name": "an id sent in capitals is stored lowercase",
+      "kind": "season",
+      "body": {
+        "id": "CCCCCCCC-0000-4000-8000-00000000000B",
+        "name": "Garage clear-out"
+      },
+      "expected": {
+        "status": 200,
+        "id": "cccccccc-0000-4000-8000-00000000000b",
+        "after": {
+          "id": "cccccccc-0000-4000-8000-00000000000b",
+          "name": "Garage clear-out",
+          "state": "auto",
+          "itemIds": [],
+          "routineIds": []
+        }
+      }
+    },
+    {
+      "name": "a no-break space and a byte order mark round the name are trimmed",
+      "kind": "routine",
+      "body": {
+        "id": "cccccccc-0000-4000-8000-00000000000c",
+        "name": " Desk﻿"
+      },
+      "expected": {
+        "status": 200,
+        "id": "cccccccc-0000-4000-8000-00000000000c",
+        "after": {
+          "id": "cccccccc-0000-4000-8000-00000000000c",
+          "name": "Desk",
+          "itemIds": []
+        }
+      }
+    },
+    {
+      "name": "a next-line character before the name is kept: JavaScript does not trim it",
+      "kind": "project",
+      "body": {
+        "id": "cccccccc-0000-4000-8000-00000000000d",
+        "name": "Desk"
+      },
+      "expected": {
+        "status": 200,
+        "id": "cccccccc-0000-4000-8000-00000000000d",
+        "after": {
+          "id": "cccccccc-0000-4000-8000-00000000000d",
+          "name": "Desk",
+          "emoji": ""
+        }
+      }
+    }
+  ],
+  "createInvalid": [
+    {
+      "name": "no id",
+      "kind": "routine",
+      "body": {
+        "name": "Desk"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "an id that is not a uuid (a sample id)",
+      "kind": "routine",
+      "body": {
+        "id": "sample-morning-routine",
+        "name": "Desk"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "no name",
+      "kind": "season",
+      "body": {
+        "id": "cccccccc-0000-4000-8000-000000000014"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a name of spaces",
+      "kind": "project",
+      "body": {
+        "id": "cccccccc-0000-4000-8000-000000000014",
+        "name": "   "
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a null name",
+      "kind": "goal",
+      "body": {
+        "id": "cccccccc-0000-4000-8000-000000000014",
+        "name": null
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a null icon",
+      "kind": "routine",
+      "body": {
+        "id": "cccccccc-0000-4000-8000-000000000014",
+        "name": "Desk",
+        "icon": null
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "an icon with no icon: prefix",
+      "kind": "season",
+      "body": {
+        "id": "cccccccc-0000-4000-8000-000000000014",
+        "name": "Autumn",
+        "icon": "CalendarRange"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a project’s glyph sent as emoji",
+      "kind": "project",
+      "body": {
+        "id": "cccccccc-0000-4000-8000-000000000014",
+        "name": "Home",
+        "emoji": "icon:House"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a first day on a routine",
+      "kind": "routine",
+      "body": {
+        "id": "cccccccc-0000-4000-8000-000000000014",
+        "name": "Desk",
+        "startsOn": "2026-10-23"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a first day on a project",
+      "kind": "project",
+      "body": {
+        "id": "cccccccc-0000-4000-8000-000000000014",
+        "name": "Home",
+        "startsOn": "2026-10-23"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a goal’s first day that is not on the calendar",
+      "kind": "goal",
+      "body": {
+        "id": "cccccccc-0000-4000-8000-000000000014",
+        "name": "Run",
+        "startsOn": "2026-02-30"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a null first day",
+      "kind": "goal",
+      "body": {
+        "id": "cccccccc-0000-4000-8000-000000000014",
+        "name": "Run",
+        "startsOn": null
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "members: a new one is made empty",
+      "kind": "season",
+      "body": {
+        "id": "cccccccc-0000-4000-8000-000000000014",
+        "name": "Autumn",
+        "itemIds": []
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a state: a new season follows its dates",
+      "kind": "season",
+      "body": {
+        "id": "cccccccc-0000-4000-8000-000000000014",
+        "name": "Autumn",
+        "state": "active"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a colour: the name hash colours a new one",
+      "kind": "goal",
+      "body": {
+        "id": "cccccccc-0000-4000-8000-000000000014",
+        "name": "Run",
+        "color": "var(--accent-2)"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "an action: a create is not a field intent",
+      "kind": "routine",
+      "body": {
+        "action": "create",
+        "id": "cccccccc-0000-4000-8000-000000000014",
+        "name": "Desk"
       },
       "expected": {
         "status": 400,

@@ -206,6 +206,31 @@ import Testing
         #expect(some.nothingYet == nil)
     }
 
+    /// From O11, where the + menu makes them, the second line says so,
+    /// naming only what it makes; a server older than the create route keeps
+    /// the web's line.
+    @Test func nothingYetPointsAtThePlusWhereItMakesThem() throws {
+        func detail(_ s: OrganizeSnapshot) throws -> String? {
+            return try #require(list(OrganizeModel.content(s))).nothingYet?.detail
+        }
+        var all = snapshot(goals: [])
+        all.containerTakes = OrganizeModel.everyContainerWrite
+        #expect(try detail(all) == "Make a routine, season, goal or project with +.")
+        var unread = snapshot(goals: nil)
+        unread.containerTakes = OrganizeModel.everyContainerWrite
+        #expect(try detail(unread) == "Make a routine, season or project with +.")
+        var goalsOnly = snapshot(organize: false, goals: [])
+        goalsOnly.containerTakes = OrganizeModel.everyContainerWrite
+        #expect(try detail(goalsOnly) == "Make a goal with +.")
+        var older = snapshot(goals: [])
+        older.containerTakes = ContainerWrites(routine: ["rename"], season: ["rename"], goal: ["rename"],
+                                               project: ["rename"])
+        #expect(try detail(older) == "Routines, seasons, goals and projects you make on the web show up here.")
+        #expect(OrganizeModel.englishList(["a", "b", "c"], conjunction: "or") == "a, b or c")
+        #expect(OrganizeModel.article("idea") == "an")
+        #expect(OrganizeModel.article("routine") == "a")
+    }
+
     // MARK: Rows
 
     /// The usual time in the payload's format, and only the live items: a

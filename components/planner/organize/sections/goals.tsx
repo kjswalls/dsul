@@ -22,7 +22,14 @@ import {
   sortGoalsForDisplay,
   windDownMembers,
 } from '@/lib/goals';
-import { checkinMeta, milestoneTickLabel, windDownSentence } from '@/lib/organize-copy';
+import {
+  DELETE_CONFIRM_LABELS,
+  checkinMeta,
+  deleteConsequence,
+  deleteTitle,
+  milestoneTickLabel,
+  windDownSentence,
+} from '@/lib/organize-copy';
 import { GoalProgressTrack } from '@/components/planner/goal-sections';
 import {
   byName,
@@ -364,14 +371,11 @@ export function GoalsSection({
             }
             onDelete={() =>
               confirm({
-                title: `Delete ${selected.name}?`,
+                title: deleteTitle('goal', selected.name),
                 // The sentence that has to be here. "Delete Learn Chinese"
                 // sounds like it takes a year of work with it, and it does not.
-                description:
-                  `The goal moves to the trash for 30 days. Its habits, tasks and milestones ` +
-                  `are ordinary items and stay exactly where they are. Only the goal and its ` +
-                  `links go.`,
-                confirmLabel: 'Delete goal',
+                description: deleteConsequence({ kind: 'goal' }, 'web'),
+                confirmLabel: DELETE_CONFIRM_LABELS.goal,
                 destructive: true,
                 onConfirm: () => {
                   removeGoal(selected.id);

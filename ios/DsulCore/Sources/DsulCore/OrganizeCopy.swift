@@ -11,7 +11,12 @@ import Foundation
 // container write (`refusal(code:for:)`, `PAUSE_REFUSED` and
 // `containerRefusal`), the phone's own words, which the web never says; from
 // O9 its two name refusals, the second through `nameTakenSentence`, which the
-// web's rename also says inline.
+// web's rename also says inline. From O10 a delete's confirm (`deleteTitle`,
+// `deleteConfirmLabel` and `deleteConsequence`, the phone's sentence, which
+// offers no undo and ends on `deleteStaysInTrash(kind)`), and from O11 the create
+// sheet's words and starting glyph (`createCopy`, lib/organize-copy.ts
+// `CONTAINER_CREATE_COPY`), whose name refusals `refusal(code:for:)` words by
+// the name the create sent.
 // Keep in step: a change there without the same change here is drift, and
 // the phone words a container differently from the web. Checked against the
 // web by OrganizeCopyFixtureTests (tests/fixtures/organize/copy.json), byte
@@ -50,6 +55,60 @@ public struct SwitchedOff: Sendable, Hashable {
     /// run of text, for a surface with no room for a heading.
     public var sentence: String {
         return "\(title). \(body)"
+    }
+}
+
+/// lib/organize-copy.ts `CreateCopy`: the create sheet's words for one kind,
+/// and the glyph a new one starts with (O11).
+public struct CreateCopy: Sendable, Hashable {
+    /// "NEW ROUTINE": names what is being made.
+    public var eyebrow: String
+    /// "Name your routine…", the field's placeholder.
+    public var placeholder: String
+    /// The button: "Create routine".
+    public var addLabel: String
+    /// The glyph token a new one starts with (`icon:Repeat`). `icon:CalendarRange`
+    /// is not in the icon library, so a new season's glyph derives from its
+    /// name, on the web and the phone alike.
+    public var icon: String
+    /// What the kind is for, said once under the field.
+    public var hint: String
+
+    public init(eyebrow: String, placeholder: String, addLabel: String, icon: String, hint: String) {
+        self.eyebrow = eyebrow
+        self.placeholder = placeholder
+        self.addLabel = addLabel
+        self.icon = icon
+        self.hint = hint
+    }
+}
+
+/// lib/organize-copy.ts `DeleteConsequenceInput`: what a delete's confirm
+/// counts, the way the pane counts it (O10).
+/// - `routine`: `liveCount` is its live members (`countLive` of its
+///   `itemIds`); `reappear` is whether removing it puts any of them back on
+///   the day (`membersRevealedByRemoving` is not empty).
+/// - `season`: `itemCount` and `routineCount` are its live direct members and
+///   live routines (`countLive`); `live` is `isSeasonActiveOn` today.
+/// - `goal`: nothing to count; its members are ordinary items and stay.
+/// - `project`: `itemCount` is the items filed under it, as its page counts
+///   them (folded members, subtasks left out). The TS input's `requiredCount`
+///   and `destination` are the web store's own move, which the phone's delete
+///   never makes, so the phone has neither.
+public enum DeleteConsequenceInput: Sendable, Hashable {
+    case routine(name: String, liveCount: Int, reappear: Bool)
+    case season(name: String, itemCount: Int, routineCount: Int, live: Bool)
+    case goal
+    case project(name: String, itemCount: Int)
+
+    /// The kind the sentence is about, which names its last sentence.
+    public var kind: OrganizeKind {
+        switch self {
+        case .routine: return .routine
+        case .season: return .season
+        case .goal: return .goal
+        case .project: return .project
+        }
     }
 }
 
@@ -400,6 +459,139 @@ public enum OrganizeCopy {
         }
     }
 
+    /* ── making one (O11) ───────────────────────────────────────────────── */
+
+    /// The kind's noun as copy says it mid-sentence ("routine"), from the
+    /// registry's (`ContainerWords`).
+    private static func noun(_ kind: OrganizeKind) -> String {
+        return jsLowercased(TrashKind(kind).label)
+    }
+
+    /// `CONTAINER_CREATE_COPY[kind]`: the create sheet's eyebrow, placeholder,
+    /// button and hint, and the glyph a new one starts with. The first three
+    /// say the registry's noun; the hints are the web's.
+    public static func createCopy(_ kind: OrganizeKind) -> CreateCopy {
+        let word = noun(kind)
+        func words(_ icon: String, _ hint: String) -> CreateCopy {
+            return CreateCopy(
+                eyebrow: "NEW \(word.uppercased())", placeholder: "Name your \(word)\u{2026}",
+                addLabel: "Create \(word)", icon: icon, hint: hint
+            )
+        }
+        switch kind {
+        case .goal:
+            return words(
+                "icon:Target",
+                "A goal is the reason a stretch of work exists. It holds the habits and tasks that serve it, the "
+                    + "checkpoints along the way, and a recurring check-in. It never hides anything."
+            )
+        case .routine:
+            return words(
+                "icon:Repeat",
+                "A routine is a set of things you do regularly, in order, like a morning or a workout week. Pause it "
+                    + "and they all step off your day together."
+            )
+        case .season:
+            return words(
+                "icon:CalendarRange",
+                "A season is a stretch of life (a summer, a term, a training block) that switches whole routines on "
+                    + "and off. Without dates it starts always-on, hiding nothing."
+            )
+        case .project:
+            return words(
+                "icon:Briefcase",
+                "\(ContainerWords.projects) file your tasks, and can carry a repeating block on the grid."
+            )
+        }
+    }
+
+    /// The + menu's row for a kind: "New routine", "New season", "New goal",
+    /// "New project", sentence case, built from the registry's noun (design
+    /// §4: nothing reads `CONTAINER_KINDS.*.newLabel`, whose "New Project" is
+    /// title case). Phone-only: the web's console says "+ New".
+    public static func newMenuLabel(_ kind: OrganizeKind) -> String {
+        return "New \(noun(kind))"
+    }
+
+    /* ── deleting one (O10) ────────────────────────────────────────────── */
+
+    /// `DELETE_STAYS_IN_TRASH[kind]`: how every phone delete confirm ends,
+    /// "The routine stays in the Trash for 30 days." The phone has no undo,
+    /// so it names the bin, never an undo. It names the kind because the
+    /// sentence before it can end on an item ("It just stops being
+    /// grouped."), and a bare "It" would read as the item going.
+    public static func deleteStaysInTrash(_ kind: OrganizeKind) -> String {
+        return "The \(noun(kind)) stays in the Trash for \(trashWindowDays) days."
+    }
+
+    /// `deleteTitle`: a delete confirm's title. "Delete this routine?",
+    /// "Delete this season?", "Delete Run a half marathon?" (the goal's own
+    /// name, unquoted) and `Delete “Home”?`.
+    public static func deleteTitle(_ kind: OrganizeKind, name: String) -> String {
+        switch kind {
+        case .routine, .season: return "Delete this \(noun(kind))?"
+        case .goal: return "Delete \(name)?"
+        case .project: return "Delete \u{201C}\(name)\u{201D}?"
+        }
+    }
+
+    /// `DELETE_CONFIRM_LABELS[kind]`: a delete confirm's button, "Delete", and
+    /// the goal's "Delete goal".
+    public static func deleteConfirmLabel(_ kind: OrganizeKind) -> String {
+        return kind == .goal ? "Delete \(noun(.goal))" : "Delete"
+    }
+
+    /// `deleteConsequence(input, 'phone')`: what a delete confirm says will
+    /// happen, the PHONE's sentence. The web's says what ⌘Z can do; the phone
+    /// has no undo, so this never offers one, and every kind ends on
+    /// `deleteStaysInTrash(kind)` (the goal's own "moves to the trash" opening
+    /// goes, so 30 days is said once). One thing is counted in the singular,
+    /// and an empty routine says only that it is removed, as the web now
+    /// does. A project's never says a habit moves: the phone's delete stamps
+    /// the project alone.
+    public static func deleteConsequence(_ input: DeleteConsequenceInput) -> String {
+        let said: String
+        switch input {
+        case .routine(let name, let n, let reappear):
+            if n == 0 {
+                // An empty routine has nothing to keep, so it says only that
+                // it goes.
+                said = "\u{201C}\(name)\u{201D} is removed."
+            } else {
+                let one = n == 1
+                var line = "\u{201C}\(name)\u{201D} is removed, but its \(n) \(one ? "item stays" : "items stay")"
+                line += " exactly as \(one ? "it is" : "they are"). "
+                    + "\(one ? "It just stops" : "They just stop") being grouped"
+                if reappear { line += ", and \(one ? "it comes" : "they come") back into view" }
+                said = line + "."
+            }
+        case .season(let name, let itemCount, let routineCount, let live):
+            var held: [String] = []
+            if itemCount > 0 { held.append("\(itemCount) \(itemCount == 1 ? "item" : "items")") }
+            if routineCount > 0 { held.append("\(routineCount) \(routineCount == 1 ? "routine" : "routines")") }
+            let one = itemCount + routineCount == 1
+            var line = "\u{201C}\(name)\u{201D} is removed"
+            if !held.isEmpty {
+                line += ", but the \(held.joined(separator: " and ")) it holds "
+                    + (one ? "stays exactly as it is" : "stay exactly as they are")
+            }
+            if !live && !held.isEmpty { line += ". Anything it was hiding comes back into view" }
+            said = line + "."
+        case .goal:
+            said = "Its habits, tasks and milestones are ordinary items and stay exactly where they are. "
+                + "Only the goal and its links go."
+        case .project(let name, let n):
+            if n == 0 {
+                said = "Nothing is filed under it, so nothing moves."
+            } else {
+                let one = n == 1
+                said = "Its \(n) \(one ? "item stays" : "items stay") exactly as \(one ? "it is" : "they are"). "
+                    + "\(one ? "It just stops" : "They just stop") being filed under \(name)."
+            }
+        }
+        return "\(said) \(deleteStaysInTrash(input.kind))"
+    }
+
     /// `nameInTrashSentence`: a name a trashed container is still holding (the
     /// unique index spans the bin). It names the Trash because the bin is the
     /// fix.
@@ -441,29 +633,42 @@ public enum OrganizeCopy {
         return "You already have a \(noun) called \u{201C}\(name)\u{201D}."
     }
 
-    /// `containerRefusal`: the banner for a container write the route
-    /// refused, by its code (design §6.4):
-    /// - `pause_refused` is `pauseRefused`, whatever the intent;
-    /// - `name_taken` (a project renamed onto a live project's name, folding
+    /// `containerRefusal(code, sentName)`: the banner for a container write
+    /// the route refused, by its code (design §6.4):
+    /// - `pause_refused` is `pauseRefused`, whatever was sent;
+    /// - `name_taken` (a project named onto a live project's name, folding
     ///   case) is `nameTakenSentence`, and `name_in_trash` (onto the exact
     ///   name a project in the Trash still holds) is `nameInTrashSentence`,
-    ///   both naming the project by the name `intent` sent (the TS
-    ///   `sentName`), trimmed as the route read it, never the answer's body.
-    ///   Without a rename to take the name from, they have no words.
+    ///   both naming the project by `sentName`, the name the write sent, never
+    ///   the answer's body. Without one, they have no words.
     /// Nil for a code with no words of its own (an answer that never came, a
     /// 404, a 500), where the sync says what it says for any failed write.
     /// Later parts add their codes here (`container_gone`, `member_gone`,
-    /// `anchor_gone`).
-    public static func refusal(code: String?, for intent: ContainerIntent) -> String? {
+    /// `anchor_gone`). The two overloads below take the name from the write.
+    public static func refusal(code: String?, sentName: String?) -> String? {
         let noun = jsLowercased(ContainerWords.project)
-        var sentName: String? = nil
-        if case .rename(let name) = intent { sentName = jsTrim(name) }
         switch code {
         case "pause_refused": return pauseRefused
         case "name_taken": return sentName.map { nameTakenSentence(noun: noun, name: $0) }
         case "name_in_trash": return sentName.map { nameInTrashSentence(noun: noun, name: $0) }
         default: return nil
         }
+    }
+
+    /// `containerRefusal` for a field write (O8a, O9): a rename's name,
+    /// trimmed as the route read it, is the one sent; no other intent sends a
+    /// name, so the name codes have no words for it.
+    public static func refusal(code: String?, for intent: ContainerIntent) -> String? {
+        var sentName: String? = nil
+        if case .rename(let name) = intent { sentName = jsTrim(name) }
+        return refusal(code: code, sentName: sentName)
+    }
+
+    /// `containerRefusal` for a create (O11): the name the create sent, trimmed
+    /// as the route read it (`storedName`). Only a project's create is ever
+    /// refused for its name.
+    public static func refusal(code: String?, for create: ContainerCreateBody) -> String? {
+        return refusal(code: code, sentName: create.storedName)
     }
 }
 

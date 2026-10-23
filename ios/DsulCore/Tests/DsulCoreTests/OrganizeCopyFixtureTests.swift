@@ -8,7 +8,9 @@ import DsulCore
 // restore sentences and the phone's refusal words), each case with its `now`
 // pinned; from O8a a refused container write's words (`containerRefusal`),
 // and from O9 its name refusals, by the name a rename sent, and
-// `nameTakenSentence`.
+// `nameTakenSentence`. From O10 a delete's confirm (its title, button and the
+// phone's consequence sentence, every row the PHONE shell), and from O11 the
+// create sheet's words and starting glyph (`tables.createCopy`).
 // The summary cards' lines are pinned by organize.json (OrganizeFixtureTests).
 
 private struct StateTables: Decodable, Sendable {
@@ -34,6 +36,70 @@ private struct Tables: Decodable, Sendable {
     let restoreFailed: String
     let restoreGone: String
     let pauseRefused: String
+    let deleteStaysInTrash: [String: String]
+    let deleteConfirmLabels: [String: String]
+    let createCopy: [String: CreateCopyCase]
+}
+
+private struct CreateCopyCase: Decodable, Sendable, Equatable {
+    let eyebrow: String
+    let placeholder: String
+    let addLabel: String
+    let icon: String
+    let hint: String
+}
+
+private struct DeleteTitleCase: Decodable, Sendable {
+    let name: String
+    let kind: String
+    let containerName: String
+    let expected: String
+}
+
+/// One row of `deleteConsequence`: its `input` is the TS
+/// `DeleteConsequenceInput`, read into the phone's. A project's
+/// `requiredCount` and `destination` are read and dropped (`dropped`), since
+/// the phone's sentence never uses them.
+private struct ConsequenceCase: Decodable, Sendable {
+    let name: String
+    let input: DeleteConsequenceInput
+    let dropped: Bool
+    let expected: String
+
+    private enum Key: String, CodingKey { case name, input, expected }
+    private enum InputKey: String, CodingKey {
+        case kind, name, liveCount, reappear, itemCount, routineCount, live, requiredCount, destination
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: Key.self)
+        name = try c.decode(String.self, forKey: .name)
+        expected = try c.decode(String.self, forKey: .expected)
+        let i = try c.nestedContainer(keyedBy: InputKey.self, forKey: .input)
+        let kind = try i.decode(String.self, forKey: .kind)
+        dropped = i.contains(.requiredCount) || i.contains(.destination)
+        switch kind {
+        case "routine":
+            input = .routine(
+                name: try i.decode(String.self, forKey: .name),
+                liveCount: try i.decode(Int.self, forKey: .liveCount),
+                reappear: try i.decode(Bool.self, forKey: .reappear)
+            )
+        case "season":
+            input = .season(
+                name: try i.decode(String.self, forKey: .name),
+                itemCount: try i.decode(Int.self, forKey: .itemCount),
+                routineCount: try i.decode(Int.self, forKey: .routineCount),
+                live: try i.decode(Bool.self, forKey: .live)
+            )
+        case "goal":
+            input = .goal
+        case "project":
+            input = .project(name: try i.decode(String.self, forKey: .name), itemCount: try i.decode(Int.self, forKey: .itemCount))
+        default:
+            throw DecodingError.dataCorruptedError(forKey: .kind, in: i, debugDescription: "kind \(kind)")
+        }
+    }
 }
 
 private struct HeldWorld: Decodable, Sendable {
@@ -215,6 +281,8 @@ private struct CopyFixture: Decodable, Sendable {
     let nameInTrashSentence: [NameInTrashCase]
     let nameTakenSentence: [NameTakenCase]
     let containerRefusal: [ContainerRefusalCase]
+    let deleteTitle: [DeleteTitleCase]
+    let deleteConsequence: [ConsequenceCase]
 }
 
 private func load() throws -> CopyFixture {
@@ -256,6 +324,20 @@ private func table(_ states: [StateLabel]) -> [String: String] {
         #expect(f.containerRefusal.count >= 3)
         #expect(f.containerRefusal.contains { $0.code == "name_taken" && $0.sentName != nil })
         #expect(f.containerRefusal.contains { $0.code == "name_in_trash" && $0.sentName != nil })
+        // O10: a title per kind, and a sentence per kind.
+        for kind in OrganizeKind.allCases {
+            #expect(f.deleteTitle.contains { $0.kind == kind.rawValue }, "deleteTitle \(kind)")
+        }
+        let kinds = Set(f.deleteConsequence.map { c -> String in
+            switch c.input {
+            case .routine: return "routine"
+            case .season: return "season"
+            case .goal: return "goal"
+            case .project: return "project"
+            }
+        })
+        #expect(kinds == Set(OrganizeKind.allCases.map(\.rawValue)))
+        #expect(f.deleteConsequence.contains { $0.dropped })
     }
 
     @Test func theTablesAreTheWebs() throws {
@@ -284,6 +366,57 @@ private func table(_ states: [StateLabel]) -> [String: String] {
         #expect(OrganizeCopy.restoreFailed == t.restoreFailed)
         #expect(OrganizeCopy.restoreGone == t.restoreGone)
         #expect(OrganizeCopy.pauseRefused == t.pauseRefused)
+        // O10 and O11.
+        #expect(Set(t.deleteStaysInTrash.keys) == Set(OrganizeKind.allCases.map(\.rawValue)))
+        for kind in OrganizeKind.allCases {
+            #expect(OrganizeCopy.deleteStaysInTrash(kind) == t.deleteStaysInTrash[kind.rawValue], "\(kind)")
+        }
+        #expect(Set(t.deleteConfirmLabels.keys) == Set(OrganizeKind.allCases.map(\.rawValue)))
+        #expect(Set(t.createCopy.keys) == Set(OrganizeKind.allCases.map(\.rawValue)))
+        for kind in OrganizeKind.allCases {
+            #expect(OrganizeCopy.deleteConfirmLabel(kind) == t.deleteConfirmLabels[kind.rawValue], "\(kind)")
+            let words = OrganizeCopy.createCopy(kind)
+            let theirs = try #require(t.createCopy[kind.rawValue], "\(kind)")
+            #expect(CreateCopyCase(
+                eyebrow: words.eyebrow, placeholder: words.placeholder, addLabel: words.addLabel, icon: words.icon,
+                hint: words.hint
+            ) == theirs, "\(kind): \(words)")
+            // The starting glyph is a token the create route takes.
+            let body = ContainerCreateBody(
+                kind: kind, id: "cccccccc-0000-4000-8000-000000000001", name: "x", icon: words.icon
+            )
+            #expect(body != nil, "\(kind)")
+        }
+    }
+
+    /// O10: a delete confirm's title per kind, the goal's own name unquoted,
+    /// a project's in the web's curly quotes, whatever quotes it holds.
+    @Test func theDeleteTitlesMatchTheWeb() throws {
+        for c in try load().deleteTitle {
+            let kind = try #require(OrganizeKind(rawValue: c.kind), "\(c.name): kind \(c.kind)")
+            #expect(OrganizeCopy.deleteTitle(kind, name: c.containerName) == c.expected, "\(c.name)")
+        }
+    }
+
+    /// O10: the phone's consequence sentence, byte for byte. Every one ends on
+    /// the Trash and offers no undo; a project's never says a habit moves.
+    @Test func theDeleteConsequencesMatchTheWeb() throws {
+        for c in try load().deleteConsequence {
+            let said = OrganizeCopy.deleteConsequence(c.input)
+            #expect(said == c.expected, "\(c.name): \(said)")
+            #expect(said.hasSuffix(" " + OrganizeCopy.deleteStaysInTrash(c.input.kind)), "\(c.name)")
+            #expect(!said.contains("\u{2318}"), "\(c.name): an undo")
+            #expect(!said.lowercased().contains("brings it back"), "\(c.name): an undo")
+            #expect(!said.contains(" move to ") && !said.contains(" moves to "), "\(c.name): a move")
+        }
+    }
+
+    /// The + menu's rows (phone-only): sentence case, the registry's noun.
+    @Test func theNewMenuRowsAreSentenceCase() {
+        #expect(OrganizeCopy.newMenuLabel(.routine) == "New routine")
+        #expect(OrganizeCopy.newMenuLabel(.season) == "New season")
+        #expect(OrganizeCopy.newMenuLabel(.goal) == "New goal")
+        #expect(OrganizeCopy.newMenuLabel(.project) == "New \(jsLowercased(ContainerWords.project))")
     }
 
     @Test func switchedOffMatchesTheWeb() throws {
@@ -436,11 +569,20 @@ private func table(_ states: [StateLabel]) -> [String: String] {
             .notes(nil), .why(nil), .icon("icon:House"), .color(nil),
         ]
         for c in try load().containerRefusal {
+            // The TS shape, the name as given.
+            #expect(OrganizeCopy.refusal(code: c.code, sentName: c.sentName) == c.expected, "\(c.name)")
             if let sent = c.sentName {
                 #expect(OrganizeCopy.refusal(code: c.code, for: .rename(sent)) == c.expected, "\(c.name)")
                 #expect(OrganizeCopy.refusal(code: c.code, for: .rename(" \(sent)\n")) == c.expected, "\(c.name)")
+                // O11: a create that sent the name, padded too.
+                for name in [sent, " \(sent)\n"] {
+                    let create = try #require(ContainerCreateBody(
+                        kind: .project, id: "cccccccc-0000-4000-8000-000000000001", name: name
+                    ), "\(c.name)")
+                    #expect(OrganizeCopy.refusal(code: c.code, for: create) == c.expected, "\(c.name): create")
+                }
             } else {
-                for intent in intents {
+                for intent in intents + [.delete] {
                     #expect(OrganizeCopy.refusal(code: c.code, for: intent) == c.expected, "\(c.name)")
                 }
             }
@@ -472,6 +614,13 @@ private func table(_ states: [StateLabel]) -> [String: String] {
         words += f.nameInTrashSentence.map(\.expected)
         words += f.nameTakenSentence.map(\.expected)
         words += f.containerRefusal.compactMap(\.expected)
+        words += f.deleteTitle.map(\.expected) + f.deleteConsequence.map(\.expected)
+        words += OrganizeKind.allCases.flatMap { kind -> [String] in
+            let c = OrganizeCopy.createCopy(kind)
+            return [c.eyebrow, c.placeholder, c.addLabel, c.hint, OrganizeCopy.newMenuLabel(kind),
+                    OrganizeCopy.deleteConfirmLabel(kind)]
+        }
+        words += OrganizeKind.allCases.map(OrganizeCopy.deleteStaysInTrash)
         for word in words {
             #expect(!word.unicodeScalars.contains("\u{2014}"), "\(word)")
             #expect(!word.lowercased().contains("missed"), "\(word)")

@@ -41,7 +41,7 @@ import {
 import { containerMemberIds, daysBetween } from '@/lib/container-schedule';
 import { ContainerCreateForm } from '../container-create-form';
 import { seasonStates } from '../container-fields';
-import { seasonStateNote } from '@/lib/organize-copy';
+import { DELETE_CONFIRM_LABELS, deleteConsequence, deleteTitle, seasonStateNote } from '@/lib/organize-copy';
 import type { Item, Season, Routine } from '@/lib/planner-types';
 
 /**
@@ -267,11 +267,19 @@ function SeasonDetail({ season, onBack }: { season: Season; onBack: () => void }
     });
   };
 
+  /**
+   * What deleting actually does, and the half of it a user would never guess.
+   * Trashing a season REMOVES ITS PATHS, so a routine it was the only holder
+   * of falls back to standalone and its members reappear. "Delete" reads as
+   * subtraction; here it can add rows back to today's grid, and that has to be
+   * on the button rather than discovered afterwards. The words are
+   * lib/organize-copy.ts deleteConsequence, shared with the iPhone's confirm.
+   */
   const requestDelete = () =>
     confirm({
-      title: 'Delete this season?',
-      description: deleteConsequence(season, itemCount, routineCount, live),
-      confirmLabel: 'Delete',
+      title: deleteTitle('season', season.name),
+      description: deleteConsequence({ kind: 'season', name: season.name, itemCount, routineCount, live }, 'web'),
+      confirmLabel: DELETE_CONFIRM_LABELS.season,
       destructive: true,
       onConfirm: () => {
         removeSeason(season.id);
@@ -463,37 +471,6 @@ function SeasonProgress({
     );
   }
   return <WeekProgress totals={week.weekTotals(calendarIds)} testId="season-progress" />;
-}
-
-/**
- * What deleting actually does — and the half of it a user would never guess.
- *
- * Trashing a season REMOVES ITS PATHS, so a routine it was the only holder of
- * falls back to standalone and its members reappear. "Delete" reads as
- * subtraction; here it can add rows back to today's grid, and that has to be on
- * the button rather than discovered afterwards.
- */
-function deleteConsequence(
-  season: Season,
-  itemCount: number,
-  routineCount: number,
-  live: boolean
-): string {
-  const held = [
-    itemCount > 0 ? `${itemCount} ${itemCount === 1 ? 'item' : 'items'}` : null,
-    routineCount > 0 ? `${routineCount} ${routineCount === 1 ? 'routine' : 'routines'}` : null,
-  ]
-    .filter(Boolean)
-    .join(' and ');
-
-  return (
-    `“${season.name}” is removed` +
-    (held ? `, but the ${held} it holds stay exactly as they are` : '') +
-    (!live && (itemCount > 0 || routineCount > 0)
-      ? '. Anything it was hiding comes back into view'
-      : '') +
-    '.'
-  );
 }
 
 /**

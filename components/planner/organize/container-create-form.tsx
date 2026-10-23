@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { useToday } from '@/lib/collections';
-import { makeIconToken } from '@/lib/category-icons';
+import { CONTAINER_CREATE_COPY } from '@/lib/organize-copy';
 import { CreateForm } from './detail-parts';
 import {
   ContainerDraftFields,
@@ -16,37 +16,10 @@ import {
 /**
  * The console's "+ New" for a goal, routine or season — CreateForm's shell (its
  * testids, its Escape rungs, its Cancel) around the SAME body the "new" dialog
- * renders, so the two create surfaces cannot drift apart again.
+ * renders, so the two create surfaces cannot drift apart again. Its words and
+ * default glyph are lib/organize-copy.ts CONTAINER_CREATE_COPY, which the
+ * iPhone's create sheet reads too.
  */
-
-const COPY: Record<
-  DraftKind,
-  { eyebrow: string; placeholder: string; addLabel: string; icon: string; hint: string }
-> = {
-  goal: {
-    eyebrow: 'NEW GOAL',
-    placeholder: 'Name your goal…',
-    addLabel: 'Create goal',
-    icon: makeIconToken('Target'),
-    hint:
-      'A goal is the reason a stretch of work exists. It holds the habits and tasks that serve it, the checkpoints along the way, and a recurring check-in. It never hides anything.',
-  },
-  routine: {
-    eyebrow: 'NEW ROUTINE',
-    placeholder: 'Name your routine…',
-    addLabel: 'Create routine',
-    icon: makeIconToken('Repeat'),
-    hint: 'A routine is a set of things you do regularly, in order, like a morning or a workout week. Pause it and they all step off your day together.',
-  },
-  season: {
-    eyebrow: 'NEW SEASON',
-    placeholder: 'Name your season…',
-    addLabel: 'Create season',
-    icon: makeIconToken('CalendarRange'),
-    hint:
-      'A season is a stretch of life (a summer, a term, a training block) that switches whole routines on and off. Without dates it starts always-on, hiding nothing.',
-  },
-};
 
 export function ContainerCreateForm({
   kind,
@@ -63,7 +36,7 @@ export function ContainerCreateForm({
   // would open it — not the browser's, which differs for a traveller near midnight.
   const { todayStr, tz } = useToday();
   const [draft, setDraft] = useState<ContainerDraft>(() => initialDraft(kind, todayStr));
-  const copy = COPY[kind];
+  const copy = CONTAINER_CREATE_COPY[kind];
 
   const create = (name: string, icon: string | undefined) => {
     // One ⌘Z carrying everything — new member items included, created first

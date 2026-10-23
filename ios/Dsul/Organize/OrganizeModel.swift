@@ -211,7 +211,10 @@ enum OrganizeModel {
     /// "Nothing here yet.", only when every kind the switches allow is empty,
     /// and never when they allow none (the switched-off note says why then).
     /// Its second line names only those kinds, so a switch that hides one
-    /// never reads as emptiness.
+    /// never reads as emptiness: from O11 the ones the + menu makes ("Make a
+    /// routine, season or project with +."), and with no + (a server older
+    /// than the create route) where they come from ("Routines, seasons and
+    /// projects you make on the web show up here.").
     static func nothingYet(_ s: OrganizeSnapshot) -> OrganizeNote? {
         let kinds = shownKinds(s)
         guard !kinds.isEmpty else { return nil }
@@ -224,6 +227,11 @@ enum OrganizeModel {
             }
         }
         guard empty else { return nil }
+        let made = ContainerEditModel.createEdits(s).map(\.kind)
+        if !made.isEmpty {
+            let nouns = englishList(made.map { jsLowercased(noun($0)) }, conjunction: "or")
+            return OrganizeNote(title: "Nothing here yet.", detail: "Make \(article(nouns)) \(nouns) with +.")
+        }
         let nouns = englishList(kinds.map { jsLowercased(pluralNoun($0)) })
         return OrganizeNote(title: "Nothing here yet.", detail: capitalizedFirst(nouns) + " you make on the web show up here.")
     }
@@ -534,11 +542,17 @@ enum OrganizeModel {
         return segment.replacingOccurrences(of: separator, with: ", ")
     }
 
-    /// "a", "a and b", "a, b and c".
-    static func englishList(_ words: [String]) -> String {
+    /// "a", "a and b", "a, b and c"; with `conjunction` "or", "a, b or c".
+    static func englishList(_ words: [String], conjunction: String = "and") -> String {
         guard let last = words.last else { return "" }
         guard words.count > 1 else { return last }
-        return words.dropLast().joined(separator: ", ") + " and " + last
+        return words.dropLast().joined(separator: ", ") + " \(conjunction) " + last
+    }
+
+    /// "a" or "an" before `phrase`, by its first letter.
+    static func article(_ phrase: String) -> String {
+        guard let first = phrase.lowercased().first else { return "a" }
+        return "aeiou".contains(first) ? "an" : "a"
     }
 
     static func capitalizedFirst(_ s: String) -> String {
@@ -740,5 +754,17 @@ extension SamplePlanner {
     /// The footer's rows under the list.
     var organizeFooter: [FooterRow] {
         return OrganizeModel.footer(organizeSnapshot)
+    }
+
+    /// The + menu's rows (O11); empty hides the +. Built from a slim
+    /// snapshot of only what the menu reads (loaded, the switches, whether
+    /// goals are known, the live projects a new name may clash with, and what
+    /// the server takes), so the Organize bar that shows it observes those
+    /// alone: a tick on Today doesn't redraw the tab's stack.
+    var organizeCreates: [CreateEdit] {
+        let menu = OrganizeSnapshot(hasLoaded: hasLoaded, settings: settings, today: today, timeZone: timeZoneID,
+                                    goals: goals.map { _ in [Goal]() }, projects: projectRecords,
+                                    containerTakes: containerTakes)
+        return ContainerEditModel.createEdits(menu)
     }
 }

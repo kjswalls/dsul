@@ -21,7 +21,8 @@ import Foundation
 //   `{"action":"why","why":…|null}`, null to clear;
 // - from O9, on every kind: `{"action":"rename","name":…}`,
 //   `{"action":"icon","icon":"icon:<Name>"}` (never null) and
-//   `{"action":"color","color":"var(--accent-N)"|null}` (null is Auto).
+//   `{"action":"color","color":"var(--accent-N)"|null}` (null is Auto);
+// - from O10, on every kind: `{"action":"delete"}`, and nothing else.
 // Every member is `.strict()` there, so a key the route doesn't name is a 400,
 // and `encode(to:)` is written out by hand, so it writes exactly these keys. A
 // body goes only to a kind whose union holds its intent, with values its
@@ -31,7 +32,9 @@ import Foundation
 // is the JSON this encodes.
 //
 // The kind and the id are the path (`ContainerRoutes.write`), never the body:
-// a body meant for a season can't reach a routine with the same id.
+// a body meant for a season can't reach a routine with the same id. A new
+// container's body is ContainerCreate.swift's, and goes to the kind alone
+// (`ContainerRoutes.create`).
 
 /// One container write, ready to encode.
 public struct ContainerWriteBody: Encodable, Sendable, Hashable {
@@ -101,6 +104,9 @@ public struct ContainerWriteBody: Encodable, Sendable, Hashable {
             try c.encode(token, forKey: .icon)
         case .color(let color):
             try put(color, .color)
+        case .delete:
+            // The action alone: the schema is `{action}` and strict.
+            break
         }
     }
 

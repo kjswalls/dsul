@@ -16,7 +16,13 @@ import { usePlannerStore } from '@/lib/planner-store';
 // second dismissable layer competing for Escape.
 import { useUIStore } from '@/lib/ui-store';
 import { inactiveItemIdsOn, membersRevealedByRemoving, routineStandingOn } from '@/lib/active';
-import { routineHeldNoteRuns, routinePausedNote } from '@/lib/organize-copy';
+import {
+  DELETE_CONFIRM_LABELS,
+  deleteConsequence,
+  deleteTitle,
+  routineHeldNoteRuns,
+  routinePausedNote,
+} from '@/lib/organize-copy';
 import { CopyRuns } from '@/components/primitives/copy-runs';
 import {
   byName,
@@ -334,11 +340,8 @@ function RoutineDetail({
    */
   const heldNote = routineHeldNoteRuns(standing, hiddenHere, todayStr);
 
-  const consequence = `“${routine.name}” is removed, but its ${liveCount} ${
-    liveCount === 1 ? 'item stays' : 'items stay'
-  } exactly as ${liveCount === 1 ? 'it is' : 'they are'}. ${
-    liveCount === 1 ? 'It just stops' : 'They just stop'
-  } being grouped${reappear ? ', and they come back into view' : ''}.`;
+  // The web's words (lib/organize-copy.ts, shared with the iPhone's confirm).
+  const consequence = deleteConsequence({ kind: 'routine', name: routine.name, liveCount, reappear }, 'web');
 
   return (
     <div
@@ -367,9 +370,9 @@ function RoutineDetail({
             destructive: true,
             onSelect: () =>
               confirm({
-                title: 'Delete this routine?',
+                title: deleteTitle('routine', routine.name),
                 description: consequence,
-                confirmLabel: 'Delete',
+                confirmLabel: DELETE_CONFIRM_LABELS.routine,
                 destructive: true,
                 onConfirm: () => {
                   removeRoutine(routine.id);

@@ -30,6 +30,12 @@ import Foundation
 // `foldContainerName`) and the members' re-file by id (`refiledItems`,
 // `refiling`), the route's `renameProject`.
 //
+// From O10: the delete (`{"action":"delete"}`, the route's `deleteContainer`),
+// which writes no field: `containerIntentPatch` answers it `.removed`, and
+// `containerAfter` is the step that takes the container away. From O11: the
+// `create` action, which the payload lists beside the intents but which is
+// its own route and body (ContainerCreate.swift).
+//
 // Also the shared types the planner, its sync and the Linux tests all see
 // (design §6.1): `ContainerRef` and `ContainerSnapshot` here, `OrganizeKind`
 // in ContainerSchedule.swift. A snapshot's fields and its membership are kept
@@ -124,8 +130,10 @@ public enum SeasonState: String, Sendable, Hashable, CaseIterable {
 /// An intent's `action`, as the route's unions name it and the payload's
 /// `containerWrites` lists it. Declared in the order each kind's union lists
 /// its own (the kind's own fields, then notes or why, then rename, icon and
-/// colour), so the actions of `kinds` read in `allCases` order are the
-/// server's list for that kind.
+/// colour, then the delete), then `create`, which lib/app-containers.ts
+/// `CONTAINER_WRITES` appends last for every kind the create route takes, so
+/// the actions of `kinds` read in `allCases` order are the server's list for
+/// that kind.
 public enum ContainerAction: String, Sendable, Hashable, CaseIterable {
     /// A routine's Pause, Pause until and Resume.
     case pause
@@ -147,10 +155,17 @@ public enum ContainerAction: String, Sendable, Hashable, CaseIterable {
     case icon
     /// Any container's colour (O9).
     case color
+    /// Any container, to the Trash (O10): ⋯ → Delete….
+    case delete
+    /// A new container of the kind (O11): the + menu's row. Not an intent and
+    /// never a `ContainerIntent`: it is POST /api/app/containers/:kind, with
+    /// its own body (`ContainerCreateBody`).
+    case create
 
     /// The kinds whose union holds the action: the routes a body with it may
     /// go to. Any other kind's route answers 400. (A `state` body is a
     /// different value on each of its two kinds: `ContainerIntent.kinds`.)
+    /// `create` is every kind the create route takes.
     public var kinds: [OrganizeKind] {
         switch self {
         case .pause, .usualTime: return [.routine]
@@ -158,13 +173,14 @@ public enum ContainerAction: String, Sendable, Hashable, CaseIterable {
         case .dates: return [.season]
         case .window, .why: return [.goal]
         case .notes: return [.routine, .season, .project]
-        case .rename, .icon, .color: return OrganizeKind.allCases
+        case .rename, .icon, .color, .delete, .create: return OrganizeKind.allCases
         }
     }
 }
 
-/// One field write to one container, as the phone means it. Each case is one
-/// strict member of a kind's union in lib/app-containers.ts. The shapes the
+/// One write to one container, as the phone means it: a field, or (from O10)
+/// the container's delete. Each case is one strict member of a kind's union
+/// in lib/app-containers.ts. The shapes the
 /// route refuses whatever their values cannot be built: a resume carries no
 /// day, a day is a real calendar day, a state is one of its kind's three, an
 /// icon is never cleared, and both ends of a range always travel. Values the
@@ -225,6 +241,14 @@ public enum ContainerIntent: Sendable, Hashable {
     /// Auto, which clears it so the name's hash colours it again
     /// (`{"action":"color","color":…|null}`).
     case color(String?)
+    /// Any container, to the Trash (`{"action":"delete"}`, O10): the route's
+    /// `deleteContainer`, the web's ⋯ → Delete. It carries nothing and writes
+    /// no field: the row's `deleted_at` is stamped, its join rows stay (so a
+    /// restore brings it back whole), and a project's members keep their name
+    /// and id. A second send finds it in the bin (200), and one for a row the
+    /// caller has nowhere (404) has landed too: what it asked for is so.
+    /// `containerIntentPatch` answers it `.removed`.
+    case delete
 
     /// The route's `action`, which `containerWrites` lists. A pause and a
     /// resume are both `pause`; a season's and a goal's Status both `state`.
@@ -240,6 +264,7 @@ public enum ContainerIntent: Sendable, Hashable {
         case .rename: return .rename
         case .icon: return .icon
         case .color: return .color
+        case .delete: return .delete
         }
     }
 
@@ -266,6 +291,13 @@ public enum ContainerIntent: Sendable, Hashable {
         }
     }
 
+    /// Whether it takes the container away (the delete): what
+    /// `containerAfter` answers nil for.
+    public var removesContainer: Bool {
+        if case .delete = self { return true }
+        return false
+    }
+
     /// Whether the route's schema takes the intent's values (on a kind that
     /// takes the intent at all, `applies(to:)`): a Pause until day, a Runs or
     /// window day a real day the schema reads (years 0100 to 9999: JavaScript
@@ -274,12 +306,13 @@ public enum ContainerIntent: Sendable, Hashable {
     /// 23:59; notes or a why of at most `EditLimits.outerNotes` UTF-16 units
     /// as sent; a name that trims to 1 to `EditLimits.outerTitle` units; an
     /// icon `icon:` and 1 to 64 ASCII letters or digits; a colour on the ramp.
-    /// A body is never built for one that isn't (it would be 400).
+    /// A delete carries nothing, so it always is. A body is never built for
+    /// one that isn't (it would be 400).
     public var isWellFormed: Bool {
         switch self {
         case .pause(let until, _):
             return until.map(isSchemaDay) ?? true
-        case .resume, .state, .goalState:
+        case .resume, .state, .goalState, .delete:
             return true
         case .usualTime(let time):
             return time.map(isTimeStr) ?? true
@@ -310,7 +343,7 @@ public enum ContainerIntent: Sendable, Hashable {
 /// "yyyy-MM-dd" and a real day, so only the year can fail it. The route's
 /// `isCalendarDate` builds the day with `Date.UTC`, which reads a year of 0
 /// to 99 as 1900 to 1999, so those never match.
-private func isSchemaDay(_ day: DayString) -> Bool {
+func isSchemaDay(_ day: DayString) -> Bool {
     return (100...9999).contains(day.year)
 }
 
@@ -334,7 +367,7 @@ private func isTimeStr(_ s: String) -> Bool {
 }
 
 /// lib/app-containers.ts `IconToken`: `/^icon:[A-Za-z0-9]{1,64}$/`.
-private func isIconToken(_ s: String) -> Bool {
+func isIconToken(_ s: String) -> Bool {
     let units = Array(s.utf16)
     let prefix = Array(ContainerLook.iconTokenPrefix.utf16)
     guard units.count > prefix.count, units.starts(with: prefix) else { return false }
@@ -468,7 +501,7 @@ public struct ContainerPatch: Sendable, Hashable {
 }
 
 /// lib/app-containers.ts `ContainerIntentResult`: the write an intent makes,
-/// or the route's refusal of it.
+/// or the route's refusal of it; from O10, or the container's delete.
 public enum ContainerIntentResult: Sendable, Hashable {
     /// The columns to write; empty when already so (200, nothing written).
     case patch(ContainerPatch)
@@ -476,6 +509,11 @@ public enum ContainerIntentResult: Sendable, Hashable {
     /// intent the kind doesn't take or a value its schema refuses, the
     /// schema's (`invalid`, 400).
     case refused(code: String, status: Int)
+    /// The container goes to the Trash (O10, the route's `deleteContainer`):
+    /// no column is written, the record leaves the planner. The TS rule never
+    /// sees a delete (its route sends one its own way first); the Swift rule
+    /// answers it here, so a step that asks it must say what a delete does.
+    case removed
 }
 
 /// A value, or a clear for none.
@@ -514,6 +552,8 @@ private func noteColumn(_ raw: String?) -> ColumnWrite {
 /// - `notes`, `why`: trimmed; nil or blank clears.
 /// - `rename`: the name trimmed. `icon`: the token, a project's into its
 ///   `emoji`. `color`: the token, nil clears it.
+/// - `delete` (O10): `.removed`, on every kind. It writes no column; the
+///   route's `deleteContainer` stamps `deleted_at` and nothing else.
 ///
 /// Every field intent but the two states (and a pause already so) writes its
 /// value again when it already has it: the same value, so a retry is
@@ -562,6 +602,8 @@ public func containerIntentPatch(
         return .patch(ContainerPatch(icon: token))
     case (.color(let color), _):
         return .patch(ContainerPatch(color: column(color)))
+    case (.delete, _):
+        return .removed
     default:
         return invalid
     }
@@ -589,7 +631,9 @@ private func pauseResult(
 /// was sent at `instant` and read in `timeZone` (`containerIntentPatch`): the
 /// phone's optimistic step, and a landed write's replay at its own `sentAt`.
 /// A refusal, or a write already so, changes nothing. `today` stands in for a
-/// zone that can't be read.
+/// zone that can't be read. A delete changes no field, so it hands the
+/// container back as it was: a replay that must honour a landed delete asks
+/// `containerAfter`, which takes it away.
 public func applyingContainer(
     _ intent: ContainerIntent,
     to container: ContainerSnapshot,
@@ -600,6 +644,23 @@ public func applyingContainer(
     let result = containerIntentPatch(intent, on: container, now: instant, timeZone: timeZone, today: today)
     guard case .patch(let patch) = result else { return container }
     return patch.applied(to: container)
+}
+
+/// The container after `intent`, or nil once it is gone (O10): a delete takes
+/// it away, and a container already gone stays gone (no write brings one
+/// back; only a restore, which is no container write, does). Any other write
+/// is `applyingContainer`. What a landed write's replay asks (PlannerSync's
+/// `rebaseContainer`), so a failed rename before a landed delete reverts to
+/// no container, never to the old name.
+public func containerAfter(
+    _ intent: ContainerIntent,
+    on container: ContainerSnapshot?,
+    at instant: Date,
+    timeZone: String,
+    today: String
+) -> ContainerSnapshot? {
+    guard let container, !intent.removesContainer else { return nil }
+    return applyingContainer(intent, to: container, at: instant, timeZone: timeZone, today: today)
 }
 
 /* ── a project rename's two other steps (O9) ──────────────────────────── */

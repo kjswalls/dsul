@@ -9,7 +9,13 @@ import { BUILTIN_ITEM_TYPE_NAMES, ORGANIZER_TYPE_NAMES, usePlannerStore } from '
 import { useUIStore } from '@/lib/ui-store';
 import { byName, matching, useToday } from '@/lib/collections';
 import { makeIconToken } from '@/lib/category-icons';
-import { nameTakenSentence } from '@/lib/organize-copy';
+import {
+  CONTAINER_CREATE_COPY,
+  DELETE_CONFIRM_LABELS,
+  deleteConsequence,
+  deleteTitle,
+  nameTakenSentence,
+} from '@/lib/organize-copy';
 import { ObjectRow, SettingRow } from '../primitives';
 import { heldByTrash, useTrashedNames } from '../use-trashed-names';
 import type { TrashedName } from '@/lib/db';
@@ -143,20 +149,20 @@ export function ProjectsSection({
       <DetailColumn hasSelection={!!selected || showCreate}>
         {showCreate ? (
           <CreateForm
-            eyebrow="NEW PROJECT"
-            placeholder="Name your project…"
-            addLabel="Create project"
-            icon={makeIconToken('Briefcase')}
+            eyebrow={CONTAINER_CREATE_COPY.project.eyebrow}
+            placeholder={CONTAINER_CREATE_COPY.project.placeholder}
+            addLabel={CONTAINER_CREATE_COPY.project.addLabel}
+            icon={CONTAINER_CREATE_COPY.project.icon}
             testPrefix="project"
             autoFocus={creating}
-            hint="Projects file your tasks, and can carry a repeating block on the grid."
+            hint={CONTAINER_CREATE_COPY.project.hint}
             // The create path had NO validate at all, and the store's own
             // de-dupe cannot see the bin — so typing the name of a project you
             // deleted yesterday produced a row that opened, accepted edits, and
             // never existed. See useTrashedNames.
             validate={(name) => heldByTrash(trashed.projects, name, 'project')}
             onCreate={(name, icon) => {
-              addProject(name, icon ?? makeIconToken('Briefcase'));
+              addProject(name, icon ?? CONTAINER_CREATE_COPY.project.icon);
               onCreated(created(usePlannerStore.getState().projects, name));
             }}
             onCancel={projects.length > 0 ? () => onCreated(null) : undefined}
@@ -219,22 +225,16 @@ function ProjectDetail({
   // with its own write is worse than no count.
   const requireds = countRequiredContainerItems(items, project.name);
   const destination = projects.find((p) => p.id !== project.id)?.name;
-  const consequence =
-    (n === 0
-      ? 'Nothing is filed under it, so nothing moves.'
-      : `Its ${n} ${n === 1 ? 'item stays' : 'items stay'} exactly as ${
-          n === 1 ? 'it is' : 'they are'
-        }. ${n === 1 ? 'It just stops' : 'They just stop'} being filed under ${project.name}.`) +
-    (requireds > 0 && destination
-      ? ` The ${requireds === 1 ? 'habit moves' : `${requireds} habits move`} to “${destination}”.`
-      : '') +
-    ' ⌘Z brings it back now, and it stays in the Trash for 30 days.';
+  const consequence = deleteConsequence(
+    { kind: 'project', name: project.name, itemCount: n, requiredCount: requireds, destination },
+    'web',
+  );
 
   const requestDelete = () =>
     confirm({
-      title: `Delete “${project.name}”?`,
+      title: deleteTitle('project', project.name),
       description: consequence,
-      confirmLabel: 'Delete',
+      confirmLabel: DELETE_CONFIRM_LABELS.project,
       testId: 'category-delete-confirm',
       onConfirm: () => {
         removeProject(project.id);

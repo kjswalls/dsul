@@ -11,10 +11,11 @@ import SwiftUI
 ///
 /// A tap picks; nothing is written until Done, which sends the icon and the
 /// colour that moved (`ContainerEditModel.lookIntents`), each through the
-/// planner's gate (`editContainer`). Cancel or a swipe down after a pick asks
-/// "Discard changes?", as the item sheet's editors do. The picked icon is
-/// the stored `icon:<Name>` token exactly, as the web's picker checks it: a
-/// glyph the name derives, or a legacy emoji, checks nothing.
+/// planner's gate (`editContainer`). After a pick a swipe down is refused and
+/// Cancel asks "Discard changes?", as the item sheet's editors do (SwiftUI
+/// tells a sheet nothing of a refused swipe, so only Cancel can ask). The
+/// picked icon is the stored `icon:<Name>` token exactly, as the web's picker
+/// checks it: a glyph the name derives, or a legacy emoji, checks nothing.
 ///
 /// Hue is a mark here and never text: the tile, and each colour's swatch at
 /// full strength (Lime is a swatch, never faded). The icons, the names and
