@@ -67,6 +67,8 @@ describe('the Organize console frame', () => {
       'Goals',
       'Projects',
       'Item types',
+      // Under the rule, the two put-away surfaces: Paused, then the bin.
+      'Paused',
       'Trash',
     ]);
   });
@@ -133,13 +135,13 @@ describe('the Organize console frame', () => {
     expect(tab('Routines')).toHaveAttribute('aria-selected', 'true');
   });
 
-  it('walks the rail with ↓, stepping over the eyebrows and the Trash rule', async () => {
+  it('walks the rail with ↓, stepping over the eyebrows and the rule', async () => {
     render(<OrganizeConsole open onOpenChange={() => {}} />);
 
     tab('Routines').focus();
     fireEvent.focus(tab('Routines'));
 
-    for (const next of ['Seasons', 'Goals', 'Projects', 'Item types', 'Trash']) {
+    for (const next of ['Seasons', 'Goals', 'Projects', 'Item types', 'Paused', 'Trash']) {
       fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
       await tick();
       expect(tab(next)).toHaveFocus();

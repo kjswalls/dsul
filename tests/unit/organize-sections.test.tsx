@@ -1659,7 +1659,7 @@ describe('the Overview maps the console', () => {
 
     const cards = screen.getAllByTestId('overview-card').map((c) => c.getAttribute('data-section'));
     // Everything the rail holds, minus the map itself.
-    expect(cards).toEqual(['routines', 'seasons', 'goals', 'projects', 'types', 'trash']);
+    expect(cards).toEqual(['routines', 'seasons', 'goals', 'projects', 'types', 'paused', 'trash']);
     const routinesCard = cards.indexOf('routines');
     expect(screen.getAllByTestId('overview-card')[routinesCard].textContent).toContain('2');
   });

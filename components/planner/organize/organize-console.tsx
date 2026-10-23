@@ -27,6 +27,7 @@ import { SeasonsSection } from './sections/seasons';
 import { GoalsSection } from './sections/goals';
 import { ProjectsSection, TypesSection } from './sections/labels';
 import { OverviewSection } from './sections/overview';
+import { PausedSection } from './sections/paused';
 import { TrashSection } from './sections/trash';
 import { cn } from '@/lib/utils';
 
@@ -294,8 +295,8 @@ export function OrganizeConsole({
             Organize
           </ResponsiveModalTitle>
           <ResponsiveModalDescription className="sr-only">
-            Your routines, seasons, projects and item types, plus anything
-            you&apos;ve deleted in the last 30 days.
+            Your routines, seasons, projects and item types, what you&apos;ve
+            paused, and anything you&apos;ve deleted in the last 30 days.
           </ResponsiveModalDescription>
           {/* Ours, on the header band's baseline, rather than the stock close
               floating over the rail. */}
@@ -457,6 +458,17 @@ function SectionBody({
   }
   if (section === 'types') {
     return <TypesSection selectedId={selectedId} onSelect={onSelect} {...make} />;
+  }
+
+  if (section === 'paused') {
+    return (
+      <PausedSection
+        selectedId={selectedId}
+        onSelect={onSelect}
+        onNavigate={onNavigate}
+        sections={sections}
+      />
+    );
   }
 
   // Trash selects like the rest now — a row opens a read-only preview in the

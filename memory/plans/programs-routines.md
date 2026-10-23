@@ -1284,3 +1284,35 @@ date. The test that reads as if it pinned the equivalence only ever compared
    completed or cancelled task moved into a suppressed window is told it is hidden when
    decision 4 guarantees it is not. Pre-existing for the move verbs; `Edit task:` made it
    newly *visible* for a moment, and the prefix-scoped toast rule closed that off again.
+
+---
+
+## Addendum (2026-10-23): Paused moves into Organize
+
+Kirby asked why paused items sat in an expandable drawer at the foot of the braindump,
+and picked a new home from a design panel (claude.ai/artifact/K9ypFHk3b1uup3diYKcPN3).
+Decision 10 still holds: every paused item has a browsable home. What changed is where.
+
+- **Organize › Paused** (`components/planner/organize/sections/paused.tsx`), pinned
+  under the rule beside Trash, is the home. Like Trash it rides NO extension
+  (`extension: null`): pausing is never gated, so the way back may not be. With both
+  extensions off the console opens holding Paused and Trash. Decision 10's "the manager
+  is NOT the home" was about a manager that did not exist yet and could be switched off;
+  an ungated section answers both.
+- **Grouped by the day it comes back**, soonest first, undated last, and a paused
+  routine or season is ONE row whose Resume is its own switch (`setGateOn`), unfolding
+  its members in the detail pane. Grouping by cause (the drawer's headings) left a
+  routine as one row per member and hid every date in a heading. One derivation,
+  `lib/paused-shelf.ts`, feeds the section and the count.
+- **The braindump keeps a moon** in its header with the count, shown only while
+  something is paused, opening the section. No line at the sidebar's foot (Kirby). A
+  habit dragged onto the sidebar, which pauses it, lights the moon and counts it in;
+  there is no landing row for it any more.
+- **The Display menu's "Paused scopes" list is gone.** It was this list's containers a
+  second time. A switched-off container that hides nothing (an empty routine, a season
+  past its dates) is no longer listed anywhere but its own Organize section, which is
+  the honest place for a thing that has nothing set aside.
+- **"Back today"** joins the date capsule's popover (`components/notices/back-notice.tsx`,
+  `backOn` in `lib/paused-shelf.ts`): on the day a pause ends, a sunrise glyph and the
+  names of what came back. Day scope only, like the season line.
+- The word stays **Paused** (Kirby), matching the verb that put things there.

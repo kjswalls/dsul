@@ -439,7 +439,7 @@ export function inactiveItemIdsOn(
 
 /**
  * Why an item is suppressed, for the surfaces that must SAY so — the item
- * panel's activation line, the /item/[id] header, the braindump's Paused
+ * panel's activation line, the /item/[id] header, Organize's Paused
  * section. Returns null when the item is live, so `!reason` doubles as the
  * liveness check.
  *
@@ -629,7 +629,7 @@ function deadPathExplanation(
  * The one place suppression is put into words.
  *
  * Three surfaces render this — the item panel's activation line, the /item/[id]
- * header chip, and the braindump's Paused section — and they were already
+ * header chip, and Organize's Paused section — and they were already
  * drifting at two. The `long` variant has room for the article-and-noun copy
  * rule ("your Summer season", never a bare "Season") and a return date; the
  * short one is for chips, where the container's name is the whole message.

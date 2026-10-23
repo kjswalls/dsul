@@ -462,7 +462,7 @@ describe('braindump list while previewing', () => {
     expect(screen.getByText('Task b')).toBeInTheDocument();
   });
 
-  it('makes the list body and the paused strip inert, and nothing else', () => {
+  it('makes the list body inert, and nothing else', () => {
     seed([task('a'), paused], { ...previewing, habits: [paused] as never, tasks: [task('a')] as never });
     renderBraindump();
     const section = screen.getByTestId('braindump');
@@ -470,13 +470,12 @@ describe('braindump list while previewing', () => {
     expect(section).not.toHaveAttribute('inert');
 
     expect(screen.getByText('Task a').closest('[inert]')).not.toBeNull();
-    const strip = screen.getByTestId('braindump-paused-section');
-    expect(strip.closest('[inert]')).not.toBeNull();
-    // Its settle frame sits on the strip's own box, not the boxless wrapper.
-    expect(strip.dataset.settleKey).toBe('braindump:paused');
-    expect(strip.dataset.settleRole).toBe('frame');
+    // The paused count rides the header's moon, which is live: it only opens
+    // Organize, and the console has its own preview rules.
+    expect(screen.getByTestId('braindump-paused').closest('[inert]')).toBeNull();
 
-    // Exactly those two: the header, the receipt slot and the quick-add are live.
+    // The list and the trip receipt's wrapper; the header, the receipt slot and
+    // the quick-add are live.
     expect(section.querySelectorAll('[inert]')).toHaveLength(2);
     const quickAdd = screen.getByTestId('braindump-quick-add');
     expect(quickAdd.closest('[inert]')).toBeNull();

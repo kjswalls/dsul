@@ -5,10 +5,11 @@
  * actually resolves today, and a line saying what that switch is currently
  * doing. Everything hard is here, pure and date-parameterized.
  *
- * It powers the Display menu's "Paused scopes" list — the off scopes, each one
- * click from back on. The sidebar rail that first grew this is gone (its two
- * jobs moved onto the group-header switch and that menu list), but the
- * view-model it needed outlived it.
+ * It powered the Display menu's "Paused scopes" list, the off scopes each one
+ * click from back on, until Organize's Paused section took that job
+ * (2026-10-23: a paused routine or season is one row there, with its switch).
+ * The sidebar rail that first grew this is gone too, but the view-model it
+ * needed outlived both; gate-toggle.ts still writes through it.
  *
  * The load-bearing rule, out of the path algebra rather than out of taste:
  *

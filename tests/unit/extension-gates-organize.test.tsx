@@ -142,7 +142,7 @@ afterEach(cleanup);
 /* ── it must stop ACTING ───────────────────────────────────────────────────*/
 
 describe('Organize switched off — the console stops opening', () => {
-  it('drops every section it owns and keeps the bin', () => {
+  it('drops every section it owns and keeps Paused and the bin', () => {
     disableExtensions(EXT_ORGANIZE, EXT_GOALS);
     render(<OrganizeConsole open onOpenChange={() => {}} />);
 
@@ -150,7 +150,16 @@ describe('Organize switched off — the console stops opening', () => {
     // of a delete must not be — and both extensions off is what a brand-new
     // account gets, not an unusual state a user has to opt into.
     expect(screen.getByTestId('organize-console')).toBeInTheDocument();
-    expect(tabNames()).toEqual(['Trash']);
+    expect(tabNames()).toEqual(['Paused', 'Trash']);
+  });
+
+  it('lands a deep link to Paused on Paused, whatever is switched off', () => {
+    // The braindump's moon opens this, and it is never shut: pausing is not
+    // gated, so the one list a paused item still appears in may not be either.
+    disableExtensions(EXT_ORGANIZE, EXT_GOALS);
+    render(<OrganizeConsole open onOpenChange={() => {}} section="paused" />);
+
+    expect(screen.getByRole('tab', { name: 'Paused' })).toHaveAttribute('data-state', 'active');
   });
 
   it('lands a deep link to the trash on the trash, whatever is switched off', () => {
@@ -172,7 +181,7 @@ describe('Organize switched off — the console stops opening', () => {
     render(<OrganizeConsole open onOpenChange={() => {}} />);
 
     expect(screen.getByTestId('organize-console')).toBeInTheDocument();
-    expect(tabNames()).toEqual(['Goals', 'Trash']);
+    expect(tabNames()).toEqual(['Goals', 'Paused', 'Trash']);
   });
 
   it('lands a gated deep link on a section that exists', () => {
@@ -194,13 +203,14 @@ describe('Organize switched off — the console stops opening', () => {
       consoleSectionsFor((slug) => (slug === EXT_GOALS ? goals : organize)).map((s) => s.id);
 
     expect(ids(true, true)).toEqual(CONSOLE_SECTIONS.map((s) => s.id));
-    expect(ids(true, false)).toEqual(['goals', 'trash']);
+    expect(ids(true, false)).toEqual(['goals', 'paused', 'trash']);
     expect(ids(false, true)).toEqual(
       CONSOLE_SECTIONS.filter((s) => s.id !== 'goals').map((s) => s.id)
     );
-    // The one that matters: NOT empty. Trash rides no extension, so the
-    // default configuration of the app still has a way back out of a delete.
-    expect(ids(false, false)).toEqual(['trash']);
+    // The one that matters: NOT empty. Paused and Trash ride no extension, so
+    // the default configuration of the app still has a way back out of a pause
+    // and out of a delete.
+    expect(ids(false, false)).toEqual(['paused', 'trash']);
   });
 
   it('lets no section be silently ungated, and gates the bin on nothing', () => {
@@ -215,6 +225,9 @@ describe('Organize switched off — the console stops opening', () => {
     // silently closing the only door to a deleted project.
     expect(CONSOLE_SECTIONS.find((s) => s.id === 'trash')!.extension).toBeNull();
     expect(consoleSectionExtension('trash')).toBeNull();
+    // Paused, for the same reason: pausing is never gated, so neither is the
+    // one list a paused item still appears in.
+    expect(CONSOLE_SECTIONS.find((s) => s.id === 'paused')!.extension).toBeNull();
     // Anything the rail cannot show answers with the console's own switch,
     // which is the safe default for a caller holding a stale section id — and
     // is deliberately DIFFERENT from the null above, which means "no gate".
@@ -225,7 +238,7 @@ describe('Organize switched off — the console stops opening', () => {
   it('never returns an empty rail, whatever the predicate says', () => {
     // The invariant that makes the console's own empty-guard unreachable. If a
     // later change gates every section, this is what goes red first.
-    expect(consoleSectionsFor(() => false).map((s) => s.id)).toEqual(['trash']);
+    expect(consoleSectionsFor(() => false).map((s) => s.id)).toEqual(['paused', 'trash']);
   });
 
   it('hands the dialog slot back if a section list ever DOES come back empty', () => {

@@ -47,7 +47,8 @@ import { groupRows, type RowGroup } from '@/lib/grouping';
 import { isRowCompletedOn, orderRows } from '@/lib/sort-rows';
 import { useSinkHold } from '@/hooks/use-sink-hold';
 import { RELAY } from '@/lib/relay-config';
-import { inactiveItemIdsOn, suppressionReason, suppressionLabel } from '@/lib/active';
+import { inactiveItemIdsOn } from '@/lib/active';
+import { pausedShelf } from '@/lib/paused-shelf';
 import { toDateStr } from '@/lib/recurrence';
 import { useDragStore } from '@/lib/drag-store';
 import { useSelectionStore } from '@/lib/selection-store';
@@ -294,8 +295,6 @@ function LandingRow({ title, reveal }: { title: string; reveal: boolean }) {
   );
 }
 
-type PausedGroup = { key: string; label: string; rows: RowItem[] };
-
 /**
  * "From the trip": vacation mode's receipt, under the rows it moved. Open by
  * default (it is news on the first day back), grouped under the day each task
@@ -346,77 +345,48 @@ function FromTripSection({ rows, days }: { rows: RowItem[]; days: Readonly<Recor
 }
 
 /**
- * `landing` is the habits a drop on the sidebar would pause. While there are
- * any, the section shows (even when nothing is paused yet) and opens, with a
- * landing line for each at its top, so the drag says where the habit will go.
+ * The braindump header's moon: how many things are paused, opening Organize's
+ * Paused section, where they are listed by the day each comes back.
+ *
+ * It replaced the Paused drawer at the foot of this list (Kirby, 2026-10-23).
+ * The drawer was a second list under a list about something else; the moon
+ * costs the header one small key and the column nothing, and is not drawn at
+ * all when nothing is paused.
+ *
+ * Quiet, per the guilt-free law: muted ink, no badge, no colour. The count
+ * answers "did I set anything aside?" without reading as a debt.
+ *
+ * Paused is ungatable in the console (console-rail.tsx), so this door is never
+ * shut the way the Organize button can be.
+ *
+ * `arriving` is the habits a drop on the sidebar would pause. While there are
+ * any the key shows, lights and counts them in, which is the drag's answer to
+ * "where will this go?".
  */
-function PausedSection({
-  groups,
-  count,
-  landing,
-}: {
-  groups: PausedGroup[];
-  count: number;
-  landing: readonly HabitItem[];
-}) {
-  const [open, setOpen] = useState(false);
-  if (count === 0 && landing.length === 0) return null;
-  const shown = open || landing.length > 0;
-
+function PausedKey({ count, arriving, touch }: { count: number; arriving: number; touch: boolean }) {
+  const openDialog = useUIStore((s) => s.openDialog);
+  if (count === 0 && arriving === 0) return null;
+  const shown = count + arriving;
+  const label = `${shown} paused`;
   return (
-    <div
-      data-testid="braindump-paused-section"
-      // A settle frame (lib/settle.ts): the strip moves when the list above it
-      // grows or shrinks on the preview → fresh swap.
-      data-settle-key="braindump:paused"
-      data-settle-role="frame"
-      className="mx-[10px] mb-2 shrink-0 rounded-[10px] bg-surface-2"
-    >
+    <HeaderTip off={touch} label="Paused" detail="Set aside, and when each comes back">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={shown}
-        data-testid="braindump-paused-toggle"
-        className="flex w-full items-center gap-2 rounded-[10px] px-3 py-2 text-left hover-wash"
+        onClick={() => openDialog({ type: 'organize', section: 'paused' })}
+        data-testid="braindump-paused"
+        data-count={count}
+        data-arriving={arriving > 0 ? '' : undefined}
+        aria-label={label}
+        className={cn(
+          'text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-ring inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-xs focus-visible:outline-1 focus-visible:outline-solid',
+          touch && 'h-7',
+          arriving > 0 && 'bg-accent text-foreground'
+        )}
       >
-        <Moon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        <span className="font-content text-content text-muted-foreground">Paused</span>
-        <span className="ml-auto text-xs tabular-nums text-muted-foreground">{count > 0 && count}</span>
-        <ChevronRight
-          className={cn(
-            'h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform',
-            shown && 'rotate-90'
-          )}
-        />
+        <Moon className="h-3.5 w-3.5 shrink-0" aria-hidden />
+        <span className="font-num">{shown}</span>
       </button>
-      {/* Plain overflow-y-auto, never <ScrollArea> — the Radix wrapper silently
-          drops max-h and the list would grow without bound. */}
-      {shown && (
-        <div className="max-h-[40vh] overflow-y-auto px-[6px] pb-2">
-          {landing.map((h, i) => (
-            <LandingRow key={h.id} title={h.title} reveal={i === 0} />
-          ))}
-          {groups.map((group) => (
-            <div key={group.key}>
-              {/* Suppressed only when there is nothing to disambiguate — one
-                  cause needs no heading, and a lone label would read as a
-                  category rather than an explanation. */}
-              {groups.length > 1 && (
-                <p
-                  className="text-muted-foreground px-2 pt-2 pb-0.5 text-[10.5px] font-medium tracking-wider uppercase"
-                  data-testid="braindump-paused-group"
-                >
-                  {group.label}
-                </p>
-              )}
-              {group.rows.map((row) => (
-                <TaskRow key={row.item.id} row={row} context="braindump" />
-              ))}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+    </HeaderTip>
   );
 }
 
@@ -509,7 +479,7 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
    * Today, not `selectedDate`: the braindump carries no date of its own, so a
    * paused row must not appear and vanish as the user walks the week (plan
    * decision 3). The set feeds two places — it is subtracted from the live list
-   * below, and it builds the Paused section — because an item may satisfy both
+   * below, and it counts the header's moon — because an item may satisfy both
    * predicates and rendering it twice makes the second copy a ghost that
    * shift-range and ⌘A silently skip.
    */
@@ -600,9 +570,11 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
   }, [isOver, tasks, goals, suppressedIds]);
 
   /**
-   * The habits a drop here would PAUSE (see sidebarDropPlan): drawn as landing
-   * rows at the top of the Paused section, which is where they will show.
-   * Same read-at-render bargain as landingIds above.
+   * The habits a drop here would PAUSE (see sidebarDropPlan). They have no row
+   * slot in this list to land in, so the header's moon says it instead: it
+   * shows (even with nothing paused yet), lights, and counts them in, so the
+   * drag says where the habit will go. Same read-at-render bargain as
+   * landingIds above.
    */
   const pausingRows = useMemo(() => {
     if (!isOver) return [];
@@ -704,70 +676,23 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
     ) : undefined;
 
   /**
-   * Everything currently set aside — the home paused work would otherwise not
-   * have.
+   * How many things are set aside right now: the count on the header's moon,
+   * which opens Organize's Paused section, where they are listed.
    *
-   * Without this, "hidden entirely" means an indefinitely-paused item is absent
-   * from the grid, the review, the past-due bar AND this list, and the only way
-   * back is remembering it exists and searching its name. That is data loss
-   * wearing a feature's clothes.
-   *
-   * Reads `items` rather than the projections on purpose: the section spans
-   * dated and scheduled work that the braindump's own membership predicate
-   * would never admit. That means re-applying the projection's subtask rule by
-   * hand — a subtask has no standalone row anywhere else, and one surfacing
-   * here as a free-floating item is exactly what that filter exists to prevent.
-   *
-   * Deliberately ignores braindumpFilters and braindumpGroupBy: those shape the
-   * working list, and filtering the recovery surface would reintroduce the very
-   * problem this section solves.
+   * The same derivation the section lists (lib/paused-shelf.ts), handed the
+   * suppressed set this list already resolved at today, so the number on the
+   * moon is always the number of rows behind it. It used to be a drawer at the
+   * foot of this list; Kirby moved the list into Organize (2026-10-23).
    */
-  const pausedGroups: PausedGroup[] = useMemo(() => {
+  const pausedCount = useMemo(() => {
     const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const todayStr = toDateStr(new Date(), tz);
-    // Grouped BY CAUSE rather than listed flat. With three layers able to hide
-    // an item, a flat list of twelve rows can't tell you whether to resume an
-    // item, a routine or a season — and the heading is the only place to say
-    // so, because the row's trailing rail is width-budgeted down to the pixel
-    // and has no slot to spend (see task-row.tsx's "quiet rail" note).
-    const groups = new Map<string, PausedGroup>();
-    for (const item of items) {
-      if (!suppressedIds.has(item.id)) continue;
-      if ('parentItemId' in item && item.parentItemId) continue;
-      const reason = suppressionReason(item, todayStr, { userTimezone: tz, routines, seasons, away });
-      // Resting for a trip is not "set aside": every habit rests at once, and
-      // the trip's own line on the canvas already says so and brings them back.
-      // Listing them here would bury the braindump under the whole routine.
-      if (reason?.kind === 'away') continue;
-      // Self-paused items key on their RESUME DATE as well as the cause. The
-      // heading is taken from whichever row lands in the bucket first, and
-      // store order is sort_order/created_at — nothing to do with pause dates —
-      // so a single 'paused' bucket puts "Paused until Sep 1" over an item that
-      // has no scheduled return at all, or the bare "Paused" over one that does.
-      // Container causes need no such split: every member of a routine shares
-      // its one resume date by construction.
-      const key = !reason
-        ? 'paused'
-        : reason.kind === 'routine'
-          ? `routine:${reason.routine.id}`
-          : reason.kind === 'season'
-            ? `season:${reason.season.id}`
-            : `paused:${reason.until ?? ''}`;
-      const row: RowItem =
-        item.type === 'habit'
-          ? { itemType: 'habit' as const, item: item as unknown as HabitItem }
-          : { itemType: 'task' as const, item: item as unknown as Task };
-      const group = groups.get(key);
-      if (group) group.rows.push(row);
-      // A null reason can't normally reach here (suppressedIds and
-      // suppressionReason agree), but falling back to the bare "Paused"
-      // heading keeps a row visible rather than dropping it on the floor.
-      else groups.set(key, { key, label: reason ? suppressionLabel(reason) : 'Paused', rows: [row] });
-    }
-    return [...groups.values()];
+    return pausedShelf(
+      items,
+      toDateStr(new Date(), tz),
+      { userTimezone: tz, routines, seasons, away },
+      suppressedIds
+    ).count;
   }, [items, suppressedIds, routines, seasons, away, userTimezone]);
-
-  const pausedCount = pausedGroups.reduce((n, g) => n + g.rows.length, 0);
 
   /**
    * Grouped first, then sorted WITHIN each group — the order Day × List uses,
@@ -957,6 +882,10 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
         <span className={cn('flex', isMobile && '[&>button]:size-7')}>
           <DisplayMenu ref={displayRef} surface="braindump" trigger="icon" align="start" />
         </span>
+        {/* What is set aside, and the door to where it is listed. Only while
+            something is (or is about to be): this row is width-critical at the
+            280px minimum, and a key that says "0" says nothing. */}
+        <PausedKey count={pausedCount} arriving={pausingRows.length} touch={isMobile} />
         {/* A disabled button takes no pointer events (disabled:pointer-events-none
             in ui/button), so while Organize is off the tooltip hangs on a span
             around it — hover-only, not a tab stop, since the button it wraps is
@@ -1031,13 +960,10 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
         data-braindump-list=""
         className={cn(
           'min-h-0 overflow-y-auto overflow-x-hidden rounded-card transition-colors',
-          // Fill the column only when there is genuinely nothing here — a
-          // paused-only sidebar still wants the poem's space collapsed so the
-          // Paused strip sits under the header rather than adrift at the foot.
-          // Not while the bars are up: the skeleton sits where rows will, so the
+          // Fill the column only when there is genuinely nothing here. Not while the bars are up: the skeleton sits where rows will, so the
           // quick-add card sits under it as it sits under real rows, rather
           // than jumping from the foot when the load lands.
-          visible && shownRows.length === 0 && pausedCount === 0 && 'flex-1',
+          visible && shownRows.length === 0 && 'flex-1',
           // The whole list lights only when what is landing will be hidden by
           // the Display filters, so there is no row slot to show instead.
           landingIds.size > 0 && !landingShown && 'drop-armed'
@@ -1069,7 +995,7 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
             )
           )}
 
-          {visible && shownRows.length === 0 && pausedCount === 0 && (
+          {visible && shownRows.length === 0 && (
             <div className="relative flex min-h-[220px] flex-col items-center justify-center gap-2 py-12 text-center">
               {RELAY.emptyState && (
                 // pitch matches the dock capsule (20) — tile size derives from it.
@@ -1104,7 +1030,6 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
           its settle frame key sits on its root, which has a box. */}
       <div inert={previewing} className="contents">
         <FromTripSection rows={fromTrip.rows} days={fromTrip.days} />
-        <PausedSection groups={pausedGroups} count={pausedCount} landing={pausingRows} />
       </div>
 
       {/* Quick-add — a floating card at the section foot, peer of the header. */}

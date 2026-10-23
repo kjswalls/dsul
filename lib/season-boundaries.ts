@@ -79,7 +79,7 @@ export function seasonBoundaries(
  *
  * `hidden` counts only what the seasons named here are responsible for. An
  * item the user paused by hand is their own decision and already has a home in
- * the braindump's Paused section; folding it into this count would make the
+ * Organize's Paused section; folding it into this count would make the
  * season look responsible for work it never touched.
  */
 export interface SeasonSuppression {
