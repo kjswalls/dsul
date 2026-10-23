@@ -2,8 +2,8 @@ import DsulCore
 import Foundation
 
 /// The sample planner behind "Try with sample data": the drag spike's day, a
-/// morning routine (and an empty one), a season, and a braindump long enough
-/// to scroll. Built as the web's own `Item`s, so the sample goes through
+/// morning routine (and an empty one), a season, a goal, and a braindump long
+/// enough to scroll. Built as the web's own `Item`s, so the sample goes through
 /// exactly the rules a signed-in day does. The hosted tests pin these titles,
 /// counts and ids: change them there too.
 enum SampleData {
@@ -12,6 +12,7 @@ enum SampleData {
         var projects: [Project]
         var routines: [Routine]
         var seasons: [Season]
+        var goals: [Goal]
     }
 
     /// Stable ids, so a test can find the same row on two planners.
@@ -136,20 +137,59 @@ enum SampleData {
                            order: untimed.count + 1 + thoughts.count, repeatMonthDay: 1,
                            isScheduled: false)
 
+        // A goal's own items (Organize's Goals section), made after Pay rent
+        // so no id above moves, and none on `anchor`, so the day's counts
+        // stay as the tests pin them: three dated milestones (one reached),
+        // filed under Anytime so they stay out of the braindump and off the
+        // grid, and a check-in that repeats on the weekday three days ahead,
+        // last done four days back, so it never lands on `anchor`.
+        func milestone(_ title: String, inDays days: Int, done: Bool) -> Item {
+            return Item(id: next(), type: "task", title: title, status: done ? "completed" : "pending",
+                        startDate: anchor.adding(days: days).description, timeBucket: DayBucket.anytime.rawValue,
+                        duration: 60, isScheduled: true)
+        }
+        let milestones = [
+            milestone("Run 5K without stopping", inDays: -14, done: true),
+            milestone("Run a 10K", inDays: 10, done: false),
+            milestone("Run 16K", inDays: 45, done: false),
+        ]
+        let checkinStart = anchor.adding(days: -4)
+        let checkin = Item(id: next(), type: "task", title: "Weekly run review", status: "pending",
+                           startDate: checkinStart.description, timeBucket: DayBucket.anytime.rawValue,
+                           repeatFrequency: "custom", duration: 15, isScheduled: true,
+                           repeatDays: [checkinStart.weekday], completedDates: [checkinStart.description])
+        // Gym is the goal's supporting work: an item already on the day, so
+        // nothing new lands on it.
+        let gym = blocks[6].id
+
+        // Projects keep no icon or colour, so their tiles derive from their
+        // names, as an older project's do on the web.
         let projects = ["Work", "Home", "Writing", "dsul", "Health"].map { name in
             Project(id: sampleProjectId(name), name: name)
         }
         let routines = [
-            Routine(id: "sample-morning-routine", name: "Morning routine", sortOrder: 0,
-                    itemIds: routineHabits.map(\.id)),
+            Routine(id: "sample-morning-routine", name: "Morning routine", icon: "icon:Sunrise",
+                    color: "var(--accent-6)", sortOrder: 0, usualTime: "07:00", itemIds: routineHabits.map(\.id)),
             // A second routine with nothing in it yet, so a routine member's menu has
             // another routine to toggle, and a season holding Journal, the Season
             // chip's case. Autumn follows no dates (state auto, none set), so it is
             // live every day and hides nothing.
-            Routine(id: "sample-wind-down", name: "Wind down", sortOrder: 1, itemIds: []),
+            Routine(id: "sample-wind-down", name: "Wind down", icon: "icon:Moon", color: "var(--accent-4)",
+                    sortOrder: 1, usualTime: "21:30", itemIds: []),
         ]
-        let seasons = [Season(id: "sample-autumn", name: "Autumn", itemIds: [routineHabits[2].id])]
-        return Contents(items: blocks + untimed + routineHabits + otherHabits + braindump + subtasks + [payRent],
-                        projects: projects, routines: routines, seasons: seasons)
+        let seasons = [
+            Season(id: "sample-autumn", name: "Autumn", icon: "icon:Leaf", color: "var(--accent-1)", sortOrder: 0,
+                   itemIds: [routineHabits[2].id]),
+        ]
+        let goals = [
+            Goal(id: "sample-half-marathon", name: "Run a half marathon",
+                 why: "The long runs are the best part of the week.", icon: "icon:Target",
+                 color: "var(--accent-3)", sortOrder: 0, startsOn: anchor.adding(days: -30).description,
+                 targetOn: anchor.adding(days: 120).description, memberIds: [gym],
+                 milestoneIds: milestones.map(\.id), checkinIds: [checkin.id]),
+        ]
+        return Contents(items: blocks + untimed + routineHabits + otherHabits + braindump + subtasks + [payRent]
+                            + milestones + [checkin],
+                        projects: projects, routines: routines, seasons: seasons, goals: goals)
     }
 }

@@ -105,8 +105,9 @@ import path from 'path';
  * DURATION_ORDER and durationLabel), for DsulCore's EditCopy. `repeats` pins
  * the Repeat chip's words: lib/planner-types.ts REPEAT_FREQUENCY_LABELS, in
  * its order, and WEEKDAY_LABELS, for DsulCore's Cadence. `containers` pins
- * the container nouns (lib/container-registry.ts CONTAINER_KINDS' label,
- * labelPlural and the project's unsetLabel), for DsulCore's ContainerWords.
+ * the container nouns (lib/container-registry.ts CONTAINER_KINDS' label and
+ * labelPlural for the four kinds, and the project's unsetLabel), for
+ * DsulCore's ContainerWords.
  *
  * Regenerate with:
  *
@@ -469,6 +470,7 @@ type EditContainers = {
   project: { label: string; labelPlural: string; unsetLabel: string };
   routine: { label: string; labelPlural: string };
   season: { label: string; labelPlural: string };
+  goal: { label: string; labelPlural: string };
 };
 type EditWrites = {
   today: string;
@@ -1209,6 +1211,8 @@ async function build(): Promise<EditWrites> {
       },
       routine: { label: CONTAINER_KINDS.routine.label, labelPlural: CONTAINER_KINDS.routine.labelPlural },
       season: { label: CONTAINER_KINDS.season.label, labelPlural: CONTAINER_KINDS.season.labelPlural },
+      // Organize's Goals section (O1) words its header from these.
+      goal: { label: CONTAINER_KINDS.goal.label, labelPlural: CONTAINER_KINDS.goal.labelPlural },
     },
     buckets,
     durations,

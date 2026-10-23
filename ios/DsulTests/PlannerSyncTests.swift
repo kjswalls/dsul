@@ -229,9 +229,11 @@ func bodyJSON(_ request: FakeServer.Request?) -> [String: Any]? {
 /// routines and seasons (`routineJSON`, `seasonJSON`). No stored timezone
 /// unless one is given, so the pinned day stays put. `writes` is the current
 /// server's list unless a test plays an older server (nil); `itemTypes` names
-/// the user's own types, `streaksEnabled` the Streaks switch, and
+/// the user's own types, `streaksEnabled` the Streaks switch,
 /// `remindersEnabled` the raw JSON for Habit reminders ("true", "false" or
-/// "null"), each left out (an older server) unless given.
+/// "null"), `organizeEnabled` and `goalsEnabled` the Organize and Goals
+/// switches, and `goals` the user's goals (`goalJSON`), each left out (an
+/// older server) unless given.
 enum PlannerJSON {
     static let today = "2026-10-01"
     /// Noon UTC on `today`: the live planner's clock. It is 2026-10-01 from
@@ -314,6 +316,16 @@ enum PlannerJSON {
             + ids.joined(separator: ",") + "]}"
     }
 
+    /// An active goal with `milestones`, as the payload lists one (the route
+    /// sends more fields; these are what Organize's list reads).
+    static func goalJSON(_ id: String, _ name: String, milestones: [UUID] = [], state: String = "active",
+                         targetOn: String? = nil) -> String {
+        let ids: [String] = milestones.map { "\"\(lowerID($0))\"" }
+        let target: String = targetOn.map { ",\"targetOn\":\"\($0)\"" } ?? ""
+        return "{\"id\":\"\(id)\",\"name\":\"\(name)\",\"state\":\"\(state)\"\(target),\"memberIds\":[],"
+            + "\"milestoneIds\":[" + ids.joined(separator: ",") + "],\"checkinIds\":[]}"
+    }
+
     /// A season holding `items` directly, following no dates (state auto,
     /// none set), so it is live every day and hides nothing.
     static func seasonJSON(_ id: String, _ name: String, _ items: [UUID]) -> String {
@@ -371,7 +383,8 @@ enum PlannerJSON {
                         itemTypes: [ItemTypeLabel]? = nil, streaksEnabled: Bool? = nil,
                         remindersEnabled: String? = nil, omitting: Set<UUID> = [],
                         extra: [String] = [], projects: [String] = [], routines: [String] = [],
-                        seasons: [String] = []) -> String {
+                        seasons: [String] = [], organizeEnabled: Bool? = nil, goalsEnabled: Bool? = nil,
+                        goals: [String]? = nil) -> String {
         let status = groceriesDone ? "completed" : "pending"
         let zone: String = timezone.map { "\"\($0)\"" } ?? "null"
         let groceriesRow: String =
@@ -396,7 +409,10 @@ enum PlannerJSON {
         var json = "{\"v\":1,\"userId\":\"\(lowerID(userId))\",\"fetchedAt\":\"\(fetchedAt)\","
         let streaks: String = streaksEnabled.map { ",\"streaksEnabled\":\($0)" } ?? ""
         let reminders: String = remindersEnabled.map { ",\"remindersEnabled\":\($0)" } ?? ""
-        json += "\"settings\":{\"timezone\":\(zone),\"showCompletedTasks\":true\(streaks)\(reminders)},"
+        let organize: String = organizeEnabled.map { ",\"organizeEnabled\":\($0)" } ?? ""
+        let goalsSwitch: String = goalsEnabled.map { ",\"goalsEnabled\":\($0)" } ?? ""
+        json += "\"settings\":{\"timezone\":\(zone),\"showCompletedTasks\":true\(streaks)\(reminders)"
+            + "\(organize)\(goalsSwitch)},"
         if let writes {
             let quoted: [String] = writes.map { "\"\($0)\"" }
             json += "\"writes\":[" + quoted.joined(separator: ",") + "],"
@@ -410,6 +426,9 @@ enum PlannerJSON {
         json += "\"items\":[" + items.joined(separator: ",") + "],"
         json += "\"projects\":[" + projects.joined(separator: ",") + "],"
         json += "\"routines\":[" + routines.joined(separator: ",") + "],"
+        if let goals {
+            json += "\"goals\":[" + goals.joined(separator: ",") + "],"
+        }
         json += "\"seasons\":[" + seasons.joined(separator: ",") + "]}"
         return json
     }

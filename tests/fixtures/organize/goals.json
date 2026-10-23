@@ -1,0 +1,620 @@
+{
+  "world": {
+    "items": [
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000001",
+        "title": "Book a tutor",
+        "status": "completed",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-09-15"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000002",
+        "title": "First lesson",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-11-02"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000003",
+        "title": "Order a novel",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000004",
+        "title": "Dropped checkpoint",
+        "status": "cancelled",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      },
+      {
+        "type": "custom",
+        "customType": "book",
+        "id": "00000000-0000-4000-8000-000000000005",
+        "title": "Read Dune",
+        "status": "completed",
+        "isScheduled": true,
+        "order": 0
+      },
+      {
+        "type": "custom",
+        "customType": "book",
+        "id": "00000000-0000-4000-8000-000000000006",
+        "title": "Read Neruda",
+        "status": "done",
+        "isScheduled": true,
+        "order": 0
+      },
+      {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000007",
+        "title": "Practise daily",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000008",
+        "title": "Run the 10K",
+        "status": "completed",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-04"
+      }
+    ]
+  },
+  "goalProgress": [
+    {
+      "name": "No milestones",
+      "goal": {
+        "id": "g-none",
+        "name": "No milestones",
+        "state": "active",
+        "memberIds": [
+          "00000000-0000-4000-8000-000000000007"
+        ],
+        "milestoneIds": [],
+        "checkinIds": []
+      },
+      "expected": {
+        "achieved": 0,
+        "total": 0,
+        "fraction": null,
+        "label": "No milestones yet"
+      }
+    },
+    {
+      "name": "Half there",
+      "goal": {
+        "id": "g-half",
+        "name": "Half there",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "checkinIds": []
+      },
+      "expected": {
+        "achieved": 1,
+        "total": 2,
+        "fraction": 0.5,
+        "label": "1/2"
+      }
+    },
+    {
+      "name": "All reached so far",
+      "goal": {
+        "id": "g-all",
+        "name": "All reached so far",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000008"
+        ],
+        "checkinIds": []
+      },
+      "expected": {
+        "achieved": 2,
+        "total": 2,
+        "fraction": 1,
+        "label": "2/2 so far"
+      }
+    },
+    {
+      "name": "All reached, achieved",
+      "goal": {
+        "id": "g-all-achieved",
+        "name": "All reached, achieved",
+        "state": "achieved",
+        "memberIds": [],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000008"
+        ],
+        "checkinIds": []
+      },
+      "expected": {
+        "achieved": 2,
+        "total": 2,
+        "fraction": 1,
+        "label": "2/2"
+      }
+    },
+    {
+      "name": "Set aside part way",
+      "goal": {
+        "id": "g-set-aside",
+        "name": "Set aside part way",
+        "state": "abandoned",
+        "memberIds": [],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002",
+          "00000000-0000-4000-8000-000000000003"
+        ],
+        "checkinIds": []
+      },
+      "expected": {
+        "achieved": 1,
+        "total": 3,
+        "fraction": 0.3333333333333333,
+        "label": "1/3"
+      }
+    },
+    {
+      "name": "A dropped checkpoint leaves both sides",
+      "goal": {
+        "id": "g-cancelled",
+        "name": "A dropped checkpoint leaves both sides",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000004",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "checkinIds": []
+      },
+      "expected": {
+        "achieved": 1,
+        "total": 2,
+        "fraction": 0.5,
+        "label": "1/2"
+      }
+    },
+    {
+      "name": "A trashed checkpoint leaves both sides",
+      "goal": {
+        "id": "g-trashed",
+        "name": "A trashed checkpoint leaves both sides",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000063",
+          "00000000-0000-4000-8000-000000000001"
+        ],
+        "checkinIds": []
+      },
+      "expected": {
+        "achieved": 1,
+        "total": 1,
+        "fraction": 1,
+        "label": "1/1 so far"
+      }
+    },
+    {
+      "name": "Only dropped and trashed",
+      "goal": {
+        "id": "g-only-dropped",
+        "name": "Only dropped and trashed",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000004",
+          "00000000-0000-4000-8000-000000000063"
+        ],
+        "checkinIds": []
+      },
+      "expected": {
+        "achieved": 0,
+        "total": 0,
+        "fraction": null,
+        "label": "No milestones yet"
+      }
+    },
+    {
+      "name": "A custom type’s done word",
+      "goal": {
+        "id": "g-custom",
+        "name": "A custom type’s done word",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000005",
+          "00000000-0000-4000-8000-000000000006"
+        ],
+        "checkinIds": []
+      },
+      "expected": {
+        "achieved": 1,
+        "total": 2,
+        "fraction": 0.5,
+        "label": "1/2"
+      }
+    },
+    {
+      "name": "Only milestones count",
+      "goal": {
+        "id": "g-roles",
+        "name": "Only milestones count",
+        "state": "active",
+        "memberIds": [
+          "00000000-0000-4000-8000-000000000008"
+        ],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "checkinIds": [
+          "00000000-0000-4000-8000-000000000007"
+        ]
+      },
+      "expected": {
+        "achieved": 0,
+        "total": 1,
+        "fraction": 0,
+        "label": "0/1"
+      }
+    }
+  ],
+  "progressLabel": [
+    {
+      "name": "none, active",
+      "goal": {
+        "id": "g",
+        "name": "G",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": []
+      },
+      "achieved": 0,
+      "total": 0,
+      "expected": "No milestones yet"
+    },
+    {
+      "name": "none, achieved",
+      "goal": {
+        "id": "g",
+        "name": "G",
+        "state": "achieved",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": []
+      },
+      "achieved": 0,
+      "total": 0,
+      "expected": "No milestones yet"
+    },
+    {
+      "name": "none done, active",
+      "goal": {
+        "id": "g",
+        "name": "G",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": []
+      },
+      "achieved": 0,
+      "total": 3,
+      "expected": "0/3"
+    },
+    {
+      "name": "part way, active",
+      "goal": {
+        "id": "g",
+        "name": "G",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": []
+      },
+      "achieved": 2,
+      "total": 5,
+      "expected": "2/5"
+    },
+    {
+      "name": "all done, active: so far",
+      "goal": {
+        "id": "g",
+        "name": "G",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": []
+      },
+      "achieved": 2,
+      "total": 2,
+      "expected": "2/2 so far"
+    },
+    {
+      "name": "all done, achieved",
+      "goal": {
+        "id": "g",
+        "name": "G",
+        "state": "achieved",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": []
+      },
+      "achieved": 2,
+      "total": 2,
+      "expected": "2/2"
+    },
+    {
+      "name": "all done, set aside",
+      "goal": {
+        "id": "g",
+        "name": "G",
+        "state": "abandoned",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": []
+      },
+      "achieved": 4,
+      "total": 4,
+      "expected": "4/4"
+    },
+    {
+      "name": "part way, set aside",
+      "goal": {
+        "id": "g",
+        "name": "G",
+        "state": "abandoned",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": []
+      },
+      "achieved": 1,
+      "total": 4,
+      "expected": "1/4"
+    },
+    {
+      "name": "double digits",
+      "goal": {
+        "id": "g",
+        "name": "G",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": []
+      },
+      "achieved": 10,
+      "total": 12,
+      "expected": "10/12"
+    }
+  ],
+  "isGoalActive": [
+    {
+      "name": "active",
+      "goal": {
+        "id": "g-active",
+        "name": "active",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": []
+      },
+      "expected": true
+    },
+    {
+      "name": "achieved",
+      "goal": {
+        "id": "g-achieved",
+        "name": "achieved",
+        "state": "achieved",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": []
+      },
+      "expected": false
+    },
+    {
+      "name": "abandoned",
+      "goal": {
+        "id": "g-abandoned",
+        "name": "abandoned",
+        "state": "abandoned",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": []
+      },
+      "expected": false
+    }
+  ],
+  "sortGoalsForDisplay": [
+    {
+      "name": "empty",
+      "goals": [],
+      "expected": []
+    },
+    {
+      "name": "all active keep their order",
+      "goals": [
+        {
+          "id": "g1",
+          "name": "g1",
+          "state": "active",
+          "memberIds": [],
+          "milestoneIds": [],
+          "checkinIds": [],
+          "sortOrder": 2
+        },
+        {
+          "id": "g2",
+          "name": "g2",
+          "state": "active",
+          "memberIds": [],
+          "milestoneIds": [],
+          "checkinIds": [],
+          "sortOrder": 0
+        },
+        {
+          "id": "g3",
+          "name": "g3",
+          "state": "active",
+          "memberIds": [],
+          "milestoneIds": [],
+          "checkinIds": [],
+          "sortOrder": 1
+        }
+      ],
+      "expected": [
+        "g1",
+        "g2",
+        "g3"
+      ]
+    },
+    {
+      "name": "ended sink, each half in its order",
+      "goals": [
+        {
+          "id": "g1",
+          "name": "g1",
+          "state": "achieved",
+          "memberIds": [],
+          "milestoneIds": [],
+          "checkinIds": [],
+          "sortOrder": 0
+        },
+        {
+          "id": "g2",
+          "name": "g2",
+          "state": "active",
+          "memberIds": [],
+          "milestoneIds": [],
+          "checkinIds": [],
+          "sortOrder": 1
+        },
+        {
+          "id": "g3",
+          "name": "g3",
+          "state": "abandoned",
+          "memberIds": [],
+          "milestoneIds": [],
+          "checkinIds": [],
+          "sortOrder": 2
+        },
+        {
+          "id": "g4",
+          "name": "g4",
+          "state": "active",
+          "memberIds": [],
+          "milestoneIds": [],
+          "checkinIds": [],
+          "sortOrder": 3
+        },
+        {
+          "id": "g5",
+          "name": "g5",
+          "state": "achieved",
+          "memberIds": [],
+          "milestoneIds": [],
+          "checkinIds": [],
+          "sortOrder": 4
+        }
+      ],
+      "expected": [
+        "g2",
+        "g4",
+        "g1",
+        "g3",
+        "g5"
+      ]
+    },
+    {
+      "name": "all ended keep their order",
+      "goals": [
+        {
+          "id": "g1",
+          "name": "g1",
+          "state": "abandoned",
+          "memberIds": [],
+          "milestoneIds": [],
+          "checkinIds": []
+        },
+        {
+          "id": "g2",
+          "name": "g2",
+          "state": "achieved",
+          "memberIds": [],
+          "milestoneIds": [],
+          "checkinIds": []
+        },
+        {
+          "id": "g3",
+          "name": "g3",
+          "state": "abandoned",
+          "memberIds": [],
+          "milestoneIds": [],
+          "checkinIds": []
+        }
+      ],
+      "expected": [
+        "g1",
+        "g2",
+        "g3"
+      ]
+    },
+    {
+      "name": "one active after the ended",
+      "goals": [
+        {
+          "id": "g1",
+          "name": "g1",
+          "state": "achieved",
+          "memberIds": [],
+          "milestoneIds": [],
+          "checkinIds": []
+        },
+        {
+          "id": "g2",
+          "name": "g2",
+          "state": "achieved",
+          "memberIds": [],
+          "milestoneIds": [],
+          "checkinIds": []
+        },
+        {
+          "id": "g3",
+          "name": "g3",
+          "state": "active",
+          "memberIds": [],
+          "milestoneIds": [],
+          "checkinIds": []
+        }
+      ],
+      "expected": [
+        "g3",
+        "g1",
+        "g2"
+      ]
+    }
+  ]
+}

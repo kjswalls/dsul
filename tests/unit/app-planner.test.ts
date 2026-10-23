@@ -24,9 +24,13 @@ import path from 'path';
  * And what the item sheet shows: notes with a line break, priorities, a
  * reminder with an anchor and one without, and the custom type's own label
  * (item_types), which the sheet words that item by. The user has turned
- * Streaks off (user_extensions), a saved row rather than the default, and
- * Habit reminders on, the one value of
+ * Streaks off and Goals on (user_extensions), saved rows rather than the
+ * defaults, and Habit reminders on, the one value of
  * `remindersEnabled` no default can (a missing row is false, a retry null).
+ * And what Organize lists: a routine and a season with an icon, a colour and
+ * notes beside a routine with none, a project with notes, and two goals, one
+ * active (a why, a window, a done milestone, an undated one, a check-in and a
+ * member) and one achieved with no members.
  */
 
 const FIXTURE = path.resolve(__dirname, '../fixtures/app/planner-response.json');
@@ -39,6 +43,8 @@ const PROJECT_HEALTH = '22222222-2222-4222-8222-000000000002';
 const ROUTINE_MORNING = '33333333-3333-4333-8333-000000000001';
 const ROUTINE_EVENING = '33333333-3333-4333-8333-000000000002';
 const SEASON_AUTUMN = '44444444-4444-4444-8444-000000000001';
+const GOAL_SPANISH = '66666666-6666-4666-8666-000000000001';
+const GOAL_COOK = '66666666-6666-4666-8666-000000000002';
 
 // ── The fake Supabase ─────────────────────────────────────────────────────────
 
@@ -294,6 +300,36 @@ const ITEM_ROWS = [
     start_time: '06:30',
     duration: 10,
   },
+  {
+    // A goal's reached milestone: a one-off done on a past day, so on no
+    // column of the fixture's day.
+    ...rowBase(12),
+    type: 'task',
+    title: 'Book a tutor',
+    status: 'completed',
+    start_date: '2026-09-15',
+    repeat_frequency: null,
+    time_bucket: 'morning',
+    is_scheduled: true,
+    order: 8,
+  },
+  {
+    // A goal's check-in: a review every Sunday, done last week. Sundays only,
+    // so not on the fixture's Friday.
+    ...rowBase(13),
+    type: 'task',
+    title: 'Spanish check-in',
+    status: 'pending',
+    start_date: '2026-09-06',
+    repeat_frequency: 'custom',
+    repeat_days: [0],
+    repeat_month_day: null,
+    completed_dates: ['2026-09-27'],
+    time_bucket: 'evening',
+    start_time: null,
+    is_scheduled: true,
+    order: 9,
+  },
 ];
 
 const PROJECT_ROWS = [
@@ -310,7 +346,7 @@ const PROJECT_ROWS = [
     time_bucket: 'morning',
     start_time: '09:00',
     duration: 60,
-    notes: null,
+    notes: 'Bills, forms and calls.',
   },
   {
     // A monthly block with no month day: the two rules answer differently.
@@ -334,13 +370,14 @@ const ROUTINE_ROWS = [
     id: ROUTINE_MORNING,
     user_id: USER,
     name: 'Morning routine',
-    icon: null,
-    color: null,
+    // A picked glyph and the lime, which the phone draws at full strength.
+    icon: 'icon:Sunrise',
+    color: 'var(--accent-8)',
     paused_at: null,
     paused_until: null,
     sort_order: 0,
     usual_time: '06:30',
-    notes: null,
+    notes: 'Before the phone.',
   },
   {
     id: ROUTINE_EVENING,
@@ -369,18 +406,65 @@ const SEASON_ROWS = [
     id: SEASON_AUTUMN,
     user_id: USER,
     name: 'Autumn',
-    icon: null,
-    color: null,
+    icon: 'icon:Leaf',
+    color: 'var(--accent-6)',
     state: 'active',
     starts_on: '2026-09-01',
     ends_on: '2026-11-30',
     sort_order: 0,
     updated_at: '2026-09-01T08:00:00.5+00:00',
-    notes: null,
+    notes: 'Until the clocks change.',
   },
 ];
 const SEASON_ITEM_ROWS = [{ season_id: SEASON_AUTUMN, item_id: id(3) }];
 const SEASON_ROUTINE_ROWS = [{ season_id: SEASON_AUTUMN, routine_id: ROUTINE_MORNING }];
+
+const GOAL_ROWS = [
+  {
+    // Live work: a why, a window, a picked glyph and no colour (the name hash).
+    id: GOAL_SPANISH,
+    user_id: USER,
+    name: 'Speak Spanish by spring',
+    why: 'For the trip to Madrid in April.',
+    icon: 'icon:Globe',
+    color: null,
+    state: 'active',
+    starts_on: '2026-08-01',
+    target_on: '2027-04-01',
+    achieved_at: null,
+    sort_order: 0,
+    created_at: '2026-08-01T08:00:00.000000+00:00',
+    updated_at: '2026-09-15T08:00:00.000000+00:00',
+    deleted_at: null,
+  },
+  {
+    // The record: achieved, stamped, with no members and no window.
+    id: GOAL_COOK,
+    user_id: USER,
+    name: 'Cook five dishes',
+    why: null,
+    icon: null,
+    color: 'var(--accent-5)',
+    state: 'achieved',
+    starts_on: null,
+    target_on: null,
+    achieved_at: '2026-09-20T18:00:00.123456+00:00',
+    sort_order: 1,
+    created_at: '2026-06-01T08:00:00.000000+00:00',
+    updated_at: '2026-09-20T18:00:00.123456+00:00',
+    deleted_at: null,
+  },
+];
+
+// In the fetch order both loaders guarantee (sort_order nulls last, item_id):
+// the two milestones in timeline order, the reached one first and the
+// undated book after it, then the member and the check-in.
+const GOAL_ITEM_ROWS = [
+  { goal_id: GOAL_SPANISH, item_id: id(12), role: 'milestone', sort_order: 0 },
+  { goal_id: GOAL_SPANISH, item_id: id(5), role: 'milestone', sort_order: 1 },
+  { goal_id: GOAL_SPANISH, item_id: id(8), role: 'member', sort_order: null },
+  { goal_id: GOAL_SPANISH, item_id: id(13), role: 'checkin', sort_order: null },
+];
 
 /**
  * The custom type 'book', labelled as its owner named it, which is not the
@@ -413,8 +497,8 @@ const BUNDLE = {
   seasons: SEASON_ROWS,
   season_items: SEASON_ITEM_ROWS,
   season_routines: SEASON_ROUTINE_ROWS,
-  goals: [],
-  goal_items: [],
+  goals: GOAL_ROWS,
+  goal_items: GOAL_ITEM_ROWS,
 };
 
 /**
@@ -496,6 +580,15 @@ const AWAY: Result = { data: AWAY_ROWS, error: null };
 /** The user turned Streaks off on the web (Settings → Extensions). */
 const STREAKS_OFF: Result = { data: [{ slug: 'streaks', enabled: false }], error: null };
 
+/** The fixture's switches: Streaks off and Goals on, both away from their defaults; Organize unset, so on. */
+const EXTENSIONS: Result = {
+  data: [
+    { slug: 'streaks', enabled: false },
+    { slug: 'goals', enabled: true },
+  ],
+  error: null,
+};
+
 const serialize = (value: unknown) => JSON.stringify(value, null, 2) + '\n';
 
 /** Every key at every depth, so a leak is found wherever it nests. */
@@ -528,7 +621,7 @@ function setUp() {
   rpc = vi.fn(async () => ({ data: BUNDLE, error: null }));
   respondWith({
     user_settings: { data: SETTINGS_ROW, error: null },
-    user_extensions: STREAKS_OFF,
+    user_extensions: EXTENSIONS,
     items: SNOOZES,
     away_periods: AWAY,
   });
@@ -571,6 +664,7 @@ describe('the payload fixture shared with DsulCore', () => {
       [
         'awayPeriods',
         'fetchedAt',
+        'goals',
         'itemTypes',
         'items',
         'projects',
@@ -593,6 +687,8 @@ describe('the payload fixture shared with DsulCore', () => {
       timeFormat: '24h',
       appIcon: 'lime',
       streaksEnabled: false,
+      organizeEnabled: true,
+      goalsEnabled: true,
       remindersEnabled: true,
       lastCallEnabled: true,
       lastCallTime: '20:45',
@@ -708,6 +804,82 @@ describe('the payload fixture shared with DsulCore', () => {
     ]);
   });
 
+  it('carries what Organize lists: the containers whole, and the goals', () => {
+    // Every field a routine row has, the absent ones left out rather than null.
+    expect(generated.routines).toEqual([
+      {
+        id: ROUTINE_MORNING,
+        name: 'Morning routine',
+        icon: 'icon:Sunrise',
+        color: 'var(--accent-8)',
+        sortOrder: 0,
+        usualTime: '06:30',
+        notes: 'Before the phone.',
+        itemIds: [id(11), id(1)],
+      },
+      {
+        id: ROUTINE_EVENING,
+        name: 'Wind-down',
+        pausedAt: '2026-09-20T21:00:00+00:00',
+        sortOrder: 1,
+        itemIds: [id(2)],
+      },
+    ]);
+    expect(generated.seasons).toEqual([
+      {
+        id: SEASON_AUTUMN,
+        name: 'Autumn',
+        icon: 'icon:Leaf',
+        color: 'var(--accent-6)',
+        state: 'active',
+        startsOn: '2026-09-01',
+        endsOn: '2026-11-30',
+        sortOrder: 0,
+        itemIds: [id(3)],
+        routineIds: [ROUTINE_MORNING],
+        updatedAt: '2026-09-01T08:00:00.5+00:00',
+        notes: 'Until the clocks change.',
+      },
+    ]);
+    expect(generated.projects).toContainEqual(expect.objectContaining({ name: 'Admin', notes: 'Bills, forms and calls.' }));
+    expect(generated.projects).toContainEqual(expect.not.objectContaining({ notes: expect.anything() }));
+    // The goals, as assembleGoals maps them: the role arrays in fetch order,
+    // and the achieved goal with three empty arrays rather than none.
+    expect(generated.goals).toEqual([
+      {
+        id: GOAL_SPANISH,
+        name: 'Speak Spanish by spring',
+        why: 'For the trip to Madrid in April.',
+        icon: 'icon:Globe',
+        state: 'active',
+        startsOn: '2026-08-01',
+        targetOn: '2027-04-01',
+        sortOrder: 0,
+        memberIds: [id(8)],
+        milestoneIds: [id(12), id(5)],
+        checkinIds: [id(13)],
+      },
+      {
+        id: GOAL_COOK,
+        name: 'Cook five dishes',
+        color: 'var(--accent-5)',
+        state: 'achieved',
+        achievedAt: '2026-09-20T18:00:00.123456+00:00',
+        sortOrder: 1,
+        memberIds: [],
+        milestoneIds: [],
+        checkinIds: [],
+      },
+    ]);
+    // Every goal member is an item the payload holds.
+    const itemIds = new Set((generated.items as { id: string }[]).map((i) => i.id));
+    for (const goal of generated.goals as { memberIds: string[]; milestoneIds: string[]; checkinIds: string[] }[]) {
+      for (const member of [...goal.memberIds, ...goal.milestoneIds, ...goal.checkinIds]) {
+        expect(itemIds.has(member), member).toBe(true);
+      }
+    }
+  });
+
   it('leaks no openclaw_* key, at any depth', () => {
     expect(allKeys(generated).filter((k) => k.toLowerCase().startsWith('openclaw'))).toEqual([]);
     expect(JSON.stringify(generated)).not.toContain(SETTINGS_ROW.openclaw_api_key);
@@ -731,7 +903,8 @@ describe('GET /api/app/planner', () => {
       ],
     ]);
     expect(settings[0].calls).toContainEqual(['eq', ['user_id', USER]]);
-    // The Streaks switch, by its two columns, as the user.
+    // The three switches (Streaks, Organize, Goals) from ONE read, by its two
+    // columns, as the user.
     const extensions = queries.filter((q) => q.table === 'user_extensions');
     expect(extensions).toHaveLength(1);
     expect(extensions[0].calls).toEqual([
@@ -761,8 +934,10 @@ describe('GET /api/app/planner', () => {
       weekStartDay: 'sunday',
       timeFormat: '12h',
       appIcon: null,
-      // No extension rows either: the manifest's default.
+      // No extension rows either: the manifest's defaults.
       streaksEnabled: false,
+      organizeEnabled: true,
+      goalsEnabled: false,
       // The column's default, and what the reminder scan reads a missing row as.
       remindersEnabled: false,
       lastCallEnabled: false,
@@ -814,6 +989,8 @@ describe('GET /api/app/planner', () => {
       timeFormat: '24h',
       appIcon: null,
       streaksEnabled: false,
+      organizeEnabled: true,
+      goalsEnabled: false,
       // Unread, so unknown: the phone says nothing rather than "off".
       remindersEnabled: null,
       lastCallEnabled: null,
@@ -896,6 +1073,92 @@ describe('GET /api/app/planner', () => {
       expect(body.items).toHaveLength(ITEM_ROWS.length);
       expect(error).toHaveBeenCalled();
       error.mockRestore();
+    });
+  });
+
+  describe('organizeEnabled and goalsEnabled', () => {
+    const settings = { data: SETTINGS_ROW, error: null };
+    const flags = async () => {
+      const res = await get();
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      const { streaksEnabled, organizeEnabled, goalsEnabled } = body.settings;
+      return { streaksEnabled, organizeEnabled, goalsEnabled };
+    };
+
+    it('are the manifest’s defaults with no extension rows: Organize on, Goals off', async () => {
+      respondWith({ user_settings: settings, user_extensions: { data: [], error: null } });
+      expect(await flags()).toEqual({ streaksEnabled: false, organizeEnabled: true, goalsEnabled: false });
+    });
+
+    it('follow the user’s rows, each switch on its own', async () => {
+      respondWith({
+        user_settings: settings,
+        user_extensions: { data: [{ slug: 'organize', enabled: false }], error: null },
+      });
+      expect(await flags()).toEqual({ streaksEnabled: false, organizeEnabled: false, goalsEnabled: false });
+      respondWith({
+        user_settings: settings,
+        user_extensions: {
+          data: [
+            { slug: 'goals', enabled: true },
+            { slug: 'organize', enabled: true },
+            { slug: 'streaks', enabled: true },
+          ],
+          error: null,
+        },
+      });
+      expect(await flags()).toEqual({ streaksEnabled: true, organizeEnabled: true, goalsEnabled: true });
+      respondWith({
+        user_settings: settings,
+        user_extensions: {
+          data: [
+            { slug: 'goals', enabled: true },
+            { slug: 'organize', enabled: false },
+          ],
+          error: null,
+        },
+      });
+      expect(await flags()).toEqual({ streaksEnabled: false, organizeEnabled: false, goalsEnabled: true });
+    });
+
+    it('are the defaults without the user_extensions table (migration 026)', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      respondWith({
+        user_settings: settings,
+        user_extensions: { data: null, error: { code: '42P01', message: 'relation "user_extensions" does not exist' } },
+      });
+      expect(await flags()).toEqual({ streaksEnabled: false, organizeEnabled: true, goalsEnabled: false });
+      warn.mockRestore();
+    });
+
+    it('fall back each to its own default when the read fails, and the payload still answers', async () => {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      respondWith({
+        user_settings: settings,
+        user_extensions: { data: null, error: { code: 'XX000', message: 'internal error' } },
+      });
+      expect(await flags()).toEqual({ streaksEnabled: false, organizeEnabled: true, goalsEnabled: false });
+      expect(error).toHaveBeenCalledWith('[app/planner] extensions read failed:', expect.objectContaining({ code: 'XX000' }));
+      error.mockRestore();
+    });
+
+    it('gate nothing in the payload: goals arrive with Goals off, containers with Organize off', async () => {
+      respondWith({
+        user_settings: settings,
+        user_extensions: {
+          data: [
+            { slug: 'goals', enabled: false },
+            { slug: 'organize', enabled: false },
+          ],
+          error: null,
+        },
+      });
+      const body = await (await get()).json();
+      expect(body.goals).toHaveLength(GOAL_ROWS.length);
+      expect(body.routines).toHaveLength(ROUTINE_ROWS.length);
+      expect(body.seasons).toHaveLength(SEASON_ROWS.length);
+      expect(body.projects).toHaveLength(PROJECT_ROWS.length);
     });
   });
 
@@ -1057,7 +1320,7 @@ describe('GET /api/app/planner', () => {
   // tests after this one run on it.
   const PER_TABLE: Record<string, Result> = {
     user_settings: { data: SETTINGS_ROW, error: null },
-    user_extensions: STREAKS_OFF,
+    user_extensions: EXTENSIONS,
     items: SNOOZES,
     away_periods: AWAY,
     items_windowed: { data: ITEM_ROWS, error: null },
@@ -1068,6 +1331,8 @@ describe('GET /api/app/planner', () => {
     seasons: { data: SEASON_ROWS, error: null },
     season_items: { data: SEASON_ITEM_ROWS, error: null },
     season_routines: { data: SEASON_ROUTINE_ROWS, error: null },
+    goals: { data: GOAL_ROWS, error: null },
+    goal_items: { data: GOAL_ITEM_ROWS, error: null },
   };
 
   it('without load_planner, reads the tables as the user and answers the same payload', async () => {
@@ -1082,12 +1347,16 @@ describe('GET /api/app/planner', () => {
 
     expect(res.status).toBe(200);
     const viaTables = await res.json();
-    // Item types included: the sheet words a custom item by its label.
+    // Item types and goals included: the sheet words a custom item by its
+    // label, and Organize lists the goals.
     expect(viaTables).toEqual(viaRpc);
-    // The phone doesn't read goals yet, so they aren't read.
+    expect(viaTables.goals).toHaveLength(GOAL_ROWS.length);
     const tables = queries.map((q) => q.table);
     expect(tables).toContain('item_types');
-    expect(tables).not.toContain('goals');
+    expect(tables).toContain('goals');
+    expect(tables).toContain('goal_items');
+    // Live goals only.
+    expect(queries.find((q) => q.table === 'goals')?.calls).toContainEqual(['is', ['deleted_at', null]]);
     // Every table read is scoped to the caller (RLS does it too).
     for (const q of queries) expect(q.calls, q.table).toContainEqual(['eq', ['user_id', USER]]);
   });
@@ -1106,5 +1375,27 @@ describe('GET /api/app/planner', () => {
     expect(body.itemTypes).toBeNull();
     expect(body.items).toHaveLength(ITEM_ROWS.length);
     expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it('answers goals null, and still answers, when the goals tables are unreachable', async () => {
+    // On the per-table path. Null is "unreachable", which hides Goals; never "none".
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    respondWith({
+      ...PER_TABLE,
+      goals: { data: null, error: { code: '42P01', message: 'relation "goals" does not exist' } },
+    });
+    const res = await get();
+    warn.mockRestore();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.goals).toBeNull();
+    expect(body.routines).toHaveLength(ROUTINE_ROWS.length);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it('answers goals [] when there are none', async () => {
+    respondWith({ ...PER_TABLE, goals: { data: [], error: null }, goal_items: { data: [], error: null } });
+    const body = await (await get()).json();
+    expect(body.goals).toEqual([]);
   });
 });

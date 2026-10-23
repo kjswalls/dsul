@@ -643,6 +643,64 @@ import Testing
         #expect(buckets.values.reduce(0) { $0 + $1.count } == planner.count(.all))
     }
 
+    // MARK: Organize
+
+    /// Without signing in, Organize shows every section (Goals is on in the
+    /// sample), each container with its own tile, glyph and subtitle.
+    @Test func theSampleShowsEveryOrganizeSection() throws {
+        let planner = makePlanner()
+        #expect(planner.settings.goalsEnabled)
+        #expect(planner.settings.organizeEnabled)
+        guard case .list(let sections, let nothingYet, let switchedOff) = planner.organize else {
+            Issue.record("The sample is loaded")
+            return
+        }
+        #expect(sections.map(\.kind) == [.routines, .seasons, .goals, .projects])
+        #expect(sections.map(\.count) == ["2", "1 on", "1", "5"])
+        #expect(nothingYet == nil)
+        #expect(switchedOff == nil)
+
+        let routines = sections[0].rows
+        #expect(routines.map(\.title) == ["Morning routine", "Wind down"])
+        #expect(routines.map(\.subtitle) == ["7:00 am \u{00B7} 3 items", "9:30 pm \u{00B7} Nothing in it yet"])
+        #expect(routines.map(\.symbol) == ["sunrise", "moon"])
+        #expect(routines.map(\.accent.token) == ["var(--accent-6)", "var(--accent-4)"])
+
+        let autumn = try #require(sections[1].rows.first)
+        #expect(autumn.title == "Autumn")
+        #expect(autumn.subtitle == "1 item")
+        #expect(autumn.symbol == "leaf")
+        #expect(autumn.accent.token == "var(--accent-1)")
+
+        let goal = try #require(sections[2].rows.first)
+        #expect(goal.title == "Run a half marathon")
+        #expect(goal.subtitle == "Jan 29 \u{00B7} 1/3")
+        #expect(goal.symbol == "target")
+
+        // By folded name, done and Standup's "work" included; the roadmap's
+        // subtasks are filed under no project.
+        let projects = sections[3].rows
+        #expect(projects.map(\.title) == ["Work", "Home", "Writing", "dsul", "Health"])
+        #expect(projects.map(\.subtitle) == ["4 items", "4 items", "1 item", "1 item", "1 item"])
+        #expect(projects.allSatisfy { $0.accent.source == .name })
+    }
+
+    /// The goal's own items were made after Pay rent and off the anchor day:
+    /// no pinned id moves, nothing lands on the day or in the braindump.
+    @Test func theSampleGoalsItemsStayOffTheDay() throws {
+        let planner = makePlanner()
+        let goal = try #require(planner.goals?.first)
+        let own = Set(goal.milestoneIds + goal.checkinIds)
+        #expect(own.count == 4)
+        #expect(planner.item(SampleData.uuid(50))?.title == "Pay rent")
+        #expect(own == Set((51...54).map(SampleData.uuid)))
+        #expect(!planner.dayItems.contains { own.contains($0.id) })
+        #expect(!planner.braindump.contains { own.contains($0.id) })
+        #expect(!planner.scheduled.contains { own.contains($0.id) })
+        #expect(goal.memberIds == [first(planner, "Gym").id])
+        #expect(goalProgress(goal, items: planner.items) == GoalProgress(achieved: 1, total: 3, fraction: 1.0 / 3.0))
+    }
+
     // MARK: Layout and formatting
 
     @Test func layoutsStepAndWrap() {

@@ -128,7 +128,7 @@ import {
 } from '@dsul/types';
 import { saveSettings } from './settings-service';
 import { isRecurring, isCompletedOnDate, toDateStr } from './recurrence';
-import { accentColorForName } from './accent-colors';
+import { projectColorToken } from './accent-colors';
 import { useAwayStore } from './away-store';
 import { CONTAINER_KINDS, foldContainerName, sameContainerName } from './container-registry';
 import {
@@ -5368,28 +5368,11 @@ export const usePlannerStore = create<PlannerStore>()(
 
       /**
        * Stored colour wins; then the three legacy theme tokens; then the
-       * name-hash ramp.
-       *
-       * THE TOKEN MAP CAME OVER FROM `getHabitGroupColor` (039). It is
-       * theme-aware (app/globals.css) and existed because Wellness / Work /
-       * Personal were the shipped habit-group names — dropping it would restyle
-       * those rows for every account that still has them. The cost of keeping it
-       * on the merged axis is that a PROJECT named "work" now draws
-       * `--habit-work` instead of its name-hash colour, which is a different
-       * colour and not a different meaning. Stored colours pass through
-       * untouched either way, so anything the user actually picked is unaffected.
+       * name-hash ramp. The rule is projectColorToken (lib/accent-colors.ts),
+       * pure so the iPhone can port it; its comment says why the legacy
+       * token map (from `getHabitGroupColor`, 039) stays.
        */
-      getProjectColor: (name) => {
-        const project = get().projects.find((p) => sameContainerName('project', p.name, name));
-        if (project?.color) return project.color;
-        const normalized = foldContainerName('project', name);
-        const legacyToken: Record<string, string> = {
-          wellness: 'var(--habit-wellness)',
-          work: 'var(--habit-work)',
-          personal: 'var(--habit-personal)',
-        };
-        return legacyToken[normalized] || accentColorForName(normalized);
-      },
+      getProjectColor: (name) => projectColorToken(name, get().projects),
 
       getProject: (name) => {
         return get().projects.find((p) => sameContainerName('project', p.name, name));

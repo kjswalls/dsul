@@ -10,19 +10,6 @@ struct AskView: View {
     }
 }
 
-struct OrganizeView: View {
-    @Environment(SamplePlanner.self) private var planner
-
-    var body: some View {
-        NavigationStack {
-            List(planner.projects, id: \.self) { project in
-                Label(project, systemImage: "folder")
-            }
-            .navigationTitle("Organize")
-        }
-    }
-}
-
 /// Every item by title, subtasks included. A tap opens the item's sheet
 /// acting on TODAY: Search has no day of its own to act on.
 struct SearchView: View {

@@ -28,7 +28,7 @@ struct RootView: View {
             Tab("Ask", systemImage: "sparkles", value: AppTab.ask) {
                 AskView()
             }
-            Tab("Organize", systemImage: "square.stack.3d.up", value: AppTab.organize) {
+            Tab("Organize", systemImage: "square.grid.2x2", value: AppTab.organize) {
                 OrganizeView()
             }
             Tab(value: AppTab.search, role: .search) {

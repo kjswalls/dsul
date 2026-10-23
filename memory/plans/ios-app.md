@@ -18,6 +18,9 @@ item is (read-only) and its verbs, with three more writes (skip, move, pause)
 on the same route. Part 2 makes it editable, in seven PRs; the first (2a) edits
 the title and the notes and adds Delete, with three more writes (title, notes,
 delete), and replaces PlannerSync's slots with a rebase per subject.
+Organize, the third tab, is built as its own series (O1 to O15, the design in
+the shared folder's `ios-app/organize/design.md`); O1 lists the containers,
+read-only (see Organize below).
 Designs, the stack comparison and the board images live in the project's
 shared folder (`ios-app/`): `stack.md` has a SwiftUI build note for every
 interaction, and `expo-vs-swiftui.md` ends with the fact-check.
@@ -124,6 +127,17 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   `AwayPeriod` / `AwayKeep` in `Item.swift`, decoded from the planner's
   `awayPeriods` (nil from an older server; `trips` reads it as none).
   `PlanInput.away` carries them into the notification plan.
+  Organize's O1 adds `Collections.swift` ← `lib/collections.ts` (`countLive`
+  and the routine and season state pills), `ActiveExplain.swift` ← the
+  explanations in `lib/active.ts` (`seasonResumeDate`, `routineStandingOn`),
+  `Goals.swift` ← `lib/goals.ts` (progress, `progressLabel`, the display
+  order), `ContainerSchedule.swift` ← `lib/container-schedule.ts`
+  (`containerMemberIds`, and `OrganizeKind`) and `ContainerLook.swift` ←
+  `lib/accent-colors.ts`, `lib/category-icons.ts` and the colour tokens in
+  `app/globals.css` (a container's colour per theme as sRGB, its glyph as an
+  SF Symbol), all checked against `tests/fixtures/organize/`; `Item.swift`
+  gains `Goal`, the containers' own fields and the Organize and Goals
+  switches; `EditCopy.swift` gains `ContainerWords.goal`/`.goals`.
   Each cites what it mirrors.
 - `ios/Dsul/App`: `DsulApp` (one `AuthStore`), `AppGate` (sign-in screen,
   sample or the user's planner, keyed on `AuthStore.gateKey`), `AppConfig`.
@@ -138,6 +152,14 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   `ClockWheel`, the wheel both sheets share, and 2e with `RepeatSheet`) and
   `ItemSheetModel`, which decides what it says and offers apart from the
   views.
+  `ios/Dsul/Organize` (O1): `OrganizeView` (the tab: the stack, the list,
+  the section headers and the quiet rows), `ContainerRow` (a row and its
+  `ContainerTile`), `ContainerColor` (DsulCore's `ContainerAccent` as a
+  SwiftUI `Color` that follows dark mode) and `OrganizeModel`, Foundation
+  only, which decides what the list shows and says. `ios/Dsul/App` gains
+  `AvatarMenu` (moved out of `TodayView`, with the tab's own sections passed
+  in) and `PlannerBannerOverlay` (`.plannerBanner()`, Today's banner, also on
+  Organize, with `BannerView`).
   `SamplePlanner` keeps its name for the views, but holds `[Item]` and asks
   DsulCore what shows; `SampleData` builds the sample.
 
@@ -701,8 +723,9 @@ words are fixed on every surface, below.
   one that would empty the chip closes the menu first
   (`.menuActionDismissBehavior(.disabled)` on every toggle but that one,
   which takes `.enabled`; README check 13 confirms both). The sample has a
-  season, Autumn (Journal), and an empty routine, Wind down. No New routine,
-  New season or Organize on the phone.
+  season, Autumn (Journal), and an empty routine, Wind down. Organize lists
+  them (read-only from O1, see Organize below); making a routine or season
+  on the phone waits for Organize's + menu (O11).
 - **Labels.** The payload's `itemTypes` is `[{name, label, labelPlural}]`,
   from load_planner or, on the per-table fallback, `fetchItemTypes`, and null
   when the table is unreachable. The planner keeps them as `typeLabels` and
@@ -795,6 +818,54 @@ words are fixed on every surface, below.
   and Add property's Routine ▸ and Season ▸ (likewise, with a stale web tab
   keeping a phone toggle), offline, VoiceOver, the largest text size, the
   lime, and the platform behaviours they rest on).
+
+## Organize
+The third tab, built as a series of small PRs (O1 to O15). The design, with
+every decision and the PR plan, is the shared folder's
+`ios-app/organize/design.md`; each PR's builders leave notes beside it
+(`organize/o1/`).
+
+- **O1: the list, read-only.** The payload gains `goals` (null when
+  unreadable) and `settings.organizeEnabled` / `settings.goalsEnabled`, from
+  the same single `user_extensions` read as `streaksEnabled`. The tab is one
+  `NavigationStack` with a large "Organize", the avatar menu and the
+  `square.grid.2x2` tab glyph, over an inset-grouped list: Routines, Seasons,
+  Goals (then Ended, when an active goal sits above it) and Projects, in the
+  payload's order (goals in `sortGoalsForDisplay`'s). Each row is a 30pt tile
+  (the container's colour at 18% on the tile, its glyph full strength), the
+  name, and a subtitle: a routine's state pill ("Until Oct 30", "Held · Nov
+  1"), its usual time in the account's clock and its live items; a season's
+  pill, live routines and own live items; a goal's target day and progress
+  in the web's words ("1/3", "2/2 so far"), or "Achieved" / "Set aside"; a
+  project's items by folded name, subtasks left out. "Nothing in it yet"
+  stands for a zero. Headers count rows, Seasons counts the ones on today
+  ("1 on"). Rows open nothing yet.
+- **The switches are display gates.** Organize off hides Routines, Seasons and
+  Projects and shows one quiet row saying so, with the phone's way back (the
+  web's Settings); Goals off, or goals the server couldn't read, hides Goals.
+  "Nothing here yet." shows only once loaded and only when every kind the
+  switches allow is empty, naming only those kinds. Before the first fetch the
+  list is a spinner ("Loading…") or the fetch's error with Try again
+  (`PlannerLoadingRow`, which now takes the tab's words and tints Try again
+  the label colour). Pull to refresh is `LiveRefresh`, as on Today.
+- **Rules apart from views.** `Organize/OrganizeModel.swift` is Foundation
+  only (on the shim's list), so `DsulTests/OrganizeTests` pins the sections,
+  counts, subtitles, tiles, spoken labels and quiet rows on Linux too.
+  `DsulTests/OrganizeLookTests` (Mac runner only) checks every SF Symbol the
+  tiles can draw exists.
+- **Lime.** No stack-wide tint. A container coloured Lime (accent-8) gets a
+  lime glyph on its tile, a mark at full strength; no text on the list takes
+  a hue.
+- **The sample** gives Morning routine, Wind down and Autumn icons, colours
+  and usual times, and adds a goal, Run a half marathon (three dated
+  milestones, one reached, a weekly check-in, Gym as its supporting work),
+  with its items made after Pay rent and off the anchor day so no pinned id
+  or count moves. Goals is on in the sample.
+- **Waits for later PRs:** the pages (O2 routine and season, O3 goal and
+  project), the summary cards (O4), Item types and Paused (O5), the writes
+  (O8a to O13), the + menu (O11), Trash (O14), and Today's project colours
+  (O15, Kirby's call). Today keeps `ProjectPalette` until then, so a
+  project's dot on Today and its tile on Organize can differ.
 
 ## CI
 `.github/workflows/ios.yml`, on PRs to main and pushes to main. A `changes`
@@ -1268,24 +1339,21 @@ animations.
 
 ## Not yet
 Week, density (`DensityMetrics`), swipe actions on rows, the zoom transition
-from the bar to the braindump sheet, creating a project from the phone (the
-web's New Project), creating a routine or season from the phone, the
-Organize console, undo or restore after a delete (the web's Trash restores it),
-Change type, Duplicate and Copy link, the rest of
-the sheet (a routine's or a season's hold, the goal chip once goals are in
-the payload, and any word that a repeat took a goal role away (the web then
-lists the item as a plain member, with no notice), the Beeminder row, the
-Streaks switch, which the
-phone honours, in the sheet and on Today's rows, but can't turn on or off,
-the thread and Ask, Focus),
-universal links (the email link uses the custom scheme), unschedule, resize
-and moving existing blocks from the phone, the overdue tray, sinking completed rows,
-filters and `showPausedOnGrid` (the phone uses the defaults), syncing the
-timezone from the phone, notifications, Focus as a Live Activity, a
-local-stack password grant for development, and the web-side work the app
-still needs (a native push channel). App Store review will also want consent
-before sending data to a model. Notifications, the timezone write and the native push channel are
-planned in [reminders-platforms.md](reminders-platforms.md) (§2.3 and its
-Phase 2: local `UNUserNotificationCenter` triggers computed by a DsulCore port
-of `lib/reminders/plan.ts`; APNs follows in its Phase 3 on the paid team Kirby
-already holds).
+from the bar to the braindump sheet, the rest of Organize (the container
+pages, the summary cards, Item types, Paused and Trash, and every container
+write, creating a project, routine, season or goal from the phone included:
+O2 to O15 in the Organize design), undo or restore after a delete (the web's
+Trash restores it), Change type, Duplicate and Copy link, the rest of the sheet
+(a routine's or a season's hold, the goal chip, which goals in the payload
+since O1 make possible, and any word that a repeat took a goal role away (the
+web then lists the item as a plain member, with no notice), the Beeminder row,
+the Streaks, Organize and Goals switches, which the phone honours but can't
+turn on or off, the thread and Ask, Focus), universal links (the email link
+uses the custom scheme), unschedule, resize and moving existing blocks from
+the phone, the overdue tray, sinking completed rows, filters and
+`showPausedOnGrid` (the phone uses the defaults), Focus as a Live Activity,
+and a local-stack password grant for development. App Store review will also
+want consent before sending data to a model. Notifications shipped
+(#446 to #524: the phone plans and arms its own, stores its time zone,
+registers as a device and is woken by APNs); what is left of them is in
+[reminders-platforms.md](reminders-platforms.md).

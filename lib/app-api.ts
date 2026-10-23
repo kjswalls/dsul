@@ -8,6 +8,7 @@ import {
   createItem,
   deleteItem,
   fetchAwayPeriods,
+  fetchGoals,
   fetchItems,
   fetchItemTypes,
   fetchProjects,
@@ -47,7 +48,7 @@ import {
   TIMES_PER_DAY_MAX,
 } from './item-edit';
 import { demoteInvalidGoalRoles } from './goal-roles';
-import { EXT_STREAKS, resolveEnabled } from './extension-registry';
+import { EXT_GOALS, EXT_ORGANIZE, EXT_STREAKS, resolveEnabled } from './extension-registry';
 import { capabilityShape, isPausableRow, resolveItemPause } from './item-pause';
 import { DEFAULT_APP_ICON, isAppIcon, type AppIcon } from './app-icons';
 import { getBucketForTime } from './time-bucket';
@@ -60,7 +61,7 @@ import { snoozeFireInstant } from './reminders/snooze';
 import { saveTimezone } from './user-timezone';
 import type { WeekStartDay } from './container-schedule';
 import type { TimeFormat } from './reminders/copy';
-import type { Item, Project, Routine, Season, Task, TaskItem } from './planner-types';
+import type { Goal, Item, Project, Routine, Season, Task, TaskItem } from './planner-types';
 import type { AwayPeriod } from './away';
 
 /**
@@ -382,6 +383,20 @@ export interface AppPlannerPayload {
      */
     streaksEnabled: boolean;
     /**
+     * The Organize extension (EXT_ORGANIZE, on unless the user turned it off),
+     * read from the same user_extensions row set as streaksEnabled. A display
+     * gate only, as on the web (lib/extension-gates.ts): off hides Organize's
+     * Routines, Seasons and Projects, and nothing is deleted or refused.
+     * Absent, from an older server, reads as on.
+     */
+    organizeEnabled: boolean;
+    /**
+     * The Goals extension (EXT_GOALS, off unless the user turned it on), from
+     * the same read. A display gate only: off hides the Goals section, and the
+     * goals still arrive in `goals`. Absent, from an older server, reads as off.
+     */
+    goalsEnabled: boolean;
+    /**
      * Habit reminders (Settings → Rituals; habit_reminders_enabled, migration
      * 032), the switch that lets any reminder through. False when off or never
      * set, as the reminder scan reads it (lib/reminders/scan.ts counts only
@@ -431,6 +446,18 @@ export interface AppPlannerPayload {
   projects: Project[];
   routines: Routine[] | null;
   seasons: Season[] | null;
+  /**
+   * The user's goals (goals and goal_items, migration 036), as lib/db.ts's
+   * assembleGoals maps them: live goals in sort_order, then created_at, each
+   * with its three role arrays (memberIds, milestoneIds in timeline order,
+   * checkinIds). Sent whatever the Goals switch says, as the web's store holds
+   * them either way; `settings.goalsEnabled` is what gates showing them. A
+   * role array can name an item the payload does not hold (a trashed member),
+   * so the phone intersects with `items`, as goalProgress does. Null when the
+   * tables are unreachable, which hides Goals. Absent, from an older server,
+   * means the same.
+   */
+  goals: Goal[] | null;
   /**
    * The user's own item types (item_types, migration 021), named as the web
    * names them: a custom item's eyebrow, its title placeholder and its delete
@@ -521,19 +548,37 @@ async function readSettings(userId: string, client: Client): Promise<SettingsRea
   return { row: result.data as SettingsRow | null, full };
 }
 
+/** The three extension switches the phone reads, each as the web's gate reads it. */
+interface AppExtensions {
+  streaksEnabled: boolean;
+  organizeEnabled: boolean;
+  goalsEnabled: boolean;
+}
+
+/** Each switch from the user's rows, else its manifest default. */
+function extensionsFrom(enabled: Record<string, boolean>): AppExtensions {
+  return {
+    streaksEnabled: resolveEnabled(enabled, EXT_STREAKS),
+    organizeEnabled: resolveEnabled(enabled, EXT_ORGANIZE),
+    goalsEnabled: resolveEnabled(enabled, EXT_GOALS),
+  };
+}
+
 /**
- * Whether the Streaks extension is on, as the web's gate reads it
- * (lib/extension-gates.ts streaksEnabled): the user's row, else the manifest's
- * default. fetchUserExtensions answers null for a missing table and rethrows
- * anything else, which is caught here: a missing flame costs less than a
- * planner that won't load.
+ * Whether Streaks, Organize and Goals are on, as the web's gates read them
+ * (lib/extension-gates.ts): the user's row, else the manifest's default. One
+ * user_extensions read answers all three. fetchUserExtensions answers null for
+ * a missing table and rethrows anything else, which is caught here: each
+ * switch then falls back to its own manifest default (Streaks off, Organize
+ * on, Goals off), because a wrong gate costs less than a planner that won't
+ * load. They are display gates only: no route refuses a write over them.
  */
-async function readStreaksEnabled(userId: string, client: Client): Promise<boolean> {
+async function readExtensions(userId: string, client: Client): Promise<AppExtensions> {
   try {
-    return resolveEnabled((await fetchUserExtensions(userId, client)) ?? {}, EXT_STREAKS);
+    return extensionsFrom((await fetchUserExtensions(userId, client)) ?? {});
   } catch (err) {
     console.error('[app/planner] extensions read failed:', err instanceof Error ? err.message : err);
-    return resolveEnabled({}, EXT_STREAKS); // the manifest default, false
+    return extensionsFrom({}); // the manifest defaults
   }
 }
 
@@ -584,20 +629,26 @@ function timeFormatFrom(value: string | null | undefined): TimeFormat {
 
 /**
  * The per-table fallback for a database without load_planner (050), with the
- * caller's client. Goals are left out: the phone doesn't read them yet, and
- * null is their "unreachable" value. Item types are read, since the sheet
- * words a custom item by its label; fetchItemTypes answers null rather than
- * throwing when its table is missing, so the load still answers.
+ * caller's client: the same collections the RPC answers, so the two paths send
+ * the same payload. Item types are read, since the sheet words a custom item
+ * by its label, and goals, since Organize lists them. fetchItemTypes and
+ * fetchGoals answer null rather than throwing when their tables are missing,
+ * so the load still answers, and null stays their "unreachable" value.
+ *
+ * Both paths cap goal_items at 1000 rows: PostgREST's max-rows here, and
+ * load_planner's matching `limit 1000` (050), so they truncate at the same
+ * row. No one user is near it.
  */
 async function perTable(userId: string, client: Client): Promise<PlannerData> {
-  const [items, projects, itemTypes, routines, seasons] = await Promise.all([
+  const [items, projects, itemTypes, routines, seasons, goals] = await Promise.all([
     fetchItems(userId, undefined, client),
     fetchProjects(userId, client),
     fetchItemTypes(userId, client),
     fetchRoutines(userId, client),
     fetchSeasons(userId, client),
+    fetchGoals(userId, client),
   ]);
-  return { items, projects, itemTypes, routines, seasons, goals: null };
+  return { items, projects, itemTypes, routines, seasons, goals };
 }
 
 export async function getPlanner(req: Request): Promise<Response> {
@@ -611,10 +662,10 @@ export async function getPlanner(req: Request): Promise<Response> {
     // 400-day completion window) and cannot drift from what the web shows. It
     // falls back to the per-table read rather than answering 503 on a missing
     // RPC, so its module-level latch can slow an instance but never fail one.
-    const [data, { row: settings, full }, streaksEnabled, snoozes, awayPeriods] = await Promise.all([
+    const [data, { row: settings, full }, extensions, snoozes, awayPeriods] = await Promise.all([
       loadPlannerData(userId, () => perTable(userId, client), client),
       readSettings(userId, client),
-      readStreaksEnabled(userId, client),
+      readExtensions(userId, client),
       readSnoozes(userId, client),
       fetchAwayPeriods(userId, client),
     ]);
@@ -630,7 +681,9 @@ export async function getPlanner(req: Request): Promise<Response> {
         weekStartDay: weekStartDayFrom(settings?.week_start_day),
         timeFormat: timeFormatFrom(settings?.time_format),
         appIcon: appIconFrom(settings?.app_icon),
-        streaksEnabled,
+        streaksEnabled: extensions.streaksEnabled,
+        organizeEnabled: extensions.organizeEnabled,
+        goalsEnabled: extensions.goalsEnabled,
         // Only true lets a reminder through (the scan's own test), so a missing
         // row or a null column is off. Unread is unknown, never off.
         remindersEnabled: full ? settings?.habit_reminders_enabled === true : null,
@@ -647,6 +700,8 @@ export async function getPlanner(req: Request): Promise<Response> {
       projects: data.projects,
       routines: data.routines,
       seasons: data.seasons,
+      // Whatever goalsEnabled says: the switch hides them, it never drops them.
+      goals: data.goals,
       // Named fields only: a def also carries its icon, colour and config.
       itemTypes: data.itemTypes?.map(({ name, label, labelPlural }) => ({ name, label, labelPlural })) ?? null,
       // Null is migration 071 not applied: no trips, as the web's store reads it.
@@ -1252,12 +1307,16 @@ async function projectTarget(
 
 /**
  * A repeat can leave a goal role untrue: a milestone that now repeats, or a check-in that no
- * longer does. The web's store takes it back in the same gesture (planGoalRoleDemotion); the
- * phone holds no goals, so the route does it here, through the rule the agent PATCH runs
- * (lib/goal-roles.ts), on the user's own client, once the write has landed. Also when the edit
- * changed nothing, so a demotion that failed after an earlier write is put right by the next.
- * A failure is logged and swallowed: the item write landed, and an error here would make the
- * phone undo a change the server kept.
+ * longer does. The web's store takes it back in the same gesture (planGoalRoleDemotion). The
+ * phone holds the payload's goals but does not port that demotion, so the route does it here,
+ * through the rule the agent PATCH runs (lib/goal-roles.ts), on the user's own client, once the
+ * write has landed. Also when the edit changed nothing, so a demotion that failed after an
+ * earlier write is put right by the next. A failure is logged and swallowed: the item write
+ * landed, and an error here would make the phone undo a change the server kept.
+ *
+ * Until its next fetch the phone's goal arrays are stale: a milestone a repeat edit made
+ * recurring stays in its timeline until the next pull or foreground fetch. Accepted; porting
+ * the demotion waits for the goal role writes.
  */
 async function demoteRoles(ctx: WriteContext): Promise<void> {
   try {
