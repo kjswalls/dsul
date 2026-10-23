@@ -32,6 +32,8 @@ beforeAll(() => {
  */
 
 vi.mock('@/lib/db', () => ({
+  fetchItemEvents: vi.fn(async () => []),
+  getItemEventsAvailable: () => true,
   fetchItems: vi.fn(async () => []),
   fetchProjects: vi.fn(async () => []),
   fetchItemTypes: vi.fn(async () => []),

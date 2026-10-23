@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { actorOf, buildTimeline, changeLine, talkLine, type TalkEntry } from '@/lib/item-timeline';
+import {
+  actorOf,
+  buildStream,
+  buildTimeline,
+  changeLine,
+  foldLine,
+  talkLine,
+  type ChangeEntry,
+  type TalkEntry,
+} from '@/lib/item-timeline';
 import type { ItemEvent } from '@/lib/db';
 
 /**
@@ -124,5 +133,62 @@ describe('the stream', () => {
       now,
     });
     expect(talkLine(days[0].entries[0] as TalkEntry)).toBe('You and OpenClaw talked it through · 3 messages');
+  });
+});
+
+describe('a long history', () => {
+  const now = new Date('2026-10-12T23:00:00');
+  const move = (day: string | null, at: string) =>
+    ev({ action: 'update', id: `m-${at}`, payload: { startDate: day, isScheduled: !!day } }, at);
+  const texts = (events: ItemEvent[]) =>
+    buildTimeline(events, [], { filter: 'changes', now }).flatMap((d) => d.entries.map((e) => (e as ChangeEntry).text));
+
+  it('reads a burst of the same change as where it ended up', () => {
+    const burst = [
+      move('2026-10-12', '2026-10-12T22:22:00'),
+      move(null, '2026-10-12T22:22:10'),
+      move('2026-10-12', '2026-10-12T22:22:20'),
+      move(null, '2026-10-12T22:22:30'),
+    ];
+    expect(texts(burst)).toEqual(['moved it to the braindump']);
+  });
+
+  it('keeps changes of different kinds, by different people, or far apart', () => {
+    expect(
+      texts([
+        ev({ action: 'update', id: 'a', payload: { pausedAt: 'x' } }, '2026-10-12T10:00:00'),
+        ev({ action: 'update', id: 'b', payload: { status: 'completed' } }, '2026-10-12T10:00:05'),
+        ev({ action: 'update', id: 'c', payload: { status: 'pending' } }, '2026-10-12T10:00:10'),
+        ev({ action: 'update', id: 'd', payload: { status: 'completed', by: 'ai' } }, '2026-10-12T10:00:20'),
+        ev({ action: 'update', id: 'e', payload: { status: 'pending', by: 'ai' } }, '2026-10-12T11:00:00'),
+      ])
+    ).toEqual(['paused it', 'opened it again', 'marked it done', 'opened it again']);
+  });
+
+  it('drops a change that says nothing', () => {
+    expect(texts([ev({ action: 'update', id: 'z', payload: { projectId: 'p1' } }, '2026-10-12T10:00:00')])).toEqual([]);
+  });
+
+  it('sets changes between the messages, folds a long run, and never folds messages', () => {
+    const events = Array.from({ length: 6 }, (_, n) =>
+      ev({ action: 'update', id: `p${n}`, payload: { priority: n % 2 ? 'low' : 'high' } }, `2026-10-0${n + 1}T10:00:00`)
+    );
+    events.push(ev({ action: 'update', id: 'late', payload: { title: 'Later' } }, '2026-10-12T12:00:00'));
+    const messages = [
+      { createdAt: new Date('2026-10-12T09:00:00').getTime() },
+      { createdAt: new Date('2026-10-12T09:01:00').getTime() },
+    ];
+    const slots = buildStream(events, messages, { filter: 'all', now });
+    expect(slots).toHaveLength(3);
+    const kinds = slots.map((rows) => rows.map((r) => r.kind));
+    expect(kinds[0]).toEqual(['fold', 'day', 'change', 'day', 'change', 'day', 'change', 'day']);
+    expect(slots[0][0]).toMatchObject({ kind: 'fold', hidden: 3 });
+    expect(foldLine(3)).toBe('Show 3 earlier changes');
+    expect(kinds[1]).toEqual([]);
+    expect(kinds[2]).toEqual(['change']);
+    const open = buildStream(events, messages, { filter: 'all', now, unfolded: new Set([0]) });
+    expect(open[0].filter((r) => r.kind === 'change')).toHaveLength(6);
+    expect(buildStream(events, messages, { filter: 'talk', now }).flat().every((r) => r.kind === 'day')).toBe(true);
+    expect(buildStream(events, messages, { filter: 'changes', now })).toHaveLength(1);
   });
 });

@@ -9,6 +9,7 @@ vi.mock('@/lib/db', async (importOriginal) => ({
 }));
 
 import { ItemTimeline } from '@/components/planner/item-timeline';
+import { ItemConversation } from '@/components/ai/item-conversation';
 import { useConversationsStore, clearChatState } from '@/lib/conversations-store';
 import { seedAI, CONNECTED_MODEL, NOTHING_CONNECTED } from './helpers/ai-fixtures';
 import type { TaskItem } from '@/lib/planner-types';
@@ -86,5 +87,45 @@ describe('the timeline', () => {
     const { container } = render(<ItemTimeline item={ITEM} />);
     await act(async () => {});
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it('folds a long history to its newest three, and opens it again', async () => {
+    unseed = seedAI(NOTHING_CONNECTED);
+    fetchItemEvents.mockResolvedValue(
+      ['high', 'low', 'medium', 'high', 'low', 'none'].map((priority, n) => ({
+        id: `p${n}`,
+        itemId: 'i1',
+        itemType: 'task',
+        action: 'update',
+        payload: { priority },
+        createdAt: today(1 + 2 * n).toISOString(),
+      }))
+    );
+    render(<ItemTimeline item={ITEM} />);
+    await act(async () => {});
+    expect(screen.getAllByTestId('item-timeline-change')).toHaveLength(3);
+    fireEvent.click(screen.getByTestId('item-timeline-fold'));
+    expect(screen.getAllByTestId('item-timeline-change')).toHaveLength(6);
+  });
+});
+
+describe('the timeline inside the conversation', () => {
+  it('is one stream: each change sits between the messages by time, and no second timeline', async () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    fetchItemEvents.mockResolvedValue(events);
+    withThread();
+    useConversationsStore.setState({ resolveItemThread: async () => 'c1', openThread: async () => {} } as never);
+    render(<ItemConversation item={ITEM} mode="pinned" />);
+    await act(async () => {});
+    const section = screen.getByTestId('item-conversation');
+    expect(section).toHaveTextContent(/^Timeline/);
+    const text = section.textContent ?? '';
+    const order = ['You added it', 'hi', 'hello', 'AI renamed it'].map((t) => text.indexOf(t));
+    expect(order.every((at) => at >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    expect(screen.queryByTestId('item-timeline-talk')).toBeNull();
+    fireEvent.click(screen.getByTestId('item-timeline-filter-changes'));
+    expect(section).not.toHaveTextContent('hello');
+    expect(screen.getAllByTestId('item-timeline-change')).toHaveLength(2);
   });
 });

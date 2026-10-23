@@ -572,10 +572,11 @@ function HeatmapSection({ item }: { item: Item }) {
 
 // ── The stack ────────────────────────────────────────────────────────────────
 
-/** Subtasks + agent + activity, gated by the type's capability config, then
+/** Subtasks + agent + timeline, gated by the type's capability config, then
  *  the item's conversation (components/ai/item-conversation.tsx) in the shape
- *  its host asks for. /item/[id] mounts that conversation itself, as its own
- *  column, and passes nothing here. */
+ *  its host asks for, which carries the timeline itself when it is on screen.
+ *  /item/[id] mounts that conversation as its own column and says so with
+ *  `conversationElsewhere`. */
 export function ItemDetailSections({
   item,
   conversation = 'none',
@@ -616,7 +617,8 @@ export function ItemDetailSections({
       )}
       <ItemFilesSection itemId={item.id} />
       {heatmapOn && config.counters.streak && <HeatmapSection item={item} />}
-      {withActivity && <ItemTimeline item={item} />}
+      {/* Where the conversation is on screen, the timeline is drawn inside it, as one stream. */}
+      {withActivity && !(canChat && (conversation !== 'none' || conversationElsewhere)) && <ItemTimeline item={item} />}
       {/* Keyed by item: the panel retargets in place, and a message count
           carried over from the last item would read as new messages here and
           scroll the rail body to the bottom of a different conversation. */}
