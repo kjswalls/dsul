@@ -103,6 +103,14 @@ describe('convertItem', () => {
     expect(out).not.toHaveProperty('isScheduled');
   });
 
+  it('a braindump task → habit lands in anytime, so the day views show it', () => {
+    const braindump = task({ isScheduled: false, startDate: undefined, timeBucket: undefined, startTime: undefined });
+    const out = convertItem(braindump, 'habit', { ...opts, repeat: 'daily' });
+    expect(out).toMatchObject({ type: 'habit', repeatFrequency: 'daily', timeBucket: 'anytime' });
+    // And it keeps a bucket it already had.
+    expect(convertItem(task(), 'habit', opts)).toMatchObject({ timeBucket: 'morning' });
+  });
+
   it('never carries a stale scalar status into a recurring item', () => {
     // A habit ticked today holds 'done'; as a task that would read 'completed'
     // for the whole series. Both directions through a habit start at pending.
