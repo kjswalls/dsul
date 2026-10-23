@@ -182,6 +182,26 @@ describe('captureTask', () => {
     expect(held()).toEqual([]);
   });
 
+  it('adds the type the capture picked: a habit repeats, a task stays undated', async () => {
+    await landFresh(startLoad(A));
+
+    expect(captureTask('Stretch', 'habit')).toBe('added');
+    const habit = store().items.find((i) => i.title === 'Stretch')!;
+    expect(habit.type).toBe('habit');
+    expect((habit as { repeatFrequency?: string }).repeatFrequency).toBe('daily');
+    expect(captureTask('Plain')).toBe('added');
+    expect(store().items.find((i) => i.title === 'Plain')!.type).toBe('task');
+  });
+
+  it('holds the picked type while loading and files it as that type on landing', async () => {
+    const loading = startLoad(A);
+
+    expect(captureTask('Stretch', 'habit')).toBe('held');
+    await landFresh(loading);
+
+    expect(store().items.find((i) => i.title === 'Stretch')?.type).toBe('habit');
+  });
+
   it('drops a capture with no account to hold it for', () => {
     expect(captureTask('Nobody')).toBe('dropped');
     expect(held()).toEqual([]);

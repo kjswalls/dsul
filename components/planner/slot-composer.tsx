@@ -31,24 +31,30 @@ import { cn } from '@/lib/utils';
  * there is nothing to tick yet; the + says what it is.
  */
 
-/** The type chip: task by default; a habit says it repeats, since it lands on every day it repeats. */
-function TypeChip({
+/**
+ * The type chip: task by default; a habit says it repeats, since it lands on
+ * every day it repeats. The braindump's quick add wears it too, under its own
+ * test id.
+ */
+export function TypeChip({
   type,
   onChange,
   onOpenChange,
   compact,
+  testId = 'slot-composer-type',
 }: {
   type: string;
   onChange: (type: string) => void;
   onOpenChange: (open: boolean) => void;
   compact?: boolean;
+  testId?: string;
 }) {
   const itemTypes = usePlannerStore((s) => s.itemTypes);
   const label = getItemTypeConfig(type).label;
   return (
     <DropdownMenu modal={false} onOpenChange={onOpenChange}>
       <DropdownMenuTrigger
-        data-testid="slot-composer-type"
+        data-testid={testId}
         // Radix's own pointerdown keeps focus in the title field while it
         // opens the menu; ours must not preventDefault, or it never opens.
         className={cn(

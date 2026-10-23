@@ -3,6 +3,8 @@ import { awaitItemCreates, getHistoryInfo, usePlannerStore } from './planner-sto
 import { selectPlannerLoaded, selectPlannerSettled } from './planner-ready';
 import { fetchItemsAnyState } from './db';
 import { setBulkFiledListener } from './filed-rows';
+import { getItemTypeConfig } from './item-registry';
+import { repeatPatch } from './item-edit';
 import type { Item } from './planner-types';
 
 /**
@@ -79,6 +81,8 @@ type HeldCapture = {
   userId: string;
   /** What was typed; once filed, the row's current title. */
   title: string;
+  /** The type the capture was typed as (the braindump's type chip); a task when absent. */
+  type?: string;
   /**
    * Set once filed before a landing: the row as the person last left it, kept
    * until a landing settles it.
@@ -102,23 +106,46 @@ export const useHeldCaptures = create<{ held: HeldCapture[] }>(() => ({ held: []
 
 export type CaptureResult = 'added' | 'held' | 'dropped';
 
+type PlannerState = ReturnType<typeof usePlannerStore.getState>;
+
+/**
+ * Add a captured title as `type`, with no day: a task (or a custom type) lands
+ * in the braindump. A habit is date-blind and takes its type's default repeat,
+ * as the canvas composer's does (lib/slot-add.ts addAt), which is why its chip
+ * says "every day".
+ */
+function fileCapture(s: PlannerState, title: string, type = 'task'): string | undefined {
+  if (type === 'task') return s.addTask({ title });
+  if (type === 'habit') {
+    return s.addHabit({
+      title,
+      ...repeatPatch('habit', getItemTypeConfig('habit').defaultFrequency, [], 1),
+      timesPerDay: 1,
+    });
+  }
+  return s.addItem(type, { title });
+}
+
 /**
  * File a quick capture now if the planner's load has finished (landed or
- * failed), else hold it until it does.
+ * failed), else hold it until it does. `type` is a task unless the capture
+ * picked another (the braindump's type chip).
  */
-export function captureTask(title: string): CaptureResult {
+export function captureTask(title: string, type = 'task'): CaptureResult {
   // Optional-called, as planner-ready's non-reactive readers: some unit-test
   // mocks of planner-store have no getState.
   const s = usePlannerStore.getState?.();
   if (!s) return 'dropped';
   if (selectPlannerSettled(s)) {
-    const id = s.addTask({ title });
+    const id = fileCapture(s, title, type);
+    if (!id) return 'dropped';
     if (s.userId) keepUntilLanded(s.userId, rowsOf([id]));
     return 'added';
   }
   const userId = s.userId;
   if (!userId) return 'dropped';
-  useHeldCaptures.setState(({ held }) => ({ held: [...held, { userId, title }] }));
+  const entry: HeldCapture = type === 'task' ? { userId, title } : { userId, title, type };
+  useHeldCaptures.setState(({ held }) => ({ held: [...held, entry] }));
   ensureReleaser();
   return 'held';
 }
@@ -321,7 +348,8 @@ function release(): void {
   const filed: string[] = [];
   for (const e of typed) {
     try {
-      const id = s.addTask({ title: e.title });
+      const id = fileCapture(s, e.title, e.type);
+      if (!id) continue;
       noteFiledBeforeLanding(userId, id);
       filed.push(id);
     } catch (err) {
