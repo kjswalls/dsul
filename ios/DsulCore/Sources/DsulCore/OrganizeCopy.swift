@@ -9,7 +9,9 @@ import Foundation
 // O14 the Trash's (`whenGone`, `daysUntilPurge`, the row meta, the restore
 // sentences and the phone's refusal words). From O8a, the banner for a refused
 // container write (`refusal(code:for:)`, `PAUSE_REFUSED` and
-// `containerRefusal`), the phone's own words, which the web never says.
+// `containerRefusal`), the phone's own words, which the web never says; from
+// O9 its two name refusals, the second through `nameTakenSentence`, which the
+// web's rename also says inline.
 // Keep in step: a change there without the same change here is drift, and
 // the phone words a container differently from the web. Checked against the
 // web by OrganizeCopyFixtureTests (tests/fixtures/organize/copy.json), byte
@@ -422,7 +424,7 @@ public enum OrganizeCopy {
         return restoreFailed
     }
 
-    /* ── container writes (O8a) ────────────────────────────────────────── */
+    /* ── container writes (O8a, O9) ────────────────────────────────────── */
 
     /// `PAUSE_REFUSED`: the banner for a routine pause the route refused
     /// (`pause_refused`, 409): Pause until's day is no longer after today,
@@ -432,16 +434,34 @@ public enum OrganizeCopy {
     /// writes, and says nothing.
     public static let pauseRefused = "That day is no longer after today, so nothing was paused."
 
+    /// `nameTakenSentence`: a name a live sibling already has, folding case
+    /// (the web's inline rename check, and the phone's banner for a project
+    /// rename refused 409 `name_taken`). The noun is the caller's, lower-cased.
+    public static func nameTakenSentence(noun: String, name: String) -> String {
+        return "You already have a \(noun) called \u{201C}\(name)\u{201D}."
+    }
+
     /// `containerRefusal`: the banner for a container write the route
-    /// refused, by its code (design §6.4). A sentence that names the container takes the name from
-    /// `intent`, the write the phone sent, never from the answer's body. Nil
-    /// for a code with no words of its own (an answer that never came, a 404,
-    /// a 500), where the sync says what it says for any failed write.
-    /// Later parts add their codes here (`name_taken`, `name_in_trash`,
-    /// `container_gone`, `member_gone`, `anchor_gone`).
+    /// refused, by its code (design §6.4):
+    /// - `pause_refused` is `pauseRefused`, whatever the intent;
+    /// - `name_taken` (a project renamed onto a live project's name, folding
+    ///   case) is `nameTakenSentence`, and `name_in_trash` (onto the exact
+    ///   name a project in the Trash still holds) is `nameInTrashSentence`,
+    ///   both naming the project by the name `intent` sent (the TS
+    ///   `sentName`), trimmed as the route read it, never the answer's body.
+    ///   Without a rename to take the name from, they have no words.
+    /// Nil for a code with no words of its own (an answer that never came, a
+    /// 404, a 500), where the sync says what it says for any failed write.
+    /// Later parts add their codes here (`container_gone`, `member_gone`,
+    /// `anchor_gone`).
     public static func refusal(code: String?, for intent: ContainerIntent) -> String? {
+        let noun = jsLowercased(ContainerWords.project)
+        var sentName: String? = nil
+        if case .rename(let name) = intent { sentName = jsTrim(name) }
         switch code {
         case "pause_refused": return pauseRefused
+        case "name_taken": return sentName.map { nameTakenSentence(noun: noun, name: $0) }
+        case "name_in_trash": return sentName.map { nameInTrashSentence(noun: noun, name: $0) }
         default: return nil
         }
     }

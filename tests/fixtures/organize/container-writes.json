@@ -1278,6 +1278,3126 @@
           "sortOrder": 0
         }
       }
+    },
+    {
+      "name": "usual time: set",
+      "kind": "routine",
+      "before": {
+        "id": "r-evening",
+        "name": "Evening",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "sortOrder": 1,
+        "usualTime": "21:30"
+      },
+      "body": {
+        "action": "usualTime",
+        "usualTime": "07:15"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "usualTime": "07:15"
+        },
+        "after": {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "sortOrder": 1,
+          "usualTime": "07:15"
+        }
+      }
+    },
+    {
+      "name": "usual time: on a routine with none",
+      "kind": "routine",
+      "before": {
+        "id": "r-evening",
+        "name": "Evening",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "sortOrder": 1
+      },
+      "body": {
+        "action": "usualTime",
+        "usualTime": "06:45"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "usualTime": "06:45"
+        },
+        "after": {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "sortOrder": 1,
+          "usualTime": "06:45"
+        }
+      }
+    },
+    {
+      "name": "usual time: cleared",
+      "kind": "routine",
+      "before": {
+        "id": "r-evening",
+        "name": "Evening",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "sortOrder": 1,
+        "usualTime": "21:30"
+      },
+      "body": {
+        "action": "usualTime",
+        "usualTime": null
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "usualTime": null
+        },
+        "after": {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "sortOrder": 1
+        }
+      }
+    },
+    {
+      "name": "usual time: the time it has, written again",
+      "kind": "routine",
+      "before": {
+        "id": "r-evening",
+        "name": "Evening",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "sortOrder": 1,
+        "usualTime": "21:30"
+      },
+      "body": {
+        "action": "usualTime",
+        "usualTime": "21:30"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "usualTime": "21:30"
+        },
+        "after": {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "sortOrder": 1,
+          "usualTime": "21:30"
+        }
+      }
+    },
+    {
+      "name": "usual time on a paused routine: the pause untouched",
+      "kind": "routine",
+      "before": {
+        "id": "r-evening",
+        "name": "Evening",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "sortOrder": 1,
+        "usualTime": "21:30",
+        "pausedAt": "2026-10-20T13:00:00.000Z",
+        "pausedUntil": "2026-10-30"
+      },
+      "body": {
+        "action": "usualTime",
+        "usualTime": "22:00"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "usualTime": "22:00"
+        },
+        "after": {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "sortOrder": 1,
+          "usualTime": "22:00",
+          "pausedAt": "2026-10-20T13:00:00.000Z",
+          "pausedUntil": "2026-10-30"
+        }
+      }
+    },
+    {
+      "name": "routine notes: set, trimmed",
+      "kind": "routine",
+      "before": {
+        "id": "r-evening",
+        "name": "Evening",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "sortOrder": 1,
+        "usualTime": "21:30"
+      },
+      "body": {
+        "action": "notes",
+        "notes": "  Lights out by ten.\n"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "notes": "Lights out by ten."
+        },
+        "after": {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "sortOrder": 1,
+          "usualTime": "21:30",
+          "notes": "Lights out by ten."
+        }
+      }
+    },
+    {
+      "name": "routine notes: replaced",
+      "kind": "routine",
+      "before": {
+        "id": "r-evening",
+        "name": "Evening",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "sortOrder": 1,
+        "usualTime": "21:30",
+        "notes": "Old."
+      },
+      "body": {
+        "action": "notes",
+        "notes": "New."
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "notes": "New."
+        },
+        "after": {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "sortOrder": 1,
+          "usualTime": "21:30",
+          "notes": "New."
+        }
+      }
+    },
+    {
+      "name": "routine notes: cleared with null",
+      "kind": "routine",
+      "before": {
+        "id": "r-evening",
+        "name": "Evening",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "sortOrder": 1,
+        "usualTime": "21:30",
+        "notes": "Old."
+      },
+      "body": {
+        "action": "notes",
+        "notes": null
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "notes": null
+        },
+        "after": {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "sortOrder": 1,
+          "usualTime": "21:30"
+        }
+      }
+    },
+    {
+      "name": "routine notes: blank clears them",
+      "kind": "routine",
+      "before": {
+        "id": "r-evening",
+        "name": "Evening",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "sortOrder": 1,
+        "usualTime": "21:30",
+        "notes": "Old."
+      },
+      "body": {
+        "action": "notes",
+        "notes": "  \n\t "
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "notes": null
+        },
+        "after": {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "sortOrder": 1,
+          "usualTime": "21:30"
+        }
+      }
+    },
+    {
+      "name": "routine notes: two lines kept",
+      "kind": "routine",
+      "before": {
+        "id": "r-evening",
+        "name": "Evening",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "sortOrder": 1,
+        "usualTime": "21:30"
+      },
+      "body": {
+        "action": "notes",
+        "notes": "Phone away.\nBook out."
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "notes": "Phone away.\nBook out."
+        },
+        "after": {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "sortOrder": 1,
+          "usualTime": "21:30",
+          "notes": "Phone away.\nBook out."
+        }
+      }
+    },
+    {
+      "name": "runs: both ends moved",
+      "kind": "season",
+      "before": {
+        "id": "s-autumn",
+        "name": "Autumn",
+        "state": "auto",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000003"
+        ],
+        "routineIds": [
+          "r-evening"
+        ],
+        "startsOn": "2026-09-01",
+        "endsOn": "2026-11-30",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "dates",
+        "startsOn": "2026-11-01",
+        "endsOn": "2027-02-28"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "startsOn": "2026-11-01",
+          "endsOn": "2027-02-28"
+        },
+        "after": {
+          "id": "s-autumn",
+          "name": "Autumn",
+          "state": "auto",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000003"
+          ],
+          "routineIds": [
+            "r-evening"
+          ],
+          "startsOn": "2026-11-01",
+          "endsOn": "2027-02-28",
+          "sortOrder": 0
+        }
+      }
+    },
+    {
+      "name": "runs: the end cleared, open after",
+      "kind": "season",
+      "before": {
+        "id": "s-autumn",
+        "name": "Autumn",
+        "state": "auto",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000003"
+        ],
+        "routineIds": [
+          "r-evening"
+        ],
+        "startsOn": "2026-09-01",
+        "endsOn": "2026-11-30",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "dates",
+        "startsOn": "2026-09-01",
+        "endsOn": null
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "startsOn": "2026-09-01",
+          "endsOn": null
+        },
+        "after": {
+          "id": "s-autumn",
+          "name": "Autumn",
+          "state": "auto",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000003"
+          ],
+          "routineIds": [
+            "r-evening"
+          ],
+          "startsOn": "2026-09-01",
+          "sortOrder": 0
+        }
+      }
+    },
+    {
+      "name": "runs: the start cleared, open before",
+      "kind": "season",
+      "before": {
+        "id": "s-autumn",
+        "name": "Autumn",
+        "state": "auto",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000003"
+        ],
+        "routineIds": [
+          "r-evening"
+        ],
+        "startsOn": "2026-09-01",
+        "endsOn": "2026-11-30",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "dates",
+        "startsOn": null,
+        "endsOn": "2026-11-30"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "startsOn": null,
+          "endsOn": "2026-11-30"
+        },
+        "after": {
+          "id": "s-autumn",
+          "name": "Autumn",
+          "state": "auto",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000003"
+          ],
+          "routineIds": [
+            "r-evening"
+          ],
+          "endsOn": "2026-11-30",
+          "sortOrder": 0
+        }
+      }
+    },
+    {
+      "name": "runs: both cleared, always on its dates",
+      "kind": "season",
+      "before": {
+        "id": "s-autumn",
+        "name": "Autumn",
+        "state": "auto",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000003"
+        ],
+        "routineIds": [
+          "r-evening"
+        ],
+        "startsOn": "2026-09-01",
+        "endsOn": "2026-11-30",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "dates",
+        "startsOn": null,
+        "endsOn": null
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "startsOn": null,
+          "endsOn": null
+        },
+        "after": {
+          "id": "s-autumn",
+          "name": "Autumn",
+          "state": "auto",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000003"
+          ],
+          "routineIds": [
+            "r-evening"
+          ],
+          "sortOrder": 0
+        }
+      }
+    },
+    {
+      "name": "runs: one day",
+      "kind": "season",
+      "before": {
+        "id": "s-autumn",
+        "name": "Autumn",
+        "state": "auto",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000003"
+        ],
+        "routineIds": [
+          "r-evening"
+        ],
+        "startsOn": "2026-09-01",
+        "endsOn": "2026-11-30",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "dates",
+        "startsOn": "2026-12-25",
+        "endsOn": "2026-12-25"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "startsOn": "2026-12-25",
+          "endsOn": "2026-12-25"
+        },
+        "after": {
+          "id": "s-autumn",
+          "name": "Autumn",
+          "state": "auto",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000003"
+          ],
+          "routineIds": [
+            "r-evening"
+          ],
+          "startsOn": "2026-12-25",
+          "endsOn": "2026-12-25",
+          "sortOrder": 0
+        }
+      }
+    },
+    {
+      "name": "runs on a season with none",
+      "kind": "season",
+      "before": {
+        "id": "s-autumn",
+        "name": "Autumn",
+        "state": "auto",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000003"
+        ],
+        "routineIds": [
+          "r-evening"
+        ],
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "dates",
+        "startsOn": "2026-10-23",
+        "endsOn": "2026-12-31"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "startsOn": "2026-10-23",
+          "endsOn": "2026-12-31"
+        },
+        "after": {
+          "id": "s-autumn",
+          "name": "Autumn",
+          "state": "auto",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000003"
+          ],
+          "routineIds": [
+            "r-evening"
+          ],
+          "sortOrder": 0,
+          "startsOn": "2026-10-23",
+          "endsOn": "2026-12-31"
+        }
+      }
+    },
+    {
+      "name": "runs on a season switched off: the dates wait, the state stays",
+      "kind": "season",
+      "before": {
+        "id": "s-autumn",
+        "name": "Autumn",
+        "state": "paused",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000003"
+        ],
+        "routineIds": [
+          "r-evening"
+        ],
+        "startsOn": "2026-09-01",
+        "endsOn": "2026-11-30",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "dates",
+        "startsOn": "2026-12-01",
+        "endsOn": "2027-01-31"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "startsOn": "2026-12-01",
+          "endsOn": "2027-01-31"
+        },
+        "after": {
+          "id": "s-autumn",
+          "name": "Autumn",
+          "state": "paused",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000003"
+          ],
+          "routineIds": [
+            "r-evening"
+          ],
+          "startsOn": "2026-12-01",
+          "endsOn": "2027-01-31",
+          "sortOrder": 0
+        }
+      }
+    },
+    {
+      "name": "runs it already has, written again",
+      "kind": "season",
+      "before": {
+        "id": "s-autumn",
+        "name": "Autumn",
+        "state": "auto",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000003"
+        ],
+        "routineIds": [
+          "r-evening"
+        ],
+        "startsOn": "2026-09-01",
+        "endsOn": "2026-11-30",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "dates",
+        "startsOn": "2026-09-01",
+        "endsOn": "2026-11-30"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "startsOn": "2026-09-01",
+          "endsOn": "2026-11-30"
+        },
+        "after": {
+          "id": "s-autumn",
+          "name": "Autumn",
+          "state": "auto",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000003"
+          ],
+          "routineIds": [
+            "r-evening"
+          ],
+          "startsOn": "2026-09-01",
+          "endsOn": "2026-11-30",
+          "sortOrder": 0
+        }
+      }
+    },
+    {
+      "name": "season notes: set, trimmed",
+      "kind": "season",
+      "before": {
+        "id": "s-autumn",
+        "name": "Autumn",
+        "state": "auto",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000003"
+        ],
+        "routineIds": [
+          "r-evening"
+        ],
+        "startsOn": "2026-09-01",
+        "endsOn": "2026-11-30",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "notes",
+        "notes": " Leaves, soup, early nights. "
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "notes": "Leaves, soup, early nights."
+        },
+        "after": {
+          "id": "s-autumn",
+          "name": "Autumn",
+          "state": "auto",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000003"
+          ],
+          "routineIds": [
+            "r-evening"
+          ],
+          "startsOn": "2026-09-01",
+          "endsOn": "2026-11-30",
+          "sortOrder": 0,
+          "notes": "Leaves, soup, early nights."
+        }
+      }
+    },
+    {
+      "name": "season notes: cleared",
+      "kind": "season",
+      "before": {
+        "id": "s-autumn",
+        "name": "Autumn",
+        "state": "auto",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000003"
+        ],
+        "routineIds": [
+          "r-evening"
+        ],
+        "startsOn": "2026-09-01",
+        "endsOn": "2026-11-30",
+        "sortOrder": 0,
+        "notes": "Old."
+      },
+      "body": {
+        "action": "notes",
+        "notes": null
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "notes": null
+        },
+        "after": {
+          "id": "s-autumn",
+          "name": "Autumn",
+          "state": "auto",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000003"
+          ],
+          "routineIds": [
+            "r-evening"
+          ],
+          "startsOn": "2026-09-01",
+          "endsOn": "2026-11-30",
+          "sortOrder": 0
+        }
+      }
+    },
+    {
+      "name": "achieve: stamped now",
+      "kind": "goal",
+      "before": {
+        "id": "g-half",
+        "name": "Run a half marathon",
+        "state": "active",
+        "memberIds": [
+          "00000000-0000-4000-8000-000000000004"
+        ],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000005",
+          "00000000-0000-4000-8000-000000000006"
+        ],
+        "checkinIds": [
+          "00000000-0000-4000-8000-000000000007"
+        ],
+        "why": "To feel strong again.",
+        "startsOn": "2026-09-01",
+        "targetOn": "2027-03-15",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "state",
+        "state": "achieved"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "state": "achieved",
+          "achievedAt": "2026-10-23T17:00:00.000Z"
+        },
+        "after": {
+          "id": "g-half",
+          "name": "Run a half marathon",
+          "state": "achieved",
+          "memberIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000005",
+            "00000000-0000-4000-8000-000000000006"
+          ],
+          "checkinIds": [
+            "00000000-0000-4000-8000-000000000007"
+          ],
+          "why": "To feel strong again.",
+          "startsOn": "2026-09-01",
+          "targetOn": "2027-03-15",
+          "sortOrder": 0,
+          "achievedAt": "2026-10-23T17:00:00.000Z"
+        }
+      }
+    },
+    {
+      "name": "achieve again: already so, the first stamp kept",
+      "kind": "goal",
+      "before": {
+        "id": "g-half",
+        "name": "Run a half marathon",
+        "state": "achieved",
+        "memberIds": [
+          "00000000-0000-4000-8000-000000000004"
+        ],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000005",
+          "00000000-0000-4000-8000-000000000006"
+        ],
+        "checkinIds": [
+          "00000000-0000-4000-8000-000000000007"
+        ],
+        "why": "To feel strong again.",
+        "startsOn": "2026-09-01",
+        "targetOn": "2027-03-15",
+        "sortOrder": 0,
+        "achievedAt": "2026-10-16T09:30:00.000Z"
+      },
+      "body": {
+        "action": "state",
+        "state": "achieved"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {},
+        "after": {
+          "id": "g-half",
+          "name": "Run a half marathon",
+          "state": "achieved",
+          "memberIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000005",
+            "00000000-0000-4000-8000-000000000006"
+          ],
+          "checkinIds": [
+            "00000000-0000-4000-8000-000000000007"
+          ],
+          "why": "To feel strong again.",
+          "startsOn": "2026-09-01",
+          "targetOn": "2027-03-15",
+          "sortOrder": 0,
+          "achievedAt": "2026-10-16T09:30:00.000Z"
+        }
+      }
+    },
+    {
+      "name": "reopen an achieved goal: the stamp cleared",
+      "kind": "goal",
+      "before": {
+        "id": "g-half",
+        "name": "Run a half marathon",
+        "state": "achieved",
+        "memberIds": [
+          "00000000-0000-4000-8000-000000000004"
+        ],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000005",
+          "00000000-0000-4000-8000-000000000006"
+        ],
+        "checkinIds": [
+          "00000000-0000-4000-8000-000000000007"
+        ],
+        "why": "To feel strong again.",
+        "startsOn": "2026-09-01",
+        "targetOn": "2027-03-15",
+        "sortOrder": 0,
+        "achievedAt": "2026-10-16T09:30:00.000Z"
+      },
+      "body": {
+        "action": "state",
+        "state": "active"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "state": "active",
+          "achievedAt": null
+        },
+        "after": {
+          "id": "g-half",
+          "name": "Run a half marathon",
+          "state": "active",
+          "memberIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000005",
+            "00000000-0000-4000-8000-000000000006"
+          ],
+          "checkinIds": [
+            "00000000-0000-4000-8000-000000000007"
+          ],
+          "why": "To feel strong again.",
+          "startsOn": "2026-09-01",
+          "targetOn": "2027-03-15",
+          "sortOrder": 0
+        }
+      }
+    },
+    {
+      "name": "set aside an achieved goal: the stamp kept",
+      "kind": "goal",
+      "before": {
+        "id": "g-half",
+        "name": "Run a half marathon",
+        "state": "achieved",
+        "memberIds": [
+          "00000000-0000-4000-8000-000000000004"
+        ],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000005",
+          "00000000-0000-4000-8000-000000000006"
+        ],
+        "checkinIds": [
+          "00000000-0000-4000-8000-000000000007"
+        ],
+        "why": "To feel strong again.",
+        "startsOn": "2026-09-01",
+        "targetOn": "2027-03-15",
+        "sortOrder": 0,
+        "achievedAt": "2026-10-16T09:30:00.000Z"
+      },
+      "body": {
+        "action": "state",
+        "state": "abandoned"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "state": "abandoned"
+        },
+        "after": {
+          "id": "g-half",
+          "name": "Run a half marathon",
+          "state": "abandoned",
+          "memberIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000005",
+            "00000000-0000-4000-8000-000000000006"
+          ],
+          "checkinIds": [
+            "00000000-0000-4000-8000-000000000007"
+          ],
+          "why": "To feel strong again.",
+          "startsOn": "2026-09-01",
+          "targetOn": "2027-03-15",
+          "sortOrder": 0,
+          "achievedAt": "2026-10-16T09:30:00.000Z"
+        }
+      }
+    },
+    {
+      "name": "set aside an active goal",
+      "kind": "goal",
+      "before": {
+        "id": "g-half",
+        "name": "Run a half marathon",
+        "state": "active",
+        "memberIds": [
+          "00000000-0000-4000-8000-000000000004"
+        ],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000005",
+          "00000000-0000-4000-8000-000000000006"
+        ],
+        "checkinIds": [
+          "00000000-0000-4000-8000-000000000007"
+        ],
+        "why": "To feel strong again.",
+        "startsOn": "2026-09-01",
+        "targetOn": "2027-03-15",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "state",
+        "state": "abandoned"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "state": "abandoned"
+        },
+        "after": {
+          "id": "g-half",
+          "name": "Run a half marathon",
+          "state": "abandoned",
+          "memberIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000005",
+            "00000000-0000-4000-8000-000000000006"
+          ],
+          "checkinIds": [
+            "00000000-0000-4000-8000-000000000007"
+          ],
+          "why": "To feel strong again.",
+          "startsOn": "2026-09-01",
+          "targetOn": "2027-03-15",
+          "sortOrder": 0
+        }
+      }
+    },
+    {
+      "name": "reopen a set-aside goal",
+      "kind": "goal",
+      "before": {
+        "id": "g-half",
+        "name": "Run a half marathon",
+        "state": "abandoned",
+        "memberIds": [
+          "00000000-0000-4000-8000-000000000004"
+        ],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000005",
+          "00000000-0000-4000-8000-000000000006"
+        ],
+        "checkinIds": [
+          "00000000-0000-4000-8000-000000000007"
+        ],
+        "why": "To feel strong again.",
+        "startsOn": "2026-09-01",
+        "targetOn": "2027-03-15",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "state",
+        "state": "active"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "state": "active",
+          "achievedAt": null
+        },
+        "after": {
+          "id": "g-half",
+          "name": "Run a half marathon",
+          "state": "active",
+          "memberIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000005",
+            "00000000-0000-4000-8000-000000000006"
+          ],
+          "checkinIds": [
+            "00000000-0000-4000-8000-000000000007"
+          ],
+          "why": "To feel strong again.",
+          "startsOn": "2026-09-01",
+          "targetOn": "2027-03-15",
+          "sortOrder": 0
+        }
+      }
+    },
+    {
+      "name": "achieve a set-aside goal: stamped now",
+      "kind": "goal",
+      "before": {
+        "id": "g-half",
+        "name": "Run a half marathon",
+        "state": "abandoned",
+        "memberIds": [
+          "00000000-0000-4000-8000-000000000004"
+        ],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000005",
+          "00000000-0000-4000-8000-000000000006"
+        ],
+        "checkinIds": [
+          "00000000-0000-4000-8000-000000000007"
+        ],
+        "why": "To feel strong again.",
+        "startsOn": "2026-09-01",
+        "targetOn": "2027-03-15",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "state",
+        "state": "achieved"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "state": "achieved",
+          "achievedAt": "2026-10-23T17:00:00.000Z"
+        },
+        "after": {
+          "id": "g-half",
+          "name": "Run a half marathon",
+          "state": "achieved",
+          "memberIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000005",
+            "00000000-0000-4000-8000-000000000006"
+          ],
+          "checkinIds": [
+            "00000000-0000-4000-8000-000000000007"
+          ],
+          "why": "To feel strong again.",
+          "startsOn": "2026-09-01",
+          "targetOn": "2027-03-15",
+          "sortOrder": 0,
+          "achievedAt": "2026-10-23T17:00:00.000Z"
+        }
+      }
+    },
+    {
+      "name": "active when already active: already so",
+      "kind": "goal",
+      "before": {
+        "id": "g-half",
+        "name": "Run a half marathon",
+        "state": "active",
+        "memberIds": [
+          "00000000-0000-4000-8000-000000000004"
+        ],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000005",
+          "00000000-0000-4000-8000-000000000006"
+        ],
+        "checkinIds": [
+          "00000000-0000-4000-8000-000000000007"
+        ],
+        "why": "To feel strong again.",
+        "startsOn": "2026-09-01",
+        "targetOn": "2027-03-15",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "state",
+        "state": "active"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {},
+        "after": {
+          "id": "g-half",
+          "name": "Run a half marathon",
+          "state": "active",
+          "memberIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000005",
+            "00000000-0000-4000-8000-000000000006"
+          ],
+          "checkinIds": [
+            "00000000-0000-4000-8000-000000000007"
+          ],
+          "why": "To feel strong again.",
+          "startsOn": "2026-09-01",
+          "targetOn": "2027-03-15",
+          "sortOrder": 0
+        }
+      }
+    },
+    {
+      "name": "set aside when already set aside: already so",
+      "kind": "goal",
+      "before": {
+        "id": "g-half",
+        "name": "Run a half marathon",
+        "state": "abandoned",
+        "memberIds": [
+          "00000000-0000-4000-8000-000000000004"
+        ],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000005",
+          "00000000-0000-4000-8000-000000000006"
+        ],
+        "checkinIds": [
+          "00000000-0000-4000-8000-000000000007"
+        ],
+        "why": "To feel strong again.",
+        "startsOn": "2026-09-01",
+        "targetOn": "2027-03-15",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "state",
+        "state": "abandoned"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {},
+        "after": {
+          "id": "g-half",
+          "name": "Run a half marathon",
+          "state": "abandoned",
+          "memberIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000005",
+            "00000000-0000-4000-8000-000000000006"
+          ],
+          "checkinIds": [
+            "00000000-0000-4000-8000-000000000007"
+          ],
+          "why": "To feel strong again.",
+          "startsOn": "2026-09-01",
+          "targetOn": "2027-03-15",
+          "sortOrder": 0
+        }
+      }
+    },
+    {
+      "name": "achieve at 03:30 UTC (still Oct 23 in New York): the stamp is the instant, never a day",
+      "kind": "goal",
+      "before": {
+        "id": "g-half",
+        "name": "Run a half marathon",
+        "state": "active",
+        "memberIds": [
+          "00000000-0000-4000-8000-000000000004"
+        ],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000005",
+          "00000000-0000-4000-8000-000000000006"
+        ],
+        "checkinIds": [
+          "00000000-0000-4000-8000-000000000007"
+        ],
+        "why": "To feel strong again.",
+        "startsOn": "2026-09-01",
+        "targetOn": "2027-03-15",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "state",
+        "state": "achieved"
+      },
+      "now": "2026-10-24T03:30:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-24",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "state": "achieved",
+          "achievedAt": "2026-10-24T03:30:00.000Z"
+        },
+        "after": {
+          "id": "g-half",
+          "name": "Run a half marathon",
+          "state": "achieved",
+          "memberIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000005",
+            "00000000-0000-4000-8000-000000000006"
+          ],
+          "checkinIds": [
+            "00000000-0000-4000-8000-000000000007"
+          ],
+          "why": "To feel strong again.",
+          "startsOn": "2026-09-01",
+          "targetOn": "2027-03-15",
+          "sortOrder": 0,
+          "achievedAt": "2026-10-24T03:30:00.000Z"
+        }
+      }
+    },
+    {
+      "name": "window: both ends moved",
+      "kind": "goal",
+      "before": {
+        "id": "g-half",
+        "name": "Run a half marathon",
+        "state": "active",
+        "memberIds": [
+          "00000000-0000-4000-8000-000000000004"
+        ],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000005",
+          "00000000-0000-4000-8000-000000000006"
+        ],
+        "checkinIds": [
+          "00000000-0000-4000-8000-000000000007"
+        ],
+        "why": "To feel strong again.",
+        "startsOn": "2026-09-01",
+        "targetOn": "2027-03-15",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "window",
+        "startsOn": "2026-10-01",
+        "targetOn": "2027-04-30"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "startsOn": "2026-10-01",
+          "targetOn": "2027-04-30"
+        },
+        "after": {
+          "id": "g-half",
+          "name": "Run a half marathon",
+          "state": "active",
+          "memberIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000005",
+            "00000000-0000-4000-8000-000000000006"
+          ],
+          "checkinIds": [
+            "00000000-0000-4000-8000-000000000007"
+          ],
+          "why": "To feel strong again.",
+          "startsOn": "2026-10-01",
+          "targetOn": "2027-04-30",
+          "sortOrder": 0
+        }
+      }
+    },
+    {
+      "name": "window: no target",
+      "kind": "goal",
+      "before": {
+        "id": "g-half",
+        "name": "Run a half marathon",
+        "state": "active",
+        "memberIds": [
+          "00000000-0000-4000-8000-000000000004"
+        ],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000005",
+          "00000000-0000-4000-8000-000000000006"
+        ],
+        "checkinIds": [
+          "00000000-0000-4000-8000-000000000007"
+        ],
+        "why": "To feel strong again.",
+        "startsOn": "2026-09-01",
+        "targetOn": "2027-03-15",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "window",
+        "startsOn": "2026-09-01",
+        "targetOn": null
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "startsOn": "2026-09-01",
+          "targetOn": null
+        },
+        "after": {
+          "id": "g-half",
+          "name": "Run a half marathon",
+          "state": "active",
+          "memberIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000005",
+            "00000000-0000-4000-8000-000000000006"
+          ],
+          "checkinIds": [
+            "00000000-0000-4000-8000-000000000007"
+          ],
+          "why": "To feel strong again.",
+          "startsOn": "2026-09-01",
+          "sortOrder": 0
+        }
+      }
+    },
+    {
+      "name": "window: no start",
+      "kind": "goal",
+      "before": {
+        "id": "g-half",
+        "name": "Run a half marathon",
+        "state": "active",
+        "memberIds": [
+          "00000000-0000-4000-8000-000000000004"
+        ],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000005",
+          "00000000-0000-4000-8000-000000000006"
+        ],
+        "checkinIds": [
+          "00000000-0000-4000-8000-000000000007"
+        ],
+        "why": "To feel strong again.",
+        "startsOn": "2026-09-01",
+        "targetOn": "2027-03-15",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "window",
+        "startsOn": null,
+        "targetOn": "2027-03-15"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "startsOn": null,
+          "targetOn": "2027-03-15"
+        },
+        "after": {
+          "id": "g-half",
+          "name": "Run a half marathon",
+          "state": "active",
+          "memberIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000005",
+            "00000000-0000-4000-8000-000000000006"
+          ],
+          "checkinIds": [
+            "00000000-0000-4000-8000-000000000007"
+          ],
+          "why": "To feel strong again.",
+          "targetOn": "2027-03-15",
+          "sortOrder": 0
+        }
+      }
+    },
+    {
+      "name": "window: cleared",
+      "kind": "goal",
+      "before": {
+        "id": "g-half",
+        "name": "Run a half marathon",
+        "state": "active",
+        "memberIds": [
+          "00000000-0000-4000-8000-000000000004"
+        ],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000005",
+          "00000000-0000-4000-8000-000000000006"
+        ],
+        "checkinIds": [
+          "00000000-0000-4000-8000-000000000007"
+        ],
+        "why": "To feel strong again.",
+        "startsOn": "2026-09-01",
+        "targetOn": "2027-03-15",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "window",
+        "startsOn": null,
+        "targetOn": null
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "startsOn": null,
+          "targetOn": null
+        },
+        "after": {
+          "id": "g-half",
+          "name": "Run a half marathon",
+          "state": "active",
+          "memberIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000005",
+            "00000000-0000-4000-8000-000000000006"
+          ],
+          "checkinIds": [
+            "00000000-0000-4000-8000-000000000007"
+          ],
+          "why": "To feel strong again.",
+          "sortOrder": 0
+        }
+      }
+    },
+    {
+      "name": "window: a target on the day it starts",
+      "kind": "goal",
+      "before": {
+        "id": "g-half",
+        "name": "Run a half marathon",
+        "state": "active",
+        "memberIds": [
+          "00000000-0000-4000-8000-000000000004"
+        ],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000005",
+          "00000000-0000-4000-8000-000000000006"
+        ],
+        "checkinIds": [
+          "00000000-0000-4000-8000-000000000007"
+        ],
+        "why": "To feel strong again.",
+        "startsOn": "2026-09-01",
+        "targetOn": "2027-03-15",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "window",
+        "startsOn": "2026-10-23",
+        "targetOn": "2026-10-23"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "startsOn": "2026-10-23",
+          "targetOn": "2026-10-23"
+        },
+        "after": {
+          "id": "g-half",
+          "name": "Run a half marathon",
+          "state": "active",
+          "memberIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000005",
+            "00000000-0000-4000-8000-000000000006"
+          ],
+          "checkinIds": [
+            "00000000-0000-4000-8000-000000000007"
+          ],
+          "why": "To feel strong again.",
+          "startsOn": "2026-10-23",
+          "targetOn": "2026-10-23",
+          "sortOrder": 0
+        }
+      }
+    },
+    {
+      "name": "window on an achieved goal: its state and stamp untouched",
+      "kind": "goal",
+      "before": {
+        "id": "g-half",
+        "name": "Run a half marathon",
+        "state": "achieved",
+        "memberIds": [
+          "00000000-0000-4000-8000-000000000004"
+        ],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000005",
+          "00000000-0000-4000-8000-000000000006"
+        ],
+        "checkinIds": [
+          "00000000-0000-4000-8000-000000000007"
+        ],
+        "why": "To feel strong again.",
+        "startsOn": "2026-09-01",
+        "targetOn": "2027-03-15",
+        "sortOrder": 0,
+        "achievedAt": "2026-10-16T09:30:00.000Z"
+      },
+      "body": {
+        "action": "window",
+        "startsOn": "2026-09-01",
+        "targetOn": "2026-10-16"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "startsOn": "2026-09-01",
+          "targetOn": "2026-10-16"
+        },
+        "after": {
+          "id": "g-half",
+          "name": "Run a half marathon",
+          "state": "achieved",
+          "memberIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000005",
+            "00000000-0000-4000-8000-000000000006"
+          ],
+          "checkinIds": [
+            "00000000-0000-4000-8000-000000000007"
+          ],
+          "why": "To feel strong again.",
+          "startsOn": "2026-09-01",
+          "targetOn": "2026-10-16",
+          "sortOrder": 0,
+          "achievedAt": "2026-10-16T09:30:00.000Z"
+        }
+      }
+    },
+    {
+      "name": "why: set, trimmed",
+      "kind": "goal",
+      "before": {
+        "id": "g-half",
+        "name": "Run a half marathon",
+        "state": "active",
+        "memberIds": [
+          "00000000-0000-4000-8000-000000000004"
+        ],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000005",
+          "00000000-0000-4000-8000-000000000006"
+        ],
+        "checkinIds": [
+          "00000000-0000-4000-8000-000000000007"
+        ],
+        "startsOn": "2026-09-01",
+        "targetOn": "2027-03-15",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "why",
+        "why": "  So the stairs stop winning. "
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "why": "So the stairs stop winning."
+        },
+        "after": {
+          "id": "g-half",
+          "name": "Run a half marathon",
+          "state": "active",
+          "memberIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000005",
+            "00000000-0000-4000-8000-000000000006"
+          ],
+          "checkinIds": [
+            "00000000-0000-4000-8000-000000000007"
+          ],
+          "startsOn": "2026-09-01",
+          "targetOn": "2027-03-15",
+          "sortOrder": 0,
+          "why": "So the stairs stop winning."
+        }
+      }
+    },
+    {
+      "name": "why: replaced",
+      "kind": "goal",
+      "before": {
+        "id": "g-half",
+        "name": "Run a half marathon",
+        "state": "active",
+        "memberIds": [
+          "00000000-0000-4000-8000-000000000004"
+        ],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000005",
+          "00000000-0000-4000-8000-000000000006"
+        ],
+        "checkinIds": [
+          "00000000-0000-4000-8000-000000000007"
+        ],
+        "why": "To feel strong again.",
+        "startsOn": "2026-09-01",
+        "targetOn": "2027-03-15",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "why",
+        "why": "For the race in March."
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "why": "For the race in March."
+        },
+        "after": {
+          "id": "g-half",
+          "name": "Run a half marathon",
+          "state": "active",
+          "memberIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000005",
+            "00000000-0000-4000-8000-000000000006"
+          ],
+          "checkinIds": [
+            "00000000-0000-4000-8000-000000000007"
+          ],
+          "why": "For the race in March.",
+          "startsOn": "2026-09-01",
+          "targetOn": "2027-03-15",
+          "sortOrder": 0
+        }
+      }
+    },
+    {
+      "name": "why: cleared with null",
+      "kind": "goal",
+      "before": {
+        "id": "g-half",
+        "name": "Run a half marathon",
+        "state": "active",
+        "memberIds": [
+          "00000000-0000-4000-8000-000000000004"
+        ],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000005",
+          "00000000-0000-4000-8000-000000000006"
+        ],
+        "checkinIds": [
+          "00000000-0000-4000-8000-000000000007"
+        ],
+        "why": "To feel strong again.",
+        "startsOn": "2026-09-01",
+        "targetOn": "2027-03-15",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "why",
+        "why": null
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "why": null
+        },
+        "after": {
+          "id": "g-half",
+          "name": "Run a half marathon",
+          "state": "active",
+          "memberIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000005",
+            "00000000-0000-4000-8000-000000000006"
+          ],
+          "checkinIds": [
+            "00000000-0000-4000-8000-000000000007"
+          ],
+          "startsOn": "2026-09-01",
+          "targetOn": "2027-03-15",
+          "sortOrder": 0
+        }
+      }
+    },
+    {
+      "name": "why: blank clears it",
+      "kind": "goal",
+      "before": {
+        "id": "g-half",
+        "name": "Run a half marathon",
+        "state": "active",
+        "memberIds": [
+          "00000000-0000-4000-8000-000000000004"
+        ],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000005",
+          "00000000-0000-4000-8000-000000000006"
+        ],
+        "checkinIds": [
+          "00000000-0000-4000-8000-000000000007"
+        ],
+        "why": "To feel strong again.",
+        "startsOn": "2026-09-01",
+        "targetOn": "2027-03-15",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "why",
+        "why": "   "
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "why": null
+        },
+        "after": {
+          "id": "g-half",
+          "name": "Run a half marathon",
+          "state": "active",
+          "memberIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000005",
+            "00000000-0000-4000-8000-000000000006"
+          ],
+          "checkinIds": [
+            "00000000-0000-4000-8000-000000000007"
+          ],
+          "startsOn": "2026-09-01",
+          "targetOn": "2027-03-15",
+          "sortOrder": 0
+        }
+      }
+    },
+    {
+      "name": "project notes: set, trimmed",
+      "kind": "project",
+      "before": {
+        "id": "p-home",
+        "name": "Home",
+        "emoji": "icon:House"
+      },
+      "body": {
+        "action": "notes",
+        "notes": "Chores and repairs.\n"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "notes": "Chores and repairs."
+        },
+        "after": {
+          "id": "p-home",
+          "name": "Home",
+          "emoji": "icon:House",
+          "notes": "Chores and repairs."
+        }
+      }
+    },
+    {
+      "name": "project notes: cleared",
+      "kind": "project",
+      "before": {
+        "id": "p-home",
+        "name": "Home",
+        "emoji": "icon:House",
+        "notes": "Chores."
+      },
+      "body": {
+        "action": "notes",
+        "notes": null
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "notes": null
+        },
+        "after": {
+          "id": "p-home",
+          "name": "Home",
+          "emoji": "icon:House"
+        }
+      }
+    },
+    {
+      "name": "project notes: blank clears them",
+      "kind": "project",
+      "before": {
+        "id": "p-home",
+        "name": "Home",
+        "emoji": "icon:House",
+        "notes": "Chores."
+      },
+      "body": {
+        "action": "notes",
+        "notes": " "
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "notes": null
+        },
+        "after": {
+          "id": "p-home",
+          "name": "Home",
+          "emoji": "icon:House"
+        }
+      }
+    },
+    {
+      "name": "routine rename",
+      "kind": "routine",
+      "before": {
+        "id": "r-evening",
+        "name": "Evening",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "sortOrder": 1,
+        "usualTime": "21:30"
+      },
+      "body": {
+        "action": "rename",
+        "name": "Wind down"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "name": "Wind down"
+        },
+        "after": {
+          "id": "r-evening",
+          "name": "Wind down",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "sortOrder": 1,
+          "usualTime": "21:30"
+        }
+      }
+    },
+    {
+      "name": "routine rename, trimmed",
+      "kind": "routine",
+      "before": {
+        "id": "r-evening",
+        "name": "Evening",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "sortOrder": 1,
+        "usualTime": "21:30"
+      },
+      "body": {
+        "action": "rename",
+        "name": "  Wind down  "
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "name": "Wind down"
+        },
+        "after": {
+          "id": "r-evening",
+          "name": "Wind down",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "sortOrder": 1,
+          "usualTime": "21:30"
+        }
+      }
+    },
+    {
+      "name": "routine rename keeps its pause, its time and its members",
+      "kind": "routine",
+      "before": {
+        "id": "r-evening",
+        "name": "Evening",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "sortOrder": 1,
+        "usualTime": "21:30",
+        "pausedAt": "2026-10-20T13:00:00.000Z"
+      },
+      "body": {
+        "action": "rename",
+        "name": "Evenings"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "name": "Evenings"
+        },
+        "after": {
+          "id": "r-evening",
+          "name": "Evenings",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "sortOrder": 1,
+          "usualTime": "21:30",
+          "pausedAt": "2026-10-20T13:00:00.000Z"
+        }
+      }
+    },
+    {
+      "name": "routine icon",
+      "kind": "routine",
+      "before": {
+        "id": "r-evening",
+        "name": "Evening",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "sortOrder": 1,
+        "usualTime": "21:30"
+      },
+      "body": {
+        "action": "icon",
+        "icon": "icon:Moon"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "icon": "icon:Moon"
+        },
+        "after": {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "sortOrder": 1,
+          "usualTime": "21:30",
+          "icon": "icon:Moon"
+        }
+      }
+    },
+    {
+      "name": "routine icon replaced",
+      "kind": "routine",
+      "before": {
+        "id": "r-evening",
+        "name": "Evening",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "sortOrder": 1,
+        "usualTime": "21:30",
+        "icon": "icon:Repeat"
+      },
+      "body": {
+        "action": "icon",
+        "icon": "icon:Moon"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "icon": "icon:Moon"
+        },
+        "after": {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "sortOrder": 1,
+          "usualTime": "21:30",
+          "icon": "icon:Moon"
+        }
+      }
+    },
+    {
+      "name": "routine colour",
+      "kind": "routine",
+      "before": {
+        "id": "r-evening",
+        "name": "Evening",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "sortOrder": 1,
+        "usualTime": "21:30"
+      },
+      "body": {
+        "action": "color",
+        "color": "var(--accent-4)"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "color": "var(--accent-4)"
+        },
+        "after": {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "sortOrder": 1,
+          "usualTime": "21:30",
+          "color": "var(--accent-4)"
+        }
+      }
+    },
+    {
+      "name": "routine colour: Automatic clears it",
+      "kind": "routine",
+      "before": {
+        "id": "r-evening",
+        "name": "Evening",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "sortOrder": 1,
+        "usualTime": "21:30",
+        "color": "var(--accent-4)"
+      },
+      "body": {
+        "action": "color",
+        "color": null
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "color": null
+        },
+        "after": {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "sortOrder": 1,
+          "usualTime": "21:30"
+        }
+      }
+    },
+    {
+      "name": "season rename",
+      "kind": "season",
+      "before": {
+        "id": "s-autumn",
+        "name": "Autumn",
+        "state": "auto",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000003"
+        ],
+        "routineIds": [
+          "r-evening"
+        ],
+        "startsOn": "2026-09-01",
+        "endsOn": "2026-11-30",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "rename",
+        "name": "Fall"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "name": "Fall"
+        },
+        "after": {
+          "id": "s-autumn",
+          "name": "Fall",
+          "state": "auto",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000003"
+          ],
+          "routineIds": [
+            "r-evening"
+          ],
+          "startsOn": "2026-09-01",
+          "endsOn": "2026-11-30",
+          "sortOrder": 0
+        }
+      }
+    },
+    {
+      "name": "season rename to the name it has, in another case",
+      "kind": "season",
+      "before": {
+        "id": "s-autumn",
+        "name": "Autumn",
+        "state": "auto",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000003"
+        ],
+        "routineIds": [
+          "r-evening"
+        ],
+        "startsOn": "2026-09-01",
+        "endsOn": "2026-11-30",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "rename",
+        "name": "autumn"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "name": "autumn"
+        },
+        "after": {
+          "id": "s-autumn",
+          "name": "autumn",
+          "state": "auto",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000003"
+          ],
+          "routineIds": [
+            "r-evening"
+          ],
+          "startsOn": "2026-09-01",
+          "endsOn": "2026-11-30",
+          "sortOrder": 0
+        }
+      }
+    },
+    {
+      "name": "season icon",
+      "kind": "season",
+      "before": {
+        "id": "s-autumn",
+        "name": "Autumn",
+        "state": "auto",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000003"
+        ],
+        "routineIds": [
+          "r-evening"
+        ],
+        "startsOn": "2026-09-01",
+        "endsOn": "2026-11-30",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "icon",
+        "icon": "icon:Leaf"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "icon": "icon:Leaf"
+        },
+        "after": {
+          "id": "s-autumn",
+          "name": "Autumn",
+          "state": "auto",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000003"
+          ],
+          "routineIds": [
+            "r-evening"
+          ],
+          "startsOn": "2026-09-01",
+          "endsOn": "2026-11-30",
+          "sortOrder": 0,
+          "icon": "icon:Leaf"
+        }
+      }
+    },
+    {
+      "name": "season colour",
+      "kind": "season",
+      "before": {
+        "id": "s-autumn",
+        "name": "Autumn",
+        "state": "auto",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000003"
+        ],
+        "routineIds": [
+          "r-evening"
+        ],
+        "startsOn": "2026-09-01",
+        "endsOn": "2026-11-30",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "color",
+        "color": "var(--accent-1)"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "color": "var(--accent-1)"
+        },
+        "after": {
+          "id": "s-autumn",
+          "name": "Autumn",
+          "state": "auto",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000003"
+          ],
+          "routineIds": [
+            "r-evening"
+          ],
+          "startsOn": "2026-09-01",
+          "endsOn": "2026-11-30",
+          "sortOrder": 0,
+          "color": "var(--accent-1)"
+        }
+      }
+    },
+    {
+      "name": "season colour: lime",
+      "kind": "season",
+      "before": {
+        "id": "s-autumn",
+        "name": "Autumn",
+        "state": "paused",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000003"
+        ],
+        "routineIds": [
+          "r-evening"
+        ],
+        "startsOn": "2026-09-01",
+        "endsOn": "2026-11-30",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "color",
+        "color": "var(--accent-8)"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "color": "var(--accent-8)"
+        },
+        "after": {
+          "id": "s-autumn",
+          "name": "Autumn",
+          "state": "paused",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000003"
+          ],
+          "routineIds": [
+            "r-evening"
+          ],
+          "startsOn": "2026-09-01",
+          "endsOn": "2026-11-30",
+          "sortOrder": 0,
+          "color": "var(--accent-8)"
+        }
+      }
+    },
+    {
+      "name": "season colour: Automatic clears it",
+      "kind": "season",
+      "before": {
+        "id": "s-autumn",
+        "name": "Autumn",
+        "state": "auto",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000003"
+        ],
+        "routineIds": [
+          "r-evening"
+        ],
+        "startsOn": "2026-09-01",
+        "endsOn": "2026-11-30",
+        "sortOrder": 0,
+        "color": "var(--accent-1)"
+      },
+      "body": {
+        "action": "color",
+        "color": null
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "color": null
+        },
+        "after": {
+          "id": "s-autumn",
+          "name": "Autumn",
+          "state": "auto",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000003"
+          ],
+          "routineIds": [
+            "r-evening"
+          ],
+          "startsOn": "2026-09-01",
+          "endsOn": "2026-11-30",
+          "sortOrder": 0
+        }
+      }
+    },
+    {
+      "name": "goal rename",
+      "kind": "goal",
+      "before": {
+        "id": "g-half",
+        "name": "Run a half marathon",
+        "state": "active",
+        "memberIds": [
+          "00000000-0000-4000-8000-000000000004"
+        ],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000005",
+          "00000000-0000-4000-8000-000000000006"
+        ],
+        "checkinIds": [
+          "00000000-0000-4000-8000-000000000007"
+        ],
+        "why": "To feel strong again.",
+        "startsOn": "2026-09-01",
+        "targetOn": "2027-03-15",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "rename",
+        "name": "Run the Brooklyn Half"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "name": "Run the Brooklyn Half"
+        },
+        "after": {
+          "id": "g-half",
+          "name": "Run the Brooklyn Half",
+          "state": "active",
+          "memberIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000005",
+            "00000000-0000-4000-8000-000000000006"
+          ],
+          "checkinIds": [
+            "00000000-0000-4000-8000-000000000007"
+          ],
+          "why": "To feel strong again.",
+          "startsOn": "2026-09-01",
+          "targetOn": "2027-03-15",
+          "sortOrder": 0
+        }
+      }
+    },
+    {
+      "name": "goal rename keeps its state and its stamp",
+      "kind": "goal",
+      "before": {
+        "id": "g-half",
+        "name": "Run a half marathon",
+        "state": "achieved",
+        "memberIds": [
+          "00000000-0000-4000-8000-000000000004"
+        ],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000005",
+          "00000000-0000-4000-8000-000000000006"
+        ],
+        "checkinIds": [
+          "00000000-0000-4000-8000-000000000007"
+        ],
+        "why": "To feel strong again.",
+        "startsOn": "2026-09-01",
+        "targetOn": "2027-03-15",
+        "sortOrder": 0,
+        "achievedAt": "2026-10-16T09:30:00.000Z"
+      },
+      "body": {
+        "action": "rename",
+        "name": "Ran a half marathon"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "name": "Ran a half marathon"
+        },
+        "after": {
+          "id": "g-half",
+          "name": "Ran a half marathon",
+          "state": "achieved",
+          "memberIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000005",
+            "00000000-0000-4000-8000-000000000006"
+          ],
+          "checkinIds": [
+            "00000000-0000-4000-8000-000000000007"
+          ],
+          "why": "To feel strong again.",
+          "startsOn": "2026-09-01",
+          "targetOn": "2027-03-15",
+          "sortOrder": 0,
+          "achievedAt": "2026-10-16T09:30:00.000Z"
+        }
+      }
+    },
+    {
+      "name": "goal icon",
+      "kind": "goal",
+      "before": {
+        "id": "g-half",
+        "name": "Run a half marathon",
+        "state": "active",
+        "memberIds": [
+          "00000000-0000-4000-8000-000000000004"
+        ],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000005",
+          "00000000-0000-4000-8000-000000000006"
+        ],
+        "checkinIds": [
+          "00000000-0000-4000-8000-000000000007"
+        ],
+        "why": "To feel strong again.",
+        "startsOn": "2026-09-01",
+        "targetOn": "2027-03-15",
+        "sortOrder": 0,
+        "icon": "icon:Target"
+      },
+      "body": {
+        "action": "icon",
+        "icon": "icon:Trophy"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "icon": "icon:Trophy"
+        },
+        "after": {
+          "id": "g-half",
+          "name": "Run a half marathon",
+          "state": "active",
+          "memberIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000005",
+            "00000000-0000-4000-8000-000000000006"
+          ],
+          "checkinIds": [
+            "00000000-0000-4000-8000-000000000007"
+          ],
+          "why": "To feel strong again.",
+          "startsOn": "2026-09-01",
+          "targetOn": "2027-03-15",
+          "sortOrder": 0,
+          "icon": "icon:Trophy"
+        }
+      }
+    },
+    {
+      "name": "goal colour",
+      "kind": "goal",
+      "before": {
+        "id": "g-half",
+        "name": "Run a half marathon",
+        "state": "active",
+        "memberIds": [
+          "00000000-0000-4000-8000-000000000004"
+        ],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000005",
+          "00000000-0000-4000-8000-000000000006"
+        ],
+        "checkinIds": [
+          "00000000-0000-4000-8000-000000000007"
+        ],
+        "why": "To feel strong again.",
+        "startsOn": "2026-09-01",
+        "targetOn": "2027-03-15",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "color",
+        "color": "var(--accent-3)"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "color": "var(--accent-3)"
+        },
+        "after": {
+          "id": "g-half",
+          "name": "Run a half marathon",
+          "state": "active",
+          "memberIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000005",
+            "00000000-0000-4000-8000-000000000006"
+          ],
+          "checkinIds": [
+            "00000000-0000-4000-8000-000000000007"
+          ],
+          "why": "To feel strong again.",
+          "startsOn": "2026-09-01",
+          "targetOn": "2027-03-15",
+          "sortOrder": 0,
+          "color": "var(--accent-3)"
+        }
+      }
+    },
+    {
+      "name": "goal colour: Automatic clears it",
+      "kind": "goal",
+      "before": {
+        "id": "g-half",
+        "name": "Run a half marathon",
+        "state": "active",
+        "memberIds": [
+          "00000000-0000-4000-8000-000000000004"
+        ],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000005",
+          "00000000-0000-4000-8000-000000000006"
+        ],
+        "checkinIds": [
+          "00000000-0000-4000-8000-000000000007"
+        ],
+        "why": "To feel strong again.",
+        "startsOn": "2026-09-01",
+        "targetOn": "2027-03-15",
+        "sortOrder": 0,
+        "color": "var(--accent-3)"
+      },
+      "body": {
+        "action": "color",
+        "color": null
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "color": null
+        },
+        "after": {
+          "id": "g-half",
+          "name": "Run a half marathon",
+          "state": "active",
+          "memberIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000005",
+            "00000000-0000-4000-8000-000000000006"
+          ],
+          "checkinIds": [
+            "00000000-0000-4000-8000-000000000007"
+          ],
+          "why": "To feel strong again.",
+          "startsOn": "2026-09-01",
+          "targetOn": "2027-03-15",
+          "sortOrder": 0
+        }
+      }
+    },
+    {
+      "name": "project rename",
+      "kind": "project",
+      "before": {
+        "id": "p-home",
+        "name": "Home",
+        "emoji": "icon:House"
+      },
+      "body": {
+        "action": "rename",
+        "name": "House"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "name": "House"
+        },
+        "after": {
+          "id": "p-home",
+          "name": "House",
+          "emoji": "icon:House"
+        }
+      }
+    },
+    {
+      "name": "project rename to its own name in another case",
+      "kind": "project",
+      "before": {
+        "id": "p-home",
+        "name": "Home",
+        "emoji": "icon:House"
+      },
+      "body": {
+        "action": "rename",
+        "name": "home"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "name": "home"
+        },
+        "after": {
+          "id": "p-home",
+          "name": "home",
+          "emoji": "icon:House"
+        }
+      }
+    },
+    {
+      "name": "project rename, trimmed",
+      "kind": "project",
+      "before": {
+        "id": "p-home",
+        "name": "Home",
+        "emoji": "icon:House",
+        "notes": "Chores."
+      },
+      "body": {
+        "action": "rename",
+        "name": " Household "
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "name": "Household"
+        },
+        "after": {
+          "id": "p-home",
+          "name": "Household",
+          "emoji": "icon:House",
+          "notes": "Chores."
+        }
+      }
+    },
+    {
+      "name": "project icon: written to its emoji",
+      "kind": "project",
+      "before": {
+        "id": "p-home",
+        "name": "Home",
+        "emoji": "icon:House"
+      },
+      "body": {
+        "action": "icon",
+        "icon": "icon:Hammer"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "emoji": "icon:Hammer"
+        },
+        "after": {
+          "id": "p-home",
+          "name": "Home",
+          "emoji": "icon:Hammer"
+        }
+      }
+    },
+    {
+      "name": "project icon over a legacy emoji",
+      "kind": "project",
+      "before": {
+        "id": "p-home",
+        "name": "Home",
+        "emoji": "🏠"
+      },
+      "body": {
+        "action": "icon",
+        "icon": "icon:House"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "emoji": "icon:House"
+        },
+        "after": {
+          "id": "p-home",
+          "name": "Home",
+          "emoji": "icon:House"
+        }
+      }
+    },
+    {
+      "name": "project colour",
+      "kind": "project",
+      "before": {
+        "id": "p-home",
+        "name": "Home",
+        "emoji": "icon:House"
+      },
+      "body": {
+        "action": "color",
+        "color": "var(--accent-6)"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "color": "var(--accent-6)"
+        },
+        "after": {
+          "id": "p-home",
+          "name": "Home",
+          "emoji": "icon:House",
+          "color": "var(--accent-6)"
+        }
+      }
+    },
+    {
+      "name": "project colour: Automatic clears it",
+      "kind": "project",
+      "before": {
+        "id": "p-home",
+        "name": "Home",
+        "emoji": "icon:House",
+        "color": "var(--accent-6)"
+      },
+      "body": {
+        "action": "color",
+        "color": null
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "color": null
+        },
+        "after": {
+          "id": "p-home",
+          "name": "Home",
+          "emoji": "icon:House"
+        }
+      }
     }
   ],
   "invalid": [
@@ -1382,11 +4502,11 @@
       }
     },
     {
-      "name": "any intent on a goal, for now",
-      "kind": "goal",
+      "name": "a pause on a project",
+      "kind": "project",
       "body": {
-        "action": "state",
-        "state": "achieved"
+        "action": "pause",
+        "paused": true
       },
       "expected": {
         "status": 400,
@@ -1394,11 +4514,349 @@
       }
     },
     {
-      "name": "any intent on a project, for now",
+      "name": "a usual time that is not HH:mm",
+      "kind": "routine",
+      "body": {
+        "action": "usualTime",
+        "usualTime": "7:15"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a usual time past the day",
+      "kind": "routine",
+      "body": {
+        "action": "usualTime",
+        "usualTime": "24:00"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a usual time with no time",
+      "kind": "routine",
+      "body": {
+        "action": "usualTime"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "notes with no notes",
+      "kind": "routine",
+      "body": {
+        "action": "notes"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "notes that are not text",
+      "kind": "season",
+      "body": {
+        "action": "notes",
+        "notes": 3
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a why on a routine",
+      "kind": "routine",
+      "body": {
+        "action": "why",
+        "why": "To sleep."
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "notes on a goal: its free text is the why",
+      "kind": "goal",
+      "body": {
+        "action": "notes",
+        "notes": "x"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "runs that end before they start",
+      "kind": "season",
+      "body": {
+        "action": "dates",
+        "startsOn": "2026-12-01",
+        "endsOn": "2026-11-01"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "runs with one end left out",
+      "kind": "season",
+      "body": {
+        "action": "dates",
+        "startsOn": "2026-12-01"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "runs on a day that is not on the calendar",
+      "kind": "season",
+      "body": {
+        "action": "dates",
+        "startsOn": "2026-02-30",
+        "endsOn": null
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a goal’s window on a season",
+      "kind": "season",
+      "body": {
+        "action": "window",
+        "startsOn": null,
+        "targetOn": null
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a window that closes before it opens",
+      "kind": "goal",
+      "body": {
+        "action": "window",
+        "startsOn": "2026-10-23",
+        "targetOn": "2026-10-22"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a window with no target key",
+      "kind": "goal",
+      "body": {
+        "action": "window",
+        "startsOn": "2026-10-23"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a goal state that is not one of the three",
+      "kind": "goal",
+      "body": {
+        "action": "state",
+        "state": "paused"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a season’s dates on a goal",
+      "kind": "goal",
+      "body": {
+        "action": "dates",
+        "startsOn": null,
+        "endsOn": null
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "an achievedAt the server would stamp itself",
+      "kind": "goal",
+      "body": {
+        "action": "state",
+        "state": "achieved",
+        "achievedAt": "2026-10-23T17:00:00.000Z"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a usual time on a project",
       "kind": "project",
       "body": {
-        "action": "pause",
-        "paused": true
+        "action": "usualTime",
+        "usualTime": "07:00"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "an empty name",
+      "kind": "routine",
+      "body": {
+        "action": "rename",
+        "name": ""
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a name of spaces",
+      "kind": "project",
+      "body": {
+        "action": "rename",
+        "name": "   "
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a null name",
+      "kind": "goal",
+      "body": {
+        "action": "rename",
+        "name": null
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a null icon: the web never clears a glyph",
+      "kind": "season",
+      "body": {
+        "action": "icon",
+        "icon": null
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "an icon with no icon: prefix",
+      "kind": "routine",
+      "body": {
+        "action": "icon",
+        "icon": "Moon"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "an icon with no name",
+      "kind": "project",
+      "body": {
+        "action": "icon",
+        "icon": "icon:"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "an icon name with a dash",
+      "kind": "goal",
+      "body": {
+        "action": "icon",
+        "icon": "icon:Calendar-Range"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a project’s glyph sent as emoji",
+      "kind": "project",
+      "body": {
+        "action": "icon",
+        "emoji": "icon:House"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a colour that is not a ramp token",
+      "kind": "routine",
+      "body": {
+        "action": "color",
+        "color": "#ff8800"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a ramp step past the eighth",
+      "kind": "season",
+      "body": {
+        "action": "color",
+        "color": "var(--accent-9)"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a colour with no colour key",
+      "kind": "goal",
+      "body": {
+        "action": "color"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a delete, for now",
+      "kind": "project",
+      "body": {
+        "action": "delete"
       },
       "expected": {
         "status": 400,

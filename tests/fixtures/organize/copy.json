@@ -1434,25 +1434,79 @@
       "expected": "A deleted routine called “Morning” still has that name. Restore it from Trash, or pick a different one."
     }
   ],
+  "nameTakenSentence": [
+    {
+      "name": "a project",
+      "noun": "project",
+      "heldName": "Work",
+      "expected": "You already have a project called “Work”."
+    },
+    {
+      "name": "a name with quotes in it",
+      "noun": "project",
+      "heldName": "Mum’s “stuff”",
+      "expected": "You already have a project called “Mum’s “stuff””."
+    }
+  ],
   "containerRefusal": [
     {
       "name": "a pause until a day no longer after today",
       "code": "pause_refused",
+      "sentName": null,
       "expected": "That day is no longer after today, so nothing was paused."
     },
     {
       "name": "gone, or never the caller’s",
       "code": "not_found",
+      "sentName": null,
       "expected": null
     },
     {
       "name": "a body the route refuses",
       "code": "invalid",
+      "sentName": null,
       "expected": null
     },
     {
       "name": "no answer at all",
       "code": null,
+      "sentName": null,
+      "expected": null
+    },
+    {
+      "name": "a rename onto a live project’s name",
+      "code": "name_taken",
+      "sentName": "House",
+      "expected": "You already have a project called “House”."
+    },
+    {
+      "name": "a rename onto a live project’s name in another case",
+      "code": "name_taken",
+      "sentName": "work",
+      "expected": "You already have a project called “work”."
+    },
+    {
+      "name": "a rename onto a name the Trash still holds",
+      "code": "name_in_trash",
+      "sentName": "Errands",
+      "expected": "A deleted project called “Errands” still has that name. Restore it from Trash, or pick a different one."
+    },
+    {
+      "name": "a rename refused for another reason",
+      "code": "not_found",
+      "sentName": "House",
+      "expected": null
+    },
+    {
+      "name": "a pause refused, whatever name was sent",
+      "code": "pause_refused",
+      "sentName": "House",
+      "expected": "That day is no longer after today, so nothing was paused."
+    },
+    {
+      "name": "a name refusal with no name sent",
+      "code": "name_taken",
+      "sentName": null,
       "expected": null
     }
   ]

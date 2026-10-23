@@ -200,6 +200,12 @@ public enum ContainerLook {
     /// lib/category-icons.ts `ICON_TOKEN_PREFIX`.
     public static let iconTokenPrefix = "icon:"
 
+    /// lib/category-icons.ts `makeIconToken`: the glyph a container stores
+    /// for a library name, "icon:<Name>" (what the icon picker sends, O9).
+    public static func iconToken(_ name: String) -> String {
+        return iconTokenPrefix + name
+    }
+
     /// lib/category-icons.ts `ICON_LIBRARY`'s names, sorted by code unit: the
     /// names an `icon:<name>` token may pick.
     public static let library: [String] = [

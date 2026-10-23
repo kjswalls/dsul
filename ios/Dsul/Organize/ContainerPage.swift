@@ -7,12 +7,17 @@ import SwiftUI
 // ContainerPageModel (Foundation only, pinned by OrganizePageTests); these
 // draw it.
 //
-// Read-only but for two writes. The tick, the row's own (`toggle(_:on:)` on
-// today, behind the `tick` gate), the write Today's circle sends; a row's tap
-// opens the item's sheet on today. And from O8a a routine's or a season's
-// Status chip, a menu (`StatusChipMenu`) where the page's model carries one
-// (`StatusMenu`); the planner steps and sends the pick. More edits come with
-// O8b to O13. The footer's pages (Paused, a paused routine's or season's
+// The writes: the tick, the row's own (`toggle(_:on:)` on today, behind the
+// `tick` gate), the write Today's circle sends; a row's tap opens the item's
+// sheet on today. From O8a a routine's or a season's Status chip, a menu
+// (`StatusChipMenu`) where the page's model carries one (`StatusMenu`), and
+// from O8b a goal's. From O8b the chips that open a sheet (`PageChip.edits`:
+// a routine's usual time, a season's Runs, a goal's window) and the notes
+// (PageEditors.swift); from O9 the ⋯ menu in the bar, Rename… (an alert,
+// RenameAlert.swift) and Icon and color… (LookSheet.swift), which the host
+// presents so they stay up however far the page has scrolled. The planner
+// steps and sends each one. More edits come with O10 to O13. The footer's
+// pages (Paused, a paused routine's or season's
 // detail, Item types and the Trash, O5 and O14) go through the same
 // destination: PausedPage.swift, PausedEntryPage.swift, ItemTypesPage.swift
 // and TrashPage.swift draw them.
@@ -57,6 +62,11 @@ struct OrganizeDestination: View {
 /// slides away, as an item's page does (`ItemDetail`). One pushed for a
 /// container already gone pops at once. While the container's extension is
 /// off the page is the web's sentence, never "not found".
+///
+/// From O9 the bar carries the ⋯ menu where the page may rename the
+/// container or change its look (`PageEdits.hasMenu`), and only while the
+/// container is there: Rename… opens the alert, Icon and color… the sheet,
+/// each on what the page showed when it was picked.
 struct OrganizePageHost<Page: OrganizePageModel, Rows: View>: View {
     let route: OrganizeRoute
     @Binding var path: [OrganizeRoute]
@@ -68,6 +78,11 @@ struct OrganizePageHost<Page: OrganizePageModel, Rows: View>: View {
     @State private var lastShown: PageContent<Page>? = nil
     /// The header's name has scrolled under the bar: the bar shows it.
     @State private var titleShown = false
+    /// Rename…, while its alert is up, and the name in its field.
+    @State private var renaming: RenameEdit? = nil
+    @State private var renameDraft = ""
+    /// Icon and color…, while its sheet is up.
+    @State private var looking: LookEdit? = nil
     /// How far the list scrolls before the header's name is under the bar:
     /// about the tile and the first line of a large title.
     @ScaledMetric(relativeTo: .largeTitle) private var titleFold: CGFloat = 96
@@ -76,6 +91,7 @@ struct OrganizePageHost<Page: OrganizePageModel, Rows: View>: View {
         let live = load(planner)
         let shown = live ?? lastShown
         let title = shown?.title ?? ""
+        let menu = Self.menuEdits(live)
         List {
             switch shown {
             case .page(let page)?:
@@ -106,6 +122,17 @@ struct OrganizePageHost<Page: OrganizePageModel, Rows: View>: View {
                     .opacity(titleShown ? 1 : 0)
                     .accessibilityHidden(!titleShown)
             }
+            if let menu {
+                ToolbarItem(placement: .topBarTrailing) {
+                    PageMenu(edits: menu, onRename: { rename($0) }, onLook: { looking = $0 })
+                }
+            }
+        }
+        .renameAlert($renaming, draft: $renameDraft, onSave: { edit, draft in
+            withAnimation(.snappy) { planner.rename(edit.ref, to: draft) }
+        })
+        .sheet(item: $looking) { edit in
+            LookSheet(edit: edit)
         }
         .onScrollGeometryChange(for: Bool.self) { [fold = titleFold] geometry in
             geometry.contentOffset.y + geometry.contentInsets.top > fold
@@ -119,6 +146,51 @@ struct OrganizePageHost<Page: OrganizePageModel, Rows: View>: View {
                 path.removeAll { planner.isGone($0) }
             }
         }
+    }
+
+    /// The ⋯ menu's edits: the live page's, when it may rename or change the
+    /// look; nil while the container is gone or the page edits neither.
+    private static func menuEdits(_ live: PageContent<Page>?) -> PageEdits? {
+        guard case .page(let page)? = live, let edits = page.edits, edits.hasMenu else { return nil }
+        return edits
+    }
+
+    /// Rename…: the field starts on the name as the page shows it.
+    private func rename(_ edit: RenameEdit) {
+        renameDraft = edit.name
+        renaming = edit
+    }
+}
+
+/// The page's ⋯ menu in the bar (O9): Rename… and Icon and color…, each
+/// where the page may write it. The label colour, never the lime tint; to
+/// VoiceOver it is "More".
+private struct PageMenu: View {
+    let edits: PageEdits
+    let onRename: (RenameEdit) -> Void
+    let onLook: (LookEdit) -> Void
+
+    var body: some View {
+        Menu {
+            if let rename = edits.rename {
+                Button {
+                    onRename(rename)
+                } label: {
+                    Label(ContainerEditModel.renameWord, systemImage: "pencil")
+                }
+            }
+            if let look = edits.look {
+                Button {
+                    onLook(look)
+                } label: {
+                    Label(look.menuLabel, systemImage: "paintpalette")
+                }
+            }
+        } label: {
+            Label(ContainerEditModel.moreLabel, systemImage: "ellipsis")
+        }
+        .menuOrder(.fixed)
+        .tint(Color.primary)
     }
 }
 
@@ -212,12 +284,16 @@ struct GoalRingView: View {
 /// (`ChipFlow`), each in its 44pt slot: the symbol gray, the words the label
 /// colour. Read-only, with no chevron, but for the Status chip when the page
 /// carries a `status` menu (O8a): then it is that menu, its label ending in a
-/// chevron, and a pick goes to `onStatus`. One element each to VoiceOver
-/// ("Status: Paused until Oct 30"), the menu with its button trait and hint.
+/// chevron, and a pick goes to `onStatus`; and for a chip that `edits` (O8b),
+/// a button with the same chevron, as the item sheet's chips that open a
+/// sheet are, whose tap goes to `onEdit`. One element each to VoiceOver
+/// ("Status: Paused until Oct 30"), the controls with their button trait and
+/// hint.
 struct PageChipsView: View {
     let chips: [PageChip]
     var status: StatusMenu? = nil
     var onStatus: (StatusAction) -> Void = { _ in }
+    var onEdit: (PageChip.Kind) -> Void = { _ in }
 
     var body: some View {
         let flow = ChipFlow()
@@ -225,6 +301,16 @@ struct PageChipsView: View {
             ForEach(chips) { chip in
                 if chip.kind == .status, let status {
                     StatusChipMenu(chip: chip, menu: status, onPick: onStatus)
+                } else if chip.edits {
+                    Button {
+                        onEdit(chip.kind)
+                    } label: {
+                        PageChipLabel(chip: chip, editable: true)
+                            .chipHit()
+                    }
+                    .buttonStyle(PressScaleStyle())
+                    .accessibilityLabel(Text(chip.spoken))
+                    .accessibilityHint(Text(ContainerEditModel.chipHint(chip.kind) ?? ""))
                 } else {
                     PageChipLabel(chip: chip)
                         .chipSlot()
@@ -264,13 +350,13 @@ struct PageChipLabel: View {
     }
 }
 
-/// A page's Status chip as a menu (O8a), drawn as the item sheet's editable
-/// chips are (`PropertyMenus`): the chip in its 44pt hit frame as the label,
-/// scaling when pressed, the label colour throughout, never the lime tint,
-/// so a season's checkmark isn't lime either. A season's three states are an
-/// inline picker, the one it is in checked; a routine's verbs are plain
-/// buttons, with no check. A pick goes to `onPick` and nothing is written
-/// here.
+/// A page's Status chip as a menu (O8a; a goal's from O8b), drawn as the
+/// item sheet's editable chips are (`PropertyMenus`): the chip in its 44pt
+/// hit frame as the label, scaling when pressed, the label colour throughout,
+/// never the lime tint, so a season's checkmark isn't lime either. A season's
+/// and a goal's states are an inline picker, the one it is in checked; a
+/// routine's verbs are plain buttons, with no check. A pick goes to `onPick`
+/// and nothing is written here.
 struct StatusChipMenu: View {
     let chip: PageChip
     let menu: StatusMenu

@@ -706,7 +706,7 @@ final class SamplePlanner {
         }
     }
 
-    // MARK: Containers (O8a)
+    // MARK: Containers (O8a, O8b, O9)
 
     /// The container writes the server takes, resolved: every one for the
     /// sample, which sends nothing (`OrganizeModel.everyContainerWrite`); the
@@ -801,14 +801,20 @@ final class SamplePlanner {
     /// `containerIntentPatch` (DsulCore), the rule the route applies to the
     /// same request, so the step and the write agree. Dateless, as the item
     /// pause is: today is brought up to the clock first, and today and a
-    /// pause's stamp come off the one instant, read in the zone the server
-    /// reads it in (`pauseZone`: the stored zone, else the device's, which
-    /// the body carries). Behind `takes` (the callers add the switches, but
-    /// for Paused). A refusal writes nothing and says why when the route has
-    /// words for it (`pause_refused`); a request already satisfied writes and
-    /// sends nothing. The write names the container's fields alone, never
-    /// its member lists, and its revert puts back only those
-    /// (`restoreContainer`).
+    /// pause's or an achievement's stamp come off the one instant, read in
+    /// the zone the server reads it in (`pauseZone`: the stored zone, else
+    /// the device's, which the body carries). Behind `takes` (the callers add
+    /// the switches, but for Paused). A refusal writes nothing and says why
+    /// when the route has words for it (`pause_refused`); a request already
+    /// satisfied writes and sends nothing. The write names the container's
+    /// fields alone, never its member lists, and its revert puts back only
+    /// those (`restoreContainer`).
+    ///
+    /// A project rename (O9) also re-files the project's items, as the route
+    /// does after it renames: each item filed under it by `projectId` takes
+    /// the new name (DsulCore `refiledItems`, `refiling`), at once, so Today's
+    /// chips say it with no fetch. The write records them (`refiled`), each
+    /// with its Before, so a failed rename puts every member's name back.
     func applyContainer(_ ref: ContainerRef, _ intent: ContainerIntent) {
         guard intent.applies(to: ref.kind), takes(intent.action, on: ref.kind),
               let index = containerIndex(ref), let before = container(ref)
@@ -821,10 +827,87 @@ final class SamplePlanner {
             if let words = OrganizeCopy.refusal(code: code, for: intent) { show(words, isError: true) }
         case .patch(let patch):
             guard !patch.isEmpty else { return }
+            var befores: [PlannerSync.Subject: PlannerSync.Before] = [.container(ref): .container(before, index: index)]
+            let refiled = refiledItems(intent, on: ref, items: items)
+            if !refiled.isEmpty {
+                let moving = Set(refiled)
+                for (i, item) in items.enumerated() where moving.contains(item.id) {
+                    let place = Place(of: item.id, in: items) ?? Place(index: i, after: i > 0 ? items[i - 1].id : nil)
+                    befores[.item(item.id)] = .item(item, place)
+                }
+                items = items.map { moving.contains($0.id) ? refiling($0, by: intent, on: ref) : $0 }
+            }
             replaceContainer(patch.applied(to: before))
-            sync?.enqueue(.container(ref, intent, refiled: []),
-                          before: [.container(ref): .container(before, index: index)])
+            sync?.enqueue(.container(ref, intent, refiled: refiled), before: befores)
         }
+    }
+
+    /// One edit from a container's page (O8b, O9): behind the page's gate
+    /// (`canWrite(kind:action:)`), then `applyContainer`. A project's rename
+    /// onto a name another live project folds to is refused here, with the
+    /// route's words (`name_taken`), as the alert's Save already refuses it:
+    /// the route would answer 409, and the sample has no route to ask.
+    func editContainer(_ ref: ContainerRef, _ intent: ContainerIntent) {
+        guard canWrite(kind: ref.kind, action: intent.action) else { return }
+        if ref.kind == .project, let name = intent.renamedTo,
+           projectNameClash(name, among: projectRecords, except: ref.id) != nil {
+            if let words = OrganizeCopy.refusal(code: "name_taken", for: intent) { show(words, isError: true) }
+            return
+        }
+        applyContainer(ref, intent)
+    }
+
+    /// A routine's usual time, "HH:mm", or nil to clear it. Sends nothing
+    /// when it is what is stored.
+    func setUsualTime(_ id: String, _ time: String?) {
+        guard let routine = routines.first(where: { $0.id == id }), routine.usualTime != time else { return }
+        editContainer(ContainerRef(kind: .routine, id: id), .usualTime(time))
+    }
+
+    /// A season's Runs, both ends together. Sends nothing when that is what
+    /// is stored.
+    func setSeasonDates(_ id: String, startsOn: DayString?, endsOn: DayString?) {
+        guard let season = seasons.first(where: { $0.id == id }),
+              season.startsOn != startsOn?.description || season.endsOn != endsOn?.description
+        else { return }
+        editContainer(ContainerRef(kind: .season, id: id), .dates(startsOn: startsOn, endsOn: endsOn))
+    }
+
+    /// A goal's Status: Active, Achieved or Set aside. The state it already
+    /// has writes nothing, so a goal achieved twice keeps its first stamp
+    /// (`resolveGoalStateWrite`).
+    func setGoalState(_ id: String, _ state: GoalState) {
+        editContainer(ContainerRef(kind: .goal, id: id), .goalState(state))
+    }
+
+    /// A goal's window, both ends together. Sends nothing when that is what
+    /// is stored.
+    func setGoalWindow(_ id: String, startsOn: DayString?, targetOn: DayString?) {
+        guard let goal = goals?.first(where: { $0.id == id }),
+              goal.startsOn != startsOn?.description || goal.targetOn != targetOn?.description
+        else { return }
+        editContainer(ContainerRef(kind: .goal, id: id), .window(startsOn: startsOn, targetOn: targetOn))
+    }
+
+    /// A container's notes, or a goal's why, as typed: cleaned as the item
+    /// sheet cleans notes (`cleanNotes`: trimmed, blank is none, within what
+    /// one request may carry). Sends nothing when that is what is stored.
+    func setNotes(_ ref: ContainerRef, _ raw: String) {
+        guard let current = container(ref),
+              let intent = ContainerEditModel.notesIntent(raw, kind: ref.kind,
+                                                          stored: ContainerEditModel.text(of: current))
+        else { return }
+        editContainer(ref, intent)
+    }
+
+    /// A container's new name, as typed: cleaned as a title is (`cleanTitle`:
+    /// one line, trimmed). Sends nothing when it cleans to nothing or to the
+    /// name it has (`ContainerEditModel.renameIntent`).
+    func rename(_ ref: ContainerRef, to raw: String) {
+        guard let current = container(ref),
+              let intent = ContainerEditModel.renameIntent(raw, stored: current.name)
+        else { return }
+        editContainer(ref, intent)
     }
 
     /// Puts one container back as PlannerSync's rebase found the server

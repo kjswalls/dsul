@@ -260,6 +260,8 @@ enum PlannerJSON {
     /// `Season.id` are.
     static let morning = "0d000000-0000-4000-8000-000000000012"
     static let autumn = "0d000000-0000-4000-8000-000000000013"
+    /// Launch, a goal's id (O8b).
+    static let launch = "0d000000-0000-4000-8000-000000000014"
 
     /// Every item write the server takes (lib/app-api.ts `ITEM_WRITES`), in
     /// its order.
@@ -268,8 +270,12 @@ enum PlannerJSON {
                             "project", "collect"]
 
     /// What POST /api/app/containers/:kind/:id takes (lib/app-containers.ts
-    /// `CONTAINER_WRITES`, O8a), as planner-response.json carries it.
-    static let allContainerWrites = "{\"routine\":[\"pause\"],\"season\":[\"state\"],\"goal\":[],\"project\":[]}"
+    /// `CONTAINER_WRITES`: O8a's states, O8b's fields, O9's rename, icon and
+    /// colour), as planner-response.json carries it.
+    static let allContainerWrites = "{\"routine\":[\"pause\",\"usualTime\",\"notes\",\"rename\",\"icon\",\"color\"],"
+        + "\"season\":[\"state\",\"dates\",\"notes\",\"rename\",\"icon\",\"color\"],"
+        + "\"goal\":[\"state\",\"window\",\"why\",\"rename\",\"icon\",\"color\"],"
+        + "\"project\":[\"notes\",\"rename\",\"icon\",\"color\"]}"
 
     /// The user's own type that `book` is, as they named it.
     static let bookType = ItemTypeLabel(name: "book", label: "Book to read", labelPlural: "Books to read")
@@ -1224,8 +1230,9 @@ final class DragFlag {
     /// the parent whose route it goes to, and proves a row: its parent, which
     /// the route answers 404 for when it isn't there. A routine or season
     /// toggle names the one membership, never its item, and proves the item,
-    /// for the same reason. A container write (O8a) names the container's
-    /// own fields and nothing else, and proves nothing.
+    /// for the same reason. A container write (O8a, O8b, O9) names the
+    /// container's own fields and nothing else, and proves nothing; a project
+    /// rename names each item it re-files too.
     @Test func eachWriteNamesWhatItTouches() {
         let id = PlannerJSON.groceries
         let own: Set<PlannerSync.Subject> = [.item(id)]
@@ -1285,11 +1292,27 @@ final class DragFlag {
 
         let morning = ContainerRef(kind: .routine, id: PlannerJSON.morning)
         let autumn = ContainerRef(kind: .season, id: PlannerJSON.autumn)
+        let launch = ContainerRef(kind: .goal, id: PlannerJSON.launch)
+        let work = ContainerRef(kind: .project, id: PlannerJSON.work)
         let containers: [(PlannerSync.Write, ContainerRef)] = [
             (.container(morning, .pause(until: nil, timeZone: "UTC"), refiled: []), morning),
             (.container(morning, .pause(until: DayString("2026-10-30"), timeZone: "UTC"), refiled: []), morning),
             (.container(morning, .resume(timeZone: "UTC"), refiled: []), morning),
             (.container(autumn, .state(.paused), refiled: []), autumn),
+            // O8b's fields and O9's rename, icon and colour (a rename of
+            // anything but a project re-files nothing).
+            (.container(morning, .usualTime("07:30"), refiled: []), morning),
+            (.container(morning, .notes("Kettle first"), refiled: []), morning),
+            (.container(morning, .rename("Mornings"), refiled: []), morning),
+            (.container(autumn, .dates(startsOn: DayString("2026-09-22"), endsOn: nil), refiled: []), autumn),
+            (.container(autumn, .icon("icon:Leaf"), refiled: []), autumn),
+            (.container(launch, .goalState(.achieved), refiled: []), launch),
+            (.container(launch, .window(startsOn: nil, targetOn: DayString("2026-12-31")), refiled: []), launch),
+            (.container(launch, .why(nil), refiled: []), launch),
+            (.container(launch, .color("var(--accent-3)"), refiled: []), launch),
+            (.container(work, .notes(nil), refiled: []), work),
+            (.container(work, .color(nil), refiled: []), work),
+            (.container(work, .rename("Office"), refiled: []), work),
         ]
         for (write, ref) in containers {
             let fields: Set<PlannerSync.Subject> = [.container(ref)]
@@ -1298,11 +1321,16 @@ final class DragFlag {
         }
         #expect(PlannerSync.Subject.container(morning).itemId == nil)
         #expect(PlannerSync.Subject.member(.routine, containerId: PlannerJSON.morning, item: id).itemId == id)
-        // A write that refiles items (a project rename, from O9) names each.
-        let work = ContainerRef(kind: .project, id: "work")
-        let refiling = PlannerSync.Write.container(work, .state(.auto), refiled: [id])
-        let refiled: Set<PlannerSync.Subject> = [.container(work), .item(id)]
+        // A project rename (O9) names each item it re-files as well, and
+        // still proves nothing: not even that those items exist.
+        let refiling = PlannerSync.Write.container(work, .rename("Office"), refiled: [id, PlannerJSON.parked])
+        let refiled: Set<PlannerSync.Subject> = [.container(work), .item(id), .item(PlannerJSON.parked)]
         #expect(refiling.subjects == refiled)
+        #expect(refiling.proves.isEmpty)
+        #expect(refiling.refiledSubjects == [.item(id), .item(PlannerJSON.parked)])
+        for (write, _) in containers {
+            #expect(write.refiledSubjects.isEmpty)
+        }
     }
 
     // MARK: The rebase's worked cases (design §3.5)
@@ -2093,6 +2121,424 @@ final class DragFlag {
         let body = try #require(bodyJSON(requests.first { $0.route == routineRoute }))
         #expect(body["paused"] as? Bool == false)
         #expect(planner.banner == nil)
+    }
+
+    // MARK: Container edits (O8b, O9)
+
+    private func containerRoute(_ kind: OrganizeKind, _ id: String) -> String {
+        return "POST " + ContainerRoutes.write(ContainerRef(kind: kind, id: id))
+    }
+
+    private var goalRoute: String {
+        return containerRoute(.goal, PlannerJSON.launch)
+    }
+
+    private var projectRoute: String {
+        return containerRoute(.project, PlannerJSON.work)
+    }
+
+    private var workRef: ContainerRef {
+        return ContainerRef(kind: .project, id: PlannerJSON.work)
+    }
+
+    private func goal(_ planner: SamplePlanner) -> Goal? {
+        return planner.goals?.first { $0.id == PlannerJSON.launch }
+    }
+
+    private func work(_ planner: SamplePlanner) -> Project? {
+        return planner.projectRecords.first { $0.id == PlannerJSON.work }
+    }
+
+    private func filing(_ planner: SamplePlanner, _ id: UUID) -> String? {
+        return planner.item(id)?.project
+    }
+
+    private let undone = "Couldn't reach dsul, so that change was undone."
+
+    /// Morning routine, Autumn, Launch (an active goal) and Work and Health,
+    /// with Work's items Review PRs and Standup filed by id and Weekly review
+    /// by name alone, from a server that takes every container write, with
+    /// Organize and Goals on.
+    private func editPayload() -> String {
+        let morning = PlannerJSON.routineJSON(PlannerJSON.morning, "Morning routine", [PlannerJSON.water])
+        let autumn = PlannerJSON.seasonJSON(PlannerJSON.autumn, "Autumn", [PlannerJSON.stretch])
+        let launch = PlannerJSON.goalJSON(PlannerJSON.launch, "Launch")
+        return PlannerJSON.payload(extra: [PlannerJSON.parkedJSON, PlannerJSON.foldedFilingJSON,
+                                           PlannerJSON.nameOnlyJSON],
+                                   projects: [PlannerJSON.workJSON, PlannerJSON.healthJSON],
+                                   routines: [morning], seasons: [autumn], organizeEnabled: true,
+                                   goalsEnabled: true, goals: [launch],
+                                   containerWrites: PlannerJSON.allContainerWrites)
+    }
+
+    /// Each O8b field shows at once and goes to its own kind's route as the
+    /// route's union takes it: an open end and a clear are an explicit null,
+    /// and a goal's note is its why. Nothing reaches the item route.
+    @Test func eachContainerEditSendsItsOwnBody() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, editPayload()))
+        await server.on(routineRoute, .status(200, ok))
+        await server.on(seasonRoute, .status(200, ok))
+        await server.on(goalRoute, .status(200, ok))
+        await server.on(projectRoute, .status(200, ok))
+        let planner = await loaded(server)
+        #expect(planner.canWrite(kind: .goal, action: .window))
+        #expect(planner.canWrite(kind: .project, action: .rename))
+
+        planner.setUsualTime(PlannerJSON.morning, "07:30")
+        planner.setSeasonDates(PlannerJSON.autumn, startsOn: DayString("2026-09-22"), endsOn: nil)
+        planner.setGoalWindow(PlannerJSON.launch, startsOn: nil, targetOn: DayString("2026-12-31"))
+        planner.setGoalState(PlannerJSON.launch, .achieved)
+        planner.setNotes(ContainerRef(kind: .goal, id: PlannerJSON.launch), "  To ship it.\n")
+        planner.setNotes(workRef, "Quarterly")
+        #expect(routine(planner)?.usualTime == "07:30")
+        #expect(season(planner)?.startsOn == "2026-09-22")
+        #expect(season(planner)?.endsOn == nil)
+        #expect(goal(planner)?.targetOn == "2026-12-31")
+        #expect(goal(planner)?.state == "achieved")
+        #expect(goal(planner)?.achievedAt == "2026-10-01T12:00:00.000Z")
+        #expect(goal(planner)?.why == "To ship it.")
+        #expect(work(planner)?.notes == "Quarterly")
+        await drain(planner)
+
+        let requests = await server.requests
+        let bodies: (String) -> [[String: Any]] = { route in
+            requests.filter { $0.route == route }.compactMap { bodyJSON($0) }
+        }
+        let usual = try #require(bodies(routineRoute).first)
+        #expect(usual["action"] as? String == "usualTime")
+        #expect(usual["usualTime"] as? String == "07:30")
+        #expect(usual.count == 2)
+        let dates = try #require(bodies(seasonRoute).first)
+        #expect(dates["action"] as? String == "dates")
+        #expect(dates["startsOn"] as? String == "2026-09-22")
+        #expect(dates["endsOn"] is NSNull)
+        #expect(dates.count == 3)
+        let goalBodies = bodies(goalRoute)
+        #expect(goalBodies.map { $0["action"] as? String } == ["window", "state", "why"])
+        #expect(goalBodies.first?["startsOn"] is NSNull)
+        #expect(goalBodies.first?["targetOn"] as? String == "2026-12-31")
+        #expect(goalBodies.dropFirst().first?["state"] as? String == "achieved")
+        #expect(goalBodies.last?["why"] as? String == "To ship it.")
+        let notes = try #require(bodies(projectRoute).first)
+        #expect(notes["action"] as? String == "notes")
+        #expect(notes["notes"] as? String == "Quarterly")
+        #expect(requests.filter { $0.route.hasPrefix("POST /api/app/items") }.isEmpty)
+        #expect(planner.banner == nil)
+    }
+
+    /// Unchanged, nothing is sent: the time stored, the dates stored, the
+    /// state it has (a goal achieved twice keeps its first stamp), a note
+    /// that cleans to the one stored, and the name it has.
+    @Test func anEditToWhatIsStoredSendsNothing() async {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, editPayload()))
+        let planner = await loaded(server)
+
+        planner.setUsualTime(PlannerJSON.morning, nil)
+        planner.setSeasonDates(PlannerJSON.autumn, startsOn: nil, endsOn: nil)
+        planner.setGoalWindow(PlannerJSON.launch, startsOn: nil, targetOn: nil)
+        planner.setGoalState(PlannerJSON.launch, .active)
+        planner.setNotes(workRef, "   ")
+        planner.rename(workRef, to: " Work ")
+        planner.rename(workRef, to: "\n")
+        await drain(planner)
+        let posts = await postCount(server)
+        #expect(posts == 0)
+        #expect(planner.banner == nil)
+    }
+
+    /// Rename re-files the project's items at once, by id: Review PRs and
+    /// Standup (filed "work") take the new name; Weekly review, filed by
+    /// name with no id, stays put, as on the server. The body is the name,
+    /// trimmed, and the items are the route's to re-file: none is sent.
+    @Test func aProjectRenameRefilesItsItemsAtOnce() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, editPayload()))
+        await server.on(projectRoute, .status(200, ok))
+        let planner = await loaded(server)
+
+        planner.rename(workRef, to: "  Office ")
+        #expect(work(planner)?.name == "Office")
+        #expect(filing(planner, PlannerJSON.parked) == "Office")
+        #expect(filing(planner, PlannerJSON.foldedFiling) == "Office")
+        #expect(filing(planner, PlannerJSON.nameOnly) == "Work")
+        await drain(planner)
+
+        let requests = await server.requests
+        let body = try #require(bodyJSON(requests.first { $0.route == projectRoute }))
+        #expect(body["action"] as? String == "rename")
+        #expect(body["name"] as? String == "Office")
+        #expect(body.count == 2)
+        #expect(requests.filter { $0.route.hasPrefix("POST /api/app/items") }.isEmpty)
+    }
+
+    /// A rename that never landed puts the project's name back and every
+    /// member's filing, each as it was ("work" stays lowercase), and says
+    /// so: the compare sees the projects and the items move.
+    @Test func aFailedRenamePutsEveryMembersFilingBack() async {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, editPayload()), .offline)
+        await server.on(projectRoute, .offline)
+        let planner = await loaded(server)
+
+        planner.rename(workRef, to: "Office")
+        #expect(filing(planner, PlannerJSON.foldedFiling) == "Office")
+        await drain(planner)
+
+        #expect(work(planner)?.name == "Work")
+        #expect(filing(planner, PlannerJSON.parked) == "Work")
+        #expect(filing(planner, PlannerJSON.foldedFiling) == "work")
+        #expect(filing(planner, PlannerJSON.nameOnly) == "Work")
+        #expect(planner.banner?.text == undone)
+    }
+
+    /// The rename never landed; Review PRs' new title, sent after it, did.
+    /// The revert takes the rename back from each member and keeps the
+    /// title.
+    @Test func aFailedRenameKeepsALandedTitle() async {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, editPayload()), .offline)
+        await server.on(projectRoute, .offline)
+        await server.on(itemRoute(PlannerJSON.parked), .status(200, ok))
+        let planner = await loaded(server)
+
+        planner.rename(workRef, to: "Office")
+        planner.edit(PlannerJSON.parked, .title("Review the PRs"))
+        await drain(planner)
+
+        #expect(work(planner)?.name == "Work")
+        #expect(planner.item(PlannerJSON.parked)?.title == "Review the PRs")
+        #expect(filing(planner, PlannerJSON.parked) == "Work")
+        #expect(filing(planner, PlannerJSON.foldedFiling) == "work")
+    }
+
+    /// The same on a kind that takes members: Morning routine's rename never
+    /// landed; Groceries, collected into it after, did. The name goes back,
+    /// and the routine keeps Groceries: a container's revert restores its
+    /// fields only, never its member list.
+    @Test func aFailedRoutineRenameKeepsALandedCollect() async {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, containerPayload()), .offline)
+        await server.on(routineRoute, .offline)
+        await server.on(itemRoute(PlannerJSON.groceries), .status(200, ok))
+        let planner = await loaded(server)
+
+        planner.rename(ContainerRef(kind: .routine, id: PlannerJSON.morning), to: "Mornings")
+        planner.collect(PlannerJSON.groceries, kind: .routine, containerId: PlannerJSON.morning, member: true)
+        #expect(routine(planner)?.name == "Mornings")
+        await drain(planner)
+
+        #expect(routine(planner)?.name == "Morning routine")
+        #expect(routine(planner)?.itemIds == [PlannerJSON.water, PlannerJSON.groceries])
+        #expect(planner.banner?.text == undone)
+    }
+
+    /// The other way round: Review PRs' title never landed; the rename sent
+    /// after it did. The title goes back, and the item is rebased onto the
+    /// landed rename (`replaying` a container write re-files it), so it keeps
+    /// the new name the server holds.
+    @Test func aFailedTitleBeforeALandedRenameKeepsTheNewName() async {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, editPayload()), .offline)
+        await server.on(itemRoute(PlannerJSON.parked), .offline)
+        await server.on(projectRoute, .status(200, ok))
+        let planner = await loaded(server)
+
+        planner.edit(PlannerJSON.parked, .title("Review the PRs"))
+        planner.rename(workRef, to: "Office")
+        await drain(planner)
+
+        #expect(planner.item(PlannerJSON.parked)?.title == "Review PRs")
+        #expect(filing(planner, PlannerJSON.parked) == "Office")
+        #expect(filing(planner, PlannerJSON.foldedFiling) == "Office")
+        #expect(work(planner)?.name == "Office")
+    }
+
+    /// The rename landed first, then Review PRs' new title failed: its
+    /// revert starts from the item as the rename left it, so it keeps the new
+    /// name the server holds and only the title goes back.
+    @Test func aTitleThatFailsAfterALandedRenameKeepsTheNewName() async {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, editPayload()), .offline)
+        await server.on(projectRoute, .status(200, ok))
+        await server.on(itemRoute(PlannerJSON.parked), .offline)
+        let planner = await loaded(server)
+
+        planner.rename(workRef, to: "Office")
+        planner.edit(PlannerJSON.parked, .title("Review the PRs"))
+        await drain(planner)
+
+        #expect(planner.item(PlannerJSON.parked)?.title == "Review PRs")
+        #expect(filing(planner, PlannerJSON.parked) == "Office")
+        #expect(work(planner)?.name == "Office")
+        #expect(planner.banner?.text == undone)
+    }
+
+    /// Buy milk's capture was never answered (the server never made it),
+    /// filing it under Work met the item route's 404, and then a rename of
+    /// Work landed, re-filing Buy milk on the phone. The rename's 200 proves
+    /// nothing about Buy milk: the route re-files by `project_id` in one
+    /// statement, whatever it matched. So once the refetch fails the capture
+    /// is taken back, and Work keeps the name the server holds.
+    @Test func aLandedRenameDoesNotProveALostCapture() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, editPayload()), .offline)
+        await server.on(captureRoute, .offline)
+        await server.on(projectRoute, .status(200, ok))
+        await server.setFallback(.status(404, "{\"error\":\"not_found\"}"))   // the new item's own route
+        let planner = await loaded(server)
+
+        planner.capture("Buy milk")                                            // never answered
+        let milk = try #require(planner.items.last)
+        planner.edit(milk.id, .project(id: PlannerJSON.work, name: "Work"))   // 404
+        planner.rename(workRef, to: "Office")                                  // lands
+        #expect(filing(planner, milk.id) == "Office")
+        await drain(planner)
+
+        #expect(planner.item(milk.id) == nil)
+        #expect(work(planner)?.name == "Office")
+        #expect(filing(planner, PlannerJSON.parked) == "Office")
+        #expect(planner.banner != nil)
+    }
+
+    /// The pause never landed; the usual time set after it did. The revert
+    /// takes the pause back and keeps the time.
+    @Test func aFailedPauseKeepsALandedUsualTime() async {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, editPayload()), .offline)
+        await server.on(routineRoute, .offline, .status(200, ok))
+        let planner = await loaded(server)
+
+        planner.pauseRoutine(PlannerJSON.morning, until: nil)
+        planner.setUsualTime(PlannerJSON.morning, "07:30")
+        await drain(planner)
+
+        #expect(routine(planner)?.pausedAt == nil)
+        #expect(routine(planner)?.usualTime == "07:30")
+        #expect(planner.banner?.text == undone)
+    }
+
+    /// An Achieved that landed is replayed at its own `sentAt`: the window
+    /// set before it never landed, and the refetch fails two hours later.
+    /// Replayed then, the stamp would say 15:00.
+    @Test func aLandedGoalStateReplaysAtItsSentAt() async {
+        let clock = TestClock(PlannerJSON.noon)
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, editPayload()), .offline)
+        await server.on(goalRoute, .offline, .status(200, ok))
+        let planner = makeLivePlanner(server, now: { clock.now })
+        await planner.refresh()
+        await server.gate(plannerRoute)
+
+        planner.setGoalWindow(PlannerJSON.launch, startsOn: nil, targetOn: DayString("2026-12-31"))
+        clock.now = PlannerJSON.noon.addingTimeInterval(60 * 60)
+        planner.setGoalState(PlannerJSON.launch, .achieved)
+        #expect(goal(planner)?.achievedAt == "2026-10-01T13:00:00.000Z")
+        let refetching = await waitUntil { await server.count(plannerRoute) == 2 }
+        #expect(refetching)
+        clock.now = PlannerJSON.noon.addingTimeInterval(3 * 60 * 60)
+        await server.admit(plannerRoute)
+        await drain(planner)
+
+        #expect(goal(planner)?.targetOn == nil)
+        #expect(goal(planner)?.state == "achieved")
+        #expect(goal(planner)?.achievedAt == "2026-10-01T13:00:00.000Z")
+        #expect(planner.banner?.text == undone)
+    }
+
+    /// A goal's window and a project's colour that never landed each turn
+    /// back, and the banner says the change was undone, which it says only
+    /// when the revert's compare sees the goals or the projects move.
+    @Test func aFailedGoalOrProjectEditTurnsBack() async {
+        let goalServer = FakeServer()
+        await goalServer.on(plannerRoute, .status(200, editPayload()), .offline)
+        await goalServer.on(goalRoute, .offline)
+        let goals = await loaded(goalServer)
+        goals.setGoalWindow(PlannerJSON.launch, startsOn: nil, targetOn: DayString("2026-12-31"))
+        #expect(goal(goals)?.targetOn == "2026-12-31")
+        await drain(goals)
+        #expect(goal(goals)?.targetOn == nil)
+        #expect(goals.banner?.text == undone)
+
+        let projectServer = FakeServer()
+        await projectServer.on(plannerRoute, .status(200, editPayload()), .offline)
+        await projectServer.on(projectRoute, .offline)
+        let projects = await loaded(projectServer)
+        projects.editContainer(workRef, .color("var(--accent-3)"))
+        #expect(work(projects)?.color == "var(--accent-3)")
+        await drain(projects)
+        #expect(work(projects)?.color == nil)
+        #expect(projects.banner?.text == undone)
+    }
+
+    /// A rename onto another live project's name, folding case, is refused
+    /// here with the route's words, and nothing is sent; Work changing only
+    /// its own case is no clash.
+    @Test func aRenameOntoALiveNameIsRefusedHere() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, editPayload()))
+        await server.on(projectRoute, .status(200, ok))
+        let planner = await loaded(server)
+
+        planner.rename(workRef, to: "health")
+        #expect(work(planner)?.name == "Work")
+        #expect(planner.banner?.text == "You already have a project called \u{201C}health\u{201D}.")
+        await drain(planner)
+        var posts = await postCount(server)
+        #expect(posts == 0)
+
+        planner.rename(workRef, to: "WORK")
+        #expect(work(planner)?.name == "WORK")
+        await drain(planner)
+        posts = await postCount(server)
+        #expect(posts == 1)
+    }
+
+    /// The route's 409s say why in their own words, naming the project by
+    /// the name sent (the bin, which the phone can't see, holds a project
+    /// called Errands), and the refetch's answer replaces the guess.
+    @Test func aRenameOntoATrashedNameSaysWhy() async {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, editPayload()))
+        await server.on(projectRoute, .status(409, "{\"error\":\"name_in_trash\"}"))
+        let planner = await loaded(server)
+
+        planner.rename(workRef, to: "Errands ")
+        #expect(filing(planner, PlannerJSON.parked) == "Errands")
+        await drain(planner)
+
+        #expect(planner.banner?.text == OrganizeCopy.nameInTrashSentence(noun: "project", name: "Errands"))
+        #expect(planner.banner?.text
+            == "A deleted project called \u{201C}Errands\u{201D} still has that name. Restore it from Trash, or pick a different one.")
+        #expect(work(planner)?.name == "Work")
+        #expect(filing(planner, PlannerJSON.parked) == "Work")
+    }
+
+    /// Organize off on the web: no routine, season or project edit is
+    /// offered or sent; Goals off, no goal edit. The server's list alone
+    /// doesn't open them.
+    @Test func theSwitchesGateEveryEdit() async {
+        let server = FakeServer()
+        let launch = PlannerJSON.goalJSON(PlannerJSON.launch, "Launch")
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(
+            projects: [PlannerJSON.workJSON], organizeEnabled: false, goalsEnabled: false, goals: [launch],
+            containerWrites: PlannerJSON.allContainerWrites)))
+        let planner = await loaded(server)
+
+        for action in ContainerAction.allCases {
+            for kind in OrganizeKind.allCases {
+                #expect(!planner.canWrite(kind: kind, action: action))
+            }
+        }
+        planner.rename(workRef, to: "Office")
+        planner.setNotes(workRef, "Quarterly")
+        planner.setGoalState(PlannerJSON.launch, .achieved)
+        #expect(work(planner)?.name == "Work")
+        #expect(goal(planner)?.state == "active")
+        await drain(planner)
+        let posts = await postCount(server)
+        #expect(posts == 0)
     }
 
     // MARK: A new subtask

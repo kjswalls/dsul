@@ -2713,7 +2713,7 @@ export async function restoreSeason(userId: string, id: string, client?: DbClien
 // Their one structural difference from routines/seasons is that membership
 // carries a ROLE, which is why they do not reuse reconcileMembership.
 
-interface GoalRow {
+export interface GoalRow {
   id: string;
   user_id: string;
   name: string;
@@ -2970,7 +2970,18 @@ function assembleGoals(rows: GoalRow[], members: GoalMemberRow[]): Goal[] {
   // of them: spreading copies the three ARRAY REFERENCES, so every memberless
   // goal would share one set and the first in-place push would appear on all of
   // them at once. fetchRoutines avoids this by construction (`?? []`).
-  return rows.map((row) => ({
+  return rows.map((row) =>
+    goalFromRow(row, membersByGoal.get(row.id) ?? { memberIds: [], milestoneIds: [], checkinIds: [] }),
+  );
+}
+
+/**
+ * One goals row as a Goal, with the role arrays the caller read for it, as
+ * routineFromRow (the iPhone's container route, which decides on the fields
+ * alone, passes three empty arrays).
+ */
+export function goalFromRow(row: GoalRow, members: GoalMembers): Goal {
+  return {
     id: row.id,
     name: row.name,
     why: row.why ?? undefined,
@@ -2981,8 +2992,8 @@ function assembleGoals(rows: GoalRow[], members: GoalMemberRow[]): Goal[] {
     targetOn: row.target_on ?? undefined,
     achievedAt: row.achieved_at ?? undefined,
     sortOrder: row.sort_order ?? undefined,
-    ...(membersByGoal.get(row.id) ?? { memberIds: [], milestoneIds: [], checkinIds: [] }),
-  }));
+    ...members,
+  };
 }
 
 export async function createGoal(userId: string, goal: Goal, client?: DbClient): Promise<void> {
@@ -3208,7 +3219,7 @@ export async function restoreHabit(id: string, client?: DbClient): Promise<void>
 }
 
 // ---- Project row type ----
-interface ProjectRow {
+export interface ProjectRow {
   id: string;
   user_id: string;
   name: string;
@@ -3224,7 +3235,8 @@ interface ProjectRow {
   notes?: string | null;
 }
 
-function projectFromRow(row: ProjectRow): Project {
+/** One projects row as a Project (exported for the iPhone's container route, as routineFromRow). */
+export function projectFromRow(row: ProjectRow): Project {
   return {
     id: row.id,
     name: row.name,
@@ -3501,21 +3513,44 @@ export async function findLiveProjectByName(
   return hit ? projectFromRow(hit) : null;
 }
 
-export async function createProject(userId: string, project: Project, client?: DbClient): Promise<void> {
+/**
+ * The three project writes' one option. `notify: false` keeps the write off
+ * the plugin webhook (notifyContainerChange). A browser's project write never
+ * reaches a webhook (no service key there, so notifyPlugins is a no-op), and
+ * the iPhone's container route (lib/app-containers.ts) passes `false` so the
+ * same edit from the phone stays as silent to OpenClaw as it is from the web.
+ * Default true: the agent routes announce their writes, as before.
+ */
+export interface ProjectWriteOptions {
+  notify?: boolean;
+}
+
+export async function createProject(
+  userId: string,
+  project: Project,
+  client?: DbClient,
+  opts: ProjectWriteOptions = {},
+): Promise<void> {
   const supabase = client ?? createClient();
   await writeWithoutNotesFallback('projects', projectToRow(userId, project) as unknown as Record<string, unknown>, (row) =>
     supabase.from('projects').insert(row),
   );
-  notifyContainerChange(userId, { action: 'create', project });
+  if (opts.notify !== false) notifyContainerChange(userId, { action: 'create', project });
 }
 
-export async function updateProject(userId: string, id: string, updates: Partial<Project>, client?: DbClient): Promise<void> {
+export async function updateProject(
+  userId: string,
+  id: string,
+  updates: Partial<Project>,
+  client?: DbClient,
+  opts: ProjectWriteOptions = {},
+): Promise<void> {
   const row = projectUpdatesToRow(updates);
   if (Object.keys(row).length === 0) return;
   const supabase = client ?? createClient();
   const wrote = await writeWithoutNotesFallback('projects', row, (r) => supabase.from('projects').update(r).eq('id', id));
   // A note-only edit against a pre-049 database wrote nothing — say nothing.
-  if (wrote) notifyContainerChange(userId, { action: 'update', id, updates });
+  if (wrote && opts.notify !== false) notifyContainerChange(userId, { action: 'update', id, updates });
 }
 
 /**
@@ -3550,11 +3585,16 @@ export async function renameContainerMembers(
   if (error) throw error;
 }
 
-export async function deleteProject(userId: string, id: string, client?: DbClient): Promise<void> {
+export async function deleteProject(
+  userId: string,
+  id: string,
+  client?: DbClient,
+  opts: ProjectWriteOptions = {},
+): Promise<void> {
   const supabase = client ?? createClient();
   const { error } = await supabase.from('projects').update({ deleted_at: new Date().toISOString() }).eq('id', id);
   if (error) throw error;
-  notifyContainerChange(userId, { action: 'delete', id });
+  if (opts.notify !== false) notifyContainerChange(userId, { action: 'delete', id });
 }
 
 // Restore by id, not name — names are mutable (rename) so a name-keyed

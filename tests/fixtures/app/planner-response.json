@@ -52,13 +52,35 @@
   ],
   "containerWrites": {
     "routine": [
-      "pause"
+      "pause",
+      "usualTime",
+      "notes",
+      "rename",
+      "icon",
+      "color"
     ],
     "season": [
-      "state"
+      "state",
+      "dates",
+      "notes",
+      "rename",
+      "icon",
+      "color"
     ],
-    "goal": [],
-    "project": []
+    "goal": [
+      "state",
+      "window",
+      "why",
+      "rename",
+      "icon",
+      "color"
+    ],
+    "project": [
+      "notes",
+      "rename",
+      "icon",
+      "color"
+    ]
   },
   "items": [
     {

@@ -9,6 +9,7 @@ import { BUILTIN_ITEM_TYPE_NAMES, ORGANIZER_TYPE_NAMES, usePlannerStore } from '
 import { useUIStore } from '@/lib/ui-store';
 import { byName, matching, useToday } from '@/lib/collections';
 import { makeIconToken } from '@/lib/category-icons';
+import { nameTakenSentence } from '@/lib/organize-copy';
 import { ObjectRow, SettingRow } from '../primitives';
 import { heldByTrash, useTrashedNames } from '../use-trashed-names';
 import type { TrashedName } from '@/lib/db';
@@ -647,7 +648,7 @@ export function takenBy(
   const clash = siblings.find(
     (s) => s.id !== selfId && s.name.toLowerCase() === next.toLowerCase()
   );
-  return clash ? `You already have a ${noun} called “${clash.name}”.` : null;
+  return clash ? nameTakenSentence(noun, clash.name) : null;
 }
 
 /* ── counts and slugs ─────────────────────────────────────────────────── */

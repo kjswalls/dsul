@@ -106,10 +106,13 @@ struct NotesEditor: View {
 /// Show all is hit over 44pt by an overhang of 12pt each way, so it sits 12pt
 /// under the text: the overhang reaches the text's frame and no further, and
 /// never takes a tap meant for the notes. A container's page shows its notes
-/// with it too (Organize, read-only until O8b).
+/// with it too (Organize), and from O8b edits them in a sheet
+/// (`ContainerNotesSheet`), hinting with its own words (`hint`).
 struct NotesText: View {
     let text: String
     let onEdit: (() -> Void)?
+    /// What the text does when it edits, as VoiceOver hints it.
+    var hint: String = ItemSheetModel.notesHint
 
     @State private var expanded = false
     @State private var clippedHeight: CGFloat = 0
@@ -127,7 +130,7 @@ struct NotesText: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(RowPressStyle())
-                .accessibilityHint(Text(ItemSheetModel.notesHint))
+                .accessibilityHint(Text(hint))
             } else {
                 notes
             }

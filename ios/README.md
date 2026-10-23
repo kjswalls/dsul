@@ -1062,7 +1062,10 @@ the routine and season pages, O3 the goal and project pages, read-only but
 for the tick; O4 the summary cards; O5 the footer's Item types and Paused,
 with an item's Resume; O14 the Trash, with Restore; O8a the first container
 writes: a routine's Status (Pause, Pause until…, Resume), a season's (On,
-Off, Dates), and Resume on Paused for routines and seasons.
+Off, Dates), and Resume on Paused for routines and seasons; O8b a goal's
+Status (Active, Achieved, Set aside), a routine's usual time, a season's
+Runs, a goal's window and the notes (a goal's why); O9 the ⋯ menu's
+Rename… and Icon and color… on every page.
 
 1. (O1) Sample: Organize shows Routines, Seasons, Goals and Projects, in that
    order. Morning routine has a honey sunrise tile, Wind down a plum moon,
@@ -1274,6 +1277,88 @@ Off, Dates), and Resume on Paused for routines and seasons.
     offers Resume among its actions. Dark mode and the largest Dynamic Type:
     the chip's chevron and the menu's rows are never lime, and the pill wraps
     beside the row's name without covering it.
+44. (O8b) Sample: Morning routine's "Usually 7:00 am" chip ends in a gray
+    chevron; tap it: a sheet titled "Usually at", the wheel on 7:00 am,
+    "Clear time", and "It orders and labels the routine. Its items keep
+    their own times." under them. Turn the wheel to 6:45 and Done: the chip
+    and the routine's row on Organize read 6:45 am. Turn it again and swipe
+    down: the sheet stays; Cancel asks "Discard changes?". Clear time: the
+    chip reads "No usual time" and still opens the wheel, on 9:00 am. No
+    member's own time moves.
+45. (O8b) Signed in: set a routine's usual time on the phone; the web shows
+    it after a refresh. Clear it on the web and pull: the chip reads "No
+    usual time".
+46. (O8b) Sample: Autumn's chips read "Dates" and "Runs"; tap Runs: a sheet
+    titled "Runs" with "Starts" and "Ends" switched off and "Always on. Give
+    it a start or an end to make it follow the calendar." under them. Switch
+    Ends on: a calendar on today, and the line under it says when the
+    season runs, at once. Switch Starts on: no day after the end can be
+    picked, nor an end before the start. Done: the Runs chip reads the
+    range. With Off or On picked, no Runs chip shows.
+47. (O8b) Signed in, on a season dated Sep 22 to Dec 20: open Runs, switch
+    Ends off, Done. The chip reads "From Sep 22", and the web shows the
+    season with no end after a refresh. In flight mode, change the dates
+    again: the banner shows, the refetch fails, and the chip goes back.
+48. (O8b) Sample: Run a half marathon's Status chip is a menu of Active,
+    Achieved and Set aside, Active checked, the label colour, never lime.
+    Pick Achieved: the chip reads "Achieved" and the ended note "Achieved on"
+    today's date. Signed in, achieve a goal on the phone the day before,
+    then pick Achieved again: the web's ended note keeps the first day. Set
+    aside keeps that day too; Active clears it.
+49. (O8b) The goal's window chip ("Started … · Target …") opens a sheet
+    titled "Window" with "Started" and "Target"; a goal with neither reads
+    "Target", which opens the same sheet. Done sends both ends together; the
+    countdown and the elapsed line follow at once.
+50. (O8b) Sample: Morning routine's note is a button; tap it: a sheet titled
+    "Routine note", the keyboard up, Return a line break. Edit it and Done:
+    the page shows it. Clear it and Done: the page shows "Add a note…" in
+    gray, which opens the sheet empty with the same words in it. The goal's
+    why opens "Why this goal matters" ("Why this matters…" with none); a
+    season and a project with no note show "Add a note…". Signed in, the web
+    shows each after a refresh.
+51. (O9) Sample: every page's bar ends in a ⋯ button in the label colour:
+    Rename… and Icon and color…. Rename… on Home: an alert titled "Rename
+    project" with "Home" in the field. Type "House" and Save: the page's
+    title, its row on Organize, Today's project chip and List section, and
+    the project chip in the sheet of every item filed under it (Call the
+    dentist, Cook dinner, Groceries, Water the plants) read House at once.
+    Signed in, rename Home to House: the web shows House after a refresh,
+    every Home item filed under it. A web tab already open follows the
+    rename once it refetches, its project filters included; a browser whose
+    canvas or braindump filter was saved on Home and opened afresh shows an
+    empty view until House is picked again (the web keeps a filter by name,
+    and follows a rename only when it sees one happen; a known web limit
+    for any rename made elsewhere).
+52. (O9) Rename… on House, type "work": Save is off, since Work folds to
+    the same name; type "HOUSE": Save is on (its own case). A name of only
+    spaces keeps Save off. Signed in, with a project called Errands in the
+    Trash: rename to "Errands": "A deleted project called “Errands” still
+    has that name. Restore it from Trash, or pick a different one." shows,
+    and the name and its items' chips go back. In flight mode a rename's
+    banner shows, and once the refetch fails the name and every item's chip
+    go back too.
+53. (O9) Icon and color…: a sheet titled "Icon and color", the tile and
+    the name at the top, 36 icons in a grid, then the eight colours by name
+    (Moss to Lime) and Auto, the stored one checked. Morning routine's
+    sunrise is not in the grid, so no icon is ringed. Pick Leaf and Teal:
+    the tile in the sheet changes; Done: the page's header and the row on
+    Organize change. Auto gives the name's own colour back. Cancel
+    after a pick asks "Discard changes?". Lime is a full-strength swatch;
+    the icons, the names and the checks are the label colour.
+54. (O8b, O9) With VoiceOver: the ⋯ button reads "More"; each icon reads
+    its name ("Heart pulse", "Gamepad 2"), the picked one selected; the
+    chips that open a sheet read their words with the hints "Edits the
+    usual time", "Edits when it runs" and "Edits the window"; the notes
+    "Edits the note" ("Edits why this goal matters"). Dark mode and the
+    largest Dynamic Type: the chevrons, the grid and the sheets are never
+    lime, and the icon cells are never under 44pt.
+55. (O8b, O9) Turn Organize off on the web and pull: the routine and season
+    pages are the switched-off sentence, and a project's page, which still
+    shows, has no ⋯ menu and no notes button (the web's project page edits
+    with Organize off; the phone's waits for it). A goal's page still edits
+    while Goals is on; turn Goals off and it is the switched-off sentence.
+    A server older than this PR (the O8a `containerWrites`) shows the O8a
+    menus and nothing of O8b or O9.
 
 ## Rules
 

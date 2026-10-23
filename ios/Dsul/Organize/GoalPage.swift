@@ -11,6 +11,14 @@ import SwiftUI
 /// Every row opens the item's sheet, and says why when something hides it.
 /// A milestone's node is its tick, whatever its date (`toggle(_:on:)` on
 /// today behind the `tick` gate: one-shot, so the day doesn't matter).
+///
+/// From O8b, where the server takes the write and Goals is on, the Status
+/// chip is a menu of Active, Achieved and Set aside (`setGoalState`: the
+/// state it already has writes nothing, so a goal achieved twice keeps its
+/// first stamp), the window chip opens its two days (`RangeSheet`; "Target"
+/// where none is set), and the why opens its sheet (`ContainerNotesSheet`,
+/// "Why this matters…" where there is none). From O9 the bar's ⋯ menu
+/// renames it and changes its look (the host's).
 struct GoalPageView: View {
     let id: String
     @Binding var path: [OrganizeRoute]
@@ -18,21 +26,32 @@ struct GoalPageView: View {
     var body: some View {
         OrganizePageHost(route: .container(.goal, id: id), path: $path,
                          load: { $0.goalPage(id) }) { (page: GoalPage) in
-            GoalPageRows(page: page)
+            GoalPageRows(goalId: id, page: page)
         }
     }
 }
 
 private struct GoalPageRows: View {
+    /// The goal this page shows.
+    let goalId: String
     let page: GoalPage
+
+    @Environment(SamplePlanner.self) private var planner
+    /// The window's sheet, while it is up.
+    @State private var chipSheet: ChipSheet? = nil
+    /// The why's sheet, while it is up.
+    @State private var editingWhy: NotesEdit? = nil
 
     var body: some View {
         Section {
             PageHeaderView(header: page.header, ring: page.ring)
                 .pageTopRow()
-            if let why = page.why {
-                NotesText(text: why, onEdit: nil)
+            if page.why != nil || page.edits?.notes != nil {
+                PageNotesView(text: page.why, edit: page.edits?.notes, onEdit: { editingWhy = page.edits?.notes })
                     .pageTopRow()
+                    .sheet(item: $editingWhy) { edit in
+                        ContainerNotesSheet(edit: edit)
+                    }
             }
             if let countdown = page.countdown {
                 Text(countdown)
@@ -41,8 +60,14 @@ private struct GoalPageRows: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .pageTopRow()
             }
-            PageChipsView(chips: page.chips)
+            PageChipsView(chips: page.chips, status: page.statusMenu, onStatus: { pick($0) },
+                          onEdit: { edit($0) })
                 .pageTopRow()
+                .sheet(item: $chipSheet) { sheet in
+                    if case .range(let edit) = sheet {
+                        RangeSheet(edit: edit)
+                    }
+                }
             if let ended = page.endedNote {
                 PageQuietText(text: ended)
                     .pageTopRow()
@@ -105,6 +130,27 @@ private struct GoalPageRows: View {
             }
         } header: {
             PageSectionHeader(title: ContainerPageModel.supportingTitle)
+        }
+    }
+
+    /// A Status pick: the state picked, sent as it is.
+    private func pick(_ action: StatusAction) {
+        switch action {
+        case .goalState(let state):
+            withAnimation(.snappy) { planner.setGoalState(goalId, state) }
+        case .pause, .pauseUntil, .resume, .state:
+            // A routine's and a season's; a goal's menu never offers them.
+            break
+        }
+    }
+
+    /// A tap on a chip that edits: the window opens its two days.
+    private func edit(_ kind: PageChip.Kind) {
+        switch kind {
+        case .window:
+            chipSheet = page.window.map { ChipSheet.range($0) }
+        case .usualTime, .status, .runs, .items, .timeBlock:
+            break
         }
     }
 }

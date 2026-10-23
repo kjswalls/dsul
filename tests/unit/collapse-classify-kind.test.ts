@@ -246,6 +246,30 @@ describe('a container write still announces itself under BOTH event names', () =
       expect(calls[i][2]).toEqual(calls[i + 1][2]);
     }
   });
+
+  it('stays quiet under both names when the caller passes notify:false (the iPhone route)', async () => {
+    // The phone's container route writes as the web's store does, and the web
+    // store fires no webhook; `{ notify: false }` is how a server route says so
+    // (lib/app-containers.ts). Every other caller keeps the default above.
+    vi.mocked(notifyPlugins).mockClear();
+    const chain: Record<string, unknown> = {};
+    chain.insert = async () => ({ error: null });
+    chain.update = () => chain;
+    chain.eq = () => chain;
+    chain.then = (resolve: (v: { error: null }) => unknown) =>
+      Promise.resolve({ error: null }).then(resolve);
+    const client = { from: () => chain } as never;
+
+    const project = { id: 'pr-1', name: 'Wellness', emoji: 'icon:Heart' };
+    await createProject('u1', project, client, { notify: false });
+    await updateProject('u1', 'pr-1', { name: 'Health' }, client, { notify: false });
+    await deleteProject('u1', 'pr-1', client, { notify: false });
+    expect(notifyPlugins).not.toHaveBeenCalled();
+
+    // notify:true is the default spelled out.
+    await updateProject('u1', 'pr-1', { name: 'Health' }, client, { notify: true });
+    expect(vi.mocked(notifyPlugins).mock.calls.map((c) => c[1])).toEqual(['projects.updated', 'habitGroups.updated']);
+  });
 });
 
 /* ── 2. one container per item ──────────────────────────────────────────── */

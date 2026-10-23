@@ -415,7 +415,8 @@ public struct Season: Codable, Sendable, Hashable, Identifiable {
 /// reviews) and `memberIds` (supporting work). Each keeps only the ids that
 /// are uuids, as `Routine.itemIds` does. `state` stays a string, "active"
 /// when missing; anything but "active" is an ended goal (`isGoalActive`).
-/// The phone reads goals and writes none of their fields yet.
+/// The phone writes a goal's state, window, why, name, icon and colour
+/// (`ContainerIntent`, from O8b and O9); its member lists are read only.
 public struct Goal: Codable, Sendable, Hashable, Identifiable {
     public var id: String
     public var name: String

@@ -22,9 +22,11 @@ Organize, the third tab, is built as its own series (O1 to O15, the design in
 the shared folder's `ios-app/organize/design.md`); O1 lists the containers,
 O2 and O3 give each its page, read-only but for the tick, O4 adds the
 summary cards, O5 and O14 the footer's Item types, Paused (with an
-item's Resume) and Trash (with Restore), and O8a the first container writes:
-a routine's and a season's Status, and Resume on Paused for both (see
-Organize below).
+item's Resume) and Trash (with Restore), O8a the first container writes:
+a routine's and a season's Status, and Resume on Paused for both, O8b a
+goal's Status, a routine's usual time, a season's Runs, a goal's window and
+the notes, and O9 Rename… and Icon and color… on every page (see Organize
+below).
 Designs, the stack comparison and the board images live in the project's
 shared folder (`ios-app/`): `stack.md` has a SwiftUI build note for every
 interaction, and `expo-vs-swiftui.md` ends with the fact-check.
@@ -164,6 +166,12 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   `tests/fixtures/organize/container-writes.json`; `seasonStateForSwitch` in
   `ActiveExplain.swift` ← `lib/scope-rail.ts`; the refusal words in
   `OrganizeCopy.swift`; and `containerWrites` in `PlannerPayload`.
+  O8b and O9 extend them: `ContainerIntent.swift` takes every field intent,
+  with `projectNameClash`, `refiledItems` and `refiling` (lib/app-containers.ts
+  `renameProject`); `Goals.swift` gains `GoalState` and
+  `resolveGoalStateWrite` ← `lib/goals.ts`; `ContainerWriteBody.swift`
+  encodes the new bodies; `OrganizeCopy.swift` the name refusals
+  (`nameTakenSentence`); `ContainerLook.swift` `iconToken`.
   Each cites what it mirrors.
 - `ios/Dsul/App`: `DsulApp` (one `AuthStore`), `AppGate` (sign-in screen,
   sample or the user's planner, keyed on `AuthStore.gateKey`), `AppConfig`.
@@ -196,7 +204,12 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   they show and say; `ContainerRow` gains `TileRow`, the tile row anything
   else wears. O8a adds no file: `ContainerPage` gains `StatusChipMenu` and
   `PageChipLabel`, and the Status menus' rules live in `ContainerPageModel`
-  (`StatusMenu`) and `OrganizeModel` (`canEdit`). `ios/Dsul/App` gains
+  (`StatusMenu`) and `OrganizeModel` (`canEdit`). O8b and O9 add
+  `PageEditors` (`ChipSheet`, one sheet slot per chip row; `PageNotesView`;
+  `ContainerNotesSheet`; `UsualTimeSheet`; `RangeSheet`), `RenameAlert`,
+  `LookSheet`, and `ContainerEditModel`, Foundation only, which decides
+  what a page may edit and in what words; `ContainerPage` gains the bar's ⋯
+  menu (`PageMenu`), and `NotesText` a VoiceOver hint of the caller's. `ios/Dsul/App` gains
   `AvatarMenu` (moved out of `TodayView`, with the tab's own sections passed
   in) and `PlannerBannerOverlay` (`.plannerBanner()`, Today's banner, also on
   Organize, with `BannerView`).
@@ -863,8 +876,9 @@ words are fixed on every surface, below.
 The third tab, built as a series of small PRs (O1 to O15). The design, with
 every decision and the PR plan, is the shared folder's
 `ios-app/organize/design.md`; each PR's builders leave notes beside it
-(`organize/o1/`, `organize/o2/` for O2 and O3, built as one PR, and
-`organize/o6/` for O6, O7 and O8a, one PR too).
+(`organize/o1/`, `organize/o2/` for O2 and O3, built as one PR,
+`organize/o6/` for O6, O7 and O8a, one PR too, and `organize/o8b/` for O8b
+and O9).
 
 - **O1: the list, read-only.** The payload gains `goals` (null when
   unreadable) and `settings.organizeEnabled` / `settings.goalsEnabled`, from
@@ -1080,6 +1094,72 @@ every decision and the PR plan, is the shared folder's
   gone: a write names its subjects. A failure's words are
   `PlannerSync.writeFailureText(_:for:)`, the route's own
   (`OrganizeCopy.refusal`) for a container refusal.
+- **O8b: a goal's Status, the fields and the notes.** The route takes a
+  goal's `state` (Active, Achieved, Set aside, through
+  `resolveGoalStateWrite`: the state it has writes nothing, so a goal
+  achieved twice keeps its first `achievedAt`; Set aside keeps the stamp,
+  Active clears it), a routine's `usualTime`, a season's `dates` and a
+  goal's `window` (both ends in one body, either null), and `notes` (a
+  goal's `why`), stored trimmed. On the page a goal's Status chip is a menu
+  of its three states, the one it is in checked (a stored state that is none
+  of them checks Set aside, as the web's ended note reads it). A chip that
+  edits (`PageChip.edits`) is a button with the gray chevron that opens its
+  sheet: the usual time on the item sheet's `ClockWheel` ("Usually at", with
+  "Clear time" where one is stored, 9:00 am where none is; "No usual time"
+  on the chip, shown only where it may be set), and a season's Runs (under
+  Dates alone, "Runs" with no dates) or a goal's window ("Target" with
+  none) as two switches, each with a graphical calendar fenced by the other
+  end so the range never inverts, and under Runs the season's own sentence
+  for the draft (`seasonStateNote`). The notes, or the web's "Add a note…" /
+  "Why this matters…" where there are none, open a `TextEditor` sheet with
+  the item sheet's notes rules (cut as typed at what one request carries,
+  `cleanNotes` on Done, too long to send shown and never edited). Every
+  sheet is a Form with Cancel and Done that sends only what moved, and
+  refuses a swipe down once the draft moved (Cancel asks "Discard
+  changes?"). The planner's steps (`setUsualTime`, `setSeasonDates`,
+  `setGoalState`, `setGoalWindow`, `setNotes`) send nothing when the value
+  is what is stored, and go through `editContainer`, behind the page's gate.
+- **O9: Rename… and Icon and color….** Every kind takes `rename` (trimmed,
+  never blank), `icon` (an `icon:<Name>` token, never cleared; a project's
+  is its `emoji`) and `color` (a ramp token, or null for Auto). The
+  page's bar carries a ⋯ menu (the label colour, "More" to VoiceOver) while
+  the page may write either: Rename… is an alert titled for the kind
+  ("Rename project") with the name in its field, Save off while the name
+  cleans to nothing (`cleanTitle`) and, on a project, while another live
+  project's name folds to it (`projectNameClash`, the route's first step; a
+  project changing only its case may save). The route's 409s say why in
+  their own words, naming the name sent: `name_taken`, and `name_in_trash`
+  for an exact name a project in the Trash holds, which the phone can't
+  see. Icon and color… is a sheet: the tile as the draft draws it, the
+  web's 36 featured icons as SF Symbols (`lucideToSymbol`), the picked one
+  ringed only when it is the stored token exactly, then the eight ramp
+  colours by name and Auto, the picked one checked. Nothing is
+  written until Done, which sends the icon and then the colour, each only
+  if it moved. The host presents the alert and the sheet, so they stay up
+  however far the page has scrolled.
+- **A project rename re-files its items (O9).** As the route re-files every
+  item whose `projectId` is the project's (an item filed by name alone, with
+  no id, stays put, on both sides), the planner gives each the new name at
+  once (DsulCore `refiledItems`, `refiling`) and records them in the write's
+  `refiled`, each with its own `Before`, so the write names them and a
+  failed rename puts every member's filing back as it was, case included.
+  PlannerSync's `replaying` re-files too: an item whose own edit failed
+  before a rename that landed is rebased onto the new name, and a landed
+  item edit survives a failed rename's revert. `refiled` is read off the
+  phone's list at enqueue, so an item a queued edit was moving out of the
+  project counts as a member; if that edit then fails and the rename lands,
+  the item goes back to the old name (its Before) though the server re-filed
+  it, until the next good fetch. That is by design, and it heals itself. A
+  landed rename is never proof that a refiled item exists (`refiledSubjects`):
+  the route re-files in one statement and answers 200 whatever it matched,
+  so a capture that never landed is still taken back. If the route's
+  re-file fails after the project's row was renamed, the route puts the old
+  name back before its 500 (best effort), so the refetch shows what the
+  phone's revert shows. The revert's compare sees the
+  goals and the projects move, so a failed goal or project edit says the
+  change was undone. A project's edits ride Organize, as a routine's and a
+  season's do (O8a's `canEdit`), though the web's project page edits with
+  Organize off.
 - **Rules apart from views, O4 on.** The cards and the footer are
   `OrganizeModel.summary` and `.footer`; the pages are `ShelfPageModel`
   (Foundation only, on the shim's list), pinned by `DsulTests/ShelfPageTests`
@@ -1090,11 +1170,17 @@ every decision and the PR plan, is the shared folder's
   `ShelfPageTests`, the container subject (the bodies, the reverts, the
   replay at `sentAt`, the refusal's words, an older server, Resume with
   Organize off) in `PlannerSyncTests`, and the sample's steps and
-  `restoreContainer` in `SamplePlannerTests`.
-- **Waits for later PRs:** the other writes (O8b to O13: the ⋯ menu, the
-  other chips as menus, a goal's Status among them, editable notes, reorder
-  and add), the + menu (O11), and Today's
-  project colours (O15, Kirby's call). Today keeps `ProjectPalette` until
+  `restoreContainer` in `SamplePlannerTests`. O8b's and O9's editors (what
+  each page offers, in what words, the rename clash, the look's intents, the
+  range drafts) are pinned in `OrganizePageTests`; their bodies, the
+  rename's re-file and its reverts, the goal state's replay at `sentAt`, the
+  local clash and the 409s, and the switches in `PlannerSyncTests`; and the
+  sample's edits in `SamplePlannerTests`.
+- **Waits for later PRs:** the other writes (O10 to O13: Delete… in the ⋯
+  menu, a routine's steps reordered and added, a season's routines added and
+  taken out), the + menu (O11), and Today's
+  project colours (O15, Kirby's call). A project's time block stays the
+  web's (the project union has no time action). Today keeps `ProjectPalette` until
   then, so a project's dot on Today and its tile on Organize can differ.
 
 ## CI
@@ -1527,6 +1613,15 @@ functions:
   takes the day, as `resolvePauseWrite` does); the phone refuses such a day
   locally before sending. The route takes the write with Organize off, as
   the web's own Paused and container menu do.
+  From O8b and O9 the same route takes every field a page edits: a goal's
+  `state` (`resolveGoalStateWrite`), `usualTime`, `dates`, `window`,
+  `notes` or `why`, and on every kind `rename`, `icon` and `color`. Every
+  field intent but the two states writes its value again when it already
+  has it, so a retry is harmless. A project rename re-files the project's
+  members by `projectId` after it renames (`renameProject`, every time, so
+  a retry whose first answer was lost still re-files), and a name another
+  live project folds to is 409 `name_taken`, one a trashed project holds
+  exactly `name_in_trash`.
 - **Membership is one row at a time** (`collect`): the route adds or removes
   the one row (lib/db.ts `addContainerMember`, `removeContainerMember`) and
   never takes a list, and the web's own whole-list writes carry the list they
@@ -1582,9 +1677,11 @@ animations.
 ## Not yet
 Week, density (`DensityMetrics`), swipe actions on rows, the zoom transition
 from the bar to the braindump sheet, the rest of Organize (every container
-write but a routine's pause and a season's state, and creating a project,
-routine, season or goal from the phone included: O8b to O15 in the Organize
-design), undo right after a delete (Organize's Trash restores it, O14),
+write but a container's Status, its own fields, its notes, its name and its
+look: deleting a container, a routine's steps and a season's routines from
+their pages, and creating a project, routine, season or goal from the phone
+included, O10 to O15 in the Organize design; a project's time block stays
+the web's), undo right after a delete (Organize's Trash restores it, O14),
 Change type, Duplicate and Copy link, the rest of the sheet
 (a routine's or a season's hold, the goal chip, which goals in the payload
 since O1 make possible, and any word that a repeat took a goal role away (the

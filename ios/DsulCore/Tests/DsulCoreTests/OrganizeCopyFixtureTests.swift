@@ -6,7 +6,9 @@ import DsulCore
 // OrganizeCopy.swift byte for byte: tests/fixtures/organize/copy.json. From
 // O14 the Trash's words too (`whenGone`, `daysUntilPurge`, the row meta, the
 // restore sentences and the phone's refusal words), each case with its `now`
-// pinned; from O8a a refused container write's words (`containerRefusal`).
+// pinned; from O8a a refused container write's words (`containerRefusal`),
+// and from O9 its name refusals, by the name a rename sent, and
+// `nameTakenSentence`.
 // The summary cards' lines are pinned by organize.json (OrganizeFixtureTests).
 
 private struct StateTables: Decodable, Sendable {
@@ -177,8 +179,17 @@ private struct NameInTrashCase: Decodable, Sendable {
 private struct ContainerRefusalCase: Decodable, Sendable {
     let name: String
     let code: String?
+    /// The name the phone's rename sent (O9), or nil for any other write.
+    let sentName: String?
     /// Nil where the phone says what it says for any failed write.
     let expected: String?
+}
+
+private struct NameTakenCase: Decodable, Sendable {
+    let name: String
+    let noun: String
+    let heldName: String
+    let expected: String
 }
 
 private struct CopyFixture: Decodable, Sendable {
@@ -202,6 +213,7 @@ private struct CopyFixture: Decodable, Sendable {
     let restoreSentence: [RestoreSentenceCase]
     let restoreRefusal: [RefusalCase]
     let nameInTrashSentence: [NameInTrashCase]
+    let nameTakenSentence: [NameTakenCase]
     let containerRefusal: [ContainerRefusalCase]
 }
 
@@ -240,7 +252,10 @@ private func table(_ states: [StateLabel]) -> [String: String] {
         #expect(f.restoreSentence.count >= 4)
         #expect(f.restoreRefusal.count >= 5)
         #expect(!f.nameInTrashSentence.isEmpty)
+        #expect(!f.nameTakenSentence.isEmpty)
         #expect(f.containerRefusal.count >= 3)
+        #expect(f.containerRefusal.contains { $0.code == "name_taken" && $0.sentName != nil })
+        #expect(f.containerRefusal.contains { $0.code == "name_in_trash" && $0.sentName != nil })
     }
 
     @Test func theTablesAreTheWebs() throws {
@@ -405,17 +420,29 @@ private func table(_ states: [StateLabel]) -> [String: String] {
         for c in f.nameInTrashSentence {
             #expect(OrganizeCopy.nameInTrashSentence(noun: c.noun, name: c.heldName) == c.expected, "\(c.name)")
         }
+        for c in f.nameTakenSentence {
+            #expect(OrganizeCopy.nameTakenSentence(noun: c.noun, name: c.heldName) == c.expected, "\(c.name)")
+        }
     }
 
-    /// A refused container write's banner (O8a), for every intent the phone
-    /// sends: the code alone decides it today.
+    /// A refused container write's banner (O8a, O9). A case with a
+    /// `sentName` is a rename that sent it (padded too, since the route reads
+    /// the name trimmed); one without is every other write the phone sends,
+    /// which has no name for the name codes to give.
     @Test func theContainerRefusalWordsMatchTheWeb() throws {
         let intents: [ContainerIntent] = [
-            .pause(until: nil, timeZone: nil), .resume(timeZone: nil), .state(.paused),
+            .pause(until: nil, timeZone: nil), .resume(timeZone: nil), .state(.paused), .goalState(.achieved),
+            .usualTime(nil), .dates(startsOn: nil, endsOn: nil), .window(startsOn: nil, targetOn: nil),
+            .notes(nil), .why(nil), .icon("icon:House"), .color(nil),
         ]
         for c in try load().containerRefusal {
-            for intent in intents {
-                #expect(OrganizeCopy.refusal(code: c.code, for: intent) == c.expected, "\(c.name)")
+            if let sent = c.sentName {
+                #expect(OrganizeCopy.refusal(code: c.code, for: .rename(sent)) == c.expected, "\(c.name)")
+                #expect(OrganizeCopy.refusal(code: c.code, for: .rename(" \(sent)\n")) == c.expected, "\(c.name)")
+            } else {
+                for intent in intents {
+                    #expect(OrganizeCopy.refusal(code: c.code, for: intent) == c.expected, "\(c.name)")
+                }
             }
         }
     }
@@ -443,6 +470,7 @@ private func table(_ states: [StateLabel]) -> [String: String] {
         words += f.restoreSentence.map(\.expected)
         words += f.restoreRefusal.map(\.expected)
         words += f.nameInTrashSentence.map(\.expected)
+        words += f.nameTakenSentence.map(\.expected)
         words += f.containerRefusal.compactMap(\.expected)
         for word in words {
             #expect(!word.unicodeScalars.contains("\u{2014}"), "\(word)")

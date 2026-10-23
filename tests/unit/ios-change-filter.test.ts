@@ -159,6 +159,8 @@ describe('the iOS change filter', () => {
       'components/planner/organize/sections/paused.tsx',
       'components/planner/organize/sections/trash.tsx',
       'components/planner/organize/use-trashed-names.ts',
+      // O9's name_taken words moved to lib/organize-copy.ts (nameTakenSentence).
+      'components/planner/organize/sections/labels.tsx',
       // The alternation is anchored: a longer name sharing a prefix is not a port.
       'lib/organize-console.ts',
       'lib/paused-shelf-extra.ts',

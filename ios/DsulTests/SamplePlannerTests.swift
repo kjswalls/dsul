@@ -787,6 +787,121 @@ import Testing
         #expect(planner.routines.first?.itemIds == [])
     }
 
+    // MARK: Container edits (O8b, O9)
+
+    /// The sample takes every O8b field and sends nothing, each on its page
+    /// at once: a routine's usual time set and cleared, a season's Runs, a
+    /// goal's window and Status (achieved twice, it keeps its first stamp;
+    /// Set aside keeps it; Active clears it), the notes and the why.
+    @Test func theSampleEditsEveryContainerFieldWithoutSending() throws {
+        let clock = TestClock(PlannerJSON.noon)
+        let planner = SamplePlanner(todayString: "2026-10-01", now: { clock.now })
+        #expect(planner.sync == nil)
+        let morning = "sample-morning-routine"
+        let goalId = "sample-half-marathon"
+        func routine() -> Routine? { planner.routines.first { $0.id == morning } }
+        func goal() -> Goal? { planner.goals?.first { $0.id == goalId } }
+
+        planner.setUsualTime(morning, "06:45")
+        #expect(routine()?.usualTime == "06:45")
+        guard case .page(let routinePage)? = planner.routinePage(morning) else {
+            Issue.record("the sample's routine has a page")
+            return
+        }
+        #expect(routinePage.chips.first?.text == "Usually 6:45 am")
+        #expect(routinePage.chips.first?.edits == true)
+        planner.setUsualTime(morning, nil)
+        #expect(routine()?.usualTime == nil)
+
+        planner.setSeasonDates("sample-autumn", startsOn: DayString("2026-09-22"), endsOn: DayString("2026-12-20"))
+        #expect(planner.seasons.first?.startsOn == "2026-09-22")
+        #expect(planner.seasons.first?.endsOn == "2026-12-20")
+        guard case .page(let seasonPage)? = planner.seasonPage("sample-autumn") else {
+            Issue.record("the sample's season has a page")
+            return
+        }
+        #expect(seasonPage.chips.last?.text == "Sep 22 to Dec 20")
+        #expect(seasonPage.runs?.end == DayString("2026-12-20"))
+
+        planner.setGoalWindow(goalId, startsOn: nil, targetOn: DayString("2027-04-01"))
+        #expect(goal()?.startsOn == nil)
+        #expect(goal()?.targetOn == "2027-04-01")
+
+        planner.setGoalState(goalId, .achieved)
+        #expect(goal()?.state == "achieved")
+        #expect(goal()?.achievedAt == "2026-10-01T12:00:00.000Z")
+        clock.now = PlannerJSON.noon.addingTimeInterval(60 * 60)
+        planner.setGoalState(goalId, .achieved)
+        #expect(goal()?.achievedAt == "2026-10-01T12:00:00.000Z")
+        guard case .page(let goalPage)? = planner.goalPage(goalId) else {
+            Issue.record("the sample's goal has a page")
+            return
+        }
+        #expect(goalPage.statusMenu?.selected == .goalState(.achieved))
+        #expect(goalPage.chips.first?.text == "Achieved")
+        #expect(goalPage.endedNote?.hasPrefix("Achieved on Oct 1.") == true)
+        planner.setGoalState(goalId, .abandoned)
+        #expect(goal()?.state == "abandoned")
+        #expect(goal()?.achievedAt == "2026-10-01T12:00:00.000Z")
+        planner.setGoalState(goalId, .active)
+        #expect(goal()?.achievedAt == nil)
+
+        planner.setNotes(ContainerRef(kind: .routine, id: morning), "  Kettle first. \n")
+        #expect(routine()?.notes == "Kettle first.")
+        planner.setNotes(ContainerRef(kind: .goal, id: goalId), "")
+        #expect(goal()?.why == nil)
+        #expect(planner.banner == nil)
+    }
+
+    /// Rename re-files a project's items by id at once, so the page and every
+    /// row say the new name; Standup, filed "work" with no id, stays put, as on
+    /// the server, and so leaves the page. A rename onto another project's
+    /// name, folding case, is refused with the route's words and changes
+    /// nothing. A routine renames and takes an icon and Auto; a
+    /// project's icon is its emoji.
+    @Test func theSampleRenamesAndRecoloursWithoutSending() throws {
+        let planner = makePlanner()
+        let work = ContainerRef(kind: .project, id: "sample-work")
+        let filed = planner.items.filter { $0.projectId == "sample-work" }.map(\.id)
+        #expect(filed.count == 3)
+        #expect(planner.canWrite(kind: .project, action: .rename))
+
+        planner.rename(work, to: " Office ")
+        #expect(planner.projectRecords.first?.name == "Office")
+        #expect(filed.allSatisfy { planner.item($0)?.project == "Office" })
+        #expect(!planner.items.contains { $0.project == "Work" })
+        #expect(first(planner, "Standup").project == "work")
+        guard case .page(let page)? = planner.projectPage("sample-work") else {
+            Issue.record("the renamed project keeps its page")
+            return
+        }
+        #expect(page.header.title == "Office")
+        #expect(page.items.count == 3)
+        #expect(page.edits?.rename?.name == "Office")
+
+        planner.rename(work, to: "HEALTH")
+        #expect(planner.banner?.text == "You already have a project called \u{201C}HEALTH\u{201D}.")
+        #expect(planner.projectRecords.first?.name == "Office")
+        #expect(filed.allSatisfy { planner.item($0)?.project == "Office" })
+
+        let morning = ContainerRef(kind: .routine, id: "sample-morning-routine")
+        planner.rename(morning, to: "Mornings")
+        planner.editContainer(morning, .icon("icon:Coffee"))
+        planner.editContainer(morning, .color(nil))
+        let routine = try #require(planner.routines.first)
+        #expect(routine.name == "Mornings")
+        #expect(routine.icon == "icon:Coffee")
+        #expect(routine.color == nil)
+        planner.editContainer(work, .icon("icon:Briefcase"))
+        #expect(planner.projectRecords.first?.emoji == "icon:Briefcase")
+        guard case .page(let routinePage)? = planner.routinePage(morning.id) else {
+            Issue.record("the routine's page")
+            return
+        }
+        #expect(routinePage.header.title == "Mornings")
+        #expect(routinePage.header.symbol == ContainerLook.lucideToSymbol["Coffee"])
+    }
+
     // MARK: Layout and formatting
 
     @Test func layoutsStepAndWrap() {
