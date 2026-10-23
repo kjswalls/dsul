@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, useMemo } from 'react';
-import { Check, Trash2, Minus, Plus, SkipForward, ArrowLeftToLine, Redo2, Undo2, MoreHorizontal,
+import { Trash2, Minus, Plus, SkipForward, ArrowLeftToLine, Redo2, Undo2, MoreHorizontal,
   Flag,
   Repeat,
   Sun,
@@ -45,6 +45,7 @@ import { PrepWorking } from '@/components/ai/ai-work-badge';
 import type { Task, HabitItem, HabitStatus, Item } from '@/lib/planner-types';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { ItemTick, springItemCheck } from '@/components/primitives/item-check';
 
 /**
  * Canonical item row (components/primitives): checkbox + Inter Medium title +
@@ -607,6 +608,8 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
           data-checked={completed ? 'true' : multiPartial ? 'partial' : 'false'}
           onClick={(e) => {
             e.stopPropagation();
+            // Every press toward done springs; the press that clears it doesn't.
+            if (!completed) springItemCheck(e.currentTarget);
             if (isTask) handleTaskToggle();
             else handleHabitToggle();
           }}
@@ -620,22 +623,24 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
                 : 'Mark complete'
           }
           className={cn(
-            'relative z-10 flex h-4 w-4 flex-shrink-0 items-center justify-center overflow-hidden rounded-[5px] border transition-colors',
+            // An inset ring, not a border, so the rising fill reaches the corners
+            // (item-check.tsx).
+            'relative z-10 flex h-4 w-4 flex-shrink-0 items-center justify-center overflow-hidden rounded-[5px] inset-ring transition-[background-color,box-shadow]',
             completed
-              ? 'border-primary bg-primary'
+              ? 'inset-ring-primary bg-primary'
               : multiPartial
-                ? 'border-primary/60 bg-surface-3 hover:border-primary'
-                : 'border-muted-foreground/45 bg-surface-3 hover:border-primary'
+                ? 'inset-ring-primary/60 bg-surface-3 hover:inset-ring-primary'
+                : 'inset-ring-muted-foreground/45 bg-surface-3 hover:inset-ring-primary'
           )}
         >
           {multiPartial && (
             <span
               aria-hidden="true"
-              className="absolute inset-x-0 bottom-0 bg-primary/70 transition-[height] duration-150"
+              className="absolute inset-x-0 bottom-0 bg-primary transition-[height] duration-150"
               style={{ height: `${multiPct}%` }}
             />
           )}
-          {completed && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
+          {completed && <ItemTick />}
         </button>
 
         {/* Title. The suppression reason used to ride a native `title` here;

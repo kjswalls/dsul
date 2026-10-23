@@ -3,7 +3,6 @@
 import type { MouseEvent, ReactNode } from "react";
 import {
   Calendar,
-  Check,
   ChevronDown,
   ChevronRight,
   Clock,
@@ -11,6 +10,7 @@ import {
   Repeat,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ItemTick, springItemCheck } from "@/components/primitives/item-check";
 
 /**
  * The item's details folded to one strip while its conversation has the panel
@@ -133,27 +133,30 @@ export function RailDoneCheck({
       data-checked={done ? "true" : filling ? "partial" : "false"}
       aria-label={label}
       aria-pressed={done}
-      onClick={onToggle}
+      onClick={(e) => {
+        if (!done) springItemCheck(e.currentTarget);
+        onToggle();
+      }}
       className={cn(
-        "relative flex size-4 items-center justify-center overflow-hidden rounded-[5px] border transition-colors",
+        "relative flex size-4 items-center justify-center overflow-hidden rounded-[5px] inset-ring transition-[background-color,box-shadow]",
         "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
         "motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200",
         done
-          ? "border-primary bg-primary"
+          ? "inset-ring-primary bg-primary"
           : filling
-            ? "border-primary/60 bg-surface-3 hover:border-primary"
-            : "border-muted-foreground/45 bg-surface-3 hover:border-primary",
+            ? "inset-ring-primary/60 bg-surface-3 hover:inset-ring-primary"
+            : "inset-ring-muted-foreground/45 bg-surface-3 hover:inset-ring-primary",
         className,
       )}
     >
       {filling && (
         <span
           aria-hidden
-          className="absolute inset-x-0 bottom-0 bg-primary/70 transition-[height] duration-150"
+          className="absolute inset-x-0 bottom-0 bg-primary transition-[height] duration-150"
           style={{ height: `${Math.round(partial * 100)}%` }}
         />
       )}
-      {done && <Check className="size-2.5 text-primary-foreground" aria-hidden />}
+      {done && <ItemTick />}
     </button>
   );
 }

@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { addDays, format, isAfter, startOfDay, startOfWeek, subWeeks } from 'date-fns';
-import { Check, Plus, Split, X } from 'lucide-react';
+import { Plus, Split, X } from 'lucide-react';
 import { AskMark } from '@/components/ai/ask-mark';
 import { Input } from '@/components/ui/input';
 import { usePlannerStore } from '@/lib/planner-store';
@@ -34,6 +34,7 @@ import { EDIT_COPY } from '@/lib/item-edit';
 import { toast } from 'sonner';
 import type { Item, TaskItem } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
+import { ItemTick, springItemCheck } from '@/components/primitives/item-check';
 
 /**
  * The item detail sections — what the dialog never had room for. One component
@@ -184,19 +185,20 @@ function SubtasksSection({ item, offerSetup }: { item: Item; offerSetup: boolean
         <div key={child.id} className="group flex items-center gap-2" data-testid="subtask-row">
           <button
             type="button"
-            onClick={() => toggleTaskStatus(child.id)}
+            onClick={(e) => {
+              if (child.status !== 'completed') springItemCheck(e.currentTarget);
+              toggleTaskStatus(child.id);
+            }}
             aria-label={child.status === 'completed' ? 'Mark not done' : 'Mark done'}
             className={cn(
-              'flex size-4 shrink-0 items-center justify-center rounded-[5px] border transition-colors',
+              'relative flex size-4 shrink-0 items-center justify-center rounded-[5px] inset-ring transition-[background-color,box-shadow]',
               'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
               child.status === 'completed'
-                ? 'border-primary bg-primary'
-                : 'border-muted-foreground/45 hover:border-primary'
+                ? 'inset-ring-primary bg-primary'
+                : 'inset-ring-muted-foreground/45 hover:inset-ring-primary'
             )}
           >
-            {child.status === 'completed' && (
-              <Check className="text-primary-foreground size-3" strokeWidth={3} />
-            )}
+            {child.status === 'completed' && <ItemTick />}
           </button>
           <span
             className={cn(

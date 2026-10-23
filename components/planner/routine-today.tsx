@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import Link from 'next/link';
-import { Check, SkipForward } from 'lucide-react';
+import { SkipForward } from 'lucide-react';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
 import { useToday } from '@/lib/collections';
@@ -10,6 +10,7 @@ import { milestoneItemIds } from '@/lib/goals';
 import { useContainerSchedule } from '@/components/planner/schedule/schedule-views';
 import { useVerbs } from '@/components/planner/organize/member-row-actions';
 import { cn } from '@/lib/utils';
+import { ItemTick, springItemCheck } from '@/components/primitives/item-check';
 import type { OccurrenceState } from '@/lib/container-schedule';
 import type { Item, Routine } from '@/lib/planner-types';
 
@@ -158,17 +159,20 @@ function TodayRowView({
       <button
         type="button"
         disabled={!v.tick}
-        onClick={v.tick?.run}
+        onClick={(e) => {
+          if (state !== 'done') springItemCheck(e.currentTarget);
+          v.tick?.run();
+        }}
         aria-label={v.tick?.label ?? item.title}
         data-testid={`${testId}-tick`}
         className={cn(
-          'flex h-4 w-4 shrink-0 items-center justify-center rounded-[5px] border transition-colors disabled:cursor-default',
+          'relative flex h-4 w-4 shrink-0 items-center justify-center rounded-[5px] inset-ring transition-[background-color,box-shadow] disabled:cursor-default',
           state === 'done'
-            ? 'border-primary bg-primary'
-            : 'border-muted-foreground/45 bg-surface-3 hover:border-primary'
+            ? 'inset-ring-primary bg-primary'
+            : 'inset-ring-muted-foreground/45 bg-surface-3 hover:inset-ring-primary'
         )}
       >
-        {state === 'done' && <Check className="text-primary-foreground h-2.5 w-2.5" />}
+        {state === 'done' && <ItemTick />}
         {state === 'skipped' && <SkipForward className="text-muted-foreground h-2.5 w-2.5" />}
       </button>
       {/* Closes the console on the way out when this renders inside it — the
