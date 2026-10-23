@@ -263,7 +263,10 @@ function PausedRow({
         className="border-border text-muted-foreground hover:text-foreground hover:bg-accent focus-visible:outline-ring flex h-[22px] shrink-0 items-center gap-1 rounded-[5px] border px-2 text-xs disabled:opacity-40 focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-solid"
       >
         <Play className="h-3 w-3" />
-        Resume
+        {/* The word only beside the detail pane. Below md the list is the
+            whole width of a phone sheet, minus the rail, and a worded button
+            there left a title three letters. The label stays in aria-label. */}
+        <span className="hidden md:inline">Resume</span>
       </button>
     </div>
   );

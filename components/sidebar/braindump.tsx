@@ -378,7 +378,7 @@ function PausedKey({ count, arriving, touch }: { count: number; arriving: number
         data-arriving={arriving > 0 ? '' : undefined}
         aria-label={label}
         className={cn(
-          'text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-ring inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-xs focus-visible:outline-1 focus-visible:outline-solid',
+          'text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-ring inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-xs leading-none focus-visible:outline-1 focus-visible:outline-solid',
           touch && 'h-7',
           arriving > 0 && 'bg-accent text-foreground'
         )}

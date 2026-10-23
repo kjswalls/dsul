@@ -42,8 +42,11 @@ export function useBackToday(scopeOverride?: 'day' | 'week') {
     [scope, items, dateStr, tz, routines, seasons, away]
   );
   if (names.length === 0) return null;
-  return { dateStr, names, today: dateStr === todayStr };
+  return { dateStr, names, when: dateStr === todayStr ? 'today' : dateStr > todayStr ? 'ahead' : 'past' } as const;
 }
+
+/** Said from today: the capsule can be walked to a return day either side of it. */
+const BACK_LEAD = { today: 'Back today', ahead: 'Coming back', past: 'Came back' } as const;
 
 /** "Gym", "Gym and Stretch", "Gym, Stretch and Journal", "Gym, Stretch and 3 more". */
 export function backList(names: readonly string[]): string {
@@ -60,11 +63,13 @@ export function BackNotice({ scope, className }: { scope?: 'day' | 'week'; class
       data-testid="back-notice"
       data-date={back.dateStr}
       data-count={back.names.length}
-      className={cn('text-muted-foreground flex min-w-0 items-center gap-1.5 text-xs', className)}
+      className={cn('text-muted-foreground flex min-w-0 items-start gap-1.5 text-xs', className)}
     >
-      <Sunrise className="h-3 w-3 shrink-0" aria-hidden />
-      <span className="min-w-0 truncate" title={back.names.join(', ')}>
-        {back.today ? 'Back today' : 'Back this day'}: {backList(back.names)}
+      <Sunrise className="mt-px h-3 w-3 shrink-0" aria-hidden />
+      {/* Wraps rather than truncating: the names ARE the message, and a popover
+          has the height to spare. */}
+      <span className="min-w-0" title={back.names.join(', ')}>
+        {BACK_LEAD[back.when]}: {backList(back.names)}
       </span>
     </div>
   );

@@ -140,8 +140,10 @@ test.describe('seasons', () => {
       // Baseline first — otherwise "not on the grid" could pass for any reason.
       await expect(itemCardIn(timeline(page), habitId)).toHaveCount(1);
 
+      // Kept: scope.title mints a fresh suffix on every call.
+      const summer = scope.title('Summer');
       await openManager(page, 'seasons');
-      await createContainer(page, 'season', scope.title('Summer'));
+      await createContainer(page, 'season', summer);
       await addItemToOpenContainer(page, 'season', title);
 
       // A new season is born 'auto' with no range, which resolves to
@@ -166,7 +168,7 @@ test.describe('seasons', () => {
       await page.getByTestId('braindump-paused').click();
       const seasonRow = page
         .locator('[data-testid="paused-row"][data-paused-kind="season"]')
-        .filter({ hasText: scope.title('Summer') });
+        .filter({ hasText: summer });
       await expect(seasonRow).toHaveCount(1);
       await seasonRow.getByTestId('paused-select').click();
       await expect(page.getByTestId('paused-member').filter({ hasText: title })).toHaveCount(1);

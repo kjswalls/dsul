@@ -103,7 +103,7 @@ export function DayMessages({
           scope={scope}
           className="hover-wash h-[26px] w-full rounded-[6px] px-2 text-left"
         />
-        <BackNotice scope={scope} className="h-[26px] px-2" />
+        <BackNotice scope={scope} className="min-h-[26px] px-2 py-1.5" />
         <AwayNotice className="h-[26px] px-2" />
       </PopoverContent>
     </Popover>
