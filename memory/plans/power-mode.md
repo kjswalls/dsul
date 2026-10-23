@@ -212,6 +212,16 @@ Mocks: https://claude.ai/artifact/U4NbXhEeMHroAZd6KvMLYS (v5). Built in four PRs
    row while do stuff is on; everywhere only where Break it down is offered (`canBreakDown`),
    so it never shows without AI.
 
+   **Superseded 2026-10-23** (Kirby picked "drafted rows" + "one home" from the first steps
+   design round): the dialog and its `firstSteps` slot are gone. Every door (F, the up-next
+   cards, the item menu, Break it down, a steps or subtasks prep pack's card) opens the item
+   panel, where the AI's steps are drafted rows at the end of Subtasks
+   (components/planner/drafted-steps.tsx): a dashed box, one aurora label with Keep all and
+   Clear, per-row keep (↵) / hand off / drop, words edited in place, and "Redo with a note…"
+   (which replaces the old "Anything I should know first?"). What a gesture did is said on one
+   inline line with its Undo, never a toast. No Done on this surface. A breakdown asked for
+   wins over a pack while it is up; first steps ask for one only when no draft is up.
+
 ## The polish round (Kirby's picks, 2026-10-16)
 
 Mocks in four rounds (the thread "Power mode polish"). Kirby turned down the floating

@@ -19,6 +19,8 @@ import {
   packLabel,
   packIsQuestion,
   packIsStale,
+  packIsSteps,
+  packSteps,
   packQuestions,
   packReading,
   packText,
@@ -30,6 +32,7 @@ import {
 import { UNDO_MS, usePrepPacksStore } from '@/lib/prep-packs-store';
 import { doneNext } from '@/lib/do-stuff';
 import { answerLearnStyle, noteTaken } from '@/lib/learn-style';
+import { openDraftedSteps } from '@/components/sidebar/first-steps';
 import { cn } from '@/lib/utils';
 
 /**
@@ -86,6 +89,24 @@ const lines = (text: string) =>
     .map((l) => l.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, '').trim())
     .filter(Boolean);
 
+/**
+ * Steps on a card: a glance only. They are kept, edited and handed off as
+ * drafted rows in the item's Subtasks (components/planner/drafted-steps.tsx),
+ * which the card's one button opens.
+ */
+function StepsPreview({ steps }: { steps: string[] }) {
+  return (
+    <ul className="flex flex-col gap-1" data-testid="prep-pack-steps">
+      {steps.map((step, i) => (
+        <li key={`${i}-${step}`} className="flex items-start gap-2 text-sm">
+          <span aria-hidden data-drafted-box="" className="mt-0.5 size-4 shrink-0 rounded-[5px] border-[1.5px] border-dashed" />
+          <span className={cn('min-w-0 flex-1 leading-5', i > 0 && 'text-muted-foreground')}>{step}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /** The pack's fields, editable in place. */
 function PackFields({ pack, onChange }: { pack: Pack; onChange: (next: Pack) => void }) {
   switch (pack.kind) {
@@ -140,15 +161,7 @@ function PackFields({ pack, onChange }: { pack: Pack; onChange: (next: Pack) => 
         </>
       );
     case 'steps':
-      return (
-        <Field label="Steps">
-          <Textarea
-            value={pack.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}
-            rows={5}
-            onChange={(e) => onChange({ ...pack, steps: lines(e.target.value) })}
-          />
-        </Field>
-      );
+      return <StepsPreview steps={packSteps(pack)} />;
     case 'question':
       return null;
     case 'options':
@@ -212,15 +225,7 @@ function PackFields({ pack, onChange }: { pack: Pack; onChange: (next: Pack) => 
         </>
       );
     case 'subtasks':
-      return (
-        <Field label="Subtasks, one a line">
-          <Textarea
-            value={pack.subtasks.map((s) => `- ${s}`).join('\n')}
-            rows={Math.min(9, Math.max(3, pack.subtasks.length + 1))}
-            onChange={(e) => onChange({ ...pack, subtasks: lines(e.target.value) })}
-          />
-        </Field>
-      );
+      return <StepsPreview steps={packSteps(pack)} />;
     case 'answer':
       return (
         <Field label="What your AI found">
@@ -640,6 +645,10 @@ export function PackCard({ itemId, title, stored, nav, onClose, swipe, onSettled
   };
   const primary = () => {
     if (pack.kind === 'question') return;
+    if (packIsSteps(pack)) {
+      onClose();
+      return openDraftedSteps(itemId);
+    }
     if (packApplies(pack)) return apply();
     // A web page (a form's link) opens beside dsul; mail and phone links hand off.
     if (href?.startsWith('https:')) window.open(href, '_blank', 'noopener,noreferrer');
@@ -750,7 +759,18 @@ export function PackCard({ itemId, title, stored, nav, onClose, swipe, onSettled
         {'sources' in pack && <Sources sources={pack.sources} />}
       </div>
       <div className="flex items-center gap-1.5 border-t border-border px-3 py-2.5">
-        {pack.kind === 'question' ? null : packApplies(pack) ? (
+        {pack.kind === 'question' ? null : packIsSteps(pack) ? (
+          <Button
+            size="sm"
+            onClick={() => {
+              onClose();
+              openDraftedSteps(itemId);
+            }}
+            data-testid="prep-pack-primary"
+          >
+            Open in the item
+          </Button>
+        ) : packApplies(pack) ? (
           <Button size="sm" onClick={apply} data-testid="prep-pack-primary">
             {packAction(pack)}
           </Button>
@@ -862,7 +882,8 @@ function dismissWithUndo(itemId: string): void {
  */
 export function PackInPanel({ itemId, title }: { itemId: string; title: string }) {
   const stored = usePrepPacksStore((s) => s.packs[itemId]);
-  if (!stored || packIsStale(stored, title)) return null;
+  // Steps are drafted rows in Subtasks, right above (drafted-steps.tsx).
+  if (!stored || packIsStale(stored, title) || packIsSteps(stored.pack)) return null;
   return (
     <section
       data-testid="item-pack"

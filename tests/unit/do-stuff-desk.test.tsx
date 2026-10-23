@@ -67,6 +67,9 @@ vi.mock('@/lib/db', () => ({
 }));
 vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}) }));
 vi.mock('@/lib/supabase', () => ({ createClient: vi.fn(() => ({})) }));
+// First steps open the item (their one home); the desk keeps the focus here.
+const showItemSteps = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/open-chat', async (orig) => ({ ...(await orig<typeof import('@/lib/open-chat')>()), showItemSteps }));
 // The item's notes (082), read by the desk's conversation; none unless a test says so.
 const notesRead = vi.hoisted(() => ({ rows: [] as unknown[] }));
 vi.mock('@/lib/item-notes', async (importOriginal) => ({
@@ -262,8 +265,7 @@ describe('the desk', () => {
       act(() => {
         fireEvent.keyDown(pane, { key: 'f' });
       });
-      expect(useDoStuffStore.getState().firstSteps).toBe(second);
-      act(() => useDoStuffStore.setState({ firstSteps: null }));
+      expect(showItemSteps).toHaveBeenLastCalledWith(expect.objectContaining({ id: second }), { ask: true });
       // S: skip, and the next item takes the desk.
       expect(screen.getByTestId('do-stuff-desk-skip').getAttribute('aria-keyshortcuts')).toBe('S');
       act(() => {

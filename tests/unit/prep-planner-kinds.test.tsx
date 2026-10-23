@@ -6,6 +6,8 @@ import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 vi.mock('@/lib/db', () => ({ updateItem: vi.fn(async () => {}) }));
 vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}) }));
 vi.mock('@/lib/supabase', () => ({ createClient: vi.fn(() => ({})) }));
+const openDraftedSteps = vi.hoisted(() => vi.fn());
+vi.mock('@/components/sidebar/first-steps', () => ({ openDraftedSteps }));
 
 import { PackCard } from '@/components/sidebar/prep-pack';
 import { usePlannerStore } from '@/lib/planner-store';
@@ -80,18 +82,16 @@ function mount(pack: PrepPack['pack'], over: Record<string, unknown> = {}) {
 }
 
 describe('one tap', () => {
-  it('adds the subtasks, as edited, under the item, and the pack goes', () => {
-    const { addTasksBulk, fetchMock } = mount({ kind: 'subtasks', subtasks: ['Book a van', 'Get boxes'] });
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: '- Book a van\n- Get boxes\n- Tell the landlord' } });
+  it('shows subtasks as a glance, and opens them in the item rather than adding them', () => {
+    const { addTasksBulk } = mount({ kind: 'subtasks', subtasks: ['Book a van', 'Get boxes'] });
+    // Steps are drafted rows in the item's Subtasks now (drafted-steps.tsx): no textarea here.
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(screen.getByTestId('prep-pack-steps').textContent).toContain('Book a van');
+    expect(screen.getByTestId('prep-pack-primary').textContent).toBe('Open in the item');
     fireEvent.click(screen.getByTestId('prep-pack-primary'));
-    expect(addTasksBulk).toHaveBeenCalledWith('task', [
-      { title: 'Book a van', parentItemId: 'a' },
-      { title: 'Get boxes', parentItemId: 'a' },
-      { title: 'Tell the landlord', parentItemId: 'a' },
-    ]);
-    expect(usePrepPacksStore.getState().packs.a).toBeUndefined();
-    const calls = fetchMock.mock.calls as unknown as [string, RequestInit?][];
-    expect(calls.some(([url, init]) => url.startsWith('/api/ai/prep?item=a') && init?.method === 'DELETE')).toBe(true);
+    expect(openDraftedSteps).toHaveBeenCalledWith('a');
+    expect(addTasksBulk).not.toHaveBeenCalled();
+    expect(usePrepPacksStore.getState().packs.a).toBeDefined();
   });
 
   it('keeps the answer and its sources in the notes', () => {

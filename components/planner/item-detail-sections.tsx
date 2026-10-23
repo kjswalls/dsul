@@ -19,7 +19,7 @@ import { openSetup } from '@/lib/open-chat';
 import { NUDGE_BREAK_IT_DOWN_OFFER } from '@/lib/nudges/registry';
 import { useOneTimeNudge } from '@/hooks/use-one-time-nudge';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { ProposalCard } from '@/components/ai/proposal-card';
+import { DraftedSteps, useStepDraftsShowing } from '@/components/planner/drafted-steps';
 import { ItemConversation } from '@/components/ai/item-conversation';
 import { ItemFilesSection } from '@/components/planner/item-files';
 import { ItemTimeline } from '@/components/planner/item-timeline';
@@ -120,6 +120,8 @@ function SubtasksSection({ item, offerSetup }: { item: Item; offerSetup: boolean
    * all this panel renders).
    */
   const breakable = canBreakDown(item, canPropose);
+  // Drafts on screen (or coming) are the answer already: Redo lives under them.
+  const drafts = useStepDraftsShowing(item.id, item.title);
 
   /**
    * The same moment before any AI is set up: while the gate invites, the
@@ -139,7 +141,7 @@ function SubtasksSection({ item, offerSetup }: { item: Item; offerSetup: boolean
         <SectionLabel>
           Subtasks{children.length > 0 ? ` · ${done} of ${children.length}` : ''}
         </SectionLabel>
-        {breakable && (
+        {breakable && !drafts && (
           <button
             onClick={() => requestProposal('breakdown', undefined, item.id)}
             disabled={proposalBusy}
@@ -178,7 +180,6 @@ function SubtasksSection({ item, offerSetup }: { item: Item; offerSetup: boolean
         )}
       </div>
 
-      <ProposalCard surface={`item:${item.id}`} className="mb-0.5" />
       {children.map((child) => (
         <div key={child.id} className="group flex items-center gap-2" data-testid="subtask-row">
           <button
@@ -215,6 +216,8 @@ function SubtasksSection({ item, offerSetup }: { item: Item; offerSetup: boolean
           </button>
         </div>
       ))}
+      {/* What the AI drafted: rows not kept yet, after the kept ones. */}
+      <DraftedSteps item={item} />
       <div className="flex items-center gap-2">
         <Plus className="text-muted-foreground size-4 shrink-0" />
         <input

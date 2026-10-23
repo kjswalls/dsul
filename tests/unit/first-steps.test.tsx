@@ -18,9 +18,10 @@ beforeAll(() => {
 });
 
 /**
- * First steps (memory/plans/power-mode.md, round 5, S1): one question, then
- * a few steps from Break it down's path with step 1 lit, and "do it for me"
- * on both screens; a single step can be handed off on its own.
+ * First steps with one home (Kirby's pick, 2026-10-23): opening them opens
+ * the item, and the AI's steps are drafted rows in its Subtasks
+ * (components/planner/drafted-steps.tsx), kept, edited, handed off or dropped
+ * there, with an inline Undo instead of a toast.
  */
 
 vi.mock('@/lib/db', () => ({
@@ -57,11 +58,14 @@ vi.mock('@/lib/db', () => ({
 }));
 vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}) }));
 vi.mock('@/lib/supabase', () => ({ createClient: vi.fn(() => ({})) }));
+const showItemSteps = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/open-chat', () => ({ showItemSteps }));
 
-import { FirstSteps, openFirstSteps } from '@/components/sidebar/first-steps';
+import { openFirstSteps } from '@/components/sidebar/first-steps';
+import { DraftedSteps } from '@/components/planner/drafted-steps';
 import { usePlannerStore } from '@/lib/planner-store';
-import { useDoStuffStore } from '@/lib/do-stuff';
 import { useProposalStore } from '@/lib/proposal-store';
+import { usePrepPacksStore } from '@/lib/prep-packs-store';
 import { useAgentsStore } from '@/lib/agents-store';
 import type { Item, Proposal } from '@/lib/planner-types';
 import { seedAI, CONNECTED_MODEL, NOTHING_CONNECTED, type SeedAI } from './helpers/ai-fixtures';
@@ -81,7 +85,7 @@ const BIG = task('big', { title: 'sort out taxes' });
 
 function seedItems(items: Item[]) {
   usePlannerStore.setState({
-    userId: 'user-1',
+    userId: null,
     isLoading: false,
     error: null,
     userTimezone: 'UTC',
@@ -102,28 +106,34 @@ const seed = (o?: SeedAI) => {
 };
 
 const STEPS: Proposal = {
+  id: 'p1',
   summary: 'Three steps',
   operations: [
-    { kind: 'create', itemType: 'task', title: 'find last year\'s return', parentItemId: 'big' },
+    { kind: 'create', itemType: 'task', title: "find last year's return", parentItemId: 'big' },
     { kind: 'create', itemType: 'task', title: 'gather the W-2s', parentItemId: 'big' },
     { kind: 'create', itemType: 'task', title: 'book the accountant', parentItemId: 'big' },
   ],
 } as unknown as Proposal;
 
 const request = vi.fn(async () => {});
+const dismiss = vi.fn(() => useProposalStore.setState({ status: 'idle', proposal: null, lastRequest: null } as never));
 
 beforeEach(() => {
   seed(CONNECTED_MODEL);
   seedItems([BIG]);
-  useDoStuffStore.setState({ firstSteps: null });
   useAgentsStore.setState({ agents: [{ assignee: 'Claude', name: 'Claude', kind: 'app' }] as never, loaded: true });
   request.mockClear();
-  useProposalStore.setState({ status: 'idle', proposal: null, error: null, lastRequest: null, request } as never);
+  dismiss.mockClear();
+  showItemSteps.mockClear();
+  useProposalStore.setState({ status: 'idle', proposal: null, error: null, lastRequest: null, request, dismiss } as never);
+  usePrepPacksStore.setState({ packs: {}, available: true, preparing: {}, tried: {} });
+  vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200 })));
 });
 afterEach(() => {
   cleanup();
   unseed();
   unseed = () => {};
+  vi.unstubAllGlobals();
 });
 
 /** What the store looks like once the steps have come back for BIG. */
@@ -136,101 +146,126 @@ const stepsArrive = () =>
     } as never);
   });
 
+const kids = () =>
+  usePlannerStore
+    .getState()
+    .items.filter((i) => (i as { parentItemId?: string }).parentItemId === 'big') as (Item & { assignee?: string })[];
+const rows = () => screen.getAllByTestId('drafted-step');
+const titles = () => rows().map((r) => (r.querySelector('input') as HTMLInputElement).value);
+
 describe('first steps', () => {
-  it('opens only where the AI can break the item down', () => {
+  it('opens only where the AI can break the item down, and opens the item', () => {
     seed(NOTHING_CONNECTED);
     expect(openFirstSteps('big')).toBe(false);
-    expect(useDoStuffStore.getState().firstSteps).toBeNull();
+    expect(showItemSteps).not.toHaveBeenCalled();
     seed(CONNECTED_MODEL);
     expect(openFirstSteps('big')).toBe(true);
-    expect(useDoStuffStore.getState().firstSteps).toBe('big');
+    expect(showItemSteps).toHaveBeenCalledWith(expect.objectContaining({ id: 'big' }), { ask: true });
   });
 
-  it('asks one thing first, and sends the answer with Break it down', () => {
-    render(<FirstSteps />);
-    act(() => void openFirstSteps('big'));
-    expect(screen.getByText('Anything I should know first?')).toBeTruthy();
-    fireEvent.change(screen.getByTestId('first-steps-answer'), { target: { value: 'the accountant is booked up' } });
-    fireEvent.keyDown(screen.getByTestId('first-steps-answer'), { key: 'Enter' });
+  it('asks for nothing when a steps pack is already drafted', () => {
+    usePrepPacksStore.setState({
+      packs: {
+        big: { itemId: 'big', madeFor: 'sort out taxes', updatedAt: 't1', pack: { kind: 'steps', steps: ['a', 'b'] } },
+      },
+    });
+    expect(openFirstSteps('big')).toBe(true);
+    expect(showItemSteps).toHaveBeenCalledWith(expect.anything(), { ask: false });
+  });
+});
+
+describe('drafted steps', () => {
+  it('shows a breakdown as rows, step 1 lit, and keeps them all as subtasks', () => {
+    render(<DraftedSteps item={BIG} />);
+    stepsArrive();
+    expect(titles()).toEqual(["find last year's return", 'gather the W-2s', 'book the accountant']);
+    expect(rows()[0].getAttribute('data-first')).toBe('true');
+    expect(rows()[1].getAttribute('data-first')).toBeNull();
+    fireEvent.click(screen.getByTestId('drafted-steps-keep-all'));
+    expect(kids().map((k) => k.title)).toEqual(["find last year's return", 'gather the W-2s', 'book the accountant']);
+    expect(screen.queryAllByTestId('drafted-step')).toHaveLength(0);
+    expect(screen.getByTestId('drafted-steps-note').textContent).toContain('3 subtasks added');
+    expect(dismiss).toHaveBeenCalled();
+  });
+
+  it('undoes Keep all from the inline line, taking the subtasks back', () => {
+    render(<DraftedSteps item={BIG} />);
+    stepsArrive();
+    fireEvent.click(screen.getByTestId('drafted-steps-keep-all'));
+    fireEvent.click(screen.getByTestId('drafted-steps-undo'));
+    expect(kids()).toHaveLength(0);
+    expect(titles()).toHaveLength(3);
+  });
+
+  it('keeps one row, as edited, on Enter', () => {
+    render(<DraftedSteps item={BIG} />);
+    stepsArrive();
+    const input = rows()[1].querySelector('input')!;
+    fireEvent.change(input, { target: { value: 'gather the W-2s and 1099s' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(kids().map((k) => k.title)).toEqual(['gather the W-2s and 1099s']);
+    expect(titles()).toEqual(["find last year's return", 'book the accountant']);
+  });
+
+  it('drops a row, and Undo puts it back', () => {
+    render(<DraftedSteps item={BIG} />);
+    stepsArrive();
+    fireEvent.click(screen.getAllByTestId('drafted-step-drop')[0]);
+    expect(titles()).toEqual(['gather the W-2s', 'book the accountant']);
+    fireEvent.click(screen.getByTestId('drafted-steps-undo'));
+    expect(titles()).toHaveLength(3);
+    expect(kids()).toHaveLength(0);
+  });
+
+  it('hands one step off on its own', () => {
+    render(<DraftedSteps item={BIG} />);
+    stepsArrive();
+    fireEvent.click(screen.getAllByTestId('drafted-step-hand-off')[1]);
+    expect(kids()).toEqual([expect.objectContaining({ title: 'gather the W-2s', assignee: 'Claude' })]);
+    expect(usePlannerStore.getState().items.find((i) => i.id === 'big')).not.toHaveProperty('assignee', 'Claude');
+  });
+
+  it('offers no hand-off when there is no one to hand to', () => {
+    useAgentsStore.setState({ agents: [], loaded: true });
+    render(<DraftedSteps item={BIG} />);
+    stepsArrive();
+    expect(screen.queryByTestId('drafted-step-hand-off')).toBeNull();
+  });
+
+  it('draws a steps pack the same way, and Clear can be undone', () => {
+    usePrepPacksStore.setState({
+      packs: {
+        big: { itemId: 'big', madeFor: 'sort out taxes', updatedAt: 't1', pack: { kind: 'subtasks', subtasks: ['one', 'two'] } },
+      },
+    });
+    render(<DraftedSteps item={BIG} />);
+    expect(titles()).toEqual(['one', 'two']);
+    fireEvent.click(screen.getByTestId('drafted-steps-clear'));
+    expect(screen.queryAllByTestId('drafted-step')).toHaveLength(0);
+    expect(usePrepPacksStore.getState().packs.big).toBeUndefined();
+    fireEvent.click(screen.getByTestId('drafted-steps-undo'));
+    expect(titles()).toEqual(['one', 'two']);
+    expect(usePrepPacksStore.getState().packs.big).toBeDefined();
+  });
+
+  it('asks again with a note', () => {
+    render(<DraftedSteps item={BIG} />);
+    stepsArrive();
+    fireEvent.click(screen.getByTestId('drafted-steps-redo'));
+    const note = screen.getByTestId('drafted-steps-redo-note');
+    fireEvent.change(note, { target: { value: 'the accountant is booked up' } });
+    fireEvent.submit(note.closest('form')!);
     expect(request).toHaveBeenCalledWith(
       'breakdown',
       'Break this into a few concrete steps. Something to know first: the accountant is booked up',
       'big'
     );
-    expect(screen.getByTestId('first-steps-steps')).toBeTruthy();
   });
 
-  it('asks plainly when there is nothing to know', () => {
-    render(<FirstSteps />);
-    act(() => void openFirstSteps('big'));
-    fireEvent.click(screen.getByTestId('first-steps-get'));
-    expect(request).toHaveBeenCalledWith('breakdown', undefined, 'big');
-  });
-
-  it('shows the steps with step 1 lit, and saves them as subtasks', () => {
-    const accept = vi.fn(() => 3);
-    useProposalStore.setState({ accept } as never);
-    render(<FirstSteps />);
-    act(() => void openFirstSteps('big'));
-    fireEvent.click(screen.getByTestId('first-steps-get'));
+  it('drops a breakdown it owns when the panel closes', () => {
+    const { unmount } = render(<DraftedSteps item={BIG} />);
     stepsArrive();
-    const steps = screen.getAllByTestId('first-steps-step');
-    expect(steps.map((s) => s.textContent)).toEqual([
-      expect.stringContaining("find last year's return"),
-      expect.stringContaining('gather the W-2s'),
-      expect.stringContaining('book the accountant'),
-    ]);
-    expect(steps[0].getAttribute('data-first')).toBe('true');
-    expect(steps[1].getAttribute('data-first')).toBeNull();
-    fireEvent.click(screen.getByTestId('first-steps-save'));
-    expect(accept).toHaveBeenCalledTimes(1);
-    expect(useDoStuffStore.getState().firstSteps).toBeNull();
-  });
-
-  it('hands the whole item off from either screen', () => {
-    render(<FirstSteps />);
-    act(() => void openFirstSteps('big'));
-    fireEvent.click(screen.getByTestId('first-steps-do-it-for-me'));
-    expect(usePlannerStore.getState().items.find((i) => i.id === 'big')).toMatchObject({ assignee: 'Claude' });
-    expect(useDoStuffStore.getState().firstSteps).toBeNull();
-  });
-
-  it('hands one step off on its own, after saving the steps', () => {
-    // The real accept adds the subtasks; this one does it by hand.
-    const accept = vi.fn(() => {
-      const kids = STEPS.operations.map((op, i) =>
-        task(`k${i}`, { title: (op as { title: string }).title, parentItemId: 'big' })
-      );
-      seedItems([BIG, ...kids]);
-      return kids.length;
-    });
-    useProposalStore.setState({ accept } as never);
-    render(<FirstSteps />);
-    act(() => void openFirstSteps('big'));
-    fireEvent.click(screen.getByTestId('first-steps-get'));
-    stepsArrive();
-    fireEvent.click(screen.getAllByTestId('first-steps-hand-off-step')[1]);
-    const byId = new Map(usePlannerStore.getState().items.map((i) => [i.id, i as Record<string, unknown>]));
-    expect(byId.get('k1')?.assignee).toBe('Claude');
-    expect(byId.get('k0')?.assignee).toBeFalsy();
-    expect(byId.get('big')?.assignee).toBeFalsy();
-  });
-
-  it('drops its steps when closed without saving, so the item panel never shows them', () => {
-    const dismiss = vi.fn();
-    useProposalStore.setState({ dismiss } as never);
-    render(<FirstSteps />);
-    act(() => void openFirstSteps('big'));
-    fireEvent.click(screen.getByTestId('first-steps-get'));
-    stepsArrive();
-    act(() => useDoStuffStore.setState({ firstSteps: null }));
+    unmount();
     expect(dismiss).toHaveBeenCalledTimes(1);
-  });
-
-  it('offers no hand-off when there is no one to hand to', () => {
-    useAgentsStore.setState({ agents: [], loaded: true });
-    render(<FirstSteps />);
-    act(() => void openFirstSteps('big'));
-    expect(screen.queryByTestId('first-steps-do-it-for-me')).toBeNull();
   });
 });
