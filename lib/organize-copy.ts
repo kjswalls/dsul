@@ -426,3 +426,25 @@ export function restoreRefusal(code: string | undefined, name: string): string {
   if (code === 'not_found') return RESTORE_GONE;
   return RESTORE_FAILED;
 }
+
+/* ── container writes (the iPhone's POST /api/app/containers/:kind/:id) ── */
+
+/**
+ * The iPhone's words for a routine's Pause until refused with 409
+ * `pause_refused`: the day picked is no longer after today (a picker left
+ * open across midnight), so nothing was paused. The item sheet says the same
+ * for an item's pause. The web's store refuses the same request before it
+ * writes, and says nothing.
+ */
+export const PAUSE_REFUSED = 'That day is no longer after today, so nothing was paused.';
+
+/**
+ * The iPhone's words for a refused container write (lib/app-containers.ts):
+ * `pause_refused` is {@link PAUSE_REFUSED}. Null for a code with no words of
+ * its own (a 404, a 500, no answer at all), which the phone words as any
+ * failed write. Later parts add their codes here.
+ */
+export function containerRefusal(code: string | undefined): string | null {
+  if (code === 'pause_refused') return PAUSE_REFUSED;
+  return null;
+}

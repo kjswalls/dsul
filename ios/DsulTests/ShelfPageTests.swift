@@ -52,13 +52,15 @@ import Testing
     }
 
     private func snapshot(organize: Bool = true, goalsOn: Bool = true, items: [Item] = [],
-                          routines: [Routine] = [], goals: [Goal]? = nil, itemTypes: [ItemTypeLabel]? = [],
-                          trash: Bool = false) -> OrganizeSnapshot {
+                          routines: [Routine] = [], seasons: [Season] = [], goals: [Goal]? = nil,
+                          itemTypes: [ItemTypeLabel]? = [], trash: Bool = false,
+                          takes: ContainerWrites = ContainerWrites()) -> OrganizeSnapshot {
         let labels = Dictionary((itemTypes ?? []).map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
         return OrganizeSnapshot(settings: PlannerSettings(weekStartDay: .monday, organizeEnabled: organize,
                                                           goalsEnabled: goalsOn),
-                                today: today, timeZone: zone, items: items, routines: routines, goals: goals,
-                                typeLabels: labels, itemTypes: itemTypes, trashOffered: trash)
+                                today: today, timeZone: zone, items: items, routines: routines, seasons: seasons,
+                                goals: goals, typeLabels: labels, itemTypes: itemTypes, trashOffered: trash,
+                                containerTakes: takes)
     }
 
     private var shelfSnapshot: OrganizeSnapshot {
@@ -210,16 +212,54 @@ import Testing
         #expect(!bank.resumable)
     }
 
-    @Test func aRoutineRowPushesItsDetailAndHasNoResumeYet() throws {
+    @Test func aRoutineRowPushesItsDetailAndResumesWhereTheServerTakesIt() throws {
         let page = ShelfPageModel.pausedPage(shelfSnapshot) { _ in true }
         let row = try #require(page.groups.dropFirst().first?.rows.first)
         #expect(row.key == "routine:r-evening")
         #expect(row.itemId == nil)
+        #expect(row.container == ContainerRef(kind: .routine, id: "r-evening"))
         #expect(row.route == .pausedEntry("routine:r-evening"))
-        // A container resumes from O8a; until then the gate is never asked.
+        // A server that doesn't list the routine's `pause` (an older one)
+        // gets no Resume; the item gate is never asked for a container.
         #expect(!row.resumable)
         #expect(row.mark == .container(symbol: containerSymbol(glyph: "icon:Moon", name: "Evening", kind: .routine),
                                        accent: containerAccent("var(--accent-4)", name: "Evening")))
+
+        // One that does gets Resume (O8a), with Organize off too: Paused is
+        // the way back the web keeps whatever the switches say.
+        for organize in [true, false] {
+            let s = snapshot(organize: organize, items: shelfItems, routines: [evening], itemTypes: [bookType],
+                             takes: OrganizeModel.everyContainerWrite)
+            let taken = ShelfPageModel.pausedPage(s) { _ in false }
+            let resumable = try #require(taken.groups.dropFirst().first?.rows.first)
+            #expect(resumable.resumable)
+            #expect(resumable.resumeLabel == "Resume Evening")
+        }
+        // Only the write that turns it on counts: a list naming a season's
+        // `state` alone doesn't resume a routine.
+        let seasonOnly = snapshot(items: shelfItems, routines: [evening], itemTypes: [bookType],
+                                  takes: ContainerWrites(season: ["state"]))
+        let none = try #require(ShelfPageModel.pausedPage(seasonOnly) { _ in true }.groups.dropFirst().first?.rows.first)
+        #expect(!none.resumable)
+    }
+
+    /// A season switched off sits on the shelf with Turn on now, which turns
+    /// it on the web's way (`setGateOn`), whatever the switches say.
+    @Test func aSeasonOffTheShelfTurnsOnNow() throws {
+        let winter = Season(id: "s-winter", name: "Winter", state: "paused", itemIds: [uid(6)])
+        let s = snapshot(organize: false, items: shelfItems, seasons: [winter],
+                         takes: OrganizeModel.everyContainerWrite)
+        let page = ShelfPageModel.pausedPage(s) { _ in false }
+        let row = try #require(page.groups.flatMap(\.rows).first { $0.key == "season:s-winter" })
+        #expect(row.container == ContainerRef(kind: .season, id: "s-winter"))
+        #expect(row.resumable)
+        guard case .page(let detail)? = ShelfPageModel.pausedEntryPage("season:s-winter", s) else {
+            Issue.record("a season off is a page on the shelf")
+            return
+        }
+        #expect(detail.resume == PausedEntryPage.Resume(title: "Turn on now",
+                                                         ref: ContainerRef(kind: .season, id: "s-winter")))
+        #expect(detail.openIn == nil)
     }
 
     @Test func nothingPausedSaysSo() {
@@ -244,6 +284,8 @@ import Testing
         #expect(page.members.allSatisfy { !$0.tickable })
         #expect(page.openIn == PausedEntryPage.OpenIn(title: "Open in Routines",
                                                       route: .container(.routine, id: "r-evening")))
+        // No Resume now from a server that doesn't take the routine's pause.
+        #expect(page.resume == nil)
 
         // With Organize off the detail stays, but not the way to the page
         // Organize off would blank.
@@ -255,6 +297,16 @@ import Testing
         }
         #expect(offPage.openIn == nil)
         #expect(offPage.members.count == 2)
+
+        // Resume now, with Organize off too, once the server takes it.
+        var taken = off
+        taken.containerTakes = OrganizeModel.everyContainerWrite
+        guard case .page(let takenPage)? = ShelfPageModel.pausedEntryPage("routine:r-evening", taken) else {
+            Issue.record("Paused rides no switch")
+            return
+        }
+        #expect(takenPage.resume == PausedEntryPage.Resume(title: "Resume now",
+                                                            ref: ContainerRef(kind: .routine, id: "r-evening")))
     }
 
     @Test func aDetailOffTheShelfIsGone() {

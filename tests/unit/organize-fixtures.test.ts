@@ -53,6 +53,14 @@ import {
   returnDayLabel,
 } from '@/lib/paused-shelf';
 import { blockWhen, hasTimeBlock, timeBlockSummary } from '@/lib/project-block';
+import { seasonStateForSwitch } from '@/lib/scope-rail';
+import { toDateStr } from '@/lib/recurrence';
+import {
+  RoutineWriteSchema,
+  SeasonWriteSchema,
+  containerIntentPatch,
+  type ContainerIntentTarget,
+} from '@/lib/app-containers';
 import {
   GOALS_OFF,
   GOAL_STATE_LABELS,
@@ -64,6 +72,7 @@ import {
   NOTHING_IN_TRASH,
   NOTHING_ON_THIS_WEEK,
   ORGANIZE_OFF,
+  PAUSE_REFUSED,
   RESTORE_FAILED,
   RESTORE_GONE,
   ROUTINE_STATE_LABELS,
@@ -75,6 +84,7 @@ import {
   TRASH_TEACHING,
   TRASH_WINDOW_DAYS,
   checkinMeta,
+  containerRefusal,
   daysUntilPurge,
   goalEndedNote,
   heldByState,
@@ -131,8 +141,13 @@ import type { Goal, HabitItem, Item, ItemTypeDef, Project, Routine, Season, Task
  * in copy.json, the Trash's words included). The summary cards add the week's
  * count and the next milestone across goals (lib/organize.ts, organize.json),
  * and the Paused page what is set aside, grouped by the day it comes back
- * (lib/paused-shelf.ts, paused.json). Every case is
- * built here, run through the real TS, and written with its answer to
+ * (lib/paused-shelf.ts, paused.json). The writes add what a binary switch
+ * stores for a season (lib/scope-rail.ts seasonStateForSwitch, in
+ * standing.json), and what each field intent the container route takes does
+ * to a container (lib/app-containers.ts containerIntentPatch,
+ * container-writes.json, which app-containers.test.ts also runs through the
+ * route), with the phone's words for a refused one in copy.json. Every case
+ * is built here, run through the real TS, and written with its answer to
  * tests/fixtures/organize/*.json; DsulCore's fixture tests read the same files
  * and assert the Swift port answers identically.
  *
@@ -512,9 +527,37 @@ function buildStanding() {
   ];
   const seasonResumeDateCases = resumeCases.map((c) => ({ ...c, expected: seasonResumeDate(c.season, c.date) ?? null }));
 
+  // The state a binary switch writes (lib/scope-rail.ts): Paused's "Turn on
+  // now" on the phone, setGateOn on the web. Dates that already agree with the
+  // switch give `auto`, so the season keeps following them; otherwise the
+  // manual state. Never the Status menu's rule, which sends what was picked.
+  const switchAsks: { name: string; season: Season; on: boolean; date: string }[] = [
+    { name: 'on, dates cover today: auto, still dated', season: ON_RANGE, on: true, date: TODAY },
+    { name: 'off, dates cover today: paused', season: ON_RANGE, on: false, date: TODAY },
+    { name: 'on, starts later: active', season: OFF_LATER, on: true, date: TODAY },
+    { name: 'off, starts later: auto, the dates already say off', season: OFF_LATER, on: false, date: TODAY },
+    { name: 'on, ended: active', season: OFF_ENDED, on: true, date: TODAY },
+    { name: 'off, ended: auto', season: OFF_ENDED, on: false, date: TODAY },
+    { name: 'on, inverted range: active', season: OFF_INVERTED, on: true, date: TODAY },
+    { name: 'off, inverted range: auto', season: OFF_INVERTED, on: false, date: TODAY },
+    { name: 'on, switched off with dates covering today: auto', season: { ...ON_RANGE, state: 'paused' }, on: true, date: TODAY },
+    { name: 'on, switched off with a later start: active', season: { ...OFF_LATER, state: 'paused' }, on: true, date: TODAY },
+    { name: 'on, switched off with no dates: auto', season: OFF_PAUSED, on: true, date: TODAY },
+    { name: 'off, pinned on with no dates: paused', season: season('s-pin', 'Pin', 'active'), on: false, date: TODAY },
+    { name: 'off, pinned on with a later start: auto', season: ON_PINNED, on: false, date: TODAY },
+    { name: 'on, its first day: auto', season: OFF_LATER, on: true, date: '2026-11-01' },
+    { name: 'on, its last day: auto', season: ON_RANGE, on: true, date: '2026-11-30' },
+    { name: 'on, the day after its last: active', season: ON_RANGE, on: true, date: '2026-12-01' },
+  ];
+  const seasonStateForSwitchCases = switchAsks.map((c) => ({
+    ...c,
+    expected: seasonStateForSwitch(c.season, c.on, c.date),
+  }));
+
   return {
     routineStandingOn: routineStandingOnCases,
     seasonResumeDate: seasonResumeDateCases,
+    seasonStateForSwitch: seasonStateForSwitchCases,
     ...buildSuppression(),
   };
 }
@@ -1749,6 +1792,16 @@ function buildCopy() {
   ];
   const restoreRefusalCases = refusalAsks.map((c) => ({ ...c, expected: restoreRefusal(c.code ?? undefined, c.projectName) }));
 
+  // A container write's refusal (POST /api/app/containers/:kind/:id, from
+  // O8a): words for the codes that have them, null where the phone says what
+  // it says for any failed write.
+  const containerRefusalCases = [
+    { name: 'a pause until a day no longer after today', code: 'pause_refused' },
+    { name: 'gone, or never the caller’s', code: 'not_found' },
+    { name: 'a body the route refuses', code: 'invalid' },
+    { name: 'no answer at all', code: null },
+  ].map((c) => ({ ...c, expected: containerRefusal(c.code ?? undefined) }));
+
   const nameInTrashCases = [
     { name: 'a project', noun: 'project', heldName: 'Admin' },
     { name: 'a routine', noun: 'routine', heldName: 'Morning' },
@@ -1771,6 +1824,7 @@ function buildCopy() {
       trashLoadFailed: TRASH_LOAD_FAILED,
       restoreFailed: RESTORE_FAILED,
       restoreGone: RESTORE_GONE,
+      pauseRefused: PAUSE_REFUSED,
     },
     heldWorld: { items: HELD_ITEMS },
     switchedOff: switchedOffCases,
@@ -1791,6 +1845,7 @@ function buildCopy() {
     restoreSentence: restoreSentenceCases,
     restoreRefusal: restoreRefusalCases,
     nameInTrashSentence: nameInTrashCases,
+    containerRefusal: containerRefusalCases,
   };
 }
 
@@ -2151,6 +2206,271 @@ function buildPaused() {
   };
 }
 
+// ── container-writes.json: what a field intent does (lib/app-containers.ts) ─
+
+/*
+ * POST /api/app/containers/:kind/:id decides its write with
+ * containerIntentPatch on the container as stored; the phone runs the same
+ * rule (DsulCore applyingContainer) to step optimistically and to replay a
+ * landed write at the instant it was sent. Each case pins that instant
+ * (`now`), the zone the server resolved (`timeZone`: for a pause the
+ * account's, else the device's, else UTC; for a season's state, which reads
+ * no zone, the UTC the route passes) and the day they make (`today`).
+ *
+ * `body` is the JSON the phone sends, checked here against the route's own
+ * schema. `expected.patch` is the write, with a cleared field as null (the
+ * row's column set to null; on the phone, the field removed); `{}` is
+ * "already so", answered 200 with nothing written. `expected.after` is the
+ * container with the patch applied. A refusal is the 409 the route answers,
+ * and leaves the container as it was.
+ *
+ * A season's `updatedAt` is left out on purpose: the row's trigger restamps
+ * it on every write, the phone never writes it, and the next fetch carries
+ * the new one.
+ */
+const CW_NOW = '2026-10-23T17:00:00.000Z';
+/** 23:30 on Oct 23 in New York, already Oct 24 in UTC. */
+const CW_LATE = '2026-10-24T03:30:00.000Z';
+/** A season's state reads no zone: the route reads none and passes UTC. */
+const STATE_ZONE = 'UTC';
+
+type WriteAsk =
+  | { name: string; kind: 'routine'; before: Routine; body: unknown; now: string; timeZone: string }
+  | { name: string; kind: 'season'; before: Season; body: unknown; now: string; timeZone: string };
+
+const nullForUndefined = (patch: object) =>
+  Object.fromEntries(Object.entries(patch).map(([k, v]) => [k, v === undefined ? null : v]));
+
+function applied(before: object, patch: object): Record<string, unknown> {
+  const after: Record<string, unknown> = { ...before, ...patch };
+  for (const [k, v] of Object.entries(patch)) if (v === undefined) delete after[k];
+  return after;
+}
+
+function buildContainerWrites() {
+  const r = (over: Partial<Routine> = {}) =>
+    routine('r-evening', 'Evening', { itemIds: [uid(1), uid(2)], sortOrder: 1, usualTime: '21:30', ...over });
+  const s = (state: Season['state'], over: Partial<Season> = {}) =>
+    season('s-autumn', 'Autumn', state, { startsOn: '2026-09-01', endsOn: '2026-11-30', itemIds: [uid(3)], routineIds: ['r-evening'], sortOrder: 0, ...over });
+  const pause = (over: Record<string, unknown> = {}) => ({ action: 'pause', paused: true, timeZone: ZONE, ...over });
+  const resume = { action: 'pause', paused: false, timeZone: ZONE };
+  const state = (to: Season['state']) => ({ action: 'state', state: to });
+  const RAN = '2026-10-20T13:00:00.000Z';
+
+  const asks: WriteAsk[] = [
+    // Routine: Pause, Pause until and Resume (the Status chip; Paused's Resume).
+    { name: 'pause a live routine', kind: 'routine', before: r(), body: pause(), now: CW_NOW, timeZone: ZONE },
+    {
+      name: 'pause a live routine until a day',
+      kind: 'routine',
+      before: r(),
+      body: pause({ pausedUntil: '2026-10-30' }),
+      now: CW_NOW,
+      timeZone: ZONE,
+    },
+    {
+      name: 'pause until tomorrow',
+      kind: 'routine',
+      before: r(),
+      body: pause({ pausedUntil: '2026-10-24' }),
+      now: CW_NOW,
+      timeZone: ZONE,
+    },
+    {
+      name: 'pause again: already so, the first stamp kept',
+      kind: 'routine',
+      before: r({ pausedAt: RAN }),
+      body: pause(),
+      now: CW_NOW,
+      timeZone: ZONE,
+    },
+    {
+      name: 'pause again with no day: its resume day kept',
+      kind: 'routine',
+      before: r({ pausedAt: RAN, pausedUntil: '2026-10-30' }),
+      body: pause(),
+      now: CW_NOW,
+      timeZone: ZONE,
+    },
+    {
+      name: 'pause until on a running pause: the day moves, the stamp stays',
+      kind: 'routine',
+      before: r({ pausedAt: RAN, pausedUntil: '2026-10-30' }),
+      body: pause({ pausedUntil: '2026-11-06' }),
+      now: CW_NOW,
+      timeZone: ZONE,
+    },
+    {
+      name: 'pause until on a pause with no day: the day is set',
+      kind: 'routine',
+      before: r({ pausedAt: RAN }),
+      body: pause({ pausedUntil: '2026-11-06' }),
+      now: CW_NOW,
+      timeZone: ZONE,
+    },
+    {
+      name: 'pause until the day it already has: the same day written again',
+      kind: 'routine',
+      before: r({ pausedAt: RAN, pausedUntil: '2026-10-30' }),
+      body: pause({ pausedUntil: '2026-10-30' }),
+      now: CW_NOW,
+      timeZone: ZONE,
+    },
+    {
+      name: 'pause after the last one ended: a new pause, its old day cleared',
+      kind: 'routine',
+      before: r({ pausedAt: '2026-10-01T13:00:00.000Z', pausedUntil: '2026-10-10' }),
+      body: pause(),
+      now: CW_NOW,
+      timeZone: ZONE,
+    },
+    {
+      name: 'resume a pause: it ends today, the interval kept',
+      kind: 'routine',
+      before: r({ pausedAt: RAN }),
+      body: resume,
+      now: CW_NOW,
+      timeZone: ZONE,
+    },
+    {
+      name: 'resume a pause with a day: it ends today instead',
+      kind: 'routine',
+      before: r({ pausedAt: RAN, pausedUntil: '2026-10-30' }),
+      body: resume,
+      now: CW_NOW,
+      timeZone: ZONE,
+    },
+    { name: 'resume a live routine: already so', kind: 'routine', before: r(), body: resume, now: CW_NOW, timeZone: ZONE },
+    {
+      name: 'resume after the pause ended: already so',
+      kind: 'routine',
+      before: r({ pausedAt: '2026-10-01T13:00:00.000Z', pausedUntil: '2026-10-10' }),
+      body: resume,
+      now: CW_NOW,
+      timeZone: ZONE,
+    },
+    {
+      name: 'pause until today: refused, it would end at once',
+      kind: 'routine',
+      before: r(),
+      body: pause({ pausedUntil: TODAY }),
+      now: CW_NOW,
+      timeZone: ZONE,
+    },
+    {
+      name: 'pause until a past day: refused',
+      kind: 'routine',
+      before: r(),
+      body: pause({ pausedUntil: '2026-10-20' }),
+      now: CW_NOW,
+      timeZone: ZONE,
+    },
+    {
+      name: 'late at night in New York: still the 23rd, so the 24th is tomorrow',
+      kind: 'routine',
+      before: r(),
+      body: pause({ pausedUntil: '2026-10-24' }),
+      now: CW_LATE,
+      timeZone: ZONE,
+    },
+    {
+      name: 'the same instant with no zone stored and the device in UTC: already the 24th, refused',
+      kind: 'routine',
+      before: r(),
+      body: pause({ pausedUntil: '2026-10-24', timeZone: 'UTC' }),
+      now: CW_LATE,
+      timeZone: 'UTC',
+    },
+    {
+      name: 'resume late at night in New York: ends on the 23rd',
+      kind: 'routine',
+      before: r({ pausedAt: RAN }),
+      body: resume,
+      now: CW_LATE,
+      timeZone: ZONE,
+    },
+    {
+      name: 'a pause the device sent without its zone: the account’s zone',
+      kind: 'routine',
+      before: r(),
+      body: { action: 'pause', paused: true },
+      now: CW_NOW,
+      timeZone: ZONE,
+    },
+
+    // Season: On, Off and Dates, stored exactly as picked.
+    { name: 'on: following its dates to pinned on', kind: 'season', before: s('auto'), body: state('active'), now: CW_NOW, timeZone: STATE_ZONE },
+    { name: 'off: following its dates to switched off', kind: 'season', before: s('auto'), body: state('paused'), now: CW_NOW, timeZone: STATE_ZONE },
+    { name: 'dates: pinned on back to its dates', kind: 'season', before: s('active'), body: state('auto'), now: CW_NOW, timeZone: STATE_ZONE },
+    { name: 'dates: switched off back to its dates', kind: 'season', before: s('paused'), body: state('auto'), now: CW_NOW, timeZone: STATE_ZONE },
+    { name: 'on: switched off to pinned on', kind: 'season', before: s('paused'), body: state('active'), now: CW_NOW, timeZone: STATE_ZONE },
+    { name: 'off: pinned on to switched off', kind: 'season', before: s('active'), body: state('paused'), now: CW_NOW, timeZone: STATE_ZONE },
+    {
+      name: 'on, past its end: pinned on, the dates kept',
+      kind: 'season',
+      before: s('auto', { startsOn: '2026-06-01', endsOn: '2026-10-01' }),
+      body: state('active'),
+      now: CW_NOW,
+      timeZone: STATE_ZONE,
+    },
+    {
+      name: 'dates on a season with none: stored as picked',
+      kind: 'season',
+      before: s('paused', { startsOn: undefined, endsOn: undefined }),
+      body: state('auto'),
+      now: CW_NOW,
+      timeZone: STATE_ZONE,
+    },
+    { name: 'on when already pinned on: already so', kind: 'season', before: s('active'), body: state('active'), now: CW_NOW, timeZone: STATE_ZONE },
+    { name: 'off when already switched off: already so', kind: 'season', before: s('paused'), body: state('paused'), now: CW_NOW, timeZone: STATE_ZONE },
+    { name: 'dates when already following them: already so', kind: 'season', before: s('auto'), body: state('auto'), now: CW_NOW, timeZone: STATE_ZONE },
+  ];
+
+  const cases = asks.map((c) => {
+    const at = new Date(c.now);
+    const today = toDateStr(at, c.timeZone);
+    let target: ContainerIntentTarget;
+    if (c.kind === 'routine') {
+      const parsed = RoutineWriteSchema.safeParse(c.body);
+      if (!parsed.success) throw new Error(`${c.name}: the route would refuse this body`);
+      target = { kind: 'routine', container: c.before, intent: parsed.data };
+    } else {
+      const parsed = SeasonWriteSchema.safeParse(c.body);
+      if (!parsed.success) throw new Error(`${c.name}: the route would refuse this body`);
+      target = { kind: 'season', container: c.before, intent: parsed.data };
+    }
+    const result = containerIntentPatch(target, { now: at, timeZone: c.timeZone });
+    const before = JSON.parse(JSON.stringify(c.before)) as object;
+    const expected =
+      'refused' in result
+        ? { refused: result.refused, status: result.status, patch: null, after: before }
+        : { refused: null, status: 200, patch: nullForUndefined(result.patch), after: applied(before, result.patch) };
+    return { name: c.name, kind: c.kind, before, body: c.body, now: c.now, timeZone: c.timeZone, today, expected };
+  });
+
+  // Bodies the route refuses with 400 before reading anything: the phone's
+  // encoder must never produce one.
+  const invalidAsks: { name: string; kind: 'routine' | 'season' | 'goal' | 'project'; body: unknown }[] = [
+    { name: 'a resume with a day', kind: 'routine', body: { action: 'pause', paused: false, pausedUntil: '2026-10-30' } },
+    { name: 'a pause with no paused', kind: 'routine', body: { action: 'pause', pausedUntil: '2026-10-30' } },
+    { name: 'a pause until a null day', kind: 'routine', body: { action: 'pause', paused: true, pausedUntil: null } },
+    { name: 'a pause until a day that is not a date', kind: 'routine', body: { action: 'pause', paused: true, pausedUntil: '30/10/2026' } },
+    { name: 'a key the server does not know', kind: 'routine', body: { action: 'pause', paused: true, note: 'x' } },
+    { name: 'a season’s state on a routine', kind: 'routine', body: { action: 'state', state: 'paused' } },
+    { name: 'a state that is not one of the three', kind: 'season', body: { action: 'state', state: 'on' } },
+    { name: 'a pause on a season', kind: 'season', body: { action: 'pause', paused: true } },
+    { name: 'any intent on a goal, for now', kind: 'goal', body: { action: 'state', state: 'achieved' } },
+    { name: 'any intent on a project, for now', kind: 'project', body: { action: 'pause', paused: true } },
+  ];
+  const invalid = invalidAsks.map((c) => {
+    const schema = c.kind === 'routine' ? RoutineWriteSchema : c.kind === 'season' ? SeasonWriteSchema : null;
+    if (schema?.safeParse(c.body).success) throw new Error(`${c.name}: the route would take this body`);
+    return { ...c, expected: { status: 400, error: 'invalid' } };
+  });
+
+  return { cases, invalid };
+}
+
 // ── Writing and checking ─────────────────────────────────────────────────────
 
 const FIXTURES: Record<string, () => unknown> = {
@@ -2162,6 +2482,7 @@ const FIXTURES: Record<string, () => unknown> = {
   copy: buildCopy,
   organize: buildOrganize,
   paused: buildPaused,
+  'container-writes': buildContainerWrites,
 };
 
 const serialize = (f: unknown) => JSON.stringify(f, null, 2) + '\n';

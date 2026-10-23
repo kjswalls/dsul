@@ -21,8 +21,10 @@ delete), and replaces PlannerSync's slots with a rebase per subject.
 Organize, the third tab, is built as its own series (O1 to O15, the design in
 the shared folder's `ios-app/organize/design.md`); O1 lists the containers,
 O2 and O3 give each its page, read-only but for the tick, O4 adds the
-summary cards, and O5 and O14 the footer's Item types, Paused (with an
-item's Resume) and Trash (with Restore) (see Organize below).
+summary cards, O5 and O14 the footer's Item types, Paused (with an
+item's Resume) and Trash (with Restore), and O8a the first container writes:
+a routine's and a season's Status, and Resume on Paused for both (see
+Organize below).
 Designs, the stack comparison and the board images live in the project's
 shared folder (`ios-app/`): `stack.md` has a SwiftUI build note for every
 interaction, and `expo-vs-swiftui.md` ends with the fact-check.
@@ -154,6 +156,14 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   in `lib/app-containers.ts` (the bin, the restore body and its refusal),
   with the cards' and the Trash's words in `OrganizeCopy.swift` and
   `trashWrites` in `PlannerPayload`.
+  O8a adds `ContainerIntent.swift` ← `lib/app-containers.ts`
+  (`containerIntentPatch`), `lib/active.ts` (`resolvePauseWrite`),
+  `lib/app-http.ts` (`pauseZone`) and `lib/gate-toggle.ts` (Paused's way
+  back), and `ContainerWriteBody.swift` ← `lib/app-containers.ts` (the
+  request bodies), both checked against
+  `tests/fixtures/organize/container-writes.json`; `seasonStateForSwitch` in
+  `ActiveExplain.swift` ← `lib/scope-rail.ts`; the refusal words in
+  `OrganizeCopy.swift`; and `containerWrites` in `PlannerPayload`.
   Each cites what it mirrors.
 - `ios/Dsul/App`: `DsulApp` (one `AuthStore`), `AppGate` (sign-in screen,
   sample or the user's planner, keyed on `AuthStore.gateKey`), `AppConfig`.
@@ -184,7 +194,9 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   rows' Resume and Restore), `PausedEntryPage`, `ItemTypesPage` and
   `TrashPage`, and `ShelfPageModel`, Foundation only, which decides what
   they show and say; `ContainerRow` gains `TileRow`, the tile row anything
-  else wears. `ios/Dsul/App` gains
+  else wears. O8a adds no file: `ContainerPage` gains `StatusChipMenu` and
+  `PageChipLabel`, and the Status menus' rules live in `ContainerPageModel`
+  (`StatusMenu`) and `OrganizeModel` (`canEdit`). `ios/Dsul/App` gains
   `AvatarMenu` (moved out of `TodayView`, with the tab's own sections passed
   in) and `PlannerBannerOverlay` (`.plannerBanner()`, Today's banner, also on
   Organize, with `BannerView`).
@@ -851,7 +863,8 @@ words are fixed on every surface, below.
 The third tab, built as a series of small PRs (O1 to O15). The design, with
 every decision and the PR plan, is the shared folder's
 `ios-app/organize/design.md`; each PR's builders leave notes beside it
-(`organize/o1/`, and `organize/o2/` for O2 and O3, built as one PR).
+(`organize/o1/`, `organize/o2/` for O2 and O3, built as one PR, and
+`organize/o6/` for O6, O7 and O8a, one PR too).
 
 - **O1: the list, read-only.** The payload gains `goals` (null when
   unreadable) and `settings.organizeEnabled` / `settings.goalsEnabled`, from
@@ -983,7 +996,7 @@ every decision and the PR plan, is the shared folder's
   type as the user named it, "Routine · 4 habits"). An item's row opens its
   sheet and carries Resume where the sheet would offer it (`offers(.resume,
   …)` on today), the existing `resume(_:)` write; a routine's or season's
-  row has no Resume until O8a and pushes its paused detail
+  row pushes its paused detail, and from O8a carries Resume too (below)
   (`.pausedEntry(key)`): the header, `pausedStateLine` under a moon, "Comes
   back with it" (each member with the list's dashed outline, the web's
   ItemMark, opening its sheet) and, with Organize on, "Open in Routines" /
@@ -1019,15 +1032,68 @@ every decision and the PR plan, is the shared folder's
   `APIClient.send` is now `exchange` (the token,
   the 401 retry, 502 to 504 as unavailable) plus the refusal, so the restore
   can read a 409's whole body.
+- **O6 and O7: web only.** A web tab opened before a reorder or a season
+  hold made elsewhere (the phone's collect included) no longer puts it back
+  when it next writes that container: `reconcileMembership` keeps a
+  routine's stored order under `known`, and `updateSeason` passes `known`
+  for `routineIds` too. No Swift; nothing on the phone changes.
+- **O8a: a routine's and a season's Status, and Resume on Paused.** One
+  route, POST /api/app/containers/:kind/:id, takes one intent per call
+  (a routine's `pause`, `paused` true with an optional `pausedUntil` or
+  false; a season's `state`), and the payload's `containerWrites` lists
+  what it takes; a server that sends none hides every container editor.
+  On a routine's page the Status chip is a menu (a gray chevron, the label
+  colour, never lime) of verbs, as the item sheet's: Pause and Pause until…,
+  or Resume and Pause until…. Pause until… opens the item sheet's
+  `DayPickSheet` on the page ("Pause until", tomorrow first, on the
+  routine's own return day when it has one); there is no way to clear a
+  return day but Resume, as the route never clears one. A season's chip is
+  its three states, the one it is in checked, sent exactly as picked
+  (`seasonStateForSwitch` is Paused's alone). Both menus need the server's
+  write and the kind's switch (`OrganizeModel.canEdit`, which the planner's
+  `canWrite(kind:action:)` asks too). Paused's Resume, on a routine's or
+  season's row and as the detail's "Resume now" / "Turn on now", asks the
+  server's list alone, whatever the switches say, as the web's does: the
+  planner's `turnOn(_:)`, the web's `setGateOn` (`gateSwitchIntent`), so a
+  dated season goes back to following its dates. A container row with
+  Resume is a button that pushes its detail (ending in a chevron, as the
+  link did), as an item's opens its sheet, so the pill takes its own taps;
+  one without (an older server) is still a link. The planner steps at once through DsulCore's `containerIntentPatch`,
+  the route's rule, at one instant in the zone the server reads
+  (`pauseZone`), and refuses a Pause until not after today itself, with the
+  route's words ("That day is no longer after today, so nothing was
+  paused."), which a 409 `pause_refused` shows too.
+- **The container subject (O8a), which every later write reuses.**
+  PlannerSync's `Write.container(ref, intent, refiled:)` names
+  `.container(ref)` (and any item it refiles, none yet), and its `Before`
+  is the whole container with its index in its kind's list. It never
+  covers the member lists: a revert puts back the container's own fields
+  over the lists it holds now (`withMembership(of:)`), so a collect that
+  landed survives a failed pause. A failure rebases the container
+  (`rebaseContainer`) with every landed `.container` write naming it
+  replayed at its own `sentAt` (`applyingContainer`, in the zone the server
+  read), and the revert puts things back in one order: items, then
+  containers' field restores and removals, then containers that come back
+  whole (newest failure first), then memberships (newest first). The
+  revert's compare covers routines, seasons, projects and goals, so a
+  season alone moving back says the change was undone. `Write.itemId` is
+  gone: a write names its subjects. A failure's words are
+  `PlannerSync.writeFailureText(_:for:)`, the route's own
+  (`OrganizeCopy.refusal`) for a container refusal.
 - **Rules apart from views, O4 on.** The cards and the footer are
   `OrganizeModel.summary` and `.footer`; the pages are `ShelfPageModel`
   (Foundation only, on the shim's list), pinned by `DsulTests/ShelfPageTests`
   with the Trash's PlannerSync tests (`TrashSyncTests`: the strict body, the
   refusals' words, a 404 dropping the row, a lost answer's fetch, the race,
-  an older server, the sample, a stopped sync).
-- **Waits for later PRs:** the writes (O8a to O13: the ⋯ menu, Status and
-  the other chips as menus, editable notes, reorder and add, and a paused
-  routine's or season's Resume on Paused), the + menu (O11), and Today's
+  an older server, the sample, a stopped sync). O8a's Status menus are
+  pinned in `OrganizePageTests`, Paused's container Resume in
+  `ShelfPageTests`, the container subject (the bodies, the reverts, the
+  replay at `sentAt`, the refusal's words, an older server, Resume with
+  Organize off) in `PlannerSyncTests`, and the sample's steps and
+  `restoreContainer` in `SamplePlannerTests`.
+- **Waits for later PRs:** the other writes (O8b to O13: the ⋯ menu, the
+  other chips as menus, a goal's Status among them, editable notes, reorder
+  and add), the + menu (O11), and Today's
   project colours (O15, Kirby's call). Today keeps `ProjectPalette` until
   then, so a project's dot on Today and its tile on Organize can differ.
 
@@ -1449,6 +1515,18 @@ functions:
   id, a link repair when only the id is stale, and a parked task released from
   the block it leaves. A project in the Trash or gone is `project_gone`. Never
   `group`.
+- **A container's own fields are one intent at a time** (O8a, POST
+  /api/app/containers/:kind/:id): a routine's `pause` through
+  `resolvePauseWrite`, the item pause's rule, and a season's `state` as
+  picked, each read live first (a routine or season in the Trash, another
+  user's, or a malformed id is 404) and written through `updateRoutine` /
+  `updateSeason` only when it changes something, so a retry of a landed
+  write answers 200 and writes nothing. No webhook, no `item_events`, as the
+  web writes none for these. On a routine not paused today, a Pause until no
+  longer after today is 409 `pause_refused` (on one already paused, the route
+  takes the day, as `resolvePauseWrite` does); the phone refuses such a day
+  locally before sending. The route takes the write with Organize off, as
+  the web's own Paused and container menu do.
 - **Membership is one row at a time** (`collect`): the route adds or removes
   the one row (lib/db.ts `addContainerMember`, `removeContainerMember`) and
   never takes a list, and the web's own whole-list writes carry the list they
@@ -1504,8 +1582,8 @@ animations.
 ## Not yet
 Week, density (`DensityMetrics`), swipe actions on rows, the zoom transition
 from the bar to the braindump sheet, the rest of Organize (every container
-write, a paused routine's or season's Resume, and creating a project,
-routine, season or goal from the phone included: O8a to O15 in the Organize
+write but a routine's pause and a season's state, and creating a project,
+routine, season or goal from the phone included: O8b to O15 in the Organize
 design), undo right after a delete (Organize's Trash restores it, O14),
 Change type, Duplicate and Copy link, the rest of the sheet
 (a routine's or a season's hold, the goal chip, which goals in the payload

@@ -67,6 +67,16 @@ private struct RawItems: Decodable, Sendable {
         // The Trash's two routes (lib/app-containers.ts TRASH_WRITES, O14).
         #expect(p.trashWrites == ["list", "restore"])
         #expect(TrashRoutes.offered(p.trashWrites))
+        // The container write route's intents (lib/app-containers.ts
+        // CONTAINER_WRITES, O8a): a routine's pause, a season's state, none
+        // yet for a goal or a project.
+        #expect(p.containerWrites == ContainerWrites(routine: ["pause"], season: ["state"], goal: [], project: []))
+        let writes = try #require(p.containerWrites)
+        #expect(writes.takes(.resume(timeZone: nil), on: .routine))
+        #expect(writes.takes(.state(.active), on: .season))
+        for action in ContainerAction.allCases {
+            #expect(!writes.takes(action, on: .goal) && !writes.takes(action, on: .project))
+        }
         // The route's test turns Streaks off, a value no default gives.
         #expect(p.settings.streaksEnabled == false)
         // ... and Habit reminders on, a value no default gives either (a
@@ -587,6 +597,31 @@ private struct RawItems: Decodable, Sendable {
         #expect(try trashWrites("[]") == [])
         #expect(try trashWrites(#"["list",7,"restore"]"#) == ["list", "restore"])
         #expect(TrashRoutes.offered(try trashWrites(nil)) == false)
+    }
+
+    /// O8a's `containerWrites`: absent, null or not an object (a server
+    /// older than the route) is nil, which hides every container editor; a
+    /// kind's list is read as `writes` is, and a kind with no list takes
+    /// nothing.
+    @Test func theContainerWritesAreReadLeniently() throws {
+        func containerWrites(_ value: String?) throws -> ContainerWrites? {
+            let key = value.map { #","containerWrites":\#($0)"# } ?? ""
+            let json = """
+            {"v":1,"userId":"\(user)","fetchedAt":"x","settings":{}\(key),
+             "items":[],"projects":[],"routines":[],"seasons":[]}
+            """
+            return try decode(json).containerWrites
+        }
+        #expect(try containerWrites(nil) == nil)
+        #expect(try containerWrites("null") == nil)
+        #expect(try containerWrites(#""pause""#) == nil)
+        #expect(try containerWrites(#"["pause"]"#) == nil)
+        #expect(try containerWrites("{}") == ContainerWrites())
+        #expect(try containerWrites(#"{"routine":["pause"],"season":["state"],"goal":[],"project":[]}"#)
+            == ContainerWrites(routine: ["pause"], season: ["state"]))
+        #expect(try containerWrites(#"{"routine":["pause",7,null],"season":null,"goal":"state","future":["x"]}"#)
+            == ContainerWrites(routine: ["pause"]))
+        #expect(try containerWrites(nil)?.takes(.pause, on: .routine) != true)
     }
 
     @Test func theItemTypesAreReadLeniently() throws {

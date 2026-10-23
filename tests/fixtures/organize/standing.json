@@ -587,6 +587,243 @@
       "expected": null
     }
   ],
+  "seasonStateForSwitch": [
+    {
+      "name": "on, dates cover today: auto, still dated",
+      "season": {
+        "id": "s-autumn",
+        "name": "Autumn",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-09-01",
+        "endsOn": "2026-11-30"
+      },
+      "on": true,
+      "date": "2026-10-23",
+      "expected": "auto"
+    },
+    {
+      "name": "off, dates cover today: paused",
+      "season": {
+        "id": "s-autumn",
+        "name": "Autumn",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-09-01",
+        "endsOn": "2026-11-30"
+      },
+      "on": false,
+      "date": "2026-10-23",
+      "expected": "paused"
+    },
+    {
+      "name": "on, starts later: active",
+      "season": {
+        "id": "s-winter",
+        "name": "Winter",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-11-01",
+        "endsOn": "2027-02-28"
+      },
+      "on": true,
+      "date": "2026-10-23",
+      "expected": "active"
+    },
+    {
+      "name": "off, starts later: auto, the dates already say off",
+      "season": {
+        "id": "s-winter",
+        "name": "Winter",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-11-01",
+        "endsOn": "2027-02-28"
+      },
+      "on": false,
+      "date": "2026-10-23",
+      "expected": "auto"
+    },
+    {
+      "name": "on, ended: active",
+      "season": {
+        "id": "s-summer",
+        "name": "Summer",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-06-01",
+        "endsOn": "2026-10-01"
+      },
+      "on": true,
+      "date": "2026-10-23",
+      "expected": "active"
+    },
+    {
+      "name": "off, ended: auto",
+      "season": {
+        "id": "s-summer",
+        "name": "Summer",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-06-01",
+        "endsOn": "2026-10-01"
+      },
+      "on": false,
+      "date": "2026-10-23",
+      "expected": "auto"
+    },
+    {
+      "name": "on, inverted range: active",
+      "season": {
+        "id": "s-backwards",
+        "name": "Backwards",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-12-01",
+        "endsOn": "2026-11-01"
+      },
+      "on": true,
+      "date": "2026-10-23",
+      "expected": "active"
+    },
+    {
+      "name": "off, inverted range: auto",
+      "season": {
+        "id": "s-backwards",
+        "name": "Backwards",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-12-01",
+        "endsOn": "2026-11-01"
+      },
+      "on": false,
+      "date": "2026-10-23",
+      "expected": "auto"
+    },
+    {
+      "name": "on, switched off with dates covering today: auto",
+      "season": {
+        "id": "s-autumn",
+        "name": "Autumn",
+        "state": "paused",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-09-01",
+        "endsOn": "2026-11-30"
+      },
+      "on": true,
+      "date": "2026-10-23",
+      "expected": "auto"
+    },
+    {
+      "name": "on, switched off with a later start: active",
+      "season": {
+        "id": "s-winter",
+        "name": "Winter",
+        "state": "paused",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-11-01",
+        "endsOn": "2027-02-28"
+      },
+      "on": true,
+      "date": "2026-10-23",
+      "expected": "active"
+    },
+    {
+      "name": "on, switched off with no dates: auto",
+      "season": {
+        "id": "s-shelf",
+        "name": "Shelf",
+        "state": "paused",
+        "itemIds": [],
+        "routineIds": []
+      },
+      "on": true,
+      "date": "2026-10-23",
+      "expected": "auto"
+    },
+    {
+      "name": "off, pinned on with no dates: paused",
+      "season": {
+        "id": "s-pin",
+        "name": "Pin",
+        "state": "active",
+        "itemIds": [],
+        "routineIds": []
+      },
+      "on": false,
+      "date": "2026-10-23",
+      "expected": "paused"
+    },
+    {
+      "name": "off, pinned on with a later start: auto",
+      "season": {
+        "id": "s-always",
+        "name": "Always",
+        "state": "active",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2027-01-01"
+      },
+      "on": false,
+      "date": "2026-10-23",
+      "expected": "auto"
+    },
+    {
+      "name": "on, its first day: auto",
+      "season": {
+        "id": "s-winter",
+        "name": "Winter",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-11-01",
+        "endsOn": "2027-02-28"
+      },
+      "on": true,
+      "date": "2026-11-01",
+      "expected": "auto"
+    },
+    {
+      "name": "on, its last day: auto",
+      "season": {
+        "id": "s-autumn",
+        "name": "Autumn",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-09-01",
+        "endsOn": "2026-11-30"
+      },
+      "on": true,
+      "date": "2026-11-30",
+      "expected": "auto"
+    },
+    {
+      "name": "on, the day after its last: active",
+      "season": {
+        "id": "s-autumn",
+        "name": "Autumn",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-09-01",
+        "endsOn": "2026-11-30"
+      },
+      "on": true,
+      "date": "2026-12-01",
+      "expected": "active"
+    }
+  ],
   "suppressionWorld": {
     "items": [
       {

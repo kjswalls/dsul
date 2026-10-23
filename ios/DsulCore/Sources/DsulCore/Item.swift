@@ -719,6 +719,55 @@ public struct PlannerSettings: Codable, Sendable, Hashable {
     }
 }
 
+/// What POST /api/app/containers/:kind/:id takes, per kind
+/// (`containerWrites`, lib/app-containers.ts `CONTAINER_WRITES`, from O8a):
+/// the `action`s each kind's union holds, in declaration order, e.g.
+/// `{"routine":["pause"],"season":["state"],"goal":[],"project":[]}`. Later
+/// parts add actions by adding union members; the lists follow. A kind whose
+/// list is missing, null or not a list takes nothing, and an element that
+/// isn't a string is skipped. The phone shows a container control only when
+/// its action is listed here (`takes`, ContainerIntent.swift).
+public struct ContainerWrites: Decodable, Sendable, Hashable {
+    public var routine: [String]
+    public var season: [String]
+    public var goal: [String]
+    public var project: [String]
+
+    public init(routine: [String] = [], season: [String] = [], goal: [String] = [], project: [String] = []) {
+        self.routine = routine
+        self.season = season
+        self.goal = goal
+        self.project = project
+    }
+
+    /// `kind`'s list.
+    public subscript(kind: OrganizeKind) -> [String] {
+        switch kind {
+        case .routine: return routine
+        case .season: return season
+        case .goal: return goal
+        case .project: return project
+        }
+    }
+
+    /// Whether `kind`'s list names `action`.
+    public func takes(_ action: String, on kind: OrganizeKind) -> Bool {
+        return self[kind].contains(action)
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case routine, season, goal, project
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.routine = c.lenientStrings(.routine) ?? []
+        self.season = c.lenientStrings(.season) ?? []
+        self.goal = c.lenientStrings(.goal) ?? []
+        self.project = c.lenientStrings(.project) ?? []
+    }
+}
+
 /// GET /api/app/planner (lib/app-api.ts), version 1.
 public struct PlannerPayload: Decodable, Sendable, Hashable {
     public var v: Int
@@ -744,6 +793,12 @@ public struct PlannerPayload: Decodable, Sendable, Hashable {
     /// than the routes, which hides the Trash row (`TrashRoutes.offered`). A
     /// bad element is skipped.
     public var trashWrites: [String]?
+    /// What the container write route takes, per kind (`containerWrites`,
+    /// lib/app-containers.ts `CONTAINER_WRITES`, from O8a). Nil from a server
+    /// older than the route (the key missing, null or not an object), which
+    /// hides every container editor, Paused's Resume for a routine or a
+    /// season included: there is no route to send it to.
+    public var containerWrites: ContainerWrites?
     /// The user's own item types, named (`itemTypes`, from item_types): a
     /// custom item's label, title placeholder and delete words read them
     /// through `caps(_:labels:)`. Nil when the server couldn't read the table,
@@ -775,6 +830,7 @@ public struct PlannerPayload: Decodable, Sendable, Hashable {
         goals: [Goal]? = nil,
         writes: [String]? = nil,
         trashWrites: [String]? = nil,
+        containerWrites: ContainerWrites? = nil,
         itemTypes: [ItemTypeLabel]? = nil,
         snoozes: [PlanSnooze]? = nil,
         awayPeriods: [AwayPeriod]? = nil,
@@ -791,6 +847,7 @@ public struct PlannerPayload: Decodable, Sendable, Hashable {
         self.goals = goals
         self.writes = writes
         self.trashWrites = trashWrites
+        self.containerWrites = containerWrites
         self.itemTypes = itemTypes
         self.snoozes = snoozes
         self.awayPeriods = awayPeriods
@@ -803,7 +860,7 @@ public struct PlannerPayload: Decodable, Sendable, Hashable {
 
     enum CodingKeys: String, CodingKey {
         case v, userId, fetchedAt, settings, items, projects, routines, seasons, writes, itemTypes, snoozes
-        case awayPeriods, goals, trashWrites
+        case awayPeriods, goals, trashWrites, containerWrites
     }
 
     /// The envelope is strict (a payload with no user can't be trusted to be
@@ -827,6 +884,7 @@ public struct PlannerPayload: Decodable, Sendable, Hashable {
         self.goals = c.lossyArrayIfPresent(Goal.self, .goals)
         self.writes = c.lenientStrings(.writes)
         self.trashWrites = c.lenientStrings(.trashWrites)
+        self.containerWrites = try? c.decodeIfPresent(ContainerWrites.self, forKey: .containerWrites)
         self.itemTypes = c.lossyArrayIfPresent(ItemTypeLabel.self, .itemTypes)
         self.snoozes = c.lossyArrayIfPresent(PlanSnooze.self, .snoozes)
         self.awayPeriods = c.lossyArrayIfPresent(AwayPeriod.self, .awayPeriods)

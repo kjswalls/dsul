@@ -808,9 +808,10 @@ enum ItemSheetModel {
     /// What the banner says when Pause until's day is no longer after today:
     /// the picker was left open across midnight. A pause has to end after
     /// today, so nothing is written. Nil while the day may still be picked.
+    /// The words are a routine's too (`OrganizeCopy.pauseRefused`).
     static func pauseUntilRefusal(_ until: DayString, today: DayString) -> String? {
         guard until <= today else { return nil }
-        return "That day is no longer after today, so nothing was paused."
+        return OrganizeCopy.pauseRefused
     }
 
     // MARK: Header

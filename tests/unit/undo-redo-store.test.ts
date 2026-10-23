@@ -293,6 +293,76 @@ describe('routines survive undo (Phase 2 review blocker regression)', () => {
   });
 });
 
+describe("a season's holds keep another device's (O7)", () => {
+  // The iPhone writes one season_routines row at a time, so every web write
+  // of a season's routineIds names the list this tab held as `known`
+  // (lib/db.ts reconcileMembership): the edit itself, a routine made into a
+  // season, and the ⌘Z and redo that replay a hold. Without it a stale tab
+  // writes its whole list and deletes the phone's hold.
+  beforeEach(async () => {
+    store().clearStore();
+    vi.clearAllMocks();
+    vi.mocked(db.fetchItems).mockResolvedValue(fixtures());
+    vi.mocked(db.fetchRoutines).mockResolvedValue([
+      { id: 'r1', name: 'Morning', itemIds: ['habit-1'] },
+      { id: 'r2', name: 'Evening', itemIds: [] },
+    ]);
+    vi.mocked(db.fetchSeasons).mockResolvedValue([
+      { id: 's1', name: 'Autumn', state: 'auto', itemIds: ['task-1'], routineIds: ['r1'] },
+    ]);
+    await store().initializeStore(USER);
+    vi.clearAllMocks();
+  });
+
+  it('a hold edit names the list the tab held', () => {
+    store().updateSeason('s1', { routineIds: ['r1', 'r2'] });
+    expect(db.updateSeason).toHaveBeenCalledWith(USER, 's1', { routineIds: ['r1', 'r2'] }, undefined, {
+      routineIds: ['r1'],
+    });
+  });
+
+  it('an item edit still names only the item list, and a rename names none', () => {
+    store().updateSeason('s1', { itemIds: ['task-1', 'habit-1'] });
+    expect(db.updateSeason).toHaveBeenLastCalledWith(USER, 's1', { itemIds: ['task-1', 'habit-1'] }, undefined, {
+      itemIds: ['task-1'],
+    });
+    store().updateSeason('s1', { name: 'Fall' });
+    expect(db.updateSeason).toHaveBeenLastCalledWith(USER, 's1', { name: 'Fall' });
+  });
+
+  it("undo and redo of a hold name the list the tab held before each, so a phone's hold survives both", () => {
+    store().toggleTaskStatus('task-1');
+    store().updateSeason('s1', { routineIds: ['r1', 'r2'] });
+    vi.clearAllMocks();
+
+    store().undo();
+    expect(store().seasons[0].routineIds).toEqual(['r1']);
+    expect(db.updateSeason).toHaveBeenCalledWith(USER, 's1', { routineIds: ['r1'] }, undefined, {
+      itemIds: ['task-1'],
+      routineIds: ['r1', 'r2'],
+    });
+
+    vi.clearAllMocks();
+    store().redo();
+    expect(store().seasons[0].routineIds).toEqual(['r1', 'r2']);
+    expect(db.updateSeason).toHaveBeenCalledWith(USER, 's1', { routineIds: ['r1', 'r2'] }, undefined, {
+      itemIds: ['task-1'],
+      routineIds: ['r1'],
+    });
+  });
+
+  it('a season the undo brings back from the Trash writes its whole lists, with no known', () => {
+    store().toggleTaskStatus('task-1');
+    store().removeSeason('s1');
+    vi.clearAllMocks();
+    store().undo();
+    expect(db.restoreSeason).toHaveBeenCalledWith(USER, 's1');
+    expect(db.updateSeason).toHaveBeenCalledWith(
+      USER, 's1', expect.objectContaining({ itemIds: ['task-1'], routineIds: ['r1'] }),
+    );
+  });
+});
+
 describe('type switch (edit pane type chip)', () => {
   it('switches a habit to a task in place, keeping the id and history', async () => {
     store().changeItemType('habit-1', 'task');

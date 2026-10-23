@@ -11,8 +11,10 @@ import Foundation
 // the routine pill (Collections.swift) reads. From O2 (the container pages):
 // `suppressionReason` and its words, `suppressionLabel`, which a goal page's
 // rows wear when something hides them, and `membersRevealedByRemoving`, the
-// resolver delta a routine's hidden count is built on. The trip layer is
-// Away.swift's (`awayHoldOn`, `returnDayOf`).
+// resolver delta a routine's hidden count is built on. From O8a (the writes):
+// lib/scope-rail.ts `seasonStateForSwitch`, the state a binary switch writes
+// (Paused's "Turn on now"), checked against the same fixture. The trip layer
+// is Away.swift's (`awayHoldOn`, `returnDayOf`).
 
 /// lib/active.ts `seasonResumeDate`: the day an off season switches itself
 /// back on, or nil. Only an 'auto' season with a start still ahead has one: a
@@ -23,6 +25,19 @@ public func seasonResumeDate(_ season: Season, on day: DayString) -> String? {
     guard season.state == "auto", let starts = season.startsOn, !starts.isEmpty else { return nil }
     if let ends = season.endsOn, !ends.isEmpty, toDateOnly(starts) > toDateOnly(ends) { return nil }
     return day.description < toDateOnly(starts) ? starts : nil
+}
+
+/// lib/scope-rail.ts `seasonStateForSwitch`: the state a binary switch over
+/// the tri-state writes to turn `season` on (`on` true) or off on `today`.
+/// `auto` whenever the dates alone already give that answer, so a switch
+/// never destroys date-following; a manual `active` or `paused` only when the
+/// user is overruling the calendar. For a switch only (Paused's "Turn on
+/// now", `gateSwitchIntent`): the season's Status chip sends what was picked.
+public func seasonStateForSwitch(_ season: Season, on: Bool, today: DayString) -> SeasonState {
+    var dated = season
+    dated.state = SeasonState.auto.rawValue
+    if isSeasonActiveOn(dated, on: today) == on { return .auto }
+    return on ? .active : .paused
 }
 
 /// lib/active.ts `RoutineStanding`: where a routine stands on a day. Its own

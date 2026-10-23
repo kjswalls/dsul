@@ -1060,7 +1060,9 @@ by push yet.
 Checks are marked by the PR that brings them. O1 is the list, read-only; O2
 the routine and season pages, O3 the goal and project pages, read-only but
 for the tick; O4 the summary cards; O5 the footer's Item types and Paused,
-with an item's Resume; O14 the Trash, with Restore.
+with an item's Resume; O14 the Trash, with Restore; O8a the first container
+writes: a routine's Status (Pause, Pause until…, Resume), a season's (On,
+Off, Dates), and Resume on Paused for routines and seasons.
 
 1. (O1) Sample: Organize shows Routines, Seasons, Goals and Projects, in that
    order. Morning routine has a honey sunrise tile, Wind down a plum moon,
@@ -1195,10 +1197,11 @@ with an item's Resume; O14 the Trash, with Restore.
     paused."
 30. (O5) Signed in, pause a routine of four on the web and pull: Paused counts
     4, as the laptop's moon does, and the routine is one row, "Routine · 4
-    habits", in its colour, with no Resume. Its row pushes the paused detail:
-    the header, a moon and "Hidden with your … routine until …", "Comes back
-    with it" listing the four (each with the list's dashed outline, opening
-    its sheet), and "Open in Routines", which pushes the routine's page.
+    habits", in its colour (with Resume from O8a, checks 39 and 42). Its row
+    pushes the paused detail: the header, a moon and "Hidden with your …
+    routine until …", "Comes back with it" listing the four (each with the
+    list's dashed outline, opening its sheet), and "Open in Routines", which
+    pushes the routine's page.
     Resume the routine on the web and pull: the detail pops back by itself.
 31. (O5) Turn Organize off on the web and pull: Paused stays in the footer and
     Item types goes. The paused detail has no "Open in Routines". With Item
@@ -1228,6 +1231,49 @@ with an item's Resume; O14 the Trash, with Restore.
     apart; double-tap it and the focus stays on it, dimmed, reading
     "Restoring" until the row leaves. At the largest accessibility size the
     marks on Paused and Trash grow with the text and never overlap it.
+37. (O8a) Sample: Morning routine's Status chip ends in a gray chevron; tap
+    it: a menu of "Pause" and "Pause until…", nothing checked. Pause: the
+    chip reads "Paused" and the note under it "Its items are hidden until
+    you resume. Streaks and history stay exactly as they are." Tap Status
+    again: "Resume" and "Pause until…". Resume: the chip reads "Active" and
+    the note goes. Nothing is sent from the sample.
+38. (O8a) Pause until… opens the day picker titled "Pause until", tomorrow
+    the first day it lets you pick, with "Its items come back on the day you
+    pick, on their own. Streaks and history stay exactly as they are." under
+    the calendar and the day picked on its button ("Pause until Thu, Oct 8").
+    Cancel writes nothing. Pick a day: the chip reads "Paused until Oct 8"
+    and the note "Its items come back on Oct 8, on their own. …". On a paused
+    routine the picker opens on its own return day, and a new day moves it.
+39. (O8a) Sample: Autumn's Status is a menu of On, Off and Dates, Dates
+    checked, the check and the words in the label colour, never lime. Pick
+    Off: the chip and the sentence under it change at once. With Morning
+    routine also paused until a day, Journal leaves Today and Paused lists
+    Morning routine under that day, with Resume. Pick Dates on Autumn and
+    Resume on Morning routine: Paused reads "Nothing is paused."
+40. (O8a) Signed in: pause a routine until a date on the phone. The web
+    shows it paused after a refresh, and its Paused lists it. Then turn a
+    season Off with flight mode on: the banner shows, the refetch fails, and
+    the chip goes back to what it was, still offline. Nothing reaches the
+    server: the web still shows the season as it was.
+41. (O8a) Signed in, on a dated season that is live today, pick On: the
+    note says "On until you say otherwise", and the web shows it On. Pick
+    Off on a season holding something nothing else keeps on, then open
+    Paused: the season's row ends in a chevron beside its Resume, and its
+    detail has "Turn on now" (a routine's has "Resume now"). Either brings it
+    back the web's way: a dated season goes back to Dates and follows its
+    dates, and the detail pops back by itself.
+42. (O8a) Turn Organize off on the web, then pull on the phone: no page
+    offers a Status menu (each reads "Organize is switched off"), but
+    Paused still has Resume. Resume a paused routine there: it comes back,
+    with no refusal, and the web shows it resumed. A server older than this
+    PR (no `containerWrites` in the planner payload) shows no Status menu and
+    no container Resume at all.
+43. (O8a) With VoiceOver, the Status chip reads "Status: …", a button with
+    the hint "Changes the status". A paused routine's row on Paused reads
+    "Morning routine, Routine, …", opens its detail on a double-tap, and
+    offers Resume among its actions. Dark mode and the largest Dynamic Type:
+    the chip's chevron and the menu's rows are never lime, and the pill wraps
+    beside the row's name without covering it.
 
 ## Rules
 

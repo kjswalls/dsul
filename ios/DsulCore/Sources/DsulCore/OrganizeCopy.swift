@@ -7,12 +7,14 @@ import Foundation
 // meta and a milestone tick's name; from O4 the summary cards' lines
 // (`weekCardSentence`, `nextMilestoneLine`, pinned by organize.json), and from
 // O14 the Trash's (`whenGone`, `daysUntilPurge`, the row meta, the restore
-// sentences and the phone's refusal words). Keep in step: a change there without the
-// same change here is drift, and the phone words a container differently
-// from the web. Checked against the web by OrganizeCopyFixtureTests
-// (tests/fixtures/organize/copy.json), byte for byte: the curly quotes
-// (U+201C, U+201D), the apostrophe (U+2019) and the separator (U+00B7) are
-// the web's.
+// sentences and the phone's refusal words). From O8a, the banner for a refused
+// container write (`refusal(code:for:)`, `PAUSE_REFUSED` and
+// `containerRefusal`), the phone's own words, which the web never says.
+// Keep in step: a change there without the same change here is drift, and
+// the phone words a container differently from the web. Checked against the
+// web by OrganizeCopyFixtureTests (tests/fixtures/organize/copy.json), byte
+// for byte: the curly quotes (U+201C, U+201D), the apostrophe (U+2019) and
+// the separator (U+00B7) are the web's.
 //
 // Dates are `formatDay`'s fixed English months ("Oct 30", Cadence.swift). The
 // guilt-free law holds in every line: nothing here says "missed", and nothing
@@ -418,6 +420,30 @@ public enum OrganizeCopy {
         if code == "parent_gone" { return "Its parent is in the Trash too. Restore that instead." }
         if code == "not_found" { return restoreGone }
         return restoreFailed
+    }
+
+    /* ── container writes (O8a) ────────────────────────────────────────── */
+
+    /// `PAUSE_REFUSED`: the banner for a routine pause the route refused
+    /// (`pause_refused`, 409): Pause until's day is no longer after today,
+    /// because the picker was left open across midnight, so nothing was
+    /// paused. The item sheet's words for the same refusal of an item's
+    /// pause. Phone-only: the web's store refuses the same request before it
+    /// writes, and says nothing.
+    public static let pauseRefused = "That day is no longer after today, so nothing was paused."
+
+    /// `containerRefusal`: the banner for a container write the route
+    /// refused, by its code (design §6.4). A sentence that names the container takes the name from
+    /// `intent`, the write the phone sent, never from the answer's body. Nil
+    /// for a code with no words of its own (an answer that never came, a 404,
+    /// a 500), where the sync says what it says for any failed write.
+    /// Later parts add their codes here (`name_taken`, `name_in_trash`,
+    /// `container_gone`, `member_gone`, `anchor_gone`).
+    public static func refusal(code: String?, for intent: ContainerIntent) -> String? {
+        switch code {
+        case "pause_refused": return pauseRefused
+        default: return nil
+        }
     }
 }
 

@@ -9,10 +9,15 @@ import SwiftUI
 /// An item's row opens its sheet and carries Resume where the sheet would
 /// offer it: the planner's own `resume(_:)`, the item `pause` write with
 /// `paused: false`, never a write of its own. A routine's or season's row
-/// pushes its paused detail (PausedEntryPage.swift) and has no Resume until
-/// O8a. The page rides no switch: pausing is not gated, so its way back may
-/// not be. Nothing here is late; a date is a return, never an age.
+/// pushes its paused detail (PausedEntryPage.swift) and, from O8a, carries
+/// Resume where the server takes the container's write: the planner's
+/// `turnOn(_:)`, the web's `setGateOn`, whatever the switches say. The page
+/// rides no switch: pausing is not gated, so its way back may not be.
+/// Nothing here is late; a date is a return, never an age.
 struct PausedPageView: View {
+    /// The tab's stack, for a routine's or season's push beside its Resume.
+    @Binding var path: [OrganizeRoute]
+
     @Environment(SamplePlanner.self) private var planner
 
     var body: some View {
@@ -30,7 +35,7 @@ struct PausedPageView: View {
             ForEach(page.groups) { group in
                 Section {
                     ForEach(group.rows) { row in
-                        PausedRowView(row: row)
+                        PausedRowView(row: row, path: $path)
                     }
                 } header: {
                     PageSectionHeader(title: group.title)
@@ -46,17 +51,21 @@ struct PausedPageView: View {
     }
 }
 
-/// One paused thing: its mark, its name, what it is, and Resume for an item
-/// the sheet would resume. To VoiceOver the row is one element ("Read,
-/// Habit") whose activation opens the item's sheet, with Resume as a named
-/// action; a routine's or season's row is a link to its detail.
+/// One paused thing: its mark, its name, what it is, and Resume where it has
+/// one. To VoiceOver the row is one element ("Read, Habit") whose activation
+/// opens the item's sheet or pushes the container's detail, with Resume as a
+/// named action. A routine's or season's row with no Resume (a server older
+/// than the write) is a plain link to its detail, as in O5; with one it is a
+/// button that pushes, as an item's opens, so the pill beside it takes its
+/// own taps.
 private struct PausedRowView: View {
     let row: PausedRow
+    @Binding var path: [OrganizeRoute]
 
     @Environment(SamplePlanner.self) private var planner
 
     var body: some View {
-        if let route = row.route {
+        if let route = row.route, !row.resumable {
             NavigationLink(value: route) {
                 label
                     .accessibilityElement(children: .ignore)
@@ -66,12 +75,22 @@ private struct PausedRowView: View {
         } else {
             HStack(spacing: 12) {
                 Button(action: open) {
-                    label
-                        // The hit shape overhangs the label to the row's
-                        // edges, as Today's does, and leaves the layout alone.
-                        .padding(.vertical, 11)
-                        .contentShape(Rectangle())
-                        .padding(.vertical, -11)
+                    HStack(spacing: 8) {
+                        label
+                        // A row that pushes says so, as the link it stands
+                        // in for does (and as a subtask row does).
+                        if row.route != nil {
+                            Image(systemName: "chevron.right")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                                .accessibilityHidden(true)
+                        }
+                    }
+                    // The hit shape overhangs the label to the row's
+                    // edges, as Today's does, and leaves the layout alone.
+                    .padding(.vertical, 11)
+                    .contentShape(Rectangle())
+                    .padding(.vertical, -11)
                 }
                 .buttonStyle(RowPressStyle())
                 if row.resumable {
@@ -110,14 +129,23 @@ private struct PausedRowView: View {
         }
     }
 
+    /// An item's sheet, or a routine's or season's paused detail.
     private func open() {
-        guard let id = row.itemId else { return }
-        planner.open(id, day: .today)
+        if let route = row.route {
+            path.append(route)
+        } else if let id = row.itemId {
+            planner.open(id, day: .today)
+        }
     }
 
+    /// The item's own Resume, or the container's way back (`turnOn`).
     private func resume() {
-        guard let id = row.itemId, row.resumable else { return }
-        planner.resume(id)
+        guard row.resumable else { return }
+        if let ref = row.container {
+            planner.turnOn(ref)
+        } else if let id = row.itemId {
+            planner.resume(id)
+        }
     }
 }
 

@@ -22,8 +22,11 @@ import Foundation
 // Paused rides no switch: pausing is not gated, so its way back may not be
 // (console-rail.tsx). An item's Resume is the planner's own (`resume(_:)`,
 // the item `pause` write with `paused: false`), offered where the sheet would
-// offer it. A routine or season carries no Resume until O8a. The guilt-free
-// law: a date here is a return, never an age, and nothing is late.
+// offer it. From O8a a routine's or a season's Resume (its detail's "Resume
+// now" or "Turn on now") is the planner's `turnOn`, the web's `setGateOn`,
+// offered wherever the server takes that write, whatever the switches say
+// (`canResume`). The guilt-free law: a date here is a return, never an age,
+// and nothing is late.
 
 /// The Paused page: the welcome line, then the shelf by return day.
 struct PausedPage: Hashable, Sendable {
@@ -54,7 +57,7 @@ enum PausedMark: Hashable, Sendable {
     case container(symbol: String, accent: ContainerAccent)
 }
 
-/// One paused thing: its mark, its name, what it is, and (for an item the
+/// One paused thing: its mark, its name, what it is, and (for anything the
 /// server will resume) Resume.
 struct PausedRow: Identifiable, Hashable, Sendable {
     /// The shelf's key: "item:<uuid>", "routine:<id>", "season:<id>".
@@ -68,8 +71,11 @@ struct PausedRow: Identifiable, Hashable, Sendable {
     /// The item's id, for an item's row: a tap opens its sheet. Nil for a
     /// routine or season, whose tap pushes its paused detail.
     let itemId: UUID?
-    /// Resume shows: an item the sheet would offer Resume on. Never a routine
-    /// or season before O8a.
+    /// The routine or season, for its row: what its Resume turns on
+    /// (`SamplePlanner.turnOn`). Nil for an item.
+    let container: ContainerRef?
+    /// Resume shows: an item the sheet would offer Resume on, or a routine or
+    /// season whose way back the server takes (`ShelfPageModel.canResume`).
     let resumable: Bool
     /// The row as one element: "Read, Habit", "Morning routine, Routine, 4
     /// habits".
@@ -105,10 +111,19 @@ struct PausedEntryPage: OrganizePageModel {
     /// nil with Organize off, as the web offers it only when that section is
     /// on the rail.
     let openIn: OpenIn?
+    /// "Resume now", or "Turn on now" for a season (O8a), whatever the
+    /// switches say; nil when the server doesn't take that write.
+    let resume: Resume?
 
     struct OpenIn: Hashable, Sendable {
         let title: String
         let route: OrganizeRoute
+    }
+
+    struct Resume: Hashable, Sendable {
+        let title: String
+        /// What it turns on (`SamplePlanner.turnOn`).
+        let ref: ContainerRef
     }
 }
 
@@ -174,6 +189,10 @@ enum ShelfPageModel {
     static let restoring = "Restoring"
     /// Resume's word on a paused row.
     static let resume = "Resume"
+    /// The paused detail's way back (paused.tsx): a season's, and anything
+    /// else's.
+    static let turnOnNow = "Turn on now"
+    static let resumeNow = "Resume now"
     /// The Trash page's Retry after a failed read.
     static let retry = "Try again"
 
@@ -187,7 +206,8 @@ enum ShelfPageModel {
     }
 
     /// The Paused page. `canResume` is the planner's own gate for an item's
-    /// Resume (`offers(.resume, …)` on today).
+    /// Resume (`offers(.resume, …)` on today); a routine's or a season's is
+    /// `canResume(_:_:)`.
     static func pausedPage(_ s: OrganizeSnapshot, canResume: (Item) -> Bool) -> PausedPage {
         let shelf = Self.shelf(s)
         let groups = shelf.days.map { day in
@@ -205,19 +225,36 @@ enum ShelfPageModel {
         switch entry {
         case .item(let item, _):
             return PausedRow(key: entry.key, kind: entry.kind, name: name, kindLine: kindLine,
-                             mark: .item(habit: item.isHabit), itemId: item.id, resumable: canResume(item),
-                             spokenLabel: spoken)
+                             mark: .item(habit: item.isHabit), itemId: item.id, container: nil,
+                             resumable: canResume(item), spokenLabel: spoken)
         case .routine(let routine, _, _):
             return PausedRow(key: entry.key, kind: entry.kind, name: name, kindLine: kindLine,
                              mark: containerMark(.routine, name: routine.name, glyph: routine.icon,
                                                  color: routine.color),
-                             itemId: nil, resumable: false, spokenLabel: spoken)
+                             itemId: nil, container: ContainerRef(kind: .routine, id: routine.id),
+                             resumable: Self.canResume(.routine(routine), s), spokenLabel: spoken)
         case .season(let season, _, _):
             return PausedRow(key: entry.key, kind: entry.kind, name: name, kindLine: kindLine,
                              mark: containerMark(.season, name: season.name, glyph: season.icon,
                                                  color: season.color),
-                             itemId: nil, resumable: false, spokenLabel: spoken)
+                             itemId: nil, container: ContainerRef(kind: .season, id: season.id),
+                             resumable: Self.canResume(.season(season), s), spokenLabel: spoken)
         }
+    }
+
+    /// May Paused bring `container` back (O8a)? Turning it on must change
+    /// something (DsulCore `gateSwitchIntent`, lib/gate-toggle.ts
+    /// `setGateOn`'s decision: a paused routine resumes, a season not live
+    /// today gets `seasonStateForSwitch`), which it always does for an entry
+    /// on today's shelf, and the server must take that write. Never the
+    /// switches: Paused is the one way back the web keeps with Organize off
+    /// (paused.tsx, console-rail.tsx), and the route takes the write either
+    /// way.
+    static func canResume(_ container: ContainerSnapshot, _ s: OrganizeSnapshot) -> Bool {
+        guard let intent = gateSwitchIntent(container, on: true, today: s.today, timeZone: s.timeZone) else {
+            return false
+        }
+        return s.containerTakes.takes(intent, on: container.kind)
     }
 
     private static func containerMark(_ kind: OrganizeKind, name: String, glyph: String?,
@@ -242,6 +279,7 @@ enum ShelfPageModel {
         guard let entry = pausedEntry(key, s) else { return nil }
         let header: PageHeader
         let openIn: PausedEntryPage.OpenIn?
+        let resume: PausedEntryPage.Resume?
         let organizeOn = s.settings.organizeEnabled
         switch entry {
         case .item:
@@ -253,11 +291,17 @@ enum ShelfPageModel {
                 ? PausedEntryPage.OpenIn(title: "Open in " + ContainerWords.routines,
                                          route: .container(.routine, id: routine.id))
                 : nil
+            resume = canResume(.routine(routine), s)
+                ? PausedEntryPage.Resume(title: resumeNow, ref: ContainerRef(kind: .routine, id: routine.id))
+                : nil
         case .season(let season, _, _):
             header = ContainerPageModel.header(.season, name: season.name, glyph: season.icon, color: season.color)
             openIn = organizeOn
                 ? PausedEntryPage.OpenIn(title: "Open in " + ContainerWords.seasons,
                                          route: .container(.season, id: season.id))
+                : nil
+            resume = canResume(.season(season), s)
+                ? PausedEntryPage.Resume(title: turnOnNow, ref: ContainerRef(kind: .season, id: season.id))
                 : nil
         }
         let state = pausedStateLine(entry, on: s.today, timeZone: s.timeZone, routines: s.routines,
@@ -268,7 +312,8 @@ enum ShelfPageModel {
             kindLine: entryKindLine(entry, labels: s.typeLabels),
             stateLine: state,
             members: entry.items.map { ContainerPageModel.memberRow($0, s, onToday: [:]) },
-            openIn: openIn
+            openIn: openIn,
+            resume: resume
         ))
     }
 

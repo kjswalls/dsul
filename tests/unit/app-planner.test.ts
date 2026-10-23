@@ -663,6 +663,7 @@ describe('the payload fixture shared with DsulCore', () => {
     expect(Object.keys(generated).sort()).toEqual(
       [
         'awayPeriods',
+        'containerWrites',
         'fetchedAt',
         'goals',
         'itemTypes',
@@ -726,6 +727,10 @@ describe('the payload fixture shared with DsulCore', () => {
     // What the Trash routes take (lib/app-containers.ts). Additive too: an
     // older server sends no list, and the phone then offers no Trash.
     expect(generated.trashWrites).toEqual(['list', 'restore']);
+    // The field intents the container route takes, per kind (O8a: a routine's
+    // pause and a season's state). A kind with none lists none; an older
+    // server sends no key, and the phone then hides every container editor.
+    expect(generated.containerWrites).toEqual({ routine: ['pause'], season: ['state'], goal: [], project: [] });
     // The custom type's names, and nothing else of its row.
     expect(generated.itemTypes).toEqual([{ name: 'book', label: 'Book to read', labelPlural: 'Books to read' }]);
     // The trips, as lib/away.ts's AwayPeriod (awayPeriodFromRow): an
