@@ -58,7 +58,7 @@ export function PackChip({
       aria-expanded={open}
       aria-label={`${packIsQuestion(stored.pack) ? 'Your AI has a question' : `${packKindName(stored.pack)} ready`}. ${open ? 'Close' : 'Open'} it`}
       data-testid="prep-pack-chip"
-      // The ready chip (components/ai/ai-work-badge.tsx): the aurora fill.
+      // The ready words (components/ai/ai-work-badge.tsx): aurora text, no fill.
       data-ai-chip={packIsQuestion(stored.pack) ? 'question' : 'ready'}
       className="-my-1.5 cursor-pointer"
     >

@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils';
  *            while anything is being worked on.
  *   ready    nothing on the rows. One line in the dock counts what is ready
  *            (components/notices/ai-work-notice.tsx), and the item panel shows
- *            the pack. AiChip, the aurora word chip, is left to Do stuff's own
+ *            the pack. AiChip, the aurora words, is left to Do stuff's own
  *            lanes and the key's count.
  *
  * All of them are pure marks: what to say is decided by the caller
@@ -46,7 +46,7 @@ export function RelayRow({
   );
 }
 
-/** The ready chip: a few words on the aurora fill, or the warm one for a question. */
+/** The ready words: a few words in aurora ink (no fill since 2026-10-23), or the warm one for a question. */
 export function AiChip({
   tone = 'ready',
   className,

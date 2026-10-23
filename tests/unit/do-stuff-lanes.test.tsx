@@ -169,21 +169,17 @@ describe('do stuff: the plan in lanes', () => {
     expect(screen.getAllByTestId('do-stuff-day').map((d) => d.textContent)).toEqual(['tomorrow', 'tomorrow']);
   });
 
-  it('asks for energy as the run starts: high walks the big one first, low the small ones', () => {
+  it('asks nothing about energy as the run starts, and still walks by one when it is set', () => {
     seed([...SIX, task('h', { title: 'write the report', size: 'big' })]);
     renderBraindump();
     fireEvent.click(screen.getByTestId('do-stuff-start'));
     act(() => useDoStuffStore.getState().move('h', 'today'));
-    // Not said: the walk goes as the rules lay it out.
+    // No step before doing (Kirby, 2026-10-23): the walk goes as the rules lay it out.
+    expect(screen.queryByTestId('do-stuff-energy-ask')).toBeNull();
     expect(screen.getByTestId('do-stuff-next')).toHaveAccessibleName('Up next: email the landlord');
-    fireEvent.click(screen.getByTestId('do-stuff-energy-high'));
+    // The ordering is kept for a better home: high walks the big one first.
+    act(() => useDoStuffStore.getState().setEnergy('high'));
     expect(screen.getByTestId('do-stuff-next')).toHaveAccessibleName('Up next: write the report');
-    expect(screen.getByTestId('do-stuff-energy')).toHaveTextContent('high energy');
-    // A click asks again; low puts the quick ones back in front.
-    fireEvent.click(screen.getByTestId('do-stuff-energy'));
-    fireEvent.click(screen.getByTestId('do-stuff-energy-low'));
-    expect(screen.getByTestId('do-stuff-next')).toHaveAccessibleName('Up next: email the landlord');
-    // Asked again each run.
     act(() => {
       useDoStuffStore.getState().stop();
       useDoStuffStore.getState().start();
