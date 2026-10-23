@@ -143,7 +143,9 @@ describe('saves in order', () => {
     expect(db.updateSeason).not.toHaveBeenCalled();
     routine.resolve();
     await settle();
-    expect(db.updateSeason).toHaveBeenCalledWith(USER, pid, { routineIds: [rid] });
+    // The list without the new routine as `known` (O7), so the write is this
+    // hold alone and another device's holds on the season stay.
+    expect(db.updateSeason).toHaveBeenCalledWith(USER, pid, { routineIds: [rid] }, undefined, { routineIds: [] });
 
     store().undo();
     expect(store().routines).toEqual([]);

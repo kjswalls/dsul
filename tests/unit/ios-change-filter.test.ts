@@ -139,6 +139,11 @@ describe('the iOS change filter', () => {
       'lib/app-http.ts',
       'app/api/app/trash/route.ts',
       'app/api/app/trash/restore/route.ts',
+      // Routine pause, season state and Paused's Resume (O8a): the route, the
+      // fixture its rule is pinned by, and the switch "Turn on now" mirrors.
+      'tests/fixtures/organize/container-writes.json',
+      'app/api/app/containers/[kind]/[id]/route.ts',
+      'lib/gate-toggle.ts',
     ]) {
       expect(filter.test(p), p).toBe(true);
     }
@@ -157,6 +162,7 @@ describe('the iOS change filter', () => {
       // The alternation is anchored: a longer name sharing a prefix is not a port.
       'lib/organize-console.ts',
       'lib/paused-shelf-extra.ts',
+      'lib/gate-toggle.test.ts',
       'tests/fixtures/organize.json',
       'lib/category-icons.test.ts',
     ]) {

@@ -1,0 +1,1409 @@
+{
+  "cases": [
+    {
+      "name": "pause a live routine",
+      "kind": "routine",
+      "before": {
+        "id": "r-evening",
+        "name": "Evening",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "sortOrder": 1,
+        "usualTime": "21:30"
+      },
+      "body": {
+        "action": "pause",
+        "paused": true,
+        "timeZone": "America/New_York"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "America/New_York",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "pausedAt": "2026-10-23T17:00:00.000Z",
+          "pausedUntil": null
+        },
+        "after": {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "sortOrder": 1,
+          "usualTime": "21:30",
+          "pausedAt": "2026-10-23T17:00:00.000Z"
+        }
+      }
+    },
+    {
+      "name": "pause a live routine until a day",
+      "kind": "routine",
+      "before": {
+        "id": "r-evening",
+        "name": "Evening",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "sortOrder": 1,
+        "usualTime": "21:30"
+      },
+      "body": {
+        "action": "pause",
+        "paused": true,
+        "timeZone": "America/New_York",
+        "pausedUntil": "2026-10-30"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "America/New_York",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "pausedAt": "2026-10-23T17:00:00.000Z",
+          "pausedUntil": "2026-10-30"
+        },
+        "after": {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "sortOrder": 1,
+          "usualTime": "21:30",
+          "pausedAt": "2026-10-23T17:00:00.000Z",
+          "pausedUntil": "2026-10-30"
+        }
+      }
+    },
+    {
+      "name": "pause until tomorrow",
+      "kind": "routine",
+      "before": {
+        "id": "r-evening",
+        "name": "Evening",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "sortOrder": 1,
+        "usualTime": "21:30"
+      },
+      "body": {
+        "action": "pause",
+        "paused": true,
+        "timeZone": "America/New_York",
+        "pausedUntil": "2026-10-24"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "America/New_York",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "pausedAt": "2026-10-23T17:00:00.000Z",
+          "pausedUntil": "2026-10-24"
+        },
+        "after": {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "sortOrder": 1,
+          "usualTime": "21:30",
+          "pausedAt": "2026-10-23T17:00:00.000Z",
+          "pausedUntil": "2026-10-24"
+        }
+      }
+    },
+    {
+      "name": "pause again: already so, the first stamp kept",
+      "kind": "routine",
+      "before": {
+        "id": "r-evening",
+        "name": "Evening",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "sortOrder": 1,
+        "usualTime": "21:30",
+        "pausedAt": "2026-10-20T13:00:00.000Z"
+      },
+      "body": {
+        "action": "pause",
+        "paused": true,
+        "timeZone": "America/New_York"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "America/New_York",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {},
+        "after": {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "sortOrder": 1,
+          "usualTime": "21:30",
+          "pausedAt": "2026-10-20T13:00:00.000Z"
+        }
+      }
+    },
+    {
+      "name": "pause again with no day: its resume day kept",
+      "kind": "routine",
+      "before": {
+        "id": "r-evening",
+        "name": "Evening",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "sortOrder": 1,
+        "usualTime": "21:30",
+        "pausedAt": "2026-10-20T13:00:00.000Z",
+        "pausedUntil": "2026-10-30"
+      },
+      "body": {
+        "action": "pause",
+        "paused": true,
+        "timeZone": "America/New_York"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "America/New_York",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {},
+        "after": {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "sortOrder": 1,
+          "usualTime": "21:30",
+          "pausedAt": "2026-10-20T13:00:00.000Z",
+          "pausedUntil": "2026-10-30"
+        }
+      }
+    },
+    {
+      "name": "pause until on a running pause: the day moves, the stamp stays",
+      "kind": "routine",
+      "before": {
+        "id": "r-evening",
+        "name": "Evening",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "sortOrder": 1,
+        "usualTime": "21:30",
+        "pausedAt": "2026-10-20T13:00:00.000Z",
+        "pausedUntil": "2026-10-30"
+      },
+      "body": {
+        "action": "pause",
+        "paused": true,
+        "timeZone": "America/New_York",
+        "pausedUntil": "2026-11-06"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "America/New_York",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "pausedUntil": "2026-11-06"
+        },
+        "after": {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "sortOrder": 1,
+          "usualTime": "21:30",
+          "pausedAt": "2026-10-20T13:00:00.000Z",
+          "pausedUntil": "2026-11-06"
+        }
+      }
+    },
+    {
+      "name": "pause until on a pause with no day: the day is set",
+      "kind": "routine",
+      "before": {
+        "id": "r-evening",
+        "name": "Evening",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "sortOrder": 1,
+        "usualTime": "21:30",
+        "pausedAt": "2026-10-20T13:00:00.000Z"
+      },
+      "body": {
+        "action": "pause",
+        "paused": true,
+        "timeZone": "America/New_York",
+        "pausedUntil": "2026-11-06"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "America/New_York",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "pausedUntil": "2026-11-06"
+        },
+        "after": {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "sortOrder": 1,
+          "usualTime": "21:30",
+          "pausedAt": "2026-10-20T13:00:00.000Z",
+          "pausedUntil": "2026-11-06"
+        }
+      }
+    },
+    {
+      "name": "pause until the day it already has: the same day written again",
+      "kind": "routine",
+      "before": {
+        "id": "r-evening",
+        "name": "Evening",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "sortOrder": 1,
+        "usualTime": "21:30",
+        "pausedAt": "2026-10-20T13:00:00.000Z",
+        "pausedUntil": "2026-10-30"
+      },
+      "body": {
+        "action": "pause",
+        "paused": true,
+        "timeZone": "America/New_York",
+        "pausedUntil": "2026-10-30"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "America/New_York",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "pausedUntil": "2026-10-30"
+        },
+        "after": {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "sortOrder": 1,
+          "usualTime": "21:30",
+          "pausedAt": "2026-10-20T13:00:00.000Z",
+          "pausedUntil": "2026-10-30"
+        }
+      }
+    },
+    {
+      "name": "pause after the last one ended: a new pause, its old day cleared",
+      "kind": "routine",
+      "before": {
+        "id": "r-evening",
+        "name": "Evening",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "sortOrder": 1,
+        "usualTime": "21:30",
+        "pausedAt": "2026-10-01T13:00:00.000Z",
+        "pausedUntil": "2026-10-10"
+      },
+      "body": {
+        "action": "pause",
+        "paused": true,
+        "timeZone": "America/New_York"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "America/New_York",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "pausedAt": "2026-10-23T17:00:00.000Z",
+          "pausedUntil": null
+        },
+        "after": {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "sortOrder": 1,
+          "usualTime": "21:30",
+          "pausedAt": "2026-10-23T17:00:00.000Z"
+        }
+      }
+    },
+    {
+      "name": "resume a pause: it ends today, the interval kept",
+      "kind": "routine",
+      "before": {
+        "id": "r-evening",
+        "name": "Evening",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "sortOrder": 1,
+        "usualTime": "21:30",
+        "pausedAt": "2026-10-20T13:00:00.000Z"
+      },
+      "body": {
+        "action": "pause",
+        "paused": false,
+        "timeZone": "America/New_York"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "America/New_York",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "pausedUntil": "2026-10-23"
+        },
+        "after": {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "sortOrder": 1,
+          "usualTime": "21:30",
+          "pausedAt": "2026-10-20T13:00:00.000Z",
+          "pausedUntil": "2026-10-23"
+        }
+      }
+    },
+    {
+      "name": "resume a pause with a day: it ends today instead",
+      "kind": "routine",
+      "before": {
+        "id": "r-evening",
+        "name": "Evening",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "sortOrder": 1,
+        "usualTime": "21:30",
+        "pausedAt": "2026-10-20T13:00:00.000Z",
+        "pausedUntil": "2026-10-30"
+      },
+      "body": {
+        "action": "pause",
+        "paused": false,
+        "timeZone": "America/New_York"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "America/New_York",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "pausedUntil": "2026-10-23"
+        },
+        "after": {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "sortOrder": 1,
+          "usualTime": "21:30",
+          "pausedAt": "2026-10-20T13:00:00.000Z",
+          "pausedUntil": "2026-10-23"
+        }
+      }
+    },
+    {
+      "name": "resume a live routine: already so",
+      "kind": "routine",
+      "before": {
+        "id": "r-evening",
+        "name": "Evening",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "sortOrder": 1,
+        "usualTime": "21:30"
+      },
+      "body": {
+        "action": "pause",
+        "paused": false,
+        "timeZone": "America/New_York"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "America/New_York",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {},
+        "after": {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "sortOrder": 1,
+          "usualTime": "21:30"
+        }
+      }
+    },
+    {
+      "name": "resume after the pause ended: already so",
+      "kind": "routine",
+      "before": {
+        "id": "r-evening",
+        "name": "Evening",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "sortOrder": 1,
+        "usualTime": "21:30",
+        "pausedAt": "2026-10-01T13:00:00.000Z",
+        "pausedUntil": "2026-10-10"
+      },
+      "body": {
+        "action": "pause",
+        "paused": false,
+        "timeZone": "America/New_York"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "America/New_York",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {},
+        "after": {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "sortOrder": 1,
+          "usualTime": "21:30",
+          "pausedAt": "2026-10-01T13:00:00.000Z",
+          "pausedUntil": "2026-10-10"
+        }
+      }
+    },
+    {
+      "name": "pause until today: refused, it would end at once",
+      "kind": "routine",
+      "before": {
+        "id": "r-evening",
+        "name": "Evening",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "sortOrder": 1,
+        "usualTime": "21:30"
+      },
+      "body": {
+        "action": "pause",
+        "paused": true,
+        "timeZone": "America/New_York",
+        "pausedUntil": "2026-10-23"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "America/New_York",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": "pause_refused",
+        "status": 409,
+        "patch": null,
+        "after": {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "sortOrder": 1,
+          "usualTime": "21:30"
+        }
+      }
+    },
+    {
+      "name": "pause until a past day: refused",
+      "kind": "routine",
+      "before": {
+        "id": "r-evening",
+        "name": "Evening",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "sortOrder": 1,
+        "usualTime": "21:30"
+      },
+      "body": {
+        "action": "pause",
+        "paused": true,
+        "timeZone": "America/New_York",
+        "pausedUntil": "2026-10-20"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "America/New_York",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": "pause_refused",
+        "status": 409,
+        "patch": null,
+        "after": {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "sortOrder": 1,
+          "usualTime": "21:30"
+        }
+      }
+    },
+    {
+      "name": "late at night in New York: still the 23rd, so the 24th is tomorrow",
+      "kind": "routine",
+      "before": {
+        "id": "r-evening",
+        "name": "Evening",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "sortOrder": 1,
+        "usualTime": "21:30"
+      },
+      "body": {
+        "action": "pause",
+        "paused": true,
+        "timeZone": "America/New_York",
+        "pausedUntil": "2026-10-24"
+      },
+      "now": "2026-10-24T03:30:00.000Z",
+      "timeZone": "America/New_York",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "pausedAt": "2026-10-24T03:30:00.000Z",
+          "pausedUntil": "2026-10-24"
+        },
+        "after": {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "sortOrder": 1,
+          "usualTime": "21:30",
+          "pausedAt": "2026-10-24T03:30:00.000Z",
+          "pausedUntil": "2026-10-24"
+        }
+      }
+    },
+    {
+      "name": "the same instant with no zone stored and the device in UTC: already the 24th, refused",
+      "kind": "routine",
+      "before": {
+        "id": "r-evening",
+        "name": "Evening",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "sortOrder": 1,
+        "usualTime": "21:30"
+      },
+      "body": {
+        "action": "pause",
+        "paused": true,
+        "timeZone": "UTC",
+        "pausedUntil": "2026-10-24"
+      },
+      "now": "2026-10-24T03:30:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-24",
+      "expected": {
+        "refused": "pause_refused",
+        "status": 409,
+        "patch": null,
+        "after": {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "sortOrder": 1,
+          "usualTime": "21:30"
+        }
+      }
+    },
+    {
+      "name": "resume late at night in New York: ends on the 23rd",
+      "kind": "routine",
+      "before": {
+        "id": "r-evening",
+        "name": "Evening",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "sortOrder": 1,
+        "usualTime": "21:30",
+        "pausedAt": "2026-10-20T13:00:00.000Z"
+      },
+      "body": {
+        "action": "pause",
+        "paused": false,
+        "timeZone": "America/New_York"
+      },
+      "now": "2026-10-24T03:30:00.000Z",
+      "timeZone": "America/New_York",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "pausedUntil": "2026-10-23"
+        },
+        "after": {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "sortOrder": 1,
+          "usualTime": "21:30",
+          "pausedAt": "2026-10-20T13:00:00.000Z",
+          "pausedUntil": "2026-10-23"
+        }
+      }
+    },
+    {
+      "name": "a pause the device sent without its zone: the account’s zone",
+      "kind": "routine",
+      "before": {
+        "id": "r-evening",
+        "name": "Evening",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "sortOrder": 1,
+        "usualTime": "21:30"
+      },
+      "body": {
+        "action": "pause",
+        "paused": true
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "America/New_York",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "pausedAt": "2026-10-23T17:00:00.000Z",
+          "pausedUntil": null
+        },
+        "after": {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "sortOrder": 1,
+          "usualTime": "21:30",
+          "pausedAt": "2026-10-23T17:00:00.000Z"
+        }
+      }
+    },
+    {
+      "name": "on: following its dates to pinned on",
+      "kind": "season",
+      "before": {
+        "id": "s-autumn",
+        "name": "Autumn",
+        "state": "auto",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000003"
+        ],
+        "routineIds": [
+          "r-evening"
+        ],
+        "startsOn": "2026-09-01",
+        "endsOn": "2026-11-30",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "state",
+        "state": "active"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "state": "active"
+        },
+        "after": {
+          "id": "s-autumn",
+          "name": "Autumn",
+          "state": "active",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000003"
+          ],
+          "routineIds": [
+            "r-evening"
+          ],
+          "startsOn": "2026-09-01",
+          "endsOn": "2026-11-30",
+          "sortOrder": 0
+        }
+      }
+    },
+    {
+      "name": "off: following its dates to switched off",
+      "kind": "season",
+      "before": {
+        "id": "s-autumn",
+        "name": "Autumn",
+        "state": "auto",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000003"
+        ],
+        "routineIds": [
+          "r-evening"
+        ],
+        "startsOn": "2026-09-01",
+        "endsOn": "2026-11-30",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "state",
+        "state": "paused"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "state": "paused"
+        },
+        "after": {
+          "id": "s-autumn",
+          "name": "Autumn",
+          "state": "paused",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000003"
+          ],
+          "routineIds": [
+            "r-evening"
+          ],
+          "startsOn": "2026-09-01",
+          "endsOn": "2026-11-30",
+          "sortOrder": 0
+        }
+      }
+    },
+    {
+      "name": "dates: pinned on back to its dates",
+      "kind": "season",
+      "before": {
+        "id": "s-autumn",
+        "name": "Autumn",
+        "state": "active",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000003"
+        ],
+        "routineIds": [
+          "r-evening"
+        ],
+        "startsOn": "2026-09-01",
+        "endsOn": "2026-11-30",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "state",
+        "state": "auto"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "state": "auto"
+        },
+        "after": {
+          "id": "s-autumn",
+          "name": "Autumn",
+          "state": "auto",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000003"
+          ],
+          "routineIds": [
+            "r-evening"
+          ],
+          "startsOn": "2026-09-01",
+          "endsOn": "2026-11-30",
+          "sortOrder": 0
+        }
+      }
+    },
+    {
+      "name": "dates: switched off back to its dates",
+      "kind": "season",
+      "before": {
+        "id": "s-autumn",
+        "name": "Autumn",
+        "state": "paused",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000003"
+        ],
+        "routineIds": [
+          "r-evening"
+        ],
+        "startsOn": "2026-09-01",
+        "endsOn": "2026-11-30",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "state",
+        "state": "auto"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "state": "auto"
+        },
+        "after": {
+          "id": "s-autumn",
+          "name": "Autumn",
+          "state": "auto",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000003"
+          ],
+          "routineIds": [
+            "r-evening"
+          ],
+          "startsOn": "2026-09-01",
+          "endsOn": "2026-11-30",
+          "sortOrder": 0
+        }
+      }
+    },
+    {
+      "name": "on: switched off to pinned on",
+      "kind": "season",
+      "before": {
+        "id": "s-autumn",
+        "name": "Autumn",
+        "state": "paused",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000003"
+        ],
+        "routineIds": [
+          "r-evening"
+        ],
+        "startsOn": "2026-09-01",
+        "endsOn": "2026-11-30",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "state",
+        "state": "active"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "state": "active"
+        },
+        "after": {
+          "id": "s-autumn",
+          "name": "Autumn",
+          "state": "active",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000003"
+          ],
+          "routineIds": [
+            "r-evening"
+          ],
+          "startsOn": "2026-09-01",
+          "endsOn": "2026-11-30",
+          "sortOrder": 0
+        }
+      }
+    },
+    {
+      "name": "off: pinned on to switched off",
+      "kind": "season",
+      "before": {
+        "id": "s-autumn",
+        "name": "Autumn",
+        "state": "active",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000003"
+        ],
+        "routineIds": [
+          "r-evening"
+        ],
+        "startsOn": "2026-09-01",
+        "endsOn": "2026-11-30",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "state",
+        "state": "paused"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "state": "paused"
+        },
+        "after": {
+          "id": "s-autumn",
+          "name": "Autumn",
+          "state": "paused",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000003"
+          ],
+          "routineIds": [
+            "r-evening"
+          ],
+          "startsOn": "2026-09-01",
+          "endsOn": "2026-11-30",
+          "sortOrder": 0
+        }
+      }
+    },
+    {
+      "name": "on, past its end: pinned on, the dates kept",
+      "kind": "season",
+      "before": {
+        "id": "s-autumn",
+        "name": "Autumn",
+        "state": "auto",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000003"
+        ],
+        "routineIds": [
+          "r-evening"
+        ],
+        "startsOn": "2026-06-01",
+        "endsOn": "2026-10-01",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "state",
+        "state": "active"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "state": "active"
+        },
+        "after": {
+          "id": "s-autumn",
+          "name": "Autumn",
+          "state": "active",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000003"
+          ],
+          "routineIds": [
+            "r-evening"
+          ],
+          "startsOn": "2026-06-01",
+          "endsOn": "2026-10-01",
+          "sortOrder": 0
+        }
+      }
+    },
+    {
+      "name": "dates on a season with none: stored as picked",
+      "kind": "season",
+      "before": {
+        "id": "s-autumn",
+        "name": "Autumn",
+        "state": "paused",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000003"
+        ],
+        "routineIds": [
+          "r-evening"
+        ],
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "state",
+        "state": "auto"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {
+          "state": "auto"
+        },
+        "after": {
+          "id": "s-autumn",
+          "name": "Autumn",
+          "state": "auto",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000003"
+          ],
+          "routineIds": [
+            "r-evening"
+          ],
+          "sortOrder": 0
+        }
+      }
+    },
+    {
+      "name": "on when already pinned on: already so",
+      "kind": "season",
+      "before": {
+        "id": "s-autumn",
+        "name": "Autumn",
+        "state": "active",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000003"
+        ],
+        "routineIds": [
+          "r-evening"
+        ],
+        "startsOn": "2026-09-01",
+        "endsOn": "2026-11-30",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "state",
+        "state": "active"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {},
+        "after": {
+          "id": "s-autumn",
+          "name": "Autumn",
+          "state": "active",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000003"
+          ],
+          "routineIds": [
+            "r-evening"
+          ],
+          "startsOn": "2026-09-01",
+          "endsOn": "2026-11-30",
+          "sortOrder": 0
+        }
+      }
+    },
+    {
+      "name": "off when already switched off: already so",
+      "kind": "season",
+      "before": {
+        "id": "s-autumn",
+        "name": "Autumn",
+        "state": "paused",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000003"
+        ],
+        "routineIds": [
+          "r-evening"
+        ],
+        "startsOn": "2026-09-01",
+        "endsOn": "2026-11-30",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "state",
+        "state": "paused"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {},
+        "after": {
+          "id": "s-autumn",
+          "name": "Autumn",
+          "state": "paused",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000003"
+          ],
+          "routineIds": [
+            "r-evening"
+          ],
+          "startsOn": "2026-09-01",
+          "endsOn": "2026-11-30",
+          "sortOrder": 0
+        }
+      }
+    },
+    {
+      "name": "dates when already following them: already so",
+      "kind": "season",
+      "before": {
+        "id": "s-autumn",
+        "name": "Autumn",
+        "state": "auto",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000003"
+        ],
+        "routineIds": [
+          "r-evening"
+        ],
+        "startsOn": "2026-09-01",
+        "endsOn": "2026-11-30",
+        "sortOrder": 0
+      },
+      "body": {
+        "action": "state",
+        "state": "auto"
+      },
+      "now": "2026-10-23T17:00:00.000Z",
+      "timeZone": "UTC",
+      "today": "2026-10-23",
+      "expected": {
+        "refused": null,
+        "status": 200,
+        "patch": {},
+        "after": {
+          "id": "s-autumn",
+          "name": "Autumn",
+          "state": "auto",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000003"
+          ],
+          "routineIds": [
+            "r-evening"
+          ],
+          "startsOn": "2026-09-01",
+          "endsOn": "2026-11-30",
+          "sortOrder": 0
+        }
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "a resume with a day",
+      "kind": "routine",
+      "body": {
+        "action": "pause",
+        "paused": false,
+        "pausedUntil": "2026-10-30"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a pause with no paused",
+      "kind": "routine",
+      "body": {
+        "action": "pause",
+        "pausedUntil": "2026-10-30"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a pause until a null day",
+      "kind": "routine",
+      "body": {
+        "action": "pause",
+        "paused": true,
+        "pausedUntil": null
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a pause until a day that is not a date",
+      "kind": "routine",
+      "body": {
+        "action": "pause",
+        "paused": true,
+        "pausedUntil": "30/10/2026"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a key the server does not know",
+      "kind": "routine",
+      "body": {
+        "action": "pause",
+        "paused": true,
+        "note": "x"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a season’s state on a routine",
+      "kind": "routine",
+      "body": {
+        "action": "state",
+        "state": "paused"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a state that is not one of the three",
+      "kind": "season",
+      "body": {
+        "action": "state",
+        "state": "on"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a pause on a season",
+      "kind": "season",
+      "body": {
+        "action": "pause",
+        "paused": true
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "any intent on a goal, for now",
+      "kind": "goal",
+      "body": {
+        "action": "state",
+        "state": "achieved"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "any intent on a project, for now",
+      "kind": "project",
+      "body": {
+        "action": "pause",
+        "paused": true
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    }
+  ]
+}

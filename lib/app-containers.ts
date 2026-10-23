@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { SeasonStateSchema } from '@dsul/types';
 import { authenticateAppRequest, dbErrorResponse } from './app-auth';
-import { UUID, notFound, ok, parseBody, refused } from './app-http';
+import { DateStrSchema, UUID, invalid, notFound, ok, parseBody, pauseZone, refused } from './app-http';
 import {
   findLiveProjectByName,
   itemDbType,
@@ -12,35 +13,53 @@ import {
   restoreProject,
   restoreRoutine,
   restoreSeason,
+  routineFromRow,
+  seasonFromRow,
+  updateRoutine,
+  updateSeason,
+  type RoutineRow,
+  type SeasonRow,
   type TrashEntry,
   type TrashKind,
 } from './db';
-import type { Item } from './planner-types';
+import { resolvePauseWrite } from './active';
+import { toDateStr } from './recurrence';
+import type { Item, Routine, Season } from './planner-types';
 
 /**
- * The iPhone app's container routes: today the Trash, GET /api/app/trash and
- * POST /api/app/trash/restore (memory/plans/ios-app.md, the Organize series).
- * The route files are thin facades over the handlers here.
+ * The iPhone app's container routes (memory/plans/ios-app.md, the Organize
+ * series): the Trash, GET /api/app/trash and POST /api/app/trash/restore, and
+ * one field of one routine, season, goal or project,
+ * POST /api/app/containers/:kind/:id. The route files are thin facades over
+ * the handlers here.
  *
  * Auth is lib/app-auth.ts, as for every /api/app/* route: a Supabase access
  * token as a bearer, and every statement runs on the caller's own client, so
  * RLS is the tenant guard. The service role is never used here.
  *
  * WRITES ARE INTENTS, NEVER ARRAYS, as in lib/app-api.ts. A restore names one
- * row by kind and id and does what the web's own store action does for the
- * same gesture (planner-store.ts restoreFromTrash), through the same lib/db.ts
- * calls. Nothing here takes a membership list: a container comes back with
- * the join rows its soft delete left in place, never with an array the phone
- * sends.
+ * row by kind and id, and a field write one field of one container, and each
+ * does what the web's own store action does for the same gesture
+ * (planner-store.ts restoreFromTrash, setRoutinePaused, setSeasonState),
+ * through the same lib/db.ts calls. Nothing here takes a membership list: a
+ * container comes back with the join rows its soft delete left in place, and
+ * a field write never names a member, so a phone write can never put back a
+ * list a web tab changed.
  *
- * NO WEBHOOKS AND NO item_events, because the browser's restore fires neither:
- * the restore* functions notify no plugin and write no event, and nothing here
- * adds one.
+ * NO WEBHOOKS AND NO item_events, because the browser's container writes fire
+ * neither: the restore* and update* functions called here notify no plugin
+ * and write no event, and nothing here adds one.
+ *
+ * NO EXTENSION GATE. The Organize and Goals switches are display gates
+ * (lib/extension-gates.ts, "These gates are BROWSER-ONLY"): the web writes a
+ * routine pause and a season switch with Organize off (Paused's Resume, the
+ * container menu), so these routes take every write whatever the switches
+ * say, and never read user_extensions.
  *
  * The request and answer helpers are lib/app-http.ts's. lib/app-api.ts imports
- * this module for the payload's `trashWrites`; this module never imports
- * app-api.ts, or the two would load each other's schemas in their temporal
- * dead zone.
+ * this module for the payload's `trashWrites` and `containerWrites`; this
+ * module never imports app-api.ts, or the two would load each other's schemas
+ * in their temporal dead zone.
  */
 
 type Client = SupabaseClient;
@@ -263,4 +282,255 @@ async function isTrashed(client: Client, userId: string, itemId: string): Promis
   if (error) throw error;
   const parent = data as { deleted_at: string | null } | null;
   return !!parent && parent.deleted_at != null;
+}
+
+// ── POST /api/app/containers/:kind/:id ───────────────────────────────────────
+
+/** The four containers Organize shows, each a table of its own: the route's `:kind`. */
+export const ORGANIZE_KINDS = ['routine', 'season', 'goal', 'project'] as const;
+export type OrganizeKind = (typeof ORGANIZE_KINDS)[number];
+
+const isOrganizeKind = (value: string): value is OrganizeKind =>
+  (ORGANIZE_KINDS as readonly string[]).includes(value);
+
+/** Each kind's table. Ids are unique per table only, which is why the kind is a path segment. */
+const CONTAINER_TABLES: Record<OrganizeKind, string> = {
+  routine: 'routines',
+  season: 'seasons',
+  goal: 'goals',
+  project: 'projects',
+};
+
+/**
+ * A routine's field intents, one strict member each, kept apart from the
+ * cross-field rule below so the planner payload can list their actions (the
+ * item route's ItemWriteActions and ItemWriteSchema). Strict, so a key a
+ * newer phone adds is refused by an older server instead of dropped while it
+ * answers 200.
+ */
+const RoutineWriteActions = z.discriminatedUnion('action', [
+  // Pause, Pause until and Resume (the routine's Status chip; Paused's Resume).
+  z
+    .object({
+      action: z.literal('pause'),
+      paused: z.boolean(),
+      /** The exclusive resume day, with `paused: true` only. */
+      pausedUntil: DateStrSchema.optional(),
+      /** The device's zone, used only when the account has no usable one stored. */
+      timeZone: z.string().max(100).optional(),
+    })
+    .strict(),
+]);
+
+/** A season's field intents, as RoutineWriteActions. */
+const SeasonWriteActions = z.discriminatedUnion('action', [
+  // On, Off and Dates (the season's Status chip), sent exactly as picked; and
+  // Paused's "Turn on now", which the phone resolves with seasonStateForSwitch first.
+  z.object({ action: z.literal('state'), state: SeasonStateSchema }).strict(),
+]);
+
+/**
+ * The bodies the route takes per kind. Every cross-field rule is a
+ * superRefine on the union, never on a member (zod 3 refuses a refined member
+ * in a discriminated union).
+ */
+export const RoutineWriteSchema = RoutineWriteActions.superRefine((body, ctx) => {
+  // "Resume on Oct 8" is the one reading the server cannot honour (a resume
+  // is today), so it is refused rather than half-done, as the item pause is.
+  if (body.action === 'pause' && body.pausedUntil !== undefined && !body.paused) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['pausedUntil'], message: 'only with paused: true' });
+  }
+});
+export const SeasonWriteSchema = SeasonWriteActions;
+
+export type RoutineWrite = z.infer<typeof RoutineWriteSchema>;
+export type SeasonWrite = z.infer<typeof SeasonWriteSchema>;
+
+const actionsOf = <A extends string>(union: { options: readonly { shape: { action: z.ZodLiteral<A> } }[] }): A[] =>
+  union.options.map((option) => option.shape.action.value);
+
+/**
+ * The field intents this server takes, per kind, in declaration order: the
+ * planner payload's `containerWrites`. Read off the unions, so an intent
+ * cannot be taken and unlisted; a kind with none yet lists none. The phone
+ * hides every control whose action is not listed, so a build that reaches
+ * users before this server hides an editor rather than offer one it would be
+ * refused. Later parts add actions by adding union members, never here by hand.
+ */
+export const CONTAINER_WRITES = {
+  routine: actionsOf(RoutineWriteActions),
+  season: actionsOf(SeasonWriteActions),
+  goal: [] as string[],
+  project: [] as string[],
+} satisfies Record<OrganizeKind, readonly string[]>;
+export type ContainerWrites = Record<OrganizeKind, string[]>;
+
+/** The payload's copy: fresh arrays, so nothing downstream can grow the constant. */
+export function containerWrites(): ContainerWrites {
+  return {
+    routine: [...CONTAINER_WRITES.routine],
+    season: [...CONTAINER_WRITES.season],
+    goal: [...CONTAINER_WRITES.goal],
+    project: [...CONTAINER_WRITES.project],
+  };
+}
+
+/** A kind with no intent yet takes no body: any action is unknown, so 400. */
+const NO_INTENTS = z.custom<never>(() => false, {
+  path: ['action'],
+  message: 'no field intent is taken for this kind yet',
+});
+
+const WRITE_SCHEMAS: Record<OrganizeKind, z.ZodType<ContainerWriteBody, z.ZodTypeDef, unknown>> = {
+  routine: RoutineWriteSchema,
+  season: SeasonWriteSchema,
+  goal: NO_INTENTS,
+  project: NO_INTENTS,
+};
+
+type ContainerWriteBody = RoutineWrite | SeasonWrite;
+
+/** One intent on one container, as the pure rule below takes it. */
+export type ContainerIntentTarget =
+  | { kind: 'routine'; container: Routine; intent: RoutineWrite }
+  | { kind: 'season'; container: Season; intent: SeasonWrite };
+
+/**
+ * What an intent does to a container: the fields to write, or a refusal.
+ * An empty patch is "already so": the route answers 200 and writes nothing.
+ */
+export type ContainerIntentResult =
+  | { patch: Partial<Routine> | Partial<Season> }
+  | { refused: 'pause_refused'; status: 409 };
+
+/**
+ * The write an intent makes, decided on the container as stored. Pure, and
+ * the one statement of the rule: the route runs it on the row it read, and
+ * the phone's port (DsulCore ContainerIntent.swift, pinned by
+ * tests/fixtures/organize/container-writes.json) runs it on its own copy to
+ * step optimistically and to replay a landed write at the instant it was sent.
+ *
+ *   routine `pause`  the web's setRoutinePaused (planner-store.ts): today in
+ *                    `timeZone` and the stamp, both off the one `now`, through
+ *                    resolvePauseWrite (lib/active.ts). Already so is an empty
+ *                    patch, so a retry never restamps `pausedAt`; a resume
+ *                    keeps the interval on the row (`pausedUntil` = today), the
+ *                    sweep's grace; a resume day not after today on a live
+ *                    routine is `pause_refused`.
+ *   season `state`   the web's setSeasonState: the state picked, stored raw
+ *                    (never through seasonStateForSwitch, which is a binary
+ *                    switch's rule). The state it already has is an empty
+ *                    patch, as setSeasonState writes nothing then: a second
+ *                    write would restamp `updated_at`, which the laptop's
+ *                    overdue sweep reads as a season just switched (its grace
+ *                    (c), lib/sweep-grace.ts), granting a grace nobody earned.
+ *
+ * A pause's cleared resume day is `pausedUntil: undefined`, present as a key:
+ * updateRoutine writes it as null.
+ */
+export function containerIntentPatch(
+  target: ContainerIntentTarget,
+  ctx: { now: Date; timeZone: string },
+): ContainerIntentResult {
+  if (target.kind === 'routine') {
+    const { container, intent } = target;
+    switch (intent.action) {
+      case 'pause': {
+        const write = resolvePauseWrite(
+          container,
+          { paused: intent.paused, pausedUntil: intent.pausedUntil },
+          toDateStr(ctx.now, ctx.timeZone),
+          ctx.now.toISOString(),
+          ctx.timeZone,
+        );
+        if ('reason' in write) return { refused: 'pause_refused', status: 409 };
+        return { patch: write.patch as Partial<Routine> };
+      }
+    }
+  }
+  const { container, intent } = target;
+  switch (intent.action) {
+    case 'state':
+      return { patch: container.state === intent.state ? {} : { state: intent.state } };
+  }
+}
+
+/**
+ * One field of one container, from the phone: the web's own store action for
+ * the same gesture, through the same lib/db.ts update.
+ *
+ * In order:
+ *   - auth (401);
+ *   - `:kind` one of ORGANIZE_KINDS and `:id` a uuid, else 404 `not_found`,
+ *     as any missing route (a malformed id is the item route's 404 too);
+ *   - the body, one strict intent of that kind's union, else 400 `invalid`;
+ *   - the container read by id and user, LIVE: none (never the caller's, in
+ *     the Trash, or purged) is 404 `not_found`. The read is load-bearing:
+ *     updateRoutine and updateSeason filter on id and user but not on
+ *     deleted_at, and a zero-row update answers 200, so without it a write to
+ *     a trashed container would land in the bin and say so;
+ *   - containerIntentPatch on the row; a refusal is 409 with its code, an
+ *     empty patch 200 with no write;
+ *   - the update, then 200 `{ok: true}`.
+ *
+ * A pause reads the account's zone (pauseZone: the stored one, else the
+ * device's from the body, else UTC), the frame the phone says "today" in; no
+ * other intent reads anything but the row.
+ */
+export async function postContainerWrite(req: Request, rawKind: string, rawId: string): Promise<Response> {
+  const auth = await authenticateAppRequest(req);
+  if (auth instanceof Response) return auth;
+  if (!isOrganizeKind(rawKind) || !UUID.test(rawId)) return notFound();
+  const kind = rawKind;
+  const id = rawId.toLowerCase();
+
+  const body = await parseBody(req, WRITE_SCHEMAS[kind]);
+  if (body instanceof Response) return body;
+
+  try {
+    return await runContainerWrite(auth.client, auth.userId, kind, id, body);
+  } catch (err) {
+    return dbErrorResponse(err, 'app/containers/:kind/:id');
+  }
+}
+
+async function runContainerWrite(
+  client: Client,
+  userId: string,
+  kind: OrganizeKind,
+  id: string,
+  body: ContainerWriteBody,
+): Promise<Response> {
+  const { data, error } = await client
+    .from(CONTAINER_TABLES[kind])
+    .select('*')
+    .eq('id', id)
+    .eq('user_id', userId)
+    .is('deleted_at', null)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return notFound();
+
+  const now = new Date();
+  if (kind === 'routine' && body.action === 'pause') {
+    const container = routineFromRow(data as RoutineRow, []);
+    const timeZone = await pauseZone(client, userId, body.timeZone);
+    const result = containerIntentPatch({ kind, container, intent: body }, { now, timeZone });
+    if ('refused' in result) return refused(result.refused, result.status);
+    if (Object.keys(result.patch).length > 0) {
+      await updateRoutine(userId, id, result.patch as Partial<Routine>, client);
+    }
+    return ok();
+  }
+  if (kind === 'season' && body.action === 'state') {
+    const container = seasonFromRow(data as SeasonRow, [], []);
+    const result = containerIntentPatch({ kind, container, intent: body }, { now, timeZone: 'UTC' });
+    if ('refused' in result) return refused(result.refused, result.status);
+    if (Object.keys(result.patch).length > 0) {
+      await updateSeason(userId, id, result.patch as Partial<Season>, client);
+    }
+    return ok();
+  }
+  // Unreachable: each kind's schema takes only its own actions.
+  return invalid();
 }

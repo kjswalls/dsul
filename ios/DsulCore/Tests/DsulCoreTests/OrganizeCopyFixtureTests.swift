@@ -6,8 +6,8 @@ import DsulCore
 // OrganizeCopy.swift byte for byte: tests/fixtures/organize/copy.json. From
 // O14 the Trash's words too (`whenGone`, `daysUntilPurge`, the row meta, the
 // restore sentences and the phone's refusal words), each case with its `now`
-// pinned. The summary cards' lines are pinned by organize.json
-// (OrganizeFixtureTests).
+// pinned; from O8a a refused container write's words (`containerRefusal`).
+// The summary cards' lines are pinned by organize.json (OrganizeFixtureTests).
 
 private struct StateTables: Decodable, Sendable {
     let routine: [String: String]
@@ -31,6 +31,7 @@ private struct Tables: Decodable, Sendable {
     let trashLoadFailed: String
     let restoreFailed: String
     let restoreGone: String
+    let pauseRefused: String
 }
 
 private struct HeldWorld: Decodable, Sendable {
@@ -173,6 +174,13 @@ private struct NameInTrashCase: Decodable, Sendable {
     let expected: String
 }
 
+private struct ContainerRefusalCase: Decodable, Sendable {
+    let name: String
+    let code: String?
+    /// Nil where the phone says what it says for any failed write.
+    let expected: String?
+}
+
 private struct CopyFixture: Decodable, Sendable {
     let tables: Tables
     let heldWorld: HeldWorld
@@ -194,6 +202,7 @@ private struct CopyFixture: Decodable, Sendable {
     let restoreSentence: [RestoreSentenceCase]
     let restoreRefusal: [RefusalCase]
     let nameInTrashSentence: [NameInTrashCase]
+    let containerRefusal: [ContainerRefusalCase]
 }
 
 private func load() throws -> CopyFixture {
@@ -231,6 +240,7 @@ private func table(_ states: [StateLabel]) -> [String: String] {
         #expect(f.restoreSentence.count >= 4)
         #expect(f.restoreRefusal.count >= 5)
         #expect(!f.nameInTrashSentence.isEmpty)
+        #expect(f.containerRefusal.count >= 3)
     }
 
     @Test func theTablesAreTheWebs() throws {
@@ -258,6 +268,7 @@ private func table(_ states: [StateLabel]) -> [String: String] {
         #expect(OrganizeCopy.trashLoadFailed == t.trashLoadFailed)
         #expect(OrganizeCopy.restoreFailed == t.restoreFailed)
         #expect(OrganizeCopy.restoreGone == t.restoreGone)
+        #expect(OrganizeCopy.pauseRefused == t.pauseRefused)
     }
 
     @Test func switchedOffMatchesTheWeb() throws {
@@ -396,6 +407,19 @@ private func table(_ states: [StateLabel]) -> [String: String] {
         }
     }
 
+    /// A refused container write's banner (O8a), for every intent the phone
+    /// sends: the code alone decides it today.
+    @Test func theContainerRefusalWordsMatchTheWeb() throws {
+        let intents: [ContainerIntent] = [
+            .pause(until: nil, timeZone: nil), .resume(timeZone: nil), .state(.paused),
+        ]
+        for c in try load().containerRefusal {
+            for intent in intents {
+                #expect(OrganizeCopy.refusal(code: c.code, for: intent) == c.expected, "\(c.name)")
+            }
+        }
+    }
+
     /// The copy rules (design §6.9): no em dash and no "missed" in any word
     /// this file says.
     @Test func noWordBreaksTheCopyRules() throws {
@@ -413,12 +437,13 @@ private func table(_ states: [StateLabel]) -> [String: String] {
         words += f.windDownSentence.compactMap { OrganizeCopy.windDownSentence(state: $0.state, count: $0.count) }
         words += [
             OrganizeCopy.nothingInTrash, OrganizeCopy.trashTeaching, OrganizeCopy.trashLoadFailed,
-            OrganizeCopy.restoreFailed, OrganizeCopy.restoreGone,
+            OrganizeCopy.restoreFailed, OrganizeCopy.restoreGone, OrganizeCopy.pauseRefused,
         ]
         words += f.trashRowMeta.map(\.expected.meta)
         words += f.restoreSentence.map(\.expected)
         words += f.restoreRefusal.map(\.expected)
         words += f.nameInTrashSentence.map(\.expected)
+        words += f.containerRefusal.compactMap(\.expected)
         for word in words {
             #expect(!word.unicodeScalars.contains("\u{2014}"), "\(word)")
             #expect(!word.lowercased().contains("missed"), "\(word)")

@@ -16,7 +16,8 @@ import Foundation
 // Day comparisons stay string comparisons of yyyy-MM-dd, as on the web, so a
 // legacy timestamp (`toDateOnly`) compares the same way there and here.
 // The write side, `resolvePauseWrite`, is ported for the item sheet's Pause,
-// Pause until and Resume, and checked against pause-write.json; `formatDay` is
+// Pause until and Resume, and checked against pause-write.json, and from O8a
+// a routine's (ContainerIntent.swift, container-writes.json); `formatDay` is
 // in Cadence.swift. The explanations live in ActiveExplain.swift
 // (`routineStandingOn`, `seasonResumeDate`, `suppressionReason`,
 // `suppressionLabel`, `membersRevealedByRemoving`), checked against

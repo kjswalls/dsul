@@ -15,7 +15,7 @@ import {
   pauseZone,
   refused,
 } from './app-http';
-import { TRASH_WRITES, type TrashWrite } from './app-containers';
+import { TRASH_WRITES, containerWrites, type ContainerWrites, type TrashWrite } from './app-containers';
 import {
   addContainerMember,
   createItem,
@@ -110,8 +110,8 @@ import type { AwayPeriod } from './away';
  * The request and answer helpers (invalid, notFound, refused, parseBody, the
  * date and time schemas, pauseZone) live in lib/app-http.ts, a leaf both this
  * module and lib/app-containers.ts import. This module imports
- * app-containers.ts for the payload's `trashWrites`, and that is the only edge
- * between the two: the reverse edge would throw at load.
+ * app-containers.ts for the payload's `trashWrites` and `containerWrites`, and
+ * that is the only edge between the two: the reverse edge would throw at load.
  */
 
 type Client = SupabaseClient;
@@ -420,6 +420,15 @@ export interface AppPlannerPayload {
    * Trash row.
    */
   trashWrites: TrashWrite[];
+  /**
+   * The field intents POST /api/app/containers/:kind/:id takes, per kind
+   * (lib/app-containers.ts CONTAINER_WRITES, read off each kind's union):
+   * `{ routine, season, goal, project }`, each a list of actions, empty for a
+   * kind with none yet. The phone hides every container control whose action
+   * is not listed. Absent, from an older server, means none: every container
+   * editor is hidden, and Paused offers no Resume for a routine or a season.
+   */
+  containerWrites: ContainerWrites;
   items: Item[];
   projects: Project[];
   routines: Routine[] | null;
@@ -675,6 +684,7 @@ export async function getPlanner(req: Request): Promise<Response> {
       snoozes,
       writes: ITEM_WRITES,
       trashWrites: [...TRASH_WRITES],
+      containerWrites: containerWrites(),
       items: data.items,
       projects: data.projects,
       routines: data.routines,

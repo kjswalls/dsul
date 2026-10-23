@@ -43,11 +43,12 @@ import Testing
 
     private func snapshot(organize: Bool = true, goalsOn: Bool = true, streaks: Bool = true, items: [Item],
                           routines: [Routine] = [], seasons: [Season] = [], goals: [Goal]? = nil,
-                          projects: [Project] = [], typeLabels: [String: ItemTypeLabel] = [:]) -> OrganizeSnapshot {
+                          projects: [Project] = [], typeLabels: [String: ItemTypeLabel] = [:],
+                          takes: ContainerWrites = ContainerWrites()) -> OrganizeSnapshot {
         return OrganizeSnapshot(settings: PlannerSettings(streaksEnabled: streaks, organizeEnabled: organize,
                                                           goalsEnabled: goalsOn),
                                 today: today, timeZone: zone, items: items, routines: routines, seasons: seasons,
-                                goals: goals, projects: projects, typeLabels: typeLabels)
+                                goals: goals, projects: projects, typeLabels: typeLabels, containerTakes: takes)
     }
 
     private struct PageMissing: Error {}
@@ -357,6 +358,96 @@ import Testing
         #expect(offPage.stateNote.hasPrefix("Off. Everything it holds is hidden"))
     }
 
+    // MARK: Status menus (O8a)
+
+    /// A routine's Status is a menu of verbs, as the item sheet's are: Pause
+    /// and Pause until… while its own switch is on (a season holding it off
+    /// included), Resume and Pause until… while it is paused. Pause until's
+    /// picker starts tomorrow, on the routine's own return day when it has
+    /// one.
+    @Test func aRoutinesStatusIsAMenuOfVerbs() throws {
+        let every = OrganizeModel.everyContainerWrite
+        let live = try routinePage(snapshot(items: routineItems, routines: [morning], takes: every))
+        let menu = try #require(live.statusMenu)
+        #expect(menu.choices.map(\.label) == ["Pause", "Pause until\u{2026}"])
+        #expect(menu.choices.map(\.action) == [.pause, .pauseUntil])
+        #expect(menu.choices.map(\.systemImage) == ["pause", "calendar.badge.clock"])
+        #expect(menu.selected == nil)
+        #expect(menu.pauseUntil == PauseUntilPick(earliest: DayString("2026-10-02")!,
+                                                  initial: DayString("2026-10-02")!))
+        // The chip keeps saying the status; the menu is what it opens.
+        #expect(live.chips.last?.text == "Active")
+
+        var paused = morning
+        paused.pausedAt = "2026-09-20T15:00:00+00:00"
+        paused.pausedUntil = "2026-10-30"
+        let away = try #require(try routinePage(snapshot(items: routineItems, routines: [paused], takes: every))
+            .statusMenu)
+        #expect(away.choices.map(\.label) == ["Resume", "Pause until\u{2026}"])
+        #expect(away.choices.first?.systemImage == "play")
+        #expect(away.pauseUntil?.initial == DayString("2026-10-30"))
+        #expect(away.pauseUntil?.earliest == DayString("2026-10-02"))
+
+        // Paused with no end: the picker starts tomorrow.
+        paused.pausedUntil = nil
+        let open = try #require(try routinePage(snapshot(items: routineItems, routines: [paused], takes: every))
+            .statusMenu)
+        #expect(open.pauseUntil?.initial == DayString("2026-10-02"))
+
+        // Held off by a season, its own switch is on: Pause, not Resume.
+        let winter = Season(id: "s-winter", name: "Winter", state: "paused", routineIds: ["r-morning"])
+        let held = try #require(try routinePage(snapshot(items: routineItems, routines: [morning], seasons: [winter],
+                                                         takes: every)).statusMenu)
+        #expect(held.choices.first?.action == .pause)
+    }
+
+    /// The menu shows only where the server takes the write: none from a
+    /// server older than the route, and none from one that lists only the
+    /// other kind's action.
+    @Test func aStatusMenuNeedsTheServersWrite() throws {
+        let autumn = Season(id: "s-autumn", name: "Autumn", itemIds: [uid(3)])
+        let none = snapshot(items: routineItems, routines: [morning], seasons: [autumn])
+        #expect(try routinePage(none).statusMenu == nil)
+        #expect(try seasonPage(none, "s-autumn").statusMenu == nil)
+
+        let seasonOnly = snapshot(items: routineItems, routines: [morning], seasons: [autumn],
+                                  takes: ContainerWrites(season: ["state"]))
+        #expect(try routinePage(seasonOnly).statusMenu == nil)
+        #expect(try seasonPage(seasonOnly, "s-autumn").statusMenu != nil)
+
+        // The gate's switches: Organize for a routine or season, Goals for a
+        // goal, asked beside the server's list.
+        let every = OrganizeModel.everyContainerWrite
+        let on = PlannerSettings(organizeEnabled: true, goalsEnabled: false)
+        #expect(OrganizeModel.canEdit(.pause, on: .routine, takes: every, settings: on))
+        #expect(OrganizeModel.canEdit(.state, on: .season, takes: every, settings: on))
+        #expect(!OrganizeModel.canEdit(.pause, on: .season, takes: every, settings: on))
+        #expect(!OrganizeModel.canEdit(.state, on: .goal, takes: ContainerWrites(goal: ["state"]), settings: on))
+        let off = PlannerSettings(organizeEnabled: false, goalsEnabled: true)
+        #expect(!OrganizeModel.canEdit(.pause, on: .routine, takes: every, settings: off))
+        #expect(OrganizeModel.everyContainerWrite == ContainerWrites(routine: ["pause"], season: ["state"]))
+    }
+
+    /// A season's Status is its three states, On, Off and Dates, the one it
+    /// is in checked, each sent as picked. A stored state that is none of the
+    /// three follows its dates, so Dates is checked.
+    @Test func aSeasonsStatusIsItsThreeStates() throws {
+        let every = OrganizeModel.everyContainerWrite
+        let seasons = [Season(id: "s-on", name: "On", state: "active"), Season(id: "s-off", name: "Off", state: "paused"),
+                       Season(id: "s-dates", name: "Dates", state: "auto"),
+                       Season(id: "s-odd", name: "Odd", state: "someday")]
+        let s = snapshot(items: [], seasons: seasons, takes: every)
+        let on = try #require(try seasonPage(s, "s-on").statusMenu)
+        #expect(on.choices.map(\.label) == ["On", "Off", "Dates"])
+        #expect(on.choices.map(\.action) == [.state(.active), .state(.paused), .state(.auto)])
+        #expect(on.choices.map(\.systemImage) == ["play.circle", "pause.circle", "calendar.badge.clock"])
+        #expect(on.selected == .state(.active))
+        #expect(on.pauseUntil == nil)
+        #expect(try seasonPage(s, "s-off").statusMenu?.selected == .state(.paused))
+        #expect(try seasonPage(s, "s-dates").statusMenu?.selected == .state(.auto))
+        #expect(try seasonPage(s, "s-odd").statusMenu?.selected == .state(.auto))
+    }
+
     // MARK: A goal's page
 
     /// Run a half: one milestone reached (Sep 20), the next one late (Sep
@@ -578,8 +669,12 @@ import Testing
         #expect(ContainerPageModel.seasonPage("s-gone", s) == nil)
         #expect(ContainerPageModel.goalPage("g-half", s) == nil)
         #expect(ContainerPageModel.projectPage("p-gone", s) == nil)
-        #expect(ContainerPageModel.container(.routine, id: "r-morning", s) == .routine(morning))
-        #expect(ContainerPageModel.container(.routine, id: "r-gone", s) == nil)
+        // The one lookup a route's page and a container write share.
+        let planner = makePlanner()
+        let morningRef = ContainerRef(kind: .routine, id: "sample-morning-routine")
+        #expect(planner.container(morningRef)?.id == "sample-morning-routine")
+        #expect(planner.container(.routine, id: "sample-morning-routine") == planner.container(morningRef))
+        #expect(planner.container(ContainerRef(kind: .routine, id: "r-gone")) == nil)
     }
 
     // MARK: The sample planner
@@ -682,8 +777,10 @@ import Testing
         }
         func chips(_ c: [PageChip]) { words += c.flatMap { [$0.text, $0.spoken] } }
 
-        let routine = try routinePage(snapshot(items: routineItems, routines: [morning]))
+        let routine = try routinePage(snapshot(items: routineItems, routines: [morning],
+                                               takes: OrganizeModel.everyContainerWrite))
         chips(routine.chips)
+        words += (routine.statusMenu?.choices ?? []).map(\.label)
         words += [routine.statusNote, routine.heldByEmpty, routine.empty, routine.today?.summary,
                   routine.today?.empty, routine.today?.finished].compactMap { $0 }
         routine.today?.rows.forEach(row)
@@ -691,8 +788,10 @@ import Testing
         strip(routine.strip)
 
         let base = Season(id: "s", name: "S", startsOn: "2026-09-01", routineIds: ["r-morning"])
-        let season = try seasonPage(snapshot(items: routineItems, routines: [morning], seasons: [base]), "s")
+        let season = try seasonPage(snapshot(items: routineItems, routines: [morning], seasons: [base],
+                                             takes: OrganizeModel.everyContainerWrite), "s")
         chips(season.chips)
+        words += (season.statusMenu?.choices ?? []).map(\.label)
         words += [season.stateNote] + [season.empty].compactMap { $0 }
         strip(season.strip)
 
@@ -721,7 +820,11 @@ import Testing
                   ContainerPageModel.stripTitle, ContainerPageModel.legendDone,
                   ContainerPageModel.legendNothingRecorded, ContainerPageModel.legendToday,
                   ContainerPageModel.noTimeBlock, ContainerPageModel.openHint,
-                  ContainerPageModel.tickName(done: true), ContainerPageModel.tickName(done: false)]
+                  ContainerPageModel.tickName(done: true), ContainerPageModel.tickName(done: false),
+                  ContainerPageModel.statusHint, ContainerPageModel.routinePauseUntilWords.title,
+                  ContainerPageModel.routinePauseUntilWords.confirmVerb,
+                  ContainerPageModel.routinePauseUntilWords.note ?? "", OrganizeCopy.pauseRefused,
+                  ShelfPageModel.resumeNow, ShelfPageModel.turnOnNow]
 
         #expect(words.count > 50)
         for word in words {

@@ -6,7 +6,11 @@ import Foundation
 // OrganizeModel does for the list. Foundation only: the shim compiles it on
 // Linux.
 //
-// Read-only. Every rule is asked of DsulCore, never re-derived:
+// Read-only but for the Status chip (O8a): a routine's Pause, Pause until and
+// Resume, a season's On, Off and Dates (`StatusMenu`), offered only where the
+// server takes the write and Organize is on (`OrganizeModel.canEdit`); the
+// planner steps and sends it (`SamplePlanner.applyContainer`). Every rule is
+// asked of DsulCore, never re-derived:
 // - which members are on a day, and in what state, is the grid's own answer
 //   narrowed to the container (`deriveContainerSchedule`,
 //   ContainerSchedule.swift, lib/container-schedule.ts), asked ONCE per page
@@ -63,8 +67,9 @@ struct PageHeader: Hashable, Sendable {
     let accent: ContainerAccent
 }
 
-/// One read-only chip under a page's header. Its words are the label colour
-/// and its symbol gray; no hue.
+/// One chip under a page's header. Its words are the label colour and its
+/// symbol gray; no hue. Read-only, but for the Status chip of a page that
+/// carries a `StatusMenu` (O8a), which the view draws as that menu.
 struct PageChip: Identifiable, Hashable, Sendable {
     enum Kind: String, Hashable, Sendable {
         case usualTime, status, runs, window, items, timeBlock
@@ -77,6 +82,54 @@ struct PageChip: Identifiable, Hashable, Sendable {
     let spoken: String
 
     var id: Kind { kind }
+}
+
+/// What a choice on a container page's Status menu does (O8a).
+enum StatusAction: Hashable, Sendable {
+    /// A routine's Pause: set aside, with no day it comes back.
+    case pause
+    /// A routine's Pause until…: opens the day picker, whose day is the day
+    /// it comes back. On a routine already paused it moves that day.
+    case pauseUntil
+    /// A routine's Resume: back today, keeping when the pause began.
+    case resume
+    /// A season's On, Off or Dates, stored exactly as picked (never
+    /// `seasonStateForSwitch`, which would turn On into Dates on a dated
+    /// season that is live today).
+    case state(SeasonState)
+}
+
+/// One row of a Status menu: its words and its symbol.
+struct StatusChoice: Identifiable, Hashable, Sendable {
+    let action: StatusAction
+    let label: String
+    let systemImage: String
+
+    var id: StatusAction { action }
+}
+
+/// A page's Status chip as a menu (O8a). A routine's rows are verbs, as the
+/// item sheet's are (Pause and Pause until…, or Resume and Pause until…), and
+/// carry no check; a season's are its three states, the one it is in
+/// checked.
+struct StatusMenu: Hashable, Sendable {
+    let choices: [StatusChoice]
+    /// The row the menu checks: a season's state; nil for a routine.
+    let selected: StatusAction?
+    /// Pause until's day picker: a routine's only.
+    let pauseUntil: PauseUntilPick?
+}
+
+/// Pause until's day picker on a routine's page; the page's sheet is up
+/// while it holds one.
+struct PauseUntilPick: Identifiable, Hashable, Sendable {
+    /// Tomorrow: a pause has to end after today.
+    let earliest: DayString
+    /// The day it opens on: the routine's own return day when it is paused
+    /// and that day is after today, else tomorrow.
+    let initial: DayString
+
+    var id: Self { self }
 }
 
 /// One item on a page, drawn as Today draws a row: the status circle, the
@@ -169,6 +222,9 @@ struct RoutinePage: OrganizePageModel {
     /// chip never says "Active" over a routine held off with nothing to
     /// explain it.
     let statusNote: String?
+    /// The Status chip's menu (O8a); nil while the chip is read-only (a
+    /// server older than the route, or one that doesn't take `pause`).
+    let statusMenu: StatusMenu?
     /// "Held by": one row per season holding it, in the seasons' order, each
     /// pushing that season ("on", "off until Nov 1").
     let heldBy: [OrganizeRow]
@@ -193,6 +249,8 @@ struct SeasonPage: OrganizePageModel {
     let chips: [PageChip]
     /// `seasonStateNote`: "Always on. Give it a start or an end …".
     let stateNote: String
+    /// The Status chip's menu (O8a); nil while the chip is read-only.
+    let statusMenu: StatusMenu?
     /// The routines it holds, in the routines' own order, each pushing its
     /// page (the list's routine row).
     let routines: [OrganizeRow]
@@ -328,19 +386,21 @@ enum ContainerPageModel {
     static func tickName(done: Bool) -> String {
         return done ? "Mark not done" : "Mark done"
     }
+    /// A routine's Status verbs, the item sheet's words and symbols.
+    static let pauseWord = "Pause"
+    static let pauseUntilWord = "Pause until\u{2026}"
+    static let resumeWord = "Resume"
+    /// What an editable Status chip does, as VoiceOver hints it.
+    static let statusHint = "Changes the status"
+    /// A routine's Pause until picker. The day picked is the day its items
+    /// come back, as the item's picker says (`ItemSheetModel
+    /// .pauseUntilWords`), in the routine's own paused note's words
+    /// (`OrganizeCopy.routinePausedNote`).
+    static let routinePauseUntilWords = DayPickWords(
+        title: "Pause until", confirmVerb: "Pause until",
+        note: "Its items come back on the day you pick, on their own. Streaks and history stay exactly as they are.")
 
     // MARK: Lookups
-
-    /// The container a route names, whatever the switches say: gone is gone,
-    /// switched off is not. Nil when the planner no longer holds it.
-    static func container(_ kind: OrganizeKind, id: String, _ s: OrganizeSnapshot) -> ScheduleContainer? {
-        switch kind {
-        case .routine: return s.routines.first { $0.id == id }.map(ScheduleContainer.routine)
-        case .season: return s.seasons.first { $0.id == id }.map(ScheduleContainer.season)
-        case .goal: return s.goals?.first { $0.id == id }.map(ScheduleContainer.goal)
-        case .project: return s.projects.first { $0.id == id }.map(ScheduleContainer.project)
-        }
-    }
 
     /// The items by id, as the web's `new Map(items.map(…))` (a repeat keeps
     /// the last).
@@ -497,6 +557,7 @@ enum ContainerPageModel {
                                                  on: today, timeZone: s.timeZone)
             statusNote = OrganizeCopy.routineHeldNote(standing, hiddenHere: hidden, today: today)
         }
+        let statusMenu = routineStatusMenu(routine, standing, s)
 
         let heldBy = standing.holders.map { holderRow($0, today: today) }
 
@@ -535,6 +596,7 @@ enum ContainerPageModel {
             notes: notes(routine.notes),
             chips: chips,
             statusNote: statusNote,
+            statusMenu: statusMenu,
             heldBy: heldBy,
             heldByEmpty: heldBy.isEmpty ? OrganizeCopy.heldByNone : nil,
             today: checklist,
@@ -553,6 +615,32 @@ enum ContainerPageModel {
         let paused = OrganizeCopy.label("paused", in: states) ?? "Paused"
         guard let until = routine.pausedUntil, !until.isEmpty else { return paused }
         return "\(paused) until \(formatDay(until))"
+    }
+
+    /// A routine's Status menu (O8a), or nil when the chip is read-only: the
+    /// server must take a routine's `pause` and Organize be on
+    /// (`OrganizeModel.canEdit`). Its own switch decides the first verb, as
+    /// the chip's words do: Pause while it is on, Resume while it is paused
+    /// (whatever a season makes of it). Pause until… follows, which on a
+    /// paused routine moves the day it comes back. There is no row that
+    /// takes a return day away: the route's pause never clears one, so
+    /// Resume is the way back.
+    static func routineStatusMenu(_ routine: Routine, _ standing: RoutineStanding,
+                                  _ s: OrganizeSnapshot) -> StatusMenu? {
+        guard OrganizeModel.canEdit(.pause, on: .routine, takes: s.containerTakes, settings: s.settings) else {
+            return nil
+        }
+        let first = standing.localOn
+            ? StatusChoice(action: .pause, label: pauseWord, systemImage: "pause")
+            : StatusChoice(action: .resume, label: resumeWord, systemImage: "play")
+        let until = StatusChoice(action: .pauseUntil, label: pauseUntilWord, systemImage: "calendar.badge.clock")
+        let tomorrow = s.today.adding(days: 1)
+        var initial = tomorrow
+        if !standing.localOn, let own = routine.pausedUntil.flatMap({ DayString($0) }), own > s.today {
+            initial = own
+        }
+        return StatusMenu(choices: [first, until], selected: nil,
+                          pauseUntil: PauseUntilPick(earliest: tomorrow, initial: initial))
     }
 
     /// One season in a routine's "Held by": its tile and name, and the web's
@@ -604,11 +692,30 @@ enum ContainerPageModel {
             notes: notes(season.notes),
             chips: chips,
             stateNote: OrganizeCopy.seasonStateNote(season, live: live),
+            statusMenu: seasonStatusMenu(season, s),
             routines: routines,
             items: items,
             strip: dayStrip(schedule, today: today),
             empty: routines.isEmpty && items.isEmpty ? OrganizeCopy.nothingInItYet : nil
         ))
+    }
+
+    /// A season's Status menu (O8a), or nil when the chip is read-only: the
+    /// server must take a season's `state` and Organize be on. Its rows are
+    /// the web's `seasonStates` (On, Off, Dates), each sent exactly as
+    /// picked, the one it is in checked. A stored state that is none of the
+    /// three follows its dates, as the web reads it, so Dates is checked.
+    static func seasonStatusMenu(_ season: Season, _ s: OrganizeSnapshot) -> StatusMenu? {
+        guard OrganizeModel.canEdit(.state, on: .season, takes: s.containerTakes, settings: s.settings) else {
+            return nil
+        }
+        let choices: [StatusChoice] = OrganizeCopy.seasonStates.compactMap { state in
+            guard let value = SeasonState(rawValue: state.value) else { return nil }
+            return StatusChoice(action: .state(value), label: state.label,
+                                systemImage: seasonStatusSymbol(state.value))
+        }
+        let current = SeasonState(rawValue: season.state) ?? .auto
+        return StatusMenu(choices: choices, selected: .state(current), pauseUntil: nil)
     }
 
     /// The Status chip's symbol: On a play mark, Off a pause, Dates a
@@ -771,7 +878,7 @@ extension SamplePlanner {
     /// The container a route names, or nil once it is gone (a delete from
     /// the web, a fetch without it): the page then pops itself.
     func container(_ kind: OrganizeKind, id: String) -> ScheduleContainer? {
-        return ContainerPageModel.container(kind, id: id, organizeSnapshot)
+        return container(ContainerRef(kind: kind, id: id))
     }
 
     /// Is the page `route` names gone? A goal is gone only when goals were

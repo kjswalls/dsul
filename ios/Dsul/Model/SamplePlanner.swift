@@ -157,6 +157,11 @@ final class SamplePlanner {
     /// until the first fetch lands, and from a server older than the routes,
     /// which hides the Trash row (`offersTrash`).
     private(set) var trashWrites: [String]? = nil
+    /// What POST /api/app/containers/:kind/:id takes, by kind
+    /// (`PlannerPayload.containerWrites`, O8a). Nil until the first fetch
+    /// lands, and from a server older than the route, which hides every
+    /// container editor and Paused's container Resume (`containerTakes`).
+    private(set) var containerWrites: ContainerWrites? = nil
     /// Sends this planner's writes and fetches its data. Nil for the sample,
     /// whose changes last until the app quits.
     @ObservationIgnored private(set) var sync: PlannerSync? = nil
@@ -701,6 +706,197 @@ final class SamplePlanner {
         }
     }
 
+    // MARK: Containers (O8a)
+
+    /// The container writes the server takes, resolved: every one for the
+    /// sample, which sends nothing (`OrganizeModel.everyContainerWrite`); the
+    /// last fetch's list signed in; none before the first fetch or from a
+    /// server older than the route.
+    var containerTakes: ContainerWrites {
+        guard isLive else { return OrganizeModel.everyContainerWrite }
+        return containerWrites ?? ContainerWrites()
+    }
+
+    /// Does the server take `action` on `kind`'s route? Asked by every
+    /// container step, and alone by Paused's Resume, which no switch gates.
+    func takes(_ action: ContainerAction, on kind: OrganizeKind) -> Bool {
+        return containerTakes.takes(action, on: kind)
+    }
+
+    /// May a container's page offer `action` on `kind`? The server takes it
+    /// and the kind's extension is on (`OrganizeModel.canEdit`): with
+    /// Organize off no routine, season or project control shows, and with
+    /// Goals off no goal control does. Paused's Resume asks `takes` alone.
+    func canWrite(kind: OrganizeKind, action: ContainerAction) -> Bool {
+        return OrganizeModel.canEdit(action, on: kind, takes: containerTakes, settings: settings)
+    }
+
+    /// The container `ref` names, as the planner holds it; nil when it holds
+    /// none (or, for a goal, before goals were read).
+    func container(_ ref: ContainerRef) -> ContainerSnapshot? {
+        switch ref.kind {
+        case .routine: return routines.first { $0.id == ref.id }.map(ContainerSnapshot.routine)
+        case .season: return seasons.first { $0.id == ref.id }.map(ContainerSnapshot.season)
+        case .goal: return goals?.first { $0.id == ref.id }.map(ContainerSnapshot.goal)
+        case .project: return projectRecords.first { $0.id == ref.id }.map(ContainerSnapshot.project)
+        }
+    }
+
+    /// Where `ref` stands in the planner's list of its kind.
+    func containerIndex(_ ref: ContainerRef) -> Int? {
+        switch ref.kind {
+        case .routine: return routines.firstIndex { $0.id == ref.id }
+        case .season: return seasons.firstIndex { $0.id == ref.id }
+        case .goal: return goals?.firstIndex { $0.id == ref.id }
+        case .project: return projectRecords.firstIndex { $0.id == ref.id }
+        }
+    }
+
+    /// A routine's Pause (`until` nil) or Pause until `until`, the day it
+    /// comes back; on a routine already paused, Pause until moves that day.
+    /// A day no longer after today (a picker left open across midnight) is
+    /// refused here, as the item sheet refuses it, with the same words.
+    /// Behind the page's gate (`canWrite(kind:action:)`).
+    func pauseRoutine(_ id: String, until: DayString?) {
+        guard canWrite(kind: .routine, action: .pause) else { return }
+        if let until {
+            refreshToday()
+            guard until > today else {
+                show(OrganizeCopy.pauseRefused, isError: true)
+                return
+            }
+        }
+        applyContainer(ContainerRef(kind: .routine, id: id), .pause(until: until, timeZone: timeZoneID))
+    }
+
+    /// A routine's Resume: its pause ends today, keeping when it began.
+    func resumeRoutine(_ id: String) {
+        guard canWrite(kind: .routine, action: .pause) else { return }
+        applyContainer(ContainerRef(kind: .routine, id: id), .resume(timeZone: timeZoneID))
+    }
+
+    /// A season's Status, stored exactly as picked: On is `.active`, Off
+    /// `.paused`, Dates `.auto` (never `seasonStateForSwitch`, which is a
+    /// switch's).
+    func setSeasonState(_ id: String, _ state: SeasonState) {
+        guard canWrite(kind: .season, action: .state) else { return }
+        applyContainer(ContainerRef(kind: .season, id: id), .state(state))
+    }
+
+    /// Paused's Resume and its detail's "Resume now" or "Turn on now":
+    /// lib/gate-toggle.ts `setGateOn(kind, id, true)`, DsulCore
+    /// `gateSwitchIntent`. A paused routine resumes; a season that isn't live
+    /// today gets `seasonStateForSwitch`, so a dated one keeps following its
+    /// dates. Asks the server's list alone, never the switches, as the web's
+    /// Paused does: it is the one way back the web keeps with Organize off.
+    /// Already on, nothing is sent.
+    func turnOn(_ ref: ContainerRef) {
+        guard let current = container(ref) else { return }
+        refreshToday()
+        guard let intent = gateSwitchIntent(current, on: true, today: today, timeZone: timeZoneID) else { return }
+        applyContainer(ref, intent)
+    }
+
+    /// One field write to one container, at once: lib/app-containers.ts
+    /// `containerIntentPatch` (DsulCore), the rule the route applies to the
+    /// same request, so the step and the write agree. Dateless, as the item
+    /// pause is: today is brought up to the clock first, and today and a
+    /// pause's stamp come off the one instant, read in the zone the server
+    /// reads it in (`pauseZone`: the stored zone, else the device's, which
+    /// the body carries). Behind `takes` (the callers add the switches, but
+    /// for Paused). A refusal writes nothing and says why when the route has
+    /// words for it (`pause_refused`); a request already satisfied writes and
+    /// sends nothing. The write names the container's fields alone, never
+    /// its member lists, and its revert puts back only those
+    /// (`restoreContainer`).
+    func applyContainer(_ ref: ContainerRef, _ intent: ContainerIntent) {
+        guard intent.applies(to: ref.kind), takes(intent.action, on: ref.kind),
+              let index = containerIndex(ref), let before = container(ref)
+        else { return }
+        let instant = now()
+        refreshToday(now: instant)
+        let zone = pauseZone(stored: settings.timezone, device: timeZoneID)
+        switch containerIntentPatch(intent, on: before, now: instant, timeZone: zone, today: today.description) {
+        case .refused(let code, _):
+            if let words = OrganizeCopy.refusal(code: code, for: intent) { show(words, isError: true) }
+        case .patch(let patch):
+            guard !patch.isEmpty else { return }
+            replaceContainer(patch.applied(to: before))
+            sync?.enqueue(.container(ref, intent, refiled: []),
+                          before: [.container(ref): .container(before, index: index)])
+        }
+    }
+
+    /// Puts one container back as PlannerSync's rebase found the server
+    /// holds it. Nil removes it. One still here takes `snapshot`'s fields
+    /// over the member lists it holds now (`withMembership(of:)`): those
+    /// belong to the membership writes, and a toggle that landed must
+    /// survive a failed pause. One that is gone comes back whole at `index`
+    /// (clamped; last without one), its lists included, as a failed delete's
+    /// revert. Changes nothing when it already matches.
+    func restoreContainer(_ ref: ContainerRef, to snapshot: ContainerSnapshot?, index: Int?) {
+        let live = container(ref)
+        switch (snapshot, live) {
+        case (nil, nil):
+            return
+        case (nil, .some):
+            removeContainer(ref)
+        case (let back?, let current?):
+            let next = back.withMembership(of: current)
+            guard next != current else { return }
+            replaceContainer(next)
+        case (let back?, nil):
+            guard back.ref == ref else { return }
+            insertContainer(back, at: index)
+        }
+        noteChanged()
+    }
+
+    /// `snapshot` in place of the container of its kind and id.
+    private func replaceContainer(_ snapshot: ContainerSnapshot) {
+        switch snapshot {
+        case .routine(let routine):
+            guard let i = routines.firstIndex(where: { $0.id == routine.id }) else { return }
+            routines[i] = routine
+        case .season(let season):
+            guard let i = seasons.firstIndex(where: { $0.id == season.id }) else { return }
+            seasons[i] = season
+        case .goal(let goal):
+            guard let i = goals?.firstIndex(where: { $0.id == goal.id }) else { return }
+            goals?[i] = goal
+        case .project(let project):
+            guard let i = projectRecords.firstIndex(where: { $0.id == project.id }) else { return }
+            projectRecords[i] = project
+        }
+    }
+
+    /// `snapshot` back into its kind's list at `index`, clamped; last without
+    /// one. A goal goes nowhere while goals are unread.
+    private func insertContainer(_ snapshot: ContainerSnapshot, at index: Int?) {
+        func place(_ count: Int) -> Int { min(max(index ?? count, 0), count) }
+        switch snapshot {
+        case .routine(let routine):
+            routines.insert(routine, at: place(routines.count))
+        case .season(let season):
+            seasons.insert(season, at: place(seasons.count))
+        case .goal(let goal):
+            guard var read = goals else { return }
+            read.insert(goal, at: place(read.count))
+            goals = read
+        case .project(let project):
+            projectRecords.insert(project, at: place(projectRecords.count))
+        }
+    }
+
+    private func removeContainer(_ ref: ContainerRef) {
+        switch ref.kind {
+        case .routine: routines.removeAll { $0.id == ref.id }
+        case .season: seasons.removeAll { $0.id == ref.id }
+        case .goal: goals?.removeAll { $0.id == ref.id }
+        case .project: projectRecords.removeAll { $0.id == ref.id }
+        }
+    }
+
     /// Delete: takes `id` out, and, unless it is a habit, its subtasks with it
     /// (the store's `deleteTask` / `deleteHabit`, DsulCore `deleting`), as the
     /// server's `delete` does, to the Trash. The web's gate is always yes, so
@@ -1003,6 +1199,7 @@ final class SamplePlanner {
         snoozes = payload.snoozes ?? []
         writes = payload.writes
         trashWrites = payload.trashWrites
+        containerWrites = payload.containerWrites
         typeLabels = Dictionary((payload.itemTypes ?? []).map { ($0.name, $0) },
                                 uniquingKeysWith: { first, _ in first })
         itemTypes = payload.itemTypes
@@ -1093,8 +1290,9 @@ final class SamplePlanner {
     /// delete that did). One that is gone (a delete that never landed) comes
     /// back at `place`, through DsulCore `reinserting`: after the item it
     /// followed when that is here, else at its index; at the end without one.
-    /// A membership comes back through `restoreMembership` instead, so one
-    /// does nothing here.
+    /// A membership comes back through `restoreMembership` instead, and a
+    /// container's fields through `restoreContainer`, so neither does
+    /// anything here.
     func restore(_ subject: PlannerSync.Subject, to item: SampleItem?, place: Place?) {
         switch subject {
         case .item(let id):
@@ -1104,7 +1302,7 @@ final class SamplePlanner {
             } else {
                 items.removeAll { $0.id == id }
             }
-        case .member:
+        case .member, .container:
             return
         }
         closeSheetIfItsItemIsGone()

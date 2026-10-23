@@ -6,6 +6,10 @@ import SwiftUI
 /// it holds (each pushing its page), its own items, and the last 14 days over
 /// its items and its routines' items. What shows is
 /// `ContainerPageModel.seasonPage`.
+///
+/// From O8a the Status chip is a menu of the three states where the server
+/// takes the write; a pick is sent as picked (`setSeasonState`), and the
+/// sentence under it follows the stepped season.
 struct SeasonPageView: View {
     let id: String
     @Binding var path: [OrganizeRoute]
@@ -13,13 +17,17 @@ struct SeasonPageView: View {
     var body: some View {
         OrganizePageHost(route: .container(.season, id: id), path: $path,
                          load: { $0.seasonPage(id) }) { (page: SeasonPage) in
-            SeasonPageRows(page: page)
+            SeasonPageRows(seasonId: id, page: page)
         }
     }
 }
 
 private struct SeasonPageRows: View {
+    /// The season this page shows.
+    let seasonId: String
     let page: SeasonPage
+
+    @Environment(SamplePlanner.self) private var planner
 
     var body: some View {
         Section {
@@ -29,7 +37,7 @@ private struct SeasonPageRows: View {
                 NotesText(text: notes, onEdit: nil)
                     .pageTopRow()
             }
-            PageChipsView(chips: page.chips)
+            PageChipsView(chips: page.chips, status: page.statusMenu, onStatus: { pick($0) })
                 .pageTopRow()
             PageQuietText(text: page.stateNote)
                 .pageTopRow()
@@ -67,6 +75,17 @@ private struct SeasonPageRows: View {
             Section {
                 PageQuietText(text: empty)
             }
+        }
+    }
+
+    /// A Status pick: the state picked, sent as it is.
+    private func pick(_ action: StatusAction) {
+        switch action {
+        case .state(let state):
+            withAnimation(.snappy) { planner.setSeasonState(seasonId, state) }
+        case .pause, .pauseUntil, .resume:
+            // A routine's; a season's menu never offers them.
+            break
         }
     }
 }

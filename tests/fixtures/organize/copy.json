@@ -35,7 +35,8 @@
     "trashTeaching": "Anything you delete waits here for 30 days, then goes for good.",
     "trashLoadFailed": "Couldn't load the Trash.",
     "restoreFailed": "Couldn't restore it. Check your connection and try again.",
-    "restoreGone": "It's no longer in the Trash."
+    "restoreGone": "It's no longer in the Trash.",
+    "pauseRefused": "That day is no longer after today, so nothing was paused."
   },
   "heldWorld": {
     "items": [
@@ -1431,6 +1432,28 @@
       "noun": "routine",
       "heldName": "Morning",
       "expected": "A deleted routine called “Morning” still has that name. Restore it from Trash, or pick a different one."
+    }
+  ],
+  "containerRefusal": [
+    {
+      "name": "a pause until a day no longer after today",
+      "code": "pause_refused",
+      "expected": "That day is no longer after today, so nothing was paused."
+    },
+    {
+      "name": "gone, or never the caller’s",
+      "code": "not_found",
+      "expected": null
+    },
+    {
+      "name": "a body the route refuses",
+      "code": "invalid",
+      "expected": null
+    },
+    {
+      "name": "no answer at all",
+      "code": null,
+      "expected": null
     }
   ]
 }

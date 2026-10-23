@@ -29,9 +29,9 @@ import Foundation
 
 /// Where a tap on Organize goes: a container's page, or one of the footer's.
 /// Foundation only, so the hosted tests pin where every row leads; the stack's
-/// path holds these (OrganizeView). Not yet the design's `ContainerRef`, which
-/// O8a adds to DsulCore with the writes: until then a kind and an id say the
-/// same, and the id is never parsed as a UUID (the sample's are not).
+/// path holds these (OrganizeView). A container's page is named by its kind
+/// and id, the two halves of the DsulCore `ContainerRef` its writes take;
+/// the id is never parsed as a UUID (the sample's are not).
 enum OrganizeRoute: Hashable, Sendable {
     case container(OrganizeKind, id: String)
     /// The Paused page (O5): everything set aside, by the day it comes back.
@@ -153,6 +153,11 @@ struct OrganizeSnapshot: Sendable {
     /// (`SamplePlanner.offersTrash`): the footer's Trash row shows. The
     /// sample has no server bin, so it never does.
     var trashOffered: Bool = false
+    /// The container writes the server takes (`SamplePlanner.containerTakes`,
+    /// O8a): every one for the sample, the payload's `containerWrites` signed
+    /// in, and none from a server older than the routes. None by default, so
+    /// a snapshot built without it offers no editor and no Resume.
+    var containerTakes: ContainerWrites = ContainerWrites()
 
     /// What every schedule here is derived against: the grid's own inputs.
     var scheduleSource: ScheduleSource {
@@ -470,6 +475,42 @@ enum OrganizeModel {
         return "\(n) \(n == 1 ? one : many)"
     }
 
+    // MARK: Container writes (O8a)
+
+    /// Every container write the phone sends, each under the kinds whose
+    /// route takes it (`ContainerAction.kinds`): what the sample answers,
+    /// since nothing it writes is sent.
+    static let everyContainerWrite: ContainerWrites = {
+        var all = ContainerWrites()
+        for action in ContainerAction.allCases {
+            for kind in action.kinds {
+                switch kind {
+                case .routine: all.routine.append(action.rawValue)
+                case .season: all.season.append(action.rawValue)
+                case .goal: all.goal.append(action.rawValue)
+                case .project: all.project.append(action.rawValue)
+                }
+            }
+        }
+        return all
+    }()
+
+    /// May a container's page offer `action` on `kind` (design §6.4 Gating)?
+    /// The server takes it (`takes`, the resolved list) and the kind's
+    /// extension is on: Organize for a routine, a season and a project, Goals
+    /// for a goal. The switches are display gates, as on the web, where off
+    /// hides the sections; the route takes every write whatever they say
+    /// (lib/extension-gates.ts). Paused's Resume asks `takes` alone
+    /// (`ShelfPageModel.pausedRow`), as the web's does.
+    static func canEdit(_ action: ContainerAction, on kind: OrganizeKind, takes: ContainerWrites,
+                        settings: PlannerSettings) -> Bool {
+        guard takes.takes(action, on: kind) else { return false }
+        switch kind {
+        case .routine, .season, .project: return settings.organizeEnabled
+        case .goal: return settings.goalsEnabled
+        }
+    }
+
     static func noun(_ kind: OrganizeKind) -> String {
         switch kind {
         case .routine: return ContainerWords.routine
@@ -683,7 +724,7 @@ extension SamplePlanner {
         return OrganizeSnapshot(hasLoaded: hasLoaded, loadError: loadError, settings: settings, today: today,
                                 timeZone: timeZoneID, items: items, routines: routines, seasons: seasons,
                                 goals: goals, projects: projectRecords, away: awayPeriods, typeLabels: typeLabels,
-                                itemTypes: itemTypes, trashOffered: offersTrash)
+                                itemTypes: itemTypes, trashOffered: offersTrash, containerTakes: containerTakes)
     }
 
     /// The Organize tab's content now.

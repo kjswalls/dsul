@@ -50,6 +50,16 @@
     "list",
     "restore"
   ],
+  "containerWrites": {
+    "routine": [
+      "pause"
+    ],
+    "season": [
+      "state"
+    ],
+    "goal": [],
+    "project": []
+  },
   "items": [
     {
       "type": "habit",

@@ -2,8 +2,9 @@ import Foundation
 import Testing
 import DsulCore
 
-// The web's own answers for lib/active.ts' explanations, checked against
-// ActiveExplain.swift: tests/fixtures/organize/standing.json.
+// The web's own answers for lib/active.ts' explanations and lib/scope-rail.ts
+// `seasonStateForSwitch`, checked against ActiveExplain.swift:
+// tests/fixtures/organize/standing.json.
 
 private struct StandingExpected: Decodable, Sendable {
     let localOn: Bool
@@ -27,6 +28,15 @@ private struct ResumeCase: Decodable, Sendable {
     let season: Season
     let date: String
     let expected: String?
+}
+
+/// lib/scope-rail.ts `seasonStateForSwitch` (O8a).
+private struct SwitchCase: Decodable, Sendable {
+    let name: String
+    let season: Season
+    let on: Bool
+    let date: String
+    let expected: String
 }
 
 /// The world every suppression case is asked against, whole.
@@ -66,6 +76,7 @@ private struct RevealedCase: Decodable, Sendable {
 private struct StandingFixture: Decodable, Sendable {
     let routineStandingOn: [StandingCase]
     let seasonResumeDate: [ResumeCase]
+    let seasonStateForSwitch: [SwitchCase]
     let suppressionWorld: SuppressionWorld
     let suppressionReason: [ReasonCase]
     let membersRevealedByRemoving: [RevealedCase]
@@ -80,6 +91,7 @@ private func load() throws -> StandingFixture {
         let f = try load()
         #expect(!f.routineStandingOn.isEmpty)
         #expect(!f.seasonResumeDate.isEmpty)
+        #expect(!f.seasonStateForSwitch.isEmpty)
         #expect(!f.suppressionWorld.items.isEmpty)
         #expect(!f.suppressionReason.isEmpty)
         #expect(!f.membersRevealedByRemoving.isEmpty)
@@ -89,6 +101,40 @@ private func load() throws -> StandingFixture {
         for c in try load().seasonResumeDate {
             let day = try #require(DayString(c.date), "\(c.name): bad date \(c.date)")
             #expect(seasonResumeDate(c.season, on: day) == c.expected, "\(c.name)")
+        }
+    }
+
+    /// lib/scope-rail.ts `seasonStateForSwitch`: `auto` whenever the dates
+    /// already give the answer asked for; every answer, both directions, and
+    /// the range's two inclusive ends are in the fixture.
+    @Test func seasonStateForSwitchMatchesTheWeb() throws {
+        let cases = try load().seasonStateForSwitch
+        for c in cases {
+            let day = try #require(DayString(c.date), "\(c.name): bad date \(c.date)")
+            #expect(seasonStateForSwitch(c.season, on: c.on, today: day).rawValue == c.expected, "\(c.name)")
+        }
+        for state in SeasonState.allCases {
+            #expect(cases.contains { $0.expected == state.rawValue }, "no case answers \(state.rawValue)")
+        }
+        #expect(cases.contains { $0.on } && cases.contains { !$0.on })
+    }
+
+    /// Paused's "Turn on now" and the switches (lib/gate-toggle.ts
+    /// `setGateOn`): nothing when the season already is as asked, else the
+    /// state `seasonStateForSwitch` gives, which then is as asked.
+    @Test func theSwitchSendsWhatSetGateOnSends() throws {
+        for c in try load().seasonStateForSwitch {
+            let day = try #require(DayString(c.date), "\(c.name)")
+            let got = gateSwitchIntent(.season(c.season), on: c.on, today: day, timeZone: "UTC")
+            if isSeasonActiveOn(c.season, on: day) == c.on {
+                #expect(got == nil, "\(c.name): already so")
+                continue
+            }
+            let state = try #require(SeasonState(rawValue: c.expected), "\(c.name)")
+            #expect(got == .state(state), "\(c.name)")
+            var after = c.season
+            after.state = state.rawValue
+            #expect(isSeasonActiveOn(after, on: day) == c.on, "\(c.name): the switch didn't take")
         }
     }
 

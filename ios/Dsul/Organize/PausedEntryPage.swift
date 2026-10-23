@@ -9,9 +9,12 @@ import SwiftUI
 /// rather than the container's page, which Organize off would blank. What
 /// shows is `ShelfPageModel.pausedEntryPage` (pinned by ShelfPageTests).
 ///
-/// No Resume yet: a container resumes from O8a ("Resume now", "Turn on now").
-/// The page pops itself once the entry is off the shelf (resumed elsewhere,
-/// back on its day, or deleted), as a container's page does when it goes.
+/// From O8a it carries the way back where the server takes the write:
+/// "Resume now" for a routine, "Turn on now" for a season, the planner's
+/// `turnOn(_:)` (the web's `setGateOn`), whatever the switches say, as on the
+/// Paused list. The page pops itself once the entry is off the shelf (resumed
+/// here or elsewhere, back on its day, or deleted), as a container's page
+/// does when it goes.
 struct PausedEntryPageView: View {
     let key: String
     @Binding var path: [OrganizeRoute]
@@ -26,6 +29,8 @@ struct PausedEntryPageView: View {
 
 private struct PausedEntryRows: View {
     let page: PausedEntryPage
+
+    @Environment(SamplePlanner.self) private var planner
 
     var body: some View {
         Section {
@@ -55,11 +60,23 @@ private struct PausedEntryRows: View {
             PageSectionHeader(title: ShelfPageModel.comesBackTitle)
         }
 
-        if let openIn = page.openIn {
+        if page.resume != nil || page.openIn != nil {
             Section {
-                NavigationLink(value: openIn.route) {
-                    Text(openIn.title)
-                        .foregroundStyle(Color.primary)
+                if let resume = page.resume {
+                    Button {
+                        withAnimation(.snappy) { planner.turnOn(resume.ref) }
+                    } label: {
+                        Label(resume.title, systemImage: "play")
+                    }
+                    // A list row's button takes the tint, the lime accent,
+                    // which is a mark, never text.
+                    .tint(Color.primary)
+                }
+                if let openIn = page.openIn {
+                    NavigationLink(value: openIn.route) {
+                        Text(openIn.title)
+                            .foregroundStyle(Color.primary)
+                    }
                 }
             }
         }

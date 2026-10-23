@@ -2629,8 +2629,13 @@ export const usePlannerStore = create<PlannerStore>()(
                 Promise.all(
                   seasonIds.map((pid) => {
                     const season = get().seasons.find((p) => p.id === pid);
+                    // `known` is the same list without the new routine, so the
+                    // one change this write makes is the hold (lib/db.ts
+                    // reconcileMembership), and another device's holds stay.
                     return season
-                      ? dbUpdateSeason(userId, pid, { routineIds: season.routineIds }).catch((error) => {
+                      ? dbUpdateSeason(userId, pid, { routineIds: season.routineIds }, undefined, {
+                          routineIds: season.routineIds.filter((r) => r !== full.id),
+                        }).catch((error) => {
                           // The routine is real; only the hold failed. Say so,
                           // and leave the routine standing.
                           console.error('link routine to season failed', error);
@@ -2783,11 +2788,15 @@ export const usePlannerStore = create<PlannerStore>()(
         } else {
           run();
         }
-        // As updateRoutine: the item list this tab held, for reconcileMembership.
-        // `routineIds` take none (the iPhone never writes season_routines).
+        // As updateRoutine: each member list this tab held (read before the
+        // set()), for reconcileMembership, so the write is this change alone
+        // and keeps another device's adds, the iPhone's holds included.
         if (userId) {
-          (updates.itemIds
-            ? dbUpdateSeason(userId, id, updates, undefined, { itemIds: season.itemIds })
+          (updates.itemIds || updates.routineIds
+            ? dbUpdateSeason(userId, id, updates, undefined, {
+                ...(updates.itemIds && { itemIds: season.itemIds }),
+                ...(updates.routineIds && { routineIds: season.routineIds }),
+              })
             : dbUpdateSeason(userId, id, updates)
           ).catch(console.error);
         }
@@ -5938,13 +5947,16 @@ function applyHistoryState(
   // SEASON_FIELDS and both reconciled by dbUpdateSeason against their own
   // join table. Undoing "added Morning to Summer" therefore arrives here as a
   // {routineIds} patch and deletes exactly that one join row. `known` as the
-  // routines', for the item list alone.
+  // routines', for both lists: the iPhone writes holds as well as items, so a
+  // ⌘Z or a redo after a phone hold must not write this tab's stale list over
+  // it. A season the undo brings back from the Trash has no `cur`, and its
+  // full restored lists are written.
   syncContainers(
     currentState.seasons, restoredSeasons, SEASON_FIELDS,
     (id) => dbRestoreSeason(userId, id),
     (id, patch, cur) =>
-      patch.itemIds && cur
-        ? dbUpdateSeason(userId, id, patch, undefined, { itemIds: cur.itemIds })
+      cur && (patch.itemIds || patch.routineIds)
+        ? dbUpdateSeason(userId, id, patch, undefined, { itemIds: cur.itemIds, routineIds: cur.routineIds })
         : dbUpdateSeason(userId, id, patch),
     (id) => dbDeleteSeason(userId, id),
   );

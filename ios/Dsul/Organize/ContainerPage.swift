@@ -7,12 +7,15 @@ import SwiftUI
 // ContainerPageModel (Foundation only, pinned by OrganizePageTests); these
 // draw it.
 //
-// Read-only. The one write is the tick, the row's own (`toggle(_:on:)` on
+// Read-only but for two writes. The tick, the row's own (`toggle(_:on:)` on
 // today, behind the `tick` gate), the write Today's circle sends; a row's tap
-// opens the item's sheet on today. Edits come with O8 to O13. The footer's
-// pages (Paused, a paused routine's or season's detail, Item types and the
-// Trash, O5 and O14) go through the same destination: PausedPage.swift,
-// PausedEntryPage.swift, ItemTypesPage.swift and TrashPage.swift draw them.
+// opens the item's sheet on today. And from O8a a routine's or a season's
+// Status chip, a menu (`StatusChipMenu`) where the page's model carries one
+// (`StatusMenu`); the planner steps and sends the pick. More edits come with
+// O8b to O13. The footer's pages (Paused, a paused routine's or season's
+// detail, Item types and the Trash, O5 and O14) go through the same
+// destination: PausedPage.swift, PausedEntryPage.swift, ItemTypesPage.swift
+// and TrashPage.swift draw them.
 //
 // No tint anywhere here (OrganizeView): the ticks, the strip, the ring and
 // the timeline's nodes are `Color.accentColor`, lime, and a tint would turn
@@ -34,7 +37,7 @@ struct OrganizeDestination: View {
             case .project: ProjectPageView(id: id, path: $path)
             }
         case .paused:
-            PausedPageView()
+            PausedPageView(path: $path)
         case .pausedEntry(let key):
             PausedEntryPageView(key: key, path: $path)
         case .itemTypes:
@@ -205,33 +208,103 @@ struct GoalRingView: View {
     }
 }
 
-/// The read-only chips under a page's header, wrapping as the item sheet's
-/// do (`ChipFlow`), each in its 44pt slot: the symbol gray, the words the
-/// label colour, no chevron (they edit nothing yet). One element each to
-/// VoiceOver ("Status: Paused until Oct 30").
+/// The chips under a page's header, wrapping as the item sheet's do
+/// (`ChipFlow`), each in its 44pt slot: the symbol gray, the words the label
+/// colour. Read-only, with no chevron, but for the Status chip when the page
+/// carries a `status` menu (O8a): then it is that menu, its label ending in a
+/// chevron, and a pick goes to `onStatus`. One element each to VoiceOver
+/// ("Status: Paused until Oct 30"), the menu with its button trait and hint.
 struct PageChipsView: View {
     let chips: [PageChip]
-
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    var status: StatusMenu? = nil
+    var onStatus: (StatusAction) -> Void = { _ in }
 
     var body: some View {
         let flow = ChipFlow()
         flow {
             ForEach(chips) { chip in
-                HStack(spacing: 5) {
-                    Image(systemName: chip.systemImage)
-                        .foregroundStyle(.secondary)
-                    Text(chip.text)
-                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                if chip.kind == .status, let status {
+                    StatusChipMenu(chip: chip, menu: status, onPick: onStatus)
+                } else {
+                    PageChipLabel(chip: chip)
+                        .chipSlot()
                 }
-                .foregroundStyle(Color.primary)
-                .font(.subheadline)
-                .chipBackground()
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(Text(chip.spoken))
-                .chipSlot()
             }
         }
+    }
+}
+
+/// One page chip's capsule: its symbol gray, its words the label colour, and
+/// a gray chevron when it opens a menu, as the item sheet's editable chips
+/// end (`ChipView`). One element to VoiceOver, its spoken words.
+struct PageChipLabel: View {
+    let chip: PageChip
+    var editable: Bool = false
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: chip.systemImage)
+                .foregroundStyle(.secondary)
+            Text(chip.text)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+            if editable {
+                Image(systemName: "chevron.down")
+                    .imageScale(.small)
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
+        }
+        .foregroundStyle(Color.primary)
+        .font(.subheadline)
+        .chipBackground()
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(chip.spoken))
+    }
+}
+
+/// A page's Status chip as a menu (O8a), drawn as the item sheet's editable
+/// chips are (`PropertyMenus`): the chip in its 44pt hit frame as the label,
+/// scaling when pressed, the label colour throughout, never the lime tint,
+/// so a season's checkmark isn't lime either. A season's three states are an
+/// inline picker, the one it is in checked; a routine's verbs are plain
+/// buttons, with no check. A pick goes to `onPick` and nothing is written
+/// here.
+struct StatusChipMenu: View {
+    let chip: PageChip
+    let menu: StatusMenu
+    let onPick: (StatusAction) -> Void
+
+    var body: some View {
+        Menu {
+            if let selected = menu.selected {
+                Picker(chip.text, selection: Binding(get: { selected }, set: { onPick($0) })) {
+                    ForEach(menu.choices) { choice in
+                        Label(choice.label, systemImage: choice.systemImage)
+                            .tag(choice.action)
+                    }
+                }
+                .pickerStyle(.inline)
+            } else {
+                ForEach(menu.choices) { choice in
+                    Button {
+                        onPick(choice.action)
+                    } label: {
+                        Label(choice.label, systemImage: choice.systemImage)
+                    }
+                }
+            }
+        } label: {
+            PageChipLabel(chip: chip, editable: true)
+                .chipHit()
+        }
+        .menuOrder(.fixed)
+        .menuStyle(.button)
+        .buttonStyle(PressScaleStyle())
+        .tint(Color.primary)
+        .accessibilityLabel(Text(chip.spoken))
+        .accessibilityHint(Text(ContainerPageModel.statusHint))
     }
 }
 

@@ -232,8 +232,10 @@ func bodyJSON(_ request: FakeServer.Request?) -> [String: Any]? {
 /// the user's own types, `streaksEnabled` the Streaks switch,
 /// `remindersEnabled` the raw JSON for Habit reminders ("true", "false" or
 /// "null"), `organizeEnabled` and `goalsEnabled` the Organize and Goals
-/// switches, `goals` the user's goals (`goalJSON`), and `trashWrites` what
-/// the Trash routes take, each left out (an older server) unless given.
+/// switches, `goals` the user's goals (`goalJSON`), `trashWrites` what
+/// the Trash routes take, and `containerWrites` the raw JSON of what the
+/// container route takes (`allContainerWrites`), each left out (an older
+/// server) unless given.
 enum PlannerJSON {
     static let today = "2026-10-01"
     /// Noon UTC on `today`: the live planner's clock. It is 2026-10-01 from
@@ -264,6 +266,10 @@ enum PlannerJSON {
     static let allWrites = ["complete", "schedule", "skip", "move", "pause", "title", "notes", "delete",
                             "addSubtask", "resetStreak", "priority", "timesPerDay", "reminder", "time", "repeat",
                             "project", "collect"]
+
+    /// What POST /api/app/containers/:kind/:id takes (lib/app-containers.ts
+    /// `CONTAINER_WRITES`, O8a), as planner-response.json carries it.
+    static let allContainerWrites = "{\"routine\":[\"pause\"],\"season\":[\"state\"],\"goal\":[],\"project\":[]}"
 
     /// The user's own type that `book` is, as they named it.
     static let bookType = ItemTypeLabel(name: "book", label: "Book to read", labelPlural: "Books to read")
@@ -384,7 +390,8 @@ enum PlannerJSON {
                         remindersEnabled: String? = nil, omitting: Set<UUID> = [],
                         extra: [String] = [], projects: [String] = [], routines: [String] = [],
                         seasons: [String] = [], organizeEnabled: Bool? = nil, goalsEnabled: Bool? = nil,
-                        goals: [String]? = nil, trashWrites: [String]? = nil) -> String {
+                        goals: [String]? = nil, trashWrites: [String]? = nil,
+                        containerWrites: String? = nil) -> String {
         let status = groceriesDone ? "completed" : "pending"
         let zone: String = timezone.map { "\"\($0)\"" } ?? "null"
         let groceriesRow: String =
@@ -420,6 +427,9 @@ enum PlannerJSON {
         if let trashWrites {
             let quoted: [String] = trashWrites.map { "\"\($0)\"" }
             json += "\"trashWrites\":[" + quoted.joined(separator: ",") + "],"
+        }
+        if let containerWrites {
+            json += "\"containerWrites\":" + containerWrites + ","
         }
         if let itemTypes {
             let named: [String] = itemTypes.map {
@@ -1214,7 +1224,8 @@ final class DragFlag {
     /// the parent whose route it goes to, and proves a row: its parent, which
     /// the route answers 404 for when it isn't there. A routine or season
     /// toggle names the one membership, never its item, and proves the item,
-    /// for the same reason.
+    /// for the same reason. A container write (O8a) names the container's
+    /// own fields and nothing else, and proves nothing.
     @Test func eachWriteNamesWhatItTouches() {
         let id = PlannerJSON.groceries
         let own: Set<PlannerSync.Subject> = [.item(id)]
@@ -1236,7 +1247,6 @@ final class DragFlag {
             .resetStreak(id: id),
         ]
         for write in writes {
-            #expect(write.itemId == id)
             #expect(write.subjects == own)
             #expect(write.proves.isEmpty)
         }
@@ -1244,13 +1254,11 @@ final class DragFlag {
         let child = UUID(uuidString: "0d000000-0000-4000-8000-00000000000c")!
         let add = PlannerSync.Write.addSubtask(id: child, parent: id, title: "Eggs")
         let made: Set<PlannerSync.Subject> = [.item(child)]
-        #expect(add.itemId == child)
         #expect(add.subjects == made)
         #expect(add.proves == own)
 
         let toggle = PlannerSync.Write.collect(id: id, kind: .routine, containerId: PlannerJSON.morning, member: true)
         let membership: Set<PlannerSync.Subject> = [.member(.routine, containerId: PlannerJSON.morning, item: id)]
-        #expect(toggle.itemId == id)
         #expect(toggle.subjects == membership)
         #expect(toggle.proves == own)
         let leave = PlannerSync.Write.collect(id: id, kind: .season, containerId: PlannerJSON.autumn, member: false)
@@ -1265,7 +1273,6 @@ final class DragFlag {
                        PlacedItem(place: Place(index: 4, after: PlannerJSON.bank), item: bags)]
         let delete = PlannerSync.Write.delete(id: id, removed: removed, cascades: true)
         let both: Set<PlannerSync.Subject> = [.item(id), .item(PlannerJSON.bags)]
-        #expect(delete.itemId == id)
         #expect(delete.subjects == both)
         #expect(delete.proves.isEmpty)
 
@@ -1275,6 +1282,27 @@ final class DragFlag {
                                              cascades: false)
         let habit: Set<PlannerSync.Subject> = [.item(PlannerJSON.water)]
         #expect(alone.subjects == habit)
+
+        let morning = ContainerRef(kind: .routine, id: PlannerJSON.morning)
+        let autumn = ContainerRef(kind: .season, id: PlannerJSON.autumn)
+        let containers: [(PlannerSync.Write, ContainerRef)] = [
+            (.container(morning, .pause(until: nil, timeZone: "UTC"), refiled: []), morning),
+            (.container(morning, .pause(until: DayString("2026-10-30"), timeZone: "UTC"), refiled: []), morning),
+            (.container(morning, .resume(timeZone: "UTC"), refiled: []), morning),
+            (.container(autumn, .state(.paused), refiled: []), autumn),
+        ]
+        for (write, ref) in containers {
+            let fields: Set<PlannerSync.Subject> = [.container(ref)]
+            #expect(write.subjects == fields)
+            #expect(write.proves.isEmpty)
+        }
+        #expect(PlannerSync.Subject.container(morning).itemId == nil)
+        #expect(PlannerSync.Subject.member(.routine, containerId: PlannerJSON.morning, item: id).itemId == id)
+        // A write that refiles items (a project rename, from O9) names each.
+        let work = ContainerRef(kind: .project, id: "work")
+        let refiling = PlannerSync.Write.container(work, .state(.auto), refiled: [id])
+        let refiled: Set<PlannerSync.Subject> = [.container(work), .item(id)]
+        #expect(refiling.subjects == refiled)
     }
 
     // MARK: The rebase's worked cases (design §3.5)
@@ -1781,6 +1809,290 @@ final class DragFlag {
         #expect(morning(planner) == [PlannerJSON.water, PlannerJSON.stretch, milk.id])
         let posts = await server.count(itemRoute(milk.id))
         #expect(posts == 1)
+    }
+
+    // MARK: Container writes (O8a)
+
+    /// POST /api/app/containers/routine/<id>, as the route's unions take it.
+    private var routineRoute: String {
+        return "POST " + ContainerRoutes.write(ContainerRef(kind: .routine, id: PlannerJSON.morning))
+    }
+
+    private var seasonRoute: String {
+        return "POST " + ContainerRoutes.write(ContainerRef(kind: .season, id: PlannerJSON.autumn))
+    }
+
+    private func routine(_ planner: SamplePlanner) -> Routine? {
+        return planner.routines.first { $0.id == PlannerJSON.morning }
+    }
+
+    private func season(_ planner: SamplePlanner) -> Season? {
+        return planner.seasons.first { $0.id == PlannerJSON.autumn }
+    }
+
+    /// Morning routine holding Water, and Autumn holding Stretch, from a
+    /// server that takes the container writes.
+    private func containerPayload(timezone: String? = nil, organizeEnabled: Bool? = true,
+                                  containerWrites: String? = PlannerJSON.allContainerWrites,
+                                  routines: [String]? = nil) -> String {
+        let morning = PlannerJSON.routineJSON(PlannerJSON.morning, "Morning routine", [PlannerJSON.water])
+        let autumn = PlannerJSON.seasonJSON(PlannerJSON.autumn, "Autumn", [PlannerJSON.stretch])
+        return PlannerJSON.payload(timezone: timezone, routines: routines ?? [morning], seasons: [autumn],
+                                   organizeEnabled: organizeEnabled, containerWrites: containerWrites)
+    }
+
+    /// Pause until: the routine paused at once, on the clock's instant, and
+    /// the intent sent to the container route, never the item route, with
+    /// the zone the phone read today in.
+    @Test func aRoutinePauseSendsItsIntentToTheContainerRoute() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, containerPayload()))
+        await server.on(routineRoute, .status(200, ok))
+        let planner = await loaded(server)
+        #expect(planner.canWrite(kind: .routine, action: .pause))
+
+        planner.pauseRoutine(PlannerJSON.morning, until: DayString("2026-10-05"))
+        #expect(routine(planner)?.pausedAt == "2026-10-01T12:00:00.000Z")
+        #expect(routine(planner)?.pausedUntil == "2026-10-05")
+        // Its member list is the toggles', untouched.
+        #expect(routine(planner)?.itemIds == [PlannerJSON.water])
+        await drain(planner)
+
+        let requests = await server.requests
+        let sent = try #require(requests.first { $0.route == routineRoute })
+        let body = try #require(bodyJSON(sent))
+        #expect(body["action"] as? String == "pause")
+        #expect(body["paused"] as? Bool == true)
+        #expect(body["pausedUntil"] as? String == "2026-10-05")
+        #expect(body["timeZone"] as? String == planner.timeZoneID)
+        #expect(body.count == 4)
+        #expect(sent.headers["authorization"] == "Bearer token-1")
+        #expect(requests.filter { $0.route.hasPrefix("POST /api/app/items") }.isEmpty)
+        // The drain's fetch is the only GET after the first: nothing failed.
+        #expect(planner.banner == nil)
+    }
+
+    /// A season's Status sends exactly what was picked, and a Resume ends a
+    /// routine's pause today.
+    @Test func aSeasonStateAndAResumeSendTheirOwnBodies() async throws {
+        let server = FakeServer()
+        let paused = "{\"id\":\"\(PlannerJSON.morning)\",\"name\":\"Morning routine\",\"sortOrder\":0,"
+            + "\"pausedAt\":\"2026-09-20T15:00:00+00:00\",\"itemIds\":[\"\(lowerID(PlannerJSON.water))\"]}"
+        await server.on(plannerRoute, .status(200, containerPayload(routines: [paused])))
+        await server.on(routineRoute, .status(200, ok))
+        await server.on(seasonRoute, .status(200, ok))
+        let planner = await loaded(server)
+
+        planner.setSeasonState(PlannerJSON.autumn, .active)
+        #expect(season(planner)?.state == "active")
+        planner.resumeRoutine(PlannerJSON.morning)
+        #expect(routine(planner)?.pausedAt == "2026-09-20T15:00:00+00:00")
+        #expect(routine(planner)?.pausedUntil == PlannerJSON.today)
+        await drain(planner)
+
+        let requests = await server.requests
+        let state = try #require(bodyJSON(requests.first { $0.route == seasonRoute }))
+        #expect(state["action"] as? String == "state")
+        #expect(state["state"] as? String == "active")
+        #expect(state.count == 2)
+        let resume = try #require(bodyJSON(requests.first { $0.route == routineRoute }))
+        #expect(resume["action"] as? String == "pause")
+        #expect(resume["paused"] as? Bool == false)
+        #expect(resume["pausedUntil"] == nil)
+    }
+
+    /// Autumn turned Off with no connection: once the refetch fails too, the
+    /// chip back where it was. Nothing reached the server, and the banner
+    /// says the change was undone, which it says only when the revert's
+    /// compare sees the season move. (The compare's projects and goals,
+    /// which O8a added, wait for a write that reaches them, from O8b.)
+    @Test func aFailedSeasonStateTurnsBack() async {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, containerPayload()), .offline)
+        await server.on(seasonRoute, .offline)
+        let planner = await loaded(server)
+
+        planner.setSeasonState(PlannerJSON.autumn, .paused)
+        #expect(season(planner)?.state == "paused")
+        await drain(planner)
+
+        #expect(season(planner)?.state == "auto")
+        #expect(season(planner)?.itemIds == [PlannerJSON.stretch])
+        #expect(planner.banner?.text == "Couldn't reach dsul, so that change was undone.")
+    }
+
+    /// The pause never landed; Groceries collected into the routine after it
+    /// did. The revert takes the pause back and only the pause: the
+    /// routine's fields go back over the member list it holds now, so the
+    /// landed collect stays.
+    @Test func aFailedPauseTurnsBackWhileALandedCollectStays() async {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, containerPayload()), .offline)
+        await server.on(routineRoute, .offline)
+        await server.on(itemRoute(PlannerJSON.groceries), .status(200, ok))
+        let planner = await loaded(server)
+
+        planner.pauseRoutine(PlannerJSON.morning, until: nil)
+        planner.collect(PlannerJSON.groceries, kind: .routine, containerId: PlannerJSON.morning, member: true)
+        #expect(routine(planner)?.pausedAt != nil)
+        #expect(routine(planner)?.itemIds == [PlannerJSON.water, PlannerJSON.groceries])
+        await drain(planner)
+
+        #expect(routine(planner)?.pausedAt == nil)
+        #expect(routine(planner)?.pausedUntil == nil)
+        #expect(routine(planner)?.itemIds == [PlannerJSON.water, PlannerJSON.groceries])
+        #expect(planner.banner?.text == "Couldn't reach dsul, so that change was undone.")
+    }
+
+    /// A pause that landed is replayed at its own `sentAt`, in the zone the
+    /// server read it in. The first Pause until never landed; the second went
+    /// out an hour later and the server took it as a new pause (its row had
+    /// none), stamped then. The refetch fails a day later, when a pause until
+    /// October 2 would be refused: replayed then, the routine would be live.
+    @Test func aLandedRoutinePauseReplaysAtItsSentAt() async {
+        let clock = TestClock(PlannerJSON.noon)
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, containerPayload(timezone: "America/New_York")), .offline)
+        await server.on(routineRoute, .offline, .status(200, ok))
+        let planner = makeLivePlanner(server, now: { clock.now })
+        await planner.refresh()
+        await server.gate(routineRoute)
+        await server.gate(plannerRoute)
+
+        planner.pauseRoutine(PlannerJSON.morning, until: DayString("2026-10-05"))   // never reaches the server
+        planner.pauseRoutine(PlannerJSON.morning, until: DayString("2026-10-02"))   // moves the day here
+        #expect(routine(planner)?.pausedAt == "2026-10-01T12:00:00.000Z")
+        #expect(routine(planner)?.pausedUntil == "2026-10-02")
+        let firstOut = await waitUntil { await server.count(routineRoute) == 1 }
+        #expect(firstOut)
+        clock.now = PlannerJSON.noon.addingTimeInterval(60 * 60)
+        await server.admit(routineRoute)
+        let secondOut = await waitUntil { await server.count(routineRoute) == 2 }
+        #expect(secondOut)
+        await server.admit(routineRoute)
+        let refetching = await waitUntil { await server.count(plannerRoute) == 2 }
+        #expect(refetching)
+        // Noon in New York on October 2, before the refetch fails.
+        clock.now = PlannerJSON.noon.addingTimeInterval(28 * 60 * 60)
+        await server.admit(plannerRoute)
+        await drain(planner)
+
+        #expect(routine(planner)?.pausedAt == "2026-10-01T13:00:00.000Z")
+        #expect(routine(planner)?.pausedUntil == "2026-10-02")
+        #expect(planner.banner?.text == "Couldn't reach dsul, so that change was undone.")
+    }
+
+    /// The route's 409 `pause_refused` is said in its own words, not the
+    /// item writes', and the refetch's answer replaces the guess.
+    @Test func aRefusedPauseSaysWhy() async {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, containerPayload()))
+        await server.on(routineRoute, .status(409, "{\"error\":\"pause_refused\"}"))
+        let planner = await loaded(server)
+
+        planner.pauseRoutine(PlannerJSON.morning, until: DayString("2026-10-02"))
+        #expect(routine(planner)?.pausedUntil == "2026-10-02")
+        await drain(planner)
+
+        #expect(planner.banner?.text == OrganizeCopy.pauseRefused)
+        #expect(planner.banner?.text == "That day is no longer after today, so nothing was paused.")
+        #expect(routine(planner)?.pausedAt == nil)
+        let gets = await server.count(plannerRoute)
+        #expect(gets == 2)
+    }
+
+    /// A day no longer after today (a picker left open across midnight) is
+    /// refused before any step, with the same words, and nothing is sent.
+    @Test func aPauseUntilTodayIsRefusedHere() async {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, containerPayload()))
+        let planner = await loaded(server)
+
+        planner.pauseRoutine(PlannerJSON.morning, until: DayString(PlannerJSON.today))
+        #expect(routine(planner)?.pausedAt == nil)
+        #expect(planner.banner?.text == OrganizeCopy.pauseRefused)
+        await drain(planner)
+        let posts = await postCount(server)
+        #expect(posts == 0)
+    }
+
+    /// A server older than the route sends no `containerWrites`: every
+    /// container editor hides, Paused offers no container Resume, and the
+    /// steps send nothing.
+    @Test func anOlderServerHidesEveryContainerEditor() async throws {
+        let server = FakeServer()
+        let paused = "{\"id\":\"\(PlannerJSON.morning)\",\"name\":\"Morning routine\",\"sortOrder\":0,"
+            + "\"pausedAt\":\"2026-09-20T15:00:00+00:00\",\"itemIds\":[\"\(lowerID(PlannerJSON.water))\"]}"
+        await server.on(plannerRoute, .status(200, containerPayload(containerWrites: nil, routines: [paused])))
+        let planner = await loaded(server)
+
+        #expect(planner.containerWrites == nil)
+        #expect(!planner.canWrite(kind: .routine, action: .pause))
+        #expect(!planner.canWrite(kind: .season, action: .state))
+        #expect(!planner.takes(.pause, on: .routine))
+        guard case .page(let routinePage)? = planner.routinePage(PlannerJSON.morning),
+              case .page(let seasonPage)? = planner.seasonPage(PlannerJSON.autumn)
+        else {
+            Issue.record("Organize is on, so both pages draw")
+            return
+        }
+        #expect(routinePage.statusMenu == nil)
+        #expect(seasonPage.statusMenu == nil)
+        let row = try #require(planner.pausedPage.groups.flatMap(\.rows).first { $0.key == "routine:" + PlannerJSON.morning })
+        #expect(!row.resumable)
+
+        planner.resumeRoutine(PlannerJSON.morning)
+        planner.turnOn(ContainerRef(kind: .routine, id: PlannerJSON.morning))
+        planner.setSeasonState(PlannerJSON.autumn, .paused)
+        #expect(routine(planner)?.pausedUntil == nil)
+        #expect(season(planner)?.state == "auto")
+        await drain(planner)
+        let posts = await postCount(server)
+        #expect(posts == 0)
+
+        // The current server's list brings them back.
+        let current = FakeServer()
+        await current.on(plannerRoute, .status(200, containerPayload()))
+        let fresh = await loaded(current)
+        guard case .page(let editable)? = fresh.routinePage(PlannerJSON.morning) else {
+            Issue.record("the routine's page draws")
+            return
+        }
+        #expect(editable.statusMenu?.choices.map(\.label) == ["Pause", "Pause until\u{2026}"])
+    }
+
+    /// Organize switched off on the web: the routine's page is the
+    /// switched-off sentence, but Paused still offers Resume, which brings
+    /// it back with no refusal, as the web's Paused does.
+    @Test func pausedResumesARoutineWithOrganizeOff() async throws {
+        let server = FakeServer()
+        let paused = "{\"id\":\"\(PlannerJSON.morning)\",\"name\":\"Morning routine\",\"sortOrder\":0,"
+            + "\"pausedAt\":\"2026-09-20T15:00:00+00:00\",\"itemIds\":[\"\(lowerID(PlannerJSON.water))\"]}"
+        await server.on(plannerRoute, .status(200, containerPayload(organizeEnabled: false, routines: [paused])))
+        await server.on(routineRoute, .status(200, ok))
+        let planner = await loaded(server)
+
+        #expect(!planner.canWrite(kind: .routine, action: .pause))
+        #expect(planner.takes(.pause, on: .routine))
+        let key = "routine:" + PlannerJSON.morning
+        let row = try #require(planner.pausedPage.groups.flatMap(\.rows).first { $0.key == key })
+        #expect(row.resumable)
+        guard case .page(let detail)? = planner.pausedEntryPage(key) else {
+            Issue.record("Paused rides no switch")
+            return
+        }
+        let resume = try #require(detail.resume)
+        #expect(resume.title == "Resume now")
+
+        planner.turnOn(resume.ref)
+        #expect(routine(planner)?.pausedUntil == PlannerJSON.today)
+        #expect(planner.pausedEntryPage(key) == nil)
+        await drain(planner)
+
+        let requests = await server.requests
+        let body = try #require(bodyJSON(requests.first { $0.route == routineRoute }))
+        #expect(body["paused"] as? Bool == false)
+        #expect(planner.banner == nil)
     }
 
     // MARK: A new subtask

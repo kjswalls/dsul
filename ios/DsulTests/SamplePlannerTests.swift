@@ -705,6 +705,88 @@ import Testing
         #expect(goalProgress(goal, items: planner.items) == GoalProgress(achieved: 1, total: 3, fraction: 1.0 / 3.0))
     }
 
+    // MARK: Container writes (O8a)
+
+    /// The sample takes every container write and sends nothing: a routine
+    /// pauses until a day and resumes, a season switches state as picked,
+    /// and Paused's Turn on now brings a switched-off season back the web's
+    /// way, so Autumn, which follows no dates, goes back to Dates.
+    @Test func theSampleSwitchesRoutinesAndSeasonsWithoutSending() throws {
+        let planner = makePlanner()
+        #expect(planner.sync == nil)
+        #expect(planner.containerWrites == nil)
+        #expect(planner.containerTakes == OrganizeModel.everyContainerWrite)
+        #expect(planner.canWrite(kind: .routine, action: .pause))
+        #expect(planner.canWrite(kind: .season, action: .state))
+        let morning = "sample-morning-routine"
+        let autumn = ContainerRef(kind: .season, id: "sample-autumn")
+        let members = planner.routines.first { $0.id == morning }?.itemIds
+
+        planner.pauseRoutine(morning, until: DayString("2026-10-08"))
+        var routine = try #require(planner.routines.first { $0.id == morning })
+        #expect(routine.pausedAt == "2026-10-01T12:00:00.000Z")
+        #expect(routine.pausedUntil == "2026-10-08")
+        #expect(routine.itemIds == members)
+        guard case .page(let page)? = planner.routinePage(morning) else {
+            Issue.record("the sample's routine has a page")
+            return
+        }
+        #expect(page.chips.last?.text == "Paused until Oct 8")
+        #expect(page.statusMenu?.choices.first?.action == .resume)
+
+        // Journal is in Morning routine and in Autumn: with both off it is
+        // set aside, and Paused offers its way back.
+        planner.setSeasonState(autumn.id, .paused)
+        #expect(planner.seasons.first?.state == "paused")
+        let containers = planner.pausedPage.groups.flatMap(\.rows).filter { $0.container != nil }
+        #expect(!containers.isEmpty)
+        #expect(containers.allSatisfy { $0.resumable })
+
+        planner.resumeRoutine(morning)
+        routine = try #require(planner.routines.first { $0.id == morning })
+        #expect(routine.pausedAt == "2026-10-01T12:00:00.000Z")
+        #expect(routine.pausedUntil == "2026-10-01")
+
+        planner.turnOn(autumn)
+        #expect(planner.seasons.first?.state == "auto")
+        // Already on: nothing to send, nothing changes.
+        planner.turnOn(autumn)
+        #expect(planner.seasons.first?.state == "auto")
+        #expect(planner.pausedPage.empty == "Nothing is paused.")
+    }
+
+    /// A revert puts back a container's fields and never its member lists
+    /// (`withMembership(of:)`); one that is gone comes back whole at its
+    /// place; nil takes it away.
+    @Test func restoringAContainerKeepsItsMembers() throws {
+        let planner = makePlanner()
+        let ref = ContainerRef(kind: .routine, id: "sample-morning-routine")
+        let before = try #require(planner.container(ref))
+        guard case .routine(var original) = before else {
+            Issue.record("a routine's snapshot")
+            return
+        }
+        planner.pauseRoutine(ref.id, until: nil)
+        planner.collect(SampleData.uuid(50), kind: .routine, containerId: ref.id, member: true)
+        let grown = try #require(planner.routines.first { $0.id == ref.id }?.itemIds)
+        #expect(grown.last == SampleData.uuid(50))
+
+        planner.restoreContainer(ref, to: before, index: 0)
+        let back = try #require(planner.routines.first { $0.id == ref.id })
+        #expect(back.pausedAt == nil)
+        #expect(back.itemIds == grown)
+
+        planner.restoreContainer(ref, to: nil, index: nil)
+        #expect(planner.container(ref) == nil)
+        #expect(planner.routines.map(\.id) == ["sample-wind-down"])
+
+        original.itemIds = []
+        planner.restoreContainer(ref, to: .routine(original), index: 0)
+        #expect(planner.routines.map(\.id) == ["sample-morning-routine", "sample-wind-down"])
+        #expect(planner.containerIndex(ref) == 0)
+        #expect(planner.routines.first?.itemIds == [])
+    }
+
     // MARK: Layout and formatting
 
     @Test func layoutsStepAndWrap() {

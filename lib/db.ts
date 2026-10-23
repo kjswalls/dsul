@@ -2092,7 +2092,7 @@ function unavailable(
   throw error;
 }
 
-interface RoutineRow {
+export interface RoutineRow {
   id: string;
   user_id: string;
   name: string;
@@ -2106,7 +2106,7 @@ interface RoutineRow {
   notes?: string | null;
 }
 
-interface SeasonRow {
+export interface SeasonRow {
   id: string;
   user_id: string;
   name: string;
@@ -2132,12 +2132,30 @@ interface SeasonRow {
  * never reach the DB.
  *
  * `known` closes a race with the iPhone, which writes one membership row at a
- * time (addContainerMember / removeContainerMember, below). A web tab's list is
- * what it last fetched plus its own change, and the web never refetches on its
- * own, so without `known` a tab older than a phone toggle would delete the
- * phone's add and put back the phone's remove on its next write to that
- * container. With it, the tab writes only its own differences. One writer
- * (`known` equal to what is stored) sends exactly the calls it sent before.
+ * time (addContainerMember / removeContainerMember, below) and, for a routine,
+ * one place at a time (its reorder). A web tab's list is what it last fetched
+ * plus its own change, and the web never refetches on its own, so without
+ * `known` a tab older than a phone write would delete the phone's add, put
+ * back the phone's remove and undo the phone's reorder on its next write to
+ * that container. With it, the tab writes only its own differences:
+ *
+ *   - membership: a stored member the tab never knew of stays, and one it
+ *     knew of that is gone stays gone;
+ *   - a routine's order (`ordered`): when the tab only added or removed (the
+ *     members it kept are in the order it knew them, and every addition comes
+ *     after them), every stored row keeps its stored sort_order and the
+ *     additions are inserted after the highest one. Only a tab that itself
+ *     reordered (or placed an addition before a member it kept, as the undo
+ *     of a removal does) writes the whole order, as without `known`.
+ *
+ * So a single writer with `known` lands the same membership in the same order
+ * as before, but a routine's add or remove no longer rewrites the places of
+ * the members it kept: an add is an insert after them, a remove a delete.
+ * One exception: in a routine where any stored member has no sort_order (no
+ * writer leaves one today), an addition takes none either
+ * (addContainerMember's rule), so it sorts among the unplaced members by id
+ * on the next read rather than last, where the whole-list upsert used to
+ * number it.
  */
 async function reconcileMembership(
   supabase: DbClient,
@@ -2152,31 +2170,42 @@ async function reconcileMembership(
    * The list the caller believed was stored, when it has one: then only the
    * caller's own changes are written. A stored member it didn't know of
    * (another device's add) is kept, and one it knew of that is gone by this
-   * call's read (another device's remove) is not put back. A remove that lands
-   * after this read and before this upsert is put back: the upsert rewrites the
-   * members the caller kept. Absent (createRoutine, createSeason, the agent
-   * API's PATCH, an undo's restore of a trashed container), the stored list is
-   * made to equal `desired`, as before.
+   * call's read (another device's remove) is not put back. Where this call
+   * still upserts the members it kept (a season; a routine the caller
+   * reordered), a remove that lands after this read and before that upsert is
+   * put back: PostgREST has no transaction to hold the two together. Absent
+   * (createRoutine, createSeason, the agent API's PATCH, an undo's restore of
+   * a trashed container), the stored list is made to equal `desired`, as
+   * before.
    */
   known?: readonly string[],
 ): Promise<void> {
+  // A routine read with `known` also reads each row's place, which decides
+  // whether the caller reordered and where its additions go.
+  const keepsOrder = ordered && known !== undefined;
   const { data, error } = await supabase
     .from(table)
-    .select(memberCol)
+    .select(keepsOrder ? `${memberCol}, sort_order` : memberCol)
     .eq(ownerCol, ownerId)
     .eq('user_id', userId);
   if (error) throw error;
 
-  const current = new Set((data as Record<string, string>[] ?? []).map((r) => r[memberCol]));
+  const stored = (data ?? []) as unknown as Record<string, unknown>[];
+  const current = new Set(stored.map((r) => r[memberCol] as string));
   // Dedupe before building rows: a repeated id makes Postgres abort the whole
   // statement with 21000 ("ON CONFLICT DO UPDATE command cannot affect row a
   // second time"), and a multi-add UI can produce one trivially.
   const members = [...new Set(desired)];
   const desiredSet = new Set(members);
-  const knownSet = known ? new Set(known) : undefined;
+  const knownList = known ? [...new Set(known)] : undefined;
+  const knownSet = knownList ? new Set(knownList) : undefined;
   // current \ desired, and with `known` only what the caller knew of: a member
   // another device added since is not the caller's to remove.
   const removed = [...current].filter((id) => !desiredSet.has(id) && (!knownSet || knownSet.has(id)));
+  // With `known`, a member the caller knew of that is no longer stored is
+  // another device's remove, and is never written back.
+  const putBack = (memberId: string) => !!knownSet && knownSet.has(memberId) && !current.has(memberId);
+  const onConflict = `${ownerCol},${memberCol}`;
 
   // Additions BEFORE removals. The two sets are disjoint by construction
   // (removed = current \ desired), so the order can never cause a collision —
@@ -2184,43 +2213,42 @@ async function reconcileMembership(
   // statement never runs, this ordering leaves a SUPERSET of the intended
   // membership (visible in the manager, removable by the user) rather than
   // silently dropping members the user asked to keep.
-  //
-  // Upsert rather than insert-the-difference: it adds new members AND
-  // rewrites sort_order for existing ones in one statement, so a reorder
-  // costs the same as an add. With `known`, a member the caller knew of that
-  // is no longer stored is another device's remove, and is left out; every
-  // other row keeps its index in `desired` as its sort_order.
-  const putBack = (memberId: string) => !!knownSet && knownSet.has(memberId) && !current.has(memberId);
-  const rows = members.flatMap((memberId, i) =>
-    putBack(memberId)
-      ? []
-      : [{
-          [ownerCol]: ownerId,
-          [memberCol]: memberId,
-          user_id: userId,
-          ...(ordered ? { sort_order: i } : {}),
-        }],
-  );
-  if (rows.length > 0) {
-    const onConflict = `${ownerCol},${memberCol}`;
-    const { error: upsertError } = await supabase.from(table).upsert(rows, { onConflict });
-    if (upsertError) {
-      // Exactly ONE failure class is a per-row casualty worth surviving: a
-      // member hard-purged since the store last read it (23503), which an undo
-      // replaying a membership snapshot hits when the item left the 30-day
-      // trash meanwhile. Everything else — RLS denial, missing table, bad
-      // uuid, transport — is systemic and MUST surface, or the caller's
-      // optimistic state silently diverges until the next reload.
-      // (23505 is unreachable here: upsert resolves a PK conflict to an UPDATE,
-      // and these tables carry no other unique constraint.)
-      if (upsertError.code !== '23503') throw upsertError;
-      for (const row of rows) {
-        const { error: rowError } = await supabase.from(table).upsert(row, { onConflict });
-        if (!rowError) continue;
-        if (rowError.code !== '23503') throw rowError;
-        console.warn(`${table}: member no longer exists, membership skipped`, row);
-      }
-    }
+  if (keepsOrder && knownList && knownSet && !reordered(members.filter((m) => !putBack(m)), knownList, knownSet)) {
+    // The caller added or removed and moved nothing: every stored place
+    // stands, another device's reorder included. Its additions (the ones not
+    // stored already) go after the highest place in its own order, under
+    // addContainerMember's rule: where any stored member has no place, none
+    // has one either, and it sorts among them by its id. ON CONFLICT DO
+    // NOTHING, so a phone's add of the same item since this read is no error
+    // and keeps the place the phone gave it.
+    const places = stored.map((r) => r.sort_order as number | null | undefined);
+    const unplaced = places.some((p) => p == null);
+    const start = places.length === 0 ? 0 : Math.max(...places.map((p) => p ?? 0)) + 1;
+    const rows = members
+      .filter((m) => !knownSet.has(m) && !current.has(m))
+      .map((memberId, i) => ({
+        [ownerCol]: ownerId,
+        [memberCol]: memberId,
+        user_id: userId,
+        sort_order: unplaced ? null : start + i,
+      }));
+    await upsertMembers(supabase, table, rows, { onConflict, ignoreDuplicates: true });
+  } else {
+    // Upsert rather than insert-the-difference: it adds new members AND
+    // rewrites sort_order for existing ones in one statement, so a reorder
+    // costs the same as an add. Every row it writes takes its index in
+    // `desired` as its sort_order.
+    const rows = members.flatMap((memberId, i) =>
+      putBack(memberId)
+        ? []
+        : [{
+            [ownerCol]: ownerId,
+            [memberCol]: memberId,
+            user_id: userId,
+            ...(ordered ? { sort_order: i } : {}),
+          }],
+    );
+    await upsertMembers(supabase, table, rows, { onConflict });
   }
 
   if (removed.length > 0) {
@@ -2231,6 +2259,45 @@ async function reconcileMembership(
       .eq('user_id', userId)
       .in(memberCol, removed);
     if (deleteError) throw deleteError;
+  }
+}
+
+/**
+ * Whether `members` (the caller's list, less what another device removed)
+ * moved anything the caller knew of: true unless the members it knew of are
+ * in the order it knew them and every addition comes after all of them.
+ */
+function reordered(members: string[], known: readonly string[], knownSet: ReadonlySet<string>): boolean {
+  const kept = new Set(members.filter((m) => knownSet.has(m)));
+  const expected = [...known.filter((m) => kept.has(m)), ...members.filter((m) => !knownSet.has(m))];
+  return expected.some((m, i) => members[i] !== m);
+}
+
+/** One upsert of every row, falling back to one per row past a member purged meanwhile. */
+async function upsertMembers(
+  supabase: DbClient,
+  table: string,
+  rows: Record<string, unknown>[],
+  options: { onConflict: string; ignoreDuplicates?: boolean },
+): Promise<void> {
+  if (rows.length === 0) return;
+  const { error: upsertError } = await supabase.from(table).upsert(rows, options);
+  if (!upsertError) return;
+  // Exactly ONE failure class is a per-row casualty worth surviving: a
+  // member hard-purged since the store last read it (23503), which an undo
+  // replaying a membership snapshot hits when the item left the 30-day
+  // trash meanwhile. Everything else (RLS denial, missing table, bad uuid,
+  // transport) is systemic and MUST surface, or the caller's optimistic
+  // state silently diverges until the next reload.
+  // (23505 is unreachable here: an upsert resolves a PK conflict to an UPDATE,
+  // or to nothing with ignoreDuplicates, and these tables carry no other
+  // unique constraint.)
+  if (upsertError.code !== '23503') throw upsertError;
+  for (const row of rows) {
+    const { error: rowError } = await supabase.from(table).upsert(row, options);
+    if (!rowError) continue;
+    if (rowError.code !== '23503') throw rowError;
+    console.warn(`${table}: member no longer exists, membership skipped`, row);
   }
 }
 
@@ -2353,7 +2420,15 @@ function assembleRoutines(rows: RoutineRow[], members: RoutineMemberRow[]): Rout
     if (list) list.push(row.item_id);
     else itemIdsByRoutine.set(row.routine_id, [row.item_id]);
   }
-  return rows.map((row) => ({
+  return rows.map((row) => routineFromRow(row, itemIdsByRoutine.get(row.id) ?? []));
+}
+
+/**
+ * One routines row as a Routine, with the member list the caller read for it
+ * (the iPhone's container route, which decides on the fields alone, passes []).
+ */
+export function routineFromRow(row: RoutineRow, itemIds: string[]): Routine {
+  return {
     id: row.id,
     name: row.name,
     icon: row.icon ?? undefined,
@@ -2363,8 +2438,8 @@ function assembleRoutines(rows: RoutineRow[], members: RoutineMemberRow[]): Rout
     sortOrder: row.sort_order ?? undefined,
     usualTime: row.usual_time ?? undefined,
     notes: row.notes ?? undefined,
-    itemIds: itemIdsByRoutine.get(row.id) ?? [],
-  }));
+    itemIds,
+  };
 }
 
 export async function createRoutine(userId: string, routine: Routine, client?: DbClient): Promise<void> {
@@ -2512,7 +2587,14 @@ function assembleSeasons(
   };
   const itemIdsBySeason = groupBy(itemMembers, 'item_id');
   const routineIdsBySeason = groupBy(routineMembers, 'routine_id');
-  return rows.map((row) => ({
+  return rows.map((row) =>
+    seasonFromRow(row, itemIdsBySeason.get(row.id) ?? [], routineIdsBySeason.get(row.id) ?? []),
+  );
+}
+
+/** One seasons row as a Season, with the member lists the caller read for it, as routineFromRow. */
+export function seasonFromRow(row: SeasonRow, itemIds: string[], routineIds: string[]): Season {
+  return {
     id: row.id,
     name: row.name,
     icon: row.icon ?? undefined,
@@ -2521,11 +2603,11 @@ function assembleSeasons(
     startsOn: row.starts_on ?? undefined,
     endsOn: row.ends_on ?? undefined,
     sortOrder: row.sort_order ?? undefined,
-    itemIds: itemIdsBySeason.get(row.id) ?? [],
-    routineIds: routineIdsBySeason.get(row.id) ?? [],
+    itemIds,
+    routineIds,
     updatedAt: row.updated_at ?? undefined,
     notes: row.notes ?? undefined,
-  }));
+  };
 }
 
 export async function createSeason(userId: string, season: Season, client?: DbClient): Promise<void> {
@@ -2563,16 +2645,19 @@ export async function createSeason(userId: string, season: Season, client?: DbCl
 }
 
 /**
- * `known.itemIds` as updateRoutine's. A season's `routineIds` take none: the
- * iPhone never writes season_routines, so that list has no other writer to
- * keep.
+ * `known.itemIds` as updateRoutine's, and `known.routineIds` the same for the
+ * routines it holds (season_routines): the iPhone writes one hold at a time
+ * (Organize's season page, O13), so a web tab's stale list must keep another
+ * device's hold and not put back one it took out. Each list is reconciled
+ * against its own known; one sent without it (the agent API's PATCH, an
+ * undo's restore of a trashed season) is the whole list, as before.
  */
 export async function updateSeason(
   userId: string,
   id: string,
   updates: Partial<Season>,
   client?: DbClient,
-  known?: { itemIds?: readonly string[] },
+  known?: { itemIds?: readonly string[]; routineIds?: readonly string[] },
 ): Promise<void> {
   const supabase = client ?? createClient();
   const row: Record<string, unknown> = {};
@@ -2596,7 +2681,8 @@ export async function updateSeason(
   }
   if (updates.routineIds) {
     await reconcileMembership(
-      supabase, 'season_routines', 'season_id', id, 'routine_id', userId, updates.routineIds,
+      supabase, 'season_routines', 'season_id', id, 'routine_id', userId, updates.routineIds, false,
+      known?.routineIds,
     );
   }
 }
