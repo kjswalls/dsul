@@ -360,6 +360,9 @@ describe('do stuff: the plan in lanes', () => {
     });
     renderBraindump();
     fireEvent.click(screen.getByTestId('do-stuff-start'));
+    // Ready opens with the mode, not behind a peek (Kirby, 2026-10-23).
+    expect(screen.getByTestId('do-stuff-lane-done')).not.toHaveAttribute('data-folded');
+    expect(screen.getByText('call the dentist', { selector: '[data-lane-row] *' })).toBeInTheDocument();
     expect(laneOfRow('call the dentist')).toBe('done');
     expect(laneOfRow('zebra')).toBe('leave');
     fireEvent.click(screen.getByTestId('prep-pack-chip'));

@@ -2774,8 +2774,9 @@ body {
      [data-ai-chip]    a few words in aurora ink, still, for Do stuff's
                        lanes and the key's count (a fill until 2026-10-23).
                        ='question' is the warm one, honey into coral.
-     [data-ai-sheen-slow]  the dock's ready line: the same sheen, crossing
-                       once every eight seconds and resting between.
+     [data-ai-sheen-slow]  the do stuff key's word while something is ready:
+                       the same sheen, crossing once every eight seconds
+                       and resting between.
 
    The lime. A tile is the raw accent at every frame: the wave scales it
    (never an opacity) and its glow is a halo AROUND it, so the mark itself
@@ -2880,9 +2881,10 @@ body {
   }
 }
 
-/* The dock's ready line (components/notices/ai-work-notice.tsx): the title's
-   sheen, slowed to one pass and a long rest, so a line that stays up all day
-   catches the eye now and then instead of shimmering at you the whole time. */
+/* The do stuff key's word while something is ready (components/sidebar/do-stuff.tsx
+   DoStuffKey; until 2026-10-23 the dock's ready line): the title's sheen,
+   slowed to one pass and a long rest, so a key that stays lit all day catches
+   the eye now and then instead of shimmering at you the whole time. */
 [data-ai-sheen-slow] {
   --ai-sheen-a: var(--success-text);
   --ai-sheen-b: color-mix(in oklch, oklch(0.64 0.1 195), var(--foreground) 14%);
