@@ -27,6 +27,7 @@ import {
   windDownMembers,
 } from '@/lib/goals';
 import {
+  addDaysStr,
   containerMemberIds,
   dayRollup,
   deriveContainerSchedule,
@@ -35,7 +36,22 @@ import {
   todayInOrder,
   weekTotals,
   type ScheduleContainer,
+  type WeekStartDay,
 } from '@/lib/container-schedule';
+import { nextMilestoneAcross, organizeWeek } from '@/lib/organize';
+import {
+  NOTHING_PAUSED,
+  PAUSED_NO_DATE,
+  PAUSED_WELCOME,
+  backOn,
+  entryKindLine,
+  pausedDayLabel,
+  pausedEntryName,
+  pausedNote,
+  pausedShelf,
+  pausedStateLine,
+  returnDayLabel,
+} from '@/lib/paused-shelf';
 import { blockWhen, hasTimeBlock, timeBlockSummary } from '@/lib/project-block';
 import {
   GOALS_OFF,
@@ -45,15 +61,28 @@ import {
   NO_CHECKIN_YET,
   NO_MILESTONES_YET,
   NO_SUPPORTING_WORK,
+  NOTHING_IN_TRASH,
+  NOTHING_ON_THIS_WEEK,
   ORGANIZE_OFF,
+  RESTORE_FAILED,
+  RESTORE_GONE,
   ROUTINE_STATE_LABELS,
   ROUTINE_TODAY_FINISHED,
   ROUTINE_TODAY_NEXT,
   SEASON_STATE_LABELS,
+  TRASH_KIND_LABELS,
+  TRASH_LOAD_FAILED,
+  TRASH_TEACHING,
+  TRASH_WINDOW_DAYS,
   checkinMeta,
+  daysUntilPurge,
   goalEndedNote,
   heldByState,
   milestoneTickLabel,
+  nameInTrashSentence,
+  nextMilestoneLine,
+  restoreRefusal,
+  restoreSentence,
   routineHeldNote,
   routinePausedNote,
   routineTodayEmpty,
@@ -61,12 +90,17 @@ import {
   seasonRunsLabel,
   seasonStateNote,
   switchedOffSentence,
+  trashKindLine,
+  trashRowMeta,
+  weekCardSentence,
+  whenGone,
   windDownSentence,
 } from '@/lib/organize-copy';
 import { cadenceLabel } from '@/lib/cadence';
-import { getItemTypeConfig } from '@/lib/item-registry';
+import { getCustomTypeDefs, getItemTypeConfig, hydrateCustomTypes } from '@/lib/item-registry';
 import { projectItems } from '@/lib/planner-store';
 import type { AwayPeriod } from '@/lib/away';
+import type { TrashKind } from '@/lib/db';
 import { ACCENT_NAMES, ACCENT_RAMP, LEGACY_PROJECT_TOKENS, accentColorForName, projectColorToken } from '@/lib/accent-colors';
 import {
   ALL_ICON_ENTRIES,
@@ -77,7 +111,7 @@ import {
   hashName,
   resolveCategoryIconName,
 } from '@/lib/category-icons';
-import type { Goal, HabitItem, Item, Project, Routine, Season, Task } from '@/lib/planner-types';
+import type { Goal, HabitItem, Item, ItemTypeDef, Project, Routine, Season, Task } from '@/lib/planner-types';
 
 /**
  * Organize's cases shared with the iPhone.
@@ -94,7 +128,10 @@ import type { Goal, HabitItem, Item, Project, Routine, Season, Task } from '@/li
  * dayRollup, weekTotals, todayCount and todayInOrder), a goal's milestones,
  * countdown and wind-down (lib/goals.ts), a project's time block
  * (lib/project-block.ts), and the words both shells share (lib/organize-copy.ts,
- * in copy.json). Every case is
+ * in copy.json, the Trash's words included). The summary cards add the week's
+ * count and the next milestone across goals (lib/organize.ts, organize.json),
+ * and the Paused page what is set aside, grouped by the day it comes back
+ * (lib/paused-shelf.ts, paused.json). Every case is
  * built here, run through the real TS, and written with its answer to
  * tests/fixtures/organize/*.json; DsulCore's fixture tests read the same files
  * and assert the Swift port answers identically.
@@ -1657,6 +1694,66 @@ function buildCopy() {
     { name: 'goals', ...GOALS_OFF, sentence: switchedOffSentence(GOALS_OFF) },
   ];
 
+  // The Trash (O14). Every age is asked at one fixed instant, never the clock.
+  const NOW = '2026-10-23T12:00:00Z';
+  const now = Date.parse(NOW);
+  const ages: { name: string; deletedAt: string }[] = [
+    { name: 'thirty seconds ago', deletedAt: '2026-10-23T11:59:30Z' },
+    { name: 'under an hour, as Postgres writes it', deletedAt: '2026-10-23T11:01:00.123456+00:00' },
+    { name: 'an hour', deletedAt: '2026-10-23T11:00:00Z' },
+    { name: 'another offset: three hours', deletedAt: '2026-10-23T05:00:00-04:00' },
+    { name: 'twenty-three hours', deletedAt: '2026-10-22T13:00:00Z' },
+    { name: 'twenty-five hours: one day, rounded down', deletedAt: '2026-10-22T11:00:00Z' },
+    { name: 'three days, as Postgres writes it', deletedAt: '2026-10-20T09:00:00.123456+00:00' },
+    { name: 'twenty-nine days', deletedAt: '2026-09-24T11:00:00Z' },
+    { name: 'past the window', deletedAt: '2026-09-22T12:00:00Z' },
+    { name: 'a stamp in the future', deletedAt: '2026-10-23T13:00:00Z' },
+    { name: 'not a stamp', deletedAt: 'not a date' },
+  ];
+  const whenGoneCases = ages.map((c) => ({ ...c, now: NOW, expected: whenGone(c.deletedAt, now) }));
+  const daysUntilPurgeCases = ages.map((c) => ({ ...c, now: NOW, expected: daysUntilPurge(c.deletedAt, now) }));
+
+  const metaAsks: { name: string; kind: TrashKind; childCount: number; memberCount: number; deletedAt: string }[] = [
+    { name: 'an item alone', kind: 'item', childCount: 0, memberCount: 0, deletedAt: '2026-10-20T09:00:00.123456+00:00' },
+    { name: 'an item with a subtask', kind: 'item', childCount: 1, memberCount: 0, deletedAt: '2026-10-23T10:00:00Z' },
+    { name: 'an item with two subtasks', kind: 'item', childCount: 2, memberCount: 0, deletedAt: '2026-10-23T10:00:00Z' },
+    { name: 'a project with nothing filed', kind: 'project', childCount: 0, memberCount: 0, deletedAt: '2026-10-23T11:59:30Z' },
+    { name: 'a project with one item', kind: 'project', childCount: 0, memberCount: 1, deletedAt: '2026-10-20T09:00:00Z' },
+    { name: 'a project with three items', kind: 'project', childCount: 0, memberCount: 3, deletedAt: '2026-10-20T09:00:00Z' },
+    { name: 'a routine', kind: 'routine', childCount: 0, memberCount: 0, deletedAt: '2026-10-21T12:00:00Z' },
+    { name: 'a season', kind: 'season', childCount: 0, memberCount: 0, deletedAt: '2026-10-08T12:00:00Z' },
+    { name: 'a goal with three to reconnect', kind: 'goal', childCount: 0, memberCount: 3, deletedAt: '2026-10-17T09:00:00Z' },
+  ];
+  const trashRowMetaCases = metaAsks.map((c) => ({
+    ...c,
+    now: NOW,
+    expected: { kindLine: trashKindLine(c.kind, c.childCount, c.memberCount), meta: trashRowMeta(c, now) },
+  }));
+
+  const restoreAsks: { name: string; kind: Exclude<TrashKind, 'item'>; memberCount: number }[] = [
+    { name: 'a project with nothing filed', kind: 'project', memberCount: 0 },
+    { name: 'a project with one item', kind: 'project', memberCount: 1 },
+    { name: 'a project with three items', kind: 'project', memberCount: 3 },
+    { name: 'a routine', kind: 'routine', memberCount: 0 },
+    { name: 'a season', kind: 'season', memberCount: 0 },
+    { name: 'a goal', kind: 'goal', memberCount: 3 },
+  ];
+  const restoreSentenceCases = restoreAsks.map((c) => ({ ...c, expected: restoreSentence(c.kind, c.memberCount) }));
+
+  const refusalAsks: { name: string; code: string | null; projectName: string }[] = [
+    { name: 'a live project has the name', code: 'name_taken', projectName: 'work' },
+    { name: 'its parent is in the bin', code: 'parent_gone', projectName: '' },
+    { name: 'gone from the bin', code: 'not_found', projectName: '' },
+    { name: 'a code the phone has no words for', code: 'invalid', projectName: '' },
+    { name: 'no answer at all', code: null, projectName: '' },
+  ];
+  const restoreRefusalCases = refusalAsks.map((c) => ({ ...c, expected: restoreRefusal(c.code ?? undefined, c.projectName) }));
+
+  const nameInTrashCases = [
+    { name: 'a project', noun: 'project', heldName: 'Admin' },
+    { name: 'a routine', noun: 'routine', heldName: 'Morning' },
+  ].map((c) => ({ ...c, expected: nameInTrashSentence(c.noun, c.heldName) }));
+
   return {
     tables: {
       stateLabels: { routine: ROUTINE_STATE_LABELS, season: SEASON_STATE_LABELS, goal: GOAL_STATE_LABELS },
@@ -1667,6 +1764,13 @@ function buildCopy() {
       noCheckinYet: NO_CHECKIN_YET,
       noMilestonesYet: NO_MILESTONES_YET,
       noSupportingWork: NO_SUPPORTING_WORK,
+      trashWindowDays: TRASH_WINDOW_DAYS,
+      trashKindLabels: TRASH_KIND_LABELS,
+      nothingInTrash: NOTHING_IN_TRASH,
+      trashTeaching: TRASH_TEACHING,
+      trashLoadFailed: TRASH_LOAD_FAILED,
+      restoreFailed: RESTORE_FAILED,
+      restoreGone: RESTORE_GONE,
     },
     heldWorld: { items: HELD_ITEMS },
     switchedOff: switchedOffCases,
@@ -1681,6 +1785,369 @@ function buildCopy() {
     windDownSentence: windDownSentenceCases,
     checkinMeta: checkinMetaCases,
     milestoneTickLabel: milestoneTickLabelCases,
+    whenGone: whenGoneCases,
+    daysUntilPurge: daysUntilPurgeCases,
+    trashRowMeta: trashRowMetaCases,
+    restoreSentence: restoreSentenceCases,
+    restoreRefusal: restoreRefusalCases,
+    nameInTrashSentence: nameInTrashCases,
+  };
+}
+
+// ── organize.json: the summary cards (lib/organize.ts) ──────────────────────
+
+/*
+ * THIS WEEK, asked of one world in the three Week starts on settings, then
+ * each edge on its own small world. TODAY is a Friday: a Sunday week runs
+ * Oct 18 to 24, a Monday week Oct 19 to 25, and a Saturday week Oct 17 to 23,
+ * so in that one today is the last day.
+ */
+const WEEK_ITEMS: Item[] = [
+  habit(1, 'Stretch', {
+    timeBucket: 'morning',
+    completedDates: ['2026-10-17', '2026-10-19', '2026-10-20', TODAY],
+    skippedDates: ['2026-10-21'],
+  }),
+  // Mon, Wed, Fri: Monday unrecorded, Wednesday done, today still due.
+  habit(2, 'Meditate', { timeBucket: 'morning', repeatFrequency: 'custom', repeatDays: [1, 3, 5], completedDates: ['2026-10-21'] }),
+  task(3, 'Call bank', { timeBucket: 'morning', startDate: '2026-10-20', status: 'completed' }),
+  task(4, 'Send invoice', { timeBucket: 'afternoon', startDate: TODAY }),
+  // Saturday: inside a Sunday or a Monday week, after a Saturday one.
+  task(5, 'Water plants', { timeBucket: 'anytime', startDate: '2026-10-24' }),
+  // Cancelled is a recorded decision: skipped, so on neither side.
+  task(6, 'Return parcel', { timeBucket: 'morning', startDate: '2026-10-22', status: 'cancelled' }),
+  task(7, 'Pick a gift', { isScheduled: false }),
+  // A done subtask on a day: never on the grid, so never counted.
+  task(8, 'Report appendix', { timeBucket: 'morning', startDate: '2026-10-22', status: 'completed', parentItemId: uid(3) }),
+  // Paused from Tuesday: gone from every day of the week from then on.
+  task(9, 'Paused errand', { timeBucket: 'evening', startDate: TODAY, pausedAt: '2026-10-20T13:00:00Z' }),
+  // In a routine paused from Monday: gone, except a day it was done anyway.
+  habit(10, 'Run', { timeBucket: 'evening', repeatFrequency: 'custom', repeatDays: [2, 4], completedDates: ['2026-10-20'] }),
+  // An off season's own item: gone all week.
+  task(11, 'Season errand', { timeBucket: 'morning', startDate: '2026-10-22' }),
+  custom(12, 'book', 'Read Dune', { timeBucket: 'evening', startDate: '2026-10-19', status: 'completed' }),
+  // Skipped today: today's one is on neither side.
+  habit(13, 'Floss', { timeBucket: 'evening', skippedDates: [TODAY] }),
+];
+
+const WEEK_ROUTINES: Routine[] = [routine('r-evening', 'Evening', { itemIds: [uid(10)], pausedAt: '2026-10-19T12:00:00Z' })];
+
+const WEEK_SEASONS: Season[] = [season('s-shelf', 'Shelf', 'paused', { itemIds: [uid(11)] })];
+
+/**
+ * A trip from today, back on Sunday: today and Saturday rest. Only a day still
+ * ahead can change the count; a past day it rests was unrecorded or done.
+ */
+const WEEK_TRIP: AwayPeriod = {
+  id: 't-weekend',
+  startsOn: TODAY,
+  endsOn: '2026-10-25',
+  keep: { itemIds: [], routineIds: [], projectIds: [] },
+  returns: {},
+  fromTrip: {},
+};
+
+interface WeekAsk {
+  name: string;
+  items?: Item[];
+  routines?: Routine[];
+  seasons?: Season[];
+  away?: AwayPeriod[];
+  today?: string;
+  weekStartDay: WeekStartDay;
+}
+
+function buildOrganize() {
+  const without = (...ns: number[]) => WEEK_ITEMS.filter((i) => !ns.map(uid).includes(i.id));
+  const resumed = WEEK_ITEMS.map((i) => (i.id === uid(9) ? ({ ...i, pausedAt: undefined } as Item) : i));
+  const weekAsks: WeekAsk[] = [
+    { name: 'a Sunday week: done of done-or-due, everything the grid shows', weekStartDay: 'sunday' },
+    { name: 'a Monday week', weekStartDay: 'monday' },
+    { name: 'a Saturday week: today is its last day', weekStartDay: 'saturday' },
+    { name: 'the week’s first day: nothing is past yet', weekStartDay: 'monday', today: '2026-10-19' },
+    { name: 'a Monday week asked on its Sunday', weekStartDay: 'monday', today: '2026-10-25' },
+    { name: 'the same world with no subtask: the same answer', weekStartDay: 'sunday', items: without(8) },
+    { name: 'the paused errand resumed: on the week', weekStartDay: 'sunday', items: resumed },
+    { name: 'a trip rests what falls inside it, except what was done', weekStartDay: 'sunday', away: [WEEK_TRIP] },
+    {
+      name: 'nothing on this week: an undated task and one next month',
+      weekStartDay: 'sunday',
+      items: [task(7, 'Pick a gift', { isScheduled: false }), task(20, 'Next month', { timeBucket: 'morning', startDate: '2026-11-12' })],
+    },
+    {
+      name: 'only a skip and an unrecorded past day: nothing counted',
+      weekStartDay: 'monday',
+      items: [
+        habit(21, 'Mon and Tue', { timeBucket: 'morning', repeatFrequency: 'custom', repeatDays: [1, 2], skippedDates: ['2026-10-19'] }),
+        task(6, 'Return parcel', { timeBucket: 'morning', startDate: '2026-10-22', status: 'cancelled' }),
+      ],
+    },
+    {
+      name: 'a finished one-off counts on its day',
+      weekStartDay: 'sunday',
+      items: [task(3, 'Call bank', { timeBucket: 'morning', startDate: '2026-10-20', status: 'completed' })],
+    },
+    { name: 'no items at all', weekStartDay: 'sunday', items: [] },
+  ];
+
+  const week = weekAsks.map((c) => {
+    const items = c.items ?? WEEK_ITEMS;
+    const routines = c.routines ?? WEEK_ROUTINES;
+    const seasons = c.seasons ?? WEEK_SEASONS;
+    const away = c.away ?? [];
+    const today = c.today ?? TODAY;
+    const { tasks, habits } = projectItems(items);
+    const answer = organizeWeek(
+      { items, tasks: tasks as Task[], habits: habits as HabitItem[], routines, seasons, away, timezone: ZONE },
+      today,
+      c.weekStartDay,
+    );
+    return {
+      name: c.name,
+      items,
+      routines,
+      seasons,
+      away,
+      today,
+      timeZone: ZONE,
+      weekStartDay: c.weekStartDay,
+      expected: { ...answer, sentence: weekCardSentence(answer.done, answer.counted) },
+    };
+  });
+
+  // NEXT MILESTONE: one item list, each case its own goals.
+  const milestoneItems: Item[] = [
+    task(1, 'Run a 10K', { startDate: '2026-10-30' }),
+    task(2, 'Book the race', { startDate: '2026-10-26' }),
+    task(3, 'Late checkpoint', { startDate: '2026-10-04' }),
+    task(4, 'Undated checkpoint', { isScheduled: false }),
+    task(5, 'Second undated', { isScheduled: false }),
+    task(6, 'Reached', { startDate: '2026-10-10', status: 'completed' }),
+    task(7, 'Dropped', { startDate: '2026-10-12', status: 'cancelled' }),
+    task(8, 'Same day too', { startDate: '2026-10-26' }),
+    // A legacy row whose day is a whole ISO stamp.
+    task(9, 'Legacy stamp', { startDate: '2026-11-02T00:00:00Z' }),
+    custom(10, 'book', 'Read the guide', { startDate: '2026-10-28', status: 'completed' }),
+    // A habit's done word on a custom item: not this type's, so still open.
+    custom(11, 'book', 'Read the notes', { startDate: '2026-10-27', status: 'done' }),
+  ];
+  const milestoneById = new Map(milestoneItems.map((i) => [i.id, i]));
+  const g = (id: string, name: string, ms: number[], over: Partial<Goal> = {}) =>
+    goal(id, name, { milestoneIds: ms.map(uid), ...over });
+  const milestoneAsks: { name: string; goals: Goal[] }[] = [
+    { name: 'the earliest dated across goals', goals: [g('g-run', 'Run a half marathon', [1]), g('g-race', 'Race day', [2])] },
+    { name: 'a tie on the day: the goal listed first', goals: [g('g-first', 'Listed first', [8]), g('g-second', 'Listed second', [2])] },
+    { name: 'a late milestone keeps its date', goals: [g('g-run', 'Run a half marathon', [1, 3])] },
+    { name: 'dated beats undated, whatever the order', goals: [g('g-undated', 'Undated', [4]), g('g-run', 'Run a half marathon', [1])] },
+    { name: 'undated only: the first goal’s first', goals: [g('g-one', 'One', [4, 5]), g('g-two', 'Two', [5])] },
+    {
+      name: 'an ended goal is passed over',
+      goals: [g('g-done', 'Done', [3], { state: 'achieved' }), g('g-aside', 'Set aside', [2], { state: 'abandoned' }), g('g-run', 'Run a half marathon', [1])],
+    },
+    { name: 'reached and dropped are passed: the next open one', goals: [g('g-run', 'Run a half marathon', [6, 7, 1])] },
+    { name: 'a custom type’s own done word, never a habit’s', goals: [g('g-read', 'Read more', [10, 11, 9])] },
+    { name: 'a whole ISO stamp: its day', goals: [g('g-legacy', 'Legacy', [9])] },
+    // uid(99) is a trashed milestone: its join row outlives it.
+    { name: 'a trashed milestone is passed over', goals: [g('g-trash', 'Trash', [99, 4])] },
+    { name: 'nothing open anywhere: no card', goals: [g('g-run', 'Run a half marathon', [6, 7]), g('g-none', 'None', [])] },
+    { name: 'no goals: no card', goals: [] },
+  ];
+  const nextMilestoneAcrossCases = milestoneAsks.map((c) => {
+    const next = nextMilestoneAcross(c.goals, milestoneById);
+    return {
+      ...c,
+      expected: next
+        ? {
+            goalId: next.goal.id,
+            itemId: next.milestone.id,
+            date: next.date ?? null,
+            line: nextMilestoneLine(next.date, next.goal.name),
+          }
+        : null,
+    };
+  });
+
+  return {
+    tables: { nothingOnThisWeek: NOTHING_ON_THIS_WEEK },
+    milestoneWorld: { items: milestoneItems },
+    organizeWeek: week,
+    nextMilestoneAcross: nextMilestoneAcrossCases,
+    weekCardSentence: [
+      { name: 'part way', done: 18, counted: 23 },
+      { name: 'none done yet', done: 0, counted: 4 },
+      { name: 'all done', done: 7, counted: 7 },
+      { name: 'nothing on', done: 0, counted: 0 },
+    ].map((c) => ({ ...c, expected: weekCardSentence(c.done, c.counted) })),
+  };
+}
+
+// ── paused.json: what is set aside (lib/paused-shelf.ts) ────────────────────
+
+/*
+ * One world, asked at TODAY (a Friday) in New York: items paused to a day, to
+ * no day, a routine paused, and a routine an off season holds (named by the
+ * season, the switch that brings it back). The trip case adds a trip over
+ * today, whose rest is never "set aside".
+ */
+const PAUSED_ITEMS: Item[] = [
+  task(1, 'Renew passport', { isScheduled: false, pausedAt: '2026-10-20T13:00:00Z', pausedUntil: '2026-10-24' }),
+  habit(2, 'Cold shower', { pausedAt: '2026-10-20T13:00:00Z', pausedUntil: '2026-10-30' }),
+  task(3, 'Sort the garage', { isScheduled: false, pausedAt: '2026-10-21T13:00:00Z' }),
+  custom(4, 'book', 'Read Dune', { isScheduled: false, pausedAt: '2026-10-21T13:00:00Z', pausedUntil: '2026-10-30' }),
+  // A subtask travels with its parent: never a row of its own.
+  task(5, 'Find old photos', { isScheduled: false, parentItemId: uid(1), pausedAt: '2026-10-20T13:00:00Z' }),
+  habit(6, 'Read', { timeBucket: 'evening' }),
+  habit(7, 'Floss', { timeBucket: 'evening' }),
+  habit(8, 'Stand up'),
+  task(9, 'Clear the desk', { timeBucket: 'morning', startDate: '2026-10-01', repeatFrequency: 'weekdays' }),
+  habit(10, 'Wax skis'),
+  habit(11, 'Walk'),
+  task(12, 'Still on', { timeBucket: 'morning', startDate: TODAY }),
+  habit(13, 'Night stretch'),
+  // Paused at 23:30 in New York: today there, tomorrow already in Tokyo.
+  task(14, 'Late pause', { isScheduled: false, pausedAt: '2026-10-24T03:30:00Z' }),
+];
+
+const PAUSED_ROUTINES: Routine[] = [
+  routine('r-evening', 'Evening', { itemIds: [uid(6), uid(7)], pausedAt: '2026-10-19T12:00:00Z', pausedUntil: '2026-10-30' }),
+  routine('r-desk', 'Desk', { itemIds: [uid(8), uid(9)] }),
+  routine('r-night', 'Night', { itemIds: [uid(13)], pausedAt: '2026-10-19T12:00:00Z', pausedUntil: '2027-01-04' }),
+];
+
+const PAUSED_SEASONS: Season[] = [
+  season('s-winter', 'Winter', 'auto', { startsOn: '2026-11-01', endsOn: '2027-02-28', itemIds: [uid(10)], routineIds: ['r-desk'] }),
+];
+
+/** Over today, back on Monday: every habit rests, and none of it is "set aside". */
+const PAUSED_TRIP: AwayPeriod = {
+  id: 't-weekend',
+  startsOn: '2026-10-22',
+  endsOn: '2026-10-26',
+  keep: { itemIds: [], routineIds: [], projectIds: [] },
+  returns: {},
+  fromTrip: {},
+};
+
+const pausedCtx = (timeZone: string, away: AwayPeriod[] = []) => ({
+  userTimezone: timeZone,
+  routines: PAUSED_ROUTINES,
+  seasons: PAUSED_SEASONS,
+  ...(away.length ? { away } : {}),
+});
+
+function shelfAnswer(items: Item[], today: string, timeZone: string, away: AwayPeriod[]) {
+  const shelf = pausedShelf(items, today, pausedCtx(timeZone, away));
+  // The state line is asked with no trips, as the detail pane asks it.
+  const lineCtx = pausedCtx(timeZone);
+  return {
+    count: shelf.count,
+    note: pausedNote(shelf, today),
+    days: shelf.days.map((d) => ({
+      key: d.key,
+      until: d.until ?? null,
+      label: pausedDayLabel(d, today),
+      entries: d.entries.map((e) => ({
+        kind: e.kind,
+        key: e.key,
+        id: e.kind === 'item' ? e.item.id : e.kind === 'routine' ? e.routine.id : e.season.id,
+        name: pausedEntryName(e),
+        until: e.until ?? null,
+        itemIds: e.kind === 'item' ? [e.item.id] : e.items.map((i) => i.id),
+        kindLine: entryKindLine(e),
+        stateLine: pausedStateLine(e, today, lineCtx),
+      })),
+    })),
+  };
+}
+
+function buildPaused() {
+  const live = PAUSED_ITEMS.filter((i) => [uid(11), uid(12)].includes(i.id));
+  const shelfAsks: { name: string; items: Item[]; timeZone: string; away: AwayPeriod[] }[] = [
+    { name: 'nothing paused', items: live, timeZone: ZONE, away: [] },
+    { name: 'grouped by return day, soonest first, no date last', items: PAUSED_ITEMS, timeZone: ZONE, away: [] },
+    { name: 'a trip over today: its rest is not set aside, an item’s own pause still is', items: PAUSED_ITEMS, timeZone: ZONE, away: [PAUSED_TRIP] },
+    { name: 'read in Tokyo: the late pause has not started', items: PAUSED_ITEMS, timeZone: 'Asia/Tokyo', away: [] },
+  ];
+  const shelf = shelfAsks.map((c) => ({
+    name: c.name,
+    items: c.items,
+    routines: PAUSED_ROUTINES,
+    seasons: PAUSED_SEASONS,
+    away: c.away,
+    today: TODAY,
+    timeZone: c.timeZone,
+    expected: shelfAnswer(c.items, TODAY, c.timeZone, c.away),
+  }));
+
+  // The rail's line names the soonest return: tomorrow, a weekday within the week, a day past it.
+  const noteAsks: { name: string; until?: string }[] = [
+    { name: 'back tomorrow', until: '2026-10-24' },
+    { name: 'back in two days', until: '2026-10-25' },
+    { name: 'back in six days', until: '2026-10-29' },
+    { name: 'back in a week', until: '2026-10-30' },
+    { name: 'back next month', until: '2026-11-12' },
+    { name: 'no day to come back' },
+  ];
+  const pausedNoteCases = noteAsks.map((c) => {
+    const items = [task(1, 'Renew passport', { isScheduled: false, pausedAt: '2026-10-20T13:00:00Z', ...(c.until ? { pausedUntil: c.until } : {}) })];
+    const answer = pausedNote(pausedShelf(items, TODAY, { userTimezone: ZONE }), TODAY);
+    return { name: c.name, items, today: TODAY, timeZone: ZONE, expected: answer };
+  });
+
+  const returnDayLabelCases = [
+    { name: 'tomorrow', day: '2026-10-24' },
+    { name: 'the day after', day: '2026-10-25' },
+    { name: 'a week on', day: '2026-10-30' },
+    { name: 'across the clocks changing', day: '2026-11-01' },
+    { name: 'next month', day: '2026-11-12' },
+    { name: 'next year', day: '2027-01-04' },
+    { name: 'today itself', day: TODAY },
+  ].map((c) => ({ ...c, today: TODAY, expected: returnDayLabel(c.day, TODAY) }));
+
+  // An item row's kind line, read through the registry as the web has it
+  // once the user's types are hydrated (planner-store's load): the type's own
+  // label, or the slug capitalised when the label is empty or the type has no
+  // row. Each case carries the types it was asked under; the phone passes the
+  // payload's `itemTypes` as `labels`, which are these same rows.
+  const kindLineTypes = [
+    { name: 'book', label: 'Book to read', labelPlural: 'Books to read' },
+    { name: 'side-quest', label: '', labelPlural: '' },
+  ];
+  const kindLineAsks: { name: string; item: Item }[] = [
+    { name: 'a task', item: task(1, 'Renew passport', { isScheduled: false, pausedAt: '2026-10-20T13:00:00Z' }) },
+    { name: 'a habit', item: habit(2, 'Cold shower', { pausedAt: '2026-10-20T13:00:00Z' }) },
+    { name: 'a custom type, as the user named it', item: custom(4, 'book', 'Read Dune', { isScheduled: false, pausedAt: '2026-10-21T13:00:00Z' }) },
+    { name: 'a custom type with an empty label: its slug capitalised', item: custom(15, 'side-quest', 'Map the trail', { isScheduled: false, pausedAt: '2026-10-21T13:00:00Z' }) },
+    { name: 'a custom type with no row: its slug capitalised', item: custom(16, 'errand', 'Post the parcel', { isScheduled: false, pausedAt: '2026-10-21T13:00:00Z' }) },
+  ];
+  const typesBefore = getCustomTypeDefs();
+  hydrateCustomTypes(kindLineTypes.map((t, i) => ({ id: `ty-${i}`, ...t }) as ItemTypeDef));
+  let entryKindLineCases: { name: string; item: Item; itemTypes: typeof kindLineTypes; expected: string }[];
+  try {
+    entryKindLineCases = kindLineAsks.map((c) => ({
+      ...c,
+      itemTypes: kindLineTypes,
+      expected: entryKindLine({ kind: 'item', key: `item:${c.item.id}`, item: c.item }),
+    }));
+  } finally {
+    hydrateCustomTypes(typesBefore);
+  }
+
+  const backOnCases = [
+    { name: 'tomorrow: the passport', date: '2026-10-24' },
+    { name: 'a week on: each named once, in the store’s order', date: '2026-10-30' },
+    { name: 'the season’s first day names the season', date: '2026-11-01' },
+    { name: 'a day nothing comes back', date: '2026-10-25' },
+  ].map((c) => ({ ...c, timeZone: ZONE, expected: backOn(PAUSED_ITEMS, c.date, pausedCtx(ZONE)) }));
+
+  return {
+    tables: { noDate: PAUSED_NO_DATE, nothingPaused: NOTHING_PAUSED, welcome: PAUSED_WELCOME },
+    world: { items: PAUSED_ITEMS, routines: PAUSED_ROUTINES, seasons: PAUSED_SEASONS },
+    pausedShelf: shelf,
+    pausedNote: pausedNoteCases,
+    returnDayLabel: returnDayLabelCases,
+    entryKindLine: entryKindLineCases,
+    backOn: backOnCases,
   };
 }
 
@@ -1693,6 +2160,8 @@ const FIXTURES: Record<string, () => unknown> = {
   schedule: buildSchedule,
   look: buildLook,
   copy: buildCopy,
+  organize: buildOrganize,
+  paused: buildPaused,
 };
 
 const serialize = (f: unknown) => JSON.stringify(f, null, 2) + '\n';
@@ -1862,6 +2331,90 @@ describe('the cases say what they claim', () => {
     expect([...forms].sort()).toEqual(['none', 'past', 'target is today', 'to']);
   });
 
+  it('the week counts done of done-or-due: never a skip, a past blank, a subtask or a hidden day', () => {
+    const cases = buildOrganize().organizeWeek;
+    const pick = (n: string) => cases.find((c) => c.name === n)!;
+    const base = pick('a Sunday week: done of done-or-due, everything the grid shows').expected;
+    expect(base).toMatchObject({ from: '2026-10-18', through: '2026-10-24' });
+    expect(base.counted).toBeGreaterThan(base.done);
+    expect(base.done).toBeGreaterThan(0);
+    // Each week is seven days from its first, in all three settings.
+    for (const c of cases) expect(addDaysStr(c.expected.from, 6), c.name).toBe(c.expected.through);
+    expect(pick('a Saturday week: today is its last day').expected.through).toBe(TODAY);
+    expect(pick('a Monday week asked on its Sunday').expected.from).toBe('2026-10-19');
+    expect(pick('the week’s first day: nothing is past yet').expected.from).toBe('2026-10-19');
+    // A subtask never counts, even done on a day in the week.
+    expect(pick('the same world with no subtask: the same answer').expected).toEqual(base);
+    // A pause takes days off the week; resumed, they are back.
+    expect(pick('the paused errand resumed: on the week').expected.counted).toBe(base.counted + 1);
+    // A trip rests its days, except what was done on them.
+    const trip = pick('a trip rests what falls inside it, except what was done').expected;
+    expect(trip.counted).toBeLessThan(base.counted);
+    expect(trip.done).toBe(base.done);
+    // A skip and an unrecorded past day are on neither side: nothing on.
+    for (const n of ['only a skip and an unrecorded past day: nothing counted', 'nothing on this week: an undated task and one next month', 'no items at all']) {
+      expect(pick(n).expected, n).toMatchObject({ done: 0, counted: 0, sentence: NOTHING_ON_THIS_WEEK });
+    }
+    expect(pick('a finished one-off counts on its day').expected).toMatchObject({ done: 1, counted: 1, sentence: '1 of 1 done' });
+  });
+
+  it('the next milestone is the earliest dated across active goals, and words its day without a countdown', () => {
+    const cases = buildOrganize().nextMilestoneAcross;
+    const pick = (n: string) => cases.find((c) => c.name === n)!.expected;
+    expect(pick('a late milestone keeps its date')?.line).toBe('Oct 4 · Run a half marathon');
+    expect(pick('a tie on the day: the goal listed first')?.goalId).toBe('g-first');
+    expect(pick('dated beats undated, whatever the order')?.goalId).toBe('g-run');
+    expect(pick('an ended goal is passed over')?.goalId).toBe('g-run');
+    expect(pick('undated only: the first goal’s first')).toEqual({ goalId: 'g-one', itemId: uid(4), date: null, line: 'One' });
+    expect(pick('a whole ISO stamp: its day')?.date).toBe('2026-11-02');
+    expect(pick('a custom type’s own done word, never a habit’s')?.itemId).toBe(uid(11));
+    expect(pick('nothing open anywhere: no card')).toBeNull();
+    expect(pick('no goals: no card')).toBeNull();
+  });
+
+  it('the shelf counts items, never entries, and leaves out a trip’s rest, a subtask and a pause not yet begun', () => {
+    const cases = buildPaused().pausedShelf;
+    const pick = (n: string) => cases.find((c) => c.name === n)!.expected;
+    const base = pick('grouped by return day, soonest first, no date last');
+    expect(base.days.map((d) => d.label)).toEqual(['Tomorrow', 'Fri, Oct 30', 'Sun, Nov 1', 'Mon, Jan 4', 'No date']);
+    const entries = base.days.flatMap((d) => d.entries);
+    expect(base.count).toBe(entries.reduce((n, e) => n + e.itemIds.length, 0));
+    expect(base.count).toBeGreaterThan(entries.length);
+    // Containers first within a day.
+    expect(base.days[1].entries.map((e) => e.kind)).toEqual(['routine', 'item', 'item']);
+    expect(entries.find((e) => e.kind === 'season')?.kindLine).toBe('Season · 3 items');
+    expect(entries.some((e) => e.itemIds.includes(uid(5)))).toBe(false);
+    expect(pick('nothing paused')).toEqual({ count: 0, note: null, days: [] });
+    // A trip names itself before a routine or a season (suppressionReason), so
+    // what it rests leaves the shelf, Walk included; an item's own pause
+    // outranks the trip and stays.
+    const tripCtx = { userTimezone: ZONE, routines: PAUSED_ROUTINES, seasons: PAUSED_SEASONS, away: [PAUSED_TRIP] };
+    expect(inactiveItemIdsOn(PAUSED_ITEMS, TODAY, tripCtx).has(uid(11))).toBe(true);
+    const trip = pick('a trip over today: its rest is not set aside, an item’s own pause still is');
+    const tripEntries = trip.days.flatMap((d) => d.entries);
+    expect(trip.count).toBeLessThan(base.count);
+    expect(tripEntries.length).toBeGreaterThan(0);
+    expect(tripEntries.every((e) => e.kind === 'item')).toBe(true);
+    expect(tripEntries.some((e) => e.itemIds.includes(uid(11)))).toBe(false);
+    // The zone decides the day a pause starts.
+    expect(entries.some((e) => e.itemIds.includes(uid(14)))).toBe(true);
+    const tokyo = pick('read in Tokyo: the late pause has not started').days.flatMap((d) => d.entries);
+    expect(tokyo.some((e) => e.itemIds.includes(uid(14)))).toBe(false);
+  });
+
+  it('an item’s kind line reads the user’s own type label, the slug only without one, and leaves the registry as it found it', () => {
+    const before = getCustomTypeDefs();
+    const cases = buildPaused().entryKindLine;
+    expect(getCustomTypeDefs()).toBe(before);
+    expect(Object.fromEntries(cases.map((c) => [c.name, c.expected]))).toEqual({
+      'a task': 'Task',
+      'a habit': 'Habit',
+      'a custom type, as the user named it': 'Book to read',
+      'a custom type with an empty label: its slug capitalised': 'Side-quest',
+      'a custom type with no row: its slug capitalised': 'Errand',
+    });
+  });
+
   it('the shared words hold the copy rules: no em dash, nothing "missed"', () => {
     const strings: string[] = [];
     const walk = (v: unknown): void => {
@@ -1870,6 +2423,8 @@ describe('the cases say what they claim', () => {
       else if (v && typeof v === 'object') Object.values(v).forEach(walk);
     };
     walk(buildCopy());
+    walk(buildOrganize());
+    walk(buildPaused());
     expect(strings.length).toBeGreaterThan(50);
     for (const s of strings) {
       expect(s.includes('—'), s).toBe(false);

@@ -3,7 +3,11 @@ import Testing
 import DsulCore
 
 // The web's own words for lib/organize-copy.ts, checked against
-// OrganizeCopy.swift byte for byte: tests/fixtures/organize/copy.json.
+// OrganizeCopy.swift byte for byte: tests/fixtures/organize/copy.json. From
+// O14 the Trash's words too (`whenGone`, `daysUntilPurge`, the row meta, the
+// restore sentences and the phone's refusal words), each case with its `now`
+// pinned. The summary cards' lines are pinned by organize.json
+// (OrganizeFixtureTests).
 
 private struct StateTables: Decodable, Sendable {
     let routine: [String: String]
@@ -20,6 +24,13 @@ private struct Tables: Decodable, Sendable {
     let noCheckinYet: String
     let noMilestonesYet: String
     let noSupportingWork: String
+    let trashWindowDays: Int
+    let trashKindLabels: [String: String]
+    let nothingInTrash: String
+    let trashTeaching: String
+    let trashLoadFailed: String
+    let restoreFailed: String
+    let restoreGone: String
 }
 
 private struct HeldWorld: Decodable, Sendable {
@@ -119,6 +130,49 @@ private struct TickCase: Decodable, Sendable {
     let expected: String
 }
 
+private struct StampCase<Answer: Decodable & Sendable>: Decodable, Sendable {
+    let name: String
+    let deletedAt: String
+    let now: String
+    let expected: Answer
+}
+
+private struct RowMetaExpected: Decodable, Sendable {
+    let kindLine: String
+    let meta: String
+}
+
+private struct RowMetaCase: Decodable, Sendable {
+    let name: String
+    let kind: String
+    let childCount: Int
+    let memberCount: Int
+    let deletedAt: String
+    let now: String
+    let expected: RowMetaExpected
+}
+
+private struct RestoreSentenceCase: Decodable, Sendable {
+    let name: String
+    let kind: String
+    let memberCount: Int
+    let expected: String
+}
+
+private struct RefusalCase: Decodable, Sendable {
+    let name: String
+    let code: String?
+    let projectName: String
+    let expected: String
+}
+
+private struct NameInTrashCase: Decodable, Sendable {
+    let name: String
+    let noun: String
+    let heldName: String
+    let expected: String
+}
+
 private struct CopyFixture: Decodable, Sendable {
     let tables: Tables
     let heldWorld: HeldWorld
@@ -134,10 +188,21 @@ private struct CopyFixture: Decodable, Sendable {
     let windDownSentence: [WindDownCase]
     let checkinMeta: [CheckinCase]
     let milestoneTickLabel: [TickCase]
+    let whenGone: [StampCase<String>]
+    let daysUntilPurge: [StampCase<Int>]
+    let trashRowMeta: [RowMetaCase]
+    let restoreSentence: [RestoreSentenceCase]
+    let restoreRefusal: [RefusalCase]
+    let nameInTrashSentence: [NameInTrashCase]
 }
 
 private func load() throws -> CopyFixture {
     return try loadOrganizeFixture(CopyFixture.self, "copy.json")
+}
+
+/// A case's `now`, an ISO instant.
+private func instant(_ s: String, _ name: String) throws -> Date {
+    return try #require(parseTimestamp(s), "\(name): bad now \(s)")
 }
 
 private func table(_ states: [StateLabel]) -> [String: String] {
@@ -160,6 +225,12 @@ private func table(_ states: [StateLabel]) -> [String: String] {
         #expect(!f.windDownSentence.isEmpty)
         #expect(!f.checkinMeta.isEmpty)
         #expect(!f.milestoneTickLabel.isEmpty)
+        #expect(!f.whenGone.isEmpty)
+        #expect(f.daysUntilPurge.count == f.whenGone.count)
+        #expect(!f.trashRowMeta.isEmpty)
+        #expect(f.restoreSentence.count >= 4)
+        #expect(f.restoreRefusal.count >= 5)
+        #expect(!f.nameInTrashSentence.isEmpty)
     }
 
     @Test func theTablesAreTheWebs() throws {
@@ -179,6 +250,14 @@ private func table(_ states: [StateLabel]) -> [String: String] {
         #expect(OrganizeCopy.noCheckinYet == t.noCheckinYet)
         #expect(OrganizeCopy.noMilestonesYet == t.noMilestonesYet)
         #expect(OrganizeCopy.noSupportingWork == t.noSupportingWork)
+        #expect(OrganizeCopy.trashWindowDays == t.trashWindowDays)
+        let kinds = Dictionary(TrashKind.allCases.map { ($0.rawValue, $0.label) }, uniquingKeysWith: { a, _ in a })
+        #expect(kinds == t.trashKindLabels)
+        #expect(OrganizeCopy.nothingInTrash == t.nothingInTrash)
+        #expect(OrganizeCopy.trashTeaching == t.trashTeaching)
+        #expect(OrganizeCopy.trashLoadFailed == t.trashLoadFailed)
+        #expect(OrganizeCopy.restoreFailed == t.restoreFailed)
+        #expect(OrganizeCopy.restoreGone == t.restoreGone)
     }
 
     @Test func switchedOffMatchesTheWeb() throws {
@@ -267,6 +346,56 @@ private func table(_ states: [StateLabel]) -> [String: String] {
         }
     }
 
+    /// How long ago, and how long is left, read from Postgres's stamps (six
+    /// fractional digits, any offset), a stamp in the future and one that
+    /// can't be read.
+    @Test func theBinsClockMatchesTheWeb() throws {
+        let f = try load()
+        for c in f.whenGone {
+            let now = try instant(c.now, c.name)
+            #expect(OrganizeCopy.whenGone(c.deletedAt, now: now) == c.expected, "\(c.name)")
+        }
+        for c in f.daysUntilPurge {
+            let now = try instant(c.now, c.name)
+            #expect(OrganizeCopy.daysUntilPurge(c.deletedAt, now: now) == c.expected, "\(c.name)")
+        }
+    }
+
+    @Test func theTrashRowsMetaMatchesTheWeb() throws {
+        for c in try load().trashRowMeta {
+            let kind = try #require(TrashKind(rawValue: c.kind), "\(c.name): bad kind")
+            let now = try instant(c.now, c.name)
+            #expect(
+                OrganizeCopy.trashKindLine(kind, childCount: c.childCount, memberCount: c.memberCount) == c.expected.kindLine,
+                "\(c.name): kindLine"
+            )
+            #expect(
+                OrganizeCopy.trashRowMeta(
+                    kind, childCount: c.childCount, memberCount: c.memberCount, deletedAt: c.deletedAt, now: now
+                ) == c.expected.meta,
+                "\(c.name): meta"
+            )
+            let row = TrashRow(
+                kind: kind, id: "x", name: "X", deletedAt: c.deletedAt, childCount: c.childCount, memberCount: c.memberCount
+            )
+            #expect(OrganizeCopy.trashRowMeta(row, now: now) == c.expected.meta, "\(c.name): row")
+        }
+    }
+
+    @Test func theRestoreWordsMatchTheWeb() throws {
+        let f = try load()
+        for c in f.restoreSentence {
+            let kind = try #require(TrashKind(rawValue: c.kind)?.container, "\(c.name): not a container kind")
+            #expect(OrganizeCopy.restoreSentence(kind, memberCount: c.memberCount) == c.expected, "\(c.name)")
+        }
+        for c in f.restoreRefusal {
+            #expect(OrganizeCopy.restoreRefusal(code: c.code, name: c.projectName) == c.expected, "\(c.name)")
+        }
+        for c in f.nameInTrashSentence {
+            #expect(OrganizeCopy.nameInTrashSentence(noun: c.noun, name: c.heldName) == c.expected, "\(c.name)")
+        }
+    }
+
     /// The copy rules (design §6.9): no em dash and no "missed" in any word
     /// this file says.
     @Test func noWordBreaksTheCopyRules() throws {
@@ -282,6 +411,14 @@ private func table(_ states: [StateLabel]) -> [String: String] {
         words += f.heldByState.map { OrganizeCopy.heldByState($0.season, today: today) }
         words += f.goalEndedNote.compactMap { OrganizeCopy.goalEndedNote($0.goal) }
         words += f.windDownSentence.compactMap { OrganizeCopy.windDownSentence(state: $0.state, count: $0.count) }
+        words += [
+            OrganizeCopy.nothingInTrash, OrganizeCopy.trashTeaching, OrganizeCopy.trashLoadFailed,
+            OrganizeCopy.restoreFailed, OrganizeCopy.restoreGone,
+        ]
+        words += f.trashRowMeta.map(\.expected.meta)
+        words += f.restoreSentence.map(\.expected)
+        words += f.restoreRefusal.map(\.expected)
+        words += f.nameInTrashSentence.map(\.expected)
         for word in words {
             #expect(!word.unicodeScalars.contains("\u{2014}"), "\(word)")
             #expect(!word.lowercased().contains("missed"), "\(word)")

@@ -739,6 +739,11 @@ public struct PlannerPayload: Decodable, Sendable, Hashable {
     /// older than the list, which takes "complete" and "schedule" only; the
     /// app hides any verb whose write isn't listed.
     public var writes: [String]?
+    /// What the Trash routes take (`trashWrites`, lib/app-containers.ts
+    /// `TRASH_WRITES`, from O14): ["list", "restore"]. Nil from a server older
+    /// than the routes, which hides the Trash row (`TrashRoutes.offered`). A
+    /// bad element is skipped.
+    public var trashWrites: [String]?
     /// The user's own item types, named (`itemTypes`, from item_types): a
     /// custom item's label, title placeholder and delete words read them
     /// through `caps(_:labels:)`. Nil when the server couldn't read the table,
@@ -769,6 +774,7 @@ public struct PlannerPayload: Decodable, Sendable, Hashable {
         seasons: [Season] = [],
         goals: [Goal]? = nil,
         writes: [String]? = nil,
+        trashWrites: [String]? = nil,
         itemTypes: [ItemTypeLabel]? = nil,
         snoozes: [PlanSnooze]? = nil,
         awayPeriods: [AwayPeriod]? = nil,
@@ -784,6 +790,7 @@ public struct PlannerPayload: Decodable, Sendable, Hashable {
         self.seasons = seasons
         self.goals = goals
         self.writes = writes
+        self.trashWrites = trashWrites
         self.itemTypes = itemTypes
         self.snoozes = snoozes
         self.awayPeriods = awayPeriods
@@ -796,7 +803,7 @@ public struct PlannerPayload: Decodable, Sendable, Hashable {
 
     enum CodingKeys: String, CodingKey {
         case v, userId, fetchedAt, settings, items, projects, routines, seasons, writes, itemTypes, snoozes
-        case awayPeriods, goals
+        case awayPeriods, goals, trashWrites
     }
 
     /// The envelope is strict (a payload with no user can't be trusted to be
@@ -819,6 +826,7 @@ public struct PlannerPayload: Decodable, Sendable, Hashable {
         self.seasons = c.lossyArray(Season.self, .seasons).values
         self.goals = c.lossyArrayIfPresent(Goal.self, .goals)
         self.writes = c.lenientStrings(.writes)
+        self.trashWrites = c.lenientStrings(.trashWrites)
         self.itemTypes = c.lossyArrayIfPresent(ItemTypeLabel.self, .itemTypes)
         self.snoozes = c.lossyArrayIfPresent(PlanSnooze.self, .snoozes)
         self.awayPeriods = c.lossyArrayIfPresent(AwayPeriod.self, .awayPeriods)

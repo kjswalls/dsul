@@ -46,6 +46,10 @@
     "collect",
     "snooze"
   ],
+  "trashWrites": [
+    "list",
+    "restore"
+  ],
   "items": [
     {
       "type": "habit",

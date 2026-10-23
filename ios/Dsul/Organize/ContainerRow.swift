@@ -15,14 +15,32 @@ struct ContainerRow: View {
     var row: OrganizeRow
 
     var body: some View {
+        TileRow(symbol: row.symbol, color: row.accent.color, title: row.title, subtitle: row.subtitle,
+                trailing: row.trailing, spokenLabel: row.spokenLabel)
+    }
+}
+
+/// The row a container draws, for anything else that wears a tile: the
+/// footer's Item types, Paused and Trash, and a custom type on Item types.
+/// The tile, the title in `.body`, the line under it in `.subheadline`
+/// `.secondary`, and the trailing value; one element to VoiceOver.
+struct TileRow: View {
+    var symbol: String
+    var color: Color
+    var title: String
+    var subtitle: String? = nil
+    var trailing: String? = nil
+    var spokenLabel: String
+
+    var body: some View {
         HStack(spacing: 13) {
-            ContainerTile(symbol: row.symbol, accent: row.accent)
+            ContainerTile(symbol: symbol, color: color)
             VStack(alignment: .leading, spacing: 2) {
-                Text(row.title)
+                Text(title)
                     .font(.body)
                     .foregroundStyle(Color.primary)
                     .multilineTextAlignment(.leading)
-                if let subtitle = row.subtitle {
+                if let subtitle {
                     Text(subtitle)
                         .font(.subheadline)
                         .foregroundStyle(Color.secondary)
@@ -30,7 +48,7 @@ struct ContainerRow: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            if let trailing = row.trailing {
+            if let trailing {
                 Text(trailing)
                     .font(.subheadline.monospacedDigit())
                     .foregroundStyle(Color.secondary)
@@ -38,32 +56,37 @@ struct ContainerRow: View {
         }
         .padding(.vertical, 3)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(row.spokenLabel))
+        .accessibilityLabel(Text(spokenLabel))
     }
 }
 
 /// A container's tile: a rounded square washed with its accent, and its glyph
 /// at full strength on it. 30pt with a 17pt glyph at the default text size on
 /// a row, 44pt in a page's header, the corner and the glyph in proportion,
-/// all scaling with Dynamic Type. Decorative: the row says what it is.
+/// all scaling with Dynamic Type. Decorative: the row says what it is. The
+/// footer's Paused and Trash pass a gray (`init(symbol:color:side:)`), the
+/// console rail's muted identity.
 struct ContainerTile: View {
     var symbol: String
-    var accent: ContainerAccent
+    var color: Color
 
     @ScaledMetric private var side: CGFloat
     @ScaledMetric private var radius: CGFloat
     @ScaledMetric private var glyph: CGFloat
 
     init(symbol: String, accent: ContainerAccent, side: CGFloat = 30) {
+        self.init(symbol: symbol, color: accent.color, side: side)
+    }
+
+    init(symbol: String, color: Color, side: CGFloat = 30) {
         self.symbol = symbol
-        self.accent = accent
+        self.color = color
         _side = ScaledMetric(wrappedValue: side, relativeTo: .body)
         _radius = ScaledMetric(wrappedValue: side * 0.3, relativeTo: .body)
         _glyph = ScaledMetric(wrappedValue: side * 17 / 30, relativeTo: .body)
     }
 
     var body: some View {
-        let color = accent.color
         // The wash is the fill's own 18%, a mix with the row under it. The
         // glyph is drawn over the fill, never inside anything faded, so a lime
         // glyph (accent-8) stays full-strength lime.

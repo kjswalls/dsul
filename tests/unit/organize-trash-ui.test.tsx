@@ -48,7 +48,7 @@ vi.mock('@/lib/db', async (importOriginal) => {
 });
 
 import { OrganizeConsole } from '@/components/planner/organize/organize-console';
-import { daysUntilPurge, whenGone } from '@/components/planner/organize/sections/trash';
+import { daysUntilPurge, whenGone } from '@/lib/organize-copy';
 import { heldByTrash, useTrashedNames } from '@/components/planner/organize/use-trashed-names';
 import { usePlannerStore } from '@/lib/planner-store';
 import { enableGoalsAndOrganize } from './support/extensions';

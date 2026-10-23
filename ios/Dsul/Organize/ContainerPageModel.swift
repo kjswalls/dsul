@@ -777,13 +777,23 @@ extension SamplePlanner {
     /// Is the page `route` names gone? A goal is gone only when goals were
     /// read and it is not among them: a fetch that could not read goals
     /// (`goals` nil) is a lost read, not a delete, so the page keeps drawing
-    /// what it last showed until a good fetch answers.
+    /// what it last showed until a good fetch answers. A paused routine's or
+    /// season's detail is gone once it is off today's shelf (resumed, back on
+    /// its day, deleted). Item types is gone while Organize is off, as the
+    /// web hides its types section then. Paused and Trash ride no switch and
+    /// are never gone.
     func isGone(_ route: OrganizeRoute) -> Bool {
         switch route {
         case .container(.goal, let id):
             return goals.map { read in !read.contains { $0.id == id } } ?? false
         case .container(let kind, let id):
             return container(kind, id: id) == nil
+        case .pausedEntry(let key):
+            return pausedEntryPage(key) == nil
+        case .itemTypes:
+            return itemTypesPage == nil
+        case .paused, .trash:
+            return false
         }
     }
 

@@ -1,4 +1,6 @@
 import { formatDay, seasonResumeDate, isSeasonActiveOn, type RoutineStanding } from './active';
+import { CONTAINER_KINDS } from './container-registry';
+import type { TrashKind } from './db';
 import type { Goal, Routine, Season } from './planner-types';
 
 /**
@@ -268,4 +270,159 @@ export function checkinMeta(cadence: string, lastDone: string | undefined): stri
 /** A milestone's tick, named for what it does. */
 export function milestoneTickLabel(title: string, reached: boolean): string {
   return reached ? `Mark ${title} not reached` : `Mark ${title} reached`;
+}
+
+/* ── the summary cards (the iPhone's Organize tab) ───────────────────── */
+
+/** THIS WEEK with nothing done or due: the card shows no bar. */
+export const NOTHING_ON_THIS_WEEK = 'Nothing on this week';
+
+/**
+ * THIS WEEK's line, over lib/organize.ts organizeWeek: "18 of 23 done", or
+ * {@link NOTHING_ON_THIS_WEEK} when nothing is done or due. Never a share of
+ * the past: `counted` is what is done plus what is still ahead.
+ */
+export function weekCardSentence(done: number, counted: number): string {
+  return counted === 0 ? NOTHING_ON_THIS_WEEK : `${done} of ${counted} done`;
+}
+
+/**
+ * NEXT MILESTONE's second line: the milestone's day as the goal page's "next:"
+ * line words it, then the goal: "Oct 4 · Run a half marathon". An undated
+ * milestone shows the goal's name alone. No countdown: the web counts down to
+ * a goal's target, never to a milestone.
+ */
+export function nextMilestoneLine(date: string | undefined, goalName: string): string {
+  return date ? `${formatDay(date)} · ${goalName}` : goalName;
+}
+
+/* ── the Trash ────────────────────────────────────────────────────────── */
+
+/** How long a soft-deleted row survives before the nightly purge (migration 036). */
+export const TRASH_WINDOW_DAYS = 30;
+
+/**
+ * What each row of the bin was, spelled out: the one list that mixes kinds,
+ * so the kind is a word on the row rather than something a glyph implies.
+ * The container nouns are the registry's (CONTAINER_KINDS), never hand-typed.
+ */
+export const TRASH_KIND_LABELS: Readonly<Record<TrashKind, string>> = {
+  item: 'Item',
+  project: CONTAINER_KINDS.project.label,
+  routine: CONTAINER_KINDS.routine.label,
+  season: CONTAINER_KINDS.season.label,
+  goal: CONTAINER_KINDS.goal.label,
+};
+
+/** An empty bin. */
+export const NOTHING_IN_TRASH = `Nothing deleted in the last ${TRASH_WINDOW_DAYS} days.`;
+
+/** What the bin is for, said once beside it. */
+export const TRASH_TEACHING = `Anything you delete waits here for ${TRASH_WINDOW_DAYS} days, then goes for good.`;
+
+/**
+ * How long ago, in the words a bin needs.
+ *
+ * Days rather than a date, because the only question a trash row has to answer
+ * is "how much of my thirty days is left", and "Aug 3" makes the reader do
+ * that subtraction themselves. Rounded DOWN from the elapsed milliseconds, so
+ * something deleted twenty-five hours ago reads "1d" rather than "2d" and the
+ * count never runs ahead of the purge.
+ */
+export function whenGone(deletedAt: string, now = Date.now()): string {
+  const elapsed = now - new Date(deletedAt).getTime();
+  if (!Number.isFinite(elapsed) || elapsed < 0) return 'just now';
+  const hours = Math.floor(elapsed / 3_600_000);
+  if (hours < 1) return 'just now';
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+/**
+ * Days of the 30-day window still left, for "gone for good in Nd".
+ *
+ * Counts DOWN from `whenGone`'s elapsed days so the two never disagree: freshly
+ * deleted reads the full window, and anything past the purge boundary clamps to
+ * 0 rather than a negative. A malformed or future stamp reads as the full window,
+ * the same benefit of the doubt `whenGone`'s "just now" gives.
+ */
+export function daysUntilPurge(deletedAt: string, now = Date.now()): number {
+  const elapsed = now - new Date(deletedAt).getTime();
+  if (!Number.isFinite(elapsed) || elapsed < 0) return TRASH_WINDOW_DAYS;
+  return Math.max(0, TRASH_WINDOW_DAYS - Math.floor(elapsed / 86_400_000));
+}
+
+/**
+ * A trash row's meta before its age: the kind, then what comes back WITH it,
+ * said before the click rather than discovered after: "Item · 2 subtasks",
+ * "Project · 3 items refile". A count of 0 says nothing.
+ */
+export function trashKindLine(kind: TrashKind, childCount: number, memberCount: number): string {
+  let line = TRASH_KIND_LABELS[kind];
+  if (childCount > 0) line += ` · ${childCount} ${childCount === 1 ? 'subtask' : 'subtasks'}`;
+  if (memberCount > 0) line += ` · ${memberCount} ${memberCount === 1 ? 'item' : 'items'} refile`;
+  return line;
+}
+
+/** The whole meta line: "Project · 3 items refile · 3d ago". */
+export function trashRowMeta(
+  row: { kind: TrashKind; childCount: number; memberCount: number; deletedAt: string },
+  now = Date.now(),
+): string {
+  return `${trashKindLine(row.kind, row.childCount, row.memberCount)} · ${whenGone(row.deletedAt, now)}`;
+}
+
+/** What restoring a trashed container reconnects: one honest sentence per kind. */
+export function restoreSentence(kind: Exclude<TrashKind, 'item'>, memberCount: number): string {
+  const noun = CONTAINER_KINDS[kind].label.toLowerCase();
+  switch (kind) {
+    case 'project':
+      return memberCount > 0
+        ? `Restoring brings the ${noun} back and re-files the ${memberCount} ${memberCount === 1 ? 'item' : 'items'} still pointing at it.`
+        : `Restoring brings the ${noun} back. Nothing is filed under it right now.`;
+    case 'routine':
+      return `Restoring brings the ${noun} back, along with the items it grouped.`;
+    case 'season':
+      return `Restoring brings the ${noun} back, along with the routines and items it held.`;
+    case 'goal':
+      return `Restoring brings the ${noun} back, along with its milestones, check-ins and members.`;
+  }
+}
+
+/**
+ * A name a trashed container is still holding (the unique index spans the
+ * bin, components/planner/organize/use-trashed-names.ts heldByTrash). The
+ * message names the Trash because the bin is the fix.
+ */
+export function nameInTrashSentence(noun: string, name: string): string {
+  return `A deleted ${noun} called “${name}” still has that name. Restore it from Trash, or pick a different one.`;
+}
+
+/** The iPhone's Trash, when the list could not be read: never an empty bin. */
+export const TRASH_LOAD_FAILED = "Couldn't load the Trash.";
+
+/** The iPhone's Restore, refused for a reason the phone cannot fix, or not answered. */
+export const RESTORE_FAILED = "Couldn't restore it. Check your connection and try again.";
+
+/**
+ * The iPhone's Restore, answered 404: the row is no longer in the bin (the
+ * nightly purge took it after the list was read). A retry can never land, so
+ * the phone drops the row rather than asking for one.
+ */
+export const RESTORE_GONE = "It's no longer in the Trash.";
+
+/**
+ * The iPhone's words for a refused restore (POST /api/app/trash/restore,
+ * lib/app-containers.ts): `name_taken` when a live project folds to the same
+ * name (`name` is that project's), `parent_gone` when a subtask's parent is in
+ * the bin too, `not_found` when the row is no longer in the bin
+ * ({@link RESTORE_GONE}). Anything else is {@link RESTORE_FAILED}.
+ */
+export function restoreRefusal(code: string | undefined, name: string): string {
+  if (code === 'name_taken') {
+    return `You already have a ${CONTAINER_KINDS.project.label.toLowerCase()} called “${name}”. Rename that one, then restore this one.`;
+  }
+  if (code === 'parent_gone') return 'Its parent is in the Trash too. Restore that instead.';
+  if (code === 'not_found') return RESTORE_GONE;
+  return RESTORE_FAILED;
 }

@@ -1,6 +1,6 @@
-import { inactiveItemIdsOn, suppressionReason, type ActivationContext } from './active';
+import { formatDay, inactiveItemIdsOn, suppressionLabel, suppressionReason, type ActivationContext } from './active';
 import { addDays } from './away';
-import { formatShort } from './collections';
+import { getItemTypeConfig, itemTypeName } from './item-registry';
 import { toDateOnly } from './overdue';
 import type { Item, Routine, Season } from './planner-types';
 
@@ -127,14 +127,76 @@ export function pausedNote(shelf: PausedShelf, todayStr: string): string | null 
 
 /** "tomorrow", "Fri" within the week, "Nov 12" past it. */
 function backWhen(day: string, todayStr: string): string {
+  const diff = daysFrom(todayStr, day);
+  if (diff <= 1) return 'tomorrow';
+  if (diff < 7) return weekdayShort(day);
+  return formatDay(day);
+}
+
+/** Whole calendar days from `todayStr` to `day`, both yyyy-MM-dd. */
+function daysFrom(todayStr: string, day: string): number {
   const [y, m, d] = day.split('-').map(Number);
   const [ty, tm, td] = todayStr.split('-').map(Number);
-  const diff = Math.round((Date.UTC(y, m - 1, d) - Date.UTC(ty, tm - 1, td)) / 86_400_000);
-  if (diff <= 1) return 'tomorrow';
-  if (diff < 7) {
-    return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString(undefined, { weekday: 'short', timeZone: 'UTC' });
-  }
-  return formatShort(day);
+  return Math.round((Date.UTC(y, m - 1, d) - Date.UTC(ty, tm - 1, td)) / 86_400_000);
+}
+
+/**
+ * The day's short weekday in fixed English, as `formatDay`'s months are: the
+ * same word on every device whatever its locale, and a fixture that does not
+ * depend on the machine it was written on.
+ */
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+function weekdayShort(day: string): string {
+  const [y, m, d] = day.split('-').map(Number);
+  return WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+}
+
+/** A return day's heading on the Paused list: "Tomorrow", "Thu, Oct 30", a return, said the way a calendar would. */
+export function returnDayLabel(day: string, todayStr: string): string {
+  if (daysFrom(todayStr, day) === 1) return 'Tomorrow';
+  return `${weekdayShort(day)}, ${formatDay(day)}`;
+}
+
+/** The heading over the entries with no day to come back. */
+export const PAUSED_NO_DATE = 'No date';
+
+/** A group's heading: its return day's label, or {@link PAUSED_NO_DATE}. */
+export function pausedDayLabel(day: Pick<PausedDay, 'until'>, todayStr: string): string {
+  return day.until ? returnDayLabel(day.until, todayStr) : PAUSED_NO_DATE;
+}
+
+/** The Paused list with nothing set aside. */
+export const NOTHING_PAUSED = 'Nothing is paused.';
+
+/** What the Paused list is, said once beside it (guilt-free: nothing here is late). */
+export const PAUSED_WELCOME =
+  "Things you've set aside. Nothing here is late: each one comes back on its own day, or whenever you resume it.";
+
+/**
+ * What an entry is, under its name: "Habit" (the item's type label),
+ * "Routine · 4 habits", "Season · 3 items". A container says "habits" only
+ * when every member it is hiding is one.
+ */
+export function entryKindLine(entry: PausedEntry): string {
+  if (entry.kind === 'item') return getItemTypeConfig(itemTypeName(entry.item)).label;
+  const n = entry.items.length;
+  const allHabits = entry.items.every((i) => i.type === 'habit');
+  const noun = allHabits ? (n === 1 ? 'habit' : 'habits') : n === 1 ? 'item' : 'items';
+  return `${entry.kind === 'routine' ? 'Routine' : 'Season'} · ${n} ${noun}`;
+}
+
+/**
+ * An entry's state line, the long form of why it is away, as a sentence:
+ * "Paused until Oct 30.", "Hidden with your Morning routine. It stays set
+ * aside until you resume it." Asked of the entry's first item, so it can never
+ * disagree with what the grid would say. `ctx` is the routines and seasons
+ * with NO trips, as the detail pane asks it: a trip's rest is never an entry.
+ */
+export function pausedStateLine(entry: PausedEntry, todayStr: string, ctx: ActivationContext): string {
+  const first = entry.kind === 'item' ? entry.item : entry.items[0];
+  const reason = first ? suppressionReason(first, todayStr, ctx) : null;
+  const line = reason ? suppressionLabel(reason, { long: true }) : 'Paused';
+  return `${line}${entry.until ? '.' : '. It stays set aside until you resume it.'}`;
 }
 
 /** What a paused entry is called on its row and on the rail's line. */

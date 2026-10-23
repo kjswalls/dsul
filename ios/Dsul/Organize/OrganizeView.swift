@@ -6,10 +6,12 @@ import SwiftUI
 /// count, under a large "Organize" and the avatar. What shows and what it says
 /// is `OrganizeModel` (Foundation only, pinned by OrganizeTests); this draws it.
 ///
-/// Read-only still, but for the tick. Each row pushes its container's page
-/// (O2, O3: ContainerPage.swift); the summary cards (O4), the footer's Item
-/// types, Paused and Trash (O5, O14) and the + menu (O11) come later. The
-/// path is the tab's own: tapping Organize again pops to the list, and a page
+/// Read-only still, but for the tick, an item's Resume on Paused and a
+/// restore from the Trash. Each row pushes its container's page (O2, O3:
+/// ContainerPage.swift). The summary cards (O4, SummaryCards.swift) open the
+/// list, and the footer (O5, O14) ends it: Item types, Paused and, signed
+/// in, Trash, each pushing its page. The + menu (O11) comes later. The path
+/// is the tab's own: tapping Organize again pops to the list, and a page
 /// whose container goes takes itself off it (`OrganizePageHost`).
 ///
 /// No stack-wide `.tint`: Organize's lime marks (the banner's check, the
@@ -21,7 +23,7 @@ struct OrganizeView: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            OrganizeList()
+            OrganizeList(path: $path)
                 // A refused write's sentence shows here too, as on Today.
                 .plannerBanner()
                 .navigationTitle("Organize")
@@ -39,9 +41,12 @@ struct OrganizeView: View {
 }
 
 /// The list itself: a spinner (or why the first fetch failed) until the
-/// planner has loaded, then the sections and the quiet rows. Signed in, a pull
-/// refreshes it, as on Today.
+/// planner has loaded, then the summary cards, the sections, the quiet rows
+/// and the footer. Signed in, a pull refreshes it, as on Today.
 struct OrganizeList: View {
+    /// The tab's stack, for the milestone card's push.
+    @Binding var path: [OrganizeRoute]
+
     @Environment(SamplePlanner.self) private var planner
 
     var body: some View {
@@ -54,6 +59,9 @@ struct OrganizeList: View {
                     PlannerLoadingRow(loadingText: OrganizeModel.loadingText)
                 }
             case .list(let sections, let nothingYet, let switchedOff):
+                if let cards = planner.organizeSummary {
+                    SummaryCardsSection(cards: cards, path: $path)
+                }
                 ForEach(sections) { section in
                     Section {
                         ForEach(section.rows) { row in
@@ -71,6 +79,11 @@ struct OrganizeList: View {
                 if let switchedOff {
                     Section {
                         OrganizeNoteRow(note: switchedOff)
+                    }
+                }
+                Section {
+                    ForEach(planner.organizeFooter) { row in
+                        FooterLinkRow(row: row)
                     }
                 }
             }
@@ -123,5 +136,20 @@ private struct OrganizeNoteRow: View {
         .padding(.vertical, 3)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(note.spokenLabel))
+    }
+}
+
+/// A footer row: Item types (plum, the Shapes glyph), Paused and Trash (gray),
+/// with Item types' count, or Paused's and its soonest return, pushing the
+/// row's page.
+private struct FooterLinkRow: View {
+    var row: FooterRow
+
+    var body: some View {
+        NavigationLink(value: row.route) {
+            TileRow(symbol: row.symbol, color: row.accent?.color ?? Color(.systemGray), title: row.title,
+                    subtitle: row.subtitle, trailing: row.trailing, spokenLabel: row.spokenLabel)
+        }
+        .accessibilityHint(Text(row.hint))
     }
 }

@@ -22,7 +22,20 @@
     "routineTodayNext": "next",
     "noCheckinYet": "No check-in yet. A recurring review (weekly is usually right) is what keeps a long goal from going quiet for a month at a time.",
     "noMilestonesYet": "No checkpoints yet. A milestone is a one-shot task whose date is the day you mean to have reached it.",
-    "noSupportingWork": "Nothing else is filed under this goal yet."
+    "noSupportingWork": "Nothing else is filed under this goal yet.",
+    "trashWindowDays": 30,
+    "trashKindLabels": {
+      "item": "Item",
+      "project": "Project",
+      "routine": "Routine",
+      "season": "Season",
+      "goal": "Goal"
+    },
+    "nothingInTrash": "Nothing deleted in the last 30 days.",
+    "trashTeaching": "Anything you delete waits here for 30 days, then goes for good.",
+    "trashLoadFailed": "Couldn't load the Trash.",
+    "restoreFailed": "Couldn't restore it. Check your connection and try again.",
+    "restoreGone": "It's no longer in the Trash."
   },
   "heldWorld": {
     "items": [
@@ -1088,6 +1101,336 @@
       "title": "Run a 10K",
       "reached": true,
       "expected": "Mark Run a 10K not reached"
+    }
+  ],
+  "whenGone": [
+    {
+      "name": "thirty seconds ago",
+      "deletedAt": "2026-10-23T11:59:30Z",
+      "now": "2026-10-23T12:00:00Z",
+      "expected": "just now"
+    },
+    {
+      "name": "under an hour, as Postgres writes it",
+      "deletedAt": "2026-10-23T11:01:00.123456+00:00",
+      "now": "2026-10-23T12:00:00Z",
+      "expected": "just now"
+    },
+    {
+      "name": "an hour",
+      "deletedAt": "2026-10-23T11:00:00Z",
+      "now": "2026-10-23T12:00:00Z",
+      "expected": "1h ago"
+    },
+    {
+      "name": "another offset: three hours",
+      "deletedAt": "2026-10-23T05:00:00-04:00",
+      "now": "2026-10-23T12:00:00Z",
+      "expected": "3h ago"
+    },
+    {
+      "name": "twenty-three hours",
+      "deletedAt": "2026-10-22T13:00:00Z",
+      "now": "2026-10-23T12:00:00Z",
+      "expected": "23h ago"
+    },
+    {
+      "name": "twenty-five hours: one day, rounded down",
+      "deletedAt": "2026-10-22T11:00:00Z",
+      "now": "2026-10-23T12:00:00Z",
+      "expected": "1d ago"
+    },
+    {
+      "name": "three days, as Postgres writes it",
+      "deletedAt": "2026-10-20T09:00:00.123456+00:00",
+      "now": "2026-10-23T12:00:00Z",
+      "expected": "3d ago"
+    },
+    {
+      "name": "twenty-nine days",
+      "deletedAt": "2026-09-24T11:00:00Z",
+      "now": "2026-10-23T12:00:00Z",
+      "expected": "29d ago"
+    },
+    {
+      "name": "past the window",
+      "deletedAt": "2026-09-22T12:00:00Z",
+      "now": "2026-10-23T12:00:00Z",
+      "expected": "31d ago"
+    },
+    {
+      "name": "a stamp in the future",
+      "deletedAt": "2026-10-23T13:00:00Z",
+      "now": "2026-10-23T12:00:00Z",
+      "expected": "just now"
+    },
+    {
+      "name": "not a stamp",
+      "deletedAt": "not a date",
+      "now": "2026-10-23T12:00:00Z",
+      "expected": "just now"
+    }
+  ],
+  "daysUntilPurge": [
+    {
+      "name": "thirty seconds ago",
+      "deletedAt": "2026-10-23T11:59:30Z",
+      "now": "2026-10-23T12:00:00Z",
+      "expected": 30
+    },
+    {
+      "name": "under an hour, as Postgres writes it",
+      "deletedAt": "2026-10-23T11:01:00.123456+00:00",
+      "now": "2026-10-23T12:00:00Z",
+      "expected": 30
+    },
+    {
+      "name": "an hour",
+      "deletedAt": "2026-10-23T11:00:00Z",
+      "now": "2026-10-23T12:00:00Z",
+      "expected": 30
+    },
+    {
+      "name": "another offset: three hours",
+      "deletedAt": "2026-10-23T05:00:00-04:00",
+      "now": "2026-10-23T12:00:00Z",
+      "expected": 30
+    },
+    {
+      "name": "twenty-three hours",
+      "deletedAt": "2026-10-22T13:00:00Z",
+      "now": "2026-10-23T12:00:00Z",
+      "expected": 30
+    },
+    {
+      "name": "twenty-five hours: one day, rounded down",
+      "deletedAt": "2026-10-22T11:00:00Z",
+      "now": "2026-10-23T12:00:00Z",
+      "expected": 29
+    },
+    {
+      "name": "three days, as Postgres writes it",
+      "deletedAt": "2026-10-20T09:00:00.123456+00:00",
+      "now": "2026-10-23T12:00:00Z",
+      "expected": 27
+    },
+    {
+      "name": "twenty-nine days",
+      "deletedAt": "2026-09-24T11:00:00Z",
+      "now": "2026-10-23T12:00:00Z",
+      "expected": 1
+    },
+    {
+      "name": "past the window",
+      "deletedAt": "2026-09-22T12:00:00Z",
+      "now": "2026-10-23T12:00:00Z",
+      "expected": 0
+    },
+    {
+      "name": "a stamp in the future",
+      "deletedAt": "2026-10-23T13:00:00Z",
+      "now": "2026-10-23T12:00:00Z",
+      "expected": 30
+    },
+    {
+      "name": "not a stamp",
+      "deletedAt": "not a date",
+      "now": "2026-10-23T12:00:00Z",
+      "expected": 30
+    }
+  ],
+  "trashRowMeta": [
+    {
+      "name": "an item alone",
+      "kind": "item",
+      "childCount": 0,
+      "memberCount": 0,
+      "deletedAt": "2026-10-20T09:00:00.123456+00:00",
+      "now": "2026-10-23T12:00:00Z",
+      "expected": {
+        "kindLine": "Item",
+        "meta": "Item · 3d ago"
+      }
+    },
+    {
+      "name": "an item with a subtask",
+      "kind": "item",
+      "childCount": 1,
+      "memberCount": 0,
+      "deletedAt": "2026-10-23T10:00:00Z",
+      "now": "2026-10-23T12:00:00Z",
+      "expected": {
+        "kindLine": "Item · 1 subtask",
+        "meta": "Item · 1 subtask · 2h ago"
+      }
+    },
+    {
+      "name": "an item with two subtasks",
+      "kind": "item",
+      "childCount": 2,
+      "memberCount": 0,
+      "deletedAt": "2026-10-23T10:00:00Z",
+      "now": "2026-10-23T12:00:00Z",
+      "expected": {
+        "kindLine": "Item · 2 subtasks",
+        "meta": "Item · 2 subtasks · 2h ago"
+      }
+    },
+    {
+      "name": "a project with nothing filed",
+      "kind": "project",
+      "childCount": 0,
+      "memberCount": 0,
+      "deletedAt": "2026-10-23T11:59:30Z",
+      "now": "2026-10-23T12:00:00Z",
+      "expected": {
+        "kindLine": "Project",
+        "meta": "Project · just now"
+      }
+    },
+    {
+      "name": "a project with one item",
+      "kind": "project",
+      "childCount": 0,
+      "memberCount": 1,
+      "deletedAt": "2026-10-20T09:00:00Z",
+      "now": "2026-10-23T12:00:00Z",
+      "expected": {
+        "kindLine": "Project · 1 item refile",
+        "meta": "Project · 1 item refile · 3d ago"
+      }
+    },
+    {
+      "name": "a project with three items",
+      "kind": "project",
+      "childCount": 0,
+      "memberCount": 3,
+      "deletedAt": "2026-10-20T09:00:00Z",
+      "now": "2026-10-23T12:00:00Z",
+      "expected": {
+        "kindLine": "Project · 3 items refile",
+        "meta": "Project · 3 items refile · 3d ago"
+      }
+    },
+    {
+      "name": "a routine",
+      "kind": "routine",
+      "childCount": 0,
+      "memberCount": 0,
+      "deletedAt": "2026-10-21T12:00:00Z",
+      "now": "2026-10-23T12:00:00Z",
+      "expected": {
+        "kindLine": "Routine",
+        "meta": "Routine · 2d ago"
+      }
+    },
+    {
+      "name": "a season",
+      "kind": "season",
+      "childCount": 0,
+      "memberCount": 0,
+      "deletedAt": "2026-10-08T12:00:00Z",
+      "now": "2026-10-23T12:00:00Z",
+      "expected": {
+        "kindLine": "Season",
+        "meta": "Season · 15d ago"
+      }
+    },
+    {
+      "name": "a goal with three to reconnect",
+      "kind": "goal",
+      "childCount": 0,
+      "memberCount": 3,
+      "deletedAt": "2026-10-17T09:00:00Z",
+      "now": "2026-10-23T12:00:00Z",
+      "expected": {
+        "kindLine": "Goal · 3 items refile",
+        "meta": "Goal · 3 items refile · 6d ago"
+      }
+    }
+  ],
+  "restoreSentence": [
+    {
+      "name": "a project with nothing filed",
+      "kind": "project",
+      "memberCount": 0,
+      "expected": "Restoring brings the project back. Nothing is filed under it right now."
+    },
+    {
+      "name": "a project with one item",
+      "kind": "project",
+      "memberCount": 1,
+      "expected": "Restoring brings the project back and re-files the 1 item still pointing at it."
+    },
+    {
+      "name": "a project with three items",
+      "kind": "project",
+      "memberCount": 3,
+      "expected": "Restoring brings the project back and re-files the 3 items still pointing at it."
+    },
+    {
+      "name": "a routine",
+      "kind": "routine",
+      "memberCount": 0,
+      "expected": "Restoring brings the routine back, along with the items it grouped."
+    },
+    {
+      "name": "a season",
+      "kind": "season",
+      "memberCount": 0,
+      "expected": "Restoring brings the season back, along with the routines and items it held."
+    },
+    {
+      "name": "a goal",
+      "kind": "goal",
+      "memberCount": 3,
+      "expected": "Restoring brings the goal back, along with its milestones, check-ins and members."
+    }
+  ],
+  "restoreRefusal": [
+    {
+      "name": "a live project has the name",
+      "code": "name_taken",
+      "projectName": "work",
+      "expected": "You already have a project called “work”. Rename that one, then restore this one."
+    },
+    {
+      "name": "its parent is in the bin",
+      "code": "parent_gone",
+      "projectName": "",
+      "expected": "Its parent is in the Trash too. Restore that instead."
+    },
+    {
+      "name": "gone from the bin",
+      "code": "not_found",
+      "projectName": "",
+      "expected": "It's no longer in the Trash."
+    },
+    {
+      "name": "a code the phone has no words for",
+      "code": "invalid",
+      "projectName": "",
+      "expected": "Couldn't restore it. Check your connection and try again."
+    },
+    {
+      "name": "no answer at all",
+      "code": null,
+      "projectName": "",
+      "expected": "Couldn't restore it. Check your connection and try again."
+    }
+  ],
+  "nameInTrashSentence": [
+    {
+      "name": "a project",
+      "noun": "project",
+      "heldName": "Admin",
+      "expected": "A deleted project called “Admin” still has that name. Restore it from Trash, or pick a different one."
+    },
+    {
+      "name": "a routine",
+      "noun": "routine",
+      "heldName": "Morning",
+      "expected": "A deleted routine called “Morning” still has that name. Restore it from Trash, or pick a different one."
     }
   ]
 }

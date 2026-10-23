@@ -14,12 +14,18 @@ import {
   type Item,
 } from '@/lib/planner-types';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
+import {
+  NOTHING_IN_TRASH,
+  TRASH_KIND_LABELS,
+  TRASH_TEACHING,
+  daysUntilPurge,
+  restoreSentence,
+  trashKindLine,
+  whenGone,
+} from '@/lib/organize-copy';
 import { cn } from '@/lib/utils';
 import { BackRow, DetailColumn, ListColumn, TeachingLine } from '../detail-parts';
 import { Eyebrow } from '../primitives';
-
-/** How long a soft-deleted row survives before the nightly purge (migration 036). */
-const TRASH_WINDOW_DAYS = 30;
 
 /** The console's selection is one string; the bin is the one list mixing kinds. */
 const trashKey = (e: Pick<TrashEntry, 'kind' | 'id'>) => `${e.kind}:${e.id}`;
@@ -120,7 +126,7 @@ export function TrashSection({
   const { entries, failed, forget } = useTrash(userId);
   const [query, setQuery] = useState('');
 
-  const visible = matching(entries ?? [], query, (e) => `${e.name} ${KIND_LABEL[e.kind]}`);
+  const visible = matching(entries ?? [], query, (e) => `${e.name} ${TRASH_KIND_LABELS[e.kind]}`);
   // Resolved against the WHOLE bin, not the filtered `visible`, exactly like
   // every other section resolves against its full array: a selection the user
   // then filters out still has its preview, rather than the pane blanking.
@@ -168,7 +174,7 @@ export function TrashSection({
           <p className="text-muted-foreground px-[7px] pt-2 text-xs">Looking…</p>
         ) : entries.length === 0 ? (
           <p className="text-muted-foreground px-[7px] pt-2 text-xs" data-testid="trash-empty">
-            Nothing deleted in the last {TRASH_WINDOW_DAYS} days.
+            {NOTHING_IN_TRASH}
           </p>
         ) : (
           visible.map((entry) => (
@@ -194,9 +200,7 @@ export function TrashSection({
           />
         ) : (
           <>
-            <TeachingLine>
-              Anything you delete waits here for {TRASH_WINDOW_DAYS} days, then goes for good.
-            </TeachingLine>
+            <TeachingLine>{TRASH_TEACHING}</TeachingLine>
             {/* The one thing a bin has to say that its rows cannot: what ⌘Z will
                 do after you press Restore. Decision 3 made restore a normal
                 history entry precisely so the answer is the ordinary one. */}
@@ -218,14 +222,6 @@ export function TrashSection({
 }
 
 /* ── the row ──────────────────────────────────────────────────────────── */
-
-const KIND_LABEL: Record<TrashKind, string> = {
-  item: 'Item',
-  project: 'Project',
-  routine: 'Routine',
-  season: 'Season',
-  goal: 'Goal',
-};
 
 /**
  * A trash row: glyph, name, what it was, when it went, and Restore.
@@ -301,12 +297,10 @@ function TrashRow({
             {entry.name}
           </span>
           <span className="text-muted-foreground block truncate text-2xs">
-            {KIND_LABEL[entry.kind]}
-            {/* What comes back WITH it, said before the click rather than
-                discovered after. Both are things the user cannot see from the
-                row's name and would be surprised by either way round. */}
-            {children > 0 && ` · ${children} ${children === 1 ? 'subtask' : 'subtasks'}`}
-            {members > 0 && ` · ${members} ${members === 1 ? 'item' : 'items'} refile`}
+            {/* The kind, then what comes back WITH it, said before the click
+                rather than discovered after (lib/organize-copy.ts, which the
+                iPhone's Trash words its rows with too). */}
+            {trashKindLine(entry.kind, children, members)}
             {' · '}
             <span className="font-num">{whenGone(entry.deletedAt)}</span>
           </span>
@@ -329,7 +323,7 @@ function TrashRow({
         // buttons reading "Restore Reading" — and a screen-reader user would be
         // choosing between them blind, on the one surface where picking the
         // wrong one cannot be taken back by looking.
-        aria-label={`Restore ${KIND_LABEL[entry.kind].toLowerCase()} ${entry.name}`}
+        aria-label={`Restore ${TRASH_KIND_LABELS[entry.kind].toLowerCase()} ${entry.name}`}
         className="border-border text-muted-foreground hover:text-foreground hover:bg-accent focus-visible:outline-ring flex h-[22px] shrink-0 items-center gap-1 rounded-[5px] border px-2 text-xs disabled:opacity-40 focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-solid"
       >
         <RotateCcw className="h-3 w-3" />
@@ -369,7 +363,7 @@ function TrashPreview({
   // Invariant from listDeleted: kind 'item' ⟺ entity is an Item. Widened here
   // rather than on TrashEntry so the bin stays a plain data bag.
   const item = entry.kind === 'item' ? (entry.entity as Item) : null;
-  const typeLabel = item ? getItemTypeConfig(itemTypeName(item)).label : KIND_LABEL[entry.kind];
+  const typeLabel = item ? getItemTypeConfig(itemTypeName(item)).label : TRASH_KIND_LABELS[entry.kind];
   const left = daysUntilPurge(entry.deletedAt);
 
   return (
@@ -492,53 +486,11 @@ function ItemFacts({ item, subtasks }: { item: Item; subtasks: Item[] }) {
   );
 }
 
-/** What restoring a trashed container reconnects — one honest sentence per kind. */
+/** What restoring a trashed container reconnects: one honest sentence per kind (lib/organize-copy.ts). */
 function ContainerFacts({ entry }: { entry: TrashEntry }) {
-  const members = entry.memberIds?.length ?? 0;
-  const sentence: Record<Exclude<TrashKind, 'item'>, string> = {
-    project:
-      members > 0
-        ? `Restoring brings the project back and re-files the ${members} ${members === 1 ? 'item' : 'items'} still pointing at it.`
-        : 'Restoring brings the project back. Nothing is filed under it right now.',
-    routine: 'Restoring brings the routine back, along with the items it grouped.',
-    season: 'Restoring brings the season back, along with the routines and items it held.',
-    goal: 'Restoring brings the goal back, along with its milestones, check-ins and members.',
-  };
   return (
     <p className="text-muted-foreground max-w-[52ch] text-sm">
-      {sentence[entry.kind as Exclude<TrashKind, 'item'>]}
+      {restoreSentence(entry.kind as Exclude<TrashKind, 'item'>, entry.memberIds?.length ?? 0)}
     </p>
   );
-}
-
-/**
- * How long ago, in the words a bin needs.
- *
- * Days rather than a date, because the only question a trash row has to answer
- * is "how much of my thirty days is left" — and "Aug 3" makes the reader do
- * that subtraction themselves. Rounded DOWN from the elapsed milliseconds, so
- * something deleted twenty-five hours ago reads "1d" rather than "2d" and the
- * count never runs ahead of the purge.
- */
-export function whenGone(deletedAt: string, now = Date.now()): string {
-  const elapsed = now - new Date(deletedAt).getTime();
-  if (!Number.isFinite(elapsed) || elapsed < 0) return 'just now';
-  const hours = Math.floor(elapsed / 3_600_000);
-  if (hours < 1) return 'just now';
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
-}
-
-/**
- * Days of the 30-day window still left, for the preview's "gone for good in Nd".
- *
- * Counts DOWN from `whenGone`'s elapsed days so the two never disagree: freshly
- * deleted reads the full window, and anything past the purge boundary clamps to
- * 0 rather than a negative. A malformed or future stamp reads as the full window
- * — the same benefit-of-the-doubt `whenGone`'s "just now" gives.
- */
-export function daysUntilPurge(deletedAt: string, now = Date.now()): number {
-  const elapsed = now - new Date(deletedAt).getTime();
-  if (!Number.isFinite(elapsed) || elapsed < 0) return TRASH_WINDOW_DAYS;
-  return Math.max(0, TRASH_WINDOW_DAYS - Math.floor(elapsed / 86_400_000));
 }

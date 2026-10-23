@@ -229,11 +229,11 @@ export const CONTAINER_KINDS: Record<ContainerKind, ContainerKindConfig> = {
    * failed-create toast all read them through `getContainerKindConfig`.
    *
    * IT IS NOT *ONLY* THESE FOUR, and pretending otherwise is how a rename ships
-   * half-done. About eight user-visible strings still spell the noun by hand,
+   * half-done. About seven user-visible strings still spell the noun by hand,
    * all of them pre-dating this record: `sections/labels.tsx` ("No projects
    * yet.", the back row, the identity row's label, the meta line),
-   * `sections/trash.tsx`'s KIND_LABEL, `bulk-add-dialog.tsx`'s placeholder and
-   * its "No project" option, and `day-list.tsx`'s own PROJECTS section heading —
+   * `bulk-add-dialog.tsx`'s placeholder and its "No project" option, and
+   * `day-list.tsx`'s own PROJECTS section heading —
    * which is a type-shaped section rather than this axis and may not want to
    * follow at all. Moving them here is cheap and was left out of 039 on purpose:
    * it is a copy refactor with no behaviour in it, and bundling it would have

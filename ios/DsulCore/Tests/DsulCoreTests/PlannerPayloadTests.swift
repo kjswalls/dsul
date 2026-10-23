@@ -64,6 +64,9 @@ private struct RawItems: Decodable, Sendable {
             "complete", "schedule", "skip", "move", "pause", "title", "notes", "delete", "addSubtask", "resetStreak",
             "priority", "timesPerDay", "reminder", "time", "repeat", "project", "collect", "snooze",
         ])
+        // The Trash's two routes (lib/app-containers.ts TRASH_WRITES, O14).
+        #expect(p.trashWrites == ["list", "restore"])
+        #expect(TrashRoutes.offered(p.trashWrites))
         // The route's test turns Streaks off, a value no default gives.
         #expect(p.settings.streaksEnabled == false)
         // ... and Habit reminders on, a value no default gives either (a
@@ -564,6 +567,26 @@ private struct RawItems: Decodable, Sendable {
         #expect(try writes(#""complete""#) == nil)
         // A bad element is skipped, as in every other list.
         #expect(try writes(#"["complete",7,"move"]"#) == ["complete", "move"])
+    }
+
+    /// O14's `trashWrites`: absent (a server older than the Trash routes) is
+    /// nil, which hides the Trash row; read as `writes` is.
+    @Test func theTrashWritesAreReadLeniently() throws {
+        func trashWrites(_ value: String?) throws -> [String]? {
+            let key = value.map { #","trashWrites":\#($0)"# } ?? ""
+            let json = """
+            {"v":1,"userId":"\(user)","fetchedAt":"x","settings":{}\(key),
+             "items":[],"projects":[],"routines":[],"seasons":[]}
+            """
+            return try decode(json).trashWrites
+        }
+        #expect(try trashWrites(nil) == nil)
+        #expect(try trashWrites(#"["list","restore"]"#) == ["list", "restore"])
+        #expect(try trashWrites("null") == nil)
+        #expect(try trashWrites(#""list""#) == nil)
+        #expect(try trashWrites("[]") == [])
+        #expect(try trashWrites(#"["list",7,"restore"]"#) == ["list", "restore"])
+        #expect(TrashRoutes.offered(try trashWrites(nil)) == false)
     }
 
     @Test func theItemTypesAreReadLeniently() throws {

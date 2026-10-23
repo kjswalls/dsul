@@ -129,6 +129,16 @@ describe('the iOS change filter', () => {
       'lib/active.ts',
       'lib/container-schedule.ts',
       'lib/app-api.ts',
+      // The summary cards, Paused and the Trash (O4, O5, O14).
+      'tests/fixtures/organize/organize.json',
+      'tests/fixtures/organize/paused.json',
+      'tests/fixtures/app/trash-response.json',
+      'lib/organize.ts',
+      'lib/paused-shelf.ts',
+      'lib/app-containers.ts',
+      'lib/app-http.ts',
+      'app/api/app/trash/route.ts',
+      'app/api/app/trash/restore/route.ts',
     ]) {
       expect(filter.test(p), p).toBe(true);
     }
@@ -141,6 +151,12 @@ describe('the iOS change filter', () => {
       'components/planner/organize/project-time-block.tsx',
       'components/planner/organize/sections/routines.tsx',
       'lib/organize-copy.test.ts',
+      'components/planner/organize/sections/paused.tsx',
+      'components/planner/organize/sections/trash.tsx',
+      'components/planner/organize/use-trashed-names.ts',
+      // The alternation is anchored: a longer name sharing a prefix is not a port.
+      'lib/organize-console.ts',
+      'lib/paused-shelf-extra.ts',
       'tests/fixtures/organize.json',
       'lib/category-icons.test.ts',
     ]) {

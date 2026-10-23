@@ -6,13 +6,21 @@ import { CategoryIcon } from '@/lib/category-icons';
 import { accentColorForName } from '@/lib/accent-colors';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useAwayStore } from '@/lib/away-store';
-import { formatShort, matching } from '@/lib/collections';
-import { suppressionLabel, suppressionReason } from '@/lib/active';
+import { matching } from '@/lib/collections';
 import { toDateStr } from '@/lib/recurrence';
 import { setGateOn } from '@/lib/gate-toggle';
 import { openStampedEdit } from '@/lib/ui-store';
-import { pausedEntryName, pausedNote, pausedShelf, type PausedEntry } from '@/lib/paused-shelf';
-import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
+import {
+  NOTHING_PAUSED,
+  PAUSED_WELCOME,
+  entryKindLine,
+  pausedDayLabel,
+  pausedEntryName,
+  pausedNote,
+  pausedShelf,
+  pausedStateLine,
+  type PausedEntry,
+} from '@/lib/paused-shelf';
 import type { Item } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 import { BackRow, DetailColumn, ListColumn, SectionWelcome, StatusStrip } from '../detail-parts';
@@ -133,13 +141,13 @@ export function PausedSection({
       >
         {shelf.count === 0 ? (
           <p className="text-muted-foreground px-[7px] pt-2 text-xs" data-testid="paused-empty">
-            Nothing is paused.
+            {NOTHING_PAUSED}
           </p>
         ) : (
           days.map((day) => (
             <div key={day.key || 'undated'} data-testid="paused-day" data-day={day.key}>
               <div className="flex h-[26px] items-end px-[7px] pb-1">
-                <Eyebrow>{day.until ? returnDayLabel(day.until, todayStr) : 'No date'}</Eyebrow>
+                <Eyebrow>{pausedDayLabel(day, todayStr)}</Eyebrow>
               </div>
               {day.entries.map((entry) => (
                 <PausedRow
@@ -169,36 +177,11 @@ export function PausedSection({
             disabled={disabled}
           />
         ) : (
-          <SectionWelcome section="paused">
-            Things you&apos;ve set aside. Nothing here is late: each one comes back on its own
-            day, or whenever you resume it.
-          </SectionWelcome>
+          <SectionWelcome section="paused">{PAUSED_WELCOME}</SectionWelcome>
         )}
       </DetailColumn>
     </>
   );
-}
-
-/** "Tomorrow", "Thu, Oct 30" — a return, said the way a calendar would. */
-function returnDayLabel(day: string, todayStr: string): string {
-  const [y, m, d] = day.split('-').map(Number);
-  const [ty, tm, td] = todayStr.split('-').map(Number);
-  const diff = Math.round((Date.UTC(y, m - 1, d) - Date.UTC(ty, tm - 1, td)) / 86_400_000);
-  if (diff === 1) return 'Tomorrow';
-  const weekday = new Date(Date.UTC(y, m - 1, d)).toLocaleDateString(undefined, {
-    weekday: 'short',
-    timeZone: 'UTC',
-  });
-  return `${weekday}, ${formatShort(day)}`;
-}
-
-/** "Habit", "Routine · 4 habits", "Season · 3 items". */
-function entryKindLine(entry: PausedEntry): string {
-  if (entry.kind === 'item') return getItemTypeConfig(itemTypeName(entry.item)).label;
-  const n = entry.items.length;
-  const allHabits = entry.items.every((i) => i.type === 'habit');
-  const noun = allHabits ? (n === 1 ? 'habit' : 'habits') : n === 1 ? 'item' : 'items';
-  return `${entry.kind === 'routine' ? 'Routine' : 'Season'} · ${n} ${noun}`;
 }
 
 /** An item's mark: the box its row wears on the grid, outlined and quiet. */
@@ -314,14 +297,11 @@ function PausedDetail({
   const seasons = usePlannerStore((s) => s.seasons);
   const name = pausedEntryName(entry);
 
-  // The state line in its long form: "Paused until Oct 30", "Hidden with your
-  // Morning routine until Nov 1". Asked of the row itself, so it can never
-  // disagree with what the grid would say.
-  const first = entry.kind === 'item' ? entry.item : entry.items[0];
-  const reason = first
-    ? suppressionReason(first, todayStr, { userTimezone: tz, routines, seasons })
-    : null;
-  const stateLine = reason ? suppressionLabel(reason, { long: true }) : 'Paused';
+  // The state line in its long form: "Paused until Oct 30.", "Hidden with your
+  // Morning routine until Nov 1." Asked of the row itself, so it can never
+  // disagree with what the grid would say (lib/paused-shelf.ts, which the
+  // iPhone's paused detail says too).
+  const stateLine = pausedStateLine(entry, todayStr, { userTimezone: tz, routines, seasons });
 
   const container =
     entry.kind === 'routine'
@@ -350,7 +330,6 @@ function PausedDetail({
       <div className="mt-4">
         <StatusStrip icon={<Moon className="h-3.5 w-3.5" />} testId="paused-detail-state">
           {stateLine}
-          {entry.until ? '.' : '. It stays set aside until you resume it.'}
         </StatusStrip>
       </div>
 

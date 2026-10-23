@@ -73,6 +73,15 @@ import Foundation
 ///   first write: once iOS has taken the time back with a write still out,
 ///   the next one asks again. A write still out when the time runs out fails
 ///   on resume and is handled as above.
+/// - **A restore from the Trash is not a queued write, but it moves the
+///   generation like one** (O14). It is sent at once, beside the queue, since
+///   nothing on the phone changes until it lands (the bin never enters the
+///   planner's state, the web's law). It bumps `writeGeneration` when it is
+///   sent and again when its answer arrives, so a fetch that started before
+///   the restore committed comes back raced and is made again, rather than
+///   applied without the restored row; and a restore that lands starts a
+///   fetch, which brings the row back. So does one whose answer may have been
+///   lost (`unavailable`), as a failed queued write's drain does.
 /// - **No polling and no realtime** (the web has neither): a fetch on sign-in,
 ///   on returning to the app at most once a minute, and on pull to refresh.
 @MainActor
@@ -282,8 +291,9 @@ final class PlannerSync {
     private let now: () -> Date
     private let backgroundTime: BackgroundTime
 
-    /// Bumped by every write queued: a fetch that sees it move knows a write
-    /// raced it. Also each write's sequence number.
+    /// Bumped by every write queued, and by a restore from the Trash when it
+    /// is sent and when it is answered: a fetch that sees it move knows a
+    /// write raced it. Also each queued write's sequence number.
     private(set) var writeGeneration = 0
     /// Writes queued or in flight.
     private(set) var pending = 0
@@ -623,6 +633,66 @@ final class PlannerSync {
         planner?.noteLoadFailure(text)
         if planner?.hasLoaded == true {
             planner?.show(text, isError: true)
+        }
+    }
+
+    // MARK: The Trash (O14)
+
+    /// How a restore from the Trash ended, in the words the page shows.
+    enum RestoreOutcome: Sendable, Equatable {
+        /// It is back, and a fetch is on its way to show it.
+        case restored
+        /// Answered 404: no longer in the bin (`OrganizeCopy.restoreGone`).
+        /// The page drops the row, since no retry can land.
+        case gone(String)
+        /// Refused, or not answered: the sentence to show
+        /// (`TrashRestoreRefusal.sentence`, or `OrganizeCopy.restoreFailed`).
+        case refused(String)
+        /// Signed out, cancelled, or the sync stopped: nothing to say.
+        case unsent
+    }
+
+    /// GET /api/app/trash, for the Trash page, which holds the rows itself:
+    /// they never reach the planner. Throws `signedOut` once the sync has
+    /// stopped.
+    func fetchTrash() async throws -> TrashList {
+        guard !stopped else { throw APIError.signedOut }
+        return try await api.fetchTrash()
+    }
+
+    /// POST /api/app/trash/restore for `row`. The generation moves when it is
+    /// sent and again when its answer arrives, so a fetch out across either
+    /// comes back raced and is made again (`fetchOnce`); one that lands
+    /// starts a fetch. A refusal is said in the route's own terms: a
+    /// `name_taken` names the live project, a `parent_gone` points at the
+    /// parent, a 404 is `gone` (no longer in the bin), and anything else, an
+    /// error or no answer at all, is `restoreFailed`.
+    func restoreFromTrash(_ row: TrashRow) async -> RestoreOutcome {
+        guard !stopped else { return .unsent }
+        writeGeneration += 1
+        let answer: TrashRestoreResult
+        do {
+            answer = try await api.restoreFromTrash(TrashRestoreBody(row))
+        } catch {
+            // The server may have taken it before the answer was lost.
+            writeGeneration += 1
+            if stopped || error is CancellationError || (error as? APIError) == .signedOut { return .unsent }
+            // Only `unavailable` can be a lost answer (offline mid-request, or
+            // a 502 to 504 after the route ran), so only it asks the server
+            // what it holds, as a failed queued write does. If that fetch
+            // fails too, its own banner replaces this one.
+            if (error as? APIError) == .unavailable { startFetch() }
+            return .refused(OrganizeCopy.restoreFailed)
+        }
+        writeGeneration += 1
+        guard !stopped else { return .unsent }
+        switch answer {
+        case .restored:
+            startFetch()
+            return .restored
+        case .refused(let refusal):
+            let sentence = refusal.sentence(rowName: row.name)
+            return refusal.isGone ? .gone(sentence) : .refused(sentence)
         }
     }
 
