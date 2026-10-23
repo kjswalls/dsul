@@ -142,7 +142,9 @@ export function wantsDoStuffRow(rows: readonly RowItem[]): boolean {
 export function DoStuffKey({ touch, place = 'header' }: { touch?: boolean; place?: 'header' | 'dock' }) {
   const on = useDoStuffStore((s) => s.on);
   const work = useAiWork();
-  const ready = on ? 0 : work.ready;
+  // What is ready to look at, the questions left out: they are counted where
+  // they are answered, in the dock (components/notices/ai-work-notice.tsx).
+  const ready = on ? 0 : Math.max(0, work.ready - work.questions);
   const keys = useShortcutKeys('do_stuff');
   const isMac = useMemo(() => isApplePlatform(), []);
   const chord = chordLabel(keys, isMac);
@@ -173,7 +175,12 @@ export function DoStuffKey({ touch, place = 'header' }: { touch?: boolean; place
       ) : (
         <Zap aria-hidden data-do-key-bolt="" className="size-3.5 shrink-0" />
       )}
-      <span data-do-key-word="">do stuff</span>
+      {/* While something is ready the word carries the dock's old ready line's
+          slow sheen (Kirby, 2026-10-23: the line repeated the count, so the
+          key is the one place that says it). */}
+      <span data-do-key-word="" data-ai-sheen-slow={ready > 0 ? '' : undefined}>
+        do stuff
+      </span>
       {ready > 0 && (
         <AiChip aria-hidden data-do-key-ready="" style={{ height: 18, paddingInline: 7 }}>
           {ready} ready
@@ -1289,9 +1296,11 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
 
   // L1: the lane being walked is open, every other folds to a peek until it
   // is asked for. Unfolded lanes stay open for the run (memory only, like the
-  // mode). With nothing left to walk, do it now stays the open one.
+  // mode). With nothing left to walk, do it now stays the open one. Ready
+  // starts open too (Kirby, 2026-10-23): what the AI got ready is what the
+  // key and Look start the mode to see, so it is not behind a peek.
   const walking: Lane = next && plan.laneById.get(next.item.id) === 'today' ? 'today' : 'now';
-  const [unfolded, setUnfolded] = useState<ReadonlySet<Lane>>(() => new Set());
+  const [unfolded, setUnfolded] = useState<ReadonlySet<Lane>>(() => new Set<Lane>(['done']));
   const setFold = (lane: Lane, open: boolean) =>
     setUnfolded((prev) => {
       const nextSet = new Set(prev);

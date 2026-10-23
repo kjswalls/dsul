@@ -602,6 +602,11 @@ this gap?". Four pieces were proposed; the first is built.
 
 ## Quieter AI badges (Kirby's picks, 2026-10-22)
 
+> **2026-10-23 (Kirby):** the dock line repeated the key's count. The key now carries it:
+> "N ready" without the questions, and the line's slow sheen on its word. The dock line
+> keeps only the questions to answer (the AI context thread's quick round), and the ready
+> lane opens with the mode instead of folding to a peek.
+
 Seen in the app, a word chip on every row the AI had touched was a lot for the
 sidebar. Round 3 of the badges (claude.ai/artifact/1fxYEr6d1cNrcnPRHnDAb2)
 offered five quieter readies; Kirby picked **D, one line in the dock**, with
