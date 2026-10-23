@@ -73,10 +73,13 @@ export function useSeasonSuppression(scopeOverride?: 'day' | 'week') {
  * top of the Schedule and List day views at once; Kirby asked for one place,
  * quiet until opened (2026-10-17).
  *
- * The PERMANENT half of the same fact — "Summer is off", true on every date —
- * is not here either. Turning a scope back on lives on the group-header switch
- * (components/primitives/gate-switch.tsx) and the Display menu's "Paused
- * scopes" list (components/primitives/display-menu.tsx).
+ * The words lead with the cause and end on the consequence: "Devlog is off,
+ * so 5 items are hidden". They used to say the items were "away with" the
+ * season, which read as a trip and named the effect before anyone knew why
+ * (Kirby, 2026-10-23).
+ *
+ * Turning a scope back on lives on the group-header switch
+ * (components/primitives/gate-switch.tsx) and in Organize's Paused section.
  */
 export function SeasonNotice({
   className,
@@ -114,16 +117,16 @@ export function SeasonNotice({
       data-date={dateStr}
       data-hidden-count={hidden}
       className={cn(
-        'text-muted-foreground hover:text-foreground flex items-center gap-1.5 text-xs transition-colors',
+        'text-muted-foreground hover:text-foreground flex items-start gap-1.5 text-xs transition-colors',
         className
       )}
     >
-      <Moon className="h-3 w-3 shrink-0" aria-hidden />
-      {/* min-w-0 as well as truncate: a flex child's automatic minimum size is
-          its content, so without it the span refuses to shrink and the ellipsis
-          never gets a chance to appear. */}
-      <span className="min-w-0 truncate">
-        {hidden} {hidden === 1 ? 'item is' : 'items are'} away with {names}
+      <Moon className="mt-px h-3 w-3 shrink-0" aria-hidden />
+      {/* Wraps rather than truncating, like the Back today line beside it: the
+          names are the message, and the popover has the height. */}
+      <span className="min-w-0">
+        {names} {off.length === 1 ? 'is' : 'are'} off, so {hidden}{' '}
+        {hidden === 1 ? 'item is' : 'items are'} hidden
       </span>
     </button>
   );

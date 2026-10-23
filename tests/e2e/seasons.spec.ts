@@ -163,9 +163,10 @@ test.describe('seasons', () => {
       await reloadApp(page);
       await expect(itemCardIn(timeline(page), habitId)).toHaveCount(0);
 
-      // …and it is reachable: the braindump's moon opens Organize's Paused
-      // section, where the season that hid it is one row carrying it.
-      await page.getByTestId('braindump-paused').click();
+      // …and it is reachable: Organize's Paused section, where the season that
+      // hid it is one row carrying it.
+      await page.getByRole('button', { name: 'Organize projects & groups' }).click();
+      await page.locator('[data-testid="console-rail-row"][data-section="paused"]').click();
       const seasonRow = page
         .locator('[data-testid="paused-row"][data-paused-kind="season"]')
         .filter({ hasText: summer });

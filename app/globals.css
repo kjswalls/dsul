@@ -2771,16 +2771,17 @@ body {
      [data-ai-relay]   the account's working mark, never a row's: the relay
                        field in one row, six tiles a glowing wave walks
                        across, on the do stuff key and the dock's AI line.
-     [data-ai-chip]    a few words on the aurora fill, still, for Do stuff's
-                       lanes and the key's count.
+     [data-ai-chip]    a few words in aurora ink, still, for Do stuff's
+                       lanes and the key's count (a fill until 2026-10-23).
                        ='question' is the warm one, honey into coral.
-     [data-ai-sheen-slow]  the dock's ready line: the same sheen, crossing
-                       once every eight seconds and resting between.
+     [data-ai-sheen-slow]  the do stuff key's word while something is ready:
+                       the same sheen, crossing once every eight seconds
+                       and resting between.
 
    The lime. A tile is the raw accent at every frame: the wave scales it
    (never an opacity) and its glow is a halo AROUND it, so the mark itself
-   never dims. The chip's fill is a tint, like every other lime wash; its
-   words are the foreground.
+   never dims. The chip's words are inks in light and the lights in dark,
+   at full strength.
 
    Off under reduced motion (the OS or the app's switch): the tiles rest a
    little smaller than the crest with no glow, and the title is plain ink
@@ -2880,9 +2881,10 @@ body {
   }
 }
 
-/* The dock's ready line (components/notices/ai-work-notice.tsx): the title's
-   sheen, slowed to one pass and a long rest, so a line that stays up all day
-   catches the eye now and then instead of shimmering at you the whole time. */
+/* The do stuff key's word while something is ready (components/sidebar/do-stuff.tsx
+   DoStuffKey; until 2026-10-23 the dock's ready line): the title's sheen,
+   slowed to one pass and a long rest, so a key that stays lit all day catches
+   the eye now and then instead of shimmering at you the whole time. */
 [data-ai-sheen-slow] {
   --ai-sheen-a: var(--success-text);
   --ai-sheen-b: color-mix(in oklch, oklch(0.64 0.1 195), var(--foreground) 14%);
@@ -2931,36 +2933,47 @@ body {
   background: linear-gradient(135deg, var(--honey-solid), var(--coral-solid));
 }
 
+/* The ready words: aurora TEXT, no fill (Kirby, 2026-10-23: the filled chip
+   was one more box on a row). Still, never animated: the sheen means "working",
+   and these mean "ready". The ground is clipped to the glyphs, so its stops are
+   inks in light (the raw lime does not read on paper) and the lights in dark,
+   the title sheen's own pair. The box keeps a chip's height and padding so a
+   button's hover ring and focus outline have somewhere to sit; the ring is an
+   OUTER shadow, because an inset one would paint over the clipped ground and
+   tint the words. */
 [data-ai-chip] {
-  --ai-chip-a: color-mix(in oklab, var(--lime-tint), var(--ask-icon-accent) 22%);
-  --ai-chip-b: color-mix(in oklab, var(--surface-2), var(--ask-icon-pair) 20%);
+  --ai-chip-a: var(--success-text);
+  --ai-chip-b: color-mix(in oklch, oklch(0.64 0.1 195), var(--foreground) 14%);
   display: inline-flex;
   flex-shrink: 0;
   align-items: center;
   height: 20px;
-  padding-inline: 8px;
+  padding-inline: 6px;
   border-radius: 999px;
-  color: var(--foreground);
-  font-size: 10.5px;
-  font-weight: 500;
+  font-size: 11.5px;
+  font-weight: 600;
   white-space: nowrap;
-  background: linear-gradient(90deg, var(--ai-chip-a), var(--ai-chip-b));
+  background-image: linear-gradient(90deg, var(--ai-chip-a), var(--ai-chip-b));
+  background-origin: content-box;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 .dark [data-ai-chip] {
-  --ai-chip-a: color-mix(in oklab, var(--surface-2), var(--ask-icon-accent) 24%);
-  --ai-chip-b: color-mix(in oklab, var(--surface-2), var(--ask-icon-pair) 24%);
+  --ai-chip-a: var(--lime-solid);
+  --ai-chip-b: oklch(0.84 0.12 190);
 }
 [data-ai-chip='question'] {
-  --ai-chip-a: var(--honey-tint);
-  --ai-chip-b: var(--coral-tint);
+  --ai-chip-a: var(--honey-ink);
+  --ai-chip-b: var(--coral-ink);
 }
 .dark [data-ai-chip='question'] {
-  --ai-chip-a: color-mix(in oklab, var(--surface-2), var(--honey-solid) 20%);
-  --ai-chip-b: color-mix(in oklab, var(--surface-2), var(--coral-solid) 20%);
+  --ai-chip-a: var(--honey-solid);
+  --ai-chip-b: var(--coral-solid);
 }
 button[data-ai-chip]:hover,
 button[data-ai-chip][aria-expanded='true'] {
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 22%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 18%, transparent);
 }
 button[data-ai-chip]:focus-visible {
   outline: 2px solid var(--ring);
@@ -2991,7 +3004,8 @@ button[data-ai-chip]:focus-visible {
 }
 @media (forced-colors: active) {
   [data-row-title='open']:has(~ [data-ai-working]),
-  [data-ai-sheen-slow] {
+  [data-ai-sheen-slow],
+  [data-ai-chip] {
     background: none;
     -webkit-text-fill-color: CanvasText;
   }

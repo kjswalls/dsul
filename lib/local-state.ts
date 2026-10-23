@@ -6,6 +6,7 @@ import { clearKeptQuestionState } from './ask-pending';
 import { useCommandUsageStore } from './command-usage-store';
 import { clearChatState } from './conversations-store';
 import { useEODStore } from './eod-store';
+import { clearItemNotesState } from './item-notes-store';
 import { useKeyboardShortcutsStore } from './keyboard-shortcuts-store';
 import { useMorningStore } from './morning-store';
 import { clearPlannerSnapshot } from './planner-snapshot';
@@ -294,7 +295,9 @@ export const PERSISTED_USER_STORES: readonly PersistedUserStore[] = [
  * (lib/ask-pending.ts): sessionStorage, and the memory mirror a reader may have
  * filled before this ran. This browser's OpenClaw chat pairing
  * (lib/openclaw-browser/device-store.ts) is IndexedDB too, and a credential for
- * the person's own agent, so it goes with the rest.
+ * the person's own agent, so it goes with the rest. Notes on an item's
+ * timeline (lib/item-notes-store.ts) are a memory-only cache of the account's
+ * own writing; their clear also bumps an epoch that drops a read in flight.
  */
 const RAW_CLEARERS: readonly (() => void)[] = [
   clearChatState,
@@ -304,6 +307,7 @@ const RAW_CLEARERS: readonly (() => void)[] = [
   clearUserThemeCache,
   forgetUserThemePicks,
   clearBrowserPairings,
+  clearItemNotesState,
 ];
 
 /** The account whose local state is on disk right now, or null for none. */

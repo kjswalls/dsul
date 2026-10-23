@@ -255,7 +255,9 @@ function DeskItem({ item }: { item: Item }) {
       {/* Talk it through: the item's own conversation, with whoever answers
           (the person's model, or OpenClaw), and the agent's side when the
           item is handed off. Nothing at all when nobody can answer. */}
-      <ItemConversation item={item} mode="inline" className="pt-2" />
+      {/* Ask only: Jot above already writes a note (the description), so no
+          Ask / Note switch here, or the desk would have two "note" boxes. */}
+      <ItemConversation item={item} mode="inline" className="pt-2" noteSwitch={false} />
       {/* The bar (the room's round two): done, skip and today wait at the
           foot of the room, with what comes up next, so the top of it is the
           item and nothing else. Sticky, so a long conversation never pushes

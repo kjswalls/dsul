@@ -31,7 +31,6 @@ import {
 import {
   capNow,
   energyOrder,
-  type Energy,
   dayLabel,
   LANES,
   laneDef,
@@ -143,7 +142,9 @@ export function wantsDoStuffRow(rows: readonly RowItem[]): boolean {
 export function DoStuffKey({ touch, place = 'header' }: { touch?: boolean; place?: 'header' | 'dock' }) {
   const on = useDoStuffStore((s) => s.on);
   const work = useAiWork();
-  const ready = on ? 0 : work.ready;
+  // What is ready to look at, the questions left out: they are counted where
+  // they are answered, in the dock (components/notices/ai-work-notice.tsx).
+  const ready = on ? 0 : Math.max(0, work.ready - work.questions);
   const keys = useShortcutKeys('do_stuff');
   const isMac = useMemo(() => isApplePlatform(), []);
   const chord = chordLabel(keys, isMac);
@@ -174,7 +175,12 @@ export function DoStuffKey({ touch, place = 'header' }: { touch?: boolean; place
       ) : (
         <Zap aria-hidden data-do-key-bolt="" className="size-3.5 shrink-0" />
       )}
-      <span data-do-key-word="">do stuff</span>
+      {/* While something is ready the word carries the dock's old ready line's
+          slow sheen (Kirby, 2026-10-23: the line repeated the count, so the
+          key is the one place that says it). */}
+      <span data-do-key-word="" data-ai-sheen-slow={ready > 0 ? '' : undefined}>
+        do stuff
+      </span>
       {ready > 0 && (
         <AiChip aria-hidden data-do-key-ready="" style={{ height: 18, paddingInline: 7 }}>
           {ready} ready
@@ -353,46 +359,6 @@ function usePlan(dumpRows: readonly RowItem[]): Plan {
       prepCandidates,
     };
   }, [dumpRows, tasks, moved, canDelegate, targets, handTo, items, tz, routines, seasons, away, todayStr, stored, doneIds, energy]);
-}
-
-/**
- * "energy?" low · okay · high, above the lanes as a run starts. Optional: the
- * walk goes as the rules lay it out until it is answered, and once it is, the
- * row is one quiet word that asks again on a click.
- */
-const ENERGIES: readonly Energy[] = ['low', 'okay', 'high'];
-
-function EnergyAsk() {
-  const energy = useDoStuffStore((s) => s.energy);
-  const setEnergy = useDoStuffStore((s) => s.setEnergy);
-  if (energy) {
-    return (
-      <button
-        type="button"
-        onClick={() => setEnergy(null)}
-        data-testid="do-stuff-energy"
-        className="self-start rounded-[6px] px-2 pb-1 text-xs text-muted-foreground hover:text-foreground"
-      >
-        {energy} energy
-      </button>
-    );
-  }
-  return (
-    <div className="flex items-center gap-1 px-2 pb-1 text-xs text-muted-foreground" data-testid="do-stuff-energy-ask">
-      <span className="pr-1">energy?</span>
-      {ENERGIES.map((e) => (
-        <button
-          key={e}
-          type="button"
-          onClick={() => setEnergy(e)}
-          data-testid={`do-stuff-energy-${e}`}
-          className="h-6 rounded-[6px] px-2 font-medium text-foreground hover:bg-accent"
-        >
-          {e}
-        </button>
-      ))}
-    </div>
-  );
 }
 
 /* ── the strip while doing stuff ──────────────────────────────────────── */
@@ -636,10 +602,12 @@ function HandToPicker({ target, targets }: { target: AgentAssignee; targets: rea
 /* ── the lane chip ────────────────────────────────────────────────────── */
 
 /**
- * The row's lane, as a quiet chip in its trailing slot: out of the layout at
- * rest, so it costs the title nothing, and shown on hover or focus (always on
- * a touch screen, which has no hover). Opens the lanes this row may take, each
- * with its number key.
+ * The row's lane, as a quiet chip in its trailing slot, shown on hover or
+ * focus (always on a touch screen, which has no hover). It keeps its width at
+ * rest, invisible, like the braindump's own hover controls beside it: a chip
+ * that joined the layout on hover pushed the ready words and the controls
+ * left under the pointer (Kirby, 2026-10-23). Opens the lanes this row may
+ * take, each with its number key.
  */
 function LaneChip({ id, lane, facts }: { id: string; lane: Lane; facts: LaneFacts }) {
   const move = useDoStuffStore.getState().move;
@@ -652,7 +620,7 @@ function LaneChip({ id, lane, facts }: { id: string; lane: Lane; facts: LaneFact
           data-testid="do-stuff-lane-chip"
           data-lane={lane}
           onKeyDown={(e) => e.stopPropagation()}
-          className="-my-1.5 hidden h-[22px] shrink-0 items-center gap-1 rounded-full border border-border px-2 text-[11.5px] whitespace-nowrap text-muted-foreground group-hover:flex group-has-[:focus-visible]:flex hover:text-foreground data-[state=open]:flex [@media(hover:none)]:flex"
+          className="-my-1.5 flex h-[22px] shrink-0 items-center gap-1 rounded-full border border-border px-2 text-[11.5px] whitespace-nowrap text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-has-[:focus-visible]:opacity-100 hover:text-foreground data-[state=open]:opacity-100 [@media(hover:none)]:opacity-100"
         >
           {laneDef(lane).label}
           <ChevronDown aria-hidden className="size-3" />
@@ -1083,7 +1051,7 @@ function useReflow(listRef: React.RefObject<HTMLDivElement | null>, order: strin
   });
 }
 
-/** The column's widen to half the window (braindump-pane.tsx, duration-300). */
+/** The column's widen to two fifths of the window (braindump-pane.tsx, duration-300). */
 const WIDEN_MS = 300;
 const GLIDE_MS = 420;
 const LANE_STAGGER_MS = 40;
@@ -1328,9 +1296,11 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
 
   // L1: the lane being walked is open, every other folds to a peek until it
   // is asked for. Unfolded lanes stay open for the run (memory only, like the
-  // mode). With nothing left to walk, do it now stays the open one.
+  // mode). With nothing left to walk, do it now stays the open one. Ready
+  // starts open too (Kirby, 2026-10-23): what the AI got ready is what the
+  // key and Look start the mode to see, so it is not behind a peek.
   const walking: Lane = next && plan.laneById.get(next.item.id) === 'today' ? 'today' : 'now';
-  const [unfolded, setUnfolded] = useState<ReadonlySet<Lane>>(() => new Set());
+  const [unfolded, setUnfolded] = useState<ReadonlySet<Lane>>(() => new Set<Lane>(['done']));
   const setFold = (lane: Lane, open: boolean) =>
     setUnfolded((prev) => {
       const nextSet = new Set(prev);
@@ -1351,7 +1321,9 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
             .join(' · ')}
         </p>
       )}
-      <EnergyAsk />
+      {/* No energy ask (Kirby, 2026-10-23: one more step before you can do
+          anything). The store and energyOrder stay, so a better place for it
+          is a render away; with energy unset the walk is the rules' own. */}
       {prepError && (
         <p className="px-2 pb-1 text-xs text-muted-foreground" data-testid="prep-pack-error">
           {prepError}

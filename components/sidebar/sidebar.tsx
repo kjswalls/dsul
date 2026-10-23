@@ -77,7 +77,7 @@ const railReserve = () => useRailStore.getState().reservePx;
 /** What the column renders at right now: the stored width, yielded beside a docked rail. */
 const renderedNow = () => {
   const px = renderedSidebarWidth(useSidebarStore.getState().leftSidebarWidth, window.innerWidth, railReserve());
-  // Doing stuff, the column opens to about half the window (doStuffSidebarWidth);
+  // Doing stuff, the column opens to two fifths of the window (doStuffSidebarWidth);
   // at the Desk it is the user's width again, so the room has its room.
   const { on, desk } = useDoStuffStore.getState();
   return on ? doStuffSidebarWidth(px, window.innerWidth, railReserve(), desk) : px;

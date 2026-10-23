@@ -23,6 +23,7 @@ import {
   backLabel,
   bindingKey,
   clearRailFocusRecord,
+  noteDraftKey,
   noteRailEntry,
   railMode,
   railModeNow,
@@ -206,6 +207,33 @@ describe('composer drafts', () => {
 
   it('a draft and the conversation it becomes share one key', () => {
     expect(bindingKey({ kind: 'draft', id: 'x' })).toBe(bindingKey({ kind: 'conversation', id: 'x' }));
+  });
+});
+
+describe('box modes and the note draft', () => {
+  it('setBoxMode writes note and deletes the key for ask', () => {
+    const key = bindingKey({ kind: 'item', itemId: 'i1' });
+    rail().setBoxMode(key, 'note');
+    expect(rail().boxModes).toEqual({ [key]: 'note' });
+    rail().setBoxMode(key, 'ask');
+    expect(rail().boxModes).toEqual({});
+  });
+
+  it('keeps an item’s note draft under its own key, never its Ask key', () => {
+    const askKey = bindingKey({ kind: 'item', itemId: 'i1' });
+    expect(noteDraftKey('i1')).not.toBe(askKey);
+    rail().setDraft(noteDraftKey('i1'), 'a note');
+    rail().setDraft(askKey, 'a question');
+    expect(rail().drafts[noteDraftKey('i1')]).toBe('a note');
+    expect(rail().drafts[askKey]).toBe('a question');
+  });
+
+  it('reset() clears box modes and note drafts', () => {
+    rail().setBoxMode(bindingKey({ kind: 'item', itemId: 'i1' }), 'note');
+    rail().setDraft(noteDraftKey('i1'), 'a note');
+    rail().reset();
+    expect(rail().boxModes).toEqual({});
+    expect(rail().drafts).toEqual({});
   });
 });
 

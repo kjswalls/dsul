@@ -1304,10 +1304,13 @@ Decision 10 still holds: every paused item has a browsable home. What changed is
   its members in the detail pane. Grouping by cause (the drawer's headings) left a
   routine as one row per member and hid every date in a heading. One derivation,
   `lib/paused-shelf.ts`, feeds the section and the count.
-- **The braindump keeps a moon** in its header with the count, shown only while
-  something is paused, opening the section. No line at the sidebar's foot (Kirby). A
-  habit dragged onto the sidebar, which pauses it, lights the moon and counts it in;
-  there is no landing row for it any more.
+- **The count rides Organize's rail**, as a quiet second line under Paused ("5 · Gym
+  back Fri"). It first shipped as a moon in the braindump header; Kirby took that out
+  the same day, since its pill padding never matched the icons beside it and a key that
+  only opens Organize belongs in Organize. The moon is now drawn ONLY mid-drag: a habit
+  dragged onto the sidebar, which pauses it, lights it and counts it in, and there is no
+  landing row for it. With Organize off, the braindump's folder button stays live while
+  anything is paused and opens straight onto Paused, its only door.
 - **The Display menu's "Paused scopes" list is gone.** It was this list's containers a
   second time. A switched-off container that hides nothing (an empty routine, a season
   past its dates) is no longer listed anywhere but its own Organize section, which is

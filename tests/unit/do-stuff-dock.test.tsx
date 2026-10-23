@@ -62,7 +62,7 @@ vi.mock('@/lib/supabase', () => ({ createClient: vi.fn(() => ({})) }));
 
 import { Braindump } from '@/components/sidebar/braindump';
 import { DoStuffDockKeys } from '@/components/sidebar/do-stuff-dock';
-import { doStuffSidebarWidth, SIDEBAR_MIN_CANVAS } from '@/lib/sidebar-store';
+import { DO_STUFF_SPLIT_MAX_PX, doStuffSidebarWidth, SIDEBAR_MIN_CANVAS } from '@/lib/sidebar-store';
 import { useUIStore } from '@/lib/ui-store';
 import { finishRun } from '@/lib/do-stuff';
 import { usePlannerStore } from '@/lib/planner-store';
@@ -232,14 +232,15 @@ describe('do stuff in the dock', () => {
 });
 
 describe('the column while doing stuff', () => {
-  it('opens to half of what the rail leaves', () => {
-    expect(doStuffSidebarWidth(320, 1600)).toBe(800);
-    expect(doStuffSidebarWidth(320, 1600, 400)).toBe(600);
+  it('opens to two fifths of what the rail leaves, up to its cap', () => {
+    expect(doStuffSidebarWidth(320, 1600)).toBe(640);
+    expect(doStuffSidebarWidth(320, 1600, 400)).toBe(480);
+    expect(doStuffSidebarWidth(320, 2560)).toBe(DO_STUFF_SPLIT_MAX_PX);
   });
 
   it('never narrows a column already wider, nor takes the canvas below its floor', () => {
     expect(doStuffSidebarWidth(900, 1600)).toBe(900);
-    expect(doStuffSidebarWidth(320, 1200, 300)).toBe(1200 - 300 - SIDEBAR_MIN_CANVAS);
+    expect(doStuffSidebarWidth(200, 1180, 400)).toBe(1180 - 400 - SIDEBAR_MIN_CANVAS);
   });
 
   it('stays as it is below the docking width', () => {
@@ -249,6 +250,6 @@ describe('the column while doing stuff', () => {
   it('is the user\'s own width again at the desk, so the room has its room', () => {
     expect(doStuffSidebarWidth(320, 1600, 0, true)).toBe(320);
     expect(doStuffSidebarWidth(320, 1280, 300, true)).toBe(320);
-    expect(doStuffSidebarWidth(320, 1280, 300, false)).toBe(1280 - 300 - SIDEBAR_MIN_CANVAS);
+    expect(doStuffSidebarWidth(320, 1280, 300, false)).toBe(392);
   });
 });

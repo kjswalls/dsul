@@ -177,7 +177,8 @@ Mocks: https://claude.ai/artifact/U4NbXhEeMHroAZd6KvMLYS (v5). Built in four PRs
    nothing would move. The column opens, then the rows glide into their lanes together, then
    the lane labels rise into the gaps and their rules draw (`useSort`: sort, then label, Kirby's
    pick 2026-10-14 over the first ripple, whose labels landed before the rows moved). The column opens to
-   half the window (`doStuffSidebarWidth`, ≥1180px, never narrower, never below the canvas
+   two fifths of the window, at most 640px (`doStuffSidebarWidth`, ≥1180px; half until
+   2026-10-23, never narrower, never below the canvas
    floor, never written back). No "doing stuff" strip while docked.
 2. Ask reads "ask stuff", its light and mark violet into sky.
 3. Seven lanes: ready / do it now ("yes u can", max 3) / today / another day / do it for me /
@@ -548,6 +549,10 @@ that order.
 
 ### The energy-aware walk (PR 5)
 
+> **Skipped for now (Kirby, 2026-10-23):** the ask was one more step before you could do
+> anything, so `EnergyAsk` is gone. `energy` in the store and `energyOrder` stay; with energy
+> unset the walk is the rules' own. Bring it back only somewhere that costs no step.
+
 - **"energy? low · okay · high"** sits above the lanes as a run starts
   (`EnergyAsk`). It is optional: until it is answered the walk goes exactly as
   the rules lay it out. Once answered it is one quiet word ("high energy") that
@@ -606,6 +611,11 @@ this gap?". Four pieces were proposed; the first is built.
   runs") was proposed and is not built.
 
 ## Quieter AI badges (Kirby's picks, 2026-10-22)
+
+> **2026-10-23 (Kirby):** the dock line repeated the key's count. The key now carries it:
+> "N ready" without the questions, and the line's slow sheen on its word. The dock line
+> keeps only the questions to answer (the AI context thread's quick round), and the ready
+> lane opens with the mode instead of folding to a peek.
 
 Seen in the app, a word chip on every row the AI had touched was a lot for the
 sidebar. Round 3 of the badges (claude.ai/artifact/1fxYEr6d1cNrcnPRHnDAb2)

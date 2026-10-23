@@ -20,7 +20,7 @@ const ARRIVING_SHOWN = 2;
  * (components/shell/desktop-shell.tsx has the rule). The plan publishes what
  * it shows (components/sidebar/do-stuff.tsx); nothing at rest.
  *
- * The row beside the date is narrow while the sidebar is at half the window,
+ * The row beside the date is narrow while the sidebar is at two fifths of the window,
  * so the card measures the room it was given (a container) and sheds in
  * order: the arriving chips, then "first steps", then the "up next" label. The
  * title keeps a few letters in every case. A container has no width of its
