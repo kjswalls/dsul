@@ -602,6 +602,12 @@ this gap?". Four pieces were proposed; the first is built.
 
 ## Quieter AI badges (Kirby's picks, 2026-10-22)
 
+> **Lanes, 2026-10-23 (Kirby):** "ready" said how far along a row was while the other lanes say
+> when it gets done, so it is no longer a lane. A prepped row keeps its aurora words wherever it
+> is, leads its lane (`packsFirst`), and the rules send it to do it now (past three it spills to
+> today). The lanes are now do it now · do it for me · today · another day · later · whatever,
+> keys 1 to 6.
+
 > **2026-10-23 (Kirby):** the dock line repeated the key's count. The key now carries it:
 > "N ready" without the questions, and the line's slow sheen on its word. The dock line
 > keeps only the questions to answer (the AI context thread's quick round), and the ready

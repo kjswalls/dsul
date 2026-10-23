@@ -10,6 +10,7 @@ import {
   nextNow,
   placeOnDays,
   ruleLane,
+  packsFirst,
   stepLane,
   type LaneFacts,
 } from '@/lib/do-stuff-plan';
@@ -26,25 +27,18 @@ const held: LaneFacts = { ...task, handedOff: true };
 const habit: LaneFacts = { plannable: false, canHandOff: false, handedOff: false };
 
 describe('the lanes', () => {
-  it('keep their keys 1 to 7 in the order they draw, in Kirby\'s words', () => {
+  it('keep their keys 1 to 6 in the order they draw, in Kirby\'s words, do it for me second', () => {
     expect(LANES.map((l) => [l.key, l.digit, l.label])).toEqual([
-      ['done', '1', 'ready'],
-      ['now', '2', 'do it now'],
+      ['now', '1', 'do it now'],
+      ['handoff', '2', 'do it for me'],
       ['today', '3', 'today'],
       ['calendar', '4', 'another day'],
-      ['handoff', '5', 'do it for me'],
-      ['leave', '6', 'later'],
-      ['archive', '7', 'whatever'],
+      ['leave', '5', 'later'],
+      ['archive', '6', 'whatever'],
     ]);
     expect(laneDef('now').note).toBe('yes u can');
     expect(laneForDigit('4')).toBe('calendar');
-    expect(laneForDigit('8')).toBeUndefined();
-  });
-
-  it('offer "done for you" only to what the AI got ready', () => {
-    for (const f of [task, agentOn, held, habit]) expect(laneOffered('done', f)).toBe(false);
-    expect(laneOffered('done', { ...task, hasPack: true })).toBe(true);
-    expect(laneOffered('done', { ...held, hasPack: true })).toBe(false);
+    expect(laneForDigit('7')).toBeUndefined();
   });
 
   it('offer "handed off" only to what the agent can take or already holds', () => {
@@ -71,8 +65,9 @@ describe('the rule', () => {
     expect(ruleLane({ title: 'figure out the budget' }, task)).toBe('leave');
   });
 
-  it('puts what the AI got ready in "done for you", whatever its size', () => {
-    expect(ruleLane({ title: 'pick up stamps' }, { ...task, hasPack: true })).toBe('done');
+  it('puts what the AI got ready in do it now, whatever its size: ready is a mark, not a lane', () => {
+    expect(ruleLane({ title: 'pick up stamps' }, { ...task, hasPack: true })).toBe('now');
+    expect(ruleLane({ title: 'plan the trip' }, { ...task, hasPack: true, onToday: true })).toBe('now');
     expect(ruleLane({ title: 'pick up stamps' }, { ...held, hasPack: true })).toBe('handoff');
   });
 
@@ -93,9 +88,10 @@ describe('the swipe', () => {
   it('steps to the next offered lane, skipping what is not', () => {
     expect(stepLane('now', 1, task)).toBe('today');
     expect(stepLane('calendar', 1, task)).toBe('leave');
-    expect(stepLane('calendar', 1, agentOn)).toBe('handoff');
+    expect(stepLane('today', -1, agentOn)).toBe('handoff');
+    expect(stepLane('today', -1, task)).toBe('now');
     expect(stepLane('now', -1, task)).toBe('now');
-    // A swipe never lets go: "whatever" takes the 7 key or the chip.
+    // A swipe never lets go: "whatever" takes the 6 key or the chip.
     expect(stepLane('leave', 1, task)).toBe('leave');
     expect(stepLane('archive', -1, task)).toBe('leave');
   });
@@ -157,5 +153,14 @@ describe('up next', () => {
     expect(nextNow(rows, open, ['b'])?.item.id).toBe('c');
     expect(nextNow(rows, open, ['c', 'b'])?.item.id).toBe('c');
     expect(nextNow([], open, [])).toBeUndefined();
+  });
+});
+
+describe('the ready mark', () => {
+  it('puts the prepped rows first in a lane, each group in its own order', () => {
+    const rows = ['a', 'b', 'c', 'd'].map((id) => ({ item: { id } }));
+    const has = (id: string) => id === 'c' || id === 'a';
+    expect(packsFirst(rows, has).map((r) => r.item.id)).toEqual(['a', 'c', 'b', 'd']);
+    expect(packsFirst(rows, () => false)).toEqual(rows);
   });
 });

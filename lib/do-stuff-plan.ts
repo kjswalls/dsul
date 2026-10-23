@@ -12,18 +12,24 @@ import { addDaysStr } from './container-schedule';
  */
 
 /**
- * The seven lanes (Kirby's picks, 2026-10-13). The keys predate the words:
- * 'done' reads "ready", 'calendar' "another day", 'handoff' "do it for me",
- * 'leave' "later". 'archive' ("whatever") is offered and never suggested.
+ * The six lanes (Kirby's picks, 2026-10-13; "ready" folded away 2026-10-23).
+ * The keys predate the words: 'calendar' reads "another day", 'handoff' "do it
+ * for me", 'leave' "later". 'archive' ("whatever") is offered and never
+ * suggested.
+ *
+ * What the AI got ready is a mark, not a lane (Kirby, 2026-10-23: "ready" said
+ * how far along a row was, the others when it gets done). A prepped row keeps
+ * its aurora words in whichever lane it is in and leads it (`packsFirst`), and
+ * the rules send it to do it now, since the AI has done the first part.
  */
-export type Lane = 'done' | 'now' | 'today' | 'calendar' | 'handoff' | 'leave' | 'archive';
+export type Lane = 'now' | 'today' | 'calendar' | 'handoff' | 'leave' | 'archive';
 
 export interface LaneDef {
   key: Lane;
   /** The lane header and the chip's word. */
   label: string;
   /** The key that moves a row here. Fixed, so muscle memory survives new lanes. */
-  digit: '1' | '2' | '3' | '4' | '5' | '6' | '7';
+  digit: '1' | '2' | '3' | '4' | '5' | '6';
   /** The header dot: a token, so it follows the theme. */
   color: string;
   /** A word under the header, said once. */
@@ -34,18 +40,17 @@ export interface LaneDef {
 export const NOW_MAX = 3;
 
 /**
- * In the order the plan draws them. "Done for you" is the prep packs' lane
- * (build order 3, lib/prep-packs.ts): a row lands there once the AI has got it
- * ready, and only such a row is offered it.
+ * In the order the plan draws them, and their number keys with it. "Do it for
+ * me" second (Kirby, 2026-10-23): handing a thing off is the next thing to
+ * decide after what you will do yourself.
  */
 export const LANES: readonly LaneDef[] = [
-  { key: 'done', label: 'ready', digit: '1', color: 'var(--lime-solid)' },
-  { key: 'now', label: 'do it now', digit: '2', color: 'var(--foreground)', note: 'yes u can' },
+  { key: 'now', label: 'do it now', digit: '1', color: 'var(--foreground)', note: 'yes u can' },
+  { key: 'handoff', label: 'do it for me', digit: '2', color: 'var(--size-fuzzy)' },
   { key: 'today', label: 'today', digit: '3', color: 'var(--size-big)' },
   { key: 'calendar', label: 'another day', digit: '4', color: 'var(--size-errand)' },
-  { key: 'handoff', label: 'do it for me', digit: '5', color: 'var(--size-fuzzy)' },
-  { key: 'leave', label: 'later', digit: '6', color: 'var(--muted-foreground)' },
-  { key: 'archive', label: 'whatever', digit: '7', color: 'var(--border)' },
+  { key: 'leave', label: 'later', digit: '5', color: 'var(--muted-foreground)' },
+  { key: 'archive', label: 'whatever', digit: '6', color: 'var(--border)' },
 ];
 
 const BY_KEY = new Map(LANES.map((l) => [l.key, l]));
@@ -79,8 +84,6 @@ export interface LaneFacts {
 /** May the user put this row in this lane? */
 export function laneOffered(lane: Lane, facts: LaneFacts): boolean {
   switch (lane) {
-    case 'done':
-      return !!facts.hasPack && facts.plannable && !facts.handedOff;
     case 'handoff':
       return facts.handedOff || facts.canHandOff;
     case 'leave':
@@ -97,7 +100,8 @@ export function sizeForPlan(item: { title: string; size?: unknown }): ItemSize |
 
 /**
  * The rule. It never says "whatever": letting something go is the user's call
- * alone. Anything the AI got ready is ready; quick things are done now; errands and big ones go on a day;
+ * alone. Anything the AI got ready is done now (its first part is done; past
+ * three it spills onto today with the rest); quick things are done now; errands and big ones go on a day;
  * fuzzy ones go to the agent when it can take them (a first step is exactly
  * what it is for), and are left alone otherwise. Anything the rules cannot
  * read is left alone rather than pushed at the user.
@@ -105,7 +109,7 @@ export function sizeForPlan(item: { title: string; size?: unknown }): ItemSize |
 export function ruleLane(item: { title: string; size?: unknown }, facts: LaneFacts): Lane {
   if (facts.handedOff) return 'handoff';
   if (!facts.plannable) return 'leave';
-  if (facts.hasPack) return 'done';
+  if (facts.hasPack) return 'now';
   // Today's own: quick ones are do it now, the rest stay today. The rules
   // never move something off the day it was put on.
   if (facts.onToday) return sizeForPlan(item) === 'quick' ? 'now' : 'today';
@@ -155,9 +159,18 @@ export function capNow<R extends { item: { id: string } }>(
   lanes.today = [...spill, ...lanes.today];
 }
 
+/**
+ * Rows the AI got ready lead their lane, each group in the order it came in:
+ * the mark that replaced the ready lane (2026-10-23). Stable, so a lane with
+ * no packs is untouched.
+ */
+export function packsFirst<R extends { item: { id: string } }>(rows: readonly R[], hasPack: (id: string) => boolean): R[] {
+  return [...rows.filter((r) => hasPack(r.item.id)), ...rows.filter((r) => !hasPack(r.item.id))];
+}
+
 /** The next offered lane up (-1) or down (+1) from this one: a swipe's move. */
 export function stepLane(lane: Lane, dir: -1 | 1, facts: LaneFacts): Lane {
-  // A swipe never lands on "whatever": letting go takes the 7 key or the chip.
+  // A swipe never lands on "whatever": letting go takes the 6 key or the chip.
   const keys = LANES.map((l) => l.key).filter((k) => k !== 'archive' || lane === 'archive');
   for (let i = keys.indexOf(lane) + dir; i >= 0 && i < keys.length; i += dir) {
     if (laneOffered(keys[i], facts)) return keys[i];

@@ -212,18 +212,18 @@ describe('do stuff: the plan in lanes', () => {
     (document.activeElement as HTMLElement | null)?.blur();
     unfold();
     fireEvent.mouseEnter(screen.getByText('zebra').closest('[data-lane-row]')!);
+    fireEvent.keyDown(window, { key: '1' });
+    expect(laneOfRow('zebra')).toBe('now');
+    // Not offered: the agent is not paired, so 2 does nothing.
     fireEvent.keyDown(window, { key: '2' });
     expect(laneOfRow('zebra')).toBe('now');
-    // Not offered: the agent is not paired, so 5 does nothing.
-    fireEvent.keyDown(window, { key: '5' });
-    expect(laneOfRow('zebra')).toBe('now');
-    // 3 is today, and 7 lets it go.
+    // 3 is today, and 6 lets it go.
     fireEvent.keyDown(window, { key: '3' });
     expect(laneOfRow('zebra')).toBe('today');
-    fireEvent.keyDown(window, { key: '7' });
+    fireEvent.keyDown(window, { key: '6' });
     expect(laneOfRow('zebra')).toBe('archive');
     // A modifier is never a lane move.
-    fireEvent.keyDown(window, { key: '6', metaKey: true });
+    fireEvent.keyDown(window, { key: '5', metaKey: true });
     expect(laneOfRow('zebra')).toBe('archive');
   });
 
@@ -240,7 +240,7 @@ describe('do stuff: the plan in lanes', () => {
     expect(laneOfRow('email the landlord')).toBe('now');
     // Focus put there by keyboard wins, until the pointer moves again.
     fireEvent.keyDown(window, { key: 'Tab' });
-    fireEvent.keyDown(window, { key: '6' });
+    fireEvent.keyDown(window, { key: '5' });
     expect(laneOfRow('email the landlord')).toBe('leave');
     expect(laneOfRow('zebra')).toBe('calendar');
     fireEvent.pointerMove(window);
@@ -255,7 +255,7 @@ describe('do stuff: the plan in lanes', () => {
     (document.activeElement as HTMLElement | null)?.blur();
     unfold();
     fireEvent.mouseEnter(screen.getByText('zebra').closest('[data-lane-row]')!);
-    fireEvent.keyDown(window, { key: '2' });
+    fireEvent.keyDown(window, { key: '1' });
     expect(laneOfRow('zebra')).toBe('now');
     // Done from the store (the grid, a checkbox): the row leaves the lane list
     // but stays a fact of the plan, so the stale hover must not steer a digit.
@@ -312,7 +312,7 @@ describe('do stuff: the plan in lanes', () => {
     (document.activeElement as HTMLElement | null)?.blur();
     unfold();
     fireEvent.mouseEnter(screen.getByText('zebra').closest('[data-lane-row]')!);
-    fireEvent.keyDown(window, { key: '7' });
+    fireEvent.keyDown(window, { key: '6' });
     unfold();
     fireEvent.mouseEnter(screen.getByText('figure out the budget').closest('[data-lane-row]')!);
     fireEvent.keyDown(window, { key: '3' });
@@ -349,7 +349,7 @@ describe('do stuff: the plan in lanes', () => {
     expect(e).toMatchObject({ assignee: 'Claude', aiStatus: 'queued' });
   });
 
-  it('puts what the AI got ready in "done for you", with its chip and card', () => {
+  it('puts what the AI got ready at the head of do it now, with its chip and card', () => {
     seed(SIX);
     usePrepPacksStore.setState({
       packs: {
@@ -360,10 +360,11 @@ describe('do stuff: the plan in lanes', () => {
     });
     renderBraindump();
     fireEvent.click(screen.getByTestId('do-stuff-start'));
-    // Ready opens with the mode, not behind a peek (Kirby, 2026-10-23).
-    expect(screen.getByTestId('do-stuff-lane-done')).not.toHaveAttribute('data-folded');
-    expect(screen.getByText('call the dentist', { selector: '[data-lane-row] *' })).toBeInTheDocument();
-    expect(laneOfRow('call the dentist')).toBe('done');
+    // Ready is a mark, not a lane (Kirby, 2026-10-23): the prepped row leads
+    // do it now, the lane that is open, and is the walk's first card.
+    expect(screen.queryByTestId('do-stuff-lane-done')).toBeNull();
+    expect(screen.getByTestId('do-stuff-next')).toHaveAccessibleName('Up next: call the dentist');
+    expect(laneOfRow('call the dentist')).toBe('now');
     expect(laneOfRow('zebra')).toBe('leave');
     fireEvent.click(screen.getByTestId('prep-pack-chip'));
     const card = screen.getByTestId('prep-pack-card');
@@ -387,7 +388,7 @@ describe('do stuff: the plan in lanes', () => {
     }
   });
 
-  it('opens a pack from any row that has one: the card, and a row moved out of ready', () => {
+  it('opens a pack from any row that has one: the card, and a row moved to another lane', () => {
     seed(SIX);
     usePrepPacksStore.setState({
       packs: {
@@ -398,17 +399,17 @@ describe('do stuff: the plan in lanes', () => {
     renderBraindump();
     fireEvent.click(screen.getByTestId('do-stuff-start'));
     (document.activeElement as HTMLElement | null)?.blur();
-    // Both land in ready; the landlord's moves to do it now and becomes the card.
-    unfold();
-    fireEvent.mouseEnter(screen.getByText('email the landlord').closest('[data-lane-row]')!);
-    fireEvent.keyDown(window, { key: '2' });
+    // Both lead do it now; the landlord's is the card, the dentist's moves to today.
     expect(laneOfRow('email the landlord')).toBe('now');
+    fireEvent.mouseEnter(screen.getByText('call the dentist').closest('[data-lane-row]')!);
+    fireEvent.keyDown(window, { key: '3' });
+    expect(laneOfRow('call the dentist')).toBe('today');
     const card = screen.getByTestId('do-stuff-next');
     expect(card).toHaveAccessibleName('Up next: email the landlord');
     fireEvent.click(within(card).getByTestId('prep-pack-chip'));
     expect(screen.getByTestId('prep-pack-card')).toHaveTextContent('Email draft');
-    // ↓ walks on to the dentist's, still in ready: the pair counts in the lanes' order.
-    expect(screen.getByTestId('prep-pack-card')).toHaveTextContent('2 of 2');
+    // ↓ walks on to the dentist's, now in today: the pair counts in the lanes' order.
+    expect(screen.getByTestId('prep-pack-card')).toHaveTextContent('1 of 2');
     fireEvent.keyDown(screen.getByTestId('prep-pack-card'), { key: 'ArrowDown' });
     expect(screen.getByTestId('prep-pack-card')).toHaveTextContent('Call script');
   });

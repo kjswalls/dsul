@@ -31,6 +31,7 @@ import {
 import {
   capNow,
   energyOrder,
+  packsFirst,
   dayLabel,
   LANES,
   laneDef,
@@ -71,9 +72,9 @@ import { PocketButton } from '@/components/sidebar/do-stuff-pocket';
  * round 5).
  *
  * The key in the header (or the dock) starts it, and the rows glide from where
- * they stood into their lanes: ready / do it now / today / another day / do it
- * for me / later / whatever (lib/do-stuff-plan.ts decides which). Each row
- * carries a lane chip, shown on hover; the keys 1 to 7 move the row under the
+ * they stood into their lanes: do it now / do it for me / today / another day /
+ * later / whatever (lib/do-stuff-plan.ts decides which). Each row
+ * carries a lane chip, shown on hover; the keys 1 to 6 move the row under the
  * pointer or the one reached by keyboard, and a swipe moves it on the phone.
  * Only the lane being walked is open; the rest fold to one line (L1). The walk
  * is do it now, then today: the next thing is lifted in place with its actions
@@ -282,7 +283,7 @@ function usePlan(dumpRows: readonly RowItem[]): Plan {
       todayStr,
       { userTimezone: tz, routines, seasons, away }
     );
-    const lanes: Record<Lane, RowItem[]> = { done: [], now: [], today: [], calendar: [], handoff: [], leave: [], archive: [] };
+    const lanes: Record<Lane, RowItem[]> = { now: [], today: [], calendar: [], handoff: [], leave: [], archive: [] };
     const facts = new Map<string, LaneFacts>();
     const laneById = new Map<string, Lane>();
     const packs = new Map<string, PrepPack>();
@@ -304,6 +305,9 @@ function usePlan(dumpRows: readonly RowItem[]): Plan {
       laneById.set(row.item.id, lane);
       lanes[lane].push(row);
     }
+    // What the AI got ready leads every lane (packsFirst), so it takes do it
+    // now's three places before the rest.
+    for (const k of Object.keys(lanes) as Lane[]) lanes[k] = packsFirst(lanes[k], (id) => packs.has(id));
     capNow(lanes, isOpen, moved);
     for (const r of lanes.today) laneById.set(r.item.id, 'today');
     // The walk goes through do it now, then today. A row done there leaves
@@ -313,8 +317,9 @@ function usePlan(dumpRows: readonly RowItem[]): Plan {
     for (const k of ['now', 'today'] as const) {
       const open = lanes[k].filter(isOpen);
       doneHere[k] = lanes[k].length - open.length;
-      // In the order the person's energy walks them (energyOrder).
-      lanes[k] = energyOrder(open, energy);
+      // In the order the person's energy walks them (energyOrder), the
+      // prepped ones still first.
+      lanes[k] = packsFirst(energyOrder(open, energy), (id) => packs.has(id));
     }
     const today = lanes.today.filter((r) => isOpen(r) && !todayIds.has(r.item.id)).map((r) => r.item.id);
     const letGo = lanes.archive.filter(isOpen).map((r) => r.item.id);
@@ -1235,8 +1240,8 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
   }, [plan.days, plan.today, plan.handOff, plan.letGo, plan.unschedule, plan.marks, plan.arriving, plan.target, left]);
 
   // The one pack open, by item id. ↑ ↓ walk every open row with a pack, in
-  // the lanes' order: a pack follows its row out of "ready" (moved to do it
-  // now, or the current card), so its chip must still open it.
+  // the lanes' order: a pack follows its row wherever it is moved, so its
+  // chip must still open it.
   const [peek, setPeek] = useState<string | null>(null);
   const packed = LANES.flatMap((l) => plan.lanes[l.key]).filter((r) => isOpen(r) && plan.packs.has(r.item.id));
   const peekIndex = packed.findIndex((r) => r.item.id === peek);
@@ -1247,10 +1252,10 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
     setPeek(packed[i].item.id);
   };
 
-  // The phone deals every pack in the ready lane in a deck, once there is more than one.
+  // The phone deals every pack in a deck, once there is more than one; its
+  // door is on do it now, where the prepped rows lead.
   const [deckOpen, setDeckOpen] = useState(false);
-  const deckCards = plan.lanes.done
-    .filter((r) => isOpen(r) && plan.packs.has(r.item.id))
+  const deckCards = packed
     .map((r) => ({ itemId: r.item.id, title: r.item.title, stored: plan.packs.get(r.item.id)! }));
 
   const pending = plan.days.size + plan.today.length + plan.handOff.length + plan.letGo.length + plan.unschedule.length;
@@ -1296,11 +1301,10 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
 
   // L1: the lane being walked is open, every other folds to a peek until it
   // is asked for. Unfolded lanes stay open for the run (memory only, like the
-  // mode). With nothing left to walk, do it now stays the open one. Ready
-  // starts open too (Kirby, 2026-10-23): what the AI got ready is what the
-  // key and Look start the mode to see, so it is not behind a peek.
+  // mode). With nothing left to walk, do it now stays the open one, and the
+  // prepped rows lead it.
   const walking: Lane = next && plan.laneById.get(next.item.id) === 'today' ? 'today' : 'now';
-  const [unfolded, setUnfolded] = useState<ReadonlySet<Lane>>(() => new Set<Lane>(['done']));
+  const [unfolded, setUnfolded] = useState<ReadonlySet<Lane>>(() => new Set());
   const setFold = (lane: Lane, open: boolean) =>
     setUnfolded((prev) => {
       const nextSet = new Set(prev);
@@ -1336,7 +1340,7 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
         const index = shown++;
         const open = list.filter(isOpen);
         const action =
-          l.key === 'done' && touch && deckCards.length > 1 ? (
+          l.key === 'now' && touch && deckCards.length > 1 ? (
             <button
               type="button"
               onClick={() => setDeckOpen(true)}
