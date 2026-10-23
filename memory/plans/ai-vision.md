@@ -115,6 +115,40 @@ the type settled from the bytes (never HTML or SVG), row then bytes then ready, 
 touch the row or the bytes are removed again. `item_files.added_by` (081) says which agent added a file; a
 trigger nulls it for every role but service_role, so a browser can never claim to be an agent.
 
+**Note 2026-10-23: notes on the timeline.** Kirby's item conversations PR 3, option B ("Pinned at the top of
+the timeline"). A note is something you write on an item, from the same box as Ask, saved to the item and
+never sent to a model. It sits on the timeline at the time you wrote it ("You · note", its body in the serif
+of what you wrote), and the one you pin stays at the top as "Note · pinned"; you can edit it (it grows), unpin
+it and delete it. The description under the title (`items.notes`) is unchanged: that is the field you and the
+agents share, and timeline notes are yours. ONE BOX, TWO MODES: an item's box has "Ask / Note"
+(components/ai/box-mode-switch.tsx), in the rail's ChatComposer and in ItemConversation's inline box, one
+mode per item in rail-store `boxModes`. A note has a DRAFT OF ITS OWN (`noteDraftKey`), never the item's Ask
+draft, because a box that cannot note (the phone's dock, home, a conversation, a box whose notes latched off)
+must never show or send a note as a message: a failed save goes back into the note draft in Note mode, and a
+parked ask (`askAboutItem`) lands in the Ask draft in Ask mode. Note mode saves mid-reply, never calls
+`sendFrom`, and says "Saved on this item. Not sent to the AI." (or "… the AI or OpenClaw." when OpenClaw
+answers or holds the item). THE TABLE is `item_notes` (migration 082), not `item_events`: that is a trace,
+purged at 180 days, served to agents unfiltered and read 50 rows at a time, and a note outlives all three. No
+event is written for a note, its edit, its pin or its delete. One pinned note per item is the database's rule
+(a partial unique index), and `item_note_pin` is the only way to pin: it swaps the old pin off under a
+per-item lock in one transaction, and the touch trigger refuses any pin it did not flag (`dsul.pin`). An edit
+carries `edited_at` as its version, so a body changed on another device first is a conflict, not a silent
+overwrite. Notes cascade from their item: Trash keeps them (a restore brings them back) and the 30-day purge
+deletes them. NOT SHARED: notes are never in `/api/agent/context`, any `/api/agent/**` route, MCP, the chat
+context, proposals, the asks, prep, recipes, mods or OpenClaw's browser link, and no server code touches the
+table at all (tests/unit/item-notes-boundary.test.ts). The description is the shared field; opening notes to
+agents or the AI is a later, explicit call with its own privacy-statement change. NO AI: ItemTimeline ends in
+a Note box with no switch (`ItemNoteBox`), on the panel, the modal and Zen, the phone's drawer and
+/item/[id]; on an item with no history it is drawn alone, with no heading. THE DO STUFF DESK shows the notes
+and the pinned card (with AI) but draws no switch, and its Jot keeps writing the description, so the desk
+never has two "note" boxes. Not yet: the phone's Ask-tab item view (the dock has no switch, and reads only the
+Ask draft) and the iPhone app. Until 082 is applied the switch and the box are not drawn at all: they appear
+only once a read lands (a read that fails leaves the latch as it was), and a save that finds 082 missing
+offers the text on its toast (Copy note), since no box would show a put-back draft again. AN EDIT THAT
+FINDS ITS NOTE DELETED does not drop the note at once (as first planned): it stays under its open editor,
+holding the text you wrote, with Copy note on the toast, and goes when that editor closes, by Cancel or by
+the item closing (lib/item-notes-store.ts `lost`, `holdNoteEditor`), so the edit is never lost unseen.
+
 **Note 2026-10-11: the item timeline.** The Activity list and the panel footer's edit history became one
 timeline (lib/item-timeline.ts, components/planner/item-timeline.tsx): an item's `item_events` and its
 conversation, oldest first, by day, each line saying who did it. A day's conversation folds into one line
@@ -1418,6 +1452,9 @@ conversation is saved to the account.
     writes back is kept: a few lines of style, in Do stuff's settings, where you can change or
     clear it. To write them your model is sent the titles and notes (up to 1,500 characters) of at
     most eight open braindump things at a time, each asked about once a session.
+  - notes you write on an item's timeline (082): stored, verbatim, until you delete the note or
+    its item is purged from the trash. Never sent to a model or to OpenClaw, and not readable by
+    agents or MCP.
 - *Not stored:*
   - the planner context sent with each message;
   - your custom instructions;

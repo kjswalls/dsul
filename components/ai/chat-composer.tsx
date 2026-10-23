@@ -11,6 +11,10 @@ import { connectErrorCopy, labelName } from '@/components/ai/connect/connect-sha
 import { resolveConversationId, useConversationsStore, type ConversationsState } from '@/lib/conversations-store';
 import { bindingKey, sendFrom, type ComposerBinding } from '@/lib/open-chat';
 import type { AskSurface } from '@/lib/rail-store';
+import { NOTE_COPY, cleanNoteBody, noteLength, noteRefusal } from '@/lib/item-notes';
+import { saveNoteFrom, useItemNotesStore } from '@/lib/item-notes-store';
+import { isPlannerPreviewing } from '@/lib/planner-ready';
+import { BoxModeSwitch, switchBoxMode, useItemBoxMode } from './box-mode-switch';
 import { chatAssistantName, chatPlaceholder, itemChatPlaceholder } from '@/lib/chat-utils';
 import { useBoxAnswersAgent } from '@/lib/agent-question';
 import { activeMention, insertMention, mentionChoices } from '@/lib/chat-mentions';
@@ -126,6 +130,16 @@ export function ChatComposer({
   );
   const { target } = useAICapabilities();
 
+  // NOTE MODE (the rail's item box only): the text is kept on the item as a
+  // note (lib/item-notes-store.ts `saveNoteFrom`), never sent. The caller
+  // (BoundComposer) hands in the note draft while noting, so the text source
+  // follows the mode. A note can be saved while a reply is arriving.
+  const itemId = binding.kind === 'item' ? binding.itemId : null;
+  const notesAvailable = useItemNotesStore((s) => s.available);
+  const canNote = variant === 'panel' && !!itemId && notesAvailable === true;
+  const noting = useItemBoxMode(itemId, canNote) === 'note';
+  const busy = !noting && isLoading;
+
   const [ownInput, setOwnInput] = useState('');
   const input = value ?? ownInput;
   const setInput = (text: string) => {
@@ -146,7 +160,7 @@ export function ChatComposer({
     () => (mention && mention.start !== closedAt ? mentionChoices(items, mention.query) : []),
     [mention?.start, mention?.query, closedAt, items] // eslint-disable-line react-hooks/exhaustive-deps
   );
-  const listOpen = choices.length > 0 && !isLoading;
+  const listOpen = choices.length > 0 && !busy;
   const listId = useId();
   const active = listOpen ? Math.min(highlight, choices.length - 1) : -1;
 
@@ -155,7 +169,8 @@ export function ChatComposer({
   const slashRef = useRef<SlashCommandsHandle>(null);
   const [slashClosed, setSlashClosed] = useState(false);
   const slash = caret === null || mention ? null : activeSlash(input, caret);
-  const slashOpen = !!slash && !slashClosed && !isLoading;
+  // A note that starts with "/" is just text.
+  const slashOpen = !noting && !!slash && !slashClosed && !busy;
   // Named by the list itself, which alone knows whether anything matched.
   const [slashActive, setSlashActive] = useState<string | undefined>(undefined);
 
@@ -186,13 +201,14 @@ export function ChatComposer({
   const answeringAgent = useBoxAnswersAgent(binding.kind === 'item' ? binding.itemId : null);
   const displayName = answeringAgent ?? chatAssistantName(target);
   // A box bound to an item says so: it looks like every other box.
-  const placeholder =
-    placeholderOverride ??
-    (answeringAgent
-      ? `Answer ${answeringAgent}…`
-      : binding.kind === 'item'
-        ? itemChatPlaceholder(target)
-        : chatPlaceholder(target));
+  const placeholder = noting
+    ? 'Add a note…'
+    : (placeholderOverride ??
+      (answeringAgent
+        ? `Answer ${answeringAgent}…`
+        : binding.kind === 'item'
+          ? itemChatPlaceholder(target)
+          : chatPlaceholder(target)));
   const hasText = input.trim().length > 0;
 
   // Auto-grow, measured while the field can be: a field with no box (hidden,
@@ -220,7 +236,6 @@ export function ChatComposer({
   // item when you send (lib/item-files-store.ts `add`, the session client's
   // row, bytes, ready), never on attach, so removing a chip is the undo. A
   // picture also goes to the model with that one message, shrunk, as before.
-  const itemId = binding.kind === 'item' ? binding.itemId : null;
   const filesAvailable = useItemFilesStore((s) => s.available);
   const listed = useItemFilesStore((s) => (itemId ? (s.byItem[itemId]?.files.length ?? 0) : 0));
   const uploading = useItemFilesStore((s) => (itemId ? (s.uploading[itemId] ?? 0) : 0));
@@ -250,6 +265,7 @@ export function ChatComposer({
     const added = await Promise.all(
       taking.map(async (file): Promise<ItemAttachment> => {
         let image: ChatImage | undefined;
+        // Read in Note mode too: a chip kept through a switch to Ask goes to the model with the message.
         if (target === 'model' && isPicture(file) && carrying < MAX_CHAT_IMAGES) {
           carrying++;
           // A picture the model cannot read (HEIC, say) is still kept on the item, quietly.
@@ -266,7 +282,8 @@ export function ChatComposer({
     setAttached((cur) => [...cur, ...added]);
   };
   const attach = async (files: readonly File[]) => {
-    if (!canAttach || files.length === 0) return;
+    // A note keeps files only on the item; the model-only pictures have nowhere to go.
+    if (!canAttach || files.length === 0 || (noting && !toItem)) return;
     if (toItem) return attachToItem(files);
     const room = MAX_CHAT_IMAGES - pictures.length;
     if (files.length > room) toast.error(ATTACH_COPY.tooMany(MAX_CHAT_IMAGES));
@@ -323,6 +340,33 @@ export function ChatComposer({
   const canSend = hasText || (toItem && attached.length > 0);
   const handleSend = () => {
     const text = input.trim();
+    // First, before the busy return: a note is saved mid-reply, and never sent.
+    if (noting && itemId) {
+      if (!text && attached.length === 0) return;
+      const body = cleanNoteBody(input);
+      const why = text ? noteRefusal(body) : null;
+      if (why) {
+        // The text and the chips stay.
+        if (why === 'too_long') toast.error(NOTE_COPY.refusal.too_long(noteLength(body)));
+        return;
+      }
+      // The preview backstop (lib/item-notes-store.ts): the text and the chips stay, nothing is written.
+      if (isPlannerPreviewing()) return;
+      const placedAt = Date.now();
+      if (attached.length)
+        void useItemFilesStore.getState().add(
+          itemId,
+          attached.map((a) => a.file),
+          { placedAt }
+        );
+      revoke(attached);
+      setAttached([]);
+      textareaRef.current?.focus();
+      if (!text) return;
+      setInput('');
+      void saveNoteFrom(itemId, body, { placedAt: placedAt + 1 });
+      return;
+    }
     if (isLoading) return;
     if (toItem && itemId) {
       if (!text && attached.length === 0) return;
@@ -526,8 +570,9 @@ export function ChatComposer({
   }
 
   const pictureCount = attached.filter((a) => isPicture(a.file)).length;
-  const attachmentsNote =
-    target === 'openclaw'
+  const attachmentsNote = noting
+    ? 'Kept on this item when you save.'
+    : target === 'openclaw'
       ? 'Kept on this item when you send. OpenClaw doesn’t get files.'
       : pictureCount > MAX_CHAT_IMAGES
         ? `Kept on this item when you send. The AI sees the first ${MAX_CHAT_IMAGES} pictures.`
@@ -635,7 +680,7 @@ export function ChatComposer({
         // dark:bg-transparent for the same reason as the dock's field above —
         // the tray is the surface here, so the base's dark:bg-input/30 shows as
         // a second, lighter box inside it.
-        aria-label={`Message ${displayName}`}
+        aria-label={noting ? 'Note on this item' : `Message ${displayName}`}
         className="min-h-0 resize-none border-0 bg-transparent px-4 py-3 text-sm leading-6 shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0 focus-visible:ring-offset-0 dark:bg-transparent"
         // Read-only mid-reply, not disabled: disabling a focused field drops
         // focus to <body>, where the next keystroke fires a bare-key shortcut,
@@ -644,8 +689,8 @@ export function ChatComposer({
         // phone's dock bar stays disabled on purpose: a reply on its way puts
         // the keyboard away so the reply can be read, and a phone has no
         // bare-key shortcuts for a lost focus to fire.)
-        readOnly={isLoading}
-        aria-busy={isLoading || undefined}
+        readOnly={busy}
+        aria-busy={busy || undefined}
       />
       <div className="flex items-center justify-between gap-2 px-2 pb-2">
         <div className="flex min-w-0 items-center gap-1">
@@ -653,7 +698,9 @@ export function ChatComposer({
             variant="ghost"
             size="icon"
             className="h-8 w-8 shrink-0 rounded-full text-muted-foreground"
-            disabled={toItem ? isLoading || room <= 0 : !canAttach || isLoading || pictures.length >= MAX_CHAT_IMAGES}
+            disabled={
+              toItem ? busy || room <= 0 : noting || !canAttach || isLoading || pictures.length >= MAX_CHAT_IMAGES
+            }
             onClick={() => fileRef.current?.click()}
             aria-label={toItem ? 'Attach files' : 'Attach pictures'}
             title={
@@ -680,9 +727,29 @@ export function ChatComposer({
               void attach(files);
             }}
           />
-          {target === 'model' && <ChatModelChip disabled={isLoading} />}
+          {canNote && itemId && (
+            <BoxModeSwitch
+              value={noting ? 'note' : 'ask'}
+              onChange={(m) => {
+                switchBoxMode(itemId, m);
+                textareaRef.current?.focus();
+              }}
+            />
+          )}
+          {!noting && target === 'model' && <ChatModelChip disabled={isLoading} />}
         </div>
-        {isLoading ? (
+        {noting ? (
+          <Button
+            size="icon"
+            className="h-8 w-8 rounded-full"
+            onClick={handleSend}
+            disabled={!canSend}
+            aria-label="Save note"
+            data-testid="chat-save-note"
+          >
+            <ArrowUp className="h-4 w-4" />
+          </Button>
+        ) : isLoading ? (
           <Button
             size="icon"
             className="h-8 w-8 rounded-full"

@@ -162,6 +162,7 @@ import {
 import { isPausedOn, suppressionReason, suppressionLabel } from '@/lib/active';
 import { makeIconToken } from '@/lib/category-icons';
 import { heldByTrash, useTrashedNames } from '@/components/planner/organize/use-trashed-names';
+import { useEscapeLadder } from '@/components/planner/organize/escape-ladder';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -945,6 +946,10 @@ function ItemDialogInner({
   const inline = presentation === 'inline';
   // Inline IS a panel in every respect but its frame and its exits.
   const isPanel = presentation === 'panel' || inline;
+  // The item's Escape ladder (organize/escape-ladder.tsx): a note's editor or
+  // delete confirm claims Escape through it, because Radix Dialog and vaul
+  // decide on Escape in the capture phase, before any onKeyDown in the body.
+  const { register: registerEscape, consume: consumeEscape, Ladder: EscapeLadder } = useEscapeLadder();
   /** Only the docked panel saves itself; the modal still commits on submit. */
   const autosaves = isPanel && mode === 'edit';
   /**
@@ -2835,6 +2840,11 @@ function ItemDialogInner({
     if (presentation !== 'panel' || !open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented) return;
+      // A rung inside the panel (a note being edited, a delete confirm) backs out first.
+      if (consumeEscape()) {
+        e.preventDefault();
+        return;
+      }
       // Radix renders every popover and menu inside this wrapper. While one is
       // up it owns Escape, and the panel must not close out from under it.
       if (document.querySelector('[data-radix-popper-content-wrapper]')) return;
@@ -2851,7 +2861,7 @@ function ItemDialogInner({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [presentation, open, onOpenChange]);
+  }, [presentation, open, onOpenChange, consumeEscape]);
 
   // A close from OUTSIDE the panel (Ctrl+J, `?` in the command bar, "Pick
   // things back up") goes through ui-store's closeItemPanel(), which runs this
@@ -3443,9 +3453,16 @@ function ItemDialogInner({
     railTick && editItem?.type === 'habit' ? ((editItem.dailyCounts ?? {})[railTick.dateStr] ?? 0) : 0;
 
   return (
-    <>
+    <EscapeLadder value={registerEscape}>
       <SurfaceRoot panel={isPanel} open={open} onOpenChange={onOpenChange} isMobile={isMobile}>
         <SurfaceContent
+          {...(isPanel
+            ? {}
+            : {
+                onEscapeKeyDown: (e: KeyboardEvent) => {
+                  if (consumeEscape()) e.preventDefault();
+                },
+              })}
           panel={isPanel}
           inline={inline}
           open={open}
@@ -3902,7 +3919,7 @@ function ItemDialogInner({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </>
+    </EscapeLadder>
   );
 }
 

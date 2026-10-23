@@ -23,12 +23,21 @@
  * `added_by` (migration 081), and a deleted file's line goes with its row.
  * Files are never folded, never merged with changes and never counted as
  * hidden, and every filter shows them.
+ *
+ * NOTES. A note the user wrote on the item (lib/item-notes.ts, migration 082)
+ * is a line too, drawn from its `item_notes` row, never from an event. The
+ * pinned one is drawn on top of the timeline, not in the stream (`noteEntries`
+ * leaves it out). Notes are never folded and every filter shows them, as
+ * files. Like a file, a note breaks a change burst in `buildTimeline` (whose
+ * compaction runs over every entry) and not in `buildStream` (whose runs per
+ * slot over changes only).
  */
 
 import { format, isSameDay, subDays } from 'date-fns';
 import type { ItemEvent } from '@/lib/db';
 import { assigneeLabel } from '@/lib/chat-utils';
 import { UNNAMED_AGENT, type ItemFile } from '@/lib/item-files';
+import { noteLength, type ItemNote } from '@/lib/item-notes';
 
 export type TimelineActor = 'you' | 'ai' | 'agent' | 'recipe';
 
@@ -263,7 +272,64 @@ export interface FileEntry {
   files: ItemFile[];
 }
 
-export type TimelineEntry = TalkEntry | ChangeEntry | FileEntry;
+/** A note written on the item: always yours. */
+export interface NoteEntry {
+  kind: 'note';
+  /** `note-${id}` */
+  key: string;
+  /** placedAt[id] ?? Date.parse(createdAt) */
+  at: number;
+  by: 'you';
+  note: ItemNote;
+}
+
+export type TimelineEntry = TalkEntry | ChangeEntry | FileEntry | NoteEntry;
+
+/**
+ * One tie order for every builder: at an equal `at`, a change, then a file,
+ * then a note, then a talk line, so files sent together with a note sit above it.
+ */
+const KIND_RANK: Record<TimelineEntry['kind'], number> = { change: 0, file: 1, note: 2, talk: 3 };
+const byTime = (a: { at: number; kind: TimelineEntry['kind'] }, b: { at: number; kind: TimelineEntry['kind'] }) =>
+  a.at - b.at || KIND_RANK[a.kind] - KIND_RANK[b.kind];
+
+/** A body over this many characters folds under "Show all". */
+export const NOTE_CLAMP_CHARS = 480;
+/** Or over this many lines. */
+export const NOTE_CLAMP_LINES = 8;
+
+/** A body long enough to fold under "Show all". */
+export function noteIsLong(body: string): boolean {
+  return noteLength(body) > NOTE_CLAMP_CHARS || body.split('\n').length > NOTE_CLAMP_LINES;
+}
+
+/** The one pinned note, or null (the newest pinnedAt wins if a stale store ever held two). */
+export function pinnedNote(notes: readonly ItemNote[]): ItemNote | null {
+  let best: ItemNote | null = null;
+  for (const n of notes) {
+    if (!n.pinnedAt) continue;
+    if (!best || Date.parse(n.pinnedAt) > Date.parse(best.pinnedAt!)) best = n;
+  }
+  return best;
+}
+
+/** The item's notes as timeline lines, oldest first. The pinned note is not among them: it is drawn on top. */
+export function noteEntries(notes: readonly ItemNote[], placedAt?: Readonly<Record<string, number>>): NoteEntry[] {
+  const pinned = pinnedNote(notes);
+  return notes
+    .filter((n) => n !== pinned)
+    .map(
+      (n): NoteEntry => ({
+        kind: 'note',
+        key: `note-${n.id}`,
+        at: placedAt?.[n.id] ?? Date.parse(n.createdAt),
+        by: 'you',
+        note: n,
+      })
+    )
+    .filter((e) => Number.isFinite(e.at))
+    .sort((a, b) => a.at - b.at);
+}
 
 /** Files added this close together by the same person are one line. */
 export const FILE_BURST_MS = 2 * 60_000;
@@ -351,12 +417,13 @@ const dayKey = (at: Date) => format(at, 'yyyy-MM-dd');
 export function buildTimeline(
   events: readonly ItemEvent[],
   messages: readonly TimelineMessage[],
-  opts: { filter: TimelineFilter; now: Date; files?: readonly FileEntry[] }
+  opts: { filter: TimelineFilter; now: Date; files?: readonly FileEntry[]; notes?: readonly NoteEntry[] }
 ): TimelineDay[] {
   const entries: TimelineEntry[] = [];
   if (opts.filter !== 'talk') entries.push(...changeEntries(events));
-  // Every filter shows files.
+  // Every filter shows files and notes.
   if (opts.files) entries.push(...opts.files);
+  if (opts.notes) entries.push(...opts.notes);
   if (opts.filter !== 'changes') {
     const byDay = new Map<string, TalkEntry>();
     for (const m of messages) {
@@ -380,7 +447,7 @@ export function buildTimeline(
     }
     entries.push(...byDay.values());
   }
-  entries.sort((a, b) => a.at - b.at || (a.kind === b.kind ? 0 : a.kind === 'talk' ? 1 : -1));
+  entries.sort(byTime);
 
   const days: TimelineDay[] = [];
   for (const entry of compactChanges(entries)) {
@@ -402,16 +469,17 @@ export function talkLine(t: TalkEntry): string {
 /**
  * The newest `keep` lines of a timeline, and how many older ones that leaves
  * out, once it has more than FOLD_OVER; the whole of it, and 0, otherwise.
- * File lines are never folded and never counted: they stay where they are.
+ * File and note lines are never folded and never counted: they stay where they are.
  */
 export function foldTimeline(days: readonly TimelineDay[], keep = FOLD_KEEP): { days: TimelineDay[]; hidden: number } {
-  const total = days.reduce((n, d) => n + d.entries.filter((e) => e.kind !== 'file').length, 0);
+  const folds = (e: TimelineEntry) => e.kind !== 'file' && e.kind !== 'note';
+  const total = days.reduce((n, d) => n + d.entries.filter(folds).length, 0);
   if (total <= FOLD_OVER) return { days: [...days], hidden: 0 };
   let skip = total - keep;
   const out: TimelineDay[] = [];
   for (const day of days) {
     const entries = day.entries.filter((e) => {
-      if (e.kind === 'file' || skip === 0) return true;
+      if (!folds(e) || skip === 0) return true;
       skip--;
       return false;
     });
@@ -420,11 +488,12 @@ export function foldTimeline(days: readonly TimelineDay[], keep = FOLD_KEEP): { 
   return { days: out, hidden: total - keep };
 }
 
-/** A line of the stream drawn between messages: a day, a change, a file, or a fold over older changes. */
+/** A line of the stream drawn between messages: a day, a change, a file, a note, or a fold over older changes. */
 export type StreamRow =
   | { kind: 'day'; key: string; label: string }
   | ChangeEntry
   | FileEntry
+  | NoteEntry
   | { kind: 'fold'; key: string; slot: number; hidden: number };
 
 /**
@@ -445,23 +514,33 @@ export type StreamRow =
  * with a change, never count in a fold, and every filter shows them. A file
  * sits BEFORE a message stamped the same instant (strict `<`): a file sent
  * with a message is placed at a time taken just before the message's own.
+ *
+ * Notes (`opts.notes`, the pinned one already left out) are placed into the
+ * same per-slot list by the same strict `<`, never fold, and do not break a
+ * change burst (compaction runs over the slot's changes before they merge).
  */
 export function buildStream(
   events: readonly ItemEvent[],
   messages: readonly { createdAt: number }[],
-  opts: { filter: TimelineFilter; now: Date; unfolded?: ReadonlySet<number>; files?: readonly FileEntry[] }
+  opts: {
+    filter: TimelineFilter;
+    now: Date;
+    unfolded?: ReadonlySet<number>;
+    files?: readonly FileEntry[];
+    notes?: readonly NoteEntry[];
+  }
 ): StreamRow[][] {
   const msgs = opts.filter === 'changes' ? [] : messages;
   const changes = opts.filter === 'talk' ? [] : changeEntries(events);
   const bySlot: ChangeEntry[][] = Array.from({ length: msgs.length + 1 }, () => []);
-  const filesBySlot: FileEntry[][] = Array.from({ length: msgs.length + 1 }, () => []);
+  const filesBySlot: (FileEntry | NoteEntry)[][] = Array.from({ length: msgs.length + 1 }, () => []);
   let slot = 0;
   for (const c of changes) {
     while (slot < msgs.length && msgs[slot].createdAt && msgs[slot].createdAt <= c.at) slot++;
     bySlot[slot].push(c);
   }
   slot = 0;
-  for (const f of [...(opts.files ?? [])].sort((a, b) => a.at - b.at)) {
+  for (const f of [...(opts.files ?? []), ...(opts.notes ?? [])].sort(byTime)) {
     while (slot < msgs.length && msgs[slot].createdAt && msgs[slot].createdAt < f.at) slot++;
     filesBySlot[slot].push(f);
   }
@@ -492,7 +571,7 @@ export function buildStream(
       });
       list = list.slice(-FOLD_KEEP);
     }
-    const merged: (ChangeEntry | FileEntry)[] = [...list, ...filesBySlot[i]].sort((a, b) => a.at - b.at);
+    const merged: (ChangeEntry | FileEntry | NoteEntry)[] = [...list, ...filesBySlot[i]].sort(byTime);
     for (const c of merged) rows.push(...dayRow(c.at, c.key), c);
     const next = msgs[i];
     if (next?.createdAt) rows.push(...dayRow(next.createdAt, `m${i}`));

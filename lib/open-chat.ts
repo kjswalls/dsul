@@ -763,6 +763,8 @@ export function askAboutItem(item: Item, o: { isMobile: boolean; text?: string; 
     const key = bindingKey(binding);
     const typed = rail.drafts[key];
     rail.setDraft(key, typed ? `${typed}\n${text}` : text);
+    // The parked ask is what the box shows next; a note being written stays in its own draft.
+    rail.setBoxMode(key, 'ask');
     return;
   }
   void sendFrom(binding, text, { surface });
