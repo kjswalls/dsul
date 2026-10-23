@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Check, ChevronDown, X, Zap } from 'lucide-react';
-import { Button, ButtonKey } from '@/components/ui/button';
+import { Check, ChevronDown, ListChecks, Maximize2, Minimize2, X, Zap } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { TaskRow, type RowItem } from '@/components/primitives/task-row';
 import { isRowCompletedOn } from '@/lib/sort-rows';
-import { itemSizeOf } from '@/lib/item-size';
+import { itemSizeOf, sizeDef } from '@/lib/item-size';
 import {
   DO_STUFF_MIN_OPEN,
   doneNext,
@@ -66,6 +66,12 @@ import { chordLabel, isApplePlatform } from '@/lib/commands/keys';
 import { cn } from '@/lib/utils';
 import { openFirstSteps, useCanFirstSteps } from '@/components/sidebar/first-steps';
 import { PocketButton } from '@/components/sidebar/do-stuff-pocket';
+import { NowCapsule } from '@/components/sidebar/now-capsule';
+import { ItemContextMenu } from '@/components/planner/item-context-menu';
+import { formatDuration } from '@/components/primitives/pills';
+import { openEditFor } from '@/lib/ui-store';
+import { useSelectionStore } from '@/lib/selection-store';
+import type { Item } from '@/lib/planner-types';
 
 /**
  * Do stuff: the braindump, and today's anytime rows, sorted into a plan in
@@ -103,7 +109,7 @@ function Dot({ color, hollow, className }: { color: string; hollow?: boolean; cl
   );
 }
 
-/** A small keycap beside a secondary action; the primary one uses ButtonKey. The desk's too. */
+/** A small keycap: the card's key footer, the lane menu, and the desk's. */
 export function Cap({ children }: { children: React.ReactNode }) {
   return (
     <kbd
@@ -768,9 +774,26 @@ function useCardArrival(ref: React.RefObject<HTMLDivElement | null>, id: string)
   }, [ref, id]);
 }
 
-function NextCard({ row, trailing, slim }: { row: RowItem; trailing: React.ReactNode; slim?: boolean }) {
+/**
+ * The item Do stuff is on, as a card of its own rather than a row in a box
+ * (Kirby, 2026-10-23, B · focus card with the B1b capsule; mocks in
+ * do-stuff-design/focus-card/). A quiet "now" line carries the size, the
+ * minutes and the ready mark; the title is the card's one big thing and opens
+ * the item; done and skip share the capsule on the left, and the places you go
+ * to work on it (first steps, the desk, the pocket) are icons on the right. No
+ * checkbox (done is the tick), no lane chip (the header says the lane), and no
+ * row hover tools. "today" left the card (Kirby asked why it was there): T
+ * still puts it on today, and 3 moves it to the today lane.
+ *
+ * The keys show only in a footer while the card has keyboard focus, which the
+ * walk gives it after a keyed step (useWalkFocus), so a mouse never sees them.
+ * Slim (today's schedule holds the actions, do-stuff-slot.tsx) keeps the shape
+ * and drops the actions.
+ */
+function NextCard({ row, pack, slim }: { row: RowItem; pack?: React.ReactNode; slim?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
-  const id = row.item.id;
+  const { item, itemType } = row;
+  const id = item.id;
   useWalkFocus(ref, id);
   useCardArrival(ref, id);
   const steps = useCanFirstSteps(id);
@@ -793,6 +816,15 @@ function NextCard({ row, trailing, slim }: { row: RowItem; trailing: React.React
     } else return;
     e.preventDefault();
   };
+  const size = itemSizeOf(item as Item);
+  const minutes = 'duration' in item ? item.duration : undefined;
+  const meta = [size && sizeDef(size).label, minutes ? formatDuration(minutes) : undefined].filter(Boolean);
+  const open = () => {
+    useSelectionStore.getState().replace([id]);
+    openEditFor(item, itemType);
+  };
+  const iconButton =
+    'flex size-[26px] items-center justify-center rounded-[7px] text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring';
   return (
     <div
       ref={ref}
@@ -800,81 +832,109 @@ function NextCard({ row, trailing, slim }: { row: RowItem; trailing: React.React
       onKeyDown={onKeyDown}
       data-testid="do-stuff-next"
       data-slim={slim || undefined}
-      aria-label={`${slim ? 'Now' : 'Up next'}: ${row.item.title}`}
-      className={cn(
-        'relative isolate rounded-[10px] outline-none focus-visible:ring-2 focus-visible:ring-ring',
-        !slim && 'my-1 pb-2'
-      )}
+      aria-label={`${slim ? 'Now' : 'Up next'}: ${item.title}`}
+      className="group/next relative isolate my-1.5 rounded-[12px] px-3.5 pb-2.5 pt-3 outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
-      {/* While today's schedule holds the current item (do-stuff-slot.tsx),
-          this is a row with a lime notch: the slot has the actions. */}
-      {!slim && (
-        <span
-          aria-hidden
-          data-next-chrome
-          className="absolute inset-0 -z-10 rounded-[10px] border border-border bg-surface-2 shadow-elev-sm"
-        />
-      )}
       <span
         aria-hidden
-        data-next-notch
-        className="absolute bottom-2 left-0 top-2 w-[3px] rounded-r-full bg-primary"
+        data-next-chrome
+        className="absolute inset-0 -z-10 rounded-[12px] border border-border bg-surface-2 shadow-[var(--shadow-elev-sm)]"
       />
-      <div data-next-body>
-        <TaskRow row={row} context="braindump" trailing={trailing} />
-      </div>
-      {!slim && (
-        <div data-next-actions className="flex items-center gap-1 pl-[30px] pr-2">
-          <Button size="sm" onClick={() => doneNext(id)} data-testid="do-stuff-done" aria-keyshortcuts="Enter">
-            done
-            <ButtonKey />
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => skipNext(id)}
-            data-testid="do-stuff-skip"
-            aria-keyshortcuts="S"
-            className="text-muted-foreground"
+      <ItemContextMenu item={item} date="today">
+        <div data-next-body>
+          <div className="flex h-[18px] items-center gap-1.5 text-[11.5px] text-muted-foreground">
+            {/* The lime is its own element, never under an opacity. */}
+            <span aria-hidden data-next-notch className="size-1.5 shrink-0 rounded-full bg-primary" />
+            <span className="font-semibold text-success-text">now</span>
+            {meta.map((m) => (
+              <span key={m} className="whitespace-nowrap">
+                · {m}
+              </span>
+            ))}
+            {pack && <span className="ml-auto flex items-center">{pack}</span>}
+          </div>
+          <button
+            type="button"
+            onClick={open}
+            data-testid="do-stuff-next-title"
+            className="mt-1 line-clamp-2 block w-full text-left text-[16px] font-medium leading-[1.3] text-foreground outline-none [text-wrap:pretty] hover:underline hover:decoration-border hover:underline-offset-4 focus-visible:underline"
           >
-            skip <Cap>S</Cap>
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => putOnToday(id)}
-            data-testid="do-stuff-today"
-            aria-keyshortcuts="T"
-            className="text-muted-foreground"
-          >
-            today <Cap>T</Cap>
-          </Button>
-          {steps && (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => openFirstSteps(id)}
-              data-testid="do-stuff-first-steps"
-              aria-keyshortcuts="F"
-              className="text-muted-foreground"
-            >
-              first steps <Cap>F</Cap>
-            </Button>
-          )}
-          {deskHosted && (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={desk ? closeDesk : openDesk}
-              data-testid={desk ? 'do-stuff-close-desk' : 'do-stuff-open-desk'}
-              aria-keyshortcuts="D"
-              className="text-muted-foreground"
-            >
-              {desk ? 'back to the day' : 'desk'} <Cap>D</Cap>
-            </Button>
-          )}
-          <PocketButton />
+            {item.title}
+          </button>
         </div>
+      </ItemContextMenu>
+      {!slim && (
+        <>
+          <div data-next-actions className="-mx-0.5 mt-2.5 flex items-center gap-1">
+            <NowCapsule
+              title={item.title}
+              onDone={() => doneNext(id)}
+              onSkip={() => skipNext(id)}
+              testIds={{ done: 'do-stuff-done', skip: 'do-stuff-skip' }}
+            />
+            <span className="flex-1" />
+            {steps && (
+              <button
+                type="button"
+                onClick={() => openFirstSteps(id)}
+                data-testid="do-stuff-first-steps"
+                aria-label="First steps"
+                title="First steps (F)"
+                aria-keyshortcuts="F"
+                className={iconButton}
+              >
+                <ListChecks aria-hidden className="size-[15px]" strokeWidth={1.75} />
+              </button>
+            )}
+            {deskHosted && (
+              <button
+                type="button"
+                onClick={desk ? closeDesk : openDesk}
+                data-testid={desk ? 'do-stuff-close-desk' : 'do-stuff-open-desk'}
+                aria-label={desk ? 'Back to the day' : 'Open the desk'}
+                title={desk ? 'Back to the day (D)' : 'Open the desk (D)'}
+                aria-keyshortcuts="D"
+                className={cn(iconButton, desk && 'bg-accent text-foreground')}
+              >
+                {desk ? (
+                  <Minimize2 aria-hidden className="size-[15px]" strokeWidth={1.75} />
+                ) : (
+                  <Maximize2 aria-hidden className="size-[15px]" strokeWidth={1.75} />
+                )}
+              </button>
+            )}
+            <PocketButton className="size-[26px]" />
+          </div>
+          <div
+            aria-hidden
+            data-testid="do-stuff-next-keys"
+            className="mt-2 hidden flex-wrap gap-x-3 gap-y-1 border-t border-border pt-2 text-[11.5px] text-muted-foreground group-focus-visible/next:flex"
+          >
+            <span className="inline-flex items-center gap-1.5">
+              <Cap>↵</Cap>done
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <Cap>S</Cap>skip
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <Cap>T</Cap>today
+            </span>
+            {steps && (
+              <span className="inline-flex items-center gap-1.5">
+                <Cap>F</Cap>first steps
+              </span>
+            )}
+            {deskHosted && (
+              <span className="inline-flex items-center gap-1.5">
+                <Cap>D</Cap>
+                {desk ? 'back' : 'desk'}
+              </span>
+            )}
+            <span className="inline-flex items-center gap-1.5">
+              <Cap>1–6</Cap>move
+            </span>
+          </div>
+        </>
       )}
     </div>
   );
@@ -1297,27 +1357,26 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
       then: thenId && thenTitle !== undefined ? { id: thenId, title: thenTitle } : null,
     });
   }, [nextId, nextTitle, thenId, thenTitle]);
-  const trailing = (r: RowItem) => {
+  const packChip = (r: RowItem) => {
     const pack = plan.packs.get(r.item.id);
-    return (
-      <Trailing
-        id={r.item.id}
-        lane={plan.laneById.get(r.item.id)!}
-        facts={plan.facts.get(r.item.id)!}
-        day={plan.days.get(r.item.id)}
-        todayStr={plan.todayStr}
-        pack={
-          pack && isOpen(r) ? (
-            <PackChip
-              stored={pack}
-              open={openPeek === r.item.id}
-              onToggle={() => setPeek((p) => (p === r.item.id ? null : r.item.id))}
-            />
-          ) : undefined
-        }
+    return pack && isOpen(r) ? (
+      <PackChip
+        stored={pack}
+        open={openPeek === r.item.id}
+        onToggle={() => setPeek((p) => (p === r.item.id ? null : r.item.id))}
       />
-    );
+    ) : undefined;
   };
+  const trailing = (r: RowItem) => (
+    <Trailing
+      id={r.item.id}
+      lane={plan.laneById.get(r.item.id)!}
+      facts={plan.facts.get(r.item.id)!}
+      day={plan.days.get(r.item.id)}
+      todayStr={plan.todayStr}
+      pack={packChip(r)}
+    />
+  );
   const card = (r: RowItem) => ({
     itemId: r.item.id,
     title: r.item.title,
@@ -1403,7 +1462,7 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
               {list.map((r) => {
                 const inner =
                   r === next ? (
-                    <NextCard row={r} trailing={trailing(r)} slim={slot} />
+                    <NextCard row={r} pack={packChip(r)} slim={slot} />
                   ) : (
                     <TaskRow row={r} context="braindump" trailing={trailing(r)} />
                   );

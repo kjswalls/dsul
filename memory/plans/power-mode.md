@@ -612,6 +612,15 @@ this gap?". Four pieces were proposed; the first is built.
 
 ## Quieter AI badges (Kirby's picks, 2026-10-22)
 
+> **The do it now card, 2026-10-23 (Kirby):** the card is its own shape, not a row in a box
+> (mocks in the project's do-stuff-design/focus-card/, B with the B1b capsule). A "now · size ·
+> minutes" line with the ready mark, a 16px title that opens the item, and done and skip in
+> `NowCapsule` (components/sidebar/now-capsule.tsx): the Organize console's Segmented recipe at
+> card scale, done the raised pill. First steps, the desk and the pocket are icons on the right.
+> No checkbox, no lane chip, no row hover tools. "today" left the card (T still does it, 3 moves
+> the row to the today lane). Keys show only in a footer while the card has keyboard focus. The
+> schedule slot's done and skip use the same capsule.
+
 > **Desk by default, 2026-10-23 (Kirby):** the desk opens by itself, once the sort lands, when
 > the walk reaches an item with something to work with (`deskWorthIt`: a pack, steps or notes).
 > Once open it stays for the walk; once closed (D, ✕, Esc, leaving today) it stays closed for the
