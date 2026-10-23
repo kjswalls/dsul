@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import { Check, ChevronDown } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
 import { useUIStore } from '@/lib/ui-store';
@@ -28,6 +28,7 @@ import { toDateStr } from '@/lib/recurrence';
 import { prefersReducedMotion } from '@/lib/zen-transition';
 import { usePlannerPreviewing, usePlannerVisible } from '@/lib/planner-ready';
 import { cn } from '@/lib/utils';
+import { ItemTick, springItemCheck } from '@/components/primitives/item-check';
 import { PlannerSyncLine } from '@/components/shell/planner-sync-line';
 
 /**
@@ -321,17 +322,20 @@ export function ZenSurface() {
               <div className="flex items-start gap-4">
                 <button
                   type="button"
-                  onClick={() => tick(hero.row)}
+                  onClick={(e) => {
+                    if (!heroDone) springItemCheck(e.currentTarget);
+                    tick(hero.row);
+                  }}
                   aria-pressed={heroDone}
                   aria-label={`Complete ${hero.row.item.title}`}
                   className={cn(
-                    'mt-[clamp(6px,1.4vw,13px)] flex h-[22px] w-[22px] flex-none items-center justify-center rounded-[6px] border-[1.5px] transition-colors duration-150',
+                    'relative mt-[clamp(6px,1.4vw,13px)] flex h-[22px] w-[22px] flex-none items-center justify-center rounded-[6px] inset-ring-[1.5px] transition-[background-color,box-shadow] duration-150',
                     heroDone
-                      ? 'border-primary bg-primary'
-                      : 'border-muted-foreground/45 bg-surface-3 hover:border-primary'
+                      ? 'inset-ring-primary bg-primary'
+                      : 'inset-ring-muted-foreground/45 bg-surface-3 hover:inset-ring-primary'
                   )}
                 >
-                  {heroDone && <Check className="h-3 w-3 text-primary-foreground" />}
+                  {heroDone && <ItemTick />}
                 </button>
                 <h1
                   // The item the room is about — components/zen/zen-stage.tsx
@@ -540,14 +544,19 @@ function ZenLedgerRow({
     >
       <button
         type="button"
-        onClick={onTick}
+        onClick={(e) => {
+          if (!done) springItemCheck(e.currentTarget);
+          onTick();
+        }}
         aria-pressed={done}
         aria-label={`${done ? 'Un-complete' : 'Complete'} ${row.item.title}`}
         className={cn(
-          'relative flex h-4 w-4 flex-none items-center justify-center overflow-hidden rounded-[5px] border transition-colors duration-150',
+          'relative flex h-4 w-4 flex-none items-center justify-center overflow-hidden rounded-[5px] inset-ring transition-[background-color,box-shadow] duration-150',
           done
-            ? 'border-primary bg-primary'
-            : 'border-muted-foreground/45 bg-surface-3 hover:border-primary'
+            ? 'inset-ring-primary bg-primary'
+            : multi && multi.count > 0
+              ? 'inset-ring-primary/60 bg-surface-3 hover:inset-ring-primary'
+              : 'inset-ring-muted-foreground/45 bg-surface-3 hover:inset-ring-primary'
         )}
       >
         {/* Partial progress rises inside the box, the same way it does on the
@@ -555,11 +564,11 @@ function ZenLedgerRow({
             parent, so the lime never composites down to olive. */}
         {multi && !done && multi.count > 0 && (
           <span
-            className="absolute inset-x-0 bottom-0 bg-primary/70"
+            className="absolute inset-x-0 bottom-0 bg-primary"
             style={{ height: `${multi.pct}%` }}
           />
         )}
-        {done && <Check className="relative h-2.5 w-2.5 text-primary-foreground" />}
+        {done && <ItemTick />}
       </button>
       <span
         className={cn(

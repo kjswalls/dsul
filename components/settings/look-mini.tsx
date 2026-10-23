@@ -2,7 +2,6 @@
 
 import { useLayoutEffect, useRef, type CSSProperties, type ReactNode } from 'react';
 import { addDays, format } from 'date-fns';
-import { Check } from 'lucide-react';
 import { BucketCard } from '@/components/primitives/bucket-card';
 import { layoutAttributes, type LayoutDef } from '@/lib/layout-themes';
 import {
@@ -15,6 +14,7 @@ import {
 import { DEFAULT_PALETTE, type ThemePalette } from '@/lib/theme-palettes';
 import type { BucketStyle, TypeMode } from '@/lib/view-store';
 import { cn } from '@/lib/utils';
+import { ItemTick } from '@/components/primitives/item-check';
 
 /**
  * A miniature dsul in any theme, tint and layout: the Look pane's previews,
@@ -191,11 +191,11 @@ function Row({ title, done = false, compact }: { title: string; done?: boolean; 
         data-testid="item-complete-button"
         data-checked={done ? 'true' : 'false'}
         className={cn(
-          'relative z-10 flex h-4 w-4 flex-shrink-0 items-center justify-center overflow-hidden rounded-[5px] border',
-          done ? 'border-primary bg-primary' : 'border-muted-foreground/45 bg-surface-3'
+          'relative z-10 flex h-4 w-4 flex-shrink-0 items-center justify-center overflow-hidden rounded-[5px] inset-ring',
+          done ? 'inset-ring-primary bg-primary' : 'inset-ring-muted-foreground/45 bg-surface-3'
         )}
       >
-        {done && <Check className="text-primary-foreground h-2.5 w-2.5" />}
+        {done && <ItemTick />}
       </span>
       <p
         className={cn(

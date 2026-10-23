@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Check, Flag, Maximize2, Trash2 } from 'lucide-react';
+import { Flag, Maximize2, Trash2 } from 'lucide-react';
 import { ContainerContextMenu } from '@/components/planner/container-context-menu';
 import {
   ChoiceChip,
@@ -48,6 +48,7 @@ import { daysBetween } from '@/lib/container-schedule';
 import { ContainerCreateForm } from '../container-create-form';
 import { GOAL_STATES, heldElsewhere } from '../container-fields';
 import { cn } from '@/lib/utils';
+import { ItemTick, springItemCheck } from '@/components/primitives/item-check';
 import { cadenceLabel } from '@/lib/cadence';
 import type { Goal, Item } from '@/lib/planner-types';
 
@@ -454,21 +455,24 @@ function GoalDetail({
       return (
         <button
           type="button"
-          onClick={() => toggleTaskStatus(item.id)}
+          onClick={(e) => {
+            if (!done) springItemCheck(e.currentTarget);
+            toggleTaskStatus(item.id);
+          }}
           data-testid="goal-milestone-check"
           aria-pressed={done}
           aria-label={done ? `Mark ${item.title} not reached` : `Mark ${item.title} reached`}
           // The diamond is the milestone's own tick box — it says so on hover.
           title={done ? 'Milestone reached. Click to undo.' : 'Milestone not reached yet. Click to mark it reached.'}
           className={cn(
-            'flex size-4 shrink-0 items-center justify-center rounded-[5px] border transition-colors',
+            'relative flex size-4 shrink-0 items-center justify-center rounded-[5px] inset-ring transition-[background-color,box-shadow]',
             'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
             done
-              ? 'border-primary bg-primary'
-              : 'border-muted-foreground/45 bg-surface-3 hover:border-primary'
+              ? 'inset-ring-primary bg-primary'
+              : 'inset-ring-muted-foreground/45 bg-surface-3 hover:inset-ring-primary'
           )}
         >
-          {done && <Check className="text-primary-foreground size-2.5" aria-hidden />}
+          {done && <ItemTick />}
         </button>
       );
     },

@@ -6,7 +6,6 @@ import {
   ArrowLeftToLine,
   ArrowRight,
   CalendarDays,
-  Check,
   ChevronsRight,
   type LucideIcon,
 } from 'lucide-react';
@@ -22,6 +21,7 @@ import { itemTypeName } from '@/lib/item-registry';
 import { isRecurring } from '@/lib/recurrence';
 import { openEditFor } from '@/lib/ui-store';
 import { cn } from '@/lib/utils';
+import { ItemTick, springItemCheck } from '@/components/primitives/item-check';
 import type { Item, Task, TaskItem } from '@/lib/planner-types';
 
 /**
@@ -644,17 +644,23 @@ function TriageRow({
         // Keyed off the ACTION, not off `isDone`: a row that reads as done
         // because it was completed somewhere else has no action to reverse, and
         // the old `action!` assertion would have handed undefined to onUndo.
-        onClick={() => (action?.kind === 'done' ? onUndo(item, action) : onDone(item))}
+        onClick={(e) => {
+          if (action?.kind === 'done') onUndo(item, action);
+          else {
+            springItemCheck(e.currentTarget);
+            onDone(item);
+          }
+        }}
         aria-label={isDone ? 'Mark incomplete' : 'Mark complete'}
         className={cn(
-          'flex h-4 w-4 flex-shrink-0 items-center justify-center overflow-hidden rounded-[5px] border transition-colors',
+          'relative flex h-4 w-4 flex-shrink-0 items-center justify-center overflow-hidden rounded-[5px] inset-ring transition-[background-color,box-shadow]',
           isDone
-            ? 'border-primary bg-primary'
-            : 'border-muted-foreground/45 bg-surface-3 hover:border-primary',
+            ? 'inset-ring-primary bg-primary'
+            : 'inset-ring-muted-foreground/45 bg-surface-3 hover:inset-ring-primary',
           checkboxInert && 'pointer-events-none opacity-40'
         )}
       >
-        {isDone && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
+        {isDone && <ItemTick />}
       </button>
 
       {/* Title — ONLY the title opens the editor, not the whole row. font-content

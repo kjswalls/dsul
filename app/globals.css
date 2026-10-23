@@ -4100,6 +4100,42 @@ button[data-ai-chip]:focus-visible {
   color: var(--success-text);
 }
 
+/* The item tick (components/primitives/item-check.tsx). One drawing on every
+   surface that ticks an item: a stroke that spans ~70% of the box, rounded. The
+   spring runs only while springItemCheck() has marked the box ([data-spring]),
+   so a tick that arrives on load, from another device or on undo just appears.
+   Transform only: the box never moves its row. */
+.item-tick {
+  pointer-events: none;
+  overflow: visible;
+}
+.item-tick path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1 2;
+}
+@media (prefers-reduced-motion: no-preference) {
+  [data-spring] {
+    animation: item-check-spring 340ms cubic-bezier(0.3, 0.6, 0.3, 1);
+  }
+  [data-spring] .item-tick path {
+    animation: item-tick-draw 190ms 90ms cubic-bezier(0.3, 0.7, 0.2, 1) both;
+  }
+}
+@keyframes item-check-spring {
+  0% { transform: scale(1); }
+  28% { transform: scale(0.8); }
+  62% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+@keyframes item-tick-draw {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+
 /* rows: 'text' — the tick drawn as [ ] / [~] / [x]. Same button, same hit
    area (the 16px height stays; it only widens to fit three characters).
    rows: 'tasks' is the same tick as a markdown task, `- [ ]`. */
@@ -4108,6 +4144,7 @@ button[data-ai-chip]:focus-visible {
   width: auto;
   min-width: 3ch;
   border-color: transparent;
+  box-shadow: none;
   background: none;
   border-radius: 3px;
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
