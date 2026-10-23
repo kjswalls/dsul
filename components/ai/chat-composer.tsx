@@ -20,10 +20,30 @@ import { usePlannerStore } from '@/lib/planner-store';
 import type { Item } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 import { MAX_CHAT_IMAGES, imageDataUrl, type ChatImage } from '@/lib/chat-images';
+import { ITEM_FILE_LIMITS, REFUSAL_COPY, fileBadge, isThumbable, sizeLabel } from '@/lib/item-files';
+import { useItemFilesStore } from '@/lib/item-files-store';
 import { ATTACH_COPY, readChatImage } from './chat-image-attach';
 
 /** Auto-grow ceiling, past which the field scrolls instead of pushing further. */
 const MAX_HEIGHT_PX = 120;
+
+/**
+ * A file in an item's box, waiting for Send: the ORIGINAL, which is what the
+ * item keeps, plus the shrunk picture the model sees this turn (when one does),
+ * and an object URL for a picture's chip when no model will see it.
+ */
+interface ItemAttachment {
+  id: string;
+  file: File;
+  image?: ChatImage;
+  preview?: string;
+}
+
+const isPicture = (f: File) => f.type.startsWith('image/');
+const hasFiles = (e: React.DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files');
+const revoke = (list: readonly ItemAttachment[]) => {
+  for (const a of list) if (a.preview) URL.revokeObjectURL(a.preview);
+};
 
 interface ChatComposerProps {
   /**
@@ -69,7 +89,9 @@ function boundThreadId(s: ConversationsState, binding: ComposerBinding): string 
     case 'item': {
       const known = s.itemIndex[binding.itemId];
       if (typeof known === 'string') return resolveConversationId(known);
-      return Object.values(s.threads).find((t) => t.itemId === binding.itemId && !t.saved && t.load !== 'gone')?.id ?? null;
+      return (
+        Object.values(s.threads).find((t) => t.itemId === binding.itemId && !t.saved && t.load !== 'gone')?.id ?? null
+      );
     }
     default:
       return resolveConversationId(binding.id);
@@ -192,11 +214,60 @@ export function ChatComposer({
   // while the connected model answers, and sent with the next message only.
   // Held here, not in rail-store: a half-typed message outlives its view, a
   // picture does not.
-  const canAttach = variant === 'panel' && target === 'model';
+  //
+  // An ITEM's box (the rail's panel; the inline box and the phone's dock keep
+  // the pictures-only rule) attaches any file to the item instead: kept on the
+  // item when you send (lib/item-files-store.ts `add`, the session client's
+  // row, bytes, ready), never on attach, so removing a chip is the undo. A
+  // picture also goes to the model with that one message, shrunk, as before.
+  const itemId = binding.kind === 'item' ? binding.itemId : null;
+  const filesAvailable = useItemFilesStore((s) => s.available);
+  const listed = useItemFilesStore((s) => (itemId ? (s.byItem[itemId]?.files.length ?? 0) : 0));
+  const uploading = useItemFilesStore((s) => (itemId ? (s.uploading[itemId] ?? 0) : 0));
+  const toItem = variant === 'panel' && !!itemId && filesAvailable !== false;
+  const canAttach = variant === 'panel' && (target === 'model' || toItem);
   const [pictures, setPictures] = useState<{ id: string; image: ChatImage }[]>([]);
+  const [attached, setAttached] = useState<ItemAttachment[]>([]);
+  // The chips' object URLs go with the box.
+  const attachedRef = useRef(attached);
+  useEffect(() => {
+    attachedRef.current = attached;
+  }, [attached]);
+  useEffect(() => () => revoke(attachedRef.current), []);
+  const room = ITEM_FILE_LIMITS.perItem - listed - uploading - attached.length;
   const fileRef = useRef<HTMLInputElement>(null);
+  const attachToItem = async (files: readonly File[]) => {
+    const fit: File[] = [];
+    for (const f of files) {
+      if (f.size <= 0) toast.error(REFUSAL_COPY.empty(f.name));
+      else if (f.size > ITEM_FILE_LIMITS.bytes) toast.error(REFUSAL_COPY.too_big(f.name));
+      else fit.push(f);
+    }
+    if (fit.length > room) toast.error(REFUSAL_COPY.item_full(''));
+    const taking = fit.slice(0, Math.max(0, room));
+    if (taking.length === 0) return;
+    let carrying = attached.filter((a) => a.image).length;
+    const added = await Promise.all(
+      taking.map(async (file): Promise<ItemAttachment> => {
+        let image: ChatImage | undefined;
+        if (target === 'model' && isPicture(file) && carrying < MAX_CHAT_IMAGES) {
+          carrying++;
+          // A picture the model cannot read (HEIC, say) is still kept on the item, quietly.
+          const read = await readChatImage(file);
+          if (read.ok) image = read.image;
+        }
+        const preview =
+          !image && isThumbable(file.type) && typeof URL.createObjectURL === 'function'
+            ? URL.createObjectURL(file)
+            : undefined;
+        return { id: crypto.randomUUID(), file, ...(image ? { image } : {}), ...(preview ? { preview } : {}) };
+      })
+    );
+    setAttached((cur) => [...cur, ...added]);
+  };
   const attach = async (files: readonly File[]) => {
     if (!canAttach || files.length === 0) return;
+    if (toItem) return attachToItem(files);
     const room = MAX_CHAT_IMAGES - pictures.length;
     if (files.length > room) toast.error(ATTACH_COPY.tooMany(MAX_CHAT_IMAGES));
     const read = await Promise.all(files.slice(0, Math.max(0, room)).map(readChatImage));
@@ -207,16 +278,74 @@ export function ChatComposer({
   };
   const onPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     if (!canAttach) return;
-    const files = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith('image/'));
+    const files = Array.from(e.clipboardData.files).filter((f) => toItem || f.type.startsWith('image/'));
     if (files.length === 0) return;
     // A picture alone is taken here; words pasted with it still land in the box.
     if (!e.clipboardData.getData('text/plain')) e.preventDefault();
     void attach(files);
   };
+  const removeAttached = (a: ItemAttachment) => {
+    revoke([a]);
+    setAttached((cur) => cur.filter((x) => x.id !== a.id));
+    textareaRef.current?.focus();
+  };
 
+  // Dropping files on the box: counted in and out, since every child the drag
+  // crosses fires its own enter and leave. Only a drag that carries files.
+  const [dragging, setDragging] = useState(false);
+  const dragDepth = useRef(0);
+  const dropProps = canAttach
+    ? {
+        onDragEnter: (e: React.DragEvent) => {
+          if (!hasFiles(e)) return;
+          e.preventDefault();
+          dragDepth.current += 1;
+          setDragging(true);
+        },
+        onDragOver: (e: React.DragEvent) => {
+          if (hasFiles(e)) e.preventDefault();
+        },
+        onDragLeave: (e: React.DragEvent) => {
+          if (!hasFiles(e)) return;
+          dragDepth.current = Math.max(0, dragDepth.current - 1);
+          if (dragDepth.current === 0) setDragging(false);
+        },
+        onDrop: (e: React.DragEvent) => {
+          if (!hasFiles(e)) return;
+          e.preventDefault();
+          dragDepth.current = 0;
+          setDragging(false);
+          void attach(Array.from(e.dataTransfer.files));
+        },
+      }
+    : {};
+
+  const canSend = hasText || (toItem && attached.length > 0);
   const handleSend = () => {
     const text = input.trim();
-    if (!text || isLoading) return;
+    if (isLoading) return;
+    if (toItem && itemId) {
+      if (!text && attached.length === 0) return;
+      // Taken before the message is stamped, so the files' cards sit just above it.
+      const placedAt = Date.now();
+      const images =
+        target === 'model' ? attached.flatMap((a) => (a.image ? [a.image] : [])).slice(0, MAX_CHAT_IMAGES) : [];
+      if (attached.length)
+        void useItemFilesStore.getState().add(
+          itemId,
+          attached.map((a) => a.file),
+          { placedAt }
+        );
+      revoke(attached);
+      setAttached([]);
+      // The Send button goes with the files; keep focus in the box, not on <body>.
+      textareaRef.current?.focus();
+      if (!text) return;
+      setInput('');
+      void sendFrom(binding, text, { surface, ...(images.length ? { images } : {}) });
+      return;
+    }
+    if (!text) return;
     setInput('');
     const images = canAttach ? pictures.map((p) => p.image) : [];
     setPictures([]);
@@ -396,10 +525,73 @@ export function ChatComposer({
     );
   }
 
+  const pictureCount = attached.filter((a) => isPicture(a.file)).length;
+  const attachmentsNote =
+    target === 'openclaw'
+      ? 'Kept on this item when you send. OpenClaw doesn’t get files.'
+      : pictureCount > MAX_CHAT_IMAGES
+        ? `Kept on this item when you send. The AI sees the first ${MAX_CHAT_IMAGES} pictures.`
+        : 'Kept on this item when you send.';
+
   return (
-    <div className="relative rounded-2xl border border-border bg-muted/30 transition-colors focus-within:bg-muted/50">
+    <div
+      className="relative rounded-2xl border border-border bg-muted/30 transition-colors focus-within:bg-muted/50"
+      data-testid="chat-composer-panel"
+      {...dropProps}
+    >
       {list}
-      {canAttach && pictures.length > 0 && (
+      {dragging && (
+        <div
+          data-testid="chat-drop-zone"
+          className="pointer-events-none absolute inset-0 z-10 grid place-items-center rounded-2xl border-2 border-dashed border-border bg-background/85 text-xs text-muted-foreground"
+        >
+          {toItem ? 'Drop to add to this item' : 'Drop pictures to send with your message'}
+        </div>
+      )}
+      {toItem && attached.length > 0 && (
+        <div className="flex flex-col gap-1.5 px-3 pt-3">
+          <ul className="flex flex-wrap gap-2" aria-label="Files to add to this item" data-testid="chat-attachments">
+            {attached.map((a) => {
+              const src = a.image ? imageDataUrl(a.image) : a.preview;
+              const badge = fileBadge(a.file.name, a.file.type);
+              return (
+                <li key={a.id} className="relative" data-testid="chat-attachment">
+                  {src ? (
+                    /* eslint-disable-next-line @next/next/no-img-element -- a data: or blob: URL in memory, nothing to optimise */
+                    <img src={src} alt={a.file.name} className="size-14 rounded-lg border border-border object-cover" />
+                  ) : (
+                    <span className="flex h-14 max-w-[12rem] items-center gap-2 rounded-lg border border-border bg-background px-2">
+                      <span
+                        className="grid size-[30px] shrink-0 place-items-center rounded-md bg-muted font-mono text-[8.5px] uppercase text-muted-foreground"
+                        aria-hidden
+                      >
+                        {badge}
+                      </span>
+                      <span className="flex min-w-0 flex-col">
+                        <span className="truncate text-xs text-foreground">{a.file.name}</span>
+                        <span className="text-2xs text-muted-foreground">{sizeLabel(a.file.size)}</span>
+                      </span>
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    aria-label={`Remove ${a.file.name}`}
+                    data-testid="chat-attachment-remove"
+                    onClick={() => removeAttached(a)}
+                    className="absolute -top-1.5 -right-1.5 flex size-5 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm hover:text-foreground"
+                  >
+                    <X className="size-3" aria-hidden />
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="text-2xs text-muted-foreground" data-testid="chat-attachments-note">
+            {attachmentsNote}
+          </p>
+        </div>
+      )}
+      {!toItem && canAttach && pictures.length > 0 && (
         <ul className="flex flex-wrap gap-2 px-3 pt-3" aria-label="Attached pictures" data-testid="chat-attachments">
           {pictures.map((p, i) => (
             <li key={p.id} className="relative" data-testid="chat-attachment">
@@ -461,10 +653,16 @@ export function ChatComposer({
             variant="ghost"
             size="icon"
             className="h-8 w-8 shrink-0 rounded-full text-muted-foreground"
-            disabled={!canAttach || isLoading || pictures.length >= MAX_CHAT_IMAGES}
+            disabled={toItem ? isLoading || room <= 0 : !canAttach || isLoading || pictures.length >= MAX_CHAT_IMAGES}
             onClick={() => fileRef.current?.click()}
-            aria-label="Attach pictures"
-            title={canAttach ? 'Attach pictures' : 'Pictures go to a connected model only'}
+            aria-label={toItem ? 'Attach files' : 'Attach pictures'}
+            title={
+              toItem
+                ? 'Attach files to this item'
+                : canAttach
+                  ? 'Attach pictures'
+                  : 'Pictures go to a connected model only'
+            }
             data-testid="chat-attach"
           >
             <Plus className="h-4 w-4" />
@@ -472,7 +670,7 @@ export function ChatComposer({
           <input
             ref={fileRef}
             type="file"
-            accept="image/jpeg,image/png,image/webp,image/gif"
+            accept={toItem ? undefined : 'image/jpeg,image/png,image/webp,image/gif'}
             multiple
             hidden
             data-testid="chat-attach-input"
@@ -494,7 +692,7 @@ export function ChatComposer({
           >
             <Square className="h-3 w-3 fill-current" />
           </Button>
-        ) : hasText ? (
+        ) : canSend ? (
           <Button
             size="icon"
             className="h-8 w-8 rounded-full"

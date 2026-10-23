@@ -12,8 +12,12 @@ import {
   fileLink,
   listItemFiles,
   opensInline,
+  fileBadge,
+  isThumbable,
   sizeLabel,
+  thumbLinks,
   uploadItemFile,
+  type ItemFile,
 } from '@/lib/item-files';
 import { sweepItemFiles } from '@/lib/item-files-sweep';
 import { useItemFilesStore } from '@/lib/item-files-store';
@@ -187,6 +191,115 @@ describe('the browser half', () => {
     );
     expect((await listItemFiles('i1', db) as { id: string }[]).map((f) => f.id)).toEqual(['a']);
     expect(await listItemFiles('i1', fakeDb({ listError: { code: 'PGRST205' } }).db)).toBe('unavailable');
+  });
+});
+
+describe('who added it, and pictures (migration 081)', () => {
+  it('maps added_by, and asks again without it while 081 is missing', async () => {
+    const { db, tables } = fakeDb();
+    tables.item_files.push({ id: 'a', item_id: 'i1', name: 'a', mime: 'x', size: 1, path: 'u1/a', ready: true, created_at: '1', added_by: 'openclaw' });
+    expect(((await listItemFiles('i1', db)) as ItemFile[])[0].addedBy).toBe('openclaw');
+
+    const asked: string[] = [];
+    const behind = {
+      from: () => {
+        let cols = '';
+        const b = {
+          select: (c: string) => ((cols = c), asked.push(c), b),
+          eq: () => b,
+          order: () => b,
+          then: (resolve: (v: unknown) => unknown) =>
+            Promise.resolve(
+              cols.includes('added_by')
+                ? { data: null, error: { code: '42703' } }
+                : { data: [{ id: 'a', item_id: 'i1', name: 'a', mime: 'x', size: 1, created_at: '1' }], error: null }
+            ).then(resolve),
+        };
+        return b;
+      },
+    } as never;
+    const got = (await listItemFiles('i1', behind)) as ItemFile[];
+    expect(got.map((f) => [f.id, f.addedBy])).toEqual([['a', null]]);
+    expect(asked).toHaveLength(2);
+    expect(asked[1]).not.toContain('added_by');
+  });
+
+  it('never sends user_id or added_by from the browser, and reads back no added_by', async () => {
+    const { db, calls } = fakeDb();
+    const res = await uploadItemFile({ itemId: 'i1', userId: 'u1', file: file('a.pdf', 9) }, db);
+    if (!res.ok) throw new Error();
+    const row = calls.find((c) => c[0] === 'insert:item_files')?.[1] as Record<string, unknown>;
+    expect(Object.keys(row).sort()).toEqual(['id', 'item_id', 'mime', 'name', 'path', 'size']);
+    expect(res.file.addedBy).toBeNull();
+  });
+
+  it('signs pictures only, in one call for 600 seconds, with no download', async () => {
+    const asked: unknown[] = [];
+    const db = {
+      storage: {
+        from: () => ({
+          createSignedUrls: async (paths: string[], ttl: number, o?: unknown) => (
+            asked.push([paths, ttl, o]),
+            { data: paths.map((p) => ({ path: p, signedUrl: `https://files.test/${p}`, error: null })), error: null }
+          ),
+        }),
+      },
+    } as never;
+    const links = await thumbLinks(
+      [
+        { id: 'p', mime: 'image/png' },
+        { id: 's', mime: 'image/svg+xml' },
+        { id: 'd', mime: 'application/pdf' },
+      ],
+      'u1',
+      db
+    );
+    expect(asked).toEqual([[['u1/p'], 600, undefined]]);
+    expect(links).toEqual({ p: 'https://files.test/u1/p' });
+    expect(isThumbable('image/svg+xml')).toBe(false);
+  });
+
+  it('badges a file by its extension, up to four letters', () => {
+    expect(fileBadge('W-2 2025.pdf', 'application/pdf')).toBe('PDF');
+    expect(fileBadge('a.docx', '')).toBe('DOCX');
+    expect(fileBadge('notes.backup', '')).toBe('FILE');
+    expect(fileBadge('README', 'text/plain')).toBe('FILE');
+  });
+});
+
+describe('the store', () => {
+  beforeEach(() => {
+    usePlannerStore.setState({ userId: 'u1' } as never);
+    useItemFilesStore.setState({ available: true, byItem: {}, uploading: {}, placedAt: {}, thumbs: {}, thumbFails: {} });
+  });
+
+  it('records where a file added on this page sits, from the send it went with', async () => {
+    const mod = await import('@/lib/item-files');
+    const spy = vi.spyOn(mod, 'uploadItemFile');
+    spy.mockResolvedValue({
+      ok: true,
+      file: { id: 'f1', itemId: 'i1', name: 'a.pdf', mime: 'application/pdf', size: 9, createdAt: '2026-10-23T00:00:09Z', addedBy: null },
+    });
+    await useItemFilesStore.getState().add('i1', [file('a.pdf', 9)], { placedAt: 1234 });
+    expect(useItemFilesStore.getState().placedAt).toEqual({ f1: 1234 });
+    spy.mockRestore();
+  });
+
+  it('keeps a file added while a read was on its way', async () => {
+    const mod = await import('@/lib/item-files');
+    let finish: (v: ItemFile[]) => void = () => {};
+    const list = vi.spyOn(mod, 'listItemFiles').mockImplementation(() => new Promise((r) => (finish = r)));
+    const upload = vi.spyOn(mod, 'uploadItemFile').mockResolvedValue({
+      ok: true,
+      file: { id: 'new', itemId: 'i1', name: 'b.pdf', mime: 'application/pdf', size: 9, createdAt: '2', addedBy: null },
+    });
+    const loading = useItemFilesStore.getState().load('i1');
+    await useItemFilesStore.getState().add('i1', [file('b.pdf', 9)]);
+    finish([{ id: 'old', itemId: 'i1', name: 'a.pdf', mime: 'application/pdf', size: 9, createdAt: '1', addedBy: null }]);
+    await loading;
+    expect(useItemFilesStore.getState().byItem.i1.files.map((f) => f.id)).toEqual(['old', 'new']);
+    list.mockRestore();
+    upload.mockRestore();
   });
 });
 

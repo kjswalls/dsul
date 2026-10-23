@@ -90,6 +90,31 @@ Every way a row goes queues its bytes in `storage_sweep` from a trigger, emptied
 files tier (lib/item-files-sweep.ts), so deleting an account stays one call. Files are not in the chat
 context, `/api/agent/context` or MCP: showing them to a model is a decision of its own.
 
+**Note 2026-10-23: files in the timeline.** Kirby's item conversations PR 2. A file kept on an item is a line
+on its timeline ("You attached W-2 2025.pdf", "OpenClaw attached Draft return.pdf", "An agent attached
+notes.txt"), with a card under it: a picture as itself, anything else as its type and size. Cards are drawn
+from `item_files` rows (lib/item-timeline.ts `fileEntries`), never from `item_events`: no event is written for
+a file, so nothing about one reaches an agent's read of the item's history, and a deleted file's line goes with
+its row. Files show under All, Talk and Changes, never fold and never count in a fold, and a file sent with a
+message sits just before it. A picture's thumbnail is a signed URL that lasts 600 s (`THUMB_TTL_S`), signed
+again once when it fails to load; like every signed URL it skips 073's policies for that time, so a copied one
+keeps working until it expires, after sign-out too, though a deleted file's bytes go first and its link dies
+with them. The rail's item box (ChatComposer `variant="panel"` bound to an item) attaches ANY file to the item,
+and saves on send, never on attach: removing a chip is the undo, and a send with files and no words saves them
+with no message. The original goes to the item; a picture also goes, shrunk, to the connected model for that
+turn as before, and its question's tiles say "N images sent to the AI" there rather than "not saved". The
+inline item box (the modal, the phone's drawer, Zen, /item/[id]) and the phone's dock keep today's behaviour:
+no attach to the item from them yet. AGENTS can attach a file (MCP `dsul_attach_file`, POST
+/api/agent/items/:id/files) and can never read one back: no tool, route or context lists or serves an item's
+files to an agent, and the route answers with only the file it just wrote. One JSON body, 3 MB of file at
+most (Vercel's ~4.5 MB request limit, after base64 and the envelope; a 10 MB two-step signed upload is a later
+PR if anyone asks). No assignment is needed: any planner-scope key may already edit the item's notes. THE ONE
+SERVICE-ROLE WRITER: 073 has item_files written only by the session client; that route is the deliberate
+exception (lib/item-files-server.ts, migration 081), with the user from the key, the path from a server UUID,
+the type settled from the bytes (never HTML or SVG), row then bytes then ready, and a ready step that must
+touch the row or the bytes are removed again. `item_files.added_by` (081) says which agent added a file; a
+trigger nulls it for every role but service_role, so a browser can never claim to be an agent.
+
 **Note 2026-10-11: the item timeline.** The Activity list and the panel footer's edit history became one
 timeline (lib/item-timeline.ts, components/planner/item-timeline.tsx): an item's `item_events` and its
 conversation, oldest first, by day, each line saying who did it. A day's conversation folds into one line

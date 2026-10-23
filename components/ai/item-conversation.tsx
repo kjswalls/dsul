@@ -24,7 +24,9 @@ import { useBoxAnswersAgent } from '@/lib/agent-question';
 import { useAgentExchange } from '@/hooks/use-agent-exchange';
 import { usePlannerStore } from '@/lib/planner-store';
 import { getItemEventsAvailable } from '@/lib/db';
-import { buildStream, type StreamRow, type TimelineFilter } from '@/lib/item-timeline';
+import { buildStream, fileEntries, type StreamRow, type TimelineFilter } from '@/lib/item-timeline';
+import { useItemFiles, useItemFilesStore } from '@/lib/item-files-store';
+import { TimelineFileRow } from '@/components/planner/item-file-card';
 import {
   TimelineChangeLine,
   TimelineDayLine,
@@ -84,7 +86,10 @@ function railBodyOf(el: HTMLElement | null): HTMLElement | null {
  * (`item_events`), compacted and folded, set between the messages by time
  * (lib/item-timeline.ts `buildStream`), under one "Timeline" heading with
  * All · Talk · Changes. Where this is on screen ItemDetailSections mounts no
- * timeline of its own, so a change is never listed twice.
+ * timeline of its own, so a change is never listed twice. Files kept on the
+ * item are in the stream too (`fileEntries`, drawn from item_files rows),
+ * under every filter, never folded; a file sent with a message sits just
+ * before it.
  *
  * Every shape shows Ask's own messages (components/ai/chat-transcript.tsx:
  * your bubble, plain replies, Copy, the status lines; one transcript everywhere),
@@ -150,16 +155,33 @@ export function ItemConversation({
   // Slots whose older changes were opened. Keyed by slot index, which a new
   // message never moves (it only appends a slot at the end).
   const [unfolded, setUnfolded] = useState<ReadonlySet<number>>(() => new Set());
+  const itemFiles = useItemFiles(canChat ? item.id : null);
+  const placedAt = useItemFilesStore((s) => s.placedAt);
+  const loadThumbs = useItemFilesStore((s) => s.loadThumbs);
+  const files = useMemo(
+    () =>
+      fileEntries(
+        itemFiles ?? [],
+        placedAt,
+        messages.map((m) => m.createdAt)
+      ),
+    [itemFiles, placedAt, messages]
+  );
+  useEffect(() => {
+    if (canChat && itemFiles?.length) void loadThumbs(item.id);
+  }, [canChat, itemFiles, item.id, loadThumbs]);
   const slots = useMemo(
     () =>
       buildStream(getItemEventsAvailable() ? (events ?? []) : [], messages, {
         filter,
         now: new Date(),
         unfolded,
+        files,
       }),
-    [events, messages, filter, unfolded]
+    [events, messages, filter, unfolded, files]
   );
   const anyChange = slots.some((rows) => rows.some((r) => r.kind !== 'day'));
+  const anyFile = files.length > 0;
 
   // Find the item's conversation and fetch its transcript, only while
   // something can answer (the conversation is not shown otherwise).
@@ -230,8 +252,9 @@ export function ItemConversation({
   );
   // Changes alone: one slot and no transcript. Otherwise the transcript, with
   // the changes drawn between its messages.
+  // Talk with no messages still draws its file rows.
   const empty =
-    filter === 'talk' && messages.length === 0
+    filter === 'talk' && messages.length === 0 && !anyFile
       ? 'No conversation about this yet.'
       : filter === 'changes' && !anyChange
         ? 'No changes yet.'
@@ -243,7 +266,14 @@ export function ItemConversation({
   ) : filter === 'changes' ? (
     rowsAt(0)
   ) : (
-    <TranscriptMessages messages={messages} busy={isLoading} retryVia={retryVia} receipts={receipts} before={rowsAt} />
+    <TranscriptMessages
+      messages={messages}
+      busy={isLoading}
+      retryVia={retryVia}
+      receipts={receipts}
+      before={rowsAt}
+      pictureNote="sent"
+    />
   );
 
   if (!inline) {
@@ -312,7 +342,7 @@ export function ItemConversation({
   );
 }
 
-/** A slot of the stream: day lines, changes and a fold, drawn between two messages. */
+/** A slot of the stream: day lines, changes, files and a fold, drawn between two messages. */
 function StreamRows({ rows, onOpen }: { rows: readonly StreamRow[]; onOpen: (slot: number) => void }) {
   if (rows.length === 0) return null;
   return (
@@ -322,6 +352,8 @@ function StreamRows({ rows, onOpen }: { rows: readonly StreamRow[]; onOpen: (slo
           <TimelineDayLine key={r.key} label={r.label} />
         ) : r.kind === 'fold' ? (
           <TimelineFoldLine key={r.key} hidden={r.hidden} onOpen={() => onOpen(r.slot)} />
+        ) : r.kind === 'file' ? (
+          <TimelineFileRow key={r.key} entry={r} />
         ) : (
           <TimelineChangeLine key={r.key} entry={r} as="div" />
         )

@@ -29,8 +29,11 @@ import { isMissingSchema } from './schema-codes';
  * one call on the person's own key; this bounds a runaway client, not them.
  * A mod's call costs 2 (MAKE_CAPS in lib/ai-limits.ts), since it may write
  * twice the tokens.
+ * agent_file: an agent attaching a file to an item (POST /api/agent/items/:id/files),
+ * 60/h. Per instance like the rest, so it slows a looping agent; 073's caps
+ * (20 an item, 200 files or 500 MB an account) are the real bound.
  */
-export type Bucket = 'connect' | 'check' | 'conv_write' | 'conv_read' | 'conv_search' | 'make';
+export type Bucket = 'connect' | 'check' | 'conv_write' | 'conv_read' | 'conv_search' | 'make' | 'agent_file';
 
 const LIMITS: Record<Bucket, number> = {
   connect: 20,
@@ -39,6 +42,7 @@ const LIMITS: Record<Bucket, number> = {
   conv_read: 1_200,
   conv_search: 300,
   make: 30,
+  agent_file: 60,
 };
 const WINDOW_MS = 60 * 60 * 1000;
 const MAX_KEYS = 5_000;

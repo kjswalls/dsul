@@ -2,15 +2,43 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 
 const fetchItemEvents = vi.fn();
+const eventsAvailable = vi.hoisted(() => ({ value: true }));
 vi.mock('@/lib/db', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/db')>()),
   fetchItemEvents: (...args: unknown[]) => fetchItemEvents(...args),
-  getItemEventsAvailable: () => true,
+  getItemEventsAvailable: () => eventsAvailable.value,
+}));
+
+// The session client, as the item's files read it: rows for a list, a signed
+// URL per picture.
+const filesDb = vi.hoisted(() => ({ rows: [] as Record<string, unknown>[], signed: [] as unknown[] }));
+vi.mock('@/lib/supabase', () => ({
+  createClient: () => {
+    const b = {
+      select: () => b,
+      eq: () => b,
+      order: () => b,
+      then: (resolve: (v: unknown) => unknown) => Promise.resolve({ data: filesDb.rows, error: null }).then(resolve),
+    };
+    return {
+      from: () => b,
+      storage: {
+        from: () => ({
+          createSignedUrls: async (paths: string[], ttl: number) => (
+            filesDb.signed.push([paths, ttl]),
+            { data: paths.map((path) => ({ path, signedUrl: `https://files.test/${path}`, error: null })), error: null }
+          ),
+        }),
+      },
+    };
+  },
 }));
 
 import { ItemTimeline } from '@/components/planner/item-timeline';
 import { ItemConversation } from '@/components/ai/item-conversation';
 import { useConversationsStore, clearChatState } from '@/lib/conversations-store';
+import { useItemFilesStore } from '@/lib/item-files-store';
+import { usePlannerStore } from '@/lib/planner-store';
 import { seedAI, CONNECTED_MODEL, NOTHING_CONNECTED } from './helpers/ai-fixtures';
 import type { TaskItem } from '@/lib/planner-types';
 
@@ -29,6 +57,21 @@ afterEach(() => {
   unseed();
   fetchItemEvents.mockReset();
   clearChatState();
+  eventsAvailable.value = true;
+  filesDb.rows = [];
+  filesDb.signed = [];
+  useItemFilesStore.setState({ available: null, byItem: {}, uploading: {}, placedAt: {}, thumbs: {}, thumbFails: {} });
+});
+
+const fileRow = (id: string, at: Date, over: Record<string, unknown> = {}) => ({
+  id,
+  item_id: 'i1',
+  name: `${id}.pdf`,
+  mime: 'application/pdf',
+  size: 2048,
+  created_at: at.toISOString(),
+  added_by: null,
+  ...over,
 });
 
 function withThread() {
@@ -127,5 +170,88 @@ describe('the timeline inside the conversation', () => {
     fireEvent.click(screen.getByTestId('item-timeline-filter-changes'));
     expect(section).not.toHaveTextContent('hello');
     expect(screen.getAllByTestId('item-timeline-change')).toHaveLength(2);
+  });
+});
+
+describe('files on the timeline', () => {
+  const pinned = async () => {
+    useConversationsStore.setState({ resolveItemThread: async () => 'c1', openThread: async () => {} } as never);
+    render(<ItemConversation item={ITEM} mode="pinned" />);
+    await act(async () => {});
+    await act(async () => {});
+  };
+
+  it('sets a file between the messages by time, as you attaching it', async () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    fetchItemEvents.mockResolvedValue([]);
+    filesDb.rows = [fileRow('a', new Date(today(9).getTime() + 500))];
+    withThread();
+    await pinned();
+    const text = screen.getByTestId('item-conversation').textContent ?? '';
+    const order = ['hi', 'You attached a.pdf', 'hello'].map((t) => text.indexOf(t));
+    expect(order.every((at) => at >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    expect(screen.getByTestId('item-file-card')).toHaveAttribute('data-kind', 'file');
+    expect(screen.getByTestId('item-file-card')).toHaveTextContent('PDF · 2 KB');
+    // Its own row, never counted as a change.
+    expect(screen.queryAllByTestId('item-timeline-change')).toHaveLength(0);
+    // Talk and Changes show it too.
+    fireEvent.click(screen.getByTestId('item-timeline-filter-changes'));
+    expect(screen.getByTestId('item-timeline-file')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('item-timeline-filter-talk'));
+    expect(screen.getByTestId('item-timeline-file')).toBeInTheDocument();
+  });
+
+  it('shows the timeline for an item whose only history is a file, under Talk too', async () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    fetchItemEvents.mockResolvedValue([]);
+    filesDb.rows = [fileRow('a', today(9))];
+    await pinned();
+    expect(screen.getByTestId('item-conversation')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('item-timeline-filter-talk'));
+    expect(screen.queryByTestId('item-timeline-empty')).toBeNull();
+    expect(screen.getByTestId('item-timeline-file')).toBeInTheDocument();
+  });
+
+  it('names the agent that attached it', async () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    fetchItemEvents.mockResolvedValue([]);
+    filesDb.rows = [fileRow('Draft return', today(9), { added_by: 'openclaw' })];
+    await pinned();
+    expect(screen.getByTestId('item-timeline-file')).toHaveTextContent('OpenClaw attached Draft return.pdf');
+    expect(screen.getByTestId('item-timeline-file')).toHaveAttribute('data-by', 'agent');
+  });
+
+  it('draws a picture through a short-lived signed link, and falls back to the card when it will not load', async () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    usePlannerStore.setState({ userId: 'u1' } as never);
+    fetchItemEvents.mockResolvedValue([]);
+    filesDb.rows = [fileRow('cat', today(9), { name: 'cat.png', mime: 'image/png' })];
+    await pinned();
+    const img = screen.getByRole('img', { name: 'cat.png' });
+    expect(img).toHaveAttribute('src', 'https://files.test/u1/cat');
+    expect(filesDb.signed[0]).toEqual([['u1/cat'], 600]);
+    expect(screen.getByTestId('item-file-card')).toHaveAttribute('data-kind', 'image');
+    // Signed again once, then the card.
+    await act(async () => {
+      fireEvent.error(img);
+    });
+    await act(async () => {
+      fireEvent.error(screen.getByRole('img', { name: 'cat.png' }));
+    });
+    expect(screen.queryByRole('img', { name: 'cat.png' })).toBeNull();
+    expect(screen.getByTestId('item-file-card')).toHaveAttribute('data-kind', 'file');
+  });
+
+  it('is on the timeline without AI, and still there when item_events is not', async () => {
+    unseed = seedAI(NOTHING_CONNECTED);
+    eventsAvailable.value = false;
+    fetchItemEvents.mockResolvedValue([]);
+    filesDb.rows = [fileRow('a', today(9))];
+    render(<ItemTimeline item={ITEM} />);
+    await act(async () => {});
+    await act(async () => {});
+    expect(screen.getByTestId('item-timeline-file')).toHaveTextContent('You attached a.pdf');
+    expect(screen.getByTestId('item-file-card')).toBeInTheDocument();
   });
 });
