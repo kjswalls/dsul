@@ -470,9 +470,9 @@ describe('braindump list while previewing', () => {
     expect(section).not.toHaveAttribute('inert');
 
     expect(screen.getByText('Task a').closest('[inert]')).not.toBeNull();
-    // The paused count rides the header's moon, which is live: it only opens
-    // Organize, and the console has its own preview rules.
-    expect(screen.getByTestId('braindump-paused').closest('[inert]')).toBeNull();
+    // The header's moon is drawn only mid-drag; at rest the paused count lives
+    // in Organize's rail, so nothing here says it.
+    expect(screen.queryByTestId('braindump-paused')).toBeNull();
 
     // The list and the trip receipt's wrapper; the header, the receipt slot and
     // the quick-add are live.

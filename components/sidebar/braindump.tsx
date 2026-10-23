@@ -345,48 +345,35 @@ function FromTripSection({ rows, days }: { rows: RowItem[]; days: Readonly<Recor
 }
 
 /**
- * The braindump header's moon: how many things are paused, opening Organize's
- * Paused section, where they are listed by the day each comes back.
+ * The braindump header's moon, drawn ONLY mid-drag: `arriving` is the habits a
+ * drop on the sidebar would pause. They have no row slot in this list to land
+ * in, so the moon appears, lit, counting them in, as the drag's answer to
+ * "where will this go?". At rest it is not drawn at all.
  *
- * It replaced the Paused drawer at the foot of this list (Kirby, 2026-10-23).
- * The drawer was a second list under a list about something else; the moon
- * costs the header one small key and the column nothing, and is not drawn at
- * all when nothing is paused.
+ * It used to sit here at rest too, counting what was paused and opening
+ * Organize's Paused section. Kirby took it out (2026-10-23): its pill padding
+ * never matched the icon buttons beside it, and a key that only opens
+ * Organize belongs inside Organize, whose rail's Paused row now carries the
+ * count (console-rail.tsx). The folder button is the door.
  *
- * Quiet, per the guilt-free law: muted ink, no badge, no colour. The count
- * answers "did I set anything aside?" without reading as a debt.
- *
- * Paused is ungatable in the console (console-rail.tsx), so this door is never
- * shut the way the Organize button can be.
- *
- * `arriving` is the habits a drop on the sidebar would pause. While there are
- * any the key shows, lights and counts them in, which is the drag's answer to
- * "where will this go?".
+ * Quiet, per the guilt-free law: muted ink, no badge, no colour.
  */
 function PausedKey({ count, arriving, touch }: { count: number; arriving: number; touch: boolean }) {
-  const openDialog = useUIStore((s) => s.openDialog);
-  if (count === 0 && arriving === 0) return null;
-  const shown = count + arriving;
-  const label = `${shown} paused`;
+  if (arriving === 0) return null;
   return (
-    <HeaderTip off={touch} label="Paused" detail="Set aside, and when each comes back">
-      <button
-        type="button"
-        onClick={() => openDialog({ type: 'organize', section: 'paused' })}
-        data-testid="braindump-paused"
-        data-count={count}
-        data-arriving={arriving > 0 ? '' : undefined}
-        aria-label={label}
-        className={cn(
-          'text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-ring inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-xs leading-none focus-visible:outline-1 focus-visible:outline-solid',
-          touch && 'h-7',
-          arriving > 0 && 'bg-accent text-foreground'
-        )}
-      >
-        <Moon className="h-3.5 w-3.5 shrink-0" aria-hidden />
-        <span className="font-num">{shown}</span>
-      </button>
-    </HeaderTip>
+    <span
+      data-testid="braindump-paused"
+      data-count={count}
+      data-arriving=""
+      aria-hidden
+      className={cn(
+        'bg-accent text-foreground inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-xs leading-none',
+        touch && 'h-7'
+      )}
+    >
+      <Moon className="h-3.5 w-3.5 shrink-0" aria-hidden />
+      <span className="font-num">{count + arriving}</span>
+    </span>
   );
 }
 
@@ -676,13 +663,11 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
     ) : undefined;
 
   /**
-   * How many things are set aside right now: the count on the header's moon,
-   * which opens Organize's Paused section, where they are listed.
+   * How many things are set aside right now: the count the drag's moon counts
+   * up from, and whether the folder button stays live with Organize off.
    *
    * The same derivation the section lists (lib/paused-shelf.ts), handed the
-   * suppressed set this list already resolved at today, so the number on the
-   * moon is always the number of rows behind it. It used to be a drawer at the
-   * foot of this list; Kirby moved the list into Organize (2026-10-23).
+   * suppressed set this list already resolved at today.
    */
   const pausedCount = useMemo(() => {
     const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -764,6 +749,8 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
   }, [wantsKey, isMobile]);
   const keyDocked = useDoStuffStore((s) => s.docked) && !isMobile;
 
+  // With Organize off the button is still a door to Paused while anything is.
+  const reachable = organizeOn || pausedCount > 0;
   const organizeButton = (
     <Button
       variant="ghost"
@@ -772,19 +759,24 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
         'h-6 w-6 text-muted-foreground hover:text-foreground',
         isMobile && 'size-7'
       )}
-      onClick={() => openDialog({ type: 'organize', section: 'projects' })}
+      onClick={() => openDialog({ type: 'organize', section: organizeOn ? 'projects' : 'paused' })}
       // INERT, not absent, while the Organize console is off. A door that
       // vanishes teaches nothing; a door that is visibly shut and says why
       // is the "extension store" posture (lib/extension-gates.ts). The
       // console's own gate is the guard of last resort — this one is here so
       // the click never opens an empty room in the first place.
-      disabled={!organizeOn}
+      //
+      // EXCEPT while something is paused. Paused is never gated (pausing
+      // isn't), and this button is its only door since the header's moon
+      // went (2026-10-23), so with Organize off it opens straight onto
+      // Paused, the room it still has.
+      disabled={!reachable}
       // Why it is shut: the tooltip says it on a pointer, this says it to a
       // screen reader, and the phone — which gets no tooltips — keeps the
       // native title it has always had.
-      aria-description={organizeOn ? undefined : ORGANIZE_OFF}
-      title={isMobile && !organizeOn ? ORGANIZE_OFF : undefined}
-      aria-label="Organize projects & groups"
+      aria-description={reachable ? undefined : ORGANIZE_OFF}
+      title={isMobile && !reachable ? ORGANIZE_OFF : undefined}
+      aria-label={organizeOn || !reachable ? 'Organize projects & groups' : 'Paused'}
     >
       <FolderOpen className="h-4 w-4" />
     </Button>
@@ -882,9 +874,7 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
         <span className={cn('flex', isMobile && '[&>button]:size-7')}>
           <DisplayMenu ref={displayRef} surface="braindump" trigger="icon" align="start" />
         </span>
-        {/* What is set aside, and the door to where it is listed. Only while
-            something is (or is about to be): this row is width-critical at the
-            280px minimum, and a key that says "0" says nothing. */}
+        {/* Only mid-drag, while a drop here would pause a habit. */}
         <PausedKey count={pausedCount} arriving={pausingRows.length} touch={isMobile} />
         {/* A disabled button takes no pointer events (disabled:pointer-events-none
             in ui/button), so while Organize is off the tooltip hangs on a span
@@ -892,10 +882,16 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
             not one either. */}
         <HeaderTip
           off={isMobile}
-          label="Organize"
-          detail={organizeOn ? 'Projects & item types' : ORGANIZE_OFF_SHORT}
+          label={organizeOn || !reachable ? 'Organize' : 'Paused'}
+          detail={
+            organizeOn
+              ? 'Projects, item types & what\'s paused'
+              : reachable
+                ? 'What you\'ve set aside. Organize itself is off'
+                : ORGANIZE_OFF_SHORT
+          }
         >
-          {organizeOn ? organizeButton : <span className="flex">{organizeButton}</span>}
+          {reachable ? organizeButton : <span className="flex">{organizeButton}</span>}
         </HeaderTip>
         {/* No routines button here on purpose. This row is width-critical at
             the 280px minimum — the collapse control moved off it to buy the
