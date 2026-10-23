@@ -306,3 +306,106 @@ export function weekBuckets(schedule: ContainerSchedule, weekStartDay: WeekStart
   }
   return weeks;
 }
+
+/* ── the numbers a list or a strip says ───────────────────────────────── */
+
+/** {@link occurrencesByItem}'s answer, read-only: item id → date → occurrence. */
+export type OccurrencesByItem = ReadonlyMap<string, ReadonlyMap<string, Occurrence>>;
+
+/**
+ * This span's occurrences among `ids`: how many there are and how many are
+ * done. Only what is done or still ahead counts. A past day with nothing
+ * recorded is `open`, NOT a miss (see the top of this file), and a member
+ * added on Thursday must not read as "1 of 7"; a skip is a decision, not work.
+ *
+ * Moved out of useWeekDotsFor (components/planner/schedule/schedule-views.tsx)
+ * so the iPhone's Organize counts the same way (ios/DsulCore
+ * ContainerSchedule.swift, pinned by tests/fixtures/organize/schedule.json).
+ * An id listed twice counts twice, as it always has.
+ */
+export function weekTotals(byItem: OccurrencesByItem, ids: readonly string[]): { done: number; total: number } {
+  let done = 0;
+  let total = 0;
+  for (const id of ids) {
+    for (const o of byItem.get(id)?.values() ?? []) {
+      if (o.state === 'skipped' || o.state === 'open') continue;
+      total += 1;
+      if (o.state === 'done') done += 1;
+    }
+  }
+  return { done, total };
+}
+
+/**
+ * "1/3 today" for a list's heading: of the members that occur on `todayStr`,
+ * how many are done. Undefined when none occur today (the heading keeps its
+ * plain count then). A member skipped today counts on neither side.
+ */
+export function todayCount(byItem: OccurrencesByItem, ids: readonly string[], todayStr: string): string | undefined {
+  let done = 0;
+  let on = 0;
+  for (const id of ids) {
+    const st = byItem.get(id)?.get(todayStr)?.state;
+    if (st === undefined || st === 'skipped') continue;
+    on += 1;
+    if (st === 'done') done += 1;
+  }
+  return on ? `${done}/${on} today` : undefined;
+}
+
+/** One day of a schedule, counted by state. */
+export interface DayRollup {
+  date: string;
+  done: number;
+  due: number;
+  open: number;
+  skipped: number;
+}
+
+/**
+ * Each day's occurrences counted by state, in the schedule's own day order:
+ * the iPhone's "Last 14 days" strip.
+ *
+ * Counts, never a share. A past day's `open` is what was never recorded, not
+ * what was due, so `done / (done + open)` on a past day would be "missed" under
+ * another name, and a member added today would turn every past day partial.
+ * A reader draws a past day from what was RECORDED (done, or nothing), and only
+ * today as done out of done + due (the {@link weekTotals} rule for one day).
+ */
+export function dayRollup(schedule: ContainerSchedule): DayRollup[] {
+  return schedule.days.map((day) => {
+    const r: DayRollup = { date: day.date, done: 0, due: 0, open: 0, skipped: 0 };
+    for (const o of day.occurrences) r[o.state] += 1;
+    return r;
+  });
+}
+
+/** Today's members of a container, in its own order, and how far through they are. */
+export interface TodayRun {
+  /** The members on `todayStr`, ordered by their place in `order`. */
+  rows: { itemId: string; state: OccurrenceState }[];
+  done: number;
+  skipped: number;
+  /** The first row still `due`: the one a checklist calls "next". */
+  nextId?: string;
+  /** Something is on today and nothing is left due. */
+  finished: boolean;
+}
+
+/**
+ * A routine run top to bottom (components/planner/routine-today.tsx): the
+ * schedule's occurrences on `todayStr`, sorted by each member's position in
+ * `order` (the routine's `itemIds`; one missing from it takes position 0, as it
+ * always has). The sort is stable, so ties keep the grid's order.
+ */
+export function todayInOrder(schedule: ContainerSchedule, order: readonly string[], todayStr: string): TodayRun {
+  const position = new Map(order.map((id, i) => [id, i]));
+  const today = schedule.days.find((d) => d.date === todayStr);
+  const rows = (today?.occurrences ?? [])
+    .map((o) => ({ itemId: o.itemId, state: o.state }))
+    .sort((a, b) => (position.get(a.itemId) ?? 0) - (position.get(b.itemId) ?? 0));
+  const done = rows.filter((r) => r.state === 'done').length;
+  const skipped = rows.filter((r) => r.state === 'skipped').length;
+  const nextId = rows.find((r) => r.state === 'due')?.itemId;
+  return { rows, done, skipped, nextId, finished: rows.length > 0 && !nextId };
+}

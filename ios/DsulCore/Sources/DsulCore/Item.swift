@@ -211,7 +211,7 @@ public struct Item: Codable, Sendable, Hashable, Identifiable {
 }
 
 /// packages/types `ProjectSchema`, the fields a recurring time block reads,
-/// and from 2f the web's colour and emoji.
+/// from 2f the web's colour and emoji, and from O3 its notes.
 public struct Project: Codable, Sendable, Hashable, Identifiable {
     public var id: String
     public var name: String
@@ -224,6 +224,8 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
     /// The web's colour token and emoji. Decoded and drawn nowhere in part 2 (Q1 a).
     public var color: String?
     public var emoji: String?
+    /// Free text, the project page's notes (from O3); nil when unset.
+    public var notes: String?
 
     public init(
         id: String,
@@ -235,7 +237,8 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
         startTime: String? = nil,
         duration: Int? = nil,
         color: String? = nil,
-        emoji: String? = nil
+        emoji: String? = nil,
+        notes: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -247,10 +250,11 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
         self.duration = duration
         self.color = color
         self.emoji = emoji
+        self.notes = notes
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, repeatFrequency, repeatDays, repeatMonthDay, timeBucket, startTime, duration, color, emoji
+        case id, name, repeatFrequency, repeatDays, repeatMonthDay, timeBucket, startTime, duration, color, emoji, notes
     }
 
     public init(from decoder: Decoder) throws {
@@ -265,6 +269,7 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
         self.duration = c.lenientInt(.duration)
         self.color = c.lenientString(.color)
         self.emoji = c.lenientString(.emoji)
+        self.notes = c.lenientString(.notes)
     }
 }
 

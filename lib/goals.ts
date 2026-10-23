@@ -13,6 +13,7 @@ import {
   shouldShowOnDate,
 } from './recurrence';
 import { toDateOnly } from './overdue';
+import { formatDay } from './active';
 import type { Goal, GoalRole, Item } from './planner-types';
 
 /**
@@ -277,6 +278,36 @@ export function timeElapsed(goal: Goal, todayStr: string): number | null {
 }
 
 /**
+ * "40% of the way to Mar 15": {@link timeElapsed} in words, or null when the
+ * goal has no window. The caller shows it only beside at least one milestone,
+ * as GoalProgressTrack does (goal-sections.tsx): at zero there is no track to
+ * read it against. Here so the iPhone's goal page says the same words.
+ */
+export function timeElapsedLabel(goal: Goal, todayStr: string): string | null {
+  const elapsed = timeElapsed(goal, todayStr);
+  if (elapsed === null) return null;
+  return `${Math.round(elapsed * 100)}% of the way to ${formatDay(goal.targetOn!)}`;
+}
+
+/**
+ * The days left to a goal's target, in the page header's words: "12 days to
+ * Mar 15", "target is today", "3 days past Mar 15". Null when the goal is not
+ * active or has no target. Past the target is a count, never an alarm: the
+ * guilt-free law. Moved out of GoalSummary (goal-sections.tsx).
+ */
+export function goalCountdown(goal: Goal, todayStr: string): string | null {
+  if (!goal.targetOn || !isGoalActive(goal)) return null;
+  const days = Math.round(
+    (Date.parse(`${toDateOnly(goal.targetOn)}T00:00:00Z`) - Date.parse(`${toDateOnly(todayStr)}T00:00:00Z`)) /
+      86_400_000,
+  );
+  const n = (k: number) => `${k} ${k === 1 ? 'day' : 'days'}`;
+  if (days > 0) return `${n(days)} to ${formatDay(goal.targetOn)}`;
+  if (days === 0) return 'target is today';
+  return `${n(Math.abs(days))} past ${formatDay(goal.targetOn)}`;
+}
+
+/**
  * The next checkpoint to aim at: the earliest un-achieved milestone.
  *
  * Dated ones first, in date order, because a date is a commitment and an
@@ -293,17 +324,135 @@ export function nextMilestone(goal: Goal, itemsById: Map<string, Item>): Item | 
     open.push(item);
   }
   if (open.length === 0) return null;
-  const dateOf = (i: Item) => ('startDate' in i && i.startDate ? toDateOnly(i.startDate) : null);
   // Stable within each half: `open` is built in array order, and sort() is
   // stable, so undated milestones keep their stored sequence.
-  return [...open].sort((a, b) => {
-    const da = dateOf(a);
-    const db = dateOf(b);
-    if (da && db) return da < db ? -1 : da > db ? 1 : 0;
-    if (da) return -1;
-    if (db) return 1;
-    return 0;
-  })[0];
+  return [...open].sort(byTargetDay)[0];
+}
+
+/** A milestone's target day, yyyy-MM-dd, or null when it has none. */
+function targetDayOf(item: Item): string | null {
+  return 'startDate' in item && item.startDate ? toDateOnly(item.startDate) : null;
+}
+
+/** Dated first, by date; undated after, in their stored order (the sort is stable). */
+function byTargetDay(a: Item, b: Item): number {
+  const da = targetDayOf(a);
+  const db = targetDayOf(b);
+  if (da && db) return da < db ? -1 : da > db ? 1 : 0;
+  if (da) return -1;
+  if (db) return 1;
+  return 0;
+}
+
+/* ── the milestone timeline ───────────────────────────────────────────────── */
+
+export type MilestoneState = 'achieved' | 'next' | 'overdue' | 'dropped' | 'ahead';
+
+/**
+ * Where one milestone stands on the timeline.
+ *
+ * `next` OUTRANKS `overdue`, which is the opposite of the first version and
+ * the difference between a timeline that points somewhere and one that does
+ * not. The earliest open milestone of a goal that has slipped is BOTH, and
+ * ranking overdue first meant no row was highlighted at all on exactly the
+ * goals where "what now?" is the question. Lateness still shows, in the
+ * caption ({@link milestoneTimeline}).
+ */
+export function milestoneState(item: Item, isNext: boolean, todayStr: string): MilestoneState {
+  if (item.status === 'cancelled') return 'dropped';
+  if (isAchieved(item)) return 'achieved';
+  if (isNext) return 'next';
+  const date = targetDayOf(item);
+  if (date && date < toDateOnly(todayStr)) return 'overdue';
+  return 'ahead';
+}
+
+/** One row of a goal's milestone timeline. */
+export interface MilestoneRow {
+  item: Item;
+  state: MilestoneState;
+  /** The target day as stored, or undefined when it has none. */
+  date?: string;
+  /** Dated before today, whatever its state. */
+  late: boolean;
+  /** "Oct 4", or "No date yet". */
+  dateLabel: string;
+  /**
+   * The caption's notes after the date, each drawn "· {note}": "reached",
+   * "next up", "still ahead of you", "dropped". Never "overdue": the same
+   * information, in the register the app uses for work that has slipped.
+   */
+  annotations: string[];
+}
+
+/**
+ * The checkpoints, in the order they are meant to happen: the order
+ * {@link nextMilestone} reads them in, dated first by date, then the undated
+ * in their stored sequence. Trashed ones (absent from `itemsById`) are left
+ * out; a dropped (cancelled) one stays, quietly, because it is part of the
+ * record of how the goal went. Moved out of MilestoneTimeline
+ * (goal-sections.tsx) so the iPhone draws the same rows with the same words.
+ */
+export function milestoneTimeline(goal: Goal, itemsById: Map<string, Item>, todayStr: string): MilestoneRow[] {
+  const next = nextMilestone(goal, itemsById);
+  const today = toDateOnly(todayStr);
+  return goal.milestoneIds
+    .map((id) => itemsById.get(id))
+    .filter((i): i is Item => !!i)
+    .sort(byTargetDay)
+    .map((item) => {
+      const state = milestoneState(item, item.id === next?.id, todayStr);
+      const date = 'startDate' in item ? item.startDate : undefined;
+      const late = !!date && toDateOnly(date) < today;
+      const annotations: string[] = [];
+      if (state === 'achieved') annotations.push('reached');
+      if (state === 'next') annotations.push('next up');
+      // For the NEXT row too when it is late, since `next` outranks `overdue`.
+      if (state === 'overdue' || (state === 'next' && late)) annotations.push('still ahead of you');
+      if (state === 'dropped') annotations.push('dropped');
+      return { item, state, date, late, dateLabel: date ? formatDay(date) : 'No date yet', annotations };
+    });
+}
+
+/* ── the supporting work ──────────────────────────────────────────────────── */
+
+/**
+ * Members grouped by type (its `itemTypeName`), each group in the order its
+ * first member appears and its members in `ids` order, so a goal's five habits
+ * read as a practice and its three tasks as errands. Trashed ids are skipped.
+ * A group is headed by its type's `labelPlural`.
+ */
+export function goalMemberGroups(
+  ids: readonly string[],
+  itemsById: Map<string, Item>,
+): { typeName: string; items: Item[] }[] {
+  const byType = new Map<string, Item[]>();
+  for (const id of ids) {
+    const item = itemsById.get(id);
+    if (!item) continue;
+    const name = itemTypeName(item);
+    const list = byType.get(name);
+    if (list) list.push(item);
+    else byType.set(name, [item]);
+  }
+  return [...byType].map(([typeName, items]) => ({ typeName, items }));
+}
+
+/**
+ * An ended goal's members that still come round (decision 5's wind-down):
+ * check-ins, then supporting work, then milestones, recurring ones only,
+ * trashed ones skipped. The goal changes none of them.
+ */
+export function windDownMembers(goal: Goal, itemsById: Map<string, Item>): Item[] {
+  return [...goal.checkinIds, ...goal.memberIds, ...goal.milestoneIds]
+    .map((id) => itemsById.get(id))
+    .filter((i): i is Item => !!i && isRecurring(i));
+}
+
+/** The latest day a recurring item was done, or undefined. yyyy-MM-dd sorts as text. */
+export function lastDoneOn(item: Item): string | undefined {
+  const dates = 'completedDates' in item ? (item.completedDates ?? []) : [];
+  return dates.reduce<string | undefined>((max, d) => (!max || d > max ? d : max), undefined);
 }
 
 /* ── check-ins ────────────────────────────────────────────────────────────── */

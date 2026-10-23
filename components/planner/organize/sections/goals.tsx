@@ -13,19 +13,20 @@ import {
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
 import { isCheckinEligible, isCollectible, isMilestoneEligible } from '@/lib/item-registry';
-import { isRecurring } from '@/lib/recurrence';
 import {
   goalProgress,
   isAchieved,
   isGoalActive,
+  lastDoneOn,
   newMemberTaskShape,
   sortGoalsForDisplay,
+  windDownMembers,
 } from '@/lib/goals';
+import { checkinMeta, milestoneTickLabel, windDownSentence } from '@/lib/organize-copy';
 import { GoalProgressTrack } from '@/components/planner/goal-sections';
 import {
   byName,
   countLive,
-  formatShort,
   matching,
   useLiveItemIds,
   useToday,
@@ -391,12 +392,6 @@ export function GoalsSection({
   );
 }
 
-/** The latest day a recurring item was done, or undefined. yyyy-MM-dd sorts as text. */
-function lastDone(item: Item): string | undefined {
-  const dates = 'completedDates' in item ? (item.completedDates ?? []) : [];
-  return dates.reduce<string | undefined>((max, d) => (!max || d > max ? d : max), undefined);
-}
-
 /**
  * The goal, in the item edit pane's grammar (2026-09-25): a whisper and ⋯, a
  * serif title, one row of chips (status, window, colour), the why as serif
@@ -461,7 +456,7 @@ function GoalDetail({
           }}
           data-testid="goal-milestone-check"
           aria-pressed={done}
-          aria-label={done ? `Mark ${item.title} not reached` : `Mark ${item.title} reached`}
+          aria-label={milestoneTickLabel(item.title, done)}
           // The diamond is the milestone's own tick box — it says so on hover.
           title={done ? 'Milestone reached. Click to undo.' : 'Milestone not reached yet. Click to mark it reached.'}
           className={cn(
@@ -506,11 +501,7 @@ function GoalDetail({
 
   const checkinRow: MemberRowParts = {
     leading: week.leading,
-    meta: (item) => {
-      const last = lastDone(item);
-      const cadence = cadenceLabel(item as never);
-      return { text: last ? `${cadence} · last ${formatShort(last)}` : cadence, numeric: false };
-    },
+    meta: (item) => ({ text: checkinMeta(cadenceLabel(item as never), lastDoneOn(item)), numeric: false }),
     metaWidth: GOAL_META_WIDTH,
   };
   // Supporting work is habits and tasks of any timing: say which.
@@ -779,22 +770,13 @@ function EndedNotice({
   itemsById: Map<string, Item>;
   onDelete: (item: Item) => void;
 }) {
-  const recurring = [...goal.checkinIds, ...goal.memberIds, ...goal.milestoneIds]
-    .map((id) => itemsById.get(id))
-    .filter((i): i is Item => !!i && isRecurring(i));
-
-  if (recurring.length === 0) return null;
+  const recurring = windDownMembers(goal, itemsById);
+  const sentence = windDownSentence(goal, recurring.length);
+  if (!sentence) return null;
 
   return (
     <StatusStrip testId="goal-wind-down" icon={<Flag className="size-3.5" aria-hidden />}>
-      <p className="max-w-[58ch]">
-        {recurring.length === 1
-          ? 'This still repeats on its own schedule.'
-          : `${recurring.length} of its items still repeat on their own schedules.`}{' '}
-        Nothing was changed for you. {goal.state === 'achieved' ? 'An achieved' : 'A set-aside'}{' '}
-        goal never edits its members. Keep them as they are, open one to park it in a season,
-        or delete it for good.
-      </p>
+      <p className="max-w-[58ch]">{sentence}</p>
       <div className="mt-2 flex flex-col gap-1">
         {recurring.map((item) => (
           <div

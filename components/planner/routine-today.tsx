@@ -11,7 +11,14 @@ import { useContainerSchedule } from '@/components/planner/schedule/schedule-vie
 import { useVerbs } from '@/components/planner/organize/member-row-actions';
 import { cn } from '@/lib/utils';
 import { ItemTick, springItemCheck } from '@/components/primitives/item-check';
-import type { OccurrenceState } from '@/lib/container-schedule';
+import { todayInOrder, type OccurrenceState } from '@/lib/container-schedule';
+import {
+  ROUTINE_TODAY_FINISHED,
+  ROUTINE_TODAY_NEXT,
+  routineTodayEmpty,
+  routineTodaySummaryRuns,
+} from '@/lib/organize-copy';
+import { CopyRuns } from '@/components/primitives/copy-runs';
 import type { Item, Routine } from '@/lib/planner-types';
 
 /**
@@ -50,20 +57,18 @@ export function RoutineToday({ routine, testId = 'routine-today' }: { routine: R
   const milestoneIds = useMemo(() => milestoneItemIds(goals ?? []), [goals]);
   const schedule = useContainerSchedule(routine.itemIds, todayStr, 1);
 
+  // Today's members in the routine's order, and how far through: one rule,
+  // shared with the iPhone (lib/container-schedule.ts todayInOrder).
+  const run = useMemo(() => todayInOrder(schedule, routine.itemIds, todayStr), [schedule, routine.itemIds, todayStr]);
   const rows = useMemo<TodayRow[]>(() => {
     const byId = new Map(items.map((i) => [i.id, i]));
-    const position = new Map(routine.itemIds.map((id, i) => [id, i]));
-    const today = schedule.days.find((d) => d.date === todayStr);
-    return (today?.occurrences ?? [])
-      .map((o) => ({ item: byId.get(o.itemId), state: o.state }))
-      .filter((r): r is TodayRow => !!r.item)
-      .sort((a, b) => (position.get(a.item.id) ?? 0) - (position.get(b.item.id) ?? 0));
-  }, [items, routine.itemIds, schedule, todayStr]);
+    return run.rows
+      .map((r) => ({ item: byId.get(r.itemId), state: r.state }))
+      .filter((r): r is TodayRow => !!r.item);
+  }, [items, run]);
 
-  const done = rows.filter((r) => r.state === 'done').length;
-  const skipped = rows.filter((r) => r.state === 'skipped').length;
-  const nextId = rows.find((r) => r.state === 'due')?.item.id;
-  const finished = rows.length > 0 && !nextId;
+  const { done, skipped, nextId, finished } = run;
+  const summary = routineTodaySummaryRuns(done, rows.length, skipped);
 
   return (
     <div className="flex flex-col gap-2" data-testid={testId}>
@@ -71,21 +76,11 @@ export function RoutineToday({ routine, testId = 'routine-today' }: { routine: R
         {/* No usual time here: both hosts already state it, once — the page in
             its header line, the console pane on its "Usually at" chip. */}
         <p className="text-muted-foreground text-xs" data-testid={`${testId}-summary`}>
-          {rows.length > 0 && (
-            <>
-              <span className="font-num">{done}</span> of <span className="font-num">{rows.length}</span> done
-              {skipped > 0 && (
-                <>
-                  {' · '}
-                  <span className="font-num">{skipped}</span> skipped
-                </>
-              )}
-            </>
-          )}
+          {summary && <CopyRuns runs={summary} />}
         </p>
         {finished && (
           <p className="text-foreground text-xs font-medium" data-testid={`${testId}-finished`}>
-            All through for today.
+            {ROUTINE_TODAY_FINISHED}
           </p>
         )}
       </div>
@@ -103,9 +98,7 @@ export function RoutineToday({ routine, testId = 'routine-today' }: { routine: R
 
       {rows.length === 0 ? (
         <p className="text-muted-foreground text-sm" data-testid={`${testId}-empty`}>
-          {routine.itemIds.length === 0
-            ? 'Nothing is in it yet.'
-            : `Nothing from ${routine.name} is on today.`}
+          {routineTodayEmpty(routine.name, routine.itemIds.length)}
         </p>
       ) : (
         <ol className="flex flex-col gap-px">
@@ -188,7 +181,7 @@ function TodayRowView({
       >
         {item.title}
       </Link>
-      {next && <span className="text-muted-foreground shrink-0 text-2xs">next</span>}
+      {next && <span className="text-muted-foreground shrink-0 text-2xs">{ROUTINE_TODAY_NEXT}</span>}
       {v.skip && (
         <button
           type="button"

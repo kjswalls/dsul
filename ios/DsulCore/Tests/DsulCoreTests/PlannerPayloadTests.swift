@@ -202,8 +202,11 @@ private struct RawItems: Decodable, Sendable {
         #expect(adminProject.name == "Admin")
         #expect(adminProject.color == "blue")
         #expect(adminProject.emoji == "\u{1F4CB}")
+        // The project page's notes (O3); a project with none reads nil.
+        #expect(adminProject.notes == "Bills, forms and calls.")
         let health = try #require(p.projects.first { $0.name == "Health" }, "no Health")
         #expect(health.color == nil)
+        #expect(health.notes == nil)
     }
 
     @Test func theWholePipelineRunsOverTheResponse() throws {
@@ -723,6 +726,20 @@ private struct RawItems: Decodable, Sendable {
             memberIds: [id], milestoneIds: [id], checkinIds: []
         )
         #expect(try JSONDecoder().decode(Goal.self, from: try JSONEncoder().encode(goal)) == goal)
+        let project = Project(
+            id: "p1", name: "Admin", repeatFrequency: "weekdays", timeBucket: "morning", startTime: "09:00",
+            duration: 60, color: "var(--accent-3)", emoji: "icon:Briefcase", notes: "Bills.\nForms."
+        )
+        #expect(try JSONDecoder().decode(Project.self, from: try JSONEncoder().encode(project)) == project)
+    }
+
+    /// A project's notes degrade to nil, as every lenient field does.
+    @Test func aProjectsNotesAreReadLeniently() throws {
+        let decode = { (json: String) in try JSONDecoder().decode(Project.self, from: Data(json.utf8)) }
+        #expect(try decode(#"{"id":"p","name":"P","notes":"Calls."}"#).notes == "Calls.")
+        #expect(try decode(#"{"id":"p","name":"P","notes":null}"#).notes == nil)
+        #expect(try decode(#"{"id":"p","name":"P","notes":7}"#).notes == nil)
+        #expect(try decode(#"{"id":"p","name":"P"}"#).notes == nil)
     }
 
     @Test func containerMembersKeepOnlyUUIDs() throws {

@@ -17,11 +17,10 @@ import Foundation
 // legacy timestamp (`toDateOnly`) compares the same way there and here.
 // The write side, `resolvePauseWrite`, is ported for the item sheet's Pause,
 // Pause until and Resume, and checked against pause-write.json; `formatDay` is
-// in Cadence.swift. The explanations live in ActiveExplain.swift: from O1
-// (Organize's list) `routineStandingOn` and `seasonResumeDate`, checked
-// against tests/fixtures/organize/standing.json. Not ported yet:
-// `suppressionReason`, `suppressionLabel` and `membersRevealedByRemoving`,
-// which the container pages (O2) will say.
+// in Cadence.swift. The explanations live in ActiveExplain.swift
+// (`routineStandingOn`, `seasonResumeDate`, `suppressionReason`,
+// `suppressionLabel`, `membersRevealedByRemoving`), checked against
+// tests/fixtures/organize/standing.json.
 
 /// lib/active.ts `Pausable`: the pause columns of an item or a routine.
 public protocol Pausable {

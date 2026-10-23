@@ -12,7 +12,9 @@ import {
   deriveContainerSchedule,
   MAX_SCHEDULE_DAYS,
   occurrencesByItem,
+  todayCount as todayCountOf,
   weekBuckets,
+  weekTotals as weekTotalsOf,
   weekdayOf,
   weekStartOf,
   type ContainerSchedule,
@@ -295,33 +297,9 @@ export function useWeekDotsFor(
      * many are done. Undefined when none occur today (the heading keeps its
      * plain count then). Skipped days are not counted either way.
      */
+    todayCount: (ids: readonly string[]): string | undefined => todayCountOf(byItem, ids, todayStr),
     /** This week's occurrences among `ids`: how many there are and how many are done. */
-    weekTotals: (ids: readonly string[]) => {
-      let done = 0;
-      let total = 0;
-      for (const id of ids) {
-        for (const o of byItem.get(id)?.values() ?? []) {
-          // Only what is done or still ahead counts. A past day with nothing
-          // recorded is `open` — NOT a miss (container-schedule.ts) — and a
-          // member added on Thursday must not read as "1 of 7".
-          if (o.state === 'skipped' || o.state === 'open') continue;
-          total += 1;
-          if (o.state === 'done') done += 1;
-        }
-      }
-      return { done, total };
-    },
-    todayCount: (ids: readonly string[]): string | undefined => {
-      let done = 0;
-      let on = 0;
-      for (const id of ids) {
-        const st = todayState(id);
-        if (st === undefined || st === 'skipped') continue;
-        on += 1;
-        if (st === 'done') done += 1;
-      }
-      return on ? `${done}/${on} today` : undefined;
-    },
+    weekTotals: (ids: readonly string[]) => weekTotalsOf(byItem, ids),
   };
 }
 

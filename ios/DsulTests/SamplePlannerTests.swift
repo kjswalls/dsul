@@ -665,6 +665,9 @@ import Testing
         #expect(routines.map(\.subtitle) == ["7:00 am \u{00B7} 3 items", "9:30 pm \u{00B7} Nothing in it yet"])
         #expect(routines.map(\.symbol) == ["sunrise", "moon"])
         #expect(routines.map(\.accent.token) == ["var(--accent-6)", "var(--accent-4)"])
+        // Meds and Stretch are ticked today and Journal isn't; Wind down has
+        // nothing on, so no count.
+        #expect(routines.map(\.trailing) == ["2/3 today", nil])
 
         let autumn = try #require(sections[1].rows.first)
         #expect(autumn.title == "Autumn")
@@ -681,7 +684,8 @@ import Testing
         // subtasks are filed under no project.
         let projects = sections[3].rows
         #expect(projects.map(\.title) == ["Work", "Home", "Writing", "dsul", "Health"])
-        #expect(projects.map(\.subtitle) == ["4 items", "4 items", "1 item", "1 item", "1 item"])
+        #expect(projects.map(\.subtitle) == ["4 items", "4 items", "1 item \u{00B7} Weekdays \u{00B7} 6:30am\u{2013}7:30am",
+                                              "1 item", "1 item"])
         #expect(projects.allSatisfy { $0.accent.source == .name })
     }
 

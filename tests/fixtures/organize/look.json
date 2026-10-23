@@ -957,6 +957,242 @@
       "index": 22
     }
   ],
+  "blocks": [
+    {
+      "name": "weekdays, an hour",
+      "project": {
+        "id": "p-block",
+        "name": "Block",
+        "emoji": "",
+        "startTime": "18:00",
+        "timeBucket": "evening",
+        "repeatFrequency": "weekdays",
+        "duration": 60
+      },
+      "expected": {
+        "hasTimeBlock": true,
+        "when": "6pm–7pm",
+        "summary": "Weekdays · 6pm–7pm"
+      }
+    },
+    {
+      "name": "every day, with minutes",
+      "project": {
+        "id": "p-block",
+        "name": "Block",
+        "emoji": "",
+        "startTime": "06:30",
+        "timeBucket": "morning",
+        "repeatFrequency": "daily",
+        "duration": 45
+      },
+      "expected": {
+        "hasTimeBlock": true,
+        "when": "6:30am–7:15am",
+        "summary": "Every day · 6:30am–7:15am"
+      }
+    },
+    {
+      "name": "past midnight wraps",
+      "project": {
+        "id": "p-block",
+        "name": "Block",
+        "emoji": "",
+        "startTime": "23:00",
+        "timeBucket": "evening",
+        "repeatFrequency": "weekends",
+        "duration": 120
+      },
+      "expected": {
+        "hasTimeBlock": true,
+        "when": "11pm–1am",
+        "summary": "Weekends · 11pm–1am"
+      }
+    },
+    {
+      "name": "noon and midnight read 12",
+      "project": {
+        "id": "p-block",
+        "name": "Block",
+        "emoji": "",
+        "startTime": "12:00",
+        "timeBucket": "afternoon",
+        "repeatFrequency": "monthly",
+        "duration": 720
+      },
+      "expected": {
+        "hasTimeBlock": true,
+        "when": "12pm–12am",
+        "summary": "Monthly · 12pm–12am"
+      }
+    },
+    {
+      "name": "no duration is an hour",
+      "project": {
+        "id": "p-block",
+        "name": "Block",
+        "emoji": "",
+        "startTime": "09:00",
+        "timeBucket": "morning",
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          1,
+          3
+        ]
+      },
+      "expected": {
+        "hasTimeBlock": true,
+        "when": "9am–10am",
+        "summary": "Chosen days · 9am–10am"
+      }
+    },
+    {
+      "name": "a zero duration stays zero",
+      "project": {
+        "id": "p-block",
+        "name": "Block",
+        "emoji": "",
+        "startTime": "09:00",
+        "timeBucket": "morning",
+        "repeatFrequency": "daily",
+        "duration": 0
+      },
+      "expected": {
+        "hasTimeBlock": true,
+        "when": "9am–9am",
+        "summary": "Every day · 9am–9am"
+      }
+    },
+    {
+      "name": "a legacy repeat is shown as stored",
+      "project": {
+        "id": "p-block",
+        "name": "Block",
+        "emoji": "",
+        "startTime": "09:00",
+        "timeBucket": "morning",
+        "repeatFrequency": "weekly",
+        "duration": 60
+      },
+      "expected": {
+        "hasTimeBlock": true,
+        "when": "9am–10am",
+        "summary": "weekly · 9am–10am"
+      }
+    },
+    {
+      "name": "none is still a repeat to the rule",
+      "project": {
+        "id": "p-block",
+        "name": "Block",
+        "emoji": "",
+        "startTime": "09:00",
+        "timeBucket": "morning",
+        "repeatFrequency": "none",
+        "duration": 60
+      },
+      "expected": {
+        "hasTimeBlock": true,
+        "when": "9am–10am",
+        "summary": "none · 9am–10am"
+      }
+    },
+    {
+      "name": "a start with seconds",
+      "project": {
+        "id": "p-block",
+        "name": "Block",
+        "emoji": "",
+        "startTime": "07:05:00",
+        "timeBucket": "morning",
+        "repeatFrequency": "daily",
+        "duration": 60
+      },
+      "expected": {
+        "hasTimeBlock": true,
+        "when": "7:05am–8:05am",
+        "summary": "Every day · 7:05am–8:05am"
+      }
+    },
+    {
+      "name": "an unreadable start reads as midnight",
+      "project": {
+        "id": "p-block",
+        "name": "Block",
+        "emoji": "",
+        "startTime": "noon",
+        "timeBucket": "morning",
+        "repeatFrequency": "daily",
+        "duration": 60
+      },
+      "expected": {
+        "hasTimeBlock": true,
+        "when": "12am–1am",
+        "summary": "Every day · 12am–1am"
+      }
+    },
+    {
+      "name": "no repeat: no block",
+      "project": {
+        "id": "p-block",
+        "name": "Block",
+        "emoji": "",
+        "startTime": "09:00",
+        "timeBucket": "morning",
+        "duration": 60
+      },
+      "expected": {
+        "hasTimeBlock": false,
+        "when": "9am–10am",
+        "summary": null
+      }
+    },
+    {
+      "name": "no part of day: no block",
+      "project": {
+        "id": "p-block",
+        "name": "Block",
+        "emoji": "",
+        "startTime": "09:00",
+        "repeatFrequency": "daily",
+        "duration": 60
+      },
+      "expected": {
+        "hasTimeBlock": false,
+        "when": "9am–10am",
+        "summary": null
+      }
+    },
+    {
+      "name": "no start: no block",
+      "project": {
+        "id": "p-block",
+        "name": "Block",
+        "emoji": "",
+        "timeBucket": "morning",
+        "repeatFrequency": "daily",
+        "duration": 60
+      },
+      "expected": {
+        "hasTimeBlock": false,
+        "when": "12am–1am",
+        "summary": null
+      }
+    },
+    {
+      "name": "nothing set",
+      "project": {
+        "id": "p-block",
+        "name": "Block",
+        "emoji": ""
+      },
+      "expected": {
+        "hasTimeBlock": false,
+        "when": "12am–1am",
+        "summary": null
+      }
+    }
+  ],
   "tables": {
     "ramp": [
       "var(--accent-1)",

@@ -7,9 +7,10 @@ import UIKit
 /// Every SF Symbol a container's tile can draw exists on this iOS: each
 /// glyph DsulCore maps a Lucide name to (`ContainerLook.lucideToSymbol`,
 /// checked for coverage on Linux by LookFixtureTests, which cannot ask UIKit)
-/// and each kind's own fallback. A missing name draws nothing at all, so a
-/// tile would be an empty square. Runs on the xcode-27 runner only; the
-/// Linux shim never compiles it.
+/// and each kind's own fallback; and every symbol a page's chips and rows
+/// draw. A missing name draws nothing at all, so a tile would be an empty
+/// square. Runs on the xcode-27 runner only; the Linux shim never compiles
+/// it.
 @MainActor
 @Suite struct OrganizeLookTests {
     @Test func everyMappedSymbolExists() {
@@ -35,6 +36,31 @@ import UIKit
         }
         for row in sections.flatMap(\.rows) {
             #expect(UIImage(systemName: row.symbol) != nil, "\(row.title): \(row.symbol)")
+        }
+    }
+
+    /// The pages' symbols (O2, O3): every Status a chip can show, the other
+    /// chips, and the marks a row draws (a skip, a reached milestone).
+    @Test func everyPageSymbolExists() {
+        let planner = SamplePlanner(todayString: "2026-10-01", now: { PlannerJSON.noon })
+        var symbols = ["clock", "calendar", "list.bullet", "play.circle", "pause.circle", "forward.end",
+                       "checkmark.circle.fill", "flame.fill"]
+        symbols += ["active", "paused", "auto"].map(ContainerPageModel.seasonStatusSymbol)
+        symbols += ["active", "achieved", "abandoned"].map(ContainerPageModel.goalStatusSymbol)
+        if case .page(let page)? = planner.routinePage("sample-morning-routine") {
+            symbols += page.chips.map(\.systemImage) + [page.header.symbol]
+        }
+        if case .page(let page)? = planner.seasonPage("sample-autumn") {
+            symbols += page.chips.map(\.systemImage) + [page.header.symbol]
+        }
+        if case .page(let page)? = planner.goalPage("sample-half-marathon") {
+            symbols += page.chips.map(\.systemImage) + [page.header.symbol]
+        }
+        if case .page(let page)? = planner.projectPage("sample-work") {
+            symbols += page.chips.map(\.systemImage) + [page.header.symbol]
+        }
+        for symbol in Set(symbols).sorted() {
+            #expect(UIImage(systemName: symbol) != nil, "\(symbol)")
         }
     }
 }

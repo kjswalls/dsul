@@ -6,17 +6,21 @@ import SwiftUI
 /// count, under a large "Organize" and the avatar. What shows and what it says
 /// is `OrganizeModel` (Foundation only, pinned by OrganizeTests); this draws it.
 ///
-/// O1 is read-only. Rows open nothing yet; the container pages (O2, O3), the
-/// summary cards (O4), the footer's Item types, Paused and Trash (O5, O14)
-/// and the + menu (O11) come later, and the stack gains its path with the
-/// first page.
+/// Read-only still, but for the tick. Each row pushes its container's page
+/// (O2, O3: ContainerPage.swift); the summary cards (O4), the footer's Item
+/// types, Paused and Trash (O5, O14) and the + menu (O11) come later. The
+/// path is the tab's own: tapping Organize again pops to the list, and a page
+/// whose container goes takes itself off it (`OrganizePageHost`).
 ///
-/// No stack-wide `.tint`: Organize's lime marks (the banner's check, and later
-/// the ticks, bars and rings) are `Color.accentColor`, and a stack tint would
-/// turn them the label colour. Each control tints itself instead.
+/// No stack-wide `.tint`: Organize's lime marks (the banner's check, the
+/// ticks, the strip, the ring and the timeline's nodes) are
+/// `Color.accentColor`, and a stack tint would turn them the label colour.
+/// Each control tints itself instead.
 struct OrganizeView: View {
+    @State private var path: [OrganizeRoute] = []
+
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             OrganizeList()
                 // A refused write's sentence shows here too, as on Today.
                 .plannerBanner()
@@ -26,6 +30,9 @@ struct OrganizeView: View {
                     ToolbarItem(placement: .topBarTrailing) {
                         AvatarMenu()
                     }
+                }
+                .navigationDestination(for: OrganizeRoute.self) { route in
+                    OrganizeDestination(route: route, path: $path)
                 }
         }
     }
@@ -50,7 +57,7 @@ struct OrganizeList: View {
                 ForEach(sections) { section in
                     Section {
                         ForEach(section.rows) { row in
-                            ContainerRow(row: row)
+                            ContainerLinkRow(row: row)
                         }
                     } header: {
                         OrganizeSectionHeader(section: section)

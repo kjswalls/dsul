@@ -73,6 +73,137 @@
         "isScheduled": true,
         "order": 0,
         "startDate": "2026-10-04"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000014",
+        "title": "Pick a venue",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-10"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000015",
+        "title": "Book flights",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-11-15"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000016",
+        "title": "Undated checkpoint",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000017",
+        "title": "Second undated checkpoint",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000018",
+        "title": "Reached early",
+        "status": "completed",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-12-01"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000019",
+        "title": "Due today",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-23"
+      },
+      {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-00000000001a",
+        "title": "Weekly review",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [
+          "2026-10-04",
+          "2026-10-18",
+          "2026-10-11"
+        ],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          0
+        ]
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000001b",
+        "title": "Money check",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "repeatFrequency": "monthly",
+        "repeatMonthDay": 1,
+        "completedDates": [
+          "2026-10-01"
+        ]
+      },
+      {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-00000000001c",
+        "title": "Daily Spanish",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000001e",
+        "title": "Also late",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-15"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000001f",
+        "title": "Tie A",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-11-20"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000020",
+        "title": "Tie B",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-11-20"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000021",
+        "title": "Legacy stamp",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01T00:00:00Z"
       }
     ]
   },
@@ -615,6 +746,1370 @@
         "g1",
         "g2"
       ]
+    }
+  ],
+  "nextMilestone": [
+    {
+      "name": "a late next, then one ahead, after one reached",
+      "goal": {
+        "id": "g-21-20-1",
+        "name": "a late next, then one ahead, after one reached",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000015",
+          "00000000-0000-4000-8000-000000000014",
+          "00000000-0000-4000-8000-000000000001"
+        ],
+        "checkinIds": []
+      },
+      "expected": "00000000-0000-4000-8000-000000000014"
+    },
+    {
+      "name": "dated first by date, then the undated in stored order",
+      "goal": {
+        "id": "g-23-22-2",
+        "name": "dated first by date, then the undated in stored order",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000017",
+          "00000000-0000-4000-8000-000000000016",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "checkinIds": []
+      },
+      "expected": "00000000-0000-4000-8000-000000000002"
+    },
+    {
+      "name": "a dropped one stays, a trashed one goes",
+      "goal": {
+        "id": "g-4-99-2",
+        "name": "a dropped one stays, a trashed one goes",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000004",
+          "00000000-0000-4000-8000-000000000063",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "checkinIds": []
+      },
+      "expected": "00000000-0000-4000-8000-000000000002"
+    },
+    {
+      "name": "a late one that is not next",
+      "goal": {
+        "id": "g-30-20",
+        "name": "a late one that is not next",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-00000000001e",
+          "00000000-0000-4000-8000-000000000014"
+        ],
+        "checkinIds": []
+      },
+      "expected": "00000000-0000-4000-8000-000000000014"
+    },
+    {
+      "name": "reached ahead of its date",
+      "goal": {
+        "id": "g-24",
+        "name": "reached ahead of its date",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000018"
+        ],
+        "checkinIds": []
+      },
+      "expected": null
+    },
+    {
+      "name": "due today is not late",
+      "goal": {
+        "id": "g-25",
+        "name": "due today is not late",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000019"
+        ],
+        "checkinIds": []
+      },
+      "expected": "00000000-0000-4000-8000-000000000019"
+    },
+    {
+      "name": "all reached: nothing is next",
+      "goal": {
+        "id": "g-1-8",
+        "name": "all reached: nothing is next",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000008"
+        ],
+        "checkinIds": []
+      },
+      "expected": null
+    },
+    {
+      "name": "no milestones",
+      "goal": {
+        "id": "g-none",
+        "name": "no milestones",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": []
+      },
+      "expected": null
+    },
+    {
+      "name": "only undated: the first is next",
+      "goal": {
+        "id": "g-22-23",
+        "name": "only undated: the first is next",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000016",
+          "00000000-0000-4000-8000-000000000017"
+        ],
+        "checkinIds": []
+      },
+      "expected": "00000000-0000-4000-8000-000000000016"
+    },
+    {
+      "name": "a custom type’s done word",
+      "goal": {
+        "id": "g-5-6",
+        "name": "a custom type’s done word",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000005",
+          "00000000-0000-4000-8000-000000000006"
+        ],
+        "checkinIds": []
+      },
+      "expected": "00000000-0000-4000-8000-000000000006"
+    },
+    {
+      "name": "the same date keeps stored order",
+      "goal": {
+        "id": "g-32-31",
+        "name": "the same date keeps stored order",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000020",
+          "00000000-0000-4000-8000-00000000001f"
+        ],
+        "checkinIds": []
+      },
+      "expected": "00000000-0000-4000-8000-000000000020"
+    },
+    {
+      "name": "a legacy ISO day",
+      "goal": {
+        "id": "g-33-21",
+        "name": "a legacy ISO day",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000021",
+          "00000000-0000-4000-8000-000000000015"
+        ],
+        "checkinIds": []
+      },
+      "expected": "00000000-0000-4000-8000-000000000021"
+    },
+    {
+      "name": "an ended goal still marks its next",
+      "goal": {
+        "id": "g-20-21",
+        "name": "an ended goal still marks its next",
+        "state": "achieved",
+        "memberIds": [],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000014",
+          "00000000-0000-4000-8000-000000000015"
+        ],
+        "checkinIds": []
+      },
+      "expected": "00000000-0000-4000-8000-000000000014"
+    }
+  ],
+  "milestoneState": [
+    {
+      "name": "dropped outranks next",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000004",
+        "title": "Dropped checkpoint",
+        "status": "cancelled",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      },
+      "isNext": true,
+      "today": "2026-10-23",
+      "expected": "dropped"
+    },
+    {
+      "name": "reached outranks next",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000001",
+        "title": "Book a tutor",
+        "status": "completed",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-09-15"
+      },
+      "isNext": true,
+      "today": "2026-10-23",
+      "expected": "achieved"
+    },
+    {
+      "name": "next outranks late",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000014",
+        "title": "Pick a venue",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-10"
+      },
+      "isNext": true,
+      "today": "2026-10-23",
+      "expected": "next"
+    },
+    {
+      "name": "late and not next",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000014",
+        "title": "Pick a venue",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-10"
+      },
+      "isNext": false,
+      "today": "2026-10-23",
+      "expected": "overdue"
+    },
+    {
+      "name": "due today is ahead",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000019",
+        "title": "Due today",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-23"
+      },
+      "isNext": false,
+      "today": "2026-10-23",
+      "expected": "ahead"
+    },
+    {
+      "name": "undated is ahead",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000016",
+        "title": "Undated checkpoint",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0
+      },
+      "isNext": false,
+      "today": "2026-10-23",
+      "expected": "ahead"
+    },
+    {
+      "name": "a future day is ahead",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000015",
+        "title": "Book flights",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-11-15"
+      },
+      "isNext": false,
+      "today": "2026-10-23",
+      "expected": "ahead"
+    },
+    {
+      "name": "a legacy ISO day before today",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000021",
+        "title": "Legacy stamp",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01T00:00:00Z"
+      },
+      "isNext": false,
+      "today": "2026-10-23",
+      "expected": "overdue"
+    },
+    {
+      "name": "a custom type’s other word is not reached",
+      "item": {
+        "type": "custom",
+        "customType": "book",
+        "id": "00000000-0000-4000-8000-000000000006",
+        "title": "Read Neruda",
+        "status": "done",
+        "isScheduled": true,
+        "order": 0
+      },
+      "isNext": false,
+      "today": "2026-10-23",
+      "expected": "ahead"
+    }
+  ],
+  "milestoneTimeline": [
+    {
+      "name": "a late next, then one ahead, after one reached",
+      "goal": {
+        "id": "g-21-20-1",
+        "name": "a late next, then one ahead, after one reached",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000015",
+          "00000000-0000-4000-8000-000000000014",
+          "00000000-0000-4000-8000-000000000001"
+        ],
+        "checkinIds": []
+      },
+      "today": "2026-10-23",
+      "expected": [
+        {
+          "itemId": "00000000-0000-4000-8000-000000000001",
+          "state": "achieved",
+          "date": "2026-09-15",
+          "late": true,
+          "dateLabel": "Sep 15",
+          "annotations": [
+            "reached"
+          ]
+        },
+        {
+          "itemId": "00000000-0000-4000-8000-000000000014",
+          "state": "next",
+          "date": "2026-10-10",
+          "late": true,
+          "dateLabel": "Oct 10",
+          "annotations": [
+            "next up",
+            "still ahead of you"
+          ]
+        },
+        {
+          "itemId": "00000000-0000-4000-8000-000000000015",
+          "state": "ahead",
+          "date": "2026-11-15",
+          "late": false,
+          "dateLabel": "Nov 15",
+          "annotations": []
+        }
+      ]
+    },
+    {
+      "name": "dated first by date, then the undated in stored order",
+      "goal": {
+        "id": "g-23-22-2",
+        "name": "dated first by date, then the undated in stored order",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000017",
+          "00000000-0000-4000-8000-000000000016",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "checkinIds": []
+      },
+      "today": "2026-10-23",
+      "expected": [
+        {
+          "itemId": "00000000-0000-4000-8000-000000000002",
+          "state": "next",
+          "date": "2026-11-02",
+          "late": false,
+          "dateLabel": "Nov 2",
+          "annotations": [
+            "next up"
+          ]
+        },
+        {
+          "itemId": "00000000-0000-4000-8000-000000000017",
+          "state": "ahead",
+          "date": null,
+          "late": false,
+          "dateLabel": "No date yet",
+          "annotations": []
+        },
+        {
+          "itemId": "00000000-0000-4000-8000-000000000016",
+          "state": "ahead",
+          "date": null,
+          "late": false,
+          "dateLabel": "No date yet",
+          "annotations": []
+        }
+      ]
+    },
+    {
+      "name": "a dropped one stays, a trashed one goes",
+      "goal": {
+        "id": "g-4-99-2",
+        "name": "a dropped one stays, a trashed one goes",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000004",
+          "00000000-0000-4000-8000-000000000063",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "checkinIds": []
+      },
+      "today": "2026-10-23",
+      "expected": [
+        {
+          "itemId": "00000000-0000-4000-8000-000000000004",
+          "state": "dropped",
+          "date": "2026-10-01",
+          "late": true,
+          "dateLabel": "Oct 1",
+          "annotations": [
+            "dropped"
+          ]
+        },
+        {
+          "itemId": "00000000-0000-4000-8000-000000000002",
+          "state": "next",
+          "date": "2026-11-02",
+          "late": false,
+          "dateLabel": "Nov 2",
+          "annotations": [
+            "next up"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a late one that is not next",
+      "goal": {
+        "id": "g-30-20",
+        "name": "a late one that is not next",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-00000000001e",
+          "00000000-0000-4000-8000-000000000014"
+        ],
+        "checkinIds": []
+      },
+      "today": "2026-10-23",
+      "expected": [
+        {
+          "itemId": "00000000-0000-4000-8000-000000000014",
+          "state": "next",
+          "date": "2026-10-10",
+          "late": true,
+          "dateLabel": "Oct 10",
+          "annotations": [
+            "next up",
+            "still ahead of you"
+          ]
+        },
+        {
+          "itemId": "00000000-0000-4000-8000-00000000001e",
+          "state": "overdue",
+          "date": "2026-10-15",
+          "late": true,
+          "dateLabel": "Oct 15",
+          "annotations": [
+            "still ahead of you"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "reached ahead of its date",
+      "goal": {
+        "id": "g-24",
+        "name": "reached ahead of its date",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000018"
+        ],
+        "checkinIds": []
+      },
+      "today": "2026-10-23",
+      "expected": [
+        {
+          "itemId": "00000000-0000-4000-8000-000000000018",
+          "state": "achieved",
+          "date": "2026-12-01",
+          "late": false,
+          "dateLabel": "Dec 1",
+          "annotations": [
+            "reached"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "due today is not late",
+      "goal": {
+        "id": "g-25",
+        "name": "due today is not late",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000019"
+        ],
+        "checkinIds": []
+      },
+      "today": "2026-10-23",
+      "expected": [
+        {
+          "itemId": "00000000-0000-4000-8000-000000000019",
+          "state": "next",
+          "date": "2026-10-23",
+          "late": false,
+          "dateLabel": "Oct 23",
+          "annotations": [
+            "next up"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "all reached: nothing is next",
+      "goal": {
+        "id": "g-1-8",
+        "name": "all reached: nothing is next",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000008"
+        ],
+        "checkinIds": []
+      },
+      "today": "2026-10-23",
+      "expected": [
+        {
+          "itemId": "00000000-0000-4000-8000-000000000001",
+          "state": "achieved",
+          "date": "2026-09-15",
+          "late": true,
+          "dateLabel": "Sep 15",
+          "annotations": [
+            "reached"
+          ]
+        },
+        {
+          "itemId": "00000000-0000-4000-8000-000000000008",
+          "state": "achieved",
+          "date": "2026-10-04",
+          "late": true,
+          "dateLabel": "Oct 4",
+          "annotations": [
+            "reached"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "no milestones",
+      "goal": {
+        "id": "g-none",
+        "name": "no milestones",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": []
+      },
+      "today": "2026-10-23",
+      "expected": []
+    },
+    {
+      "name": "only undated: the first is next",
+      "goal": {
+        "id": "g-22-23",
+        "name": "only undated: the first is next",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000016",
+          "00000000-0000-4000-8000-000000000017"
+        ],
+        "checkinIds": []
+      },
+      "today": "2026-10-23",
+      "expected": [
+        {
+          "itemId": "00000000-0000-4000-8000-000000000016",
+          "state": "next",
+          "date": null,
+          "late": false,
+          "dateLabel": "No date yet",
+          "annotations": [
+            "next up"
+          ]
+        },
+        {
+          "itemId": "00000000-0000-4000-8000-000000000017",
+          "state": "ahead",
+          "date": null,
+          "late": false,
+          "dateLabel": "No date yet",
+          "annotations": []
+        }
+      ]
+    },
+    {
+      "name": "a custom type’s done word",
+      "goal": {
+        "id": "g-5-6",
+        "name": "a custom type’s done word",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000005",
+          "00000000-0000-4000-8000-000000000006"
+        ],
+        "checkinIds": []
+      },
+      "today": "2026-10-23",
+      "expected": [
+        {
+          "itemId": "00000000-0000-4000-8000-000000000005",
+          "state": "achieved",
+          "date": null,
+          "late": false,
+          "dateLabel": "No date yet",
+          "annotations": [
+            "reached"
+          ]
+        },
+        {
+          "itemId": "00000000-0000-4000-8000-000000000006",
+          "state": "next",
+          "date": null,
+          "late": false,
+          "dateLabel": "No date yet",
+          "annotations": [
+            "next up"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "the same date keeps stored order",
+      "goal": {
+        "id": "g-32-31",
+        "name": "the same date keeps stored order",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000020",
+          "00000000-0000-4000-8000-00000000001f"
+        ],
+        "checkinIds": []
+      },
+      "today": "2026-10-23",
+      "expected": [
+        {
+          "itemId": "00000000-0000-4000-8000-000000000020",
+          "state": "next",
+          "date": "2026-11-20",
+          "late": false,
+          "dateLabel": "Nov 20",
+          "annotations": [
+            "next up"
+          ]
+        },
+        {
+          "itemId": "00000000-0000-4000-8000-00000000001f",
+          "state": "ahead",
+          "date": "2026-11-20",
+          "late": false,
+          "dateLabel": "Nov 20",
+          "annotations": []
+        }
+      ]
+    },
+    {
+      "name": "a legacy ISO day",
+      "goal": {
+        "id": "g-33-21",
+        "name": "a legacy ISO day",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000021",
+          "00000000-0000-4000-8000-000000000015"
+        ],
+        "checkinIds": []
+      },
+      "today": "2026-10-23",
+      "expected": [
+        {
+          "itemId": "00000000-0000-4000-8000-000000000021",
+          "state": "next",
+          "date": "2026-10-01T00:00:00Z",
+          "late": true,
+          "dateLabel": "Oct 1",
+          "annotations": [
+            "next up",
+            "still ahead of you"
+          ]
+        },
+        {
+          "itemId": "00000000-0000-4000-8000-000000000015",
+          "state": "ahead",
+          "date": "2026-11-15",
+          "late": false,
+          "dateLabel": "Nov 15",
+          "annotations": []
+        }
+      ]
+    },
+    {
+      "name": "an ended goal still marks its next",
+      "goal": {
+        "id": "g-20-21",
+        "name": "an ended goal still marks its next",
+        "state": "achieved",
+        "memberIds": [],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000014",
+          "00000000-0000-4000-8000-000000000015"
+        ],
+        "checkinIds": []
+      },
+      "today": "2026-10-23",
+      "expected": [
+        {
+          "itemId": "00000000-0000-4000-8000-000000000014",
+          "state": "next",
+          "date": "2026-10-10",
+          "late": true,
+          "dateLabel": "Oct 10",
+          "annotations": [
+            "next up",
+            "still ahead of you"
+          ]
+        },
+        {
+          "itemId": "00000000-0000-4000-8000-000000000015",
+          "state": "ahead",
+          "date": "2026-11-15",
+          "late": false,
+          "dateLabel": "Nov 15",
+          "annotations": []
+        }
+      ]
+    }
+  ],
+  "timeElapsed": [
+    {
+      "name": "no window",
+      "goal": {
+        "id": "g-window",
+        "name": "Window",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": []
+      },
+      "today": "2026-10-23",
+      "expected": {
+        "fraction": null,
+        "label": null
+      }
+    },
+    {
+      "name": "a target alone",
+      "goal": {
+        "id": "g-window",
+        "name": "Window",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": [],
+        "targetOn": "2026-11-01"
+      },
+      "today": "2026-10-23",
+      "expected": {
+        "fraction": null,
+        "label": null
+      }
+    },
+    {
+      "name": "a start alone",
+      "goal": {
+        "id": "g-window",
+        "name": "Window",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": [],
+        "startsOn": "2026-10-01"
+      },
+      "today": "2026-10-23",
+      "expected": {
+        "fraction": null,
+        "label": null
+      }
+    },
+    {
+      "name": "an inverted window",
+      "goal": {
+        "id": "g-window",
+        "name": "Window",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": [],
+        "startsOn": "2026-11-01",
+        "targetOn": "2026-10-01"
+      },
+      "today": "2026-10-23",
+      "expected": {
+        "fraction": null,
+        "label": null
+      }
+    },
+    {
+      "name": "a one-day window is no window",
+      "goal": {
+        "id": "g-window",
+        "name": "Window",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": [],
+        "startsOn": "2026-10-01",
+        "targetOn": "2026-10-01"
+      },
+      "today": "2026-10-23",
+      "expected": {
+        "fraction": null,
+        "label": null
+      }
+    },
+    {
+      "name": "before it starts",
+      "goal": {
+        "id": "g-window",
+        "name": "Window",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": [],
+        "startsOn": "2026-11-01",
+        "targetOn": "2026-12-01"
+      },
+      "today": "2026-10-23",
+      "expected": {
+        "fraction": 0,
+        "label": "0% of the way to Dec 1"
+      }
+    },
+    {
+      "name": "on its first day",
+      "goal": {
+        "id": "g-window",
+        "name": "Window",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": [],
+        "startsOn": "2026-10-23",
+        "targetOn": "2026-12-01"
+      },
+      "today": "2026-10-23",
+      "expected": {
+        "fraction": 0,
+        "label": "0% of the way to Dec 1"
+      }
+    },
+    {
+      "name": "part way",
+      "goal": {
+        "id": "g-window",
+        "name": "Window",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": [],
+        "startsOn": "2026-10-01",
+        "targetOn": "2026-11-01"
+      },
+      "today": "2026-10-23",
+      "expected": {
+        "fraction": 0.7096774193548387,
+        "label": "71% of the way to Nov 1"
+      }
+    },
+    {
+      "name": "exactly half",
+      "goal": {
+        "id": "g-window",
+        "name": "Window",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": [],
+        "startsOn": "2026-10-15",
+        "targetOn": "2026-10-31"
+      },
+      "today": "2026-10-23",
+      "expected": {
+        "fraction": 0.5,
+        "label": "50% of the way to Oct 31"
+      }
+    },
+    {
+      "name": "a half percent rounds up",
+      "goal": {
+        "id": "g-window",
+        "name": "Window",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": [],
+        "startsOn": "2026-10-22",
+        "targetOn": "2026-10-30"
+      },
+      "today": "2026-10-23",
+      "expected": {
+        "fraction": 0.125,
+        "label": "13% of the way to Oct 30"
+      }
+    },
+    {
+      "name": "on its target day",
+      "goal": {
+        "id": "g-window",
+        "name": "Window",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": [],
+        "startsOn": "2026-10-01",
+        "targetOn": "2026-10-23"
+      },
+      "today": "2026-10-23",
+      "expected": {
+        "fraction": 1,
+        "label": "100% of the way to Oct 23"
+      }
+    },
+    {
+      "name": "past its target",
+      "goal": {
+        "id": "g-window",
+        "name": "Window",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": [],
+        "startsOn": "2026-09-01",
+        "targetOn": "2026-10-01"
+      },
+      "today": "2026-10-23",
+      "expected": {
+        "fraction": 1,
+        "label": "100% of the way to Oct 1"
+      }
+    },
+    {
+      "name": "legacy ISO days",
+      "goal": {
+        "id": "g-window",
+        "name": "Window",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": [],
+        "startsOn": "2026-10-01T00:00:00Z",
+        "targetOn": "2026-11-01T00:00:00Z"
+      },
+      "today": "2026-10-23",
+      "expected": {
+        "fraction": 0.7096774193548387,
+        "label": "71% of the way to Nov 1"
+      }
+    },
+    {
+      "name": "across a year",
+      "goal": {
+        "id": "g-window",
+        "name": "Window",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": [],
+        "startsOn": "2026-12-01",
+        "targetOn": "2027-03-01"
+      },
+      "today": "2027-01-15",
+      "expected": {
+        "fraction": 0.5,
+        "label": "50% of the way to Mar 1"
+      }
+    }
+  ],
+  "goalCountdown": [
+    {
+      "name": "days to go",
+      "goal": {
+        "id": "g-c",
+        "name": "C",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": [],
+        "targetOn": "2026-11-04"
+      },
+      "today": "2026-10-23",
+      "expected": "12 days to Nov 4"
+    },
+    {
+      "name": "one day to go",
+      "goal": {
+        "id": "g-c",
+        "name": "C",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": [],
+        "targetOn": "2026-10-24"
+      },
+      "today": "2026-10-23",
+      "expected": "1 day to Oct 24"
+    },
+    {
+      "name": "the target is today",
+      "goal": {
+        "id": "g-c",
+        "name": "C",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": [],
+        "targetOn": "2026-10-23"
+      },
+      "today": "2026-10-23",
+      "expected": "target is today"
+    },
+    {
+      "name": "one day past",
+      "goal": {
+        "id": "g-c",
+        "name": "C",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": [],
+        "targetOn": "2026-10-22"
+      },
+      "today": "2026-10-23",
+      "expected": "1 day past Oct 22"
+    },
+    {
+      "name": "days past",
+      "goal": {
+        "id": "g-c",
+        "name": "C",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": [],
+        "targetOn": "2026-10-20"
+      },
+      "today": "2026-10-23",
+      "expected": "3 days past Oct 20"
+    },
+    {
+      "name": "into next year",
+      "goal": {
+        "id": "g-c",
+        "name": "C",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": [],
+        "targetOn": "2027-01-04"
+      },
+      "today": "2026-10-23",
+      "expected": "73 days to Jan 4"
+    },
+    {
+      "name": "a legacy ISO target",
+      "goal": {
+        "id": "g-c",
+        "name": "C",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": [],
+        "targetOn": "2026-11-04T00:00:00Z"
+      },
+      "today": "2026-10-23",
+      "expected": "12 days to Nov 4"
+    },
+    {
+      "name": "no target",
+      "goal": {
+        "id": "g-c",
+        "name": "C",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": []
+      },
+      "today": "2026-10-23",
+      "expected": null
+    },
+    {
+      "name": "achieved: no countdown",
+      "goal": {
+        "id": "g-c",
+        "name": "C",
+        "state": "achieved",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": [],
+        "targetOn": "2026-11-04"
+      },
+      "today": "2026-10-23",
+      "expected": null
+    },
+    {
+      "name": "set aside: no countdown",
+      "goal": {
+        "id": "g-c",
+        "name": "C",
+        "state": "abandoned",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": [],
+        "targetOn": "2026-11-04"
+      },
+      "today": "2026-10-23",
+      "expected": null
+    }
+  ],
+  "windDownMembers": [
+    {
+      "name": "check-ins, then supporting work, then milestones; recurring only",
+      "goal": {
+        "id": "g-done",
+        "name": "Done",
+        "state": "achieved",
+        "memberIds": [
+          "00000000-0000-4000-8000-000000000002",
+          "00000000-0000-4000-8000-00000000001c",
+          "00000000-0000-4000-8000-000000000063"
+        ],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-00000000001b",
+          "00000000-0000-4000-8000-000000000001"
+        ],
+        "checkinIds": [
+          "00000000-0000-4000-8000-00000000001a"
+        ]
+      },
+      "expected": [
+        "00000000-0000-4000-8000-00000000001a",
+        "00000000-0000-4000-8000-00000000001c",
+        "00000000-0000-4000-8000-00000000001b"
+      ]
+    },
+    {
+      "name": "nothing recurring",
+      "goal": {
+        "id": "g-done",
+        "name": "Done",
+        "state": "abandoned",
+        "memberIds": [
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "milestoneIds": [
+          "00000000-0000-4000-8000-000000000001"
+        ],
+        "checkinIds": []
+      },
+      "expected": []
+    },
+    {
+      "name": "an empty goal",
+      "goal": {
+        "id": "g-done",
+        "name": "Done",
+        "state": "achieved",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": []
+      },
+      "expected": []
+    }
+  ],
+  "goalMemberGroups": [
+    {
+      "name": "by type, in first-seen order",
+      "ids": [
+        "00000000-0000-4000-8000-00000000001c",
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-00000000001a",
+        "00000000-0000-4000-8000-000000000005",
+        "00000000-0000-4000-8000-000000000063",
+        "00000000-0000-4000-8000-000000000003"
+      ],
+      "expected": [
+        {
+          "typeName": "habit",
+          "labelPlural": "Habits",
+          "ids": [
+            "00000000-0000-4000-8000-00000000001c",
+            "00000000-0000-4000-8000-00000000001a"
+          ]
+        },
+        {
+          "typeName": "task",
+          "labelPlural": "Tasks",
+          "ids": [
+            "00000000-0000-4000-8000-000000000002",
+            "00000000-0000-4000-8000-000000000003"
+          ]
+        },
+        {
+          "typeName": "book",
+          "labelPlural": "Books",
+          "ids": [
+            "00000000-0000-4000-8000-000000000005"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "one type",
+      "ids": [
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000003"
+      ],
+      "expected": [
+        {
+          "typeName": "task",
+          "labelPlural": "Tasks",
+          "ids": [
+            "00000000-0000-4000-8000-000000000002",
+            "00000000-0000-4000-8000-000000000003"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "none",
+      "ids": [],
+      "expected": []
+    },
+    {
+      "name": "only trashed",
+      "ids": [
+        "00000000-0000-4000-8000-000000000063"
+      ],
+      "expected": []
+    }
+  ],
+  "lastDoneOn": [
+    {
+      "name": "Weekly review",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-00000000001a",
+        "title": "Weekly review",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [
+          "2026-10-04",
+          "2026-10-18",
+          "2026-10-11"
+        ],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          0
+        ]
+      },
+      "expected": "2026-10-18"
+    },
+    {
+      "name": "Money check",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000001b",
+        "title": "Money check",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "repeatFrequency": "monthly",
+        "repeatMonthDay": 1,
+        "completedDates": [
+          "2026-10-01"
+        ]
+      },
+      "expected": "2026-10-01"
+    },
+    {
+      "name": "Daily Spanish",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-00000000001c",
+        "title": "Daily Spanish",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "expected": null
+    },
+    {
+      "name": "Book a tutor",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000001",
+        "title": "Book a tutor",
+        "status": "completed",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-09-15"
+      },
+      "expected": null
     }
   ]
 }

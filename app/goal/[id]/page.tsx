@@ -20,7 +20,9 @@ import { ChoiceChip, ColorChip, DateRangeChip } from '@/components/primitives/or
 import { useUIStore } from '@/lib/ui-store';
 import { checkinStanding, isGoalActive } from '@/lib/goals';
 import { useGoalsEnabled } from '@/lib/extension-gates';
-import { formatShort, useToday } from '@/lib/collections';
+import { GOALS_OFF, NO_CHECKIN_YET, NO_SUPPORTING_WORK, goalEndedNote } from '@/lib/organize-copy';
+import { useToday } from '@/lib/collections';
+import { formatDay } from '@/lib/active';
 import { accentColorForName } from '@/lib/accent-colors';
 
 /**
@@ -95,11 +97,8 @@ export default function GoalPage() {
         className="mx-auto flex max-w-lg flex-col items-start gap-4 px-6 py-16"
         data-testid="goal-page-extension-off"
       >
-        <h1 className="text-foreground text-lg font-semibold">Goals is switched off</h1>
-        <p className="text-muted-foreground text-sm">
-          Your goals are still here. Switch the extension back on and this page picks up
-          where it left off. Nothing was deleted.
-        </p>
+        <h1 className="text-foreground text-lg font-semibold">{GOALS_OFF.title}</h1>
+        <p className="text-muted-foreground text-sm">{GOALS_OFF.body}</p>
         <div className="flex gap-2">
           <Button asChild variant="outline" size="sm">
             <Link href="/settings/extensions/goals">Open the setting</Link>
@@ -239,9 +238,7 @@ export default function GoalPage() {
             className="text-muted-foreground bg-muted/50 rounded-md px-3 py-2 text-sm"
             data-testid="goal-page-state"
           >
-            {goal.state === 'achieved'
-              ? `Achieved${goal.achievedAt ? ` on ${formatShort(goal.achievedAt.slice(0, 10))}` : ''}. Everything below is the record of how it went.`
-              : 'Set aside. Its work is untouched, and nothing here was cancelled on your behalf.'}
+            {goalEndedNote(goal)}
           </p>
         )}
 
@@ -260,7 +257,7 @@ export default function GoalPage() {
             <GoalMemberGroups
               ids={goal.memberIds}
               itemsById={itemsById}
-              empty="Nothing else is filed under this goal yet."
+              empty={NO_SUPPORTING_WORK}
             />
           </Section>
         </div>
@@ -279,20 +276,17 @@ export default function GoalPage() {
                   {checkin.dueToday
                     ? 'Due today'
                     : checkin.nextDue
-                      ? `Next on ${formatShort(checkin.nextDue)}`
+                      ? `Next on ${formatDay(checkin.nextDue)}`
                       : 'No upcoming date'}
                 </span>
                 <span className="text-muted-foreground text-[13px]">
                   {checkin.lastDone
-                    ? `Last one ${formatShort(checkin.lastDone)}`
+                    ? `Last one ${formatDay(checkin.lastDone)}`
                     : 'No check-ins yet'}
                 </span>
               </div>
             ) : (
-              <p className="text-muted-foreground text-sm">
-                No check-in yet. A recurring review (weekly is usually right) is what keeps a
-                long goal from going quiet for a month at a time.
-              </p>
+              <p className="text-muted-foreground text-sm">{NO_CHECKIN_YET}</p>
             )}
           </Section>
 
