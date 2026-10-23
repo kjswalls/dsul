@@ -150,8 +150,9 @@ export interface ConvertOptions {
 /**
  * The item as `toType`. Pure; the caller checks `conversionBlock` first.
  *
- * Into a habit: streak starts at 0, the per-day count is empty, and a one-off
- * gets `opts.repeat` (default: the type's own default repeat). A missing
+ * Into a habit: streak starts at 0, the per-day count is empty, a one-off
+ * gets `opts.repeat` (default: the type's own default repeat), and an item
+ * with no time bucket (a braindump task) lands in `anytime`. A missing
  * project falls back to the type's orphan container, as a habit made anywhere
  * else would.
  *
@@ -202,6 +203,10 @@ export function convertItem(item: Item, toType: string, opts: ConvertOptions): I
       status: switchedStatus(item, true) as HabitItem['status'],
       dailyCounts: {},
       repeatFrequency,
+      // The day views only bucket a habit that carries one (day-items.ts), and
+      // the braindump keeps only a habit with no repeat, so a braindump task
+      // switched with no bucket showed up nowhere at all.
+      timeBucket: item.timeBucket ?? 'anytime',
       // A one-off picking up a weekly-style repeat has no days of its own.
       ...(recurring ? {} : { repeatDays: undefined, repeatMonthDay: undefined }),
     };
