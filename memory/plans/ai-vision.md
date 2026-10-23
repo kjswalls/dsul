@@ -99,6 +99,17 @@ All · Talk · Changes filter it; with no AI there is no filter and no talk. WHO
 `{ by: 'ai' }`): 'ai' for an accepted card, 'agent' for the agent API and MCP, 'recipe' for recipes. Rows from
 before have no `by` and read as you, except an agent's question and its status. No migration.
 
+**Note 2026-10-23: one stream, as designed.** Kirby asked for the item conversations design's combined
+timeline back (approved 2026-10-01, https://claude.ai/artifact/3siWGNjqgVmPcjmmr7mucz). Wherever an item's
+conversation is on screen (the rail's pinned one, the phone's, the inline box, /item/[id]'s column),
+`ItemConversation` draws the timeline inside it: `buildStream` (lib/item-timeline.ts) sets each change between
+the messages by time, through `TranscriptMessages`' `before(i)` slot so the transcript stays one list, under one
+"Timeline" heading with All · Talk · Changes. ItemDetailSections then mounts no `ItemTimeline`; that section is
+left for hosts with no conversation (no AI). The mocks never showed a long history, so three rules were added:
+a burst (same person, same kind of change, each within 15 minutes, nothing said between) is one line, the last;
+a change that says nothing ("changed it") is dropped; a run of more than four changes shows its newest three
+under "Show N earlier changes". Messages never fold.
+
 **Note 2026-10-11: the details rail.** While an item's conversation has the docked panel (AI on, desktop),
 its details fold into one strip under the rail header (components/planner/item-rail.tsx): the container ›
 the title, then day, time, steps done/total and repeat as small chips. The chat folds them, never a timer:

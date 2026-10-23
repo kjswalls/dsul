@@ -138,7 +138,8 @@ export default function ItemPage() {
       </div>
 
       {/* Two columns only with a thread to fill the second: an empty 340px
-          rail beside the subtasks would be a column for a feature that is off. */}
+          rail beside the subtasks would be a column for a feature that is off.
+          The second column is the item's timeline and conversation, one stream. */}
       <div
         className={
           canChat
@@ -146,8 +147,8 @@ export default function ItemPage() {
             : 'grid items-start gap-8'
         }
       >
-        <ItemDetailSections item={item} />
-        {canChat && <ItemConversation item={item} mode="inline" className="lg:border-border lg:border-l lg:pl-6" />}
+        <ItemDetailSections item={item} conversationElsewhere={canChat} />
+        {canChat && <ItemConversation item={item} mode="inline" tall className="lg:border-border lg:border-l lg:pl-6" />}
       </div>
     </main>
   );

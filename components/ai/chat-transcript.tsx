@@ -1,6 +1,7 @@
 'use client';
 
 import { Fragment, createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { ArrowDown, Check, Copy, Image as ImageIcon, Pencil, RotateCcw, Search, Wand2 } from 'lucide-react';
 import ReactMarkdown, { type Components, type ExtraProps } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -137,6 +138,10 @@ export function editableQuestionIndex(messages: readonly ChatMessage[]): number 
  * while a reply is still arriving. `retryVia` is where Try again sends
  * (the composer binding this conversation's own box uses); without it there
  * is no Try again. Edit sends through it too, and without it there is no Edit.
+ * `before(i)` is drawn just ahead of message i, and `before(messages.length)`
+ * after the last: an item's timeline sets its changes between the messages
+ * this way (components/ai/item-conversation.tsx), so the transcript stays one
+ * list and every rule above still reads the whole conversation.
  */
 export function TranscriptMessages({
   messages,
@@ -144,6 +149,7 @@ export function TranscriptMessages({
   planFor,
   retryVia,
   receipts,
+  before,
 }: {
   messages: readonly ChatMessage[];
   busy: boolean;
@@ -151,6 +157,7 @@ export function TranscriptMessages({
   retryVia?: ComposerBinding;
   /** This conversation's accepted-plan receipts, and the conversation they belong to. */
   receipts?: { conversationId: string; list: readonly ChatReceipt[] };
+  before?: (i: number) => ReactNode;
 }) {
   const dividers = answererDividers(messages);
   const placed = receipts?.list.length ? placeReceipts(messages.map((m) => m.id), receipts.list) : null;
@@ -163,6 +170,7 @@ export function TranscriptMessages({
     <>
       {messages.map((m, i) => (
         <Fragment key={m.id}>
+          {before?.(i)}
           {dividers.has(i) && <AnswererDivider answerer={dividers.get(i) as Answerer} />}
           {m.role === 'user' ? (
             <UserMessage m={m} notSaved={endsUnsavedTurn(messages, i)} editVia={i === editAt ? retryVia : undefined} />
@@ -180,6 +188,7 @@ export function TranscriptMessages({
         </Fragment>
       ))}
       {receiptsAt(-1)}
+      {before?.(messages.length)}
     </>
   );
 }

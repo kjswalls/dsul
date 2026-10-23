@@ -132,12 +132,94 @@ export function changeLine(e: Pick<ItemEvent, 'action' | 'payload'>): string {
   }
   if ('notes' in p && keys.length === 1) return 'edited the notes';
   if ('duration' in p && keys.length === 1) return 'changed how long it takes';
-  if ('priority' in p && keys.length === 1) return p.priority && p.priority !== 'none' ? `set the priority to ${String(p.priority)}` : 'cleared the priority';
+  if ('priority' in p && keys.length === 1)
+    return p.priority && p.priority !== 'none' ? `set the priority to ${String(p.priority)}` : 'cleared the priority';
   if (keys.length === 0) return 'changed it';
   const words = [...new Set(keys.map((k) => FIELD_WORDS[k]).filter(Boolean))];
   if (words.length === 0) return 'changed it';
   if (words.length === 1) return `changed ${words[0]}`;
   return `changed ${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`;
+}
+
+/**
+ * What a change is about, so a burst of the same kind can merge
+ * (`compactChanges`): "when" for a move, "status" for done and opened again,
+ * the field names otherwise. Null for a line that stands on its own whatever
+ * comes next (added, deleted, a check-in, a question or its answer).
+ */
+export function changeTopic(e: Pick<ItemEvent, 'action' | 'payload'>): string | null {
+  if (e.action !== 'update') return null;
+  const p = e.payload ?? {};
+  if ('assignee' in p) return 'assignee';
+  if (p.aiStatus) return 'aiStatus';
+  if ('status' in p) return 'status';
+  if ('pausedAt' in p) return 'pause';
+  const keys = Object.keys(p).filter((k) => k !== ACTOR_KEY && k !== 'projectId' && k !== 'groupId');
+  if (keys.length > 0 && keys.every((k) => ['startDate', 'isScheduled', 'timeBucket', 'startTime'].includes(k)))
+    return 'when';
+  return keys.sort().join(',');
+}
+
+/** Same person, same kind of change, no further apart than this: one line, the last. */
+export const BURST_MS = 15 * 60 * 1000;
+
+/** A run of more changes in a row than this folds, */
+export const FOLD_OVER = 4;
+/** showing only the newest this many under a "Show N earlier changes" line. */
+export const FOLD_KEEP = 3;
+
+/** The words of a change that says nothing ("You changed it"), never shown. */
+const SAYS_NOTHING = 'changed it';
+
+/**
+ * A long history read the way it was meant, not keystroke by keystroke:
+ * a line that says nothing goes, and a burst (the same person making the same
+ * kind of change, each within BURST_MS of the last, with nothing said in
+ * between) is one line, the last, so four moves back and forth in a minute
+ * read as where the item ended up. Order is kept; talk lines are untouched
+ * and break a burst.
+ */
+export function compactChanges<T extends TimelineEntry>(entries: readonly T[]): T[] {
+  const out: T[] = [];
+  for (const entry of entries) {
+    if (entry.kind === 'change' && entry.text === SAYS_NOTHING) continue;
+    const prev = out[out.length - 1];
+    if (
+      entry.kind === 'change' &&
+      prev?.kind === 'change' &&
+      entry.topic !== null &&
+      prev.topic === entry.topic &&
+      prev.by === entry.by &&
+      prev.agent === entry.agent &&
+      entry.at - prev.at <= BURST_MS
+    ) {
+      out[out.length - 1] = entry;
+      continue;
+    }
+    out.push(entry);
+  }
+  return out;
+}
+
+/** Every change on the item as a line, oldest first, each knowing who held the item when it was written. */
+function changeEntries(events: readonly ItemEvent[]): ChangeEntry[] {
+  const oldestFirst = [...events].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  let holder: unknown = null;
+  const out: ChangeEntry[] = [];
+  for (const e of oldestFirst) {
+    if (e.payload && 'assignee' in e.payload) holder = e.payload.assignee;
+    const by = actorOf(e);
+    out.push({
+      kind: 'change',
+      key: e.id,
+      at: new Date(e.createdAt).getTime(),
+      by,
+      ...(by === 'agent' ? { agent: agentName(holder) } : {}),
+      text: changeLine(e),
+      topic: changeTopic(e),
+    });
+  }
+  return out;
 }
 
 /** One talk line: a day's conversation folded to who talked and how much. */
@@ -158,6 +240,8 @@ export interface ChangeEntry {
   /** Who "agent" was when this line was written (`agentName`); set only when `by` is 'agent'. */
   agent?: string;
   text: string;
+  /** What the change is about (`changeTopic`), for merging a burst; null never merges. */
+  topic: string | null;
 }
 
 export type TimelineEntry = TalkEntry | ChangeEntry;
@@ -186,9 +270,10 @@ function dayLabel(at: Date, now: Date): string {
 const dayKey = (at: Date) => format(at, 'yyyy-MM-dd');
 
 /**
- * The stream, oldest day first and oldest line first within a day. A day's
- * messages fold into one talk line, placed at the day's first message; the
- * conversation itself is read where it is drawn, under the details.
+ * The stream, oldest day first and oldest line first within a day, compacted
+ * (`compactChanges`). A day's messages fold into one talk line, placed at the
+ * day's first message: this is the timeline a host draws where the
+ * conversation itself is not on screen (`buildStream` is the one with it).
  */
 export function buildTimeline(
   events: readonly ItemEvent[],
@@ -196,23 +281,7 @@ export function buildTimeline(
   opts: { filter: TimelineFilter; now: Date }
 ): TimelineDay[] {
   const entries: TimelineEntry[] = [];
-  if (opts.filter !== 'talk') {
-    // Oldest first, so each line knows who held the item when it was written.
-    const oldestFirst = [...events].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-    let holder: unknown = null;
-    for (const e of oldestFirst) {
-      if (e.payload && 'assignee' in e.payload) holder = e.payload.assignee;
-      const by = actorOf(e);
-      entries.push({
-        kind: 'change',
-        key: e.id,
-        at: new Date(e.createdAt).getTime(),
-        by,
-        ...(by === 'agent' ? { agent: agentName(holder) } : {}),
-        text: changeLine(e),
-      });
-    }
-  }
+  if (opts.filter !== 'talk') entries.push(...changeEntries(events));
   if (opts.filter !== 'changes') {
     const byDay = new Map<string, TalkEntry>();
     for (const m of messages) {
@@ -225,7 +294,13 @@ export function buildTimeline(
         talk.at = Math.min(talk.at, m.createdAt);
         if (m.role === 'assistant' && withWhom === 'agent') talk.with = 'agent';
       } else {
-        byDay.set(k, { kind: 'talk', key: `talk-${k}`, at: m.createdAt, with: withWhom, messages: 1 });
+        byDay.set(k, {
+          kind: 'talk',
+          key: `talk-${k}`,
+          at: m.createdAt,
+          with: withWhom,
+          messages: 1,
+        });
       }
     }
     entries.push(...byDay.values());
@@ -233,7 +308,7 @@ export function buildTimeline(
   entries.sort((a, b) => a.at - b.at || (a.kind === b.kind ? 0 : a.kind === 'talk' ? 1 : -1));
 
   const days: TimelineDay[] = [];
-  for (const entry of entries) {
+  for (const entry of compactChanges(entries)) {
     const at = new Date(entry.at);
     const key = dayKey(at);
     const last = days[days.length - 1];
@@ -247,4 +322,96 @@ export function buildTimeline(
 export function talkLine(t: TalkEntry): string {
   const who = t.with === 'agent' ? 'You and OpenClaw' : 'You and the AI';
   return `${who} talked it through · ${t.messages} ${t.messages === 1 ? 'message' : 'messages'}`;
+}
+
+/**
+ * The newest `keep` lines of a timeline, and how many older ones that leaves
+ * out, once it has more than FOLD_OVER; the whole of it, and 0, otherwise.
+ */
+export function foldTimeline(days: readonly TimelineDay[], keep = FOLD_KEEP): { days: TimelineDay[]; hidden: number } {
+  const total = days.reduce((n, d) => n + d.entries.length, 0);
+  if (total <= FOLD_OVER) return { days: [...days], hidden: 0 };
+  let skip = total - keep;
+  const out: TimelineDay[] = [];
+  for (const day of days) {
+    if (skip >= day.entries.length) {
+      skip -= day.entries.length;
+      continue;
+    }
+    out.push({ ...day, entries: day.entries.slice(skip) });
+    skip = 0;
+  }
+  return { days: out, hidden: total - keep };
+}
+
+/** A line of the stream drawn between messages: a day, a change, or a fold over older changes. */
+export type StreamRow =
+  | { kind: 'day'; key: string; label: string }
+  | ChangeEntry
+  | { kind: 'fold'; key: string; slot: number; hidden: number };
+
+/**
+ * The item's timeline and its conversation as ONE stream (the item
+ * conversations design, approved 2026-10-01): the changes, compacted, set
+ * between the messages by time. Returns one slot per gap, `messages.length + 1`
+ * of them: slot i is drawn just before message i, the last after every message.
+ *
+ * A slot holding more than FOLD_OVER changes shows its newest FOLD_KEEP under a
+ * fold line, unless its index is in `unfolded`. Messages never fold. A day line
+ * opens each new day, whether a change or a message starts it.
+ *
+ * Talk shows the messages alone (the slots hold only days); Changes the changes
+ * alone, as one slot (the caller draws no messages).
+ */
+export function buildStream(
+  events: readonly ItemEvent[],
+  messages: readonly { createdAt: number }[],
+  opts: { filter: TimelineFilter; now: Date; unfolded?: ReadonlySet<number> }
+): StreamRow[][] {
+  const msgs = opts.filter === 'changes' ? [] : messages;
+  const changes = opts.filter === 'talk' ? [] : changeEntries(events);
+  const bySlot: ChangeEntry[][] = Array.from({ length: msgs.length + 1 }, () => []);
+  let slot = 0;
+  for (const c of changes) {
+    while (slot < msgs.length && msgs[slot].createdAt && msgs[slot].createdAt <= c.at) slot++;
+    bySlot[slot].push(c);
+  }
+  // Compacted per slot, after placing: a message in between ends a burst.
+  const slots: StreamRow[][] = [];
+  let lastDay: string | null = null;
+  const dayRow = (at: number, where: string): StreamRow[] => {
+    const k = dayKey(new Date(at));
+    if (k === lastDay) return [];
+    lastDay = k;
+    return [
+      {
+        kind: 'day',
+        key: `day-${where}-${k}`,
+        label: dayLabel(new Date(at), opts.now),
+      },
+    ];
+  };
+  for (let i = 0; i < bySlot.length; i++) {
+    const rows: StreamRow[] = [];
+    let list = compactChanges(bySlot[i]);
+    if (list.length > FOLD_OVER && !opts.unfolded?.has(i)) {
+      rows.push({
+        kind: 'fold',
+        key: `fold-${i}`,
+        slot: i,
+        hidden: list.length - FOLD_KEEP,
+      });
+      list = list.slice(-FOLD_KEEP);
+    }
+    for (const c of list) rows.push(...dayRow(c.at, c.key), c);
+    const next = msgs[i];
+    if (next?.createdAt) rows.push(...dayRow(next.createdAt, `m${i}`));
+    slots.push(rows);
+  }
+  return slots;
+}
+
+/** "Show 9 earlier changes". */
+export function foldLine(hidden: number): string {
+  return `Show ${hidden} earlier ${hidden === 1 ? 'change' : 'changes'}`;
 }

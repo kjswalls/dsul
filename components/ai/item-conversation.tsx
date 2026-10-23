@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ArrowUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { BandLabel } from '@/components/planner/item-bands';
@@ -23,6 +23,15 @@ import { AgentExchangeView, AgentRouteLine } from '@/components/ai/agent-exchang
 import { useBoxAnswersAgent } from '@/lib/agent-question';
 import { useAgentExchange } from '@/hooks/use-agent-exchange';
 import { usePlannerStore } from '@/lib/planner-store';
+import { getItemEventsAvailable } from '@/lib/db';
+import { buildStream, type StreamRow, type TimelineFilter } from '@/lib/item-timeline';
+import {
+  TimelineChangeLine,
+  TimelineDayLine,
+  TimelineFilterTabs,
+  TimelineFoldLine,
+  useItemEvents,
+} from '@/components/planner/item-timeline';
 
 /** One empty transcript, so a selector for an item nobody has chatted about is stable. */
 const NO_MESSAGES: ChatMessage[] = [];
@@ -71,6 +80,12 @@ function railBodyOf(el: HTMLElement | null): HTMLElement | null {
  * Every shape returns null when nothing can answer: a conversation nobody can
  * answer in is a field that sends nowhere.
  *
+ * ONE STREAM. Every shape draws the item's timeline in it: its changes
+ * (`item_events`), compacted and folded, set between the messages by time
+ * (lib/item-timeline.ts `buildStream`), under one "Timeline" heading with
+ * All · Talk · Changes. Where this is on screen ItemDetailSections mounts no
+ * timeline of its own, so a change is never listed twice.
+ *
  * Every shape shows Ask's own messages (components/ai/chat-transcript.tsx:
  * your bubble, plain replies, Copy, the status lines; one transcript everywhere),
  * and once the conversation is saved its heading has a ⌄: Star, and Delete
@@ -88,10 +103,13 @@ export function ItemConversation({
   item,
   mode,
   className,
+  tall = false,
 }: {
   item: Item;
   mode: 'pinned' | 'transcript' | 'inline';
   className?: string;
+  /** Inline only: the stream may run most of the window's height (/item/[id]'s own column). */
+  tall?: boolean;
 }) {
   const threadId = useConversationsStore((s) => itemThreadId(s, item.id));
   // The agent's side of the item (components/ai/agent-exchange.tsx), read
@@ -127,6 +145,21 @@ export function ItemConversation({
   const inputRef = useRef<HTMLInputElement>(null);
   const prevCount = useRef(0);
   const inline = mode === 'inline';
+  const events = useItemEvents(item, canChat);
+  const [filter, setFilter] = useState<TimelineFilter>('all');
+  // Slots whose older changes were opened. Keyed by slot index, which a new
+  // message never moves (it only appends a slot at the end).
+  const [unfolded, setUnfolded] = useState<ReadonlySet<number>>(() => new Set());
+  const slots = useMemo(
+    () =>
+      buildStream(getItemEventsAvailable() ? (events ?? []) : [], messages, {
+        filter,
+        now: new Date(),
+        unfolded,
+      }),
+    [events, messages, filter, unfolded]
+  );
+  const anyChange = slots.some((rows) => rows.some((r) => r.kind !== 'day'));
 
   // Find the item's conversation and fetch its transcript, only while
   // something can answer (the conversation is not shown otherwise).
@@ -184,18 +217,43 @@ export function ItemConversation({
   if (!canChat) return null;
 
   const agentSide = exchange && <AgentExchangeView item={live} exchange={exchange} />;
+  const open = (slot: number) => setUnfolded((prev) => new Set(prev).add(slot));
+  const rowsAt = (i: number) => <StreamRows rows={slots[i] ?? []} onOpen={open} />;
+  const heading = (menu: ReactNode) => (
+    <div className="flex min-h-6 items-center justify-between gap-2">
+      <BandLabel>Timeline</BandLabel>
+      <div className="flex items-center gap-1">
+        {(anyChange || messages.length > 0) && <TimelineFilterTabs value={filter} onChange={setFilter} />}
+        {menu}
+      </div>
+    </div>
+  );
+  // Changes alone: one slot and no transcript. Otherwise the transcript, with
+  // the changes drawn between its messages.
+  const empty =
+    filter === 'talk' && messages.length === 0
+      ? 'No conversation about this yet.'
+      : filter === 'changes' && !anyChange
+        ? 'No changes yet.'
+        : null;
+  const stream = empty ? (
+    <p className="text-muted-foreground text-xs" data-testid="item-timeline-empty">
+      {empty}
+    </p>
+  ) : filter === 'changes' ? (
+    rowsAt(0)
+  ) : (
+    <TranscriptMessages messages={messages} busy={isLoading} retryVia={retryVia} receipts={receipts} before={rowsAt} />
+  );
 
   if (!inline) {
-    if (messages.length === 0 && !exchange) return null;
+    if (messages.length === 0 && !exchange && !anyChange) return null;
     return (
       <div ref={listRef} data-testid="item-conversation" className={cn('flex flex-col gap-3', className)}>
-        <div className="flex min-h-6 items-center justify-between gap-2">
-          <BandLabel>Conversation</BandLabel>
-          {saved && threadId && <ItemConversationMenu id={threadId} />}
-        </div>
+        {heading(saved && threadId && <ItemConversationMenu id={threadId} />)}
         {gone && <GoneNotice />}
         {agentSide}
-        <TranscriptMessages messages={messages} busy={isLoading} retryVia={retryVia} receipts={receipts} />
+        {stream}
         <ReplyStatus messages={messages} />
       </div>
     );
@@ -205,16 +263,21 @@ export function ItemConversation({
 
   return (
     <div className={cn('flex min-h-0 flex-col gap-1.5', className)} data-testid="item-thread">
-      <div className="flex min-h-6 items-center justify-between gap-2">
-        <BandLabel>Conversation</BandLabel>
-        {/* A delete takes this ⌄ with it, and the box below stays: focus goes there. */}
-        {saved && threadId && <ItemConversationMenu id={threadId} fallbackFocus={() => inputRef.current?.focus()} />}
-      </div>
+      {/* A delete takes this ⌄ with it, and the box below stays: focus goes there. */}
+      {heading(
+        saved && threadId && <ItemConversationMenu id={threadId} fallbackFocus={() => inputRef.current?.focus()} />
+      )}
       {gone && <GoneNotice />}
-      {(messages.length > 0 || exchange) && (
-        <div ref={listRef} className="flex max-h-64 min-h-0 flex-col gap-3 overflow-y-auto pr-1">
+      {(messages.length > 0 || exchange || anyChange) && (
+        <div
+          ref={listRef}
+          className={cn(
+            'flex min-h-0 flex-col gap-3 overflow-y-auto pr-1',
+            tall ? 'max-h-[min(40rem,70vh)]' : 'max-h-64'
+          )}
+        >
           {agentSide}
-          <TranscriptMessages messages={messages} busy={isLoading} retryVia={retryVia} receipts={receipts} />
+          {stream}
         </div>
       )}
       <ReplyStatus messages={messages} />
@@ -245,6 +308,24 @@ export function ItemConversation({
         </Button>
       </div>
       <AgentRouteLine itemId={item.id} />
+    </div>
+  );
+}
+
+/** A slot of the stream: day lines, changes and a fold, drawn between two messages. */
+function StreamRows({ rows, onOpen }: { rows: readonly StreamRow[]; onOpen: (slot: number) => void }) {
+  if (rows.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-1.5" data-testid="item-timeline-slot">
+      {rows.map((r) =>
+        r.kind === 'day' ? (
+          <TimelineDayLine key={r.key} label={r.label} />
+        ) : r.kind === 'fold' ? (
+          <TimelineFoldLine key={r.key} hidden={r.hidden} onOpen={() => onOpen(r.slot)} />
+        ) : (
+          <TimelineChangeLine key={r.key} entry={r} as="div" />
+        )
+      )}
     </div>
   );
 }
