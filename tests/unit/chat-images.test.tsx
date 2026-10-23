@@ -24,7 +24,9 @@ vi.mock('sonner', () => ({
 }));
 
 import { ChatComposer } from '@/components/ai/chat-composer';
-import { ChatTranscript } from '@/components/ai/chat-transcript';
+import { ChatTranscript, TranscriptMessages } from '@/components/ai/chat-transcript';
+import * as openChat from '@/lib/open-chat';
+import { useItemFilesStore } from '@/lib/item-files-store';
 import { ATTACH_COPY } from '@/components/ai/chat-image-attach';
 import { MAX_CHAT_IMAGES, MAX_IMAGE_DATA_CHARS, imageCountLabel, sanitizeChatImages } from '@/lib/chat-images';
 import { chatTransport } from '@/lib/chat-transport';
@@ -217,5 +219,152 @@ describe('attaching pictures in the chat box', () => {
     expect(screen.getAllByTestId('chat-picture-placeholder')).toHaveLength(2);
     expect(screen.getByTestId('chat-message-images')).toHaveTextContent('2 images, not saved');
     expect(screen.queryByRole('img', { name: /Picture/ })).toBeNull();
+  });
+});
+
+describe('the item’s box attaches files to the item', () => {
+  const ITEM = { kind: 'item' as const, itemId: 'i1' };
+  let add: ReturnType<typeof vi.fn>;
+  let send: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    add = vi.fn(async () => {});
+    useItemFilesStore.setState({ available: true, byItem: {}, uploading: {}, add } as never);
+    send = vi.spyOn(openChat, 'sendFrom').mockResolvedValue(undefined as never);
+  });
+  afterEach(() => {
+    send.mockRestore();
+    useItemFilesStore.setState({ available: null });
+  });
+  const pdf = () => new File(['%PDF-'], 'W-2 2025.pdf', { type: 'application/pdf' });
+  const sendButton = () => screen.getByRole('button', { name: 'Send' });
+
+  it('takes any file, shows it as a chip, and says it is kept when you send', async () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    render(<ChatComposer variant="panel" binding={ITEM} />);
+    expect(screen.getByTestId('chat-attach')).toHaveAttribute('aria-label', 'Attach files');
+    expect(screen.getByTestId('chat-attach-input')).not.toHaveAttribute('accept');
+    await attach(pdf());
+    expect(screen.getByRole('list', { name: 'Files to add to this item' })).toHaveTextContent('W-2 2025.pdf');
+    expect(screen.getByTestId('chat-attachments-note')).toHaveTextContent('Kept on this item when you send.');
+    expect(add).not.toHaveBeenCalled();
+  });
+
+  it('saves files sent with no words to the item, and sends no message', async () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    render(<ChatComposer variant="panel" binding={ITEM} />);
+    const f = pdf();
+    await attach(f);
+    fireEvent.click(sendButton());
+    expect(add).toHaveBeenCalledWith('i1', [f], { placedAt: expect.any(Number) });
+    expect(send).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('chat-attachments')).toBeNull();
+  });
+
+  it('keeps the original on the item and sends the shrunk picture to the model', async () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    render(<ChatComposer variant="panel" binding={ITEM} />);
+    const cat = picture();
+    await attach(cat);
+    fireEvent.change(box(), { target: { value: 'what is this?' } });
+    fireEvent.click(sendButton());
+    expect(add).toHaveBeenCalledWith('i1', [cat], { placedAt: expect.any(Number) });
+    expect(send).toHaveBeenCalledWith(ITEM, 'what is this?', {
+      surface: undefined,
+      images: [{ mediaType: 'image/jpeg', data: '/9j/4AAQ' }],
+    });
+    const placedAt = add.mock.calls[0][2].placedAt as number;
+    expect(placedAt).toBeLessThanOrEqual(Date.now());
+  });
+
+  it('adds nothing once the chip is removed before sending', async () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    render(<ChatComposer variant="panel" binding={ITEM} />);
+    await attach(pdf());
+    fireEvent.click(screen.getByRole('button', { name: 'Remove W-2 2025.pdf' }));
+    fireEvent.change(box(), { target: { value: 'never mind' } });
+    fireEvent.click(sendButton());
+    expect(add).not.toHaveBeenCalled();
+    expect(send).toHaveBeenCalledWith(ITEM, 'never mind', { surface: undefined });
+  });
+
+  it('takes files while OpenClaw answers, sends it no picture, and says so', async () => {
+    unseed = seedAI({ ...OPENCLAW_CHAT, choice: 'openclaw' });
+    render(<ChatComposer variant="panel" binding={ITEM} />);
+    expect(screen.getByTestId('chat-attach')).toBeEnabled();
+    const cat = picture();
+    await attach(cat);
+    expect(screen.getByTestId('chat-attachments-note')).toHaveTextContent(
+      'Kept on this item when you send. OpenClaw doesn’t get files.'
+    );
+    fireEvent.change(box(), { target: { value: 'here' } });
+    fireEvent.click(sendButton());
+    expect(add).toHaveBeenCalledWith('i1', [cat], { placedAt: expect.any(Number) });
+    expect(send).toHaveBeenCalledWith(ITEM, 'here', { surface: undefined });
+  });
+
+  it('says the AI sees only the first three pictures', async () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    render(<ChatComposer variant="panel" binding={ITEM} />);
+    await attach(picture('a.png'), picture('b.png'), picture('c.png'), picture('d.png'));
+    expect(screen.getAllByTestId('chat-attachment')).toHaveLength(4);
+    expect(screen.getByTestId('chat-attachments-note')).toHaveTextContent(
+      'Kept on this item when you send. The AI sees the first 3 pictures.'
+    );
+    fireEvent.change(box(), { target: { value: 'which?' } });
+    fireEvent.click(sendButton());
+    expect(send.mock.calls[0][2].images).toHaveLength(3);
+  });
+
+  it('keeps today’s pictures-only box while files are not available', async () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    useItemFilesStore.setState({ available: false });
+    render(<ChatComposer variant="panel" binding={ITEM} />);
+    expect(screen.getByTestId('chat-attach')).toHaveAttribute('aria-label', 'Attach pictures');
+    expect(screen.getByTestId('chat-attach-input')).toHaveAttribute('accept');
+    await attach(picture());
+    expect(screen.getByRole('list', { name: 'Attached pictures' })).toBeInTheDocument();
+    expect(screen.queryByTestId('chat-attachments-note')).toBeNull();
+  });
+
+  it('takes a drop, with a drop zone while dragging', async () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    render(<ChatComposer variant="panel" binding={ITEM} />);
+    const panel = screen.getByTestId('chat-composer-panel');
+    const f = pdf();
+    fireEvent.dragEnter(panel, { dataTransfer: { types: ['Files'], files: [f] } });
+    expect(screen.getByTestId('chat-drop-zone')).toHaveTextContent('Drop to add to this item');
+    fireEvent.drop(panel, { dataTransfer: { types: ['Files'], files: [f] } });
+    await settle();
+    expect(screen.queryByTestId('chat-drop-zone')).toBeNull();
+    expect(screen.getAllByTestId('chat-attachment')).toHaveLength(1);
+  });
+
+  it('leaves every other box as it was', async () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    render(<ChatComposer variant="panel" binding={{ kind: 'home' }} />);
+    expect(screen.getByTestId('chat-attach')).toHaveAttribute('aria-label', 'Attach pictures');
+    shrink.result = { ok: false, reason: ATTACH_COPY.notImage };
+    await attach(pdf());
+    expect(screen.queryByTestId('chat-attachment')).toBeNull();
+    expect(toasts.error).toHaveBeenCalledWith(ATTACH_COPY.notImage);
+    const panel = screen.getByTestId('chat-composer-panel');
+    fireEvent.dragEnter(panel, { dataTransfer: { types: ['Files'], files: [] } });
+    expect(screen.getByTestId('chat-drop-zone')).toHaveTextContent('Drop pictures to send with your message');
+  });
+
+  it('says in an item’s thread that the pictures went to the AI', () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    render(
+      <TranscriptMessages
+        busy={false}
+        pictureNote="sent"
+        messages={[{ id: 'q', role: 'user', content: 'what is this?', createdAt: 1, imageCount: 1 } as never]}
+      />
+    );
+    expect(screen.getByTestId('chat-message-images')).toHaveTextContent('1 image sent to the AI');
+    expect(screen.getByTestId('chat-picture-placeholder')).toHaveAttribute(
+      'title',
+      'This picture went to the AI with your message.'
+    );
   });
 });

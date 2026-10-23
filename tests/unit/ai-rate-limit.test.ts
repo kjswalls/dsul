@@ -34,6 +34,7 @@ describe('takeToken', () => {
     ['conv_read', 1_200],
     ['conv_search', 300],
     ['make', 30],
+    ['agent_file', 60],
   ] as const)('allows %s %i an hour, then refuses, and frees up an hour later', (bucket, limit) => {
     expect(take(limit, 'u1', bucket, T0).every(Boolean)).toBe(true);
     expect(takeToken('u1', bucket, T0)).toBe(false);

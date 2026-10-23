@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { File as FileIcon, FileImage, FileText, Loader2, Paperclip, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { fileLink, sizeLabel, type ItemFile } from '@/lib/item-files';
-import { useItemFilesStore } from '@/lib/item-files-store';
+import { useItemFiles, useItemFilesStore } from '@/lib/item-files-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { cn } from '@/lib/utils';
 
@@ -60,6 +60,28 @@ export function AttachFileButton({ itemId }: { itemId: string }) {
   );
 }
 
+/**
+ * Opens a file in a new tab through a one-minute link (`fileLink`). The tab is
+ * opened before the link exists, so the popup blocker sees a click; `onBusy`
+ * says while the link is being made, for the caller's own spinner.
+ */
+export async function openFile(file: ItemFile, userId: string, onBusy?: (busy: boolean) => void): Promise<void> {
+  const tab = window.open('', '_blank');
+  onBusy?.(true);
+  const url = await fileLink(file, userId);
+  onBusy?.(false);
+  if (!tab) {
+    if (url) window.location.assign(url);
+    return;
+  }
+  if (url) {
+    tab.opener = null;
+    tab.location.href = url;
+  } else {
+    tab.close();
+  }
+}
+
 function iconFor(mime: string) {
   if (mime.startsWith('image/')) return FileImage;
   if (mime.startsWith('text/') || mime === 'application/pdf') return FileText;
@@ -67,39 +89,20 @@ function iconFor(mime: string) {
 }
 
 export function ItemFilesSection({ itemId }: { itemId: string }) {
-  const files = useItemFilesStore((s) => s.byItem[itemId]?.files ?? NO_FILES);
+  const files = useItemFiles(itemId) ?? NO_FILES;
   const uploading = useItemFilesStore((s) => s.uploading[itemId] ?? 0);
-  const load = useItemFilesStore((s) => s.load);
   const remove = useItemFilesStore((s) => s.remove);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [opening, setOpening] = useState<string | null>(null);
   const { open: pick, input } = usePicker(itemId);
 
-  useEffect(() => {
-    void load(itemId);
-  }, [itemId, load]);
-
   if (files.length === 0 && uploading === 0) return null;
 
-  async function openFile(file: ItemFile) {
+  const open = (file: ItemFile) => {
     const userId = usePlannerStore.getState().userId;
     if (!userId) return;
-    // Opened before the link exists, so the popup blocker sees a click.
-    const tab = window.open('', '_blank');
-    setOpening(file.id);
-    const url = await fileLink(file, userId);
-    setOpening(null);
-    if (!tab) {
-      if (url) window.location.assign(url);
-      return;
-    }
-    if (url) {
-      tab.opener = null;
-      tab.location.href = url;
-    } else {
-      tab.close();
-    }
-  }
+    void openFile(file, userId, (busy) => setOpening(busy ? file.id : null));
+  };
 
   return (
     <section data-testid="item-files" aria-labelledby={`item-files-${itemId}`} className="flex flex-col gap-1.5">
@@ -128,7 +131,7 @@ export function ItemFilesSection({ itemId }: { itemId: string }) {
             >
               <button
                 type="button"
-                onClick={() => void openFile(f)}
+                onClick={() => open(f)}
                 className="flex min-w-0 flex-1 items-center gap-2 text-left"
                 data-testid="item-file-open"
               >
@@ -178,7 +181,10 @@ export function ItemFilesSection({ itemId }: { itemId: string }) {
           );
         })}
         {uploading > 0 && (
-          <li className="text-muted-foreground flex items-center gap-2 px-1.5 py-1 text-sm" data-testid="item-files-uploading">
+          <li
+            className="text-muted-foreground flex items-center gap-2 px-1.5 py-1 text-sm"
+            data-testid="item-files-uploading"
+          >
             <Loader2 className="size-3.5 animate-spin" aria-hidden />
             Adding {uploading === 1 ? 'a file' : `${uploading} files`}…
           </li>

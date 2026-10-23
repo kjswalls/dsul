@@ -5,7 +5,8 @@ build step 5 and issue #261). Migration 069 must be applied on prod before it wo
 
 ## What it is
 
-`/api/mcp` (app/api/mcp/route.ts) has served dsul's 23 planner tools since #440. Until now the
+`/api/mcp` (app/api/mcp/route.ts) has served dsul's planner tools since #440 (23 then, 26 by
+2026-10-23, the newest `dsul_attach_file`). Until now the
 only way in was the OpenClaw agent key: one per user, plaintext, unscoped, never expiring, and
 only obtainable through OpenClaw's pairing flow. Claude (claude.ai, the desktop and phone apps,
 Claude Code), Cursor and other MCP clients connect to a remote server through OAuth 2.1 instead,

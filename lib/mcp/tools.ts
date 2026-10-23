@@ -56,6 +56,9 @@ const obj = (
   additionalProperties: false,
 })
 
+/** dsul_attach_file's base64, at most: 3 MB of file (lib/item-files.ts AGENT_FILE_MAX_BYTES) is 4,194,304 characters. */
+const ATTACH_DATA_MAX = 4_194_304
+
 /** Ids come straight from get_context; a made-up one is a 404, not a create. */
 const ID = str('The item id, exactly as it appears in get_context.')
 
@@ -578,6 +581,42 @@ export const MCP_TOOLS: McpTool[] = [
         return { error: 'pack must be an object with a kind' }
       }
       return { method: 'POST', path: `/api/agent/items/${id}/prep`, body: { pack: args.pack } }
+    },
+  },
+  {
+    name: 'dsul_attach_file',
+    description:
+      'Attach a file you made or found to one of the user’s items, such as a draft, a booking ' +
+      'confirmation or a screenshot. It shows on the item’s timeline as added by you, and in its ' +
+      'files. data is the file as base64, at most 3 MB of file (line breaks in it are fine). mime ' +
+      'is optional: pictures and PDFs are recognised from their bytes, plain text, CSV, Markdown ' +
+      'and JSON stay text, and anything else is kept as a download. An item holds at most 20 ' +
+      'files. You cannot read an item’s files back.',
+    inputSchema: obj(
+      {
+        id: ID,
+        name: str('The file name the user will see, with its extension, e.g. "Draft return.pdf".'),
+        data: str('The file as base64, at most 3 MB of file.'),
+        mime: str('The file type, e.g. "application/pdf". Optional; the bytes decide for pictures and PDFs.'),
+      },
+      ['id', 'name', 'data']
+    ),
+    plan: (args) => {
+      const id = requireString(args, 'id')
+      if (typeof id !== 'string') return id
+      const name = requireString(args, 'name')
+      if (typeof name !== 'string') return name
+      const raw = requireString(args, 'data')
+      if (typeof raw !== 'string') return raw
+      const data = raw.replace(/[\r\n]/g, '')
+      if (data.length > ATTACH_DATA_MAX) return { error: 'data is over 3 MB of file' }
+      if (args.mime !== undefined && typeof args.mime !== 'string') return { error: 'mime must be a string' }
+      const mime = typeof args.mime === 'string' && args.mime.trim() ? args.mime.trim() : undefined
+      return {
+        method: 'POST',
+        path: `/api/agent/items/${id}/files`,
+        body: { name, data, ...(mime ? { mime } : {}) },
+      }
     },
   },
   {

@@ -14,6 +14,7 @@ import { POST as askUser } from '@/app/api/agent/items/[id]/ask/route'
 import { POST as reportProgress } from '@/app/api/agent/items/[id]/progress/route'
 import { POST as actOnItem } from '@/app/api/agent/items/[id]/act/route'
 import { POST as savePrep } from '@/app/api/agent/items/[id]/prep/route'
+import { POST as attachFile } from '@/app/api/agent/items/[id]/files/route'
 import { POST as createProject } from '@/app/api/agent/projects/route'
 import { PATCH as patchProject, DELETE as deleteProject } from '@/app/api/agent/projects/[id]/route'
 import { dispatch, type ToolResult } from '@/lib/mcp/protocol'
@@ -88,7 +89,7 @@ async function runPlan(original: NextRequest, plan: ToolPlan): Promise<Response>
   if (collection === 'context') return getContext(proxyRequest(original, plan))
   if (collection === 'prep-brief' && !id) return getPrepBrief(proxyRequest(original, plan))
 
-  // /api/agent/items/:id/{events,ask,progress,act,prep} — the delegation verbs and
+  // /api/agent/items/:id/{events,ask,progress,act,prep,files} — the delegation verbs and
   // the one-day verbs, each with its own handler rather than a CRUD set: they
   // carry preconditions that must not be bolted onto every agent write.
   const ITEM_VERBS: Record<string, (req: NextRequest, ctx: { params: Promise<{ id: string }> }) => Promise<Response>> = {
@@ -97,6 +98,7 @@ async function runPlan(original: NextRequest, plan: ToolPlan): Promise<Response>
     progress: reportProgress,
     act: actOnItem,
     prep: savePrep,
+    files: attachFile,
   }
   if (collection === 'items' && segments[2] && ITEM_VERBS[segments[2]]) {
     if (!id || id.includes('/') || id.includes('..') || id.includes('%')) {
@@ -187,6 +189,44 @@ async function toToolResult(
 const MAX_BATCH = 32
 
 /**
+ * The most body one request may carry. Vercel refuses a request body over
+ * about 4.5 MB before it reaches here; this says the same bound in the app, so
+ * it holds wherever the app runs (local, self-hosted). The largest tool call is
+ * dsul_attach_file: 3 MB of file is 4,194,304 base64 characters, and the inner
+ * route caps its own body at 4,400,000 (app/api/agent/items/[id]/files), so one
+ * file and its JSON-RPC envelope fit with room to spare, and a batch of them
+ * does not.
+ */
+const MCP_BODY_MAX = 4_500_000
+
+/** The body as text, or null once it passes `max` bytes (counted as read, not as declared). */
+async function readCapped(req: NextRequest, max: number): Promise<string | null> {
+  const declared = Number(req.headers.get('content-length'))
+  if (Number.isFinite(declared) && declared > max) return null
+  if (!req.body) return ''
+  const reader = req.body.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    total += value.byteLength
+    if (total > max) {
+      void reader.cancel().catch(() => {})
+      return null
+    }
+    chunks.push(value)
+  }
+  const bytes = new Uint8Array(total)
+  let offset = 0
+  for (const c of chunks) {
+    bytes.set(c, offset)
+    offset += c.byteLength
+  }
+  return new TextDecoder().decode(bytes)
+}
+
+/**
  * A 401 that starts an MCP client's sign-in: the header names this server's
  * protected-resource metadata, which names the authorization server
  * (lib/mcp-oauth/core.ts, memory/plans/mcp-oauth.md).
@@ -222,7 +262,14 @@ export async function POST(req: NextRequest) {
 
   let message: unknown
   try {
-    message = await req.json()
+    const text = await readCapped(req, MCP_BODY_MAX)
+    if (text === null) {
+      return NextResponse.json(
+        { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Request too large' } },
+        { status: 413 }
+      )
+    }
+    message = JSON.parse(text)
   } catch {
     return NextResponse.json(
       { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } },

@@ -80,6 +80,7 @@ vi.mock('@/app/api/agent/items/[id]/events/route', () => ({
 }));
 vi.mock('@/app/api/agent/items/[id]/act/route', () => ({ POST: fake('act') }));
 vi.mock('@/app/api/agent/items/[id]/prep/route', () => ({ POST: fake('prep') }));
+vi.mock('@/app/api/agent/items/[id]/files/route', () => ({ POST: fake('files') }));
 vi.mock('@/app/api/agent/prep-brief/route', () => ({ GET: fake('prep-brief') }));
 vi.mock('@/app/api/agent/projects/route', () => ({ POST: fake('create:project') }));
 vi.mock('@/app/api/agent/projects/[id]/route', () => ({ PATCH: fake('patch:project'), DELETE: fake('delete:project') }));
@@ -186,6 +187,22 @@ describe('auth', () => {
     );
     const body = await res.json();
     expect(body.error.message).toMatch(/Unknown tool/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('refuses a read-only app dsul_attach_file by name', async () => {
+    const res = await POST(
+      rpc(
+        {
+          jsonrpc: '2.0',
+          id: 3,
+          method: 'tools/call',
+          params: { name: 'dsul_attach_file', arguments: { id: 'i1', name: 'a.txt', data: 'aGk=' } },
+        },
+        'Bearer dsul_at_read'
+      )
+    );
+    expect((await res.json()).error.message).toMatch(/Unknown tool/);
     expect(calls).toHaveLength(0);
   });
 
@@ -476,6 +493,7 @@ describe('every tool reaches a handler', () => {
     dsul_report_progress: { id: 'i1', status: 'working' },
     dsul_prep_brief: {},
     dsul_save_prep: { id: 'i1', pack: { kind: 'list', items: ['eggs'] } },
+    dsul_attach_file: { id: 'i1', name: 'notes.txt', data: 'aGk=' },
     dsul_get_context: {},
     dsul_create_task: { title: 'T' },
     dsul_update_task: { id: 'i1', title: 'T' },
@@ -517,6 +535,24 @@ describe('every tool reaches a handler', () => {
       auth: AUTH,
       body: { action: 'complete', date: '2026-10-08', done: true },
     });
+  });
+
+  it('sends an attached file to the files handler with the id as a route param', async () => {
+    await POST(call('dsul_attach_file', { id: 'i7', name: 'a.pdf', data: 'JVBERi0=', mime: 'application/pdf' }));
+    expect(calls[0]).toMatchObject({
+      handler: 'files',
+      method: 'POST',
+      id: 'i7',
+      auth: AUTH,
+      body: { name: 'a.pdf', data: 'JVBERi0=', mime: 'application/pdf' },
+    });
+  });
+
+  it('refuses a body over its cap before any tool runs', async () => {
+    const big = 'A'.repeat(4_600_000);
+    const res = await POST(call('dsul_attach_file', { id: 'i1', name: 'big.bin', data: big }));
+    expect(res.status).toBe(413);
+    expect(calls).toHaveLength(0);
   });
 
   it('sends project writes to the project handlers', async () => {

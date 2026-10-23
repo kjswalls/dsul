@@ -4,12 +4,16 @@ import {
   buildStream,
   buildTimeline,
   changeLine,
+  fileEntries,
   foldLine,
+  foldTimeline,
   talkLine,
   type ChangeEntry,
+  type FileEntry,
   type TalkEntry,
 } from '@/lib/item-timeline';
 import type { ItemEvent } from '@/lib/db';
+import type { ItemFile } from '@/lib/item-files';
 
 /**
  * The item's timeline, pure (lib/item-timeline.ts): who made a change, the
@@ -60,7 +64,9 @@ describe('who', () => {
       [],
       { filter: 'all', now: new Date('2026-10-14T12:00:00') }
     );
-    const lines = days.flatMap((d) => d.entries).map((e) => (e.kind === 'change' ? [e.by, e.agent ?? null, e.text] : null));
+    const lines = days
+      .flatMap((d) => d.entries)
+      .map((e) => (e.kind === 'change' ? [e.by, e.agent ?? null, e.text] : null));
     expect(lines).toEqual([
       ['you', null, 'handed it to OpenClaw'],
       ['agent', 'OpenClaw', 'marked it working'],
@@ -121,17 +127,23 @@ describe('the stream', () => {
   });
 
   it('filters to talk or to changes', () => {
-    expect(buildTimeline(events, messages, { filter: 'talk', now }).flatMap((d) => d.entries.map((e) => e.kind))).toEqual(['talk']);
+    expect(
+      buildTimeline(events, messages, { filter: 'talk', now }).flatMap((d) => d.entries.map((e) => e.kind))
+    ).toEqual(['talk']);
     expect(
       buildTimeline(events, messages, { filter: 'changes', now }).flatMap((d) => d.entries.map((e) => e.kind))
     ).toEqual(['change', 'change', 'change']);
   });
 
   it('names OpenClaw on a day it answered', () => {
-    const days = buildTimeline([], [...messages, { role: 'assistant', createdAt: messages[1].createdAt + 1, answerer: 'openclaw' }], {
-      filter: 'all',
-      now,
-    });
+    const days = buildTimeline(
+      [],
+      [...messages, { role: 'assistant', createdAt: messages[1].createdAt + 1, answerer: 'openclaw' }],
+      {
+        filter: 'all',
+        now,
+      }
+    );
     expect(talkLine(days[0].entries[0] as TalkEntry)).toBe('You and OpenClaw talked it through · 3 messages');
   });
 });
@@ -188,7 +200,129 @@ describe('a long history', () => {
     expect(kinds[2]).toEqual(['change']);
     const open = buildStream(events, messages, { filter: 'all', now, unfolded: new Set([0]) });
     expect(open[0].filter((r) => r.kind === 'change')).toHaveLength(6);
-    expect(buildStream(events, messages, { filter: 'talk', now }).flat().every((r) => r.kind === 'day')).toBe(true);
+    expect(
+      buildStream(events, messages, { filter: 'talk', now })
+        .flat()
+        .every((r) => r.kind === 'day')
+    ).toBe(true);
     expect(buildStream(events, messages, { filter: 'changes', now })).toHaveLength(1);
+  });
+});
+
+describe('files', () => {
+  const now = new Date('2026-10-12T23:00:00');
+  const f = (id: string, at: string, over: Partial<ItemFile> = {}): ItemFile => ({
+    id,
+    itemId: 'i1',
+    name: `${id}.pdf`,
+    mime: 'application/pdf',
+    size: 10,
+    createdAt: new Date(at).toISOString(),
+    addedBy: null,
+    ...over,
+  });
+  const ms = (at: string) => new Date(at).getTime();
+
+  it('groups files one person added within 2 minutes, and names who', () => {
+    const entries = fileEntries([
+      f('a', '2026-10-12T10:00:00'),
+      f('b', '2026-10-12T10:01:30'),
+      f('c', '2026-10-12T10:02:00', { addedBy: 'openclaw' }),
+      f('d', '2026-10-12T10:09:00'),
+    ]);
+    expect(entries.map((e) => [e.by, e.agent, e.text])).toEqual([
+      ['you', undefined, 'attached 2 files'],
+      ['agent', 'OpenClaw', 'attached c.pdf'],
+      ['you', undefined, 'attached d.pdf'],
+    ]);
+  });
+
+  it('names a connected app by its label, and an agent with no name as “An agent”, even an app called agent', () => {
+    const [app, unnamed, called] = fileEntries([
+      f('a', '2026-10-12T10:00:00', { addedBy: 'claude' }),
+      f('b', '2026-10-12T11:00:00', { addedBy: ' ' }),
+      f('c', '2026-10-12T12:00:00', { addedBy: 'agent' }),
+    ]);
+    expect(app.agent).toBe('Claude');
+    expect(unnamed.agent).toBe('An agent');
+    expect(called.agent).toBe('Agent');
+  });
+
+  it('places a file where it was placed on this page before its row’s own time', () => {
+    const [e] = fileEntries([f('a', '2026-10-12T10:05:00')], { a: ms('2026-10-12T10:00:00') });
+    expect(e.at).toBe(ms('2026-10-12T10:00:00'));
+  });
+
+  const messages = [{ createdAt: ms('2026-10-12T10:00:00') }, { createdAt: ms('2026-10-12T10:00:10') }];
+
+  it('sits between messages by time, before a message stamped the same instant, under its day line', () => {
+    const files = fileEntries([f('a', '2026-10-12T10:00:00')]);
+    const slots = buildStream([], messages, { filter: 'all', now, files });
+    expect(slots[0].map((r) => r.kind)).toEqual(['day', 'file']);
+    expect((slots[0][1] as FileEntry).text).toBe('attached a.pdf');
+    const later = buildStream([], messages, {
+      filter: 'all',
+      now,
+      files: fileEntries([f('b', '2026-10-12T10:00:05')]),
+    });
+    expect(later[1].map((r) => r.kind)).toEqual(['file']);
+  });
+
+  it('never groups files across a message, so each sits before the message it was sent with', () => {
+    const first = ms('2026-10-12T10:00:00');
+    const second = ms('2026-10-12T10:01:00');
+    const sent = [{ createdAt: first }, { createdAt: second }];
+    const placed = { a: first - 1, b: second - 1 };
+    const files = fileEntries([f('a', '2026-10-12T10:00:00'), f('b', '2026-10-12T10:01:00')], placed, [first, second]);
+    expect(files.map((e) => e.text)).toEqual(['attached a.pdf', 'attached b.pdf']);
+    const slots = buildStream([], sent, { filter: 'all', now, files });
+    expect(slots[0].filter((r) => r.kind === 'file').map((r) => (r as FileEntry).text)).toEqual(['attached a.pdf']);
+    expect(slots[1].filter((r) => r.kind === 'file').map((r) => (r as FileEntry).text)).toEqual(['attached b.pdf']);
+    // Two files sent with the same message still group.
+    const both = fileEntries(
+      [f('c', '2026-10-12T10:00:00'), f('d', '2026-10-12T10:00:00')],
+      { c: first - 2, d: first - 1 },
+      [first]
+    );
+    expect(both.map((e) => e.text)).toEqual(['attached 2 files']);
+  });
+
+  it('never folds a file and never counts one as hidden', () => {
+    const events = Array.from({ length: 6 }, (_, n) =>
+      ev({ action: 'update', id: `p${n}`, payload: { priority: n % 2 ? 'low' : 'high' } }, `2026-10-0${n + 1}T10:00:00`)
+    );
+    const files = fileEntries([f('a', '2026-10-01T09:00:00'), f('b', '2026-10-01T12:00:00', { addedBy: 'openclaw' })]);
+    const [slot] = buildStream(events, [], { filter: 'all', now, files });
+    expect(slot.find((r) => r.kind === 'fold')).toMatchObject({ hidden: 3 });
+    expect(slot.filter((r) => r.kind === 'file')).toHaveLength(2);
+    expect(slot.filter((r) => r.kind === 'change')).toHaveLength(3);
+
+    const days = buildTimeline(events, [], { filter: 'changes', now, files });
+    const folded = foldTimeline(days);
+    expect(folded.hidden).toBe(3);
+    expect(folded.days.flatMap((d) => d.entries).filter((e) => e.kind === 'file')).toHaveLength(2);
+  });
+
+  it('shows files under Talk and under Changes', () => {
+    const files = fileEntries([f('a', '2026-10-12T10:00:05')]);
+    expect(
+      buildStream([], messages, { filter: 'talk', now, files })
+        .flat()
+        .some((r) => r.kind === 'file')
+    ).toBe(true);
+    const changes = buildStream([], messages, { filter: 'changes', now, files });
+    expect(changes).toHaveLength(1);
+    expect(changes[0].some((r) => r.kind === 'file')).toBe(true);
+  });
+
+  it('is in the timeline a host draws without the conversation', () => {
+    const files = fileEntries([f('a', '2026-10-12T10:00:00')]);
+    for (const filter of ['all', 'talk', 'changes'] as const) {
+      const days = buildTimeline([], [], { filter, now, files });
+      expect(
+        days.flatMap((d) => d.entries).map((e) => e.kind),
+        filter
+      ).toEqual(['file']);
+    }
   });
 });

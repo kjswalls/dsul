@@ -824,3 +824,36 @@ describe('resuming a run that died', () => {
     });
   });
 });
+
+describe('dsul_attach_file', () => {
+  it('posts the file to the item’s files route, without a mime it was not given', () => {
+    expect(plan('dsul_attach_file', { id: 'x', name: 'notes.txt', data: 'aGk=' })).toEqual({
+      method: 'POST',
+      path: '/api/agent/items/x/files',
+      body: { name: 'notes.txt', data: 'aGk=' },
+    });
+    expect(plan('dsul_attach_file', { id: 'x', name: 'a.pdf', data: 'JVBERi0=', mime: 'application/pdf' })).toMatchObject({
+      body: { name: 'a.pdf', data: 'JVBERi0=', mime: 'application/pdf' },
+    });
+  });
+
+  it('takes line-wrapped base64, unwrapped', () => {
+    expect(plan('dsul_attach_file', { id: 'x', name: 'a', data: 'aGVs\r\nbG8=' })).toMatchObject({
+      body: { data: 'aGVsbG8=' },
+    });
+  });
+
+  it('refuses missing data and data over 3 MB of file', () => {
+    expect(plan('dsul_attach_file', { id: 'x', name: 'a.txt' })).toHaveProperty('error');
+    expect(plan('dsul_attach_file', { name: 'a.txt', data: 'aGk=' })).toHaveProperty('error');
+    expect(plan('dsul_attach_file', { id: 'x', name: 'a', data: 'A'.repeat(4_194_308) })).toEqual({
+      error: 'data is over 3 MB of file',
+    });
+    expect(plan('dsul_attach_file', { id: 'x', name: 'a', data: 'A'.repeat(4_194_304) })).not.toHaveProperty('error');
+  });
+
+  it('is not a read tool', async () => {
+    const { READ_TOOL_NAMES } = await import('@/lib/mcp/tools');
+    expect(READ_TOOL_NAMES.has('dsul_attach_file')).toBe(false);
+  });
+});

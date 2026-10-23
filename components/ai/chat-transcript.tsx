@@ -142,6 +142,9 @@ export function editableQuestionIndex(messages: readonly ChatMessage[]): number 
  * after the last: an item's timeline sets its changes between the messages
  * this way (components/ai/item-conversation.tsx), so the transcript stays one
  * list and every rule above still reads the whole conversation.
+ * `pictureNote` is what the line under a question's pictures says: "not
+ * saved" (Ask), or "sent to the AI" in an item's thread, where the original
+ * file is kept on the item and its card sits just above.
  */
 export function TranscriptMessages({
   messages,
@@ -150,6 +153,7 @@ export function TranscriptMessages({
   retryVia,
   receipts,
   before,
+  pictureNote = 'not_saved',
 }: {
   messages: readonly ChatMessage[];
   busy: boolean;
@@ -158,6 +162,7 @@ export function TranscriptMessages({
   /** This conversation's accepted-plan receipts, and the conversation they belong to. */
   receipts?: { conversationId: string; list: readonly ChatReceipt[] };
   before?: (i: number) => ReactNode;
+  pictureNote?: PictureNote;
 }) {
   const dividers = answererDividers(messages);
   const placed = receipts?.list.length ? placeReceipts(messages.map((m) => m.id), receipts.list) : null;
@@ -173,7 +178,12 @@ export function TranscriptMessages({
           {before?.(i)}
           {dividers.has(i) && <AnswererDivider answerer={dividers.get(i) as Answerer} />}
           {m.role === 'user' ? (
-            <UserMessage m={m} notSaved={endsUnsavedTurn(messages, i)} editVia={i === editAt ? retryVia : undefined} />
+            <UserMessage
+              m={m}
+              notSaved={endsUnsavedTurn(messages, i)}
+              editVia={i === editAt ? retryVia : undefined}
+              pictureNote={pictureNote}
+            />
           ) : (
             <Reply
               m={m}
@@ -249,9 +259,11 @@ const UserMessage = memo(function UserMessage({
   m,
   notSaved,
   editVia,
+  pictureNote = 'not_saved',
 }: {
   m: ChatMessage;
   notSaved: boolean;
+  pictureNote?: PictureNote;
   /** Set on the latest question only, while nothing is arriving: where an edit is sent. */
   editVia?: ComposerBinding;
 }) {
@@ -276,7 +288,7 @@ const UserMessage = memo(function UserMessage({
   }
   return (
     <div data-message-role="user" data-message-id={m.id} className="group/question flex flex-col items-end gap-1">
-      {m.imageCount ? <SentPictures count={m.imageCount} images={m.images} /> : null}
+      {m.imageCount ? <SentPictures count={m.imageCount} images={m.images} note={pictureNote} /> : null}
       <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl bg-secondary px-3 py-2 text-sm leading-relaxed text-foreground">
         {shown}
       </div>
@@ -952,11 +964,15 @@ export function TranscriptSkeleton() {
  * The pictures a question went with, above it (lib/chat-images.ts). While the
  * page that sent them is open they show as themselves; after a reload only
  * their count was kept (migration 070), so each is a quiet tile of the same
- * size in its place. Either way one line says they were not saved.
+ * size in its place. Either way one line says they were not saved, or, in an
+ * item's thread (`note` 'sent'), that they went to the AI: there the original
+ * is kept on the item, and saying "not saved" beside its card would be false.
  */
-function SentPictures({ count, images }: { count: number; images?: ChatImage[] }) {
+export type PictureNote = 'not_saved' | 'sent';
+
+function SentPictures({ count, images, note }: { count: number; images?: ChatImage[]; note: PictureNote }) {
   const shown = images?.slice(0, count) ?? [];
-  const label = `${imageCountLabel(count)}, not saved`;
+  const label = note === 'sent' ? `${imageCountLabel(count)} sent to the AI` : `${imageCountLabel(count)}, not saved`;
   return (
     <figure data-testid="chat-message-images" className="flex max-w-[85%] flex-col items-end gap-1">
       <ul className="flex flex-wrap justify-end gap-1.5" aria-label={label}>
@@ -974,7 +990,11 @@ function SentPictures({ count, images }: { count: number; images?: ChatImage[] }
             <li
               key={i}
               data-testid="chat-picture-placeholder"
-              title="This picture went to the AI with your message and wasn’t saved."
+              title={
+                note === 'sent'
+                  ? 'This picture went to the AI with your message.'
+                  : 'This picture went to the AI with your message and wasn’t saved.'
+              }
               className="flex size-16 items-center justify-center rounded-xl border border-border bg-linear-to-br from-secondary to-muted text-muted-foreground/70"
             >
               <ImageIcon className="size-5" strokeWidth={1.5} aria-hidden />

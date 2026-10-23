@@ -17,11 +17,18 @@
  * WHICH agent. An item can be handed to OpenClaw, then to Claude, so "agent"
  * is named by whoever held the item when the line was written, read off the
  * trail's own assignee changes (`ChangeEntry.agent`).
+ *
+ * FILES. A file kept on the item (lib/item-files.ts) is a line too, drawn
+ * from its `item_files` row, never from an event: who added it is the row's
+ * `added_by` (migration 081), and a deleted file's line goes with its row.
+ * Files are never folded, never merged with changes and never counted as
+ * hidden, and every filter shows them.
  */
 
 import { format, isSameDay, subDays } from 'date-fns';
 import type { ItemEvent } from '@/lib/db';
 import { assigneeLabel } from '@/lib/chat-utils';
+import { UNNAMED_AGENT, type ItemFile } from '@/lib/item-files';
 
 export type TimelineActor = 'you' | 'ai' | 'agent' | 'recipe';
 
@@ -244,7 +251,73 @@ export interface ChangeEntry {
   topic: string | null;
 }
 
-export type TimelineEntry = TalkEntry | ChangeEntry;
+/** Files added together: by one person, each within FILE_BURST_MS of the last. */
+export interface FileEntry {
+  kind: 'file';
+  key: string;
+  at: number;
+  by: TimelineActor;
+  /** The agent's name (`fileAgentName`); set only when `by` is 'agent'. */
+  agent?: string;
+  text: string;
+  files: ItemFile[];
+}
+
+export type TimelineEntry = TalkEntry | ChangeEntry | FileEntry;
+
+/** Files added this close together by the same person are one line. */
+export const FILE_BURST_MS = 2 * 60_000;
+
+/** The name a file's `added_by` goes by: "An agent" for one with no name, else as `agentName`. */
+export function fileAgentName(addedBy: string): string {
+  if (addedBy === UNNAMED_AGENT || !addedBy.trim()) return 'An agent';
+  return agentName(addedBy);
+}
+
+/**
+ * An item's files as timeline lines, oldest first. A file sits at the time it
+ * was placed on this page (`placedAt`, the send it went with), else its row's
+ * `created_at`. A message (`messageTimes`) in between ends a burst, so a group
+ * never spans two of buildStream's slots: a message at m falls between files at
+ * x < y when x <= m < y, the same strict `<` buildStream places by.
+ */
+export function fileEntries(
+  files: readonly ItemFile[],
+  placedAt?: Readonly<Record<string, number>>,
+  messageTimes: readonly number[] = []
+): FileEntry[] {
+  const breaks = messageTimes.filter((m) => m);
+  const timed = files
+    .map((f) => ({ f, at: placedAt?.[f.id] ?? Date.parse(f.createdAt) }))
+    .filter((t) => Number.isFinite(t.at))
+    .sort((a, b) => a.at - b.at);
+  const out: FileEntry[] = [];
+  let lastAt = 0;
+  for (const { f, at } of timed) {
+    const prev = out[out.length - 1];
+    if (
+      prev &&
+      (prev.files[0].addedBy ?? null) === (f.addedBy ?? null) &&
+      at - lastAt <= FILE_BURST_MS &&
+      !breaks.some((m) => lastAt <= m && m < at)
+    ) {
+      prev.files.push(f);
+      prev.text = `attached ${prev.files.length} files`;
+    } else {
+      out.push({
+        kind: 'file',
+        key: `file-${f.id}`,
+        at,
+        by: f.addedBy ? 'agent' : 'you',
+        ...(f.addedBy ? { agent: fileAgentName(f.addedBy) } : {}),
+        text: `attached ${f.name}`,
+        files: [f],
+      });
+    }
+    lastAt = at;
+  }
+  return out;
+}
 
 export interface TimelineDay {
   key: string;
@@ -278,10 +351,12 @@ const dayKey = (at: Date) => format(at, 'yyyy-MM-dd');
 export function buildTimeline(
   events: readonly ItemEvent[],
   messages: readonly TimelineMessage[],
-  opts: { filter: TimelineFilter; now: Date }
+  opts: { filter: TimelineFilter; now: Date; files?: readonly FileEntry[] }
 ): TimelineDay[] {
   const entries: TimelineEntry[] = [];
   if (opts.filter !== 'talk') entries.push(...changeEntries(events));
+  // Every filter shows files.
+  if (opts.files) entries.push(...opts.files);
   if (opts.filter !== 'changes') {
     const byDay = new Map<string, TalkEntry>();
     for (const m of messages) {
@@ -327,27 +402,29 @@ export function talkLine(t: TalkEntry): string {
 /**
  * The newest `keep` lines of a timeline, and how many older ones that leaves
  * out, once it has more than FOLD_OVER; the whole of it, and 0, otherwise.
+ * File lines are never folded and never counted: they stay where they are.
  */
 export function foldTimeline(days: readonly TimelineDay[], keep = FOLD_KEEP): { days: TimelineDay[]; hidden: number } {
-  const total = days.reduce((n, d) => n + d.entries.length, 0);
+  const total = days.reduce((n, d) => n + d.entries.filter((e) => e.kind !== 'file').length, 0);
   if (total <= FOLD_OVER) return { days: [...days], hidden: 0 };
   let skip = total - keep;
   const out: TimelineDay[] = [];
   for (const day of days) {
-    if (skip >= day.entries.length) {
-      skip -= day.entries.length;
-      continue;
-    }
-    out.push({ ...day, entries: day.entries.slice(skip) });
-    skip = 0;
+    const entries = day.entries.filter((e) => {
+      if (e.kind === 'file' || skip === 0) return true;
+      skip--;
+      return false;
+    });
+    if (entries.length) out.push({ ...day, entries });
   }
   return { days: out, hidden: total - keep };
 }
 
-/** A line of the stream drawn between messages: a day, a change, or a fold over older changes. */
+/** A line of the stream drawn between messages: a day, a change, a file, or a fold over older changes. */
 export type StreamRow =
   | { kind: 'day'; key: string; label: string }
   | ChangeEntry
+  | FileEntry
   | { kind: 'fold'; key: string; slot: number; hidden: number };
 
 /**
@@ -360,21 +437,33 @@ export type StreamRow =
  * fold line, unless its index is in `unfolded`. Messages never fold. A day line
  * opens each new day, whether a change or a message starts it.
  *
- * Talk shows the messages alone (the slots hold only days); Changes the changes
- * alone, as one slot (the caller draws no messages).
+ * Talk shows the messages alone (the slots hold only days and files); Changes
+ * the changes alone, as one slot (the caller draws no messages).
+ *
+ * Files (`opts.files`) are set by time in their own list per slot, and drawn
+ * merged with the slot's kept changes by time. They never fold, never merge
+ * with a change, never count in a fold, and every filter shows them. A file
+ * sits BEFORE a message stamped the same instant (strict `<`): a file sent
+ * with a message is placed at a time taken just before the message's own.
  */
 export function buildStream(
   events: readonly ItemEvent[],
   messages: readonly { createdAt: number }[],
-  opts: { filter: TimelineFilter; now: Date; unfolded?: ReadonlySet<number> }
+  opts: { filter: TimelineFilter; now: Date; unfolded?: ReadonlySet<number>; files?: readonly FileEntry[] }
 ): StreamRow[][] {
   const msgs = opts.filter === 'changes' ? [] : messages;
   const changes = opts.filter === 'talk' ? [] : changeEntries(events);
   const bySlot: ChangeEntry[][] = Array.from({ length: msgs.length + 1 }, () => []);
+  const filesBySlot: FileEntry[][] = Array.from({ length: msgs.length + 1 }, () => []);
   let slot = 0;
   for (const c of changes) {
     while (slot < msgs.length && msgs[slot].createdAt && msgs[slot].createdAt <= c.at) slot++;
     bySlot[slot].push(c);
+  }
+  slot = 0;
+  for (const f of [...(opts.files ?? [])].sort((a, b) => a.at - b.at)) {
+    while (slot < msgs.length && msgs[slot].createdAt && msgs[slot].createdAt < f.at) slot++;
+    filesBySlot[slot].push(f);
   }
   // Compacted per slot, after placing: a message in between ends a burst.
   const slots: StreamRow[][] = [];
@@ -403,7 +492,8 @@ export function buildStream(
       });
       list = list.slice(-FOLD_KEEP);
     }
-    for (const c of list) rows.push(...dayRow(c.at, c.key), c);
+    const merged: (ChangeEntry | FileEntry)[] = [...list, ...filesBySlot[i]].sort((a, b) => a.at - b.at);
+    for (const c of merged) rows.push(...dayRow(c.at, c.key), c);
     const next = msgs[i];
     if (next?.createdAt) rows.push(...dayRow(next.createdAt, `m${i}`));
     slots.push(rows);

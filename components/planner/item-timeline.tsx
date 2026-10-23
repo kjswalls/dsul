@@ -8,9 +8,12 @@ import { itemThreadId } from '@/components/ai/item-conversation';
 import { fetchItemEvents, getItemEventsAvailable, type ItemEvent } from '@/lib/db';
 import { useAICapabilities } from '@/lib/ai-connection-store';
 import { useConversationsStore, type ChatMessage } from '@/lib/conversations-store';
+import { TimelineFileRow } from '@/components/planner/item-file-card';
+import { useItemFiles, useItemFilesStore } from '@/lib/item-files-store';
 import {
   ACTOR_LABEL,
   buildTimeline,
+  fileEntries,
   foldLine,
   foldTimeline,
   talkLine,
@@ -31,6 +34,8 @@ import { cn } from '@/lib/utils';
  * section is not mounted. This is the timeline everywhere else: with no AI, the
  * changes alone; with AI and no conversation here, a day's talk as one line.
  * Either way, a long history shows its newest lines under "Show N earlier".
+ * Files kept on the item are lines too (`fileEntries`), under every filter,
+ * never folded and never counted, and shown even where item_events is not.
  *
  * Quiet when there is nothing: no heading over an empty list.
  */
@@ -202,7 +207,23 @@ export function ItemTimeline({ item }: { item: Item }) {
   const threadId = useConversationsStore((s) => itemThreadId(s, item.id));
   const messages = useConversationsStore((s) => (threadId ? s.threads[threadId]?.messages : undefined) ?? NO_MESSAGES);
 
+  const itemFiles = useItemFiles(item.id);
+  const placedAt = useItemFilesStore((s) => s.placedAt);
+  const loadThumbs = useItemFilesStore((s) => s.loadThumbs);
   const talk = canChat ? messages : NO_MESSAGES;
+  const files = useMemo(
+    () =>
+      fileEntries(
+        itemFiles ?? [],
+        placedAt,
+        talk.map((m) => m.createdAt)
+      ),
+    [itemFiles, placedAt, talk]
+  );
+  useEffect(() => {
+    if (itemFiles?.length) void loadThumbs(item.id);
+  }, [itemFiles, item.id, loadThumbs]);
+
   const effective: TimelineFilter = canChat ? filter : 'changes';
   const built = useMemo(
     () =>
@@ -213,9 +234,9 @@ export function ItemTimeline({ item }: { item: Item }) {
           createdAt: m.createdAt,
           answerer: m.answerer,
         })),
-        { filter: effective, now: new Date() }
+        { filter: effective, now: new Date(), files }
       ),
-    [events, talk, effective]
+    [events, talk, effective, files]
   );
   const { days, hidden } = useMemo(
     () => (unfolded ? { days: built, hidden: 0 } : foldTimeline(built)),
@@ -230,12 +251,12 @@ export function ItemTimeline({ item }: { item: Item }) {
           createdAt: m.createdAt,
           answerer: m.answerer,
         })),
-        { filter: 'all', now: new Date() }
+        { filter: 'all', now: new Date(), files }
       ).length > 0,
-    [events, talk]
+    [events, talk, files]
   );
 
-  if (!anything || (!getItemEventsAvailable() && talk.length === 0)) return null;
+  if (!anything || (!getItemEventsAvailable() && talk.length === 0 && files.length === 0)) return null;
 
   return (
     <section data-testid="item-timeline" aria-labelledby={`item-timeline-${item.id}`} className="flex flex-col gap-2">
@@ -265,6 +286,10 @@ export function ItemTimeline({ item }: { item: Item }) {
                     <li key={entry.key} className="flex items-center gap-2" data-testid="item-timeline-talk">
                       <TimelineAvatar who={entry.with} />
                       <span className="text-muted-foreground min-w-0 flex-1 truncate text-xs">{talkLine(entry)}</span>
+                    </li>
+                  ) : entry.kind === 'file' ? (
+                    <li key={entry.key}>
+                      <TimelineFileRow entry={entry} />
                     </li>
                   ) : (
                     <TimelineChangeLine key={entry.key} entry={entry} />
