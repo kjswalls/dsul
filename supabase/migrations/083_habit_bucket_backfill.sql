@@ -8,6 +8,10 @@
 -- The conversion now lands such a habit in 'anytime'; this puts the ones
 -- already switched there too.
 --
+-- Routine members are left alone: a routine can hold bucketless habits on
+-- purpose (its Today checklist shows them), and a bucket would add a second
+-- row for each on the grid.
+--
 -- Data only, and idempotent: a second run matches no rows. It replays on an
 -- empty database as a no-op.
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -16,4 +20,5 @@ update items
    set time_bucket = 'anytime'
  where type = 'habit'
    and time_bucket is null
-   and coalesce(repeat_frequency, 'none') <> 'none';
+   and coalesce(repeat_frequency, 'none') <> 'none'
+   and not exists (select 1 from routine_items ri where ri.item_id = items.id);
