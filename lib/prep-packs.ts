@@ -59,12 +59,24 @@ const Sources = z.preprocess(
 );
 const withSources = { sources: Sources };
 
+/**
+ * What the AI took the item to mean, when it was only fairly sure (Kirby's
+ * pick C, 2026-10-23; lib/prep-rules.ts PREP_MEANING_RULES): the card shows it
+ * on top, and "Not quite?" offers the alternates. A bad one is dropped, never
+ * the pack.
+ */
+const withReading = {
+  reading: line(200).min(1).optional().catch(undefined),
+  alternates: z.array(line(120).min(1)).max(3).optional().catch(undefined),
+};
+
 export const EmailPackSchema = z.object({
   kind: z.literal('email'),
   to: line(200).optional(),
   subject: line(200),
   body: line(4000),
   ...withSources,
+  ...withReading,
 });
 
 export const MessagePackSchema = z.object({
@@ -72,6 +84,7 @@ export const MessagePackSchema = z.object({
   to: line(200).optional(),
   body: line(1000),
   ...withSources,
+  ...withReading,
 });
 
 export const CallPackSchema = z.object({
@@ -81,27 +94,83 @@ export const CallPackSchema = z.object({
   number: line(40).optional(),
   script: z.array(line(300)).min(1).max(8),
   ...withSources,
+  ...withReading,
 });
 
 export const StepsPackSchema = z.object({
   kind: z.literal('steps'),
   steps: z.array(line(200)).min(2).max(6),
   ...withSources,
+  ...withReading,
+});
+
+/** Two to four short likely answers, when there are obvious ones. */
+const Options = z.array(line(80).min(1)).min(2).max(4).optional();
+
+/** One question beyond the first, in `more`. A bad one is dropped, never the card. */
+const MoreQuestion = z.object({
+  question: line(300).min(1),
+  options: Options.catch(undefined),
+  multi: z.boolean().optional().catch(undefined),
 });
 
 /**
- * The one thing the AI needs to know before it can get the item ready
- * ("Which dentist do you usually see?"). Answering writes the answer into the
- * item's notes, so the next ask is about a changed item and can draft it.
- * Saved only once migration 078 lets the kind in; before that the route drops
- * questions and keeps the rest of the batch.
+ * What the AI needs to know before it can get the item ready ("Who's
+ * Sammy?"). Answering writes the answers into the item's notes, so the next
+ * ask is about a changed item and can draft it. Up to three questions since
+ * pick C (2026-10-23): the first is `question`, so a card written before then
+ * still reads; `more` holds the rest. `multi` lets several answers be picked
+ * ("What's settled already?"). Saved only once migration 078 lets the kind
+ * in; before that the route drops questions and keeps the rest of the batch.
  */
 export const QuestionPackSchema = z.object({
   kind: z.literal('question'),
   question: line(300).min(1),
-  /** Two to four short likely answers, when there are obvious ones. */
-  options: z.array(line(80).min(1)).min(2).max(4).optional(),
+  options: Options,
+  multi: z.boolean().optional().catch(undefined),
+  more: z
+    .preprocess(
+      (v) => (Array.isArray(v) ? v.filter((q) => MoreQuestion.safeParse(q).success).slice(0, 2) : undefined),
+      z.array(MoreQuestion).optional()
+    )
+    .optional(),
 });
+
+/** One question as the card asks it. */
+export interface PackQuestion {
+  question: string;
+  options?: string[];
+  multi?: boolean;
+}
+
+/** Every question a question card asks, the first one first. */
+export function packQuestions(pack: z.infer<typeof QuestionPackSchema>): PackQuestion[] {
+  return [
+    { question: pack.question, ...(pack.options ? { options: pack.options } : {}), ...(pack.multi ? { multi: true } : {}) },
+    ...(pack.more ?? []).map((q) => ({
+      question: q.question,
+      ...(q.options ? { options: q.options } : {}),
+      ...(q.multi ? { multi: true } : {}),
+    })),
+  ];
+}
+
+/** What the AI took a pack's item to mean, when it said; null when it was sure. */
+export function packReading(pack: Pack): { reading: string; alternates: string[] } | null {
+  if (pack.kind === 'question' || !pack.reading) return null;
+  return { reading: pack.reading, alternates: pack.alternates ?? [] };
+}
+
+/**
+ * The person's correction to a reading, as the line it adds to the item's
+ * notes. The next ask reads it (PREP_QUESTION_RULE_LIST trusts it over the
+ * title), and so does the person.
+ */
+export function meantNote(notes: string | undefined, meant: string): string {
+  const line = `I meant: ${meant.trim()}`;
+  const before = (notes ?? '').trimEnd();
+  return before ? `${before}\n${line}` : line;
+}
 
 /**
  * Things the AI found to choose between: appointment slots, products, places.
@@ -123,6 +192,7 @@ export const OptionsPackSchema = z.object({
     .min(1)
     .max(6),
   ...withSources,
+  ...withReading,
 });
 
 /** A list to work through: shopping, packing, what to bring. */
@@ -130,6 +200,7 @@ export const ListPackSchema = z.object({
   kind: z.literal('list'),
   items: z.array(line(120).min(1)).min(1).max(40),
   ...withSources,
+  ...withReading,
 });
 
 /** A form's answers, filled in to paste, and where the form is. Never submitted. */
@@ -142,6 +213,7 @@ export const FormPackSchema = z.object({
     .min(1)
     .max(15),
   ...withSources,
+  ...withReading,
 });
 
 /** Longer writing than a message: a post, a letter, a bio, a description. */
@@ -150,6 +222,7 @@ export const DraftPackSchema = z.object({
   title: line(200).optional(),
   body: line(6000).min(1),
   ...withSources,
+  ...withReading,
 });
 
 /**
@@ -159,6 +232,7 @@ export const DraftPackSchema = z.object({
 export const SubtasksPackSchema = z.object({
   kind: z.literal('subtasks'),
   subtasks: z.array(line(200).min(1)).min(2).max(8),
+  ...withReading,
 });
 
 /** For a "find out…" item: the answer itself, and where it came from. */
@@ -166,6 +240,7 @@ export const AnswerPackSchema = z.object({
   kind: z.literal('answer'),
   answer: line(1500).min(1),
   ...withSources,
+  ...withReading,
 });
 
 /** Where to go: the place, its hours and number when a source had them. */
@@ -177,6 +252,7 @@ export const PlacePackSchema = z.object({
   phone: line(40).optional(),
   url: Url.optional().catch(undefined),
   ...withSources,
+  ...withReading,
 });
 
 const DATE_RE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
@@ -195,6 +271,7 @@ export const TimePackSchema = z.object({
   /** Minutes, 5 to 8 hours. */
   duration: z.number().int().min(5).max(480).optional().catch(undefined),
   why: line(200).optional(),
+  ...withReading,
 });
 
 /** Two to four choices side by side, and the one the AI would pick. */
@@ -217,6 +294,7 @@ export const PickPackSchema = z.object({
     recommended: z.number().int().min(0),
     why: line(300),
     ...withSources,
+    ...withReading,
   });
 
 /** The kinds 074 allowed; the rest wait on 078, 079 and 080 (the route's 23514 retry). */
@@ -294,9 +372,16 @@ export function packIsQuestion(pack: Pack): boolean {
  * it, so the next ask (and the person, later) reads both together.
  */
 export function answerNote(notes: string | undefined, question: string, answer: string): string {
-  const line = `${question.trim()} ${answer.trim()}`;
+  return answersNote(notes, [{ question, answer }]);
+}
+
+/** Several answers at once, a line each, in the order they were asked. */
+export function answersNote(notes: string | undefined, answers: readonly { question: string; answer: string }[]): string {
+  const lines = answers
+    .filter((a) => a.answer.trim())
+    .map((a) => `${a.question.trim()} ${a.answer.trim()}`);
   const before = (notes ?? '').trimEnd();
-  return before ? `${before}\n${line}` : line;
+  return [...(before ? [before] : []), ...lines].join('\n');
 }
 
 /** The row's chip and the peek card's subtitle: what is ready. */
@@ -310,8 +395,10 @@ export function packLabel(pack: Pack): string {
       return 'script ready';
     case 'steps':
       return 'steps ready';
-    case 'question':
-      return '1 question';
+    case 'question': {
+      const n = 1 + (pack.more?.length ?? 0);
+      return n === 1 ? '1 question' : `${n} questions`;
+    }
     case 'options':
       return pack.options.length === 1 ? '1 option' : `${pack.options.length} options`;
     case 'list':
@@ -379,7 +466,9 @@ export function packText(pack: Pack): string {
     case 'steps':
       return pack.steps.map((s, i) => `${i + 1}. ${s}`).join('\n');
     case 'question':
-      return pack.question;
+      return packQuestions(pack)
+        .map((q) => q.question)
+        .join('\n');
     case 'options':
       return [
         ...(pack.intro ? [pack.intro, ''] : []),

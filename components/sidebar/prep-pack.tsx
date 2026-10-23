@@ -6,6 +6,7 @@ import { AskMark } from '@/components/ai/ask-mark';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 import { Drawer, DrawerContent, DrawerTitle } from '@/components/ui/drawer';
@@ -20,9 +21,12 @@ import {
   packIsStale,
   packIsSteps,
   packSteps,
+  packQuestions,
+  packReading,
   packText,
   siteOf,
   type Pack,
+  type PackQuestion,
   type PrepPack,
 } from '@/lib/prep-packs';
 import { UNDO_MS, usePrepPacksStore } from '@/lib/prep-packs-store';
@@ -379,48 +383,175 @@ function Sources({ sources }: { sources?: { title: string; url: string }[] }) {
 }
 
 /**
- * A question pack: the one thing the AI needs to know before it can get the
- * item ready. A tap on a likely answer, or a typed one, goes into the item's
- * notes and the AI tries again (prep-packs-store's `answer`).
+ * A question pack: what the AI needs to know before it can get the item
+ * ready, up to three questions (pick C, 2026-10-23). With one plain
+ * question a tap on a likely answer is the send; otherwise taps select (several
+ * for a "multi" one, like "What's settled already?") and "Get it ready" sends
+ * them all. The answers go into the item's notes and the AI tries again
+ * (prep-packs-store's `answer`).
  */
-function QuestionBody({ itemId, question, options }: { itemId: string; question: string; options?: string[] }) {
-  const [text, setText] = useState('');
-  const send = (answer: string) => {
-    if (!answer.trim()) return;
-    usePrepPacksStore.getState().answer(itemId, answer);
+function QuestionBody({ itemId, questions }: { itemId: string; questions: readonly PackQuestion[] }) {
+  const quick = questions.length === 1 && !questions[0].multi;
+  const [picked, setPicked] = useState<string[][]>(() => questions.map(() => []));
+  const [typed, setTyped] = useState<string[]>(() => questions.map(() => ''));
+  // What your AI knows (lib/ai-knows.ts): off until ticked, for each answer.
+  const [remember, setRemember] = useState(false);
+  const answerOf = (i: number) => [...picked[i], ...(typed[i].trim() ? [typed[i].trim()] : [])].join(', ');
+  const send = () => {
+    const answers = questions.map((q, i) => ({ question: q.question, answer: answerOf(i) }));
+    if (!answers.some((a) => a.answer)) return;
+    usePrepPacksStore.getState().answer(itemId, answers, { remember });
+  };
+  const tap = (i: number, option: string) => {
+    if (quick) return usePrepPacksStore.getState().answer(itemId, option, { remember });
+    setPicked((all) =>
+      all.map((list, at) => {
+        if (at !== i) return list;
+        if (questions[i].multi) return list.includes(option) ? list.filter((o) => o !== option) : [...list, option];
+        return list[0] === option ? [] : [option];
+      })
+    );
   };
   return (
-    <div className="flex flex-col gap-3" data-testid="prep-pack-question">
-      <p className="text-[14px] leading-snug">{question}</p>
-      {options && options.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {options.map((o) => (
-            <Button key={o} size="sm" variant="outline" onClick={() => send(o)} data-testid="prep-pack-option">
-              {o}
-            </Button>
-          ))}
+    <form
+      className="flex flex-col gap-4"
+      data-testid="prep-pack-question"
+      onSubmit={(e) => {
+        e.preventDefault();
+        send();
+      }}
+    >
+      {questions.map((q, i) => (
+        <div key={i} className="flex flex-col gap-2">
+          <p className="text-[14px] leading-snug">{q.question}</p>
+          {q.multi && <p className="-mt-1 text-xs text-muted-foreground">Pick all that apply.</p>}
+          {q.options && q.options.length > 0 && (
+            <div className="flex flex-wrap gap-1.5" role={q.multi ? 'group' : 'radiogroup'} aria-label={q.question}>
+              {q.options.map((o) => {
+                const on = picked[i].includes(o);
+                return (
+                  <Button
+                    key={o}
+                    type="button"
+                    size="sm"
+                    variant={on ? 'default' : 'outline'}
+                    {...(quick ? {} : q.multi ? { 'aria-pressed': on } : { role: 'radio', 'aria-checked': on })}
+                    onClick={() => tap(i, o)}
+                    data-testid="prep-pack-option"
+                  >
+                    {o}
+                  </Button>
+                );
+              })}
+            </div>
+          )}
+          <div className="flex items-center gap-1.5">
+            <Input
+              value={typed[i]}
+              placeholder={q.options?.length ? 'Or say it your way' : 'Your answer'}
+              aria-label={`Your answer: ${q.question}`}
+              onChange={(e) => setTyped((all) => all.map((t, at) => (at === i ? e.target.value : t)))}
+              data-testid="prep-pack-answer"
+            />
+            {quick && (
+              <Button size="sm" type="submit" disabled={!typed[0].trim()}>
+                Answer
+              </Button>
+            )}
+          </div>
+        </div>
+      ))}
+      <label className="flex items-center gap-2 text-[13px] text-muted-foreground">
+        <Checkbox
+          checked={remember}
+          onCheckedChange={(v) => setRemember(v === true)}
+          data-testid="prep-pack-remember"
+        />
+        Remember for other tasks
+      </label>
+      {!quick && (
+        <div>
+          <Button
+            size="sm"
+            type="submit"
+            disabled={!questions.some((_, i) => answerOf(i))}
+            data-testid="prep-pack-answer-all"
+          >
+            Get it ready
+          </Button>
         </div>
       )}
-      <form
-        className="flex items-center gap-1.5"
-        onSubmit={(e) => {
-          e.preventDefault();
-          send(text);
-        }}
-      >
-        <Input
-          value={text}
-          placeholder={options?.length ? 'Or say it your way' : 'Your answer'}
-          aria-label="Your answer"
-          onChange={(e) => setText(e.target.value)}
-          data-testid="prep-pack-answer"
-        />
-        <Button size="sm" type="submit" disabled={!text.trim()}>
-          Answer
-        </Button>
-      </form>
+    </form>
+  );
+}
+
+/**
+ * What the AI took the item to mean, when it was only fairly sure: one line
+ * on top of the card. "Not quite?" offers the other likely meanings and a box;
+ * either goes into the notes as "I meant: …" and the AI tries again
+ * (prep-packs-store's `reread`).
+ */
+function ReadingLine({ itemId, reading, alternates }: { itemId: string; reading: string; alternates: readonly string[] }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState('');
+  const reread = (meant: string) => {
+    if (meant.trim()) usePrepPacksStore.getState().reread(itemId, meant);
+  };
+  return (
+    <div className="flex flex-col gap-2 rounded-[10px] bg-muted/60 px-3 py-2" data-testid="prep-pack-reading">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[13px] text-muted-foreground">
+        <span className="min-w-0 flex-1">
+          I took this as: <span className="font-medium text-foreground">{reading}</span>
+        </span>
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          className="cursor-pointer text-[13px] underline decoration-border underline-offset-[3px] hover:text-foreground"
+          data-testid="prep-pack-not-quite"
+        >
+          {open ? 'Close' : 'Not quite?'}
+        </button>
+      </div>
+      {open && (
+        <form
+          className="flex flex-col gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            reread(text);
+          }}
+        >
+          {alternates.length > 0 && (
+            <div className="flex flex-wrap gap-1.5" aria-label="Did you mean">
+              {alternates.map((a) => (
+                <Button key={a} type="button" size="sm" variant="outline" onClick={() => reread(a)} data-testid="prep-pack-alternate">
+                  {a}
+                </Button>
+              ))}
+            </div>
+          )}
+          <div className="flex items-center gap-1.5">
+            <Input
+              value={text}
+              placeholder="Or say what you meant"
+              aria-label="What you meant"
+              onChange={(e) => setText(e.target.value)}
+              data-testid="prep-pack-meant"
+            />
+            <Button size="sm" type="submit" disabled={!text.trim()}>
+              Redo
+            </Button>
+          </div>
+        </form>
+      )}
     </div>
   );
+}
+
+/** The card's header line for a question: one thing, a few, or a plan's shape. */
+function questionHeading(questions: readonly PackQuestion[]): string {
+  if (questions[0]?.multi) return 'Your AI wants to know what is settled';
+  return questions.length === 1 ? 'Your AI needs one thing first' : 'Your AI needs a few things first';
 }
 
 interface CardProps {
@@ -435,7 +566,7 @@ interface CardProps {
    * a swipe left leaves it for later (the next one). Never from inside a field.
    */
   swipe?: boolean;
-  /** After Done or Not needed; the deck stays open to deal the next. Defaults to onClose. */
+  /** After Done or Discard; the deck stays open to deal the next. Defaults to onClose. */
   onSettled?: () => void;
   /**
    * Inside the item panel (PackInPanel): the panel already names the item and
@@ -455,6 +586,7 @@ export function PackCard({ itemId, title, stored, nav, onClose, swipe, onSettled
   // starts again from what the AI wrote.
   const [pack, setPack] = useState<Pack>(stored.pack);
   const href = packHref(pack);
+  const reading = packReading(stored.pack);
 
   // A draft leaving the card, changed by the person, is how the AI learns how
   // they write (lib/learn-style.ts). The first time, it asks.
@@ -578,7 +710,7 @@ export function PackCard({ itemId, title, stored, nav, onClose, swipe, onSettled
           {!embedded && <div className="text-[15px] leading-snug font-semibold">{title}</div>}
           <div className={cn('flex items-center gap-1.5 text-xs text-muted-foreground', !embedded && 'mt-0.5')}>
             <AskMark tone="ink" className="size-3" />
-            {pack.kind === 'question' ? 'Your AI needs one thing first' : `${packKindName(pack)} · written by your AI`}
+            {pack.kind === 'question' ? questionHeading(packQuestions(pack)) : `${packKindName(pack)} · written by your AI`}
           </div>
         </div>
         {nav && (
@@ -618,8 +750,9 @@ export function PackCard({ itemId, title, stored, nav, onClose, swipe, onSettled
         )}
       </div>
       <div className={cn('flex min-h-0 flex-col gap-3 overflow-y-auto pb-3', embedded ? 'px-3' : 'px-4')}>
+        {reading && <ReadingLine itemId={itemId} reading={reading.reading} alternates={reading.alternates} />}
         {pack.kind === 'question' ? (
-          <QuestionBody itemId={itemId} question={pack.question} options={pack.options} />
+          <QuestionBody itemId={itemId} questions={packQuestions(pack)} />
         ) : (
           <PackFields pack={pack} onChange={setPack} />
         )}
@@ -679,7 +812,7 @@ export function PackCard({ itemId, title, stored, nav, onClose, swipe, onSettled
           data-testid="prep-pack-dismiss"
           className="text-muted-foreground"
         >
-          Not needed
+          Discard
         </Button>
         <Button
           size="sm"
@@ -732,14 +865,14 @@ const RETURN_GRACE_MS = 1500;
 const packKey = (card: CardProps) => `${card.itemId}:${card.stored.updatedAt}`;
 
 /**
- * Not needed, with an undo: the pack leaves at once and the toast can put it
+ * Discard, with an undo: the pack leaves at once and the toast can put it
  * back for as long as it shows (lib/prep-packs-store.ts holds the delete
- * until then). Every surface's Not needed goes through here.
+ * until then). Every surface's Discard goes through here.
  */
 function dismissWithUndo(itemId: string): void {
   const undo = usePrepPacksStore.getState().dismiss(itemId);
   if (!undo) return;
-  toast('Let it go', { action: { label: 'Undo', onClick: undo }, duration: UNDO_MS });
+  toast('Discarded', { action: { label: 'Undo', onClick: undo }, duration: UNDO_MS });
 }
 
 /**
@@ -799,7 +932,7 @@ export function PackInline(card: CardProps) {
 /**
  * The phone's review deck: every pack ready, dealt one at a time in a sheet.
  * Swipe right or tap to take one out, swipe left (or "Later") for the next.
- * "Done" and "Not needed" deal the next one in its place.
+ * "Done" and "Discard" deal the next one in its place.
  */
 export function PackDeck({
   open,

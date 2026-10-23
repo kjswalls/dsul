@@ -1445,13 +1445,21 @@ conversation is saved to the account.
     Delete on the conversation does.
   - prep packs (Do stuff's "done for you", migration 074): the draft your model wrote for an
     item (an email or message, a call script, or first steps), the item's title it was written
-    for, and the model's id. One per item, replaced when it is made again; "Not needed" deletes
-    it, and so does deleting the item (even its 30-day purge). Your edits in the card are never
+    for, and the model's id, with what it took the item to mean and its other likely meanings
+    when it was only fairly sure, or its questions. One per item, replaced when it is made again;
+    "Discard" deletes it, and so does deleting the item (even its 30-day purge). An answer to its
+    question, or a "Not quite?" correction, is written into the item's own notes, where you see
+    and can change it. Your edits in the card are never
     stored. With "Learn how you write" on (off until you say yes), a draft you changed before
     taking it out is sent to your model once, beside the note so far, and only the note it
     writes back is kept: a few lines of style, in Do stuff's settings, where you can change or
     clear it. To write them your model is sent the titles and notes (up to 1,500 characters) of at
     most eight open braindump things at a time, each asked about once a session.
+  - what your AI knows (Do stuff, 2026-10-23): an answer you tick "Remember for other tasks" on,
+    a line each, in Do stuff's settings beside "How you write", up to 3,000 characters, until you
+    change or clear it there. Nothing goes in without the tick. Sent to your model each time it
+    gets things ready, and to an agent (OpenClaw, Claude) you handed an item to prepare, through
+    dsul_prep_brief. Not sent with Ask.
   - notes you write on an item's timeline (082): stored, verbatim, until you delete the note or
     its item is purged from the trash. Never sent to a model or to OpenClaw, and not readable by
     agents or MCP.

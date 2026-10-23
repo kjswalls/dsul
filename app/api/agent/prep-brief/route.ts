@@ -3,20 +3,23 @@ import { createServiceClient } from '@/lib/supabase-service'
 import { resolveAgentCaller } from '@/lib/agent-caller'
 import { inQueueOf } from '@/lib/agent-assignees'
 import { EXT_DO_STUFF } from '@/lib/extension-registry'
-import { PREP_KIND_RULES, PREP_TONE_RULES } from '@/lib/prep-rules'
+import { PREP_KIND_RULES, PREP_MEANING_RULES, PREP_TONE_RULES } from '@/lib/prep-rules'
 import { isStuck, moveCounts, STUCK_WINDOW_DAYS } from '@/lib/stuck'
 import { writingStyleOf } from '@/lib/writing-style'
+import { aiKnowsOf } from '@/lib/ai-knows'
 
 /**
  * GET /api/agent/prep-brief — what the person's own model is told before it
  * gets items ready, for an agent handed the same job (MCP's dsul_prep_brief).
  *
- *   { rules, style, stuck: [{ id, title }] }
+ *   { rules, style, knows, stuck: [{ id, title }] }
  *
  * `rules` is lib/prep-rules.ts, the model's own list, with the two lines that
  * differ for an agent: the card goes back through dsul_save_prep, and a
  * question goes through dsul_ask_user. `style` is how the person writes
  * (lib/writing-style.ts), learned from their edits, or '' when there is none.
+ * `knows` is what the person told their AI to keep for every item
+ * (lib/ai-knows.ts), a line each, or ''.
  * `stuck` is the items in the CALLER's own queue (`inQueueOf`, as
  * dsul_my_work) that the person keeps moving to another day (lib/stuck.ts),
  * so the agent writes a smaller first step for those. What was handed to a
@@ -29,7 +32,7 @@ import { writingStyleOf } from '@/lib/writing-style'
 
 const AGENT_RULES = [
   'Hand back each card with dsul_save_prep, then report done with dsul_report_progress. One card per item.',
-  'When one missing fact is all that stands between the item and a real draft, ask it with dsul_ask_user instead of guessing: one short question, with two to four likely answers when there are obvious ones.',
+  'When you are unsure what an item means, or one missing fact stands between it and a real card, ask with dsul_ask_user instead of guessing: one short question at a time, with two to four likely answers when there are obvious ones. For a big, open item, ask what is settled already. Never ask what the notes already answer, and trust the person\'s own answers in the notes over the title.',
 ]
 
 export async function GET(req: NextRequest) {
@@ -74,7 +77,9 @@ export async function GET(req: NextRequest) {
 
     // Each part is best-effort: a missing table or a failed read costs that
     // part of the brief, never the rest of it.
-    const style = ext.error ? '' : writingStyleOf((ext.data?.config ?? undefined) as Record<string, unknown> | undefined)
+    const config = ext.error ? undefined : ((ext.data?.config ?? undefined) as Record<string, unknown> | undefined)
+    const style = writingStyleOf(config)
+    const knows = aiKnowsOf(config)
     const counts = moveCounts(
       (moves.error ? [] : (moves.data ?? [])).map((r) => ({
         itemId: String(r.item_id),
@@ -87,8 +92,9 @@ export async function GET(req: NextRequest) {
       .map((i) => ({ id: String(i.id), title: String(i.title ?? '') }))
 
     return NextResponse.json({
-      rules: [...PREP_KIND_RULES, ...AGENT_RULES, ...PREP_TONE_RULES],
+      rules: [...PREP_MEANING_RULES, ...PREP_KIND_RULES, ...AGENT_RULES, ...PREP_TONE_RULES],
       style,
+      knows,
       stuck,
     })
   } catch (err) {
