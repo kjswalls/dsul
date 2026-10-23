@@ -258,7 +258,7 @@ private struct EditWritesProjects: Decodable, Sendable {
 }
 
 /// The fixture's `containers`: lib/container-registry.ts `CONTAINER_KINDS`'
-/// words for the three kinds an item meets, each kind's `label` and
+/// words for the three kinds an item meets and, from O1, the goal, each kind's `label` and
 /// `labelPlural`, and the project's `unsetLabel`. Read on its own, as `limits`
 /// is.
 private struct EditWritesContainers: Decodable, Sendable {
@@ -277,6 +277,7 @@ private struct EditWritesContainers: Decodable, Sendable {
         let project: ProjectKind
         let routine: Kind
         let season: Kind
+        let goal: Kind
     }
 
     let containers: Containers
@@ -1187,6 +1188,8 @@ private func fits(_ edit: ItemEdit, on item: Item) -> Bool {
         #expect(same(ContainerWords.routines, words.routine.labelPlural), "routine.labelPlural")
         #expect(same(ContainerWords.season, words.season.label), "season.label")
         #expect(same(ContainerWords.seasons, words.season.labelPlural), "season.labelPlural")
+        #expect(same(ContainerWords.goal, words.goal.label), "goal.label")
+        #expect(same(ContainerWords.goals, words.goal.labelPlural), "goal.labelPlural")
     }
 
     @Test func jsTrimIsStringPrototypeTrim() throws {

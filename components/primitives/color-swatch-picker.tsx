@@ -7,7 +7,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { ACCENT_RAMP } from '@/lib/accent-colors';
+import { ACCENT_NAMES, ACCENT_RAMP } from '@/lib/accent-colors';
 import { cn } from '@/lib/utils';
 
 /**
@@ -19,9 +19,6 @@ import { cn } from '@/lib/utils';
  * The trigger is the identity square from the item dialog's chip vocabulary
  * (square = identity, dot = value), sized up to a tap target.
  */
-
-/** Display names for --accent-1..8, from the ramp comments in globals.css. */
-export const ACCENT_NAMES = ['Moss', 'Teal', 'Indigo', 'Plum', 'Coral', 'Honey', 'Slate', 'Lime'];
 
 interface ColorSwatchPickerProps {
   /** Stored color (a var(--accent-N) token, or legacy free text). Unset = Auto. */

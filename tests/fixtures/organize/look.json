@@ -1,0 +1,1452 @@
+{
+  "tokens": [
+    {
+      "name": "accent-1",
+      "css": "var(--accent-1)",
+      "swatch": "Moss",
+      "light": {
+        "l": 0.68,
+        "c": 0.11,
+        "h": 140,
+        "hex": "#73a967"
+      },
+      "dark": {
+        "l": 0.66,
+        "c": 0.1,
+        "h": 140,
+        "hex": "#71a166"
+      }
+    },
+    {
+      "name": "accent-2",
+      "css": "var(--accent-2)",
+      "swatch": "Teal",
+      "light": {
+        "l": 0.68,
+        "c": 0.1,
+        "h": 190,
+        "hex": "#3baca6"
+      },
+      "dark": {
+        "l": 0.66,
+        "c": 0.09,
+        "h": 190,
+        "hex": "#44a49e"
+      }
+    },
+    {
+      "name": "accent-3",
+      "css": "var(--accent-3)",
+      "swatch": "Indigo",
+      "light": {
+        "l": 0.62,
+        "c": 0.11,
+        "h": 265,
+        "hex": "#6584c9"
+      },
+      "dark": {
+        "l": 0.64,
+        "c": 0.11,
+        "h": 265,
+        "hex": "#6b8acf"
+      }
+    },
+    {
+      "name": "accent-4",
+      "css": "var(--accent-4)",
+      "swatch": "Plum",
+      "light": {
+        "l": 0.66,
+        "c": 0.11,
+        "h": 320,
+        "hex": "#b07bbc"
+      },
+      "dark": {
+        "l": 0.66,
+        "c": 0.1,
+        "h": 320,
+        "hex": "#ad7eb8"
+      }
+    },
+    {
+      "name": "accent-5",
+      "css": "var(--accent-5)",
+      "swatch": "Coral",
+      "light": {
+        "l": 0.68,
+        "c": 0.13,
+        "h": 30,
+        "hex": "#dd7767"
+      },
+      "dark": {
+        "l": 0.66,
+        "c": 0.12,
+        "h": 30,
+        "hex": "#d17465"
+      }
+    },
+    {
+      "name": "accent-6",
+      "css": "var(--accent-6)",
+      "swatch": "Honey",
+      "light": {
+        "l": 0.75,
+        "c": 0.11,
+        "h": 85,
+        "hex": "#cea856"
+      },
+      "dark": {
+        "l": 0.72,
+        "c": 0.1,
+        "h": 85,
+        "hex": "#c1a057"
+      }
+    },
+    {
+      "name": "accent-7",
+      "css": "var(--accent-7)",
+      "swatch": "Slate",
+      "light": {
+        "l": 0.6,
+        "c": 0.04,
+        "h": 250,
+        "hex": "#6e8398"
+      },
+      "dark": {
+        "l": 0.62,
+        "c": 0.04,
+        "h": 250,
+        "hex": "#74889e"
+      }
+    },
+    {
+      "name": "accent-8",
+      "css": "var(--accent-8)",
+      "swatch": "Lime",
+      "light": {
+        "l": 0.78,
+        "c": 0.14,
+        "h": 125,
+        "hex": "#a3c75d"
+      },
+      "dark": {
+        "l": 0.76,
+        "c": 0.13,
+        "h": 125,
+        "hex": "#9ebf5f"
+      }
+    },
+    {
+      "name": "habit-wellness",
+      "css": "var(--habit-wellness)",
+      "swatch": null,
+      "light": {
+        "l": 0.72,
+        "c": 0.1,
+        "h": 160,
+        "hex": "#68b88f"
+      },
+      "dark": {
+        "l": 0.62,
+        "c": 0.09,
+        "h": 160,
+        "hex": "#519773"
+      }
+    },
+    {
+      "name": "habit-work",
+      "css": "var(--habit-work)",
+      "swatch": null,
+      "light": {
+        "l": 0.65,
+        "c": 0.09,
+        "h": 250,
+        "hex": "#6493c4"
+      },
+      "dark": {
+        "l": 0.62,
+        "c": 0.09,
+        "h": 250,
+        "hex": "#5b8abb"
+      }
+    },
+    {
+      "name": "habit-personal",
+      "css": "var(--habit-personal)",
+      "swatch": null,
+      "light": {
+        "l": 0.7,
+        "c": 0.09,
+        "h": 320,
+        "hex": "#b88cc1"
+      },
+      "dark": {
+        "l": 0.64,
+        "c": 0.08,
+        "h": 320,
+        "hex": "#a27cab"
+      }
+    }
+  ],
+  "accentForName": [
+    {
+      "name": "0: \"Errands\"",
+      "input": "Errands",
+      "token": "var(--accent-8)",
+      "index": 8
+    },
+    {
+      "name": "1: \"Deep Work\"",
+      "input": "Deep Work",
+      "token": "var(--accent-2)",
+      "index": 2
+    },
+    {
+      "name": "2: \"deep work\"",
+      "input": "deep work",
+      "token": "var(--accent-2)",
+      "index": 2
+    },
+    {
+      "name": "3: \"anchor\"",
+      "input": "anchor",
+      "token": "var(--accent-4)",
+      "index": 4
+    },
+    {
+      "name": "4: \"\"",
+      "input": "",
+      "token": "var(--accent-1)",
+      "index": 1
+    },
+    {
+      "name": "5: \"A\"",
+      "input": "A",
+      "token": "var(--accent-2)",
+      "index": 2
+    },
+    {
+      "name": "6: \"Café\"",
+      "input": "Café",
+      "token": "var(--accent-4)",
+      "index": 4
+    },
+    {
+      "name": "7: \"Café\"",
+      "input": "Café",
+      "token": "var(--accent-1)",
+      "index": 1
+    },
+    {
+      "name": "8: \"日本語\"",
+      "input": "日本語",
+      "token": "var(--accent-8)",
+      "index": 8
+    },
+    {
+      "name": "9: \"🏃 Run club\"",
+      "input": "🏃 Run club",
+      "token": "var(--accent-3)",
+      "index": 3
+    },
+    {
+      "name": "10: \"👩‍👩‍👧 Family\"",
+      "input": "👩‍👩‍👧 Family",
+      "token": "var(--accent-5)",
+      "index": 5
+    },
+    {
+      "name": "11: \"Morning routine\"",
+      "input": "Morning routine",
+      "token": "var(--accent-1)",
+      "index": 1
+    },
+    {
+      "name": "12: \"Autumn\"",
+      "input": "Autumn",
+      "token": "var(--accent-3)",
+      "index": 3
+    },
+    {
+      "name": "13: \"Speak Spanish by spring\"",
+      "input": "Speak Spanish by spring",
+      "token": "var(--accent-1)",
+      "index": 1
+    }
+  ],
+  "projectColor": [
+    {
+      "name": "stored colour wins",
+      "input": "Admin",
+      "projects": [
+        {
+          "id": "p-admin",
+          "name": "Admin",
+          "emoji": "",
+          "color": "var(--accent-3)"
+        },
+        {
+          "id": "p-health",
+          "name": "Health",
+          "emoji": ""
+        },
+        {
+          "id": "p-work",
+          "name": "work",
+          "emoji": "",
+          "color": "var(--accent-7)"
+        },
+        {
+          "id": "p-personal",
+          "name": "Personal",
+          "emoji": ""
+        },
+        {
+          "id": "p-blue",
+          "name": "Blue",
+          "emoji": "",
+          "color": "blue"
+        }
+      ],
+      "expected": "var(--accent-3)"
+    },
+    {
+      "name": "the name folds to find the project",
+      "input": "ADMIN",
+      "projects": [
+        {
+          "id": "p-admin",
+          "name": "Admin",
+          "emoji": "",
+          "color": "var(--accent-3)"
+        },
+        {
+          "id": "p-health",
+          "name": "Health",
+          "emoji": ""
+        },
+        {
+          "id": "p-work",
+          "name": "work",
+          "emoji": "",
+          "color": "var(--accent-7)"
+        },
+        {
+          "id": "p-personal",
+          "name": "Personal",
+          "emoji": ""
+        },
+        {
+          "id": "p-blue",
+          "name": "Blue",
+          "emoji": "",
+          "color": "blue"
+        }
+      ],
+      "expected": "var(--accent-3)"
+    },
+    {
+      "name": "a legacy name with a stored colour keeps it",
+      "input": "Work",
+      "projects": [
+        {
+          "id": "p-admin",
+          "name": "Admin",
+          "emoji": "",
+          "color": "var(--accent-3)"
+        },
+        {
+          "id": "p-health",
+          "name": "Health",
+          "emoji": ""
+        },
+        {
+          "id": "p-work",
+          "name": "work",
+          "emoji": "",
+          "color": "var(--accent-7)"
+        },
+        {
+          "id": "p-personal",
+          "name": "Personal",
+          "emoji": ""
+        },
+        {
+          "id": "p-blue",
+          "name": "Blue",
+          "emoji": "",
+          "color": "blue"
+        }
+      ],
+      "expected": "var(--accent-7)"
+    },
+    {
+      "name": "the work legacy name with no project takes its token",
+      "input": "WORK",
+      "projects": [
+        {
+          "id": "p-admin",
+          "name": "Admin",
+          "emoji": "",
+          "color": "var(--accent-3)"
+        },
+        {
+          "id": "p-health",
+          "name": "Health",
+          "emoji": ""
+        },
+        {
+          "id": "p-personal",
+          "name": "Personal",
+          "emoji": ""
+        },
+        {
+          "id": "p-blue",
+          "name": "Blue",
+          "emoji": "",
+          "color": "blue"
+        }
+      ],
+      "expected": "var(--habit-work)"
+    },
+    {
+      "name": "a legacy name with no colour takes its token",
+      "input": "personal",
+      "projects": [
+        {
+          "id": "p-admin",
+          "name": "Admin",
+          "emoji": "",
+          "color": "var(--accent-3)"
+        },
+        {
+          "id": "p-health",
+          "name": "Health",
+          "emoji": ""
+        },
+        {
+          "id": "p-work",
+          "name": "work",
+          "emoji": "",
+          "color": "var(--accent-7)"
+        },
+        {
+          "id": "p-personal",
+          "name": "Personal",
+          "emoji": ""
+        },
+        {
+          "id": "p-blue",
+          "name": "Blue",
+          "emoji": "",
+          "color": "blue"
+        }
+      ],
+      "expected": "var(--habit-personal)"
+    },
+    {
+      "name": "a legacy name with no project takes its token",
+      "input": "Wellness",
+      "projects": [
+        {
+          "id": "p-admin",
+          "name": "Admin",
+          "emoji": "",
+          "color": "var(--accent-3)"
+        },
+        {
+          "id": "p-health",
+          "name": "Health",
+          "emoji": ""
+        },
+        {
+          "id": "p-work",
+          "name": "work",
+          "emoji": "",
+          "color": "var(--accent-7)"
+        },
+        {
+          "id": "p-personal",
+          "name": "Personal",
+          "emoji": ""
+        },
+        {
+          "id": "p-blue",
+          "name": "Blue",
+          "emoji": "",
+          "color": "blue"
+        }
+      ],
+      "expected": "var(--habit-wellness)"
+    },
+    {
+      "name": "no colour: the folded name’s ramp step",
+      "input": "Health",
+      "projects": [
+        {
+          "id": "p-admin",
+          "name": "Admin",
+          "emoji": "",
+          "color": "var(--accent-3)"
+        },
+        {
+          "id": "p-health",
+          "name": "Health",
+          "emoji": ""
+        },
+        {
+          "id": "p-work",
+          "name": "work",
+          "emoji": "",
+          "color": "var(--accent-7)"
+        },
+        {
+          "id": "p-personal",
+          "name": "Personal",
+          "emoji": ""
+        },
+        {
+          "id": "p-blue",
+          "name": "Blue",
+          "emoji": "",
+          "color": "blue"
+        }
+      ],
+      "expected": "var(--accent-7)"
+    },
+    {
+      "name": "no project: the folded name’s ramp step",
+      "input": "Errands",
+      "projects": [
+        {
+          "id": "p-admin",
+          "name": "Admin",
+          "emoji": "",
+          "color": "var(--accent-3)"
+        },
+        {
+          "id": "p-health",
+          "name": "Health",
+          "emoji": ""
+        },
+        {
+          "id": "p-work",
+          "name": "work",
+          "emoji": "",
+          "color": "var(--accent-7)"
+        },
+        {
+          "id": "p-personal",
+          "name": "Personal",
+          "emoji": ""
+        },
+        {
+          "id": "p-blue",
+          "name": "Blue",
+          "emoji": "",
+          "color": "blue"
+        }
+      ],
+      "expected": "var(--accent-8)"
+    },
+    {
+      "name": "folded before hashing",
+      "input": "ERRANDS",
+      "projects": [
+        {
+          "id": "p-admin",
+          "name": "Admin",
+          "emoji": "",
+          "color": "var(--accent-3)"
+        },
+        {
+          "id": "p-health",
+          "name": "Health",
+          "emoji": ""
+        },
+        {
+          "id": "p-work",
+          "name": "work",
+          "emoji": "",
+          "color": "var(--accent-7)"
+        },
+        {
+          "id": "p-personal",
+          "name": "Personal",
+          "emoji": ""
+        },
+        {
+          "id": "p-blue",
+          "name": "Blue",
+          "emoji": "",
+          "color": "blue"
+        }
+      ],
+      "expected": "var(--accent-8)"
+    },
+    {
+      "name": "free text passes through untouched",
+      "input": "blue",
+      "projects": [
+        {
+          "id": "p-admin",
+          "name": "Admin",
+          "emoji": "",
+          "color": "var(--accent-3)"
+        },
+        {
+          "id": "p-health",
+          "name": "Health",
+          "emoji": ""
+        },
+        {
+          "id": "p-work",
+          "name": "work",
+          "emoji": "",
+          "color": "var(--accent-7)"
+        },
+        {
+          "id": "p-personal",
+          "name": "Personal",
+          "emoji": ""
+        },
+        {
+          "id": "p-blue",
+          "name": "Blue",
+          "emoji": "",
+          "color": "blue"
+        }
+      ],
+      "expected": "blue"
+    },
+    {
+      "name": "an object key is not a legacy name",
+      "input": "constructor",
+      "projects": [
+        {
+          "id": "p-admin",
+          "name": "Admin",
+          "emoji": "",
+          "color": "var(--accent-3)"
+        },
+        {
+          "id": "p-health",
+          "name": "Health",
+          "emoji": ""
+        },
+        {
+          "id": "p-work",
+          "name": "work",
+          "emoji": "",
+          "color": "var(--accent-7)"
+        },
+        {
+          "id": "p-personal",
+          "name": "Personal",
+          "emoji": ""
+        },
+        {
+          "id": "p-blue",
+          "name": "Blue",
+          "emoji": "",
+          "color": "blue"
+        }
+      ],
+      "expected": "var(--accent-7)"
+    }
+  ],
+  "colors": [
+    {
+      "name": "no colour: the raw name’s ramp step",
+      "color": null,
+      "containerName": "Morning routine",
+      "expected": {
+        "source": "name",
+        "token": "var(--accent-1)",
+        "light": "#73a967",
+        "dark": "#71a166"
+      }
+    },
+    {
+      "name": "no colour, the raw name, never folded",
+      "color": null,
+      "containerName": "ERRANDS",
+      "expected": {
+        "source": "name",
+        "token": "var(--accent-8)",
+        "light": "#a3c75d",
+        "dark": "#9ebf5f"
+      }
+    },
+    {
+      "name": "a ramp token",
+      "color": "var(--accent-2)",
+      "containerName": "Anything",
+      "expected": {
+        "source": "token",
+        "token": "var(--accent-2)",
+        "light": "#3baca6",
+        "dark": "#44a49e"
+      }
+    },
+    {
+      "name": "the lime",
+      "color": "var(--accent-8)",
+      "containerName": "Anything",
+      "expected": {
+        "source": "token",
+        "token": "var(--accent-8)",
+        "light": "#a3c75d",
+        "dark": "#9ebf5f"
+      }
+    },
+    {
+      "name": "a legacy token",
+      "color": "var(--habit-work)",
+      "containerName": "Anything",
+      "expected": {
+        "source": "token",
+        "token": "var(--habit-work)",
+        "light": "#6493c4",
+        "dark": "#5b8abb"
+      }
+    },
+    {
+      "name": "a raw hex",
+      "color": "#1a2B3c",
+      "containerName": "Anything",
+      "expected": {
+        "source": "hex",
+        "token": null,
+        "light": "#1a2b3c",
+        "dark": "#1a2b3c"
+      }
+    },
+    {
+      "name": "a short hex falls back",
+      "color": "#abc",
+      "containerName": "Errands",
+      "expected": {
+        "source": "name",
+        "token": "var(--accent-8)",
+        "light": "#a3c75d",
+        "dark": "#9ebf5f"
+      }
+    },
+    {
+      "name": "a CSS name falls back",
+      "color": "blue",
+      "containerName": "Errands",
+      "expected": {
+        "source": "name",
+        "token": "var(--accent-8)",
+        "light": "#a3c75d",
+        "dark": "#9ebf5f"
+      }
+    },
+    {
+      "name": "an unknown token falls back",
+      "color": "var(--accent-9)",
+      "containerName": "Errands",
+      "expected": {
+        "source": "name",
+        "token": "var(--accent-8)",
+        "light": "#a3c75d",
+        "dark": "#9ebf5f"
+      }
+    },
+    {
+      "name": "an empty string falls back",
+      "color": "",
+      "containerName": "Errands",
+      "expected": {
+        "source": "name",
+        "token": "var(--accent-8)",
+        "light": "#a3c75d",
+        "dark": "#9ebf5f"
+      }
+    }
+  ],
+  "icons": [
+    {
+      "name": "a picked icon wins",
+      "glyph": "icon:Sunrise",
+      "containerName": "Work",
+      "expected": "Sunrise"
+    },
+    {
+      "name": "a token outside the library derives",
+      "glyph": "icon:CalendarRange",
+      "containerName": "Autumn",
+      "expected": "Heart"
+    },
+    {
+      "name": "a token naming an object key derives",
+      "glyph": "icon:constructor",
+      "containerName": "Errands",
+      "expected": "Lightbulb"
+    },
+    {
+      "name": "a legacy emoji derives",
+      "glyph": "📋",
+      "containerName": "Admin",
+      "expected": "Bell"
+    },
+    {
+      "name": "an empty glyph derives",
+      "glyph": "",
+      "containerName": "Admin",
+      "expected": "Bell"
+    },
+    {
+      "name": "no glyph derives",
+      "glyph": null,
+      "containerName": "Admin",
+      "expected": "Bell"
+    },
+    {
+      "name": "a lowercase token is not a library name",
+      "glyph": "icon:sunrise",
+      "containerName": "Morning",
+      "expected": "Sun"
+    },
+    {
+      "name": "an exact default name",
+      "glyph": null,
+      "containerName": "Work",
+      "expected": "Briefcase"
+    },
+    {
+      "name": "an exact default name, trimmed and folded",
+      "glyph": null,
+      "containerName": "  No Project ",
+      "expected": "Inbox"
+    },
+    {
+      "name": "an object key is not a default name",
+      "glyph": null,
+      "containerName": "constructor",
+      "expected": "ChartColumn"
+    },
+    {
+      "name": "a keyword",
+      "glyph": null,
+      "containerName": "Gym days",
+      "expected": "Dumbbell"
+    },
+    {
+      "name": "the first keyword wins",
+      "glyph": null,
+      "containerName": "Morning run",
+      "expected": "Footprints"
+    },
+    {
+      "name": "a keyword inside a word",
+      "glyph": null,
+      "containerName": "Bookkeeping",
+      "expected": "BookOpen"
+    },
+    {
+      "name": "the hash",
+      "glyph": null,
+      "containerName": "Errands",
+      "expected": "Lightbulb"
+    },
+    {
+      "name": "the hash over an accent",
+      "glyph": null,
+      "containerName": "Café",
+      "expected": "House"
+    },
+    {
+      "name": "the hash over an emoji",
+      "glyph": null,
+      "containerName": "🏃 Club",
+      "expected": "Bell"
+    },
+    {
+      "name": "the hash over Japanese",
+      "glyph": null,
+      "containerName": "日本語",
+      "expected": "House"
+    },
+    {
+      "name": "the hash at -2^31",
+      "glyph": null,
+      "containerName": "evadgrga",
+      "expected": "Flame"
+    },
+    {
+      "name": "an empty name",
+      "glyph": null,
+      "containerName": "",
+      "expected": "Music"
+    },
+    {
+      "name": "a season made with the web’s default glyph",
+      "glyph": "icon:CalendarRange",
+      "containerName": "Summer",
+      "expected": "Flame"
+    },
+    {
+      "name": "a goal made with the web’s default glyph",
+      "glyph": "icon:Target",
+      "containerName": "Speak Spanish",
+      "expected": "Target"
+    },
+    {
+      "name": "a routine made with the web’s default glyph",
+      "glyph": "icon:Repeat",
+      "containerName": "Morning",
+      "expected": "Repeat"
+    }
+  ],
+  "hash": [
+    {
+      "name": "0: \"\"",
+      "input": "",
+      "hash": 5381,
+      "index": 11
+    },
+    {
+      "name": "1: \"a\"",
+      "input": "a",
+      "hash": 177604,
+      "index": 4
+    },
+    {
+      "name": "2: \"errands\"",
+      "input": "errands",
+      "hash": 106699784,
+      "index": 14
+    },
+    {
+      "name": "3: \"café\"",
+      "input": "café",
+      "hash": 2087763752,
+      "index": 2
+    },
+    {
+      "name": "4: \"café\"",
+      "input": "café",
+      "hash": 176731941,
+      "index": 21
+    },
+    {
+      "name": "5: \"🏃 club\"",
+      "input": "🏃 club",
+      "hash": 1610091710,
+      "index": 20
+    },
+    {
+      "name": "6: \"日本語\"",
+      "input": "日本語",
+      "hash": 200550002,
+      "index": 2
+    },
+    {
+      "name": "7: \"evadgrga\"",
+      "input": "evadgrga",
+      "hash": 2147483648,
+      "index": 8
+    },
+    {
+      "name": "8: \"a much longer name for a project\"",
+      "input": "a much longer name for a project",
+      "hash": 1232724862,
+      "index": 22
+    }
+  ],
+  "tables": {
+    "ramp": [
+      "var(--accent-1)",
+      "var(--accent-2)",
+      "var(--accent-3)",
+      "var(--accent-4)",
+      "var(--accent-5)",
+      "var(--accent-6)",
+      "var(--accent-7)",
+      "var(--accent-8)"
+    ],
+    "swatches": [
+      "Moss",
+      "Teal",
+      "Indigo",
+      "Plum",
+      "Coral",
+      "Honey",
+      "Slate",
+      "Lime"
+    ],
+    "library": [
+      "Activity",
+      "AlarmClock",
+      "Anchor",
+      "Apple",
+      "Archive",
+      "AtSign",
+      "Award",
+      "Baby",
+      "Banknote",
+      "Battery",
+      "Bed",
+      "Beef",
+      "Bell",
+      "BellRing",
+      "Bike",
+      "Bird",
+      "Book",
+      "BookOpen",
+      "Bookmark",
+      "Brain",
+      "Briefcase",
+      "Brush",
+      "Bug",
+      "Building2",
+      "Bus",
+      "Calculator",
+      "Calendar",
+      "CalendarCheck",
+      "CalendarDays",
+      "Camera",
+      "Car",
+      "Carrot",
+      "Cat",
+      "ChartColumn",
+      "ChartLine",
+      "ChartPie",
+      "Check",
+      "Church",
+      "CircleCheck",
+      "Clapperboard",
+      "ClipboardList",
+      "Clock",
+      "Cloud",
+      "CloudSun",
+      "Code",
+      "Coffee",
+      "Cog",
+      "Coins",
+      "Compass",
+      "Contact",
+      "Cookie",
+      "Cpu",
+      "CreditCard",
+      "Cross",
+      "Crown",
+      "CupSoda",
+      "Database",
+      "Dices",
+      "Dog",
+      "DollarSign",
+      "Drama",
+      "Droplets",
+      "Dumbbell",
+      "Eye",
+      "Feather",
+      "FileText",
+      "Film",
+      "Fish",
+      "Flag",
+      "Flame",
+      "Flower2",
+      "Folder",
+      "FolderOpen",
+      "Footprints",
+      "Gamepad2",
+      "Gift",
+      "Glasses",
+      "Globe",
+      "Goal",
+      "GraduationCap",
+      "Grid2x2",
+      "Guitar",
+      "Hammer",
+      "Handshake",
+      "Hash",
+      "Headphones",
+      "Heart",
+      "HeartPulse",
+      "Hourglass",
+      "House",
+      "Image",
+      "Inbox",
+      "Infinity",
+      "Key",
+      "Landmark",
+      "Layers",
+      "LayoutGrid",
+      "Leaf",
+      "Library",
+      "Lightbulb",
+      "Link",
+      "ListChecks",
+      "ListTodo",
+      "Lock",
+      "Mail",
+      "Map",
+      "MapPin",
+      "Medal",
+      "Megaphone",
+      "MessageCircle",
+      "MessageSquare",
+      "Mic",
+      "Moon",
+      "Mountain",
+      "Music",
+      "Music2",
+      "Navigation",
+      "Newspaper",
+      "NotebookPen",
+      "Package",
+      "Paintbrush",
+      "Palette",
+      "Paperclip",
+      "PawPrint",
+      "PenTool",
+      "Pencil",
+      "Percent",
+      "PersonStanding",
+      "Phone",
+      "Piano",
+      "PiggyBank",
+      "Pill",
+      "Pin",
+      "Pizza",
+      "Plane",
+      "Plug",
+      "Podcast",
+      "Puzzle",
+      "Radio",
+      "Rainbow",
+      "Receipt",
+      "Recycle",
+      "RefreshCw",
+      "Repeat",
+      "Repeat2",
+      "Rocket",
+      "Ruler",
+      "Salad",
+      "School",
+      "Scissors",
+      "Send",
+      "Server",
+      "Settings",
+      "Shield",
+      "ShieldCheck",
+      "Ship",
+      "Shirt",
+      "ShoppingBag",
+      "ShoppingBasket",
+      "ShoppingCart",
+      "Smile",
+      "Snowflake",
+      "Sparkle",
+      "Sparkles",
+      "Sprout",
+      "Star",
+      "Stethoscope",
+      "Store",
+      "Sun",
+      "Sunrise",
+      "Sunset",
+      "Syringe",
+      "Tag",
+      "Target",
+      "Terminal",
+      "Thermometer",
+      "Ticket",
+      "Timer",
+      "TramFront",
+      "TreePine",
+      "Trees",
+      "TrendingUp",
+      "Trophy",
+      "Tv",
+      "User",
+      "UserPlus",
+      "Users",
+      "Utensils",
+      "Video",
+      "Wallet",
+      "Waves",
+      "Wifi",
+      "Wind",
+      "Wrench",
+      "Zap"
+    ],
+    "featured": [
+      "Briefcase",
+      "House",
+      "Leaf",
+      "HeartPulse",
+      "Heart",
+      "Dumbbell",
+      "BookOpen",
+      "GraduationCap",
+      "Target",
+      "Star",
+      "Flame",
+      "Sparkles",
+      "Rocket",
+      "Lightbulb",
+      "Brain",
+      "Pencil",
+      "Palette",
+      "Music",
+      "Gamepad2",
+      "Footprints",
+      "Apple",
+      "Coffee",
+      "Sprout",
+      "DollarSign",
+      "ChartColumn",
+      "Wrench",
+      "Code",
+      "Bell",
+      "Gift",
+      "Rainbow",
+      "Sun",
+      "Moon",
+      "Clock",
+      "Calendar",
+      "CircleCheck",
+      "Repeat"
+    ],
+    "categoryIcons": [
+      "Briefcase",
+      "Leaf",
+      "House",
+      "BookOpen",
+      "Dumbbell",
+      "Target",
+      "Star",
+      "Heart",
+      "Flame",
+      "Sparkles",
+      "Palette",
+      "Music",
+      "Footprints",
+      "Brain",
+      "Lightbulb",
+      "Pencil",
+      "Gamepad2",
+      "Apple",
+      "Coffee",
+      "Sprout",
+      "Bell",
+      "ChartColumn",
+      "Wrench",
+      "GraduationCap",
+      "DollarSign",
+      "Rainbow",
+      "Rocket",
+      "Gift",
+      "Sun",
+      "Moon"
+    ],
+    "nameIcons": [
+      {
+        "key": "work",
+        "icon": "Briefcase"
+      },
+      {
+        "key": "wellness",
+        "icon": "HeartPulse"
+      },
+      {
+        "key": "personal",
+        "icon": "House"
+      },
+      {
+        "key": "tasks",
+        "icon": "CircleCheck"
+      },
+      {
+        "key": "habits",
+        "icon": "Repeat"
+      },
+      {
+        "key": "no project",
+        "icon": "Inbox"
+      },
+      {
+        "key": "anytime",
+        "icon": "Clock"
+      }
+    ],
+    "keywordIcons": [
+      {
+        "keywords": [
+          "gym",
+          "fitness",
+          "workout",
+          "exercise",
+          "strength"
+        ],
+        "icon": "Dumbbell"
+      },
+      {
+        "keywords": [
+          "read",
+          "book"
+        ],
+        "icon": "BookOpen"
+      },
+      {
+        "keywords": [
+          "money",
+          "finance",
+          "budget",
+          "invest"
+        ],
+        "icon": "DollarSign"
+      },
+      {
+        "keywords": [
+          "health",
+          "wellness",
+          "care"
+        ],
+        "icon": "HeartPulse"
+      },
+      {
+        "keywords": [
+          "home",
+          "house",
+          "chore"
+        ],
+        "icon": "House"
+      },
+      {
+        "keywords": [
+          "work",
+          "job",
+          "office"
+        ],
+        "icon": "Briefcase"
+      },
+      {
+        "keywords": [
+          "study",
+          "school",
+          "learn",
+          "course",
+          "class"
+        ],
+        "icon": "GraduationCap"
+      },
+      {
+        "keywords": [
+          "write",
+          "writing",
+          "journal",
+          "note"
+        ],
+        "icon": "Pencil"
+      },
+      {
+        "keywords": [
+          "run",
+          "walk",
+          "steps"
+        ],
+        "icon": "Footprints"
+      },
+      {
+        "keywords": [
+          "music",
+          "song",
+          "practice"
+        ],
+        "icon": "Music"
+      },
+      {
+        "keywords": [
+          "art",
+          "design",
+          "draw",
+          "paint"
+        ],
+        "icon": "Palette"
+      },
+      {
+        "keywords": [
+          "game",
+          "gaming",
+          "play"
+        ],
+        "icon": "Gamepad2"
+      },
+      {
+        "keywords": [
+          "food",
+          "meal",
+          "nutrition",
+          "diet",
+          "cook"
+        ],
+        "icon": "Apple"
+      },
+      {
+        "keywords": [
+          "coffee"
+        ],
+        "icon": "Coffee"
+      },
+      {
+        "keywords": [
+          "garden",
+          "plant"
+        ],
+        "icon": "Sprout"
+      },
+      {
+        "keywords": [
+          "code",
+          "dev",
+          "build",
+          "project"
+        ],
+        "icon": "Wrench"
+      },
+      {
+        "keywords": [
+          "idea",
+          "brainstorm",
+          "think"
+        ],
+        "icon": "Lightbulb"
+      },
+      {
+        "keywords": [
+          "goal",
+          "focus"
+        ],
+        "icon": "Target"
+      },
+      {
+        "keywords": [
+          "morning"
+        ],
+        "icon": "Sun"
+      },
+      {
+        "keywords": [
+          "night",
+          "evening",
+          "sleep"
+        ],
+        "icon": "Moon"
+      },
+      {
+        "keywords": [
+          "launch",
+          "ship",
+          "startup"
+        ],
+        "icon": "Rocket"
+      }
+    ]
+  }
+}

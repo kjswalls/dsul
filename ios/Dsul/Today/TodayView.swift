@@ -16,28 +16,9 @@ struct TodayView: View {
             TimelineView(.everyMinute) { context in
                 content(nowMin: planner.minuteOfDay(context.date))
             }
-            // Not while an item's sheet is up: the sheet draws the banner
-            // itself, and at its medium detent this copy would show too.
-            .overlay(alignment: .top) {
-                if let banner = planner.banner, !planner.isShowingItemSheet {
-                    // As tall as the screen, so the move (which travels the
-                    // view's own height) carries the banner off the top,
-                    // never parking it in the bar's band, which draws no
-                    // background. The spacer draws nothing and takes no taps.
-                    VStack(spacing: 0) {
-                        BannerView(banner: banner) {
-                            planner.dismissBanner(banner.id)
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.top, 4)
-                        Spacer(minLength: 0)
-                    }
-                    // A move alone: an opacity transition would fade the
-                    // lime check through the banner's own opacity.
-                    .transition(.move(edge: .top))
-                }
-            }
-            .animation(.snappy, value: planner.banner)
+            // The banner over the top ("Signed in as …", a write that didn't
+            // save), as on Organize.
+            .plannerBanner()
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -49,7 +30,21 @@ struct TodayView: View {
                 }
                 ToolbarSpacer(.fixed, placement: .topBarTrailing)
                 ToolbarItem(placement: .topBarTrailing) {
-                    AvatarMenu(showProbe: $showProbe)
+                    AvatarMenu {
+                        // The drag spike's switches. "Load 40 blocks" is
+                        // sample only: its blocks exist nowhere on the server.
+                        Section("Drag spike") {
+                            Toggle(isOn: $showProbe) {
+                                Label("Drag probe", systemImage: "waveform.path.ecg")
+                            }
+                            if !planner.isLive {
+                                Button("Load 40 blocks", systemImage: "square.stack") {
+                                    layout = .schedule
+                                    planner.stress()
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -110,108 +105,5 @@ private struct TodayTitle: View {
                 .controlSize(.small)
             }
         }
-    }
-}
-
-/// The avatar circle: the account (the email, Sign out and Delete account…),
-/// or on the sample a way back to the sign-in screen, then the drag spike's
-/// switches. Delete account… opens its sheet through the planner's one sheet
-/// slot, so it shows over the braindump sheet too; the sample has no account
-/// to delete. "Load 40 blocks" is sample only: its blocks exist nowhere on
-/// the server.
-private struct AvatarMenu: View {
-    @Binding var showProbe: Bool
-
-    @Environment(SamplePlanner.self) private var planner
-    @Environment(AuthStore.self) private var auth
-    @AppStorage(TodayLayout.storageKey) private var layout: TodayLayout = .list
-
-    var body: some View {
-        Menu {
-            if planner.isLive {
-                Section(auth.email ?? "Signed in") {
-                    Button(role: .destructive) {
-                        let store = auth
-                        Task { await store.signOut() }
-                    } label: {
-                        Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
-                    }
-                    Button(role: .destructive) {
-                        planner.activeSheet = .deleteAccount
-                    } label: {
-                        Label("Delete account\u{2026}", systemImage: "person.crop.circle.badge.xmark")
-                    }
-                }
-            } else {
-                Section("Sample data") {
-                    Button("Leave sample data", systemImage: "rectangle.portrait.and.arrow.right") {
-                        auth.leaveSample()
-                    }
-                }
-            }
-            Section("Drag spike") {
-                Toggle(isOn: $showProbe) {
-                    Label("Drag probe", systemImage: "waveform.path.ecg")
-                }
-                if !planner.isLive {
-                    Button("Load 40 blocks", systemImage: "square.stack") {
-                        layout = .schedule
-                        planner.stress()
-                    }
-                }
-            }
-        } label: {
-            Text(planner.isLive ? AccountFormat.initials(auth.email) : "KI")
-                .font(.caption.weight(.semibold))
-                .frame(width: 30, height: 30)
-                .background(Circle().fill(Color(.tertiarySystemFill)))
-        }
-        .accessibilityLabel("Account")
-    }
-}
-
-enum AccountFormat {
-    /// "KF" for kirby.fox@…, "KI" for kirby@…: the first letters of the first
-    /// two words of the address's local part, or its first two letters.
-    static func initials(_ email: String?) -> String {
-        guard let email, let local = email.split(separator: "@").first else { return "?" }
-        let words = local.split(whereSeparator: { !$0.isLetter })
-        let letters: [Character]
-        if words.count >= 2 {
-            letters = words.prefix(2).compactMap { $0.first }
-        } else {
-            letters = Array(local.filter { $0.isLetter }.prefix(2))
-        }
-        let text = String(letters).uppercased()
-        return text.isEmpty ? "?" : text
-    }
-}
-
-/// The planner's banner: it goes by itself after a few seconds
-/// (`SamplePlanner.show`, which also has VoiceOver say it), and a tap
-/// dismisses it sooner. Over Today, or over an item's sheet while one is up,
-/// which would otherwise hide a write the server refused.
-struct BannerView: View {
-    var banner: PlannerBanner
-    var onDismiss: () -> Void
-
-    var body: some View {
-        Button(action: onDismiss) {
-            HStack(spacing: 8) {
-                Image(systemName: banner.isError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
-                    .foregroundStyle(banner.isError ? Color.orange : Color.accentColor)
-                Text(banner.text)
-                    .font(.footnote.weight(.medium))
-                    .foregroundStyle(Color.primary)
-                    .multilineTextAlignment(.leading)
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        }
-        // Not `.plain`, whose press fades the lime tick.
-        .buttonStyle(PressScaleStyle(scale: 0.97))
-        .accessibilityHint("Dismisses the message")
     }
 }

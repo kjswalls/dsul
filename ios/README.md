@@ -18,6 +18,12 @@ right switches them: tap for the next, swipe along it to step, long-press for
 the menu. Tap the title to pick another day. The capture bar above the tab bar
 adds thoughts to the braindump; its count opens the braindump over Schedule.
 
+Organize, the third tab, lists your routines, seasons, goals (with Goals
+switched on) and projects, each with its colour tile and glyph, a line on its
+state and what it holds, and a count in each section's header. It follows the
+web's Organize and Goals switches. It is read-only for now: the rows open
+nothing yet.
+
 Tap an item anywhere (a row, a block on the grid, a braindump row, a search
 result) to open its sheet: what it is (its notes, its streak, its chips), its
 verbs in a bar along the bottom (tick, Skip, Tomorrow, Reschedule, Pause,
@@ -29,8 +35,9 @@ week and Reset streak. Add a subtask from the Subtasks section, one at a time
 or by pasting a list. A tap on a row's circle still just ticks it.
 
 - `Dsul/` is the app. `DsulTests/` tests it in the simulator.
-  - `App/`: the app, `AppGate` (sign-in screen, sample or your planner) and
-    `AppConfig` (the server's address).
+  - `App/`: the app, `AppGate` (sign-in screen, sample or your planner),
+    `AppConfig` (the server's address), and the avatar menu and the banner
+    that Today and Organize share.
   - `Auth/`: Google, Apple and email-link sign-in, the tokens and the
     Keychain, and Delete account's sheet.
   - `Data/`: the calls to `/api/app/*` and `PlannerSync`, which sends your
@@ -38,6 +45,9 @@ or by pasting a list. A tap on a row's circle still just ticks it.
   - `Model/`, `Today/`, `Schedule/`: the planner and the screens.
   - `Item/`: the item sheet. `ItemSheetModel` decides what it says and
     offers, apart from the views, so the hosted tests pin it.
+  - `Organize/`: the Organize tab. `OrganizeModel` decides which sections
+    show and what each row says, apart from the views, as `ItemSheetModel`
+    does; `ContainerColor` turns DsulCore's container colours into SwiftUI's.
   - `Notifications/`: the phone's own reminders. `NotificationScheduler`
     arms what DsulCore's plan says, `NotificationHub` runs it (Done and
     Snooze through the `ActionOutbox`, the delegate's questions, the
@@ -46,8 +56,10 @@ or by pasting a list. A tap on a row's circle still just ticks it.
 - `DsulCore/` is a Swift package with the planner logic ported from the web
   app: which items show on a day, the braindump, routine grouping, what a
   tick means, the item sheet's verbs (when each is offered, what it writes)
-  and the words its chips say, the sign-in requests, and which reminder
-  notifications the phone will arm and in what words. It has no UI, so
+  and the words its chips say, the sign-in requests, which reminder
+  notifications the phone will arm and in what words, and how a container
+  looks and is described on Organize (its colour, glyph, state and counts,
+  a goal's progress). It has no UI, so
   `swift test` runs it on Linux as well as macOS.
 - `project.yml` describes the Xcode project. XcodeGen generates
   `Dsul.xcodeproj` from it; the generated project is never committed.
@@ -1042,6 +1054,36 @@ by push yet.
     once.
 14. On an Apple Watch paired to the phone, a cue arrives on the wrist with
     Done and Snooze 15m, and Done there (or a Double Tap) ticks it.
+
+## Checking Organize
+
+Checks are marked by the PR that brings them. O1 is the list, read-only.
+
+1. (O1) Sample: Organize shows Routines, Seasons, Goals and Projects, in that
+   order. Morning routine has a honey sunrise tile, Wind down a plum moon,
+   Autumn a moss leaf and Run a half marathon an indigo target; the projects'
+   tiles come from their names (Work a briefcase). Seasons' header reads
+   "1 on". The rows open nothing.
+2. (O1) Signed in with Goals off on the web (Settings, Extensions): no Goals
+   section, and nothing says there are none.
+3. (O1) Turn Goals on on the web, then pull to refresh on Organize: Goals
+   appears, with each goal's target day and progress ("1/3", "2/2 so far",
+   "No milestones yet"). An achieved or set-aside goal sits under Ended,
+   below the active ones. With no active goal, it stays under Goals.
+4. (O1) Turn Organize console off on the web (Settings, Extensions) and pull
+   to refresh: Routines, Seasons and Projects go, and one row says "Organize
+   is switched off." with the way back on the web. It never says "Nothing
+   here yet." Goals still follows its own switch.
+5. (O1) Dark mode: every tile glyph is full strength, a lime one included
+   (a routine coloured Lime on the web), and no text anywhere on the list is
+   lime or tinted.
+6. (O1) Largest Dynamic Type (Settings, Accessibility, Display and Text Size,
+   Larger Text): the titles and subtitles wrap, and no count is cut off.
+7. (O1) Sign in on a fresh install and open Organize at once: a spinner and
+   "Loading…", then the sections. "Nothing here yet." never shows before the
+   first fetch lands. In flight mode the row says why and offers Try again.
+8. (O1) Pull to refresh on the list: the spinner, then the list again (a
+   container renamed on the web meanwhile shows its new name).
 
 ## Rules
 

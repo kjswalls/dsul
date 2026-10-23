@@ -22,7 +22,8 @@ import Foundation
 //
 // From 2f, the container nouns (`ContainerWords`): "Project", "Routine",
 // "Season", their plurals and "No project", from lib/container-registry.ts
-// `CONTAINER_KINDS`, the one place the web keeps them. The fixture's
+// `CONTAINER_KINDS`, the one place the web keeps them; from O1 "Goal" and
+// "Goals" too, for Organize's list. The fixture's
 // `containers` carries them here (checked by EditWritesFixtureTests'
 // `theContainerWordsAreTheWebs`), so the phone never spells a container's noun
 // on its own.
@@ -92,6 +93,10 @@ public enum ContainerWords {
     public static let season = "Season"
     /// `CONTAINER_KINDS.season.labelPlural`.
     public static let seasons = "Seasons"
+    /// `CONTAINER_KINDS.goal.label` (from O1, Organize's list).
+    public static let goal = "Goal"
+    /// `CONTAINER_KINDS.goal.labelPlural`.
+    public static let goals = "Goals"
 }
 
 /// lib/item-edit.ts `streakRunText`, the streak flame's tooltip: "No streak

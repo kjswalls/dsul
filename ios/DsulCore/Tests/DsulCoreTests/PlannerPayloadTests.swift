@@ -225,6 +225,72 @@ private struct RawItems: Decodable, Sendable {
         _ = routineGroups(flattenDayRows(day), routines: p.routines)
         #expect(day.totalCount <= p.items.count)
     }
+
+    /// Organize's fields (O1): the two extension flags, the containers' own
+    /// glyph, colour, usual time, order and notes, and the goals, on the rows
+    /// the route's test gives them.
+    @Test func theOrganizeFieldsReadAsTheWebWroteThem() throws {
+        let data = try fixtureData()
+        let p = try JSONDecoder().decode(PlannerPayload.self, from: data)
+        // Organize unset (the manifest default, on) and Goals switched on,
+        // which no default gives.
+        #expect(p.settings.organizeEnabled)
+        #expect(p.settings.goalsEnabled)
+
+        let morning = try #require(p.routines.first { $0.name == "Morning routine" })
+        #expect(morning.icon == "icon:Sunrise")
+        #expect(morning.color == "var(--accent-8)")
+        #expect(morning.usualTime == "06:30")
+        #expect(morning.notes == "Before the phone.")
+        #expect(morning.sortOrder == 0)
+        // A routine with none of them reads each as absent.
+        let wind = try #require(p.routines.first { $0.name == "Wind-down" })
+        #expect(wind.icon == nil && wind.color == nil && wind.usualTime == nil && wind.notes == nil)
+        #expect(wind.sortOrder == 1)
+
+        let autumn = try #require(p.seasons.first { $0.name == "Autumn" })
+        #expect(autumn.icon == "icon:Leaf")
+        #expect(autumn.color == "var(--accent-6)")
+        #expect(autumn.sortOrder == 0)
+        #expect(autumn.notes == "Until the clocks change.")
+        let stamped = try #require(autumn.updatedAt)
+        #expect(parseTimestamp(stamped) != nil)
+
+        // Two goals, nothing dropped, in the route's order.
+        struct RawGoals: Decodable { let goals: [AnyJSON] }
+        let raw = try JSONDecoder().decode(RawGoals.self, from: data)
+        let goals = try #require(p.goals)
+        #expect(goals.count == raw.goals.count)
+        #expect(goals.map(\.name) == ["Speak Spanish by spring", "Cook five dishes"])
+        let spanish = goals[0]
+        #expect(spanish.why == "For the trip to Madrid in April.")
+        #expect(spanish.icon == "icon:Globe")
+        #expect(spanish.color == nil)
+        #expect(spanish.state == "active")
+        #expect(spanish.startsOn == "2026-08-01")
+        #expect(spanish.targetOn == "2027-04-01")
+        #expect(spanish.sortOrder == 0)
+        #expect(spanish.achievedAt == nil)
+        #expect(spanish.memberIds.count == 1 && spanish.milestoneIds.count == 2 && spanish.checkinIds.count == 1)
+        // Every member is an item the payload carries.
+        for id in spanish.memberIds + spanish.milestoneIds + spanish.checkinIds {
+            #expect(p.items.contains { $0.id == id }, "\(id)")
+        }
+        // One milestone reached (a completed task), one ahead (a custom type):
+        // the list's subtitle reads 1/2.
+        let progress = goalProgress(spanish, items: p.items)
+        #expect(progress == GoalProgress(achieved: 1, total: 2, fraction: 0.5))
+        #expect(progressLabel(spanish, progress) == "1/2")
+        let cooked = goals[1]
+        #expect(cooked.state == "achieved")
+        #expect(!isGoalActive(cooked))
+        #expect(parseTimestamp(cooked.achievedAt ?? "") != nil)
+        #expect(cooked.color == "var(--accent-5)")
+        #expect(cooked.sortOrder == 1)
+        #expect(cooked.memberIds.isEmpty && cooked.milestoneIds.isEmpty && cooked.checkinIds.isEmpty)
+        #expect(progressLabel(cooked, goalProgress(cooked, items: p.items)) == "No milestones yet")
+        #expect(sortGoalsForDisplay(goals).map(\.id) == goals.map(\.id))
+    }
 }
 
 @Suite struct LenientDecodingTests {
@@ -309,6 +375,11 @@ private struct RawItems: Decodable, Sendable {
         // ... and a server older than vacation mode sends no trips: none.
         #expect(p.awayPeriods == nil)
         #expect(p.trips.isEmpty)
+        // ... and one older than Organize sends no goals (unknown, which
+        // hides Goals) and no flags: Organize on, Goals off, the defaults.
+        #expect(p.goals == nil)
+        #expect(p.settings.organizeEnabled)
+        #expect(!p.settings.goalsEnabled)
     }
 
     @Test func theWeekAndTheClockAreReadLeniently() throws {
@@ -537,6 +608,123 @@ private struct RawItems: Decodable, Sendable {
         #expect(try icon("7") == nil)
     }
 
+    /// The two Organize flags: missing (a server older than the fields), null
+    /// or not a bool reads as the manifest default, Organize on and Goals
+    /// off; only a real bool is an answer.
+    @Test func theOrganizeFlagsAreReadLeniently() throws {
+        /// [organizeEnabled, goalsEnabled].
+        func flags(_ fields: String) throws -> [Bool] {
+            let json = """
+            {"v":1,"userId":"\(user)","fetchedAt":"x","settings":{"timezone":"UTC"\(fields)},
+             "items":[],"projects":[],"routines":[],"seasons":[]}
+            """
+            let settings = try decode(json).settings
+            return [settings.organizeEnabled, settings.goalsEnabled]
+        }
+        #expect(try flags("") == [true, false])
+        #expect(try flags(#","organizeEnabled":null,"goalsEnabled":null"#) == [true, false])
+        #expect(try flags(#","organizeEnabled":"false","goalsEnabled":"true""#) == [true, false])
+        #expect(try flags(#","organizeEnabled":false,"goalsEnabled":true"#) == [false, true])
+        #expect(try flags(#","organizeEnabled":true,"goalsEnabled":false"#) == [true, false])
+        // The inline payload has no keys at all.
+        let inline = try decode(payload(items: "")).settings
+        #expect(inline.organizeEnabled && !inline.goalsEnabled)
+    }
+
+    /// `goals`: missing or null is unknown (nil, which hides Goals), never
+    /// none; [] is none. A goal without an id or a name is skipped, a member
+    /// id that isn't a uuid is dropped, and a missing state is active.
+    @Test func theGoalsAreReadLeniently() throws {
+        func goals(_ value: String?) throws -> [Goal]? {
+            let field = value.map { #","goals":"# + $0 } ?? ""
+            let json = """
+            {"v":1,"userId":"\(user)","fetchedAt":"x","settings":{}\(field),
+             "items":[],"projects":[],"routines":[],"seasons":[]}
+            """
+            return try decode(json).goals
+        }
+        #expect(try goals(nil) == nil)
+        #expect(try goals("null") == nil)
+        #expect(try goals(#""none""#) == nil)
+        #expect(try goals("[]") == [])
+        let read = try #require(try goals(#"""
+        [{"id":"g1","name":"Run a half","why":7,"sortOrder":2.0,"state":"achieved",
+          "achievedAt":"2026-09-20T18:00:00.123456+00:00","targetOn":"2027-03-15",
+          "memberIds":["00000000-0000-4000-8000-000000000001","junk",null],
+          "milestoneIds":["00000000-0000-4000-8000-000000000002"],"checkinIds":null},
+         7,null,{"name":"no id"},{"id":"g-no-name"},
+         {"id":"g2","name":"Bare"}]
+        """#))
+        #expect(read.map(\.id) == ["g1", "g2"])
+        let half = read[0]
+        #expect(half.why == nil)
+        #expect(half.sortOrder == 2)
+        #expect(half.state == "achieved")
+        #expect(half.targetOn == "2027-03-15")
+        #expect(half.memberIds == [UUID(uuidString: "00000000-0000-4000-8000-000000000001")!])
+        #expect(half.milestoneIds == [UUID(uuidString: "00000000-0000-4000-8000-000000000002")!])
+        #expect(half.checkinIds.isEmpty)
+        let bare = read[1]
+        #expect(bare.state == "active")
+        #expect(bare.why == nil && bare.icon == nil && bare.color == nil && bare.sortOrder == nil)
+        #expect(bare.startsOn == nil && bare.targetOn == nil && bare.achievedAt == nil)
+        #expect(bare.memberIds.isEmpty && bare.milestoneIds.isEmpty && bare.checkinIds.isEmpty)
+    }
+
+    /// Organize's container fields degrade to nil, as every lenient field does.
+    @Test func theContainersOwnFieldsAreReadLeniently() throws {
+        let p = try decode(payload(
+            items: a,
+            routines: #"""
+            [{"id":"r1","name":"Morning","icon":"icon:Sunrise","color":null,"usualTime":630,"notes":"Quiet.",
+              "sortOrder":1.0,"itemIds":[]},{"id":"r2","name":"Bare","itemIds":[]}]
+            """#,
+            seasons: #"""
+            [{"id":"s1","name":"Autumn","icon":7,"color":"var(--accent-6)","sortOrder":"1","notes":null,
+              "updatedAt":"2026-09-01T08:00:00.5+00:00","itemIds":[],"routineIds":[]},
+             {"id":"s2","name":"Bare","itemIds":[],"routineIds":[]}]
+            """#
+        ))
+        let morning = try #require(p.routines.first)
+        #expect(morning.icon == "icon:Sunrise")
+        #expect(morning.color == nil)
+        #expect(morning.usualTime == nil)
+        #expect(morning.notes == "Quiet.")
+        #expect(morning.sortOrder == 1)
+        let bareRoutine = try #require(p.routines.last)
+        #expect(bareRoutine.icon == nil && bareRoutine.color == nil && bareRoutine.usualTime == nil && bareRoutine.notes == nil)
+        let autumn = try #require(p.seasons.first)
+        #expect(autumn.icon == nil)
+        #expect(autumn.color == "var(--accent-6)")
+        #expect(autumn.sortOrder == nil)
+        #expect(autumn.notes == nil)
+        #expect(autumn.updatedAt == "2026-09-01T08:00:00.5+00:00")
+        let bareSeason = try #require(p.seasons.last)
+        #expect(bareSeason.icon == nil && bareSeason.color == nil && bareSeason.sortOrder == nil)
+        #expect(bareSeason.notes == nil && bareSeason.updatedAt == nil)
+    }
+
+    @Test func theContainersRoundTrip() throws {
+        let id = UUID(uuidString: "00000000-0000-4000-8000-000000000001")!
+        let routine = Routine(
+            id: "r1", name: "Morning", icon: "icon:Sunrise", color: "var(--accent-8)", sortOrder: 0, usualTime: "06:30",
+            pausedAt: "2026-10-20T13:00:00Z", pausedUntil: "2026-10-30", notes: "Before the phone.", itemIds: [id]
+        )
+        #expect(try JSONDecoder().decode(Routine.self, from: try JSONEncoder().encode(routine)) == routine)
+        let season = Season(
+            id: "s1", name: "Autumn", icon: "icon:Leaf", color: "#1a2b3c", sortOrder: 2, state: "paused",
+            startsOn: "2026-09-01", endsOn: "2026-11-30", notes: "Leaves.", itemIds: [id], routineIds: ["r1"],
+            updatedAt: "2026-09-01T08:00:00.5+00:00"
+        )
+        #expect(try JSONDecoder().decode(Season.self, from: try JSONEncoder().encode(season)) == season)
+        let goal = Goal(
+            id: "g1", name: "Speak Spanish", why: "Madrid.", icon: "icon:Globe", color: "var(--accent-2)", sortOrder: 0,
+            state: "achieved", startsOn: "2026-08-01", targetOn: "2027-04-01", achievedAt: "2026-09-20T18:00:00Z",
+            memberIds: [id], milestoneIds: [id], checkinIds: []
+        )
+        #expect(try JSONDecoder().decode(Goal.self, from: try JSONEncoder().encode(goal)) == goal)
+    }
+
     @Test func containerMembersKeepOnlyUUIDs() throws {
         let p = try decode(payload(
             items: a,
@@ -581,7 +769,8 @@ private struct RawItems: Decodable, Sendable {
     @Test func theSettingsRoundTrip() throws {
         let settings = PlannerSettings(
             timezone: "Europe/Paris", showCompletedTasks: false, appIcon: .lime,
-            weekStartDay: .saturday, timeFormat: .twentyFourHour, streaksEnabled: false, remindersEnabled: false
+            weekStartDay: .saturday, timeFormat: .twentyFourHour, streaksEnabled: false,
+            organizeEnabled: false, goalsEnabled: true, remindersEnabled: false
         )
         let data = try JSONEncoder().encode(settings)
         #expect(try JSONDecoder().decode(PlannerSettings.self, from: data) == settings)
@@ -592,6 +781,13 @@ private struct RawItems: Decodable, Sendable {
         #expect(decoded == PlannerSettings())
         #expect(decoded.streaksEnabled)
         #expect(String(decoding: defaults, as: UTF8.self).contains(#""streaksEnabled":true"#))
+        // The Organize flags, away from their defaults and back, are written
+        // too: Organize on and Goals off by default.
+        #expect(!decoded.goalsEnabled && decoded.organizeEnabled)
+        #expect(String(decoding: defaults, as: UTF8.self).contains(#""organizeEnabled":true"#))
+        #expect(String(decoding: defaults, as: UTF8.self).contains(#""goalsEnabled":false"#))
+        let flipped = String(decoding: data, as: UTF8.self)
+        #expect(flipped.contains(#""organizeEnabled":false"#) && flipped.contains(#""goalsEnabled":true"#))
         // Unknown writes no key, so it reads back unknown, never as off.
         #expect(decoded.remindersEnabled == nil)
         #expect(!String(decoding: defaults, as: UTF8.self).contains("remindersEnabled"))

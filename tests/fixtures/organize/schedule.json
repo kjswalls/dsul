@@ -1,0 +1,463 @@
+{
+  "world": {
+    "items": [
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000001",
+        "title": "Filed as Work",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "project": "Work"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000002",
+        "title": "Filed as work",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "project": "work"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000003",
+        "title": "Filed as WORK",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "project": "WORK"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000004",
+        "title": "Filed as \"Work \"",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "project": "Work "
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000005",
+        "title": "A subtask filed as Work",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "project": "Work",
+        "parentItemId": "00000000-0000-4000-8000-000000000001"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000006",
+        "title": "Unfiled",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000007",
+        "title": "Filed as empty",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "project": ""
+      },
+      {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000008",
+        "title": "A habit filed as work",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "project": "work"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000009",
+        "title": "Done, still a member",
+        "status": "completed",
+        "isScheduled": true,
+        "order": 0,
+        "project": "Work"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000000a",
+        "title": "Filed as Café",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "project": "Café"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000000b",
+        "title": "Filed as CAFÉ",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "project": "CAFÉ"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000000c",
+        "title": "Filed as Straße",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "project": "Straße"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000000d",
+        "title": "Filed as STRASSE",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "project": "STRASSE"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000000e",
+        "title": "Filed as İstanbul",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "project": "İstanbul"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000000f",
+        "title": "Filed as its JS fold",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "project": "i̇stanbul"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000013",
+        "title": "Filed as istanbul",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "project": "istanbul"
+      },
+      {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000010",
+        "title": "Stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000011",
+        "title": "Meditate",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000012",
+        "title": "Plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0
+      }
+    ],
+    "routines": [
+      {
+        "id": "r-morning",
+        "name": "Morning",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000011",
+          "00000000-0000-4000-8000-000000000010"
+        ]
+      },
+      {
+        "id": "r-evening",
+        "name": "Evening",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000012",
+          "00000000-0000-4000-8000-000000000063"
+        ]
+      },
+      {
+        "id": "r-empty",
+        "name": "Empty",
+        "itemIds": []
+      }
+    ]
+  },
+  "containerMemberIds": [
+    {
+      "name": "a routine: its itemIds, in order, as stored",
+      "container": {
+        "kind": "routine",
+        "routine": {
+          "id": "r-morning",
+          "name": "Morning",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000011",
+            "00000000-0000-4000-8000-000000000010"
+          ]
+        }
+      },
+      "expected": [
+        "00000000-0000-4000-8000-000000000011",
+        "00000000-0000-4000-8000-000000000010"
+      ]
+    },
+    {
+      "name": "a routine with a trashed member",
+      "container": {
+        "kind": "routine",
+        "routine": {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000012",
+            "00000000-0000-4000-8000-000000000063"
+          ]
+        }
+      },
+      "expected": [
+        "00000000-0000-4000-8000-000000000012",
+        "00000000-0000-4000-8000-000000000063"
+      ]
+    },
+    {
+      "name": "an empty routine",
+      "container": {
+        "kind": "routine",
+        "routine": {
+          "id": "r-empty",
+          "name": "Empty",
+          "itemIds": []
+        }
+      },
+      "expected": []
+    },
+    {
+      "name": "a season: its own items, then each routine’s, once each",
+      "container": {
+        "kind": "season",
+        "season": {
+          "id": "s-autumn",
+          "name": "Autumn",
+          "state": "auto",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000012",
+            "00000000-0000-4000-8000-000000000006"
+          ],
+          "routineIds": [
+            "r-morning",
+            "r-evening"
+          ]
+        }
+      },
+      "expected": [
+        "00000000-0000-4000-8000-000000000012",
+        "00000000-0000-4000-8000-000000000006",
+        "00000000-0000-4000-8000-000000000011",
+        "00000000-0000-4000-8000-000000000010",
+        "00000000-0000-4000-8000-000000000063"
+      ]
+    },
+    {
+      "name": "a season holding a routine that is gone",
+      "container": {
+        "kind": "season",
+        "season": {
+          "id": "s-shelf",
+          "name": "Shelf",
+          "state": "paused",
+          "itemIds": [],
+          "routineIds": [
+            "r-gone",
+            "r-morning"
+          ]
+        }
+      },
+      "expected": [
+        "00000000-0000-4000-8000-000000000011",
+        "00000000-0000-4000-8000-000000000010"
+      ]
+    },
+    {
+      "name": "an empty season",
+      "container": {
+        "kind": "season",
+        "season": {
+          "id": "s-none",
+          "name": "None",
+          "state": "auto",
+          "itemIds": [],
+          "routineIds": []
+        }
+      },
+      "expected": []
+    },
+    {
+      "name": "a goal: milestones, check-ins, then members",
+      "container": {
+        "kind": "goal",
+        "goal": {
+          "id": "g-spanish",
+          "name": "Spanish",
+          "state": "active",
+          "memberIds": [
+            "00000000-0000-4000-8000-000000000010"
+          ],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000002",
+            "00000000-0000-4000-8000-000000000001"
+          ],
+          "checkinIds": [
+            "00000000-0000-4000-8000-000000000012"
+          ]
+        }
+      },
+      "expected": [
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000012",
+        "00000000-0000-4000-8000-000000000010"
+      ]
+    },
+    {
+      "name": "a project, by folded name",
+      "container": {
+        "kind": "project",
+        "project": {
+          "id": "p-work",
+          "name": "Work",
+          "emoji": ""
+        }
+      },
+      "expected": [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000003",
+        "00000000-0000-4000-8000-000000000005",
+        "00000000-0000-4000-8000-000000000008",
+        "00000000-0000-4000-8000-000000000009"
+      ],
+      "listed": [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000003",
+        "00000000-0000-4000-8000-000000000008",
+        "00000000-0000-4000-8000-000000000009"
+      ]
+    },
+    {
+      "name": "the same project, named in capitals",
+      "container": {
+        "kind": "project",
+        "project": {
+          "id": "p-work",
+          "name": "WORK",
+          "emoji": ""
+        }
+      },
+      "expected": [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000003",
+        "00000000-0000-4000-8000-000000000005",
+        "00000000-0000-4000-8000-000000000008",
+        "00000000-0000-4000-8000-000000000009"
+      ],
+      "listed": [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000003",
+        "00000000-0000-4000-8000-000000000008",
+        "00000000-0000-4000-8000-000000000009"
+      ]
+    },
+    {
+      "name": "a project folds accents",
+      "container": {
+        "kind": "project",
+        "project": {
+          "id": "p-cafe",
+          "name": "café",
+          "emoji": ""
+        }
+      },
+      "expected": [
+        "00000000-0000-4000-8000-00000000000a",
+        "00000000-0000-4000-8000-00000000000b"
+      ],
+      "listed": [
+        "00000000-0000-4000-8000-00000000000a",
+        "00000000-0000-4000-8000-00000000000b"
+      ]
+    },
+    {
+      "name": "a project folds ß as JS does",
+      "container": {
+        "kind": "project",
+        "project": {
+          "id": "p-strasse",
+          "name": "Straße",
+          "emoji": ""
+        }
+      },
+      "expected": [
+        "00000000-0000-4000-8000-00000000000c"
+      ],
+      "listed": [
+        "00000000-0000-4000-8000-00000000000c"
+      ]
+    },
+    {
+      "name": "a project folds a dotted capital I as JS does",
+      "container": {
+        "kind": "project",
+        "project": {
+          "id": "p-ist",
+          "name": "İstanbul",
+          "emoji": ""
+        }
+      },
+      "expected": [
+        "00000000-0000-4000-8000-00000000000e",
+        "00000000-0000-4000-8000-00000000000f"
+      ],
+      "listed": [
+        "00000000-0000-4000-8000-00000000000e",
+        "00000000-0000-4000-8000-00000000000f"
+      ]
+    },
+    {
+      "name": "a project nobody is filed under",
+      "container": {
+        "kind": "project",
+        "project": {
+          "id": "p-empty",
+          "name": "Errands",
+          "emoji": ""
+        }
+      },
+      "expected": [],
+      "listed": []
+    }
+  ]
+}

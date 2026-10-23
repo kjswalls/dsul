@@ -108,6 +108,13 @@ final class SamplePlanner {
     /// In the server's order. An item in a season is hidden on a day the
     /// season isn't live (`inactiveItemIdsOn`).
     private(set) var seasons: [Season]
+    /// The user's goals, in the server's order (sort_order): Organize's Goals
+    /// section. Nil until the first fetch lands, and when the server couldn't
+    /// read them (`PlannerPayload.goals`), which hides the section rather
+    /// than saying there are none. Decoded whatever `settings.goalsEnabled`
+    /// says: the switch is a display gate, as on the web. A goal gates
+    /// nothing on a day, so no rule here reads them.
+    private(set) var goals: [Goal]? = nil
     /// The user's trips (`PlannerPayload.awayPeriods`, vacation mode): asked
     /// first by every "is this live" question here, as on the web, so a trip
     /// hides what the web hides. Empty for the sample and for a server older
@@ -189,7 +196,10 @@ final class SamplePlanner {
         projectRecords = sample.projects
         routines = sample.routines
         seasons = sample.seasons
-        settings = PlannerSettings()
+        goals = sample.goals
+        // Goals on, so every Organize section shows without signing in. A
+        // signed-in account follows its own switch.
+        settings = PlannerSettings(goalsEnabled: true)
         hasLoaded = true
         userId = nil
         self.now = now
@@ -978,6 +988,7 @@ final class SamplePlanner {
         projectRecords = payload.projects
         routines = payload.routines
         seasons = payload.seasons
+        goals = payload.goals
         awayPeriods = payload.trips
         settings = payload.settings
         snoozes = payload.snoozes ?? []

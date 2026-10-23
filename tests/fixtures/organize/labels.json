@@ -1,0 +1,754 @@
+{
+  "countLive": [
+    {
+      "name": "none",
+      "ids": [],
+      "live": [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000003"
+      ],
+      "expected": 0
+    },
+    {
+      "name": "all live",
+      "ids": [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002"
+      ],
+      "live": [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000003"
+      ],
+      "expected": 2
+    },
+    {
+      "name": "a trashed member is not counted",
+      "ids": [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000009",
+        "00000000-0000-4000-8000-000000000003"
+      ],
+      "live": [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000003"
+      ],
+      "expected": 2
+    },
+    {
+      "name": "nothing live",
+      "ids": [
+        "00000000-0000-4000-8000-000000000008",
+        "00000000-0000-4000-8000-000000000009"
+      ],
+      "live": [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000003"
+      ],
+      "expected": 0
+    },
+    {
+      "name": "a repeated id counts each time",
+      "ids": [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000001"
+      ],
+      "live": [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000003"
+      ],
+      "expected": 2
+    },
+    {
+      "name": "routine ids, which are plain strings",
+      "ids": [
+        "r-a",
+        "r-gone"
+      ],
+      "live": [
+        "r-a",
+        "r-b"
+      ],
+      "expected": 1
+    }
+  ],
+  "routinePillLabel": [
+    {
+      "name": "live, in no season",
+      "routine": {
+        "id": "r-morning",
+        "name": "Morning",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001"
+        ]
+      },
+      "seasons": [],
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "expected": null
+    },
+    {
+      "name": "paused, no return day",
+      "routine": {
+        "id": "r-morning",
+        "name": "Morning",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001"
+        ],
+        "pausedAt": "2026-10-20T13:00:00Z"
+      },
+      "seasons": [],
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "expected": "Paused"
+    },
+    {
+      "name": "paused until a day",
+      "routine": {
+        "id": "r-morning",
+        "name": "Morning",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001"
+        ],
+        "pausedAt": "2026-10-20T13:00:00Z",
+        "pausedUntil": "2026-10-30"
+      },
+      "seasons": [],
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "expected": "Until Oct 30"
+    },
+    {
+      "name": "paused until next year",
+      "routine": {
+        "id": "r-morning",
+        "name": "Morning",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001"
+        ],
+        "pausedAt": "2026-10-20T13:00:00Z",
+        "pausedUntil": "2027-01-04"
+      },
+      "seasons": [],
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "expected": "Until Jan 4"
+    },
+    {
+      "name": "paused until today: back today",
+      "routine": {
+        "id": "r-morning",
+        "name": "Morning",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001"
+        ],
+        "pausedAt": "2026-10-20T13:00:00Z",
+        "pausedUntil": "2026-10-23"
+      },
+      "seasons": [],
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "expected": null
+    },
+    {
+      "name": "a pause that starts tomorrow",
+      "routine": {
+        "id": "r-morning",
+        "name": "Morning",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001"
+        ],
+        "pausedAt": "2026-10-24T13:00:00Z"
+      },
+      "seasons": [],
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "expected": null
+    },
+    {
+      "name": "paused late today, in New York",
+      "routine": {
+        "id": "r-morning",
+        "name": "Morning",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001"
+        ],
+        "pausedAt": "2026-10-24T02:00:00Z"
+      },
+      "seasons": [],
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "expected": "Paused"
+    },
+    {
+      "name": "paused late today, read in Tokyo: not yet",
+      "routine": {
+        "id": "r-morning",
+        "name": "Morning",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001"
+        ],
+        "pausedAt": "2026-10-24T02:00:00Z"
+      },
+      "seasons": [],
+      "today": "2026-10-23",
+      "timeZone": "Asia/Tokyo",
+      "expected": null
+    },
+    {
+      "name": "an unreadable pause is no pause",
+      "routine": {
+        "id": "r-morning",
+        "name": "Morning",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001"
+        ],
+        "pausedAt": "not a date"
+      },
+      "seasons": [],
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "expected": null
+    },
+    {
+      "name": "held by a season switched off",
+      "routine": {
+        "id": "r-morning",
+        "name": "Morning",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001"
+        ]
+      },
+      "seasons": [
+        {
+          "id": "s-shelf",
+          "name": "Shelf",
+          "state": "paused",
+          "itemIds": [],
+          "routineIds": [
+            "r-morning"
+          ]
+        }
+      ],
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "expected": "Held"
+    },
+    {
+      "name": "held by a season that starts later",
+      "routine": {
+        "id": "r-morning",
+        "name": "Morning",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001"
+        ]
+      },
+      "seasons": [
+        {
+          "id": "s-winter",
+          "name": "Winter",
+          "state": "auto",
+          "itemIds": [],
+          "routineIds": [
+            "r-morning"
+          ],
+          "startsOn": "2026-11-01",
+          "endsOn": "2027-02-28"
+        }
+      ],
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "expected": "Held · Nov 1"
+    },
+    {
+      "name": "held by a season that has ended",
+      "routine": {
+        "id": "r-morning",
+        "name": "Morning",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001"
+        ]
+      },
+      "seasons": [
+        {
+          "id": "s-summer",
+          "name": "Summer",
+          "state": "auto",
+          "itemIds": [],
+          "routineIds": [
+            "r-morning"
+          ],
+          "startsOn": "2026-06-01",
+          "endsOn": "2026-10-01"
+        }
+      ],
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "expected": "Held"
+    },
+    {
+      "name": "held by an inverted range: no return day",
+      "routine": {
+        "id": "r-morning",
+        "name": "Morning",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001"
+        ]
+      },
+      "seasons": [
+        {
+          "id": "s-backwards",
+          "name": "Backwards",
+          "state": "auto",
+          "itemIds": [],
+          "routineIds": [
+            "r-morning"
+          ],
+          "startsOn": "2026-12-01",
+          "endsOn": "2026-11-01"
+        }
+      ],
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "expected": "Held"
+    },
+    {
+      "name": "held by two: the sooner return wins",
+      "routine": {
+        "id": "r-morning",
+        "name": "Morning",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001"
+        ]
+      },
+      "seasons": [
+        {
+          "id": "s-holiday",
+          "name": "Holiday",
+          "state": "auto",
+          "itemIds": [],
+          "routineIds": [
+            "r-morning"
+          ],
+          "startsOn": "2026-12-01",
+          "endsOn": "2026-12-31"
+        },
+        {
+          "id": "s-winter",
+          "name": "Winter",
+          "state": "auto",
+          "itemIds": [],
+          "routineIds": [
+            "r-morning"
+          ],
+          "startsOn": "2026-11-01",
+          "endsOn": "2027-02-28"
+        }
+      ],
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "expected": "Held · Nov 1"
+    },
+    {
+      "name": "held by two: a dated one beats one with no return",
+      "routine": {
+        "id": "r-morning",
+        "name": "Morning",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001"
+        ]
+      },
+      "seasons": [
+        {
+          "id": "s-shelf",
+          "name": "Shelf",
+          "state": "paused",
+          "itemIds": [],
+          "routineIds": [
+            "r-morning"
+          ]
+        },
+        {
+          "id": "s-holiday",
+          "name": "Holiday",
+          "state": "auto",
+          "itemIds": [],
+          "routineIds": [
+            "r-morning"
+          ],
+          "startsOn": "2026-12-01",
+          "endsOn": "2026-12-31"
+        }
+      ],
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "expected": "Held · Dec 1"
+    },
+    {
+      "name": "two holders, one on: live",
+      "routine": {
+        "id": "r-morning",
+        "name": "Morning",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001"
+        ]
+      },
+      "seasons": [
+        {
+          "id": "s-shelf",
+          "name": "Shelf",
+          "state": "paused",
+          "itemIds": [],
+          "routineIds": [
+            "r-morning"
+          ]
+        },
+        {
+          "id": "s-autumn",
+          "name": "Autumn",
+          "state": "auto",
+          "itemIds": [],
+          "routineIds": [
+            "r-morning"
+          ],
+          "startsOn": "2026-09-01",
+          "endsOn": "2026-11-30"
+        }
+      ],
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "expected": null
+    },
+    {
+      "name": "a season pinned on ignores its dates",
+      "routine": {
+        "id": "r-morning",
+        "name": "Morning",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001"
+        ]
+      },
+      "seasons": [
+        {
+          "id": "s-always",
+          "name": "Always",
+          "state": "active",
+          "itemIds": [],
+          "routineIds": [
+            "r-morning"
+          ],
+          "startsOn": "2027-01-01"
+        }
+      ],
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "expected": null
+    },
+    {
+      "name": "its own pause wins over a hold",
+      "routine": {
+        "id": "r-morning",
+        "name": "Morning",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001"
+        ],
+        "pausedAt": "2026-10-20T13:00:00Z",
+        "pausedUntil": "2026-10-30"
+      },
+      "seasons": [
+        {
+          "id": "s-winter",
+          "name": "Winter",
+          "state": "auto",
+          "itemIds": [],
+          "routineIds": [
+            "r-morning"
+          ],
+          "startsOn": "2026-11-01",
+          "endsOn": "2027-02-28"
+        }
+      ],
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "expected": "Until Oct 30"
+    },
+    {
+      "name": "a pause that ended, held by an off season",
+      "routine": {
+        "id": "r-morning",
+        "name": "Morning",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001"
+        ],
+        "pausedAt": "2026-10-01T13:00:00Z",
+        "pausedUntil": "2026-10-10"
+      },
+      "seasons": [
+        {
+          "id": "s-shelf",
+          "name": "Shelf",
+          "state": "paused",
+          "itemIds": [],
+          "routineIds": [
+            "r-morning"
+          ]
+        }
+      ],
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "expected": "Held"
+    },
+    {
+      "name": "off seasons that hold another routine",
+      "routine": {
+        "id": "r-morning",
+        "name": "Morning",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001"
+        ]
+      },
+      "seasons": [
+        {
+          "id": "s-shelf",
+          "name": "Shelf",
+          "state": "paused",
+          "itemIds": [],
+          "routineIds": [
+            "r-other"
+          ]
+        },
+        {
+          "id": "s-winter",
+          "name": "Winter",
+          "state": "auto",
+          "itemIds": [],
+          "routineIds": [
+            "r-other"
+          ],
+          "startsOn": "2026-11-01",
+          "endsOn": "2027-02-28"
+        }
+      ],
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "expected": null
+    },
+    {
+      "name": "a season that starts on a month boundary",
+      "routine": {
+        "id": "r-morning",
+        "name": "Morning",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001"
+        ]
+      },
+      "seasons": [
+        {
+          "id": "s-jan",
+          "name": "January",
+          "state": "auto",
+          "itemIds": [],
+          "routineIds": [
+            "r-morning"
+          ],
+          "startsOn": "2027-01-05"
+        }
+      ],
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "expected": "Held · Jan 5"
+    }
+  ],
+  "seasonPillLabel": [
+    {
+      "name": "auto, in range",
+      "season": {
+        "id": "s-autumn",
+        "name": "Autumn",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-09-01",
+        "endsOn": "2026-11-30"
+      },
+      "today": "2026-10-23",
+      "expected": null
+    },
+    {
+      "name": "active, out of range",
+      "season": {
+        "id": "s-always",
+        "name": "Always",
+        "state": "active",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2027-01-01"
+      },
+      "today": "2026-10-23",
+      "expected": null
+    },
+    {
+      "name": "paused",
+      "season": {
+        "id": "s-shelf",
+        "name": "Shelf",
+        "state": "paused",
+        "itemIds": [],
+        "routineIds": []
+      },
+      "today": "2026-10-23",
+      "expected": "Paused"
+    },
+    {
+      "name": "paused with a range it is in",
+      "season": {
+        "id": "s-autumn",
+        "name": "Autumn",
+        "state": "paused",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-09-01",
+        "endsOn": "2026-11-30"
+      },
+      "today": "2026-10-23",
+      "expected": "Paused"
+    },
+    {
+      "name": "auto, starts later",
+      "season": {
+        "id": "s-winter",
+        "name": "Winter",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-11-01",
+        "endsOn": "2027-02-28"
+      },
+      "today": "2026-10-23",
+      "expected": "From Nov 1"
+    },
+    {
+      "name": "auto, ended",
+      "season": {
+        "id": "s-summer",
+        "name": "Summer",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-06-01",
+        "endsOn": "2026-10-01"
+      },
+      "today": "2026-10-23",
+      "expected": "Ended"
+    },
+    {
+      "name": "auto, no dates",
+      "season": {
+        "id": "s-open",
+        "name": "Open",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": []
+      },
+      "today": "2026-10-23",
+      "expected": null
+    },
+    {
+      "name": "auto, starts today",
+      "season": {
+        "id": "s-today",
+        "name": "Today",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-10-23"
+      },
+      "today": "2026-10-23",
+      "expected": null
+    },
+    {
+      "name": "auto, ends today",
+      "season": {
+        "id": "s-last",
+        "name": "Last",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "endsOn": "2026-10-23"
+      },
+      "today": "2026-10-23",
+      "expected": null
+    },
+    {
+      "name": "auto, ended yesterday",
+      "season": {
+        "id": "s-gone",
+        "name": "Gone",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "endsOn": "2026-10-22"
+      },
+      "today": "2026-10-23",
+      "expected": "Ended"
+    },
+    {
+      "name": "auto, starts next year",
+      "season": {
+        "id": "s-next",
+        "name": "Next",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2027-01-05"
+      },
+      "today": "2026-10-23",
+      "expected": "From Jan 5"
+    },
+    {
+      "name": "auto, inverted range ahead",
+      "season": {
+        "id": "s-backwards",
+        "name": "Backwards",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-12-01",
+        "endsOn": "2026-11-01"
+      },
+      "today": "2026-10-23",
+      "expected": "From Dec 1"
+    },
+    {
+      "name": "auto, inverted range behind",
+      "season": {
+        "id": "s-behind",
+        "name": "Behind",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-10-01",
+        "endsOn": "2026-09-01"
+      },
+      "today": "2026-10-23",
+      "expected": "Ended"
+    },
+    {
+      "name": "auto, starts later, no end",
+      "season": {
+        "id": "s-ski",
+        "name": "Ski",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-11-01"
+      },
+      "today": "2026-10-23",
+      "expected": "From Nov 1"
+    }
+  ]
+}

@@ -15,8 +15,8 @@ import Foundation
 //   the enums don't name, and the web reads an unknown one as "matches nothing";
 // - a number may arrive as a Double and is truncated to an Int;
 // - a null or missing array is empty, and a bad element in it is skipped
-//   (`itemTypes` and `writes` excepted: there, missing is nil, which means
-//   "a server older than the field", not "none");
+//   (`itemTypes`, `writes` and `goals` excepted: there, missing is nil, which
+//   means "a server older than the field", not "none");
 // - `pausedAt` stays a string, parsed in Active.swift (`parseTimestamp`), so no
 //   `dateDecodingStrategy` is involved and Linux and Darwin agree.
 
@@ -269,88 +269,217 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
 }
 
 /// packages/types `RoutineSchema`: things done regularly, in order. `itemIds`
-/// is the routine's own sequence (routine_items.sort_order).
+/// is the routine's own sequence (routine_items.sort_order). From O1 the
+/// Organize list's fields too: the glyph (`icon`, an `icon:<LucideName>` token
+/// read by `resolveCategoryIconName`), the colour (`color`, a CSS colour,
+/// usually a `var(--accent-N)` token, read by `containerAccent`), the usual
+/// time ("HH:mm", a label that moves nothing) and the notes. Each is nil when
+/// unset, as the schema leaves it out.
 public struct Routine: Codable, Sendable, Hashable, Identifiable {
     public var id: String
     public var name: String
+    public var icon: String?
+    public var color: String?
     public var sortOrder: Int?
+    /// Local wall-clock "HH:mm" (migration 047). Labels and orders the routine;
+    /// never moves a member.
+    public var usualTime: String?
     public var pausedAt: String?
     public var pausedUntil: String?
+    /// Free text (migration 049).
+    public var notes: String?
     public var itemIds: [UUID]
 
     public init(
         id: String,
         name: String,
+        icon: String? = nil,
+        color: String? = nil,
         sortOrder: Int? = nil,
+        usualTime: String? = nil,
         pausedAt: String? = nil,
         pausedUntil: String? = nil,
+        notes: String? = nil,
         itemIds: [UUID] = []
     ) {
         self.id = id
         self.name = name
+        self.icon = icon
+        self.color = color
         self.sortOrder = sortOrder
+        self.usualTime = usualTime
         self.pausedAt = pausedAt
         self.pausedUntil = pausedUntil
+        self.notes = notes
         self.itemIds = itemIds
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, sortOrder, pausedAt, pausedUntil, itemIds
+        case id, name, icon, color, sortOrder, usualTime, pausedAt, pausedUntil, notes, itemIds
     }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.id = try c.decode(String.self, forKey: .id)
         self.name = try c.decode(String.self, forKey: .name)
+        self.icon = c.lenientString(.icon)
+        self.color = c.lenientString(.color)
         self.sortOrder = c.lenientInt(.sortOrder)
+        self.usualTime = c.lenientString(.usualTime)
         self.pausedAt = c.lenientString(.pausedAt)
         self.pausedUntil = c.lenientString(.pausedUntil)
+        self.notes = c.lenientString(.notes)
         self.itemIds = (c.lenientStrings(.itemIds) ?? []).compactMap { UUID(uuidString: $0) }
     }
 }
 
 /// packages/types `SeasonSchema`: a period of life. `state` stays a string;
 /// anything but 'active' or 'paused' follows the dates, as the web reads it.
+/// From O1 the Organize list's fields too: `icon`, `color` and `notes` as on
+/// `Routine`, the console's `sortOrder`, and `updatedAt`, which a trigger
+/// stamps: decoded and read-only, never sent.
 public struct Season: Codable, Sendable, Hashable, Identifiable {
     public var id: String
     public var name: String
+    public var icon: String?
+    public var color: String?
+    public var sortOrder: Int?
     public var state: String
     public var startsOn: String?
     public var endsOn: String?
+    /// Free text (migration 049).
+    public var notes: String?
     public var itemIds: [UUID]
     public var routineIds: [String]
+    /// Trigger-maintained (the sweep's grace); the phone never writes it.
+    public var updatedAt: String?
 
     public init(
         id: String,
         name: String,
+        icon: String? = nil,
+        color: String? = nil,
+        sortOrder: Int? = nil,
         state: String = "auto",
         startsOn: String? = nil,
         endsOn: String? = nil,
+        notes: String? = nil,
         itemIds: [UUID] = [],
-        routineIds: [String] = []
+        routineIds: [String] = [],
+        updatedAt: String? = nil
     ) {
         self.id = id
         self.name = name
+        self.icon = icon
+        self.color = color
+        self.sortOrder = sortOrder
         self.state = state
         self.startsOn = startsOn
         self.endsOn = endsOn
+        self.notes = notes
         self.itemIds = itemIds
         self.routineIds = routineIds
+        self.updatedAt = updatedAt
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, state, startsOn, endsOn, itemIds, routineIds
+        case id, name, icon, color, sortOrder, state, startsOn, endsOn, notes, itemIds, routineIds, updatedAt
     }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.id = try c.decode(String.self, forKey: .id)
         self.name = try c.decode(String.self, forKey: .name)
+        self.icon = c.lenientString(.icon)
+        self.color = c.lenientString(.color)
+        self.sortOrder = c.lenientInt(.sortOrder)
         self.state = c.lenientString(.state) ?? "auto"
         self.startsOn = c.lenientString(.startsOn)
         self.endsOn = c.lenientString(.endsOn)
+        self.notes = c.lenientString(.notes)
         self.itemIds = (c.lenientStrings(.itemIds) ?? []).compactMap { UUID(uuidString: $0) }
         self.routineIds = c.lenientStrings(.routineIds) ?? []
+        self.updatedAt = c.lenientString(.updatedAt)
+    }
+}
+
+/// packages/types `GoalSchema` (migration 036): the third container role, as
+/// lib/db.ts `assembleGoals` builds it and /api/app/planner serves it in
+/// `goals` from O1. Its members carry a role, split into three arrays:
+/// `milestoneIds` (checkpoints, in timeline order), `checkinIds` (recurring
+/// reviews) and `memberIds` (supporting work). Each keeps only the ids that
+/// are uuids, as `Routine.itemIds` does. `state` stays a string, "active"
+/// when missing; anything but "active" is an ended goal (`isGoalActive`).
+/// The phone reads goals and writes none of their fields yet.
+public struct Goal: Codable, Sendable, Hashable, Identifiable {
+    public var id: String
+    public var name: String
+    /// The motivation line, shown above every number.
+    public var why: String?
+    public var icon: String?
+    public var color: String?
+    public var sortOrder: Int?
+    /// 'active' | 'achieved' | 'abandoned' ("Set aside" in the web's words).
+    public var state: String
+    /// yyyy-MM-dd, either end optional.
+    public var startsOn: String?
+    public var targetOn: String?
+    /// The instant the goal was achieved, as Postgres wrote it.
+    public var achievedAt: String?
+    public var memberIds: [UUID]
+    public var milestoneIds: [UUID]
+    public var checkinIds: [UUID]
+
+    public init(
+        id: String,
+        name: String,
+        why: String? = nil,
+        icon: String? = nil,
+        color: String? = nil,
+        sortOrder: Int? = nil,
+        state: String = "active",
+        startsOn: String? = nil,
+        targetOn: String? = nil,
+        achievedAt: String? = nil,
+        memberIds: [UUID] = [],
+        milestoneIds: [UUID] = [],
+        checkinIds: [UUID] = []
+    ) {
+        self.id = id
+        self.name = name
+        self.why = why
+        self.icon = icon
+        self.color = color
+        self.sortOrder = sortOrder
+        self.state = state
+        self.startsOn = startsOn
+        self.targetOn = targetOn
+        self.achievedAt = achievedAt
+        self.memberIds = memberIds
+        self.milestoneIds = milestoneIds
+        self.checkinIds = checkinIds
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, why, icon, color, sortOrder, state, startsOn, targetOn, achievedAt
+        case memberIds, milestoneIds, checkinIds
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decode(String.self, forKey: .id)
+        self.name = try c.decode(String.self, forKey: .name)
+        self.why = c.lenientString(.why)
+        self.icon = c.lenientString(.icon)
+        self.color = c.lenientString(.color)
+        self.sortOrder = c.lenientInt(.sortOrder)
+        self.state = c.lenientString(.state) ?? "active"
+        self.startsOn = c.lenientString(.startsOn)
+        self.targetOn = c.lenientString(.targetOn)
+        self.achievedAt = c.lenientString(.achievedAt)
+        self.memberIds = (c.lenientStrings(.memberIds) ?? []).compactMap { UUID(uuidString: $0) }
+        self.milestoneIds = (c.lenientStrings(.milestoneIds) ?? []).compactMap { UUID(uuidString: $0) }
+        self.checkinIds = (c.lenientStrings(.checkinIds) ?? []).compactMap { UUID(uuidString: $0) }
     }
 }
 
@@ -457,6 +586,16 @@ public struct PlannerSettings: Codable, Sendable, Hashable {
     /// 2026-10-10). True when missing (a server older than the field, which
     /// only ever had Streaks on) or not a bool.
     public var streaksEnabled: Bool
+    /// The Organize extension (`EXT_ORGANIZE`, the same `user_extensions`
+    /// read): off hides Routines, Seasons, Projects and Item types in the
+    /// Organize tab. A display gate only; the routes take every write. True,
+    /// the manifest default, when missing (a server older than the field) or
+    /// not a bool.
+    public var organizeEnabled: Bool
+    /// The Goals extension (`EXT_GOALS`): off hides every goal surface. Goals
+    /// still decode either way. False, the manifest default, when missing or
+    /// not a bool.
+    public var goalsEnabled: Bool
     /// Habit reminders (the web's Settings, Rituals; `habit_reminders_enabled`,
     /// migration 032), the switch that lets any reminder through: false when
     /// off or never set, as the reminder scan reads it. Nil is unknown: a
@@ -491,6 +630,8 @@ public struct PlannerSettings: Codable, Sendable, Hashable {
         weekStartDay: WeekStartDay = .sunday,
         timeFormat: TimeFormat = .twelveHour,
         streaksEnabled: Bool = true,
+        organizeEnabled: Bool = true,
+        goalsEnabled: Bool = false,
         remindersEnabled: Bool? = nil,
         lastCallEnabled: Bool? = nil,
         lastCallTime: String? = nil,
@@ -505,6 +646,8 @@ public struct PlannerSettings: Codable, Sendable, Hashable {
         self.weekStartDay = weekStartDay
         self.timeFormat = timeFormat
         self.streaksEnabled = streaksEnabled
+        self.organizeEnabled = organizeEnabled
+        self.goalsEnabled = goalsEnabled
         self.remindersEnabled = remindersEnabled
         self.lastCallEnabled = lastCallEnabled
         self.lastCallTime = lastCallTime
@@ -528,6 +671,7 @@ public struct PlannerSettings: Codable, Sendable, Hashable {
 
     enum CodingKeys: String, CodingKey {
         case timezone, showCompletedTasks, appIcon, weekStartDay, timeFormat, streaksEnabled, remindersEnabled
+        case organizeEnabled, goalsEnabled
         case lastCallEnabled, lastCallTime, eodReviewEnabled, eodReviewTime, lastEodReviewDate, reminderGraceMinutes
     }
 
@@ -539,6 +683,8 @@ public struct PlannerSettings: Codable, Sendable, Hashable {
         self.weekStartDay = c.lenientString(.weekStartDay).flatMap { WeekStartDay(rawValue: $0) } ?? .sunday
         self.timeFormat = c.lenientString(.timeFormat).flatMap { TimeFormat(rawValue: $0) } ?? .twelveHour
         self.streaksEnabled = c.lenientBool(.streaksEnabled) ?? true
+        self.organizeEnabled = c.lenientBool(.organizeEnabled) ?? true
+        self.goalsEnabled = c.lenientBool(.goalsEnabled) ?? false
         self.remindersEnabled = c.lenientBool(.remindersEnabled)
         self.lastCallEnabled = c.lenientBool(.lastCallEnabled)
         self.lastCallTime = c.lenientString(.lastCallTime)
@@ -556,6 +702,8 @@ public struct PlannerSettings: Codable, Sendable, Hashable {
         try c.encode(weekStartDay.rawValue, forKey: .weekStartDay)
         try c.encode(timeFormat.rawValue, forKey: .timeFormat)
         try c.encode(streaksEnabled, forKey: .streaksEnabled)
+        try c.encode(organizeEnabled, forKey: .organizeEnabled)
+        try c.encode(goalsEnabled, forKey: .goalsEnabled)
         try c.encodeIfPresent(remindersEnabled, forKey: .remindersEnabled)
         try c.encodeIfPresent(lastCallEnabled, forKey: .lastCallEnabled)
         try c.encodeIfPresent(lastCallTime, forKey: .lastCallTime)
@@ -576,6 +724,11 @@ public struct PlannerPayload: Decodable, Sendable, Hashable {
     public var projects: [Project]
     public var routines: [Routine]
     public var seasons: [Season]
+    /// The user's goals (`goals`, lib/app-api.ts, from O1), whatever the Goals
+    /// extension says: the flag is a display gate. Nil when the server
+    /// couldn't read them, or is older than the field, which hides Goals; []
+    /// is none. A bad element is skipped.
+    public var goals: [Goal]?
     /// The `action`s POST /api/app/items/:id takes (`ITEM_WRITES`), e.g.
     /// ["complete", "schedule", "skip", "move", "pause"]. Nil from a server
     /// older than the list, which takes "complete" and "schedule" only; the
@@ -609,6 +762,7 @@ public struct PlannerPayload: Decodable, Sendable, Hashable {
         projects: [Project] = [],
         routines: [Routine] = [],
         seasons: [Season] = [],
+        goals: [Goal]? = nil,
         writes: [String]? = nil,
         itemTypes: [ItemTypeLabel]? = nil,
         snoozes: [PlanSnooze]? = nil,
@@ -623,6 +777,7 @@ public struct PlannerPayload: Decodable, Sendable, Hashable {
         self.projects = projects
         self.routines = routines
         self.seasons = seasons
+        self.goals = goals
         self.writes = writes
         self.itemTypes = itemTypes
         self.snoozes = snoozes
@@ -636,7 +791,7 @@ public struct PlannerPayload: Decodable, Sendable, Hashable {
 
     enum CodingKeys: String, CodingKey {
         case v, userId, fetchedAt, settings, items, projects, routines, seasons, writes, itemTypes, snoozes
-        case awayPeriods
+        case awayPeriods, goals
     }
 
     /// The envelope is strict (a payload with no user can't be trusted to be
@@ -657,6 +812,7 @@ public struct PlannerPayload: Decodable, Sendable, Hashable {
         self.projects = c.lossyArray(Project.self, .projects).values
         self.routines = c.lossyArray(Routine.self, .routines).values
         self.seasons = c.lossyArray(Season.self, .seasons).values
+        self.goals = c.lossyArrayIfPresent(Goal.self, .goals)
         self.writes = c.lenientStrings(.writes)
         self.itemTypes = c.lossyArrayIfPresent(ItemTypeLabel.self, .itemTypes)
         self.snoozes = c.lossyArrayIfPresent(PlanSnooze.self, .snoozes)

@@ -186,9 +186,12 @@ struct LiveRefresh: ViewModifier {
     }
 }
 
-/// A signed-in day before its first fetch lands: a spinner, or why the fetch
-/// failed and a way to try again.
+/// A signed-in planner before its first fetch lands: a spinner beside the
+/// tab's own words (Today's "Loading your day…", Organize's "Loading…"), or
+/// why the fetch failed and a way to try again.
 struct PlannerLoadingRow: View {
+    var loadingText: String = "Loading your day\u{2026}"
+
     @Environment(SamplePlanner.self) private var planner
 
     var body: some View {
@@ -200,11 +203,14 @@ struct PlannerLoadingRow: View {
                     let live = self.planner
                     Task { await live.refresh() }
                 }
+                // A list row's button takes the tint, the lime accent, which
+                // is a mark, never text.
+                .tint(Color.primary)
             }
         } else {
             HStack(spacing: 10) {
                 ProgressView()
-                Text("Loading your day\u{2026}")
+                Text(loadingText)
                     .foregroundStyle(.secondary)
             }
         }

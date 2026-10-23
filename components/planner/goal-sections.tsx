@@ -10,7 +10,7 @@ import { useAwayStore } from '@/lib/away-store';
 import { fetchCheckins, getItemEventsAvailable, type ItemEvent } from '@/lib/db';
 import { suppressionLabel, suppressionReason } from '@/lib/active';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
-import { goalProgress, isAchieved, isGoalActive, nextMilestone, timeElapsed } from '@/lib/goals';
+import { goalProgress, isAchieved, isGoalActive, nextMilestone, progressLabel, timeElapsed } from '@/lib/goals';
 import { formatShort, useToday } from '@/lib/collections';
 import { toDateOnly } from '@/lib/overdue';
 import { cn } from '@/lib/utils';
@@ -29,23 +29,7 @@ import type { Goal, Item } from '@/lib/planner-types';
  * See memory/plans/long-term-goals.md.
  */
 
-/* ── the fraction, in words ───────────────────────────────────────────────── */
-
-/**
- * "3/7", "No milestones yet", or "2/2 so far".
- *
- * The suffix is the load-bearing part. The plan's own example is a three-year
- * business with two near-term milestones defined, and a bare "2/2" there reads
- * as finished — so while the goal is still running, a full fraction says what
- * it actually means: everything defined SO FAR. Once the goal is achieved, 2/2
- * means what it says and the suffix goes.
- */
-export function progressLabel(goal: Goal, achieved: number, total: number): string {
-  if (total === 0) return 'No milestones yet';
-  const bare = `${achieved}/${total}`;
-  if (!isGoalActive(goal)) return bare;
-  return achieved === total ? `${bare} so far` : bare;
-}
+/* ── the fraction, in words: progressLabel, in lib/goals.ts ───────────────── */
 
 /**
  * The bar, or nothing at all.

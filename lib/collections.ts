@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { usePlannerStore } from '@/lib/planner-store';
 import {
+  formatDay,
   isPausedOn,
   isSeasonActiveOn,
   seasonResumeDate,
@@ -92,6 +93,14 @@ export const countLive = (ids: readonly string[], live: Set<string>) =>
 
 /* ── state labels ─────────────────────────────────────────────────────── */
 
+/*
+ * The pills word their dates with formatDay (fixed English months, "Oct 30"),
+ * never the browser's locale: the iPhone's Organize list says the same pills
+ * (ios/DsulCore Collections.swift), pinned by tests/fixtures/organize/labels.json,
+ * which must not depend on the machine that wrote it. For a US English locale
+ * this is the word formatShort gave; en-GB and others wrote "30 Oct".
+ */
+
 /**
  * The one-line reason a routine is not carrying its members, or null when it is.
  *
@@ -112,7 +121,7 @@ export function routinePillLabel(
   seasons?: readonly Season[],
 ): string | null {
   if (isPausedOn(routine, todayStr, tz)) {
-    return routine.pausedUntil ? `Until ${formatShort(routine.pausedUntil)}` : 'Paused';
+    return routine.pausedUntil ? `Until ${formatDay(routine.pausedUntil)}` : 'Paused';
   }
   if (!seasons?.length) return null;
   // Its own switch is on and nothing is carrying it — a different sentence from
@@ -120,14 +129,14 @@ export function routinePillLabel(
   const { effectiveOn, soonestBlocker } = routineStandingOn(routine, seasons, todayStr, tz);
   if (effectiveOn || !soonestBlocker) return null;
   const back = seasonResumeDate(soonestBlocker, todayStr);
-  return back ? `Held · ${formatShort(back)}` : 'Held';
+  return back ? `Held · ${formatDay(back)}` : 'Held';
 }
 
 /** The same, for a season's three ways of being off. */
 export function seasonPillLabel(season: Season, todayStr: string): string | null {
   if (isSeasonActiveOn(season, todayStr)) return null;
   if (season.state === 'paused') return 'Paused';
-  if (season.startsOn && todayStr < season.startsOn) return `From ${formatShort(season.startsOn)}`;
+  if (season.startsOn && todayStr < season.startsOn) return `From ${formatDay(season.startsOn)}`;
   return 'Ended';
 }
 

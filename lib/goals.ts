@@ -232,6 +232,25 @@ export function goalProgress(goal: Goal, itemsById: Map<string, Item>): GoalProg
 }
 
 /**
+ * "3/7", "No milestones yet", or "2/2 so far": the fraction, in words.
+ *
+ * The suffix is the load-bearing part. The plan's own example is a three-year
+ * business with two near-term milestones defined, and a bare "2/2" there reads
+ * as finished — so while the goal is still running, a full fraction says what
+ * it actually means: everything defined SO FAR. Once the goal is achieved, 2/2
+ * means what it says and the suffix goes.
+ *
+ * Here rather than in goal-sections.tsx so the iPhone's Organize list says the
+ * same words (ios/DsulCore Goals.swift, pinned by tests/fixtures/organize/goals.json).
+ */
+export function progressLabel(goal: Goal, achieved: number, total: number): string {
+  if (total === 0) return 'No milestones yet';
+  const bare = `${achieved}/${total}`;
+  if (!isGoalActive(goal)) return bare;
+  return achieved === total ? `${bare} so far` : bare;
+}
+
+/**
  * How far through its own window the goal is, 0..1, or null when it has no
  * window (or an inverted one).
  *

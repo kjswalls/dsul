@@ -110,4 +110,30 @@ describe('the iOS change filter', () => {
       expect(filter.test(p), p).toBe(false);
     }
   });
+
+  it('matches what Organize ports, and the fixtures that pin it', () => {
+    for (const p of [
+      'tests/fixtures/organize/labels.json',
+      'tests/fixtures/organize/look.json',
+      'lib/accent-colors.ts',
+      'lib/category-icons.ts',
+      'lib/scope-rail.ts',
+      'lib/collections.ts',
+      'lib/goals.ts',
+      'lib/active.ts',
+      'lib/container-schedule.ts',
+      'lib/app-api.ts',
+    ]) {
+      expect(filter.test(p), p).toBe(true);
+    }
+    // The components the extractions left: the lib/ homes are what a header cites.
+    for (const p of [
+      'components/primitives/color-swatch-picker.tsx',
+      'components/planner/goal-sections.tsx',
+      'tests/fixtures/organize.json',
+      'lib/category-icons.test.ts',
+    ]) {
+      expect(filter.test(p), p).toBe(false);
+    }
+  });
 });

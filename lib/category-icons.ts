@@ -59,7 +59,7 @@ export function makeIconToken(pascalName: string): string {
 }
 
 /** Curated library keyed by PascalCase name (shorthand — keys match imports). */
-const ICON_LIBRARY: Record<string, LucideIcon> = {
+const ICON_LIBRARY = {
   Activity, AlarmClock, Anchor, Apple, Archive, AtSign, Award, Baby,
   Banknote, Battery, Bed, Beef, Bell, BellRing, Bike, Bird,
   Book, BookOpen, Bookmark, Brain, Briefcase, Brush, Bug, Building2,
@@ -85,11 +85,22 @@ const ICON_LIBRARY: Record<string, LucideIcon> = {
   Ticket, Timer, TramFront, TreePine, Trees, TrendingUp, Trophy, Tv,
   User, UserPlus, Users, Utensils, Video, Wallet, Waves, Wifi,
   Wind, Wrench, Zap,
-};
+} satisfies Record<string, LucideIcon>;
+
+/** A name in the curated library: what an `icon:<name>` token names. */
+export type IconName = keyof typeof ICON_LIBRARY;
+
+/**
+ * Own keys only: a bare `ICON_LIBRARY[name]` answers `icon:constructor` with
+ * Object's constructor, which no renderer can draw.
+ */
+export function isIconName(name: string): name is IconName {
+  return Object.prototype.hasOwnProperty.call(ICON_LIBRARY, name);
+}
 
 /** Exact-name lookup in the curated library; undefined if the name is unknown. */
 export function getIconByName(pascalName: string): LucideIcon | undefined {
-  return ICON_LIBRARY[pascalName];
+  return isIconName(pascalName) ? ICON_LIBRARY[pascalName] : undefined;
 }
 
 /** All library entries, sorted — the icon picker iterates this. */
@@ -104,68 +115,98 @@ export const FEATURED_ICON_NAMES: string[] = [
   'Brain', 'Pencil', 'Palette', 'Music', 'Gamepad2', 'Footprints', 'Apple',
   'Coffee', 'Sprout', 'DollarSign', 'ChartColumn', 'Wrench', 'Code', 'Bell',
   'Gift', 'Rainbow', 'Sun', 'Moon', 'Clock', 'Calendar', 'CircleCheck', 'Repeat',
-];
+] satisfies IconName[];
+
+/*
+ * The derivation is stated in library NAMES, and the icon functions below are
+ * lookups over it, so the iPhone (ios/DsulCore ContainerLook.swift, which draws
+ * an SF Symbol per name) derives the same glyph from the same name. The tables
+ * and the answers are pinned by tests/fixtures/organize/look.json.
+ */
 
 /** Curated set for name-derivation hashing (a broad, recognizable subset). */
-const CATEGORY_ICONS: LucideIcon[] = [
-  Briefcase, Leaf, House, BookOpen, Dumbbell, Target, Star, Heart, Flame,
-  Sparkles, Palette, Music, Footprints, Brain, Lightbulb, Pencil, Gamepad2,
-  Apple, Coffee, Sprout, Bell, ChartColumn, Wrench, GraduationCap, DollarSign,
-  Rainbow, Rocket, Gift, Sun, Moon,
+export const CATEGORY_ICON_NAMES: readonly IconName[] = [
+  'Briefcase', 'Leaf', 'House', 'BookOpen', 'Dumbbell', 'Target', 'Star', 'Heart', 'Flame',
+  'Sparkles', 'Palette', 'Music', 'Footprints', 'Brain', 'Lightbulb', 'Pencil', 'Gamepad2',
+  'Apple', 'Coffee', 'Sprout', 'Bell', 'ChartColumn', 'Wrench', 'GraduationCap', 'DollarSign',
+  'Rainbow', 'Rocket', 'Gift', 'Sun', 'Moon',
 ];
 
 /** Exact (case-insensitive) name → icon, covering the default categories. */
-const NAME_ICONS: Record<string, LucideIcon> = {
-  work: Briefcase,
-  wellness: HeartPulse,
-  personal: House,
-  tasks: CircleCheck,
-  habits: Repeat,
-  'no project': Inbox,
-  anytime: Clock,
+export const NAME_ICON_NAMES: Readonly<Record<string, IconName>> = {
+  work: 'Briefcase',
+  wellness: 'HeartPulse',
+  personal: 'House',
+  tasks: 'CircleCheck',
+  habits: 'Repeat',
+  'no project': 'Inbox',
+  anytime: 'Clock',
 };
 
 /** Substring keyword → icon, first match wins. */
-const KEYWORD_ICONS: [string[], LucideIcon][] = [
-  [['gym', 'fitness', 'workout', 'exercise', 'strength'], Dumbbell],
-  [['read', 'book'], BookOpen],
-  [['money', 'finance', 'budget', 'invest'], DollarSign],
-  [['health', 'wellness', 'care'], HeartPulse],
-  [['home', 'house', 'chore'], House],
-  [['work', 'job', 'office'], Briefcase],
-  [['study', 'school', 'learn', 'course', 'class'], GraduationCap],
-  [['write', 'writing', 'journal', 'note'], Pencil],
-  [['run', 'walk', 'steps'], Footprints],
-  [['music', 'song', 'practice'], Music],
-  [['art', 'design', 'draw', 'paint'], Palette],
-  [['game', 'gaming', 'play'], Gamepad2],
-  [['food', 'meal', 'nutrition', 'diet', 'cook'], Apple],
-  [['coffee'], Coffee],
-  [['garden', 'plant'], Sprout],
-  [['code', 'dev', 'build', 'project'], Wrench],
-  [['idea', 'brainstorm', 'think'], Lightbulb],
-  [['goal', 'focus'], Target],
-  [['morning'], Sun],
-  [['night', 'evening', 'sleep'], Moon],
-  [['launch', 'ship', 'startup'], Rocket],
+export const KEYWORD_ICON_NAMES: readonly (readonly [readonly string[], IconName])[] = [
+  [['gym', 'fitness', 'workout', 'exercise', 'strength'], 'Dumbbell'],
+  [['read', 'book'], 'BookOpen'],
+  [['money', 'finance', 'budget', 'invest'], 'DollarSign'],
+  [['health', 'wellness', 'care'], 'HeartPulse'],
+  [['home', 'house', 'chore'], 'House'],
+  [['work', 'job', 'office'], 'Briefcase'],
+  [['study', 'school', 'learn', 'course', 'class'], 'GraduationCap'],
+  [['write', 'writing', 'journal', 'note'], 'Pencil'],
+  [['run', 'walk', 'steps'], 'Footprints'],
+  [['music', 'song', 'practice'], 'Music'],
+  [['art', 'design', 'draw', 'paint'], 'Palette'],
+  [['game', 'gaming', 'play'], 'Gamepad2'],
+  [['food', 'meal', 'nutrition', 'diet', 'cook'], 'Apple'],
+  [['coffee'], 'Coffee'],
+  [['garden', 'plant'], 'Sprout'],
+  [['code', 'dev', 'build', 'project'], 'Wrench'],
+  [['idea', 'brainstorm', 'think'], 'Lightbulb'],
+  [['goal', 'focus'], 'Target'],
+  [['morning'], 'Sun'],
+  [['night', 'evening', 'sleep'], 'Moon'],
+  [['launch', 'ship', 'startup'], 'Rocket'],
 ];
 
-/** Small stable string hash (djb2) so fallback icons never shuffle. */
-function hashName(name: string): number {
+/**
+ * Small stable string hash (djb2) so fallback icons never shuffle.
+ *
+ * JS semantics, which a port must keep: the string is walked in UTF-16 code
+ * units, `^` truncates `h * 33` to int32 (ToInt32), and Math.abs of -2^31 is
+ * 2^31, past int32. Exported for the fixture that pins those cases.
+ */
+export function hashName(name: string): number {
   let h = 5381;
   for (let i = 0; i < name.length; i++) h = (h * 33) ^ name.charCodeAt(i);
   return Math.abs(h);
 }
 
-/** Deterministic icon for a category name — every name resolves to something. */
-export function getCategoryIcon(name: string): LucideIcon {
+/** The library name a category's name derives to: every name resolves to something. */
+export function categoryIconName(name: string): IconName {
   const key = name.trim().toLowerCase();
-  const exact = NAME_ICONS[key];
-  if (exact) return exact;
-  for (const [keywords, icon] of KEYWORD_ICONS) {
+  if (Object.prototype.hasOwnProperty.call(NAME_ICON_NAMES, key)) return NAME_ICON_NAMES[key];
+  for (const [keywords, icon] of KEYWORD_ICON_NAMES) {
     if (keywords.some((k) => key.includes(k))) return icon;
   }
-  return CATEGORY_ICONS[hashName(key) % CATEGORY_ICONS.length];
+  return CATEGORY_ICON_NAMES[hashName(key) % CATEGORY_ICON_NAMES.length];
+}
+
+/**
+ * The library name a category's glyph resolves to: a stored `icon:<name>`
+ * token naming a library icon wins; anything else (a legacy emoji, an empty
+ * glyph, a token for an icon outside the library) derives from the name.
+ */
+export function resolveCategoryIconName(glyph: string | null | undefined, name: string): IconName {
+  if (isIconToken(glyph)) {
+    const picked = glyph.slice(ICON_TOKEN_PREFIX.length);
+    if (isIconName(picked)) return picked;
+  }
+  return categoryIconName(name);
+}
+
+/** Deterministic icon for a category name — every name resolves to something. */
+export function getCategoryIcon(name: string): LucideIcon {
+  return ICON_LIBRARY[categoryIconName(name)];
 }
 
 /**
@@ -173,11 +214,7 @@ export function getCategoryIcon(name: string): LucideIcon {
  * wins; otherwise derive from the name (legacy emoji rows fall through here).
  */
 export function resolveCategoryIcon(glyph: string | null | undefined, name: string): LucideIcon {
-  if (isIconToken(glyph)) {
-    const icon = getIconByName(glyph.slice(ICON_TOKEN_PREFIX.length));
-    if (icon) return icon;
-  }
-  return getCategoryIcon(name);
+  return ICON_LIBRARY[resolveCategoryIconName(glyph, name)];
 }
 
 /**
