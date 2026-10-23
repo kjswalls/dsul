@@ -19,9 +19,19 @@ import Foundation
 // `CONTAINER_KINDS`), never spelled here, so the provisional project noun stays
 // one edit.
 //
-// O1 is read-only: rows open nothing yet (the pages are O2 and O3), and there
-// are no summary cards (O4) and no footer rows (Item types, Paused, Trash; O5
-// and O14).
+// Read-only. From O2 and O3 every row opens its container's page
+// (`OrganizeRoute`, ContainerPageModel.swift says what each page shows), and a
+// routine's row carries the web's "2/3 today". There are no summary cards
+// (O4) and no footer rows (Item types, Paused, Trash; O5 and O14) yet.
+
+/// Where a tap on Organize goes: a container's page. Foundation only, so the
+/// hosted tests pin where every row leads; the stack's path holds these
+/// (OrganizeView). Not yet the design's `ContainerRef`, which O8a adds to
+/// DsulCore with the writes: until then a kind and an id say the same, and
+/// the id is never parsed as a UUID (the sample's are not).
+enum OrganizeRoute: Hashable, Sendable {
+    case container(OrganizeKind, id: String)
+}
 
 /// One container on the list: its tile, its words, and what VoiceOver says.
 struct OrganizeRow: Identifiable, Hashable, Sendable {
@@ -37,14 +47,22 @@ struct OrganizeRow: Identifiable, Hashable, Sendable {
     /// The tile's colour (`containerAccent`): the tile and its glyph only,
     /// never text.
     let accent: ContainerAccent
-    /// The value at the row's trailing edge. Nil in O1: the routine's
-    /// "2/3 today" comes with its page (O2).
+    /// The value at the row's trailing edge: a live routine's "2/3 today"
+    /// (the web's `todayCount`), a holder's "on" or "off until Nov 1" on a
+    /// routine's page; nil otherwise.
     let trailing: String?
     /// The whole row as one accessibility element: title, kind, then the
-    /// subtitle's segments.
+    /// subtitle's segments, then the trailing value in words.
     let spokenLabel: String
 
     var id: String { kind.rawValue + "/" + containerId }
+
+    /// The page the row opens.
+    var route: OrganizeRoute { .container(kind, id: containerId) }
+
+    /// What a tap does, as VoiceOver hints it: "Opens the routine", with no
+    /// full stop, as the house hints have none.
+    var hint: String { "Opens the " + jsLowercased(OrganizeModel.noun(kind)) }
 }
 
 /// One section of the list, with its header's count.
@@ -107,6 +125,17 @@ struct OrganizeSnapshot: Sendable {
     /// them): Goals hides, and is not counted as empty.
     var goals: [Goal]? = nil
     var projects: [Project] = []
+    /// The user's trips (`SamplePlanner.awayPeriods`): a trip hides on the
+    /// pages what it hides on the grid.
+    var away: [AwayPeriod] = []
+    /// The user's own item types by slug (`SamplePlanner.typeLabels`): a
+    /// goal's Supporting work heads a custom type with its own plural.
+    var typeLabels: [String: ItemTypeLabel] = [:]
+
+    /// What every schedule here is derived against: the grid's own inputs.
+    var scheduleSource: ScheduleSource {
+        return ScheduleSource(items: items, routines: routines, seasons: seasons, away: away, timeZone: timeZone)
+    }
 }
 
 enum OrganizeModel {
@@ -186,7 +215,8 @@ enum OrganizeModel {
     static func routinesSection(_ s: OrganizeSnapshot) -> OrganizeSection? {
         guard !s.routines.isEmpty else { return nil }
         let live = Set(s.items.map(\.id))
-        let rows = s.routines.map { routineRow($0, s, liveItems: live) }
+        let source = s.scheduleSource
+        let rows = s.routines.map { routineRow($0, s, liveItems: live, source: source) }
         return section(.routines, title: ContainerWords.routines, count: "\(rows.count)", rows: rows)
     }
 
@@ -236,8 +266,11 @@ enum OrganizeModel {
     // MARK: Rows
 
     /// The routine's pill ("Until Oct 30", "Paused", "Held · Nov 1", "Held"),
-    /// its usual time, and its live items.
-    static func routineRow(_ routine: Routine, _ s: OrganizeSnapshot, liveItems: Set<UUID>) -> OrganizeRow {
+    /// its usual time, and its live items; and at the trailing edge "2/3
+    /// today" (`routineToday`). The list passes the schedule source it built
+    /// once; a row built alone builds one.
+    static func routineRow(_ routine: Routine, _ s: OrganizeSnapshot, liveItems: Set<UUID>,
+                           source: ScheduleSource? = nil) -> OrganizeRow {
         var segments: [String] = []
         if let pill = routinePillLabel(routine, today: s.today, timeZone: s.timeZone, seasons: s.seasons) {
             segments.append(pill)
@@ -247,7 +280,40 @@ enum OrganizeModel {
         }
         segments.append(itemsSegment(countLive(routine.itemIds, live: liveItems)))
         return row(.routine, id: routine.id, name: routine.name, glyph: routine.icon, color: routine.color,
-                   segments: segments, spoken: segments)
+                   segments: segments, spoken: segments,
+                   trailing: routineToday(routine, s, source: source ?? s.scheduleSource))
+    }
+
+    /// A routine's "2/3 today" and its words ("2 of 3 done today"): the web's
+    /// `todayCount` over the routine's members on today, only while the
+    /// routine is carrying them (`routineStandingOn`'s `effectiveOn`, the
+    /// gate the web puts on its Today list) and something of it is on today.
+    /// A member skipped today counts on neither side. Nil otherwise: a held
+    /// or paused routine, or one with nothing on today, shows no count.
+    static func routineToday(_ routine: Routine, _ s: OrganizeSnapshot,
+                             source: ScheduleSource) -> (shown: String, spoken: String)? {
+        let standing = routineStandingOn(routine, seasons: s.seasons, on: s.today, timeZone: s.timeZone)
+        guard standing.effectiveOn else { return nil }
+        let schedule = deriveContainerSchedule(memberIds: routine.itemIds, source: source, from: s.today, days: 1,
+                                               today: s.today)
+        let byItem = occurrencesByItem(schedule)
+        guard let shown = todayCount(byItem, ids: routine.itemIds, today: s.today) else { return nil }
+        let tally = todayTally(byItem, ids: routine.itemIds, today: s.today)
+        return (shown, "\(tally.done) of \(tally.on) done today")
+    }
+
+    /// The two numbers `todayCount` writes as "done/on today", for the words
+    /// VoiceOver says: the same walk (each listed id, a skip on neither
+    /// side). OrganizePageTests pins that the two agree.
+    static func todayTally(_ byItem: OccurrencesByItem, ids: [UUID], today: DayString) -> (done: Int, on: Int) {
+        var done = 0
+        var on = 0
+        for id in ids {
+            guard let state = byItem[id]?[today]?.state, state != .skipped else { continue }
+            on += 1
+            if state == .done { done += 1 }
+        }
+        return (done, on)
     }
 
     /// The season's pill ("Paused", "From Nov 1", "Ended"), then its live
@@ -295,13 +361,26 @@ enum OrganizeModel {
     /// name (`containerMemberIds`), done ones included. Each member comes
     /// from the live items, so none needs `countLive`. The list passes the
     /// counts it built once (`listedByProject`); a row built alone builds them.
+    /// Then its time block, when it has one ("Weekdays · 6pm–7pm",
+    /// `timeBlockSummary`, ProjectBlock.swift).
     static func projectRow(_ project: Project, _ s: OrganizeSnapshot,
                            listedByProject counts: [[UInt16]: Int]? = nil) -> OrganizeRow {
         let byName = counts ?? listedByProject(s.items)
         let listed = byName[Array(jsLowercased(project.name).utf16)] ?? 0
-        let segments = [itemsSegment(listed)]
+        var segments = [itemsSegment(listed)]
+        var spoken = segments
+        if let block = timeBlockSummary(project) {
+            segments.append(block)
+            spoken.append(spokenBlock(block))
+        }
         return row(.project, id: project.id, name: project.name, glyph: project.emoji, color: project.color,
-                   segments: segments, spoken: segments)
+                   segments: segments, spoken: spoken)
+    }
+
+    /// A time block as VoiceOver says it: "Weekdays, 6pm to 7pm" (the
+    /// separator a pause, the range's en dash "to").
+    static func spokenBlock(_ summary: String) -> String {
+        return spokenSegment(summary).replacingOccurrences(of: "\u{2013}", with: " to ")
     }
 
     /// Top-level items per folded project name, in one pass over the items,
@@ -321,14 +400,19 @@ enum OrganizeModel {
         return counts
     }
 
-    private static func row(_ kind: OrganizeKind, id: String, name: String, glyph: String?, color: String?,
-                            segments: [String], spoken: [String]) -> OrganizeRow {
-        let parts = [name, jsLowercased(noun(kind))] + spoken.map(spokenSegment)
+    /// A row: its tile from the stored look (else the name's), the
+    /// subtitle's segments joined, and VoiceOver's label: the name, the kind,
+    /// the spoken segments, then the trailing value's words.
+    static func row(_ kind: OrganizeKind, id: String, name: String, glyph: String?, color: String?,
+                    segments: [String], spoken: [String],
+                    trailing: (shown: String, spoken: String)? = nil) -> OrganizeRow {
+        var parts = [name, jsLowercased(noun(kind))] + spoken.map(spokenSegment)
+        if let trailing { parts.append(trailing.spoken) }
         return OrganizeRow(kind: kind, containerId: id, title: name,
                            subtitle: segments.isEmpty ? nil : segments.joined(separator: separator),
                            symbol: containerSymbol(glyph: glyph, name: name, kind: kind),
                            accent: containerAccent(color, name: name),
-                           trailing: nil,
+                           trailing: trailing?.shown,
                            spokenLabel: parts.joined(separator: ", "))
     }
 
@@ -405,7 +489,7 @@ extension SamplePlanner {
     var organizeSnapshot: OrganizeSnapshot {
         return OrganizeSnapshot(hasLoaded: hasLoaded, loadError: loadError, settings: settings, today: today,
                                 timeZone: timeZoneID, items: items, routines: routines, seasons: seasons,
-                                goals: goals, projects: projectRecords)
+                                goals: goals, projects: projectRecords, away: awayPeriods, typeLabels: typeLabels)
     }
 
     /// The Organize tab's content now.

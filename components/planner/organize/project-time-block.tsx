@@ -16,7 +16,7 @@ import { Segmented, SegmentedOption, SettingRow } from './primitives';
 import { BufferedInput } from './detail-parts';
 import { cn } from '@/lib/utils';
 import { PropertyChip } from '@/components/primitives/property-chip';
-import { blockWhen, hasTimeBlock } from '@/lib/project-block';
+import { PROJECT_REPEATS, timeBlockSummary } from '@/lib/project-block';
 import { BUCKET_START_TIMES } from '@/lib/time-bucket';
 import type { Project, RepeatFrequency, TimeBucket } from '@/lib/planner-types';
 
@@ -48,32 +48,9 @@ const BUCKETS: { value: TimeBucket; label: string; defaultTime: string }[] = [
   { value: 'evening', label: 'Evening', defaultTime: BUCKET_START_TIMES.evening },
 ];
 
-const REPEATS: { value: RepeatFrequency; label: string }[] = [
-  { value: 'daily', label: 'Every day' },
-  { value: 'weekdays', label: 'Weekdays' },
-  { value: 'weekends', label: 'Weekends' },
-  { value: 'monthly', label: 'Monthly' },
-  { value: 'custom', label: 'Chosen days' },
-];
-
-/**
- * "Every day · 6pm–7pm" — the block in one line, for the console chip and the
- * project page alike so the two cannot word it differently. Undefined when
- * there is no block: day-items' own rule (lib/project-block.ts) — a row
- * missing its repeat draws on no day, so it must not read "Every day".
- */
-export function timeBlockSummary(project: Project): string | undefined {
-  if (!hasTimeBlock(project)) return undefined;
-  const repeat = REPEATS.find((r) => r.value === project.repeatFrequency)?.label ?? project.repeatFrequency;
-  return `${repeat} · ${blockWhen(project)}`;
-}
-
-/**
- * `none` is absent on purpose. A block with no repeat renders on no day —
- * day-items.ts's switch sends it to the `default` arm, which reads `repeatDays`,
- * and a `none` project has none — so offering it would be an option that
- * silently means "off" while the switch above still reads on.
- */
+/* The repeats and the one-line summary are lib/project-block.ts's
+   (PROJECT_REPEATS, timeBlockSummary), shared with the iPhone. */
+const REPEATS = PROJECT_REPEATS;
 
 const DURATIONS = [15, 30, 45, 60, 90, 120, 180, 240];
 

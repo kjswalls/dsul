@@ -41,6 +41,7 @@ import {
 import { containerMemberIds, daysBetween } from '@/lib/container-schedule';
 import { ContainerCreateForm } from '../container-create-form';
 import { seasonStates } from '../container-fields';
+import { seasonStateNote } from '@/lib/organize-copy';
 import type { Item, Season, Routine } from '@/lib/planner-types';
 
 /**
@@ -495,23 +496,10 @@ function deleteConsequence(
   );
 }
 
-/** The four ways a season can be, in the season's own words. Shared with /season/[id]. */
+/**
+ * The four ways a season can be, in the season's own words. Shared with
+ * /season/[id], and with the iPhone through lib/organize-copy.ts.
+ */
 export function SeasonStateNote({ season, live }: { season: Season; live: boolean }) {
-  if (season.state === 'active') {
-    return <>On until you say otherwise. Dates are ignored while it is set this way.</>;
-  }
-  if (season.state === 'paused') {
-    return <>Off. Everything it holds is hidden, and streaks and history stay exactly as they are.</>;
-  }
-  if (!season.startsOn && !season.endsOn) {
-    return <>Always on. Give it a start or an end to make it follow the calendar.</>;
-  }
-  const from = season.startsOn ? formatShort(season.startsOn) : null;
-  const to = season.endsOn ? formatShort(season.endsOn) : null;
-  const span = from && to ? `${from} to ${to}` : from ? `from ${from}` : `until ${to}`;
-  return (
-    <>
-      Runs {span}, inclusive. {live ? 'On now.' : 'Off right now. Nothing it holds is showing.'}
-    </>
-  );
+  return <>{seasonStateNote(season, live)}</>;
 }

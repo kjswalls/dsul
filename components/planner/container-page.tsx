@@ -8,9 +8,9 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { usePlannerSettled } from '@/lib/planner-ready';
 import { useOrganizeEnabled } from '@/lib/extension-gates';
 import { useOpenConsole } from '@/lib/console-door';
+import { HELD_BY_NONE, NOTHING_IN_IT_YET, ORGANIZE_OFF, heldByState } from '@/lib/organize-copy';
 import {
   countLive,
-  formatShort,
   parseDay,
   routinePillLabel,
   useLiveItemIds,
@@ -129,10 +129,9 @@ export function ContainerPage({ kind, id }: { kind: PageKind; id: string | undef
   if (kind !== 'project' && !organizeOn) {
     return (
       <Shell>
-        <h1 className="text-foreground text-lg font-semibold">Organize is switched off</h1>
+        <h1 className="text-foreground text-lg font-semibold">{ORGANIZE_OFF.title}</h1>
         <p className="text-muted-foreground text-sm" data-testid="container-page-extension-off">
-          Your routines and seasons are still here. Switch the extension back on and this page
-          picks up where it left off. Nothing was deleted.
+          {ORGANIZE_OFF.body}
         </p>
         <div className="flex gap-2">
           <Button asChild variant="outline" size="sm">
@@ -402,7 +401,7 @@ export function ContainerPage({ kind, id }: { kind: PageKind; id: string | undef
           {members.length === 0 ? (
             <Section title="Rhythm">
               <p className="text-muted-foreground text-sm">
-                Nothing is in it yet. Link items from the Organize console.
+                {NOTHING_IN_IT_YET} Link items from the Organize console.
               </p>
             </Section>
           ) : (
@@ -445,15 +444,13 @@ export function ContainerPage({ kind, id }: { kind: PageKind; id: string | undef
                         <Link href={`/season/${p.id}`} className={ROW_LINK}>
                           <CategoryIcon glyph={p.icon} name={p.name} className="size-3.5" />
                           <span className="min-w-0 flex-1 truncate">{p.name}</span>
-                          <span className="text-muted-foreground text-xs">
-                            {isSeasonActiveOn(p, todayStr) ? 'on' : `off${p.startsOn && p.startsOn > todayStr ? ` until ${formatShort(p.startsOn)}` : ''}`}
-                          </span>
+                          <span className="text-muted-foreground text-xs">{heldByState(p, todayStr)}</span>
                         </Link>
                       </li>
                     ))}
                 </ul>
               ) : (
-                <p className="text-muted-foreground text-sm">No season. It answers for itself.</p>
+                <p className="text-muted-foreground text-sm">{HELD_BY_NONE}</p>
               )}
             </Section>
           )}

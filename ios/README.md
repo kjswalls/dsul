@@ -1057,13 +1057,15 @@ by push yet.
 
 ## Checking Organize
 
-Checks are marked by the PR that brings them. O1 is the list, read-only.
+Checks are marked by the PR that brings them. O1 is the list, read-only; O2
+the routine and season pages, O3 the goal and project pages, read-only but
+for the tick.
 
 1. (O1) Sample: Organize shows Routines, Seasons, Goals and Projects, in that
    order. Morning routine has a honey sunrise tile, Wind down a plum moon,
    Autumn a moss leaf and Run a half marathon an indigo target; the projects'
    tiles come from their names (Work a briefcase). Seasons' header reads
-   "1 on". The rows open nothing.
+   "1 on". Every row has a chevron and pushes its page (O2, O3).
 2. (O1) Signed in with Goals off on the web (Settings, Extensions): no Goals
    section, and nothing says there are none.
 3. (O1) Turn Goals on on the web, then pull to refresh on Organize: Goals
@@ -1084,6 +1086,87 @@ Checks are marked by the PR that brings them. O1 is the list, read-only.
    first fetch lands. In flight mode the row says why and offers Try again.
 8. (O1) Pull to refresh on the list: the spinner, then the list again (a
    container renamed on the web meanwhile shows its new name).
+9. (O2) Sample: Morning routine's row reads "2/3 today"; Wind down's shows no
+   count. Tap Morning routine: its page pushes, with the 44pt sunrise tile,
+   "ROUTINE" and the name; the notes; the chips "Usually 7:00 am" and
+   "Active"; Held by, "No season. It answers for itself."; Today, "2 of 3
+   done", with Meds, Stretch 10 min and Journal in the routine's order and
+   Journal marked "next"; then Last 14 days. Scroll: the name moves into the
+   bar once the header is under it. Back returns to the list, and tapping the
+   Organize tab on a page pops to the list too.
+10. (O2) Tick Journal on the page: its circle fills lime, the header reads "3
+    of 3 done", "All through for today." shows under the section, and
+    today's cell (the last, outlined) fills to the top. Back on the list the
+    row reads "3/3 today", and Today's tab shows Journal done. Untick it:
+    everything goes back.
+11. (O2) The strip never says "Missed" or "overdue". With VoiceOver, each cell
+    reads on its own: "Sep 30, 2 done", "Sep 26, nothing recorded", "Today,
+    2 of 3 done". A past day with 1 of 3 done is a full lime cell ("1
+    done"), never a third; a day with nothing recorded is a gray wash, never
+    a faded lime. The legend under it reads the first date, "Done · Nothing
+    recorded" and "Today".
+12. (O2) Signed in, add a member to a routine on the web, then pull to
+    refresh on its page: no lime past cell and no skipped one changes, and
+    today's share moves. (A past day that had nothing on may turn into a gray wash:
+    the payload has no creation date. It never turns lime or a share.)
+13. (O2) Wind down (nothing in it): "Nothing is in it yet.", with no Today,
+    no Other days and no strip. A routine whose members don't fall on today
+    shows "Nothing from … is on today." and its members under Other days with
+    their cadence; its row shows no count.
+14. (O2) Signed in, put a routine in a season on the web and switch the
+    season Off: the routine's page still says "Active", and under it the
+    held note ("“Winter” is off, so this routine isn’t carrying anything
+    right now. …"), never a bare Active. Held by lists Winter, "off"; a tap
+    pushes Winter's page. The list's row shows no count.
+15. (O2) Pause a routine on the web until a day: Status reads "Paused until
+    Oct 30", and the note under it says its items come back on that day.
+    Its open members sit under Other days, each "… · Hidden with …" beside
+    its cadence. A one-off task in a routine, cancelled on the web and dated
+    today, shows the skip mark, no tick, and counts in "· 1 skipped".
+16. (O2) Autumn (sample, no dates): Status "Dates", then "Always on. Give it a
+    start or an end to make it follow the calendar."; Items: Journal,
+    "Daily"; and the strip. Signed in, give a season dates on the web: a
+    Runs chip ("Oct 1 to Mar 15") and "Runs …, inclusive. On now." A season
+    holding a routine lists it under Routines, in the routines' own order,
+    and a tap pushes its page.
+17. (O2) Pull to refresh on a page. Delete its container on the web, then
+    pull: the page pops back by itself. (A goal's page stays if a fetch
+    could not read goals; it pops only once a fetch reads them without it.) Turn Organize off on the web with a
+    routine's page open and pull: the page reads "Organize is switched off"
+    and its sentence, never "not found".
+18. (O3) Sample: Run a half marathon's page shows the ring (a third of it
+    lime, the target glyph in the middle), the why, "120 days to …", the
+    chips "Active" and "Started … · Target …", "20% of the way to …", then
+    Milestones "1/3": Run 5K without stopping reached (a lime check, the
+    title struck through and gray), Run a 10K next (a 2pt lime ring, its
+    title and date semibold in the label colour, never lime), Run 16K ahead,
+    on a gray rail. Check-ins: Weekly run review, "… · last …". Supporting
+    work: Gym, under its type.
+19. (O3) Tap Run a 10K's node: it is reached and the header reads "2/3"; the
+    web shows it reached after a refresh. With VoiceOver the row reads "Run a
+    10K, …, next up", activating it opens its sheet, and the actions offer
+    "Mark Run a 10K reached".
+20. (O3) Signed in: a goal with no milestones shows its tile (no ring), "No
+    milestones yet", the web's "No checkpoints yet. …" and no time-elapsed
+    line. A milestone dated before today and not reached says "still ahead
+    of you". One in a season switched Off says "Hidden with Winter".
+21. (O3) Achieve a goal on the web, then pull on its page: Status reads
+    "Achieved", the note "Achieved on …. Everything below is the record of
+    how it went.", no countdown, and its recurring members listed under the
+    wind-down sentence, each opening its sheet, none ticking.
+22. (O3) Sample projects: Work's page reads "4 items" with four rows
+    (Standup, filed "work", included), open ones before done ones, "No time
+    block" and its notes. Writing's reads "1 item" and "Weekdays ·
+    6:30am–7:30am". A project with nothing on a day in the last 14 days shows
+    no strip.
+23. (O3) Tap any row on any page (not its circle): the item's sheet opens,
+    acting on today. A circle ticks only an item on today; a row on another
+    day opens its sheet wherever it is tapped.
+24. (O2, O3) Dark mode and the largest Dynamic Type on each page: the ticks,
+    the ring, the nodes and the strip's cells are full-strength lime, no text
+    is lime, the chips wrap, the name wraps, and the strip keeps its 14
+    columns with the legend stacked under it. Today's cell with nothing done
+    is an empty outline, and the console logs no "singular matrix" line.
 
 ## Rules
 

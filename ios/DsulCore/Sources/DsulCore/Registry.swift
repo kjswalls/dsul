@@ -310,6 +310,21 @@ public func typeLabel(_ typeName: String, labels: [String: ItemTypeLabel]) -> St
     return caps(typeName, labels: labels).label
 }
 
+/// lib/item-registry.ts `getItemTypeConfig(name).labelPlural`: the type's
+/// plural, a goal's Supporting work headings. "Tasks" and "Habits" for the
+/// built-ins whatever `labels` says; a custom slug takes its row's
+/// `labelPlural`, else its label (or `capitalize(name)`) plus "s", which is
+/// both `buildCustomTypeConfig`'s fallback and the unhydrated one's.
+public func typeLabelPlural(_ typeName: String, labels: [String: ItemTypeLabel] = [:]) -> String {
+    switch typeName {
+    case "task": return "Tasks"
+    case "habit": return "Habits"
+    default:
+        if let plural = labels[typeName]?.labelPlural, !plural.isEmpty { return plural }
+        return "\(caps(typeName, labels: labels).label)s"
+    }
+}
+
 /// lib/item-registry.ts `isSkippable`: the capability AND recurrence. A skip is
 /// a date in `skippedDates`, which only means something when there is another
 /// occurrence. No subtask rule: a recurring subtask passes, as on the web.

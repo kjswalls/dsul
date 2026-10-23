@@ -15,16 +15,12 @@ import { usePlannerStore } from '@/lib/planner-store';
 // as every other destructive prompt in the app — and keeps the plate free of a
 // second dismissable layer competing for Escape.
 import { useUIStore } from '@/lib/ui-store';
-import {
-  inactiveItemIdsOn,
-  membersRevealedByRemoving,
-  seasonResumeDate,
-  routineStandingOn,
-} from '@/lib/active';
+import { inactiveItemIdsOn, membersRevealedByRemoving, routineStandingOn } from '@/lib/active';
+import { routineHeldNoteRuns, routinePausedNote } from '@/lib/organize-copy';
+import { CopyRuns } from '@/components/primitives/copy-runs';
 import {
   byName,
   countLive,
-  formatShort,
   matching,
   parseDay,
   routinePillLabel,
@@ -330,6 +326,13 @@ function RoutineDetail({
   const reappear = revealed.length > 0;
   /** Of this routine's members, the ones its being held off is actually costing. */
   const hiddenHere = routine.itemIds.filter((id) => hiddenIds.has(id)).length;
+  /**
+   * The soonest holder to return names the date, because the rule is
+   * disjunctive: the FIRST season back carries the routine, whatever the
+   * others do. A season with no scheduled return says nothing rather than
+   * promising a date it does not have (lib/organize-copy.ts).
+   */
+  const heldNote = routineHeldNoteRuns(standing, hiddenHere, todayStr);
 
   const consequence = `“${routine.name}” is removed, but its ${liveCount} ${
     liveCount === 1 ? 'item stays' : 'items stay'
@@ -388,10 +391,7 @@ function RoutineDetail({
 
       {paused && (
         <StatusStrip testId="routine-paused-note" icon={<Moon className="size-3.5" aria-hidden />}>
-          {routine.pausedUntil
-            ? `Its items come back on ${formatShort(routine.pausedUntil)}, on their own.`
-            : 'Its items are hidden until you resume.'}{' '}
-          Streaks and history stay exactly as they are.
+          {routinePausedNote(routine)}
         </StatusStrip>
       )}
 
@@ -407,34 +407,9 @@ function RoutineDetail({
           is only true of the ones actually off the grid — the first version ran
           them together as "so its items are hidden anyway", which lied for every
           member some other routine was still carrying. */}
-      {standing.localOn && !standing.effectiveOn && standing.soonestBlocker && (
+      {heldNote && (
         <StatusStrip testId="routine-held-note" icon={<Layers className="size-3.5" aria-hidden />}>
-          {standing.blockers.length === 1 ? (
-            <>
-              &ldquo;{standing.soonestBlocker.name}&rdquo; is off, so this routine isn&rsquo;t
-              carrying anything right now.
-            </>
-          ) : (
-            <>
-              All <span className="font-num">{standing.blockers.length}</span> seasons holding it
-              are off, so this routine isn&rsquo;t carrying anything right now.
-            </>
-          )}{' '}
-          {/* The soonest holder to return, because the rule is disjunctive: the
-              FIRST season back carries the routine, whatever the others do. A
-              season with no scheduled return says nothing rather than
-              promising a date it does not have. */}
-          {hiddenHere === 0 ? (
-            <>Its items are still on your day another way.</>
-          ) : (
-            <>
-              <span className="font-num">{hiddenHere}</span>{' '}
-              {hiddenHere === 1 ? 'item is' : 'items are'} hidden.{' '}
-              {seasonResumeDate(standing.soonestBlocker, todayStr)
-                ? `Back on ${formatShort(seasonResumeDate(standing.soonestBlocker, todayStr)!)}.`
-                : 'They come back when one of those seasons does.'}
-            </>
-          )}
+          <CopyRuns runs={heldNote} />
         </StatusStrip>
       )}
 

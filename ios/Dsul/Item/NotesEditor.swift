@@ -105,8 +105,9 @@ struct NotesEditor: View {
 /// the notes; Show all stays its own, so a tap on it never starts editing.
 /// Show all is hit over 44pt by an overhang of 12pt each way, so it sits 12pt
 /// under the text: the overhang reaches the text's frame and no further, and
-/// never takes a tap meant for the notes.
-private struct NotesText: View {
+/// never takes a tap meant for the notes. A container's page shows its notes
+/// with it too (Organize, read-only until O8b).
+struct NotesText: View {
     let text: String
     let onEdit: (() -> Void)?
 

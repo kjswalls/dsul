@@ -1,4 +1,4 @@
-import type { Project } from './planner-types';
+import type { Project, RepeatFrequency } from './planner-types';
 
 /**
  * A project's repeating time block, in the two forms the panes need — one
@@ -30,4 +30,35 @@ export function clockLabel(mins: number): string {
 export function blockWhen(p: Pick<Project, 'startTime' | 'duration'>): string {
   const start = minutesOfClock(p.startTime ?? '00:00');
   return `${clockLabel(start)}–${clockLabel(start + (p.duration ?? 60))}`;
+}
+
+/**
+ * The repeats a block can take, in the time block editor's order and words.
+ * `none` is absent on purpose: a block with no repeat renders on no day
+ * (lib/day-items.ts sends it to its `default` arm, which reads `repeatDays`),
+ * so offering it would be an option that silently means "off".
+ */
+export const PROJECT_REPEATS: readonly { value: RepeatFrequency; label: string }[] = [
+  { value: 'daily', label: 'Every day' },
+  { value: 'weekdays', label: 'Weekdays' },
+  { value: 'weekends', label: 'Weekends' },
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'custom', label: 'Chosen days' },
+];
+
+/**
+ * "Every day · 6pm–7pm": the block in one line, for the console chip, the
+ * project page and the iPhone's project page alike, so none words it
+ * differently (moved out of components/planner/organize/project-time-block.tsx;
+ * pinned for the phone by tests/fixtures/organize/look.json `blocks`).
+ * Undefined when there is no block, by {@link hasTimeBlock}: a row missing its
+ * repeat draws on no day, so it must not read "Every day". A repeat outside the
+ * list (legacy free text like "weekly") is shown as stored.
+ */
+export function timeBlockSummary(
+  project: Pick<Project, 'startTime' | 'timeBucket' | 'repeatFrequency' | 'duration'>,
+): string | undefined {
+  if (!hasTimeBlock(project)) return undefined;
+  const repeat = PROJECT_REPEATS.find((r) => r.value === project.repeatFrequency)?.label ?? project.repeatFrequency;
+  return `${repeat} · ${blockWhen(project)}`;
 }

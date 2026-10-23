@@ -115,6 +115,12 @@ describe('the iOS change filter', () => {
     for (const p of [
       'tests/fixtures/organize/labels.json',
       'tests/fixtures/organize/look.json',
+      'tests/fixtures/organize/schedule.json',
+      'tests/fixtures/organize/standing.json',
+      'tests/fixtures/organize/goals.json',
+      'tests/fixtures/organize/copy.json',
+      'lib/organize-copy.ts',
+      'lib/project-block.ts',
       'lib/accent-colors.ts',
       'lib/category-icons.ts',
       'lib/scope-rail.ts',
@@ -130,6 +136,11 @@ describe('the iOS change filter', () => {
     for (const p of [
       'components/primitives/color-swatch-picker.tsx',
       'components/planner/goal-sections.tsx',
+      'components/planner/routine-today.tsx',
+      'components/planner/container-page.tsx',
+      'components/planner/organize/project-time-block.tsx',
+      'components/planner/organize/sections/routines.tsx',
+      'lib/organize-copy.test.ts',
       'tests/fixtures/organize.json',
       'lib/category-icons.test.ts',
     ]) {

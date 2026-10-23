@@ -110,6 +110,9 @@ describe('RoutineToday', () => {
     render(<RoutineToday routine={morning} />);
     expect(screen.getByTestId('routine-today-finished')).toBeTruthy();
     expect(screen.getByTestId('routine-today-summary').textContent).toBe('1 of 2 done · 1 skipped');
+    // The words are lib/organize-copy.ts's; every count keeps the numeral face.
+    const counts = [...screen.getByTestId('routine-today-summary').querySelectorAll('.font-num')];
+    expect(counts.map((n) => n.textContent)).toEqual(['1', '2', '1']);
   });
 
   it('lists nothing while the routine is paused — the grid lists nothing either', () => {

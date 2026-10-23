@@ -8,11 +8,20 @@ import { CategoryIcon } from '@/lib/category-icons';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useAwayStore } from '@/lib/away-store';
 import { fetchCheckins, getItemEventsAvailable, type ItemEvent } from '@/lib/db';
-import { suppressionLabel, suppressionReason } from '@/lib/active';
-import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
-import { goalProgress, isAchieved, isGoalActive, nextMilestone, progressLabel, timeElapsed } from '@/lib/goals';
+import { formatDay, suppressionLabel, suppressionReason } from '@/lib/active';
+import { getItemTypeConfig } from '@/lib/item-registry';
+import {
+  goalCountdown,
+  goalMemberGroups,
+  goalProgress,
+  milestoneTimeline,
+  nextMilestone,
+  progressLabel,
+  timeElapsed,
+  timeElapsedLabel,
+} from '@/lib/goals';
+import { NO_MILESTONES_YET } from '@/lib/organize-copy';
 import { formatShort, useToday } from '@/lib/collections';
-import { toDateOnly } from '@/lib/overdue';
 import { cn } from '@/lib/utils';
 import type { Goal, Item } from '@/lib/planner-types';
 
@@ -82,9 +91,7 @@ export function GoalProgressTrack({
         )}
       </div>
       {elapsed !== null && (
-        <span className="text-muted-foreground text-[11px]">
-          {Math.round(elapsed * 100)}% of the way to {formatShort(goal.targetOn!)}
-        </span>
+        <span className="text-muted-foreground text-[11px]">{timeElapsedLabel(goal, todayStr)}</span>
       )}
     </div>
   );
@@ -127,23 +134,6 @@ export function GoalMemberNote({ item }: { item: Item }) {
 
 /* ── the milestone timeline ───────────────────────────────────────────────── */
 
-type MilestoneState = 'achieved' | 'next' | 'overdue' | 'dropped' | 'ahead';
-
-function milestoneState(item: Item, isNext: boolean, todayStr: string): MilestoneState {
-  if (item.status === 'cancelled') return 'dropped';
-  if (isAchieved(item)) return 'achieved';
-  // `next` OUTRANKS `overdue`, which is the opposite of the first version and
-  // the difference between a timeline that points somewhere and one that does
-  // not. The earliest open milestone of a goal that has slipped is BOTH — and
-  // ranking overdue first meant no row was highlighted at all on exactly the
-  // goals where "what now?" is the question. Lateness still shows, in the
-  // caption.
-  if (isNext) return 'next';
-  const date = 'startDate' in item && item.startDate ? toDateOnly(item.startDate) : null;
-  if (date && date < toDateOnly(todayStr)) return 'overdue';
-  return 'ahead';
-}
-
 /**
  * The checkpoints, in the order they are meant to happen.
  *
@@ -158,93 +148,69 @@ function milestoneState(item: Item, isNext: boolean, todayStr: string): Mileston
  */
 export function MilestoneTimeline({ goal, itemsById }: { goal: Goal; itemsById: Map<string, Item> }) {
   const { todayStr } = useToday();
-  const next = nextMilestone(goal, itemsById);
   // Ordered the way `nextMilestone` orders them — dated first, by date, then
   // the undated in their stored sequence. Rendering the raw membership order
   // instead made the dates jump around under a heading that claims they are in
   // the order they are meant to happen, and dropped the "next up" pip into the
-  // middle of the list.
-  const rows = goal.milestoneIds
-    .map((id) => itemsById.get(id))
-    .filter((i): i is Item => !!i)
-    .sort((a, b) => {
-      const da = 'startDate' in a && a.startDate ? toDateOnly(a.startDate) : null;
-      const db = 'startDate' in b && b.startDate ? toDateOnly(b.startDate) : null;
-      if (da && db) return da < db ? -1 : da > db ? 1 : 0;
-      if (da) return -1;
-      if (db) return 1;
-      return 0;
-    });
+  // middle of the list. The rows and their words are lib/goals.ts's, which the
+  // iPhone's goal page shares.
+  const rows = milestoneTimeline(goal, itemsById, todayStr);
 
   if (rows.length === 0) {
-    return (
-      <p className="text-muted-foreground text-sm">
-        No checkpoints yet. A milestone is a one-shot task whose date is the day you mean to
-        have reached it.
-      </p>
-    );
+    return <p className="text-muted-foreground text-sm">{NO_MILESTONES_YET}</p>;
   }
 
   return (
     <ol className="flex flex-col" data-testid="goal-timeline">
-      {rows.map((item) => {
-        const state = milestoneState(item, item.id === next?.id, todayStr);
-        const date = 'startDate' in item ? item.startDate : undefined;
-        const late = !!date && toDateOnly(date) < toDateOnly(todayStr);
-        return (
-          <li
-            key={item.id}
-            data-testid="goal-timeline-row"
-            data-state={state}
-            className="border-border flex items-start gap-3 border-l py-2.5 pl-4 last:border-l-transparent"
-          >
-            <span
+      {rows.map(({ item, state, dateLabel, annotations }) => (
+        <li
+          key={item.id}
+          data-testid="goal-timeline-row"
+          data-state={state}
+          className="border-border flex items-start gap-3 border-l py-2.5 pl-4 last:border-l-transparent"
+        >
+          <span
+            className={cn(
+              'mt-[3px] -ml-[21px] size-2.5 shrink-0 rounded-full ring-2',
+              'ring-background',
+              state === 'achieved' && 'bg-primary',
+              state === 'next' && 'bg-foreground',
+              state === 'overdue' && 'bg-muted-foreground',
+              state === 'dropped' && 'bg-muted',
+              state === 'ahead' && 'bg-border',
+            )}
+            aria-hidden
+          />
+          <span className="flex min-w-0 flex-col gap-0.5">
+            {/* A link, because an undated checkpoint has to be reachable from
+                here. Inline creation deliberately leaves a milestone without
+                a date, and before this the goal offered no route at all to
+                giving it one — the timeline said "No date yet" and could not
+                be clicked. */}
+            <Link
+              href={`/item/${item.id}`}
               className={cn(
-                'mt-[3px] -ml-[21px] size-2.5 shrink-0 rounded-full ring-2',
-                'ring-background',
-                state === 'achieved' && 'bg-primary',
-                state === 'next' && 'bg-foreground',
-                state === 'overdue' && 'bg-muted-foreground',
-                state === 'dropped' && 'bg-muted',
-                state === 'ahead' && 'bg-border',
+                'hover:text-foreground text-sm transition-colors',
+                state === 'achieved' && 'text-muted-foreground',
+                state === 'dropped' && 'text-muted-foreground',
+                state === 'next' && 'font-medium',
               )}
-              aria-hidden
-            />
-            <span className="flex min-w-0 flex-col gap-0.5">
-              {/* A link, because an undated checkpoint has to be reachable from
-                  here. Inline creation deliberately leaves a milestone without
-                  a date, and before this the goal offered no route at all to
-                  giving it one — the timeline said "No date yet" and could not
-                  be clicked. */}
-              <Link
-                href={`/item/${item.id}`}
-                className={cn(
-                  'hover:text-foreground text-sm transition-colors',
-                  state === 'achieved' && 'text-muted-foreground',
-                  state === 'dropped' && 'text-muted-foreground',
-                  state === 'next' && 'font-medium',
-                )}
-              >
-                {item.title}
-              </Link>
-              <span className="text-muted-foreground flex flex-wrap items-center gap-x-2 text-[11px]">
-                {date ? formatShort(date) : 'No date yet'}
-                {state === 'achieved' && <span>· reached</span>}
-                {state === 'next' && <span>· next up</span>}
-                {/* "Still ahead of you", not "Overdue". Same information — the
-                    date is right there — in the register the rest of this app
-                    uses for work that has slipped. Rendered for the NEXT row
-                    too when it is late, since `next` now outranks `overdue`. */}
-                {(state === 'overdue' || (state === 'next' && late)) && (
-                  <span>· still ahead of you</span>
-                )}
-                {state === 'dropped' && <span>· dropped</span>}
-                <GoalMemberNote item={item} />
-              </span>
+            >
+              {item.title}
+            </Link>
+            <span className="text-muted-foreground flex flex-wrap items-center gap-x-2 text-[11px]">
+              {dateLabel}
+              {/* "Still ahead of you", not "Overdue": same information — the
+                  date is right there — in the register the rest of this app
+                  uses for work that has slipped. */}
+              {annotations.map((note) => (
+                <span key={note}>· {note}</span>
+              ))}
+              <GoalMemberNote item={item} />
             </span>
-          </li>
-        );
-      })}
+          </span>
+        </li>
+      ))}
     </ol>
   );
 }
@@ -264,20 +230,12 @@ export function GoalMemberGroups({
   itemsById: Map<string, Item>;
   empty: string;
 }) {
-  const rows = ids.map((id) => itemsById.get(id)).filter((i): i is Item => !!i);
-  if (rows.length === 0) return <p className="text-muted-foreground text-sm">{empty}</p>;
-
-  const byType = new Map<string, Item[]>();
-  for (const item of rows) {
-    const name = itemTypeName(item);
-    const list = byType.get(name);
-    if (list) list.push(item);
-    else byType.set(name, [item]);
-  }
+  const groups = goalMemberGroups(ids, itemsById);
+  if (groups.length === 0) return <p className="text-muted-foreground text-sm">{empty}</p>;
 
   return (
     <div className="flex flex-col gap-4" data-testid="goal-members">
-      {[...byType.entries()].map(([typeName, group]) => {
+      {groups.map(({ typeName, items: group }) => {
         const config = getItemTypeConfig(typeName);
         return (
           <div key={typeName} className="flex flex-col gap-1.5">
@@ -378,14 +336,7 @@ export function GoalSummary({ goal, itemsById }: { goal: Goal; itemsById: Map<st
   const { todayStr } = useToday();
   const { achieved, total } = goalProgress(goal, itemsById);
   const next = nextMilestone(goal, itemsById);
-  const days =
-    goal.targetOn && isGoalActive(goal)
-      ? Math.round(
-          (Date.parse(`${toDateOnly(goal.targetOn)}T00:00:00Z`) -
-            Date.parse(`${toDateOnly(todayStr)}T00:00:00Z`)) /
-            86_400_000,
-        )
-      : null;
+  const countdown = goalCountdown(goal, todayStr);
 
   return (
     <div className="flex flex-col gap-3" data-testid="goal-summary">
@@ -398,17 +349,13 @@ export function GoalSummary({ goal, itemsById }: { goal: Goal; itemsById: Map<st
           <span className="inline-flex items-center gap-1.5">
             <Flag className="size-3.5" aria-hidden />
             next: {next.title}
-            {'startDate' in next && next.startDate ? ` · ${formatShort(next.startDate)}` : ''}
+            {'startDate' in next && next.startDate ? ` · ${formatDay(next.startDate)}` : ''}
           </span>
         )}
-        {days !== null && (
+        {countdown !== null && (
           <span className="inline-flex items-center gap-1.5">
             <CalendarClock className="size-3.5" aria-hidden />
-            {days > 0
-              ? `${days} ${days === 1 ? 'day' : 'days'} to ${formatShort(goal.targetOn!)}`
-              : days === 0
-                ? 'target is today'
-                : `${Math.abs(days)} ${Math.abs(days) === 1 ? 'day' : 'days'} past ${formatShort(goal.targetOn!)}`}
+            {countdown}
           </span>
         )}
       </div>

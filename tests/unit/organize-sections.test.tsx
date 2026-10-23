@@ -353,6 +353,8 @@ describe('a routine a season is holding off', () => {
     expect(note).toHaveTextContent('this routine isn’t carrying anything');
     expect(note).toHaveTextContent('1 item is hidden');
     expect(note).toHaveTextContent('Sep 1');
+    // The count is in the numeral face; the date is running text, as it was.
+    expect([...note.querySelectorAll('.font-num')].map((n) => n.textContent)).toEqual(['1']);
   });
 
   it('promises no date when the blocking season has none to give', () => {
@@ -397,6 +399,8 @@ describe('a routine a season is holding off', () => {
     open('routines');
     click('routine-row');
     expect(id('routine-held-note')).toHaveTextContent('All 2 seasons holding it are off');
+    // Both counts in the numeral face: the seasons and the hidden items.
+    expect([...id('routine-held-note').querySelectorAll('.font-num')].map((n) => n.textContent)).toEqual(['2', '1']);
   });
 
   it('warns that deleting it puts the items BACK, which the local check missed', () => {

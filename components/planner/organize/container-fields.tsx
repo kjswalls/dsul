@@ -16,6 +16,7 @@ import { isCheckinEligible, isCollectible, isMilestoneEligible } from '@/lib/ite
 import { isItemActiveOn, isSeasonActiveOn, resolvePauseWrite } from '@/lib/active';
 import { addDaysStr } from '@/lib/container-schedule';
 import { resolveGoalStateWrite } from '@/lib/goals';
+import { GOAL_STATE_LABELS, ROUTINE_STATE_LABELS, SEASON_STATE_LABELS } from '@/lib/organize-copy';
 import {
   defaultWhen,
   newItemPayload,
@@ -315,15 +316,16 @@ export function buildSeason(
 
 /* ── status vocabularies, shared with the detail panes ────────────────── */
 
+/* The chip words are lib/organize-copy.ts's, which the iPhone's pages share. */
 export const GOAL_STATES = [
-  { value: 'active', label: 'Active', dot: 'lime' },
-  { value: 'achieved', label: 'Achieved', dot: 'muted' },
-  { value: 'abandoned', label: 'Set aside', dot: 'muted' },
+  { value: 'active', label: GOAL_STATE_LABELS.active, dot: 'lime' },
+  { value: 'achieved', label: GOAL_STATE_LABELS.achieved, dot: 'muted' },
+  { value: 'abandoned', label: GOAL_STATE_LABELS.abandoned, dot: 'muted' },
 ] as const satisfies readonly { value: Goal['state']; label: string; dot: string }[];
 
 export const ROUTINE_STATES = [
-  { value: 'active', label: 'Active', dot: 'lime' },
-  { value: 'paused', label: 'Paused', dot: 'muted' },
+  { value: 'active', label: ROUTINE_STATE_LABELS.active, dot: 'lime' },
+  { value: 'paused', label: ROUTINE_STATE_LABELS.paused, dot: 'muted' },
 ] as const;
 
 /**
@@ -332,9 +334,9 @@ export const ROUTINE_STATES = [
  */
 export function seasonStates(live: boolean): ChoiceOption<Season['state']>[] {
   return [
-    { value: 'active', label: 'On', dot: 'lime' },
-    { value: 'paused', label: 'Off', dot: 'muted' },
-    { value: 'auto', label: 'Dates', dot: live ? 'lime' : 'muted' },
+    { value: 'active', label: SEASON_STATE_LABELS.active, dot: 'lime' },
+    { value: 'paused', label: SEASON_STATE_LABELS.paused, dot: 'muted' },
+    { value: 'auto', label: SEASON_STATE_LABELS.auto, dot: live ? 'lime' : 'muted' },
   ];
 }
 

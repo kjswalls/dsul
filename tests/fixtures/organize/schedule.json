@@ -459,5 +459,4144 @@
       "expected": [],
       "listed": []
     }
+  ],
+  "calendar": {
+    "items": [
+      {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000001",
+        "title": "Stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [
+          "2026-10-12",
+          "2026-10-13",
+          "2026-10-20",
+          "2026-10-23"
+        ],
+        "skippedDates": [
+          "2026-10-15"
+        ],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "timeBucket": "morning",
+        "order": 0
+      },
+      {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000002",
+        "title": "Meditate",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [
+          "2026-10-14",
+          "2026-10-16"
+        ],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "custom",
+        "timeBucket": "morning",
+        "order": 1,
+        "repeatDays": [
+          1,
+          3,
+          5
+        ]
+      },
+      {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000003",
+        "title": "Journal",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "timeBucket": "evening",
+        "order": 2
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000004",
+        "title": "Water plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "timeBucket": "afternoon",
+        "startDate": "2026-10-03",
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          6
+        ],
+        "completedDates": [
+          "2026-10-10"
+        ],
+        "skippedDates": [
+          "2026-10-17"
+        ]
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000005",
+        "title": "Book dentist",
+        "status": "completed",
+        "isScheduled": true,
+        "order": 0,
+        "timeBucket": "anytime",
+        "startDate": "2026-10-21"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000006",
+        "title": "Call bank",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "timeBucket": "morning",
+        "startDate": "2026-10-15"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000007",
+        "title": "Return parcel",
+        "status": "cancelled",
+        "isScheduled": true,
+        "order": 0,
+        "timeBucket": "morning",
+        "startDate": "2026-10-18"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000008",
+        "title": "Send invoice",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "timeBucket": "afternoon",
+        "startDate": "2026-10-23"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000009",
+        "title": "Stand-up notes",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "timeBucket": "morning",
+        "startDate": "2026-10-20",
+        "repeatFrequency": "daily",
+        "completedDates": [
+          "2026-10-21"
+        ]
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000000a",
+        "title": "Pick a gift",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000000b",
+        "title": "Unbucketed",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-22"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000000c",
+        "title": "Paused errand",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "pausedAt": "2026-10-20T13:00:00Z"
+      },
+      {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-00000000000d",
+        "title": "Run",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [
+          "2026-10-13",
+          "2026-10-20"
+        ],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "custom",
+        "timeBucket": "evening",
+        "repeatDays": [
+          2,
+          4
+        ]
+      },
+      {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-00000000000e",
+        "title": "Long walk",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [
+          "2026-10-11",
+          "2026-10-18"
+        ],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "weekends",
+        "timeBucket": "afternoon"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000000f",
+        "title": "Season errand",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "timeBucket": "morning",
+        "startDate": "2026-10-12"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000010",
+        "title": "Write the report",
+        "status": "completed",
+        "isScheduled": true,
+        "order": 0,
+        "timeBucket": "morning",
+        "startDate": "2026-10-14",
+        "project": "Work"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000011",
+        "title": "Clear the inbox",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "timeBucket": "morning",
+        "startDate": "2026-10-01",
+        "repeatFrequency": "weekdays",
+        "completedDates": [
+          "2026-10-22"
+        ],
+        "skippedDates": [
+          "2026-10-19"
+        ],
+        "project": "work"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000012",
+        "title": "Plan the quarter",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "project": "WORK"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000013",
+        "title": "Report appendix",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "project": "Work",
+        "parentItemId": "00000000-0000-4000-8000-000000000010"
+      },
+      {
+        "type": "custom",
+        "customType": "book",
+        "id": "00000000-0000-4000-8000-000000000015",
+        "title": "Read Dune",
+        "status": "completed",
+        "isScheduled": true,
+        "order": 0,
+        "timeBucket": "evening",
+        "startDate": "2026-10-19"
+      },
+      {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000016",
+        "title": "Floss",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [
+          "2026-10-23"
+        ],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "timeBucket": "evening"
+      }
+    ],
+    "routines": [
+      {
+        "id": "r-morning",
+        "name": "Morning",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000002",
+          "00000000-0000-4000-8000-000000000001"
+        ]
+      },
+      {
+        "id": "r-evening",
+        "name": "Evening",
+        "itemIds": [
+          "00000000-0000-4000-8000-00000000000d"
+        ],
+        "pausedAt": "2026-10-19T12:00:00Z"
+      },
+      {
+        "id": "r-weekend",
+        "name": "Weekend",
+        "itemIds": [
+          "00000000-0000-4000-8000-00000000000e"
+        ]
+      },
+      {
+        "id": "r-empty",
+        "name": "Empty",
+        "itemIds": []
+      }
+    ],
+    "seasons": [
+      {
+        "id": "s-autumn",
+        "name": "Autumn",
+        "state": "auto",
+        "itemIds": [
+          "00000000-0000-4000-8000-00000000000f"
+        ],
+        "routineIds": [
+          "r-weekend"
+        ],
+        "startsOn": "2026-09-01",
+        "endsOn": "2026-10-16"
+      }
+    ],
+    "projects": [
+      {
+        "id": "p-work",
+        "name": "Work",
+        "emoji": "",
+        "startTime": "09:00",
+        "timeBucket": "morning",
+        "repeatFrequency": "weekdays",
+        "duration": 90
+      }
+    ]
+  },
+  "deriveContainerSchedule": [
+    {
+      "name": "a routine, in its own order",
+      "container": {
+        "kind": "routine",
+        "routine": {
+          "id": "r-morning",
+          "name": "Morning",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000002",
+            "00000000-0000-4000-8000-000000000001"
+          ]
+        }
+      },
+      "memberIds": [
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000001"
+      ],
+      "from": "2026-10-10",
+      "days": 14,
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "away": [],
+      "blockProjectId": null,
+      "expected": {
+        "days": [
+          {
+            "date": "2026-10-10",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-11",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-12",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "done",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000002",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-13",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "done",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-14",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000002",
+                "state": "done",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-15",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "skipped",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-16",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000002",
+                "state": "done",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-17",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-18",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-19",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000002",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-20",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "done",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-21",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000002",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-22",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-23",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "done",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000002",
+                "state": "due",
+                "once": false
+              }
+            ],
+            "block": null
+          }
+        ],
+        "unscheduled": [],
+        "rollup": [
+          {
+            "date": "2026-10-10",
+            "done": 0,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-11",
+            "done": 0,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-12",
+            "done": 1,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-13",
+            "done": 1,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-14",
+            "done": 1,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-15",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 1
+          },
+          {
+            "date": "2026-10-16",
+            "done": 1,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-17",
+            "done": 0,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-18",
+            "done": 0,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-19",
+            "done": 0,
+            "due": 0,
+            "open": 2,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-20",
+            "done": 1,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-21",
+            "done": 0,
+            "due": 0,
+            "open": 2,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-22",
+            "done": 0,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-23",
+            "done": 1,
+            "due": 1,
+            "open": 0,
+            "skipped": 0
+          }
+        ],
+        "weekTotals": {
+          "done": 6,
+          "total": 7
+        },
+        "todayCount": "1/2 today",
+        "todayRun": {
+          "rows": [
+            {
+              "itemId": "00000000-0000-4000-8000-000000000002",
+              "state": "due"
+            },
+            {
+              "itemId": "00000000-0000-4000-8000-000000000001",
+              "state": "done"
+            }
+          ],
+          "done": 1,
+          "skipped": 0,
+          "nextId": "00000000-0000-4000-8000-000000000002",
+          "finished": false
+        }
+      }
+    },
+    {
+      "name": "the same routine with a member added today: no past cell changes",
+      "container": {
+        "kind": "routine",
+        "routine": {
+          "id": "r-morning",
+          "name": "Morning",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000002",
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000003"
+          ]
+        }
+      },
+      "memberIds": [
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000003"
+      ],
+      "from": "2026-10-10",
+      "days": 14,
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "away": [],
+      "blockProjectId": null,
+      "expected": {
+        "days": [
+          {
+            "date": "2026-10-10",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000003",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-11",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000003",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-12",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "done",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000002",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000003",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-13",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "done",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000003",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-14",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000002",
+                "state": "done",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000003",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-15",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "skipped",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000003",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-16",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000002",
+                "state": "done",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000003",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-17",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000003",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-18",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000003",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-19",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000002",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000003",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-20",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "done",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000003",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-21",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000002",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000003",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-22",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000003",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-23",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "done",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000002",
+                "state": "due",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000003",
+                "state": "due",
+                "once": false
+              }
+            ],
+            "block": null
+          }
+        ],
+        "unscheduled": [],
+        "rollup": [
+          {
+            "date": "2026-10-10",
+            "done": 0,
+            "due": 0,
+            "open": 2,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-11",
+            "done": 0,
+            "due": 0,
+            "open": 2,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-12",
+            "done": 1,
+            "due": 0,
+            "open": 2,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-13",
+            "done": 1,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-14",
+            "done": 1,
+            "due": 0,
+            "open": 2,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-15",
+            "done": 0,
+            "due": 0,
+            "open": 1,
+            "skipped": 1
+          },
+          {
+            "date": "2026-10-16",
+            "done": 1,
+            "due": 0,
+            "open": 2,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-17",
+            "done": 0,
+            "due": 0,
+            "open": 2,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-18",
+            "done": 0,
+            "due": 0,
+            "open": 2,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-19",
+            "done": 0,
+            "due": 0,
+            "open": 3,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-20",
+            "done": 1,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-21",
+            "done": 0,
+            "due": 0,
+            "open": 3,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-22",
+            "done": 0,
+            "due": 0,
+            "open": 2,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-23",
+            "done": 1,
+            "due": 2,
+            "open": 0,
+            "skipped": 0
+          }
+        ],
+        "weekTotals": {
+          "done": 6,
+          "total": 8
+        },
+        "todayCount": "1/3 today",
+        "todayRun": {
+          "rows": [
+            {
+              "itemId": "00000000-0000-4000-8000-000000000002",
+              "state": "due"
+            },
+            {
+              "itemId": "00000000-0000-4000-8000-000000000001",
+              "state": "done"
+            },
+            {
+              "itemId": "00000000-0000-4000-8000-000000000003",
+              "state": "due"
+            }
+          ],
+          "done": 1,
+          "skipped": 0,
+          "nextId": "00000000-0000-4000-8000-000000000002",
+          "finished": false
+        }
+      }
+    },
+    {
+      "name": "a paused routine leaves the days it holds, except a day done anyway",
+      "container": {
+        "kind": "routine",
+        "routine": {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-00000000000d"
+          ],
+          "pausedAt": "2026-10-19T12:00:00Z"
+        }
+      },
+      "memberIds": [
+        "00000000-0000-4000-8000-00000000000d"
+      ],
+      "from": "2026-10-10",
+      "days": 14,
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "away": [],
+      "blockProjectId": null,
+      "expected": {
+        "days": [
+          {
+            "date": "2026-10-10",
+            "occurrences": [],
+            "block": null
+          },
+          {
+            "date": "2026-10-11",
+            "occurrences": [],
+            "block": null
+          },
+          {
+            "date": "2026-10-12",
+            "occurrences": [],
+            "block": null
+          },
+          {
+            "date": "2026-10-13",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-00000000000d",
+                "state": "done",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-14",
+            "occurrences": [],
+            "block": null
+          },
+          {
+            "date": "2026-10-15",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-00000000000d",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-16",
+            "occurrences": [],
+            "block": null
+          },
+          {
+            "date": "2026-10-17",
+            "occurrences": [],
+            "block": null
+          },
+          {
+            "date": "2026-10-18",
+            "occurrences": [],
+            "block": null
+          },
+          {
+            "date": "2026-10-19",
+            "occurrences": [],
+            "block": null
+          },
+          {
+            "date": "2026-10-20",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-00000000000d",
+                "state": "done",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-21",
+            "occurrences": [],
+            "block": null
+          },
+          {
+            "date": "2026-10-22",
+            "occurrences": [],
+            "block": null
+          },
+          {
+            "date": "2026-10-23",
+            "occurrences": [],
+            "block": null
+          }
+        ],
+        "unscheduled": [],
+        "rollup": [
+          {
+            "date": "2026-10-10",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-11",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-12",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-13",
+            "done": 1,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-14",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-15",
+            "done": 0,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-16",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-17",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-18",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-19",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-20",
+            "done": 1,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-21",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-22",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-23",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          }
+        ],
+        "weekTotals": {
+          "done": 2,
+          "total": 2
+        },
+        "todayCount": null,
+        "todayRun": {
+          "rows": [],
+          "done": 0,
+          "skipped": 0,
+          "nextId": null,
+          "finished": false
+        }
+      }
+    },
+    {
+      "name": "a season and its routine, ending mid-range",
+      "container": {
+        "kind": "season",
+        "season": {
+          "id": "s-autumn",
+          "name": "Autumn",
+          "state": "auto",
+          "itemIds": [
+            "00000000-0000-4000-8000-00000000000f"
+          ],
+          "routineIds": [
+            "r-weekend"
+          ],
+          "startsOn": "2026-09-01",
+          "endsOn": "2026-10-16"
+        }
+      },
+      "memberIds": [
+        "00000000-0000-4000-8000-00000000000f",
+        "00000000-0000-4000-8000-00000000000e"
+      ],
+      "from": "2026-10-10",
+      "days": 14,
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "away": [],
+      "blockProjectId": null,
+      "expected": {
+        "days": [
+          {
+            "date": "2026-10-10",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-00000000000e",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-11",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-00000000000e",
+                "state": "done",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-12",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-00000000000f",
+                "state": "open",
+                "once": true
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-13",
+            "occurrences": [],
+            "block": null
+          },
+          {
+            "date": "2026-10-14",
+            "occurrences": [],
+            "block": null
+          },
+          {
+            "date": "2026-10-15",
+            "occurrences": [],
+            "block": null
+          },
+          {
+            "date": "2026-10-16",
+            "occurrences": [],
+            "block": null
+          },
+          {
+            "date": "2026-10-17",
+            "occurrences": [],
+            "block": null
+          },
+          {
+            "date": "2026-10-18",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-00000000000e",
+                "state": "done",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-19",
+            "occurrences": [],
+            "block": null
+          },
+          {
+            "date": "2026-10-20",
+            "occurrences": [],
+            "block": null
+          },
+          {
+            "date": "2026-10-21",
+            "occurrences": [],
+            "block": null
+          },
+          {
+            "date": "2026-10-22",
+            "occurrences": [],
+            "block": null
+          },
+          {
+            "date": "2026-10-23",
+            "occurrences": [],
+            "block": null
+          }
+        ],
+        "unscheduled": [],
+        "rollup": [
+          {
+            "date": "2026-10-10",
+            "done": 0,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-11",
+            "done": 1,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-12",
+            "done": 0,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-13",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-14",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-15",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-16",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-17",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-18",
+            "done": 1,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-19",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-20",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-21",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-22",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-23",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          }
+        ],
+        "weekTotals": {
+          "done": 2,
+          "total": 2
+        },
+        "todayCount": null,
+        "todayRun": {
+          "rows": [],
+          "done": 0,
+          "skipped": 0,
+          "nextId": null,
+          "finished": false
+        }
+      }
+    },
+    {
+      "name": "a goal: checkpoints, a check-in and supporting work",
+      "container": {
+        "kind": "goal",
+        "goal": {
+          "id": "g-run",
+          "name": "Run a half",
+          "state": "active",
+          "memberIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-00000000000a",
+            "00000000-0000-4000-8000-00000000000c",
+            "00000000-0000-4000-8000-000000000015"
+          ],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000005",
+            "00000000-0000-4000-8000-000000000008"
+          ],
+          "checkinIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ]
+        }
+      },
+      "memberIds": [
+        "00000000-0000-4000-8000-000000000005",
+        "00000000-0000-4000-8000-000000000008",
+        "00000000-0000-4000-8000-000000000004",
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-00000000000a",
+        "00000000-0000-4000-8000-00000000000c",
+        "00000000-0000-4000-8000-000000000015"
+      ],
+      "from": "2026-10-10",
+      "days": 14,
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "away": [],
+      "blockProjectId": null,
+      "expected": {
+        "days": [
+          {
+            "date": "2026-10-10",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000004",
+                "state": "done",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-11",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-12",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "done",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-13",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "done",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-14",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-15",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "skipped",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-16",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-17",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000004",
+                "state": "skipped",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-18",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-19",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000015",
+                "state": "done",
+                "once": true
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-20",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "done",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-21",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000005",
+                "state": "done",
+                "once": true
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-22",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-23",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "done",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000008",
+                "state": "due",
+                "once": true
+              }
+            ],
+            "block": null
+          }
+        ],
+        "unscheduled": [
+          "00000000-0000-4000-8000-00000000000a"
+        ],
+        "rollup": [
+          {
+            "date": "2026-10-10",
+            "done": 1,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-11",
+            "done": 0,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-12",
+            "done": 1,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-13",
+            "done": 1,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-14",
+            "done": 0,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-15",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 1
+          },
+          {
+            "date": "2026-10-16",
+            "done": 0,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-17",
+            "done": 0,
+            "due": 0,
+            "open": 1,
+            "skipped": 1
+          },
+          {
+            "date": "2026-10-18",
+            "done": 0,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-19",
+            "done": 1,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-20",
+            "done": 1,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-21",
+            "done": 1,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-22",
+            "done": 0,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-23",
+            "done": 1,
+            "due": 1,
+            "open": 0,
+            "skipped": 0
+          }
+        ],
+        "weekTotals": {
+          "done": 7,
+          "total": 8
+        },
+        "todayCount": "1/2 today",
+        "todayRun": {
+          "rows": [
+            {
+              "itemId": "00000000-0000-4000-8000-000000000008",
+              "state": "due"
+            },
+            {
+              "itemId": "00000000-0000-4000-8000-000000000001",
+              "state": "done"
+            }
+          ],
+          "done": 1,
+          "skipped": 0,
+          "nextId": "00000000-0000-4000-8000-000000000008",
+          "finished": false
+        }
+      }
+    },
+    {
+      "name": "a project by folded name, with its time block",
+      "container": {
+        "kind": "project",
+        "project": {
+          "id": "p-work",
+          "name": "Work",
+          "emoji": "",
+          "startTime": "09:00",
+          "timeBucket": "morning",
+          "repeatFrequency": "weekdays",
+          "duration": 90
+        }
+      },
+      "memberIds": [
+        "00000000-0000-4000-8000-000000000010",
+        "00000000-0000-4000-8000-000000000011",
+        "00000000-0000-4000-8000-000000000012",
+        "00000000-0000-4000-8000-000000000013"
+      ],
+      "from": "2026-10-10",
+      "days": 14,
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "away": [],
+      "blockProjectId": "p-work",
+      "expected": {
+        "days": [
+          {
+            "date": "2026-10-10",
+            "occurrences": [],
+            "block": null
+          },
+          {
+            "date": "2026-10-11",
+            "occurrences": [],
+            "block": null
+          },
+          {
+            "date": "2026-10-12",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000011",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": "p-work"
+          },
+          {
+            "date": "2026-10-13",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000011",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": "p-work"
+          },
+          {
+            "date": "2026-10-14",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000010",
+                "state": "done",
+                "once": true
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000011",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": "p-work"
+          },
+          {
+            "date": "2026-10-15",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000011",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": "p-work"
+          },
+          {
+            "date": "2026-10-16",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000011",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": "p-work"
+          },
+          {
+            "date": "2026-10-17",
+            "occurrences": [],
+            "block": null
+          },
+          {
+            "date": "2026-10-18",
+            "occurrences": [],
+            "block": null
+          },
+          {
+            "date": "2026-10-19",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000011",
+                "state": "skipped",
+                "once": false
+              }
+            ],
+            "block": "p-work"
+          },
+          {
+            "date": "2026-10-20",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000011",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": "p-work"
+          },
+          {
+            "date": "2026-10-21",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000011",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": "p-work"
+          },
+          {
+            "date": "2026-10-22",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000011",
+                "state": "done",
+                "once": false
+              }
+            ],
+            "block": "p-work"
+          },
+          {
+            "date": "2026-10-23",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000011",
+                "state": "due",
+                "once": false
+              }
+            ],
+            "block": "p-work"
+          }
+        ],
+        "unscheduled": [
+          "00000000-0000-4000-8000-000000000012"
+        ],
+        "rollup": [
+          {
+            "date": "2026-10-10",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-11",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-12",
+            "done": 0,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-13",
+            "done": 0,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-14",
+            "done": 1,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-15",
+            "done": 0,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-16",
+            "done": 0,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-17",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-18",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-19",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 1
+          },
+          {
+            "date": "2026-10-20",
+            "done": 0,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-21",
+            "done": 0,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-22",
+            "done": 1,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-23",
+            "done": 0,
+            "due": 1,
+            "open": 0,
+            "skipped": 0
+          }
+        ],
+        "weekTotals": {
+          "done": 2,
+          "total": 3
+        },
+        "todayCount": "0/1 today",
+        "todayRun": {
+          "rows": [
+            {
+              "itemId": "00000000-0000-4000-8000-000000000011",
+              "state": "due"
+            }
+          ],
+          "done": 0,
+          "skipped": 0,
+          "nextId": "00000000-0000-4000-8000-000000000011",
+          "finished": false
+        }
+      }
+    },
+    {
+      "name": "a trip holds what falls inside it, except what was done",
+      "container": {
+        "kind": "routine",
+        "routine": {
+          "id": "r-morning",
+          "name": "Morning",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000002",
+            "00000000-0000-4000-8000-000000000001"
+          ]
+        }
+      },
+      "memberIds": [
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000001"
+      ],
+      "from": "2026-10-10",
+      "days": 14,
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "away": [
+        {
+          "id": "t-weekend-away",
+          "startsOn": "2026-10-12",
+          "endsOn": "2026-10-15",
+          "keep": {
+            "itemIds": [],
+            "routineIds": [],
+            "projectIds": []
+          },
+          "returns": {},
+          "fromTrip": {}
+        }
+      ],
+      "blockProjectId": null,
+      "expected": {
+        "days": [
+          {
+            "date": "2026-10-10",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-11",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-12",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "done",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-13",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "done",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-14",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000002",
+                "state": "done",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-15",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "skipped",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-16",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000002",
+                "state": "done",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-17",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-18",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-19",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000002",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-20",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "done",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-21",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000002",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-22",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-23",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "done",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000002",
+                "state": "due",
+                "once": false
+              }
+            ],
+            "block": null
+          }
+        ],
+        "unscheduled": [],
+        "rollup": [
+          {
+            "date": "2026-10-10",
+            "done": 0,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-11",
+            "done": 0,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-12",
+            "done": 1,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-13",
+            "done": 1,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-14",
+            "done": 1,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-15",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 1
+          },
+          {
+            "date": "2026-10-16",
+            "done": 1,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-17",
+            "done": 0,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-18",
+            "done": 0,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-19",
+            "done": 0,
+            "due": 0,
+            "open": 2,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-20",
+            "done": 1,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-21",
+            "done": 0,
+            "due": 0,
+            "open": 2,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-22",
+            "done": 0,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-23",
+            "done": 1,
+            "due": 1,
+            "open": 0,
+            "skipped": 0
+          }
+        ],
+        "weekTotals": {
+          "done": 6,
+          "total": 7
+        },
+        "todayCount": "1/2 today",
+        "todayRun": {
+          "rows": [
+            {
+              "itemId": "00000000-0000-4000-8000-000000000002",
+              "state": "due"
+            },
+            {
+              "itemId": "00000000-0000-4000-8000-000000000001",
+              "state": "done"
+            }
+          ],
+          "done": 1,
+          "skipped": 0,
+          "nextId": "00000000-0000-4000-8000-000000000002",
+          "finished": false
+        }
+      }
+    },
+    {
+      "name": "the week ahead: today and six days after",
+      "container": {
+        "kind": "routine",
+        "routine": {
+          "id": "r-morning",
+          "name": "Morning",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000002",
+            "00000000-0000-4000-8000-000000000001"
+          ]
+        }
+      },
+      "memberIds": [
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000001"
+      ],
+      "from": "2026-10-23",
+      "days": 7,
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "away": [],
+      "blockProjectId": null,
+      "expected": {
+        "days": [
+          {
+            "date": "2026-10-23",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "done",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000002",
+                "state": "due",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-24",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "due",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-25",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "due",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-26",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "due",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000002",
+                "state": "due",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-27",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "due",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-28",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "due",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000002",
+                "state": "due",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-29",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "due",
+                "once": false
+              }
+            ],
+            "block": null
+          }
+        ],
+        "unscheduled": [],
+        "rollup": [
+          {
+            "date": "2026-10-23",
+            "done": 1,
+            "due": 1,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-24",
+            "done": 0,
+            "due": 1,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-25",
+            "done": 0,
+            "due": 1,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-26",
+            "done": 0,
+            "due": 2,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-27",
+            "done": 0,
+            "due": 1,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-28",
+            "done": 0,
+            "due": 2,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-29",
+            "done": 0,
+            "due": 1,
+            "open": 0,
+            "skipped": 0
+          }
+        ],
+        "weekTotals": {
+          "done": 1,
+          "total": 10
+        },
+        "todayCount": "1/2 today",
+        "todayRun": {
+          "rows": [
+            {
+              "itemId": "00000000-0000-4000-8000-000000000002",
+              "state": "due"
+            },
+            {
+              "itemId": "00000000-0000-4000-8000-000000000001",
+              "state": "done"
+            }
+          ],
+          "done": 1,
+          "skipped": 0,
+          "nextId": "00000000-0000-4000-8000-000000000002",
+          "finished": false
+        }
+      }
+    },
+    {
+      "name": "a range that ends before today",
+      "container": {
+        "kind": "routine",
+        "routine": {
+          "id": "r-morning",
+          "name": "Morning",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000002",
+            "00000000-0000-4000-8000-000000000001"
+          ]
+        }
+      },
+      "memberIds": [
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000001"
+      ],
+      "from": "2026-10-01",
+      "days": 5,
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "away": [],
+      "blockProjectId": null,
+      "expected": {
+        "days": [
+          {
+            "date": "2026-10-01",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-02",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000002",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-03",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-04",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-05",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000002",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          }
+        ],
+        "unscheduled": [],
+        "rollup": [
+          {
+            "date": "2026-10-01",
+            "done": 0,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-02",
+            "done": 0,
+            "due": 0,
+            "open": 2,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-03",
+            "done": 0,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-04",
+            "done": 0,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-05",
+            "done": 0,
+            "due": 0,
+            "open": 2,
+            "skipped": 0
+          }
+        ],
+        "weekTotals": {
+          "done": 0,
+          "total": 0
+        },
+        "todayCount": null,
+        "todayRun": {
+          "rows": [],
+          "done": 0,
+          "skipped": 0,
+          "nextId": null,
+          "finished": false
+        }
+      }
+    },
+    {
+      "name": "an empty routine",
+      "container": {
+        "kind": "routine",
+        "routine": {
+          "id": "r-empty",
+          "name": "Empty",
+          "itemIds": []
+        }
+      },
+      "memberIds": [],
+      "from": "2026-10-10",
+      "days": 14,
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "away": [],
+      "blockProjectId": null,
+      "expected": {
+        "days": [
+          {
+            "date": "2026-10-10",
+            "occurrences": [],
+            "block": null
+          },
+          {
+            "date": "2026-10-11",
+            "occurrences": [],
+            "block": null
+          },
+          {
+            "date": "2026-10-12",
+            "occurrences": [],
+            "block": null
+          },
+          {
+            "date": "2026-10-13",
+            "occurrences": [],
+            "block": null
+          },
+          {
+            "date": "2026-10-14",
+            "occurrences": [],
+            "block": null
+          },
+          {
+            "date": "2026-10-15",
+            "occurrences": [],
+            "block": null
+          },
+          {
+            "date": "2026-10-16",
+            "occurrences": [],
+            "block": null
+          },
+          {
+            "date": "2026-10-17",
+            "occurrences": [],
+            "block": null
+          },
+          {
+            "date": "2026-10-18",
+            "occurrences": [],
+            "block": null
+          },
+          {
+            "date": "2026-10-19",
+            "occurrences": [],
+            "block": null
+          },
+          {
+            "date": "2026-10-20",
+            "occurrences": [],
+            "block": null
+          },
+          {
+            "date": "2026-10-21",
+            "occurrences": [],
+            "block": null
+          },
+          {
+            "date": "2026-10-22",
+            "occurrences": [],
+            "block": null
+          },
+          {
+            "date": "2026-10-23",
+            "occurrences": [],
+            "block": null
+          }
+        ],
+        "unscheduled": [],
+        "rollup": [
+          {
+            "date": "2026-10-10",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-11",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-12",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-13",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-14",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-15",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-16",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-17",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-18",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-19",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-20",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-21",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-22",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-23",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          }
+        ],
+        "weekTotals": {
+          "done": 0,
+          "total": 0
+        },
+        "todayCount": null,
+        "todayRun": {
+          "rows": [],
+          "done": 0,
+          "skipped": 0,
+          "nextId": null,
+          "finished": false
+        }
+      }
+    },
+    {
+      "name": "a skip is passed over: next is the first still due",
+      "container": {
+        "kind": "routine",
+        "routine": {
+          "id": "r-night",
+          "name": "Night",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000016",
+            "00000000-0000-4000-8000-000000000002",
+            "00000000-0000-4000-8000-000000000001"
+          ]
+        }
+      },
+      "memberIds": [
+        "00000000-0000-4000-8000-000000000016",
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000001"
+      ],
+      "from": "2026-10-10",
+      "days": 14,
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "away": [],
+      "blockProjectId": null,
+      "expected": {
+        "days": [
+          {
+            "date": "2026-10-10",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000016",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-11",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000016",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-12",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "done",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000002",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000016",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-13",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "done",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000016",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-14",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000002",
+                "state": "done",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000016",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-15",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "skipped",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000016",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-16",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000002",
+                "state": "done",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000016",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-17",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000016",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-18",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000016",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-19",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000002",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000016",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-20",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "done",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000016",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-21",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000002",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000016",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-22",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000016",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-23",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "done",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000002",
+                "state": "due",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000016",
+                "state": "skipped",
+                "once": false
+              }
+            ],
+            "block": null
+          }
+        ],
+        "unscheduled": [],
+        "rollup": [
+          {
+            "date": "2026-10-10",
+            "done": 0,
+            "due": 0,
+            "open": 2,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-11",
+            "done": 0,
+            "due": 0,
+            "open": 2,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-12",
+            "done": 1,
+            "due": 0,
+            "open": 2,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-13",
+            "done": 1,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-14",
+            "done": 1,
+            "due": 0,
+            "open": 2,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-15",
+            "done": 0,
+            "due": 0,
+            "open": 1,
+            "skipped": 1
+          },
+          {
+            "date": "2026-10-16",
+            "done": 1,
+            "due": 0,
+            "open": 2,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-17",
+            "done": 0,
+            "due": 0,
+            "open": 2,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-18",
+            "done": 0,
+            "due": 0,
+            "open": 2,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-19",
+            "done": 0,
+            "due": 0,
+            "open": 3,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-20",
+            "done": 1,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-21",
+            "done": 0,
+            "due": 0,
+            "open": 3,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-22",
+            "done": 0,
+            "due": 0,
+            "open": 2,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-23",
+            "done": 1,
+            "due": 1,
+            "open": 0,
+            "skipped": 1
+          }
+        ],
+        "weekTotals": {
+          "done": 6,
+          "total": 7
+        },
+        "todayCount": "1/2 today",
+        "todayRun": {
+          "rows": [
+            {
+              "itemId": "00000000-0000-4000-8000-000000000016",
+              "state": "skipped"
+            },
+            {
+              "itemId": "00000000-0000-4000-8000-000000000002",
+              "state": "due"
+            },
+            {
+              "itemId": "00000000-0000-4000-8000-000000000001",
+              "state": "done"
+            }
+          ],
+          "done": 1,
+          "skipped": 1,
+          "nextId": "00000000-0000-4000-8000-000000000002",
+          "finished": false
+        }
+      }
+    },
+    {
+      "name": "done and skipped: through for today",
+      "container": {
+        "kind": "routine",
+        "routine": {
+          "id": "r-night",
+          "name": "Night",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000016",
+            "00000000-0000-4000-8000-000000000001"
+          ]
+        }
+      },
+      "memberIds": [
+        "00000000-0000-4000-8000-000000000016",
+        "00000000-0000-4000-8000-000000000001"
+      ],
+      "from": "2026-10-10",
+      "days": 14,
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "away": [],
+      "blockProjectId": null,
+      "expected": {
+        "days": [
+          {
+            "date": "2026-10-10",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000016",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-11",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000016",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-12",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "done",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000016",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-13",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "done",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000016",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-14",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000016",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-15",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "skipped",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000016",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-16",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000016",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-17",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000016",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-18",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000016",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-19",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000016",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-20",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "done",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000016",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-21",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000016",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-22",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000016",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-23",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "done",
+                "once": false
+              },
+              {
+                "itemId": "00000000-0000-4000-8000-000000000016",
+                "state": "skipped",
+                "once": false
+              }
+            ],
+            "block": null
+          }
+        ],
+        "unscheduled": [],
+        "rollup": [
+          {
+            "date": "2026-10-10",
+            "done": 0,
+            "due": 0,
+            "open": 2,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-11",
+            "done": 0,
+            "due": 0,
+            "open": 2,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-12",
+            "done": 1,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-13",
+            "done": 1,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-14",
+            "done": 0,
+            "due": 0,
+            "open": 2,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-15",
+            "done": 0,
+            "due": 0,
+            "open": 1,
+            "skipped": 1
+          },
+          {
+            "date": "2026-10-16",
+            "done": 0,
+            "due": 0,
+            "open": 2,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-17",
+            "done": 0,
+            "due": 0,
+            "open": 2,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-18",
+            "done": 0,
+            "due": 0,
+            "open": 2,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-19",
+            "done": 0,
+            "due": 0,
+            "open": 2,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-20",
+            "done": 1,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-21",
+            "done": 0,
+            "due": 0,
+            "open": 2,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-22",
+            "done": 0,
+            "due": 0,
+            "open": 2,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-23",
+            "done": 1,
+            "due": 0,
+            "open": 0,
+            "skipped": 1
+          }
+        ],
+        "weekTotals": {
+          "done": 4,
+          "total": 4
+        },
+        "todayCount": "1/1 today",
+        "todayRun": {
+          "rows": [
+            {
+              "itemId": "00000000-0000-4000-8000-000000000016",
+              "state": "skipped"
+            },
+            {
+              "itemId": "00000000-0000-4000-8000-000000000001",
+              "state": "done"
+            }
+          ],
+          "done": 1,
+          "skipped": 1,
+          "nextId": null,
+          "finished": true
+        }
+      }
+    },
+    {
+      "name": "an id the payload no longer holds lands nowhere",
+      "container": {
+        "kind": "routine",
+        "routine": {
+          "id": "r-morning",
+          "name": "Morning",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000063",
+            "00000000-0000-4000-8000-000000000001"
+          ]
+        }
+      },
+      "memberIds": [
+        "00000000-0000-4000-8000-000000000063",
+        "00000000-0000-4000-8000-000000000001"
+      ],
+      "from": "2026-10-10",
+      "days": 14,
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "away": [],
+      "blockProjectId": null,
+      "expected": {
+        "days": [
+          {
+            "date": "2026-10-10",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-11",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-12",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "done",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-13",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "done",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-14",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-15",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "skipped",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-16",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-17",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-18",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-19",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-20",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "done",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-21",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-22",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "open",
+                "once": false
+              }
+            ],
+            "block": null
+          },
+          {
+            "date": "2026-10-23",
+            "occurrences": [
+              {
+                "itemId": "00000000-0000-4000-8000-000000000001",
+                "state": "done",
+                "once": false
+              }
+            ],
+            "block": null
+          }
+        ],
+        "unscheduled": [],
+        "rollup": [
+          {
+            "date": "2026-10-10",
+            "done": 0,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-11",
+            "done": 0,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-12",
+            "done": 1,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-13",
+            "done": 1,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-14",
+            "done": 0,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-15",
+            "done": 0,
+            "due": 0,
+            "open": 0,
+            "skipped": 1
+          },
+          {
+            "date": "2026-10-16",
+            "done": 0,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-17",
+            "done": 0,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-18",
+            "done": 0,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-19",
+            "done": 0,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-20",
+            "done": 1,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-21",
+            "done": 0,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-22",
+            "done": 0,
+            "due": 0,
+            "open": 1,
+            "skipped": 0
+          },
+          {
+            "date": "2026-10-23",
+            "done": 1,
+            "due": 0,
+            "open": 0,
+            "skipped": 0
+          }
+        ],
+        "weekTotals": {
+          "done": 4,
+          "total": 4
+        },
+        "todayCount": "1/1 today",
+        "todayRun": {
+          "rows": [
+            {
+              "itemId": "00000000-0000-4000-8000-000000000001",
+              "state": "done"
+            }
+          ],
+          "done": 1,
+          "skipped": 0,
+          "nextId": null,
+          "finished": true
+        }
+      }
+    }
   ]
 }

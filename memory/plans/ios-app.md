@@ -20,7 +20,8 @@ the title and the notes and adds Delete, with three more writes (title, notes,
 delete), and replaces PlannerSync's slots with a rebase per subject.
 Organize, the third tab, is built as its own series (O1 to O15, the design in
 the shared folder's `ios-app/organize/design.md`); O1 lists the containers,
-read-only (see Organize below).
+and O2 and O3 give each its page, read-only but for the tick (see Organize
+below).
 Designs, the stack comparison and the board images live in the project's
 shared folder (`ios-app/`): `stack.md` has a SwiftUI build note for every
 interaction, and `expo-vs-swiftui.md` ends with the fact-check.
@@ -138,6 +139,14 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   SF Symbol), all checked against `tests/fixtures/organize/`; `Item.swift`
   gains `Goal`, the containers' own fields and the Organize and Goals
   switches; `EditCopy.swift` gains `ContainerWords.goal`/`.goals`.
+  O2 and O3 add `OrganizeCopy.swift` ← `lib/organize-copy.ts` (the pages'
+  sentences) and `ProjectBlock.swift` ← `lib/project-block.ts`
+  (`timeBlockSummary`), and fill in `ContainerSchedule.swift`
+  (`deriveContainerSchedule`, `todayCount`, `dayRollup`, `todayInOrder`),
+  `ActiveExplain.swift` (`suppressionReason`, `suppressionLabel`) and
+  `Goals.swift` (the countdown, the elapsed line, the timeline, the
+  supporting work and the wind-down); `Registry.swift` gains
+  `typeLabelPlural`, and `Project` its `notes`.
   Each cites what it mirrors.
 - `ios/Dsul/App`: `DsulApp` (one `AuthStore`), `AppGate` (sign-in screen,
   sample or the user's planner, keyed on `AuthStore.gateKey`), `AppConfig`.
@@ -156,7 +165,14 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   the section headers and the quiet rows), `ContainerRow` (a row and its
   `ContainerTile`), `ContainerColor` (DsulCore's `ContainerAccent` as a
   SwiftUI `Color` that follows dark mode) and `OrganizeModel`, Foundation
-  only, which decides what the list shows and says. `ios/Dsul/App` gains
+  only, which decides what the list shows and says. O2 and O3 add the
+  pages: `ContainerPage` (`OrganizeDestination`, the routes' views;
+  `OrganizePageHost`, which pops a page whose container goes and puts the
+  name in the bar once the header scrolls under it; and the shared header,
+  goal ring, chips, section header and member row), `RoutinePage`,
+  `SeasonPage`, `GoalPage` (with the milestones' timeline), `ProjectPage`,
+  `DayStrip` ("Last 14 days"), and `ContainerPageModel`, Foundation only,
+  which decides what each page shows and says. `ios/Dsul/App` gains
   `AvatarMenu` (moved out of `TodayView`, with the tab's own sections passed
   in) and `PlannerBannerOverlay` (`.plannerBanner()`, Today's banner, also on
   Organize, with `BannerView`).
@@ -823,7 +839,7 @@ words are fixed on every surface, below.
 The third tab, built as a series of small PRs (O1 to O15). The design, with
 every decision and the PR plan, is the shared folder's
 `ios-app/organize/design.md`; each PR's builders leave notes beside it
-(`organize/o1/`).
+(`organize/o1/`, and `organize/o2/` for O2 and O3, built as one PR).
 
 - **O1: the list, read-only.** The payload gains `goals` (null when
   unreadable) and `settings.organizeEnabled` / `settings.goalsEnabled`, from
@@ -839,7 +855,67 @@ every decision and the PR plan, is the shared folder's
   in the web's words ("1/3", "2/2 so far"), or "Achieved" / "Set aside"; a
   project's items by folded name, subtasks left out. "Nothing in it yet"
   stands for a zero. Headers count rows, Seasons counts the ones on today
-  ("1 on"). Rows open nothing yet.
+  ("1 on"). From O2 each row is a `NavigationLink` to its page (chevron, hint
+  "Opens the routine"), and a live routine's row ends in "2/3 today" (the
+  web's `todayCount`, only while the routine is in effect and something of
+  it is on today); from O3 a project's subtitle adds its time block.
+- **O2: the routine and season pages, read-only but for the tick.** The
+  stack holds a path of `OrganizeRoute` (`.container(kind, id:)`); tapping
+  the tab again pops to the list. A page is an inset-grouped list: the 44pt
+  tile, the kind's eyebrow and the name in `.largeTitle` (the name moves
+  into the bar once scrolled), its notes (four lines, then Show all), and
+  read-only chips. A routine shows "Usually 7:00 am" and Status ("Active",
+  "Paused", "Paused until Oct 30"), the web's paused note or its held note
+  under it (`localOn && !effectiveOn`, so Active never stands alone over a
+  routine a season holds off), "Held by" (each season with "on", "off" or
+  "off until Nov 1", pushing its page, or "No season. It answers for
+  itself."), Today (its members on today in the routine's own order,
+  "2 of 3 done · 1 skipped", the first one still due marked "next", "All
+  through for today." or "Nothing from … is on today."), Other days (each
+  with its cadence, and why when something hides it: "Daily · Hidden with
+  Morning" on a paused routine) and Last 14 days. A season shows Status ("On", "Off",
+  "Dates") and Runs under Dates only, the web's sentence for its state, its
+  routines in the routines' own order (each pushing its page), its own items
+  and the strip over both. One `deriveContainerSchedule` over the strip's 14
+  days feeds the checklist, the ticks and the strip.
+- **The strip never says a past day was a share.** A past day with anything
+  done is a full lime cell, one with only unrecorded occurrences a gray wash,
+  one with a skip or nothing on an outline (ranked in that order, so a member
+  added today, `open` on every earlier day, turns no recorded day into a
+  wash); only today fills, done over done and still due, inside a 1.5pt
+  outline. Fourteen VoiceOver elements ("Sep 30, 2 done", "Today, 2 of 3
+  done"); nothing says "missed".
+- **O3: the goal and project pages.** A goal's header is a 64pt ring (the
+  lime arc at the share of milestones reached, the glyph in the middle;
+  the tile when there is no milestone), then the why, the countdown ("120
+  days to Mar 15", active goals only), the chips (Status, and "Started Oct
+  1 · Target Mar 15"), an ended goal's note, the elapsed line (both dates
+  and a milestone only), the wind-down list of an ended goal's recurring
+  members (display only), Milestones (the timeline: a 22pt node on a 2pt
+  rail, reached a lime check, next a 2pt lime ring with its title semibold
+  in the label colour, the web's "next up", "still ahead of you",
+  "dropped", "No date yet"), Check-ins ("Sun · last Oct 18") and Supporting
+  work under each type's plural. The node is the milestone's tick on today
+  behind the `tick` gate, whatever its date; every goal row opens its sheet
+  and says why when something hides it ("Hidden with Winter"). A project's
+  page shows "N items" (subtasks left out, the list's count, equal to its
+  rows), its time block or "No time block" (read-only), its notes, its items
+  open first, and the strip when anything is in range. Projects are
+  ungated, as on the web.
+- **Every row on a page is Today's.** The circle ticks only an item on
+  today, through `toggle(_:on: today)`, the write Today's circle sends; the
+  rest of the row, and the whole of any other row, opens the item's sheet on
+  today. A skipped row shows the skip mark, and skipped is the schedule's
+  word for today, so a cancelled one-off is skipped on the row as in the
+  summary and never offered a tick. One element to VoiceOver, with the tick
+  (or a milestone's "Mark … reached") as a named action.
+- **Gone, or switched off.** A page whose container goes takes itself off
+  the path and keeps drawing what it last showed while it slides away; one
+  pushed for a container already gone pops at once. A fetch that couldn't
+  read goals is a lost read, not a delete: a goal's page stays, showing what
+  it last showed, until a fetch that read goals answers. With Organize (or Goals)
+  off the page is the web's sentence ("Organize is switched off. …"), never
+  "not found".
 - **The switches are display gates.** Organize off hides Routines, Seasons and
   Projects and shows one quiet row saying so, with the phone's way back (the
   web's Settings); Goals off, or goals the server couldn't read, hides Goals.
@@ -848,23 +924,28 @@ every decision and the PR plan, is the shared folder's
   list is a spinner ("Loading…") or the fetch's error with Try again
   (`PlannerLoadingRow`, which now takes the tab's words and tints Try again
   the label colour). Pull to refresh is `LiveRefresh`, as on Today.
-- **Rules apart from views.** `Organize/OrganizeModel.swift` is Foundation
-  only (on the shim's list), so `DsulTests/OrganizeTests` pins the sections,
-  counts, subtitles, tiles, spoken labels and quiet rows on Linux too.
+- **Rules apart from views.** `Organize/OrganizeModel.swift` and
+  `Organize/ContainerPageModel.swift` are Foundation only (on the shim's
+  list), so `DsulTests/OrganizeTests` pins the sections, counts, subtitles,
+  tiles, spoken labels and quiet rows, and `DsulTests/OrganizePageTests`
+  every page's parts, the strip's ranking and the ticks, on Linux too.
   `DsulTests/OrganizeLookTests` (Mac runner only) checks every SF Symbol the
-  tiles can draw exists.
+  tiles and the pages can draw exists.
 - **Lime.** No stack-wide tint. A container coloured Lime (accent-8) gets a
-  lime glyph on its tile, a mark at full strength; no text on the list takes
-  a hue.
+  lime glyph on its tile, a mark at full strength; the ticks, the strip's
+  cells, the ring and the timeline's nodes are lime marks too, and no text
+  on the list or a page takes a hue.
 - **The sample** gives Morning routine, Wind down and Autumn icons, colours
   and usual times, and adds a goal, Run a half marathon (three dated
   milestones, one reached, a weekly check-in, Gym as its supporting work),
   with its items made after Pay rent and off the anchor day so no pinned id
-  or count moves. Goals is on in the sample.
-- **Waits for later PRs:** the pages (O2 routine and season, O3 goal and
-  project), the summary cards (O4), Item types and Paused (O5), the writes
-  (O8a to O13), the + menu (O11), Trash (O14), and Today's project colours
-  (O15, Kirby's call). Today keeps `ProjectPalette` until then, so a
+  or count moves. Goals is on in the sample. O2 and O3 give Morning routine
+  and Work notes, and Writing a weekday time block (6:30 to 7:30 am) that no
+  sample task sits in, so the grid and its pinned counts are unchanged.
+- **Waits for later PRs:** the summary cards (O4), Item types and Paused
+  (O5), the writes (O8a to O13: the ⋯ menu, Status and the other chips as
+  menus, editable notes, reorder and add), the + menu (O11), Trash (O14),
+  and Today's project colours (O15, Kirby's call). Today keeps `ProjectPalette` until then, so a
   project's dot on Today and its tile on Organize can differ.
 
 ## CI
@@ -1339,10 +1420,10 @@ animations.
 
 ## Not yet
 Week, density (`DensityMetrics`), swipe actions on rows, the zoom transition
-from the bar to the braindump sheet, the rest of Organize (the container
-pages, the summary cards, Item types, Paused and Trash, and every container
-write, creating a project, routine, season or goal from the phone included:
-O2 to O15 in the Organize design), undo or restore after a delete (the web's
+from the bar to the braindump sheet, the rest of Organize (the summary
+cards, Item types, Paused and Trash, and every container write, creating a
+project, routine, season or goal from the phone included: O4 to O15 in the
+Organize design), undo or restore after a delete (the web's
 Trash restores it), Change type, Duplicate and Copy link, the rest of the sheet
 (a routine's or a season's hold, the goal chip, which goals in the payload
 since O1 make possible, and any word that a repeat took a goal role away (the

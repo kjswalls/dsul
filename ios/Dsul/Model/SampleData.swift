@@ -163,13 +163,23 @@ enum SampleData {
         let gym = blocks[6].id
 
         // Projects keep no icon or colour, so their tiles derive from their
-        // names, as an older project's do on the web.
-        let projects = ["Work", "Home", "Writing", "dsul", "Health"].map { name in
+        // names, as an older project's do on the web. Work has notes and
+        // Writing a weekday time block, for their pages (O3). The block
+        // places nothing on the grid: no sample task sits in it
+        // (`inProjectBlock`), so no pinned day count moves.
+        var projects = ["Work", "Home", "Writing", "dsul", "Health"].map { name in
             Project(id: sampleProjectId(name), name: name)
         }
+        projects[0].notes = "The day job. Anything with a deadline from someone else goes here."
+        projects[2].repeatFrequency = "weekdays"
+        projects[2].timeBucket = DayBucket.morning.rawValue
+        projects[2].startTime = "06:30"
+        projects[2].duration = 60
         let routines = [
             Routine(id: "sample-morning-routine", name: "Morning routine", icon: "icon:Sunrise",
-                    color: "var(--accent-6)", sortOrder: 0, usualTime: "07:00", itemIds: routineHabits.map(\.id)),
+                    color: "var(--accent-6)", sortOrder: 0, usualTime: "07:00",
+                    notes: "Before the phone. Meds first, then the rest in order.",
+                    itemIds: routineHabits.map(\.id)),
             // A second routine with nothing in it yet, so a routine member's menu has
             // another routine to toggle, and a season holding Journal, the Season
             // chip's case. Autumn follows no dates (state auto, none set), so it is

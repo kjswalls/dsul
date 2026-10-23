@@ -1,0 +1,1093 @@
+{
+  "tables": {
+    "stateLabels": {
+      "routine": {
+        "active": "Active",
+        "paused": "Paused"
+      },
+      "season": {
+        "active": "On",
+        "paused": "Off",
+        "auto": "Dates"
+      },
+      "goal": {
+        "active": "Active",
+        "achieved": "Achieved",
+        "abandoned": "Set aside"
+      }
+    },
+    "nothingInItYet": "Nothing is in it yet.",
+    "heldByNone": "No season. It answers for itself.",
+    "routineTodayFinished": "All through for today.",
+    "routineTodayNext": "next",
+    "noCheckinYet": "No check-in yet. A recurring review (weekly is usually right) is what keeps a long goal from going quiet for a month at a time.",
+    "noMilestonesYet": "No checkpoints yet. A milestone is a one-shot task whose date is the day you mean to have reached it.",
+    "noSupportingWork": "Nothing else is filed under this goal yet."
+  },
+  "heldWorld": {
+    "items": [
+      {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000001",
+        "title": "Water",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000002",
+        "title": "Stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000003",
+        "title": "Done today",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [
+          "2026-10-23"
+        ],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000004",
+        "title": "Undated",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0
+      }
+    ]
+  },
+  "switchedOff": [
+    {
+      "name": "organize",
+      "title": "Organize is switched off",
+      "body": "Your routines and seasons are still here. Switch the extension back on and this page picks up where it left off. Nothing was deleted.",
+      "sentence": "Organize is switched off. Your routines and seasons are still here. Switch the extension back on and this page picks up where it left off. Nothing was deleted."
+    },
+    {
+      "name": "goals",
+      "title": "Goals is switched off",
+      "body": "Your goals are still here. Switch the extension back on and this page picks up where it left off. Nothing was deleted.",
+      "sentence": "Goals is switched off. Your goals are still here. Switch the extension back on and this page picks up where it left off. Nothing was deleted."
+    }
+  ],
+  "routinePausedNote": [
+    {
+      "name": "no return day",
+      "routine": {
+        "id": "r",
+        "name": "R",
+        "itemIds": [],
+        "pausedAt": "2026-10-20T13:00:00Z"
+      },
+      "expected": "Its items are hidden until you resume. Streaks and history stay exactly as they are."
+    },
+    {
+      "name": "back on a day",
+      "routine": {
+        "id": "r",
+        "name": "R",
+        "itemIds": [],
+        "pausedAt": "2026-10-20T13:00:00Z",
+        "pausedUntil": "2026-10-30"
+      },
+      "expected": "Its items come back on Oct 30, on their own. Streaks and history stay exactly as they are."
+    },
+    {
+      "name": "back next year",
+      "routine": {
+        "id": "r",
+        "name": "R",
+        "itemIds": [],
+        "pausedAt": "2026-10-20T13:00:00Z",
+        "pausedUntil": "2027-01-04"
+      },
+      "expected": "Its items come back on Jan 4, on their own. Streaks and history stay exactly as they are."
+    }
+  ],
+  "routineHeldNote": [
+    {
+      "name": "live and standalone: no note",
+      "routines": [
+        {
+          "id": "r-morning",
+          "name": "Morning",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002",
+            "00000000-0000-4000-8000-000000000003",
+            "00000000-0000-4000-8000-000000000004"
+          ]
+        },
+        {
+          "id": "r-desk",
+          "name": "Desk",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000002"
+          ]
+        }
+      ],
+      "seasons": [],
+      "routineId": "r-morning",
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "expected": {
+        "hiddenHere": 0,
+        "note": null
+      }
+    },
+    {
+      "name": "its own pause: the paused note says it, not this",
+      "routines": [
+        {
+          "id": "r-morning",
+          "name": "Morning",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002",
+            "00000000-0000-4000-8000-000000000003",
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "pausedAt": "2026-10-20T13:00:00Z"
+        },
+        {
+          "id": "r-desk",
+          "name": "Desk",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000002"
+          ]
+        }
+      ],
+      "seasons": [
+        {
+          "id": "s-winter",
+          "name": "Winter",
+          "state": "auto",
+          "itemIds": [],
+          "routineIds": [
+            "r-morning"
+          ],
+          "startsOn": "2026-11-01",
+          "endsOn": "2027-02-28"
+        }
+      ],
+      "routineId": "r-morning",
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "expected": {
+        "hiddenHere": 2,
+        "note": null
+      }
+    },
+    {
+      "name": "one off season with a return day",
+      "routines": [
+        {
+          "id": "r-morning",
+          "name": "Morning",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002",
+            "00000000-0000-4000-8000-000000000003",
+            "00000000-0000-4000-8000-000000000004"
+          ]
+        },
+        {
+          "id": "r-desk",
+          "name": "Desk",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000002"
+          ]
+        }
+      ],
+      "seasons": [
+        {
+          "id": "s-winter",
+          "name": "Winter",
+          "state": "auto",
+          "itemIds": [],
+          "routineIds": [
+            "r-morning"
+          ],
+          "startsOn": "2026-11-01",
+          "endsOn": "2027-02-28"
+        }
+      ],
+      "routineId": "r-morning",
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "expected": {
+        "hiddenHere": 2,
+        "note": "“Winter” is off, so this routine isn’t carrying anything right now. 2 items are hidden. Back on Nov 1."
+      }
+    },
+    {
+      "name": "one switched-off season: no return day",
+      "routines": [
+        {
+          "id": "r-morning",
+          "name": "Morning",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002",
+            "00000000-0000-4000-8000-000000000003",
+            "00000000-0000-4000-8000-000000000004"
+          ]
+        },
+        {
+          "id": "r-desk",
+          "name": "Desk",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000002"
+          ]
+        }
+      ],
+      "seasons": [
+        {
+          "id": "s-shelf",
+          "name": "Shelf",
+          "state": "paused",
+          "itemIds": [],
+          "routineIds": [
+            "r-morning"
+          ]
+        }
+      ],
+      "routineId": "r-morning",
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "expected": {
+        "hiddenHere": 2,
+        "note": "“Shelf” is off, so this routine isn’t carrying anything right now. 2 items are hidden. They come back when one of those seasons does."
+      }
+    },
+    {
+      "name": "one ended season: no return day",
+      "routines": [
+        {
+          "id": "r-morning",
+          "name": "Morning",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002",
+            "00000000-0000-4000-8000-000000000003",
+            "00000000-0000-4000-8000-000000000004"
+          ]
+        },
+        {
+          "id": "r-desk",
+          "name": "Desk",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000002"
+          ]
+        }
+      ],
+      "seasons": [
+        {
+          "id": "s-summer",
+          "name": "Summer",
+          "state": "auto",
+          "itemIds": [],
+          "routineIds": [
+            "r-morning"
+          ],
+          "startsOn": "2026-06-01",
+          "endsOn": "2026-10-01"
+        }
+      ],
+      "routineId": "r-morning",
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "expected": {
+        "hiddenHere": 2,
+        "note": "“Summer” is off, so this routine isn’t carrying anything right now. 2 items are hidden. They come back when one of those seasons does."
+      }
+    },
+    {
+      "name": "two off seasons: the sooner return",
+      "routines": [
+        {
+          "id": "r-morning",
+          "name": "Morning",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002",
+            "00000000-0000-4000-8000-000000000003",
+            "00000000-0000-4000-8000-000000000004"
+          ]
+        },
+        {
+          "id": "r-desk",
+          "name": "Desk",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000002"
+          ]
+        }
+      ],
+      "seasons": [
+        {
+          "id": "s-holiday",
+          "name": "Holiday",
+          "state": "auto",
+          "itemIds": [],
+          "routineIds": [
+            "r-morning"
+          ],
+          "startsOn": "2026-12-01",
+          "endsOn": "2026-12-31"
+        },
+        {
+          "id": "s-winter",
+          "name": "Winter",
+          "state": "auto",
+          "itemIds": [],
+          "routineIds": [
+            "r-morning"
+          ],
+          "startsOn": "2026-11-01",
+          "endsOn": "2027-02-28"
+        }
+      ],
+      "routineId": "r-morning",
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "expected": {
+        "hiddenHere": 2,
+        "note": "All 2 seasons holding it are off, so this routine isn’t carrying anything right now. 2 items are hidden. Back on Nov 1."
+      }
+    },
+    {
+      "name": "one on, one off: no note",
+      "routines": [
+        {
+          "id": "r-morning",
+          "name": "Morning",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002",
+            "00000000-0000-4000-8000-000000000003",
+            "00000000-0000-4000-8000-000000000004"
+          ]
+        },
+        {
+          "id": "r-desk",
+          "name": "Desk",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000002"
+          ]
+        }
+      ],
+      "seasons": [
+        {
+          "id": "s-shelf",
+          "name": "Shelf",
+          "state": "paused",
+          "itemIds": [],
+          "routineIds": [
+            "r-morning"
+          ]
+        },
+        {
+          "id": "s-autumn",
+          "name": "Autumn",
+          "state": "auto",
+          "itemIds": [],
+          "routineIds": [
+            "r-morning"
+          ],
+          "startsOn": "2026-09-01",
+          "endsOn": "2026-11-30"
+        }
+      ],
+      "routineId": "r-morning",
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "expected": {
+        "hiddenHere": 0,
+        "note": null
+      }
+    },
+    {
+      "name": "one item hidden",
+      "routines": [
+        {
+          "id": "r-morning",
+          "name": "Morning",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002"
+          ]
+        },
+        {
+          "id": "r-desk",
+          "name": "Desk",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000002"
+          ]
+        }
+      ],
+      "seasons": [
+        {
+          "id": "s-winter",
+          "name": "Winter",
+          "state": "auto",
+          "itemIds": [],
+          "routineIds": [
+            "r-morning"
+          ],
+          "startsOn": "2026-11-01",
+          "endsOn": "2027-02-28"
+        }
+      ],
+      "routineId": "r-morning",
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "expected": {
+        "hiddenHere": 1,
+        "note": "“Winter” is off, so this routine isn’t carrying anything right now. 1 item is hidden. Back on Nov 1."
+      }
+    },
+    {
+      "name": "every member is on the day another way",
+      "routines": [
+        {
+          "id": "r-morning",
+          "name": "Morning",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000002",
+            "00000000-0000-4000-8000-000000000003"
+          ]
+        },
+        {
+          "id": "r-desk",
+          "name": "Desk",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000002"
+          ]
+        }
+      ],
+      "seasons": [
+        {
+          "id": "s-winter",
+          "name": "Winter",
+          "state": "auto",
+          "itemIds": [],
+          "routineIds": [
+            "r-morning"
+          ],
+          "startsOn": "2026-11-01",
+          "endsOn": "2027-02-28"
+        }
+      ],
+      "routineId": "r-morning",
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "expected": {
+        "hiddenHere": 0,
+        "note": "“Winter” is off, so this routine isn’t carrying anything right now. Its items are still on your day another way."
+      }
+    }
+  ],
+  "heldByState": [
+    {
+      "name": "on its dates",
+      "season": {
+        "id": "s-autumn",
+        "name": "Autumn",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-09-01",
+        "endsOn": "2026-11-30"
+      },
+      "today": "2026-10-23",
+      "expected": "on"
+    },
+    {
+      "name": "pinned on",
+      "season": {
+        "id": "s-always",
+        "name": "Always",
+        "state": "active",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2027-01-01"
+      },
+      "today": "2026-10-23",
+      "expected": "on"
+    },
+    {
+      "name": "switched off",
+      "season": {
+        "id": "s-shelf",
+        "name": "Shelf",
+        "state": "paused",
+        "itemIds": [],
+        "routineIds": []
+      },
+      "today": "2026-10-23",
+      "expected": "off"
+    },
+    {
+      "name": "starts later",
+      "season": {
+        "id": "s-winter",
+        "name": "Winter",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-11-01",
+        "endsOn": "2027-02-28"
+      },
+      "today": "2026-10-23",
+      "expected": "off until Nov 1"
+    },
+    {
+      "name": "ended",
+      "season": {
+        "id": "s-summer",
+        "name": "Summer",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-06-01",
+        "endsOn": "2026-10-01"
+      },
+      "today": "2026-10-23",
+      "expected": "off"
+    },
+    {
+      "name": "switched off with a later start still names it",
+      "season": {
+        "id": "s-winter",
+        "name": "Winter",
+        "state": "paused",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-11-01",
+        "endsOn": "2027-02-28"
+      },
+      "today": "2026-10-23",
+      "expected": "off until Nov 1"
+    },
+    {
+      "name": "an inverted range ahead still names its start",
+      "season": {
+        "id": "s-backwards",
+        "name": "Backwards",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-12-01",
+        "endsOn": "2026-11-01"
+      },
+      "today": "2026-10-23",
+      "expected": "off until Dec 1"
+    },
+    {
+      "name": "starts next year",
+      "season": {
+        "id": "s-next",
+        "name": "Next",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2027-01-05"
+      },
+      "today": "2026-10-23",
+      "expected": "off until Jan 5"
+    }
+  ],
+  "routineTodaySummary": [
+    {
+      "name": "nothing on",
+      "done": 0,
+      "total": 0,
+      "skipped": 0,
+      "expected": null
+    },
+    {
+      "name": "part way",
+      "done": 2,
+      "total": 3,
+      "skipped": 0,
+      "expected": "2 of 3 done"
+    },
+    {
+      "name": "with a skip",
+      "done": 2,
+      "total": 3,
+      "skipped": 1,
+      "expected": "2 of 3 done · 1 skipped"
+    },
+    {
+      "name": "only a skip",
+      "done": 0,
+      "total": 1,
+      "skipped": 1,
+      "expected": "0 of 1 done · 1 skipped"
+    },
+    {
+      "name": "all done",
+      "done": 12,
+      "total": 12,
+      "skipped": 0,
+      "expected": "12 of 12 done"
+    }
+  ],
+  "routineTodayEmpty": [
+    {
+      "name": "no members",
+      "routineName": "Morning",
+      "memberCount": 0,
+      "expected": "Nothing is in it yet."
+    },
+    {
+      "name": "members, none on today",
+      "routineName": "Morning",
+      "memberCount": 3,
+      "expected": "Nothing from Morning is on today."
+    },
+    {
+      "name": "a name with an emoji",
+      "routineName": "🌙 Wind down",
+      "memberCount": 1,
+      "expected": "Nothing from 🌙 Wind down is on today."
+    }
+  ],
+  "seasonStateNote": [
+    {
+      "name": "pinned on",
+      "season": {
+        "id": "s-always",
+        "name": "Always",
+        "state": "active",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2027-01-01"
+      },
+      "today": "2026-10-23",
+      "live": true,
+      "expected": "On until you say otherwise. Dates are ignored while it is set this way."
+    },
+    {
+      "name": "switched off",
+      "season": {
+        "id": "s-shelf",
+        "name": "Shelf",
+        "state": "paused",
+        "itemIds": [],
+        "routineIds": []
+      },
+      "today": "2026-10-23",
+      "live": false,
+      "expected": "Off. Everything it holds is hidden, and streaks and history stay exactly as they are."
+    },
+    {
+      "name": "dates, none set",
+      "season": {
+        "id": "s-open",
+        "name": "Open",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": []
+      },
+      "today": "2026-10-23",
+      "live": true,
+      "expected": "Always on. Give it a start or an end to make it follow the calendar."
+    },
+    {
+      "name": "dates, on now",
+      "season": {
+        "id": "s-autumn",
+        "name": "Autumn",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-09-01",
+        "endsOn": "2026-11-30"
+      },
+      "today": "2026-10-23",
+      "live": true,
+      "expected": "Runs Sep 1 to Nov 30, inclusive. On now."
+    },
+    {
+      "name": "dates, starts later",
+      "season": {
+        "id": "s-winter",
+        "name": "Winter",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-11-01",
+        "endsOn": "2027-02-28"
+      },
+      "today": "2026-10-23",
+      "live": false,
+      "expected": "Runs Nov 1 to Feb 28, inclusive. Off right now. Nothing it holds is showing."
+    },
+    {
+      "name": "dates, ended",
+      "season": {
+        "id": "s-summer",
+        "name": "Summer",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-06-01",
+        "endsOn": "2026-10-01"
+      },
+      "today": "2026-10-23",
+      "live": false,
+      "expected": "Runs Jun 1 to Oct 1, inclusive. Off right now. Nothing it holds is showing."
+    },
+    {
+      "name": "dates, a start alone, on",
+      "season": {
+        "id": "s-from",
+        "name": "From",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-10-01"
+      },
+      "today": "2026-10-23",
+      "live": true,
+      "expected": "Runs from Oct 1, inclusive. On now."
+    },
+    {
+      "name": "dates, a start alone, later",
+      "season": {
+        "id": "s-ski",
+        "name": "Ski",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-11-01"
+      },
+      "today": "2026-10-23",
+      "live": false,
+      "expected": "Runs from Nov 1, inclusive. Off right now. Nothing it holds is showing."
+    },
+    {
+      "name": "dates, an end alone, on",
+      "season": {
+        "id": "s-until",
+        "name": "Until",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "endsOn": "2026-12-01"
+      },
+      "today": "2026-10-23",
+      "live": true,
+      "expected": "Runs until Dec 1, inclusive. On now."
+    },
+    {
+      "name": "dates, an end alone, over",
+      "season": {
+        "id": "s-gone",
+        "name": "Gone",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "endsOn": "2026-10-22"
+      },
+      "today": "2026-10-23",
+      "live": false,
+      "expected": "Runs until Oct 22, inclusive. Off right now. Nothing it holds is showing."
+    },
+    {
+      "name": "dates, inverted",
+      "season": {
+        "id": "s-backwards",
+        "name": "Backwards",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-12-01",
+        "endsOn": "2026-11-01"
+      },
+      "today": "2026-10-23",
+      "live": false,
+      "expected": "Runs Dec 1 to Nov 1, inclusive. Off right now. Nothing it holds is showing."
+    }
+  ],
+  "seasonRunsLabel": [
+    {
+      "name": "both",
+      "startsOn": "2026-10-01",
+      "endsOn": "2027-03-15",
+      "expected": "Oct 1 to Mar 15"
+    },
+    {
+      "name": "a start alone",
+      "startsOn": "2026-10-01",
+      "endsOn": null,
+      "expected": "From Oct 1"
+    },
+    {
+      "name": "an end alone",
+      "startsOn": null,
+      "endsOn": "2027-03-15",
+      "expected": "Until Mar 15"
+    },
+    {
+      "name": "neither",
+      "startsOn": null,
+      "endsOn": null,
+      "expected": null
+    }
+  ],
+  "goalEndedNote": [
+    {
+      "name": "active: no note",
+      "goal": {
+        "id": "g",
+        "name": "G",
+        "state": "active",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": []
+      },
+      "expected": null
+    },
+    {
+      "name": "achieved, with its day",
+      "goal": {
+        "id": "g",
+        "name": "G",
+        "state": "achieved",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": [],
+        "achievedAt": "2026-10-01T18:00:00.123456+00:00"
+      },
+      "expected": "Achieved on Oct 1. Everything below is the record of how it went."
+    },
+    {
+      "name": "achieved, the stamp’s UTC day",
+      "goal": {
+        "id": "g",
+        "name": "G",
+        "state": "achieved",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": [],
+        "achievedAt": "2026-10-02T01:00:00Z"
+      },
+      "expected": "Achieved on Oct 2. Everything below is the record of how it went."
+    },
+    {
+      "name": "achieved, no stamp",
+      "goal": {
+        "id": "g",
+        "name": "G",
+        "state": "achieved",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": []
+      },
+      "expected": "Achieved. Everything below is the record of how it went."
+    },
+    {
+      "name": "set aside",
+      "goal": {
+        "id": "g",
+        "name": "G",
+        "state": "abandoned",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": []
+      },
+      "expected": "Set aside. Its work is untouched, and nothing here was cancelled on your behalf."
+    },
+    {
+      "name": "set aside after it was achieved",
+      "goal": {
+        "id": "g",
+        "name": "G",
+        "state": "abandoned",
+        "memberIds": [],
+        "milestoneIds": [],
+        "checkinIds": [],
+        "achievedAt": "2026-09-01T12:00:00Z"
+      },
+      "expected": "Set aside. Its work is untouched, and nothing here was cancelled on your behalf."
+    }
+  ],
+  "windDownSentence": [
+    {
+      "name": "achieved, none",
+      "state": "achieved",
+      "count": 0,
+      "expected": null
+    },
+    {
+      "name": "achieved, one",
+      "state": "achieved",
+      "count": 1,
+      "expected": "This still repeats on its own schedule. Nothing was changed for you. An achieved goal never edits its members. Keep them as they are, open one to park it in a season, or delete it for good."
+    },
+    {
+      "name": "achieved, three",
+      "state": "achieved",
+      "count": 3,
+      "expected": "3 of its items still repeat on their own schedules. Nothing was changed for you. An achieved goal never edits its members. Keep them as they are, open one to park it in a season, or delete it for good."
+    },
+    {
+      "name": "set aside, one",
+      "state": "abandoned",
+      "count": 1,
+      "expected": "This still repeats on its own schedule. Nothing was changed for you. A set-aside goal never edits its members. Keep them as they are, open one to park it in a season, or delete it for good."
+    },
+    {
+      "name": "set aside, two",
+      "state": "abandoned",
+      "count": 2,
+      "expected": "2 of its items still repeat on their own schedules. Nothing was changed for you. A set-aside goal never edits its members. Keep them as they are, open one to park it in a season, or delete it for good."
+    },
+    {
+      "name": "active, one: nothing to wind down",
+      "state": "active",
+      "count": 1,
+      "expected": null
+    }
+  ],
+  "checkinMeta": [
+    {
+      "name": "A weekly review",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000001",
+        "title": "A weekly review",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [
+          "2026-10-04",
+          "2026-10-18",
+          "2026-10-11"
+        ],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          0
+        ]
+      },
+      "cadence": "Sun",
+      "lastDone": "2026-10-18",
+      "expected": "Sun · last Oct 18"
+    },
+    {
+      "name": "A first review",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000002",
+        "title": "A first review",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          0
+        ]
+      },
+      "cadence": "Sun",
+      "lastDone": null,
+      "expected": "Sun"
+    },
+    {
+      "name": "A daily line",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000003",
+        "title": "A daily line",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [
+          "2026-10-22"
+        ],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "cadence": "Daily",
+      "lastDone": "2026-10-22",
+      "expected": "Daily · last Oct 22"
+    },
+    {
+      "name": "A monthly money check",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000004",
+        "title": "A monthly money check",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "repeatFrequency": "monthly",
+        "repeatMonthDay": 1,
+        "completedDates": [
+          "2026-10-01"
+        ]
+      },
+      "cadence": "Monthly · 1",
+      "lastDone": "2026-10-01",
+      "expected": "Monthly · 1 · last Oct 1"
+    },
+    {
+      "name": "Two days a week",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000005",
+        "title": "Two days a week",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-05",
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          3,
+          1
+        ],
+        "completedDates": [
+          "2027-01-04"
+        ]
+      },
+      "cadence": "Mon, Wed",
+      "lastDone": "2027-01-04",
+      "expected": "Mon, Wed · last Jan 4"
+    }
+  ],
+  "milestoneTickLabel": [
+    {
+      "name": "not reached yet",
+      "title": "Run a 10K",
+      "reached": false,
+      "expected": "Mark Run a 10K reached"
+    },
+    {
+      "name": "reached",
+      "title": "Run a 10K",
+      "reached": true,
+      "expected": "Mark Run a 10K not reached"
+    }
+  ]
+}
