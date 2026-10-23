@@ -1461,6 +1461,18 @@ their own say so.
   through a later settle. A card that first shows after the run still shortens the list
   without a glide, as it does on main. Its tree replacing the skeleton once the runtime
   starts is the same.
+- **Notes on an item's timeline** ([lib/item-notes-store.ts](../../lib/item-notes-store.ts),
+  migration 082). No gate of their own: every surface that writes a note is unreachable or
+  inert on cached rows (the item panel and modal are the `edit-item` slot, which
+  `PREVIEW_DEFERRED_SLOTS` defers; `/item/[id]` and the phone's item view wait for
+  `selectPlannerSettled`; the Do stuff desk is mounted but `inert`, so its menus take no
+  click). Notes are not planner rows: not in the snapshot, the undo history, a mod event or
+  a recipe trigger, so the write barrier and held captures have nothing to hold, and a read
+  during the preview is a fresh RLS read of a separate table. The store's writes are the
+  backstop: `add`, `edit`, `pin`, `unpin` and `remove` return false with no toast while
+  `isPlannerPreviewing()`, and `saveNoteFrom` puts the text back in the item's note draft
+  silently rather than taking its failure path, so a future host mounted before the settle
+  never writes a note against an item the landing may reveal as deleted.
 - **Nothing to do for the rest.** The agent key moving server-side (a route, no store); the
   push subscription released on a user change (its own table, nothing read from the
   planner); the braindump's Hide finished (a view filter over whatever is on screen); dated

@@ -67,6 +67,12 @@ vi.mock('@/lib/db', () => ({
 }));
 vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}) }));
 vi.mock('@/lib/supabase', () => ({ createClient: vi.fn(() => ({})) }));
+// The item's notes (082), read by the desk's conversation; none unless a test says so.
+const notesRead = vi.hoisted(() => ({ rows: [] as unknown[] }));
+vi.mock('@/lib/item-notes', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/item-notes')>()),
+  listItemNotes: vi.fn(async () => notesRead.rows),
+}));
 
 import { Braindump } from '@/components/sidebar/braindump';
 import { ViewRouter } from '@/components/views/view-router';
@@ -81,6 +87,7 @@ import { EMPTY_VIEW_FILTERS } from '@/lib/filters';
 import type { Item } from '@/lib/planner-types';
 import { enableExtensions } from './support/extensions';
 import { EXT_DO_STUFF } from '@/lib/extension-registry';
+import { clearItemNotesState } from '@/lib/item-notes-store';
 
 const task = (id: string, extra: Record<string, unknown> = {}) =>
   ({
@@ -136,7 +143,11 @@ beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200 })));
   useAgentsStore.setState({ agents: [], loaded: false });
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  notesRead.rows = [];
+  clearItemNotesState();
+});
 
 function start({ host = true }: { host?: boolean } = {}) {
   render(
@@ -401,6 +412,35 @@ describe('the desk', () => {
     // The day column is the day's clock: no Anytime strip while walking.
     expect(screen.getByTestId('do-stuff-desk-day').querySelector('[data-dnd-id="unscheduled:anytime"]')).toBeNull();
     expect(screen.getByTestId('do-stuff-desk-day').hasAttribute('data-dense')).toBe(true);
+  });
+});
+
+describe('notes on the desk', () => {
+  it('with AI, shows the item’s note rows and pinned card, draws no Ask / Note switch, and Jot still writes the description', async () => {
+    const unseed = seedAI(CONNECTED_MODEL);
+    try {
+      const at = new Date().toISOString();
+      notesRead.rows = [
+        { id: 'n1', itemId: 'a', body: 'call before noon', createdAt: at, editedAt: null, pinnedAt: null },
+        { id: 'n2', itemId: 'a', body: 'the pinned one', createdAt: at, editedAt: null, pinnedAt: at },
+      ];
+      seed(ITEMS);
+      start();
+      open();
+      await act(async () => {});
+      expect(screen.getByTestId('item-timeline-note')).toHaveTextContent('call before noon');
+      expect(screen.getByTestId('item-note-pinned')).toHaveTextContent('the pinned one');
+      expect(screen.queryByTestId('box-mode-ask')).toBeNull();
+      expect(screen.queryByTestId('box-mode-note')).toBeNull();
+      const jot = screen.getByTestId('do-stuff-desk-jot');
+      fireEvent.change(jot, { target: { value: 'landlord prefers email' } });
+      act(() => {
+        fireEvent.keyDown(jot, { key: 'Enter' });
+      });
+      expect(byId('a').notes).toBe('renewal or month to month?\nlandlord prefers email');
+    } finally {
+      unseed();
+    }
   });
 });
 

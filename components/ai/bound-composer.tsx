@@ -7,8 +7,12 @@ import { useAgentQuestionOpen } from '@/lib/agent-question';
 import { useAICapabilities, useAIConnectionStore } from '@/lib/ai-connection-store';
 import { modelName } from '@/lib/ai-model-names';
 import { chatAssistantLabel } from '@/lib/chat-utils';
-import { bindingKey, useRailStore, type AskSurface, type ComposerBinding } from '@/lib/rail-store';
+import { bindingKey, noteDraftKey, useRailStore, type AskSurface, type ComposerBinding } from '@/lib/rail-store';
 import { chooseChatTarget } from '@/lib/chat-target';
+import { useItemNotesStore } from '@/lib/item-notes-store';
+import { usePlannerStore } from '@/lib/planner-store';
+import { DELEGATE_ASSIGNEE } from '@/lib/agent-handoff';
+import { noteModeLine, useItemBoxMode } from '@/components/ai/box-mode-switch';
 import { cn } from '@/lib/utils';
 
 /**
@@ -44,6 +48,12 @@ export const ComposerAwakeContext = createContext(true);
  * commit Enter alone on purpose (chat-composer.tsx), so without it that Enter
  * would save and close the item.
  *
+ * NOTE MODE. An item's panel box can be in Note mode (ChatComposer's Ask /
+ * Note switch, rail-store `boxModes`): then its text is the item's NOTE draft
+ * (`noteDraftKey`), never the Ask draft, and the line under it says the note
+ * is saved on the item and sent nowhere. The dock never notes, so it never
+ * shows a note draft.
+ *
  * The phone's dock (`variant="dock"`, `surface="phone"`) sets the static
  * label itself (`label={false}`): it sits under the bar, clear of the mode
  * card beside it.
@@ -67,8 +77,17 @@ export function BoundComposer({
   /** The static model label under the box (AnswererLabel). */
   label?: boolean;
 }) {
-  const key = bindingKey(binding);
+  const itemId = binding.kind === 'item' ? binding.itemId : null;
+  const notesAvailable = useItemNotesStore((s) => s.available);
+  const noting = useItemBoxMode(itemId, variant === 'panel' && notesAvailable === true) === 'note';
+  const key = noting && itemId ? noteDraftKey(itemId) : bindingKey(binding);
   const text = useRailStore((s) => s.drafts[key] ?? '');
+  const { target } = useAICapabilities();
+  const held = usePlannerStore((s) => {
+    if (!itemId) return false;
+    const item = s.items.find((i) => i.id === itemId);
+    return !!(item && 'assignee' in item && item.assignee === DELEGATE_ASSIGNEE);
+  });
   const pending = useRailStore((s) => s.pendingFocus);
   const awake = useContext(ComposerAwakeContext);
   // While an agent's question is open the line under the box says who it answers.
@@ -115,7 +134,11 @@ export function BoundComposer({
         placeholder={placeholder}
       />
       {label &&
-        (binding.kind === 'item' && answersAgent ? (
+        (noting ? (
+          <p className="text-muted-foreground text-2xs px-2" data-testid="note-mode-line">
+            {noteModeLine(target === 'openclaw' || held || answersAgent)}
+          </p>
+        ) : binding.kind === 'item' && answersAgent ? (
           <AgentRouteLine itemId={binding.itemId} className="px-2" />
         ) : (
           <AnswererLabel className="px-2" switchable={binding.kind === 'home'} />

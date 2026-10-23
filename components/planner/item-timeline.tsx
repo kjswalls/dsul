@@ -10,12 +10,16 @@ import { useAICapabilities } from '@/lib/ai-connection-store';
 import { useConversationsStore, type ChatMessage } from '@/lib/conversations-store';
 import { TimelineFileRow } from '@/components/planner/item-file-card';
 import { useItemFiles, useItemFilesStore } from '@/lib/item-files-store';
+import { useItemNotes, useItemNotesStore } from '@/lib/item-notes-store';
+import { ItemNoteBox, PinnedNote, TimelineNoteRow } from '@/components/planner/item-notes';
 import {
   ACTOR_LABEL,
   buildTimeline,
   fileEntries,
   foldLine,
   foldTimeline,
+  noteEntries,
+  pinnedNote,
   talkLine,
   type ChangeEntry,
   type TimelineActor,
@@ -36,8 +40,11 @@ import { cn } from '@/lib/utils';
  * Either way, a long history shows its newest lines under "Show N earlier".
  * Files kept on the item are lines too (`fileEntries`), under every filter,
  * never folded and never counted, and shown even where item_events is not.
+ * Notes (lib/item-notes.ts) are too, and the pinned one is a card under the
+ * heading; with no AI this is where a note is written (`ItemNoteBox`).
  *
- * Quiet when there is nothing: no heading over an empty list.
+ * Quiet when there is nothing: no heading over an empty list. With notes
+ * available, an item with nothing to list shows the Note box alone.
  */
 
 const NO_MESSAGES: ChatMessage[] = [];
@@ -223,6 +230,11 @@ export function ItemTimeline({ item }: { item: Item }) {
   useEffect(() => {
     if (itemFiles?.length) void loadThumbs(item.id);
   }, [itemFiles, item.id, loadThumbs]);
+  const notes = useItemNotes(item.id);
+  const notePlacedAt = useItemNotesStore((s) => s.placedAt);
+  const notesAvailable = useItemNotesStore((s) => s.available);
+  const pinned = useMemo(() => pinnedNote(notes ?? []), [notes]);
+  const noteRows = useMemo(() => noteEntries(notes ?? [], notePlacedAt), [notes, notePlacedAt]);
 
   const effective: TimelineFilter = canChat ? filter : 'changes';
   const built = useMemo(
@@ -234,9 +246,9 @@ export function ItemTimeline({ item }: { item: Item }) {
           createdAt: m.createdAt,
           answerer: m.answerer,
         })),
-        { filter: effective, now: new Date(), files }
+        { filter: effective, now: new Date(), files, notes: noteRows }
       ),
-    [events, talk, effective, files]
+    [events, talk, effective, files, noteRows]
   );
   const { days, hidden } = useMemo(
     () => (unfolded ? { days: built, hidden: 0 } : foldTimeline(built)),
@@ -251,12 +263,23 @@ export function ItemTimeline({ item }: { item: Item }) {
           createdAt: m.createdAt,
           answerer: m.answerer,
         })),
-        { filter: 'all', now: new Date(), files }
-      ).length > 0,
-    [events, talk, files]
+        { filter: 'all', now: new Date(), files, notes: noteRows }
+      ).length > 0 || !!pinned,
+    [events, talk, files, noteRows, pinned]
   );
 
-  if (!anything || (!getItemEventsAvailable() && talk.length === 0 && files.length === 0)) return null;
+  const nothing =
+    !anything ||
+    (!getItemEventsAvailable() && talk.length === 0 && files.length === 0 && noteRows.length === 0 && !pinned);
+  if (nothing) {
+    // Nothing to list: the Note box alone where notes can be written, else nothing at all.
+    if (notesAvailable !== true) return null;
+    return (
+      <section data-testid="item-timeline" aria-label="Timeline" className="flex flex-col gap-2">
+        <ItemNoteBox itemId={item.id} />
+      </section>
+    );
+  }
 
   return (
     <section data-testid="item-timeline" aria-labelledby={`item-timeline-${item.id}`} className="flex flex-col gap-2">
@@ -266,10 +289,13 @@ export function ItemTimeline({ item }: { item: Item }) {
         </BandLabel>
         {canChat && <TimelineFilterTabs value={filter} onChange={setFilter} />}
       </div>
+      {pinned && <PinnedNote key={pinned.id} itemId={item.id} note={pinned} />}
       {days.length === 0 ? (
-        <p className="text-muted-foreground text-xs" data-testid="item-timeline-empty">
-          {effective === 'talk' ? 'No conversation about this yet.' : 'No changes yet.'}
-        </p>
+        !pinned && (
+          <p className="text-muted-foreground text-xs" data-testid="item-timeline-empty">
+            {effective === 'talk' ? 'No conversation about this yet.' : 'No changes yet.'}
+          </p>
+        )
       ) : (
         <ol className="flex flex-col gap-2">
           {hidden > 0 && (
@@ -291,6 +317,10 @@ export function ItemTimeline({ item }: { item: Item }) {
                     <li key={entry.key}>
                       <TimelineFileRow entry={entry} />
                     </li>
+                  ) : entry.kind === 'note' ? (
+                    <li key={entry.key}>
+                      <TimelineNoteRow itemId={item.id} entry={entry} />
+                    </li>
                   ) : (
                     <TimelineChangeLine key={entry.key} entry={entry} />
                   )
@@ -300,6 +330,7 @@ export function ItemTimeline({ item }: { item: Item }) {
           ))}
         </ol>
       )}
+      <ItemNoteBox itemId={item.id} />
     </section>
   );
 }

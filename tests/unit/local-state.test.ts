@@ -19,6 +19,7 @@ import { useEODStore } from '@/lib/eod-store';
 import { useKeyboardShortcutsStore } from '@/lib/keyboard-shortcuts-store';
 import { useMorningStore } from '@/lib/morning-store';
 import { getSnapshotEpoch } from '@/lib/planner-snapshot';
+import { getItemNotesEpoch, useItemNotesStore } from '@/lib/item-notes-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useSidebarStore, SIDEBAR_DEFAULT_WIDTH } from '@/lib/sidebar-store';
 import { recordReleased, releasedOn } from '@/lib/sweep-grace';
@@ -289,6 +290,28 @@ describe('the planner snapshot', () => {
     const before = getSnapshotEpoch();
     adoptUnstamped(USER_A);
     expect(getSnapshotEpoch()).toBeGreaterThan(before);
+  });
+});
+
+/**
+ * Notes on an item's timeline (lib/item-notes-store.ts) are a memory-only
+ * cache of the account's own writing; their clear empties it and bumps an
+ * epoch that drops a read still on its way.
+ */
+describe('the item notes store', () => {
+  it('is in RAW_CLEARERS: a sign-out and an account switch both bump its epoch', () => {
+    adoptLocalState(USER_A);
+
+    useItemNotesStore.setState({ available: true, byItem: { i1: { status: 'ready', notes: [] } } });
+    let before = getItemNotesEpoch();
+    clearUserScopedLocalState();
+    expect(getItemNotesEpoch()).toBeGreaterThan(before);
+    expect(useItemNotesStore.getState().byItem).toEqual({});
+
+    adoptLocalState(USER_A);
+    before = getItemNotesEpoch();
+    expect(adoptLocalState(USER_B)).toBe(true);
+    expect(getItemNotesEpoch()).toBeGreaterThan(before);
   });
 });
 

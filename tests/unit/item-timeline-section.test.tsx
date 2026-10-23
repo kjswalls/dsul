@@ -12,6 +12,8 @@ vi.mock('@/lib/db', async (importOriginal) => ({
 // The session client, as the item's files read it: rows for a list, a signed
 // URL per picture.
 const filesDb = vi.hoisted(() => ({ rows: [] as Record<string, unknown>[], signed: [] as unknown[] }));
+// The item's notes (082): null is a database without the table, as before 082 is applied.
+const notesDb = vi.hoisted(() => ({ rows: null as Record<string, unknown>[] | null }));
 vi.mock('@/lib/supabase', () => ({
   createClient: () => {
     const b = {
@@ -20,8 +22,17 @@ vi.mock('@/lib/supabase', () => ({
       order: () => b,
       then: (resolve: (v: unknown) => unknown) => Promise.resolve({ data: filesDb.rows, error: null }).then(resolve),
     };
+    const n = {
+      select: () => n,
+      eq: () => n,
+      order: () => n,
+      then: (resolve: (v: unknown) => unknown) =>
+        Promise.resolve(
+          notesDb.rows ? { data: notesDb.rows, error: null } : { data: null, error: { code: '42P01' } }
+        ).then(resolve),
+    };
     return {
-      from: () => b,
+      from: (table: string) => (table === 'item_notes' ? n : b),
       storage: {
         from: () => ({
           createSignedUrls: async (paths: string[], ttl: number) => (
@@ -38,6 +49,8 @@ import { ItemTimeline } from '@/components/planner/item-timeline';
 import { ItemConversation } from '@/components/ai/item-conversation';
 import { useConversationsStore, clearChatState } from '@/lib/conversations-store';
 import { useItemFilesStore } from '@/lib/item-files-store';
+import { clearItemNotesState } from '@/lib/item-notes-store';
+import { useRailStore } from '@/lib/rail-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { seedAI, CONNECTED_MODEL, NOTHING_CONNECTED } from './helpers/ai-fixtures';
 import type { TaskItem } from '@/lib/planner-types';
@@ -60,6 +73,10 @@ afterEach(() => {
   eventsAvailable.value = true;
   filesDb.rows = [];
   filesDb.signed = [];
+  notesDb.rows = null;
+  clearItemNotesState();
+  useRailStore.getState().reset();
+  usePlannerStore.setState({ items: [] } as never);
   useItemFilesStore.setState({ available: null, byItem: {}, uploading: {}, placedAt: {}, thumbs: {}, thumbFails: {} });
 });
 
@@ -253,5 +270,100 @@ describe('files on the timeline', () => {
     await act(async () => {});
     expect(screen.getByTestId('item-timeline-file')).toHaveTextContent('You attached a.pdf');
     expect(screen.getByTestId('item-file-card')).toBeInTheDocument();
+  });
+});
+
+const noteRow = (id: string, at: Date, over: Record<string, unknown> = {}) => ({
+  id,
+  item_id: 'i1',
+  body: `Note ${id}`,
+  pinned_at: null,
+  edited_at: null,
+  created_at: at.toISOString(),
+  ...over,
+});
+
+describe('notes on the timeline', () => {
+  const conversation = async (mode: 'pinned' | 'inline' = 'pinned', extra: Record<string, unknown> = {}) => {
+    useConversationsStore.setState({ resolveItemThread: async () => 'c1', openThread: async () => {} } as never);
+    render(<ItemConversation item={ITEM} mode={mode} {...extra} />);
+    await act(async () => {});
+    await act(async () => {});
+  };
+
+  it('sets a note between the messages by time', async () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    fetchItemEvents.mockResolvedValue([]);
+    notesDb.rows = [noteRow('a', new Date(today(9).getTime() + 500))];
+    withThread();
+    await conversation();
+    const text = screen.getByTestId('item-conversation').textContent ?? '';
+    const order = ['hi', 'Note a', 'hello'].map((t) => text.indexOf(t));
+    expect(order.every((at) => at >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    expect(screen.getByTestId('item-timeline-note')).toHaveTextContent('You · note');
+  });
+
+  it('draws the pinned card under every filter', async () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    fetchItemEvents.mockResolvedValue(events);
+    notesDb.rows = [noteRow('p', today(7), { pinned_at: today(8).toISOString() })];
+    withThread();
+    await conversation();
+    for (const f of ['all', 'talk', 'changes']) {
+      fireEvent.click(screen.getByTestId(`item-timeline-filter-${f}`));
+      expect(screen.getByTestId('item-note-pinned')).toHaveTextContent('Note · pinned');
+      expect(screen.getByTestId('item-note-pinned')).toHaveTextContent('Note p');
+      // Drawn on top, never also in the stream.
+      expect(screen.queryByTestId('item-timeline-note')).toBeNull();
+    }
+  });
+
+  it('shows the conversation for an item whose only history is a pinned note', async () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    fetchItemEvents.mockResolvedValue([]);
+    notesDb.rows = [noteRow('p', today(7), { pinned_at: today(8).toISOString() })];
+    await conversation();
+    expect(screen.getByTestId('item-conversation')).toBeInTheDocument();
+    expect(screen.getByTestId('item-note-pinned')).toBeInTheDocument();
+  });
+
+  it('shows a note under Talk with no messages, not the empty line', async () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    fetchItemEvents.mockResolvedValue([]);
+    notesDb.rows = [noteRow('a', today(9))];
+    await conversation();
+    fireEvent.click(screen.getByTestId('item-timeline-filter-talk'));
+    expect(screen.queryByTestId('item-timeline-empty')).toBeNull();
+    expect(screen.getByTestId('item-timeline-note')).toBeInTheDocument();
+  });
+
+  it('in note mode, the inline box draws no agent route line and saves mid-reply', async () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    fetchItemEvents.mockResolvedValue([]);
+    notesDb.rows = [];
+    const held = { ...ITEM, assignee: 'openclaw', aiStatus: 'blocked' } as TaskItem;
+    usePlannerStore.setState({ items: [held] } as never);
+    useConversationsStore.setState((s) => ({ sending: { ...s.sending, 'item:i1': true } }) as never);
+    await conversation('inline');
+    expect(screen.getByTestId('agent-route-line')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('box-mode-note'));
+    expect(screen.queryByTestId('agent-route-line')).toBeNull();
+    expect(screen.getByTestId('note-mode-line')).toHaveTextContent(
+      'Saved on this item. Not sent to the AI or OpenClaw.'
+    );
+    const input = screen.getByTestId('item-thread-input');
+    expect(input).toHaveAttribute('placeholder', 'Add a note…');
+    fireEvent.change(input, { target: { value: 'remember the form' } });
+    expect(screen.getByRole('button', { name: 'Save note' })).toBeEnabled();
+  });
+
+  it('draws no switch where the host says so (the Do stuff desk)', async () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    fetchItemEvents.mockResolvedValue([]);
+    notesDb.rows = [];
+    await conversation('inline', { noteSwitch: false });
+    expect(screen.queryByTestId('box-mode-ask')).toBeNull();
+    expect(screen.queryByTestId('box-mode-note')).toBeNull();
   });
 });
