@@ -56,10 +56,10 @@ import { blockWhen, hasTimeBlock, timeBlockSummary } from '@/lib/project-block';
 import { seasonStateForSwitch } from '@/lib/scope-rail';
 import { toDateStr } from '@/lib/recurrence';
 import {
-  RoutineWriteSchema,
-  SeasonWriteSchema,
+  CONTAINER_WRITE_SCHEMAS,
   containerIntentPatch,
   type ContainerIntentTarget,
+  type OrganizeKind,
 } from '@/lib/app-containers';
 import {
   GOALS_OFF,
@@ -90,6 +90,7 @@ import {
   heldByState,
   milestoneTickLabel,
   nameInTrashSentence,
+  nameTakenSentence,
   nextMilestoneLine,
   restoreRefusal,
   restoreSentence,
@@ -1794,18 +1795,33 @@ function buildCopy() {
 
   // A container write's refusal (POST /api/app/containers/:kind/:id, from
   // O8a): words for the codes that have them, null where the phone says what
-  // it says for any failed write.
+  // it says for any failed write. `sentName` is the name the phone sent in
+  // its rename (O9), which the two name refusals say; null for a write that
+  // sent none, where they have no words.
   const containerRefusalCases = [
-    { name: 'a pause until a day no longer after today', code: 'pause_refused' },
-    { name: 'gone, or never the caller’s', code: 'not_found' },
-    { name: 'a body the route refuses', code: 'invalid' },
-    { name: 'no answer at all', code: null },
-  ].map((c) => ({ ...c, expected: containerRefusal(c.code ?? undefined) }));
+    { name: 'a pause until a day no longer after today', code: 'pause_refused', sentName: null },
+    { name: 'gone, or never the caller’s', code: 'not_found', sentName: null },
+    { name: 'a body the route refuses', code: 'invalid', sentName: null },
+    { name: 'no answer at all', code: null, sentName: null },
+    { name: 'a rename onto a live project’s name', code: 'name_taken', sentName: 'House' },
+    { name: 'a rename onto a live project’s name in another case', code: 'name_taken', sentName: 'work' },
+    { name: 'a rename onto a name the Trash still holds', code: 'name_in_trash', sentName: 'Errands' },
+    { name: 'a rename refused for another reason', code: 'not_found', sentName: 'House' },
+    { name: 'a pause refused, whatever name was sent', code: 'pause_refused', sentName: 'House' },
+    { name: 'a name refusal with no name sent', code: 'name_taken', sentName: null },
+  ].map((c) => ({ ...c, expected: containerRefusal(c.code ?? undefined, c.sentName ?? undefined) }));
 
   const nameInTrashCases = [
     { name: 'a project', noun: 'project', heldName: 'Admin' },
     { name: 'a routine', noun: 'routine', heldName: 'Morning' },
   ].map((c) => ({ ...c, expected: nameInTrashSentence(c.noun, c.heldName) }));
+
+  // A name a live sibling already has (O9's rename; labels.tsx takenBy says
+  // it inline on the web).
+  const nameTakenCases = [
+    { name: 'a project', noun: 'project', heldName: 'Work' },
+    { name: 'a name with quotes in it', noun: 'project', heldName: 'Mum’s “stuff”' },
+  ].map((c) => ({ ...c, expected: nameTakenSentence(c.noun, c.heldName) }));
 
   return {
     tables: {
@@ -1845,6 +1861,7 @@ function buildCopy() {
     restoreSentence: restoreSentenceCases,
     restoreRefusal: restoreRefusalCases,
     nameInTrashSentence: nameInTrashCases,
+    nameTakenSentence: nameTakenCases,
     containerRefusal: containerRefusalCases,
   };
 }
@@ -2214,8 +2231,9 @@ function buildPaused() {
  * rule (DsulCore applyingContainer) to step optimistically and to replay a
  * landed write at the instant it was sent. Each case pins that instant
  * (`now`), the zone the server resolved (`timeZone`: for a pause the
- * account's, else the device's, else UTC; for a season's state, which reads
- * no zone, the UTC the route passes) and the day they make (`today`).
+ * account's, else the device's, else UTC; for every other intent, which
+ * reads no zone, the UTC the route passes) and the day they make (`today`).
+ * A goal's state stamps `achievedAt` at `now`.
  *
  * `body` is the JSON the phone sends, checked here against the route's own
  * schema. `expected.patch` is the write, with a cleared field as null (the
@@ -2231,12 +2249,14 @@ function buildPaused() {
 const CW_NOW = '2026-10-23T17:00:00.000Z';
 /** 23:30 on Oct 23 in New York, already Oct 24 in UTC. */
 const CW_LATE = '2026-10-24T03:30:00.000Z';
-/** A season's state reads no zone: the route reads none and passes UTC. */
+/** Only a pause reads a zone: for every other intent the route reads none and passes UTC. */
 const STATE_ZONE = 'UTC';
 
 type WriteAsk =
   | { name: string; kind: 'routine'; before: Routine; body: unknown; now: string; timeZone: string }
-  | { name: string; kind: 'season'; before: Season; body: unknown; now: string; timeZone: string };
+  | { name: string; kind: 'season'; before: Season; body: unknown; now: string; timeZone: string }
+  | { name: string; kind: 'goal'; before: Goal; body: unknown; now: string; timeZone: string }
+  | { name: string; kind: 'project'; before: Project; body: unknown; now: string; timeZone: string };
 
 const nullForUndefined = (patch: object) =>
   Object.fromEntries(Object.entries(patch).map(([k, v]) => [k, v === undefined ? null : v]));
@@ -2248,10 +2268,8 @@ function applied(before: object, patch: object): Record<string, unknown> {
 }
 
 function buildContainerWrites() {
-  const r = (over: Partial<Routine> = {}) =>
-    routine('r-evening', 'Evening', { itemIds: [uid(1), uid(2)], sortOrder: 1, usualTime: '21:30', ...over });
-  const s = (state: Season['state'], over: Partial<Season> = {}) =>
-    season('s-autumn', 'Autumn', state, { startsOn: '2026-09-01', endsOn: '2026-11-30', itemIds: [uid(3)], routineIds: ['r-evening'], sortOrder: 0, ...over });
+  const r = CW_ROUTINE;
+  const s = CW_SEASON;
   const pause = (over: Record<string, unknown> = {}) => ({ action: 'pause', paused: true, timeZone: ZONE, ...over });
   const resume = { action: 'pause', paused: false, timeZone: ZONE };
   const state = (to: Season['state']) => ({ action: 'state', state: to });
@@ -2424,21 +2442,22 @@ function buildContainerWrites() {
     { name: 'on when already pinned on: already so', kind: 'season', before: s('active'), body: state('active'), now: CW_NOW, timeZone: STATE_ZONE },
     { name: 'off when already switched off: already so', kind: 'season', before: s('paused'), body: state('paused'), now: CW_NOW, timeZone: STATE_ZONE },
     { name: 'dates when already following them: already so', kind: 'season', before: s('auto'), body: state('auto'), now: CW_NOW, timeZone: STATE_ZONE },
+
+    // O8b: the other fields. Each reads no zone, and writes its value again
+    // when it already has it (only a pause and the two states are ever
+    // "already so").
+    ...fieldAsks(),
+    // O9: rename, icon and colour, on every kind.
+    ...identityAsks(),
   ];
 
   const cases = asks.map((c) => {
     const at = new Date(c.now);
     const today = toDateStr(at, c.timeZone);
-    let target: ContainerIntentTarget;
-    if (c.kind === 'routine') {
-      const parsed = RoutineWriteSchema.safeParse(c.body);
-      if (!parsed.success) throw new Error(`${c.name}: the route would refuse this body`);
-      target = { kind: 'routine', container: c.before, intent: parsed.data };
-    } else {
-      const parsed = SeasonWriteSchema.safeParse(c.body);
-      if (!parsed.success) throw new Error(`${c.name}: the route would refuse this body`);
-      target = { kind: 'season', container: c.before, intent: parsed.data };
-    }
+    const parsed = CONTAINER_WRITE_SCHEMAS[c.kind].safeParse(c.body);
+    if (!parsed.success) throw new Error(`${c.name}: the route would refuse this body`);
+    // The schema of `c.kind` parsed it, so the intent is that kind's.
+    const target = { kind: c.kind, container: c.before, intent: parsed.data } as ContainerIntentTarget;
     const result = containerIntentPatch(target, { now: at, timeZone: c.timeZone });
     const before = JSON.parse(JSON.stringify(c.before)) as object;
     const expected =
@@ -2450,7 +2469,7 @@ function buildContainerWrites() {
 
   // Bodies the route refuses with 400 before reading anything: the phone's
   // encoder must never produce one.
-  const invalidAsks: { name: string; kind: 'routine' | 'season' | 'goal' | 'project'; body: unknown }[] = [
+  const invalidAsks: { name: string; kind: OrganizeKind; body: unknown }[] = [
     { name: 'a resume with a day', kind: 'routine', body: { action: 'pause', paused: false, pausedUntil: '2026-10-30' } },
     { name: 'a pause with no paused', kind: 'routine', body: { action: 'pause', pausedUntil: '2026-10-30' } },
     { name: 'a pause until a null day', kind: 'routine', body: { action: 'pause', paused: true, pausedUntil: null } },
@@ -2459,16 +2478,239 @@ function buildContainerWrites() {
     { name: 'a season’s state on a routine', kind: 'routine', body: { action: 'state', state: 'paused' } },
     { name: 'a state that is not one of the three', kind: 'season', body: { action: 'state', state: 'on' } },
     { name: 'a pause on a season', kind: 'season', body: { action: 'pause', paused: true } },
-    { name: 'any intent on a goal, for now', kind: 'goal', body: { action: 'state', state: 'achieved' } },
-    { name: 'any intent on a project, for now', kind: 'project', body: { action: 'pause', paused: true } },
+    { name: 'a pause on a project', kind: 'project', body: { action: 'pause', paused: true } },
+    // O8b: the other fields.
+    { name: 'a usual time that is not HH:mm', kind: 'routine', body: { action: 'usualTime', usualTime: '7:15' } },
+    { name: 'a usual time past the day', kind: 'routine', body: { action: 'usualTime', usualTime: '24:00' } },
+    { name: 'a usual time with no time', kind: 'routine', body: { action: 'usualTime' } },
+    { name: 'notes with no notes', kind: 'routine', body: { action: 'notes' } },
+    { name: 'notes that are not text', kind: 'season', body: { action: 'notes', notes: 3 } },
+    { name: 'a why on a routine', kind: 'routine', body: { action: 'why', why: 'To sleep.' } },
+    { name: 'notes on a goal: its free text is the why', kind: 'goal', body: { action: 'notes', notes: 'x' } },
+    { name: 'runs that end before they start', kind: 'season', body: { action: 'dates', startsOn: '2026-12-01', endsOn: '2026-11-01' } },
+    { name: 'runs with one end left out', kind: 'season', body: { action: 'dates', startsOn: '2026-12-01' } },
+    { name: 'runs on a day that is not on the calendar', kind: 'season', body: { action: 'dates', startsOn: '2026-02-30', endsOn: null } },
+    { name: 'a goal’s window on a season', kind: 'season', body: { action: 'window', startsOn: null, targetOn: null } },
+    { name: 'a window that closes before it opens', kind: 'goal', body: { action: 'window', startsOn: '2026-10-23', targetOn: '2026-10-22' } },
+    { name: 'a window with no target key', kind: 'goal', body: { action: 'window', startsOn: '2026-10-23' } },
+    { name: 'a goal state that is not one of the three', kind: 'goal', body: { action: 'state', state: 'paused' } },
+    { name: 'a season’s dates on a goal', kind: 'goal', body: { action: 'dates', startsOn: null, endsOn: null } },
+    { name: 'an achievedAt the server would stamp itself', kind: 'goal', body: { action: 'state', state: 'achieved', achievedAt: CW_NOW } },
+    { name: 'a usual time on a project', kind: 'project', body: { action: 'usualTime', usualTime: '07:00' } },
+    // O9: rename, icon and colour.
+    { name: 'an empty name', kind: 'routine', body: { action: 'rename', name: '' } },
+    { name: 'a name of spaces', kind: 'project', body: { action: 'rename', name: '   ' } },
+    { name: 'a null name', kind: 'goal', body: { action: 'rename', name: null } },
+    { name: 'a null icon: the web never clears a glyph', kind: 'season', body: { action: 'icon', icon: null } },
+    { name: 'an icon with no icon: prefix', kind: 'routine', body: { action: 'icon', icon: 'Moon' } },
+    { name: 'an icon with no name', kind: 'project', body: { action: 'icon', icon: 'icon:' } },
+    { name: 'an icon name with a dash', kind: 'goal', body: { action: 'icon', icon: 'icon:Calendar-Range' } },
+    { name: 'a project’s glyph sent as emoji', kind: 'project', body: { action: 'icon', emoji: 'icon:House' } },
+    { name: 'a colour that is not a ramp token', kind: 'routine', body: { action: 'color', color: '#ff8800' } },
+    { name: 'a ramp step past the eighth', kind: 'season', body: { action: 'color', color: 'var(--accent-9)' } },
+    { name: 'a colour with no colour key', kind: 'goal', body: { action: 'color' } },
+    // O10's, not yet taken.
+    { name: 'a delete, for now', kind: 'project', body: { action: 'delete' } },
   ];
   const invalid = invalidAsks.map((c) => {
-    const schema = c.kind === 'routine' ? RoutineWriteSchema : c.kind === 'season' ? SeasonWriteSchema : null;
-    if (schema?.safeParse(c.body).success) throw new Error(`${c.name}: the route would take this body`);
+    if (CONTAINER_WRITE_SCHEMAS[c.kind].safeParse(c.body).success) throw new Error(`${c.name}: the route would take this body`);
     return { ...c, expected: { status: 400, error: 'invalid' } };
   });
 
   return { cases, invalid };
+}
+
+/** A routine, a season, a goal and a project as the field cases find them. */
+const CW_ROUTINE = (over: Partial<Routine> = {}) =>
+  routine('r-evening', 'Evening', { itemIds: [uid(1), uid(2)], sortOrder: 1, usualTime: '21:30', ...over });
+const CW_SEASON = (state: Season['state'], over: Partial<Season> = {}) =>
+  season('s-autumn', 'Autumn', state, { startsOn: '2026-09-01', endsOn: '2026-11-30', itemIds: [uid(3)], routineIds: ['r-evening'], sortOrder: 0, ...over });
+const CW_GOAL = (over: Partial<Goal> = {}) =>
+  goal('g-half', 'Run a half marathon', {
+    why: 'To feel strong again.',
+    startsOn: '2026-09-01',
+    targetOn: '2027-03-15',
+    sortOrder: 0,
+    memberIds: [uid(4)],
+    milestoneIds: [uid(5), uid(6)],
+    checkinIds: [uid(7)],
+    ...over,
+  });
+const CW_PROJECT = (over: Partial<Project> = {}) => project('p-home', 'Home', { emoji: 'icon:House', ...over });
+/** When a goal was first achieved, a week before the cases are asked. */
+const ACHIEVED = '2026-10-16T09:30:00.000Z';
+
+/** O8b: usual time, runs, a goal's state and window, notes and the why. */
+function fieldAsks(): WriteAsk[] {
+  const at = { now: CW_NOW, timeZone: STATE_ZONE };
+  const usual = (usualTime: string | null) => ({ action: 'usualTime', usualTime });
+  const notes = (text: string | null) => ({ action: 'notes', notes: text });
+  const dates = (startsOn: string | null, endsOn: string | null) => ({ action: 'dates', startsOn, endsOn });
+  const goalState = (to: Goal['state']) => ({ action: 'state', state: to });
+  const windowOf = (startsOn: string | null, targetOn: string | null) => ({ action: 'window', startsOn, targetOn });
+  const why = (text: string | null) => ({ action: 'why', why: text });
+  return [
+    // Routine: Usual time, and its note.
+    { name: 'usual time: set', kind: 'routine', before: CW_ROUTINE(), body: usual('07:15'), ...at },
+    { name: 'usual time: on a routine with none', kind: 'routine', before: CW_ROUTINE({ usualTime: undefined }), body: usual('06:45'), ...at },
+    { name: 'usual time: cleared', kind: 'routine', before: CW_ROUTINE(), body: usual(null), ...at },
+    { name: 'usual time: the time it has, written again', kind: 'routine', before: CW_ROUTINE(), body: usual('21:30'), ...at },
+    {
+      name: 'usual time on a paused routine: the pause untouched',
+      kind: 'routine',
+      before: CW_ROUTINE({ pausedAt: '2026-10-20T13:00:00.000Z', pausedUntil: '2026-10-30' }),
+      body: usual('22:00'),
+      ...at,
+    },
+    { name: 'routine notes: set, trimmed', kind: 'routine', before: CW_ROUTINE(), body: notes('  Lights out by ten.\n'), ...at },
+    { name: 'routine notes: replaced', kind: 'routine', before: CW_ROUTINE({ notes: 'Old.' }), body: notes('New.'), ...at },
+    { name: 'routine notes: cleared with null', kind: 'routine', before: CW_ROUTINE({ notes: 'Old.' }), body: notes(null), ...at },
+    { name: 'routine notes: blank clears them', kind: 'routine', before: CW_ROUTINE({ notes: 'Old.' }), body: notes('  \n\t '), ...at },
+    { name: 'routine notes: two lines kept', kind: 'routine', before: CW_ROUTINE(), body: notes('Phone away.\nBook out.'), ...at },
+
+    // Season: Runs, and its note.
+    { name: 'runs: both ends moved', kind: 'season', before: CW_SEASON('auto'), body: dates('2026-11-01', '2027-02-28'), ...at },
+    { name: 'runs: the end cleared, open after', kind: 'season', before: CW_SEASON('auto'), body: dates('2026-09-01', null), ...at },
+    { name: 'runs: the start cleared, open before', kind: 'season', before: CW_SEASON('auto'), body: dates(null, '2026-11-30'), ...at },
+    { name: 'runs: both cleared, always on its dates', kind: 'season', before: CW_SEASON('auto'), body: dates(null, null), ...at },
+    { name: 'runs: one day', kind: 'season', before: CW_SEASON('auto'), body: dates('2026-12-25', '2026-12-25'), ...at },
+    {
+      name: 'runs on a season with none',
+      kind: 'season',
+      before: CW_SEASON('auto', { startsOn: undefined, endsOn: undefined }),
+      body: dates('2026-10-23', '2026-12-31'),
+      ...at,
+    },
+    {
+      name: 'runs on a season switched off: the dates wait, the state stays',
+      kind: 'season',
+      before: CW_SEASON('paused'),
+      body: dates('2026-12-01', '2027-01-31'),
+      ...at,
+    },
+    { name: 'runs it already has, written again', kind: 'season', before: CW_SEASON('auto'), body: dates('2026-09-01', '2026-11-30'), ...at },
+    { name: 'season notes: set, trimmed', kind: 'season', before: CW_SEASON('auto'), body: notes(' Leaves, soup, early nights. '), ...at },
+    { name: 'season notes: cleared', kind: 'season', before: CW_SEASON('auto', { notes: 'Old.' }), body: notes(null), ...at },
+
+    // Goal: Status. resolveGoalStateWrite: a stamp at `now`, kept on a retry.
+    { name: 'achieve: stamped now', kind: 'goal', before: CW_GOAL(), body: goalState('achieved'), ...at },
+    {
+      name: 'achieve again: already so, the first stamp kept',
+      kind: 'goal',
+      before: CW_GOAL({ state: 'achieved', achievedAt: ACHIEVED }),
+      body: goalState('achieved'),
+      ...at,
+    },
+    {
+      name: 'reopen an achieved goal: the stamp cleared',
+      kind: 'goal',
+      before: CW_GOAL({ state: 'achieved', achievedAt: ACHIEVED }),
+      body: goalState('active'),
+      ...at,
+    },
+    {
+      name: 'set aside an achieved goal: the stamp kept',
+      kind: 'goal',
+      before: CW_GOAL({ state: 'achieved', achievedAt: ACHIEVED }),
+      body: goalState('abandoned'),
+      ...at,
+    },
+    { name: 'set aside an active goal', kind: 'goal', before: CW_GOAL(), body: goalState('abandoned'), ...at },
+    { name: 'reopen a set-aside goal', kind: 'goal', before: CW_GOAL({ state: 'abandoned' }), body: goalState('active'), ...at },
+    {
+      name: 'achieve a set-aside goal: stamped now',
+      kind: 'goal',
+      before: CW_GOAL({ state: 'abandoned' }),
+      body: goalState('achieved'),
+      ...at,
+    },
+    { name: 'active when already active: already so', kind: 'goal', before: CW_GOAL(), body: goalState('active'), ...at },
+    { name: 'set aside when already set aside: already so', kind: 'goal', before: CW_GOAL({ state: 'abandoned' }), body: goalState('abandoned'), ...at },
+    {
+      name: 'achieve at 03:30 UTC (still Oct 23 in New York): the stamp is the instant, never a day',
+      kind: 'goal',
+      before: CW_GOAL(),
+      body: goalState('achieved'),
+      now: CW_LATE,
+      timeZone: STATE_ZONE,
+    },
+
+    // Goal: the window, and the why.
+    { name: 'window: both ends moved', kind: 'goal', before: CW_GOAL(), body: windowOf('2026-10-01', '2027-04-30'), ...at },
+    { name: 'window: no target', kind: 'goal', before: CW_GOAL(), body: windowOf('2026-09-01', null), ...at },
+    { name: 'window: no start', kind: 'goal', before: CW_GOAL(), body: windowOf(null, '2027-03-15'), ...at },
+    { name: 'window: cleared', kind: 'goal', before: CW_GOAL(), body: windowOf(null, null), ...at },
+    { name: 'window: a target on the day it starts', kind: 'goal', before: CW_GOAL(), body: windowOf('2026-10-23', '2026-10-23'), ...at },
+    {
+      name: 'window on an achieved goal: its state and stamp untouched',
+      kind: 'goal',
+      before: CW_GOAL({ state: 'achieved', achievedAt: ACHIEVED }),
+      body: windowOf('2026-09-01', '2026-10-16'),
+      ...at,
+    },
+    { name: 'why: set, trimmed', kind: 'goal', before: CW_GOAL({ why: undefined }), body: why('  So the stairs stop winning. '), ...at },
+    { name: 'why: replaced', kind: 'goal', before: CW_GOAL(), body: why('For the race in March.'), ...at },
+    { name: 'why: cleared with null', kind: 'goal', before: CW_GOAL(), body: why(null), ...at },
+    { name: 'why: blank clears it', kind: 'goal', before: CW_GOAL(), body: why('   '), ...at },
+
+    // Project: its note.
+    { name: 'project notes: set, trimmed', kind: 'project', before: CW_PROJECT(), body: notes('Chores and repairs.\n'), ...at },
+    { name: 'project notes: cleared', kind: 'project', before: CW_PROJECT({ notes: 'Chores.' }), body: notes(null), ...at },
+    { name: 'project notes: blank clears them', kind: 'project', before: CW_PROJECT({ notes: 'Chores.' }), body: notes(' '), ...at },
+  ];
+}
+
+/** O9: rename, icon and colour, on every kind. */
+function identityAsks(): WriteAsk[] {
+  const at = { now: CW_NOW, timeZone: STATE_ZONE };
+  const rename = (name: string) => ({ action: 'rename', name });
+  const icon = (token: string) => ({ action: 'icon', icon: token });
+  const color = (token: string | null) => ({ action: 'color', color: token });
+  return [
+    { name: 'routine rename', kind: 'routine', before: CW_ROUTINE(), body: rename('Wind down'), ...at },
+    { name: 'routine rename, trimmed', kind: 'routine', before: CW_ROUTINE(), body: rename('  Wind down  '), ...at },
+    {
+      name: 'routine rename keeps its pause, its time and its members',
+      kind: 'routine',
+      before: CW_ROUTINE({ pausedAt: '2026-10-20T13:00:00.000Z' }),
+      body: rename('Evenings'),
+      ...at,
+    },
+    { name: 'routine icon', kind: 'routine', before: CW_ROUTINE(), body: icon('icon:Moon'), ...at },
+    { name: 'routine icon replaced', kind: 'routine', before: CW_ROUTINE({ icon: 'icon:Repeat' }), body: icon('icon:Moon'), ...at },
+    { name: 'routine colour', kind: 'routine', before: CW_ROUTINE(), body: color('var(--accent-4)'), ...at },
+    { name: 'routine colour: Automatic clears it', kind: 'routine', before: CW_ROUTINE({ color: 'var(--accent-4)' }), body: color(null), ...at },
+
+    { name: 'season rename', kind: 'season', before: CW_SEASON('auto'), body: rename('Fall'), ...at },
+    { name: 'season rename to the name it has, in another case', kind: 'season', before: CW_SEASON('auto'), body: rename('autumn'), ...at },
+    { name: 'season icon', kind: 'season', before: CW_SEASON('auto'), body: icon('icon:Leaf'), ...at },
+    { name: 'season colour', kind: 'season', before: CW_SEASON('auto'), body: color('var(--accent-1)'), ...at },
+    { name: 'season colour: lime', kind: 'season', before: CW_SEASON('paused'), body: color('var(--accent-8)'), ...at },
+    { name: 'season colour: Automatic clears it', kind: 'season', before: CW_SEASON('auto', { color: 'var(--accent-1)' }), body: color(null), ...at },
+
+    { name: 'goal rename', kind: 'goal', before: CW_GOAL(), body: rename('Run the Brooklyn Half'), ...at },
+    {
+      name: 'goal rename keeps its state and its stamp',
+      kind: 'goal',
+      before: CW_GOAL({ state: 'achieved', achievedAt: ACHIEVED }),
+      body: rename('Ran a half marathon'),
+      ...at,
+    },
+    { name: 'goal icon', kind: 'goal', before: CW_GOAL({ icon: 'icon:Target' }), body: icon('icon:Trophy'), ...at },
+    { name: 'goal colour', kind: 'goal', before: CW_GOAL(), body: color('var(--accent-3)'), ...at },
+    { name: 'goal colour: Automatic clears it', kind: 'goal', before: CW_GOAL({ color: 'var(--accent-3)' }), body: color(null), ...at },
+
+    // A project's own row. The route also re-files its members by
+    // project_id, and refuses a clash; neither is the patch's (see
+    // app-containers.test.ts).
+    { name: 'project rename', kind: 'project', before: CW_PROJECT(), body: rename('House'), ...at },
+    { name: 'project rename to its own name in another case', kind: 'project', before: CW_PROJECT(), body: rename('home'), ...at },
+    { name: 'project rename, trimmed', kind: 'project', before: CW_PROJECT({ notes: 'Chores.' }), body: rename(' Household '), ...at },
+    { name: 'project icon: written to its emoji', kind: 'project', before: CW_PROJECT(), body: icon('icon:Hammer'), ...at },
+    { name: 'project icon over a legacy emoji', kind: 'project', before: CW_PROJECT({ emoji: '🏠' }), body: icon('icon:House'), ...at },
+    { name: 'project colour', kind: 'project', before: CW_PROJECT(), body: color('var(--accent-6)'), ...at },
+    { name: 'project colour: Automatic clears it', kind: 'project', before: CW_PROJECT({ color: 'var(--accent-6)' }), body: color(null), ...at },
+  ];
 }
 
 // ── Writing and checking ─────────────────────────────────────────────────────

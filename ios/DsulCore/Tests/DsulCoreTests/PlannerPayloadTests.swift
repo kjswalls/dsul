@@ -68,14 +68,29 @@ private struct RawItems: Decodable, Sendable {
         #expect(p.trashWrites == ["list", "restore"])
         #expect(TrashRoutes.offered(p.trashWrites))
         // The container write route's intents (lib/app-containers.ts
-        // CONTAINER_WRITES, O8a): a routine's pause, a season's state, none
-        // yet for a goal or a project.
-        #expect(p.containerWrites == ContainerWrites(routine: ["pause"], season: ["state"], goal: [], project: []))
+        // CONTAINER_WRITES): O8a's routine pause and season state; O8b's usual
+        // time, Runs, a goal's Status and window, notes and a why; O9's
+        // rename, icon and colour on every kind.
+        #expect(p.containerWrites == ContainerWrites(
+            routine: ["pause", "usualTime", "notes", "rename", "icon", "color"],
+            season: ["state", "dates", "notes", "rename", "icon", "color"],
+            goal: ["state", "window", "why", "rename", "icon", "color"],
+            project: ["notes", "rename", "icon", "color"]
+        ))
         let writes = try #require(p.containerWrites)
         #expect(writes.takes(.resume(timeZone: nil), on: .routine))
         #expect(writes.takes(.state(.active), on: .season))
-        for action in ContainerAction.allCases {
-            #expect(!writes.takes(action, on: .goal) && !writes.takes(action, on: .project))
+        #expect(writes.takes(.goalState(.achieved), on: .goal))
+        #expect(writes.takes(.rename("House"), on: .project))
+        // Every action the server lists is one the phone knows, on the kinds
+        // it names, in the server's order; and the phone has none it doesn't
+        // list.
+        for kind in OrganizeKind.allCases {
+            #expect(writes[kind] == ContainerAction.allCases.filter { $0.kinds.contains(kind) }.map(\.rawValue),
+                    "\(kind)")
+            for action in ContainerAction.allCases {
+                #expect(writes.takes(action, on: kind) == action.kinds.contains(kind), "\(action) on \(kind)")
+            }
         }
         // The route's test turns Streaks off, a value no default gives.
         #expect(p.settings.streaksEnabled == false)

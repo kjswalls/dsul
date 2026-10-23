@@ -48,7 +48,9 @@ import Foundation
 ///   left, so several are put back newest failure first, as deletes are. A
 ///   landed toggle proves its item, as any landed write on it does.
 /// - **A container's own fields are a subject too** (O8a, `.container`): a
-///   routine's pause, a season's state. Never its member lists, which belong
+///   routine's pause and usual time, a season's state and Runs, a goal's
+///   status and window, notes or a why, and from O9 any container's name,
+///   icon and colour. Never its member lists, which belong
 ///   to the `.member` toggles: a failed pause put back onto a routine that is
 ///   still there takes its fields only (`withMembership(of:)`), so it can't
 ///   undo a toggle that landed. Its rebase replays the landed container
@@ -57,8 +59,17 @@ import Foundation
 ///   (`rebaseContainer`). Put back after the items and before the
 ///   memberships, so a membership never goes back into a container that
 ///   isn't back yet: field restores and removals, then re-inserts newest
-///   failure first. A refusal the route words (`pause_refused`) shows its own
-///   sentence (`OrganizeCopy.refusal`), never the item words.
+///   failure first. A refusal the route words (`pause_refused`, and a project
+///   rename's `name_taken` and `name_in_trash`) shows its own sentence
+///   (`OrganizeCopy.refusal`), never the item words.
+/// - **A project rename re-files its items** (O9). The route renames the
+///   project, then gives every item filed under it by `projectId` the new
+///   name. The write can't name those items later, so the planner records
+///   them at enqueue (`refiled`, DsulCore `refiledItems`), as a delete records
+///   what it took out. Each is a subject, with its own Before, so a failed
+///   rename puts every member's name back, and an item write that fails after
+///   a landed rename rebases onto the new name (`replaying`, DsulCore
+///   `refiling`).
 /// - **A landed write doesn't moot a failed one.** Two writes need not set the
 ///   same fields (a carry keeps the time a failed drop set, a skip leaves the
 ///   tally a failed tick set, a resume of an item the server never paused
@@ -68,9 +79,10 @@ import Foundation
 /// - **A failed capture, or a new subtask,** takes its item with it, unless a
 ///   later write that names or proves it landed: the route answers 404 for a
 ///   missing row, so any write it took proves the row is there, and a new
-///   subtask under a captured item proves its parent. A new subtask answered
-///   404 failed like any refusal: the 404 is its parent's, and it was never
-///   made.
+///   subtask under a captured item proves its parent. A project rename that
+///   re-filed it is no proof: its route answers 200 whatever it re-filed. A
+///   new subtask answered 404 failed like any refusal: the 404 is its
+///   parent's, and it was never made.
 /// - **Delete cascades on the server, so its replay does too.** A landed
 ///   delete of anything but a habit also removes any subject whose replayed
 ///   state is one of its subtasks, matched as it replays rather than from the
@@ -104,8 +116,8 @@ final class PlannerSync {
     /// Reschedule, Pause/Pause until/Resume, the item sheet's title, notes,
     /// priority, times a day, reminder, time, repeat and project, Delete, Add
     /// a subtask, Reset streak, and its routine and season toggles), a
-    /// notification's Snooze, and from O8a one field of a routine or a season
-    /// (POST /api/app/containers/:kind/:id).
+    /// notification's Snooze, and from O8a one field of a routine, a season,
+    /// a goal or a project (POST /api/app/containers/:kind/:id).
     enum Write: Sendable, Hashable {
         case complete(id: UUID, date: String, done: Bool, count: Int?)
         case schedule(id: UUID, date: String, startTime: String)
@@ -139,12 +151,14 @@ final class PlannerSync {
         /// snooze columns, which the planner doesn't hold, so it changes
         /// nothing on screen and has nothing to revert.
         case snooze(id: UUID, date: String, minutes: Int, timeZone: String?)
-        /// (O8a) One field write to one container (DsulCore
-        /// `ContainerIntent`): a routine's Pause, Pause until and Resume, a
-        /// season's state. `refiled` is the items the write changes besides
-        /// the container, recorded at enqueue as a delete records `removed`:
-        /// empty for every intent O8a sends (a project rename's members, from
-        /// O9).
+        /// (O8a, O8b, O9) One field write to one container (DsulCore
+        /// `ContainerIntent`): a routine's Pause, Pause until, Resume and
+        /// usual time, a season's state and Runs, a goal's status and window,
+        /// notes or a why, and a rename, icon or colour. `refiled` is the items
+        /// the write changes besides the container, recorded at enqueue as a
+        /// delete records `removed` (DsulCore `refiledItems`): a project
+        /// rename's members, filed under it by `projectId`, and empty for
+        /// every other write.
         case container(ContainerRef, ContainerIntent, refiled: [UUID])
 
         /// What this write changes: its item (a new subtask's is the
@@ -188,6 +202,16 @@ final class PlannerSync {
                  .container:
                 return []
             }
+        }
+
+        /// (O9) The items among `subjects` a 200 says nothing about: a
+        /// project rename's `refiled`. The route re-files them in one
+        /// statement by `project_id` and answers 200 whatever it matched, so
+        /// unlike a write on the item's own route, the rename landing proves
+        /// none of them exists. Empty for every other write.
+        var refiledSubjects: Set<Subject> {
+            guard case .container(_, _, let refiled) = self else { return [] }
+            return Set(refiled.map { Subject.item($0) })
         }
     }
 
@@ -856,8 +880,13 @@ final class PlannerSync {
         case .absent(let created):
             // The route answers 404 for a missing row, so a later write it
             // took on this row, or a new subtask under it, proves the capture
-            // (or the new subtask) landed after all.
-            let proven = later.contains { $0.subjects.contains(subject) || $0.proves.contains(subject) }
+            // (or the new subtask) landed after all. A project rename that
+            // re-filed it proves nothing: the route's bulk re-file answers 200
+            // whether the row is there or not.
+            let proven = later.contains {
+                $0.proves.contains(subject)
+                    || ($0.subjects.contains(subject) && !$0.write.refiledSubjects.contains(subject))
+            }
             state = proven ? created : nil
         case .member, .container:
             // Never reached: a membership goes to `rebaseMember`, a
@@ -1033,11 +1062,12 @@ final class PlannerSync {
             // Never asked: a toggle names a membership, not its item, and a
             // snooze names nothing; neither changes a field of the item.
             return item
-        case .container:
-            // A routine's pause and a season's state change no field of any
-            // item; they name only their container. (A project rename, from
-            // O9, refiles its items: its arm goes here.)
-            return item
+        case .container(let ref, let intent, _):
+            // A project rename (O9) gives each member the new name, by
+            // `projectId`, as the route re-files them (DsulCore `refiling`, the
+            // planner's own step). Every other container write changes no
+            // field of any item: it names only its container.
+            return refiling(item, by: intent, on: ref)
         }
     }
 

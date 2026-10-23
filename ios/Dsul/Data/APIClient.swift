@@ -74,7 +74,9 @@ enum APIError: Error, Equatable, Sendable {
 /// what the sheet says, and the deletion. And the Trash's two (from O14,
 /// lib/app-containers.ts): the bin, and a restore, which PlannerSync sends
 /// for the Trash page (views hold no client). And from O8a a container's own
-/// fields (lib/app-containers.ts): a routine's pause, a season's state.
+/// fields (lib/app-containers.ts): a routine's pause and usual time, a
+/// season's state and Runs, a goal's status and window, notes or a why, and
+/// (O9) a rename, icon or colour.
 ///
 /// Writes are intents, never arrays: a tick or a skip sends the date and the
 /// end state, never `completedDates` or `skippedDates`, because the phone reads
@@ -202,12 +204,15 @@ final class APIClient {
         return json["snoozedUntil"] as? String
     }
 
-    /// POST /api/app/containers/:kind/:id (O8a, lib/app-containers.ts): one
-    /// field of one routine or season, as DsulCore's `ContainerWriteBody`
-    /// sends it (a routine's Pause, Pause until and Resume, a season's
-    /// state). The kind and the id are the path (`ContainerRoutes.write`,
-    /// the id lowercased), never the body. A refusal throws `rejected` with
-    /// the route's code (`pause_refused`), which PlannerSync words.
+    /// POST /api/app/containers/:kind/:id (O8a, O8b, O9,
+    /// lib/app-containers.ts): one field of one container, as DsulCore's
+    /// `ContainerWriteBody` sends it (a routine's Pause, Pause until, Resume
+    /// and usual time, a season's state and Runs, a goal's status and window,
+    /// notes or a why, a rename, an icon, a colour). The kind and the id are
+    /// the path (`ContainerRoutes.write`, the id lowercased), never the body.
+    /// A refusal throws `rejected` with the route's code (`pause_refused`,
+    /// and a project rename's `name_taken` and `name_in_trash`), which
+    /// PlannerSync words.
     func writeContainer(_ ref: ContainerRef, body: ContainerWriteBody) async throws {
         _ = try await send("POST", ContainerRoutes.write(ref), body: try Self.encode(body))
     }

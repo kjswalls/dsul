@@ -6,11 +6,16 @@ import Foundation
 // OrganizeModel does for the list. Foundation only: the shim compiles it on
 // Linux.
 //
-// Read-only but for the Status chip (O8a): a routine's Pause, Pause until and
-// Resume, a season's On, Off and Dates (`StatusMenu`), offered only where the
-// server takes the write and Organize is on (`OrganizeModel.canEdit`); the
-// planner steps and sends it (`SamplePlanner.applyContainer`). Every rule is
-// asked of DsulCore, never re-derived:
+// Read-only but for the container's own fields. From O8a the Status chip: a
+// routine's Pause, Pause until and Resume, a season's On, Off and Dates
+// (`StatusMenu`). From O8b a goal's Status (Active, Achieved, Set aside), the
+// chips that open a sheet (a routine's usual time, a season's Runs, a goal's
+// window: `PageChip.edits`), and the notes or a goal's why; from O9 the ⋯
+// menu's Rename… and Icon and color… (`PageEdits`, ContainerEditModel.swift).
+// Each is offered only where the server takes the write and the kind's switch
+// is on (`OrganizeModel.canEdit`); the planner steps and sends it
+// (`SamplePlanner.editContainer`, `applyContainer`). Every rule is asked of
+// DsulCore, never re-derived:
 // - which members are on a day, and in what state, is the grid's own answer
 //   narrowed to the container (`deriveContainerSchedule`,
 //   ContainerSchedule.swift, lib/container-schedule.ts), asked ONCE per page
@@ -33,9 +38,17 @@ import Foundation
 // says "missed" or "overdue". Lime is a mark the views draw; no word here asks
 // for a hue. No em dashes.
 
-/// A container page's model: every page has a header.
+/// A container page's model: every page has a header, and a container's
+/// page what it may edit (O8b, O9).
 protocol OrganizePageModel: Hashable, Sendable {
     var header: PageHeader { get }
+    /// The notes sheet and the ⋯ menu's rows; nil on a page that edits
+    /// nothing (a paused routine's or season's detail).
+    var edits: PageEdits? { get }
+}
+
+extension OrganizePageModel {
+    var edits: PageEdits? { nil }
 }
 
 /// What a container's page shows: the page, or, while its extension is off,
@@ -69,7 +82,8 @@ struct PageHeader: Hashable, Sendable {
 
 /// One chip under a page's header. Its words are the label colour and its
 /// symbol gray; no hue. Read-only, but for the Status chip of a page that
-/// carries a `StatusMenu` (O8a), which the view draws as that menu.
+/// carries a `StatusMenu` (O8a), which the view draws as that menu, and a
+/// chip that `edits` (O8b), which opens its sheet.
 struct PageChip: Identifiable, Hashable, Sendable {
     enum Kind: String, Hashable, Sendable {
         case usualTime, status, runs, window, items, timeBlock
@@ -80,6 +94,9 @@ struct PageChip: Identifiable, Hashable, Sendable {
     let systemImage: String
     /// VoiceOver's words: "Status: Paused until Oct 30".
     let spoken: String
+    /// A tap opens its sheet (O8b): a routine's usual time, a season's Runs,
+    /// a goal's window, where the page may write them.
+    var edits = false
 
     var id: Kind { kind }
 }
@@ -97,6 +114,9 @@ enum StatusAction: Hashable, Sendable {
     /// `seasonStateForSwitch`, which would turn On into Dates on a dated
     /// season that is live today).
     case state(SeasonState)
+    /// (O8b) A goal's Active, Achieved or Set aside. The state it already has
+    /// writes nothing, so a goal achieved twice keeps its first stamp.
+    case goalState(GoalState)
 }
 
 /// One row of a Status menu: its words and its symbol.
@@ -108,13 +128,14 @@ struct StatusChoice: Identifiable, Hashable, Sendable {
     var id: StatusAction { action }
 }
 
-/// A page's Status chip as a menu (O8a). A routine's rows are verbs, as the
-/// item sheet's are (Pause and Pause until…, or Resume and Pause until…), and
-/// carry no check; a season's are its three states, the one it is in
-/// checked.
+/// A page's Status chip as a menu (O8a, a goal's from O8b). A routine's rows
+/// are verbs, as the item sheet's are (Pause and Pause until…, or Resume and
+/// Pause until…), and carry no check; a season's and a goal's are their
+/// states, the one it is in checked.
 struct StatusMenu: Hashable, Sendable {
     let choices: [StatusChoice]
-    /// The row the menu checks: a season's state; nil for a routine.
+    /// The row the menu checks: a season's or a goal's state; nil for a
+    /// routine.
     let selected: StatusAction?
     /// Pause until's day picker: a routine's only.
     let pauseUntil: PauseUntilPick?
@@ -214,8 +235,8 @@ struct TodayChecklist: Hashable, Sendable {
 struct RoutinePage: OrganizePageModel {
     let header: PageHeader
     let notes: String?
-    /// "Usually 7:00 am" (when set), then Status: "Active", "Paused" or
-    /// "Paused until Oct 30".
+    /// "Usually 7:00 am" (when set, or "No usual time" where it may be set),
+    /// then Status: "Active", "Paused" or "Paused until Oct 30".
     let chips: [PageChip]
     /// Under Status: the web's paused note, or its held note when every
     /// season holding the routine is off (`localOn && !effectiveOn`), so the
@@ -225,6 +246,10 @@ struct RoutinePage: OrganizePageModel {
     /// The Status chip's menu (O8a); nil while the chip is read-only (a
     /// server older than the route, or one that doesn't take `pause`).
     let statusMenu: StatusMenu?
+    /// The usual time chip's sheet (O8b); nil while it is read-only.
+    let usualTime: UsualTimeEdit?
+    /// The notes sheet and the ⋯ menu (O8b, O9).
+    let edits: PageEdits?
     /// "Held by": one row per season holding it, in the seasons' order, each
     /// pushing that season ("on", "off until Nov 1").
     let heldBy: [OrganizeRow]
@@ -245,12 +270,17 @@ struct SeasonPage: OrganizePageModel {
     let header: PageHeader
     let notes: String?
     /// Status ("On", "Off", "Dates"), then Runs under Dates when it has a
-    /// date ("Oct 1 to Mar 15", "From Oct 1", "Until Mar 15").
+    /// date ("Oct 1 to Mar 15", "From Oct 1", "Until Mar 15"), or "Runs"
+    /// with none where the dates may be set.
     let chips: [PageChip]
     /// `seasonStateNote`: "Always on. Give it a start or an end …".
     let stateNote: String
     /// The Status chip's menu (O8a); nil while the chip is read-only.
     let statusMenu: StatusMenu?
+    /// The Runs chip's sheet (O8b), under Dates only; nil while read-only.
+    let runs: RangeEdit?
+    /// The notes sheet and the ⋯ menu (O8b, O9).
+    let edits: PageEdits?
     /// The routines it holds, in the routines' own order, each pushing its
     /// page (the list's routine row).
     let routines: [OrganizeRow]
@@ -319,8 +349,15 @@ struct GoalPage: OrganizePageModel {
     /// goals with a target only.
     let countdown: String?
     /// Status ("Active", "Achieved", "Set aside"), then the window ("Started
-    /// Oct 1 · Target Mar 15") when it has a date.
+    /// Oct 1 · Target Mar 15") when it has a date, or "Target" with none
+    /// where it may be set.
     let chips: [PageChip]
+    /// The Status chip's menu (O8b); nil while the chip is read-only.
+    let statusMenu: StatusMenu?
+    /// The window chip's sheet (O8b); nil while it is read-only.
+    let window: RangeEdit?
+    /// The why's sheet and the ⋯ menu (O8b, O9).
+    let edits: PageEdits?
     /// An ended goal's note: "Achieved on Oct 1. Everything below …".
     let endedNote: String?
     let windDown: WindDown?
@@ -349,6 +386,8 @@ struct ProjectPage: OrganizePageModel {
     /// block ("Weekdays · 6pm–7pm", or "No time block"), read-only.
     let chips: [PageChip]
     let notes: String?
+    /// The notes sheet and the ⋯ menu (O8b, O9).
+    let edits: PageEdits?
     /// The items the count counts: open first, then done, each in planner
     /// order.
     let items: [MemberRow]
@@ -540,10 +579,15 @@ enum ContainerPageModel {
         let standing = routineStandingOn(routine, seasons: s.seasons, on: today, timeZone: s.timeZone)
 
         var chips: [PageChip] = []
+        let usualTime = ContainerEditModel.usualTimeEdit(routine, s)
         if let time = routine.usualTime, !time.isEmpty {
             let clock = formatCueTime(time, timeFormat: s.settings.timeFormat)
             chips.append(PageChip(kind: .usualTime, text: "Usually \(clock)", systemImage: "clock",
-                                  spoken: "Usual time: \(clock)"))
+                                  spoken: "Usual time: \(clock)", edits: usualTime != nil))
+        } else if usualTime != nil {
+            // Where none can be set, nothing is said about it.
+            chips.append(PageChip(kind: .usualTime, text: ContainerEditModel.noUsualTime, systemImage: "clock",
+                                  spoken: ContainerEditModel.noUsualTime, edits: true))
         }
         let status = routineStatus(routine, standing)
         chips.append(PageChip(kind: .status, text: status, systemImage: standing.localOn ? "play.circle" : "pause.circle",
@@ -597,6 +641,8 @@ enum ContainerPageModel {
             chips: chips,
             statusNote: statusNote,
             statusMenu: statusMenu,
+            usualTime: usualTime,
+            edits: ContainerEditModel.pageEdits(.routine(routine), s),
             heldBy: heldBy,
             heldByEmpty: heldBy.isEmpty ? OrganizeCopy.heldByNone : nil,
             today: checklist,
@@ -668,9 +714,15 @@ enum ContainerPageModel {
                               spoken: "Status: \(status)")]
         // Under Dates alone, as on the web: On and Off always win, so a range
         // beside them would be a control with no effect.
+        let runsEdit = ContainerEditModel.runsEdit(season, s)
         if season.state == "auto",
            let runs = OrganizeCopy.seasonRunsLabel(startsOn: season.startsOn, endsOn: season.endsOn) {
-            chips.append(PageChip(kind: .runs, text: runs, systemImage: "calendar", spoken: "Runs: \(runs)"))
+            chips.append(PageChip(kind: .runs, text: runs, systemImage: "calendar", spoken: "Runs: \(runs)",
+                                  edits: runsEdit != nil))
+        } else if runsEdit != nil {
+            let words = ContainerEditModel.runsWords
+            chips.append(PageChip(kind: .runs, text: words.empty, systemImage: "calendar", spoken: words.empty,
+                                  edits: true))
         }
 
         // Held routines in the routines' own order, not the payload's
@@ -693,6 +745,8 @@ enum ContainerPageModel {
             chips: chips,
             stateNote: OrganizeCopy.seasonStateNote(season, live: live),
             statusMenu: seasonStatusMenu(season, s),
+            runs: runsEdit,
+            edits: ContainerEditModel.pageEdits(.season(season), s),
             routines: routines,
             items: items,
             strip: dayStrip(schedule, today: today),
@@ -746,9 +800,14 @@ enum ContainerPageModel {
         let status = OrganizeCopy.label(goal.state, in: OrganizeCopy.goalStates) ?? goal.state
         var chips = [PageChip(kind: .status, text: status, systemImage: goalStatusSymbol(goal.state),
                               spoken: "Status: \(status)")]
+        let windowEdit = ContainerEditModel.windowEdit(goal, s)
         if let window = goalWindow(goal) {
             chips.append(PageChip(kind: .window, text: window, systemImage: "calendar",
-                                  spoken: OrganizeModel.spokenSegment(window)))
+                                  spoken: OrganizeModel.spokenSegment(window), edits: windowEdit != nil))
+        } else if windowEdit != nil {
+            let words = ContainerEditModel.windowWords
+            chips.append(PageChip(kind: .window, text: words.empty, systemImage: "calendar", spoken: words.empty,
+                                  edits: true))
         }
 
         var windDown: WindDown? = nil
@@ -789,6 +848,9 @@ enum ContainerPageModel {
             why: notes(goal.why),
             countdown: goalCountdown(goal, today: today),
             chips: chips,
+            statusMenu: goalStatusMenu(goal, s),
+            window: windowEdit,
+            edits: ContainerEditModel.pageEdits(.goal(goal), s),
             endedNote: OrganizeCopy.goalEndedNote(goal),
             windDown: windDown,
             // `GoalProgressTrack` draws nothing at zero milestones, its
@@ -806,13 +868,32 @@ enum ContainerPageModel {
     }
 
     /// The window chip: "Started Oct 1 · Target Mar 15", either half alone,
-    /// or nil with neither (the web's chip then offers to set a target, an
-    /// edit the phone doesn't make yet).
+    /// or nil with neither (where the window may be set, the page then shows
+    /// the web's "Target", which opens its sheet).
     static func goalWindow(_ goal: Goal) -> String? {
         var parts: [String] = []
         if let start = goal.startsOn, !start.isEmpty { parts.append("Started \(formatDay(start))") }
         if let target = goal.targetOn, !target.isEmpty { parts.append("Target \(formatDay(target))") }
         return parts.isEmpty ? nil : parts.joined(separator: OrganizeModel.separator)
+    }
+
+    /// A goal's Status menu (O8b), or nil when the chip is read-only: the
+    /// server must take a goal's `state` and Goals be on. Its rows are the
+    /// web's `goalStates` (Active, Achieved, Set aside), the one it is in
+    /// checked, each sent as picked; the state it already has writes
+    /// nothing. A stored state that is none of the three is ended, as the
+    /// web's ended note reads it ("Set aside"), so Set aside is checked.
+    static func goalStatusMenu(_ goal: Goal, _ s: OrganizeSnapshot) -> StatusMenu? {
+        guard OrganizeModel.canEdit(.state, on: .goal, takes: s.containerTakes, settings: s.settings) else {
+            return nil
+        }
+        let choices: [StatusChoice] = OrganizeCopy.goalStates.compactMap { state in
+            guard let value = GoalState(rawValue: state.value) else { return nil }
+            return StatusChoice(action: .goalState(value), label: state.label,
+                                systemImage: goalStatusSymbol(state.value))
+        }
+        let current = GoalState(rawValue: goal.state) ?? .abandoned
+        return StatusMenu(choices: choices, selected: .goalState(current), pauseUntil: nil)
     }
 
     static func goalStatusSymbol(_ state: String) -> String {
@@ -867,6 +948,7 @@ enum ContainerPageModel {
             header: header(.project, name: project.name, glyph: project.emoji, color: project.color),
             chips: chips,
             notes: notes(project.notes),
+            edits: ContainerEditModel.pageEdits(.project(project), s),
             items: rows,
             strip: dayStrip(schedule, today: today),
             empty: listed.isEmpty ? OrganizeCopy.nothingInItYet : nil

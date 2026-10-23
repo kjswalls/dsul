@@ -9,9 +9,11 @@ import Foundation
 // (`progressLabel`), `isGoalActive` and `sortGoalsForDisplay`. From O3 (the
 // goal page): `nextMilestone`, `timeElapsed` and its words, `goalCountdown`,
 // `milestoneState` and `milestoneTimeline`, `goalMemberGroups`,
-// `windDownMembers` and `lastDoneOn`. Every word a date takes is `formatDay`'s
-// ("Nov 4", Cadence.swift), and nothing is ever "overdue" in words: a late
-// checkpoint is "still ahead of you" (the guilt-free law).
+// `windDownMembers` and `lastDoneOn`. From O8b (the goal's Status chip):
+// `resolveGoalStateWrite`, the step ContainerIntent.swift takes for a goal's
+// `state`, pinned through container-writes.json. Every word a date takes is
+// `formatDay`'s ("Nov 4", Cadence.swift), and nothing is ever "overdue" in
+// words: a late checkpoint is "still ahead of you" (the guilt-free law).
 //
 // Progress is derived on every read and never stored. "Done" is the item
 // type's own terminal status (`caps(_:).doneStatus`, Registry.swift), so a
@@ -89,6 +91,49 @@ public func isGoalActive(_ goal: Goal) -> Bool {
 /// stable partition, never a re-sort by `sortOrder`.
 public func sortGoalsForDisplay(_ goals: [Goal]) -> [Goal] {
     return goals.filter { isGoalActive($0) } + goals.filter { !isGoalActive($0) }
+}
+
+/* ── the state write (O8b) ─────────────────────────────────────────────── */
+
+/// packages/types `GoalStateSchema`: the three values a goal's `state` is
+/// written as. `Goal.state` stays a string, read as the web reads it; an
+/// intent only ever sends one of these.
+public enum GoalState: String, Sendable, Hashable, CaseIterable {
+    /// Still live work ("Active").
+    case active
+    /// Reached ("Achieved"): stamps `achievedAt`.
+    case achieved
+    /// Set aside ("Set aside"): keeps whatever stamp it had.
+    case abandoned
+}
+
+/// lib/goals.ts `resolveGoalStateWrite`'s answer: the goal columns a Status
+/// pick writes. A field left nil is not written; `achievedAt` `.clear` writes
+/// NULL. Empty means write nothing.
+public struct GoalStatePatch: Sendable, Hashable {
+    public var state: GoalState?
+    public var achievedAt: ColumnWrite?
+
+    public init(state: GoalState? = nil, achievedAt: ColumnWrite? = nil) {
+        self.state = state
+        self.achievedAt = achievedAt
+    }
+
+    public var isEmpty: Bool { state == nil && achievedAt == nil }
+}
+
+/// lib/goals.ts `resolveGoalStateWrite`: what picking `state` writes to
+/// `goal` at the instant `nowISO`. The state it already has (compared as
+/// stored) writes nothing, so a goal achieved twice keeps its first
+/// `achievedAt`; Achieved stamps `nowISO`; Active clears the stamp; Set aside
+/// keeps whatever stamp it had (a strange history, but the user's).
+public func resolveGoalStateWrite(_ goal: Goal, state: GoalState, nowISO: String) -> GoalStatePatch {
+    if goal.state == state.rawValue { return GoalStatePatch() }
+    switch state {
+    case .achieved: return GoalStatePatch(state: state, achievedAt: .set(nowISO))
+    case .active: return GoalStatePatch(state: state, achievedAt: .clear)
+    case .abandoned: return GoalStatePatch(state: state)
+    }
 }
 
 /* ── the window and the countdown ───────────────────────────────────────── */

@@ -11,7 +11,10 @@ import SwiftUI
 /// Pause, or Resume, and Pause until…, which opens the item sheet's day
 /// picker (`DayPickSheet`) on this page, titled "Pause until". Nothing is
 /// written until its button names the day; the planner steps and sends it
-/// (`pauseRoutine`, `resumeRoutine`).
+/// (`pauseRoutine`, `resumeRoutine`). From O8b the usual time chip opens its
+/// wheel (`UsualTimeSheet`; "No usual time" where none is set) and the notes
+/// open their sheet (`ContainerNotesSheet`); from O9 the bar's ⋯ menu renames
+/// it and changes its look (the host's).
 struct RoutinePageView: View {
     let id: String
     @Binding var path: [OrganizeRoute]
@@ -30,24 +33,39 @@ private struct RoutinePageRows: View {
     let page: RoutinePage
 
     @Environment(SamplePlanner.self) private var planner
-    /// Pause until's day picker, while it is up.
-    @State private var pickingDay: PauseUntilPick? = nil
+    /// The sheet a chip opened (Pause until's day picker, the usual time),
+    /// while it is up.
+    @State private var chipSheet: ChipSheet? = nil
+    /// The notes sheet, while it is up.
+    @State private var editingNotes: NotesEdit? = nil
 
     var body: some View {
         Section {
             PageHeaderView(header: page.header)
                 .pageTopRow()
-            if let notes = page.notes {
-                NotesText(text: notes, onEdit: nil)
+            if page.notes != nil || page.edits?.notes != nil {
+                PageNotesView(text: page.notes, edit: page.edits?.notes, onEdit: { editingNotes = page.edits?.notes })
                     .pageTopRow()
+                    .sheet(item: $editingNotes) { edit in
+                        ContainerNotesSheet(edit: edit)
+                    }
             }
-            PageChipsView(chips: page.chips, status: page.statusMenu, onStatus: { pick($0) })
+            PageChipsView(chips: page.chips, status: page.statusMenu, onStatus: { pick($0) },
+                          onEdit: { edit($0) })
                 .pageTopRow()
-                .sheet(item: $pickingDay) { day in
-                    // The earliest day moves at midnight while it is up.
-                    DayPickSheet(words: ContainerPageModel.routinePauseUntilWords, initial: day.initial,
-                                 earliest: page.statusMenu?.pauseUntil?.earliest ?? day.earliest) { picked in
-                        withAnimation(.snappy) { planner.pauseRoutine(routineId, until: picked) }
+                .sheet(item: $chipSheet) { sheet in
+                    switch sheet {
+                    case .pauseUntil(let day):
+                        // The earliest day moves at midnight while it is up.
+                        DayPickSheet(words: ContainerPageModel.routinePauseUntilWords, initial: day.initial,
+                                     earliest: page.statusMenu?.pauseUntil?.earliest ?? day.earliest) { picked in
+                            withAnimation(.snappy) { planner.pauseRoutine(routineId, until: picked) }
+                        }
+                    case .usualTime(let edit):
+                        UsualTimeSheet(routineId: routineId, edit: edit)
+                    case .range(let edit):
+                        // A season's or a goal's; a routine's chips never open it.
+                        RangeSheet(edit: edit)
                     }
                 }
             if let note = page.statusNote {
@@ -115,11 +133,21 @@ private struct RoutinePageRows: View {
         case .pause:
             withAnimation(.snappy) { planner.pauseRoutine(routineId, until: nil) }
         case .pauseUntil:
-            pickingDay = page.statusMenu?.pauseUntil
+            chipSheet = page.statusMenu?.pauseUntil.map { ChipSheet.pauseUntil($0) }
         case .resume:
             withAnimation(.snappy) { planner.resumeRoutine(routineId) }
-        case .state:
-            // A season's; a routine's menu never offers it.
+        case .state, .goalState:
+            // A season's and a goal's; a routine's menu never offers them.
+            break
+        }
+    }
+
+    /// A tap on a chip that edits: the usual time opens its wheel.
+    private func edit(_ kind: PageChip.Kind) {
+        switch kind {
+        case .usualTime:
+            chipSheet = page.usualTime.map { ChipSheet.usualTime($0) }
+        case .status, .runs, .window, .items, .timeBlock:
             break
         }
     }

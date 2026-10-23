@@ -398,6 +398,15 @@ export function nameInTrashSentence(noun: string, name: string): string {
   return `A deleted ${noun} called “${name}” still has that name. Restore it from Trash, or pick a different one.`;
 }
 
+/**
+ * A name a live sibling already has, folding case (components/planner/organize/
+ * sections/labels.tsx takenBy, which says it inline as a rename is typed; the
+ * iPhone's banner for a project rename refused 409 `name_taken`).
+ */
+export function nameTakenSentence(noun: string, name: string): string {
+  return `You already have a ${noun} called “${name}”.`;
+}
+
 /** The iPhone's Trash, when the list could not be read: never an empty bin. */
 export const TRASH_LOAD_FAILED = "Couldn't load the Trash.";
 
@@ -440,11 +449,21 @@ export const PAUSE_REFUSED = 'That day is no longer after today, so nothing was 
 
 /**
  * The iPhone's words for a refused container write (lib/app-containers.ts):
- * `pause_refused` is {@link PAUSE_REFUSED}. Null for a code with no words of
- * its own (a 404, a 500, no answer at all), which the phone words as any
- * failed write. Later parts add their codes here.
+ *   - `pause_refused` is {@link PAUSE_REFUSED};
+ *   - `name_taken` (a project renamed onto a live project's name, folding
+ *     case) is {@link nameTakenSentence};
+ *   - `name_in_trash` (a project renamed onto the exact name a project in the
+ *     Trash still holds) is {@link nameInTrashSentence}.
+ * The two name sentences name the container by `sentName`, the name the phone
+ * sent in its rename, never the answer's body; without one they have no
+ * words. Null for a code with no words of its own (a 404, a 500, no answer at
+ * all), which the phone words as any failed write. Later parts add their
+ * codes here.
  */
-export function containerRefusal(code: string | undefined): string | null {
+export function containerRefusal(code: string | undefined, sentName?: string): string | null {
+  const noun = CONTAINER_KINDS.project.label.toLowerCase();
   if (code === 'pause_refused') return PAUSE_REFUSED;
+  if (code === 'name_taken' && sentName !== undefined) return nameTakenSentence(noun, sentName);
+  if (code === 'name_in_trash' && sentName !== undefined) return nameInTrashSentence(noun, sentName);
   return null;
 }

@@ -425,7 +425,13 @@ import Testing
         #expect(!OrganizeModel.canEdit(.state, on: .goal, takes: ContainerWrites(goal: ["state"]), settings: on))
         let off = PlannerSettings(organizeEnabled: false, goalsEnabled: true)
         #expect(!OrganizeModel.canEdit(.pause, on: .routine, takes: every, settings: off))
-        #expect(OrganizeModel.everyContainerWrite == ContainerWrites(routine: ["pause"], season: ["state"]))
+        // Every write the phone sends, under each kind the route takes it on,
+        // in the server's own order (lib/app-containers.ts CONTAINER_WRITES).
+        #expect(OrganizeModel.everyContainerWrite == ContainerWrites(
+            routine: ["pause", "usualTime", "notes", "rename", "icon", "color"],
+            season: ["state", "dates", "notes", "rename", "icon", "color"],
+            goal: ["state", "window", "why", "rename", "icon", "color"],
+            project: ["notes", "rename", "icon", "color"]))
     }
 
     /// A season's Status is its three states, On, Off and Dates, the one it
@@ -649,6 +655,289 @@ import Testing
         #expect(page.empty == "Nothing is in it yet.")
     }
 
+    // MARK: Edits (O8b, O9)
+
+    /// A routine's usual time chip opens its sheet where the page may write
+    /// it. With none stored it says so there, and says nothing where it may
+    /// not. The wheel starts on the stored time, else 9:00 am.
+    @Test func aRoutinesUsualTimeChipOpensItsSheet() throws {
+        let every = OrganizeModel.everyContainerWrite
+        let page = try routinePage(snapshot(items: routineItems, routines: [morning], takes: every))
+        #expect(page.chips.map(\.text) == ["Usually 7:00 am", "Active"])
+        #expect(page.chips.map(\.edits) == [true, false])
+        #expect(page.usualTime == UsualTimeEdit(stored: "07:00", initial: "07:00"))
+        #expect(try routinePage(snapshot(items: routineItems, routines: [morning])).chips.first?.edits == false)
+
+        var bare = morning
+        bare.usualTime = nil
+        let unset = try routinePage(snapshot(items: routineItems, routines: [bare], takes: every))
+        #expect(unset.chips.map(\.text) == ["No usual time", "Active"])
+        #expect(unset.chips.first?.spoken == "No usual time")
+        #expect(unset.chips.first?.edits == true)
+        #expect(unset.usualTime == UsualTimeEdit(stored: nil, initial: "09:00"))
+        let readOnly = try routinePage(snapshot(items: routineItems, routines: [bare]))
+        #expect(readOnly.chips.map(\.text) == ["Active"])
+        #expect(readOnly.usualTime == nil)
+    }
+
+    /// A season's Runs chip opens its sheet under Dates alone, reading "Runs"
+    /// with no dates; On and Off still hide it. A goal's window chip reads
+    /// "Target" with none. Neither shows where it may not be set.
+    @Test func aRangeChipOpensItsSheetWhereItMayBeSet() throws {
+        let every = OrganizeModel.everyContainerWrite
+        let bare = Season(id: "s-bare", name: "Bare")
+        let dated = Season(id: "s-dated", name: "Base", startsOn: "2026-09-01", endsOn: "2027-03-15")
+        let on = Season(id: "s-on", name: "On", state: "active", startsOn: "2026-09-01")
+        let s = snapshot(items: [], seasons: [bare, dated, on], takes: every)
+        let barePage = try seasonPage(s, "s-bare")
+        #expect(barePage.chips.map(\.text) == ["Dates", "Runs"])
+        #expect(barePage.chips.map(\.edits) == [false, true])
+        #expect(barePage.runs == RangeEdit(ref: ContainerRef(kind: .season, id: "s-bare"),
+                                           words: ContainerEditModel.runsWords, start: nil, end: nil))
+        let datedPage = try seasonPage(s, "s-dated")
+        #expect(datedPage.chips.last?.text == "Sep 1 to Mar 15")
+        #expect(datedPage.chips.last?.edits == true)
+        #expect(datedPage.runs?.draft == RangeDraft(start: DayString("2026-09-01"), end: DayString("2027-03-15")))
+        let onPage = try seasonPage(s, "s-on")
+        #expect(onPage.chips.map(\.text) == ["On"])
+        #expect(onPage.runs == nil)
+        #expect(try seasonPage(snapshot(items: [], seasons: [bare]), "s-bare").chips.map(\.text) == ["Dates"])
+
+        var open = half
+        open.startsOn = nil
+        open.targetOn = nil
+        let goal = try goalPage(snapshot(items: goalItems, goals: [open], takes: every))
+        #expect(goal.chips.map(\.text) == ["Active", "Target"])
+        #expect(goal.chips.last?.edits == true)
+        #expect(goal.window?.words == ContainerEditModel.windowWords)
+        #expect(goal.window?.draft == RangeDraft(start: nil, end: nil))
+        #expect(try goalPage(snapshot(items: goalItems, goals: [open])).chips.map(\.text) == ["Active"])
+        let window = try #require(try goalPage(snapshot(items: goalItems, goals: [half], takes: every)).window)
+        #expect(window.draft == RangeDraft(start: DayString("2026-09-01"), end: DayString("2027-03-15")))
+        #expect(ContainerEditModel.chipHint(.usualTime) == "Edits the usual time")
+        #expect(ContainerEditModel.chipHint(.runs) == "Edits when it runs")
+        #expect(ContainerEditModel.chipHint(.window) == "Edits the window")
+        #expect(ContainerEditModel.chipHint(.items) == nil)
+    }
+
+    /// A goal's Status is its three states, the one it is in checked, behind
+    /// Goals and the server's `state`. A stored state that is none of the
+    /// three is ended, as the web's ended note reads it, so Set aside is
+    /// checked.
+    @Test func aGoalsStatusIsItsThreeStates() throws {
+        let every = OrganizeModel.everyContainerWrite
+        let menu = try #require(try goalPage(snapshot(items: goalItems, goals: [half], takes: every)).statusMenu)
+        #expect(menu.choices.map(\.label) == ["Active", "Achieved", "Set aside"])
+        #expect(menu.choices.map(\.action) == [.goalState(.active), .goalState(.achieved), .goalState(.abandoned)])
+        #expect(menu.choices.map(\.systemImage) == ["play.circle", "checkmark.circle", "pause.circle"])
+        #expect(menu.selected == .goalState(.active))
+        #expect(menu.pauseUntil == nil)
+        var achieved = half
+        achieved.state = "achieved"
+        var odd = half
+        odd.state = "someday"
+        #expect(try goalPage(snapshot(items: goalItems, goals: [achieved], takes: every)).statusMenu?.selected
+            == .goalState(.achieved))
+        #expect(try goalPage(snapshot(items: goalItems, goals: [odd], takes: every)).statusMenu?.selected
+            == .goalState(.abandoned))
+        #expect(try goalPage(snapshot(items: goalItems, goals: [half])).statusMenu == nil)
+        #expect(try goalPage(snapshot(items: goalItems, goals: [half], takes: ContainerWrites(goal: ["window"])))
+            .statusMenu == nil)
+    }
+
+    /// Each page carries its notes sheet (a goal's why) and its ⋯ menu where
+    /// the server takes the writes and the kind's switch is on; none from an
+    /// older server. A project's glyph is its `emoji`, and its rename knows
+    /// the other live projects.
+    @Test func eachPageCarriesItsNotesAndMenu() throws {
+        let every = OrganizeModel.everyContainerWrite
+        let work = Project(id: "p-work", name: "Work", color: "var(--accent-2)", emoji: "icon:Briefcase",
+                           notes: "The day job.")
+        let home = Project(id: "p-home", name: "Home")
+        let autumn = Season(id: "s-autumn", name: "Autumn", icon: "icon:Leaf", notes: "Leaves")
+        let s = snapshot(items: routineItems + projectItems, routines: [morning], seasons: [autumn], goals: [half],
+                         projects: [work, home], takes: every)
+
+        let routine = try #require(try routinePage(s).edits)
+        let ref = ContainerRef(kind: .routine, id: "r-morning")
+        #expect(routine.ref == ref)
+        #expect(routine.notes == NotesEdit(ref: ref, stored: "  Meds first.  ", title: "Routine note",
+                                           placeholder: "Add a note\u{2026}", hint: "Edits the note", tooLong: false))
+        #expect(routine.rename == RenameEdit(ref: ref, name: "Morning", title: "Rename routine", siblings: []))
+        #expect(routine.hasMenu)
+        let look = try #require(routine.look)
+        #expect(look.glyph == "icon:Sunrise")
+        #expect(look.color == "var(--accent-6)")
+        #expect(look.menuLabel == "Icon and color\u{2026}")
+        #expect(look.title == "Icon and color")
+        #expect(look.icons.map(\.name) == ContainerLook.featured)
+        #expect(look.icons.allSatisfy { ContainerLook.lucideToSymbol[$0.name] == $0.symbol })
+        #expect(look.colors.map(\.label) == ["Moss", "Teal", "Indigo", "Plum", "Coral", "Honey", "Slate", "Lime",
+                                             "Auto"])
+        #expect(look.colors.map(\.token) == ContainerLook.ramp + [nil])
+
+        let season = try #require(try seasonPage(s, "s-autumn").edits)
+        #expect(season.notes?.title == "Season note")
+        #expect(season.notes?.stored == "Leaves")
+        #expect(season.rename?.title == "Rename season")
+        #expect(season.look?.glyph == "icon:Leaf")
+
+        let goal = try #require(try goalPage(s).edits)
+        #expect(goal.notes?.title == "Why this goal matters")
+        #expect(goal.notes?.placeholder == "Why this matters\u{2026}")
+        #expect(goal.notes?.hint == "Edits why this goal matters")
+        #expect(goal.notes?.stored == "  The long runs are the best part.  ")
+        #expect(goal.rename?.title == "Rename goal")
+
+        let project = try #require(try projectPage(s).edits)
+        #expect(project.notes?.title == "Project note")
+        #expect(project.rename?.siblings == [work, home])
+        #expect(project.look?.glyph == "icon:Briefcase")
+        #expect(project.look?.color == "var(--accent-2)")
+
+        let none = snapshot(items: routineItems + projectItems, routines: [morning], seasons: [autumn],
+                            goals: [half], projects: [work])
+        let pages: [PageEdits?] = [try routinePage(none).edits, try seasonPage(none, "s-autumn").edits,
+                                   try goalPage(none).edits, try projectPage(none).edits]
+        for edits in pages {
+            #expect(edits?.notes == nil)
+            #expect(edits?.rename == nil)
+            #expect(edits?.look == nil)
+            #expect(edits?.hasMenu == false)
+        }
+
+        // A server that takes one half of the look: the row and the sheet
+        // say which.
+        let colourOnly = try #require(try projectPage(snapshot(items: [], projects: [work],
+                                                               takes: ContainerWrites(project: ["color"]))).edits?.look)
+        #expect(colourOnly.icons.isEmpty)
+        #expect(colourOnly.menuLabel == "Color\u{2026}")
+        #expect(colourOnly.title == "Color")
+        let iconOnly = try #require(try projectPage(snapshot(items: [], projects: [work],
+                                                             takes: ContainerWrites(project: ["icon"]))).edits?.look)
+        #expect(iconOnly.colors.isEmpty)
+        #expect(iconOnly.menuLabel == "Icon\u{2026}")
+        #expect(iconOnly.title == "Icon")
+
+        // Too long to send: shown, and never edited.
+        var long = morning
+        long.notes = String(repeating: "a", count: EditLimits.outerNotes + 1)
+        let tooLong = try routinePage(snapshot(items: routineItems, routines: [long], takes: every))
+        #expect(tooLong.edits?.notes?.tooLong == true)
+    }
+
+    /// Done on the notes sheet sends them cleaned (`cleanNotes`), as `notes`
+    /// or a goal's `why`, and nothing when that is what is stored; typing past
+    /// what one request may carry is cut from what was put in.
+    @Test func notesSendCleanedAndOnlyWhenMoved() {
+        #expect(ContainerEditModel.notesIntent("  Kettle first. \n", kind: .routine, stored: nil)
+            == .notes("Kettle first."))
+        #expect(ContainerEditModel.notesIntent("To finish one", kind: .goal, stored: nil) == .why("To finish one"))
+        #expect(ContainerEditModel.notesIntent("   ", kind: .project, stored: "Old") == .notes(nil))
+        #expect(ContainerEditModel.notesIntent(" Same ", kind: .season, stored: "Same") == nil)
+        #expect(ContainerEditModel.notesIntent("", kind: .season, stored: nil) == nil)
+        let full = String(repeating: "a", count: EditLimits.outerNotes)
+        #expect(ContainerEditModel.notesEntry(previous: full, next: full + "b") == full)
+        #expect(ContainerEditModel.notesEntry(previous: "a", next: "ab") == "ab")
+        #expect(ContainerEditModel.notesTitle(.project) == "Project note")
+    }
+
+    /// Rename's Save: off while the name cleans to nothing and, on a project,
+    /// while another live project's name folds to it; a project changing only
+    /// its own case may save. An unchanged name sends nothing, and other
+    /// kinds' names may repeat.
+    @Test func renameSavesACleanNameNoOtherProjectHolds() {
+        let work = Project(id: "p-work", name: "Work")
+        let home = Project(id: "p-home", name: "Home")
+        let project = RenameEdit(ref: ContainerRef(kind: .project, id: "p-work"), name: "Work",
+                                 title: "Rename project", siblings: [work, home])
+        #expect(!ContainerEditModel.canSaveRename("   ", project))
+        #expect(!ContainerEditModel.canSaveRename("\n", project))
+        #expect(!ContainerEditModel.canSaveRename(" home ", project))
+        #expect(ContainerEditModel.canSaveRename("WORK", project))
+        #expect(ContainerEditModel.renameIntent("WORK", stored: "Work") == .rename("WORK"))
+        #expect(ContainerEditModel.renameIntent(" Work ", stored: "Work") == nil)
+        #expect(ContainerEditModel.renameIntent("\n", stored: "Work") == nil)
+        #expect(ContainerEditModel.renameIntent("Day\njob", stored: "Work") == .rename("Day job"))
+        #expect(ContainerEditModel.renamedName("  Office  ") == "Office")
+
+        let routine = RenameEdit(ref: ContainerRef(kind: .routine, id: "r-morning"), name: "Morning",
+                                 title: "Rename routine", siblings: [])
+        #expect(ContainerEditModel.canSaveRename("Home", routine))
+        #expect(ContainerEditModel.renameTitle(.season) == "Rename season")
+        #expect(ContainerEditModel.renameTitle(.goal) == "Rename goal")
+        #expect(ContainerEditModel.renameTitle(.project) == "Rename project")
+    }
+
+    /// The look sheet checks the stored token exactly, draws the draft, and
+    /// sends only what moved: the icon, then the colour. Auto clears the
+    /// colour. A half the server doesn't take is never sent.
+    @Test func theLookSheetSendsOnlyWhatMoved() {
+        let icons = ContainerLook.featured.map { ContainerEditModel.iconChoice($0, kind: .routine) }
+        let edit = LookEdit(ref: ContainerRef(kind: .routine, id: "r-morning"), name: "Morning",
+                            glyph: "icon:Sunrise", color: "var(--accent-6)", icons: icons,
+                            colors: ContainerEditModel.colorChoices)
+        let stored = LookDraft(glyph: edit.glyph, color: edit.color)
+        #expect(ContainerEditModel.lookIntents(edit, stored).isEmpty)
+        // Sunrise isn't a featured icon, so no cell is checked.
+        #expect(!edit.icons.contains { ContainerEditModel.isPicked($0, stored) })
+        #expect(edit.colors.filter { ContainerEditModel.isPicked($0, stored) }.map(\.label) == ["Honey"])
+
+        var draft = stored
+        draft.glyph = ContainerLook.iconToken("Leaf")
+        draft.color = nil
+        #expect(ContainerEditModel.lookIntents(edit, draft) == [.icon("icon:Leaf"), .color(nil)])
+        #expect(edit.icons.filter { ContainerEditModel.isPicked($0, draft) }.map(\.name) == ["Leaf"])
+        #expect(edit.colors.filter { ContainerEditModel.isPicked($0, draft) }.map(\.label) == ["Auto"])
+        let preview = ContainerEditModel.preview(edit, draft)
+        #expect(preview.symbol == ContainerLook.lucideToSymbol["Leaf"])
+        #expect(preview.accent.token == containerAccent(nil, name: "Morning").token)
+
+        let colourOnly = LookEdit(ref: edit.ref, name: "Morning", glyph: "icon:Sunrise", color: "var(--accent-6)",
+                                  icons: [], colors: ContainerEditModel.colorChoices)
+        #expect(ContainerEditModel.lookIntents(colourOnly, draft) == [.color(nil)])
+        #expect(ContainerEditModel.spokenIconName("HeartPulse") == "Heart pulse")
+        #expect(ContainerEditModel.spokenIconName("Gamepad2") == "Gamepad 2")
+        #expect(ContainerEditModel.spokenIconName("Leaf") == "Leaf")
+        #expect(ContainerEditModel.iconChoice("Leaf", kind: .season).spoken == "Leaf")
+    }
+
+    /// A range's draft never inverts: an end switched on starts at today or at
+    /// the start, a start at today or at the end, and a pick past the other
+    /// end stops there. The Runs sheet says what the draft will do.
+    @Test func aRangeDraftNeverInverts() {
+        let end = DayString("2026-10-20")!
+        var draft = ContainerEditModel.settingEnd(RangeDraft(start: nil, end: nil), on: true, today: today)
+        #expect(draft == RangeDraft(start: nil, end: today))
+        draft = ContainerEditModel.pickingEnd(draft, end)
+        draft = ContainerEditModel.settingStart(draft, on: true, today: today)
+        #expect(draft == RangeDraft(start: today, end: end))
+        draft = ContainerEditModel.pickingStart(draft, DayString("2026-10-25")!)
+        #expect(draft.start == end)
+        draft = ContainerEditModel.pickingEnd(draft, DayString("2026-10-05")!)
+        #expect(draft.end == end)
+        #expect(ContainerEditModel.settingStart(draft, on: false, today: today) == RangeDraft(start: nil, end: end))
+        #expect(ContainerEditModel.settingEnd(draft, on: false, today: today) == RangeDraft(start: end, end: nil))
+        let early = RangeDraft(start: nil, end: DayString("2026-09-15"))
+        #expect(ContainerEditModel.settingStart(early, on: true, today: today).start == DayString("2026-09-15"))
+        let late = RangeDraft(start: DayString("2026-11-01"), end: nil)
+        #expect(ContainerEditModel.settingEnd(late, on: true, today: today).end == DayString("2026-11-01"))
+
+        let autumn = Season(id: "s-autumn", name: "Autumn", state: "paused")
+        let runs = RangeEdit(ref: ContainerRef(kind: .season, id: "s-autumn"), words: ContainerEditModel.runsWords,
+                             start: nil, end: nil)
+        #expect(ContainerEditModel.rangeNote(runs, runs.draft, season: autumn, today: today)
+            == "Always on. Give it a start or an end to make it follow the calendar.")
+        let dated = RangeDraft(start: DayString("2026-09-01"), end: DayString("2027-03-15"))
+        #expect(ContainerEditModel.rangeNote(runs, dated, season: autumn, today: today)
+            == "Runs Sep 1 to Mar 15, inclusive. On now.")
+        #expect(ContainerEditModel.rangeNote(runs, late, season: autumn, today: today)?
+            .hasSuffix("Off right now. Nothing it holds is showing.") == true)
+        let window = RangeEdit(ref: ContainerRef(kind: .goal, id: "g-half"), words: ContainerEditModel.windowWords,
+                               start: nil, end: nil)
+        #expect(ContainerEditModel.rangeNote(window, dated, season: autumn, today: today) == nil)
+    }
+
     // MARK: Switched off, and gone
 
     @Test func switchedOffPagesSayTheWebsSentence() {
@@ -825,6 +1114,31 @@ import Testing
                   ContainerPageModel.routinePauseUntilWords.confirmVerb,
                   ContainerPageModel.routinePauseUntilWords.note ?? "", OrganizeCopy.pauseRefused,
                   ShelfPageModel.resumeNow, ShelfPageModel.turnOnNow]
+
+        // O8b and O9: the editors' words, the goal's Status, and the rename
+        // refusals.
+        let goalMenu = try goalPage(snapshot(items: goalItems, goals: [half],
+                                             takes: OrganizeModel.everyContainerWrite)).statusMenu
+        words += (goalMenu?.choices ?? []).map(\.label)
+        var unset = morning
+        unset.usualTime = nil
+        chips(try routinePage(snapshot(items: routineItems, routines: [unset],
+                                       takes: OrganizeModel.everyContainerWrite)).chips)
+        words += [ContainerEditModel.moreLabel, ContainerEditModel.renameWord, ContainerEditModel.lookBoth,
+                  ContainerEditModel.lookIconOnly, ContainerEditModel.lookColorOnly, ContainerEditModel.lookTitle,
+                  ContainerEditModel.iconSection, ContainerEditModel.colorSection, ContainerEditModel.automatic,
+                  ContainerEditModel.nameField, ContainerEditModel.saveWord, ContainerEditModel.notePlaceholder,
+                  ContainerEditModel.whyPlaceholder, ContainerEditModel.notesHint, ContainerEditModel.whyHint,
+                  ContainerEditModel.usualTimeTitle, ContainerEditModel.clearTime, ContainerEditModel.noUsualTime,
+                  ContainerEditModel.usualTimeHint, ContainerEditModel.usualTimeNote,
+                  OrganizeCopy.nameTakenSentence(noun: "project", name: "Work"),
+                  OrganizeCopy.nameInTrashSentence(noun: "project", name: "Work")]
+        for range in [ContainerEditModel.runsWords, ContainerEditModel.windowWords] {
+            words += [range.title, range.startLabel, range.endLabel, range.empty, range.hint]
+        }
+        words += OrganizeKind.allCases.flatMap { [ContainerEditModel.renameTitle($0), ContainerEditModel.notesTitle($0)] }
+        words += ContainerEditModel.colorChoices.map(\.label)
+        words += ContainerLook.featured.map { ContainerEditModel.spokenIconName($0) }
 
         #expect(words.count > 50)
         for word in words {
