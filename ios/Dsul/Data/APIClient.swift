@@ -71,7 +71,9 @@ enum APIError: Error, Equatable, Sendable {
 /// notes, priority, times a day, reminder, time, repeat and project, Delete,
 /// Add a subtask, Reset streak and its routine and season toggles). And
 /// Delete account's two calls, on the account routes (lib/account-types.ts):
-/// what the sheet says, and the deletion.
+/// what the sheet says, and the deletion. And the Trash's two (from O14,
+/// lib/app-containers.ts): the bin, and a restore, which PlannerSync sends
+/// for the Trash page (views hold no client).
 ///
 /// Writes are intents, never arrays: a tick or a skip sends the date and the
 /// end state, never `completedDates` or `skippedDates`, because the phone reads
@@ -251,6 +253,31 @@ final class APIClient {
         return AccountDeleted.read(result.data)
     }
 
+    /// GET /api/app/trash: the bin, newest first (DsulCore `TrashList`). An
+    /// answer with no `entries` list is `badResponse`, so the page says it
+    /// couldn't load the Trash and never shows an empty bin for a failure.
+    func fetchTrash() async throws -> TrashList {
+        let result = try await send("GET", TrashRoutes.list, body: nil)
+        do {
+            return try JSONDecoder().decode(TrashList.self, from: result.data)
+        } catch {
+            throw APIError.badResponse
+        }
+    }
+
+    /// POST /api/app/trash/restore: one row of the bin back where it belongs
+    /// (DsulCore `TrashRestoreBody`, `{"id":…,"kind":…}`). Any 2xx is
+    /// restored, a row already live included. A refusal is answered rather
+    /// than thrown, with its whole body read (`TrashRestoreRefusal`): a 409
+    /// `name_taken` carries the live project whose name it folds to, which
+    /// `APIError.rejected` would drop. Offline, a 502 to 504 and a second 401
+    /// still throw, as every call's do.
+    func restoreFromTrash(_ body: TrashRestoreBody) async throws -> TrashRestoreResult {
+        let result = try await exchange("POST", TrashRoutes.restore, body: try Self.encode(body))
+        if result.isSuccess { return .restored }
+        return .refused(TrashRestoreRefusal.read(result.data))
+    }
+
     /// Postgres stores uuids lowercase; `uuidString` is uppercase.
     static func itemPath(_ id: UUID) -> String {
         return "/api/app/items/" + id.uuidString.lowercased()
@@ -258,9 +285,19 @@ final class APIClient {
 
     // MARK: Sending
 
-    /// The token is refreshed ahead of expiry by the source. A 401 anyway gets
-    /// one refresh and one retry; a second 401 is an error, not a sign-out.
+    /// `exchange`, with any answer but a success thrown as the route's
+    /// refusal and its code.
     private func send(_ method: String, _ path: String, body: Data?) async throws -> HTTPResult {
+        let result = try await exchange(method, path, body: body)
+        if result.isSuccess { return result }
+        throw APIError.rejected(status: result.status, code: Self.errorCode(result.data))
+    }
+
+    /// One request, answered with whatever the route said. The token is
+    /// refreshed ahead of expiry by the source. A 401 anyway gets one refresh
+    /// and one retry; a second 401 is an error, not a sign-out. A 502 to 504
+    /// is the server or an edge being down, never the route's answer.
+    private func exchange(_ method: String, _ path: String, body: Data?) async throws -> HTTPResult {
         let first = try await token(rejecting: nil)
         var result = try await perform(method, path, body: body, token: first)
         if result.status == 401 {
@@ -268,9 +305,8 @@ final class APIClient {
             result = try await perform(method, path, body: body, token: second)
             if result.status == 401 { throw APIError.unauthorized }
         }
-        if result.isSuccess { return result }
         if result.status == 502 || result.status == 503 || result.status == 504 { throw APIError.unavailable }
-        throw APIError.rejected(status: result.status, code: Self.errorCode(result.data))
+        return result
     }
 
     private func token(rejecting rejected: String?) async throws -> String {
@@ -323,6 +359,14 @@ final class APIClient {
         else { return nil }
         return json["error"] as? String
     }
+}
+
+/// How a restore from the Trash ended, when the server answered.
+enum TrashRestoreResult: Sendable, Equatable {
+    /// Back where it belongs (or already live).
+    case restored
+    /// The route said no, with what it said.
+    case refused(TrashRestoreRefusal)
 }
 
 /// `{"action":"complete","date":…,"done":…,"count"?:…}`. A nil count is left

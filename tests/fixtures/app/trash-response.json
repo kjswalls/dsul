@@ -1,0 +1,72 @@
+{
+  "entries": [
+    {
+      "kind": "item",
+      "id": "11111111-0000-4000-8000-000000000007",
+      "name": "Stretch",
+      "deletedAt": "2026-10-22T07:00:00.123456+00:00",
+      "itemType": "habit"
+    },
+    {
+      "kind": "routine",
+      "id": "33333333-0000-4000-8000-000000000001",
+      "name": "Morning",
+      "deletedAt": "2026-10-21T12:00:00.123456+00:00",
+      "icon": "icon:Sunrise",
+      "color": "var(--accent-6)"
+    },
+    {
+      "kind": "item",
+      "id": "11111111-0000-4000-8000-000000000005",
+      "name": "Buy the card",
+      "deletedAt": "2026-10-21T09:00:00.123456+00:00",
+      "itemType": "task"
+    },
+    {
+      "kind": "item",
+      "id": "11111111-0000-4000-8000-000000000001",
+      "name": "Plan the trip",
+      "deletedAt": "2026-10-20T09:00:00.123456+00:00",
+      "itemType": "task",
+      "childCount": 2
+    },
+    {
+      "kind": "project",
+      "id": "22222222-0000-4000-8000-000000000001",
+      "name": "Admin",
+      "deletedAt": "2026-10-19T09:00:00.123456+00:00",
+      "icon": "icon:Briefcase",
+      "color": "var(--accent-3)",
+      "memberCount": 2
+    },
+    {
+      "kind": "item",
+      "id": "11111111-0000-4000-8000-000000000006",
+      "name": "Dune",
+      "deletedAt": "2026-10-18T09:00:00.123456+00:00",
+      "itemType": "book"
+    },
+    {
+      "kind": "goal",
+      "id": "55555555-0000-4000-8000-000000000001",
+      "name": "Run a half marathon",
+      "deletedAt": "2026-10-17T09:00:00.123456+00:00",
+      "icon": "icon:Target",
+      "memberCount": 3
+    },
+    {
+      "kind": "season",
+      "id": "44444444-0000-4000-8000-000000000001",
+      "name": "Autumn",
+      "deletedAt": "2026-10-15T09:00:00.123456+00:00",
+      "icon": "icon:Leaf"
+    },
+    {
+      "kind": "project",
+      "id": "22222222-0000-4000-8000-000000000002",
+      "name": "Garden",
+      "deletedAt": "2026-10-10T09:00:00.123456+00:00",
+      "memberCount": 0
+    }
+  ]
+}

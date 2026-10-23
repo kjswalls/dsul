@@ -21,16 +21,29 @@ import Foundation
 //
 // Read-only. From O2 and O3 every row opens its container's page
 // (`OrganizeRoute`, ContainerPageModel.swift says what each page shows), and a
-// routine's row carries the web's "2/3 today". There are no summary cards
-// (O4) and no footer rows (Item types, Paused, Trash; O5 and O14) yet.
+// routine's row carries the web's "2/3 today". From O4 the list opens with
+// the summary cards (`summary`: THIS WEEK, lib/organize.ts `organizeWeek`, and
+// NEXT MILESTONE, `nextMilestoneAcross`, Organize.swift), and from O5 and O14
+// it ends with the footer (`footer`: Item types, Paused and Trash), whose
+// pages ShelfPageModel.swift works out.
 
-/// Where a tap on Organize goes: a container's page. Foundation only, so the
-/// hosted tests pin where every row leads; the stack's path holds these
-/// (OrganizeView). Not yet the design's `ContainerRef`, which O8a adds to
-/// DsulCore with the writes: until then a kind and an id say the same, and
-/// the id is never parsed as a UUID (the sample's are not).
+/// Where a tap on Organize goes: a container's page, or one of the footer's.
+/// Foundation only, so the hosted tests pin where every row leads; the stack's
+/// path holds these (OrganizeView). Not yet the design's `ContainerRef`, which
+/// O8a adds to DsulCore with the writes: until then a kind and an id say the
+/// same, and the id is never parsed as a UUID (the sample's are not).
 enum OrganizeRoute: Hashable, Sendable {
     case container(OrganizeKind, id: String)
+    /// The Paused page (O5): everything set aside, by the day it comes back.
+    case paused
+    /// A paused routine or season, the web's paused detail ("Comes back with
+    /// it"), by its shelf key (`PausedEntry.key`, "routine:<id>"), never the
+    /// container's page, which Organize off would blank.
+    case pausedEntry(String)
+    /// The Item types page (O5): the user's own types, read-only.
+    case itemTypes
+    /// The Trash page (O14): the bin, and Restore.
+    case trash
 }
 
 /// One container on the list: its tile, its words, and what VoiceOver says.
@@ -131,6 +144,15 @@ struct OrganizeSnapshot: Sendable {
     /// The user's own item types by slug (`SamplePlanner.typeLabels`): a
     /// goal's Supporting work heads a custom type with its own plural.
     var typeLabels: [String: ItemTypeLabel] = [:]
+    /// The same types in the server's order (`SamplePlanner.itemTypes`), for
+    /// the Item types row and page. Nil when the server couldn't read them
+    /// (or before the first fetch): the row shows no count and the page says
+    /// so, never "No custom types yet."
+    var itemTypes: [ItemTypeLabel]? = []
+    /// Signed in, against a server that takes both Trash routes
+    /// (`SamplePlanner.offersTrash`): the footer's Trash row shows. The
+    /// sample has no server bin, so it never does.
+    var trashOffered: Bool = false
 
     /// What every schedule here is derived against: the grid's own inputs.
     var scheduleSource: ScheduleSource {
@@ -484,16 +506,198 @@ enum OrganizeModel {
     }
 }
 
+/// The two cards over the list (O4, design §6.2): THIS WEEK and NEXT
+/// MILESTONE. Either may be absent; the list draws them only when one shows.
+struct SummaryCards: Hashable, Sendable {
+    /// THIS WEEK: done out of done-or-due across everything the grid shows
+    /// this calendar week (`organizeWeek`, design Q1's default: however it
+    /// is filed). Never a share of the past: an unrecorded past day is
+    /// neither done nor due (the guilt-free law).
+    struct Week: Hashable, Sendable {
+        /// The big number, "18"; nil with nothing on, when `tail` is the
+        /// whole line.
+        let lead: String?
+        /// The rest of `weekCardSentence`: "of 23 done", or "Nothing on this
+        /// week" alone.
+        let tail: String
+        /// The lime bar's fill, `done / counted`; nil draws no bar.
+        let fraction: Double?
+        /// The card as one element: "This week, 18 of 23 done".
+        let spokenLabel: String
+    }
+
+    /// NEXT MILESTONE: the earliest dated open milestone across the active
+    /// goals, else the first undated one (`nextMilestoneAcross`). The card is
+    /// one button that pushes its goal.
+    struct Milestone: Hashable, Sendable {
+        let goalId: String
+        /// The milestone's title.
+        let title: String
+        /// "Oct 4 · Run a half marathon", or the goal's name alone for an
+        /// undated milestone (`nextMilestoneLine`). No countdown.
+        let line: String
+        /// "Next milestone, Run a 10K, Oct 4, Run a half marathon".
+        let spokenLabel: String
+
+        var route: OrganizeRoute { .container(.goal, id: goalId) }
+    }
+
+    let week: Week?
+    let milestone: Milestone?
+
+    static let weekEyebrow = "THIS WEEK"
+    static let milestoneEyebrow = "NEXT MILESTONE"
+    /// The milestone card's hint: "Opens the goal".
+    static var milestoneHint: String { "Opens the " + jsLowercased(ContainerWords.goal) }
+}
+
+/// One row of the footer under the list (O5, O14): Item types, Paused and
+/// Trash, each opening its page. Its tile is the console rail's identity
+/// (console-rail.tsx `SECTION_IDENTITY`): Item types plum (accent-4) with
+/// the Shapes glyph, Paused and Trash muted gray.
+struct FooterRow: Identifiable, Hashable, Sendable {
+    enum Kind: String, Hashable, Sendable {
+        case itemTypes, paused, trash
+    }
+
+    let kind: Kind
+    /// "Item types", "Paused", "Trash".
+    let title: String
+    /// Under the title: Paused's soonest return ("Gym back Fri", the rest of
+    /// the web's rail note, `pausedNote`); nil otherwise.
+    let subtitle: String?
+    /// The SF Symbol on the tile.
+    let symbol: String
+    /// The tile's colour; nil draws it muted gray.
+    let accent: ContainerAccent?
+    /// The count at the trailing edge: the custom types, or the items set
+    /// aside (`PausedShelf.count`, items not entries); nil at none, as the
+    /// web's rail note is, and always for Trash.
+    let trailing: String?
+    /// The row as one element: "Paused, 5 items, Gym back Fri".
+    let spokenLabel: String
+
+    var id: Kind { kind }
+
+    var route: OrganizeRoute {
+        switch kind {
+        case .itemTypes: return .itemTypes
+        case .paused: return .paused
+        case .trash: return .trash
+        }
+    }
+
+    /// "Opens Paused", with no full stop, as the house hints have none.
+    var hint: String { "Opens " + title }
+}
+
+extension OrganizeModel {
+    // MARK: Summary cards (O4)
+
+    /// The cards for `s`, or nil when neither shows. THIS WEEK shows only
+    /// with Organize on; NEXT MILESTONE only with Goals on, the goals known,
+    /// and an open milestone on an active goal.
+    static func summary(_ s: OrganizeSnapshot) -> SummaryCards? {
+        let week = s.settings.organizeEnabled ? weekCard(s) : nil
+        let milestone = visibleGoals(s).flatMap { milestoneCard($0, s) }
+        guard week != nil || milestone != nil else { return nil }
+        return SummaryCards(week: week, milestone: milestone)
+    }
+
+    /// THIS WEEK over the grid's own inputs, from the user's Week starts on.
+    static func weekCard(_ s: OrganizeSnapshot) -> SummaryCards.Week {
+        let week = organizeWeek(s.scheduleSource, today: s.today, weekStartDay: s.settings.weekStartDay)
+        let sentence = OrganizeCopy.weekCardSentence(done: week.done, counted: week.counted)
+        // The big number is the sentence's own first word, so the words stay
+        // OrganizeCopy's.
+        let lead = "\(week.done)"
+        guard week.counted > 0, sentence.hasPrefix(lead + " ") else {
+            return SummaryCards.Week(lead: nil, tail: sentence, fraction: nil, spokenLabel: sentence)
+        }
+        return SummaryCards.Week(lead: lead, tail: String(sentence.dropFirst(lead.count + 1)),
+                                 fraction: week.fraction, spokenLabel: "This week, " + sentence)
+    }
+
+    /// NEXT MILESTONE across `goals`, or nil when no active goal has one open.
+    static func milestoneCard(_ goals: [Goal], _ s: OrganizeSnapshot) -> SummaryCards.Milestone? {
+        let byId = Dictionary(s.items.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
+        guard let next = nextMilestoneAcross(goals, itemsById: byId) else { return nil }
+        let line = OrganizeCopy.nextMilestoneLine(date: next.date, goalName: next.goal.name)
+        return SummaryCards.Milestone(goalId: next.goal.id, title: next.milestone.title, line: line,
+                                      spokenLabel: "Next milestone, \(next.milestone.title), \(spokenSegment(line))")
+    }
+
+    // MARK: The footer (O5, O14)
+
+    /// The footer's rows, in the console rail's order. Item types only with
+    /// Organize on (its rail row rides the switch); Paused always, whatever
+    /// the switches say, because pausing is not gated and its way back may
+    /// not be; Trash only signed in against a server that takes its routes.
+    static func footer(_ s: OrganizeSnapshot) -> [FooterRow] {
+        var rows: [FooterRow] = []
+        if s.settings.organizeEnabled { rows.append(itemTypesRow(s)) }
+        rows.append(pausedRow(s))
+        if s.trashOffered { rows.append(trashRow) }
+        return rows
+    }
+
+    static func itemTypesRow(_ s: OrganizeSnapshot) -> FooterRow {
+        let n = s.itemTypes?.count ?? 0
+        let title = ShelfPageModel.itemTypesTitle
+        var spoken = [title]
+        if n > 0 { spoken.append(counted(n, "type", "types")) }
+        return FooterRow(kind: .itemTypes, title: title, subtitle: nil, symbol: "square.on.circle",
+                         accent: containerAccent("var(--accent-4)", name: title),
+                         trailing: n > 0 ? "\(n)" : nil, spokenLabel: spoken.joined(separator: ", "))
+    }
+
+    /// Paused counts the items set aside, a routine of four as four, the
+    /// number the laptop's moon shows; under it the soonest return.
+    static func pausedRow(_ s: OrganizeSnapshot) -> FooterRow {
+        let shelf = ShelfPageModel.shelf(s)
+        let title = ShelfPageModel.pausedTitle
+        let note = pausedNote(shelf, today: s.today)
+        // The web's rail note is "5 · Gym back Fri": the count goes to the
+        // trailing edge and the rest under the title.
+        let countPrefix = "\(shelf.count)" + separator
+        let back: String? = note.flatMap { $0.hasPrefix(countPrefix) ? String($0.dropFirst(countPrefix.count)) : nil }
+        var spoken = [title]
+        if shelf.count > 0 { spoken.append(counted(shelf.count, "item", "items")) }
+        if let back { spoken.append(back) }
+        return FooterRow(kind: .paused, title: title, subtitle: back, symbol: "moon", accent: nil,
+                         trailing: shelf.count > 0 ? "\(shelf.count)" : nil,
+                         spokenLabel: spoken.joined(separator: ", "))
+    }
+
+    /// Trash carries no count: the bin is fetched only on its page.
+    static var trashRow: FooterRow {
+        let title = ShelfPageModel.trashTitle
+        return FooterRow(kind: .trash, title: title, subtitle: nil, symbol: "trash", accent: nil, trailing: nil,
+                         spokenLabel: title)
+    }
+}
+
 extension SamplePlanner {
     /// What the Organize tab reads off this planner.
     var organizeSnapshot: OrganizeSnapshot {
         return OrganizeSnapshot(hasLoaded: hasLoaded, loadError: loadError, settings: settings, today: today,
                                 timeZone: timeZoneID, items: items, routines: routines, seasons: seasons,
-                                goals: goals, projects: projectRecords, away: awayPeriods, typeLabels: typeLabels)
+                                goals: goals, projects: projectRecords, away: awayPeriods, typeLabels: typeLabels,
+                                itemTypes: itemTypes, trashOffered: offersTrash)
     }
 
     /// The Organize tab's content now.
     var organize: OrganizeContent {
         return OrganizeModel.content(organizeSnapshot)
+    }
+
+    /// The summary cards over the list, or nil when neither shows.
+    var organizeSummary: SummaryCards? {
+        return OrganizeModel.summary(organizeSnapshot)
+    }
+
+    /// The footer's rows under the list.
+    var organizeFooter: [FooterRow] {
+        return OrganizeModel.footer(organizeSnapshot)
     }
 }

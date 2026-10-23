@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { usePlannerStore, wasNeverCreated } from '@/lib/planner-store';
 import { fetchTrashedNames, type TrashedName } from '@/lib/db';
+import { nameInTrashSentence } from '@/lib/organize-copy';
 
 /**
  * The container names a trashed row is still holding.
@@ -172,5 +173,5 @@ export function heldByTrash(
 ): string | null {
   const holder = trashed.find((t) => t.name === next);
   if (!holder) return null;
-  return `A deleted ${noun} called “${holder.name}” still has that name. Restore it from Trash, or pick a different one.`;
+  return nameInTrashSentence(noun, holder.name);
 }

@@ -1059,7 +1059,8 @@ by push yet.
 
 Checks are marked by the PR that brings them. O1 is the list, read-only; O2
 the routine and season pages, O3 the goal and project pages, read-only but
-for the tick.
+for the tick; O4 the summary cards; O5 the footer's Item types and Paused,
+with an item's Resume; O14 the Trash, with Restore.
 
 1. (O1) Sample: Organize shows Routines, Seasons, Goals and Projects, in that
    order. Morning routine has a honey sunrise tile, Wind down a plum moon,
@@ -1167,6 +1168,66 @@ for the tick.
     is lime, the chips wrap, the name wraps, and the strip keeps its 14
     columns with the legend stacked under it. Today's cell with nothing done
     is an empty outline, and the console logs no "singular matrix" line.
+25. (O4) Sample: THIS WEEK and NEXT MILESTONE sit side by side over
+    Routines. THIS WEEK reads a big number and "of N done" over a lime bar;
+    NEXT MILESTONE reads "Run a 10K" and its day, then "· Run a half
+    marathon", with no countdown. Tap it: the goal's page pushes. With
+    VoiceOver each card is one element: "This week, 5 of 9 done" (the
+    numbers shown), and "Next milestone, Run a 10K, …", a button with the
+    hint "Opens the goal". Tapping the week card does nothing.
+26. (O4) Tick something due this week on Today, then go back to Organize: the
+    count and the bar move. A past day this week with nothing recorded counts
+    on neither side, and nothing says "missed".
+27. (O4) Signed in with Goals off on the web: the week card spans the width.
+    With Organize off and Goals on, the milestone card does. Both off: no
+    cards. A goal with nothing open, or only ended goals: no milestone card.
+28. (O4) At the accessibility sizes the cards stack; at the default size on
+    the smallest iPhone they sit side by side, the same height. Dark mode:
+    the bar's lime is full strength, and no text on either card is lime.
+29. (O5) Under the list, the footer: Item types (a plum shapes tile) and
+    Paused (a gray moon), and signed in, Trash (a gray bin). Sample: Paused
+    shows no count. Pause Journal until a day two or three days off, from its
+    sheet on Today: Paused reads "1" and "Journal back" that weekday ("Journal
+    back Sun"). Its page says what it is for, then lists Journal under that
+    day ("Sun, Oct 25"; "Tomorrow" for tomorrow) as "Habit", with a dashed
+    round mark and Resume. Tapping the row (not Resume) opens Journal's
+    sheet. Resume: Journal is back on Today, and the page reads "Nothing is
+    paused."
+30. (O5) Signed in, pause a routine of four on the web and pull: Paused counts
+    4, as the laptop's moon does, and the routine is one row, "Routine · 4
+    habits", in its colour, with no Resume. Its row pushes the paused detail:
+    the header, a moon and "Hidden with your … routine until …", "Comes back
+    with it" listing the four (each with the list's dashed outline, opening
+    its sheet), and "Open in Routines", which pushes the routine's page.
+    Resume the routine on the web and pull: the detail pops back by itself.
+31. (O5) Turn Organize off on the web and pull: Paused stays in the footer and
+    Item types goes. The paused detail has no "Open in Routines". With Item
+    types open, turn Organize off on the web and pull: the page pops back to
+    the list.
+32. (O5) A custom type with two items reads "2 items" on Item types, in the
+    web's order, each on a tile in its own colour; the rows do nothing when
+    tapped. With none: "No custom types yet. You make them on the web."
+33. (O14) Signed in, delete a task with two subtasks on the web, then open
+    Trash: its row reads the name and "Item · 2 subtasks · just now", with
+    Restore. Tap Restore: a spinner, then the row leaves, and the task and
+    its subtasks are back on Today.
+34. (O14) A project deleted three days ago with three items filed under it
+    reads "Project · 3 items refile · 3d ago". Make a live project whose
+    name differs only in case on the web ("work" for a deleted "Work"; the
+    exact name is still held by the bin), then Restore the deleted one: the
+    banner reads "You already have a project called “work”. Rename that one,
+    then restore this one.", and the row stays. A subtask whose parent is in the Trash too:
+    "Its parent is in the Trash too. Restore that instead."
+35. (O14) In flight mode, open Trash: "Couldn't load the Trash." with Try
+    again, never an empty bin. An empty bin reads "Nothing deleted in the last
+    30 days.", and under the list: "Anything you delete waits here for 30
+    days, then goes for good." Pull to refresh reads the bin again and
+    refreshes the planner.
+36. (O14) Signed out (the sample): no Trash row. With VoiceOver, Restore reads
+    "Restore project …" or "Restore item …", so two rows of one name are told
+    apart; double-tap it and the focus stays on it, dimmed, reading
+    "Restoring" until the row leaves. At the largest accessibility size the
+    marks on Paused and Trash grow with the text and never overlap it.
 
 ## Rules
 

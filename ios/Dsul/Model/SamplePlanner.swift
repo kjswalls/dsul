@@ -148,6 +148,15 @@ final class SamplePlanner {
     /// (`caps(for:)`). Empty for the sample and for a server that sent none,
     /// so a custom type reads as its slug, capitalised.
     private(set) var typeLabels: [String: ItemTypeLabel] = [:]
+    /// The same types in the server's order (`PlannerPayload.itemTypes`):
+    /// Organize's Item types row and page. Empty for the sample; nil when the
+    /// server couldn't read them, which the page says rather than "No custom
+    /// types yet."
+    private(set) var itemTypes: [ItemTypeLabel]? = []
+    /// What the Trash routes take (`PlannerPayload.trashWrites`, O14). Nil
+    /// until the first fetch lands, and from a server older than the routes,
+    /// which hides the Trash row (`offersTrash`).
+    private(set) var trashWrites: [String]? = nil
     /// Sends this planner's writes and fetches its data. Nil for the sample,
     /// whose changes last until the app quits.
     @ObservationIgnored private(set) var sync: PlannerSync? = nil
@@ -993,8 +1002,10 @@ final class SamplePlanner {
         settings = payload.settings
         snoozes = payload.snoozes ?? []
         writes = payload.writes
+        trashWrites = payload.trashWrites
         typeLabels = Dictionary((payload.itemTypes ?? []).map { ($0.name, $0) },
                                 uniquingKeysWith: { first, _ in first })
+        itemTypes = payload.itemTypes
         hasLoaded = true
         loadError = nil
         if zoneChanged { refreshToday() }
@@ -1005,6 +1016,43 @@ final class SamplePlanner {
     /// Says the notification plan's inputs may have moved (`onChange`).
     func noteChanged(fetched: Bool = false) {
         onChange?(fetched)
+    }
+
+    // MARK: The Trash (O14, signed in only)
+
+    /// Organize's Trash row shows: signed in, against a server that takes
+    /// both routes (`TrashRoutes.offered`). The sample has no server bin.
+    var offersTrash: Bool {
+        return sync != nil && TrashRoutes.offered(trashWrites)
+    }
+
+    /// The bin, for the Trash page, which holds the rows itself (they never
+    /// enter this planner). Throws `signedOut` for the sample.
+    func fetchTrash() async throws -> TrashList {
+        guard let sync else { throw APIError.signedOut }
+        return try await sync.fetchTrash()
+    }
+
+    /// Restores `row` (PlannerSync's `restoreFromTrash`). Answers whether the
+    /// page lets the row go: true once it is back (a fetch is already on its
+    /// way), and true for a 404, which says in the banner that it is no
+    /// longer in the Trash, since no retry can land. Any other refusal, or no
+    /// answer, shows its sentence in the banner and answers false, keeping
+    /// the row.
+    func restoreFromTrash(_ row: TrashRow) async -> Bool {
+        guard let sync else { return false }
+        switch await sync.restoreFromTrash(row) {
+        case .restored:
+            return true
+        case .gone(let sentence):
+            show(sentence, isError: true)
+            return true
+        case .refused(let sentence):
+            show(sentence, isError: true)
+            return false
+        case .unsent:
+            return false
+        }
     }
 
     // MARK: Notification buttons (signed in only)

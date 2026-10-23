@@ -1,0 +1,2233 @@
+{
+  "tables": {
+    "nothingOnThisWeek": "Nothing on this week"
+  },
+  "milestoneWorld": {
+    "items": [
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000001",
+        "title": "Run a 10K",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-30"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000002",
+        "title": "Book the race",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-26"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000003",
+        "title": "Late checkpoint",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-04"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000004",
+        "title": "Undated checkpoint",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000005",
+        "title": "Second undated",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000006",
+        "title": "Reached",
+        "status": "completed",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-10"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000007",
+        "title": "Dropped",
+        "status": "cancelled",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-12"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000008",
+        "title": "Same day too",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-26"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000009",
+        "title": "Legacy stamp",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-11-02T00:00:00Z"
+      },
+      {
+        "type": "custom",
+        "customType": "book",
+        "id": "00000000-0000-4000-8000-00000000000a",
+        "title": "Read the guide",
+        "status": "completed",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-28"
+      },
+      {
+        "type": "custom",
+        "customType": "book",
+        "id": "00000000-0000-4000-8000-00000000000b",
+        "title": "Read the notes",
+        "status": "done",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-27"
+      }
+    ]
+  },
+  "organizeWeek": [
+    {
+      "name": "a Sunday week: done of done-or-due, everything the grid shows",
+      "items": [
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "title": "Stretch",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [
+            "2026-10-17",
+            "2026-10-19",
+            "2026-10-20",
+            "2026-10-23"
+          ],
+          "skippedDates": [
+            "2026-10-21"
+          ],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "timeBucket": "morning"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000002",
+          "title": "Meditate",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [
+            "2026-10-21"
+          ],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "custom",
+          "timeBucket": "morning",
+          "repeatDays": [
+            1,
+            3,
+            5
+          ]
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000003",
+          "title": "Call bank",
+          "status": "completed",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-10-20"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000004",
+          "title": "Send invoice",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "afternoon",
+          "startDate": "2026-10-23"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000005",
+          "title": "Water plants",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "anytime",
+          "startDate": "2026-10-24"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000006",
+          "title": "Return parcel",
+          "status": "cancelled",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-10-22"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000007",
+          "title": "Pick a gift",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000008",
+          "title": "Report appendix",
+          "status": "completed",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-10-22",
+          "parentItemId": "00000000-0000-4000-8000-000000000003"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000009",
+          "title": "Paused errand",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "evening",
+          "startDate": "2026-10-23",
+          "pausedAt": "2026-10-20T13:00:00Z"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-00000000000a",
+          "title": "Run",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [
+            "2026-10-20"
+          ],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "custom",
+          "timeBucket": "evening",
+          "repeatDays": [
+            2,
+            4
+          ]
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-00000000000b",
+          "title": "Season errand",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-10-22"
+        },
+        {
+          "type": "custom",
+          "customType": "book",
+          "id": "00000000-0000-4000-8000-00000000000c",
+          "title": "Read Dune",
+          "status": "completed",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "evening",
+          "startDate": "2026-10-19"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-00000000000d",
+          "title": "Floss",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [
+            "2026-10-23"
+          ],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "timeBucket": "evening"
+        }
+      ],
+      "routines": [
+        {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-00000000000a"
+          ],
+          "pausedAt": "2026-10-19T12:00:00Z"
+        }
+      ],
+      "seasons": [
+        {
+          "id": "s-shelf",
+          "name": "Shelf",
+          "state": "paused",
+          "itemIds": [
+            "00000000-0000-4000-8000-00000000000b"
+          ],
+          "routineIds": []
+        }
+      ],
+      "away": [],
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "weekStartDay": "sunday",
+      "expected": {
+        "from": "2026-10-18",
+        "through": "2026-10-24",
+        "done": 7,
+        "counted": 12,
+        "sentence": "7 of 12 done"
+      }
+    },
+    {
+      "name": "a Monday week",
+      "items": [
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "title": "Stretch",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [
+            "2026-10-17",
+            "2026-10-19",
+            "2026-10-20",
+            "2026-10-23"
+          ],
+          "skippedDates": [
+            "2026-10-21"
+          ],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "timeBucket": "morning"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000002",
+          "title": "Meditate",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [
+            "2026-10-21"
+          ],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "custom",
+          "timeBucket": "morning",
+          "repeatDays": [
+            1,
+            3,
+            5
+          ]
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000003",
+          "title": "Call bank",
+          "status": "completed",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-10-20"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000004",
+          "title": "Send invoice",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "afternoon",
+          "startDate": "2026-10-23"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000005",
+          "title": "Water plants",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "anytime",
+          "startDate": "2026-10-24"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000006",
+          "title": "Return parcel",
+          "status": "cancelled",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-10-22"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000007",
+          "title": "Pick a gift",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000008",
+          "title": "Report appendix",
+          "status": "completed",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-10-22",
+          "parentItemId": "00000000-0000-4000-8000-000000000003"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000009",
+          "title": "Paused errand",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "evening",
+          "startDate": "2026-10-23",
+          "pausedAt": "2026-10-20T13:00:00Z"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-00000000000a",
+          "title": "Run",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [
+            "2026-10-20"
+          ],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "custom",
+          "timeBucket": "evening",
+          "repeatDays": [
+            2,
+            4
+          ]
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-00000000000b",
+          "title": "Season errand",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-10-22"
+        },
+        {
+          "type": "custom",
+          "customType": "book",
+          "id": "00000000-0000-4000-8000-00000000000c",
+          "title": "Read Dune",
+          "status": "completed",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "evening",
+          "startDate": "2026-10-19"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-00000000000d",
+          "title": "Floss",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [
+            "2026-10-23"
+          ],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "timeBucket": "evening"
+        }
+      ],
+      "routines": [
+        {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-00000000000a"
+          ],
+          "pausedAt": "2026-10-19T12:00:00Z"
+        }
+      ],
+      "seasons": [
+        {
+          "id": "s-shelf",
+          "name": "Shelf",
+          "state": "paused",
+          "itemIds": [
+            "00000000-0000-4000-8000-00000000000b"
+          ],
+          "routineIds": []
+        }
+      ],
+      "away": [],
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "weekStartDay": "monday",
+      "expected": {
+        "from": "2026-10-19",
+        "through": "2026-10-25",
+        "done": 7,
+        "counted": 14,
+        "sentence": "7 of 14 done"
+      }
+    },
+    {
+      "name": "a Saturday week: today is its last day",
+      "items": [
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "title": "Stretch",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [
+            "2026-10-17",
+            "2026-10-19",
+            "2026-10-20",
+            "2026-10-23"
+          ],
+          "skippedDates": [
+            "2026-10-21"
+          ],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "timeBucket": "morning"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000002",
+          "title": "Meditate",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [
+            "2026-10-21"
+          ],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "custom",
+          "timeBucket": "morning",
+          "repeatDays": [
+            1,
+            3,
+            5
+          ]
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000003",
+          "title": "Call bank",
+          "status": "completed",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-10-20"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000004",
+          "title": "Send invoice",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "afternoon",
+          "startDate": "2026-10-23"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000005",
+          "title": "Water plants",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "anytime",
+          "startDate": "2026-10-24"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000006",
+          "title": "Return parcel",
+          "status": "cancelled",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-10-22"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000007",
+          "title": "Pick a gift",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000008",
+          "title": "Report appendix",
+          "status": "completed",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-10-22",
+          "parentItemId": "00000000-0000-4000-8000-000000000003"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000009",
+          "title": "Paused errand",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "evening",
+          "startDate": "2026-10-23",
+          "pausedAt": "2026-10-20T13:00:00Z"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-00000000000a",
+          "title": "Run",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [
+            "2026-10-20"
+          ],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "custom",
+          "timeBucket": "evening",
+          "repeatDays": [
+            2,
+            4
+          ]
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-00000000000b",
+          "title": "Season errand",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-10-22"
+        },
+        {
+          "type": "custom",
+          "customType": "book",
+          "id": "00000000-0000-4000-8000-00000000000c",
+          "title": "Read Dune",
+          "status": "completed",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "evening",
+          "startDate": "2026-10-19"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-00000000000d",
+          "title": "Floss",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [
+            "2026-10-23"
+          ],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "timeBucket": "evening"
+        }
+      ],
+      "routines": [
+        {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-00000000000a"
+          ],
+          "pausedAt": "2026-10-19T12:00:00Z"
+        }
+      ],
+      "seasons": [
+        {
+          "id": "s-shelf",
+          "name": "Shelf",
+          "state": "paused",
+          "itemIds": [
+            "00000000-0000-4000-8000-00000000000b"
+          ],
+          "routineIds": []
+        }
+      ],
+      "away": [],
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "weekStartDay": "saturday",
+      "expected": {
+        "from": "2026-10-17",
+        "through": "2026-10-23",
+        "done": 8,
+        "counted": 10,
+        "sentence": "8 of 10 done"
+      }
+    },
+    {
+      "name": "the week’s first day: nothing is past yet",
+      "items": [
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "title": "Stretch",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [
+            "2026-10-17",
+            "2026-10-19",
+            "2026-10-20",
+            "2026-10-23"
+          ],
+          "skippedDates": [
+            "2026-10-21"
+          ],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "timeBucket": "morning"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000002",
+          "title": "Meditate",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [
+            "2026-10-21"
+          ],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "custom",
+          "timeBucket": "morning",
+          "repeatDays": [
+            1,
+            3,
+            5
+          ]
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000003",
+          "title": "Call bank",
+          "status": "completed",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-10-20"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000004",
+          "title": "Send invoice",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "afternoon",
+          "startDate": "2026-10-23"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000005",
+          "title": "Water plants",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "anytime",
+          "startDate": "2026-10-24"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000006",
+          "title": "Return parcel",
+          "status": "cancelled",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-10-22"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000007",
+          "title": "Pick a gift",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000008",
+          "title": "Report appendix",
+          "status": "completed",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-10-22",
+          "parentItemId": "00000000-0000-4000-8000-000000000003"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000009",
+          "title": "Paused errand",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "evening",
+          "startDate": "2026-10-23",
+          "pausedAt": "2026-10-20T13:00:00Z"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-00000000000a",
+          "title": "Run",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [
+            "2026-10-20"
+          ],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "custom",
+          "timeBucket": "evening",
+          "repeatDays": [
+            2,
+            4
+          ]
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-00000000000b",
+          "title": "Season errand",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-10-22"
+        },
+        {
+          "type": "custom",
+          "customType": "book",
+          "id": "00000000-0000-4000-8000-00000000000c",
+          "title": "Read Dune",
+          "status": "completed",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "evening",
+          "startDate": "2026-10-19"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-00000000000d",
+          "title": "Floss",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [
+            "2026-10-23"
+          ],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "timeBucket": "evening"
+        }
+      ],
+      "routines": [
+        {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-00000000000a"
+          ],
+          "pausedAt": "2026-10-19T12:00:00Z"
+        }
+      ],
+      "seasons": [
+        {
+          "id": "s-shelf",
+          "name": "Shelf",
+          "state": "paused",
+          "itemIds": [
+            "00000000-0000-4000-8000-00000000000b"
+          ],
+          "routineIds": []
+        }
+      ],
+      "away": [],
+      "today": "2026-10-19",
+      "timeZone": "America/New_York",
+      "weekStartDay": "monday",
+      "expected": {
+        "from": "2026-10-19",
+        "through": "2026-10-25",
+        "done": 7,
+        "counted": 20,
+        "sentence": "7 of 20 done"
+      }
+    },
+    {
+      "name": "a Monday week asked on its Sunday",
+      "items": [
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "title": "Stretch",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [
+            "2026-10-17",
+            "2026-10-19",
+            "2026-10-20",
+            "2026-10-23"
+          ],
+          "skippedDates": [
+            "2026-10-21"
+          ],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "timeBucket": "morning"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000002",
+          "title": "Meditate",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [
+            "2026-10-21"
+          ],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "custom",
+          "timeBucket": "morning",
+          "repeatDays": [
+            1,
+            3,
+            5
+          ]
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000003",
+          "title": "Call bank",
+          "status": "completed",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-10-20"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000004",
+          "title": "Send invoice",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "afternoon",
+          "startDate": "2026-10-23"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000005",
+          "title": "Water plants",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "anytime",
+          "startDate": "2026-10-24"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000006",
+          "title": "Return parcel",
+          "status": "cancelled",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-10-22"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000007",
+          "title": "Pick a gift",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000008",
+          "title": "Report appendix",
+          "status": "completed",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-10-22",
+          "parentItemId": "00000000-0000-4000-8000-000000000003"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000009",
+          "title": "Paused errand",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "evening",
+          "startDate": "2026-10-23",
+          "pausedAt": "2026-10-20T13:00:00Z"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-00000000000a",
+          "title": "Run",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [
+            "2026-10-20"
+          ],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "custom",
+          "timeBucket": "evening",
+          "repeatDays": [
+            2,
+            4
+          ]
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-00000000000b",
+          "title": "Season errand",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-10-22"
+        },
+        {
+          "type": "custom",
+          "customType": "book",
+          "id": "00000000-0000-4000-8000-00000000000c",
+          "title": "Read Dune",
+          "status": "completed",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "evening",
+          "startDate": "2026-10-19"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-00000000000d",
+          "title": "Floss",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [
+            "2026-10-23"
+          ],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "timeBucket": "evening"
+        }
+      ],
+      "routines": [
+        {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-00000000000a"
+          ],
+          "pausedAt": "2026-10-19T12:00:00Z"
+        }
+      ],
+      "seasons": [
+        {
+          "id": "s-shelf",
+          "name": "Shelf",
+          "state": "paused",
+          "itemIds": [
+            "00000000-0000-4000-8000-00000000000b"
+          ],
+          "routineIds": []
+        }
+      ],
+      "away": [],
+      "today": "2026-10-25",
+      "timeZone": "America/New_York",
+      "weekStartDay": "monday",
+      "expected": {
+        "from": "2026-10-19",
+        "through": "2026-10-25",
+        "done": 7,
+        "counted": 9,
+        "sentence": "7 of 9 done"
+      }
+    },
+    {
+      "name": "the same world with no subtask: the same answer",
+      "items": [
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "title": "Stretch",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [
+            "2026-10-17",
+            "2026-10-19",
+            "2026-10-20",
+            "2026-10-23"
+          ],
+          "skippedDates": [
+            "2026-10-21"
+          ],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "timeBucket": "morning"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000002",
+          "title": "Meditate",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [
+            "2026-10-21"
+          ],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "custom",
+          "timeBucket": "morning",
+          "repeatDays": [
+            1,
+            3,
+            5
+          ]
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000003",
+          "title": "Call bank",
+          "status": "completed",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-10-20"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000004",
+          "title": "Send invoice",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "afternoon",
+          "startDate": "2026-10-23"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000005",
+          "title": "Water plants",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "anytime",
+          "startDate": "2026-10-24"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000006",
+          "title": "Return parcel",
+          "status": "cancelled",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-10-22"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000007",
+          "title": "Pick a gift",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000009",
+          "title": "Paused errand",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "evening",
+          "startDate": "2026-10-23",
+          "pausedAt": "2026-10-20T13:00:00Z"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-00000000000a",
+          "title": "Run",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [
+            "2026-10-20"
+          ],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "custom",
+          "timeBucket": "evening",
+          "repeatDays": [
+            2,
+            4
+          ]
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-00000000000b",
+          "title": "Season errand",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-10-22"
+        },
+        {
+          "type": "custom",
+          "customType": "book",
+          "id": "00000000-0000-4000-8000-00000000000c",
+          "title": "Read Dune",
+          "status": "completed",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "evening",
+          "startDate": "2026-10-19"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-00000000000d",
+          "title": "Floss",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [
+            "2026-10-23"
+          ],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "timeBucket": "evening"
+        }
+      ],
+      "routines": [
+        {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-00000000000a"
+          ],
+          "pausedAt": "2026-10-19T12:00:00Z"
+        }
+      ],
+      "seasons": [
+        {
+          "id": "s-shelf",
+          "name": "Shelf",
+          "state": "paused",
+          "itemIds": [
+            "00000000-0000-4000-8000-00000000000b"
+          ],
+          "routineIds": []
+        }
+      ],
+      "away": [],
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "weekStartDay": "sunday",
+      "expected": {
+        "from": "2026-10-18",
+        "through": "2026-10-24",
+        "done": 7,
+        "counted": 12,
+        "sentence": "7 of 12 done"
+      }
+    },
+    {
+      "name": "the paused errand resumed: on the week",
+      "items": [
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "title": "Stretch",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [
+            "2026-10-17",
+            "2026-10-19",
+            "2026-10-20",
+            "2026-10-23"
+          ],
+          "skippedDates": [
+            "2026-10-21"
+          ],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "timeBucket": "morning"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000002",
+          "title": "Meditate",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [
+            "2026-10-21"
+          ],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "custom",
+          "timeBucket": "morning",
+          "repeatDays": [
+            1,
+            3,
+            5
+          ]
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000003",
+          "title": "Call bank",
+          "status": "completed",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-10-20"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000004",
+          "title": "Send invoice",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "afternoon",
+          "startDate": "2026-10-23"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000005",
+          "title": "Water plants",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "anytime",
+          "startDate": "2026-10-24"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000006",
+          "title": "Return parcel",
+          "status": "cancelled",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-10-22"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000007",
+          "title": "Pick a gift",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000008",
+          "title": "Report appendix",
+          "status": "completed",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-10-22",
+          "parentItemId": "00000000-0000-4000-8000-000000000003"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000009",
+          "title": "Paused errand",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "evening",
+          "startDate": "2026-10-23"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-00000000000a",
+          "title": "Run",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [
+            "2026-10-20"
+          ],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "custom",
+          "timeBucket": "evening",
+          "repeatDays": [
+            2,
+            4
+          ]
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-00000000000b",
+          "title": "Season errand",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-10-22"
+        },
+        {
+          "type": "custom",
+          "customType": "book",
+          "id": "00000000-0000-4000-8000-00000000000c",
+          "title": "Read Dune",
+          "status": "completed",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "evening",
+          "startDate": "2026-10-19"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-00000000000d",
+          "title": "Floss",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [
+            "2026-10-23"
+          ],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "timeBucket": "evening"
+        }
+      ],
+      "routines": [
+        {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-00000000000a"
+          ],
+          "pausedAt": "2026-10-19T12:00:00Z"
+        }
+      ],
+      "seasons": [
+        {
+          "id": "s-shelf",
+          "name": "Shelf",
+          "state": "paused",
+          "itemIds": [
+            "00000000-0000-4000-8000-00000000000b"
+          ],
+          "routineIds": []
+        }
+      ],
+      "away": [],
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "weekStartDay": "sunday",
+      "expected": {
+        "from": "2026-10-18",
+        "through": "2026-10-24",
+        "done": 7,
+        "counted": 13,
+        "sentence": "7 of 13 done"
+      }
+    },
+    {
+      "name": "a trip rests what falls inside it, except what was done",
+      "items": [
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "title": "Stretch",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [
+            "2026-10-17",
+            "2026-10-19",
+            "2026-10-20",
+            "2026-10-23"
+          ],
+          "skippedDates": [
+            "2026-10-21"
+          ],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "timeBucket": "morning"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000002",
+          "title": "Meditate",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [
+            "2026-10-21"
+          ],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "custom",
+          "timeBucket": "morning",
+          "repeatDays": [
+            1,
+            3,
+            5
+          ]
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000003",
+          "title": "Call bank",
+          "status": "completed",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-10-20"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000004",
+          "title": "Send invoice",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "afternoon",
+          "startDate": "2026-10-23"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000005",
+          "title": "Water plants",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "anytime",
+          "startDate": "2026-10-24"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000006",
+          "title": "Return parcel",
+          "status": "cancelled",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-10-22"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000007",
+          "title": "Pick a gift",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000008",
+          "title": "Report appendix",
+          "status": "completed",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-10-22",
+          "parentItemId": "00000000-0000-4000-8000-000000000003"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000009",
+          "title": "Paused errand",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "evening",
+          "startDate": "2026-10-23",
+          "pausedAt": "2026-10-20T13:00:00Z"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-00000000000a",
+          "title": "Run",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [
+            "2026-10-20"
+          ],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "custom",
+          "timeBucket": "evening",
+          "repeatDays": [
+            2,
+            4
+          ]
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-00000000000b",
+          "title": "Season errand",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-10-22"
+        },
+        {
+          "type": "custom",
+          "customType": "book",
+          "id": "00000000-0000-4000-8000-00000000000c",
+          "title": "Read Dune",
+          "status": "completed",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "evening",
+          "startDate": "2026-10-19"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-00000000000d",
+          "title": "Floss",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [
+            "2026-10-23"
+          ],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "timeBucket": "evening"
+        }
+      ],
+      "routines": [
+        {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-00000000000a"
+          ],
+          "pausedAt": "2026-10-19T12:00:00Z"
+        }
+      ],
+      "seasons": [
+        {
+          "id": "s-shelf",
+          "name": "Shelf",
+          "state": "paused",
+          "itemIds": [
+            "00000000-0000-4000-8000-00000000000b"
+          ],
+          "routineIds": []
+        }
+      ],
+      "away": [
+        {
+          "id": "t-weekend",
+          "startsOn": "2026-10-23",
+          "endsOn": "2026-10-25",
+          "keep": {
+            "itemIds": [],
+            "routineIds": [],
+            "projectIds": []
+          },
+          "returns": {},
+          "fromTrip": {}
+        }
+      ],
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "weekStartDay": "sunday",
+      "expected": {
+        "from": "2026-10-18",
+        "through": "2026-10-24",
+        "done": 7,
+        "counted": 7,
+        "sentence": "7 of 7 done"
+      }
+    },
+    {
+      "name": "nothing on this week: an undated task and one next month",
+      "items": [
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000007",
+          "title": "Pick a gift",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000014",
+          "title": "Next month",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-11-12"
+        }
+      ],
+      "routines": [
+        {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-00000000000a"
+          ],
+          "pausedAt": "2026-10-19T12:00:00Z"
+        }
+      ],
+      "seasons": [
+        {
+          "id": "s-shelf",
+          "name": "Shelf",
+          "state": "paused",
+          "itemIds": [
+            "00000000-0000-4000-8000-00000000000b"
+          ],
+          "routineIds": []
+        }
+      ],
+      "away": [],
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "weekStartDay": "sunday",
+      "expected": {
+        "from": "2026-10-18",
+        "through": "2026-10-24",
+        "done": 0,
+        "counted": 0,
+        "sentence": "Nothing on this week"
+      }
+    },
+    {
+      "name": "only a skip and an unrecorded past day: nothing counted",
+      "items": [
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000015",
+          "title": "Mon and Tue",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [
+            "2026-10-19"
+          ],
+          "dailyCounts": {},
+          "repeatFrequency": "custom",
+          "timeBucket": "morning",
+          "repeatDays": [
+            1,
+            2
+          ]
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000006",
+          "title": "Return parcel",
+          "status": "cancelled",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-10-22"
+        }
+      ],
+      "routines": [
+        {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-00000000000a"
+          ],
+          "pausedAt": "2026-10-19T12:00:00Z"
+        }
+      ],
+      "seasons": [
+        {
+          "id": "s-shelf",
+          "name": "Shelf",
+          "state": "paused",
+          "itemIds": [
+            "00000000-0000-4000-8000-00000000000b"
+          ],
+          "routineIds": []
+        }
+      ],
+      "away": [],
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "weekStartDay": "monday",
+      "expected": {
+        "from": "2026-10-19",
+        "through": "2026-10-25",
+        "done": 0,
+        "counted": 0,
+        "sentence": "Nothing on this week"
+      }
+    },
+    {
+      "name": "a finished one-off counts on its day",
+      "items": [
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000003",
+          "title": "Call bank",
+          "status": "completed",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-10-20"
+        }
+      ],
+      "routines": [
+        {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-00000000000a"
+          ],
+          "pausedAt": "2026-10-19T12:00:00Z"
+        }
+      ],
+      "seasons": [
+        {
+          "id": "s-shelf",
+          "name": "Shelf",
+          "state": "paused",
+          "itemIds": [
+            "00000000-0000-4000-8000-00000000000b"
+          ],
+          "routineIds": []
+        }
+      ],
+      "away": [],
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "weekStartDay": "sunday",
+      "expected": {
+        "from": "2026-10-18",
+        "through": "2026-10-24",
+        "done": 1,
+        "counted": 1,
+        "sentence": "1 of 1 done"
+      }
+    },
+    {
+      "name": "no items at all",
+      "items": [],
+      "routines": [
+        {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-00000000000a"
+          ],
+          "pausedAt": "2026-10-19T12:00:00Z"
+        }
+      ],
+      "seasons": [
+        {
+          "id": "s-shelf",
+          "name": "Shelf",
+          "state": "paused",
+          "itemIds": [
+            "00000000-0000-4000-8000-00000000000b"
+          ],
+          "routineIds": []
+        }
+      ],
+      "away": [],
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "weekStartDay": "sunday",
+      "expected": {
+        "from": "2026-10-18",
+        "through": "2026-10-24",
+        "done": 0,
+        "counted": 0,
+        "sentence": "Nothing on this week"
+      }
+    }
+  ],
+  "nextMilestoneAcross": [
+    {
+      "name": "the earliest dated across goals",
+      "goals": [
+        {
+          "id": "g-run",
+          "name": "Run a half marathon",
+          "state": "active",
+          "memberIds": [],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000001"
+          ],
+          "checkinIds": []
+        },
+        {
+          "id": "g-race",
+          "name": "Race day",
+          "state": "active",
+          "memberIds": [],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "checkinIds": []
+        }
+      ],
+      "expected": {
+        "goalId": "g-race",
+        "itemId": "00000000-0000-4000-8000-000000000002",
+        "date": "2026-10-26",
+        "line": "Oct 26 · Race day"
+      }
+    },
+    {
+      "name": "a tie on the day: the goal listed first",
+      "goals": [
+        {
+          "id": "g-first",
+          "name": "Listed first",
+          "state": "active",
+          "memberIds": [],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000008"
+          ],
+          "checkinIds": []
+        },
+        {
+          "id": "g-second",
+          "name": "Listed second",
+          "state": "active",
+          "memberIds": [],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "checkinIds": []
+        }
+      ],
+      "expected": {
+        "goalId": "g-first",
+        "itemId": "00000000-0000-4000-8000-000000000008",
+        "date": "2026-10-26",
+        "line": "Oct 26 · Listed first"
+      }
+    },
+    {
+      "name": "a late milestone keeps its date",
+      "goals": [
+        {
+          "id": "g-run",
+          "name": "Run a half marathon",
+          "state": "active",
+          "memberIds": [],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000003"
+          ],
+          "checkinIds": []
+        }
+      ],
+      "expected": {
+        "goalId": "g-run",
+        "itemId": "00000000-0000-4000-8000-000000000003",
+        "date": "2026-10-04",
+        "line": "Oct 4 · Run a half marathon"
+      }
+    },
+    {
+      "name": "dated beats undated, whatever the order",
+      "goals": [
+        {
+          "id": "g-undated",
+          "name": "Undated",
+          "state": "active",
+          "memberIds": [],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "checkinIds": []
+        },
+        {
+          "id": "g-run",
+          "name": "Run a half marathon",
+          "state": "active",
+          "memberIds": [],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000001"
+          ],
+          "checkinIds": []
+        }
+      ],
+      "expected": {
+        "goalId": "g-run",
+        "itemId": "00000000-0000-4000-8000-000000000001",
+        "date": "2026-10-30",
+        "line": "Oct 30 · Run a half marathon"
+      }
+    },
+    {
+      "name": "undated only: the first goal’s first",
+      "goals": [
+        {
+          "id": "g-one",
+          "name": "One",
+          "state": "active",
+          "memberIds": [],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000004",
+            "00000000-0000-4000-8000-000000000005"
+          ],
+          "checkinIds": []
+        },
+        {
+          "id": "g-two",
+          "name": "Two",
+          "state": "active",
+          "memberIds": [],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000005"
+          ],
+          "checkinIds": []
+        }
+      ],
+      "expected": {
+        "goalId": "g-one",
+        "itemId": "00000000-0000-4000-8000-000000000004",
+        "date": null,
+        "line": "One"
+      }
+    },
+    {
+      "name": "an ended goal is passed over",
+      "goals": [
+        {
+          "id": "g-done",
+          "name": "Done",
+          "state": "achieved",
+          "memberIds": [],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000003"
+          ],
+          "checkinIds": []
+        },
+        {
+          "id": "g-aside",
+          "name": "Set aside",
+          "state": "abandoned",
+          "memberIds": [],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "checkinIds": []
+        },
+        {
+          "id": "g-run",
+          "name": "Run a half marathon",
+          "state": "active",
+          "memberIds": [],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000001"
+          ],
+          "checkinIds": []
+        }
+      ],
+      "expected": {
+        "goalId": "g-run",
+        "itemId": "00000000-0000-4000-8000-000000000001",
+        "date": "2026-10-30",
+        "line": "Oct 30 · Run a half marathon"
+      }
+    },
+    {
+      "name": "reached and dropped are passed: the next open one",
+      "goals": [
+        {
+          "id": "g-run",
+          "name": "Run a half marathon",
+          "state": "active",
+          "memberIds": [],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000006",
+            "00000000-0000-4000-8000-000000000007",
+            "00000000-0000-4000-8000-000000000001"
+          ],
+          "checkinIds": []
+        }
+      ],
+      "expected": {
+        "goalId": "g-run",
+        "itemId": "00000000-0000-4000-8000-000000000001",
+        "date": "2026-10-30",
+        "line": "Oct 30 · Run a half marathon"
+      }
+    },
+    {
+      "name": "a custom type’s own done word, never a habit’s",
+      "goals": [
+        {
+          "id": "g-read",
+          "name": "Read more",
+          "state": "active",
+          "memberIds": [],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-00000000000a",
+            "00000000-0000-4000-8000-00000000000b",
+            "00000000-0000-4000-8000-000000000009"
+          ],
+          "checkinIds": []
+        }
+      ],
+      "expected": {
+        "goalId": "g-read",
+        "itemId": "00000000-0000-4000-8000-00000000000b",
+        "date": "2026-10-27",
+        "line": "Oct 27 · Read more"
+      }
+    },
+    {
+      "name": "a whole ISO stamp: its day",
+      "goals": [
+        {
+          "id": "g-legacy",
+          "name": "Legacy",
+          "state": "active",
+          "memberIds": [],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000009"
+          ],
+          "checkinIds": []
+        }
+      ],
+      "expected": {
+        "goalId": "g-legacy",
+        "itemId": "00000000-0000-4000-8000-000000000009",
+        "date": "2026-11-02",
+        "line": "Nov 2 · Legacy"
+      }
+    },
+    {
+      "name": "a trashed milestone is passed over",
+      "goals": [
+        {
+          "id": "g-trash",
+          "name": "Trash",
+          "state": "active",
+          "memberIds": [],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000063",
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "checkinIds": []
+        }
+      ],
+      "expected": {
+        "goalId": "g-trash",
+        "itemId": "00000000-0000-4000-8000-000000000004",
+        "date": null,
+        "line": "Trash"
+      }
+    },
+    {
+      "name": "nothing open anywhere: no card",
+      "goals": [
+        {
+          "id": "g-run",
+          "name": "Run a half marathon",
+          "state": "active",
+          "memberIds": [],
+          "milestoneIds": [
+            "00000000-0000-4000-8000-000000000006",
+            "00000000-0000-4000-8000-000000000007"
+          ],
+          "checkinIds": []
+        },
+        {
+          "id": "g-none",
+          "name": "None",
+          "state": "active",
+          "memberIds": [],
+          "milestoneIds": [],
+          "checkinIds": []
+        }
+      ],
+      "expected": null
+    },
+    {
+      "name": "no goals: no card",
+      "goals": [],
+      "expected": null
+    }
+  ],
+  "weekCardSentence": [
+    {
+      "name": "part way",
+      "done": 18,
+      "counted": 23,
+      "expected": "18 of 23 done"
+    },
+    {
+      "name": "none done yet",
+      "done": 0,
+      "counted": 4,
+      "expected": "0 of 4 done"
+    },
+    {
+      "name": "all done",
+      "done": 7,
+      "counted": 7,
+      "expected": "7 of 7 done"
+    },
+    {
+      "name": "nothing on",
+      "done": 0,
+      "counted": 0,
+      "expected": "Nothing on this week"
+    }
+  ]
+}

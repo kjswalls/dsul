@@ -1,0 +1,1583 @@
+{
+  "tables": {
+    "noDate": "No date",
+    "nothingPaused": "Nothing is paused.",
+    "welcome": "Things you've set aside. Nothing here is late: each one comes back on its own day, or whenever you resume it."
+  },
+  "world": {
+    "items": [
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000001",
+        "title": "Renew passport",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "pausedAt": "2026-10-20T13:00:00Z",
+        "pausedUntil": "2026-10-24"
+      },
+      {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000002",
+        "title": "Cold shower",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "pausedAt": "2026-10-20T13:00:00Z",
+        "pausedUntil": "2026-10-30"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000003",
+        "title": "Sort the garage",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "pausedAt": "2026-10-21T13:00:00Z"
+      },
+      {
+        "type": "custom",
+        "customType": "book",
+        "id": "00000000-0000-4000-8000-000000000004",
+        "title": "Read Dune",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "pausedAt": "2026-10-21T13:00:00Z",
+        "pausedUntil": "2026-10-30"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000005",
+        "title": "Find old photos",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "parentItemId": "00000000-0000-4000-8000-000000000001",
+        "pausedAt": "2026-10-20T13:00:00Z"
+      },
+      {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000006",
+        "title": "Read",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "timeBucket": "evening"
+      },
+      {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000007",
+        "title": "Floss",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "timeBucket": "evening"
+      },
+      {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000008",
+        "title": "Stand up",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000009",
+        "title": "Clear the desk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "timeBucket": "morning",
+        "startDate": "2026-10-01",
+        "repeatFrequency": "weekdays"
+      },
+      {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-00000000000a",
+        "title": "Wax skis",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-00000000000b",
+        "title": "Walk",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000000c",
+        "title": "Still on",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "timeBucket": "morning",
+        "startDate": "2026-10-23"
+      },
+      {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-00000000000d",
+        "title": "Night stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000000e",
+        "title": "Late pause",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "pausedAt": "2026-10-24T03:30:00Z"
+      }
+    ],
+    "routines": [
+      {
+        "id": "r-evening",
+        "name": "Evening",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000006",
+          "00000000-0000-4000-8000-000000000007"
+        ],
+        "pausedAt": "2026-10-19T12:00:00Z",
+        "pausedUntil": "2026-10-30"
+      },
+      {
+        "id": "r-desk",
+        "name": "Desk",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000008",
+          "00000000-0000-4000-8000-000000000009"
+        ]
+      },
+      {
+        "id": "r-night",
+        "name": "Night",
+        "itemIds": [
+          "00000000-0000-4000-8000-00000000000d"
+        ],
+        "pausedAt": "2026-10-19T12:00:00Z",
+        "pausedUntil": "2027-01-04"
+      }
+    ],
+    "seasons": [
+      {
+        "id": "s-winter",
+        "name": "Winter",
+        "state": "auto",
+        "itemIds": [
+          "00000000-0000-4000-8000-00000000000a"
+        ],
+        "routineIds": [
+          "r-desk"
+        ],
+        "startsOn": "2026-11-01",
+        "endsOn": "2027-02-28"
+      }
+    ]
+  },
+  "pausedShelf": [
+    {
+      "name": "nothing paused",
+      "items": [
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-00000000000b",
+          "title": "Walk",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-00000000000c",
+          "title": "Still on",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-10-23"
+        }
+      ],
+      "routines": [
+        {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000006",
+            "00000000-0000-4000-8000-000000000007"
+          ],
+          "pausedAt": "2026-10-19T12:00:00Z",
+          "pausedUntil": "2026-10-30"
+        },
+        {
+          "id": "r-desk",
+          "name": "Desk",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000008",
+            "00000000-0000-4000-8000-000000000009"
+          ]
+        },
+        {
+          "id": "r-night",
+          "name": "Night",
+          "itemIds": [
+            "00000000-0000-4000-8000-00000000000d"
+          ],
+          "pausedAt": "2026-10-19T12:00:00Z",
+          "pausedUntil": "2027-01-04"
+        }
+      ],
+      "seasons": [
+        {
+          "id": "s-winter",
+          "name": "Winter",
+          "state": "auto",
+          "itemIds": [
+            "00000000-0000-4000-8000-00000000000a"
+          ],
+          "routineIds": [
+            "r-desk"
+          ],
+          "startsOn": "2026-11-01",
+          "endsOn": "2027-02-28"
+        }
+      ],
+      "away": [],
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "expected": {
+        "count": 0,
+        "note": null,
+        "days": []
+      }
+    },
+    {
+      "name": "grouped by return day, soonest first, no date last",
+      "items": [
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "title": "Renew passport",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0,
+          "pausedAt": "2026-10-20T13:00:00Z",
+          "pausedUntil": "2026-10-24"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000002",
+          "title": "Cold shower",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "pausedAt": "2026-10-20T13:00:00Z",
+          "pausedUntil": "2026-10-30"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000003",
+          "title": "Sort the garage",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0,
+          "pausedAt": "2026-10-21T13:00:00Z"
+        },
+        {
+          "type": "custom",
+          "customType": "book",
+          "id": "00000000-0000-4000-8000-000000000004",
+          "title": "Read Dune",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0,
+          "pausedAt": "2026-10-21T13:00:00Z",
+          "pausedUntil": "2026-10-30"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000005",
+          "title": "Find old photos",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0,
+          "parentItemId": "00000000-0000-4000-8000-000000000001",
+          "pausedAt": "2026-10-20T13:00:00Z"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000006",
+          "title": "Read",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "timeBucket": "evening"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000007",
+          "title": "Floss",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "timeBucket": "evening"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000008",
+          "title": "Stand up",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000009",
+          "title": "Clear the desk",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-10-01",
+          "repeatFrequency": "weekdays"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-00000000000a",
+          "title": "Wax skis",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-00000000000b",
+          "title": "Walk",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-00000000000c",
+          "title": "Still on",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-10-23"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-00000000000d",
+          "title": "Night stretch",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-00000000000e",
+          "title": "Late pause",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0,
+          "pausedAt": "2026-10-24T03:30:00Z"
+        }
+      ],
+      "routines": [
+        {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000006",
+            "00000000-0000-4000-8000-000000000007"
+          ],
+          "pausedAt": "2026-10-19T12:00:00Z",
+          "pausedUntil": "2026-10-30"
+        },
+        {
+          "id": "r-desk",
+          "name": "Desk",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000008",
+            "00000000-0000-4000-8000-000000000009"
+          ]
+        },
+        {
+          "id": "r-night",
+          "name": "Night",
+          "itemIds": [
+            "00000000-0000-4000-8000-00000000000d"
+          ],
+          "pausedAt": "2026-10-19T12:00:00Z",
+          "pausedUntil": "2027-01-04"
+        }
+      ],
+      "seasons": [
+        {
+          "id": "s-winter",
+          "name": "Winter",
+          "state": "auto",
+          "itemIds": [
+            "00000000-0000-4000-8000-00000000000a"
+          ],
+          "routineIds": [
+            "r-desk"
+          ],
+          "startsOn": "2026-11-01",
+          "endsOn": "2027-02-28"
+        }
+      ],
+      "away": [],
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "expected": {
+        "count": 11,
+        "note": "11 · Renew passport back tomorrow",
+        "days": [
+          {
+            "key": "2026-10-24",
+            "until": "2026-10-24",
+            "label": "Tomorrow",
+            "entries": [
+              {
+                "kind": "item",
+                "key": "item:00000000-0000-4000-8000-000000000001",
+                "id": "00000000-0000-4000-8000-000000000001",
+                "name": "Renew passport",
+                "until": "2026-10-24",
+                "itemIds": [
+                  "00000000-0000-4000-8000-000000000001"
+                ],
+                "kindLine": "Task",
+                "stateLine": "Paused until Oct 24."
+              }
+            ]
+          },
+          {
+            "key": "2026-10-30",
+            "until": "2026-10-30",
+            "label": "Fri, Oct 30",
+            "entries": [
+              {
+                "kind": "routine",
+                "key": "routine:r-evening",
+                "id": "r-evening",
+                "name": "Evening",
+                "until": "2026-10-30",
+                "itemIds": [
+                  "00000000-0000-4000-8000-000000000006",
+                  "00000000-0000-4000-8000-000000000007"
+                ],
+                "kindLine": "Routine · 2 habits",
+                "stateLine": "Hidden with your Evening routine until Oct 30."
+              },
+              {
+                "kind": "item",
+                "key": "item:00000000-0000-4000-8000-000000000002",
+                "id": "00000000-0000-4000-8000-000000000002",
+                "name": "Cold shower",
+                "until": "2026-10-30",
+                "itemIds": [
+                  "00000000-0000-4000-8000-000000000002"
+                ],
+                "kindLine": "Habit",
+                "stateLine": "Paused until Oct 30."
+              },
+              {
+                "kind": "item",
+                "key": "item:00000000-0000-4000-8000-000000000004",
+                "id": "00000000-0000-4000-8000-000000000004",
+                "name": "Read Dune",
+                "until": "2026-10-30",
+                "itemIds": [
+                  "00000000-0000-4000-8000-000000000004"
+                ],
+                "kindLine": "Book",
+                "stateLine": "Paused until Oct 30."
+              }
+            ]
+          },
+          {
+            "key": "2026-11-01",
+            "until": "2026-11-01",
+            "label": "Sun, Nov 1",
+            "entries": [
+              {
+                "kind": "season",
+                "key": "season:s-winter",
+                "id": "s-winter",
+                "name": "Winter",
+                "until": "2026-11-01",
+                "itemIds": [
+                  "00000000-0000-4000-8000-000000000008",
+                  "00000000-0000-4000-8000-000000000009",
+                  "00000000-0000-4000-8000-00000000000a"
+                ],
+                "kindLine": "Season · 3 items",
+                "stateLine": "Hidden with your Winter season until Nov 1."
+              }
+            ]
+          },
+          {
+            "key": "2027-01-04",
+            "until": "2027-01-04",
+            "label": "Mon, Jan 4",
+            "entries": [
+              {
+                "kind": "routine",
+                "key": "routine:r-night",
+                "id": "r-night",
+                "name": "Night",
+                "until": "2027-01-04",
+                "itemIds": [
+                  "00000000-0000-4000-8000-00000000000d"
+                ],
+                "kindLine": "Routine · 1 habit",
+                "stateLine": "Hidden with your Night routine until Jan 4."
+              }
+            ]
+          },
+          {
+            "key": "",
+            "until": null,
+            "label": "No date",
+            "entries": [
+              {
+                "kind": "item",
+                "key": "item:00000000-0000-4000-8000-000000000003",
+                "id": "00000000-0000-4000-8000-000000000003",
+                "name": "Sort the garage",
+                "until": null,
+                "itemIds": [
+                  "00000000-0000-4000-8000-000000000003"
+                ],
+                "kindLine": "Task",
+                "stateLine": "Paused. It stays set aside until you resume it."
+              },
+              {
+                "kind": "item",
+                "key": "item:00000000-0000-4000-8000-00000000000e",
+                "id": "00000000-0000-4000-8000-00000000000e",
+                "name": "Late pause",
+                "until": null,
+                "itemIds": [
+                  "00000000-0000-4000-8000-00000000000e"
+                ],
+                "kindLine": "Task",
+                "stateLine": "Paused. It stays set aside until you resume it."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a trip over today: its rest is not set aside, an item’s own pause still is",
+      "items": [
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "title": "Renew passport",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0,
+          "pausedAt": "2026-10-20T13:00:00Z",
+          "pausedUntil": "2026-10-24"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000002",
+          "title": "Cold shower",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "pausedAt": "2026-10-20T13:00:00Z",
+          "pausedUntil": "2026-10-30"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000003",
+          "title": "Sort the garage",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0,
+          "pausedAt": "2026-10-21T13:00:00Z"
+        },
+        {
+          "type": "custom",
+          "customType": "book",
+          "id": "00000000-0000-4000-8000-000000000004",
+          "title": "Read Dune",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0,
+          "pausedAt": "2026-10-21T13:00:00Z",
+          "pausedUntil": "2026-10-30"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000005",
+          "title": "Find old photos",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0,
+          "parentItemId": "00000000-0000-4000-8000-000000000001",
+          "pausedAt": "2026-10-20T13:00:00Z"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000006",
+          "title": "Read",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "timeBucket": "evening"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000007",
+          "title": "Floss",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "timeBucket": "evening"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000008",
+          "title": "Stand up",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000009",
+          "title": "Clear the desk",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-10-01",
+          "repeatFrequency": "weekdays"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-00000000000a",
+          "title": "Wax skis",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-00000000000b",
+          "title": "Walk",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-00000000000c",
+          "title": "Still on",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-10-23"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-00000000000d",
+          "title": "Night stretch",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-00000000000e",
+          "title": "Late pause",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0,
+          "pausedAt": "2026-10-24T03:30:00Z"
+        }
+      ],
+      "routines": [
+        {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000006",
+            "00000000-0000-4000-8000-000000000007"
+          ],
+          "pausedAt": "2026-10-19T12:00:00Z",
+          "pausedUntil": "2026-10-30"
+        },
+        {
+          "id": "r-desk",
+          "name": "Desk",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000008",
+            "00000000-0000-4000-8000-000000000009"
+          ]
+        },
+        {
+          "id": "r-night",
+          "name": "Night",
+          "itemIds": [
+            "00000000-0000-4000-8000-00000000000d"
+          ],
+          "pausedAt": "2026-10-19T12:00:00Z",
+          "pausedUntil": "2027-01-04"
+        }
+      ],
+      "seasons": [
+        {
+          "id": "s-winter",
+          "name": "Winter",
+          "state": "auto",
+          "itemIds": [
+            "00000000-0000-4000-8000-00000000000a"
+          ],
+          "routineIds": [
+            "r-desk"
+          ],
+          "startsOn": "2026-11-01",
+          "endsOn": "2027-02-28"
+        }
+      ],
+      "away": [
+        {
+          "id": "t-weekend",
+          "startsOn": "2026-10-22",
+          "endsOn": "2026-10-26",
+          "keep": {
+            "itemIds": [],
+            "routineIds": [],
+            "projectIds": []
+          },
+          "returns": {},
+          "fromTrip": {}
+        }
+      ],
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "expected": {
+        "count": 5,
+        "note": "5 · Renew passport back tomorrow",
+        "days": [
+          {
+            "key": "2026-10-24",
+            "until": "2026-10-24",
+            "label": "Tomorrow",
+            "entries": [
+              {
+                "kind": "item",
+                "key": "item:00000000-0000-4000-8000-000000000001",
+                "id": "00000000-0000-4000-8000-000000000001",
+                "name": "Renew passport",
+                "until": "2026-10-24",
+                "itemIds": [
+                  "00000000-0000-4000-8000-000000000001"
+                ],
+                "kindLine": "Task",
+                "stateLine": "Paused until Oct 24."
+              }
+            ]
+          },
+          {
+            "key": "2026-10-30",
+            "until": "2026-10-30",
+            "label": "Fri, Oct 30",
+            "entries": [
+              {
+                "kind": "item",
+                "key": "item:00000000-0000-4000-8000-000000000002",
+                "id": "00000000-0000-4000-8000-000000000002",
+                "name": "Cold shower",
+                "until": "2026-10-30",
+                "itemIds": [
+                  "00000000-0000-4000-8000-000000000002"
+                ],
+                "kindLine": "Habit",
+                "stateLine": "Paused until Oct 30."
+              },
+              {
+                "kind": "item",
+                "key": "item:00000000-0000-4000-8000-000000000004",
+                "id": "00000000-0000-4000-8000-000000000004",
+                "name": "Read Dune",
+                "until": "2026-10-30",
+                "itemIds": [
+                  "00000000-0000-4000-8000-000000000004"
+                ],
+                "kindLine": "Book",
+                "stateLine": "Paused until Oct 30."
+              }
+            ]
+          },
+          {
+            "key": "",
+            "until": null,
+            "label": "No date",
+            "entries": [
+              {
+                "kind": "item",
+                "key": "item:00000000-0000-4000-8000-000000000003",
+                "id": "00000000-0000-4000-8000-000000000003",
+                "name": "Sort the garage",
+                "until": null,
+                "itemIds": [
+                  "00000000-0000-4000-8000-000000000003"
+                ],
+                "kindLine": "Task",
+                "stateLine": "Paused. It stays set aside until you resume it."
+              },
+              {
+                "kind": "item",
+                "key": "item:00000000-0000-4000-8000-00000000000e",
+                "id": "00000000-0000-4000-8000-00000000000e",
+                "name": "Late pause",
+                "until": null,
+                "itemIds": [
+                  "00000000-0000-4000-8000-00000000000e"
+                ],
+                "kindLine": "Task",
+                "stateLine": "Paused. It stays set aside until you resume it."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "read in Tokyo: the late pause has not started",
+      "items": [
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "title": "Renew passport",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0,
+          "pausedAt": "2026-10-20T13:00:00Z",
+          "pausedUntil": "2026-10-24"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000002",
+          "title": "Cold shower",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "pausedAt": "2026-10-20T13:00:00Z",
+          "pausedUntil": "2026-10-30"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000003",
+          "title": "Sort the garage",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0,
+          "pausedAt": "2026-10-21T13:00:00Z"
+        },
+        {
+          "type": "custom",
+          "customType": "book",
+          "id": "00000000-0000-4000-8000-000000000004",
+          "title": "Read Dune",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0,
+          "pausedAt": "2026-10-21T13:00:00Z",
+          "pausedUntil": "2026-10-30"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000005",
+          "title": "Find old photos",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0,
+          "parentItemId": "00000000-0000-4000-8000-000000000001",
+          "pausedAt": "2026-10-20T13:00:00Z"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000006",
+          "title": "Read",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "timeBucket": "evening"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000007",
+          "title": "Floss",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "timeBucket": "evening"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000008",
+          "title": "Stand up",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000009",
+          "title": "Clear the desk",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-10-01",
+          "repeatFrequency": "weekdays"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-00000000000a",
+          "title": "Wax skis",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-00000000000b",
+          "title": "Walk",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-00000000000c",
+          "title": "Still on",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "timeBucket": "morning",
+          "startDate": "2026-10-23"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-00000000000d",
+          "title": "Night stretch",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-00000000000e",
+          "title": "Late pause",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0,
+          "pausedAt": "2026-10-24T03:30:00Z"
+        }
+      ],
+      "routines": [
+        {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000006",
+            "00000000-0000-4000-8000-000000000007"
+          ],
+          "pausedAt": "2026-10-19T12:00:00Z",
+          "pausedUntil": "2026-10-30"
+        },
+        {
+          "id": "r-desk",
+          "name": "Desk",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000008",
+            "00000000-0000-4000-8000-000000000009"
+          ]
+        },
+        {
+          "id": "r-night",
+          "name": "Night",
+          "itemIds": [
+            "00000000-0000-4000-8000-00000000000d"
+          ],
+          "pausedAt": "2026-10-19T12:00:00Z",
+          "pausedUntil": "2027-01-04"
+        }
+      ],
+      "seasons": [
+        {
+          "id": "s-winter",
+          "name": "Winter",
+          "state": "auto",
+          "itemIds": [
+            "00000000-0000-4000-8000-00000000000a"
+          ],
+          "routineIds": [
+            "r-desk"
+          ],
+          "startsOn": "2026-11-01",
+          "endsOn": "2027-02-28"
+        }
+      ],
+      "away": [],
+      "today": "2026-10-23",
+      "timeZone": "Asia/Tokyo",
+      "expected": {
+        "count": 10,
+        "note": "10 · Renew passport back tomorrow",
+        "days": [
+          {
+            "key": "2026-10-24",
+            "until": "2026-10-24",
+            "label": "Tomorrow",
+            "entries": [
+              {
+                "kind": "item",
+                "key": "item:00000000-0000-4000-8000-000000000001",
+                "id": "00000000-0000-4000-8000-000000000001",
+                "name": "Renew passport",
+                "until": "2026-10-24",
+                "itemIds": [
+                  "00000000-0000-4000-8000-000000000001"
+                ],
+                "kindLine": "Task",
+                "stateLine": "Paused until Oct 24."
+              }
+            ]
+          },
+          {
+            "key": "2026-10-30",
+            "until": "2026-10-30",
+            "label": "Fri, Oct 30",
+            "entries": [
+              {
+                "kind": "routine",
+                "key": "routine:r-evening",
+                "id": "r-evening",
+                "name": "Evening",
+                "until": "2026-10-30",
+                "itemIds": [
+                  "00000000-0000-4000-8000-000000000006",
+                  "00000000-0000-4000-8000-000000000007"
+                ],
+                "kindLine": "Routine · 2 habits",
+                "stateLine": "Hidden with your Evening routine until Oct 30."
+              },
+              {
+                "kind": "item",
+                "key": "item:00000000-0000-4000-8000-000000000002",
+                "id": "00000000-0000-4000-8000-000000000002",
+                "name": "Cold shower",
+                "until": "2026-10-30",
+                "itemIds": [
+                  "00000000-0000-4000-8000-000000000002"
+                ],
+                "kindLine": "Habit",
+                "stateLine": "Paused until Oct 30."
+              },
+              {
+                "kind": "item",
+                "key": "item:00000000-0000-4000-8000-000000000004",
+                "id": "00000000-0000-4000-8000-000000000004",
+                "name": "Read Dune",
+                "until": "2026-10-30",
+                "itemIds": [
+                  "00000000-0000-4000-8000-000000000004"
+                ],
+                "kindLine": "Book",
+                "stateLine": "Paused until Oct 30."
+              }
+            ]
+          },
+          {
+            "key": "2026-11-01",
+            "until": "2026-11-01",
+            "label": "Sun, Nov 1",
+            "entries": [
+              {
+                "kind": "season",
+                "key": "season:s-winter",
+                "id": "s-winter",
+                "name": "Winter",
+                "until": "2026-11-01",
+                "itemIds": [
+                  "00000000-0000-4000-8000-000000000008",
+                  "00000000-0000-4000-8000-000000000009",
+                  "00000000-0000-4000-8000-00000000000a"
+                ],
+                "kindLine": "Season · 3 items",
+                "stateLine": "Hidden with your Winter season until Nov 1."
+              }
+            ]
+          },
+          {
+            "key": "2027-01-04",
+            "until": "2027-01-04",
+            "label": "Mon, Jan 4",
+            "entries": [
+              {
+                "kind": "routine",
+                "key": "routine:r-night",
+                "id": "r-night",
+                "name": "Night",
+                "until": "2027-01-04",
+                "itemIds": [
+                  "00000000-0000-4000-8000-00000000000d"
+                ],
+                "kindLine": "Routine · 1 habit",
+                "stateLine": "Hidden with your Night routine until Jan 4."
+              }
+            ]
+          },
+          {
+            "key": "",
+            "until": null,
+            "label": "No date",
+            "entries": [
+              {
+                "kind": "item",
+                "key": "item:00000000-0000-4000-8000-000000000003",
+                "id": "00000000-0000-4000-8000-000000000003",
+                "name": "Sort the garage",
+                "until": null,
+                "itemIds": [
+                  "00000000-0000-4000-8000-000000000003"
+                ],
+                "kindLine": "Task",
+                "stateLine": "Paused. It stays set aside until you resume it."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "pausedNote": [
+    {
+      "name": "back tomorrow",
+      "items": [
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "title": "Renew passport",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0,
+          "pausedAt": "2026-10-20T13:00:00Z",
+          "pausedUntil": "2026-10-24"
+        }
+      ],
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "expected": "1 · Renew passport back tomorrow"
+    },
+    {
+      "name": "back in two days",
+      "items": [
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "title": "Renew passport",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0,
+          "pausedAt": "2026-10-20T13:00:00Z",
+          "pausedUntil": "2026-10-25"
+        }
+      ],
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "expected": "1 · Renew passport back Sun"
+    },
+    {
+      "name": "back in six days",
+      "items": [
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "title": "Renew passport",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0,
+          "pausedAt": "2026-10-20T13:00:00Z",
+          "pausedUntil": "2026-10-29"
+        }
+      ],
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "expected": "1 · Renew passport back Thu"
+    },
+    {
+      "name": "back in a week",
+      "items": [
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "title": "Renew passport",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0,
+          "pausedAt": "2026-10-20T13:00:00Z",
+          "pausedUntil": "2026-10-30"
+        }
+      ],
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "expected": "1 · Renew passport back Oct 30"
+    },
+    {
+      "name": "back next month",
+      "items": [
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "title": "Renew passport",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0,
+          "pausedAt": "2026-10-20T13:00:00Z",
+          "pausedUntil": "2026-11-12"
+        }
+      ],
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "expected": "1 · Renew passport back Nov 12"
+    },
+    {
+      "name": "no day to come back",
+      "items": [
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "title": "Renew passport",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0,
+          "pausedAt": "2026-10-20T13:00:00Z"
+        }
+      ],
+      "today": "2026-10-23",
+      "timeZone": "America/New_York",
+      "expected": "1"
+    }
+  ],
+  "returnDayLabel": [
+    {
+      "name": "tomorrow",
+      "day": "2026-10-24",
+      "today": "2026-10-23",
+      "expected": "Tomorrow"
+    },
+    {
+      "name": "the day after",
+      "day": "2026-10-25",
+      "today": "2026-10-23",
+      "expected": "Sun, Oct 25"
+    },
+    {
+      "name": "a week on",
+      "day": "2026-10-30",
+      "today": "2026-10-23",
+      "expected": "Fri, Oct 30"
+    },
+    {
+      "name": "across the clocks changing",
+      "day": "2026-11-01",
+      "today": "2026-10-23",
+      "expected": "Sun, Nov 1"
+    },
+    {
+      "name": "next month",
+      "day": "2026-11-12",
+      "today": "2026-10-23",
+      "expected": "Thu, Nov 12"
+    },
+    {
+      "name": "next year",
+      "day": "2027-01-04",
+      "today": "2026-10-23",
+      "expected": "Mon, Jan 4"
+    },
+    {
+      "name": "today itself",
+      "day": "2026-10-23",
+      "today": "2026-10-23",
+      "expected": "Fri, Oct 23"
+    }
+  ],
+  "entryKindLine": [
+    {
+      "name": "a task",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000001",
+        "title": "Renew passport",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "pausedAt": "2026-10-20T13:00:00Z"
+      },
+      "itemTypes": [
+        {
+          "name": "book",
+          "label": "Book to read",
+          "labelPlural": "Books to read"
+        },
+        {
+          "name": "side-quest",
+          "label": "",
+          "labelPlural": ""
+        }
+      ],
+      "expected": "Task"
+    },
+    {
+      "name": "a habit",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000002",
+        "title": "Cold shower",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "pausedAt": "2026-10-20T13:00:00Z"
+      },
+      "itemTypes": [
+        {
+          "name": "book",
+          "label": "Book to read",
+          "labelPlural": "Books to read"
+        },
+        {
+          "name": "side-quest",
+          "label": "",
+          "labelPlural": ""
+        }
+      ],
+      "expected": "Habit"
+    },
+    {
+      "name": "a custom type, as the user named it",
+      "item": {
+        "type": "custom",
+        "customType": "book",
+        "id": "00000000-0000-4000-8000-000000000004",
+        "title": "Read Dune",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "pausedAt": "2026-10-21T13:00:00Z"
+      },
+      "itemTypes": [
+        {
+          "name": "book",
+          "label": "Book to read",
+          "labelPlural": "Books to read"
+        },
+        {
+          "name": "side-quest",
+          "label": "",
+          "labelPlural": ""
+        }
+      ],
+      "expected": "Book to read"
+    },
+    {
+      "name": "a custom type with an empty label: its slug capitalised",
+      "item": {
+        "type": "custom",
+        "customType": "side-quest",
+        "id": "00000000-0000-4000-8000-00000000000f",
+        "title": "Map the trail",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "pausedAt": "2026-10-21T13:00:00Z"
+      },
+      "itemTypes": [
+        {
+          "name": "book",
+          "label": "Book to read",
+          "labelPlural": "Books to read"
+        },
+        {
+          "name": "side-quest",
+          "label": "",
+          "labelPlural": ""
+        }
+      ],
+      "expected": "Side-quest"
+    },
+    {
+      "name": "a custom type with no row: its slug capitalised",
+      "item": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-000000000010",
+        "title": "Post the parcel",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "pausedAt": "2026-10-21T13:00:00Z"
+      },
+      "itemTypes": [
+        {
+          "name": "book",
+          "label": "Book to read",
+          "labelPlural": "Books to read"
+        },
+        {
+          "name": "side-quest",
+          "label": "",
+          "labelPlural": ""
+        }
+      ],
+      "expected": "Errand"
+    }
+  ],
+  "backOn": [
+    {
+      "name": "tomorrow: the passport",
+      "date": "2026-10-24",
+      "timeZone": "America/New_York",
+      "expected": [
+        "Renew passport"
+      ]
+    },
+    {
+      "name": "a week on: each named once, in the store’s order",
+      "date": "2026-10-30",
+      "timeZone": "America/New_York",
+      "expected": [
+        "Cold shower",
+        "Read Dune",
+        "Evening"
+      ]
+    },
+    {
+      "name": "the season’s first day names the season",
+      "date": "2026-11-01",
+      "timeZone": "America/New_York",
+      "expected": [
+        "Winter"
+      ]
+    },
+    {
+      "name": "a day nothing comes back",
+      "date": "2026-10-25",
+      "timeZone": "America/New_York",
+      "expected": []
+    }
+  ]
+}

@@ -672,6 +672,7 @@ describe('the payload fixture shared with DsulCore', () => {
         'seasons',
         'settings',
         'snoozes',
+        'trashWrites',
         'userId',
         'v',
         'writes',
@@ -722,6 +723,9 @@ describe('the payload fixture shared with DsulCore', () => {
       'collect',
       'snooze',
     ]);
+    // What the Trash routes take (lib/app-containers.ts). Additive too: an
+    // older server sends no list, and the phone then offers no Trash.
+    expect(generated.trashWrites).toEqual(['list', 'restore']);
     // The custom type's names, and nothing else of its row.
     expect(generated.itemTypes).toEqual([{ name: 'book', label: 'Book to read', labelPlural: 'Books to read' }]);
     // The trips, as lib/away.ts's AwayPeriod (awayPeriodFromRow): an

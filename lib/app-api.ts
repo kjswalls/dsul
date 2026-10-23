@@ -4,6 +4,19 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { PrioritySchema, RepeatFrequencySchema, TimeBucketSchema } from '@dsul/types';
 import { authenticateAppRequest, dbErrorResponse } from './app-auth';
 import {
+  DateStrSchema,
+  TimeStrSchema,
+  UUID,
+  errorCode,
+  invalid,
+  notFound,
+  ok,
+  parseBody,
+  pauseZone,
+  refused,
+} from './app-http';
+import { TRASH_WRITES, type TrashWrite } from './app-containers';
+import {
   addContainerMember,
   createItem,
   deleteItem,
@@ -93,39 +106,15 @@ import type { AwayPeriod } from './away';
  * way: updateItem and deleteItem get no userId, and createItem gets
  * `notify: false`. The item_events rows are written exactly as the web writes
  * them.
+ *
+ * The request and answer helpers (invalid, notFound, refused, parseBody, the
+ * date and time schemas, pauseZone) live in lib/app-http.ts, a leaf both this
+ * module and lib/app-containers.ts import. This module imports
+ * app-containers.ts for the payload's `trashWrites`, and that is the only edge
+ * between the two: the reverse edge would throw at load.
  */
 
 type Client = SupabaseClient;
-
-const invalid = (details?: unknown) =>
-  NextResponse.json(details === undefined ? { error: 'invalid' } : { error: 'invalid', details }, {
-    status: 400,
-  });
-const notFound = () => NextResponse.json({ error: 'not_found' }, { status: 404 });
-const ok = () => NextResponse.json({ ok: true });
-/** A well-formed intent the row's state refuses: a bare code, which the phone words. */
-const refused = (error: string, status: 400 | 409) => NextResponse.json({ error }, { status });
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/**
- * A real calendar day. The shape alone accepts 2026-02-31, and a date is data
- * here, not decoration: it is the day a completion is credited to.
- */
-export function isCalendarDate(value: string): boolean {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match) return false;
-  const [y, m, d] = [Number(match[1]), Number(match[2]), Number(match[3])];
-  const date = new Date(Date.UTC(y, m - 1, d));
-  return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d;
-}
-
-const DateStrSchema = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'expected yyyy-MM-dd')
-  .refine(isCalendarDate, 'not a calendar date');
-
-const TimeStrSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'expected HH:mm');
 
 /**
  * The longest snooze a request may ask for. The buttons promise SNOOZE_MINUTES;
@@ -338,24 +327,6 @@ export const ItemWriteSchema = ItemWriteActions.superRefine((body, ctx) => {
 export const ITEM_WRITES = ItemWriteActions.options.map((option) => option.shape.action.value);
 export type ItemWriteAction = (typeof ITEM_WRITES)[number];
 
-/** Parse + validate a JSON body, or the 400 to send instead. */
-async function parseBody<T>(req: Request, schema: z.ZodType<T, z.ZodTypeDef, unknown>): Promise<T | Response> {
-  let raw: unknown;
-  try {
-    raw = await req.json();
-  } catch {
-    return invalid();
-  }
-  const parsed = schema.safeParse(raw);
-  if (!parsed.success) return invalid(parsed.error.flatten());
-  return parsed.data;
-}
-
-const errorCode = (err: unknown): string | undefined =>
-  typeof err === 'object' && err !== null && 'code' in err
-    ? String((err as { code?: unknown }).code)
-    : undefined;
-
 // ── GET /api/app/planner ─────────────────────────────────────────────────────
 
 /** What the phone reads on sign-in, on foreground and on pull-to-refresh. */
@@ -442,6 +413,13 @@ export interface AppPlannerPayload {
    * from an older server, means ['complete', 'schedule'].
    */
   writes: ItemWriteAction[];
+  /**
+   * What the Trash routes take (lib/app-containers.ts TRASH_WRITES):
+   * GET /api/app/trash ('list') and POST /api/app/trash/restore ('restore').
+   * Absent, from an older server, means neither, and the phone shows no
+   * Trash row.
+   */
+  trashWrites: TrashWrite[];
   items: Item[];
   projects: Project[];
   routines: Routine[] | null;
@@ -696,6 +674,7 @@ export async function getPlanner(req: Request): Promise<Response> {
       },
       snoozes,
       writes: ITEM_WRITES,
+      trashWrites: [...TRASH_WRITES],
       items: data.items,
       projects: data.projects,
       routines: data.routines,
@@ -1528,34 +1507,4 @@ async function liveChildren(client: Client, userId: string, id: string): Promise
     .order('created_at', { ascending: true });
   if (error) throw error;
   return (data ?? []) as { id: string; type: string }[];
-}
-
-/** A zone this runtime can resolve a day in. */
-function isTimeZone(zone: string): boolean {
-  try {
-    Intl.DateTimeFormat('en-US', { timeZone: zone });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * The zone a pause resolves "today" in, and a snooze's day gate is held in:
- * the user's stored zone, else the device's, else UTC. That is the rule the
- * phone uses to say "today", so the resume day it shows is the one written.
- * Each candidate counts only if Intl knows it, so a junk value falls through
- * rather than throwing mid-write.
- *
- * A failed read throws, unlike the agent API's silent UTC: the phone retries a
- * failed write, and a pause resolved in the wrong zone is a wrong write.
- */
-async function pauseZone(client: Client, userId: string, deviceZone: string | undefined): Promise<string> {
-  const { data, error } = await client.from('user_settings').select('timezone').eq('user_id', userId).maybeSingle();
-  if (error) throw error;
-  const stored = (data as { timezone?: string | null } | null)?.timezone?.trim();
-  for (const zone of [stored, deviceZone?.trim()]) {
-    if (zone && isTimeZone(zone)) return zone;
-  }
-  return 'UTC';
 }

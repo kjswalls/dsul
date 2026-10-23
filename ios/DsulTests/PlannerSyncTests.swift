@@ -232,8 +232,8 @@ func bodyJSON(_ request: FakeServer.Request?) -> [String: Any]? {
 /// the user's own types, `streaksEnabled` the Streaks switch,
 /// `remindersEnabled` the raw JSON for Habit reminders ("true", "false" or
 /// "null"), `organizeEnabled` and `goalsEnabled` the Organize and Goals
-/// switches, and `goals` the user's goals (`goalJSON`), each left out (an
-/// older server) unless given.
+/// switches, `goals` the user's goals (`goalJSON`), and `trashWrites` what
+/// the Trash routes take, each left out (an older server) unless given.
 enum PlannerJSON {
     static let today = "2026-10-01"
     /// Noon UTC on `today`: the live planner's clock. It is 2026-10-01 from
@@ -384,7 +384,7 @@ enum PlannerJSON {
                         remindersEnabled: String? = nil, omitting: Set<UUID> = [],
                         extra: [String] = [], projects: [String] = [], routines: [String] = [],
                         seasons: [String] = [], organizeEnabled: Bool? = nil, goalsEnabled: Bool? = nil,
-                        goals: [String]? = nil) -> String {
+                        goals: [String]? = nil, trashWrites: [String]? = nil) -> String {
         let status = groceriesDone ? "completed" : "pending"
         let zone: String = timezone.map { "\"\($0)\"" } ?? "null"
         let groceriesRow: String =
@@ -416,6 +416,10 @@ enum PlannerJSON {
         if let writes {
             let quoted: [String] = writes.map { "\"\($0)\"" }
             json += "\"writes\":[" + quoted.joined(separator: ",") + "],"
+        }
+        if let trashWrites {
+            let quoted: [String] = trashWrites.map { "\"\($0)\"" }
+            json += "\"trashWrites\":[" + quoted.joined(separator: ",") + "],"
         }
         if let itemTypes {
             let named: [String] = itemTypes.map {

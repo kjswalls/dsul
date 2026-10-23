@@ -4,7 +4,10 @@ import Foundation
 // Status chips' labels, the "switched off" sentences, a routine's paused and
 // held notes and its Today lines, a season's state sentence and Runs chip, a
 // goal's ended note, wind-down sentence and empty sentences, a check-in's
-// meta and a milestone tick's name. Keep in step: a change there without the
+// meta and a milestone tick's name; from O4 the summary cards' lines
+// (`weekCardSentence`, `nextMilestoneLine`, pinned by organize.json), and from
+// O14 the Trash's (`whenGone`, `daysUntilPurge`, the row meta, the restore
+// sentences and the phone's refusal words). Keep in step: a change there without the
 // same change here is drift, and the phone words a container differently
 // from the web. Checked against the web by OrganizeCopyFixtureTests
 // (tests/fixtures/organize/copy.json), byte for byte: the curly quotes
@@ -268,6 +271,153 @@ public enum OrganizeCopy {
     /// `milestoneTickLabel`: a milestone's tick, named for what it does.
     public static func milestoneTickLabel(title: String, reached: Bool) -> String {
         return reached ? "Mark \(title) not reached" : "Mark \(title) reached"
+    }
+
+    /* ── the summary cards (O4) ────────────────────────────────────────── */
+
+    /// `NOTHING_ON_THIS_WEEK`: THIS WEEK with nothing done or due; the card
+    /// shows no bar.
+    public static let nothingOnThisWeek = "Nothing on this week"
+
+    /// `weekCardSentence`: THIS WEEK's line over `organizeWeek`, "18 of 23
+    /// done", or `nothingOnThisWeek` when nothing is done or due. Never a share
+    /// of the past: `counted` is what is done plus what is still ahead.
+    public static func weekCardSentence(done: Int, counted: Int) -> String {
+        return counted == 0 ? nothingOnThisWeek : "\(done) of \(counted) done"
+    }
+
+    /// `nextMilestoneLine`: NEXT MILESTONE's second line, the milestone's day
+    /// through `formatDay` then the goal, "Oct 4 · Run a half marathon", or
+    /// the goal's name alone for an undated milestone. No countdown: the web
+    /// counts down to a goal's target, never to a milestone.
+    public static func nextMilestoneLine(date: String?, goalName: String) -> String {
+        guard let date, !date.isEmpty else { return goalName }
+        return "\(formatDay(date)) \u{00B7} \(goalName)"
+    }
+
+    /* ── the Trash (O14) ───────────────────────────────────────────────── */
+
+    /// `TRASH_WINDOW_DAYS`: how long a soft-deleted row survives before the
+    /// nightly purge (migration 036).
+    public static let trashWindowDays = 30
+
+    /// `NOTHING_IN_TRASH`: an empty bin.
+    public static let nothingInTrash = "Nothing deleted in the last \(trashWindowDays) days."
+
+    /// `TRASH_TEACHING`: what the bin is for, said once beside it.
+    public static let trashTeaching = "Anything you delete waits here for \(trashWindowDays) days, then goes for good."
+
+    /// `TRASH_LOAD_FAILED`: the list could not be read. Never an empty bin.
+    public static let trashLoadFailed = "Couldn't load the Trash."
+
+    /// `RESTORE_FAILED`: a restore refused for a reason the phone can't fix,
+    /// or not answered.
+    public static let restoreFailed = "Couldn't restore it. Check your connection and try again."
+
+    /// `RESTORE_GONE`: a restore answered 404, the row no longer in the bin
+    /// (purged after the list was read). A retry can never land, so the page
+    /// drops the row rather than asking for one.
+    public static let restoreGone = "It's no longer in the Trash."
+
+    /// `whenGone`: how long ago, in the words a bin needs. "just now" under an
+    /// hour (and for a stamp in the future or one that can't be read), "5h
+    /// ago" under a day, else "3d ago", each rounded DOWN from the elapsed
+    /// milliseconds, so the count never runs ahead of the purge.
+    public static func whenGone(_ deletedAt: String, now: Date = Date()) -> String {
+        guard let elapsed = elapsedMilliseconds(deletedAt, now: now), elapsed >= 0 else { return "just now" }
+        let hours = elapsed / 3_600_000
+        if hours < 1 { return "just now" }
+        if hours < 24 { return "\(hours)h ago" }
+        return "\(hours / 24)d ago"
+    }
+
+    /// `daysUntilPurge`: days of the window still left, counting DOWN from
+    /// `whenGone`'s elapsed days so the two never disagree; past the purge it
+    /// clamps at 0, and a stamp in the future or one that can't be read reads
+    /// the full window.
+    public static func daysUntilPurge(_ deletedAt: String, now: Date = Date()) -> Int {
+        guard let elapsed = elapsedMilliseconds(deletedAt, now: now), elapsed >= 0 else { return trashWindowDays }
+        return max(0, trashWindowDays - elapsed / 86_400_000)
+    }
+
+    /// `now - new Date(deletedAt).getTime()` in whole milliseconds (a JS Date
+    /// holds none below), or nil where the web's is NaN.
+    private static func elapsedMilliseconds(_ deletedAt: String, now: Date) -> Int? {
+        guard let gone = parseTimestamp(deletedAt) else { return nil }
+        return epochMilliseconds(now) - epochMilliseconds(gone)
+    }
+
+    private static func epochMilliseconds(_ date: Date) -> Int {
+        return Int((date.timeIntervalSince1970 * 1000).rounded(.down))
+    }
+
+    /// `trashKindLine`: a trash row's meta before its age, the kind and then
+    /// what comes back WITH it, said before the click: "Item · 2 subtasks",
+    /// "Project · 3 items refile". A count of 0 says nothing.
+    public static func trashKindLine(_ kind: TrashKind, childCount: Int, memberCount: Int) -> String {
+        var line = kind.label
+        if childCount > 0 { line += " \u{00B7} \(childCount) \(childCount == 1 ? "subtask" : "subtasks")" }
+        if memberCount > 0 { line += " \u{00B7} \(memberCount) \(memberCount == 1 ? "item" : "items") refile" }
+        return line
+    }
+
+    /// `trashRowMeta`: the whole meta line, "Project · 3 items refile · 3d ago".
+    public static func trashRowMeta(
+        _ kind: TrashKind, childCount: Int, memberCount: Int, deletedAt: String, now: Date = Date()
+    ) -> String {
+        return "\(trashKindLine(kind, childCount: childCount, memberCount: memberCount)) \u{00B7} "
+            + whenGone(deletedAt, now: now)
+    }
+
+    /// `trashRowMeta` for a row of the bin as the route answers it.
+    public static func trashRowMeta(_ row: TrashRow, now: Date = Date()) -> String {
+        return trashRowMeta(
+            row.kind, childCount: row.childCount, memberCount: row.memberCount, deletedAt: row.deletedAt, now: now
+        )
+    }
+
+    /// `restoreSentence`: what restoring a trashed container reconnects, one
+    /// honest sentence per kind (the web's ContainerFacts). The noun is the
+    /// registry's, lower-cased.
+    public static func restoreSentence(_ kind: OrganizeKind, memberCount: Int) -> String {
+        let noun = jsLowercased(TrashKind(kind).label)
+        switch kind {
+        case .project:
+            return memberCount > 0
+                ? "Restoring brings the \(noun) back and re-files the \(memberCount) "
+                    + "\(memberCount == 1 ? "item" : "items") still pointing at it."
+                : "Restoring brings the \(noun) back. Nothing is filed under it right now."
+        case .routine:
+            return "Restoring brings the \(noun) back, along with the items it grouped."
+        case .season:
+            return "Restoring brings the \(noun) back, along with the routines and items it held."
+        case .goal:
+            return "Restoring brings the \(noun) back, along with its milestones, check-ins and members."
+        }
+    }
+
+    /// `nameInTrashSentence`: a name a trashed container is still holding (the
+    /// unique index spans the bin). It names the Trash because the bin is the
+    /// fix.
+    public static func nameInTrashSentence(noun: String, name: String) -> String {
+        return "A deleted \(noun) called \u{201C}\(name)\u{201D} still has that name. "
+            + "Restore it from Trash, or pick a different one."
+    }
+
+    /// `restoreRefusal`: the phone's words for a refused restore. `name_taken`
+    /// when a live project folds to the same name (`name` is that project's,
+    /// see `TrashRestoreRefusal.sentence(rowName:)`), `parent_gone` when a
+    /// subtask's parent is in the bin too, `not_found` when the row is no
+    /// longer in the bin (`restoreGone`). Anything else, no answer at all
+    /// included, is `restoreFailed`.
+    public static func restoreRefusal(code: String?, name: String) -> String {
+        if code == "name_taken" {
+            return "You already have a \(jsLowercased(ContainerWords.project)) called \u{201C}\(name)\u{201D}. "
+                + "Rename that one, then restore this one."
+        }
+        if code == "parent_gone" { return "Its parent is in the Trash too. Restore that instead." }
+        if code == "not_found" { return restoreGone }
+        return restoreFailed
     }
 }
 

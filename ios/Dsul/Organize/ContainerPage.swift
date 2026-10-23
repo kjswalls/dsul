@@ -9,7 +9,10 @@ import SwiftUI
 //
 // Read-only. The one write is the tick, the row's own (`toggle(_:on:)` on
 // today, behind the `tick` gate), the write Today's circle sends; a row's tap
-// opens the item's sheet on today. Edits come with O8 to O13.
+// opens the item's sheet on today. Edits come with O8 to O13. The footer's
+// pages (Paused, a paused routine's or season's detail, Item types and the
+// Trash, O5 and O14) go through the same destination: PausedPage.swift,
+// PausedEntryPage.swift, ItemTypesPage.swift and TrashPage.swift draw them.
 //
 // No tint anywhere here (OrganizeView): the ticks, the strip, the ring and
 // the timeline's nodes are `Color.accentColor`, lime, and a tint would turn
@@ -30,6 +33,14 @@ struct OrganizeDestination: View {
             case .goal: GoalPageView(id: id, path: $path)
             case .project: ProjectPageView(id: id, path: $path)
             }
+        case .paused:
+            PausedPageView()
+        case .pausedEntry(let key):
+            PausedEntryPageView(key: key, path: $path)
+        case .itemTypes:
+            ItemTypesPageView(path: $path)
+        case .trash:
+            TrashPageView()
         }
     }
 }
@@ -307,6 +318,10 @@ private struct SwitchedOffRow: View {
 /// opens the sheet; Done is its value, and the tick a named action.
 struct MemberRowView: View {
     let row: MemberRow
+    /// A paused routine's or season's member (its detail's "Comes back with
+    /// it"): the dashed outline the Paused list draws, the web's ItemMark on
+    /// both, in place of the circle. Such a row never ticks.
+    var paused = false
 
     @Environment(SamplePlanner.self) private var planner
 
@@ -375,11 +390,14 @@ struct MemberRowView: View {
         return parts.isEmpty ? nil : parts.joined(separator: OrganizeModel.separator)
     }
 
-    /// Where the tick would be on a row that doesn't tick today: a skip
-    /// mark, or the circle drawn for its state, part of the open button.
+    /// Where the tick would be on a row that doesn't tick today: a paused
+    /// member's outline, a skip mark, or the circle drawn for its state, part
+    /// of the open button.
     @ViewBuilder
     private var mark: some View {
-        if row.skipped {
+        if paused {
+            PausedMarkView(mark: .item(habit: row.item.isHabit))
+        } else if row.skipped {
             Image(systemName: "forward.end")
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(Color.secondary)

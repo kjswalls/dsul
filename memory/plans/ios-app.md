@@ -20,8 +20,9 @@ the title and the notes and adds Delete, with three more writes (title, notes,
 delete), and replaces PlannerSync's slots with a rebase per subject.
 Organize, the third tab, is built as its own series (O1 to O15, the design in
 the shared folder's `ios-app/organize/design.md`); O1 lists the containers,
-and O2 and O3 give each its page, read-only but for the tick (see Organize
-below).
+O2 and O3 give each its page, read-only but for the tick, O4 adds the
+summary cards, and O5 and O14 the footer's Item types, Paused (with an
+item's Resume) and Trash (with Restore) (see Organize below).
 Designs, the stack comparison and the board images live in the project's
 shared folder (`ios-app/`): `stack.md` has a SwiftUI build note for every
 interaction, and `expo-vs-swiftui.md` ends with the fact-check.
@@ -147,6 +148,12 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   `Goals.swift` (the countdown, the elapsed line, the timeline, the
   supporting work and the wind-down); `Registry.swift` gains
   `typeLabelPlural`, and `Project` its `notes`.
+  O4, O5 and O14 add `Organize.swift` ← `lib/organize.ts` (`organizeWeek`,
+  `nextMilestoneAcross`), `PausedShelf.swift` ← `lib/paused-shelf.ts` (the
+  shelf, its words and `pausedNote`) and `Trash.swift` ← the Trash's shapes
+  in `lib/app-containers.ts` (the bin, the restore body and its refusal),
+  with the cards' and the Trash's words in `OrganizeCopy.swift` and
+  `trashWrites` in `PlannerPayload`.
   Each cites what it mirrors.
 - `ios/Dsul/App`: `DsulApp` (one `AuthStore`), `AppGate` (sign-in screen,
   sample or the user's planner, keyed on `AuthStore.gateKey`), `AppConfig`.
@@ -172,7 +179,12 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   goal ring, chips, section header and member row), `RoutinePage`,
   `SeasonPage`, `GoalPage` (with the milestones' timeline), `ProjectPage`,
   `DayStrip` ("Last 14 days"), and `ContainerPageModel`, Foundation only,
-  which decides what each page shows and says. `ios/Dsul/App` gains
+  which decides what each page shows and says. O4 adds `SummaryCards`;
+  O5 and O14 the footer's pages, `PausedPage` (with `ShelfPillStyle`, the
+  rows' Resume and Restore), `PausedEntryPage`, `ItemTypesPage` and
+  `TrashPage`, and `ShelfPageModel`, Foundation only, which decides what
+  they show and say; `ContainerRow` gains `TileRow`, the tile row anything
+  else wears. `ios/Dsul/App` gains
   `AvatarMenu` (moved out of `TodayView`, with the tab's own sections passed
   in) and `PlannerBannerOverlay` (`.plannerBanner()`, Today's banner, also on
   Organize, with `BannerView`).
@@ -942,11 +954,82 @@ every decision and the PR plan, is the shared folder's
   or count moves. Goals is on in the sample. O2 and O3 give Morning routine
   and Work notes, and Writing a weekday time block (6:30 to 7:30 am) that no
   sample task sits in, so the grid and its pinned counts are unchanged.
-- **Waits for later PRs:** the summary cards (O4), Item types and Paused
-  (O5), the writes (O8a to O13: the ⋯ menu, Status and the other chips as
-  menus, editable notes, reorder and add), the + menu (O11), Trash (O14),
-  and Today's project colours (O15, Kirby's call). Today keeps `ProjectPalette` until then, so a
-  project's dot on Today and its tile on Organize can differ.
+- **O4: the summary cards.** Over the sections, THIS WEEK (only with
+  Organize on) and NEXT MILESTONE (only with Goals on and the goals known),
+  side by side while both fit the row (`ViewThatFits`, each card at least
+  150pt scaled), stacked at the accessibility sizes, one alone spanning the
+  width; neither shows no section. THIS WEEK is `organizeWeek` over the
+  grid's own inputs from the user's Week starts on: "18" in `.title2` bold,
+  "of 23 done" gray, and a 5pt lime bar on a gray track; "Nothing on this
+  week" with no bar. It counts everything the grid shows this week however
+  it is filed (design Q1's default, Kirby's to change), done out of done or
+  still due, so a past day with nothing recorded is on neither side. NEXT
+  MILESTONE is `nextMilestoneAcross`: the title (two lines), then "Oct 4 ·
+  Run a half marathon", or the goal's name alone undated, with no
+  countdown. It is one button that pushes the goal (on the tab's path, not a
+  `NavigationLink`, so the list never takes the whole row, the week card
+  included, as the link). Each card is one VoiceOver element ("This week, 18
+  of 23 done").
+- **O5: the footer, Paused and Item types.** Under the list, one section:
+  Item types (a plum Shapes tile, the count of custom types; only with
+  Organize on), Paused (a gray moon; always, as pausing is not gated so its
+  way back may not be) and, from O14, Trash (a gray bin). Paused's count is
+  the items set aside (`PausedShelf.count`: a routine of four counts four),
+  with the soonest return under the title ("Gym back Fri", the web's rail
+  note), and nothing at none. The Paused page says what it is for, then
+  groups the shelf by return day ("Tomorrow", "Fri, Oct 30", "No date"):
+  each row a mark (an item's dashed outline, round for a habit; a container's
+  glyph in its colour), the name and `entryKindLine` ("Habit", a custom
+  type as the user named it, "Routine · 4 habits"). An item's row opens its
+  sheet and carries Resume where the sheet would offer it (`offers(.resume,
+  …)` on today), the existing `resume(_:)` write; a routine's or season's
+  row has no Resume until O8a and pushes its paused detail
+  (`.pausedEntry(key)`): the header, `pausedStateLine` under a moon, "Comes
+  back with it" (each member with the list's dashed outline, the web's
+  ItemMark, opening its sheet) and, with Organize on, "Open in Routines" /
+  "Open in Seasons". The detail pops once the entry leaves the shelf. The
+  Item types page lists the user's types in the server's order with "N
+  items" (live items whose `typeName` is the slug, so a custom item counts),
+  inert, "No custom types yet. You make them on the web." at none, and the
+  web's sentence when the server couldn't read them. With Organize off the
+  web hides its types section, so the page is gone and pops, as the detail
+  does. The marks' column grows with Dynamic Type, as a tile does.
+- **O14: the Trash, list and restore.** Signed in, against a server that
+  sends `trashWrites` with both routes (an older one hides the row, and the
+  sample has no bin). The page fetches GET /api/app/trash on each arrival
+  and on a pull (which refreshes the planner too, as `LiveRefresh` does
+  elsewhere), through `planner.fetchTrash()` → `PlannerSync` → `APIClient`
+  (views hold no client), and keeps the rows in its own state, never the
+  planner's. Each row is the web's glyph in its colour, the name, the meta
+  ("Project · 3 items refile · 3d ago") and Restore (disabled with a
+  spinner beside it while out; VoiceOver "Restore project Work", then
+  "Restoring"); the footer says the bin keeps things
+  30 days. A failed read says "Couldn't load the Trash." with Try again,
+  never an empty bin. `planner.restoreFromTrash(row)` sends POST
+  /api/app/trash/restore beside the write queue, bumping `writeGeneration`
+  when it sends and when its answer arrives, so a fetch out across either
+  comes back raced and is made again; a 200 starts a fetch and the row
+  leaves the list. A 404 says "It's no longer in the Trash." and the row
+  leaves too (purged after the list was read; no retry can land). Any other
+  refusal shows in the banner and keeps the row: `name_taken` names the
+  live project, `parent_gone` points at the parent, anything else (a 5xx,
+  offline) is "Couldn't restore it. Check your connection and try again."
+  A thrown `unavailable` (offline mid-request, 502 to 504) may be a lost
+  answer, so it starts a fetch, as a failed queued write's drain does.
+  `APIClient.send` is now `exchange` (the token,
+  the 401 retry, 502 to 504 as unavailable) plus the refusal, so the restore
+  can read a 409's whole body.
+- **Rules apart from views, O4 on.** The cards and the footer are
+  `OrganizeModel.summary` and `.footer`; the pages are `ShelfPageModel`
+  (Foundation only, on the shim's list), pinned by `DsulTests/ShelfPageTests`
+  with the Trash's PlannerSync tests (`TrashSyncTests`: the strict body, the
+  refusals' words, a 404 dropping the row, a lost answer's fetch, the race,
+  an older server, the sample, a stopped sync).
+- **Waits for later PRs:** the writes (O8a to O13: the ⋯ menu, Status and
+  the other chips as menus, editable notes, reorder and add, and a paused
+  routine's or season's Resume on Paused), the + menu (O11), and Today's
+  project colours (O15, Kirby's call). Today keeps `ProjectPalette` until
+  then, so a project's dot on Today and its tile on Organize can differ.
 
 ## CI
 `.github/workflows/ios.yml`, on PRs to main and pushes to main. A `changes`
@@ -1420,11 +1503,11 @@ animations.
 
 ## Not yet
 Week, density (`DensityMetrics`), swipe actions on rows, the zoom transition
-from the bar to the braindump sheet, the rest of Organize (the summary
-cards, Item types, Paused and Trash, and every container write, creating a
-project, routine, season or goal from the phone included: O4 to O15 in the
-Organize design), undo or restore after a delete (the web's
-Trash restores it), Change type, Duplicate and Copy link, the rest of the sheet
+from the bar to the braindump sheet, the rest of Organize (every container
+write, a paused routine's or season's Resume, and creating a project,
+routine, season or goal from the phone included: O8a to O15 in the Organize
+design), undo right after a delete (Organize's Trash restores it, O14),
+Change type, Duplicate and Copy link, the rest of the sheet
 (a routine's or a season's hold, the goal chip, which goals in the payload
 since O1 make possible, and any word that a repeat took a goal role away (the
 web then lists the item as a plain member, with no notice), the Beeminder row,
