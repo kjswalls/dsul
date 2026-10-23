@@ -2,8 +2,8 @@ import { z } from 'zod';
 
 /**
  * Prep packs: what the AI got ready for an item, so the user only has to take
- * it from there (Do stuff's "done for you" lane, memory/plans/power-mode.md,
- * build order 3).
+ * it from there (marked on its row in Do stuff, where it leads its lane;
+ * memory/plans/power-mode.md, build order 3).
  *
  * Drafts first (Kirby's pick, 2026-10-12): the user's own model works from an
  * item's title, notes and context, with no inbox, so every kind here is

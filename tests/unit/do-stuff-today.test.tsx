@@ -200,7 +200,7 @@ describe('one do stuff: today joins the plan', () => {
     seed([...SIX, ...TODAY]);
     start();
     hoverKey('water the plants', '4');
-    hoverKey('text sam back', '6');
+    hoverKey('text sam back', '5');
     expect(useDoStuffStore.getState().commit?.unschedule).toEqual(['t2']);
     act(() => {
       fireEvent.click(screen.getByTestId('do-stuff-make-it-so'));
