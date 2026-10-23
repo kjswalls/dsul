@@ -28,6 +28,7 @@ import {
   usePlannerVisible,
 } from '@/lib/planner-ready';
 import { captureTask, useHeldCount } from '@/lib/held-captures';
+import { TypeChip } from '@/components/planner/slot-composer';
 import { useUIStore, openAddDialog, openBulkAdd } from '@/lib/ui-store';
 import { isBulkPaste } from '@/lib/bulk-add';
 import { isParagraphPaste, splitterFor } from '@/lib/braindump-split';
@@ -73,6 +74,10 @@ import { cn } from '@/lib/utils';
  * braindump), clears, and holds focus — type, Enter, type, Enter. The plus
  * commits the same way, or focuses the field when it's empty.
  *
+ * Once there's a title, the canvas composer's type chip
+ * (components/planner/slot-composer.tsx) shows beside the ↵ and picks what the
+ * title becomes. The pick holds for the next capture, as the canvas's does.
+ *
  * While the planner's load is in flight (a cold load, the look-only preview)
  * Enter still clears: the capture is HELD (lib/held-captures.ts) and lands when
  * the load finishes, and the row says so until it has. Over a failed load it is
@@ -82,7 +87,12 @@ function QuickAddRow({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement 
   const heldCount = useHeldCount();
   const inputRef = useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState('');
+  const [type, setType] = useState('task');
   const [focused, setFocused] = useState(false);
+  // While the type menu is open the field has lost focus to it; it comes back on close.
+  const onMenuOpenChange = (open: boolean) => {
+    if (!open) requestAnimationFrame(() => inputRef.current?.focus());
+  };
 
   const commit = () => {
     const trimmed = title.trim();
@@ -90,7 +100,7 @@ function QuickAddRow({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement 
       inputRef.current?.focus();
       return;
     }
-    const result = captureTask(trimmed);
+    const result = captureTask(trimmed, type);
     setTitle('');
     // Focus survives the re-render (same DOM node), but re-assert it so the
     // plus-button path lands the caret back in the field too.
@@ -120,7 +130,7 @@ function QuickAddRow({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement 
       inputRef.current?.focus();
       return;
     }
-    openAddDialog('task', undefined, undefined, trimmed || undefined);
+    openAddDialog(type, undefined, undefined, trimmed || undefined);
     setTitle('');
     inputRef.current?.blur();
   };
@@ -203,6 +213,9 @@ function QuickAddRow({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement 
         <span role="status" data-testid="quick-add-held" className="font-num text-2xs text-muted-foreground">
           Adds once synced
         </span>
+      )}
+      {title.trim() && (
+        <TypeChip type={type} onChange={setType} onOpenChange={onMenuOpenChange} testId="braindump-quick-add-type" />
       )}
       {/* Enter affordance — the row commits on Enter, so surface a ↵ keycap
           while it's focused to make that discoverable. Kept mounted (opacity,

@@ -443,3 +443,34 @@ describe('braindump quick-add: before the planner has loaded', () => {
     expect(input().value).toBe('');
   });
 });
+
+/**
+ * The quick add's type chip: the canvas composer's own (components/planner/
+ * slot-composer.tsx), shown once there is a title, and the type it picks is the
+ * type Enter adds.
+ */
+describe('braindump quick-add: type chip', () => {
+  const input = () => screen.getByTestId('braindump-quick-add-input') as HTMLInputElement;
+  const chip = () => screen.queryByTestId('braindump-quick-add-type');
+
+  it('shows only with a title, adds a task by default, and adds the type picked', async () => {
+    seed(FOUR);
+    renderBraindump();
+
+    expect(chip()).toBeNull();
+    fireEvent.change(input(), { target: { value: 'Stretch' } });
+    expect(chip()).toHaveTextContent('Task');
+
+    fireEvent.pointerDown(chip()!, { button: 0, ctrlKey: false, pointerType: 'mouse' });
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Habit/ }));
+    expect(chip()).toHaveTextContent('Habit · every day');
+
+    fireEvent.keyDown(input(), { key: 'Enter' });
+    const added = usePlannerStore.getState().items.find((i) => i.title === 'Stretch');
+    expect(added?.type).toBe('habit');
+
+    // The pick holds for the next capture, as the canvas composer's does.
+    fireEvent.change(input(), { target: { value: 'Again' } });
+    expect(chip()).toHaveTextContent('Habit · every day');
+  });
+});
