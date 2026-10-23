@@ -4,7 +4,7 @@ import { OrganizeConsole } from '@/components/planner/organize/organize-console'
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
 import { useAwayStore } from '@/lib/away-store';
-import { backOn, pausedShelf } from '@/lib/paused-shelf';
+import { backOn, pausedNote, pausedShelf } from '@/lib/paused-shelf';
 import { backList } from '@/components/notices/back-notice';
 import { enableGoalsAndOrganize } from './support/extensions';
 import type { Item, Routine, Season } from '@/lib/planner-types';
@@ -13,7 +13,7 @@ import type { Item, Routine, Season } from '@/lib/planner-types';
  * Organize's Paused section and the derivation behind it (lib/paused-shelf.ts):
  * everything set aside, grouped by the day it comes back, with a routine or a
  * season as ONE row. Kirby moved this here from the braindump's drawer on
- * 2026-10-23; the braindump keeps a moon with the count.
+ * 2026-10-23; the count rides the rail's Paused row.
  */
 
 vi.mock('vaul', () => ({
@@ -148,6 +148,20 @@ describe('pausedShelf', () => {
   });
 });
 
+describe('pausedNote', () => {
+  it('counts and names the soonest return', () => {
+    const f = fixture();
+    expect(pausedNote(pausedShelf(f.items, TODAY, ctx(f)), TODAY)).toBe('5 · Gym back Oct 30');
+    expect(pausedNote(pausedShelf(f.items, '2026-10-27', ctx(f)), '2026-10-27')).toBe('5 · Gym back Fri');
+    expect(pausedNote(pausedShelf(f.items, '2026-10-29', ctx(f)), '2026-10-29')).toBe('5 · Gym back tomorrow');
+  });
+
+  it('is just the count with no return day, and null with nothing paused', () => {
+    expect(pausedNote(pausedShelf([task('g', 'G', { pausedAt: PAUSED_AT })], TODAY, { userTimezone: 'UTC' }), TODAY)).toBe('1');
+    expect(pausedNote(pausedShelf([task('a', 'A')], TODAY, { userTimezone: 'UTC' }), TODAY)).toBeNull();
+  });
+});
+
 describe('backOn', () => {
   it('names what a pause hands back on its return day, containers once', () => {
     const f = fixture();
@@ -232,9 +246,19 @@ describe('the Paused section', () => {
     expect(useUIStore.getState().activeDialog).toMatchObject({ type: 'edit-item' });
   });
 
+  it('carries the count on the rail row, outside the tab name', () => {
+    seed();
+    open();
+    const row = screen.getAllByTestId('console-rail-row').find((r) => r.dataset.section === 'paused')!;
+    expect(within(row).getByTestId('console-rail-note')).toHaveTextContent('5 · Gym back Oct 30');
+    expect(row).toHaveAccessibleName('Paused');
+    expect(row).toHaveAttribute('aria-description', '5 · Gym back Oct 30');
+  });
+
   it('says so when nothing is paused', () => {
     seed({ items: [task('a', 'A')], routines: [] });
     open();
     expect(screen.getByTestId('paused-empty')).toHaveTextContent('Nothing is paused.');
+    expect(screen.queryByTestId('console-rail-note')).toBeNull();
   });
 });

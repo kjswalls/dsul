@@ -240,7 +240,18 @@ export function isConsoleSection(value: string | undefined): value is ConsoleSec
  * group eyebrows and the Trash rule are wrapped in `role="presentation"` so the
  * tablist's children are all tabs and RovingFocusGroup steps over them.
  */
-export function ConsoleRail({ sections }: { sections: readonly ConsoleSectionSpec[] }) {
+export function ConsoleRail({
+  sections,
+  notes,
+}: {
+  sections: readonly ConsoleSectionSpec[];
+  /**
+   * A quiet second line under a row's label: today only Paused's "5 · Gym back
+   * Fri" (organize-console.tsx). It is the one count the rail carries, and it
+   * is kept out of the tab's name (see the counts rule on RailEntry).
+   */
+  notes?: Partial<Record<ConsoleSection, string | null>>;
+}) {
   return (
     <TabsPrimitive.List
       aria-label="Sections"
@@ -248,13 +259,13 @@ export function ConsoleRail({ sections }: { sections: readonly ConsoleSectionSpe
       className="border-border flex w-[180px] shrink-0 flex-col overflow-y-auto border-r p-2"
     >
       {sections.map((section) => (
-        <RailEntry key={section.id} section={section} />
+        <RailEntry key={section.id} section={section} note={notes?.[section.id] ?? null} />
       ))}
     </TabsPrimitive.List>
   );
 }
 
-function RailEntry({ section }: { section: ConsoleSectionSpec }) {
+function RailEntry({ section, note }: { section: ConsoleSectionSpec; note: string | null }) {
   const Icon = SECTION_IDENTITY[section.id].icon;
   return (
     <>
@@ -273,6 +284,9 @@ function RailEntry({ section }: { section: ConsoleSectionSpec }) {
         value={section.id}
         data-testid="console-rail-row"
         data-section={section.id}
+        // The note is said here rather than read from the row's text, so the
+        // tab's accessible name stays exactly its label.
+        aria-description={note ?? undefined}
         // The accent for the active tick, per section. A CSS var rather than an
         // inline `before` colour because the pseudo-element cannot read a prop —
         // and a var keeps the whole mark in the class list where the cascade is
@@ -282,12 +296,16 @@ function RailEntry({ section }: { section: ConsoleSectionSpec }) {
           // One size up (30→36px row, 16px glyph, 13px label): the rail reads
           // like the Overview's index rather than a dense nav strip, and the
           // extra height holds the coloured glyph without crowding.
-          'group relative flex h-[36px] w-full items-center gap-2.5 rounded-[7px] px-[9px] text-left text-[13px] font-medium',
+          'group relative flex min-h-[36px] w-full shrink-0 items-center gap-2.5 rounded-[7px] px-[9px] text-left text-[13px] font-medium',
+          note && 'py-1.5',
           'text-muted-foreground hover:bg-accent hover:text-foreground',
-          // Counts still never live here — they reflow as data loads and would
+          // Counts never join the label — they reflow as data loads and would
           // JOIN THE TAB'S ACCESSIBLE NAME, making the e2e role queries depend
           // silently on Playwright's substring matching. Counts live on the list
-          // head and the detail meta line.
+          // head and the detail meta line. The one exception is Paused's note,
+          // which sits on its own aria-hidden line under the label: a paused
+          // item is hidden everywhere else, so the rail is where its count is
+          // seen from every section (Kirby, 2026-10-23).
           'data-[state=active]:bg-[var(--row-selected)] data-[state=active]:text-foreground',
           // A 2px accent tick on the active row, the same mark a modified
           // setting wears — centred in the row, the section's hue. Paired with
@@ -308,7 +326,20 @@ function RailEntry({ section }: { section: ConsoleSectionSpec }) {
           className="size-4 shrink-0 text-muted-foreground group-hover:text-foreground group-data-[state=active]:text-[var(--tick)]"
           aria-hidden
         />
-        {section.label}
+        {note ? (
+          <span className="flex min-w-0 flex-col">
+            {section.label}
+            <span
+              aria-hidden
+              data-testid="console-rail-note"
+              className="text-muted-foreground font-num truncate text-[11px] font-normal leading-tight"
+            >
+              {note}
+            </span>
+          </span>
+        ) : (
+          section.label
+        )}
       </TabsPrimitive.Trigger>
     </>
   );

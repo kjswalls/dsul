@@ -52,9 +52,13 @@ test.describe('pausing', () => {
     page.locator(`[data-testid="paused-row"][data-item-id="${itemId}"]`);
 
   async function openPausedSection(page: import('@playwright/test').Page) {
-    // The braindump header's moon, shown only while something is paused.
-    await page.getByTestId('braindump-paused').click();
+    // The braindump header's folder opens Organize; its rail's Paused row
+    // carries the count on a second line.
+    await page.getByRole('button', { name: 'Organize projects & groups' }).click();
     await expect(page.getByTestId('organize-console')).toBeVisible();
+    const railRow = page.locator('[data-testid="console-rail-row"][data-section="paused"]');
+    await expect(railRow.getByTestId('console-rail-note')).toBeVisible();
+    await railRow.click();
   }
 
   async function closeConsole(page: import('@playwright/test').Page) {
@@ -154,7 +158,11 @@ test.describe('pausing', () => {
       // Still there: it is history now, not an open loop.
       await expect(itemCardIn(timeline(page), habitId)).toHaveCount(1);
       // And it is NOT offered as something to recover.
-      await expect(page.getByTestId('braindump-paused')).toHaveCount(0);
+      await closeConsole(page);
+      await page.getByRole('button', { name: 'Organize projects & groups' }).click();
+      await page.locator('[data-testid="console-rail-row"][data-section="paused"]').click();
+      await expect(page.locator('[data-testid="paused-empty"], [data-testid="paused-day"]').first()).toBeVisible();
+      await expect(pausedRow(page, habitId)).toHaveCount(0);
     } finally {
       await cleanupTestData(page, [], [habitId]);
     }

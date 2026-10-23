@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { DndContext } from '@dnd-kit/core';
 
 /**
@@ -79,6 +79,7 @@ vi.mock('next/navigation', () => ({
 import { Braindump } from '@/components/sidebar/braindump';
 import { SeasonNotice } from '@/components/views/season-notice';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useUIStore } from '@/lib/ui-store';
 import { useViewStore } from '@/lib/view-store';
 import { OrganizeConsole } from '@/components/planner/organize/organize-console';
 import {
@@ -330,6 +331,28 @@ describe('Organize switched off — the doors are inert, not absent', () => {
     expect(open).toBeEnabled();
     expect(open).not.toHaveAttribute('title');
     expect(open).not.toHaveAttribute('aria-description');
+  });
+
+  it('keeps the folder a door to Paused with Organize off while something is paused', () => {
+    seedBraindump();
+    const paused = {
+      type: 'task',
+      id: 't2',
+      title: 'Set aside',
+      status: 'pending',
+      isScheduled: false,
+      order: 1,
+      pausedAt: '2020-01-01T00:00:00Z',
+    };
+    const items = [...usePlannerStore.getState().items, paused] as never;
+    usePlannerStore.setState({ items, tasks: items });
+
+    disableExtensions(EXT_ORGANIZE);
+    braindump();
+    const door = screen.getByLabelText('Paused');
+    expect(door).toBeEnabled();
+    fireEvent.click(door);
+    expect(useUIStore.getState().activeDialog).toMatchObject({ type: 'organize', section: 'paused' });
   });
 
   it('keeps the season notice REPORTING while it stops being a button', () => {

@@ -27,7 +27,7 @@ import { SeasonsSection } from './sections/seasons';
 import { GoalsSection } from './sections/goals';
 import { ProjectsSection, TypesSection } from './sections/labels';
 import { OverviewSection } from './sections/overview';
-import { PausedSection } from './sections/paused';
+import { PausedSection, usePausedRailNote } from './sections/paused';
 import { TrashSection } from './sections/trash';
 import { cn } from '@/lib/utils';
 
@@ -112,6 +112,7 @@ export function OrganizeConsole({
    */
   const isOn = useExtensionPredicate();
   const sections = useMemo(() => consoleSectionsFor(isOn), [isOn]);
+  const pausedRailNote = usePausedRailNote();
   const unavailable = sections.length === 0;
   const requested: ConsoleSection | null = isConsoleSection(section) ? section : null;
   const initial: ConsoleSection =
@@ -322,7 +323,7 @@ export function OrganizeConsole({
           orientation="vertical"
           className="flex min-h-0 flex-1"
         >
-          <ConsoleRail sections={sections} />
+          <ConsoleRail sections={sections} notes={{ paused: pausedRailNote }} />
 
           {sections.map((s) => (
             <TabsPrimitive.Content

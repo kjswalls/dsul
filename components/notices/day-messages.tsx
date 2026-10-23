@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type ComponentType, type MouseEvent } from 'react';
+import { useRef, useState, type ComponentType, type MouseEvent } from 'react';
 import { Moon, Palmtree, Sunrise } from 'lucide-react';
 
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils';
  * key in the date capsule.
  *
  * Three lines used to sit beside the date in the canvas header row (the
- * season's "5 items are away with …", the vacation line, and "Today's review is
+ * season's "Summer is off, so 5 items are hidden", the vacation line, and "Today's review is
  * waiting"), and the season line was drawn a second time at the top of the
  * Schedule and List day views. Kirby asked for one place, and picked this one
  * (2026-10-17): a glyph per message at the end of the capsule's date row, and
@@ -48,6 +48,23 @@ export function DayMessages({
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  // The popover hangs below the whole capsule, its right edge on the
+  // capsule's. Off the key alone it opened INSIDE the capsule, over its second
+  // row, and read as a strip of the header rather than a note about the day
+  // (Kirby, 2026-10-23). Measured as offsets from the key on each open; the
+  // phone's date row has no capsule, so there both stay at their defaults.
+  const [offsets, setOffsets] = useState({ side: 6, align: 0 });
+  const onOpenChange = (next: boolean) => {
+    const key = triggerRef.current;
+    const capsule = key?.closest('[data-header-capsule]');
+    if (next && key && capsule) {
+      const k = key.getBoundingClientRect();
+      const c = capsule.getBoundingClientRect();
+      setOffsets({ side: c.bottom - k.bottom + 6, align: k.right - c.right });
+    }
+    setOpen(next);
+  };
   const dayNotices = useDayHeaderNotices(scope);
   const season = useSeasonSuppression(scope);
   const away = useAwayLine();
@@ -74,9 +91,10 @@ export function DayMessages({
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
         <button
+          ref={triggerRef}
           type="button"
           data-testid="day-messages"
           data-count={glyphs.length}
@@ -94,6 +112,8 @@ export function DayMessages({
       </PopoverTrigger>
       <PopoverContent
         align="end"
+        sideOffset={offsets.side}
+        alignOffset={offsets.align}
         data-testid="day-messages-popover"
         className="flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-0.5 p-1.5"
         onClickCapture={closeOnAction}
@@ -101,7 +121,7 @@ export function DayMessages({
         <DayHeaderNotice scope={scope} />
         <SeasonNotice
           scope={scope}
-          className="hover-wash h-[26px] w-full rounded-[6px] px-2 text-left"
+          className="hover-wash min-h-[26px] w-full rounded-[6px] px-2 py-1.5 text-left"
         />
         <BackNotice scope={scope} className="min-h-[26px] px-2 py-1.5" />
         <AwayNotice className="h-[26px] px-2" />

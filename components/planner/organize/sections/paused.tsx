@@ -11,7 +11,7 @@ import { suppressionLabel, suppressionReason } from '@/lib/active';
 import { toDateStr } from '@/lib/recurrence';
 import { setGateOn } from '@/lib/gate-toggle';
 import { openStampedEdit } from '@/lib/ui-store';
-import { pausedEntryName, pausedShelf, type PausedEntry } from '@/lib/paused-shelf';
+import { pausedEntryName, pausedNote, pausedShelf, type PausedEntry } from '@/lib/paused-shelf';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
 import type { Item } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
@@ -39,6 +39,25 @@ import type { ConsoleSection } from '../console-rail';
  * Like Trash it rides no extension (console-rail.tsx), because pausing is not
  * gated and its way back may not be.
  */
+/**
+ * The Paused rail row's second line ("5 · Gym back Fri"), or null with nothing
+ * paused. Asked by the console for its rail, so the count is seen from every
+ * section — the braindump header's moon used to carry it (Kirby, 2026-10-23).
+ */
+export function usePausedRailNote(): string | null {
+  const items = usePlannerStore((s) => s.items);
+  const routines = usePlannerStore((s) => s.routines);
+  const seasons = usePlannerStore((s) => s.seasons);
+  const userTimezone = usePlannerStore((s) => s.userTimezone);
+  const away = useAwayStore((s) => s.periods);
+  const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const todayStr = toDateStr(new Date(), tz);
+  return useMemo(
+    () => pausedNote(pausedShelf(items, todayStr, { userTimezone: tz, routines, seasons, away }), todayStr),
+    [items, todayStr, tz, routines, seasons, away]
+  );
+}
+
 export function PausedSection({
   selectedId,
   onSelect,

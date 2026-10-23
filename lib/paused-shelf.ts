@@ -1,12 +1,13 @@
 import { inactiveItemIdsOn, suppressionReason, type ActivationContext } from './active';
 import { addDays } from './away';
+import { formatShort } from './collections';
 import { toDateOnly } from './overdue';
 import type { Item, Routine, Season } from './planner-types';
 
 /**
  * Everything set aside, as the Organize console's Paused section lists it and
- * the braindump's moon counts it — one derivation, so the count on the moon is
- * always the number of rows behind it.
+ * its rail row counts it — one derivation, so the count on the rail is always
+ * the number of rows behind it.
  *
  * WHY THIS EXISTS AT ALL is programs-routines.md locked decision 10: pausing
  * hides an item from the grid, the review, the past-due bar and the braindump,
@@ -111,7 +112,32 @@ export function pausedShelf(
   };
 }
 
-/** What a paused entry is called on its row and in the moon's popover. */
+/**
+ * The Paused rail row's second line in Organize: "5 · Gym back Fri", or just
+ * "5" when nothing set aside has a day to come back. Null with nothing paused,
+ * so the row stays one line. It names the soonest return only: the rail is
+ * 180px, and the list behind the row has the rest.
+ */
+export function pausedNote(shelf: PausedShelf, todayStr: string): string | null {
+  if (shelf.count === 0) return null;
+  const next = shelf.days.find((d) => d.until);
+  if (!next?.until) return String(shelf.count);
+  return `${shelf.count} · ${pausedEntryName(next.entries[0])} back ${backWhen(next.until, todayStr)}`;
+}
+
+/** "tomorrow", "Fri" within the week, "Nov 12" past it. */
+function backWhen(day: string, todayStr: string): string {
+  const [y, m, d] = day.split('-').map(Number);
+  const [ty, tm, td] = todayStr.split('-').map(Number);
+  const diff = Math.round((Date.UTC(y, m - 1, d) - Date.UTC(ty, tm - 1, td)) / 86_400_000);
+  if (diff <= 1) return 'tomorrow';
+  if (diff < 7) {
+    return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString(undefined, { weekday: 'short', timeZone: 'UTC' });
+  }
+  return formatShort(day);
+}
+
+/** What a paused entry is called on its row and on the rail's line. */
 export function pausedEntryName(entry: PausedEntry): string {
   if (entry.kind === 'item') return entry.item.title;
   return entry.kind === 'routine' ? entry.routine.name : entry.season.name;
