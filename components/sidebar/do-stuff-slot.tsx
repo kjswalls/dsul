@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
-import { Check, Maximize2 } from 'lucide-react';
+import { Maximize2 } from 'lucide-react';
 import {
   doneNext,
   fitMissedIn,
@@ -15,6 +15,7 @@ import {
 import { fitIn, freeStretch, headsUp, missedBlocks, sprintFor, stretchLabel, type WalkBlock } from '@/lib/do-stuff-walk';
 import { SprintButton, SprintRing } from '@/components/sidebar/sprint-ring';
 import { PocketButton } from '@/components/sidebar/do-stuff-pocket';
+import { NowCapsule } from '@/components/sidebar/now-capsule';
 import { prefersReducedMotion } from '@/lib/zen-transition';
 import { openFirstSteps, useCanFirstSteps } from '@/components/sidebar/first-steps';
 import { cn } from '@/lib/utils';
@@ -170,24 +171,12 @@ function SlotFace({
 
   const actions = (
     <div className="flex shrink-0 items-center gap-1">
-      <button
-        type="button"
-        onClick={() => doneNext(id)}
-        aria-label={`Done: ${title}`}
-        data-testid="do-stuff-slot-done"
-        className="flex h-7 items-center gap-1 rounded-[7px] bg-primary px-2.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
-      >
-        <Check aria-hidden className="size-3" />
-        done
-      </button>
-      <button
-        type="button"
-        onClick={() => skipNext(id)}
-        data-testid="do-stuff-slot-skip"
-        className="h-7 rounded-[7px] px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
-      >
-        skip
-      </button>
+      <NowCapsule
+        title={title}
+        onDone={() => doneNext(id)}
+        onSkip={() => skipNext(id)}
+        testIds={{ done: 'do-stuff-slot-done', skip: 'do-stuff-slot-skip' }}
+      />
       {steps && !compact && (
         <button
           type="button"

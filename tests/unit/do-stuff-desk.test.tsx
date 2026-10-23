@@ -80,6 +80,7 @@ vi.mock('@/lib/item-notes', async (importOriginal) => ({
 import { Braindump } from '@/components/sidebar/braindump';
 import { ViewRouter } from '@/components/views/view-router';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useUIStore } from '@/lib/ui-store';
 import { openDesk, useDoStuffStore } from '@/lib/do-stuff';
 import { seedAI, CONNECTED_MODEL } from './helpers/ai-fixtures';
 import { usePrepPacksStore } from '@/lib/prep-packs-store';
@@ -412,7 +413,7 @@ describe('the desk', () => {
     expect(screen.queryByTestId('do-stuff-desk')).toBeNull();
   });
 
-  it('the list card reads "back to the day" while the desk is open, and D toggles', () => {
+  it('the list card offers "Back to the day" while the desk is open, and D toggles', () => {
     seed(ITEMS);
     start();
     open();
@@ -421,7 +422,7 @@ describe('the desk', () => {
     act(() => useDoStuffStore.setState({ slot: false }));
     expect(screen.queryByTestId('do-stuff-open-desk')).toBeNull();
     const back = screen.getByTestId('do-stuff-close-desk');
-    expect(back.textContent).toContain('back to the day');
+    expect(back).toHaveAccessibleName('Back to the day');
     act(() => {
       fireEvent.click(back);
     });
@@ -435,6 +436,27 @@ describe('the desk', () => {
       fireEvent.keyDown(screen.getByTestId('do-stuff-next'), { key: 'd' });
     });
     expect(useDoStuffStore.getState().desk).toBe(false);
+  });
+
+  it('the card is its own shape: done and skip in the capsule, no today button, keys only in its footer', () => {
+    seed(ITEMS);
+    start();
+    open();
+    act(() => useDoStuffStore.setState({ slot: false, desk: false }));
+    const card = screen.getByTestId('do-stuff-next');
+    expect(screen.getByTestId('do-stuff-done')).toHaveAccessibleName(/^Done: /);
+    expect(screen.getByTestId('do-stuff-skip')).toBeTruthy();
+    // "today" left the card (Kirby, 2026-10-23); T still does it, and the footer says so.
+    expect(screen.queryByTestId('do-stuff-today')).toBeNull();
+    expect(screen.getByTestId('do-stuff-next-keys').textContent).toContain('today');
+    // No checkbox and no lane chip on the card: done is the tick, the header names the lane.
+    expect(card.querySelector('[role="checkbox"]')).toBeNull();
+    expect(card.querySelector('[data-testid="do-stuff-lane-chip"]')).toBeNull();
+    // The title opens the item.
+    act(() => {
+      fireEvent.click(screen.getByTestId('do-stuff-next-title'));
+    });
+    expect(useUIStore.getState().activeDialog).toMatchObject({ type: 'edit-item' });
   });
 
   it('the exit sits in the kicker row, the actions hold the verbs, and the day column is dense', () => {
