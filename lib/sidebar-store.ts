@@ -93,10 +93,12 @@ export function renderedSidebarWidth(stored: number, viewportWidth?: number, res
 
 /**
  * The width the braindump takes while doing stuff (Kirby's pick, 2026-10-13):
- * about half of what the rail leaves, so the plan's lanes and the planner sit
- * side by side, never narrower than it already was and never taking the
- * canvas below SIDEBAR_MIN_CANVAS. Past SIDEBAR_MAX_WIDTH on purpose: the cap
- * is a taste for a resting list, and this is not one. Below the docking width
+ * the plan's lanes and the planner side by side, never narrower than it
+ * already was and never taking the canvas below SIDEBAR_MIN_CANVAS. Past
+ * SIDEBAR_MAX_WIDTH on purpose: the cap is a taste for a resting list, and
+ * this is not one. Half was too much (Kirby, 2026-10-23): a lane row is a
+ * title and a word or two, so it is DO_STUFF_SPLIT_SHARE of what the rail
+ * leaves, and never past DO_STUFF_SPLIT_MAX_PX on a wide monitor. Below the docking width
  * (1180px, rail-store's PANEL_OVERLAY_QUERY) there is no room to split, and
  * the column stays as it is. Like the rail's yield, it is never written back:
  * stopping puts the user's own width back.
@@ -108,14 +110,16 @@ export function renderedSidebarWidth(stored: number, viewportWidth?: number, res
  * the width the braindump always had; closing the desk opens the split back.
  */
 export const DO_STUFF_SPLIT_MIN_VIEWPORT = 1180
+export const DO_STUFF_SPLIT_SHARE = 0.4
+export const DO_STUFF_SPLIT_MAX_PX = 640
 
 export function doStuffSidebarWidth(rendered: number, viewportWidth: number, reservePx = 0, desk = false): number {
   if (desk) return rendered
   if (!Number.isFinite(viewportWidth) || viewportWidth < DO_STUFF_SPLIT_MIN_VIEWPORT) return rendered
   const reserve = Number.isFinite(reservePx) && reservePx > 0 ? reservePx : 0
-  const half = Math.round((viewportWidth - reserve) / 2)
+  const share = Math.min(Math.round((viewportWidth - reserve) * DO_STUFF_SPLIT_SHARE), DO_STUFF_SPLIT_MAX_PX)
   const ceiling = viewportWidth - SIDEBAR_MIN_CANVAS - reserve
-  return Math.max(rendered, Math.min(half, ceiling))
+  return Math.max(rendered, Math.min(share, ceiling))
 }
 
 /**
