@@ -8,8 +8,8 @@ import { placementOf } from './handle-drag-end';
  *
  * A task on the canvas goes back to the braindump (`unscheduleTasks`). A habit
  * on the canvas is PAUSED instead (`setItemPaused`): it recurs, so it has no day
- * to take away, and the braindump's only home for it is the Paused section at
- * the sidebar's foot. Anything already in the braindump stays put, and so does
+ * to take away, and its home is Organize's Paused section, which the
+ * braindump's moon counts and opens. Anything already in the braindump stays put, and so does
  * a habit that cannot be paused or already is.
  *
  * Shared by the shell's drop (app-shell.tsx handleDragEnd) and the braindump's

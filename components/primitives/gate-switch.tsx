@@ -12,8 +12,9 @@ import { toDateStr } from '@/lib/recurrence';
  *
  * Flipping it off pauses the whole container, which takes its members off every
  * surface (locked decision 1), so the group empties itself. Turning a fully-off
- * scope back on happens from the Display menu's "Paused scopes" list, not here —
- * a paused scope has no visible members and so no header to host a switch.
+ * scope back on happens from Organize's Paused section (the braindump's moon
+ * opens it), not here — a paused scope has no visible members and so no header
+ * to host a switch.
  *
  * DISPLAY is resolved at today and shows the LOCAL (stored) state, never the
  * effective one: a routine whose own switch is on but that a season is holding

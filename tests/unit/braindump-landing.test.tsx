@@ -164,14 +164,17 @@ describe('braindump: where a dragged item will land', () => {
     expect(screen.getByTestId('braindump').dataset.dndActs).toBe('false');
   });
 
-  it('draws a habit from the canvas landing in the Paused section, which a drop pauses', () => {
+  it('lights the header moon for a habit from the canvas, which a drop pauses', () => {
     useDragStore.getState().startDrag('h', 'pointer');
     over.add('sidebar');
     renderBraindump();
 
-    const section = screen.getByTestId('braindump-paused-section');
-    expect(section.querySelector('[data-testid="braindump-landing"]')?.textContent).toBe('Stretch');
-    expect(screen.getByTestId('braindump-paused-toggle').getAttribute('aria-expanded')).toBe('true');
+    // Nothing is paused yet, so the moon exists only because of the drag, and
+    // counts the habit in. No landing row: a paused habit has no slot here.
+    const moon = screen.getByTestId('braindump-paused');
+    expect(moon.dataset.arriving).toBe('');
+    expect(moon.textContent).toBe('1');
+    expect(screen.queryByTestId('braindump-landing')).toBeNull();
     expect(screen.getByTestId('braindump').dataset.dndActs).toBe('true');
   });
 
@@ -187,14 +190,15 @@ describe('braindump: where a dragged item will land', () => {
     expect(screen.getByTestId('braindump').dataset.dndActs).toBe('false');
   });
 
-  it('shows a selection of a task and a habit each where it will land', () => {
+  it('shows a selection of a task and a habit each where it will go', () => {
     useSelectionStore.setState({ selectedIds: new Set(['m', 'h']) });
     useDragStore.getState().startDrag('h', 'pointer');
     over.add('sidebar');
     renderBraindump();
 
     const landings = screen.getAllByTestId('braindump-landing').map((el) => el.textContent);
-    expect(landings.sort()).toEqual(['Mango', 'Stretch']);
+    expect(landings).toEqual(['Mango']);
+    expect(screen.getByTestId('braindump-paused').dataset.arriving).toBe('');
   });
 
   it('drops the empty-state poem while a row is landing in an empty list', () => {

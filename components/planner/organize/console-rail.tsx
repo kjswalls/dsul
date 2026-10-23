@@ -6,6 +6,7 @@ import {
   Folder,
   LayoutGrid,
   type LucideIcon,
+  Moon,
   Repeat,
   Shapes,
   Target,
@@ -43,13 +44,14 @@ export type ConsoleSection =
   | 'goals'
   | 'projects'
   | 'types'
+  | 'paused'
   | 'trash';
 
 /**
  * EVERY SECTION NAMES THE EXTENSION IT RIDES — or names none, which is a third
  * answer rather than a missing one.
  *
- * Five of the seven ride the console itself. The other two are the whole reason
+ * Five of the eight ride the console itself. The other three are the whole reason
  * this is a field instead of a branch in the rail:
  *
  *   GOALS rides EXT_GOALS. This is where a goal is CREATED, so if it rode the
@@ -68,8 +70,11 @@ export type ConsoleSection =
  *     dsul" exists to correct — and the rail already says so, pinning trash
  *     below a rule as a lifecycle surface rather than a peer of either group.
  *
- * So with both extensions off the console still opens, holding one row: Trash.
- * That is the same shape as the Goals-only case, and both are pinned in
+ * PAUSED rides nothing either, for Trash's reason: pausing is not gated, so its
+ * way back may not be. See its row below.
+ *
+ * So with both extensions off the console still opens, holding two rows: Paused
+ * and Trash. That is the same shape as the Goals-only case, and both are pinned in
  * tests/unit/extension-gates-organize.test.tsx.
  *
  * Declaring it per-section is the registry bargain the rest of the app makes
@@ -113,9 +118,18 @@ export const CONSOLE_SECTIONS = [
   { id: 'types', label: 'Item types', group: null, eyebrow: 'ITEM TYPES',
     blurb: 'Your own kinds of task.', extension: EXT_ORGANIZE, filterable: true },
   // Behind a rule, pinned to the foot, the way a bin is pinned to the foot of a
-  // dock. Trash is a lifecycle surface, not a peer of either group — and
-  // `extension: null` is that same sentence said to the gate. See the header.
-  { id: 'trash', label: 'Trash', group: 'RULE', eyebrow: 'TRASH',
+  // dock. Paused and Trash are lifecycle surfaces — put away, still yours — not
+  // peers of either group, and `extension: null` is that same sentence said to
+  // the gate. See the header.
+  //
+  // PAUSED is ungatable for Trash's reason. Pausing is not gated (the item
+  // menu, ⌘K and the sidebar drop all pause with the console off), so the way
+  // back must not be either: a paused item is hidden from every other surface,
+  // and this is where it is listed (programs-routines.md locked decision 10,
+  // and its 2026-10-23 addendum, which moved it here from the braindump).
+  { id: 'paused', label: 'Paused', group: 'RULE', eyebrow: 'PAUSED',
+    blurb: 'Set aside for now, and when each comes back.', extension: null, filterable: true },
+  { id: 'trash', label: 'Trash', group: null, eyebrow: 'TRASH',
     blurb: 'Anything deleted, kept 30 days.', extension: null, filterable: true },
 ] as const satisfies readonly {
   id: ConsoleSection;
@@ -170,6 +184,8 @@ export const SECTION_IDENTITY: Record<
   goals: { icon: Target, accent: 'var(--accent-6)' },
   projects: { icon: Folder, accent: 'var(--accent-1)' },
   types: { icon: Shapes, accent: 'var(--accent-4)' },
+  // Muted like Trash, and for the same reason: a lifecycle surface, not a kind.
+  paused: { icon: Moon, accent: 'var(--muted-foreground)' },
   trash: { icon: Trash2, accent: 'var(--muted-foreground)' },
 };
 

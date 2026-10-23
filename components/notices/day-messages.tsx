@@ -1,12 +1,13 @@
 'use client';
 
 import { useState, type ComponentType, type MouseEvent } from 'react';
-import { Moon, Palmtree } from 'lucide-react';
+import { Moon, Palmtree, Sunrise } from 'lucide-react';
 
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { DayHeaderNotice, useDayHeaderNotices } from '@/components/notices/notice-slot';
 import { SeasonNotice, useSeasonSuppression } from '@/components/views/season-notice';
 import { AwayNotice, useAwayLine } from '@/components/views/away-notice';
+import { BackNotice, useBackToday } from '@/components/notices/back-notice';
 import { cn } from '@/lib/utils';
 
 /**
@@ -19,7 +20,8 @@ import { cn } from '@/lib/utils';
  * Schedule and List day views. Kirby asked for one place, and picked this one
  * (2026-10-17): a glyph per message at the end of the capsule's date row, and
  * the sentences in a popover on click. At rest the canvas says nothing; the
- * glyphs are the only sign.
+ * glyphs are the only sign. A fourth joined on 2026-10-23: "Back today", what
+ * a pause hands back on this day (components/notices/back-notice.tsx).
  *
  * The split it keeps: what is about THIS DAY lives here; everything else (the
  * waiting pile, sync and AI failures, undo and History) stays in the sidebar's
@@ -49,12 +51,16 @@ export function DayMessages({
   const dayNotices = useDayHeaderNotices(scope);
   const season = useSeasonSuppression(scope);
   const away = useAwayLine();
+  const back = useBackToday(scope);
 
   // Most pressing first: an answerable notice (the review), then the day's
   // statement, then the trip, which is about you rather than the day.
   const glyphs: { key: string; Icon: ComponentType<{ className?: string }>; className?: string }[] = [
     ...dayNotices.map((n) => ({ key: n.id, Icon: n.icon, className: n.iconClassName })),
     ...(season ? [{ key: 'season', Icon: Moon }] : []),
+    // What a pause hands back on this day (Kirby, 2026-10-23). After the
+    // season, which is the day's other statement about what is (not) here.
+    ...(back ? [{ key: 'back', Icon: Sunrise }] : []),
     ...(away ? [{ key: 'away', Icon: Palmtree }] : []),
   ];
   if (glyphs.length === 0) return null;
@@ -97,6 +103,7 @@ export function DayMessages({
           scope={scope}
           className="hover-wash h-[26px] w-full rounded-[6px] px-2 text-left"
         />
+        <BackNotice scope={scope} className="min-h-[26px] px-2 py-1.5" />
         <AwayNotice className="h-[26px] px-2" />
       </PopoverContent>
     </Popover>

@@ -5,8 +5,8 @@ import { toDateStr } from './recurrence';
 
 /**
  * Turn a gate container (routine/season) on or off — the one place the pause
- * switch's write is decided, shared by the group-header switch and the Display
- * menu's "Paused scopes" list.
+ * switch's write is decided, shared by the group-header switch and Organize's
+ * Paused section.
  *
  * `desiredOn` is the OUTCOME the control promised the user (the opposite of what
  * its switch showed), NOT recomputed from the live state — otherwise a stale

@@ -56,7 +56,7 @@ export function useSeasonSuppression(scopeOverride?: 'day' | 'week') {
  * It renders on NO other day, which is the point. A season that is off and
  * hiding nothing gets no line; a paused item gets no line either, because that
  * was the user's own decision about that row and it already has a home in the
- * braindump's Paused section. Only work that vanished because of a decision
+ * Paused section in Organize. Only work that vanished because of a decision
  * made somewhere ELSE — in the manager, weeks ago, or by a date rolling over —
  * earns an explanation here.
  *

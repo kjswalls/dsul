@@ -180,8 +180,9 @@ interface PlannerStore {
   /**
    * Render suppressed work in place, greyed, instead of hiding it (Phase 5).
    *
-   * Deliberately grid-only. The braindump already has a better answer — the
-   * Paused section groups by CAUSE, which a greyed row inline cannot — and the
+   * Deliberately grid-only. Organize's Paused section is the better answer for
+   * the list — it groups by return and by container, which a greyed row inline
+   * cannot — and the
    * question this setting answers is a canvas question: "what would today look
    * like with Summer back on?"
    */

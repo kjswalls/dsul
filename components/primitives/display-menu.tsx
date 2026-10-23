@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { useEffect, useImperativeHandle, useRef, useState } from 'react';
 import {
   ArrowRight,
   ArrowUpDown,
@@ -41,7 +41,6 @@ import { Tooltip, TooltipTrigger } from '@/components/ui/tooltip';
 import { RailTipContent, useQuietTip } from '@/components/primitives/pills';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { usePlannerStore } from '@/lib/planner-store';
-import { selectPlannerLoaded, selectPlannerSettled } from '@/lib/planner-ready';
 import { useViewStore } from '@/lib/view-store';
 import { NO_PRIORITY, type PriorityFilterValue, type ViewFilters } from '@/lib/filters';
 import {
@@ -64,10 +63,6 @@ import {
 import { displayGoals } from '@/lib/goals';
 import { useBraindumpGroupBy, useCanvasGroupBy, useGoalsEnabled } from '@/lib/extension-gates';
 import { accentColorForName } from '@/lib/accent-colors';
-import { buildScopeRows } from '@/lib/scope-rail';
-import { setGateOn } from '@/lib/gate-toggle';
-import { toDateStr } from '@/lib/recurrence';
-import { CategoryIcon } from '@/lib/category-icons';
 import {
   BRAINDUMP_GROUP_BY_OPTIONS,
   CANVAS_GROUP_BY_OPTIONS,
@@ -1162,8 +1157,6 @@ export function DisplayMenu({
 
       <MenuEntries entries={showEntries} />
 
-      <PausedScopesSection variant="menu" />
-
       <DropdownMenuSeparator />
       {/* Permanently mounted, disabled when nothing is set. That is what stops
           the panel jumping height, which today's conditionally-mounted "Clear
@@ -1415,8 +1408,6 @@ function DisplaySheet({
 
               <SheetEntries entries={showEntries} onDismiss={dismiss} />
 
-              <PausedScopesSection variant="sheet" onDismiss={dismiss} />
-
               <div role="separator" className="my-1 h-px bg-border" />
               <button
                 type="button"
@@ -1445,93 +1436,6 @@ function DisplaySheet({
         </div>
       </DrawerContent>
     </Drawer>
-  );
-}
-
-/**
- * The recovery half of "group by scope, flip the header": the scopes that are
- * OFF right now, each one click from back on.
- *
- * A gate container's home when it has no visible members — a fully-paused
- * routine, or a switched-off season, produces no group header to switch, so
- * without this list it would only be reachable from the Organize console. Shown
- * on BOTH surfaces because pausing is app-wide DB state, and hidden entirely
- * when nothing is off.
- *
- * "Off" means the container's OWN switch is off (`!localOn`): a routine a season
- * is merely holding down keeps its own switch on and is not listed here — the
- * blocking SEASON is, and turning it on brings the routine back. Mounted inside
- * the open menu or sheet, so buildScopeRows only runs while one is on screen.
- *
- * Turning one on is a planner write, so the rows ACT only once the planner has
- * loaded. While its load is in flight (the look-only preview paints cached
- * routines and seasons here) each row is drawn disabled with "Syncing…" on its
- * rail, the notices' word for the same wait: the write barrier would refuse the
- * click, and a live-looking row that does nothing reads as a broken switch.
- * After a FAILED load the section is not drawn at all; the Retry notice is the
- * way out, and nothing here is syncing.
- */
-function PausedScopesSection({
-  variant,
-  onDismiss,
-}: {
-  variant: 'menu' | 'sheet';
-  onDismiss?: () => void;
-}) {
-  const routines = usePlannerStore((s) => s.routines);
-  const seasons = usePlannerStore((s) => s.seasons);
-  const userTimezone = usePlannerStore((s) => s.userTimezone);
-  const load = usePlannerStore((s) =>
-    selectPlannerLoaded(s) ? 'loaded' : selectPlannerSettled(s) ? 'failed' : 'syncing'
-  );
-
-  const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-  // Resolved at today and used as a memo key — pausing is dateless, and a menu
-  // opened after midnight must offer the resume that is true now.
-  const todayStr = toDateStr(new Date(), tz);
-  const offRows = useMemo(
-    () => buildScopeRows(routines, seasons, todayStr, tz).filter((row) => !row.localOn),
-    [routines, seasons, todayStr, tz]
-  );
-
-  if (offRows.length === 0 || load === 'failed') return null;
-  const syncing = load === 'syncing';
-
-  const entries: Entry[] = [
-    { kind: 'cap', key: 'paused-cap', label: 'Paused scopes' },
-    ...offRows.map((row) =>
-      rowEntry({
-        key: `${row.kind}:${row.id}`,
-        leading: (
-          <CategoryIcon
-            glyph={row.icon}
-            name={row.name}
-            className="size-3.5 shrink-0 text-muted-foreground"
-          />
-        ),
-        label: row.name,
-        // The rail's own line — "back Sep 8", "you turned it off", "ended Jul 31".
-        // While syncing it gives the reason the row is disabled instead.
-        rail: syncing ? 'Syncing…' : row.state,
-        disabled: syncing,
-        // An ACTION, not a value: role=menuitem so a screen reader announces
-        // "turn on <name>" rather than a check box that can never read checked
-        // (turning it on drops the row from the !localOn list). keepOpen keeps
-        // the surface up so a POINTER user can bring several back without
-        // reopening — keyboard focus still resets as each row unmounts, so it is
-        // not a keyboard "several in a row" affordance.
-        checked: false,
-        action: true,
-        keepOpen: true,
-        onToggle: () => setGateOn(row.kind, row.id, true),
-      })
-    ),
-  ];
-
-  return variant === 'menu' ? (
-    <MenuEntries entries={entries} />
-  ) : (
-    <SheetEntries entries={entries} onDismiss={onDismiss ?? (() => {})} />
   );
 }
 

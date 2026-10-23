@@ -18,8 +18,8 @@ import { getTodayStr, getDateStr } from './helpers/dates';
  *
  * The contract under test is narrow but load-bearing: a paused item leaves
  * every surface that would ask something of you, keeps everything it had, and
- * stays reachable from exactly one place — the braindump's Paused section. The
- * last part is what separates "paused" from "lost".
+ * stays reachable from exactly one place — Organize's Paused section, which the
+ * braindump's moon opens. The last part is what separates "paused" from "lost".
  *
  * Serial, because two tests flip a user_settings flag on a SHARED test user.
  *
@@ -43,18 +43,27 @@ test.describe('pausing', () => {
     await resetUserSettings(page);
   });
 
-  /** The grid, scoped — an unscoped item-card locator would also match the Paused section. */
+  /** The grid, scoped. */
   const timeline = (page: import('@playwright/test').Page) =>
     page.locator('[data-tour="timeline"]');
 
-  const pausedSection = (page: import('@playwright/test').Page) =>
-    page.getByTestId('braindump-paused-section');
+  /** The item's row in Organize's Paused section. */
+  const pausedRow = (page: import('@playwright/test').Page, itemId: string) =>
+    page.locator(`[data-testid="paused-row"][data-item-id="${itemId}"]`);
 
   async function openPausedSection(page: import('@playwright/test').Page) {
-    // Collapsed by default, and GroupSection-style collapse UNMOUNTS children —
-    // so without expanding, "present in Paused" fails and "absent everywhere"
-    // passes for the wrong reason.
-    await page.getByTestId('braindump-paused-toggle').click();
+    // The braindump header's moon, shown only while something is paused.
+    await page.getByTestId('braindump-paused').click();
+    await expect(page.getByTestId('organize-console')).toBeVisible();
+  }
+
+  async function closeConsole(page: import('@playwright/test').Page) {
+    const overlay = page.locator('[data-slot="dialog-overlay"]');
+    for (let i = 0; i < 4 && (await overlay.count()) > 0; i++) {
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(150);
+    }
+    await expect(overlay).toHaveCount(0);
   }
 
   test('a paused habit leaves the grid, keeps its streak, and is reachable in Paused', async ({
@@ -75,7 +84,8 @@ test.describe('pausing', () => {
       await expect(itemCardIn(timeline(page), habitId)).toHaveCount(0);
 
       await openPausedSection(page);
-      await expect(itemCardIn(pausedSection(page), habitId)).toHaveCount(1);
+      await expect(pausedRow(page, habitId)).toHaveCount(1);
+      await closeConsole(page);
 
       // It survives a reload — the write reached the DB rather than living in
       // optimistic state (the exact failure a missing allowlist entry causes).
@@ -105,8 +115,9 @@ test.describe('pausing', () => {
       await expect(itemCardIn(timeline(page), habitId)).toHaveCount(0);
 
       await openPausedSection(page);
-      await itemCardIn(pausedSection(page), habitId).click();
-      await page.getByTestId('item-dialog-resume').click();
+      await pausedRow(page, habitId).getByTestId('paused-resume').click();
+      await expect(pausedRow(page, habitId)).toHaveCount(0);
+      await closeConsole(page);
 
       await expect(itemCardIn(timeline(page), habitId)).toHaveCount(1);
 
@@ -143,7 +154,7 @@ test.describe('pausing', () => {
       // Still there: it is history now, not an open loop.
       await expect(itemCardIn(timeline(page), habitId)).toHaveCount(1);
       // And it is NOT offered as something to recover.
-      await expect(pausedSection(page)).toHaveCount(0);
+      await expect(page.getByTestId('braindump-paused')).toHaveCount(0);
     } finally {
       await cleanupTestData(page, [], [habitId]);
     }
@@ -203,11 +214,10 @@ test.describe('pausing', () => {
       await page.getByTestId('sheet-pause-button').click();
       await expect(row).toHaveCount(0);
 
-      // Reachable on touch: the Braindump tab's Paused section, which is the
-      // only place a paused row exists on mobile.
+      // Reachable on touch: the Braindump tab's moon opens the same section.
       await switchMobileTab(page, 'braindump');
       await openPausedSection(page);
-      await expect(itemCardIn(pausedSection(page), habitId)).toHaveCount(1);
+      await expect(pausedRow(page, habitId)).toHaveCount(1);
 
       const stored = await fetchTestItem(page, habitId);
       expect(stored!.streak).toBe(3);

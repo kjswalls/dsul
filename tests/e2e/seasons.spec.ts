@@ -19,8 +19,8 @@ import {
  *
  *   1. Turning a season off actually removes its members from the grid, and
  *      turning it back on returns them — through the DB, not optimistic state.
- *   2. The hidden work is reachable, and the braindump names the SEASON as the
- *      cause rather than leaving twelve rows under one "Paused" heading.
+ *   2. The hidden work is reachable, and Organize's Paused section lists the
+ *      SEASON, once, rather than one row per thing it hid.
  *   3. Attaching a routine to a season that is off confirms first. That is the
  *      one membership write in the app with a non-obvious consequence, and a
  *      silent version of it looks exactly like a bug.
@@ -54,12 +54,9 @@ test.describe('seasons', () => {
     await cleanupTestCollections(scope.prefix);
   });
 
-  /** The grid, scoped — an unscoped item-card locator also matches the Paused section. */
+  /** The grid, scoped. */
   const timeline = (page: import('@playwright/test').Page) =>
     page.locator('[data-tour="timeline"]');
-
-  const pausedSection = (page: import('@playwright/test').Page) =>
-    page.getByTestId('braindump-paused-section');
 
   async function openManager(page: import('@playwright/test').Page, tab: 'routines' | 'seasons') {
     // Through the palette: the manager is deliberately NOT in the braindump
@@ -143,8 +140,10 @@ test.describe('seasons', () => {
       // Baseline first — otherwise "not on the grid" could pass for any reason.
       await expect(itemCardIn(timeline(page), habitId)).toHaveCount(1);
 
+      // Kept: scope.title mints a fresh suffix on every call.
+      const summer = scope.title('Summer');
       await openManager(page, 'seasons');
-      await createContainer(page, 'season', scope.title('Summer'));
+      await createContainer(page, 'season', summer);
       await addItemToOpenContainer(page, 'season', title);
 
       // A new season is born 'auto' with no range, which resolves to
@@ -164,9 +163,16 @@ test.describe('seasons', () => {
       await reloadApp(page);
       await expect(itemCardIn(timeline(page), habitId)).toHaveCount(0);
 
-      // …and it is reachable, named by the season that hid it.
-      await page.getByTestId('braindump-paused-toggle').click();
-      await expect(itemCardIn(pausedSection(page), habitId)).toHaveCount(1);
+      // …and it is reachable: the braindump's moon opens Organize's Paused
+      // section, where the season that hid it is one row carrying it.
+      await page.getByTestId('braindump-paused').click();
+      const seasonRow = page
+        .locator('[data-testid="paused-row"][data-paused-kind="season"]')
+        .filter({ hasText: summer });
+      await expect(seasonRow).toHaveCount(1);
+      await seasonRow.getByTestId('paused-select').click();
+      await expect(page.getByTestId('paused-member').filter({ hasText: title })).toHaveCount(1);
+      await closeManager(page);
 
       await openManager(page, 'seasons');
       await page.getByTestId('season-row').first().click();

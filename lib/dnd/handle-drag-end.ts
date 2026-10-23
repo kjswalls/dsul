@@ -241,7 +241,7 @@ export function resolveDrop(
 
   // sidebar — drop back into the Braindump. A task is unscheduled. A habit on
   // the canvas recurs and has no day to take away, so it is paused instead and
-  // shows in the sidebar's Paused section; one already in the braindump stays
+  // shows in Organize's Paused section (the braindump's moon); one already in the braindump stays
   // put. Whether it CAN pause (capability, not already paused) is the store's
   // check, and the shell asks it through sidebarDropPlan (lib/dnd/sidebar-drop.ts).
   if (targetId === 'sidebar') {
