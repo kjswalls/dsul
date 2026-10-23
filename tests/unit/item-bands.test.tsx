@@ -865,28 +865,34 @@ describe('the edit pane: type switch and row controls', () => {
       screen.getByTestId('item-dialog-row-controls').querySelectorAll('button[data-testid]')
     ).map((b) => b.getAttribute('data-testid'));
 
-  it('gives a habit the row capsule: Skip today, Pause and Delete', () => {
+  const more = () => {
+    fireEvent.pointerDown(screen.getByTestId('item-dialog-more'), { button: 0, ctrlKey: false, pointerType: 'mouse' });
+    return Array.from(document.querySelectorAll('[role="menuitem"][data-testid]')).map((b) => b.getAttribute('data-testid'));
+  };
+
+  it('gives a habit the bar: Skip today, Pause and Pause until, with Delete under ⋯', () => {
     seed({ items: [habitItem({ project: 'Onboarding' })] });
     panel(habitItem({ project: 'Onboarding' }));
-    expect(controls()).toEqual([
-      'item-dialog-skip',
-      'item-dialog-pause',
-      'item-dialog-pause-until',
-      'item-dialog-delete',
-    ]);
+    expect(controls()).toEqual(['item-dialog-skip', 'item-dialog-pause', 'item-dialog-pause-until']);
+    expect(more()).toEqual(['item-dialog-delete']);
   });
 
   it('gives a one-off task on the grid the put-it-off pair instead of Skip', () => {
     const t = task({ isScheduled: true, startDate: today, timeBucket: 'morning' });
     seed({ items: [t] });
     panel(t);
-    expect(controls()).toEqual([
-      'item-dialog-tomorrow',
-      'item-dialog-unschedule',
-      'item-dialog-pause',
-      'item-dialog-pause-until',
-      'item-dialog-delete',
-    ]);
+    // Three in the bar; the rest under ⋯, Delete last.
+    expect(controls()).toEqual(['item-dialog-tomorrow', 'item-dialog-unschedule', 'item-dialog-pause']);
+    expect(more()).toEqual(['item-dialog-pause-until', 'item-dialog-delete']);
+  });
+
+  it('shows who has the item once, under its title', () => {
+    const t = task({ assignee: 'openclaw', aiStatus: 'working' });
+    seed({ items: [t] });
+    panel(t);
+    const status = screen.getAllByTestId('agent-status');
+    expect(status).toHaveLength(1);
+    expect(status[0]).toHaveTextContent('OpenClaw');
   });
 
   it('switches a habit to a task through the chip and its confirm', () => {

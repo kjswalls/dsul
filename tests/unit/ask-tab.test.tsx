@@ -559,6 +559,8 @@ describe('items push over Ask while the tab is mounted', () => {
 
   it("a pushed item's delete confirm stays open through a planner write to that item", () => {
     renderShell([{ kind: 'item', itemId: 'item-1' }]);
+    // Delete is the last row of the panel's ⋯ menu.
+    fireEvent.pointerDown(screen.getByTestId('item-dialog-more'), { button: 0, ctrlKey: false, pointerType: 'mouse' });
     fireEvent.click(screen.getByTestId('item-dialog-delete'));
     const confirm = screen.getByTestId('item-dialog-delete-confirm');
     expect(confirm).toHaveAttribute('data-state', 'open');

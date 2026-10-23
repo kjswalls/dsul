@@ -264,38 +264,19 @@ function SubtasksSection({ item, offerSetup }: { item: Item; offerSetup: boolean
  * no conversation on screen, else in the item's conversation, whose box
  * answers the agent while its question is open.
  */
-function AgentSection({ item, inConversation }: { item: Item; inConversation: boolean }) {
+function AgentSection({
+  item,
+  inConversation,
+  statusElsewhere = false,
+}: {
+  item: Item;
+  inConversation: boolean;
+  /** The agent's status is drawn under the item's title instead (ItemDialog's `AgentStatus`). */
+  statusElsewhere?: boolean;
+}) {
   const { items, updateTask } = usePlannerStore();
   const { canDelegate } = useAICapabilities();
   const live = (items.find((i) => i.id === item.id) ?? item) as TaskItem;
-
-  /**
-   * A ticking clock, because "has this run gone quiet" is a question about
-   * elapsed time and `Date.now()` may not be read during render.
-   *
-   * Coarser than the row's minute tick: nothing here changes until the quiet
-   * threshold is crossed, so checking a few times an hour is plenty, and only
-   * one detail panel is ever open. Hooks run before the unassigned early
-   * return below — they cannot be conditional — which costs an idle interval
-   * on a panel with no agent on it. One timer, while a panel is open.
-   */
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    // A minute, matching the row's pill. A ten-minute tick meant the row could
-    // flip to "Gone quiet" while the panel two inches away still showed a plain
-    // "working" and no recovery — the same item, disagreeing with itself.
-    const id = setInterval(() => setNow(Date.now()), 60_000);
-    return () => clearInterval(id);
-  }, []);
-
-  const view = showsAgentChip(live) ? agentStatusView(live, now) : null;
-  // A connected app that never picked the item up can be woken again: it runs
-  // only when woken (lib/handoff-wake.ts), so a lost or refused wake leaves the
-  // item queued forever. Re-queueing stamps it fresh and wakes the app (the
-  // store's `requeues` path), and the wake route's cooldown and the agent's
-  // own claim keep a double tap from starting two runs. OpenClaw listens on its
-  // event feed instead, so there it would be a placebo and is not offered.
-  const wakeable = !!view?.stalled && live.aiStatus === 'queued' && isAppAssignee(live.assignee);
 
   // No type test here on purpose: the call site gates on the registry's
   // `agentAssignable`, which is the single answer to "may this be delegated"
@@ -329,8 +310,59 @@ function AgentSection({ item, inConversation }: { item: Item; inConversation: bo
     );
   }
 
+  // One status, one place: under the title, the exchange in the conversation.
+  if (statusElsewhere && inConversation) return null;
   return (
     <div className="flex flex-col gap-3" data-testid="agent-block" data-agent-state={live.aiStatus}>
+      {!statusElsewhere && <AgentStatus item={live} />}
+      {!inConversation && <AgentExchangeFor item={live} withAnswerBox />}
+    </div>
+  );
+}
+
+/**
+ * Who has the item and how it is going: the agent's name, the row's own
+ * status chip, and the recoveries (Try again, Wake, Unassign). Drawn under the
+ * title in the item panel and page (the item conversations design's "one
+ * status, one place"), or at the top of the Agent section where there is no
+ * title above it. Nothing for an item nobody holds.
+ */
+export function AgentStatus({ item }: { item: Item }) {
+  const { items, updateTask } = usePlannerStore();
+  const live = (items.find((i) => i.id === item.id) ?? item) as TaskItem;
+
+  /**
+   * A ticking clock, because "has this run gone quiet" is a question about
+   * elapsed time and `Date.now()` may not be read during render.
+   *
+   * Coarser than the row's minute tick: nothing here changes until the quiet
+   * threshold is crossed, so checking a few times an hour is plenty, and only
+   * one detail panel is ever open. Hooks run before the unassigned early
+   * return below — they cannot be conditional — which costs an idle interval
+   * on a panel with no agent on it. One timer, while a panel is open.
+   */
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    // A minute, matching the row's pill. A ten-minute tick meant the row could
+    // flip to "Gone quiet" while the panel two inches away still showed a plain
+    // "working" and no recovery — the same item, disagreeing with itself.
+    const id = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const view = showsAgentChip(live) ? agentStatusView(live, now) : null;
+  // A connected app that never picked the item up can be woken again: it runs
+  // only when woken (lib/handoff-wake.ts), so a lost or refused wake leaves the
+  // item queued forever. Re-queueing stamps it fresh and wakes the app (the
+  // store's `requeues` path), and the wake route's cooldown and the agent's
+  // own claim keep a double tap from starting two runs. OpenClaw listens on its
+  // event feed instead, so there it would be a placebo and is not offered.
+  const wakeable = !!view?.stalled && live.aiStatus === 'queued' && isAppAssignee(live.assignee);
+
+  if (!live.assignee) return null;
+
+  return (
+    <div data-testid="agent-status">
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-2">
           <AskMark className="size-3.5" />
@@ -390,7 +422,6 @@ function AgentSection({ item, inConversation }: { item: Item; inConversation: bo
         {/* Why the button is there, in words. */}
         {view?.stalled && <p className="text-muted-foreground text-xs leading-relaxed">{view.detail}</p>}
       </div>
-      {!inConversation && <AgentExchangeFor item={live} withAnswerBox />}
     </div>
   );
 }
@@ -585,8 +616,11 @@ export function ItemDetailSections({
   withActivity = true,
   offerSetup = false,
   conversationElsewhere = false,
+  agentStatusElsewhere = false,
 }: {
   item: Item;
+  /** The host draws the agent's status under the item's title (`AgentStatus`). */
+  agentStatusElsewhere?: boolean;
   /** The item's conversation is drawn by the host, outside these sections (the rail's pinned one). */
   conversationElsewhere?: boolean;
   /** True where AI setup can open from here (the item panel, on both shells),
@@ -613,7 +647,11 @@ export function ItemDetailSections({
       {/* What the AI got ready for it (a prep pack): where a row's ready chip leads. */}
       {item.type === 'task' && <PackInPanel itemId={item.id} title={item.title} />}
       {config.agentAssignable && (
-        <AgentSection item={item} inConversation={canChat && (conversation !== 'none' || conversationElsewhere)} />
+        <AgentSection
+          item={item}
+          inConversation={canChat && (conversation !== 'none' || conversationElsewhere)}
+          statusElsewhere={agentStatusElsewhere}
+        />
       )}
       <ItemFilesSection itemId={item.id} />
       {heatmapOn && config.counters.streak && <HeatmapSection item={item} />}

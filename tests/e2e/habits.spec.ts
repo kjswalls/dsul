@@ -288,7 +288,8 @@ test.describe('Habits', { tag: '@exclusive-habits' }, () => {
       await expect(dialog).toBeVisible();
       await expect(dialog).toHaveAttribute('data-mode', 'edit');
 
-      await dialog.getByTestId('item-dialog-more').click();
+      // Reset lives with the streak: its chip opens the week and Reset.
+      await dialog.getByTestId('item-streak-chip').click();
       await page.getByTestId('item-dialog-reset-streak').click();
       await page.getByTestId('reset-streak-confirm-accept').click();
 
