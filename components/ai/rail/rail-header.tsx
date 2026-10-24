@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useRef, type ReactNode, type SyntheticEvent } from 'react';
-import { ChevronLeft, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { AskMark } from '@/components/ai/ask-mark';
 import { RelayField } from '@/components/primitives/relay-field';
 import { usePlannerStore } from '@/lib/planner-store';
@@ -81,8 +81,11 @@ export function conversationHeaderAction(
 }
 
 /**
- * The rail's header row, the same for every view, the item included:
- * "‹ <the view beneath>", the view's heading, then ✕.
+ * The rail's header row, the same for every view, the item included: a
+ * breadcrumb, "<the view beneath> › <the view's heading>", then its icons and
+ * ✕ (Claude Code's thread rail was the model, Kirby's pick on 2026-10-24).
+ * The crumb names one step back, never a trail. With no heading the back
+ * control reads "‹ <the view beneath>" instead, since a › would lead nowhere.
  *
  *  - It sits on the date's row (`canvasHeaderPad`, shared with the canvas
  *    header, then `railHeaderRowOffset` for the header's own inset: the
@@ -185,14 +188,16 @@ export function RailHeader({
             data-rail-back=""
             aria-label={`Back to ${back.label}`}
             className={cn(
-              '-ml-1.5 flex items-center gap-0.5 rounded-md py-1 pr-2 pl-0.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
+              'flex items-center gap-0.5 rounded-md py-1 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
+              titled ? '-ml-1.5 px-1.5' : '-ml-1.5 pr-2 pl-0.5',
               titled ? 'max-w-[45%] shrink-0' : 'min-w-0'
             )}
           >
-            <ChevronLeft className="size-4 shrink-0" aria-hidden />
+            {!titled && <ChevronLeft className="size-4 shrink-0" aria-hidden />}
             <span className="truncate">{back.label}</span>
           </button>
         )}
+        {back && titled && <ChevronRight className="-mx-1.5 size-3.5 shrink-0 text-muted-foreground/60" aria-hidden />}
         {titled && (
           <h2
             tabIndex={-1}

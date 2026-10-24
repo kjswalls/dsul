@@ -16,6 +16,8 @@ import {
   CalendarClock,
   CalendarIcon,
   Check,
+  ChevronDown,
+  ChevronUp,
   Clock,
   Flag,
   Moon,
@@ -3130,11 +3132,11 @@ function ItemDialogInner({
       </RowControlGroup>
     ) : null;
 
-  const headerActions = (
-    <div className="ml-auto flex items-center gap-0.5">
-      {rowControls}
-      {withDetailSections && mode === 'edit' && editItem && <AttachFileButton itemId={editItem.id} />}
-      {mode === 'edit' && editItem && pathname !== `/item/${editItem.id}` && (
+  // In the rail (AI on, docked), "Open as page" and ⋯ ride the rail's header
+  // row with the tick and ✕, the way Claude Code's thread rail keeps its icons
+  // (Kirby's pick, 2026-10-24); the details' own row keeps the rest.
+  const actionsInRail = !!railChrome && presentation === 'panel' && mode === 'edit' && !!editItem;
+  const openPageButton = mode === 'edit' && editItem && pathname !== `/item/${editItem.id}` && (
         <Button
           variant="ghost"
           size="icon"
@@ -3148,11 +3150,10 @@ function ItemDialogInner({
           <Maximize2 className="size-3.5" />
           <span className="sr-only">Open as page</span>
         </Button>
-      )}
-
-      {/* Everything the bar has no room for, then Delete, last and in red.
-          Reset streak is not here: it lives with the streak (StreakChip). */}
-      {mode === 'edit' && editItem && (
+  );
+  // Everything the bar has no room for, then Delete, last and in red. Reset
+  // streak is not here: it lives with the streak (StreakChip).
+  const moreMenu = mode === 'edit' && editItem && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -3183,7 +3184,14 @@ function ItemDialogInner({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-      )}
+  );
+
+  const headerActions = (
+    <div className="ml-auto flex items-center gap-0.5">
+      {rowControls}
+      {withDetailSections && mode === 'edit' && editItem && <AttachFileButton itemId={editItem.id} />}
+      {!actionsInRail && openPageButton}
+      {!actionsInRail && moreMenu}
 
       {/* The modal gets Radix's own close button; the panel has to bring one —
           and it must flush before it goes. An autosaving panel doesn't: its
@@ -3487,7 +3495,7 @@ function ItemDialogInner({
       occurrence: occurrenceOn(item, todayStr, todayStr, activationTz),
     };
   };
-  const railCtx = foldable && editItem ? railVerbContext(editItem) : null;
+  const railCtx = actionsInRail && editItem ? railVerbContext(editItem) : null;
   const railTick = railCtx && editItem && ITEM_VERBS.tick.eligible(editItem, railCtx) ? railCtx : null;
   const railTarget = editItem?.type === 'habit' ? (editItem.timesPerDay ?? 1) : 1;
   const railCount =
@@ -3576,6 +3584,67 @@ function ItemDialogInner({
                   railChrome.onBack?.();
                 },
               }}
+              title={activeDraft ? activeDraft.title || 'Untitled' : undefined}
+              heading={
+                // The item's name is the crumb, and where the chat has the
+                // panel it folds and unfolds the details, as the facts line
+                // under it unfolds them.
+                foldable && activeDraft ? (
+                  <button
+                    type="button"
+                    data-testid="item-rail-title"
+                    aria-expanded={!folded}
+                    onClick={(e) => {
+                      if (!folded) {
+                        flushNow();
+                        fold();
+                        return;
+                      }
+                      setFoldedFor(null);
+                      const body = e.currentTarget
+                        .closest('[data-testid="item-dialog"]')
+                        ?.querySelector<HTMLElement>('[data-rail-body]');
+                      requestAnimationFrame(() => {
+                        if (body) body.scrollTop = 0;
+                      });
+                    }}
+                    className="-mx-1 flex min-w-0 items-center gap-1 rounded-md px-1 py-1 text-left transition-colors hover:bg-accent"
+                  >
+                    <span className="truncate">{activeDraft.title || 'Untitled'}</span>
+                    {folded ? (
+                      <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                    ) : (
+                      <ChevronUp className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                    )}
+                  </button>
+                ) : undefined
+              }
+              actions={
+                actionsInRail && editItem ? (
+                  <>
+                    {/* Its own element, never inside the fold: the lime is never dimmed or clipped. */}
+                    {railTick && (
+                      <span className="flex size-7 items-center justify-center">
+                        <RailDoneCheck
+                          done={isDoneOn(editItem, railTick.dateStr)}
+                          partial={railTarget > 1 ? Math.min(railCount, railTarget) / railTarget : 0}
+                          label={ITEM_VERBS.tick.label(editItem, railTick)}
+                          onToggle={() => {
+                            // Re-read and re-gate at click time (the verb's contract):
+                            // the render may be a frame behind the store, or behind midnight.
+                            const live = usePlannerStore.getState().items.find((i) => i.id === editItem.id);
+                            if (!live) return;
+                            const ctx = railVerbContext(live);
+                            if (ITEM_VERBS.tick.eligible(live, ctx)) ITEM_VERBS.tick.run(live, ctx);
+                          }}
+                        />
+                      </span>
+                    )}
+                    {moreMenu}
+                    {openPageButton}
+                  </>
+                ) : undefined
+              }
               onClose={() => {
                 flushNow();
                 onOpenChange(false);
@@ -3584,20 +3653,19 @@ function ItemDialogInner({
               closeTestId="item-dialog-close"
             />
           )}
-          {/* The details, folded, while the chat has the panel. Outside the
-              body like the header, so it stays put while the chat scrolls. */}
+          {/* The details, folded to their facts line, while the chat has the
+              panel. Outside the body like the header, so it stays put while
+              the chat scrolls. */}
           {foldable && editItem && activeDraft && (
-            <div className="relative">
             <FoldRegion open={folded} testId="item-rail-region">
-              <div className="px-5 pt-1 pb-2">
+              <div className="border-b border-border px-5 pb-2">
                 <ItemRail
                   title={activeDraft.title}
-                  check={!!railTick}
                   container={activeDraft.container === 'none' ? undefined : activeDraft.container}
                   chips={railChips}
                   onExpand={(e) => {
                     setFoldedFor(null);
-                    // The rail goes inert under the pointer, so focus moves to
+                    // The line goes inert under the pointer, so focus moves to
                     // the title, and the body goes back to its top: scrolled
                     // to the chat, the details would open above the fold.
                     const body = e.currentTarget
@@ -3611,26 +3679,6 @@ function ItemDialogInner({
                 />
               </div>
             </FoldRegion>
-            {/* Over the rail's title row, outside the fold's clip: the lime
-                tick keeps its own element. Only while folded: open, the
-                strip it sits on is clipped away. */}
-            {folded && railTick && (
-              <RailDoneCheck
-                className="absolute top-[15px] left-[33px]"
-                done={isDoneOn(editItem, railTick.dateStr)}
-                partial={railTarget > 1 ? Math.min(railCount, railTarget) / railTarget : 0}
-                label={ITEM_VERBS.tick.label(editItem, railTick)}
-                onToggle={() => {
-                  // Re-read and re-gate at click time (the verb's contract):
-                  // the render may be a frame behind the store, or behind midnight.
-                  const live = usePlannerStore.getState().items.find((i) => i.id === editItem.id);
-                  if (!live) return;
-                  const ctx = railVerbContext(live);
-                  if (ITEM_VERBS.tick.eligible(live, ctx)) ITEM_VERBS.tick.run(live, ctx);
-                }}
-              />
-            )}
-            </div>
           )}
           <PanelBody panel={presentation === 'panel'} rail={!!railChrome}>
           {/* The visible heading is the title field itself; Radix still needs a

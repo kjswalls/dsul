@@ -169,6 +169,12 @@ describe('the timeline', () => {
   });
 });
 
+/** The conversation's filter is a menu: open it, then pick. */
+function pickFilter(f: string) {
+  fireEvent.pointerDown(screen.getByTestId('item-timeline-filter'), { button: 0, ctrlKey: false, pointerType: 'mouse' });
+  fireEvent.click(screen.getByTestId(`item-timeline-filter-${f}`));
+}
+
 describe('the timeline inside the conversation', () => {
   it('is one stream: each change sits between the messages by time, and no second timeline', async () => {
     unseed = seedAI(CONNECTED_MODEL);
@@ -178,13 +184,14 @@ describe('the timeline inside the conversation', () => {
     render(<ItemConversation item={ITEM} mode="pinned" />);
     await act(async () => {});
     const section = screen.getByTestId('item-conversation');
-    expect(section).toHaveTextContent(/^Timeline/);
+    // The filter menu heads it, naming what shows; no "Timeline" heading.
+    expect(screen.getByTestId('item-timeline-filter')).toHaveTextContent('All activity');
     const text = section.textContent ?? '';
     const order = ['You added it', 'hi', 'hello', 'AI renamed it'].map((t) => text.indexOf(t));
     expect(order.every((at) => at >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
     expect(screen.queryByTestId('item-timeline-talk')).toBeNull();
-    fireEvent.click(screen.getByTestId('item-timeline-filter-changes'));
+    pickFilter('changes');
     expect(section).not.toHaveTextContent('hello');
     expect(screen.getAllByTestId('item-timeline-change')).toHaveLength(2);
   });
@@ -213,9 +220,9 @@ describe('files on the timeline', () => {
     // Its own row, never counted as a change.
     expect(screen.queryAllByTestId('item-timeline-change')).toHaveLength(0);
     // Talk and Changes show it too.
-    fireEvent.click(screen.getByTestId('item-timeline-filter-changes'));
+    pickFilter('changes');
     expect(screen.getByTestId('item-timeline-file')).toBeInTheDocument();
-    fireEvent.click(screen.getByTestId('item-timeline-filter-talk'));
+    pickFilter('talk');
     expect(screen.getByTestId('item-timeline-file')).toBeInTheDocument();
   });
 
@@ -225,7 +232,7 @@ describe('files on the timeline', () => {
     filesDb.rows = [fileRow('a', today(9))];
     await pinned();
     expect(screen.getByTestId('item-conversation')).toBeInTheDocument();
-    fireEvent.click(screen.getByTestId('item-timeline-filter-talk'));
+    pickFilter('talk');
     expect(screen.queryByTestId('item-timeline-empty')).toBeNull();
     expect(screen.getByTestId('item-timeline-file')).toBeInTheDocument();
   });
@@ -311,7 +318,7 @@ describe('notes on the timeline', () => {
     withThread();
     await conversation();
     for (const f of ['all', 'talk', 'changes']) {
-      fireEvent.click(screen.getByTestId(`item-timeline-filter-${f}`));
+      pickFilter(f);
       expect(screen.getByTestId('item-note-pinned')).toHaveTextContent('Note · pinned');
       expect(screen.getByTestId('item-note-pinned')).toHaveTextContent('Note p');
       // Drawn on top, never also in the stream.
@@ -333,7 +340,7 @@ describe('notes on the timeline', () => {
     fetchItemEvents.mockResolvedValue([]);
     notesDb.rows = [noteRow('a', today(9))];
     await conversation();
-    fireEvent.click(screen.getByTestId('item-timeline-filter-talk'));
+    pickFilter('talk');
     expect(screen.queryByTestId('item-timeline-empty')).toBeNull();
     expect(screen.getByTestId('item-timeline-note')).toBeInTheDocument();
   });

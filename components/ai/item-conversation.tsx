@@ -3,7 +3,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ArrowUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { BandLabel } from '@/components/planner/item-bands';
 import { ReplyStatus, TranscriptMessages } from '@/components/ai/chat-transcript';
 import { ItemConversationMenu } from '@/components/ai/ask/conversation-title-menu';
 import {
@@ -43,7 +42,7 @@ import { BoxModeSwitch, noteModeLine, switchBoxMode, useItemBoxMode } from '@/co
 import {
   TimelineChangeLine,
   TimelineDayLine,
-  TimelineFilterTabs,
+  TimelineFilterMenu,
   TimelineFoldLine,
   useItemEvents,
 } from '@/components/planner/item-timeline';
@@ -287,11 +286,8 @@ export function ItemConversation({
   const pinnedCard = pinned && <PinnedNote key={pinned.id} itemId={item.id} note={pinned} />;
   const heading = (menu: ReactNode) => (
     <div className="flex min-h-6 items-center justify-between gap-2">
-      <BandLabel>Timeline</BandLabel>
-      <div className="flex items-center gap-1">
-        {(anyChange || messages.length > 0) && <TimelineFilterTabs value={filter} onChange={setFilter} />}
-        {menu}
-      </div>
+      {(anyChange || messages.length > 0) && <TimelineFilterMenu value={filter} onChange={setFilter} />}
+      <div className="ml-auto flex items-center gap-1">{menu}</div>
     </div>
   );
   // Changes alone: one slot and no transcript. Otherwise the transcript, with
