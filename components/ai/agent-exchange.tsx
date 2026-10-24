@@ -215,10 +215,18 @@ function Entry({
               Needs you
             </span>
           )}
-          {entry.failed && <span className="text-muted-foreground">Couldn&apos;t finish</span>}
+          {entry.failed && !entry.silent && <span className="text-muted-foreground">Couldn&apos;t finish</span>}
           <span className="text-muted-foreground text-2xs tabular-nums">{clock(entry.at)}</span>
         </div>
-        <p className="text-sm leading-relaxed break-words whitespace-pre-wrap">{entry.text}</p>
+        <p
+          data-agent-exchange-silent={entry.silent || undefined}
+          className={cn(
+            'text-sm leading-relaxed break-words whitespace-pre-wrap',
+            entry.silent && 'text-muted-foreground italic'
+          )}
+        >
+          {entry.text}
+        </p>
         {options.length > 0 && (
           <div className="flex flex-col items-start gap-1.5" data-testid="agent-options">
             {options.map((option) => (

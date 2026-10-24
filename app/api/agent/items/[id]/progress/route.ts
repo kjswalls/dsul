@@ -29,6 +29,14 @@ import { tagClientActor } from '@/lib/event-actor'
  * `lastSeenAt` is optional, because a worker taking a never-touched item has no
  * stamp to send. Absent, the write proceeds — an unconditional first report is
  * exactly what it should be.
+ *
+ * `done`, `failed` and `blocked` need words. The result is the only thing the
+ * user reads, so a bare `done` finishes the item in silence (Kirby, 2026-10-24:
+ * Claude asked which gym, was answered, and two minutes later marked the item
+ * done with no result, leaving its old question as the last thing it said). And
+ * a `done` or `failed` whose text is the one already on the item says nothing
+ * new either: refused, unless the item is already at that status (a retried
+ * report). The 400 says what to write, so the worker can send again.
  */
 export async function POST(
   req: NextRequest,
@@ -71,7 +79,7 @@ export async function POST(
     // and a caller here has an id with no reason to know the type.
     const { data: owner } = await serviceClient
       .from('items')
-      .select('user_id, type, assignee, ai_status_at')
+      .select('user_id, type, assignee, ai_status, ai_result, ai_status_at')
       .eq('id', id)
       .is('deleted_at', null)
       .maybeSingle()
@@ -112,6 +120,9 @@ export async function POST(
       }
     }
 
+    const wordsError = missingWords(aiStatus, aiResult, owner.ai_status as string | null, owner.ai_result as string | null)
+    if (wordsError) return NextResponse.json({ error: wordsError }, { status: 400 })
+
     // Through updateItem so the `tasks.updated` webhook (a permanent contract)
     // and the activity-feed entry still fire, and so `ai_status_at` is stamped
     // as the declared companion of the status.
@@ -132,4 +143,30 @@ export async function POST(
     const message = err instanceof Error ? err.message : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
+}
+
+const NEEDS_WORDS = new Set(['done', 'failed', 'blocked'])
+
+/** Why a report that ends or stops the work says nothing the user can read, or null. */
+function missingWords(
+  status: string,
+  result: string | undefined,
+  currentStatus: string | null,
+  currentResult: string | null
+): string | null {
+  if (!NEEDS_WORDS.has(status)) return null
+  const text = result?.trim() ?? ''
+  if (!text) {
+    return status === 'blocked'
+      ? 'A blocked report needs the question in result: it is the only thing the user sees.'
+      : `A ${status} report needs a result: what you did, what you found, or your reply to the ` +
+          "user's last answer. It is the only thing the user reads. Send it again with result."
+  }
+  if (status !== 'blocked' && status !== currentStatus && text === (currentResult ?? '').trim()) {
+    return (
+      'That result is the text already on the item (your last report or question), so the user ' +
+      "would see nothing new. Write what you found, or your reply to the user's answer, and send it again."
+    )
+  }
+  return null
 }

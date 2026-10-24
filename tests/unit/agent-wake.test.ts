@@ -76,7 +76,9 @@ describe('stored wakes', () => {
 
 describe('fireText', () => {
   it('names the items by id and says where to look, never a title', () => {
-    expect(fireText(['a'])).toBe('dsul handed an item to you. Item ids: a. Read your queue with dsul_my_work.');
+    expect(fireText(['a'])).toMatch(/^dsul handed an item to you\. Item ids: a\. Read your queue with dsul_my_work\. /);
+    // A wake for an answer reads the same, so it says where the answer is.
+    expect(fireText(['a'])).toMatch(/dsul_item_activity/);
     expect(fireText(['a', 'b'])).toMatch(/^dsul handed 2 items to you\. Item ids: a, b\./);
   });
 

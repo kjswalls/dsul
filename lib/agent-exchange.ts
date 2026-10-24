@@ -21,7 +21,16 @@ export type ExchangeEntry =
   /** The hand-off that started this exchange: a divider line. */
   | { kind: 'handoff'; key: string; at: number; to: string }
   /** The agent speaking: a question, or what it came back with. */
-  | { kind: 'agent'; key: string; at: number; text: string; question: boolean; failed?: boolean }
+  | {
+      kind: 'agent'
+      key: string
+      at: number
+      text: string
+      question: boolean
+      failed?: boolean
+      /** It finished after the user's answer without a word: `text` says so, drawn muted. */
+      silent?: boolean
+    }
   /** The user's answer. */
   | { kind: 'you'; key: string; at: number; text: string }
 
@@ -127,6 +136,23 @@ export function buildAgentExchange(
     if (!known) entries.push({ kind: 'you', key: `sent-${s.at}`, at: s.at, text: s.text })
   }
   entries.sort((a, b) => a.at - b.at)
+
+  // Finished after the user's answer with nothing new to say (Kirby, 2026-10-24:
+  // Claude marked a gym question done two minutes after being answered, and the
+  // answer read as the last word). Say so rather than leave the answer hanging.
+  const tail = entries[entries.length - 1]
+  if ((item.aiStatus === 'done' || item.aiStatus === 'failed') && tail?.kind === 'you') {
+    const failed = item.aiStatus === 'failed'
+    entries.push({
+      kind: 'agent',
+      key: `silent-${item.aiStatusAt ?? ''}`,
+      at: Math.max(time(item.aiStatusAt), tail.at),
+      text: failed ? 'Stopped without replying to your answer.' : 'Marked it done without replying to your answer.',
+      question: false,
+      failed,
+      silent: true,
+    })
+  }
 
   const said = entries.some((e) => e.kind !== 'handoff')
   if (!said) return null

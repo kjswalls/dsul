@@ -62,6 +62,39 @@ describe('buildAgentExchange', () => {
     expect(x.working).toBe(false);
   });
 
+  it('says so when the agent finishes after an answer without a word', () => {
+    // Kirby, 2026-10-24: Claude asked which gym, was answered, and marked the
+    // item done with no result. The old question stayed on the item as its result.
+    const q = 'Which gym do you mean?'
+    const x = buildAgentExchange(
+      newestFirst(
+        handoff('2026-10-24T22:15:58Z'),
+        asked(q, '2026-10-24T22:16:34Z'),
+        result('blocked', q, '2026-10-24T22:16:35Z'),
+        answered('24 Hour Fitness, near Ontario CA', '2026-10-24T22:32:12Z'),
+        ev('update', { aiStatus: 'done', by: 'agent' }, '2026-10-24T22:34:25Z')
+      ),
+      { assignee: 'claude', aiStatus: 'done', aiResult: q, aiStatusAt: '2026-10-24T22:32:40Z' }
+    )!;
+    const last = x.entries[x.entries.length - 1];
+    expect(x.entries.map((e) => e.kind)).toEqual(['handoff', 'agent', 'you', 'agent']);
+    expect(last).toMatchObject({ kind: 'agent', silent: true, text: expect.stringMatching(/without replying/) });
+    expect(last.at).toBeGreaterThanOrEqual(x.entries[2].at);
+  });
+
+  it('adds no such line when the agent did reply', () => {
+    const x = buildAgentExchange(
+      newestFirst(
+        handoff('2026-10-14T10:00:00Z'),
+        asked('Which dentist?', '2026-10-14T10:01:00Z'),
+        answered('Dr. Lee', '2026-10-14T11:00:00Z'),
+        result('done', 'Booked for Tuesday', '2026-10-14T11:05:00Z')
+      ),
+      { assignee: 'claude', aiStatus: 'done', aiResult: 'Booked for Tuesday' }
+    )!;
+    expect(x.entries.some((e) => e.kind === 'agent' && e.silent)).toBe(false);
+  });
+
   it('starts at the latest hand-off', () => {
     const x = buildAgentExchange(
       newestFirst(

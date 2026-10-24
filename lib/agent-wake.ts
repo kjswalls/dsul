@@ -79,7 +79,11 @@ export function fireText(itemIds: readonly string[]): string {
   const ids = itemIds.slice(0, MAX_FIRE_ITEMS);
   const n = itemIds.length;
   const what = n === 1 ? 'an item' : `${n} items`;
-  return `dsul handed ${what} to you. Item ids: ${ids.join(', ')}. Read your queue with dsul_my_work.`;
+  return (
+    `dsul handed ${what} to you. Item ids: ${ids.join(', ')}. Read your queue with dsul_my_work. ` +
+    'An item that already carries a result from you is one the user has answered: read ' +
+    'dsul_item_activity and reply to them in your next report.'
+  );
 }
 
 /** Start the routine. Never throws; true when the endpoint accepted it. */

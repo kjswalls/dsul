@@ -22,6 +22,8 @@ type Owner = {
   user_id: string;
   type: string;
   assignee: string | null;
+  ai_status?: string | null;
+  ai_result?: string | null;
   ai_status_at: string | null;
 };
 const STAMP = '2026-08-26T10:00:00.000Z';
@@ -157,7 +159,7 @@ describe('what may be reported', () => {
 
   it('accepts every status in it', async () => {
     for (const aiStatus of ['queued', 'working', 'blocked', 'done', 'failed']) {
-      expect((await report({ aiStatus })).status).toBe(200);
+      expect((await report({ aiStatus, aiResult: `now ${aiStatus}` })).status).toBe(200);
     }
   });
 
@@ -172,7 +174,42 @@ describe('what may be reported', () => {
   });
 
   it('goes through updateItem, so the webhook and the feed entry still fire', async () => {
-    await report({ aiStatus: 'done' });
+    await report({ aiStatus: 'done', aiResult: 'booked it' });
     expect(updateItem).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('a report the user can read', () => {
+  // Kirby, 2026-10-24: Claude asked which gym, was answered, and marked the
+  // item done with no result two minutes later. Its old question stayed the
+  // last thing it said, and the user saw no reply at all.
+  it.each(['done', 'failed', 'blocked'])('refuses a bare %s', async (aiStatus) => {
+    const res = await report({ aiStatus, aiResult: '   ' });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/result/);
+    expect(updateItem).not.toHaveBeenCalled();
+  });
+
+  it('still takes a bare working or queued, which say nothing to the user', async () => {
+    expect((await report({ aiStatus: 'working' })).status).toBe(200);
+    expect((await report({ aiStatus: 'queued' })).status).toBe(200);
+  });
+
+  it('refuses a done that repeats the question the user just answered', async () => {
+    owner = { ...owner!, ai_status: 'queued', ai_result: 'Which gym do you mean?' };
+    const res = await report({ aiStatus: 'done', aiResult: 'Which gym do you mean? ' });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/nothing new/);
+    expect(updateItem).not.toHaveBeenCalled();
+  });
+
+  it('takes a retried done with the same words', async () => {
+    owner = { ...owner!, ai_status: 'done', ai_result: 'booked it' };
+    expect((await report({ aiStatus: 'done', aiResult: 'booked it' })).status).toBe(200);
+  });
+
+  it('takes the same question asked again', async () => {
+    owner = { ...owner!, ai_status: 'queued', ai_result: 'Which gym?' };
+    expect((await report({ aiStatus: 'blocked', aiResult: 'Which gym?' })).status).toBe(200);
   });
 });
