@@ -12,6 +12,7 @@ import { PackInPanel } from '@/components/sidebar/prep-pack';
 import { freeStretch, spanLabel, sprintFor } from '@/lib/do-stuff-walk';
 import { SprintButton, SprintRing } from '@/components/sidebar/sprint-ring';
 import { PocketButton } from '@/components/sidebar/do-stuff-pocket';
+import { NowCapsule } from '@/components/sidebar/now-capsule';
 import { dayLabel } from '@/lib/do-stuff-plan';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useDayItems } from '@/hooks/use-day-items';
@@ -258,39 +259,22 @@ function DeskItem({ item }: { item: Item }) {
       {/* Ask only: Jot above already writes a note (the description), so no
           Ask / Note switch here, or the desk would have two "note" boxes. */}
       <ItemConversation item={item} mode="inline" className="pt-2" noteSwitch={false} />
-      {/* The bar (the room's round two): done, skip and today wait at the
-          foot of the room, with what comes up next, so the top of it is the
-          item and nothing else. Sticky, so a long conversation never pushes
-          them out of reach. */}
+      {/* The bar (the room's round two): done and skip wait at the foot of
+          the room in the list card's capsule (now-capsule.tsx), with what
+          comes up next, so the top of it is the item and nothing else.
+          Sticky, so a long conversation never pushes them out of reach.
+          "today" left it with the card's (Kirby, 2026-10-24): T still does it. */}
       <div className="sticky bottom-0 mt-auto bg-canvas pb-6 pt-2">
         <div
-          className="flex flex-wrap items-center gap-1 rounded-[14px] bg-muted/60 p-2"
+          className="flex items-center gap-1.5 border-t border-border pt-3"
           data-testid="do-stuff-desk-bar"
         >
-          <Button size="sm" onClick={() => doneNext(id)} data-testid="do-stuff-desk-done" aria-keyshortcuts="Enter">
-            done
-            <ButtonKey />
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => skipNext(id)}
-            data-testid="do-stuff-desk-skip"
-            aria-keyshortcuts="S"
-            className="text-muted-foreground"
-          >
-            skip <Cap>S</Cap>
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => putOnToday(id)}
-            data-testid="do-stuff-desk-today"
-            aria-keyshortcuts="T"
-            className="text-muted-foreground"
-          >
-            today <Cap>T</Cap>
-          </Button>
+          <NowCapsule
+            title={item.title}
+            onDone={() => doneNext(id)}
+            onSkip={() => skipNext(id)}
+            testIds={{ done: 'do-stuff-desk-done', skip: 'do-stuff-desk-skip' }}
+          />
           <PocketButton />
           {then && (
             <span className="ml-auto min-w-0 truncate pr-2 text-xs text-muted-foreground" data-testid="do-stuff-desk-then">

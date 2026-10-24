@@ -1617,10 +1617,10 @@ export const STATIC_COMMANDS: Command[] = [
  * the mouse" is meaningless once the omnibar has focus — but they own their
  * binding here so the shortcuts table lists them and rebinding works.
  *
- * Both are the plainest case for `context` (see CommandShortcutSpec): they are
- * the only two bindings that need something under the pointer, and a flat table
+ * They are the plainest case for `context` (see CommandShortcutSpec): they are
+ * the only bindings that need something under the pointer, and a flat table
  * would otherwise advertise ⌫ as a way to delete whatever you last thought
- * about.
+ * about. Rename alone also answers without one, by renaming the open item.
  */
 const HOVER_CONTEXT = 'Only while the pointer is over an item.';
 
@@ -1631,6 +1631,13 @@ export const SHELL_SHORTCUTS = [
     description: 'Open the edit dialog for the task currently under the mouse',
     keys: ['e'],
     context: HOVER_CONTEXT,
+  },
+  {
+    id: 'rename_hovered',
+    label: 'Rename hovered item',
+    description: 'Rename the item under the mouse in place, or the open item in its panel',
+    keys: ['f2'],
+    context: 'Over an item, or while an item panel is open.',
   },
   {
     id: 'delete_hovered',

@@ -67,6 +67,7 @@ import { adoptLegacyViewPrefs, useViewStore } from '@/lib/view-store';
 import { useDragStore } from '@/lib/drag-store';
 import { useSelectionStore } from '@/lib/selection-store';
 import { hoveredItem } from '@/lib/hovered-item';
+import { renameInPanel, startRename } from '@/lib/item-rename';
 import { listGroupMovers, parseProjectBlockId, placementOf, resolveDrop } from '@/lib/dnd/handle-drag-end';
 import { reorderTargetAt } from '@/lib/dnd/reorder-sections';
 import { sidebarDropPlan } from '@/lib/dnd/sidebar-drop';
@@ -77,6 +78,7 @@ import { useUndoToast } from '@/hooks/use-undo-toast';
 import { useTimezoneSync } from '@/hooks/use-timezone-sync';
 import { useDeviceRegistration } from '@/hooks/use-device-registration';
 import { useLocalCueTick } from '@/hooks/use-local-cue-tick';
+import { usePlannerCatchUp } from '@/hooks/use-planner-catch-up';
 import { useOverdueSweep } from '@/hooks/use-overdue-sweep';
 import { useAwaySettle } from '@/hooks/use-away-settle';
 import { useCompletionFiling } from '@/hooks/use-completion-filing';
@@ -333,6 +335,8 @@ export function AppShell() {
   // While someone is using this page, it claims due cues and rings them here
   // instead of everywhere (the page as a device, reminders PR-1b).
   useLocalCueTick();
+  // Another device's changes land here when the planner is looked at again.
+  usePlannerCatchUp();
   // Opt-in past-due decay (off by default). Mounted here, above the
   // desktop/mobile split, so the once-per-day sweep runs on every platform and
   // survives view changes — and declared AFTER useUndoToast so the batched
@@ -677,6 +681,19 @@ export function AppShell() {
     }
   }, []);
 
+  // F2: the row under the mouse renames in place; with none, the open item's
+  // panel selects its title (lib/item-rename.ts).
+  const handleShortcutRename = useCallback(() => {
+    if (hoveredItem.id) {
+      startRename(hoveredItem.id, hoveredItem.dateStr);
+      return;
+    }
+    const dialog = useUIStore.getState().activeDialog;
+    if (dialog?.type !== 'edit-item') return;
+    const live = usePlannerStore.getState().items.find((i) => i.id === dialog.item.id);
+    if (live) renameInPanel(live);
+  }, []);
+
   const handleShortcutDelete = useCallback(() => {
     // A genuine multi-selection (>=2) wins over the hovered item: Backspace
     // deletes the whole selection (one confirm, one undo). A single selected row
@@ -719,10 +736,11 @@ export function AppShell() {
   }, []);
 
   // Every other binding is owned by its command in lib/commands/registry.ts.
-  // These two stay here because they act on the item under the mouse, which
+  // These stay here because they act on the item under the mouse, which
   // only the shell can resolve.
   useCommandShortcuts(commandContext, {
     edit_hovered: handleShortcutEdit,
+    rename_hovered: handleShortcutRename,
     delete_hovered: handleShortcutDelete,
   });
 

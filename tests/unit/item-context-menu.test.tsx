@@ -81,6 +81,7 @@ import {
 } from '@/lib/conversations-store';
 import { useRailStore } from '@/lib/rail-store';
 import { useProposalStore } from '@/lib/proposal-store';
+import { startRename, useRenameStore } from '@/lib/item-rename';
 import { CONNECTED_MODEL, NOTHING_CONNECTED, OPENCLAW_CHAT, seedAI, type SeedAI } from './helpers/ai-fixtures';
 import { fakeApi, fakeTransport, flush, summary, type FakeApi, type FakeTransport } from './helpers/conversations-fakes';
 import * as db from '@/lib/db';
@@ -245,6 +246,85 @@ describe('the item right-click menu', () => {
       .find((el) => el.getAttribute('data-value') === 'high')!;
     fireEvent.click(high);
     expect(itemById('once').priority).toBe('high');
+  });
+});
+
+describe('renaming an item in place (lib/item-rename.ts)', () => {
+  beforeEach(() => useRenameStore.setState({ target: null, panelSelectId: null }));
+
+  const titleOf = (id: string) => cardOf(id).querySelector('[data-row-title]')!;
+  const field = () => screen.getByTestId('item-rename-input') as HTMLInputElement;
+
+  it('turns the title into a field on double-click, and Enter saves the trimmed title', () => {
+    render(<LiveRow id="once" />);
+    fireEvent.doubleClick(titleOf('once'));
+    expect(field().value).toBe('File taxes');
+    expect(document.activeElement).toBe(field());
+    fireEvent.change(field(), { target: { value: '  File the taxes  ' } });
+    fireEvent.keyDown(field(), { key: 'Enter' });
+    expect(itemById('once').title).toBe('File the taxes');
+    expect(screen.queryByTestId('item-rename-input')).toBeNull();
+  });
+
+  it('puts the old title back on Escape, and the blur that follows saves nothing', () => {
+    render(<LiveRow id="once" />);
+    fireEvent.doubleClick(titleOf('once'));
+    fireEvent.change(field(), { target: { value: 'Something else' } });
+    fireEvent.keyDown(field(), { key: 'Escape' });
+    expect(itemById('once').title).toBe('File taxes');
+    expect(screen.queryByTestId('item-rename-input')).toBeNull();
+  });
+
+  it('saves on blur, and writes nothing for an emptied title', () => {
+    render(<LiveRow id="once" />);
+    fireEvent.doubleClick(titleOf('once'));
+    fireEvent.change(field(), { target: { value: '   ' } });
+    fireEvent.blur(field());
+    expect(itemById('once').title).toBe('File taxes');
+
+    fireEvent.doubleClick(titleOf('once'));
+    fireEvent.change(field(), { target: { value: 'Pay taxes' } });
+    fireEvent.blur(field());
+    expect(itemById('once').title).toBe('Pay taxes');
+  });
+
+  it('opens the field only on the row drawn for the day asked, not every copy in a week', () => {
+    render(
+      <>
+        <LiveRow id="daily" date={asDate(ROW_DAY)} />
+        <LiveRow id="daily" date={asDate(TODAY)} />
+      </>
+    );
+    act(() => startRename('daily', ROW_DAY));
+    expect(screen.getAllByTestId('item-rename-input')).toHaveLength(1);
+  });
+
+  it('keeps the field\'s keys and clicks off the row, which would open the panel', () => {
+    render(<LiveRow id="once" />);
+    fireEvent.doubleClick(titleOf('once'));
+    useUIStore.setState({ activeDialog: null });
+    fireEvent.click(field());
+    expect(useUIStore.getState().activeDialog).toBeNull();
+  });
+
+  it('offers Rename in the right-click menu', () => {
+    render(<LiveRow id="once" />);
+    const menu = rightClick(cardOf('once'));
+    expect(within(menu).getByTestId('item-menu-rename')).toBeInTheDocument();
+  });
+
+  it('renames in the panel, title selected, where the surface draws no editable row', () => {
+    const item = store().items.find((i) => i.id === 'once')!;
+    render(
+      <ItemContextMenu item={item}>
+        <div data-testid="plain-row">File taxes</div>
+      </ItemContextMenu>
+    );
+    const menu = rightClick(screen.getByTestId('plain-row'));
+    fireEvent.click(within(menu).getByTestId('item-menu-rename'));
+    const dialog = useUIStore.getState().activeDialog;
+    expect(dialog?.type === 'edit-item' && dialog.item.id).toBe('once');
+    expect(useRenameStore.getState().panelSelectId).toBe('once');
   });
 });
 

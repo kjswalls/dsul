@@ -19,6 +19,8 @@ import { canMoveToNextDay, canReschedule as canRescheduleItem, canSendToBraindum
 import { RowControl, RowControlDivider, RowControlGroup } from '@/components/primitives/row-control';
 import { RescheduleControl } from '@/components/primitives/reschedule-control';
 import { RowTitleText } from '@/components/primitives/row-title-text';
+import { RowRenameInput } from '@/components/primitives/row-rename-input';
+import { isRenaming, startRename, useRenameStore } from '@/lib/item-rename';
 import { useGoalsForDisplay, useStreaksEnabled } from '@/lib/extension-gates';
 import { getItemTypeConfig } from '@/lib/item-registry';
 import { useUIStore, openEditFor } from '@/lib/ui-store';
@@ -143,6 +145,8 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
   const timezone = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const rowDate = date ?? selectedDate;
   const dateStr = toDateStr(rowDate, timezone);
+  // In-place rename (lib/item-rename.ts): only the row drawn for this day.
+  const renaming = useRenameStore((s) => isRenaming(s, item.id, dateStr));
 
   /**
    * The date this row's SUPPRESSION is resolved at — not always `dateStr`.
@@ -541,6 +545,8 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
   const moveDown = movable ? reorder!.step(item.id, 1) : null;
   const handleReorderKey = (e: React.KeyboardEvent) => {
     if (!e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    // The row itself, focused: never a key typed into the rename field inside it.
+    if (e.target !== e.currentTarget) return;
     const run = e.key === 'ArrowUp' ? moveUp : e.key === 'ArrowDown' ? moveDown : undefined;
     if (run === undefined) return;
     e.preventDefault();
@@ -553,6 +559,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
     <ItemContextMenu
       item={item}
       date={rowDate}
+      renameInPlace
       extra={moveUp || moveDown ? <MoveMenuRows up={moveUp} down={moveDown} /> : undefined}
     >
       <div
@@ -618,7 +625,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
         )}
         onClick={handleRowClick}
         onMouseEnter={() => {
-          setHoveredItemRef(item.id, itemType);
+          setHoveredItemRef(item.id, itemType, dateStr);
           rowHovered.current = true;
           measureTitle();
         }}
@@ -700,7 +707,10 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
 
         {/* Title. The suppression reason used to ride a native `title` here;
             it now shares the rail tooltip with the full title (pills.tsx: no
-            native titles). */}
+            native titles). While renaming, a field takes its slot. */}
+        {renaming ? (
+          <RowRenameInput itemId={item.id} title={item.title} />
+        ) : (
         <Tooltip
           // The gate goes into the state, not only the prop: Radix's delay timer
           // would otherwise latch `open` while the tip was gated off, and it
@@ -717,6 +727,17 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
               // Also where tests/e2e/helpers/dnd.ts presses to drag the row: the
               // row's centre is under the hover cluster, which stops pointerdown.
               data-row-title={suppressed || (completed && !suppressCompletedLook) ? 'muted' : 'open'}
+              // Double-click renames in place. The two clicks before it have
+              // already opened the panel, which follows the new title live.
+              // Pointer only: on touch a double tap is the browser's zoom.
+              onDoubleClick={
+                isMobile
+                  ? undefined
+                  : (e) => {
+                      e.stopPropagation();
+                      startRename(item.id, dateStr);
+                    }
+              }
               className={cn(
                 // Content typeface via tokens: sans = Inter Regular 11.5,
                 // serif = Source Serif SemiBold 15. Flipped by data-type-mode.
@@ -748,6 +769,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
             )}
           </TooltipContent>
         </Tooltip>
+        )}
         {/* The tooltip only describes the title while it is open, so the reason
             a row is set aside stays readable to assistive tech here. */}
         {suppression && <span className="sr-only">{suppressionLabel(suppression, { long: true })}</span>}
@@ -878,7 +900,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
           {/* Action controls — one boxed cluster, absolutely positioned to the left
               of the columns so it reserves no space. pointer-events gate off until
               reveal so the invisible buttons aren't clickable while idle. */}
-          {!inBraindump && !isMobile && (
+          {!inBraindump && !isMobile && !renaming && (
             <span
               ref={clusterRef}
               className={cn(
