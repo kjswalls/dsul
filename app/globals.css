@@ -3961,6 +3961,57 @@ button[data-ai-chip]:focus-visible {
   opacity: 0.38;
 }
 
+/* ── Sync sheen ──────────────────────────────────────────────────────────
+   lib/sync-sheen.ts — Kirby's ask on 2026-10-24: the landing pass above, on
+   one piece of text at a time, whenever words already on screen change
+   because something outside this page changed them (another device, an
+   agent, a plan the AI wrote, the History list re-read). The words come in
+   dim and one soft edge of light raises them to their own ink, left to right.
+
+   Kirby picked the "deeper dip": the dim is the text's own colour at
+   --sync-sheen-dip, mixed toward transparent, so a title in full ink dips to
+   about the labels' ink and a muted line (Ask's "back", History's time) dips
+   below its own. Neutral, never lime: nothing that carries the accent is ever
+   marked (the accent never takes alpha). An emoji keeps its own fill, as in
+   the waiting shimmer.
+
+   The module sets the attribute and takes it off at animationend, so the rest
+   state is the plain text it was. Off under both motion vetoes and forced
+   colours (the module never sets it then either), and never during the load's
+   own shimmer, which owns the titles while it runs. No transitions. */
+:root {
+  --sync-sheen-dip: 40%;
+  --sync-sheen-ms: 700ms;
+}
+@keyframes sync-sheen {
+  from {
+    background-position-x: 100%;
+  }
+  to {
+    background-position-x: 0%;
+  }
+}
+@media (prefers-reduced-motion: no-preference) and (forced-colors: none) {
+  :root:not([data-reduce-motion='true']):not([data-planner-shimmer]) [data-sync-sheen] {
+    --sync-sheen-dim: color-mix(in oklab, currentColor var(--sync-sheen-dip), transparent);
+    background-image: linear-gradient(
+      90deg,
+      currentColor 0 42%,
+      color-mix(in oklab, currentColor 60%, var(--sync-sheen-dim)) 50%,
+      var(--sync-sheen-dim) 58% 100%
+    );
+    background-size: 260% 100%;
+    background-repeat: no-repeat;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: sync-sheen var(--sync-sheen-ms) var(--ease-roll) both;
+  }
+  :root:not([data-reduce-motion='true']):not([data-planner-shimmer]) [data-sync-sheen] [data-row-emoji] {
+    -webkit-text-fill-color: currentColor;
+  }
+}
+
 /* ── Drop targets: the glowing rule (list day, Anytime strip, braindump) ────
    An armed target that is not a bucket card wears a 2px lime rule down its
    left edge over a faint lime wash, and the rule breathes a soft glow while

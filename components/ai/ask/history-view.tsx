@@ -14,6 +14,7 @@ import { toDateStr } from '@/lib/recurrence';
 import { openConversation, openHistory } from '@/lib/open-chat';
 import { useRailStore, type AskSurface, type HistoryMemo } from '@/lib/rail-store';
 import type { Item } from '@/lib/planner-types';
+import { convKey } from '@/lib/sync-sheen';
 
 /**
  * History: every saved conversation, on every device, until it is deleted
@@ -360,7 +361,8 @@ function HistoryRow({
   const item = usePlannerStore((s) => (summary.itemId ? itemById(s.items, summary.itemId) : undefined));
   const title = (item?.title.trim() || hit?.itemTitle || summary.title).trim();
   const second = hit?.snippet ?? historySecondLine(summary, item ? agentFields(item) : null);
-  const focusKey = `conv:${summary.id}`;
+  // Also what a pass of light finds the row's words by (lib/sync-sheen.ts convKey).
+  const focusKey = convKey(summary.id);
 
   return (
     <button
@@ -373,14 +375,14 @@ function HistoryRow({
     >
       <span className="flex w-full items-center gap-2">
         <ConversationGlyph itemId={summary.itemId} done={!!item && isDoneOn(item, toDateStr(new Date(now), tz))} />
-        <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+        <span data-sync-key={focusKey} className="min-w-0 flex-1 truncate text-sm text-foreground">
           {query ? <Marked text={title} query={query} /> : title}
         </span>
-        <span className="shrink-0 text-2xs text-muted-foreground tabular-nums">
+        <span data-sync-key={focusKey} className="shrink-0 text-2xs text-muted-foreground tabular-nums">
           {historyTime(summary.lastMessageAt, now, tz, hour24)}
         </span>
       </span>
-      <span data-testid="history-second-line" className="block truncate pl-[22px] text-xs text-muted-foreground">
+      <span data-testid="history-second-line" data-sync-key={focusKey} className="block truncate pl-[22px] text-xs text-muted-foreground">
         {query && hit?.snippet ? <Marked text={second} query={query} /> : second}
       </span>
     </button>

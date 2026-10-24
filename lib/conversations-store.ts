@@ -39,6 +39,7 @@ import { spendJustConnected, useRailStore } from './rail-store';
 import { useProposalStore } from './proposal-store';
 import { useChatReceipts } from './chat-receipts';
 import { MAX_CHAT_IMAGES, type ChatImage } from './chat-images';
+import { convKey, syncSheen } from './sync-sheen';
 
 /**
  * conversations-store.ts — saved AI conversations, as this browser holds them.
@@ -1041,6 +1042,20 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
               summaries[id] = local;
               list = placeInList(list, summaries, local);
             }
+            // A row already on screen that moved on elsewhere (another device,
+            // another tab) takes a pass of light over its words (lib/sync-sheen.ts).
+            syncSheen(
+              [...starred, ...conversations]
+                .filter((c) => {
+                  const was = s.summaries[c.id];
+                  return (
+                    !!was &&
+                    !touched.has(c.id) &&
+                    (was.title !== c.title || was.lastMessageAt !== c.lastMessageAt || was.messageCount !== c.messageCount)
+                  );
+                })
+                .map((c) => convKey(c.id))
+            );
             return { summaries, itemIndex: next.itemIndex, list, saving: 'on' };
           });
         } catch {
