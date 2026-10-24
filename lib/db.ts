@@ -941,6 +941,21 @@ export async function fetchItemById(userId: string, id: string, client?: DbClien
   return data ? itemsFromRows([data as ItemRow])[0] : null;
 }
 
+/**
+ * One `items` row as a live change carries it (lib/planner-live.ts), mapped as a
+ * load maps it, or null when it is not a row this build can read. The change
+ * comes from the table itself, not the windowed read view, so a recurring
+ * item's dates can run longer than the store's.
+ */
+export function itemFromChangeRow(row: unknown): Item | null {
+  if (!row || typeof row !== 'object' || typeof (row as ItemRow).id !== 'string') return null;
+  try {
+    return itemFromRow(row as ItemRow);
+  } catch {
+    return null;
+  }
+}
+
 /** Shared by fetchItems and loadPlannerData, so both paths map rows alike. */
 function itemsFromRows(rows: ItemRow[]): Item[] {
   return rows.map(itemFromRow);

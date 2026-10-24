@@ -6467,6 +6467,15 @@ function foldSlice<T extends Keyed>(rows: T[], merge: SliceMerge<T>, isSnapshot:
 
 const changedItemType = (a: Item, b: Item): boolean => itemDbType(a) !== itemDbType(b);
 
+/**
+ * Whether the store already holds `item` exactly: a live change that is this
+ * tab's own save coming back, which a catch-up would find nothing in.
+ */
+export function storeHoldsItem(item: Item): boolean {
+  const mine = usePlannerStore.getState().items.find((i) => i.id === item.id);
+  return !!mine && changedFields(mine, item).length === 0;
+}
+
 let catchUpInFlight: Promise<string[]> | null = null;
 
 /**
