@@ -267,10 +267,12 @@ test.describe('Drag and drop flows', { tag: '@exclusive-dnd' }, () => {
       expect(await idsInMorning()).toEqual([firstId, secondId]);
 
       const from = (await second.boundingBox())!;
-      const to = (await first.boundingBox())!;
       await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
       await page.mouse.down();
       await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2 - 8, { steps: 4 });
+      // Measured AFTER activation: an empty bucket opens its drop slot the
+      // moment a drag starts (CONTRACT.md), which moves every card below it.
+      const to = (await first.boundingBox())!;
       await page.mouse.move(to.x + to.width / 2, to.y + 4, { steps: 12 });
       await expect(page.getByTestId('reorder-line')).toBeVisible();
       await page.mouse.up();
