@@ -141,6 +141,7 @@ describe('command registry', () => {
       'new_task',
       'edit_hovered',
       'delete_hovered',
+      'rename_hovered',
       'undo',
       'redo',
       'toggle_left_sidebar',

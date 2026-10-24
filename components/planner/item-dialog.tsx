@@ -26,6 +26,7 @@ import {
   Maximize2,
   Minus,
   MoreHorizontal,
+  Pencil,
   Plus,
   Redo2,
   Repeat,
@@ -94,6 +95,7 @@ import { accentColorForName } from '@/lib/accent-colors';
 import { goalItemIds, milestoneItemIds, nextMilestone } from '@/lib/goals';
 import { formatShort } from '@/lib/collections';
 import { useUIStore, openBulkAdd, openNewContainer, registerItemPanelFlush } from '@/lib/ui-store';
+import { useRenameStore } from '@/lib/item-rename';
 import { subscribeClickAway } from '@/lib/click-away';
 import type { ComposerBinding } from '@/lib/rail-store';
 import { useOpenConsole } from '@/lib/console-door';
@@ -3319,7 +3321,7 @@ function ItemDialogInner({
   ) : null;
 
   // The title — the only required field, so it carries the dialog.
-  const titleInput = activeDraft ? (
+  const titleField = activeDraft ? (
     <Input
       id={titleId}
       data-testid="item-dialog-title-input"
@@ -3363,9 +3365,28 @@ function ItemDialogInner({
       // rather than a form. dark:bg-transparent is load-bearing: Input carries
       // dark:bg-input/30, which tailwind-merge keeps (different modifier) and
       // which outranks bg-transparent on specificity.
-      className={SERIF_TITLE_CLASS}
+      className={cn(
+        SERIF_TITLE_CLASS,
+        // An edit's title is a heading until you look closer: a soft tint and a
+        // pencil on hover say it is a field (Kirby, 2026-10-24). Room on the
+        // right so the pencil never sits on the last word.
+        mode === 'edit' &&
+          'rounded-[4px] pr-6 transition-colors hover:bg-accent focus-visible:bg-transparent dark:hover:bg-accent dark:focus-visible:bg-transparent'
+      )}
     />
   ) : null;
+  const titleInput =
+    titleField && mode === 'edit' ? (
+      <div className="group/title relative" data-testid="item-dialog-title">
+        {titleField}
+        <Pencil
+          aria-hidden="true"
+          className="text-muted-foreground pointer-events-none absolute top-1/2 right-1 size-3.5 -translate-y-1/2 opacity-0 transition-opacity group-hover/title:opacity-100 group-focus-within/title:opacity-0"
+        />
+      </div>
+    ) : (
+      titleField
+    );
 
   // The item's one conversation, as the pinned box sends into it (rail only).
   const editItemId = editItem?.id;
@@ -3387,6 +3408,26 @@ function ItemDialogInner({
   const fold = useCallback(() => {
     if (editItemId) setFoldedFor(editItemId);
   }, [editItemId]);
+
+  // Rename into the panel (lib/item-rename.ts: F2 with no row under the
+  // pointer, or Rename on a surface with no editable row): unfold, then select
+  // the whole title so typing replaces it. Taken once, so the next open of the
+  // same item is an ordinary one.
+  const panelSelectId = useRenameStore((s) => s.panelSelectId);
+  useEffect(() => {
+    if (!open || mode !== 'edit' || !editItemId || panelSelectId !== editItemId) return;
+    if (!useRenameStore.getState().takePanelSelect(editItemId)) return;
+    // Two frames: the first unfolds, the second finds the title no longer inert.
+    requestAnimationFrame(() => {
+      setFoldedFor(null);
+      requestAnimationFrame(() => {
+        const el = document.getElementById(titleId);
+        if (!(el instanceof HTMLInputElement)) return;
+        el.focus({ preventScroll: true });
+        el.select();
+      });
+    });
+  }, [open, mode, editItemId, panelSelectId, titleId]);
   // A send folds once, as it starts (adjusted during render, React's pattern
   // for state that follows a change): a tap on the rail mid-reply stays open.
   const itemSending = useConversationsStore((s) => !!(editItemId && s.sending[`item:${editItemId}`]));

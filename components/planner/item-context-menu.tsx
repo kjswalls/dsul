@@ -19,6 +19,7 @@ import {
   MessageSquare,
   PanelRight,
   Pause,
+  Pencil,
   Play,
   Redo2,
   SkipForward,
@@ -63,6 +64,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useAwayStore } from '@/lib/away-store';
 import { useSelectionStore } from '@/lib/selection-store';
 import { openEditFor } from '@/lib/ui-store';
+import { renameInPanel, startRename } from '@/lib/item-rename';
 import { milestoneItemIds } from '@/lib/goals';
 import { membershipSummary } from '@/lib/item-bands';
 import { toDateStr } from '@/lib/recurrence';
@@ -131,10 +133,15 @@ export interface ItemContextMenuProps {
   extra?: ReactNode;
   /** Replaces "Open" — the console cannot host the item panel over itself. */
   openHref?: boolean;
+  /**
+   * The surface draws an editable title for this row (task-row.tsx), so Rename
+   * renames in place. Otherwise Rename opens the panel with the title selected.
+   */
+  renameInPlace?: boolean;
   children: ReactElement;
 }
 
-export function ItemContextMenu({ item, date, occurrence, extra, openHref, children }: ItemContextMenuProps) {
+export function ItemContextMenu({ item, date, occurrence, extra, openHref, renameInPlace, children }: ItemContextMenuProps) {
   const isMobile = useIsMobile();
   const coarse = useMediaQuery('(pointer: coarse)');
 
@@ -158,7 +165,7 @@ export function ItemContextMenu({ item, date, occurrence, extra, openHref, child
         data-item-id={item.id}
         onCloseAutoFocus={keepFocusTaken}
       >
-        <MenuBody item={item as Item} date={date} occurrence={occurrence} extra={extra} openHref={openHref} />
+        <MenuBody item={item as Item} date={date} occurrence={occurrence} extra={extra} openHref={openHref} renameInPlace={renameInPlace} />
       </ContextMenuContent>
     </ContextMenu>
   );
@@ -173,6 +180,15 @@ export function ItemContextMenu({ item, date, occurrence, extra, openHref, child
  * By now the menu is gone, so focus left inside it reads as <body>.
  */
 function keepFocusTaken(e: Event) {
+  // Rename waits for the menu to finish closing: started from onSelect, its
+  // field would mount inside the menu's focus trap and lose the caret to it.
+  if (pendingRename) {
+    const { id, dateStr } = pendingRename;
+    pendingRename = null;
+    e.preventDefault();
+    startRename(id, dateStr);
+    return;
+  }
   const active = document.activeElement;
   if (active && active !== document.body && active.isConnected) e.preventDefault();
 }
@@ -182,6 +198,13 @@ function keepFocusTaken(e: Event) {
  * or Shift+F10 on it, leaves it focused). One menu is open at a time.
  */
 let menuOpener: HTMLElement | null = null;
+
+/** An in-place rename asked for from the menu, started once it has closed. */
+let pendingRename: { id: string; dateStr: string } | null = null;
+
+function queueRename(id: string, dateStr: string) {
+  pendingRename = { id, dateStr };
+}
 
 function noteMenuOpener() {
   const active = document.activeElement;
@@ -202,7 +225,7 @@ function returnFocusToOpener() {
 
 /* ── the body: one item, or the selection it belongs to ────────────────── */
 
-function MenuBody({ item, date, occurrence, extra, openHref }: Omit<ItemContextMenuProps, 'children'>) {
+function MenuBody({ item, date, occurrence, extra, openHref, renameInPlace }: Omit<ItemContextMenuProps, 'children'>) {
   const selectedIds = useSelectionStore((s) => s.selectedIds);
   const items = usePlannerStore((s) => s.items);
   const many = selectedIds.size > 1 && selectedIds.has(item!.id);
@@ -212,7 +235,7 @@ function MenuBody({ item, date, occurrence, extra, openHref }: Omit<ItemContextM
   }
   // Re-read: the row was painted from a snapshot, and may be a legacy projection.
   const live = items.find((i) => i.id === item!.id) ?? (item as Item);
-  return <SingleBody item={live} date={date} occurrence={occurrence} extra={extra} openHref={openHref} />;
+  return <SingleBody item={live} date={date} occurrence={occurrence} extra={extra} openHref={openHref} renameInPlace={renameInPlace} />;
 }
 
 /** Row class for the menu's own rows — the Edit menu's, so the two read as one. */
@@ -258,12 +281,14 @@ function SingleBody({
   occurrence,
   extra,
   openHref,
+  renameInPlace,
 }: {
   item: Item;
   date?: Date | 'today';
   occurrence?: OccurrenceState | 'absent';
   extra?: ReactNode;
   openHref?: boolean;
+  renameInPlace?: boolean;
 }) {
   const router = useRouter();
   const selectedDate = usePlannerStore((s) => s.selectedDate);
@@ -395,6 +420,18 @@ function SingleBody({
         <Row icon={<Maximize2 className="size-3.5" />} label="Open item" testId="item-menu-open-page" onSelect={() => router.push(`/item/${item.id}`)} />
       ) : (
         <Row icon={<PanelRight className="size-3.5" />} label="Open" testId="item-menu-open" onSelect={() => openEditFor(item as unknown as Task, itemType)} />
+      )}
+      {/* Not on the console's rows: it cannot host the panel the fallback opens. */}
+      {!openHref && (
+        <Row
+          icon={<Pencil className="size-3.5" />}
+          label="Rename"
+          testId="item-menu-rename"
+          onSelect={() => {
+            if (renameInPlace) queueRename(item.id, dateStr);
+            else renameInPanel(item);
+          }}
+        />
       )}
       <AskSection item={item} todayStr={todayStr} tz={tz} page={!!openHref} />
       {status.length > 0 && <ContextMenuSeparator />}
