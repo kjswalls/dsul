@@ -237,6 +237,16 @@ after the delete, never before, and never blocks it. Read
 sidebar, eod, morning, conversations, rail, …). `planner-store.ts` is the big one: it
 holds `items[]` with `tasks`/`habits` projections derived off it.
 
+**Other devices' changes reach the store through one merge.** `catchUpPlanner` in
+[planner-store.ts](lib/planner-store.ts) re-reads the planner and folds in what changed
+elsewhere, three-way per row and field against `serverBaseline` (what the server answered
+last), so an unsaved local edit is never put back and the fold leaves no undo entry and no
+write-back. [use-planner-catch-up.ts](hooks/use-planner-catch-up.ts) runs it on focus, on
+return online, and a moment after a Realtime change (`lib/planner-live.ts`, publication from
+migration 084). Realtime is only a doorbell: never apply a payload to the store directly.
+DELETEs are not heard (Realtime can't filter them by user), so a membership removed elsewhere
+lands with the next catch-up.
+
 **Layout.** `app/` is thin — one main page plus `api/` routes. The UI lives in
 `components/` (`views/`, `shell/`, `planner/`, `sidebar/`, `canvas/`, `mobile/`, `ai/`,
 `primitives/`, `ui/` for shadcn).
