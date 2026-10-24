@@ -266,6 +266,10 @@ test.describe('Drag and drop flows', { tag: '@exclusive-dnd' }, () => {
         );
       expect(await idsInMorning()).toEqual([firstId, secondId]);
 
+      // Both rows are in the user's own order, so both carry the grip.
+      await expect(first).toHaveAttribute('data-movable', 'true');
+      await expect(second).toHaveAttribute('data-movable', 'true');
+
       const from = (await second.boundingBox())!;
       await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
       await page.mouse.down();
@@ -274,6 +278,22 @@ test.describe('Drag and drop flows', { tag: '@exclusive-dnd' }, () => {
       // moment a drag starts (CONTRACT.md), which moves every card below it.
       const to = (await first.boundingBox())!;
       await page.mouse.move(to.x + to.width / 2, to.y + 4, { steps: 12 });
+      // TEMP diagnostics for CI: what the hit test sees mid-drag.
+      console.log('reorder-diag', JSON.stringify({
+        pointer: { x: to.x + to.width / 2, y: to.y + 4 },
+        to,
+        sections: await page.locator('[data-reorder-section]').evaluateAll((els) =>
+          els.map((el) => ({
+            id: el.getAttribute('data-reorder-section'),
+            rect: el.getBoundingClientRect().toJSON(),
+            rows: [...el.querySelectorAll('[data-item-id]')].map((r) => [
+              r.getAttribute('data-item-id'),
+              r.getAttribute('data-movable'),
+              r.getBoundingClientRect().top,
+            ]),
+          }))
+        ),
+      }));
       await expect(page.getByTestId('reorder-line')).toBeVisible();
       await page.mouse.up();
 
