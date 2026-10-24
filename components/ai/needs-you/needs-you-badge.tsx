@@ -9,6 +9,7 @@ import { needsYou } from '@/lib/ask-home';
 import { askers, badgeLine } from '@/lib/needs-you';
 import { useNeedsYouStore } from '@/lib/needs-you-store';
 import { AskerAvatar, AskerCard } from './asker-card';
+import { PrepAskerAvatar, PrepAskerCard, usePrepQuestions } from './prep-asker-card';
 
 /** Avatars before the stack stops growing. */
 const MAX_AVATARS = 3;
@@ -20,15 +21,26 @@ function useWaiting() {
   return useMemo(() => (loaded ? needsYou(items) : []), [loaded, items]);
 }
 
+/** Your AI's prep questions, once the planner's data is fresh (prep-asker-card.tsx). */
+function usePrepWaiting() {
+  const loaded = usePlannerLoaded();
+  const prep = usePrepQuestions();
+  return loaded ? prep : [];
+}
+
 /** Whether the badge is in the header row: the row's far end moves to it. */
 export function useNeedsYouShown(): boolean {
-  return useWaiting().length > 0;
+  const agents = useWaiting().length;
+  const prep = usePrepWaiting().length;
+  return agents > 0 || prep > 0;
 }
 
 /**
  * Needs you, in the canvas's header row (memory/plans/power-mode.md, build
  * order 4): the askers' avatars and "3 to answer", opening an inbox of one
- * options card per asker (asker-card.tsx).
+ * options card per asker (asker-card.tsx). Your AI's prep questions are
+ * one more asker, first in the inbox (prep-asker-card.tsx); on the phone,
+ * which has no header row, they keep the dock's line.
  *
  * Quiet until used: nothing renders while no agent is waiting on the user,
  * and it waits for fresh data (lib/planner-ready.ts) for the reason Ask home's
@@ -41,6 +53,9 @@ export function useNeedsYouShown(): boolean {
  */
 export function NeedsYouBadge({ className }: { className?: string }) {
   const waiting = useWaiting();
+  // Your AI asks here too, ahead of the agents (Kirby's pick, 2026-10-24): one
+  // count and one inbox for everything waiting on you.
+  const prep = usePrepWaiting();
   const groups = useMemo(() => askers(waiting), [waiting]);
   const pending = useNeedsYouStore((s) => s.pending);
   const inbox = useNeedsYouStore((s) => s.inbox);
@@ -49,13 +64,13 @@ export function NeedsYouBadge({ className }: { className?: string }) {
 
   // The last answer went out with the inbox open: close it, or the next
   // question would spring it open unasked.
-  const none = groups.length === 0;
+  const none = groups.length === 0 && prep.length === 0;
   useEffect(() => {
     if (none && inbox.open) closeInbox();
   }, [none, inbox.open, closeInbox]);
 
   if (none) return null;
-  const open = waiting.filter((i) => !pending[i.id]).length;
+  const open = waiting.filter((i) => !pending[i.id]).length + prep.length;
   const label = `Needs you: ${badgeLine(open)}`;
 
   return (
@@ -71,7 +86,8 @@ export function NeedsYouBadge({ className }: { className?: string }) {
           )}
         >
           <span className="flex -space-x-1.5" aria-hidden>
-            {groups.slice(0, MAX_AVATARS).map((g) => (
+            {prep.length > 0 && <PrepAskerAvatar />}
+            {groups.slice(0, MAX_AVATARS - (prep.length > 0 ? 1 : 0)).map((g) => (
               <AskerAvatar key={g.assignee} asker={g} />
             ))}
           </span>
@@ -87,6 +103,7 @@ export function NeedsYouBadge({ className }: { className?: string }) {
         aria-label="Needs you"
         className="flex max-h-[min(70vh,640px)] w-[380px] flex-col gap-2 overflow-y-auto rounded-xl p-2 shadow-[var(--shadow-elev-lg)]"
       >
+        <PrepAskerCard />
         {groups.map((g) => (
           <AskerCard
             // Keyed on the focus too: a block opening the inbox on its own item

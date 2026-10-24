@@ -22,6 +22,12 @@ import { NOTICE_RANK, type DockNotice } from '@/lib/dock-notices';
  *            nothing waits on an answer. The questions line keeps the relay
  *            as its glyph for as long as work goes on.
  *
+ * On the desktop the questions are not here at all (Kirby's pick, 2026-10-24):
+ * the header's Needs you badge counts them with the agents' and its inbox
+ * answers them (components/ai/needs-you/prep-asker-card.tsx), so the line
+ * says only "Getting 2 things ready". The phone has no header badge and keeps
+ * "2 to answer" here.
+ *
  * What is ready has no line (Kirby, 2026-10-23): the do stuff key says it,
  * with its own sheen, and a line here only repeated it.
  *
@@ -30,13 +36,13 @@ import { NOTICE_RANK, type DockNotice } from '@/lib/dock-notices';
  * for a decision, since it is the app's work on your behalf. Gone while doing
  * stuff, where the lanes and the key say it already.
  */
-export function useAIWorkNotice(): DockNotice | null {
+export function useAIWorkNotice({ questions = true }: { questions?: boolean } = {}): DockNotice | null {
   const work = useAiWork();
   const doing = useDoStuffStore((s) => s.on);
   const [round, setRound] = useState(false);
   if (doing) return null;
 
-  if (work.questions > 0) {
+  if (questions && work.questions > 0) {
     return {
       id: 'ai-work',
       rank: NOTICE_RANK.receipt,
