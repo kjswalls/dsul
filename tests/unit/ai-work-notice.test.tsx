@@ -55,6 +55,14 @@ describe('the AI work line', () => {
     expect(n.trayTitle).toBeTruthy();
   });
 
+  it("leaves the desktop's questions to the header's Needs you badge, and still says what is being worked on", () => {
+    work.value = { working: false, workingCount: 0, ready: 0, questions: 2 };
+    const desktop = () => renderHook(() => useAIWorkNotice({ questions: false })).result.current;
+    expect(desktop()).toBeNull();
+    work.value = { working: true, workingCount: 1, ready: 0, questions: 2 };
+    expect(labelOf(desktop()!).textContent).toBe('Getting 1 thing ready');
+  });
+
   it('says what is being worked on, with the relay as its glyph', () => {
     work.value = { working: true, workingCount: 2, ready: 0, questions: 0 };
     const n = notice()!;

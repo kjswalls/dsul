@@ -63,6 +63,7 @@ describe('the quick round', () => {
     expect(screen.getByText('What kind of map is it?')).toBeTruthy();
     expect(screen.getByText('1 of 2')).toBeTruthy();
     fireEvent.click(screen.getAllByText('Yes')[0]);
+    fireEvent.click(screen.getByTestId('prep-pack-submit'));
     expect(updateTask).toHaveBeenCalledWith('a', { notes: 'What kind of map is it? Yes' }, expect.anything());
     expect(screen.getByText('Are the dates set?')).toBeTruthy();
   });
