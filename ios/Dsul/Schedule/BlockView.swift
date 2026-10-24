@@ -14,8 +14,12 @@ import SwiftUI
 /// Placed in the field's points from `block.frame(fieldWidth:)`: the view is
 /// the block's own bounds, offset into the column, so VoiceOver's frame is
 /// the block. To VoiceOver it is one element: "Draft Q4 roadmap, 9 to 11 AM,
-/// Work", its state as the value, activation opens it, and the tick is a
-/// named action (design §5.9).
+/// Work", its state as the value, activation opens it, and its verbs and
+/// moves are named actions (design §5.9), never the adjustable trait.
+///
+/// While it is the block in the air (PR 8) it draws hollow, an outline where
+/// its pane was and no fill (design B8): never a fade, which would dim its
+/// lime rail and check.
 struct BlockView: View {
     let block: ScheduleBlock
     let fieldWidth: Double
@@ -24,8 +28,11 @@ struct BlockView: View {
     let timeFormat: TimeFormat
     /// The rail and bead's colour when open: the project's, or lime.
     let accent: Color
+    /// Its VoiceOver actions, in order (`SamplePlanner.spokenActions`).
+    let actions: [BlockSpokenAction]
     let onOpen: () -> Void
     let onTick: () -> Void
+    let onAction: (BlockSpokenAction) -> Void
 
     /// One line of block text (the web's `LINE_H`, scaled): a tall pane's
     /// title line is at least this tall.
@@ -34,16 +41,20 @@ struct BlockView: View {
     var body: some View {
         let geometry = block.frame(fieldWidth: fieldWidth)
         let box = bounds(geometry)
-        ZStack(alignment: .topLeading) {
-            rail(geometry, in: box)
-            bead(geometry, in: box)
-            if block.skipped {
-                skippedStrip(geometry)
-                    .offset(x: CGFloat(geometry.paneX) - box.minX, y: CGFloat(geometry.paneTop) - box.minY)
-            } else {
-                BlockPane(block: block, geometry: geometry, narrow: block.isNarrow(fieldWidth: fieldWidth),
-                          timeFormat: timeFormat, lineHeight: lineHeight, onOpen: onOpen, onTick: onTick)
-                    .offset(x: CGFloat(geometry.paneX) - box.minX, y: CGFloat(geometry.paneTop) - box.minY)
+        let pane = CGRect(x: CGFloat(geometry.paneX) - box.minX, y: CGFloat(geometry.paneTop) - box.minY,
+                          width: CGFloat(geometry.paneWidth), height: CGFloat(geometry.paneHeight))
+        HollowWhileLifted(id: block.id, pane: pane) {
+            ZStack(alignment: .topLeading) {
+                rail(geometry, in: box)
+                bead(geometry, in: box)
+                if block.skipped {
+                    skippedStrip(geometry)
+                        .offset(x: pane.minX, y: pane.minY)
+                } else {
+                    BlockPane(block: block, geometry: geometry, narrow: block.isNarrow(fieldWidth: fieldWidth),
+                              timeFormat: timeFormat, lineHeight: lineHeight, onOpen: onOpen, onTick: onTick)
+                        .offset(x: pane.minX, y: pane.minY)
+                }
             }
         }
         .frame(width: box.width, height: box.height, alignment: .topLeading)
@@ -55,8 +66,8 @@ struct BlockView: View {
         .accessibilityHint("Opens details")
         .accessibilityAction { onOpen() }
         .accessibilityActions {
-            if let label = block.tickLabel {
-                Button(label, action: onTick)
+            ForEach(actions, id: \.self) { action in
+                Button(action.name) { onAction(action) }
             }
         }
         .accessibilityInputLabels([Text(block.item.title)])
@@ -138,6 +149,33 @@ struct BlockView: View {
         .background { shape.fill(Color(.tertiarySystemFill)) }
         .contentShape(shape)
         .onTapGesture(perform: onOpen)
+    }
+}
+
+/// The block, or while it is the one in the air (`ScheduleDrag.lifts`) an
+/// outline where its pane was and nothing else: the source draws hollow
+/// (design B8). Its own small view, the only part of a block that reads the
+/// drag, and only whether this block is lifted, so a ghost step never
+/// re-renders it. The system's lifted copy is the block as it was.
+private struct HollowWhileLifted<Content: View>: View {
+    let id: UUID
+    /// The pane's rect in the block's bounds.
+    let pane: CGRect
+    @ViewBuilder let content: () -> Content
+
+    @Environment(ScheduleDrag.self) private var drag
+
+    var body: some View {
+        if drag.lifts(id) {
+            RoundedRectangle(cornerRadius: CGFloat(ScheduleMetrics.paneRadius), style: .continuous)
+                .strokeBorder(Color.secondary, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                .frame(width: pane.width, height: pane.height)
+                .offset(x: pane.minX, y: pane.minY)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .allowsHitTesting(false)
+        } else {
+            content()
+        }
     }
 }
 

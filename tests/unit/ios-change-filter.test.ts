@@ -183,6 +183,16 @@ describe('the iOS change filter', () => {
       'lib/time-bucket.ts',
       'lib/recurrence.ts',
       'tests/fixtures/day/block-moves.json',
+      // The phone's drops (PR 8): each answer's intent through the route
+      // (app/api/app/, and the `schedule` and `time` writes in lib/app-api.ts
+      // and lib/item-edit.ts), pinned by block-drop-writes.json for the
+      // iPhone's hosted tests. lib/item-intents.ts (`unschedule`'s handler) is
+      // cited by no header; a change there that moves a write moves that
+      // fixture, which is in the filter.
+      'tests/fixtures/day/block-drop-writes.json',
+      'app/api/app/items/[id]/route.ts',
+      'lib/app-api.ts',
+      'lib/item-edit.ts',
     ]) {
       expect(filter.test(p), p).toBe(true);
     }

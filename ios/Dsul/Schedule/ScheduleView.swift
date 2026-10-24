@@ -91,18 +91,20 @@ struct ScheduleView: View {
         }
     }
 
-    /// One autoscroll frame. Only the bottom edge, the one the sheet covers;
-    /// the top edge is left to the system's own drag autoscroll.
+    /// One autoscroll frame (`ScheduleAutoscroll`, design §5.4): the bottom
+    /// edge, the one the sheet covers, always; the top edge only behind
+    /// `ScheduleAutoscroll.handDrivesTopEdge`, off while the system's own
+    /// drag autoscroll is trusted with it (device check M3).
     private func tick(dt: Double) {
         guard let contentY = drag.contentY else { return }
         let fingerY = contentY - drag.offsetY
         let covered = max(0, drag.viewportBottomGlobal - drag.sheetTopGlobal)
-        let visibleBottom = drag.viewportH - covered
-        let step = autoscrollStep(fingerY: fingerY, visibleTop: 0, visibleBottom: visibleBottom, dt: dt)
-        guard step > 0 else { return }
+        let step = ScheduleAutoscroll.step(fingerY: fingerY, viewportH: drag.viewportH, coveredBottom: covered,
+                                           dt: dt)
+        guard step != 0 else { return }
         let newY = clampScrollOffset(drag.offsetY + step, contentH: drag.contentH, viewportH: drag.viewportH)
         let moved = newY - drag.offsetY
-        guard moved > 0 else { return }
+        guard moved != 0 else { return }
         position.scrollTo(y: newY)
         drag.offsetY = newY
         drag.autoscrollSteps += 1
@@ -112,7 +114,7 @@ struct ScheduleView: View {
     }
 }
 
-/// Starts the bottom-edge autoscroll while a drag hovers over the grid, and
+/// Starts the edge autoscroll while a drag hovers over the grid, and
 /// stops it when the drag leaves. Its own view, so the drag's every step
 /// re-renders only this empty one, never ScheduleView's derive.
 private struct AutoscrollSwitch: View {

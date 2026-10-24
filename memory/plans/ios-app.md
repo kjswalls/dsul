@@ -262,7 +262,10 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   views `ScheduleColumn` (with the drag's own layer), `BlockView`,
   `NowMarker` and `AnytimeBand`; `ScheduleGrid` is the hour gutter and one
   column. `ScheduleLayoutTests` (shim) and `ScheduleRenderTests` (UIKit, the
-  runner only) test them.
+  runner only) test them. PR 8 adds `ScheduleMoves`, Foundation only (the
+  shim compiles it: the block's menu, its VoiceOver actions and words, the
+  autoscroll step, and `SamplePlanner.moveBlock`), and the view
+  `AnytimeRow`; `BlockMoveTests` (shim) tests them.
   `ios/Dsul/App` gains
   `AvatarMenu` (moved out of `TodayView`, with the tab's own sections passed
   in) and `PlannerBannerOverlay` (`.plannerBanner()`, Today's banner, also on
@@ -395,7 +398,8 @@ Week and blocks PRs 4 to 6 of the shared folder's
 `ios-app/week-and-blocks/design.md` (§5.1 to §5.3, §5.9, §5.10), built as one
 PR; the builders' notes are in `week/pr4/`. PR 4 draws the blocks in the web's
 look, PR 5 adds the Anytime band, PR 6 the web's overlap pass and the 34pt pane
-floor. Nothing moves, resizes or drags a block yet (PRs 7 to 9).
+floor. PR 8 moves a block (Moving a block, below); nothing resizes one yet
+(PR 9).
 
 - **One derive per change, and the drag reads none of it.** ScheduleView
   lays the day out once in its body (`daySchedule(on:fieldWidth:)`: the timed
@@ -442,9 +446,11 @@ floor. Nothing moves, resizes or drags a block yet (PRs 7 to 9).
   always there ("Anytime" or "Anytime · 4"), folds the rows
   (`@AppStorage("schedule.anytimeOpen")`, open by default, add, never rename),
   and shows alone while the braindump sheet is up without writing the
-  choice. Up to three `ItemRow`s (one at the accessibility sizes, so the
+  choice. Up to three rows (one at the accessibility sizes, so the
   hours keep their room), then a capped ScrollView. Rows tick and open on the
-  band's day (`tickAnytimeRow(_:in:)`). No drops or drags yet (PR 8).
+  band's day (`tickAnytimeRow(_:in:)`). Since PR 8 the rows are `AnytimeRow`
+  (ItemRow's look, opened by a tap gesture so a hold can lift it) and the
+  band takes drops (Moving a block, below).
 - **Where it departs from the design or the web.**
   - The design lists `ScheduleColumn` holding the drop destination; the
     destination stays on ScheduleGrid's 24-hour content (gutter and column),
@@ -464,6 +470,152 @@ floor. Nothing moves, resizes or drags a block yet (PRs 7 to 9).
     design keeps block text to one line (§5.10), and a phone has no hover.
   - The web's hover, glass and pocket details of the overlap pass are not
     drawn (§5.3's ported subset only).
+
+## Moving a block
+Week and blocks PR 8 of `ios-app/week-and-blocks/design.md` (§5.2, §5.4,
+§5.5, §5.8, §5.9, B2, B7, B8, B9, B12, B14, B15, B16, B18, B20, B22, B23),
+Day only; the builders' notes are in `week/pr8/`. A block's hold opens its
+menu, a hold and a move drags it, and every drop asks the rule the web asks
+(`planBlockDrop`, Dropping a block, below) and writes what it answers
+through the routes the phone already had. No new intent, route or migration.
+
+- **One rule, one mapping.** `SamplePlanner.moveBlock(_:from:to:)`
+  (ScheduleMoves.swift) asks `planBlockDrop` with the block's `BlockOrigin`
+  (its day and whether that occurrence is skipped) and
+  `BlockDropContext(milestoneIds: milestoneIds)`, maps the answer through
+  DsulCore's `phoneBlockDrop` (`BlockDropWrite.swift`: `place` to
+  `schedule`, `retime` to `time`, `anytime` with a null date to
+  `time {anytime, null}`, `braindump` to `unschedule`), and steps the
+  optimistic row and queues the write on paths the phone already had (the
+  braindump drop's `placing` with `schedule`, the sheet's `edit`, Move to
+  Braindump's `unschedule`), so a failed write reverts as every write does
+  (B10). `none` writes nothing; a refusal, and
+  the phone's own two (`pause`, B15; another day's Anytime, B22), write
+  nothing and propose the system's forbidden badge where the target can
+  propose one. `BlockMoveTests` drives every row of
+  `tests/fixtures/day/block-drop-writes.json` (153: 79 land, 74 send
+  nothing) through it against `FakeServer` and checks the body, the step
+  and the answer.
+- **In time only (B7, B18).** A habit, and a dated series on the canvas,
+  sends `time` and never its date, so every day moves and earlier weeks
+  keep theirs; a series in a project block sends `schedule` with its own
+  start date. `confinedDay` keeps such a drag's ghost on its own column
+  (`ScheduleDrag.confinedTo`; only Week × Schedule has another).
+- **The drag.** `ScheduleColumn` is the blocks' `dragContainer` of
+  `ItemRef`; a block that can go nowhere (`canLift`: no other quarter hour
+  of its day, nor its day's Anytime, nor the braindump takes it; a skipped
+  strip among them) has no `draggable`, so its hold is the menu alone
+  (`LiftsWhen`). The session's `.initial` calls
+  `ScheduleDrag.beginMove` with `source` (`.block(day:)`,
+  `.anytime(day:)`), `anchor` (`grabAnchor`: where on the block the finger
+  holds it, so it lands where it was held, not centred), `confinedTo` and
+  the item's own length; it takes the `DragHold` lease (B20), released by
+  the drop or half a second after `.ended`. `source` and the lifted item
+  (`liftedID`) outlive `reset()`, since a drop can run after the source's
+  `.ended`. The lifted block draws hollow in its column
+  (`HollowWhileLifted`, a dashed outline, no fill; B8). Picking from a
+  block's menu ends a lift whose session never ended (`endStrayLift`: the
+  menu and the drag share one long press, M1). The ghost is unchanged:
+  15-minute snap (B14), a selection haptic each step.
+- **Targets.** Every drop handler routes through `dropSource`: what the
+  drag says of this item (`ScheduleDrag.source(of:)`, nil when the last
+  lift was another item's) when it lifted off a day, and otherwise the
+  item itself, a braindump member being a braindump row and anything else
+  a block of the surface's day. So a missed `.initial` never puts a placed
+  series down through the braindump's `schedule`, which would re-anchor
+  it. The grid's destination (ScheduleGrid, as the spike built it) sends a
+  block or an Anytime row through `moveBlock` and a braindump row through
+  the old `schedule`. The Anytime band is a destination for both
+  (`moveBlock(... to: .anytime)`, or `placeAnytime`, the date chip's
+  `move` gated on `canReschedule`), proposes `.forbidden` when the rule or
+  the phone refuses, and its header swaps its words for "Drop here to keep
+  it time-free" while a drag is in the air (both texts stacked, faded by
+  opacity, so the header never changes height; VoiceOver hears the hint
+  after the header's own label, `BlockMoveWords.anytimeHeader`). That hint
+  is a hand copy of inline JSX in components/views/day-schedule.tsx: no
+  fixture holds the two together, so a web rewording won't fail a test; a
+  later copy pass can move it into a lib copy module and copy.json. The
+  braindump sheet is a destination on its `NavigationStack`, switched off
+  only while one of its own rows is in the air (read off the live drag,
+  so an idle sheet stays on and a block's drag never has to switch it on
+  mid-session), proposing `.cancel` for a braindump row (so a row let go
+  inside still restores its size) and `.forbidden` for a refused block;
+  its `onDisappear` resets `sheetTopGlobal` to `.infinity`.
+- **The menu (B2, B3).** `blockMenu(for:in:)` asks the sheet's verb gates
+  on the block's day: the tick (or Unskip), Skip, Pause (or Resume); Move
+  to tomorrow with its day as the subtitle, Reschedule (Today, Tomorrow,
+  Next week: `RescheduleRow.quickRows`) and Move to Braindump; then Move to
+  Anytime (`canMoveToAnytime`, through the same rule). Each runs on the
+  block's day and selects nothing. No Change length (PR 9).
+- **VoiceOver (B12).** Named actions only (`spokenActions`): the menu's
+  verbs but Reschedule, then "15 minutes later" and "15 minutes earlier"
+  (`nudge`: one `moveBlock` to the hour 15 minutes off, never past
+  midnight) and Move to Anytime; never the adjustable trait. After a move
+  it announces where the block landed (`BlockMoveWords.announcement`:
+  "Moved to 10:15 AM", "Moved to Friday at 10:15 AM", "..., every day it
+  repeats", "Moved to Anytime", "Moved to the braindump"); whether it
+  repeats reads a NULL frequency as the type's default, as the server
+  does, so a habit stored without one is daily.
+- **Anytime rows (B23).** Each `AnytimeRow` lifts when an hour or the
+  braindump would take it (`canLiftRow`, which probes 9:00 and the
+  braindump), from the band's own `dragContainer`.
+- **Autoscroll (B9).** `ScheduleAutoscroll.step` drives the bottom edge (the
+  one the sheet covers) by hand, as the spike did; the top edge is the
+  system's, with a hand-driven one behind `handDrivesTopEdge` (false) for
+  device check M3.
+- **Sample.** Walk (a daily habit at 7:45 AM, 20 minutes) and Team sync (a
+  weekly task with no project on today's weekday at 4:45 PM, from two weeks
+  back), made last so no id moves. Not the design's 7:30 and 10:00: with
+  the 34pt pane floor Walk at 7:30 would touch Morning pages and Team sync
+  at 10:00 nest in Draft Q4 roadmap.
+- **Where it departs from the design.**
+  - `moveBlock(_:from:to:)` takes a `BlockTarget` (an hour carries its own
+    `startMin`), not the design's `moveBlock(_:from:to:startMin:)`.
+  - The grid's destination proposes no operation of its own: a block that
+    no hour takes never lifts, and an hour that refuses one that did lift
+    (a skipped strip never does) leaves it where it was.
+  - The hosted tests live in a new `BlockMoveTests`, not
+    `PlannerSyncTests`; they read the fixture from the repo by `#filePath`.
+  - The menu's reschedule rows are `RescheduleRow` (`RescheduleChoice` is
+    taken by the item sheet).
+  - The top-edge autoscroll stays the system's until M3 says otherwise.
+  - Design §5.5's "Why these intents" says `time` with both keys takes
+    `planTimeEdit`'s `scheduleTask` branch when the bucket differs or the
+    item is not scheduled. Not when the bucket and time sent already equal
+    the row's: lib/item-edit.ts `timeEditPatch` answers `{}` before
+    `planTimeEdit` runs, so five drops (block-drop-writes-fixtures.test.ts
+    `UNMOVED`: a series holding a stashed date on its own time, a one-off
+    under Anytime not marked scheduled, three rows under Anytime holding a
+    stash, each on its own day's Anytime) answer 200 and write nothing.
+    They keep the stash, or the row's `isScheduled: false`, which the web's
+    `scheduleTask` for the same drop clears. Nothing on screen differs, but
+    the stored rows do, and the phone sends nothing for them at all
+    (`editing` changes nothing).
+  - The rule retimes a habit that has a parent, and the route refuses that
+    time with 400 `not_for_subtask` (the fixture's four `habit subtask`
+    rows); the phone's `editAllowed` sends nothing for them. No door makes a
+    habit with a parent, so it is the rule's edge.
+  - A retried `schedule` writes its columns and records an event again
+    (the route never asks whether the row is already so; §6.2 keeps the
+    intent as it is), where a retried `time` or `unschedule` writes
+    nothing. The row converges either way; the fixture's test pins both.
+  - The design's PR 8 Files list names no DsulCore or TS file. The phone's
+    mapping is DsulCore's `phoneBlockDrop` (BlockDropWrite.swift, beside
+    `planBlockDrop`, so a cloud run tests it), pinned by a new server
+    fixture, block-drop-writes.json, written through the real route; and
+    row-moves.json gains two braindump rows for the band's gate.
+- **Files.** ios/Dsul/Schedule: ScheduleMoves.swift and AnytimeRow.swift
+  (new), ScheduleColumn.swift, BlockView.swift, ScheduleDrag.swift,
+  ScheduleGrid.swift, ScheduleView.swift, AnytimeBand.swift,
+  BraindumpSheet.swift; ios/Dsul/Model: SampleData.swift, SamplePlanner.swift;
+  ios/DsulTests: BlockMoveTests.swift (new), SamplePlannerTests.swift,
+  ScheduleRenderTests.swift; DsulCore BlockDropWrite.swift and
+  BlockDropWritesFixtureTests (new); tests/fixtures/day/block-drop-writes.json
+  and its writer tests/unit/block-drop-writes-fixtures.test.ts (new);
+  tests/fixtures/day/row-moves.json (a braindump row and a done one, read by
+  RowMovesFixtureTests) and its writer tests/unit/day-fixtures.test.ts;
+  tests/unit/ios-change-filter.test.ts; ios/README.md (Moving a block, and
+  the sample paragraph).
 
 ## Item detail, part 1
 - **One sheet, every surface.** `PlannerSheet.item(UUID, day: SheetDay)` in
@@ -2095,8 +2247,8 @@ re-runs the Swift tests.
 Week and blocks PRs 7 and 11 of `ios-app/week-and-blocks/design.md` (§5.5,
 §6.1, Q3), shipped as one PR; the builders' notes are in `week/pr7/`. What
 dropping a schedule block somewhere does is written once, in TS, and both
-clients ask it: the web's drops from this PR, the phone's from PR 8. Nothing
-on the phone calls it yet, so the app draws and does nothing new.
+clients ask it: the web's drops from this PR, the phone's from PR 8
+(Moving a block, above).
 
 - **The rule.** `planBlockDrop(item, from, target, ctx)` in
   `lib/block-moves.ts`, pure, keyed on the registry's `dateAnchored` (for a
@@ -2153,7 +2305,7 @@ on the phone calls it yet, so the app draws and does nothing new.
   in-block or milestone task dropped on the braindump stays where it was; a
   placed habit dropped there still pauses; and every other drop ends in the
   row it did before. lib/dnd/CONTRACT.md's table says which ids ask.
-- **How the phone will map it (PR 8).** `place` sends `schedule {date,
+- **How the phone maps it (PR 8).** `place` sends `schedule {date,
   startTime}`; `retime` sends `time {timeBucket, startTime}` with the hour's
   part of day, which never carries the date (M1); `anytime` with a null date
   sends `time {timeBucket: "anytime", startTime: null}`; `braindump` sends
@@ -2197,8 +2349,8 @@ on the phone calls it yet, so the app draws and does nothing new.
   drop would send back); DsulCore BlockMoves.swift; tests block-moves,
   block-moves-fixtures, block-drop-receipt, handle-drag-end, sidebar-drop,
   braindump-landing and ios-change-filter, the e2e dnd spec's braindump
-  refusal, and BlockMovesFixtureTests; .github/workflows/ios.yml. No app
-  file, view or hosted test, and no new device check in ios/README.md.
+  refusal, and BlockMovesFixtureTests; .github/workflows/ios.yml. The app's
+  side is PR 8's (Moving a block, above).
 
 ## The drag spike
 The braindump sheet (detents `.peek` = 96pt, `.medium`, `.large`; background
@@ -2234,21 +2386,22 @@ since O1 make possible, and any word that a repeat took a goal role away (the
 web then lists the item as a plain member, with no notice), the Beeminder row,
 the Streaks, Organize and Goals switches, which the phone honours but can't
 turn on or off, the thread and Ask, Focus), universal links (the email link
-uses the custom scheme), resize and moving existing blocks from the phone
-(the rule a drop will follow is built, see Dropping a block, though nothing
-on the phone asks it yet; and a block's own Move to Braindump, from its
-menu or a drop; the sheet's ⋯
-has it), the overdue tray, sinking completed rows, filters and
-`showPausedOnGrid` (the phone uses the defaults), Focus as a Live Activity,
+uses the custom scheme), resizing a block from the phone, two block drops
+the web takes and the phone refuses in v1 (a habit dropped on the braindump,
+which the web pauses, B15, and a block dropped on another day's Anytime,
+B22: both answer the forbidden badge), undo after a move, the overdue tray,
+sinking completed rows, filters and `showPausedOnGrid` (the phone uses the
+defaults), Focus as a Live Activity,
 and a local-stack password grant for development. App Store review will also
 want consent before sending data to a model. Notifications shipped
 (#446 to #524: the phone plans and arms its own, stores its time zone,
 registers as a device and is woken by APNs); what is left of them is in
 [reminders-platforms.md](reminders-platforms.md).
 
-The block work named above (moving and resizing blocks, Week × Schedule) is
-Week and blocks' design PRs 7 to 10, which also bring the block's menu,
-VoiceOver's 15-minute and length actions, and the Anytime band as a drop
-target with its rows as drag sources. The blocks themselves are drawn in the
-web's look and laid out by its overlap pass (PRs 4 to 6, Schedule blocks
-above).
+The block work named above (resizing blocks, Week × Schedule) is Week and
+blocks' PRs 9 and 10, which also bring Change length in the block's menu and
+VoiceOver's length actions. The blocks themselves are drawn in the web's
+look and laid out by its overlap pass (PRs 4 to 6, Schedule blocks above),
+and they move (PR 8, Moving a block above): the block's menu, VoiceOver's
+15-minute actions, and the Anytime band as a drop target with its rows as
+drag sources.

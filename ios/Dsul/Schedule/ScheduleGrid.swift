@@ -5,7 +5,8 @@ import SwiftUI
 /// blocks, now marker and drop ghost). The drop target is the 24-hour content
 /// inside the ScrollView, not the ScrollView, so drop locations are already
 /// in content space. The blocks have no drop handling of their own, so a drop
-/// over one still lands on the grid.
+/// over one still lands on the grid. It takes a braindump row, a block of
+/// the day, and an Anytime row (PR 8).
 ///
 /// The column is measured here (`fieldWidth`, the grid right of the gutter),
 /// and ScheduleView lays the day out on that width. This body reads the drag
@@ -49,17 +50,13 @@ struct ScheduleGrid: View {
             .contentShape(Rectangle())
             .dropDestination(for: ItemRef.self) { (refs: [ItemRef], session: DropSession) in
                 guard let ref = refs.first else { return }
-                let duration = planner.item(ref.id)?.durationMin ?? drag.durationMin
-                let start = snappedStart(contentY: Double(session.location.y), hourPx: ScheduleMetrics.hourPx,
-                                         durationMin: duration)
-                planner.schedule(ref.id, startMin: start)
-                drag.note("drop \(minutesToTime(start))")
+                drop(ref.id, at: Double(session.location.y))
             }
             .onDropSessionUpdated { session in
                 drag.noteDropUpdate()
                 switch session.phase {
                 case .entering, .active:
-                    drag.setContentY(Double(session.location.y))
+                    drag.setContentY(Double(session.location.y), on: day.day)
                 case .exiting, .ended:
                     drag.clearGhost()
                 default:
@@ -85,6 +82,29 @@ struct ScheduleGrid: View {
         .onAppear {
             position.scrollTo(y: 8 * hourPx)
         }
+    }
+
+    /// `id` let go at `contentY` on the day's hours: where the ghost showed
+    /// it, the item's own length held at the drag's grab point. A braindump
+    /// row keeps its hour drop (`schedule`); a block or an Anytime row moves
+    /// by the drop rule from the day it was lifted on (`moveBlock`), which
+    /// sends one write, or none for a drop it refuses. Routed by the item
+    /// (`dropSource`), not by the drag's memory alone, which a missed lift
+    /// leaves another item's. Nothing is selected after it (B3).
+    private func drop(_ id: UUID, at contentY: Double) {
+        let duration = planner.item(id)?.durationMin ?? drag.durationMin
+        let start = snappedStart(contentY: contentY, hourPx: ScheduleMetrics.hourPx, durationMin: duration,
+                                 anchor: drag.anchor)
+        switch planner.dropSource(id, said: drag.source(of: id), on: day.day) {
+        case .block(let from), .anytime(let from):
+            withAnimation(.snappy) {
+                _ = planner.moveBlock(id, from: planner.blockOrigin(id, on: from),
+                                      to: .hour(date: day.day.description, startMin: start))
+            }
+        case .braindump:
+            planner.schedule(id, startMin: start)
+        }
+        drag.note("drop \(minutesToTime(start))")
     }
 }
 

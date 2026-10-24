@@ -373,11 +373,14 @@ how it feels. Check on the iPhone, on the sample or signed in once the
 server's `skip`, `move` and `pause` writes are deployed (an older server's
 verbs simply don't show); a check that needs one or the other says so. The
 sample's habits are Meds and Stretch 10 min (daily, already done today),
-Journal (daily, not done today), Plan tomorrow (weekdays) and Water the
-plants (Sundays and Wednesdays), and its tasks are all one-offs but Pay
-rent, last in the braindump, which repeats monthly on the 1st and has no day.
-Four of the one-offs sit on the days around today, for Week (see Checking
-Week).
+Journal (daily, not done today), Plan tomorrow (weekdays), Water the plants
+(Sundays and Wednesdays) and Walk (daily at 7:45 AM, on the grid), and its
+tasks are one-offs but three: Pay rent, last in the braindump, which repeats
+monthly on the 1st and has no day; Team sync, weekly on today's weekday at
+4:45 PM since two weeks back; and Weekly run review, a goal's check-in (see
+Checking Organize). Four of the one-offs sit on the days around today, for
+Week (see Checking Week), and Walk and Team sync are there to move (see
+Moving a block).
 Its routines are Morning routine (Meds, Stretch 10 min and Journal) and Wind
 down, which is empty, and its one season, Autumn, holds Journal. Draft Q4
 roadmap has two subtasks (Pull the September numbers, done, and Write the
@@ -1581,8 +1584,8 @@ tasks with no project sit around it: Pick up the dry cleaning three days back
 (4:30 PM), Bike service two days back (2 PM), Coffee with Priya tomorrow
 (10 AM) and Post the birthday card the day after (Anytime). Which of them
 fall in this week depends on today's weekday (from a Thursday all four do);
-the others are in Last week or Next week. Nothing new is on the day before
-today.
+the others are in Last week or Next week. None of them is on the day before
+today (Walk, every day's, is: see Moving a block).
 
 1. Hold the capsule, then Show, Week, on List. Seven day sections, from
    your Week starts on setting, each headed by its weekday and date. Today's
@@ -1675,8 +1678,8 @@ Today to Schedule and scroll from 7 AM to 10 PM.
 1. Light and dark: each block is a pane with a hairline and a soft shadow,
    beside a 2pt rail that runs its true length and a bead at its start. Draft
    Q4 roadmap and Standup (filed "work") wear Work's colour, Review PRs
-   dsul's, Gym Health's; Lunch walk and Read, which have no project, wear a
-   lime rail and bead at full strength.
+   dsul's, Gym Health's; Lunch walk, Read, Walk and Team sync, which have no
+   project, wear a lime rail and bead at full strength.
 2. Standup (15 minutes) shows its title and "15m" on one line, Morning pages
    "30m"; Draft Q4 roadmap (2 hours) adds "9:00–11:00" under its title,
    12-hour as Settings says. Standup's pane is taller than its quarter hour
@@ -1751,6 +1754,66 @@ fresh sample each time.
    the other's title.
 5. Load 40 blocks (avatar menu, Drag spike): the grid scrolls without a
    stutter, and a drag's ghost keeps up with the finger.
+
+## Moving a block
+
+On Day's Schedule a block moves (Week and blocks PR 8): hold it still for
+its menu, or hold and move to drag it to another time, onto the Anytime band
+or onto the braindump sheet. An Anytime row drags back onto an hour, and a
+braindump row drops onto the band. What each drop writes is the web's rule
+(`planBlockDrop`), which the hosted tests pin; these checks are for how it
+feels. Run the spike's five checks first (Trying the drag, above): they
+still pass. Then, on a fresh sample each time (Try with sample data),
+switch Today to Schedule. Walk (7:45 AM, a daily habit) and Team sync
+(4:45 PM, a weekly task on today's weekday) are the sample's blocks that
+repeat.
+
+1. (M1) Hold Lunch walk (12:30 PM) still: its menu opens and nothing
+   lifts. It reads Mark done and Pause; then Move to tomorrow, with
+   tomorrow's date under it, Reschedule (Today, Tomorrow, Next week) and
+   Move to Braindump; then Move to Anytime, a divider between each group.
+   Walk's reads Done today, Skip today and Pause, then Move to Anytime.
+   Skip today on Walk: its strip's menu starts with Unskip today, and the
+   strip never lifts. While a menu is open, and after you pick from it or
+   dismiss it, no block shows a dashed outline and the Anytime band's
+   header keeps its own words.
+2. (M2) Hold Lunch walk and move: the menu folds into the lifted block, and
+   a ghost with its landing time follows in 15-minute steps, with a tick at
+   each. Where the block was, a dashed outline with no fill; nothing fades.
+   Grab it near its foot and let go: it lands where you held it, not
+   centred on your finger, and it shows no grips.
+3. Drop it on 3:30 PM: it lands there, and the outline is gone.
+4. (M3) Drag a block up past the grid's top edge: the grid scrolls up (the
+   system's own scroll; if it doesn't, the hand-driven top edge is one
+   switch, `ScheduleAutoscroll.handDrivesTopEdge`). Drag one down past the
+   bottom, with the braindump sheet open and closed: it scrolls down.
+5. Start any drag: the Anytime band's header reads "Drop here to keep it
+   time-free" until you let go. Drop Standup (11:15 AM) on the band: it
+   leaves the hours and shows in the band. Drag that row back onto 11:15
+   AM: it is a block again. Open the braindump and drag Call the bank onto
+   the band: it lands on today, with no time. Tick Groceries in the band,
+   then drag it onto an hour: done rows move as the web's do.
+6. (M4) Open the braindump sheet at its medium size and drop Gym (5:30 PM)
+   on it: Gym joins the braindump. Drag Walk or Team sync over the sheet:
+   the forbidden badge; let go there and it stays where it was. Then drag a
+   braindump row onto an hour, and drop that new block back on the sheet
+   at once: it still joins the braindump, so a row's drag leaves the sheet
+   taking drops.
+7. Open the braindump at its large size, start dragging a row, and let go
+   inside the sheet: the sheet goes back to large and nothing changes.
+8. Drag Walk to 8:15 AM: Walk is at 8:15 on every day (pick yesterday and a
+   day next week from the title). Drag Team sync to 4 PM: the weeks before
+   still show it, at 4 PM too, since a repeat moves in time only and keeps
+   its start date.
+9. A flick that starts on a block scrolls the grid and never lifts it.
+10. VoiceOver: a block's actions hold its menu's verbs (Lunch walk's: Mark
+    done, Pause, Move to tomorrow, Move to Braindump), then "15 minutes
+    later", "15 minutes earlier" and Move to Anytime. A swipe up or down on
+    a block moves nothing. "15 minutes later" on Lunch walk says "Moved to
+    12:45 PM"; on Walk (7:45), "Moved to 8 AM, every day it repeats".
+11. Signed in, turn on Airplane Mode and drag a block to another hour: it
+    lands at once, then the banner says "Couldn't reach dsul, so that change
+    was undone." and the block goes back. Turn Airplane Mode off.
 
 ## Rules
 

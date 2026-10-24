@@ -1393,6 +1393,10 @@ function buildRowMoves(): RowMovesFixture {
       ['one-off cancelled', oneOff({ status: 'cancelled' }), 'task'],
       ['one-off in a project block', oneOff({ inProjectBlock: true }), 'task'],
       ['one-off undated', oneOff({ startDate: undefined }), 'task'],
+      // A row the braindump lists, as the phone's Anytime band asks before it
+      // takes one through `move` (Week and blocks PR 8, design §5.2).
+      ['a braindump row', oneOff({ startDate: undefined, isScheduled: false }), 'task'],
+      ['a done braindump row', oneOff({ startDate: undefined, isScheduled: false, status: 'completed' }), 'task'],
       ['repeat none is a one-off', oneOff({ repeatFrequency: 'none' }), 'task'],
       ['recurring task', oneOff({ repeatFrequency: 'daily' }), 'task'],
       ['recurring task done that day', oneOff({ repeatFrequency: 'daily', completedDates: [T] }), 'task'],

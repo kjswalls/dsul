@@ -184,6 +184,27 @@ enum SampleData {
             weekTask("Post the birthday card", 15, inDays: 2, at: nil),
         ]
 
+        // Two timed rows that repeat (Week and blocks PR 8, design §8), made
+        // last so no id above moves, so the sample shows a block that moves
+        // in time only and keeps its days. Walk, a daily habit at 7:45 (it
+        // sorts after Morning pages, and every day's grid has it, the day
+        // before `anchor` too); Team sync, a weekly task with no project on
+        // `anchor`'s weekday since two weeks back, so earlier weeks show it,
+        // at 4:45 PM. Not the design's 7:30 and 10:00: a pane is floored at
+        // 34pt, so a block paints at least 30.4 minutes (DsulCore
+        // `planOverlaps`), and Walk at 7:30 would touch Morning pages and
+        // Team sync at 10:00 nest in Draft Q4 roadmap. The sample's day keeps
+        // no overlaps, and the overlap checks' drops (ios/README.md) still
+        // land clear of both.
+        let walk = Item(id: next(), type: "habit", title: "Walk", status: "pending", startTime: "07:45",
+                        timeBucket: DayBucket.morning.rawValue, repeatFrequency: "daily", duration: 20, streak: 2,
+                        completedDates: [1, 2].map { anchor.adding(days: -$0).description })
+        let teamSyncStart = anchor.adding(days: -14)
+        let teamSync = Item(id: next(), type: "task", title: "Team sync", status: "pending",
+                            startDate: teamSyncStart.description, startTime: minutesToTime(16 * 60 + 45),
+                            timeBucket: DayBucket.owning(minute: 16 * 60 + 45).rawValue, repeatFrequency: "custom",
+                            duration: 30, isScheduled: true, repeatDays: [teamSyncStart.weekday])
+
         // Projects keep no icon or colour, so their tiles derive from their
         // names, as an older project's do on the web. Work has notes and
         // Writing a weekday time block, for their pages (O3). The block
@@ -221,7 +242,7 @@ enum SampleData {
                  milestoneIds: milestones.map(\.id), checkinIds: [checkin.id]),
         ]
         return Contents(items: blocks + untimed + routineHabits + otherHabits + braindump + subtasks + [payRent]
-                            + milestones + [checkin] + restOfWeek,
+                            + milestones + [checkin] + restOfWeek + [walk, teamSync],
                         projects: projects, routines: routines, seasons: seasons, goals: goals)
     }
 }

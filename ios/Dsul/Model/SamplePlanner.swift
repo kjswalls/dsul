@@ -481,12 +481,13 @@ final class SamplePlanner {
     }
 
     /// Puts an item on the selected day's grid at `startMin`: a braindump row
-    /// dropped on an hour (or VoiceOver's "Schedule at 9:00"), or a block
-    /// moved. The web's hour drop (`placing`, lib/dnd/handle-drag-end.ts →
-    /// `scheduleTask`): scheduled, the hour's bucket, the time, out of any
-    /// project block (its stash cleared), and anchored to the day it was
-    /// dropped on. Also ends the drag's hold on fetched data: the drop has
-    /// landed.
+    /// dropped on an hour (or VoiceOver's "Schedule at 9:00"); a block or an
+    /// Anytime row moves through the drop rule instead (`moveBlock`,
+    /// ScheduleMoves.swift). The web's hour drop (`placing`,
+    /// lib/dnd/handle-drag-end.ts → `scheduleTask`): scheduled, the hour's
+    /// bucket, the time, out of any project block (its stash cleared), and
+    /// anchored to the day it was dropped on. Also ends the drag's hold on
+    /// fetched data: the drop has landed.
     func schedule(_ id: UUID, startMin: Int) {
         DragHold.shared.releaseNow()
         guard let i = items.firstIndex(where: { $0.id == id }) else { return }

@@ -91,10 +91,17 @@ import UIKit
     #endif
 
     /// A block's check (open, and the tick drawn on a done one's lime), a
-    /// skipped strip's mark, the band's chevron: a missing name draws nothing
-    /// at all.
+    /// skipped strip's mark, the band's chevron, and every entry of a block's
+    /// menu (`BlockMenuEntry.symbol`) and of its Reschedule submenu: a missing
+    /// name draws nothing at all.
     @Test func everyScheduleSymbolExists() {
-        for symbol in ["square", "checkmark", "forward.end", "chevron.down"] {
+        let menu: [BlockMenuEntry] = [
+            .tick("", done: false), .tick("", done: true), .unskip(""), .skip(""), .pause, .resume,
+            .nextDay("", detail: nil, date: ""), .reschedule("", []), .braindump, .anytime,
+        ]
+        let today = DayString("2026-10-01")!
+        let choices = RescheduleRow.quickRows(today: today, nextWeekStart: today.adding(days: 4)).map(\.symbol)
+        for symbol in ["square", "checkmark", "forward.end", "chevron.down"] + menu.map(\.symbol) + choices {
             #expect(UIImage(systemName: symbol) != nil, "\(symbol)")
         }
     }
