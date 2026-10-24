@@ -1082,7 +1082,7 @@ describe("an item's inline conversation (the modal, the phone, Zen, /item/[id])"
     holdItemThread('c9', 't1', THREAD);
     render(<ItemConversation item={DENTIST} mode="inline" />);
     const section = screen.getByTestId('item-thread');
-    expect(section).toHaveTextContent(/^Timeline/);
+    expect(section).toHaveTextContent(/^All activity/);
     expect(within(section).getByRole('button', { name: 'Conversation options' })).toBeInTheDocument();
     expect(within(section).getByText('Which day?')).toHaveClass('rounded-2xl', 'bg-secondary');
     const reply = within(section).getByText('Half an answer').closest('[data-message-role="assistant"]') as HTMLElement;

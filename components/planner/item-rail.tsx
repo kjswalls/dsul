@@ -3,8 +3,6 @@
 import type { MouseEvent, ReactNode } from "react";
 import {
   Calendar,
-  ChevronDown,
-  ChevronRight,
   Clock,
   ListChecks,
   Repeat,
@@ -13,12 +11,14 @@ import { cn } from "@/lib/utils";
 import { ItemTick, springItemCheck } from "@/components/primitives/item-check";
 
 /**
- * The item's details folded to one strip while its conversation has the panel
- * (components/planner/item-dialog.tsx, AI on, docked): where the item lives and
- * its title, then its day and time, steps and repeat as small chips. A tap
- * anywhere on it opens the details again. It shows nothing it cannot say in a
- * glance, and edits nothing itself: every property is one tap away, open. The
- * one thing it does is RailDoneCheck below, which sits over it, never in it.
+ * The item's details folded to one plain line while its conversation has the
+ * panel (components/planner/item-dialog.tsx, AI on, docked): where the item
+ * lives, then its day and time, steps and repeat, as text with small icons,
+ * never pills or a card (the rail reads as one surface, like Claude Code's
+ * thread rail; Kirby's pick on 2026-10-24). The title is not here: it is the
+ * rail header's crumb, which also folds and unfolds. A tap anywhere on the
+ * line opens the details again. It edits nothing itself; the tick is the
+ * header's (RailDoneCheck below).
  */
 export type RailChipKind = "date" | "time" | "steps" | "repeat";
 
@@ -39,12 +39,10 @@ export function ItemRail({
   container,
   chips,
   onExpand,
-  check = false,
   className,
 }: {
+  /** Names the line for a screen reader ("Show details for …"); not drawn. */
   title: string;
-  /** Leaves room at the start of the title row for a RailDoneCheck laid over it. */
-  check?: boolean;
   /** The project (or other container) the item sits in, when it has one. */
   container?: string;
   chips: readonly RailChip[];
@@ -59,54 +57,35 @@ export function ItemRail({
       aria-expanded={false}
       aria-label={`Show details for ${title || "this item"}`}
       className={cn(
-        "group/rail flex w-full flex-col gap-1.5 rounded-xl border border-border bg-card px-3 py-2 text-left transition-colors hover:bg-secondary/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-        check && "pl-9",
+        "-mx-1.5 flex w-[calc(100%+0.75rem)] min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5 rounded-md px-1.5 py-0.5 text-left text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
         className,
       )}
     >
-      <span className="flex min-w-0 items-center gap-1.5">
-        {container && (
-          <>
-            <span className="max-w-[40%] shrink-0 truncate text-xs text-muted-foreground">
-              {container}
-            </span>
-            <ChevronRight
-              className="size-3 shrink-0 text-muted-foreground"
-              aria-hidden
-            />
-          </>
-        )}
-        <span className="min-w-0 flex-1 truncate font-serif text-sm text-foreground">
-          {title || "Untitled"}
-        </span>
-        <ChevronDown
-          className="size-3.5 shrink-0 text-muted-foreground transition-transform group-hover/rail:translate-y-px"
-          aria-hidden
-        />
-      </span>
-      {chips.length > 0 && (
-        <span className="flex min-w-0 items-center gap-1 overflow-hidden">
-          {chips.map((c) => (
-            <span
-              key={c.kind}
-              data-rail-chip={c.kind}
-              className="inline-flex h-5 shrink-0 items-center gap-1 rounded-full border border-border px-2 text-2xs text-muted-foreground"
-            >
-              {CHIP_ICON[c.kind]}
-              {c.label}
-            </span>
-          ))}
+      {container && (
+        <span data-rail-chip="container" className="max-w-[40%] truncate">
+          {container}
         </span>
       )}
+      {chips.map((c) => (
+        <span
+          key={c.kind}
+          data-rail-chip={c.kind}
+          className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap"
+        >
+          {CHIP_ICON[c.kind]}
+          {c.label}
+        </span>
+      ))}
+      {!container && chips.length === 0 && <span>Show details</span>}
     </button>
   );
 }
 
 /**
- * The item's tick, laid over the folded rail's title row (item-dialog.tsx
- * places it). A sibling of the fold, never inside it: the fold clips, and the
- * lime mark keeps its own element (CLAUDE.md), so it fades in on its own and
- * nothing it lives in can dim or cut it. The same box a row draws
+ * The item's tick, in the rail header's icons (item-dialog.tsx places it),
+ * where Claude Code's thread rail keeps "resolve". Never inside the fold: the
+ * fold clips, and the lime mark keeps its own element (CLAUDE.md), so nothing
+ * it lives in can dim or cut it. The same box a row draws
  * (task-row.tsx): lime when done, a lime fill rising for a counted habit's
  * partial day. What a press means is the caller's (lib/item-verbs.ts `tick`).
  */

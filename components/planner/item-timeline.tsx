@@ -1,7 +1,14 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { User, Workflow } from 'lucide-react';
+import { ChevronDown, ListFilter, User, Workflow } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { AskMark } from '@/components/ai/ask-mark';
 import { BandLabel } from '@/components/planner/item-bands';
 import { itemThreadId } from '@/components/ai/item-conversation';
@@ -152,6 +159,52 @@ export function TimelineFilterTabs({
         </button>
       ))}
     </div>
+  );
+}
+
+/** What the menu's trigger says for each filter: the stream's own heading. */
+const FILTER_MENU_LABEL: Record<TimelineFilter, string> = {
+  all: 'All activity',
+  talk: 'Talk only',
+  changes: 'Changes only',
+};
+
+/**
+ * All · Talk · Changes as a quiet menu at the top of the item's conversation,
+ * where the "Timeline" heading and its pills were (the rail's breadcrumb
+ * design, Kirby's pick on 2026-10-24). Its trigger names what is showing.
+ */
+export function TimelineFilterMenu({
+  value,
+  onChange,
+}: {
+  value: TimelineFilter;
+  onChange: (f: TimelineFilter) => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          data-testid="item-timeline-filter"
+          data-filter={value}
+          className="-ml-1.5 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <ListFilter className="size-3" aria-hidden />
+          {FILTER_MENU_LABEL[value]}
+          <ChevronDown className="size-3" aria-hidden />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-40">
+        <DropdownMenuRadioGroup value={value} onValueChange={(v) => onChange(v as TimelineFilter)}>
+          {TIMELINE_FILTERS.map((f) => (
+            <DropdownMenuRadioItem key={f.id} value={f.id} data-testid={`item-timeline-filter-${f.id}`}>
+              {FILTER_MENU_LABEL[f.id]}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
