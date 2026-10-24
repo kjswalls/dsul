@@ -2262,7 +2262,7 @@ body {
   initial-value: transparent;
 }
 
-:is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip]) {
+:is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip], [data-ask-count]) {
   --ask-icon-ink: oklch(0.62 0.135 85);
   --ask-icon-lit: var(--ai);
   --ask-icon-accent: var(--lime-solid);
@@ -2272,7 +2272,7 @@ body {
   --ask-icon-unlit: var(--ink-1);
   --ask-icon-unlit-mid: var(--ink-2);
 }
-.dark :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip]) {
+.dark :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip], [data-ask-count]) {
   --ask-icon-ink: var(--ai);
   --ask-icon-pair: oklch(0.84 0.12 190);
   --ask-icon-pair-ink: var(--ask-icon-pair);
@@ -2280,26 +2280,26 @@ body {
 /* Each look's partner: light from its light relay colour, dark from its glow
    (Sorbet's is a deep rose beside the pink; an apricot read rust there). The
    tints keep Paper's and Night's. */
-:root[data-look-light='studio']:not(.dark) :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip]) {
+:root[data-look-light='studio']:not(.dark) :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip], [data-ask-count]) {
   --ask-icon-pair: oklch(0.65 0.13 225);
   --ask-icon-pair-ink: var(--ask-icon-pair);
 }
-:root[data-look-light='sorbet']:not(.dark) :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip]) {
+:root[data-look-light='sorbet']:not(.dark) :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip], [data-ask-count]) {
   --ask-icon-pair: oklch(0.64 0.15 18);
 }
-:root[data-look-dark='terminal'].dark :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip]) {
+:root[data-look-dark='terminal'].dark :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip], [data-ask-count]) {
   --ask-icon-pair: oklch(0.86 0.12 90);
 }
-:root[data-look-dark='dusk'].dark :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip]) {
+:root[data-look-dark='dusk'].dark :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip], [data-ask-count]) {
   --ask-icon-pair: oklch(0.76 0.12 350);
 }
 /* After the looks, and as specific: Notepad Retro's skin re-points the accent
    under whichever look is on, so its partner has to win over theirs too. */
-:root:not(.dark) [data-layout-skin='retro'] :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip]) {
+:root:not(.dark) [data-layout-skin='retro'] :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip], [data-ask-count]) {
   --ask-icon-pair: oklch(0.66 0.11 210);
   --ask-icon-pair-ink: var(--ask-icon-pair);
 }
-:root.dark [data-layout-skin='retro'] :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip]) {
+:root.dark [data-layout-skin='retro'] :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip], [data-ask-count]) {
   --ask-icon-pair: oklch(0.8 0.1 215);
 }
 
@@ -4879,6 +4879,36 @@ body {
 }
 @media (prefers-reduced-motion: reduce) {
   [data-steps-label='drafting'] {
+    animation: none;
+  }
+}
+
+/* ── The Ask key's count (components/ai/rail/ask-opener.tsx AskCount) ──────
+   How many things wait on the user, on the key's corner (Kirby's pick,
+   2026-10-24: "A + C", the count with the mark's raised tile). A disc in the
+   key's own surface ringed in the mark's aurora, the accent into its partner,
+   so it reads as the AI's without the honey that read as an alarm. It
+   arrives with one short pop and then sits still; nothing about it repeats.
+   The disc is the visible 17px; the button round it is a 24px target. */
+[data-ask-count] .ask-count-disc {
+  border: 1.5px solid transparent;
+  background:
+    linear-gradient(var(--ask-icon-key), var(--ask-icon-key)) padding-box,
+    linear-gradient(135deg, var(--ask-icon-accent), var(--ask-icon-pair-ink)) border-box;
+  box-shadow: 0 0 0 2px var(--canvas);
+  color: var(--foreground);
+  animation: ask-count-in 0.45s cubic-bezier(0.2, 0.8, 0.2, 1.2) both;
+}
+@keyframes ask-count-in {
+  from {
+    transform: scale(0);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-ask-count] .ask-count-disc {
     animation: none;
   }
 }

@@ -1,8 +1,11 @@
 'use client';
 
-import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react';
 import { AskMark, ASK_MARK_LIGHT } from '@/components/ai/ask-mark';
 import { useAICapabilities } from '@/lib/ai-connection-store';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { INBOX_SURFACE, NeedsYouInbox, useNeedsYouCount } from '@/components/ai/needs-you/needs-you-badge';
+import { useNeedsYouStore } from '@/lib/needs-you-store';
 import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
 import { chordLabel, isApplePlatform } from '@/lib/commands/keys';
 import { toggleRail } from '@/lib/open-chat';
@@ -361,6 +364,13 @@ export function AskOpener({ className }: { className?: string }) {
   // one must never place the other.
   const fit = useHeaderFit(ref, offered && !isMobile && !hidden, `${slots.header} ${chord} ${word}`);
 
+  const { open: waiting } = useNeedsYouCount();
+  // The count rides the key only where the key is drawn and Ask can answer;
+  // while it does, it is where the inbox opens (lib/needs-you-door.ts).
+  const counted = canChat && waiting > 0 && !isMobile && !hidden && fit !== 'none';
+  const hostInbox = useNeedsYouStore((s) => s.hostInbox);
+  useEffect(() => (counted ? hostInbox() : undefined), [counted, hostInbox]);
+
   if (!offered || isMobile) return null;
   const full = fit === 'full';
   // The key on its plate, with its chord or without; else the key alone.
@@ -388,7 +398,7 @@ export function AskOpener({ className }: { className?: string }) {
       data-ask-opener-slot=""
       data-fit={fit}
       hidden={hidden || fit === 'none'}
-      className={cn('flex min-w-0 shrink-[1000]', offset, className)}
+      className={cn('relative flex min-w-0 shrink-[1000]', offset, className)}
     >
       <button
         ref={ref}
@@ -429,7 +439,7 @@ export function AskOpener({ className }: { className?: string }) {
             plate && !raised ? 'rounded-[7px]' : 'rounded-[8px]'
           )}
         >
-          <AskMark lit={canChat} />
+          <AskMark lit={canChat} raised={counted} />
           {plate && <span>{word}</span>}
           {full && (
             <kbd
@@ -442,6 +452,54 @@ export function AskOpener({ className }: { className?: string }) {
           )}
         </span>
       </button>
+      {counted && <AskCount count={waiting} plate={plate} raised={raised} />}
     </span>
+  );
+}
+
+/**
+ * What is waiting on the user, on the Ask key's corner (Kirby's pick,
+ * 2026-10-24): a small count in an aurora ring, the mark's top tile raised
+ * beside it. Pressing the count peeks the inbox under the key without opening
+ * Ask; pressing the key opens Ask, whose home lists every question. A sibling
+ * of the button, never inside it, so a press here never toggles the rail, and
+ * absolutely placed, so the header's fit never counts it.
+ */
+function AskCount({ count, plate, raised }: { count: number; plate: boolean; raised: boolean }) {
+  const inbox = useNeedsYouStore((s) => s.inbox);
+  const openInbox = useNeedsYouStore((s) => s.openInbox);
+  const closeInbox = useNeedsYouStore((s) => s.closeInbox);
+  const label = `${count} waiting on you`;
+  return (
+    <Popover open={inbox.open} onOpenChange={(next) => (next ? openInbox() : closeInbox())}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          data-ask-count=""
+          data-testid="ask-count"
+          aria-label={label}
+          title={label}
+          className={cn(
+            'titlebar-hole absolute z-10 grid size-6 cursor-pointer place-items-center rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+            // On the key's top corner in each form; the drawn key's inset off
+            // the row's end (mr-3.5) moves the corner in.
+            plate ? (raised ? '-top-1 -right-1' : '-top-2 right-1.5') : raised ? '-top-3 -right-3' : '-top-3 right-0.5'
+          )}
+        >
+          <span className="ask-count-disc grid h-[17px] min-w-[17px] place-items-center rounded-full px-1 text-[10px] leading-none font-semibold tabular-nums">
+            {count > 9 ? '9+' : count}
+          </span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        sideOffset={6}
+        data-testid="needs-you-inbox"
+        aria-label="Needs you"
+        className={INBOX_SURFACE}
+      >
+        <NeedsYouInbox />
+      </PopoverContent>
+    </Popover>
   );
 }

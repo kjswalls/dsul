@@ -11,6 +11,7 @@ import { packQuestions } from '@/lib/prep-packs';
 import { openEditFor } from '@/lib/ui-store';
 import type { Task } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
+import { QUESTION_FRAME, type QuestionFrame } from './asker-card';
 
 /** The open items your AI has a question on, oldest first (question-round.tsx's rule). */
 export function usePrepQuestions() {
@@ -46,7 +47,7 @@ export function PrepAskerAvatar({ className }: { className?: string }) {
  * next one takes its place. Nothing waits on these: Do stuff works the same
  * with them unanswered.
  */
-export function PrepAskerCard() {
+export function PrepAskerCard({ frame = 'card' }: { frame?: QuestionFrame } = {}) {
   const waiting = usePrepQuestions();
   const [atId, setAtId] = useState<string | null>(null);
   const count = waiting.length;
@@ -65,7 +66,7 @@ export function PrepAskerCard() {
   return (
     <div
       data-testid="prep-asker-card"
-      className="flex flex-col gap-2 rounded-xl border border-border bg-card px-3 py-2.5"
+      className={cn('flex flex-col gap-2', QUESTION_FRAME[frame])}
       onKeyDown={(e) => {
         if (count < 2 || e.target instanceof HTMLInputElement) return;
         if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {

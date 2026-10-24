@@ -6,7 +6,7 @@ import { CircleAlert, MessageCircle } from 'lucide-react';
 import { AskMark } from '@/components/ai/ask-mark';
 import { AskGreeting } from '@/components/ai/ask/ask-greeting';
 import { OPENER_ICONS } from '@/components/ai/ask/it-works-card';
-import { ASK_SECTION_HEADING } from '@/components/ai/ask/needs-you';
+import { ASK_SECTION_HEADING } from '@/components/ai/ask/section-heading';
 import { ConnectAI } from '@/components/ai/connect/connect-ai';
 import { ConnectFix, fixCopy } from '@/components/ai/connect/connect-fix';
 import { labelName, useRefreshOnWindowFocus } from '@/components/ai/connect/connect-shared';

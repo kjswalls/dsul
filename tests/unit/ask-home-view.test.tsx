@@ -47,7 +47,7 @@ vi.mock('next/navigation', () => ({
 }));
 
 import { AskHome } from '@/components/ai/ask/ask-home';
-import { ASK_SECTION_HEADING } from '@/components/ai/ask/needs-you';
+import { ASK_SECTION_HEADING } from '@/components/ai/ask/section-heading';
 import { fetchItemEvents } from '@/lib/db';
 import { READY_AFTER_MS } from '@/hooks/use-agent-question';
 import { AskGreeting } from '@/components/ai/ask/ask-greeting';
@@ -294,7 +294,7 @@ describe('Needs you', () => {
     setItems([DENTIST]);
     render(<AskHome />);
     const field = await screen.findByTestId('needs-you-answer');
-    expect(field).toHaveAttribute('placeholder', 'Answer…');
+    expect(field).toHaveAttribute('placeholder', 'Your own words…');
     expect(screen.queryByTestId('needs-you-other')).toBeNull();
     expect(document.activeElement).not.toBe(field);
     fireEvent.keyDown(field, { key: 'Enter' });

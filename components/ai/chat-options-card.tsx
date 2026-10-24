@@ -3,6 +3,7 @@
 import { useId, useMemo, useState } from 'react';
 import { ArrowUp, ChevronDown, ChevronUp, SkipForward } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { optionKeyClass, optionRowClass } from '@/components/ai/option-rows';
 import { sendFrom } from '@/lib/open-chat';
 import type { ComposerBinding } from '@/lib/rail-store';
 import { composeAnswers, type OptionQuestion, type QuestionState } from '@/lib/chat-options';
@@ -130,22 +131,9 @@ export function ChatOptionsCard({
                 aria-pressed={on}
                 disabled={!live || sending}
                 onClick={() => choose(c.value)}
-                className={cn(
-                  'flex w-full items-start gap-2 rounded-lg border px-2.5 py-1.5 text-left text-sm transition-colors',
-                  on
-                    ? 'border-transparent bg-primary text-primary-foreground'
-                    : live
-                      ? 'border-border text-foreground hover:bg-secondary'
-                      : 'border-border text-muted-foreground'
-                )}
+                className={optionRowClass(on, live)}
               >
-                <span
-                  aria-hidden
-                  className={cn(
-                    'mt-px grid size-4.5 shrink-0 place-items-center rounded border text-2xs font-medium',
-                    on ? 'border-primary-foreground/30' : 'border-border text-muted-foreground'
-                  )}
-                >
+                <span aria-hidden className={optionKeyClass(on)}>
                   {String.fromCharCode(65 + i)}
                 </span>
                 <span className="flex min-w-0 flex-col">
@@ -180,7 +168,7 @@ export function ChatOptionsCard({
             onChange={(e) => setTyped(e.target.value)}
             placeholder={q.freeTextPlaceholder ?? 'Or type your own…'}
             data-testid="chat-option-input"
-            className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
+            className="h-8 min-w-0 flex-1 rounded-[10px] bg-secondary px-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
           />
           <button
             type="submit"
