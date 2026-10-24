@@ -264,10 +264,11 @@ enum PlannerJSON {
     static let launch = "0d000000-0000-4000-8000-000000000014"
 
     /// Every item write the server takes (lib/app-api.ts `ITEM_WRITES`), in
-    /// its order.
+    /// its order, but `snooze` (a notification's, which no sheet verb asks
+    /// for). `unschedule` is Move to Braindump (Week and blocks PR 3).
     static let allWrites = ["complete", "schedule", "skip", "move", "pause", "title", "notes", "delete",
                             "addSubtask", "resetStreak", "priority", "timesPerDay", "reminder", "time", "repeat",
-                            "project", "collect"]
+                            "project", "collect", "unschedule"]
 
     /// What POST /api/app/containers/:kind/:id takes (lib/app-containers.ts
     /// `CONTAINER_WRITES`: O8a's states, O8b's fields, O9's rename, icon and
@@ -1232,9 +1233,144 @@ final class DragFlag {
         #expect(posts == 2)
     }
 
-    /// Every part 1 write, each edit and Reset streak names its own item and
-    /// nothing else; a delete names its item and every subtask it took out
-    /// with it, a habit's only itself. A new subtask names the subtask, not
+    // MARK: Move to Braindump (Week and blocks PR 3)
+
+    /// Move to Braindump on Groceries, with the goals read (none): off the
+    /// day at once and into the braindump at its stored place (order 1, so
+    /// ahead of Call the bank), the four columns cleared and the rest kept.
+    /// The body is the action alone, which the server's strict schema takes
+    /// and nothing more.
+    @Test func moveToBraindumpSendsTheActionAlone() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(goals: [])))
+        await server.on(itemRoute(PlannerJSON.groceries), .status(200, ok))
+        let planner = await loaded(server)
+        let today = try #require(DayString(PlannerJSON.today))
+        let groceries = try #require(planner.item(PlannerJSON.groceries))
+
+        planner.unschedule(PlannerJSON.groceries, on: today)
+        let moved = try #require(planner.item(PlannerJSON.groceries))
+        #expect(moved == unscheduling(groceries))
+        #expect(moved.isScheduled == false)
+        #expect(moved.startDate == nil)
+        #expect(moved.timeBucket == nil)
+        #expect(moved.order == 1)
+        #expect(!planner.dayItems.contains { $0.id == PlannerJSON.groceries })
+        #expect(planner.braindump.map(\.title) == ["Groceries", "Call the bank"])
+        await drain(planner)
+
+        let requests = await server.requests
+        let posts = requests.filter { $0.route == itemRoute(PlannerJSON.groceries) }
+        #expect(posts.count == 1)
+        let body = try #require(posts.first?.body)
+        #expect(String(decoding: body, as: UTF8.self) == "{\"action\":\"unschedule\"}")
+        #expect(planner.banner == nil)
+        #expect(planner.item(PlannerJSON.groceries) == moved)
+    }
+
+    /// Move to Braindump that never reached the server, the refetch failing
+    /// too: Groceries goes back to its day, out of the braindump, and the
+    /// banner says so.
+    @Test func aFailedMoveToBraindumpComesBackToItsDay() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(goals: [])), .offline)
+        await server.on(itemRoute(PlannerJSON.groceries), .offline)
+        let planner = await loaded(server)
+        let today = try #require(DayString(PlannerJSON.today))
+        let groceries = try #require(planner.item(PlannerJSON.groceries))
+
+        planner.unschedule(PlannerJSON.groceries, on: today)
+        #expect(planner.braindump.map(\.title) == ["Groceries", "Call the bank"])
+        await drain(planner)
+
+        #expect(planner.item(PlannerJSON.groceries) == groceries)
+        #expect(planner.dayItems.contains { $0.id == PlannerJSON.groceries })
+        #expect(planner.braindump.map(\.title) == ["Call the bank"])
+        #expect(planner.banner?.text == "Couldn't reach dsul, so that change was undone.")
+    }
+
+    /// The server refused it (409 `not_unschedulable`: on another device
+    /// Groceries became Launch's milestone): the banner, then the server's
+    /// answer, which puts Groceries back on its day and, now that it is a
+    /// milestone, offers the verb no more.
+    @Test func aRefusedMoveToBraindumpTakesTheServersAnswer() async throws {
+        let server = FakeServer()
+        let launch = PlannerJSON.goalJSON(PlannerJSON.launch, "Launch", milestones: [PlannerJSON.groceries])
+        await server.on(plannerRoute,
+                        .status(200, PlannerJSON.payload(fetchedAt: "fetch-1", goals: [])),
+                        .status(200, PlannerJSON.payload(fetchedAt: "fetch-2", goals: [launch])))
+        await server.on(itemRoute(PlannerJSON.groceries), .status(409, "{\"error\":\"not_unschedulable\"}"))
+        let planner = await loaded(server)
+        let today = try #require(DayString(PlannerJSON.today))
+
+        planner.unschedule(PlannerJSON.groceries, on: today)
+        #expect(planner.item(PlannerJSON.groceries)?.isScheduled == false)   // optimistic
+        await drain(planner)
+
+        #expect(planner.banner?.isError == true)
+        #expect(planner.banner?.text == "That change didn't save. Checking with the server\u{2026}")
+        #expect(planner.sync?.lastAppliedFetchedAt == "fetch-2")
+        let back = try #require(planner.item(PlannerJSON.groceries))
+        #expect(back.startDate == PlannerJSON.today)
+        #expect(back.isScheduled == true)
+        #expect(planner.milestoneIds == Set([PlannerJSON.groceries]))
+        #expect(!planner.offeredVerbs(for: back, day: .selected).contains(.braindump))
+    }
+
+    /// A title that never landed, then Move to Braindump that did, the
+    /// refetch failing too: the rebase starts from before the title and plays
+    /// the move again, so Groceries stays in the braindump under its own name.
+    @Test func aLandedMoveToBraindumpSurvivesAFailedTitle() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(goals: [])), .offline)
+        await server.on(itemRoute(PlannerJSON.groceries), .offline, .status(200, ok))
+        let planner = await loaded(server)
+        let today = try #require(DayString(PlannerJSON.today))
+        let groceries = try #require(planner.item(PlannerJSON.groceries))
+
+        planner.edit(PlannerJSON.groceries, .title("Big shop"))   // never lands
+        planner.unschedule(PlannerJSON.groceries, on: today)       // lands
+        #expect(planner.braindump.map(\.title) == ["Big shop", "Call the bank"])
+        await drain(planner)
+
+        let back = try #require(planner.item(PlannerJSON.groceries))
+        #expect(back == unscheduling(groceries))
+        #expect(planner.braindump.map(\.title) == ["Groceries", "Call the bank"])
+        #expect(planner.banner?.text == "Couldn't reach dsul, so that change was undone.")
+        let posts = await server.count(itemRoute(PlannerJSON.groceries))
+        #expect(posts == 2)
+    }
+
+    /// Move to Braindump that never landed, then a title that did: the
+    /// rebase plays the title on the row from before the move, so Groceries
+    /// is back on its day under the new name.
+    @Test func aFailedMoveToBraindumpGivesWayToATitleThatLanded() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(goals: [])), .offline)
+        await server.on(itemRoute(PlannerJSON.groceries), .offline, .status(200, ok))
+        let planner = await loaded(server)
+        let today = try #require(DayString(PlannerJSON.today))
+        let groceries = try #require(planner.item(PlannerJSON.groceries))
+
+        planner.unschedule(PlannerJSON.groceries, on: today)       // never lands
+        planner.edit(PlannerJSON.groceries, .title("Big shop"))   // lands
+        #expect(planner.braindump.map(\.title) == ["Big shop", "Call the bank"])
+        await drain(planner)
+
+        let back = try #require(planner.item(PlannerJSON.groceries))
+        #expect(back == editing(groceries, .title("Big shop")))
+        #expect(back.startDate == PlannerJSON.today)
+        #expect(back.isScheduled == true)
+        #expect(planner.dayItems.contains { $0.id == PlannerJSON.groceries })
+        #expect(planner.braindump.map(\.title) == ["Call the bank"])
+        #expect(planner.banner?.text == "Couldn't reach dsul, so that change was undone.")
+        let posts = await server.count(itemRoute(PlannerJSON.groceries))
+        #expect(posts == 2)
+    }
+
+    /// Every part 1 write, each edit, Reset streak and Move to Braindump
+    /// names its own item and nothing else; a delete names its item and every
+    /// subtask it took out with it, a habit's only itself. A new subtask names the subtask, not
     /// the parent whose route it goes to, and proves a row: its parent, which
     /// the route answers 404 for when it isn't there. A routine or season
     /// toggle names the one membership, never its item, and proves the item,
@@ -1261,6 +1397,7 @@ final class DragFlag {
             .edit(id: id, .repeats(frequency: "weekdays", days: nil, monthDay: nil)),
             .edit(id: id, .project(id: PlannerJSON.work, name: "Work")),
             .resetStreak(id: id),
+            .unschedule(id: id),
         ]
         for write in writes {
             #expect(write.subjects == own)

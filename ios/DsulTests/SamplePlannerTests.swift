@@ -321,6 +321,53 @@ import Testing
         #expect(!planner.offeredVerbs(for: reset, day: .selected).contains(.resetStreak))
     }
 
+    /// (Week and blocks PR 3) The sample knows its goals, so Move to
+    /// Braindump is offered from the start, sending nothing: the roadmap goes
+    /// off the day and to the top of the braindump (its place in the sample's
+    /// order), keeping its length, notes, priority, project and subtasks, and
+    /// its sheet stays up. A goal's milestone is never offered it, nor a habit.
+    @Test func theSampleMovesATaskToTheBraindumpWithoutSending() throws {
+        let planner = makePlanner()
+        #expect(planner.sync == nil)
+        #expect(planner.canWrite("unschedule"))
+        #expect(planner.milestoneIds == Set((51...53).map(SampleData.uuid)))
+        let today = planner.today
+
+        let tenK = try #require(planner.item(SampleData.uuid(52)))
+        #expect(tenK.title == "Run a 10K")
+        #expect(!planner.offeredVerbs(for: tenK, day: .selected).contains(.braindump))
+        let meds = first(planner, "Meds")
+        #expect(!planner.offeredVerbs(for: meds, day: .selected).contains(.braindump))
+        planner.unschedule(meds.id, on: today)
+        #expect(planner.item(meds.id) == meds)
+
+        let roadmap = first(planner, "Draft Q4 roadmap")
+        #expect(planner.offeredVerbs(for: roadmap, day: .selected)
+            == [.tick, .pause, .nextDay, .reschedule, .braindump, .delete])
+        let braindump = planner.braindump.count
+        planner.open(roadmap.id, day: .selected)
+        planner.unschedule(roadmap.id, on: today)
+        let moved = try #require(planner.item(roadmap.id))
+        #expect(moved.isScheduled == false)
+        #expect(moved.startDate == nil)
+        #expect(moved.timeBucket == nil)
+        #expect(moved.startTime == nil)
+        #expect(moved.duration == 120)
+        #expect(moved.notes == roadmap.notes)
+        #expect(moved.priority == "high")
+        #expect(moved.project == "Work")
+        #expect(planner.subtasks(of: roadmap.id).count == 2)
+        #expect(!planner.dayItems.contains { $0.id == roadmap.id })
+        #expect(!planner.scheduled.contains { $0.id == roadmap.id })
+        #expect(planner.braindump.count == braindump + 1)
+        #expect(planner.braindump.first?.id == roadmap.id)
+        #expect(planner.activeSheet == .item(roadmap.id, day: .selected))
+        #expect(!planner.offeredVerbs(for: moved, day: .selected).contains(.braindump))
+
+        planner.unschedule(roadmap.id, on: today)
+        #expect(planner.item(roadmap.id) == moved)
+    }
+
     /// The sample takes every chip edit too, sending nothing: a priority, a
     /// habit's times a day, and a reminder's time alone, which keeps its cue
     /// words. It knows no Habit reminders switch and stores no zone, and isn't

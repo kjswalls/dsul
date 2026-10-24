@@ -11,8 +11,10 @@ import Foundation
 // `milestoneState` and `milestoneTimeline`, `goalMemberGroups`,
 // `windDownMembers` and `lastDoneOn`. From O8b (the goal's Status chip):
 // `resolveGoalStateWrite`, the step ContainerIntent.swift takes for a goal's
-// `state`, pinned through container-writes.json. Every word a date takes is
-// `formatDay`'s ("Nov 4", Cadence.swift), and nothing is ever "overdue" in
+// `state`, pinned through container-writes.json. From Week and blocks PR 3
+// (Move to Braindump): `milestoneItemIds`, the set the braindump verb's gate
+// takes (`VerbContext.milestoneIds`, ItemVerbs.swift). Every word a date takes
+// is `formatDay`'s ("Nov 4", Cadence.swift), and nothing is ever "overdue" in
 // words: a late checkpoint is "still ahead of you" (the guilt-free law).
 //
 // Progress is derived on every read and never stored. "Done" is the item
@@ -91,6 +93,19 @@ public func isGoalActive(_ goal: Goal) -> Bool {
 /// stable partition, never a re-sort by `sortOrder`.
 public func sortGoalsForDisplay(_ goals: [Goal]) -> [Goal] {
     return goals.filter { isGoalActive($0) } + goals.filter { !isGoalActive($0) }
+}
+
+/// lib/goals.ts `milestoneItemIds`: every item that is a milestone of one of
+/// `goals`. The payload's goals are the live ones (a goal in the Trash is not
+/// served), and the set is deliberately NOT filtered by state: an ended or set
+/// aside goal's milestone still keeps its target date, because un-ending the
+/// goal is one tap and an erased date would not come back. A payload with no
+/// goals (`PlannerPayload.goals` nil) knows no set at all: the caller passes
+/// nil on, never this function's empty answer.
+public func milestoneItemIds(_ goals: [Goal]) -> Set<UUID> {
+    var ids = Set<UUID>()
+    for goal in goals { ids.formUnion(goal.milestoneIds) }
+    return ids
 }
 
 /* ── the state write (O8b) ─────────────────────────────────────────────── */

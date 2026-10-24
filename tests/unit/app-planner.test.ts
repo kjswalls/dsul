@@ -723,6 +723,7 @@ describe('the payload fixture shared with DsulCore', () => {
       'project',
       'collect',
       'snooze',
+      'unschedule',
     ]);
     // What the Trash routes take (lib/app-containers.ts). Additive too: an
     // older server sends no list, and the phone then offers no Trash.

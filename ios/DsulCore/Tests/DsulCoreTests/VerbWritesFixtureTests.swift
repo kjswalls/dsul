@@ -2,16 +2,16 @@ import Foundation
 import Testing
 import DsulCore
 
-// The web store's own end states for the item sheet's three writes, checked
-// against VerbWrites.swift. tests/unit/verb-writes-fixtures.test.ts drives the
-// REAL planner store (`setItemSkipped`, `moveTaskToDate`, `setItemPaused`)
-// over one item per case, with the database mocked and the clock pinned, and
+// The web store's own end states for the item sheet's four verb writes,
+// checked against VerbWrites.swift. tests/unit/verb-writes-fixtures.test.ts
+// drives the REAL planner store (`setItemSkipped`, `moveTaskToDate`,
+// `setItemPaused`, `unscheduleTask`) over one item per case, with the database mocked and the clock pinned, and
 // records the item as the store leaves it and the database calls it made to
 // tests/fixtures/day/verb-writes.json. Never edit the JSON by hand: regenerate
 // it from the Vitest side (UPDATE_FIXTURES=1).
 //
-// `gate: false` is the store's own refusal (not skippable, a habit moved, not
-// pausable): nothing written, the item unchanged. The sheet's verb gates
+// `gate: false` is the store's own refusal (not skippable, a habit moved or
+// unscheduled, not pausable): nothing written, the item unchanged. The sheet's verb gates
 // refuse first, but the ports refuse the same way, so those cases are checked
 // too. A pause case is resolved through `resolvePauseWrite`, as the phone
 // resolves it, and its patch is checked against the store's write.
@@ -54,6 +54,37 @@ private struct Outcome: Decodable, Sendable {
     let calls: [DbCall]
 }
 
+/// An unschedule case's `updateItem` call, its id, the stored type slug, and
+/// `updates` as written (a cleared column is null, an untouched one absent).
+private struct UnscheduleCall: Decodable, Sendable {
+    let fn: String
+    let id: String?
+    let type: String?
+    let updates: [String: JSONValue]?
+}
+
+private struct UnscheduleOutcome: Decodable, Sendable {
+    let item: Item
+    let calls: [UnscheduleCall]
+}
+
+/// Move to Braindump: the store's `unscheduleTask`, which refuses a habit.
+private struct UnscheduleCase: Decodable, Sendable {
+    let name: String
+    let now: String
+    let timeZone: String
+    let todayStr: String
+    let item: Item
+    let gate: Bool
+    let expected: UnscheduleOutcome
+}
+
+/// lib/item-edit.ts `UNSCHEDULE_TASK_PATCH` as the store hands it to
+/// `updateItem`: not scheduled, and the three day columns cleared.
+private let unschedulePatch: [String: JSONValue] = [
+    "isScheduled": .bool(false), "timeBucket": .null, "startTime": .null, "startDate": .null,
+]
+
 private struct SkipCase: Decodable, Sendable {
     let name: String
     let now: String
@@ -95,6 +126,7 @@ private struct Fixture: Decodable, Sendable {
     let skip: [SkipCase]
     let move: [MoveCase]
     let pause: [PauseCase]
+    let unschedule: [UnscheduleCase]
 }
 
 private enum FixtureError: Error {
@@ -130,6 +162,7 @@ private func checkClock(_ name: String, now: String, timeZone: String, today: St
         #expect(Set(f.skip.map(\.gate)) == [true, false])
         #expect(Set(f.move.map(\.gate)) == [true, false])
         #expect(Set(f.pause.map(\.gate)) == [true, false])
+        #expect(Set(f.unschedule.map(\.gate)) == [true, false])
     }
 
     /// The store's gate is the port's: `isSkippable`, task-like, `isPausable`.
@@ -138,6 +171,7 @@ private func checkClock(_ name: String, now: String, timeZone: String, today: St
         for c in f.skip { #expect(isSkippable(c.item) == c.gate, "\(c.name)") }
         for c in f.move { #expect(isTaskLike(c.item) == c.gate, "\(c.name)") }
         for c in f.pause { #expect(isPausable(c.item) == c.gate, "\(c.name)") }
+        for c in f.unschedule { #expect(isTaskLike(c.item) == c.gate, "\(c.name)") }
     }
 
     /// Each case's today is what the phone reads off the same instant and zone,
@@ -147,6 +181,7 @@ private func checkClock(_ name: String, now: String, timeZone: String, today: St
         for c in f.skip { try checkClock(c.name, now: c.now, timeZone: c.timeZone, today: c.todayStr) }
         for c in f.move { try checkClock(c.name, now: c.now, timeZone: c.timeZone, today: c.todayStr) }
         for c in f.pause { try checkClock(c.name, now: c.now, timeZone: c.timeZone, today: c.todayStr) }
+        for c in f.unschedule { try checkClock(c.name, now: c.now, timeZone: c.timeZone, today: c.todayStr) }
     }
 
     @Test func skippingLandsWhereTheStoreDoes() throws {
@@ -195,6 +230,49 @@ private func checkClock(_ name: String, now: String, timeZone: String, today: St
         }
     }
 
+    @Test func unschedulingLandsWhereTheStoreDoes() throws {
+        for c in try loadFixture().unschedule {
+            #expect(unscheduling(c.item) == c.expected.item, "\(c.name)")
+        }
+    }
+
+    /// The store's one write is `UNSCHEDULE_TASK_PATCH` under the stored type
+    /// slug, the row the server's `unschedule` intent leaves; `unscheduling`
+    /// changes exactly those four columns and nothing else.
+    @Test func unschedulingIsThePatchAndNothingElse() throws {
+        var keptSomething = false
+        for c in try loadFixture().unschedule where c.gate {
+            #expect(c.expected.calls.count == 1, "\(c.name): one write")
+            let call = try #require(c.expected.calls.first, "\(c.name): no write")
+            #expect(call.fn == "updateItem", "\(c.name): fn")
+            #expect(call.id.flatMap(UUID.init(uuidString:)) == c.item.id, "\(c.name): id")
+            #expect(call.type == c.item.typeName, "\(c.name): the stored slug")
+            #expect(call.updates == unschedulePatch, "\(c.name): updates")
+
+            let after = unscheduling(c.item)
+            #expect(after.isScheduled == false, "\(c.name): isScheduled")
+            #expect(after.startDate == nil && after.timeBucket == nil && after.startTime == nil, "\(c.name): cleared")
+            // Put the four columns back and nothing else differs.
+            var back = after
+            back.isScheduled = c.item.isScheduled
+            back.startDate = c.item.startDate
+            back.timeBucket = c.item.timeBucket
+            back.startTime = c.item.startTime
+            #expect(back == c.item, "\(c.name): only the four columns move")
+            if c.item.duration != nil || c.item.project != nil || c.item.pausedAt != nil { keptSomething = true }
+        }
+        #expect(keptSomething, "a case keeps a length, a project or a pause")
+    }
+
+    /// Unscheduling twice is unscheduling once: a retry the server answers 200
+    /// without a write lands on the same row.
+    @Test func unschedulingTwiceIsOnce() throws {
+        for c in try loadFixture().unschedule {
+            let once = unscheduling(c.item)
+            #expect(unscheduling(once) == once, "\(c.name)")
+        }
+    }
+
     /// What a refused case leaves: the item exactly as it was.
     @Test func aRefusedCaseChangesNothing() throws {
         let f = try loadFixture()
@@ -205,6 +283,11 @@ private func checkClock(_ name: String, now: String, timeZone: String, today: St
         for c in f.move where !c.gate {
             #expect(c.expected.item == c.item, "\(c.name): the fixture")
             #expect(moving(c.item, to: c.date) == c.item, "\(c.name)")
+        }
+        for c in f.unschedule where !c.gate {
+            #expect(c.expected.item == c.item, "\(c.name): the fixture")
+            #expect(c.expected.calls.isEmpty, "\(c.name): nothing written")
+            #expect(unscheduling(c.item) == c.item, "\(c.name)")
         }
     }
 }

@@ -6,7 +6,8 @@ import Foundation
 //   defaults: no canvas filters, `typeFilter` 'all', no goal clause;
 // - `deriveTimedEntries` and `deriveUntimedRows` (components/views/day-schedule.tsx):
 //   the day's rows on the hour grid and off it;
-// - braindump membership (lib/braindump-members.ts `braindumpMembers`);
+// - braindump membership (lib/braindump-members.ts `braindumpMembers`), and
+//   its task test on one row (`isTaskScheduled`);
 // - routine grouping (lib/grouping.ts `routineGroups`, via `groupRows`).
 // Keep in step: a change there without the same change here is drift. Checked
 // against the web by DayItemsFixtureTests (tests/fixtures/day/day-items.json,
@@ -258,6 +259,17 @@ public func deriveUntimedRows(_ day: DayItems) -> [Item] {
     return habits + tasks
 }
 
+/// lib/braindump-members.ts `braindumpMembers`'s task test, on one row
+/// (`task.isScheduled || task.timeBucket`): is the task marked scheduled, or
+/// filed under a part of day? One that is neither is already a braindump
+/// member, dated or not (unless it was let go or is held today, paused for
+/// one, which `braindumpMembers` drops as `suppressed`), so Move to
+/// Braindump is not offered on it: the web's row and mobile sheet ask the
+/// same before they offer the verb. `startDate` is not consulted, as there.
+public func isTaskScheduled(_ task: Item) -> Bool {
+    return task.isScheduled == true || nonEmpty(task.timeBucket) != nil
+}
+
 /// lib/braindump-members.ts `braindumpMembers`: tasks with no `isScheduled`,
 /// no bucket and not let go (`cancelled`), then habits with no bucket and no repeat, minus `suppressed`.
 /// The caller resolves `suppressed` at TODAY, never the selected day: the
@@ -266,7 +278,7 @@ public func deriveUntimedRows(_ day: DayItems) -> [Item] {
 public func braindumpMembers(tasks: [Item], habits: [Item], suppressed: Set<UUID>) -> [Item] {
     let unscheduledTasks = tasks.filter { task in
         if suppressed.contains(task.id) { return false }
-        if task.isScheduled == true || nonEmpty(task.timeBucket) != nil { return false }
+        if isTaskScheduled(task) { return false }
         if task.status == "cancelled" { return false }
         return true
     }

@@ -1626,6 +1626,41 @@ today.
    and a done tick keep their full strength, pressed or not, "Now" is ink
    with a lime dot, never lime text, and the Today button's word is ink.
 
+## Checking Move to Braindump
+
+Move to Braindump (Week and blocks PR 3) sits in an item's ⋯ for a dated,
+open, one-off task: it takes the task off every day and puts it back in the
+braindump, keeping everything else. The hosted tests pin which items get it,
+where it sits and what it sends; these checks are for how it feels. Signed
+in, it shows only once the planner has read your goals (a goal's milestone
+never gets it), so a server older than that offers it nowhere.
+
+1. On the sample, open Draft Q4 roadmap (9 AM today) and tap ⋯: Move to
+   Braindump sits after Pause until…, with a tray symbol, then the divider
+   and Delete. Tap it: the sheet stays up, the date and time chips go (Add
+   property offers Date again), and the bar's Reschedule reads Schedule.
+   Close the sheet: the roadmap is off the day and the grid, and it is the
+   first row in the braindump, reading 120m, its length kept. Open it
+   again: its notes, High, Work and its two subtasks are kept too.
+2. These have no Move to Braindump in ⋯: Meds (a habit), Groceries once
+   ticked done, Run a 10K (a goal's milestone) and Weekly run review (a
+   repeating task, the goal's check-in), both from Organize, Goals, Run a
+   half marathon, Call the bank and any row opened from the braindump,
+   Write the three bets (a subtask), and, signed in, a task parked in a
+   project's block and a task with a date but no part of day, which the
+   braindump already lists. Paused, the roadmap's ⋯ holds Delete alone
+   until you resume it.
+3. Signed in, turn on Airplane Mode and Move to Braindump a dated task: it
+   leaves the day at once, then the banner says "Couldn't reach dsul, so
+   that change was undone." and the task is back on its day. Turn Airplane
+   Mode off.
+4. Signed in, Move to Braindump a dated task, then open dsul on the web:
+   the task is in the braindump with no date or part of day, and its old
+   day doesn't list it. Make another task a goal's milestone on the web and
+   pull to refresh on the phone: its ⋯ no longer offers the verb.
+5. VoiceOver: the ⋯ entry reads "Move to Braindump". Nothing is announced
+   after it; the sheet's chips say where the task now is.
+
 ## Rules
 
 - Never commit `Dsul.xcodeproj`. It's generated.

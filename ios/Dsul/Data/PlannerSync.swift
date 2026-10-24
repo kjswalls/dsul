@@ -146,7 +146,8 @@ final class PlannerSync {
     /// (tick, braindump row to an hour, Skip/Unskip today, Tomorrow and
     /// Reschedule, Pause/Pause until/Resume, the item sheet's title, notes,
     /// priority, times a day, reminder, time, repeat and project, Delete, Add
-    /// a subtask, Reset streak, and its routine and season toggles), a
+    /// a subtask, Reset streak, its routine and season toggles, and from Week
+    /// and blocks PR 3 Move to Braindump), a
     /// notification's Snooze, and from O8a one field of a routine, a season,
     /// a goal or a project (POST /api/app/containers/:kind/:id), from O10 its
     /// delete, from O11 a new one (POST /api/app/containers/:kind), and from
@@ -177,6 +178,12 @@ final class PlannerSync {
         case addSubtask(id: UUID, parent: UUID, title: String)
         /// Reset streak: the counter to 0, the completion history kept.
         case resetStreak(id: UUID)
+        /// (Week and blocks PR 3) Move to Braindump: off every day, back to
+        /// the braindump. The body is the action alone (DsulCore
+        /// `ItemWriteBody.unschedule`); the server asks its own copy of the
+        /// web's gate and writes the store's `UNSCHEDULE_TASK_PATCH`, so the
+        /// planner's step (`unscheduling`) is what it holds after.
+        case unschedule(id: UUID)
         /// (2f-b) Join (`member`) or leave one routine or season: one
         /// membership row. Changes no item field.
         case collect(id: UUID, kind: ContainerKind, containerId: String, member: Bool)
@@ -221,7 +228,7 @@ final class PlannerSync {
             case .holdRoutine(let seasonId, let routineId, let hold):
                 return (ContainerRef(kind: .season, id: seasonId), .holdRoutine(routineId: routineId, hold: hold))
             case .complete, .schedule, .capture, .skip, .move, .pause, .edit, .delete, .addSubtask, .resetStreak,
-                 .collect, .snooze, .container, .createContainer:
+                 .unschedule, .collect, .snooze, .container, .createContainer:
                 return nil
             }
         }
@@ -253,7 +260,7 @@ final class PlannerSync {
                 return []
             case .complete(let id, _, _, _), .schedule(let id, _, _), .capture(let id, _), .skip(let id, _, _),
                  .move(let id, _), .pause(let id, _, _, _), .edit(let id, _), .addSubtask(let id, _, _),
-                 .resetStreak(let id):
+                 .resetStreak(let id), .unschedule(let id):
                 return [.item(id)]
             }
         }
@@ -280,8 +287,8 @@ final class PlannerSync {
             case .holdRoutine(let seasonId, let routineId, _):
                 return [.container(ContainerRef(kind: .season, id: seasonId)),
                         .container(ContainerRef(kind: .routine, id: routineId))]
-            case .complete, .schedule, .capture, .skip, .move, .pause, .edit, .delete, .resetStreak, .snooze,
-                 .container, .createContainer:
+            case .complete, .schedule, .capture, .skip, .move, .pause, .edit, .delete, .resetStreak, .unschedule,
+                 .snooze, .container, .createContainer:
                 return []
             }
         }
@@ -647,6 +654,11 @@ final class PlannerSync {
             try await api.addSubtask(parent: parent, id: id, title: title)
         case .resetStreak(let id):
             try await api.resetStreak(id: id)
+        case .unschedule(let id):
+            // No 404 exception: a row that isn't there was never unscheduled,
+            // so it fails and reverts. A 200 for a row already in the
+            // braindump's shape (a retry whose first answer was lost) landed.
+            try await api.unschedule(id: id)
         case .collect(let id, let kind, let containerId, let member):
             try await api.collect(id: id, kind: kind, containerId: containerId, member: member)
         case .snooze(let id, let date, let minutes, let timeZone):
@@ -1086,7 +1098,7 @@ final class PlannerSync {
                 member = true
                 anchor = after.map { StepAnchor.after($0) } ?? .first
             case .complete, .schedule, .capture, .skip, .move, .pause, .edit, .delete, .addSubtask, .resetStreak,
-                 .snooze, .container, .createContainer, .holdRoutine:
+                 .unschedule, .snooze, .container, .createContainer, .holdRoutine:
                 // No other write names a membership.
                 continue
             }
@@ -1266,6 +1278,11 @@ final class PlannerSync {
             return editing(item, edit)
         case .resetStreak:
             return resettingStreak(item)
+        case .unschedule:
+            // Dateless: the server clears the four columns whatever day the
+            // phone sent it from, and keeps the rest (DsulCore
+            // `unscheduling`), so the replay needs no day either.
+            return unscheduling(item)
         case .delete:
             return nil
         case .capture, .addSubtask:

@@ -1,20 +1,24 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { setItemCompletion, setItemSkip, updateItem } from './db';
+import { UNSCHEDULE_TASK_PATCH } from './item-edit';
 import { getItemTypeConfig, type ItemTypeConfig } from './item-registry';
 import { isRecurring } from './recurrence';
-import { canReschedule } from './row-moves';
+import { canReschedule, canSendToBraindump } from './row-moves';
 import type { HabitItem, Task } from './planner-types';
 
 /**
- * Three of the iPhone's item intents, the writes themselves, shared by the two
- * server doors that tick, skip and carry an item: lib/app-api.ts (the phone,
- * which maps each result to the same Response it always sent) and the recipe
- * runner (lib/recipes/server/, which maps it to a run-log code). One write
- * path, so a recipe's tick on the server is the phone's tick, which is the
- * web's (lib/app-api.ts says which store action each one mirrors).
+ * Four of the iPhone's item intents, the writes themselves. The tick, skip and
+ * carry are shared by the two server doors that make them: lib/app-api.ts (the
+ * phone, which maps each result to the same Response it always sent) and the
+ * recipe runner (lib/recipes/server/, which maps it to a run-log code). One
+ * write path, so a recipe's tick on the server is the phone's tick, which is
+ * the web's (lib/app-api.ts says which store action each one mirrors). The
+ * phone's Move to Braindump (`applyUnschedule`) sits beside the carry; only
+ * lib/app-api.ts calls it.
  *
- * Moved out of lib/app-api.ts unchanged. Nothing here answers a request, reads
- * a session or knows about recipes.
+ * applyComplete, applySkip and applyMove moved out of lib/app-api.ts unchanged
+ * (applyMove's gate input is now `movableOf`, which applyUnschedule shares).
+ * Nothing here answers a request, reads a session or knows about recipes.
  */
 
 type Client = SupabaseClient;
@@ -296,7 +300,7 @@ export async function applyMove(
   body: { date: string },
   hooks: IntentHooks = {},
 ): Promise<IntentResult> {
-  const { id, type, row } = ctx;
+  const { type, row } = ctx;
   const kind = type === 'habit' ? 'habit' : 'task';
   // The day the gate asks about, as the web's rowDateOf does: the row's own
   // date, or the target for an undated one.
@@ -308,15 +312,7 @@ export async function applyMove(
   if (kind === 'task' && ctx.recurring && !row.parent_item_id) {
     if (await completedOn(ctx, dateStr)) completedDates = [dateStr];
   }
-  const movable = {
-    id,
-    type: type === 'task' || type === 'habit' ? type : 'custom',
-    customType: type,
-    status: row.status as Task['status'],
-    repeatFrequency: ctx.frequency as Task['repeatFrequency'],
-    inProjectBlock: !!row.in_project_block,
-    completedDates,
-  };
+  const movable = movableOf(ctx, completedDates);
   if (row.parent_item_id || !canReschedule(movable, kind, dateStr)) {
     return refuse('not_movable', 409);
   }
@@ -330,6 +326,113 @@ export async function applyMove(
   await hooks.beforeWrite?.();
   await update(ctx, updates);
   return OK;
+}
+
+/**
+ * The row in the shape lib/row-moves.ts's gates read: the stored slug as the
+ * custom envelope, the frequency the registry resolved (a NULL is the type's
+ * default), and the one completed date the caller asked about, if any.
+ */
+function movableOf(ctx: WriteContext, completedDates: string[]) {
+  const { id, type, row } = ctx;
+  return {
+    id,
+    type: type === 'task' || type === 'habit' ? type : 'custom',
+    customType: type,
+    status: row.status as Task['status'],
+    repeatFrequency: ctx.frequency as Task['repeatFrequency'],
+    inProjectBlock: !!row.in_project_block,
+    completedDates,
+  };
+}
+
+const NO_MILESTONES: ReadonlySet<string> = new Set();
+
+/**
+ * `unschedule`: Move to Braindump, the store's unscheduleTask
+ * (lib/planner-store.ts), which writes UNSCHEDULE_TASK_PATCH through
+ * updateItem: not scheduled, and no part of day, time or date. Nothing else:
+ * no `order` (the row shows in the braindump at its stored place), no
+ * duration, no project or block flag. One item_events row, as the web's.
+ *
+ * Needs `start_time` and `is_scheduled` read (lib/app-api.ts EDIT_COLUMNS):
+ * the shared row read has neither.
+ *
+ * In this order:
+ * 1. What no write can change, 409 `not_unschedulable`: a type that is not
+ *    braindumpEligible (a habit is not), or a subtask, which shows only inside
+ *    its parent.
+ * 2. Already in the braindump's shape (not scheduled, and no date, time or
+ *    part of day): 200 and no write, so a retry of a write that landed
+ *    succeeds. After 1, so a habit with no bucket is still refused. A null
+ *    is_scheduled reads as false, as itemFromRow reads it.
+ * 3. The web verb's gate (lib/verb-gates.ts VERB_GATES.braindump: a start
+ *    date, then lib/row-moves.ts canSendToBraindump) asked of the row on its
+ *    own start date, 409 `not_unschedulable`: never a series (the frequency
+ *    through the registry), never inside a project block, never done or
+ *    cancelled, and never a milestone of a goal that is not in the Trash
+ *    (`isLiveMilestone`). The milestone read runs last, only for a row every
+ *    other check let through.
+ *
+ * `changed` says whether it wrote.
+ */
+export async function applyUnschedule(ctx: WriteContext, hooks: IntentHooks = {}): Promise<IntentResult> {
+  const { type, config, row } = ctx;
+  if (!config.braindumpEligible || row.parent_item_id) return refuse('not_unschedulable', 409);
+  if (!row.is_scheduled && !row.start_date && !row.start_time && !row.time_bucket) return { ok: true, changed: false };
+  const dateStr = row.start_date;
+  const kind = type === 'habit' ? 'habit' : 'task';
+  // isOpenOn asks a series about its day, and a series is refused first, so
+  // no completed date is read.
+  if (!dateStr || !canSendToBraindump(movableOf(ctx, []), kind, dateStr, NO_MILESTONES)) {
+    return refuse('not_unschedulable', 409);
+  }
+  if (await isLiveMilestone(ctx)) return refuse('not_unschedulable', 409);
+  await hooks.beforeWrite?.();
+  await update(ctx, { ...UNSCHEDULE_TASK_PATCH });
+  return { ok: true, changed: true };
+}
+
+/** fetchGoals' missing-table codes (lib/db.ts `unavailable`): migration 036 not applied. */
+const isMissingTable = (error: { code?: string }) => error.code === '42P01' || error.code === 'PGRST205';
+
+/**
+ * Whether the item is a milestone of a goal that is not in the Trash: the set
+ * the web's verb asks (lib/goals.ts milestoneItemIds over the store's goals,
+ * which fetchGoals and load_planner read with `deleted_at is null`). A raw
+ * goal_items read would also count a trashed goal's milestones, which the web
+ * lets go. A goal's state is not asked: an abandoned goal's milestone keeps its
+ * date, as on the web. Both reads are scoped by user_id, for the service role.
+ *
+ * Without migration 036 there are no goals, as the web's store reads it, so no
+ * milestone; any other failed read throws, and the write is not made.
+ */
+async function isLiveMilestone(ctx: WriteContext): Promise<boolean> {
+  const { client, userId, id } = ctx;
+  const held = await client
+    .from('goal_items')
+    .select('goal_id')
+    .eq('user_id', userId)
+    .eq('item_id', id)
+    .eq('role', 'milestone');
+  if (held.error) {
+    if (isMissingTable(held.error)) return false;
+    throw held.error;
+  }
+  const goalIds = ((held.data ?? []) as { goal_id: string }[]).map((r) => r.goal_id);
+  if (goalIds.length === 0) return false;
+  const live = await client
+    .from('goals')
+    .select('id')
+    .eq('user_id', userId)
+    .in('id', goalIds)
+    .is('deleted_at', null)
+    .limit(1);
+  if (live.error) {
+    if (isMissingTable(live.error)) return false;
+    throw live.error;
+  }
+  return ((live.data ?? []) as unknown[]).length > 0;
 }
 
 /**

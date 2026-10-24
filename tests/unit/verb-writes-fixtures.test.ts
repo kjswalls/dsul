@@ -6,20 +6,27 @@ import path from 'path';
  * The item sheet's writes, shared with the iPhone.
  *
  * tests/unit/day-fixtures.test.ts pins what the phone's sheet ASKS (the verb
- * gates and labels); this pins what three of its verbs DO. Each case drives the
- * REAL planner store — `setItemSkipped`, `moveTaskToDate`, `setItemPaused` —
- * over one item, with the db layer mocked (the skip.test.ts harness) and the
- * clock pinned, and records two things to tests/fixtures/day/verb-writes.json:
+ * gates and labels); this pins what four of its verbs DO. Each case drives the
+ * REAL planner store (`setItemSkipped`, `moveTaskToDate`, `setItemPaused`,
+ * `unscheduleTask`) over one item, with the db layer mocked (the skip.test.ts
+ * harness) and the clock pinned, and records two things to
+ * tests/fixtures/day/verb-writes.json:
  *
  *  - the optimistic end state of the item, which DsulCore's VerbWrites.swift
- *    (`skipping`, `moving`, `pausing`) must reproduce, and
+ *    (`skipping`, `moving`, `pausing`, `unscheduling`) must reproduce, and
  *  - the database calls the store made, in order, which /api/app/items/:id's
- *    `skip`, `move` and `pause` intents mirror server-side.
+ *    `skip`, `move`, `pause` and `unschedule` intents mirror server-side
+ *    (tests/unit/app-item-write.test.ts replays the `unschedule` cases through
+ *    the route).
  *
- * `gate` is the store's own refusal (isSkippable / task-like / isPausable): a
- * case with `gate: false` writes nothing and leaves the item alone. The phone
- * never reaches the store's refusal — its verb gates refuse first — so the
- * Swift side checks only the cases with `gate: true`.
+ * `gate` is the store's own refusal (isSkippable for skip, task-like for move
+ * and unschedule, isPausable for pause): a case with `gate: false` writes
+ * nothing and leaves the item alone. The phone never reaches the store's
+ * refusal, as its verb gates refuse first, so the Swift side checks only the
+ * cases with `gate: true`. The
+ * `unschedule` cases are rows Move to Braindump is offered on, plus one
+ * already in the braindump (the store writes the same four columns again; the
+ * route writes nothing) and a habit.
  *
  * In `updates`, a key present with `null` is a column the store cleared (it
  * wrote `undefined`, which lib/db.ts sends as SQL NULL); an absent key is a
@@ -95,10 +102,15 @@ import * as db from '@/lib/db';
 import { resolvePauseWrite } from '@/lib/active';
 import { isPausable, isSkippable } from '@/lib/item-registry';
 import { isTaskLike } from '@/lib/item-verbs';
+import { UNSCHEDULE_TASK_PATCH } from '@/lib/item-edit';
 import { toDateStr } from '@/lib/recurrence';
 import type { Item } from '@/lib/planner-types';
 
 const FILE = path.resolve(__dirname, '../fixtures/day/verb-writes.json');
+
+/** A patch as the db mock logs it: a cleared column as an explicit null. */
+const nulled = (patch: Record<string, unknown>) =>
+  Object.fromEntries(Object.entries(patch).map(([k, v]) => [k, v ?? null]));
 const USER = 'user-1';
 
 // ── Builders (day-fixtures.test.ts's, with ids of their own) ─────────────────
@@ -196,7 +208,8 @@ type PauseCase = Clock & {
   gate: boolean;
   expected: Outcome;
 };
-type VerbWrites = { skip: SkipCase[]; move: MoveCase[]; pause: PauseCase[] };
+type UnscheduleCase = Clock & { name: string; item: Item; gate: boolean; expected: Outcome };
+type VerbWrites = { skip: SkipCase[]; move: MoveCase[]; pause: PauseCase[]; unschedule: UnscheduleCase[] };
 
 async function skip(name: string, item: Item, date: string, skipped: boolean): Promise<SkipCase> {
   const clock = clockOf();
@@ -220,6 +233,13 @@ async function pause(
   const clock = clockOf(at);
   const expected = await run(item, clock, () => store().setItemPaused(item.id, paused, pausedUntil ?? undefined));
   return { name, ...clock, item, paused, pausedUntil, gate: isPausable(item), expected };
+}
+
+/** Move to Braindump: the store's unscheduleTask, which no-ops on a habit id by contract. */
+async function unschedule(name: string, item: Item): Promise<UnscheduleCase> {
+  const clock = clockOf();
+  const expected = await run(item, clock, () => store().unscheduleTask(item.id));
+  return { name, ...clock, item, gate: isTaskLike(item), expected };
 }
 
 // ── The cases ────────────────────────────────────────────────────────────────
@@ -310,7 +330,24 @@ async function build(): Promise<VerbWrites> {
     pauses.push(await pause(...args));
   }
 
-  return { skip: skips, move: moves, pause: pauses };
+  const unschedules: UnscheduleCase[] = [];
+  for (const args of [
+    // UNSCHEDULE_TASK_PATCH and nothing else: not scheduled, no part of day,
+    // time or date. The length, the project and the priority stay.
+    ['a dated one-off in a part of day', oneOff()],
+    ['a timed block keeps its length', oneOff({ timeBucket: 'afternoon', startTime: '14:00', duration: 45 })],
+    ['an overdue one-off', oneOff({ startDate: '2026-09-28' })],
+    ['its project and priority are kept', oneOff({ project: 'Work', priority: 'high', notes: 'Oat, not soy.' })],
+    ['a paused one-off keeps its pause', oneOff({ pausedAt: PAUSED })],
+    ['a dated one-off with no part of day loses its date', oneOff({ timeBucket: undefined, isScheduled: false })],
+    ['custom one-off', errand({ startTime: '15:30' })],
+    ['a row already in the braindump', oneOff({ startDate: undefined, timeBucket: undefined, isScheduled: false })],
+    ['a habit is not unscheduled', stretch({ timeBucket: 'morning' })],
+  ] as [string, Item][]) {
+    unschedules.push(await unschedule(...args));
+  }
+
+  return { skip: skips, move: moves, pause: pauses, unschedule: unschedules };
 }
 
 // ── Writing and checking ─────────────────────────────────────────────────────
@@ -335,7 +372,7 @@ describe('verb writes shared with DsulCore', () => {
   });
 
   it('verb-writes.json has cases with unique names', () => {
-    for (const list of [generated.skip, generated.move, generated.pause]) {
+    for (const list of [generated.skip, generated.move, generated.pause, generated.unschedule]) {
       expect(list.length).toBeGreaterThan(0);
       const names = list.map((c) => c.name);
       expect(new Set(names).size).toBe(names.length);
@@ -350,19 +387,20 @@ describe('verb writes shared with DsulCore', () => {
   });
 
   it('a refused case writes nothing and changes nothing', () => {
-    for (const c of [...generated.skip, ...generated.move, ...generated.pause]) {
+    for (const c of [...generated.skip, ...generated.move, ...generated.pause, ...generated.unschedule]) {
       if (c.gate) continue;
       expect(c.expected.calls, c.name).toEqual([]);
       expect(c.expected.item, c.name).toEqual(JSON.parse(JSON.stringify(c.item)));
     }
   });
 
-  it('the cases reach every write the three verbs make', () => {
+  it('the cases reach every write the four verbs make', () => {
     const fns = (list: { expected: Outcome }[]) => new Set(list.flatMap((c) => c.expected.calls.map((call) => call.fn)));
     expect(fns(generated.skip)).toEqual(new Set(['setItemCompletion', 'setItemSkip', 'updateItem']));
     expect(fns(generated.move)).toEqual(new Set(['updateItem']));
     expect(fns(generated.pause)).toEqual(new Set(['updateItem']));
-    for (const list of [generated.skip, generated.move, generated.pause]) {
+    expect(fns(generated.unschedule)).toEqual(new Set(['updateItem']));
+    for (const list of [generated.skip, generated.move, generated.pause, generated.unschedule]) {
       expect(new Set(list.map((c) => c.gate))).toEqual(new Set([true, false]));
     }
     // Skip and pause also have the store's "already so": allowed, and silent.
@@ -374,6 +412,23 @@ describe('verb writes shared with DsulCore', () => {
       if (c.item.type === 'habit') continue;
       expect(c.expected.calls.some((call) => call.fn === 'updateItem'), c.name).toBe(false);
       expect(c.expected.item.status, c.name).toBe(c.item.status);
+    }
+  });
+
+  it('Move to Braindump writes UNSCHEDULE_TASK_PATCH, once, and leaves the rest of the row', () => {
+    for (const c of generated.unschedule) {
+      if (!c.gate) continue;
+      // One write of the four columns, a cleared one as null, under the stored slug.
+      expect(c.expected.calls, c.name).toEqual([
+        {
+          fn: 'updateItem',
+          id: c.item.id,
+          type: c.item.type === 'custom' ? (c.item as { customType: string }).customType : c.item.type,
+          updates: JSON.parse(JSON.stringify(nulled({ ...UNSCHEDULE_TASK_PATCH }))),
+        },
+      ]);
+      // The item is the patch over what it was: nothing else moves.
+      expect(c.expected.item, c.name).toEqual(JSON.parse(JSON.stringify({ ...c.item, ...UNSCHEDULE_TASK_PATCH })));
     }
   });
 

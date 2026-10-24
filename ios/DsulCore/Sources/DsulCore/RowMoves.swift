@@ -1,23 +1,28 @@
 import Foundation
 
-// Port of lib/row-moves.ts, the carry: where "move to tomorrow" lands, what it
-// is called, and which items may take it (`canMoveToNextDay`, and
-// Reschedule's looser `canReschedule`), plus
-// `addDaysToDateStr` from lib/goals.ts, which it lands with. Keep in step: a
-// change there without the same change here is drift, and the phone offers a
-// carry the web refuses (or lands it on another day). Checked against the web
-// by RowMovesFixtureTests (tests/fixtures/day/row-moves.json).
+// Port of lib/row-moves.ts, the two "get this off today" verbs: where "move
+// to tomorrow" lands, what it is called, and which items may take it
+// (`canMoveToNextDay`, and Reschedule's looser `canReschedule`), and which may
+// go back to the braindump (`canSendToBraindump`, from Week and blocks PR 3),
+// plus `addDaysToDateStr` from lib/goals.ts, which the carry lands with. Keep
+// in step: a change there without the same change here is drift, and the
+// phone offers a carry or a Move to Braindump the web refuses (or lands it on
+// another day). Checked against the web by RowMovesFixtureTests
+// (tests/fixtures/day/row-moves.json).
 //
-// Refused, as on the web: a habit or any type without `dateAddressable`; a
-// recurring item, whose `startDate` is the series anchor (except by
-// Reschedule, where the picked day becomes the series start); a task inside a
-// project block; and anything not open on the day (done or cancelled). A
-// subtask and a paused item are NOT refused here; the sheet asks other gates.
+// Refused, as on the web: a habit or any type without `dateAddressable` (the
+// braindump asks `braindumpEligible` instead); a recurring item, whose
+// `startDate` is the series anchor (except by Reschedule, where the picked day
+// becomes the series start); a task inside a project block; anything not open
+// on the day (done or cancelled); and, for the braindump only, a milestone,
+// whose start date is its target date. A subtask and a paused item are NOT
+// refused here; the sheet asks other gates.
 //
 // Days stay yyyy-MM-dd strings, compared as strings, as on the web. Where the
 // web would throw on a string that isn't a day (`toISOString` of an Invalid
-// Date), these answer the string back instead. `canSendToBraindump` and its
-// milestone rule are not ported: the phone has no goals.
+// Date), these answer the string back instead. The milestone ids are the
+// caller's (`milestoneItemIds` over the payload's goals, Goals.swift), never
+// looked up here.
 
 /// The `itemType` argument the web's carry rules take: which projection the
 /// row came from, 'task' (any task-shaped type) or 'habit'.
@@ -68,15 +73,30 @@ public func canMoveToNextDay(_ item: Item, kind: ItemKind, dateStr: String) -> B
 /// (`anchoredSeriesOn`), so the move lands where the person put it.
 public func canReschedule(_ item: Item, kind: ItemKind, dateStr: String) -> Bool {
     guard kind == .task else { return false }
-    let typeName: String
-    if item.type == "custom", let slug = item.customType, !slug.isEmpty {
-        typeName = slug
-    } else {
-        typeName = kind.rawValue
-    }
-    guard caps(typeName).dateAddressable else { return false }
+    guard caps(typeNameOf(item, kind)).dateAddressable else { return false }
     if item.inProjectBlock == true { return false }
     return isOpenOn(item, dateStr)
+}
+
+/// lib/row-moves.ts `canSendToBraindump`: may this row go back to the
+/// braindump (Move to Braindump, `unscheduleTask`) from `dateStr`? A task-like
+/// type the registry lets into the braindump (`braindumpEligible`), not
+/// recurring, not inside a project block, not one of `milestoneIds` (a
+/// milestone's start date is its target date, which unscheduling erases), and
+/// open on the day. Whether the braindump already lists the row is not asked
+/// here, as on the web: the surfaces ask it (`isTaskScheduled`, DayItems.swift).
+public func canSendToBraindump(_ item: Item, kind: ItemKind, dateStr: String, milestoneIds: Set<UUID>) -> Bool {
+    guard kind == .task else { return false }
+    guard caps(typeNameOf(item, kind)).braindumpEligible else { return false }
+    if isRecurring(item.rule) || item.inProjectBlock == true || milestoneIds.contains(item.id) { return false }
+    return isOpenOn(item, dateStr)
+}
+
+/// lib/row-moves.ts `typeNameOf`: the custom slug for a custom item that has
+/// one, else the projection the row came from.
+private func typeNameOf(_ item: Item, _ kind: ItemKind) -> String {
+    if item.type == "custom", let slug = item.customType, !slug.isEmpty { return slug }
+    return kind.rawValue
 }
 
 /// lib/row-moves.ts `formatTargetDay`: "Sat, Sep 27", the en-US short weekday,

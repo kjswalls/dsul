@@ -179,6 +179,8 @@ describe('which verbs an agent may send', () => {
     ['delete', { action: 'delete' }],
     ['pause', { action: 'pause', paused: true }],
     ['addSubtask', { action: 'addSubtask', id: '22222222-2222-4222-8222-222222222222', title: 'Eggs' }],
+    // Move to Braindump is the phone's verb (week-and-blocks PR 3); the agent door is unchanged.
+    ['unschedule', { action: 'unschedule' }],
   ])('refuses %s, which the PATCH routes already take, and touches nothing', async (_, body) => {
     const res = await act(body);
     expect(res.status).toBe(400);

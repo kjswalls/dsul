@@ -27,6 +27,8 @@ import { afterItemWrite } from '@/lib/recipes/server';
  *   { action: 'project', projectId }                      the project, by id; null for none. A task
  *                                                         parked in its old project's block leaves it
  *   { action: 'collect', kind, containerId, member }      join or leave one routine or season
+ *   { action: 'unschedule' }                              Move to Braindump: off every day, back to
+ *                                                         the braindump
  * The handler is in lib/app-api.ts. A tick, skip or untick that changed the
  * day starts the user's matching recipes on the server once it has committed
  * (lib/recipes/server/, isolated: a recipe never fails the write).

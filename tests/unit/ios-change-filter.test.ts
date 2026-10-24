@@ -139,6 +139,37 @@ describe('the iOS change filter', () => {
     }
   });
 
+  it('matches what Move to Braindump reads, and the fixtures that pin it', () => {
+    // The gate (lib/row-moves.ts canSendToBraindump, through lib/verb-gates.ts
+    // VERB_GATES.braindump and lib/item-verbs.ts), the step (the store's
+    // unscheduleTask, lib/item-edit.ts UNSCHEDULE_TASK_PATCH), the milestones
+    // (lib/goals.ts milestoneItemIds), "already listed" (lib/braindump-members.ts)
+    // and the route's `unschedule` intent (lib/app-api.ts, app/api/app/).
+    for (const p of [
+      'lib/row-moves.ts',
+      'lib/verb-gates.ts',
+      'lib/item-verbs.ts',
+      'lib/item-edit.ts',
+      'lib/planner-store.ts',
+      'lib/goals.ts',
+      'lib/braindump-members.ts',
+      'lib/item-registry.ts',
+      'lib/app-api.ts',
+      'app/api/app/items/[id]/route.ts',
+      'tests/fixtures/day/row-moves.json',
+      'tests/fixtures/day/verbs.json',
+      'tests/fixtures/day/verb-writes.json',
+      'tests/fixtures/app/planner-response.json',
+    ]) {
+      expect(filter.test(p), p).toBe(true);
+    }
+    // The web's own surfaces each check "already in the braindump" inline; the
+    // phone asks lib/braindump-members.ts instead, so they are not ported.
+    for (const p of ['components/primitives/task-row.tsx', 'components/mobile/schedule-sheet.tsx']) {
+      expect(filter.test(p), p).toBe(false);
+    }
+  });
+
   it('matches what Organize ports, and the fixtures that pin it', () => {
     for (const p of [
       'tests/fixtures/organize/labels.json',
