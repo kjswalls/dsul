@@ -41,7 +41,16 @@ import {
 import { containerMemberIds, daysBetween } from '@/lib/container-schedule';
 import { ContainerCreateForm } from '../container-create-form';
 import { seasonStates } from '../container-fields';
-import { DELETE_CONFIRM_LABELS, deleteConsequence, deleteTitle, seasonStateNote } from '@/lib/organize-copy';
+import {
+  ATTACH_CONFIRM_LABEL,
+  DELETE_CONFIRM_LABELS,
+  attachConfirmDescription,
+  attachConfirmTitle,
+  deleteConsequence,
+  deleteTitle,
+  seasonStateNote,
+} from '@/lib/organize-copy';
+import { wouldHideAttaching } from '@/lib/organize';
 import type { Item, Season, Routine } from '@/lib/planner-types';
 
 /**
@@ -201,31 +210,6 @@ function SeasonDetail({ season, onBack }: { season: Season; onBack: () => void }
   // button wearing two labels.
   const displaced = seasons.filter((p) => p.id !== season.id && isSeasonActiveOn(p, todayStr));
 
-  /**
-   * How many items an attach would ACTUALLY hide, asked of the resolver by
-   * simulating the join rather than counting members.
-   *
-   * A raw member count is wrong three ways at once: members already hidden by
-   * the routine's own pause, members the user paused by hand, and members held
-   * by a second live season all count toward it while none of them would move.
-   * At worst that produces a confirm saying "this will hide 5 items" for a write
-   * that hides nothing — which teaches the user to dismiss the prompt unread,
-   * and this is the one prompt in the app that has something to say.
-   */
-  const wouldHide = (routine: Routine): number => {
-    const ctx = { userTimezone: tz, routines, seasons };
-    const before = inactiveItemIdsOn(items, todayStr, ctx);
-    const after = inactiveItemIdsOn(items, todayStr, {
-      ...ctx,
-      seasons: seasons.map((p) =>
-        p.id === season.id ? { ...p, routineIds: [...p.routineIds, routine.id] } : p
-      ),
-    });
-    let n = 0;
-    for (const id of after) if (!before.has(id)) n += 1;
-    return n;
-  };
-
   const attach = (routine: Routine) =>
     updateSeason(season.id, { routineIds: [...season.routineIds, routine.id] });
 
@@ -237,31 +221,26 @@ function SeasonDetail({ season, onBack }: { season: Season; onBack: () => void }
    * season that is off makes its items vanish from today as a side effect of a
    * join write. That is the algebra working as designed (scoping a routine IS
    * the point), but an unannounced "5 items disappeared" reads as a bug.
+   *
+   * How many it would ACTUALLY hide is lib/organize.ts wouldHideAttaching: the
+   * resolver asked with and without the join, and nothing for a routine
+   * another season already holds (only the first season rescopes it). A raw
+   * member count would count members already hidden, paused by hand or held
+   * by a second live season, and a prompt that says "this will hide 5 items"
+   * for a write that hides nothing teaches the user to dismiss it unread. The
+   * iPhone's season page asks the same, in the same words
+   * (lib/organize-copy.ts).
    */
   const requestAttach = (routine: Routine) => {
-    // Only the FIRST season a routine joins rescopes it. A second is purely
-    // additive — the path algebra is disjunctive — so warning there would train
-    // the user to dismiss the prompt that matters.
-    const heldElsewhere = seasons.some(
-      (p) => p.id !== season.id && p.routineIds.includes(routine.id)
-    );
-    const hides = heldElsewhere ? 0 : wouldHide(routine);
+    const hides = wouldHideAttaching(season.id, routine.id, items, { userTimezone: tz, routines, seasons }, todayStr);
     if (hides === 0) {
       attach(routine);
       return;
     }
-    const returns =
-      season.state === 'auto' && season.startsOn && todayStr < season.startsOn
-        ? formatShort(season.startsOn)
-        : null;
     confirm({
-      title: `This will hide ${hides} ${hides === 1 ? 'item' : 'items'} for now`,
-      description:
-        `“${routine.name}” looks after itself today. Putting it in ${season.name} hands that ` +
-        `over. ${season.name} is off, so its ${hides} ${hides === 1 ? 'item' : 'items'} ` +
-        `${returns ? `come back on ${returns}` : 'stay hidden until you switch it on'}. ` +
-        `Nothing is deleted, and taking it back out restores them.`,
-      confirmLabel: 'Add it anyway',
+      title: attachConfirmTitle(hides),
+      description: attachConfirmDescription(routine.name, season, hides, todayStr),
+      confirmLabel: ATTACH_CONFIRM_LABEL,
       testId: 'season-routine-attach-confirm',
       onConfirm: () => attach(routine),
     });

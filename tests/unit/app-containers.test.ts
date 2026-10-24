@@ -60,12 +60,15 @@ const STAMP = '2026-10-01T12:00:00.123456+00:00';
 
 type Row = Record<string, unknown>;
 type Filter = ['eq' | 'is', string, unknown];
+type Order = [string, { ascending?: boolean; nullsFirst?: boolean }];
 interface Statement {
   table: string;
-  op: 'select' | 'update' | 'insert';
+  op: 'select' | 'update' | 'insert' | 'delete';
   columns?: string;
   payload?: Row;
   filters: Filter[];
+  /** A read's `.order(…)` calls, in order; absent when it made none. */
+  orders?: Order[];
 }
 
 const h = vi.hoisted(() => ({
@@ -89,8 +92,11 @@ vi.mock('@/lib/supabase-service', () => ({
 
 let tables: Record<string, Row[]>;
 let statements: Statement[];
-/** A table whose every statement fails, as a dropped connection would. */
-let failing: { table: string; op?: Statement['op'] } | null;
+/**
+ * A table whose every statement fails, as a dropped connection would; with
+ * `after`, only once that many of its statements have gone through.
+ */
+let failing: { table: string; op?: Statement['op']; after?: number } | null;
 
 /** projects_user_id_name_key: one user's names, exact-case, live and trashed rows alike. */
 const UNIQUE_NAME = new Set(['projects']);
@@ -107,10 +113,52 @@ const uniqueViolation = (constraint: string) => ({
   error: { code: '23505', message: `duplicate key value violates unique constraint "${constraint}"` },
 });
 
-/** Enough of PostgREST for the route: select (a column list or *), update, insert, eq, is, maybeSingle. */
+/** Each table's primary key: `id`, except the join tables', which are their two owners. */
+const PRIMARY_KEY: Record<string, string[]> = {
+  routine_items: ['routine_id', 'item_id'],
+  season_routines: ['season_id', 'routine_id'],
+};
+/**
+ * The join tables' foreign keys (024: each to its owner's (id, user_id),
+ * whatever its deleted_at): a row naming a container that is not there is
+ * refused 23503, as a purge between the read and the insert would be.
+ */
+const FOREIGN_KEYS: Record<string, [column: string, table: string][]> = {
+  season_routines: [
+    ['season_id', 'seasons'],
+    ['routine_id', 'routines'],
+  ],
+};
+const foreignKeyViolation = (table: string) => ({
+  data: null,
+  error: { code: '23503', message: `insert or update on table "${table}" violates foreign key constraint` },
+});
+
+/**
+ * A read's order, as PostgREST applies it: each `.order` in turn, nulls last
+ * unless asked first.
+ */
+function ordered(rows: Row[], orders: Order[]): Row[] {
+  const compare = (a: Row, b: Row) => {
+    for (const [col, { ascending = true, nullsFirst = !ascending }] of orders) {
+      const x = a[col] ?? null;
+      const y = b[col] ?? null;
+      if (x === y) continue;
+      if (x === null) return nullsFirst ? -1 : 1;
+      if (y === null) return nullsFirst ? 1 : -1;
+      const sign = (x as number | string) < (y as number | string) ? -1 : 1;
+      return ascending ? sign : -sign;
+    }
+    return 0;
+  };
+  return [...rows].sort(compare);
+}
+
+/** Enough of PostgREST for the route: select (a column list or *), update, insert, delete, eq, is, order, maybeSingle. */
 function database() {
   const build = (table: string, op: Statement['op'], payload?: Row, columns?: string) => {
     const filters: Filter[] = [];
+    const orders: Order[] = [];
     // RLS: the caller's rows, and nothing else, whatever the statement asks.
     const match = (row: Row) =>
       row.user_id === USER &&
@@ -120,9 +168,10 @@ function database() {
       return Object.fromEntries(columns.split(',').map((c) => [c.trim(), row[c.trim()] ?? null]));
     };
     const run = async () => {
-      statements.push({ table, op, columns, payload, filters: [...filters] });
+      statements.push({ table, op, columns, payload, filters: [...filters], ...(orders.length ? { orders: [...orders] } : {}) });
       if (failing && failing.table === table && (!failing.op || failing.op === op)) {
-        return { data: null, error: { code: 'XX000', message: 'connection reset' } };
+        if (failing.after) failing.after -= 1;
+        else return { data: null, error: { code: 'XX000', message: 'connection reset' } };
       }
       if (op === 'insert' && payload) {
         beforeInsert?.(table, payload);
@@ -130,7 +179,12 @@ function database() {
         if (payload.user_id !== USER) return { data: null, error: { code: '42501', message: 'new row violates row-level security policy' } };
         const all = (tables[table] ??= []);
         // The primary key spans every user's rows, and the bin's.
-        if (all.some((r) => r.id === payload.id)) return uniqueViolation(`${table}_pkey`);
+        const key = PRIMARY_KEY[table] ?? ['id'];
+        if (all.some((r) => key.every((col) => r[col] === payload[col]))) return uniqueViolation(`${table}_pkey`);
+        for (const [col, owner] of FOREIGN_KEYS[table] ?? []) {
+          const held = (tables[owner] ?? []).some((r) => r.id === payload[col] && r.user_id === payload.user_id);
+          if (!held) return foreignKeyViolation(table);
+        }
         if (UNIQUE_NAME.has(table) && all.some((r) => r.user_id === USER && r.name === payload.name)) {
           return uniqueViolation('projects_user_id_name_key');
         }
@@ -140,6 +194,10 @@ function database() {
       }
       if (op === 'update' && payload) beforeUpdate?.(table, payload);
       const hit = (tables[table] ?? []).filter(match);
+      if (op === 'delete') {
+        tables[table] = (tables[table] ?? []).filter((r) => !hit.includes(r));
+        return { data: null, error: null };
+      }
       if (op === 'update') {
         if (UNIQUE_NAME.has(table) && payload && 'name' in payload) {
           const held = (tables[table] ?? []).some((r) => r.user_id === USER && r.name === payload.name && !hit.includes(r));
@@ -148,11 +206,12 @@ function database() {
         for (const row of hit) Object.assign(row, payload);
         return { data: null, error: null };
       }
-      return { data: hit.map(project), error: null };
+      return { data: ordered(hit, orders).map(project), error: null };
     };
     const chain: Record<string, unknown> = {
       eq: (col: string, val: unknown) => (filters.push(['eq', col, val]), chain),
       is: (col: string, val: unknown) => (filters.push(['is', col, val]), chain),
+      order: (col: string, opts: Order[1] = {}) => (orders.push([col, opts]), chain),
       maybeSingle: () => run().then((r) => ({ data: (r.data as Row[] | null)?.[0] ?? null, error: r.error })),
       then: (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) => run().then(resolve, reject),
     };
@@ -164,6 +223,7 @@ function database() {
       select: (columns?: string) => build(table, 'select', undefined, columns),
       update: (payload: Row) => build(table, 'update', payload),
       insert: (payload: Row) => build(table, 'insert', payload),
+      delete: () => build(table, 'delete'),
     }),
   };
 }
@@ -255,6 +315,16 @@ const itemRow = (n: number, title: string, over: Row = {}): Row => ({
 /** When Read more was achieved, a week ago. */
 const ACHIEVED = '2026-10-16T09:30:00.000Z';
 
+/** One of a routine's steps: its routine_items row. */
+const stepRow = (routineId: string, itemId: string, sortOrder: number | null): Row => ({
+  routine_id: routineId,
+  item_id: itemId,
+  user_id: USER,
+  sort_order: sortOrder,
+});
+/** One routine a season holds: its season_routines row. */
+const holdRow = (seasonId: string, routineId: string): Row => ({ season_id: seasonId, routine_id: routineId, user_id: USER });
+
 /**
  *   - Morning: live, never paused;
  *   - Evening: paused since Oct 20, no return day;
@@ -270,6 +340,10 @@ const ACHIEVED = '2026-10-16T09:30:00.000Z';
  *   - Home's members by project_id: Fix the tap, Mow (its text drifted to
  *     "home") and Old chore (in the Trash); Stranger says "Home" with no id;
  *     Report is Work's; Their chore is another user's, under Home's id;
+ *   - Morning's steps: Water, Stretch, Read, Journal (ITEM(11) to (14)), at
+ *     places 5 to 8, the gaps an earlier remove left; Evening holds one,
+ *     Floss (ITEM(15)); Theirs holds one of another user's;
+ *   - Autumn holds Evening; Shelf holds nothing;
  *   - Organize and Goals switched off, which gate nothing here.
  */
 function world(): Record<string, Row[]> {
@@ -309,6 +383,15 @@ function world(): Record<string, Row[]> {
       itemRow(5, 'Report', { project: 'Work', project_id: PROJECT(1) }),
       { ...itemRow(6, 'Their chore', { project: 'Home', project_id: PROJECT(2) }), user_id: OTHER },
     ],
+    routine_items: [
+      stepRow(ROUTINE(1), ITEM(11), 5),
+      stepRow(ROUTINE(1), ITEM(12), 6),
+      stepRow(ROUTINE(1), ITEM(13), 7),
+      stepRow(ROUTINE(1), ITEM(14), 8),
+      stepRow(ROUTINE(2), ITEM(15), 0),
+      { ...stepRow(ROUTINE(6), ITEM(16), 0), user_id: OTHER },
+    ],
+    season_routines: [holdRow(SEASON(1), ROUTINE(2))],
     user_settings: [{ user_id: USER, timezone: 'America/New_York' }],
     user_extensions: [
       { user_id: USER, slug: 'organize', enabled: false },
@@ -1182,8 +1265,8 @@ describe('who it answers to', () => {
 describe('what the payload says the phone may send', () => {
   it('lists each kind’s intents, read off its union', () => {
     expect(CONTAINER_WRITES).toEqual({
-      routine: ['pause', 'usualTime', 'notes', 'rename', 'icon', 'color', 'delete', 'create'],
-      season: ['state', 'dates', 'notes', 'rename', 'icon', 'color', 'delete', 'create'],
+      routine: ['pause', 'usualTime', 'notes', 'rename', 'icon', 'color', 'moveMember', 'delete', 'create'],
+      season: ['state', 'dates', 'notes', 'rename', 'icon', 'color', 'holdRoutine', 'delete', 'create'],
       goal: ['state', 'window', 'why', 'rename', 'icon', 'color', 'delete', 'create'],
       project: ['notes', 'rename', 'icon', 'color', 'delete', 'create'],
     });
@@ -1206,9 +1289,9 @@ describe('what the payload says the phone may send', () => {
   it('hands the payload fresh lists, so nothing downstream can grow the constant', () => {
     const copy = containerWrites();
     expect(copy).toEqual(CONTAINER_WRITES);
-    copy.routine.push('moveMember');
+    copy.routine.push('holdRoutine');
     copy.project.push('moveMember');
-    expect(CONTAINER_WRITES.routine).not.toContain('moveMember');
+    expect(CONTAINER_WRITES.routine).not.toContain('holdRoutine');
     expect(CONTAINER_WRITES.project).not.toContain('moveMember');
   });
 
@@ -1236,6 +1319,12 @@ describe('what the payload says the phone may send', () => {
       expect(schema.safeParse({ action: 'delete' }).success).toBe(true);
       expect(schema.safeParse({ action: 'delete', permanent: true }).success).toBe(false);
     }
+    expect(RoutineWriteSchema.safeParse({ action: 'moveMember', itemId: ITEM(1), afterId: null }).success).toBe(true);
+    expect(RoutineWriteSchema.safeParse({ action: 'moveMember', itemId: ITEM(1), afterId: ITEM(2), index: 1 }).success).toBe(false);
+    expect(RoutineWriteSchema.safeParse({ action: 'moveMember', itemId: ITEM(1) }).success).toBe(false);
+    expect(SeasonWriteSchema.safeParse({ action: 'holdRoutine', routineId: ROUTINE(1), hold: true }).success).toBe(true);
+    expect(SeasonWriteSchema.safeParse({ action: 'holdRoutine', routineId: ROUTINE(1), hold: true, routineIds: [] }).success).toBe(false);
+    expect(SeasonWriteSchema.safeParse({ action: 'holdRoutine', routineId: ROUTINE(1) }).success).toBe(false);
     expect(GoalCreateSchema.safeParse({ id: GOAL(9), name: 'Run', startsOn: TODAY }).success).toBe(true);
     expect(RoutineCreateSchema.safeParse({ id: ROUTINE(9), name: 'Desk', startsOn: TODAY }).success).toBe(false);
     expect(ProjectCreateSchema.safeParse({ id: PROJECT(9), name: 'Desk', emoji: '' }).success).toBe(false);
@@ -1281,6 +1370,445 @@ const deleteRead = (table: string, rowId: string): Statement => ({
     ['eq', 'id', rowId],
     ['eq', 'user_id', USER],
   ],
+});
+
+/** Morning's steps, in the order every read draws them: sort_order, nulls last, then item_id. */
+const steps = (routineId = ROUTINE(1)) =>
+  [...tables.routine_items.filter((r) => r.routine_id === routineId && r.user_id === USER)]
+    .sort((a, b) => {
+      const x = a.sort_order as number | null;
+      const y = b.sort_order as number | null;
+      if (x !== y) return x === null ? 1 : y === null ? -1 : x - y;
+      return String(a.item_id) < String(b.item_id) ? -1 : 1;
+    })
+    .map((r) => r.item_id);
+const place = (itemId: string, routineId = ROUTINE(1)) =>
+  tables.routine_items.find((r) => r.routine_id === routineId && r.item_id === itemId)?.sort_order;
+const move = (itemId: string, afterId: string | null, routineId = ROUTINE(1)) =>
+  write('routine', routineId, { action: 'moveMember', itemId, afterId });
+/** The places read: one select of the routine's rows, in the order every read draws them. */
+const placesRead = (routineId = ROUTINE(1)): Statement => ({
+  table: 'routine_items',
+  op: 'select',
+  columns: 'item_id, sort_order',
+  payload: undefined,
+  filters: [
+    ['eq', 'routine_id', routineId],
+    ['eq', 'user_id', USER],
+  ],
+  orders: [
+    ['sort_order', { ascending: true, nullsFirst: false }],
+    ['item_id', { ascending: true }],
+  ],
+});
+/** One step's place written: an UPDATE filtered by the routine, the item and the user, never an upsert. */
+const placeWrite = (itemId: string, sortOrder: number, routineId = ROUTINE(1)): Statement => ({
+  table: 'routine_items',
+  op: 'update',
+  columns: undefined,
+  payload: { sort_order: sortOrder },
+  filters: [
+    ['eq', 'routine_id', routineId],
+    ['eq', 'item_id', itemId],
+    ['eq', 'user_id', USER],
+  ],
+});
+
+describe("a routine's steps (O12)", () => {
+  // Morning: Water, Stretch, Read, Journal (ITEM(11) to (14)) at places 5 to 8.
+
+  it('places a step after another: the live read, its places in order, then one UPDATE per row out of place', async () => {
+    const res = await move(ITEM(14), ITEM(11));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(statements).toEqual([
+      liveRead('routines', ROUTINE(1)),
+      placesRead(),
+      placeWrite(ITEM(11), 0),
+      placeWrite(ITEM(14), 1),
+      placeWrite(ITEM(12), 2),
+      placeWrite(ITEM(13), 3),
+    ]);
+    expect(steps()).toEqual([ITEM(11), ITEM(14), ITEM(12), ITEM(13)]);
+  });
+
+  it('a null afterId puts the step first', async () => {
+    expect((await move(ITEM(13), null)).status).toBe(200);
+    expect(steps()).toEqual([ITEM(13), ITEM(11), ITEM(12), ITEM(14)]);
+    expect([0, 1, 2, 3].map((i) => place(steps()[i] as string))).toEqual([0, 1, 2, 3]);
+  });
+
+  it('writes only the rows whose place is not already their index', async () => {
+    tables.routine_items = [
+      stepRow(ROUTINE(1), ITEM(11), 0),
+      stepRow(ROUTINE(1), ITEM(12), 1),
+      stepRow(ROUTINE(1), ITEM(13), 2),
+      stepRow(ROUTINE(1), ITEM(14), 3),
+    ];
+    expect((await move(ITEM(13), ITEM(11))).status).toBe(200);
+    // Water stays at 0 and Journal at 3: only Read and Stretch trade places.
+    expect(writes()).toEqual([placeWrite(ITEM(13), 1), placeWrite(ITEM(12), 2)]);
+    expect(steps()).toEqual([ITEM(11), ITEM(13), ITEM(12), ITEM(14)]);
+  });
+
+  it('a second send of one move computes the same order and writes nothing', async () => {
+    await move(ITEM(14), ITEM(11));
+    statements = [];
+    const res = await move(ITEM(14), ITEM(11));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(statements).toEqual([liveRead('routines', ROUTINE(1)), placesRead()]);
+    expect(steps()).toEqual([ITEM(11), ITEM(14), ITEM(12), ITEM(13)]);
+  });
+
+  it('a move to where the step already is writes nothing once the places are its indexes', async () => {
+    tables.routine_items = [stepRow(ROUTINE(1), ITEM(11), 0), stepRow(ROUTINE(1), ITEM(12), 1)];
+    expect((await move(ITEM(12), ITEM(11))).status).toBe(200);
+    expect((await move(ITEM(11), null)).status).toBe(200);
+    expect(writes()).toEqual([]);
+  });
+
+  it('after a partial failure, the next send writes only what is still out of place', async () => {
+    failing = { table: 'routine_items', op: 'update', after: 2 };
+    const res = await move(ITEM(14), ITEM(11));
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: 'failed' });
+    // Water and Journal took their new places; the third write failed and the fourth was never sent.
+    expect(writes()).toHaveLength(3);
+    expect([ITEM(11), ITEM(14), ITEM(12), ITEM(13)].map((i) => place(i))).toEqual([0, 1, 6, 7]);
+
+    failing = null;
+    statements = [];
+    expect((await move(ITEM(14), ITEM(11))).status).toBe(200);
+    expect(writes()).toEqual([placeWrite(ITEM(12), 2), placeWrite(ITEM(13), 3)]);
+    expect(steps()).toEqual([ITEM(11), ITEM(14), ITEM(12), ITEM(13)]);
+  });
+
+  it('numbers every step it moves past, so no member is left without a place', async () => {
+    // Two members with no place (a legacy write) sort last, by id.
+    tables.routine_items = [
+      stepRow(ROUTINE(1), ITEM(11), 0),
+      stepRow(ROUTINE(1), ITEM(12), 4),
+      stepRow(ROUTINE(1), ITEM(13), null),
+      stepRow(ROUTINE(1), ITEM(14), null),
+    ];
+    expect((await move(ITEM(11), ITEM(14))).status).toBe(200);
+    expect(steps()).toEqual([ITEM(12), ITEM(13), ITEM(14), ITEM(11)]);
+    expect([ITEM(12), ITEM(13), ITEM(14), ITEM(11)].map((i) => place(i))).toEqual([0, 1, 2, 3]);
+  });
+
+  it('a step no longer in the routine is 409 member_gone, and nothing is written', async () => {
+    const res = await move(ITEM(15), ITEM(11));
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'member_gone' });
+    expect(statements).toEqual([liveRead('routines', ROUTINE(1)), placesRead()]);
+  });
+
+  it('an anchor no longer in the routine is 409 anchor_gone, and nothing is written', async () => {
+    const res = await move(ITEM(14), ITEM(15));
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'anchor_gone' });
+    expect(writes()).toEqual([]);
+    expect(steps()).toEqual([ITEM(11), ITEM(12), ITEM(13), ITEM(14)]);
+  });
+
+  it('a step gone and its anchor gone too is member_gone: the step is asked about first', async () => {
+    const res = await move(ITEM(20), ITEM(21));
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'member_gone' });
+    expect(writes()).toEqual([]);
+  });
+
+  it('a step placed after itself is 400, before anything is read, in any spelling of the id', async () => {
+    for (const afterId of [ITEM(12), ITEM(12).toUpperCase()]) {
+      const res = await move(ITEM(12), afterId);
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toBe('invalid');
+    }
+    expect(statements).toEqual([]);
+  });
+
+  it('takes ids sent in capitals as their lowercase selves', async () => {
+    // ITEM(14) and ITEM(11) end in e and b, so their capitals are another spelling.
+    expect(ITEM(14).toUpperCase()).not.toBe(ITEM(14));
+    expect((await move(ITEM(14).toUpperCase(), ITEM(11).toUpperCase())).status).toBe(200);
+    expect(steps()).toEqual([ITEM(11), ITEM(14), ITEM(12), ITEM(13)]);
+  });
+
+  it('a web tab’s add between the read and the writes keeps its row, and it sits last', async () => {
+    // The tab's add is an insert after the highest place it read (8): never one of the rows written here.
+    let added = false;
+    beforeUpdate = (table) => {
+      if (table !== 'routine_items' || added) return;
+      added = true;
+      tables.routine_items.push(stepRow(ROUTINE(1), ITEM(19), 9));
+    };
+    expect((await move(ITEM(14), ITEM(11))).status).toBe(200);
+    expect(steps()).toEqual([ITEM(11), ITEM(14), ITEM(12), ITEM(13), ITEM(19)]);
+    expect(place(ITEM(19))).toBe(9);
+    expect(writes().map((w) => w.filters[1][2])).not.toContain(ITEM(19));
+  });
+
+  it.each([1, 2, 3, 4])(
+    'a web tab’s add that reads its place before write %i keeps its row and is never written; the step stays after its anchor',
+    async (before) => {
+      // Places 0 to 3, Water moved after Journal: four writes, first place first.
+      tables.routine_items = [
+        stepRow(ROUTINE(1), ITEM(11), 0),
+        stepRow(ROUTINE(1), ITEM(12), 1),
+        stepRow(ROUTINE(1), ITEM(13), 2),
+        stepRow(ROUTINE(1), ITEM(14), 3),
+      ];
+      // The tab's add, as addContainerMember makes it: one past the highest place it reads.
+      let seen = 0;
+      beforeUpdate = (table) => {
+        if (table !== 'routine_items' || ++seen !== before) return;
+        const placed = tables.routine_items.filter((r) => r.routine_id === ROUTINE(1)).map((r) => r.sort_order as number);
+        tables.routine_items.push(stepRow(ROUTINE(1), ITEM(19), Math.max(...placed) + 1));
+      };
+      expect((await move(ITEM(11), ITEM(14))).status).toBe(200);
+      expect(writes()).toHaveLength(4);
+      expect(writes().map((w) => w.filters[1][2])).not.toContain(ITEM(19));
+      const order = steps();
+      expect(order.filter((i) => i !== ITEM(19))).toEqual([ITEM(12), ITEM(13), ITEM(14), ITEM(11)]);
+      expect(order).toContain(ITEM(19));
+      // At or past the last place written: last, or tied with it when the add read mid-way (lib/db.ts).
+      expect(place(ITEM(19))).toBeGreaterThanOrEqual(3);
+    },
+  );
+
+  it('a web tab’s remove between the read and the writes stays removed: an UPDATE of a missing row inserts nothing', async () => {
+    let removed = false;
+    beforeUpdate = (table) => {
+      if (table !== 'routine_items' || removed) return;
+      removed = true;
+      tables.routine_items = tables.routine_items.filter((r) => r.item_id !== ITEM(12));
+    };
+    expect((await move(ITEM(14), ITEM(11))).status).toBe(200);
+    // Stretch's own write was sent, and touched nothing.
+    expect(writes()).toContainEqual(placeWrite(ITEM(12), 2));
+    expect(steps()).toEqual([ITEM(11), ITEM(14), ITEM(13)]);
+    expect(tables.routine_items.some((r) => r.item_id === ITEM(12))).toBe(false);
+    expect(inserts()).toEqual([]);
+  });
+
+  it('touches no other routine’s steps, and no other user’s', async () => {
+    const evening = JSON.stringify(tables.routine_items.filter((r) => r.routine_id !== ROUTINE(1)));
+    await move(ITEM(14), null);
+    expect(JSON.stringify(tables.routine_items.filter((r) => r.routine_id !== ROUTINE(1)))).toBe(evening);
+  });
+
+  it.each([
+    ['in the Trash', ROUTINE(5)],
+    ['another user’s', ROUTINE(6)],
+    ['never one', ROUTINE(99)],
+  ])('a routine %s is 404, and its steps are never read', async (_label, routineId) => {
+    const res = await move(ITEM(16), null, routineId);
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: 'not_found' });
+    expect(statements).toEqual([liveRead('routines', routineId)]);
+  });
+
+  it('a move on a season, a goal or a project is 400', async () => {
+    for (const [kind, rowId] of [
+      ['season', SEASON(1)],
+      ['goal', GOAL(1)],
+      ['project', PROJECT(1)],
+    ] as const) {
+      const res = await write(kind, rowId, { action: 'moveMember', itemId: ITEM(11), afterId: null });
+      expect(res.status, kind).toBe(400);
+    }
+    expect(statements).toEqual([]);
+  });
+
+  it('answers a failed read of the places, or a failed write, with a bare 500', async () => {
+    failing = { table: 'routine_items', op: 'select' };
+    let res = await move(ITEM(14), ITEM(11));
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: 'failed' });
+    expect(writes()).toEqual([]);
+
+    failing = { table: 'routine_items', op: 'update' };
+    res = await move(ITEM(14), ITEM(11));
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: 'failed' });
+    expect(writes()).toHaveLength(1);
+  });
+});
+
+/** The seasons holding `routineId`, as season_routines says. */
+const holders = (routineId: string) =>
+  tables.season_routines.filter((r) => r.routine_id === routineId).map((r) => r.season_id);
+const hold = (seasonId: string, routineId: string, on: boolean) =>
+  write('season', seasonId, { action: 'holdRoutine', routineId, hold: on });
+/** The routine read LIVE by id and user: a hold names it, so it must be there. */
+const routineLiveRead = (routineId: string): Statement => ({
+  table: 'routines',
+  op: 'select',
+  columns: 'id',
+  payload: undefined,
+  filters: [
+    ['eq', 'id', routineId],
+    ['eq', 'user_id', USER],
+    ['is', 'deleted_at', null],
+  ],
+});
+
+describe("a season's routines (O13)", () => {
+  // Autumn holds Evening; Shelf (off by hand) holds nothing.
+
+  it('puts a routine in a season: the season and the routine read live, then one row inserted', async () => {
+    const res = await hold(SEASON(2), ROUTINE(1), true);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(statements).toEqual([
+      liveRead('seasons', SEASON(2)),
+      routineLiveRead(ROUTINE(1)),
+      {
+        table: 'season_routines',
+        op: 'insert',
+        columns: undefined,
+        payload: { season_id: SEASON(2), routine_id: ROUTINE(1), user_id: USER },
+        filters: [],
+      },
+    ]);
+    expect(holders(ROUTINE(1))).toEqual([SEASON(2)]);
+    // The season's own row is not written: no updated_at restamped, no field touched.
+    expect(writes()).toEqual([]);
+  });
+
+  it('a hold already there is 200 and writes nothing new: a second send lands once', async () => {
+    const res = await hold(SEASON(1), ROUTINE(2), true);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(tables.season_routines).toEqual([holdRow(SEASON(1), ROUTINE(2))]);
+  });
+
+  it('a second season is one more row, and the first keeps its own', async () => {
+    expect((await hold(SEASON(2), ROUTINE(2), true)).status).toBe(200);
+    expect(holders(ROUTINE(2))).toEqual([SEASON(1), SEASON(2)]);
+  });
+
+  it('takes a routine out: that one row deleted, by the season, the routine and the user', async () => {
+    tables.season_routines.push(holdRow(SEASON(2), ROUTINE(2)), holdRow(SEASON(1), ROUTINE(1)));
+    const res = await hold(SEASON(1), ROUTINE(2), false);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(statements.at(-1)).toEqual({
+      table: 'season_routines',
+      op: 'delete',
+      columns: undefined,
+      payload: undefined,
+      filters: [
+        ['eq', 'season_id', SEASON(1)],
+        ['eq', 'routine_id', ROUTINE(2)],
+        ['eq', 'user_id', USER],
+      ],
+    });
+    expect(tables.season_routines).toEqual([holdRow(SEASON(2), ROUTINE(2)), holdRow(SEASON(1), ROUTINE(1))]);
+  });
+
+  it('taking out a routine the season does not hold is 200, and nothing is removed', async () => {
+    const res = await hold(SEASON(2), ROUTINE(2), false);
+    expect(res.status).toBe(200);
+    expect(tables.season_routines).toEqual([holdRow(SEASON(1), ROUTINE(2))]);
+  });
+
+  it.each([
+    ['in the Trash', ROUTINE(5)],
+    ['another user’s', ROUTINE(6)],
+    ['never one', ROUTINE(99)],
+  ])('a routine %s is 409 container_gone, put in or taken out, and nothing is written', async (_label, routineId) => {
+    for (const on of [true, false]) {
+      statements = [];
+      const res = await hold(SEASON(2), routineId, on);
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({ error: 'container_gone' });
+      expect(statements).toEqual([liveRead('seasons', SEASON(2)), routineLiveRead(routineId)]);
+    }
+    expect(tables.season_routines).toEqual([holdRow(SEASON(1), ROUTINE(2))]);
+  });
+
+  it('a routine purged between the read and the insert is 409 container_gone (the 23503)', async () => {
+    beforeInsert = (table) => {
+      if (table === 'season_routines') tables.routines = tables.routines.filter((r) => r.id !== ROUTINE(1));
+    };
+    const res = await hold(SEASON(2), ROUTINE(1), true);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'container_gone' });
+    expect(holders(ROUTINE(1))).toEqual([]);
+  });
+
+  it.each([
+    ['in the Trash', SEASON(4)],
+    ['another user’s', SEASON(5)],
+    ['never one', SEASON(99)],
+  ])('a season %s is 404, and the routine is never read', async (_label, seasonId) => {
+    const res = await hold(seasonId, ROUTINE(1), true);
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: 'not_found' });
+    expect(statements).toEqual([liveRead('seasons', seasonId)]);
+  });
+
+  it('a hold on a routine, a goal or a project is 400, and one with no hold is too', async () => {
+    for (const [kind, rowId] of [
+      ['routine', ROUTINE(1)],
+      ['goal', GOAL(1)],
+      ['project', PROJECT(1)],
+    ] as const) {
+      const res = await write(kind, rowId, { action: 'holdRoutine', routineId: ROUTINE(2), hold: true });
+      expect(res.status, kind).toBe(400);
+    }
+    expect((await write('season', SEASON(1), { action: 'holdRoutine', routineId: ROUTINE(2) })).status).toBe(400);
+    expect((await write('season', SEASON(1), { action: 'holdRoutine', routineId: 'sample-morning-routine', hold: true })).status).toBe(400);
+    expect(statements).toEqual([]);
+  });
+
+  it('takes a routine id sent in capitals as its lowercase self', async () => {
+    // ROUTINE(10) ends in an a, so its capitals are another spelling.
+    tables.routines.push(routineRow(10, 'Desk'));
+    const sent = ROUTINE(10).toUpperCase();
+    expect(sent).not.toBe(ROUTINE(10));
+    expect((await hold(SEASON(2), sent, true)).status).toBe(200);
+    expect(holders(ROUTINE(10))).toEqual([SEASON(2)]);
+  });
+
+  it('answers a failed routine read, insert or delete with a bare 500', async () => {
+    for (const [op, on] of [
+      ['insert', true],
+      ['delete', false],
+    ] as const) {
+      failing = { table: 'season_routines', op };
+      const res = await hold(SEASON(1), ROUTINE(2), on);
+      expect(res.status, op).toBe(500);
+      expect(await res.json()).toEqual({ error: 'failed' });
+    }
+    // The season's read is the seasons table's; the routine's is the first of routines'.
+    failing = { table: 'routines', op: 'select' };
+    const res = await hold(SEASON(2), ROUTINE(1), true);
+    expect(res.status).toBe(500);
+    expect(tables.season_routines).toEqual([holdRow(SEASON(1), ROUTINE(2))]);
+  });
+});
+
+describe('the membership intents answer to no one else (O12, O13)', () => {
+  it('move a step and hold a routine with Organize off, and never read the switches', async () => {
+    expect((await move(ITEM(14), null)).status).toBe(200);
+    expect((await hold(SEASON(2), ROUTINE(1), true)).status).toBe(200);
+    expect((await hold(SEASON(2), ROUTINE(1), false)).status).toBe(200);
+    expect(statements.some((st) => st.table === 'user_extensions')).toBe(false);
+  });
+
+  it('fire no webhook, write no item_events, never build the service client, and touch only their own tables', async () => {
+    await move(ITEM(14), ITEM(11));
+    await hold(SEASON(2), ROUTINE(1), true);
+    await hold(SEASON(1), ROUTINE(2), false);
+    expect(h.notifyPlugins).not.toHaveBeenCalled();
+    expect(h.createServiceClient).not.toHaveBeenCalled();
+    expect(new Set(statements.map((st) => st.table))).toEqual(
+      new Set(['routines', 'routine_items', 'seasons', 'season_routines']),
+    );
+  });
 });
 
 describe('a delete (O10)', () => {
@@ -1812,6 +2340,21 @@ describe('the route answers every case in container-writes.json', () => {
       expected: { status: number; id: string; after: Record<string, unknown> };
     }[];
     createInvalid: Refused[];
+    moves: {
+      name: string;
+      kind: 'routine';
+      before: { itemIds: string[] };
+      body: { action: 'moveMember'; itemId: string; afterId: string | null };
+      expected: { status: number; error: string | null; itemIds: string[] };
+    }[];
+    holds: {
+      name: string;
+      kind: 'season';
+      before: { routineIds: string[] };
+      routineLive: boolean;
+      body: { action: 'holdRoutine'; routineId: string; hold: boolean };
+      expected: { status: number; error: string | null; routineIds: string[] };
+    }[];
   };
 
   const TABLE: Record<Kind, string> = { routine: 'routines', season: 'seasons', goal: 'goals', project: 'projects' };
@@ -1955,5 +2498,51 @@ describe('the route answers every case in container-writes.json', () => {
     expect(res.status).toBe(c.expected.status);
     expect((await res.json()).error).toBe(c.expected.error);
     expect(statements).toEqual([]);
+  });
+
+  it('moves and holds reach every answer', () => {
+    const answers = (list: { expected: { status: number; error: string | null } }[]) =>
+      new Set(list.map((c) => `${c.expected.status} ${c.expected.error ?? ''}`.trim()));
+    expect(answers(fixture.moves)).toEqual(new Set(['200', '409 member_gone', '409 anchor_gone']));
+    expect(answers(fixture.holds)).toEqual(new Set(['200', '409 container_gone']));
+  });
+
+  // O12: Morning's steps are the case's, stored at places that are not yet
+  // their indexes (10 on), so a move writes. They read back in the order the
+  // payload draws them (sort_order, then item_id): the case's itemIds.
+  it.each(fixture.moves.map((c) => [c.name, c] as const))('%s', async (_name, c) => {
+    tables.routine_items = [
+      ...tables.routine_items.filter((r) => r.routine_id !== ROUTINE(1)),
+      ...c.before.itemIds.map((itemId, i) => stepRow(ROUTINE(1), itemId, 10 + i)),
+    ];
+    const res = await write(c.kind, ROUTINE(1), c.body);
+    expect(res.status).toBe(c.expected.status);
+    expect(await res.json()).toEqual(c.expected.error ? { error: c.expected.error } : { ok: true });
+    if (c.expected.error) expect(writes()).toEqual([]);
+    expect(steps()).toEqual(c.expected.itemIds);
+  });
+
+  // O13: Autumn holds the case's routines, each the user's and live; the one
+  // named is live or in the bin as the case says. What the season holds after
+  // is read by id, as the payload lists it.
+  it.each(fixture.holds.map((c) => [c.name, c] as const))('%s', async (_name, c) => {
+    const named = c.body.routineId.toLowerCase();
+    const ids = [...new Set([...c.before.routineIds, named])];
+    tables.routines = [
+      ...tables.routines,
+      ...ids.map((rid, i) =>
+        routineRow(90 + i, `Held ${i}`, { id: rid, deleted_at: rid === named && !c.routineLive ? NOW : null }),
+      ),
+    ];
+    tables.season_routines = [
+      ...tables.season_routines.filter((r) => r.season_id !== SEASON(1)),
+      ...c.before.routineIds.map((rid) => holdRow(SEASON(1), rid)),
+    ];
+    const res = await write(c.kind, SEASON(1), c.body);
+    expect(res.status).toBe(c.expected.status);
+    expect(await res.json()).toEqual(c.expected.error ? { error: c.expected.error } : { ok: true });
+    if (c.expected.error) expect(statements.filter((st) => st.table === 'season_routines')).toEqual([]);
+    const held = tables.season_routines.filter((r) => r.season_id === SEASON(1)).map((r) => r.routine_id as string);
+    expect(held.sort()).toEqual(c.expected.routineIds);
   });
 });

@@ -421,8 +421,10 @@ export interface AppPlannerPayload {
    */
   trashWrites: TrashWrite[];
   /**
-   * The field intents and the delete POST /api/app/containers/:kind/:id
-   * takes, per kind, then `create` when POST /api/app/containers/:kind takes
+   * The field intents, the membership intents (a routine's `moveMember`, a
+   * season's `holdRoutine`) and the delete POST
+   * /api/app/containers/:kind/:id takes, per kind, then `create` when POST
+   * /api/app/containers/:kind takes
    * that kind (lib/app-containers.ts CONTAINER_WRITES, read off each kind's
    * union and the create schemas): `{ routine, season, goal, project }`, each
    * a list of actions, empty for a kind with none yet. The phone hides every

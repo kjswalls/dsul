@@ -158,6 +158,12 @@ struct OrganizeSnapshot: Sendable {
     /// in, and none from a server older than the routes. None by default, so
     /// a snapshot built without it offers no editor and no Resume.
     var containerTakes: ContainerWrites = ContainerWrites()
+    /// (O12) Whether the server takes the ITEM write a routine's "Add from
+    /// your items…" and its Remove are (`collect`, from the payload's own
+    /// write list, `SamplePlanner.canWrite("collect")`), which is not a
+    /// container write and is in no `containerWrites` list. False by default,
+    /// so a snapshot built without it offers neither.
+    var collects: Bool = false
 
     /// What every schedule here is derived against: the grid's own inputs.
     var scheduleSource: ScheduleSource {
@@ -738,7 +744,8 @@ extension SamplePlanner {
         return OrganizeSnapshot(hasLoaded: hasLoaded, loadError: loadError, settings: settings, today: today,
                                 timeZone: timeZoneID, items: items, routines: routines, seasons: seasons,
                                 goals: goals, projects: projectRecords, away: awayPeriods, typeLabels: typeLabels,
-                                itemTypes: itemTypes, trashOffered: offersTrash, containerTakes: containerTakes)
+                                itemTypes: itemTypes, trashOffered: offersTrash, containerTakes: containerTakes,
+                                collects: canWrite("collect"))
     }
 
     /// The Organize tab's content now.

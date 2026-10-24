@@ -17,8 +17,11 @@ import SwiftUI
 // (PageEditors.swift); from O9 the ⋯ menu in the bar, Rename… (an alert,
 // RenameAlert.swift) and Icon and color… (LookSheet.swift), which the host
 // presents so they stay up however far the page has scrolled, and from O10
-// its Delete… (a confirmation dialog, the web's words). The planner steps and
-// sends each one. More edits come with O12 and O13. The footer's
+// its Delete… (a confirmation dialog, the web's words). From O12 the bar's
+// Edit button, which turns the page's own Edit mode on (a routine's steps,
+// reordered by drag or by Move up and Move down, with Remove and "Add from
+// your items…"), and from O13 a season's "Add a routine…" and swipe Take out.
+// The planner steps and sends each one. The footer's
 // pages (Paused, a paused routine's or season's
 // detail, Item types and the Trash, O5 and O14) go through the same
 // destination: PausedPage.swift, PausedEntryPage.swift, ItemTypesPage.swift
@@ -72,6 +75,14 @@ struct OrganizeDestination: View {
 /// delete it: Delete… asks first, in the web's words for the kind
 /// (`DeleteEdit`), and once the container is gone the page pops as it does
 /// for a delete from the web, and VoiceOver hears "Routine deleted".
+///
+/// From O12 the bar also carries Edit, on a page with an Edit mode to go into
+/// (`steps`, a routine's, while `reorderable`: two steps or more and the
+/// server's `moveMember`), and the rows it hands down read it through
+/// `\.editMode`. It is this view's own state, not an `EditButton`, so the page
+/// can leave it the moment the mode is no longer there: a fetch that takes the
+/// write away, the switch going off, or a Remove that leaves one step puts the
+/// page back as it was rather than leaving a list no drag can reorder.
 struct OrganizePageHost<Page: OrganizePageModel, Rows: View>: View {
     let route: OrganizeRoute
     @Binding var path: [OrganizeRoute]
@@ -90,6 +101,11 @@ struct OrganizePageHost<Page: OrganizePageModel, Rows: View>: View {
     @State private var looking: LookEdit? = nil
     /// Delete…, while its confirm is up.
     @State private var deleting: DeleteEdit? = nil
+    /// (O12) Edit mode, on a page that has one: its rows reorder and the bar's
+    /// button says Done. This view's own, not the system's `EditButton`, so
+    /// the page can hand it down (`\.editMode`) and leave it itself once the
+    /// page may no longer be edited.
+    @State private var editing = false
     /// How far the list scrolls before the header's name is under the bar:
     /// about the tile and the first line of a large title.
     @ScaledMetric(relativeTo: .largeTitle) private var titleFold: CGFloat = 96
@@ -99,6 +115,10 @@ struct OrganizePageHost<Page: OrganizePageModel, Rows: View>: View {
         let shown = live ?? lastShown
         let title = shown?.title ?? ""
         let menu = Self.menuEdits(live)
+        // Edit mode is the page's own, and only a page with steps to reorder
+        // can be in it (`StepsEdit.reorderable`).
+        let reorderable = Self.stepsEdit(live)?.reorderable == true
+        let mode: EditMode = editing && reorderable ? .active : .inactive
         List {
             switch shown {
             case .page(let page)?:
@@ -112,6 +132,9 @@ struct OrganizePageHost<Page: OrganizePageModel, Rows: View>: View {
             }
         }
         .listStyle(.insetGrouped)
+        // Handed to the rows the page drew, as the system's EditButton hands
+        // it down.
+        .environment(\.editMode, Binding<EditMode>.constant(mode))
         .modifier(LiveRefresh(planner: planner))
         // A refused tick's sentence shows here too: the list's banner is
         // under this page.
@@ -128,6 +151,14 @@ struct OrganizePageHost<Page: OrganizePageModel, Rows: View>: View {
                     .lineLimit(1)
                     .opacity(titleShown ? 1 : 0)
                     .accessibilityHidden(!titleShown)
+            }
+            if reorderable {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(editing ? ContainerEditModel.editDoneWord : ContainerEditModel.editWord) {
+                        withAnimation(.snappy) { editing.toggle() }
+                    }
+                    .tint(Color.primary)
+                }
             }
             if let menu {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -163,6 +194,12 @@ struct OrganizePageHost<Page: OrganizePageModel, Rows: View>: View {
                 path.removeAll { planner.isGone($0) }
             }
         }
+        // The mode goes with what it edits: a fetch that takes the write away,
+        // the switch going off, or the steps going down to one puts the page
+        // back as it rests.
+        .onChange(of: reorderable) { _, still in
+            if !still, editing { withAnimation(.snappy) { editing = false } }
+        }
     }
 
     /// The ⋯ menu's edits: the live page's, when it may rename or change the
@@ -170,6 +207,14 @@ struct OrganizePageHost<Page: OrganizePageModel, Rows: View>: View {
     private static func menuEdits(_ live: PageContent<Page>?) -> PageEdits? {
         guard case .page(let page)? = live, let edits = page.edits, edits.hasMenu else { return nil }
         return edits
+    }
+
+    /// (O12) The live page's steps, when it edits them; nil while the
+    /// container is gone, the switch is off, or the page edits no steps. The
+    /// bar's Edit button shows only while they are `reorderable`.
+    private static func stepsEdit(_ live: PageContent<Page>?) -> StepsEdit? {
+        guard case .page(let page)? = live else { return nil }
+        return page.steps
     }
 
     /// Rename…: the field starts on the name as the page shows it.
@@ -528,14 +573,26 @@ private struct SwitchedOffRow: View {
 /// on today. Skipped today, the circle gives way to a skip mark (the sheet is
 /// where Unskip is). To VoiceOver the row is ONE element whose activation
 /// opens the sheet; Done is its value, and the tick a named action.
+///
+/// From O12 a row whose routine may take the step out (`row.removable`, on a
+/// page that handed down `onRemove`) swipes to Remove, which VoiceOver hears
+/// as a second named action. It is never "Delete": the step leaves the
+/// routine and the item itself stays where it is.
 struct MemberRowView: View {
     let row: MemberRow
     /// A paused routine's or season's member (its detail's "Comes back with
     /// it"): the dashed outline the Paused list draws, the web's ItemMark on
     /// both, in place of the circle. Such a row never ticks.
     var paused = false
+    /// (O12) Takes this step out of its routine; nil on a page that doesn't
+    /// offer it, which is every page but a routine's.
+    var onRemove: (() -> Void)? = nil
 
     @Environment(SamplePlanner.self) private var planner
+
+    /// Swipe Remove and its named action show together, where the page offers
+    /// it and the row takes it.
+    private var removable: Bool { row.removable && onRemove != nil }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -592,8 +649,19 @@ struct MemberRowView: View {
             if row.tickable {
                 Button(ContainerPageModel.tickName(done: row.done)) { toggle() }
             }
+            if removable, let onRemove {
+                Button(ContainerEditModel.removeStepWord) { onRemove() }
+            }
         }
         .accessibilityInputLabels([Text(row.item.title)])
+        // (O12) Swipe Remove, where the page offers it. No full swipe: taking
+        // a step out of a routine is not a flick to make by accident, and the
+        // row says what it is before it goes. The page animates the write.
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            if removable, let onRemove {
+                Button(ContainerEditModel.removeStepWord, role: .destructive) { onRemove() }
+            }
+        }
     }
 
     /// The meta, then why it is hidden, as one line.
@@ -629,15 +697,83 @@ struct MemberRowView: View {
     }
 }
 
+/// The row that adds a member (O12, O13): "Add from your items…" on a
+/// routine, "Add a routine…" on a season. A gray +, the label colour, never
+/// lime, and no chevron: it opens a sheet, as the look rows do.
+///
+/// With nothing left to add it is still drawn, gray and inert, with the
+/// reason under it, as the web draws its disabled pill: a row that vanishes
+/// reads as "this cannot take any at all". Its tap goes to `onTap`; nothing
+/// is written here.
+struct PageAddRow: View {
+    let title: String
+    /// Why there is nothing left to add; nil while there is.
+    var none: String? = nil
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 12) {
+                Image(systemName: "plus.circle")
+                    .foregroundStyle(Color.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .foregroundStyle(none == nil ? Color.primary : Color.secondary)
+                        .multilineTextAlignment(.leading)
+                    if let none {
+                        Text(none)
+                            .font(.footnote)
+                            .foregroundStyle(Color.secondary)
+                            .multilineTextAlignment(.leading)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            // The hit shape overhangs the label to the row's edges, as the
+            // member rows' does, and leaves the layout alone.
+            .padding(.vertical, 11)
+            .contentShape(Rectangle())
+            .padding(.vertical, -11)
+        }
+        .buttonStyle(RowPressStyle())
+        .disabled(none != nil)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(spokenLabel))
+        .accessibilityAddTraits(.isButton)
+    }
+
+    /// The row as one element: its words, then why nothing can be added.
+    private var spokenLabel: String {
+        guard let none else { return title }
+        return "\(title), \(none)"
+    }
+}
+
 /// A container row that pushes its page: the Organize list's rows, a
 /// routine's "Held by", a season's routines.
 struct ContainerLinkRow: View {
     let row: OrganizeRow
+    /// (O13) Takes this routine out of the season whose page drew it; nil in
+    /// every other list, where a row is a link and nothing else.
+    var onTakeOut: (() -> Void)? = nil
 
     var body: some View {
         NavigationLink(value: row.route) {
             ContainerRow(row: row)
         }
         .accessibilityHint(Text(row.hint))
+        .accessibilityActions {
+            if let onTakeOut {
+                Button(ContainerEditModel.takeOutWord) { onTakeOut() }
+            }
+        }
+        // (O13) Swipe Take out, on a season's page. The routine itself stays:
+        // it leaves this season and goes on running on its own. The page
+        // animates the write.
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            if let onTakeOut {
+                Button(ContainerEditModel.takeOutWord, role: .destructive) { onTakeOut() }
+            }
+        }
     }
 }

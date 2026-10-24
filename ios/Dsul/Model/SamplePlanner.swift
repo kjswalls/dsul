@@ -686,6 +686,21 @@ final class SamplePlanner {
         noteChanged()
     }
 
+    /// (O12) Puts one step back as PlannerSync's rebase found the server
+    /// holds it: right after the step `after` while the container still holds
+    /// that step (DsulCore `placingMember`), first when `after` is nil, and
+    /// otherwise at `index`, the place it held before its earliest failed
+    /// move. The step goes back in when the list no longer holds it, since a
+    /// move's revert is about a member. A container the planner no longer
+    /// holds changes nothing.
+    func restoreMembership(_ kind: ContainerKind, _ containerId: String, item: UUID, after: UUID?, at index: Int?) {
+        guard let ids = members(kind, containerId) else { return }
+        let next = placingMember(ids, item: item, after: after, orAt: index)
+        guard next != ids else { return }
+        setMembers(kind, containerId, next)
+        noteChanged()
+    }
+
     /// The `itemIds` of the routine or season `containerId` names; nil when
     /// the planner holds none.
     private func members(_ kind: ContainerKind, _ containerId: String) -> [UUID]? {
@@ -704,6 +719,83 @@ final class SamplePlanner {
             guard let i = seasons.firstIndex(where: { $0.id == containerId }) else { return }
             seasons[i].itemIds = ids
         }
+    }
+
+    // MARK: A routine's steps and a season's routines (O12, O13)
+
+    /// A routine's step moved, from a drag in Edit mode or from Move up or
+    /// Move down: `item` placed right after the step `after`, or first when
+    /// `after` is nil, at once (lib/app-containers.ts `moveMember`, DsulCore
+    /// `memberMoveResult` over the routine's own `itemIds`, the rule the route
+    /// applies to the same request, so the step and the write agree). Behind
+    /// the page's gate (`canWrite(kind:action:)`).
+    ///
+    /// A move the route would refuse is not sent: the planner's own list
+    /// already says the step or its anchor has gone (another device moved or
+    /// removed it since the page was drawn), and the banner says so
+    /// (`changedElsewhere`), over the list as it stands. One that changes
+    /// nothing writes nothing, so a step dropped back where it was is silent.
+    /// The write names the one membership, never the list, so a step another
+    /// device added in between keeps its place.
+    func moveMember(_ routineId: String, item: UUID, after: UUID?) {
+        guard canWrite(kind: .routine, action: .moveMember), let before = members(.routine, routineId) else { return }
+        let intent = MembershipIntent.moveMember(item: item, after: after)
+        switch memberMoveResult(before, item: item, after: after) {
+        case .refused(let code, _):
+            if let words = OrganizeCopy.refusal(code: code, for: intent) { show(words, isError: true) }
+        case .members(let next):
+            guard next != before else { return }
+            setMembers(.routine, routineId, next)
+            sync?.enqueue(.moveMember(routineId: routineId, item: item, after: after),
+                          before: [.member(.routine, containerId: routineId, item: item):
+                                    .member(index: before.firstIndex(of: item))])
+        }
+    }
+
+    /// A season's routine put in ("Add a routine…") or taken out (Take out):
+    /// one `season_routines` row, at once (lib/app-containers.ts
+    /// `holdRoutine`, DsulCore `routineHoldResult`). Behind the page's gate
+    /// (`canWrite(kind:action:)`).
+    ///
+    /// A routine the planner doesn't hold live is refused here as the route
+    /// refuses it (409 `container_gone`), with the same words: the payload can
+    /// carry a season's hold of a routine that is in the Trash, and a page
+    /// never offers Take out for one it cannot find. A hold already so writes
+    /// nothing. An optimistic hold appends the id; the server keeps a season's
+    /// routines in no order, so a page draws them in the routines' own order.
+    func holdRoutine(_ seasonId: String, routineId: String, hold: Bool) {
+        guard canWrite(kind: .season, action: .holdRoutine),
+              let i = seasons.firstIndex(where: { $0.id == seasonId })
+        else { return }
+        let before = seasons[i].routineIds
+        let intent = MembershipIntent.holdRoutine(routineId: routineId, hold: hold)
+        switch routineHoldResult(before, routineId: routineId, hold: hold,
+                                 routineLive: routines.contains(where: { $0.id == routineId })) {
+        case .refused(let code, _):
+            if let words = OrganizeCopy.refusal(code: code, for: intent) { show(words, isError: true) }
+        case .members(let next):
+            guard next != before else { return }
+            seasons[i].routineIds = next
+            sync?.enqueue(.holdRoutine(seasonId: seasonId, routineId: routineId, hold: hold),
+                          before: [.hold(seasonId: seasonId, routineId: routineId):
+                                    .hold(held: before.contains(routineId),
+                                          index: before.firstIndex(of: routineId))])
+        }
+    }
+
+    /// (O13) Puts one season's hold of one routine back as PlannerSync's
+    /// rebase found the server holds it: the routine in the season's
+    /// `routineIds` at `index` (clamped; last when nil), or out. A season the
+    /// planner no longer holds changes nothing. Whether the planner still
+    /// holds the routine is not asked: the id is the season's row, and the
+    /// page draws only the routines it finds.
+    func restoreHold(_ seasonId: String, routineId: String, held: Bool, at index: Int?) {
+        guard let i = seasons.firstIndex(where: { $0.id == seasonId }) else { return }
+        let ids = seasons[i].routineIds
+        let next = settingMembership(ids, item: routineId, member: held, at: held ? index : nil)
+        guard next != ids else { return }
+        seasons[i].routineIds = next
+        noteChanged()
     }
 
     // MARK: Containers (O8a, O8b, O9, O10, O11)
@@ -1426,9 +1518,10 @@ final class SamplePlanner {
     /// delete that did). One that is gone (a delete that never landed) comes
     /// back at `place`, through DsulCore `reinserting`: after the item it
     /// followed when that is here, else at its index; at the end without one.
-    /// A membership comes back through `restoreMembership` instead, and a
-    /// container's fields through `restoreContainer`, so neither does
-    /// anything here.
+    /// A membership comes back through `restoreMembership` instead, a
+    /// season's hold of a routine through `restoreHold`, and a container's
+    /// fields through `restoreContainer`, so none of the three does anything
+    /// here.
     func restore(_ subject: PlannerSync.Subject, to item: SampleItem?, place: Place?) {
         switch subject {
         case .item(let id):
@@ -1438,7 +1531,7 @@ final class SamplePlanner {
             } else {
                 items.removeAll { $0.id == id }
             }
-        case .member, .container:
+        case .member, .hold, .container:
             return
         }
         closeSheetIfItsItemIsGone()

@@ -36,6 +36,16 @@ import Foundation
 // `create` action, which the payload lists beside the intents but which is
 // its own route and body (ContainerCreate.swift).
 //
+// From O12 and O13: the two membership intents, a routine's `moveMember` (one
+// step placed right after another, or first) and a season's `holdRoutine` (one
+// routine put in or taken out). They name members, so they are never a
+// `ContainerIntent`, whose writes are fields only: they are `MembershipIntent`,
+// with their own body (ContainerWriteBody.swift's `MembershipWriteBody`, to the
+// same route) and their own answer (`memberMoveResult`, `routineHoldResult`:
+// the route's `moveMember` and `holdRoutine`, whose refusals are 409
+// `member_gone`, `anchor_gone` and `container_gone`). The order a move writes
+// is lib/organize.ts `moveMemberAfter` (Organize.swift).
+//
 // Also the shared types the planner, its sync and the Linux tests all see
 // (design §6.1): `ContainerRef` and `ContainerSnapshot` here, `OrganizeKind`
 // in ContainerSchedule.swift. A snapshot's fields and its membership are kept
@@ -130,10 +140,10 @@ public enum SeasonState: String, Sendable, Hashable, CaseIterable {
 /// An intent's `action`, as the route's unions name it and the payload's
 /// `containerWrites` lists it. Declared in the order each kind's union lists
 /// its own (the kind's own fields, then notes or why, then rename, icon and
-/// colour, then the delete), then `create`, which lib/app-containers.ts
-/// `CONTAINER_WRITES` appends last for every kind the create route takes, so
-/// the actions of `kinds` read in `allCases` order are the server's list for
-/// that kind.
+/// colour, then a routine's `moveMember` and a season's `holdRoutine`, then
+/// the delete), then `create`, which lib/app-containers.ts `CONTAINER_WRITES`
+/// appends last for every kind the create route takes, so the actions of
+/// `kinds` read in `allCases` order are the server's list for that kind.
 public enum ContainerAction: String, Sendable, Hashable, CaseIterable {
     /// A routine's Pause, Pause until and Resume.
     case pause
@@ -155,6 +165,12 @@ public enum ContainerAction: String, Sendable, Hashable, CaseIterable {
     case icon
     /// Any container's colour (O9).
     case color
+    /// A routine's step placed right after another, or first (O12): the
+    /// routine page's drag, Move up and Move down. A `MembershipIntent`.
+    case moveMember
+    /// A routine put in a season or taken out (O13): the season page's "Add a
+    /// routine…" and Take out. A `MembershipIntent`.
+    case holdRoutine
     /// Any container, to the Trash (O10): ⋯ → Delete….
     case delete
     /// A new container of the kind (O11): the + menu's row. Not an intent and
@@ -168,9 +184,9 @@ public enum ContainerAction: String, Sendable, Hashable, CaseIterable {
     /// `create` is every kind the create route takes.
     public var kinds: [OrganizeKind] {
         switch self {
-        case .pause, .usualTime: return [.routine]
+        case .pause, .usualTime, .moveMember: return [.routine]
         case .state: return [.season, .goal]
-        case .dates: return [.season]
+        case .dates, .holdRoutine: return [.season]
         case .window, .why: return [.goal]
         case .notes: return [.routine, .season, .project]
         case .rename, .icon, .color, .delete, .create: return OrganizeKind.allCases
@@ -771,4 +787,123 @@ extension ContainerWrites {
     public func takes(_ intent: ContainerIntent, on kind: OrganizeKind) -> Bool {
         return intent.applies(to: kind) && takes(intent.action, on: kind)
     }
+
+    /// Whether the server takes the membership `intent` on `kind` (O12, O13).
+    public func takes(_ intent: MembershipIntent, on kind: OrganizeKind) -> Bool {
+        return intent.applies(to: kind) && takes(intent.action, on: kind)
+    }
+}
+
+/* ── the two membership intents (O12, O13) ────────────────────────────── */
+
+/// lib/app-containers.ts `MoveMemberIntent` and `HoldRoutineIntent`: the two
+/// container writes that name a member. Each names ONE member (and a move the
+/// one it goes after), never a list, so a phone write can't put back a list a
+/// web tab changed. They are not `ContainerIntent`s: those write a
+/// container's fields, and a field's revert must never put back a membership
+/// (design §6.4, §8.2), so these are their own subjects in the sync (a step's
+/// is its membership, a hold's its one season_routines row).
+public enum MembershipIntent: Sendable, Hashable {
+    /// A routine's step `item` placed right after its step `after`, or first
+    /// when `after` is nil (`{"action":"moveMember","itemId":…,"afterId":…|null}`).
+    /// The new order is `moveMemberAfter`. A step placed after itself names no
+    /// place: the route's union refuses it (400), so it is not well formed.
+    case moveMember(item: UUID, after: UUID?)
+    /// A season's routine `routineId` put in (`hold`) or taken out
+    /// (`{"action":"holdRoutine","routineId":…,"hold":…}`). The id is the
+    /// planner's, never parsed (a sample routine's is no uuid, and the sample
+    /// never sends); the body refuses one the route's `Id` wouldn't read.
+    case holdRoutine(routineId: String, hold: Bool)
+
+    /// The route's `action`, which `containerWrites` lists.
+    public var action: ContainerAction {
+        switch self {
+        case .moveMember: return .moveMember
+        case .holdRoutine: return .holdRoutine
+        }
+    }
+
+    /// The one kind whose route takes it: a routine's steps, a season's
+    /// routines.
+    public var kind: OrganizeKind {
+        switch self {
+        case .moveMember: return .routine
+        case .holdRoutine: return .season
+        }
+    }
+
+    /// Whether `kind`'s route takes it.
+    public func applies(to kind: OrganizeKind) -> Bool {
+        return kind == self.kind
+    }
+
+    /// Whether the route's union takes its values: a step is never placed
+    /// after itself (the union's refine, comparing the ids as uuids, so no
+    /// spelling of one id gets past). A hold is always well formed; whether
+    /// its routine id is one the route reads is the body's question
+    /// (`MembershipWriteBody`), so the sample, whose ids are not uuids, still
+    /// steps it.
+    public var isWellFormed: Bool {
+        switch self {
+        case .moveMember(let item, let after): return after != item
+        case .holdRoutine: return true
+        }
+    }
+}
+
+/// What a membership intent leaves a container's list as, or the route's
+/// refusal of it: lib/app-containers.ts `moveMember` and `holdRoutine`, after
+/// their reads.
+public enum MembershipResult<ID: Hashable & Sendable>: Sendable, Hashable {
+    /// The list after the write: a routine's `itemIds` in their new order, or
+    /// a season's `routineIds` with the routine in or out. The list as it was
+    /// when the write was already so (200, nothing written).
+    case members([ID])
+    /// The route's answer instead: 409 `member_gone`, `anchor_gone` or
+    /// `container_gone`; or 400 `invalid` for a move after itself.
+    case refused(code: String, status: Int)
+}
+
+/// lib/app-containers.ts `moveMember`, after its read: routine `itemIds` with
+/// step `item` placed right after step `after` (first when nil), as the
+/// route answers it. A step placed after itself is 400 `invalid` (the body's
+/// refine, asked first). A step no longer among `itemIds` is 409
+/// `member_gone`, asked before an `after` that is not, 409 `anchor_gone`:
+/// another device changed the routine since the page was drawn, and nothing
+/// moves. Otherwise the new order is `moveMemberAfter`, the list as it was
+/// when the step already sits there (200, nothing written), so a second send
+/// of one move writes nothing.
+///
+/// The phone asks it on its own copy before it sends, so a move its own list
+/// would refuse is never sent, and to replay a landed one.
+public func memberMoveResult(_ itemIds: [UUID], item: UUID, after: UUID?) -> MembershipResult<UUID> {
+    guard MembershipIntent.moveMember(item: item, after: after).isWellFormed else {
+        return .refused(code: "invalid", status: 400)
+    }
+    guard itemIds.contains(item) else { return .refused(code: "member_gone", status: 409) }
+    if let after, !itemIds.contains(after) { return .refused(code: "anchor_gone", status: 409) }
+    return .members(moveMemberAfter(itemIds, item: item, after: after))
+}
+
+/// lib/app-containers.ts `holdRoutine`, after its read: season `routineIds`
+/// with routine `routineId` put in (`hold`) or taken out, as the route answers
+/// it. `routineLive` is whether the routine is the user's and live (the
+/// planner holds only live routines): one that is not (never the user's, in
+/// the Trash, purged) is 409 `container_gone` either way, and nothing
+/// changes. A hold already there, and a take-out of one that is not, are the
+/// list as it was (200, nothing written); otherwise the routine is appended
+/// or filtered out (`settingMembership`), as the web's store writes the list.
+/// The server holds a season's routines in no order (it reads them by
+/// routine id), so a page draws them in the routines' own order.
+///
+/// Ids are compared as the planner holds them: the server's are lowercase,
+/// and the phone's are the server's (or the sample's own).
+public func routineHoldResult(
+    _ routineIds: [String],
+    routineId: String,
+    hold: Bool,
+    routineLive: Bool
+) -> MembershipResult<String> {
+    guard routineLive else { return .refused(code: "container_gone", status: 409) }
+    return .members(settingMembership(routineIds, item: routineId, member: hold))
 }
