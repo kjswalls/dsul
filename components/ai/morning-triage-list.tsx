@@ -21,7 +21,7 @@ import { itemTypeName } from '@/lib/item-registry';
 import { isRecurring } from '@/lib/recurrence';
 import { openEditFor } from '@/lib/ui-store';
 import { cn } from '@/lib/utils';
-import { ItemTick, springItemCheck } from '@/components/primitives/item-check';
+import { ItemTick, animateItemCheck } from '@/components/primitives/item-check';
 import type { Item, Task, TaskItem } from '@/lib/planner-types';
 
 /**
@@ -647,7 +647,7 @@ function TriageRow({
         onClick={(e) => {
           if (action?.kind === 'done') onUndo(item, action);
           else {
-            springItemCheck(e.currentTarget);
+            animateItemCheck(e.currentTarget);
             onDone(item);
           }
         }}
@@ -655,8 +655,8 @@ function TriageRow({
         className={cn(
           'relative flex h-4 w-4 flex-shrink-0 items-center justify-center overflow-hidden rounded-[5px] inset-ring transition-[background-color,box-shadow]',
           isDone
-            ? 'inset-ring-primary bg-primary'
-            : 'inset-ring-muted-foreground/45 bg-surface-3 hover:inset-ring-primary',
+            ? 'inset-ring-check-fill bg-check-fill'
+            : 'inset-ring-muted-foreground/45 bg-surface-3 hover:inset-ring-muted-foreground',
           checkboxInert && 'pointer-events-none opacity-40'
         )}
       >
