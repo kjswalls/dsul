@@ -337,7 +337,7 @@ export interface AppPlannerPayload {
   settings: {
     timezone: string | null;
     showCompletedTasks: boolean;
-    /** The day the week starts on (week_start_day): the streak chip's week, Reschedule's "Next week". */
+    /** The day the week starts on (week_start_day): the streak chip's week, Reschedule's "Next week", Week's seven days. */
     weekStartDay: WeekStartDay;
     /** How a clock time reads (time_format): the chips' times and the reminder. */
     timeFormat: TimeFormat;

@@ -18,7 +18,8 @@ struct ItemRow: View {
     /// Skipped on the day: a tick on it is refused (lib/item-toggle.ts), so
     /// it gets no checkbox, only a way into the sheet (where Unskip is).
     var skipped: Bool = false
-    /// "Now ·" in front of the time while the block is running.
+    /// "Now ·" in front of the time while the block is running, in ink with
+    /// a lime dot. Week passes it on today's rows only.
     var isNow: Bool = false
     /// The Streaks extension is on: a habit shows its flame and count.
     var streaksEnabled: Bool = true
@@ -94,9 +95,18 @@ struct ItemRow: View {
                     Spacer(minLength: 8)
 
                     if let time = PlannerFormat.rowTime(startMin: item.startMin, durationMin: item.durationMin) {
-                        Text(isNow ? "Now \u{00B7} \(time)" : time)
-                            .font(.footnote.monospacedDigit().weight(isNow ? .semibold : .regular))
-                            .foregroundStyle(isNow ? Color.accentColor : Color.secondary)
+                        // "Now" is ink with a 6pt lime dot before it: lime is
+                        // a mark, never text.
+                        HStack(spacing: 5) {
+                            if isNow {
+                                Circle()
+                                    .fill(Color.accentColor)
+                                    .frame(width: 6, height: 6)
+                            }
+                            Text(isNow ? "Now \u{00B7} \(time)" : time)
+                                .font(.footnote.monospacedDigit().weight(isNow ? .semibold : .regular))
+                                .foregroundStyle(isNow ? Color.primary : Color.secondary)
+                        }
                     }
                     if item.isHabit && streaksEnabled {
                         StreakLabel(streak: item.streak ?? 0, lit: done)

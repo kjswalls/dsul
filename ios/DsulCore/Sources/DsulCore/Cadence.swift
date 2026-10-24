@@ -11,13 +11,15 @@ import Foundation
 //   12h or 24h preference;
 // - lib/active.ts `formatDay`: "Sep 1";
 // - lib/container-schedule.ts `weekStartOf`: the first day of a week, per the
-//   user's Week starts on setting;
+//   user's Week starts on setting, and `weekDays`, the seven days from it
+//   (`addDaysStr`, the web's week views' start + i);
 // with the two settings they read (`TimeFormat`, `WeekStartDay`) and the label
 // tables of lib/planner-types.ts. Keep in step: a change there without the
 // same change here is drift, and the phone words a chip differently from the
 // web. Checked against the web by CadenceFixtureTests
 // (tests/fixtures/day/cadence.json), ChipsFixtureTests (chips.json) and, for
-// the repeat words, EditWritesFixtureTests (edit-writes.json's `repeats`).
+// the repeat words, EditWritesFixtureTests (edit-writes.json's `repeats`), and
+// for the week's days WeekFixtureTests (week.json's `weeks`).
 //
 // Everything is spelled by hand in English, the way the web spells it, so no
 // locale or ICU difference between Linux and Darwin can move a word.
@@ -90,6 +92,16 @@ public func weekdayOrder(_ weekStartDay: WeekStartDay) -> [Int] {
 /// lib/container-schedule.ts `weekStartOf`: the first day of `day`'s week.
 public func weekStartOf(_ day: DayString, _ weekStartDay: WeekStartDay) -> DayString {
     return day.adding(days: -((day.weekday - weekStartDay.weekday + 7) % 7))
+}
+
+/// The seven days of `day`'s week, its first day (`weekStartOf`) first:
+/// lib/container-schedule.ts `addDaysStr(weekStartOf(day, weekStartDay), i)`
+/// for i in 0..<7, the days the web's week views each build as start + i.
+/// Calendar arithmetic on the day itself, so no zone or clock change can move
+/// one; any of the seven gives the same week back.
+public func weekDays(of day: DayString, _ weekStartDay: WeekStartDay) -> [DayString] {
+    let start = weekStartOf(day, weekStartDay)
+    return (0..<7).map { start.adding(days: $0) }
 }
 
 /// lib/cadence.ts `cadenceLabel`: a recurring item's repeat in a few words

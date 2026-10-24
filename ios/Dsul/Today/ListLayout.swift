@@ -120,20 +120,26 @@ private struct SectionHeader: View {
     }
 }
 
-/// All, Tasks, Habits, then one chip per project on the day.
+/// All, Tasks, Habits, then one chip per project on the day. Given `rows`
+/// (Week's seven days of rows), it counts and lists those instead: every
+/// occurrence counts, so a daily habit counts seven (design W16).
 struct FilterChips: View {
     @Binding var filter: ListFilter
+    /// The rows the chips count; nil counts the selected day's.
+    var rows: [SampleItem]? = nil
     @Environment(SamplePlanner.self) private var planner
 
     var body: some View {
+        let counted = rows ?? planner.dayItems
         ScrollView(.horizontal) {
             HStack(spacing: 8) {
-                chip("All", .all, color: nil)
-                chip("Tasks", .tasks, color: nil)
-                chip("Habits", .habits, color: nil)
-                ForEach(planner.dayProjects, id: \.self) { project in
+                chip("All", .all, color: nil, in: counted)
+                chip("Tasks", .tasks, color: nil, in: counted)
+                chip("Habits", .habits, color: nil, in: counted)
+                ForEach(planner.chipProjects(in: counted), id: \.self) { project in
                     chip(project, .project(project),
-                         color: ProjectPalette.color(for: project, in: planner.projects), showCount: false)
+                         color: ProjectPalette.color(for: project, in: planner.projects), in: counted,
+                         showCount: false)
                 }
             }
             .padding(.horizontal, 16)
@@ -142,7 +148,8 @@ struct FilterChips: View {
         .scrollIndicators(.hidden)
     }
 
-    private func chip(_ title: String, _ value: ListFilter, color: Color?, showCount: Bool = true) -> some View {
+    private func chip(_ title: String, _ value: ListFilter, color: Color?, in counted: [SampleItem],
+                      showCount: Bool = true) -> some View {
         let selected = filter == value
         return Button {
             withAnimation(.snappy) { filter = value }
@@ -153,7 +160,7 @@ struct FilterChips: View {
                 }
                 Text(title)
                 if showCount {
-                    Text("\(planner.count(value))")
+                    Text("\(planner.count(value, in: counted))")
                         .monospacedDigit()
                 }
             }

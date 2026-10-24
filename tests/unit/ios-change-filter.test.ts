@@ -111,6 +111,34 @@ describe('the iOS change filter', () => {
     }
   });
 
+  it('matches what Week reads, and the fixtures that pin it', () => {
+    // A phone week is seven calls of the day pipeline (week.json), each day's
+    // Anytime rows `deriveUntimedRows` (timed.json's `untimed`), its days
+    // `weekStartOf` plus `addDaysStr`.
+    for (const p of [
+      'tests/fixtures/day/week.json',
+      'tests/fixtures/day/timed.json',
+      'components/views/day-schedule.tsx',
+      'lib/container-schedule.ts',
+      'lib/day-items.ts',
+      'lib/active.ts',
+      'lib/away.ts',
+    ]) {
+      expect(filter.test(p), p).toBe(true);
+    }
+    // The web's week views and their desktop geometry are not ported: the phone
+    // draws its own seven sections over the same per-day answers.
+    for (const p of [
+      'components/views/week-list.tsx',
+      'components/views/week-buckets.tsx',
+      'components/shell/day-tabs.tsx',
+      'lib/week-columns.ts',
+      'lib/use-week-columns.ts',
+    ]) {
+      expect(filter.test(p), p).toBe(false);
+    }
+  });
+
   it('matches what Organize ports, and the fixtures that pin it', () => {
     for (const p of [
       'tests/fixtures/organize/labels.json',

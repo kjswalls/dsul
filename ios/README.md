@@ -13,9 +13,11 @@ which needs no account and whose changes last until the app quits.
 
 Today shows one day in three layouts: List (filter chips, then sections per
 routine and per project), Buckets (Morning, Afternoon, Evening, Anytime) and
-Schedule (the hour grid, with the braindump sheet over it). The capsule top
-right switches them: tap for the next, swipe along it to step, long-press for
-the menu. Tap the title to pick another day. The capture bar above the tab bar
+Schedule (the hour grid, with the braindump sheet over it). List and Buckets
+can show the day's whole week instead, seven days from your Week starts on
+setting. The capsule top right switches them: tap for the next, swipe along it
+to step, long-press for the menu, whose Show section picks Day or Week. Tap
+the title to pick another day. The capture bar above the tab bar
 adds thoughts to the braindump; its count opens the braindump over Schedule.
 
 Organize, the third tab, lists your routines, seasons, goals (with Goals
@@ -370,6 +372,8 @@ sample's habits are Meds and Stretch 10 min (daily, already done today),
 Journal (daily, not done today), Plan tomorrow (weekdays) and Water the
 plants (Sundays and Wednesdays), and its tasks are all one-offs but Pay
 rent, last in the braindump, which repeats monthly on the 1st and has no day.
+Four of the one-offs sit on the days around today, for Week (see Checking
+Week).
 Its routines are Morning routine (Meds, Stretch 10 min and Journal) and Wind
 down, which is empty, and its one season, Autumn, holds Journal. Draft Q4
 roadmap has two subtasks (Pull the September numbers, done, and Write the
@@ -1529,6 +1533,63 @@ from your items…"; O13 a season's "Add a routine…" and its swipe Take out.
     the system's red), the confirm's sentence and "Every routine is already
     here" wrap, and the picker's search field stays above the keyboard at
     the sheet's medium height.
+
+## Checking Week
+
+Week draws List or Buckets as the seven days of the selected day's week,
+starting on your Week starts on setting (Sunday on the sample). The hosted
+tests pin its words and the sample's week; these checks are for how it reads
+and feels. On the sample, today is the day the app opened, and four one-off
+tasks with no project sit around it: Pick up the dry cleaning three days back
+(4:30 PM), Bike service two days back (2 PM), Coffee with Priya tomorrow
+(10 AM) and Post the birthday card the day after (Anytime). Which of them
+fall in this week depends on today's weekday (from a Thursday all four do);
+the others are in Last week or Next week. Nothing new is on the day before
+today.
+
+1. Hold the capsule, then Show, Week, on List. Seven day sections, from
+   your Week starts on setting, each headed by its weekday and date. Today's
+   heading has a lime dot by the weekday; the weekday and the date stay in
+   ink. Each day shows its routines (with done/total), then its projects
+   (with their dot), then its loose rows under No project, in small captions
+   that don't fold, as Day groups them. A day with nothing on it says
+   "Nothing planned." The chips count the whole week's rows: on the sample a
+   daily habit counts seven. They stay above the days as the week scrolls,
+   and Week opening on a later day never hides them. Pick a project chip and
+   a day with none of its rows says "Nothing matches this filter".
+2. The title reads This week over the week's dates and the layout, such as
+   "Oct 19 – 25 · List" (the dash and its spacing are iOS's own). Tap the
+   title and pick a day in another week: the title reads Next week, Last
+   week or "Week of Oct 26" (with the year when the week starts in another
+   year), and the list moves to the day you picked. Today shows only off
+   this week, and brings you back.
+3. Tick tomorrow's Meds (on the week's last day, pick tomorrow from the
+   title first): only tomorrow's row ticks, and today's stays as it was.
+   Tick it again to clear it. Open tomorrow's Journal, which isn't done (a
+   done row's sheet offers no Skip): the sheet says "For" and tomorrow's
+   date above the bar, and Skip skips tomorrow alone (back on the week,
+   tomorrow's Journal is a Skipped strip and today's isn't). "Now ·" shows
+   only on today's running row.
+4. Tap a day's heading: Today shows that day in Day, on the same layout.
+5. Buckets in Week: each day is its heading over one card of its parts of
+   the day (Morning, Afternoon, Evening, Anytime), the empty ones left out,
+   and "Nothing planned." on a day with nothing. Rows tick and open on their
+   own day, as on List.
+6. On Schedule, the capsule's Show section offers Day only, and the title
+   and the grid are the day's. Step back to List: the week is still there.
+7. VoiceOver: the capsule reads "Layout, List, week", and its actions offer
+   Show day (Show week while it shows Day, never on Schedule). The title
+   reads "This week, October 19 to 25, List". A day's heading reads as a
+   heading, "Thursday, October 1" with ", today" on today, and a double tap
+   opens that day.
+8. The largest accessibility text size (Settings, Accessibility, Display &
+   Text Size, Larger Text): rows wrap, a heading's date drops under its
+   weekday rather than clipping, and nothing clips. On Buckets, pick Dec 31,
+   2026 from the title: the subtitle spans two years ("Dec 27, 2026 – Jan 2,
+   2027 · Buckets" from a Sunday start), and neither it nor the Today button
+   beside it runs under the capsule or the avatar. In dark mode the lime dot
+   and a done tick keep their full strength, pressed or not, "Now" is ink
+   with a lime dot, never lime text, and the Today button's word is ink.
 
 ## Rules
 

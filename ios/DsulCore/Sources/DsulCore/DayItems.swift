@@ -4,12 +4,15 @@ import Foundation
 // - the task/habit split (lib/planner-store.ts `projectItems`);
 // - `deriveDayItems` and `flattenDayRows` (lib/day-items.ts), with the phone's
 //   defaults: no canvas filters, `typeFilter` 'all', no goal clause;
-// - `deriveTimedEntries` (components/views/day-schedule.tsx);
+// - `deriveTimedEntries` and `deriveUntimedRows` (components/views/day-schedule.tsx):
+//   the day's rows on the hour grid and off it;
 // - braindump membership (lib/braindump-members.ts `braindumpMembers`);
 // - routine grouping (lib/grouping.ts `routineGroups`, via `groupRows`).
 // Keep in step: a change there without the same change here is drift. Checked
 // against the web by DayItemsFixtureTests (tests/fixtures/day/day-items.json,
-// timed.json, braindump.json, routine-groups.json).
+// timed.json, braindump.json, routine-groups.json) and, seven days at a time,
+// by WeekFixtureTests (week.json: every day of a busy week through the whole
+// pipeline, under each week start).
 //
 // Where the two must differ: a `timeBucket` or `startTime` the web can't read
 // (free text like "noon", or not "HH:mm") throws or sorts as NaN there; here
@@ -233,6 +236,26 @@ public func deriveTimedEntries(_ day: DayItems) -> [TimedEntry] {
         if a.element.startMin != b.element.startMin { return a.element.startMin < b.element.startMin }
         return a.offset < b.offset
     }.map(\.element)
+}
+
+/// components/views/day-schedule.tsx `deriveUntimedRows`: the day's rows that
+/// sit off the hour grid. Untimed habits, then untimed tasks that are not in a
+/// project block, each walked in bucket order (anytime, morning, afternoon,
+/// evening) and the bucket's own order, as `deriveDayItems` filed them.
+///
+/// "Untimed" is the web's truthiness: no `startTime`, or an empty one. A task
+/// in a project block is never untimed: it is on the grid at its block's time
+/// when the block lands that day (`deriveTimedEntries`), and in neither list
+/// when it does not. A habit's `inProjectBlock` is not read, here or on the
+/// grid, as on the web. A time the phone can't read ("9am") is not untimed
+/// either, so, with `deriveTimedEntries` leaving it off the grid, that row is
+/// in neither; List and Buckets still show it.
+public func deriveUntimedRows(_ day: DayItems) -> [Item] {
+    let allTasks = bucketOrder.flatMap { day.tasksByBucket[$0] ?? [] }
+    let allHabits = bucketOrder.flatMap { day.habitsByBucket[$0] ?? [] }
+    let habits = allHabits.filter { nonEmpty($0.startTime) == nil }
+    let tasks = allTasks.filter { nonEmpty($0.startTime) == nil && $0.inProjectBlock != true }
+    return habits + tasks
 }
 
 /// lib/braindump-members.ts `braindumpMembers`: tasks with no `isScheduled`,

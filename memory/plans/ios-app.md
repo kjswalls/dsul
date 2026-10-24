@@ -192,6 +192,11 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   (`attachConfirmTitle`, `attachConfirmDescription`, `attachConfirmLabel`)
   and `changedElsewhere`, the banner for a membership write another device
   got to first.
+  Week's PR 1 adds `deriveUntimedRows` to `DayItems.swift` (←
+  `components/views/day-schedule.tsx`) and `weekDays` to `Cadence.swift` (←
+  `weekStartOf` and `addDaysStr` in `lib/container-schedule.ts`), checked
+  against `tests/fixtures/day/week.json` (WeekFixtureTests) and the
+  `untimed` rows of `timed.json`.
   Each cites what it mirrors.
 - `ios/Dsul/App`: `DsulApp` (one `AuthStore`), `AppGate` (sign-in screen,
   sample or the user's planner, keyed on `AuthStore.gateKey`), `AppConfig`.
@@ -242,6 +247,10 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   "Add a routine…", its list and the attach confirm; and
   `ContainerEditModel` what each offers and says (`StepsEdit`,
   `StepPicker`, `SeasonRoutinesEdit`, `AttachConfirm`, `stepDrag`).
+  `ios/Dsul/Today` (Week's PR 2) gains `WeekList`, `WeekBuckets` and
+  `WeekDayHeader`; `TodayLayout.swift`, Foundation only (the shim compiles
+  it), holds `TodayScope` beside `TodayLayout` and the week's words in
+  `PlannerFormat`, pinned by `TodayFormatTests`.
   `ios/Dsul/App` gains
   `AvatarMenu` (moved out of `TodayView`, with the tab's own sections passed
   in) and `PlannerBannerOverlay` (`.plannerBanner()`, Today's banner, also on
@@ -255,7 +264,7 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   it either never both fire or double-step). A tap steps to the next layout,
   a swipe in either axis steps with `.sensoryFeedback(.selection)` and wins
   outright over the tap (`exclusively(before:)`), long press opens the full
-  menu as a context menu (Layout, and Show with Day only until Week exists),
+  menu as a context menu (Layout, and Show: Day and Week, see Week),
   and VoiceOver activates or adjusts it. `LayoutSwitcher` is self-contained so it can move
   into the capture bar if Kirby picks F. The layout is `@AppStorage`.
 - **Buckets follow the stored bucket, not the hour.** An item shows in its
@@ -274,6 +283,100 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   app, carrying the selection only if it was on today. Hidden on
   Ask; a compact rendering for the `.inline` placement. The drag probe moved
   from Today's toolbar into the avatar menu.
+
+## Week
+Week PRs 1 and 2 of the shared folder's `ios-app/week-and-blocks/design.md`
+(which has every decision, W1 to W17, and the PR plan); the builders' notes
+are in `week/w1/`. PR 1 is the data, PR 2 List and Buckets in Week. Week ×
+Schedule is the design's PR 10; until then Schedule draws Day.
+
+- **One scope, device-local.** `TodayScope` (`day`, `week`) is
+  `@AppStorage("today.scope")`, beside the layout's key: add, never rename.
+  It is never the web's `default_view`, which would change what the desktop
+  opens on (mobile web never writes it either, W9). One rule decides what
+  shows, `TodayLayout.effectiveScope(_:)`: the stored scope where the layout
+  has a week form (`hasWeek`: List and Buckets), else Day. The title, the
+  content switch and the capsule's VoiceOver value all read it, so a stored
+  Week on Schedule draws Day and says Day (W17). The capsule's tap and swipe
+  still step layouts only (W6); its menu's Show section lists
+  `layout.scopes` (Day alone on Schedule) with the effective scope checked,
+  and a pick stores it. To VoiceOver the capsule's value is "List, week",
+  with a named action, Show week or Show day, only for the one that changes
+  something.
+- **The anchor is `selectedDay`.** The week is `weekDays(of: selectedDay,
+  settings.weekStartDay)` (`selectedWeek`), so Go to date picks a day and the
+  week follows. A day's heading selects that day and stores Day, on the same
+  layout (W7). In Week the Today button shows only off today's week
+  (`isOnTodaysWeek`). The Today button is tinted ink, in Day as well: a
+  bordered button takes the tint, the lime accent, for its words.
+- **The title (W4).** `PlannerFormat.weekTitle`: This week, Next week, Last
+  week, else "Week of Oct 26", with the year when the week starts in another
+  year. The subtitle is `weekRange` · the layout: `Date.IntervalFormatStyle`
+  with the abbreviated month and the day, and the years when either end is
+  off today's year, so the dash and its spacing are iOS's (thin spaces in
+  current ICU; the tests read them as plain). VoiceOver hears "This week,
+  October 19 to 25, List". Every week date is formatted at noon UTC in a UTC
+  formatter: a `DayString` is a calendar day, and no zone may move it.
+- **Day-keyed twins (PR 1, design §4.6).** `week(of:)` splits the items once
+  (`project`) and runs `derive(on:)`'s pipeline (`inactiveItemIdsOn` with
+  trips, then `deriveDayItems`) at each of the seven dates. `dayItems(on:)`,
+  `listSections(_:on:)`, `buckets(on:)`, `scheduled(on:)`, `anytime(on:)`
+  (DsulCore `deriveUntimedRows`; nothing draws it yet), `isDone(_:on:)`,
+  `isSkipped(_:on:)`, `toggleRow(_:on:)` (the row's ungated tick; the sheet
+  keeps its gated `toggle(_:on:)`), `count(_:on:)` and `dayProjects(on:)` take
+  a day; the selected-day forms wrap them. `SheetDay.on(DayString)` makes a
+  week row's sheet act on the row's day (`actingDay`), so its "For …"
+  caption, its tick and its Skip are that day's (W13). A render derives the
+  week once, `weekRows(of:)` (seven `WeekDayRows`), and the chips and the
+  sections are asked of those rows (`count(_:in:)`, `chipProjects(in:)`,
+  `listSections(_:rows:on:)`, `buckets(_:)`). Nothing is cached: PR 10 adds
+  a cache on an items revision.
+- **Week × List (W2).** `WeekList`: the filter chips, counting every
+  occurrence over the week (a daily habit counts seven, W16), as a
+  `safeAreaBar` over the list, so opening on the selected day never scrolls
+  them away; then seven day sections in one plain `List`. Each opens with `WeekDayHeader` (the weekday
+  and its "Oct 1" side by side, the date under the weekday at the
+  accessibility sizes; a 6pt lime dot by today's weekday, with both words in
+  ink, W12; a button that opens the day, and a header to VoiceOver that says
+  "today"), then that day's own Day sections (routines with done/total, then
+  projects with their dot, then No project) as small captions that don't
+  fold (`WeekGroupLabel`), rows in Day's order. "Nothing planned." on an
+  empty day, Day's "Nothing matches this filter" when the chip hides all of
+  it. The list opens on the selected day's heading and goes back to it when
+  the selected day moves.
+- **Week × Buckets (W3).** `WeekBuckets`: the same seven headings, each over
+  one card of the day's filled parts of the day in the phone's order
+  (Anytime last), or "Nothing planned."
+- **Now (W14).** On today's rows only. `ItemRow`'s "Now ·" is now ink with a
+  6pt lime dot before it, in Day as well: it was lime text.
+- **The sample (design §8).** Four one-off tasks with no project, appended
+  after every other id (55 to 58): Pick up the dry cleaning three days back
+  (16:30), Bike service two days back (14:00), Coffee with Priya the day
+  after (10:00) and Post the birthday card two days after (Anytime). None is
+  on the anchor or the day before it.
+- **Where the build departs from the design.**
+  - The day headings are list rows, not `Section` headers, because
+    `ScrollViewReader` lands on a row's `.id` reliably and not on a header's.
+    So they don't stick while their day scrolls.
+  - Week × Buckets has no current-part mark on today (§4.4 asks for one):
+    Day's Buckets draws none on the phone, so there is nothing to copy; it
+    would be a new mark for both.
+  - On a device the sample's anchor is the real today, so its four tasks sit
+    in today's week only on some weekdays: from a Sunday start a Wednesday or
+    Thursday, from Monday a Thursday or Friday. The hosted tests anchor on a
+    Thursday, which the design's "all four sit in its week" assumes.
+  - The capsule's VoiceOver value names the scope in Day too ("List, day"),
+    so the value always says what shows.
+  - `weekRange` and `spokenWeekRange` take today, for the year rule.
+- **Where Week departs from the web (design §10).**
+  - W2: the web's week list groups and orders each day by the user's
+    group-by and sort settings, finished rows sinking
+    (components/views/week-list.tsx); the phone always groups each day as
+    its Day list does (routines, then projects, then No project), since
+    grouping options and sinking are Not yet for Day too.
+  - W7: on the web a day's heading selects that day in place and stays in
+    Week; on the phone it opens the day in Day, since a selected day in
+    place would only move a mark.
 
 ## Item detail, part 1
 - **One sheet, every surface.** `PlannerSheet.item(UUID, day: SheetDay)` in
@@ -369,7 +472,7 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   action. Each chip is its own element with a spoken label; the streak chip
   is one ("Streak 41; this week: 3 done").
 - **Lime.** The sheet sets no tint of its own, because the done tick and
-  "Now" are `Color.accentColor`; its text controls tint themselves in the
+  Now's dot are `Color.accentColor`; its text controls tint themselves in the
   label colour, and anything lime presses by scaling (`PressScaleStyle`),
   never `.plain`'s fade. The banner dropped `.plain` for the same reason, and
   slides in without an opacity transition, which would fade its lime check.
@@ -1837,7 +1940,8 @@ and autoscroll. It works at any detent, at the cost of the system lift and drop
 animations.
 
 ## Not yet
-Week, density (`DensityMetrics`), swipe actions on rows, the zoom transition
+Week × Schedule (Schedule draws Day in Week; the design's PR 10), density
+(`DensityMetrics`), swipe actions on rows, the zoom transition
 from the bar to the braindump sheet, the rest of Organize (Today's project
 colours: O15 in the Organize design; a project's time block stays the
 web's), undo right after a delete, an item's

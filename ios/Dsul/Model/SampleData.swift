@@ -2,10 +2,11 @@ import DsulCore
 import Foundation
 
 /// The sample planner behind "Try with sample data": the drag spike's day, a
-/// morning routine (and an empty one), a season, a goal, and a braindump long
-/// enough to scroll. Built as the web's own `Item`s, so the sample goes through
-/// exactly the rules a signed-in day does. The hosted tests pin these titles,
-/// counts and ids: change them there too.
+/// morning routine (and an empty one), a season, a goal, a few tasks on the
+/// days around it for Week, and a braindump long enough to scroll. Built as
+/// the web's own `Item`s, so the sample goes through exactly the rules a
+/// signed-in day does. The hosted tests pin these titles, counts and ids:
+/// change them there too.
 enum SampleData {
     struct Contents {
         var items: [Item]
@@ -162,6 +163,27 @@ enum SampleData {
         // nothing new lands on it.
         let gym = blocks[6].id
 
+        // The rest of the week (Week, design §8): four one-off tasks with no
+        // project on other days, made after the goal's items so no id above
+        // moves. Three and two days back (afternoon blocks), the day after (a
+        // morning block) and two days after (Anytime). None is on `anchor`,
+        // so the day's counts stay as the tests pin them, and none is on the
+        // day before it, whose grid a test expects empty. From a Thursday
+        // anchor all four sit in its week whether the week starts on Sunday
+        // or Monday.
+        func weekTask(_ title: String, _ duration: Int, inDays days: Int, at start: Int?) -> Item {
+            let bucket = start.map { DayBucket.owning(minute: $0) } ?? .anytime
+            return Item(id: next(), type: "task", title: title, status: "pending",
+                        startDate: anchor.adding(days: days).description, startTime: start.map { minutesToTime($0) },
+                        timeBucket: bucket.rawValue, duration: duration, isScheduled: true)
+        }
+        let restOfWeek = [
+            weekTask("Pick up the dry cleaning", 30, inDays: -3, at: 16 * 60 + 30),
+            weekTask("Bike service", 60, inDays: -2, at: 14 * 60),
+            weekTask("Coffee with Priya", 45, inDays: 1, at: 10 * 60),
+            weekTask("Post the birthday card", 15, inDays: 2, at: nil),
+        ]
+
         // Projects keep no icon or colour, so their tiles derive from their
         // names, as an older project's do on the web. Work has notes and
         // Writing a weekday time block, for their pages (O3). The block
@@ -199,7 +221,7 @@ enum SampleData {
                  milestoneIds: milestones.map(\.id), checkinIds: [checkin.id]),
         ]
         return Contents(items: blocks + untimed + routineHabits + otherHabits + braindump + subtasks + [payRent]
-                            + milestones + [checkin],
+                            + milestones + [checkin] + restOfWeek,
                         projects: projects, routines: routines, seasons: seasons, goals: goals)
     }
 }
