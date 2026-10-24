@@ -398,8 +398,8 @@ Week and blocks PRs 4 to 6 of the shared folder's
 `ios-app/week-and-blocks/design.md` (§5.1 to §5.3, §5.9, §5.10), built as one
 PR; the builders' notes are in `week/pr4/`. PR 4 draws the blocks in the web's
 look, PR 5 adds the Anytime band, PR 6 the web's overlap pass and the 34pt pane
-floor. PR 8 moves a block (Moving a block, below); nothing resizes one yet
-(PR 9).
+floor. PR 8 moves a block (Moving a block, below), and PR 9 changes its length
+(Changing a length, below).
 
 - **One derive per change, and the drag reads none of it.** ScheduleView
   lays the day out once in its body (`daySchedule(on:fieldWidth:)`: the timed
@@ -544,18 +544,19 @@ through the routes the phone already had. No new intent, route or migration.
 - **The menu (B2, B3).** `blockMenu(for:in:)` asks the sheet's verb gates
   on the block's day: the tick (or Unskip), Skip, Pause (or Resume); Move
   to tomorrow with its day as the subtitle, Reschedule (Today, Tomorrow,
-  Next week: `RescheduleRow.quickRows`) and Move to Braindump; then Move to
-  Anytime (`canMoveToAnytime`, through the same rule). Each runs on the
-  block's day and selects nothing. No Change length (PR 9).
+  Next week: `RescheduleRow.quickRows`) and Move to Braindump; then Change
+  length (PR 9, Changing a length below) and Move to Anytime
+  (`canMoveToAnytime`, through the same rule). Each runs on the block's day;
+  only Change length selects, and it writes nothing.
 - **VoiceOver (B12).** Named actions only (`spokenActions`): the menu's
   verbs but Reschedule, then "15 minutes later" and "15 minutes earlier"
   (`nudge`: one `moveBlock` to the hour 15 minutes off, never past
-  midnight) and Move to Anytime; never the adjustable trait. After a move
-  it announces where the block landed (`BlockMoveWords.announcement`:
-  "Moved to 10:15 AM", "Moved to Friday at 10:15 AM", "..., every day it
-  repeats", "Moved to Anytime", "Moved to the braindump"); whether it
-  repeats reads a NULL frequency as the type's default, as the server
-  does, so a habit stored without one is daily.
+  midnight), PR 9's length pair, and Move to Anytime; never the adjustable
+  trait. After a move it announces where the block landed
+  (`BlockMoveWords.announcement`: "Moved to 10:15 AM", "Moved to Friday at
+  10:15 AM", "..., every day it repeats", "Moved to Anytime", "Moved to the
+  braindump"); whether it repeats reads a NULL frequency as the type's
+  default, as the server does, so a habit stored without one is daily.
 - **Anytime rows (B23).** Each `AnytimeRow` lifts when an hour or the
   braindump would take it (`canLiftRow`, which probes 9:00 and the
   braindump), from the band's own `dragContainer`.
@@ -616,6 +617,173 @@ through the routes the phone already had. No new intent, route or migration.
   RowMovesFixtureTests) and its writer tests/unit/day-fixtures.test.ts;
   tests/unit/ios-change-filter.test.ts; ios/README.md (Moving a block, and
   the sample paragraph).
+
+## Changing a length
+Week and blocks PR 9 of `ios-app/week-and-blocks/design.md` (§5.6, §5.8,
+§5.9, B3, B4, B14, B16, B25), Day only; the builders' notes are in
+`week/pr9/`. Change length in a block's menu shows two grips; dragging one
+moves the start or the end in 15-minute steps, and letting go writes the
+existing `time` edit. No new intent, route, migration or write kind. The PR
+stays a draft until the README's device checks pass ("Changing a block's
+length", R1 among them).
+
+- **One maths, both clients.** The web's inline resize maths is
+  lib/schedule-resize.ts (`resizePreview`, `resizeWrite`,
+  `resizeDeltaMin`), which day-schedule.tsx imports back, with DsulCore's
+  line-for-line twin in ScheduleMath.swift, checked against
+  tests/fixtures/day/resize.json (`ResizeFixtureTests`), and the registry's
+  `schedule.resizable` in caps.json. Bottom: `max(15, snap15(duration +
+  travel))`, the start kept. Top: the end kept, the start
+  `max(0, min(snap15(start + travel), end - 15))`. The one deliberate web
+  change is that the day holds both edges: the bottom stops at 24:00, the
+  top's end is held to 24:00, a start never goes before 0:00, and an edge
+  with nothing in the day to hold to stays put.
+- **The write.** `SamplePlanner.resize(_:edge:from:to:)`
+  (ScheduleResize.swift) asks `resizeWrite` and sends its `edit` through
+  `edit(_:_:)`, the Time chip's path: gated by `canEdit`, stepped by
+  `editing`, queued with its snapshot, put back if it fails. The bottom grip
+  sends `{"action":"time","duration":n}`; the top one the start, the length
+  and the new start's part of day, since a time sent beside a stored Anytime
+  is refused (edit-writes.json `time-top-grip-anytime-stored`). Nothing when
+  nothing changed. It asks the gate again off the item as it is, ends the
+  press's `DragHold` at once, as a drop does, and says the new range to
+  VoiceOver ("12:30 to 1:15 PM").
+- **The gate (B4, B16).** `canResize`: the type's `resizable`, a start time
+  that is not empty (the web's `!!startTime`), not in a project block (whose
+  block takes the project's extent), and a server that takes a time edit;
+  never a skipped occurrence's strip. A done block keeps it.
+- **Selecting (B3).** `BlockResize` (ScheduleResize.swift, owned by
+  `ScheduleDrag` as `drag.resize`) holds the selected block, keyed on the day
+  of the column that draws it (`BlockSelection`), and the grip in the hand.
+  Change length is the only thing that selects. A tap on the hours that no
+  block or grip takes clears it (`TapClearsSelection` on ScheduleGrid's
+  content, its tap off while nothing is selected); so do any sheet, another
+  day and the Schedule going away (ScheduleView's `SelectionClearing` and
+  `onDisappear`), the block leaving the day or losing the gate
+  (`ResizeGripLayer`), and every lift (`ScheduleDrag`'s `lift`), so a drop
+  never leaves grips. Scrolling keeps it; tapping the selected block opens
+  its sheet, which clears it.
+- **The grips.** Two ink capsules ringed in the canvas, the top one at the
+  pane's leading end and the bottom one at its trailing end, each a 44pt
+  target centred on the edge and flush with the pane's side
+  (`ResizeGrips.placement`), drawn by `ResizeGripLayer` over every block
+  (z 25, under the ghost). When a nested child shares an edge, that grip
+  goes to the block's lane, as the web's `handleTopLane` and
+  `handleBottomLane`. The selected pane's hairline becomes a 1.5pt ink
+  outline. Hidden from VoiceOver.
+- **The gesture.** `DragGesture(minimumDistance: 0)` as a
+  `.highPriorityGesture` on each target, measured in the hours' viewport
+  (`ResizeGrips.viewportSpace`, named on ScheduleGrid's ScrollView). Its
+  first change is the press: the light impact, the `DragHold` lease, the
+  block shown as pressed. The travel is the finger's movement plus the
+  grid's scroll since the press (the web's `applyResize`), in minutes at
+  75pt an hour, and `resizePreview` is asked only once that travel has
+  reached `ResizeGrips.slop` (4pt), so a grip pressed and let go unmoved
+  writes nothing even on a block off the quarter (9:10 for 50, where the
+  maths alone snaps) and even when the resting finger drifts a point or
+  two; once moved it is always asked, as on the web. A `.selection` tick at
+  each 15-minute step. The release writes; a gesture reset with no end, or a
+  grip gone mid-press, lets go with nothing written. Each press has a number
+  (`BlockResize.press` returns it), and a grip's touch follows, releases and
+  cancels only its own, so a second finger on the other grip is refused a
+  press while one is held, never drives or ends it, and presses from where
+  it is once the first is let go (`press(..., translationY:)` takes off the
+  travel it made while it waited).
+- **What reads what.** A grip's step changes `BlockResize.shown`, which
+  only the selected block's reader (`ResizableBlock`, which draws it at the
+  grip's span through `ScheduleBlock.resized(to:)` and the plan's
+  `bandOnly`) and the grips (`GripPair`) read; the autoscroll switch reads
+  only whether a moved grip is held (`drivesAutoscroll`, once at the first
+  move and once at the release), every other block only which block is
+  selected, and ScheduleView none of it, so a step derives nothing
+  (`ScheduleRenderTests.aGripStepDerivesNothing`). While a grip is held, a
+  pane with no range line, a narrow one included, says its range where its
+  length was.
+- **Autoscroll.** While a grip is held and has moved, ScheduleView's `tick`
+  drives both edges with the grip's height in the viewport (no system drag
+  is running to scroll either) and hands each scroll back to
+  `BlockResize.scrolled`, which keeps the edge under a still finger. Not at
+  the press: a finger pressed still within the edge zone (56pt) of the top,
+  the bottom or the braindump's top would scroll the grid, the scroll would
+  move the edge, and letting go would write it.
+- **VoiceOver.** "Make 15 minutes longer" and "Make 15 minutes shorter",
+  after "15 minutes earlier": the bottom grip a quarter hour through
+  `resize`, offered only when that writes (shorter stops at 15 minutes,
+  longer at midnight). A length off the quarter lands on one, as a
+  quarter-hour drag of the web's handle does (the rule in
+  `week/pr9/handoff-app.md`), so it moves by more or less than 15: 50
+  minutes made longer is 60 and made shorter is 30, 40 made longer is 60;
+  the announcement says the new range. Change length itself is the menu's
+  alone.
+- **Where it departs from the design or the handoff.**
+  - The gesture measures in the scroll view's own frame, not the column's
+    space (§5.6): the column scrolls, so its translation would count an
+    autoscroll twice.
+  - `resize` takes `from` as well as `to` (§9 names `resize(_:edge:to:)`),
+    and it lives in ScheduleResize.swift, an extension the shim compiles,
+    not in SamplePlanner.swift, which PR 9 leaves alone. Its hosted tests
+    are a new `BlockResizeTests`, not `SamplePlannerTests`.
+  - The `UIPanGestureRecognizer` fallback (§5.6) is not built: it waits on
+    device check R1 (README "Changing a block's length", check 3). If R1
+    fails, it is a `UIGestureRecognizerRepresentable` pan on each grip's
+    target that the scroll view's pan, the block's menu and its lift wait
+    on, driving the same four `BlockResize` calls (`press`, `follow`,
+    `release`, `cancel`) with the press number; nothing else changes.
+  - A press counts as moved only once its travel reaches `ResizeGrips.slop`
+    (4pt), where the handoff says any non-zero travel: a resting finger
+    drifts by fractions of a point, which on a block off the quarter would
+    snap and write. The web, with a mouse, has no slop.
+  - The grip's autoscroll starts at the press's first move, not at the
+    press, where the web starts its loop at pointerdown: a 44pt target
+    near an edge would otherwise scroll, and so move and write, under a
+    still finger.
+  - A second finger on the other grip is refused a press while one is held,
+    and takes one, from where it is, once that one is let go.
+  - A lift clears the selection, beyond §5.6's list, which is what makes
+    "a drop never selects" hold when a block is dragged while another is
+    selected.
+  - The gate also asks for the server's `time` write, so a server without
+    it offers no Change length.
+  - The grips keep the at-rest plan's lanes for the whole press, where the
+    web's `bandOnly` drops them mid-resize, so a grip never jumps from under
+    the finger; the block itself draws with `bandOnly`, as the web's.
+  - A pane with no range line shows its range in the length's place while a
+    grip is held; §5.6 says the mono range updates live, and a short pane
+    has none. A narrow pane (under `paneWrapPx`, 200pt: any block sharing
+    its time side by side on Day, and every block in PR 10's Week columns)
+    shows it too, on the title's line with the title cut short, where the
+    web's narrow pane shows no time at all.
+  - The announcement is always the range, where a block's label says its
+    start alone under an hour, since the length is what changed.
+  - The grips are ink, not lime: §11 lists where lime appears, and a grip is
+    a control.
+  - On a selected short task the top grip's target covers the check, so a
+    tap there is a press that writes nothing; a tap elsewhere first clears
+    the selection (README check 5 puts it before the device pass). On a pane
+    narrower than 88pt the two targets overlap.
+  - Schedule has no Week form yet (Today draws Day on it), so a scope change
+    there changes nothing and keeps the selection; a layout change clears it
+    with the Schedule's `onDisappear`. PR 10's switch must clear it too.
+  - A sheet clears the selection as it opens, not while it is up: a block
+    selected above the braindump at its medium size (background touches
+    pass through up to medium) keeps its grips, and the grip's autoscroll
+    then scrolls at the edge just above the sheet.
+- **Files.** ios/Dsul/Schedule: ScheduleResize.swift (new),
+  ScheduleMoves.swift (the menu entry, the length pair, `announceMove`
+  internal), ScheduleDrag.swift, ScheduleColumn.swift, BlockView.swift,
+  ScheduleGrid.swift, ScheduleView.swift; ios/Dsul/Today/ItemRow.swift
+  (`PlannerFormat.spokenRange`, the one way a range is said, which a row's
+  label and a length's announcement share); ios/DsulTests:
+  BlockResizeTests.swift (new), BlockMoveTests.swift,
+  ScheduleRenderTests.swift; ios/README.md
+  (Changing a block's length, and Moving a block's checks 1 and 10). The data
+  half: lib/schedule-resize.ts (new) and components/views/day-schedule.tsx;
+  DsulCore ScheduleMath.swift, Registry.swift, ResizeFixtureTests.swift (new)
+  and RegistryCapsFixtureTests.swift; tests/fixtures/day/resize.json (new),
+  caps.json and edit-writes.json, with their writers day-fixtures.test.ts and
+  edit-writes-fixtures.test.ts; tests/unit/schedule-resize.test.ts (new),
+  schedule-resize-pointer.test.tsx and ios-change-filter.test.ts;
+  .github/workflows/ios.yml.
 
 ## Item detail, part 1
 - **One sheet, every surface.** `PlannerSheet.item(UUID, day: SheetDay)` in
@@ -2386,7 +2554,7 @@ since O1 make possible, and any word that a repeat took a goal role away (the
 web then lists the item as a plain member, with no notice), the Beeminder row,
 the Streaks, Organize and Goals switches, which the phone honours but can't
 turn on or off, the thread and Ask, Focus), universal links (the email link
-uses the custom scheme), resizing a block from the phone, two block drops
+uses the custom scheme), two block drops
 the web takes and the phone refuses in v1 (a habit dropped on the braindump,
 which the web pauses, B15, and a block dropped on another day's Anytime,
 B22: both answer the forbidden badge), undo after a move, the overdue tray,
@@ -2398,10 +2566,11 @@ want consent before sending data to a model. Notifications shipped
 registers as a device and is woken by APNs); what is left of them is in
 [reminders-platforms.md](reminders-platforms.md).
 
-The block work named above (resizing blocks, Week × Schedule) is Week and
-blocks' PRs 9 and 10, which also bring Change length in the block's menu and
-VoiceOver's length actions. The blocks themselves are drawn in the web's
-look and laid out by its overlap pass (PRs 4 to 6, Schedule blocks above),
-and they move (PR 8, Moving a block above): the block's menu, VoiceOver's
-15-minute actions, and the Anytime band as a drop target with its rows as
-drag sources.
+The block work named above (Week × Schedule) is Week and blocks' PR 10. The
+blocks themselves are drawn in the web's look and laid out by its overlap
+pass (PRs 4 to 6, Schedule blocks above), they move (PR 8, Moving a block
+above): the block's menu, VoiceOver's 15-minute actions, and the Anytime band
+as a drop target with its rows as drag sources; and they change length (PR 9,
+Changing a length above): Change length in the block's menu, two grips, and
+VoiceOver's length actions. The grip's UIKit fallback waits on device check
+R1.

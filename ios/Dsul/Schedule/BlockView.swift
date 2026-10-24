@@ -20,6 +20,11 @@ import SwiftUI
 /// While it is the block in the air (PR 8) it draws hollow, an outline where
 /// its pane was and no fill (design B8): never a fade, which would dim its
 /// lime rail and check.
+///
+/// Selected through Change length (PR 9) its pane wears a 1.5pt ink outline,
+/// and while a grip is in the hand the column draws it at the grip's span
+/// (`ScheduleBlock.resized(to:)`), so its length and range read live. The
+/// grips are the column's, drawn over the blocks (design §5.6).
 struct BlockView: View {
     let block: ScheduleBlock
     let fieldWidth: Double
@@ -30,6 +35,11 @@ struct BlockView: View {
     let accent: Color
     /// Its VoiceOver actions, in order (`SamplePlanner.spokenActions`).
     let actions: [BlockSpokenAction]
+    /// Selected through Change length: the ink outline.
+    let selected: Bool
+    /// A grip is in the hand: a pane with no range line, narrow or short,
+    /// says its range where its length was, so both ends read as they move.
+    let showsRange: Bool
     let onOpen: () -> Void
     let onTick: () -> Void
     let onAction: (BlockSpokenAction) -> Void
@@ -52,7 +62,8 @@ struct BlockView: View {
                         .offset(x: pane.minX, y: pane.minY)
                 } else {
                     BlockPane(block: block, geometry: geometry, narrow: block.isNarrow(fieldWidth: fieldWidth),
-                              timeFormat: timeFormat, lineHeight: lineHeight, onOpen: onOpen, onTick: onTick)
+                              timeFormat: timeFormat, lineHeight: lineHeight, selected: selected,
+                              showsRange: showsRange, onOpen: onOpen, onTick: onTick)
                         .offset(x: pane.minX, y: pane.minY)
                 }
             }
@@ -192,6 +203,13 @@ private struct BlockPane: View {
     let narrow: Bool
     let timeFormat: TimeFormat
     let lineHeight: CGFloat
+    /// Selected through Change length: a 1.5pt ink outline for the
+    /// hairline (design §5.6). Ink, never lime: lime is a mark.
+    let selected: Bool
+    /// A grip is in the hand: the title's line says the range in the
+    /// length's place wherever no range line shows, a narrow pane's
+    /// included, whose title gives way to it.
+    let showsRange: Bool
     let onOpen: () -> Void
     let onTick: () -> Void
 
@@ -234,11 +252,17 @@ private struct BlockPane: View {
     }
 
     /// Elevated paper with a hairline and a soft shadow; done, a thinner
-    /// plate with no shadow.
+    /// plate with no shadow. Selected, the hairline is a 1.5pt ink outline.
     private var plate: some View {
         shape
             .fill(block.done ? Color(.tertiarySystemFill) : Color(.secondarySystemGroupedBackground))
-            .overlay { shape.strokeBorder(.separator, lineWidth: 0.5) }
+            .overlay {
+                if selected {
+                    shape.strokeBorder(Color.primary, lineWidth: 1.5)
+                } else {
+                    shape.strokeBorder(.separator, lineWidth: 0.5)
+                }
+            }
             .shadow(color: block.done ? Color.clear : Color.black.opacity(0.08), radius: 2, y: 1)
     }
 
@@ -251,21 +275,27 @@ private struct BlockPane: View {
             // Two lines when they fit; at a large text size, the title alone.
             ViewThatFits(in: .vertical) {
                 VStack(alignment: .leading, spacing: 1) {
-                    measured(titleLine.frame(minHeight: lineHeight))
+                    measured(titleLine(meta: block.durationText).frame(minHeight: lineHeight))
                     Text(block.rangeText(timeFormat))
                         .font(.caption2.monospaced())
                         .foregroundStyle(metaStyle)
                         .lineLimit(1)
                 }
-                measured(titleLine.frame(minHeight: lineHeight))
+                measured(titleLine(meta: oneLineMeta).frame(minHeight: lineHeight))
             }
             .padding(.leading, leading)
             .padding(.trailing, trailing)
         } else {
-            measured(titleLine)
+            measured(titleLine(meta: oneLineMeta))
                 .padding(.leading, leading)
                 .padding(.trailing, trailing)
         }
+    }
+
+    /// What the title's line says on its right when it is the pane's only
+    /// line: the length, or the range while a grip is in the hand.
+    private var oneLineMeta: String? {
+        return showsRange ? block.rangeText(timeFormat) : block.durationText
     }
 
     /// `line`, reporting where its middle sits in the content band.
@@ -277,8 +307,12 @@ private struct BlockPane: View {
         }
     }
 
-    /// The title, and the length on the right unless the pane is narrow.
-    private var titleLine: some View {
+    /// The title, and `meta` (the length, or the range) on the right unless
+    /// the pane is narrow. While a grip is in the hand the range shows on a
+    /// narrow pane too, the title truncating before it, so a length always
+    /// reads as it changes (design §5.6, "the pane's mono range updates
+    /// live"); the web's narrow pane shows none.
+    private func titleLine(meta: String?) -> some View {
         HStack(spacing: 6) {
             Text(block.item.title)
                 .font(.footnote.weight(.medium))
@@ -286,8 +320,8 @@ private struct BlockPane: View {
                 .foregroundStyle(block.done ? Color.secondary : Color.primary)
                 .lineLimit(1)
             Spacer(minLength: 0)
-            if !narrow, let length = block.durationText {
-                Text(length)
+            if !narrow || showsRange, let meta {
+                Text(meta)
                     .font(.caption2.monospaced())
                     .foregroundStyle(metaStyle)
                     .lineLimit(1)

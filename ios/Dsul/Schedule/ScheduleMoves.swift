@@ -36,6 +36,8 @@ enum BlockMenuEntry: Hashable, Sendable {
     case reschedule(String, [RescheduleRow])
     /// Move to Braindump.
     case braindump
+    /// Change length: the block's two grips show (PR 9, design §5.6).
+    case changeLength
     /// Move to Anytime: the day kept, the time dropped.
     case anytime
 
@@ -49,6 +51,7 @@ enum BlockMenuEntry: Hashable, Sendable {
         case .pause: return "Pause"
         case .resume: return "Resume"
         case .braindump: return "Move to Braindump"
+        case .changeLength: return BlockResizeWords.changeLength
         case .anytime: return BlockMoveWords.moveToAnytime
         }
     }
@@ -65,6 +68,7 @@ enum BlockMenuEntry: Hashable, Sendable {
         case .nextDay: return "arrow.right"
         case .reschedule: return "calendar"
         case .braindump: return "tray.and.arrow.down"
+        case .changeLength: return "arrow.up.and.down"
         case .anytime: return "clock.badge.xmark"
         }
     }
@@ -90,14 +94,13 @@ struct RescheduleRow: Hashable, Sendable {
 }
 
 /// A block's menu in the web's three groups (design §5.4), each entry behind
-/// its gate. Delete and Leave block are not in it (design §1), and Change
-/// length joins `own` in PR 9.
+/// its gate. Delete and Leave block are not in it (design §1).
 struct BlockMenu: Hashable, Sendable {
     /// The tick or Unskip, then Skip, then Pause or Resume.
     var status: [BlockMenuEntry]
     /// The next day, Reschedule, Move to Braindump.
     var moves: [BlockMenuEntry]
-    /// The phone's own: Move to Anytime.
+    /// The phone's own: Change length, then Move to Anytime.
     var own: [BlockMenuEntry]
 
     static let empty = BlockMenu(status: [], moves: [], own: [])
@@ -116,12 +119,18 @@ enum BlockSpokenAction: Hashable, Sendable {
     case later
     /// "15 minutes earlier".
     case earlier
+    /// "Make 15 minutes longer": the bottom grip a quarter hour down.
+    case longer
+    /// "Make 15 minutes shorter": the bottom grip a quarter hour up.
+    case shorter
 
     var name: String {
         switch self {
         case .entry(let entry): return entry.title
         case .later: return BlockMoveWords.later
         case .earlier: return BlockMoveWords.earlier
+        case .longer: return BlockResizeWords.longer
+        case .shorter: return BlockResizeWords.shorter
         }
     }
 }
@@ -441,7 +450,8 @@ extension SamplePlanner {
     /// `block`'s menu on `schedule`'s day (design §5.4): the web's verbs in
     /// item-context-menu.tsx's order, each behind the sheet's own gate
     /// (`offers`) and under the web's label ("today" kept on today alone,
-    /// `ItemSheetModel.onDay`, as the web's `onDay`), then Move to Anytime.
+    /// `ItemSheetModel.onDay`, as the web's `onDay`), then Change length
+    /// (`canResize`) and Move to Anytime.
     func blockMenu(for block: ScheduleBlock, in schedule: DaySchedule) -> BlockMenu {
         guard let item = item(block.id) else { return .empty }
         let day = schedule.day
@@ -474,6 +484,7 @@ extension SamplePlanner {
         if can(.braindump) { moves.append(.braindump) }
 
         var own: [BlockMenuEntry] = []
+        if canResize(block, in: schedule) { own.append(.changeLength) }
         if canMoveToAnytime(block.id, on: day) { own.append(.anytime) }
         return BlockMenu(status: status, moves: moves, own: own)
     }
@@ -481,8 +492,10 @@ extension SamplePlanner {
     /// `block`'s VoiceOver actions (design §5.9), each only when its gate
     /// allows, in the menu's order: the tick or Unskip, Skip, Pause or
     /// Resume, the next-day label, Move to Braindump, then "15 minutes
-    /// later", "15 minutes earlier" and Move to Anytime. Reschedule is the
-    /// sheet's (its choices are a submenu).
+    /// later", "15 minutes earlier", "Make 15 minutes longer", "Make 15
+    /// minutes shorter" and Move to Anytime. Reschedule is the sheet's (its
+    /// choices are a submenu), and Change length the menu's alone: the
+    /// length pair needs no grips.
     func spokenActions(for block: ScheduleBlock, in schedule: DaySchedule) -> [BlockSpokenAction] {
         let menu = blockMenu(for: block, in: schedule)
         var actions: [BlockSpokenAction] = (menu.status + menu.moves).compactMap { entry in
@@ -491,13 +504,20 @@ extension SamplePlanner {
         }
         if canNudge(block, in: schedule, by: BlockMoveWords.step) { actions.append(.later) }
         if canNudge(block, in: schedule, by: -BlockMoveWords.step) { actions.append(.earlier) }
-        actions += menu.own.map { .entry($0) }
+        if canChangeLength(block, in: schedule, by: BlockResizeWords.step) { actions.append(.longer) }
+        if canChangeLength(block, in: schedule, by: -BlockResizeWords.step) { actions.append(.shorter) }
+        actions += menu.own.compactMap { entry in
+            if case .changeLength = entry { return nil }
+            return .entry(entry)
+        }
         return actions
     }
 
     /// Runs a menu entry on `block`, on `schedule`'s day: each verb's own
     /// write, gated again as it is when the sheet runs it. Reschedule's
-    /// choices run `move(_:to:)` with their date; its own row does nothing.
+    /// choices run `move(_:to:)` with their date; its own row does nothing,
+    /// and so does Change length, which writes nothing until a grip is let
+    /// go (the column selects the block, `BlockResize.select`).
     func run(_ entry: BlockMenuEntry, on block: ScheduleBlock, in schedule: DaySchedule) {
         let id = block.id
         let day = schedule.day
@@ -510,15 +530,16 @@ extension SamplePlanner {
         case .nextDay(_, _, let date): move(id, to: date)
         case .reschedule: break
         case .braindump: moveBlock(id, from: blockOrigin(id, on: day), to: .braindump)
+        case .changeLength: break
         case .anytime: moveToAnytime(id, on: day)
         }
     }
 
-    /// Says a move to VoiceOver once the block has settled where it landed:
-    /// a moment after the drop or the action, so the element's own change
-    /// doesn't cut it off (Organize's `SettledAnnouncement` waits the same
-    /// way).
-    private func announceMove(_ words: String) {
+    /// Says a move or a length to VoiceOver once the block has settled where
+    /// it landed: a moment after the drop, the release or the action, so the
+    /// element's own change doesn't cut it off (Organize's
+    /// `SettledAnnouncement` waits the same way).
+    func announceMove(_ words: String) {
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(300))
             AccessibilityNotification.Announcement(AttributedString(words)).post()
@@ -531,6 +552,8 @@ extension SamplePlanner {
         case .entry(let entry): run(entry, on: block, in: schedule)
         case .later: nudge(block, in: schedule, by: BlockMoveWords.step)
         case .earlier: nudge(block, in: schedule, by: -BlockMoveWords.step)
+        case .longer: changeLength(block, in: schedule, by: BlockResizeWords.step)
+        case .shorter: changeLength(block, in: schedule, by: -BlockResizeWords.step)
         }
     }
 }

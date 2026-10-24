@@ -6,11 +6,11 @@ import UIKit
 @testable import Dsul
 
 /// The Schedule as SwiftUI draws it (Week and blocks PRs 4 to 6), hosted in a
-/// window: a ghost step re-renders only the drag's own layer and derives
-/// nothing, while a change to the planner still lays the day out again; and
-/// every SF Symbol a block or the band draws exists. Runs on the xcode-27
-/// runner only; the Linux shim never compiles it (ScheduleLayoutTests is the
-/// shim's half).
+/// window: a ghost step, or a grip's step (PR 9), re-renders only its own
+/// small views and derives nothing, while a change to the planner still lays
+/// the day out again; and every SF Symbol a block or the band draws exists.
+/// Runs on the xcode-27 runner only; the Linux shim never compiles it
+/// (ScheduleLayoutTests is the shim's half).
 @MainActor
 @Suite struct ScheduleRenderTests {
     private func makePlanner() -> SamplePlanner {
@@ -88,6 +88,43 @@ import UIKit
         let after = await settle(window, planner)
         #expect(after > rendered, "A tick lays the day out again")
     }
+
+    /// The same for a length (PR 9): choosing Change length, pressing the
+    /// bottom grip and drawing it down the grid step by step redraws the
+    /// block and its grips and lays nothing out again; letting go writes,
+    /// which does.
+    @Test func aGripStepDerivesNothing() async {
+        let planner = makePlanner()
+        let drag = ScheduleDrag()
+        let window = host(ScheduleView(showProbe: false, nowMin: 10 * 60, drag: drag).environment(planner))
+        defer { window.isHidden = true }
+
+        let rendered = await settle(window, planner)
+        let lunch = planner.items.first { $0.title == "Lunch walk" }!
+        let span = BlockSpan(startMin: 12 * 60 + 30, duration: 45)
+        drag.resize.select(lunch.id, on: planner.today)
+        await settle(window, planner)
+        #expect(planner.derivations == rendered, "Selecting a block re-derived the day")
+
+        // Mid-viewport, so the grip's autoscroll never moves.
+        drag.resize.press(.bottom, from: span, scrollOffset: drag.offsetY, fingerY: 200)
+        for dy in stride(from: 10.0, through: 120.0, by: 10.0) {
+            drag.resize.follow(translationY: dy, fingerY: 200 + dy, scrollOffset: drag.offsetY)
+            await frame(window)
+        }
+        #expect(drag.resize.steps > 0)
+        #expect(planner.derivations == rendered, "A grip step re-derived the day")
+
+        guard let release = drag.resize.release() else {
+            Issue.record("no release")
+            return
+        }
+        planner.resize(release.id, edge: release.edge, from: release.from, to: release.to)
+        let after = await settle(window, planner)
+        #expect(after > rendered, "A length lays the day out again")
+        drag.resize.clear()
+        DragHold.shared.releaseNow()
+    }
     #endif
 
     /// A block's check (open, and the tick drawn on a done one's lime), a
@@ -97,7 +134,7 @@ import UIKit
     @Test func everyScheduleSymbolExists() {
         let menu: [BlockMenuEntry] = [
             .tick("", done: false), .tick("", done: true), .unskip(""), .skip(""), .pause, .resume,
-            .nextDay("", detail: nil, date: ""), .reschedule("", []), .braindump, .anytime,
+            .nextDay("", detail: nil, date: ""), .reschedule("", []), .braindump, .changeLength, .anytime,
         ]
         let today = DayString("2026-10-01")!
         let choices = RescheduleRow.quickRows(today: today, nextWeekStart: today.adding(days: 4)).map(\.symbol)

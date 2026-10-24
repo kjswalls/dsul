@@ -12,6 +12,11 @@ import SwiftUI
 /// and ScheduleView lays the day out on that width. This body reads the drag
 /// only in callbacks, never to draw: the ghost lives in the column's drag
 /// layer, so a ghost step leaves this view alone.
+///
+/// Changing a length (PR 9): the scroll view names its own frame
+/// (`ResizeGrips.viewportSpace`), which a grip's gesture measures in, and a
+/// tap anywhere on the hours but a block clears the selected block
+/// (`TapClearsSelection`). Scrolling keeps it.
 struct ScheduleGrid: View {
     @Binding var position: ScrollPosition
     /// The day, laid out once by ScheduleView.
@@ -48,6 +53,7 @@ struct ScheduleGrid: View {
             .padding(.trailing, 8)
             .frame(maxWidth: .infinity, minHeight: 24 * hourPx, maxHeight: 24 * hourPx, alignment: .topLeading)
             .contentShape(Rectangle())
+            .modifier(TapClearsSelection())
             .dropDestination(for: ItemRef.self) { (refs: [ItemRef], session: DropSession) in
                 guard let ref = refs.first else { return }
                 drop(ref.id, at: Double(session.location.y))
@@ -68,6 +74,9 @@ struct ScheduleGrid: View {
             // outside the drop target so a drop's location stays the content's.
             .padding(.bottom, CGFloat(ScheduleMetrics.paneOffset + ScheduleMetrics.paneMinH))
         }
+        // The hours' viewport: it stays put while its content scrolls, so a
+        // grip measured here moves with the finger alone (ScheduleResize.swift).
+        .coordinateSpace(.named(ResizeGrips.viewportSpace))
         .scrollPosition($position)
         .onScrollGeometryChange(for: ScrollGeometry.self, of: { $0 }) { _, geometry in
             drag.offsetY = Double(geometry.contentOffset.y)
@@ -105,6 +114,22 @@ struct ScheduleGrid: View {
             planner.schedule(id, startMin: start)
         }
         drag.note("drop \(minutesToTime(start))")
+    }
+}
+
+/// A tap on the hours that no block or grip takes (the gutter, an empty
+/// stretch, an hour line) clears the selected block (design §5.6). A block's
+/// own tap still opens it, since a child's gesture wins over this one, and a
+/// grip's gesture is its own. Its own modifier, so a selection re-renders
+/// this alone, never the grid; with nothing selected the tap is off
+/// (`.subviews`), and the hours take touches exactly as before.
+private struct TapClearsSelection: ViewModifier {
+    @Environment(ScheduleDrag.self) private var drag
+
+    func body(content: Content) -> some View {
+        let resize = drag.resize
+        content.gesture(TapGesture().onEnded { resize.clear() },
+                        including: resize.selected != nil ? .all : .subviews)
     }
 }
 

@@ -1771,8 +1771,9 @@ repeat.
 1. (M1) Hold Lunch walk (12:30 PM) still: its menu opens and nothing
    lifts. It reads Mark done and Pause; then Move to tomorrow, with
    tomorrow's date under it, Reschedule (Today, Tomorrow, Next week) and
-   Move to Braindump; then Move to Anytime, a divider between each group.
-   Walk's reads Done today, Skip today and Pause, then Move to Anytime.
+   Move to Braindump; then Change length and Move to Anytime, a divider
+   between each group. Walk's reads Done today, Skip today and Pause, then
+   Change length and Move to Anytime.
    Skip today on Walk: its strip's menu starts with Unskip today, and the
    strip never lifts. While a menu is open, and after you pick from it or
    dismiss it, no block shows a dashed outline and the Anytime band's
@@ -1808,12 +1809,83 @@ repeat.
 9. A flick that starts on a block scrolls the grid and never lifts it.
 10. VoiceOver: a block's actions hold its menu's verbs (Lunch walk's: Mark
     done, Pause, Move to tomorrow, Move to Braindump), then "15 minutes
-    later", "15 minutes earlier" and Move to Anytime. A swipe up or down on
+    later", "15 minutes earlier", "Make 15 minutes longer", "Make 15 minutes
+    shorter" and Move to Anytime. A swipe up or down on
     a block moves nothing. "15 minutes later" on Lunch walk says "Moved to
     12:45 PM"; on Walk (7:45), "Moved to 8 AM, every day it repeats".
 11. Signed in, turn on Airplane Mode and drag a block to another hour: it
     lands at once, then the banner says "Couldn't reach dsul, so that change
     was undone." and the block goes back. Turn Airplane Mode off.
+
+## Changing a block's length
+
+On Day's Schedule a block's start or end moves by its grips (Week and blocks
+PR 9). Change length in the block's menu is the only thing that shows them,
+and a drop never does, so no scroll that starts near a block becomes a
+length by accident. What a length writes is the existing time edit (the
+bottom grip sends the length alone, the top one the start, the length and the
+start's part of day), which the hosted tests pin; these checks are for how
+it feels. The PR stays a draft until they pass on a phone. Start on a fresh
+sample (Try with sample data), switch Today to Schedule, and run the checks
+in order.
+
+1. Hold Lunch walk (12:30 PM, 45 minutes) still and pick Change length: its
+   pane gets an ink outline, with a small ink grip on its top edge at the
+   left and one on its bottom edge at the right; nothing about it is lime
+   but its rail and bead. Press the bottom grip: a light tap. Drag it down:
+   the block grows in 15-minute steps with a tick at each, and while you
+   hold, its range shows: in its length's place while the pane has one
+   line, on a line of its own once it is taller. Let go when the range reads
+   12:30 to 1:30: Lunch walk is an hour long, and its grips stay for another
+   go. Press a grip and let go without moving: nothing changes. Then a block
+   off the quarter hour, where a press that moved even a little would snap:
+   tap Gym (5:30 PM), set its time to 5:40 PM (the time chip, Specific
+   time) and close the sheet; pick Change length on Gym, then press each
+   grip in turn, rest your finger on it a moment and let go: Gym still reads
+   5:40 to 6:40. Signed in, with Airplane Mode on, a length lands and then
+   goes back with the banner.
+2. Drag Lunch walk's top grip up an hour: the start moves in 15-minute steps
+   and the end stays at 1:30. Let go at 11:30 AM: it starts there and ends
+   where it did, and on Buckets it now sits under Morning. Back on Schedule,
+   select it again and drag the top grip down past the end: it stops 15
+   minutes short of it. On a block half the width (drag two braindump rows
+   onto 4 PM, as in Checking overlapping blocks, and pick Change length on
+   one), a held grip shows the range on the title's line, the title cut
+   short to make room.
+3. (R1) With Lunch walk selected, start a scroll anywhere but a grip (on a
+   block, the gutter, an empty hour): the grid scrolls and no length
+   changes. Flick fast up and down across a grip: the same. A drag that
+   starts on a grip resizes and never scrolls the grid. Press a grip and
+   hold still for a second, then drag: the length changes, no menu opens
+   and the block never lifts. If either fails, the grip's gesture needs the
+   UIKit fallback (memory/plans/ios-app.md, "Changing a length").
+4. Select Read (9:30 PM) and drag its bottom grip to the bottom of the
+   screen, then hold still: the grid scrolls and the end keeps following
+   your finger, a tick at each quarter hour, until it stops at midnight.
+   Scroll up until Morning pages (7 AM) sits at the very top of the screen
+   and select it. Press its top grip and let go without moving: nothing
+   scrolls and nothing changes. Now drag the top grip up: the grid scrolls
+   up and the start follows. Open the braindump at its medium size (which
+   clears the selection), select Lunch walk above it and drag its bottom
+   grip down: the grid scrolls once the finger is just above the sheet.
+5. Tap an empty hour or the gutter: the outline and the grips go. Select
+   Lunch walk again and scroll: they stay. Tap Lunch walk itself: its sheet
+   opens and they go. Opening the braindump, picking another day from the
+   title and switching to List each clear them too. Select it once more and
+   drag Call the dentist (3 PM) to a new hour: the grips go, and nothing
+   shows grips after the drop. Select Standup (11:15 AM, 15 minutes) and
+   tap its check: nothing ticks, since the top grip's target covers it; tap
+   an empty hour, then the check: it ticks. If that reads as wrong, say so:
+   the top grip can move in past the check.
+6. Skip today on Walk: its strip's menu has no Change length. Tick Lunch
+   walk done: its menu keeps Change length. Signed in, a task the web shows
+   inside a project's time block has no Change length either (its block
+   takes the project's time; the sample has none).
+7. VoiceOver: a block's actions add "Make 15 minutes longer" and "Make 15
+   minutes shorter" after "15 minutes earlier" (Cook dinner's, at 7 PM, for
+   45 minutes). "Make 15 minutes longer" on Cook dinner says "7 to 8 PM",
+   and the block is an hour long. Standup offers longer and not shorter.
+   The grips are never read.
 
 ## Rules
 

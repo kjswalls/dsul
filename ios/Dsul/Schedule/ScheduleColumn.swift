@@ -9,7 +9,10 @@ import SwiftUI
 /// The column draws `day`, a value laid out once by ScheduleView, and never
 /// reads the drag itself: the ghost is `ScheduleDragLayer`, and a lifted
 /// block's hollow outline is each block's own small reader, so a ghost step
-/// re-renders that layer alone.
+/// re-renders that layer alone. The same for a length (PR 9): the grips are
+/// `ResizeGripLayer`, and the block a grip reshapes is drawn by its own
+/// `ResizableBlock` reader, so a grip's 15-minute step re-renders those two
+/// and derives nothing.
 ///
 /// It is also the blocks' drag container (design §5.4, PR 8): a block lifts
 /// with a hold and a move (`.draggable(containerItemID:)`, the same in-app
@@ -47,27 +50,16 @@ struct ScheduleColumn: View {
                 .accessibilityHidden(true)
             if let width = day.fieldWidth {
                 ForEach(day.blocks) { block in
-                    BlockView(block: block, fieldWidth: width, nowMin: nowMin, timeFormat: timeFormat,
-                              accent: accent(for: block),
-                              actions: planner.spokenActions(for: block, in: day),
-                              onOpen: { planner.open(block.id, day: .selected) },
-                              onTick: { tick(block) },
-                              onAction: { action in run(action, on: block) })
-                        .contextMenu {
-                            BlockMenuItems(menu: planner.blockMenu(for: block, in: day)) { entry in
-                                run(entry, on: block)
-                            } onReschedule: { date in
-                                drag.endStrayLift()
-                                withAnimation(.snappy) { planner.move(block.id, to: date) }
-                            }
-                        }
-                        .modifier(LiftsWhen(enabled: planner.canLift(block, in: day), id: block.id))
-                        .zIndex(Double(block.plan.z))
+                    placed(block, fieldWidth: width)
                 }
                 if let nowMin {
                     NowMarker(y: CGFloat(nowMin) / 60 * hourPx)
                         .zIndex(20)
                 }
+                // Over every block, so a grip's target wins a touch on the
+                // neighbour it overhangs (design §5.6).
+                ResizeGripLayer(day: day, fieldWidth: width)
+                    .zIndex(25)
                 ScheduleDragLayer(day: day.day, fieldWidth: width, timeFormat: timeFormat)
                     .zIndex(30)
             }
@@ -91,6 +83,32 @@ struct ScheduleColumn: View {
         }
     }
 
+    /// One block: drawn by its own reader (as the day lays it out, or at a
+    /// held grip's span), with its menu and its drag. Its VoiceOver actions
+    /// and colour are worked out here, from the block as laid out, so a
+    /// grip's step redraws the block without asking the planner again.
+    private func placed(_ block: ScheduleBlock, fieldWidth width: Double) -> some View {
+        let actions = planner.spokenActions(for: block, in: day)
+        let tint = accent(for: block)
+        return ResizableBlock(block: block, day: day.day) { drawn, selected, held in
+            BlockView(block: drawn, fieldWidth: width, nowMin: nowMin, timeFormat: timeFormat, accent: tint,
+                      actions: actions, selected: selected, showsRange: held,
+                      onOpen: { planner.open(block.id, day: .selected) },
+                      onTick: { tick(block) },
+                      onAction: { action in run(action, on: block) })
+        }
+        .contextMenu {
+            BlockMenuItems(menu: planner.blockMenu(for: block, in: day)) { entry in
+                run(entry, on: block)
+            } onReschedule: { date in
+                drag.endStrayLift()
+                withAnimation(.snappy) { planner.move(block.id, to: date) }
+            }
+        }
+        .modifier(LiftsWhen(enabled: planner.canLift(block, in: day), id: block.id))
+        .zIndex(Double(block.plan.z))
+    }
+
     /// A block lifted (the session's `.initial`): the drag learns what it
     /// is, its own length for the ghost (a task in a project block is drawn
     /// at the block's), where the finger holds it, and the column it keeps
@@ -106,11 +124,16 @@ struct ScheduleColumn: View {
     }
 
     /// A menu entry on the block's day (`SamplePlanner.run`, which the
-    /// hosted tests drive). Nothing is selected after it (B3). A pick ends
-    /// any lift the menu's long press began without a session end
-    /// (`endStrayLift`, device check M1).
+    /// hosted tests drive). A pick ends any lift the menu's long press began
+    /// without a session end (`endStrayLift`, device check M1). Change
+    /// length selects the block, which shows its grips; it is the only way
+    /// a block is selected (B3), and it writes nothing.
     private func run(_ entry: BlockMenuEntry, on block: ScheduleBlock) {
         drag.endStrayLift()
+        if case .changeLength = entry {
+            drag.resize.select(block.id, on: day.day)
+            return
+        }
         withAnimation(.snappy) { planner.run(entry, on: block, in: day) }
     }
 
@@ -153,6 +176,175 @@ private struct HourLines: View {
         .frame(maxWidth: .infinity, minHeight: 24 * hourPx, maxHeight: 24 * hourPx, alignment: .topLeading)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+}
+
+/// A block as it draws now: as the day lays it out, or, while a grip of it
+/// is in the hand, at the grip's span (`ScheduleBlock.resized(to:)`), with
+/// whether it is selected and whether a grip is held. Its own small view,
+/// the only part of a block that reads the length: every block reads
+/// whether it is selected (once per selection), and only the selected one
+/// reads the grip's span, so a 15-minute step re-renders that block alone.
+private struct ResizableBlock<Content: View>: View {
+    let block: ScheduleBlock
+    let day: DayString
+    @ViewBuilder let content: (_ drawn: ScheduleBlock, _ selected: Bool, _ held: Bool) -> Content
+
+    @Environment(ScheduleDrag.self) private var drag
+
+    var body: some View {
+        let resize = drag.resize
+        let selected = resize.isSelected(block.id, on: day)
+        let shown = selected ? resize.shown : nil
+        content(shown.map { block.resized(to: $0) } ?? block, selected, shown != nil)
+    }
+}
+
+/// Where the selected block's grips go (design §5.6): on the selection's
+/// own day alone, and only while the block may change length
+/// (`canResize`). The selection goes when the block leaves the day or loses
+/// the gate. Every column's layer reads which block is selected (once per
+/// selection); only the selected day's draws grips, so Week × Schedule's
+/// other columns (PR 10) never re-render on a step. Hidden from VoiceOver,
+/// which has the block's length actions (§5.9).
+private struct ResizeGripLayer: View {
+    let day: DaySchedule
+    let fieldWidth: Double
+
+    @Environment(ScheduleDrag.self) private var drag
+    @Environment(SamplePlanner.self) private var planner
+
+    var body: some View {
+        let resize = drag.resize
+        let selection = resize.selected.flatMap { $0.day == day.day ? $0 : nil }
+        let block = selection.flatMap { selected in day.blocks.first { $0.id == selected.id } }
+        let usable = block.map { planner.canResize($0, in: day) } ?? false
+        ZStack(alignment: .topLeading) {
+            if let block, usable {
+                GripPair(block: block, fieldWidth: fieldWidth)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .accessibilityHidden(true)
+        .onChange(of: selection != nil && !usable, initial: true) { _, lost in
+            if lost { resize.clear() }
+        }
+    }
+}
+
+/// The selected block's two grips: small ink capsules on its pane's edge,
+/// the top one at the leading end and the bottom one at the trailing end,
+/// each a 44pt target centred on the edge (`ResizeGrips`), following the
+/// edge as a grip moves it. The only view besides the block's reader that
+/// reads the grip's span, and the one that plays the light impact at a
+/// press and a selection tick at each 15-minute step (design §5.8). It
+/// exists only while a block is selected on its day, so no other column
+/// plays them.
+private struct GripPair: View {
+    /// The block as the day lays it out.
+    let block: ScheduleBlock
+    let fieldWidth: Double
+
+    @Environment(ScheduleDrag.self) private var drag
+
+    var body: some View {
+        let resize = drag.resize
+        let drawn = resize.shown.map { block.resized(to: $0) } ?? block
+        // The lanes are the block's at rest, kept for the whole press, so a
+        // grip never jumps from under the finger (`ResizeGrips.placements`).
+        let places = ResizeGrips.placements(drawn.frame(fieldWidth: fieldWidth), plan: block.plan)
+        ZStack(alignment: .topLeading) {
+            ForEach(places, id: \.edge) { place in
+                GripHandle(block: block, edge: place.edge)
+                    .offset(x: CGFloat(place.x - ResizeGrips.target / 2),
+                            y: CGFloat(place.y - ResizeGrips.target / 2))
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .sensoryFeedback(.impact(weight: .light), trigger: resize.presses)
+        .sensoryFeedback(.selection, trigger: resize.steps)
+    }
+}
+
+/// One grip: its capsule, in ink ringed in the canvas, inside a 44pt square
+/// that takes the touch. `DragGesture(minimumDistance: 0)` as a high
+/// priority gesture, so a touch that begins on the grip resizes and never
+/// scrolls (device check R1), measured in the hours' viewport
+/// (`ResizeGrips.viewportSpace`), which stays put while the grid scrolls
+/// under a still finger. The press is the gesture's first change, at
+/// touch-down; the release writes through `SamplePlanner.resize`. A gesture
+/// that ends with no `onEnded` (cancelled, or its view gone) lets go with
+/// nothing written. Each touch acts only on the press it made (`press`): a
+/// second finger on the other grip, while one is in the hand, neither
+/// drives nor ends it, and presses from where it is once that one is let go.
+private struct GripHandle: View {
+    /// The block as the day lays it out: the span the press starts from.
+    let block: ScheduleBlock
+    let edge: ResizeEdge
+
+    @Environment(ScheduleDrag.self) private var drag
+    @Environment(SamplePlanner.self) private var planner
+    @GestureState private var pressing = false
+    /// The number of the press this grip's touch made (`BlockResize.press`),
+    /// nil while it holds none. Never cleared at the gesture's end, so the
+    /// end and the state's reset can come in either order: a number that is
+    /// no longer the press in the hand acts on nothing.
+    @State private var press: Int?
+
+    private let target = CGFloat(ResizeGrips.target)
+
+    var body: some View {
+        Capsule()
+            .fill(Color.primary)
+            .frame(width: CGFloat(ResizeGrips.width), height: CGFloat(ResizeGrips.height))
+            // Ringed in the canvas, so it reads apart from the pane's own
+            // ink outline it sits on.
+            .padding(1.5)
+            .background { Capsule().fill(Color(.systemBackground)) }
+            .frame(width: target, height: target)
+            .contentShape(Rectangle())
+            .highPriorityGesture(grip)
+            .onChange(of: pressing) { _, now in
+                // The gesture's state resets at its end as well as at a
+                // cancel, in either order with `onEnded`: a cancel is let go
+                // a turn later, once `onEnded` has had its chance, and only
+                // for the press this touch made.
+                guard !now, let press else { return }
+                let resize = drag.resize
+                Task { @MainActor in resize.cancel(press: press) }
+            }
+            .onDisappear {
+                if let press { drag.resize.cancel(press: press) }
+            }
+    }
+
+    private var grip: some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .named(ResizeGrips.viewportSpace))
+            .updating($pressing) { _, state, _ in
+                state = true
+            }
+            .onChanged { value in
+                let resize = drag.resize
+                let fingerY = Double(value.location.y)
+                let translation = Double(value.translation.height)
+                // Pressed at the first change; while the other grip is in
+                // the hand the press is refused (nil), and taken from where
+                // the finger is once that one is let go.
+                var made = press
+                if !resize.holds(made) {
+                    made = resize.press(edge, from: block.span, scrollOffset: drag.offsetY, fingerY: fingerY,
+                                        translationY: translation)
+                    press = made
+                }
+                guard let held = made else { return }
+                resize.follow(translationY: translation, fingerY: fingerY, scrollOffset: drag.offsetY, press: held)
+            }
+            .onEnded { _ in
+                guard let press, let release = drag.resize.release(press: press) else { return }
+                withAnimation(.snappy) {
+                    _ = planner.resize(release.id, edge: release.edge, from: release.from, to: release.to)
+                }
+            }
     }
 }
 

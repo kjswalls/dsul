@@ -64,6 +64,11 @@ final class ScheduleDrag {
     /// Only Week × Schedule (PR 10) has other columns to cross.
     private(set) var confinedTo: DayString?
 
+    /// The selected block and the grip in the hand (Change length, PR 9).
+    /// Here so the grid, the columns and the autoscroll share one, and so a
+    /// lift clears it: a drop never leaves grips behind (B3).
+    let resize = BlockResize()
+
     // Geometry, fed by the grid and the sheet.
     var offsetY: Double = 0
     var viewportH: Double = 0
@@ -107,6 +112,7 @@ final class ScheduleDrag {
         inFlight = true
         phase = "dragging"
         note("lift \(durationMin)m")
+        resize.clear()
         DragHold.shared.hold()
     }
 

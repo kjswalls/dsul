@@ -603,12 +603,12 @@ private func canonical(_ object: [String: Any]?) -> String? {
 
     // MARK: The block's menu and VoiceOver
 
-    @Test func aHabitsMenuIsTheTickSkipPauseAndAnytime() {
+    @Test func aHabitsMenuIsTheTickSkipPauseLengthAndAnytime() {
         let planner = makePlanner()
         let menu = planner.blockMenu(for: block(planner, "Walk"), in: schedule(planner))
         #expect(menu.status == [.tick("Done today", done: false), .skip("Skip today"), .pause])
         #expect(menu.moves.isEmpty)
-        #expect(menu.own == [.anytime])
+        #expect(menu.own == [.changeLength, .anytime])
     }
 
     @Test func aOneOffsMenuListsTheWebsVerbsInItsOrder() {
@@ -621,10 +621,11 @@ private func canonical(_ object: [String: Any]?) -> String? {
             .reschedule("Reschedule", RescheduleRow.quickRows(today: today, nextWeekStart: planner.nextWeekStart)),
             .braindump,
         ])
-        #expect(menu.own == [.anytime])
+        #expect(menu.own == [.changeLength, .anytime])
         #expect(menu.entries == menu.status + menu.moves + menu.own)
         #expect(menu.entries.map(\.title) == [
-            "Mark done", "Pause", "Move to tomorrow", "Reschedule", "Move to Braindump", "Move to Anytime",
+            "Mark done", "Pause", "Move to tomorrow", "Reschedule", "Move to Braindump", "Change length",
+            "Move to Anytime",
         ])
     }
 
@@ -678,11 +679,12 @@ private func canonical(_ object: [String: Any]?) -> String? {
         let actions = planner.spokenActions(for: block(planner, "Lunch walk"), in: schedule(planner))
         #expect(actions.map(\.name) == [
             "Mark done", "Pause", "Move to tomorrow", "Move to Braindump", "15 minutes later", "15 minutes earlier",
-            "Move to Anytime",
+            "Make 15 minutes longer", "Make 15 minutes shorter", "Move to Anytime",
         ])
         let walk = planner.spokenActions(for: block(planner, "Walk"), in: schedule(planner))
         #expect(walk.map(\.name) == [
-            "Done today", "Skip today", "Pause", "15 minutes later", "15 minutes earlier", "Move to Anytime",
+            "Done today", "Skip today", "Pause", "15 minutes later", "15 minutes earlier", "Make 15 minutes longer",
+            "Make 15 minutes shorter", "Move to Anytime",
         ])
     }
 
