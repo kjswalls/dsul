@@ -318,6 +318,8 @@ const MAPPER_OUTPUT_BY_FORMAT: Record<number, string> = {
   1: '2b7f5b75',
   2: '889d0ba3',
   3: '0ade6f0f',
+  // 4: habits carry `order` (drag to reorder, lib/reorder.ts).
+  4: 'de859e33',
 };
 
 const T1 = '2026-01-09T12:00:00+00:00';
@@ -341,7 +343,7 @@ const FULL_ROWS = {
       time_bucket: 'evening', start_time: '21:00', duration: 20, repeat_frequency: 'weekdays',
       repeat_days: [1, 2, 3, 4, 5], repeat_month_day: 2, completed_dates: ['2026-01-07'],
       skipped_dates: ['2026-01-08'], project: 'Health', project_id: 'p1', group: 'Ignored',
-      streak: 4, daily_counts: { '2026-01-07': 2 }, times_per_day: 3, current_day_count: 1,
+      streak: 4, daily_counts: { '2026-01-07': 2 }, times_per_day: 3, current_day_count: 1, order: 7,
       paused_at: '2026-01-10', paused_until: '2026-01-20', reminder_time: '20:45',
       reminder_anchor: 'before', created_at: T0, deleted_at: null,
     },

@@ -11,6 +11,8 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { flattenDayRows } from '@/lib/day-items';
 import { toDateStr } from '@/lib/recurrence';
 import { groupRows } from '@/lib/grouping';
+import { inPlannerOrder, reorderAllowed } from '@/lib/reorder';
+import { ReorderSection } from '@/components/primitives/reorder-section';
 import { orderRows } from '@/lib/sort-rows';
 import { useSinkHold } from '@/hooks/use-sink-hold';
 import { useViewStore } from '@/lib/view-store';
@@ -74,9 +76,11 @@ function DaySection({ date }: { date: Date }) {
   );
   const adding = useSlotComposer((s) => s.target?.scope === addTarget.scope);
   const openComposer = useSlotComposer((s) => s.open);
+  // In the user's own order, so rows can be dragged into a new one (lib/reorder.ts).
+  const canReorder = reorderAllowed(sortBy, groupBy);
   const groups = groupRows(flattenDayRows(day), groupBy, { routines, seasons, goals }).map((g) => ({
     ...g,
-    rows: orderRows(g.rows, sortBy, dateStr, completedAs),
+    rows: orderRows(canReorder ? inPlannerOrder(g.rows) : g.rows, sortBy, dateStr, completedAs),
   }));
 
   return (
@@ -123,16 +127,32 @@ function DaySection({ date }: { date: Date }) {
               // this view's own default look: a flat list under the date heading.
               g.label ? (
                 <GroupSection key={g.key} groupKey={g.key} label={g.label} gate={g.gate} variant="canvas">
-                  {g.rows.map((row) => (
-                    <TaskRow key={row.item.id} row={row as never} date={date} />
-                  ))}
+                  <ReorderSection
+                    id={`weeklist:${dateStr}:${g.key}`}
+                    rows={g.rows}
+                    dateStr={dateStr}
+                    completedAs={completedAs}
+                    enabled={canReorder}
+                  >
+                    {g.rows.map((row) => (
+                      <TaskRow key={row.item.id} row={row as never} date={date} />
+                    ))}
+                  </ReorderSection>
                 </GroupSection>
               ) : (
-                <div key={g.key || 'all'} className="space-y-0">
+                <ReorderSection
+                  key={g.key || 'all'}
+                  id={`weeklist:${dateStr}:${g.key || 'all'}`}
+                  rows={g.rows}
+                  dateStr={dateStr}
+                  completedAs={completedAs}
+                  enabled={canReorder}
+                  className="space-y-0"
+                >
                   {g.rows.map((row) => (
                     <TaskRow key={row.item.id} row={row as never} date={date} />
                   ))}
-                </div>
+                </ReorderSection>
               )
             )}
           </div>

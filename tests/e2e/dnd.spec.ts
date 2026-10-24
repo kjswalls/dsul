@@ -236,4 +236,62 @@ test.describe('Drag and drop flows', { tag: '@exclusive-dnd' }, () => {
       await cleanupTestData(page, [taskId]);
     }
   });
+
+  test('dragging an untimed row above its neighbour reorders it and persists', async ({ page }) => {
+    // Drag to reorder (lib/reorder.ts): inside the row's own section a drop
+    // that changes its place writes `order`, and nothing else.
+    const firstId = await createTestTask(page, {
+      title: testTitle('reorder_first'),
+      startDate: getTodayStr(),
+      isScheduled: true,
+      timeBucket: 'morning',
+      order: 1,
+    });
+    const secondId = await createTestTask(page, {
+      title: testTitle('reorder_second'),
+      startDate: getTodayStr(),
+      isScheduled: true,
+      timeBucket: 'morning',
+      order: 2,
+    });
+
+    try {
+      await reloadApp(page);
+      const first = itemCard(page, firstId);
+      const second = itemCard(page, secondId);
+      await expect(second).toBeVisible();
+      const idsInMorning = () =>
+        bucket(page, 'morning').locator('[data-testid="item-card"]').evaluateAll((els) =>
+          els.map((el) => el.getAttribute('data-item-id'))
+        );
+      expect(await idsInMorning()).toEqual([firstId, secondId]);
+
+      // Both rows are in the user's own order, so both carry the grip.
+      await expect(first).toHaveAttribute('data-movable', 'true');
+      await expect(second).toHaveAttribute('data-movable', 'true');
+
+      // Pressed at the title's start: the row's middle holds its hover controls,
+      // which swallow a press (helpers/dnd.ts pressPoint).
+      const from = await pressPoint(second);
+      await page.mouse.move(from.x, from.y);
+      await page.mouse.down();
+      await page.mouse.move(from.x, from.y - 8, { steps: 4 });
+      // Measured AFTER activation: an empty bucket opens its drop slot the
+      // moment a drag starts (CONTRACT.md), which moves every card below it.
+      const to = (await first.boundingBox())!;
+      await page.mouse.move(from.x, to.y + 4, { steps: 12 });
+      await expect(page.getByTestId('reorder-line')).toBeVisible();
+      await page.mouse.up();
+
+      await expect.poll(idsInMorning).toEqual([secondId, firstId]);
+      await reloadApp(page);
+      await expect.poll(idsInMorning).toEqual([secondId, firstId]);
+      // Still a morning row with no time: a reorder moves nothing else.
+      const persisted = await fetchTestTask(page, secondId);
+      expect(persisted?.timeBucket).toBe('morning');
+      expect(persisted?.startTime ?? null).toBeNull();
+    } finally {
+      await cleanupTestData(page, [firstId, secondId]);
+    }
+  });
 });

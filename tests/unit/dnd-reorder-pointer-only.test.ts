@@ -2,45 +2,29 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { resolveDrop, type DropCommand, type DropContext } from '@/lib/dnd/handle-drag-end';
+import { registerReorderSection, reorderTargetAt } from '@/lib/dnd/reorder-sections';
 
 /**
- * Drag never reorders — which is why "no row reorder on mobile" needs no
- * mobile branch.
+ * Drag reorders only on a pointer, and only through one door.
  *
- * ## The decision this pins
+ * ## The decisions this pins
  *
- * Kirby: "I don't think we need to be able to drag Rows on mobile." Read as
- * REORDER — the reading the ticket carried — the removal turned out to be a
- * removal of nothing:
- * dsul has no drag-to-reorder on any platform. `planner-store.reorderTasks`
- * exists and has zero call sites; `@dnd-kit/sortable` is in package.json and is
- * imported nowhere; the only reorder UI in the product is the Organize console's
- * up/down buttons (`components/planner/organize/member-list.tsx`), which are
- * buttons on purpose and already work with a thumb.
+ * Kirby, earlier: "I don't think we need to be able to drag Rows on mobile."
+ * Kirby, 2026-10-24: rows in a list in the user's own order reorder by drag on
+ * desktop, and the phone gets Move up / Move down in the row's ⋯ sheet instead.
  *
- * Every drop the grammar in lib/dnd/CONTRACT.md can resolve is a MOVE: it
- * assigns a bucket, a day, a time, a project block, or unschedules. None of them
- * writes `items.order`. So the property "a finger cannot initiate a reorder" is
- * currently true for the strongest possible reason — there is no reorder in the
- * drag path for any input type to reach — and gating it on `isMobile` would be a
- * branch guarding a thing that does not exist.
+ * So a reorder is NOT a drop. Every id in the grammar of lib/dnd/CONTRACT.md
+ * still resolves to a MOVE (below, unchanged). A reorder is decided beside the
+ * grammar, by `reorderTargetAt` (lib/dnd/reorder-sections.ts), from where the
+ * pointer is among the row's own peers, and the shell writes it on release
+ * instead of resolving the drop. That function answers null for a finger, so
+ * a phone's long press is never a reorder — and since dnd-kit sensors do not
+ * tell drop targets apart, this file is the tripwire on any second path that
+ * would let touch inherit one silently.
  *
- * ## Why a test rather than a code change
- *
- * Because the property is free today and would stop being free silently.
- * `lib/sort-rows.ts` already names the follow-up ("Wire drag-to-reorder into the
- * untimed section…"), and `orderable: true` on the task type is standing
- * permission to do it. The day someone does, touch inherits it by default —
- * dnd-kit sensors do not distinguish drop targets — and Kirby's decision is
- * reversed without anyone deciding to reverse it. These two checks are the
- * tripwire on that, and they are what "capability-shaped" can mean when the
- * capability's answer is currently "nobody has this".
- *
- * Deliberately NOT blocked: a reorder driven by BUTTONS. That is the pattern the
- * Organize console already uses, it is the WCAG 2.5.7 single-pointer
- * alternative, and it is the shape a mobile reorder should take if one is ever
- * wanted. The second check below scopes itself to files that import dnd-kit for
- * exactly that reason.
+ * A reorder driven by BUTTONS stays allowed everywhere (Alt+↑/↓, the row
+ * menu's and the sheet's Move up / Move down): the WCAG 2.5.7 single-pointer
+ * alternative.
  */
 
 /**
@@ -172,16 +156,18 @@ describe('the drag path cannot acquire a reorder without this failing', () => {
     expect(draggers.length).toBeGreaterThan(5);
   });
 
-  it('no file that imports dnd-kit also calls a reorder action', () => {
+  it('the shell is the only drag surface that writes a reorder', () => {
     // Scoped to dnd-kit importers on purpose: a BUTTON-driven reorder is the
-    // accessible pattern and must stay allowed. It is drag-driven reorder that
-    // silently re-arms the gesture Kirby declined.
-    const offenders = SOURCE_FILES.filter((file) => {
+    // accessible pattern and stays allowed anywhere. A drag-driven one has one
+    // door, the shell's release handler, which writes only what
+    // `reorderTargetAt` answered — and that answers null for a finger.
+    const writers = SOURCE_FILES.filter((file) => {
       const source = readFileSync(file, 'utf8');
-      return DND_IMPORT.test(source) && /\breorder[A-Z]\w*\s*\(/.test(source);
-    });
+      // The two questions (`reorderAllowed`, `reorderTargetAt`) write nothing.
+      return DND_IMPORT.test(source) && /\breorder(?!Allowed\b|TargetAt\b)[A-Z]\w*\s*\(/.test(source);
+    }).map((file) => file.slice(process.cwd().length + 1));
 
-    expect(offenders).toEqual([]);
+    expect(writers).toEqual(['components/shell/app-shell.tsx']);
   });
 
   it('@dnd-kit/sortable is imported nowhere', () => {
@@ -193,5 +179,32 @@ describe('the drag path cannot acquire a reorder without this failing', () => {
     );
 
     expect(offenders).toEqual([]);
+  });
+});
+
+describe('a finger never reorders', () => {
+  function section() {
+    document.body.innerHTML = `
+      <div id="s">
+        <div data-item-id="a"></div><div data-item-id="b"></div><div data-item-id="c"></div>
+      </div>`;
+    const el = document.getElementById('s')!;
+    el.getBoundingClientRect = () => ({ left: 0, right: 400, top: 0, bottom: 120, width: 400, height: 120 }) as DOMRect;
+    el.querySelectorAll<HTMLElement>('[data-item-id]').forEach((row, i) => {
+      row.getBoundingClientRect = () => ({ left: 0, right: 400, top: i * 40, bottom: i * 40 + 40, width: 400, height: 40 }) as DOMRect;
+    });
+    return registerReorderSection('s', { el, peers: { task: ['a', 'b', 'c'], habit: [] } });
+  }
+
+  it('a cursor dragging c above a gets a reorder', () => {
+    const off = section();
+    expect(reorderTargetAt('c', ['c'], { x: 10, y: 5 }, 'pointer')?.sequence).toEqual(['c', 'a', 'b']);
+    off();
+  });
+
+  it('the same gesture by a finger gets nothing', () => {
+    const off = section();
+    expect(reorderTargetAt('c', ['c'], { x: 10, y: 5 }, 'touch')).toBeNull();
+    off();
   });
 });

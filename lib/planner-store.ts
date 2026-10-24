@@ -104,6 +104,7 @@ import { raiseModEvent, raiseModEvents, raiseModOnlyEvents, isModEventsSuppresse
 import { uncompletionsBetween } from './mods/undo-events';
 import type { CommitResult, SeedPlan } from './seed-containers';
 import { ITEM_TYPES, getItemTypeConfig, itemTypeName, isSkippable, isPausable, isCollectible, hydrateCustomTypes } from './item-registry';
+import { ordersFor } from './reorder';
 import {
   isPausedOn,
   isSeasonActiveOn,
@@ -424,7 +425,11 @@ interface PlannerStore {
    * as by the selection.
    */
   fileCompletedToDays: (entries: readonly { id: string; date: string }[]) => void;
-  reorderTasks: (taskIds: string[]) => void;
+  /**
+   * Drag to reorder (lib/reorder.ts): `sequence` is a section's peers (one
+   * kind) in their new order. Writes only the `order`s that change, as one undo.
+   */
+  reorderItems: (sequence: string[], label?: string) => void;
   /**
    * Apply an accepted AI proposal. Operations are re-validated against the type
    * registry here (never trust the model), then applied in ONE set() so the
@@ -1933,6 +1938,15 @@ function loadPlannerTables(userId: string): Promise<PlannerData> {
   }));
 }
 
+/**
+ * The `order` a new row takes to land at the END of its kind's list: one past
+ * the highest held. Not the list's length, which it equalled until drag to
+ * reorder (lib/reorder.ts) began reusing and spreading the numbers.
+ */
+function nextOrder(rows: readonly { order?: number }[]): number {
+  return rows.reduce((max, r) => (r.order != null && r.order > max ? r.order : max), -1) + 1;
+}
+
 export const usePlannerStore = create<PlannerStore>()(
   persist(
     (set, get) => {
@@ -3341,7 +3355,7 @@ export const usePlannerStore = create<PlannerStore>()(
           id: crypto.randomUUID(),
           status: 'pending',
           isScheduled: !!timeBucket,
-          order: get().tasks.length,
+          order: nextOrder(get().tasks),
           projectId: projectIdFor(taskData.project, get().projects),
         };
         // Resolved at the item's OWN start date, not today — a task created
@@ -3396,7 +3410,7 @@ export const usePlannerStore = create<PlannerStore>()(
         // buys.
         setNextActionLabel(`Bulk add: ${itemsData.length} items`);
 
-        const baseOrder = get().tasks.length;
+        const baseOrder = nextOrder(get().tasks);
         const projects = get().projects;
         const rows: Item[] = itemsData.map((itemData, i) => {
           const timeBucket = autoCorrectBucket(itemData.startTime, itemData.timeBucket);
@@ -3453,7 +3467,7 @@ export const usePlannerStore = create<PlannerStore>()(
         // Orders and project ids were stamped against the store the landing
         // replaced. Task rows go after the landed ones, in the order the person
         // last left them (a drag over the failed load included), across groups.
-        let next = get().tasks.length;
+        let next = nextOrder(get().tasks);
         const orderOf = new Map(
           back
             .flat()
@@ -3895,15 +3909,15 @@ export const usePlannerStore = create<PlannerStore>()(
            * leaves the item somewhere the user can find it.
            */
           const unscheduled = new Set<string>();
-          // Mirrors addTask's `order: get().tasks.length`, advanced per create so
+          // Mirrors addTask's `order: nextOrder(tasks)`, advanced per create so
           // a multi-item plan doesn't stack every new task on the same index.
           //
           // Top-level creates ONLY. Subtasks are absent from the tasks projection
           // (projectItems filters `!parentItemId`), so counting them here would
           // push the cursor past a length that never included them — and a step
-          // added by hand afterwards, ordered by the real `tasks.length`, would
+          // added by hand afterwards, ordered past the real top-level tasks, would
           // sort into the MIDDLE of the generated list after a reload.
-          let orderCursor = state.tasks.length;
+          let orderCursor = nextOrder(state.tasks);
           // Steps get their own run, per parent, continuing that parent's
           // existing children rather than restarting at zero.
           const childCursors = new Map<string, number>();
@@ -4204,27 +4218,31 @@ export const usePlannerStore = create<PlannerStore>()(
         );
       },
 
-      reorderTasks: (taskIds) => {
-        setNextActionLabel('Reorder tasks');
-        // Tasks absent from taskIds keep their current order — a partial list
-        // (e.g. one filtered view) must never drop the rest of the store.
-        const orderById = new Map(taskIds.map((id, index) => [id, index]));
-        const changed: TaskItem[] = [];
+      reorderItems: (sequence, label = 'Reorder') => {
+        const items = get().items;
+        const byId = new Map(items.map((i) => [i.id, i]));
+        const current = new Map<string, number | undefined>();
+        for (const id of sequence) {
+          const item = byId.get(id);
+          if (item && getItemTypeConfig(itemTypeName(item)).orderable) {
+            current.set(id, (item as { order?: number }).order);
+          }
+        }
+        const changed = ordersFor([...current.keys()], current);
+        if (changed.size === 0) return;
+        setNextActionLabel(label);
 
         set((state) => projectItems(
           state.items.map((i) => {
-            if (i.type !== 'task') return i;
-            const order = orderById.get(i.id);
-            if (order === undefined || order === i.order) return i;
-            const updated = { ...i, order };
-            changed.push(updated);
-            return updated;
+            const order = changed.get(i.id);
+            return order === undefined ? i : ({ ...i, order } as Item);
           }),
         ));
 
-        changed.forEach((t) =>
-          dbUpdateItem(t.id, 'task', { order: t.order }).catch(console.error)
-        );
+        changed.forEach((order, id) => {
+          const item = byId.get(id)!;
+          dbUpdateItem(id, dbTypeOf(item), { order }).catch(console.error);
+        });
       },
 
       /**
@@ -4913,6 +4931,8 @@ export const usePlannerStore = create<PlannerStore>()(
           skippedDates: [],
           dailyCounts: {},
           currentDayCount: 0,
+          // The end of the habits list (drag to reorder, lib/reorder.ts).
+          order: nextOrder(get().habits),
           projectId: projectIdFor(habitData.project, get().projects),
         };
         // No date argument: habits are date-blind, so the receipt resolves at

@@ -55,7 +55,10 @@ export function conversionBlock(item: Item, toType: string, ctx: ConvertContext)
     }
   }
   if (!to.milestoneEligible && ctx.milestoneIds.has(item.id)) return 'It’s a goal milestone';
-  if (!to.orderable && (item as { inProjectBlock?: boolean }).inProjectBlock) return 'It’s in a project block';
+  // A project block holds date-anchored, ordered rows. This asked `orderable`
+  // alone until habits became orderable (lib/reorder.ts); a habit is not
+  // date-anchored, so it is still refused, and a custom type still is too.
+  if ((!to.dateAnchored || !to.orderable) && (item as { inProjectBlock?: boolean }).inProjectBlock) return 'It’s in a project block';
   const assignee = (item as { assignee?: string }).assignee;
   if (!to.agentAssignable && assignee) return `It’s assigned to ${assigneeLabel(assignee)}`;
   return null;

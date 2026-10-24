@@ -18,6 +18,8 @@ import { BUCKET_ORDER } from '@/lib/day-items';
 import { groupRows, type GroupableRow, type RowGroup } from '@/lib/grouping';
 import { groupBySupport } from '@/lib/view-options';
 import { sinkCompleted } from '@/lib/sort-rows';
+import { reorderAllowed } from '@/lib/reorder';
+import { ReorderSection } from '@/components/primitives/reorder-section';
 import { useSinkHold } from '@/hooks/use-sink-hold';
 import { toDateStr } from '@/lib/recurrence';
 import type { Task, HabitItem, Project, TimeBucket } from '@/lib/planner-types';
@@ -246,6 +248,10 @@ function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurre
    * position already means something else.
    */
   const { completedAs, rootRef } = useSinkHold(setBucketRef);
+  // Buckets has no Ordering control; the grouping alone decides whether the
+  // untimed rows are in the user's own order (lib/reorder.ts). deriveDayItems
+  // already sorts them by `order`.
+  const canReorder = reorderAllowed('default', canvasGroupBy);
   const untimedGroups = (
     canvasGroupBy !== 'none' && groupBySupport('day', 'buckets', canvasGroupBy).honoured
       ? groupRows(untimedRows, canvasGroupBy, { routines, seasons, goals })
@@ -301,9 +307,17 @@ function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurre
           >
             {untimedGroups.map((g) => (
               <GroupSection key={g.key} groupKey={g.key} label={g.label} gate={g.gate} variant="canvas">
-                {g.rows.map((row) => (
-                  <TaskRow key={row.item.id} row={row as never} />
-                ))}
+                <ReorderSection
+                  id={`bucket:${dateStr}:${bucket}:${g.key}`}
+                  rows={g.rows}
+                  dateStr={dateStr}
+                  completedAs={completedAs}
+                  enabled={canReorder}
+                >
+                  {g.rows.map((row) => (
+                    <TaskRow key={row.item.id} row={row as never} />
+                  ))}
+                </ReorderSection>
               </GroupSection>
             ))}
             {!hasUntimed && dragging && (

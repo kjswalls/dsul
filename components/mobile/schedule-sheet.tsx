@@ -1,6 +1,6 @@
 'use client';
 
-import { Clock, Sunrise, Sun, Sunset, ArrowLeftToLine, Redo2, SkipForward, Trash2, Undo2, ListChecks, Pause, Play } from 'lucide-react';
+import { ArrowDown, ArrowUp, Clock, Sunrise, Sun, Sunset, ArrowLeftToLine, Redo2, SkipForward, Trash2, Undo2, ListChecks, Pause, Play } from 'lucide-react';
 import {
   Drawer,
   DrawerContent,
@@ -41,6 +41,7 @@ export function ScheduleSheet() {
   const row = useScheduleSheet((s) => s.row);
   const close = useScheduleSheet((s) => s.close);
   const rowDateStr = useScheduleSheet((s) => s.dateStr);
+  const moves = useScheduleSheet((s) => s.moves);
   const {
     scheduleTask,
     assignHabitToBucket,
@@ -237,6 +238,32 @@ export function ScheduleSheet() {
               }}
             >
               <Redo2 className="mr-2 h-4 w-4" /> {nextDayLabel(nextDay, todayStr)}
+            </Button>
+          )}
+          {moves?.up && (
+            <Button
+              variant="ghost"
+              className="justify-start"
+              data-testid="sheet-move-up-button"
+              onClick={() => {
+                moves.up?.();
+                close();
+              }}
+            >
+              <ArrowUp className="mr-2 h-4 w-4" /> Move up
+            </Button>
+          )}
+          {moves?.down && (
+            <Button
+              variant="ghost"
+              className="justify-start"
+              data-testid="sheet-move-down-button"
+              onClick={() => {
+                moves.down?.();
+                close();
+              }}
+            >
+              <ArrowDown className="mr-2 h-4 w-4" /> Move down
             </Button>
           )}
           {canBraindump && (

@@ -4,6 +4,18 @@ import { create } from 'zustand';
 import type { DragInput } from './dnd/sensors';
 
 /**
+ * Where a drag would REORDER if released now (lib/dnd/reorder-sections.ts):
+ * the section, the peers' new order, and the insertion line's offset from the
+ * section's top. Null while the pointer is outside the row's own section, or
+ * the drop would change nothing, or the drag is a finger's.
+ */
+export interface ReorderTarget {
+  sectionId: string;
+  sequence: string[];
+  lineY: number;
+}
+
+/**
  * Active-drag state, isolated from React state in AppShell on purpose:
  * a useState there re-rendered the ENTIRE app tree (desktop + both mobile
  * panels + dialogs) on every drag start/end, which is what made the drag
@@ -22,6 +34,8 @@ interface DragStore {
    * other from the last. `lib/dnd/drop-targets.ts` is what reads it.
    */
   input: DragInput | null;
+  reorder: ReorderTarget | null;
+  setReorder: (target: ReorderTarget | null) => void;
   startDrag: (id: string, input: DragInput) => void;
   endDrag: () => void;
 }
@@ -29,6 +43,8 @@ interface DragStore {
 export const useDragStore = create<DragStore>((set) => ({
   activeId: null,
   input: null,
-  startDrag: (id, input) => set({ activeId: id, input }),
-  endDrag: () => set({ activeId: null, input: null }),
+  reorder: null,
+  setReorder: (reorder) => set({ reorder }),
+  startDrag: (id, input) => set({ activeId: id, input, reorder: null }),
+  endDrag: () => set({ activeId: null, input: null, reorder: null }),
 }));

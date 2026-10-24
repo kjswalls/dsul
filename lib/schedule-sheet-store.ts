@@ -19,13 +19,25 @@ interface ScheduleSheetStore {
    * day at all — both of which the sheet's per-date actions need to know.
    */
   dateStr: string | null;
-  open: (row: SheetRow, dateStr?: string | null) => void;
+  /**
+   * Move up / Move down, when the row sits in a list in the user's own order
+   * (lib/reorder.ts). The phone's way to reorder: long press there is a move,
+   * never a reorder (Kirby, 2026-10-24).
+   */
+  moves: SheetMoves | null;
+  open: (row: SheetRow, dateStr?: string | null, moves?: SheetMoves | null) => void;
   close: () => void;
+}
+
+export interface SheetMoves {
+  up: (() => void) | null;
+  down: (() => void) | null;
 }
 
 export const useScheduleSheet = create<ScheduleSheetStore>((set) => ({
   row: null,
   dateStr: null,
-  open: (row, dateStr = null) => set({ row, dateStr }),
-  close: () => set({ row: null, dateStr: null }),
+  moves: null,
+  open: (row, dateStr = null, moves = null) => set({ row, dateStr, moves }),
+  close: () => set({ row: null, dateStr: null, moves: null }),
 }));

@@ -918,6 +918,12 @@ export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     /** See taskShape.projectId: the name stays authoritative, the id survives renames. */
     projectId: z.ZodOptional<z.ZodString>;
     /**
+     * Where the habit sits among habits in a list (`items.order`), set by drag to
+     * reorder. On the ITEM shape only: the legacy `habits[]` projection never
+     * carried it, and `toLegacyHabit` keeps it out.
+     */
+    order: z.ZodOptional<z.ZodNumber>;
+    /**
      * Local wall-clock 'HH:mm' for this item's daily cue, or absent for no
      * reminder. NOT a timestamp: see migration 032 on why the instant-shaped
      * items.reminder_at column was left alone rather than reused.
@@ -979,6 +985,7 @@ export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     reminderTime?: string | undefined;
     reminderAnchor?: string | undefined;
     project?: string | undefined;
+    order?: number | undefined;
     projectId?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -1003,6 +1010,7 @@ export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     reminderTime?: string | undefined;
     reminderAnchor?: string | undefined;
     project?: string | undefined;
+    order?: number | undefined;
     projectId?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -1027,6 +1035,7 @@ export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     reminderTime?: string | undefined;
     reminderAnchor?: string | undefined;
     project?: string | undefined;
+    order?: number | undefined;
     projectId?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -1051,6 +1060,7 @@ export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     reminderTime?: string | undefined;
     reminderAnchor?: string | undefined;
     project?: string | undefined;
+    order?: number | undefined;
     projectId?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -1482,6 +1492,12 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     /** See taskShape.projectId: the name stays authoritative, the id survives renames. */
     projectId: z.ZodOptional<z.ZodString>;
     /**
+     * Where the habit sits among habits in a list (`items.order`), set by drag to
+     * reorder. On the ITEM shape only: the legacy `habits[]` projection never
+     * carried it, and `toLegacyHabit` keeps it out.
+     */
+    order: z.ZodOptional<z.ZodNumber>;
+    /**
      * Local wall-clock 'HH:mm' for this item's daily cue, or absent for no
      * reminder. NOT a timestamp: see migration 032 on why the instant-shaped
      * items.reminder_at column was left alone rather than reused.
@@ -1543,6 +1559,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     reminderTime?: string | undefined;
     reminderAnchor?: string | undefined;
     project?: string | undefined;
+    order?: number | undefined;
     projectId?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -1567,6 +1584,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     reminderTime?: string | undefined;
     reminderAnchor?: string | undefined;
     project?: string | undefined;
+    order?: number | undefined;
     projectId?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -1768,6 +1786,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     reminderTime?: string | undefined;
     reminderAnchor?: string | undefined;
     project?: string | undefined;
+    order?: number | undefined;
     projectId?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -1861,6 +1880,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     reminderTime?: string | undefined;
     reminderAnchor?: string | undefined;
     project?: string | undefined;
+    order?: number | undefined;
     projectId?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -3983,6 +4003,12 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         /** See taskShape.projectId: the name stays authoritative, the id survives renames. */
         projectId: z.ZodOptional<z.ZodString>;
         /**
+         * Where the habit sits among habits in a list (`items.order`), set by drag to
+         * reorder. On the ITEM shape only: the legacy `habits[]` projection never
+         * carried it, and `toLegacyHabit` keeps it out.
+         */
+        order: z.ZodOptional<z.ZodNumber>;
+        /**
          * Local wall-clock 'HH:mm' for this item's daily cue, or absent for no
          * reminder. NOT a timestamp: see migration 032 on why the instant-shaped
          * items.reminder_at column was left alone rather than reused.
@@ -4044,6 +4070,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         reminderTime?: string | undefined;
         reminderAnchor?: string | undefined;
         project?: string | undefined;
+        order?: number | undefined;
         projectId?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
@@ -4068,6 +4095,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         reminderTime?: string | undefined;
         reminderAnchor?: string | undefined;
         project?: string | undefined;
+        order?: number | undefined;
         projectId?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
@@ -4269,6 +4297,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         reminderTime?: string | undefined;
         reminderAnchor?: string | undefined;
         project?: string | undefined;
+        order?: number | undefined;
         projectId?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
@@ -4362,6 +4391,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         reminderTime?: string | undefined;
         reminderAnchor?: string | undefined;
         project?: string | undefined;
+        order?: number | undefined;
         projectId?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
@@ -4734,6 +4764,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         reminderTime?: string | undefined;
         reminderAnchor?: string | undefined;
         project?: string | undefined;
+        order?: number | undefined;
         projectId?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
@@ -4951,6 +4982,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         reminderTime?: string | undefined;
         reminderAnchor?: string | undefined;
         project?: string | undefined;
+        order?: number | undefined;
         projectId?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;

@@ -108,7 +108,11 @@ function byTimeThenOrder(a: { startTime?: string; order?: number }, b: { startTi
   if (a.startTime && b.startTime) return a.startTime.localeCompare(b.startTime);
   if (a.startTime && !b.startTime) return -1;
   if (!a.startTime && b.startTime) return 1;
-  return (a.order ?? 0) - (b.order ?? 0);
+  // A missing order sorts LAST, as the load's `ORDER BY "order"` puts NULLs
+  // (habits made since 019 never wrote one). lib/reorder.ts's compareOrder.
+  if (a.order == null) return b.order == null ? 0 : 1;
+  if (b.order == null) return -1;
+  return a.order - b.order;
 }
 
 /**
@@ -213,13 +217,9 @@ export function deriveDayItems(input: DayItemsInput): DayItems {
     // it left those rows wherever the filter happened to emit them, so a 9am
     // habit could render BELOW an untimed one.
     //
-    // What this fixes is exactly that: timed rows now lead, in time order. The
-    // `order` tail is inert for habits — habitShape has no `order`
-    // (packages/types/src/schemas.ts:206), itemFromRow's habit branch never
-    // reads one, and the registry says `orderable: false` (item-registry.ts:319)
-    // — so two untimed habits still compare equal. That is fine and deliberate:
-    // the sort is stable and dbListItems loads `ORDER BY "order", created_at`,
-    // so they hold their creation order rather than drifting.
+    // What this fixes is exactly that: timed rows now lead, in time order.
+    // Untimed habits then follow their `order`, which drag to reorder writes
+    // (lib/reorder.ts) now that the registry says `orderable: true` for habits.
     .sort(byTimeThenOrder)
     .forEach((h) => habitsByBucket[h.timeBucket as TimeBucket].push(h));
 

@@ -542,7 +542,7 @@ describe('a row filed over a failed load, until a landing settles it', () => {
     captureTask('Milk');
     captureTask('Eggs');
     const [milk, eggs] = store().items.map((i) => i.id);
-    store().reorderTasks([eggs, milk]);
+    store().reorderItems([eggs, milk]);
 
     writesWork();
     await retryLanding([task('t-fresh', 'Already there')]);

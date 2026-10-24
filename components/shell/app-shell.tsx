@@ -9,6 +9,7 @@ import {
   useSensor,
   useSensors,
   DragEndEvent,
+  DragMoveEvent,
   DragStartEvent,
   DragOverlay,
   MeasuringStrategy,
@@ -68,6 +69,7 @@ import { useSelectionStore } from '@/lib/selection-store';
 import { hoveredItem } from '@/lib/hovered-item';
 import { renameInPanel, startRename } from '@/lib/item-rename';
 import { listGroupMovers, parseProjectBlockId, placementOf, resolveDrop } from '@/lib/dnd/handle-drag-end';
+import { reorderTargetAt } from '@/lib/dnd/reorder-sections';
 import { sidebarDropPlan } from '@/lib/dnd/sidebar-drop';
 import { toDateStr } from '@/lib/recurrence';
 import { useCommandShortcuts } from '@/hooks/use-command-shortcuts';
@@ -272,6 +274,35 @@ export function beginDrag(event: DragStartEvent) {
 }
 
 /**
+ * Where a release would reorder, asked on every move (lib/dnd/reorder-sections.ts).
+ * The pointer is where the drag started plus how far it has come; a selection
+ * the row belongs to reorders as a block.
+ */
+export function trackReorder(event: DragMoveEvent) {
+  const drag = useDragStore.getState();
+  const start = event.activatorEvent as PointerEvent | null;
+  if (!start || typeof start.clientY !== 'number') return;
+  const activeId = event.active.id as string;
+  const selected = useSelectionStore.getState().selectedIds;
+  const moving = selected.has(activeId) && selected.size >= 2 ? [...selected] : [activeId];
+  const next = reorderTargetAt(
+    activeId,
+    moving,
+    { x: start.clientX + event.delta.x, y: start.clientY + event.delta.y },
+    drag.input
+  );
+  const prev = drag.reorder;
+  if (
+    prev === next ||
+    (prev && next && prev.sectionId === next.sectionId && prev.lineY === next.lineY &&
+      prev.sequence.join() === next.sequence.join())
+  ) {
+    return;
+  }
+  drag.setReorder(next);
+}
+
+/**
  * App shell: owns the DndContext, global keyboard shortcuts, the EOD deep
  * link, the dialog mount point, and the desktop/mobile split.
  * Extracted from app/page.tsx (P2 of the redesign plan).
@@ -441,7 +472,14 @@ export function AppShell() {
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
+    // Read before endDrag clears it: a drop inside the row's own list that
+    // changes its place is a REORDER (lib/reorder.ts), and nothing else.
+    const reorder = useDragStore.getState().reorder;
     useDragStore.getState().endDrag();
+    if (reorder) {
+      usePlannerStore.getState().reorderItems(reorder.sequence);
+      return;
+    }
     if (!over) return;
 
     // Event-time snapshot — the drop resolves against whatever the store holds
@@ -770,6 +808,7 @@ export function AppShell() {
       sensors={sensors}
       collisionDetection={plannerCollision}
       onDragStart={beginDrag}
+      onDragMove={trackReorder}
       onDragEnd={handleDragEnd}
       // dnd-kit dispatches CANCEL, not end, on Escape / `touchcancel` /
       // `cancelDrop` — so without this the store kept `activeId` (and now

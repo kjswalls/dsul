@@ -238,33 +238,35 @@ every target is offered to every input" above. Those two, plus the sensor split,
 whole of what touch does differently. Every other drag is identical for a finger and a
 cursor.
 
-### Every drop is a MOVE. No drop reorders.
+### Every drop is a MOVE. A reorder is not a drop.
 
 Read the action column above as a set: it assigns a bucket, a day, a time, a project
-block, or it unschedules. Not one of the five `DropCommand` kinds writes `items.order`.
-dsul has no drag-to-reorder — on touch, on a mouse, anywhere. `planner-store.reorderTasks`
-exists with zero call sites, `@dnd-kit/sortable` is a dependency imported nowhere, and the
-only reorder UI in the product is the Organize console's up/down buttons
-(`components/planner/organize/member-list.tsx`, "Buttons, not drag").
+block, or it unschedules. Not one of the `DropCommand` kinds writes `items.order`, and
+none ever may (`tests/unit/dnd-reorder-pointer-only.test.ts` sweeps the whole grammar).
 
-This is load-bearing for a decision, not trivia. Asked whether rows should be
-drag-reorderable on a phone, Kirby said no. That answer is already in force — and it is in
-force for the strongest possible reason, that there is nothing for a finger to reach — so
-there is no `isMobile` gate anywhere, and there must not be one: a branch guarding a
-capability nobody has is a branch that rots.
+Drag to reorder (Kirby, 2026-10-24; rules in `lib/reorder.ts`) sits BESIDE the grammar,
+not in it. A list in the user's own order (Default ordering, a grouping with no order of
+its own) wraps its rows in `ReorderSection` (`components/primitives/reorder-section.tsx`),
+which registers the section's movable peers: untimed, unfinished rows of an orderable
+type, by kind. On every move `trackReorder` (app-shell) asks `reorderTargetAt`
+(`lib/dnd/reorder-sections.ts`) where the pointer sits among the dragged row's OWN peers,
+read off the DOM, and keeps the answer in `drag-store.reorder`, which draws the lime
+insertion line. On release a non-null answer is written with `reorderItems` and the drop
+is not resolved at all. Two things keep that from contesting the grammar:
 
-What makes it fragile is that it is free by accident. `lib/sort-rows.ts` names the
-follow-up ("Wire drag-to-reorder into the untimed section…"), `orderable: true` on the task
-type is standing permission to build it, and dnd-kit sensors do not distinguish drop
-targets — so the day one lands, touch inherits it silently and the decision reverses with
-nobody deciding to reverse it. `tests/unit/dnd-no-reorder.test.ts` is the tripwire: it
-classifies every `DropCommand` kind through a `Record` keyed by the union (so a new kind
-fails `tsc` until someone answers move-or-reorder), and it fails if any file that imports
-dnd-kit calls a `reorder*` action or if `@dnd-kit/sortable` is ever imported.
+1. **It only fires inside the row's own section**, where the drop it replaces would land
+   the row where it already is (its own `list:{date}`, `unscheduled:{bucket}`, `sidebar`).
+   Outside, the answer is null and the drop resolves exactly as before.
+2. **It answers null for a finger.** Kirby declined drag-reorder on a phone (long press is
+   a move there); the phone gets Move up / Move down in the row's ⋯ sheet, and a pointer
+   also gets them in the right-click menu and as Alt+↑/↓. That is the only input
+   difference, and it lives in one place: `reorderTargetAt`'s `input` check. dnd-kit
+   sensors do not tell targets apart, so the test also pins that the shell is the only
+   dnd-kit file that writes a reorder.
 
-A reorder driven by BUTTONS is deliberately still allowed, and is the shape any mobile
-reorder should take: it is what the Organize console already does, and it is the
-single-pointer alternative WCAG 2.5.7 asks for.
+`@dnd-kit/sortable` is still imported nowhere (and the test holds it there): a
+`SortableContext` would move rows around under the pointer and take the touch path with
+it, which is the reversal this design exists to avoid.
 
 ## Helpers
 
@@ -280,6 +282,7 @@ single-pointer alternative WCAG 2.5.7 asks for.
 
 ## Store actions consumed
 
+`reorderItems(sequence)` (the reorder above, never from `resolveDrop`) ·
 `scheduleTask(id, bucket, time?, dateStr?)` · `scheduleHabit(id, bucket, time?)` ·
 `assignHabitToBucket(id, bucket)` · `unscheduleTask(id)` · `moveTaskToProjectBlock(id)`
 (all `lib/planner-store.ts`).

@@ -150,6 +150,10 @@ function itemFromRow(row: ItemRow): Item {
       repeatMonthDay: row.repeat_month_day ?? undefined,
       timesPerDay: row.times_per_day ?? undefined,
       currentDayCount: row.current_day_count ?? undefined,
+      // Undefined, not 0, when the column is NULL (habits made since 019 never
+      // wrote one): the load is `ORDER BY "order"`, which puts NULLs LAST, and
+      // the in-app comparators read a missing order the same way.
+      order: row.order ?? undefined,
       notes: row.notes ?? undefined,
       pausedAt: row.paused_at ?? undefined,
       pausedUntil: row.paused_until ?? undefined,
@@ -327,6 +331,7 @@ function itemToRow(userId: string, item: Item): ItemRow {
       repeat_month_day: item.repeatMonthDay ?? null,
       times_per_day: item.timesPerDay ?? null,
       current_day_count: item.currentDayCount ?? null,
+      order: item.order ?? null,
       notes: item.notes ?? null,
       ...pauseColumns(item),
       ...containerColumns(item),
@@ -487,6 +492,8 @@ function habitUpdatesToRow(updates: Partial<HabitItem>): Record<string, unknown>
   if ('repeatMonthDay' in updates) row.repeat_month_day = updates.repeatMonthDay ?? null;
   if ('timesPerDay' in updates) row.times_per_day = updates.timesPerDay ?? null;
   if ('currentDayCount' in updates) row.current_day_count = updates.currentDayCount ?? null;
+  // Drag to reorder (lib/reorder.ts). Same guard as the task side's.
+  if ('order' in updates && updates.order != null) row.order = updates.order;
   if ('notes' in updates) row.notes = updates.notes ?? null;
   // Pause — see the task allowlist's note; habits need their own entries
   // because the two lists are deliberately never merged.
@@ -3132,7 +3139,8 @@ export function toLegacyTask(item: TaskItem): Task {
  * KEEPING ITS ID, so the id an old plugin build already holds still resolves.
  */
 export function toLegacyHabit(item: HabitItem): Habit {
-  const { type: _type, project, projectId, ...rest } = item;
+  // `order` stays home: the legacy shape never had it (lib/reorder.ts).
+  const { type: _type, project, projectId, order: _order, ...rest } = item;
   // `?? ''` restores the legacy column's NOT NULL semantics. `HabitSchema.group`
   // is a required string and the plugin throws on drift, so an unfiled habit has
   // to reach it as '' — which is exactly what `itemFromRow` produced before the
