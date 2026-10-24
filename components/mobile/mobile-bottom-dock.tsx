@@ -5,6 +5,7 @@ import { Inbox, LayoutGrid, Plus, Search, Sun } from 'lucide-react';
 import { AskMarkIcon, AskMarkUnlitIcon } from '@/components/ai/ask-mark';
 import { AnswererLabel, BoundComposer } from '@/components/ai/bound-composer';
 import { ProposalCard } from '@/components/ai/proposal-card';
+import { useNeedsYouCount } from '@/components/ai/needs-you/needs-you-badge';
 import { Omnibar } from '@/components/sidebar/omnibar';
 import { DockNoticesMobile } from '@/components/sidebar/dock-notices';
 import { UndoStrip } from '@/components/notices/undo-strip';
@@ -324,6 +325,10 @@ function TabPill({
   // counts, since it covers Today's view while it is open.
   const braindumpOpen = useMobileNavStore((s) => s.braindumpOpen);
   const AskGlyph = setupShown ? AskMarkUnlitIcon : AskMarkIcon;
+  // What is waiting on the user, on the Ask tab as on the desktop's Ask key;
+  // Ask home lists it all.
+  const { canChat } = useAICapabilities();
+  const { open: waiting } = useNeedsYouCount();
 
   return (
     <nav
@@ -345,6 +350,7 @@ function TabPill({
           id="chat"
           label={askLabel(setupShown, askFix)}
           icon={<AskGlyph className="size-[19px]" />}
+          count={canChat ? waiting : 0}
           selected={activeTab === 'chat' && !organizeOpen}
           onClick={() => setActiveTab('chat')}
         />
@@ -369,6 +375,7 @@ function TabKey({
   selected,
   disabled = false,
   description,
+  count = 0,
   onClick,
 }: {
   id: string;
@@ -377,6 +384,8 @@ function TabKey({
   selected: boolean;
   disabled?: boolean;
   description?: string;
+  /** What is waiting on the user, on the icon's corner (the Ask tab's). */
+  count?: number;
   onClick: () => void;
 }) {
   return (
@@ -397,7 +406,21 @@ function TabKey({
         disabled && 'opacity-50'
       )}
     >
-      {icon}
+      <span className="relative">
+        {icon}
+        {count > 0 && (
+          <span
+            data-ask-count=""
+            data-testid={`mobile-tab-${id}-count`}
+            className="absolute -top-2 -right-3 grid place-items-center"
+          >
+            <span className="ask-count-disc grid h-[17px] min-w-[17px] place-items-center rounded-full px-1 text-[10px] leading-none font-semibold tabular-nums">
+              {count > 9 ? '9+' : count}
+            </span>
+            <span className="sr-only">{` waiting on you`}</span>
+          </span>
+        )}
+      </span>
       <span className="max-w-full truncate px-1">{label}</span>
     </button>
   );

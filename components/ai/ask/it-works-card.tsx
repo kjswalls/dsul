@@ -14,7 +14,7 @@ import {
   MessageCircle,
   type LucideIcon,
 } from 'lucide-react';
-import { ASK_SECTION_HEADING } from '@/components/ai/ask/needs-you';
+import { ASK_SECTION_HEADING } from '@/components/ai/ask/section-heading';
 import { labelName } from '@/components/ai/connect/connect-shared';
 import { useAIConnectionStore, type JustConnected } from '@/lib/ai-connection-store';
 import { FLOW_COPY, flowSaved } from '@/lib/connect-flow';

@@ -3,6 +3,7 @@
 import { useId, useRef, useState } from 'react';
 import { Check, ChevronLeft, ChevronRight, Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { OWN_WORDS_ROW, optionKeyClass, optionRowClass } from '@/components/ai/option-rows';
 import { useAgentQuestion } from '@/hooks/use-agent-question';
 import { openItemFromAsk } from '@/lib/open-chat';
 import { askerInitial, choiceLetter, type Asker } from '@/lib/needs-you';
@@ -20,7 +21,27 @@ import type { AgentItem } from '@/lib/ask-home';
  * Keys, while focus is in the card and not in the field: A to H pick a
  * choice, ← → page, Enter submits.
  */
-export function AskerCard({ asker, focusItemId }: { asker: Asker; focusItemId?: string | null }) {
+/**
+ * How a card is framed: 'card' is its own bordered surface (Ask home's Needs
+ * you, which sits on a panel); 'bare' leaves the frame to whatever holds it
+ * (the Ask key's peek, where the popover is the card), so there is never a
+ * card inside a card.
+ */
+export type QuestionFrame = 'card' | 'bare';
+export const QUESTION_FRAME: Record<QuestionFrame, string> = {
+  card: 'rounded-xl border border-border bg-card px-3 py-2.5',
+  bare: 'px-3 py-2.5',
+};
+
+export function AskerCard({
+  asker,
+  focusItemId,
+  frame = 'card',
+}: {
+  asker: Asker;
+  focusItemId?: string | null;
+  frame?: QuestionFrame;
+}) {
   const pending = useNeedsYouStore((s) => s.pending);
   const undo = useNeedsYouStore((s) => s.undo);
   const open = asker.items.filter((i) => !pending[i.id]);
@@ -37,7 +58,7 @@ export function AskerCard({ asker, focusItemId }: { asker: Asker; focusItemId?: 
     <div
       data-testid="asker-card"
       data-asker={asker.assignee}
-      className="flex flex-col gap-2 rounded-xl border border-border bg-card px-3 py-2.5"
+      className={cn('flex flex-col gap-2', QUESTION_FRAME[frame])}
     >
       <div className="flex items-center gap-2">
         <AskerAvatar asker={asker} />
@@ -195,18 +216,9 @@ function Question({ item, onPage }: { item: AgentItem; onPage?: (delta: number) 
                     setTyped('');
                     setPicked(on ? null : option);
                   }}
-                  className={cn(
-                    'flex w-full items-start gap-2 rounded-lg border px-2.5 py-1.5 text-left text-sm transition-colors',
-                    on ? 'border-transparent bg-primary text-primary-foreground' : 'border-border text-foreground hover:bg-secondary'
-                  )}
+                  className={optionRowClass(on)}
                 >
-                  <span
-                    aria-hidden
-                    className={cn(
-                      'mt-px grid size-4.5 shrink-0 place-items-center rounded border text-2xs font-medium',
-                      on ? 'border-primary-foreground/30' : 'border-border text-muted-foreground'
-                    )}
-                  >
+                  <span aria-hidden className={optionKeyClass(on)}>
                     {choiceLetter(i)}
                   </span>
                   <span className="min-w-0 break-words">{option}</span>
@@ -216,7 +228,7 @@ function Question({ item, onPage }: { item: AgentItem; onPage?: (delta: number) 
           })}
         </ul>
       )}
-      <div className="flex items-center gap-1 rounded-lg border border-border pr-1.5 pl-2.5 focus-within:ring-1 focus-within:ring-ring">
+      <div className={OWN_WORDS_ROW}>
         <Pencil className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
         <label htmlFor={fieldId} className="sr-only">
           Your own words

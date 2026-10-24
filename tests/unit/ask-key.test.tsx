@@ -889,7 +889,7 @@ describe("the key's paint (app/globals.css)", () => {
       '--ask-key-pair',
     ]);
     // The unlit mark's inks are the look's own text inks, not a colour of their own.
-    const slot = all.find((r) => r.selectors.includes(':is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip])'));
+    const slot = all.find((r) => r.selectors.includes(':is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip], [data-ask-count])'));
     expect(values(slot!.body, '--ask-icon-unlit')).toEqual(['var(--ink-1)']);
     expect(values(slot!.body, '--ask-icon-unlit-mid')).toEqual(['var(--ink-2)']);
   });

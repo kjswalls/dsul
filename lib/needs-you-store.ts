@@ -37,6 +37,15 @@ interface NeedsYouState {
   flush: () => void;
   openInbox: (focus?: string | null) => void;
   closeInbox: () => void;
+  /**
+   * How many anchors for the inbox are on screen now: the Ask key's count
+   * (ask-opener.tsx) and the header pill (needs-you-badge.tsx) each hold one
+   * while drawn, so `openNeedsYou` (lib/needs-you-door.ts) knows whether
+   * opening the inbox shows anything, or Ask has to.
+   */
+  hosts: number;
+  /** Hold an anchor; the returned function lets it go. */
+  hostInbox: () => () => void;
 }
 
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -96,6 +105,17 @@ export const useNeedsYouStore = create<NeedsYouState>((set, get) => {
 
     openInbox: (focus = null) => set({ inbox: { open: true, focus } }),
     closeInbox: () => set({ inbox: { open: false, focus: null } }),
+
+    hosts: 0,
+    hostInbox: () => {
+      set((s) => ({ hosts: s.hosts + 1 }));
+      let held = true;
+      return () => {
+        if (!held) return;
+        held = false;
+        set((s) => ({ hosts: Math.max(0, s.hosts - 1) }));
+      };
+    },
   };
 });
 

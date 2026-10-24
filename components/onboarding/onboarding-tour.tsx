@@ -5,7 +5,7 @@ import { X, ArrowRight, ChevronLeft, MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { OPENER_ICONS } from '@/components/ai/ask/it-works-card';
-import { ASK_SECTION_HEADING } from '@/components/ai/ask/needs-you';
+import { ASK_SECTION_HEADING } from '@/components/ai/ask/section-heading';
 import { useOpenerContext } from '@/hooks/use-opener-context';
 import { cn } from '@/lib/utils';
 import { usePlannerStore } from '@/lib/planner-store';

@@ -16,7 +16,7 @@ import {
   Undo2,
   type LucideIcon,
 } from 'lucide-react';
-import { ASK_SECTION_HEADING } from '@/components/ai/ask/needs-you';
+import { ASK_SECTION_HEADING } from '@/components/ai/ask/section-heading';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { useAIConnectionStore } from '@/lib/ai-connection-store';
 import { detectKeyProvider, isSureKey, type DetectedProvider } from '@/lib/ai-key-prefix';

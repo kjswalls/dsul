@@ -34,6 +34,7 @@ import { doneNext } from '@/lib/do-stuff';
 import { answerLearnStyle, noteTaken } from '@/lib/learn-style';
 import { openDraftedSteps } from '@/components/sidebar/first-steps';
 import { choiceLetter } from '@/lib/needs-you';
+import { OWN_WORDS_ROW, optionKeyClass, optionRowClass } from '@/components/ai/option-rows';
 import { cn } from '@/lib/utils';
 
 /**
@@ -474,18 +475,9 @@ export function QuestionBody({
                         aria-pressed={on}
                         onClick={() => tap(i, o)}
                         data-testid="prep-pack-option"
-                        className={cn(
-                          'flex w-full items-start gap-2 rounded-lg border px-2.5 py-1.5 text-left text-sm transition-colors',
-                          on ? 'border-transparent bg-primary text-primary-foreground' : 'border-border text-foreground hover:bg-secondary'
-                        )}
+                        className={optionRowClass(on)}
                       >
-                        <span
-                          aria-hidden
-                          className={cn(
-                            'mt-px grid size-4.5 shrink-0 place-items-center rounded border text-2xs font-medium',
-                            on ? 'border-primary-foreground/30' : 'border-border text-muted-foreground'
-                          )}
-                        >
+                        <span aria-hidden className={optionKeyClass(on)}>
                           {q.multi && on ? <Check className="size-3" /> : choiceLetter(j)}
                         </span>
                         <span data-testid="prep-pack-option-text" className="min-w-0 break-words">
@@ -498,7 +490,7 @@ export function QuestionBody({
               </ul>
             )}
             {(!numbered || !q.options?.length || i === questions.length - 1 || typed[i]) && (
-              <div className="flex items-center gap-1 rounded-lg border border-border pr-1.5 pl-2.5 focus-within:ring-1 focus-within:ring-ring">
+              <div className={OWN_WORDS_ROW}>
                 <Pencil className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
                 <input
                   value={typed[i]}

@@ -9,6 +9,7 @@ import { usePlannerLoaded } from '@/lib/planner-ready';
 import { openItemFromAsk } from '@/lib/open-chat';
 import { choiceLetter } from '@/lib/needs-you';
 import { useNeedsYouStore } from '@/lib/needs-you-store';
+import { openNeedsYou } from '@/lib/needs-you-door';
 import type { AgentItem } from '@/lib/ask-home';
 
 /** Choices a block draws at most; the inbox has the rest. */
@@ -24,8 +25,8 @@ export function hasOpenQuestion(item: { assignee?: string; aiStatus?: string }):
  * (memory/plans/power-mode.md, build order 4): "◐ OpenClaw: Tue or Thu?",
  * and, where the block is tall enough, its first lettered choices. A choice
  * answers at once, held for Undo like the inbox's (lib/needs-you-store.ts);
- * the question opens the inbox on this item, or the item itself on the phone,
- * which has no header badge.
+ * the question opens the inbox on this item (or Ask, when nothing drawn
+ * holds the inbox: lib/needs-you-door.ts), or the item itself on the phone.
  *
  * The block is a drag handle and a click target of its own, so every control
  * here stops the press from reaching it.
@@ -36,7 +37,6 @@ export function BlockAsk({ item, choices }: { item: AgentItem; choices: boolean 
   const held = useNeedsYouStore((s) => s.pending[item.id]);
   const answer = useNeedsYouStore((s) => s.answer);
   const undo = useNeedsYouStore((s) => s.undo);
-  const openInbox = useNeedsYouStore((s) => s.openInbox);
   const { options } = useAgentQuestion(item);
   // Answering is a write: not over the look-only preview (ask-home.tsx has why).
   if (!loaded) return null;
@@ -72,7 +72,7 @@ export function BlockAsk({ item, choices }: { item: AgentItem; choices: boolean 
             onClick={(e) => {
               stopOpen(e);
               if (isMobile) openItemFromAsk(item);
-              else openInbox(item.id);
+              else openNeedsYou(item.id);
             }}
             className="pointer-events-auto flex min-w-0 items-center gap-1 self-start rounded-sm text-left text-[11px] text-warning-text hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
           >

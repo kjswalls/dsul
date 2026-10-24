@@ -3,7 +3,7 @@
 import { useId, type ReactNode } from 'react';
 import { Loader2 } from 'lucide-react';
 import { ConversationGlyph } from '@/components/ai/ask/history-view';
-import { ASK_SECTION_HEADING } from '@/components/ai/ask/needs-you';
+import { ASK_SECTION_HEADING } from '@/components/ai/ask/section-heading';
 import type { ActivityRow } from '@/lib/ask-home';
 import { clockTime } from '@/lib/format-chat-timestamp';
 import { openConversation, openItemFromAsk } from '@/lib/open-chat';
