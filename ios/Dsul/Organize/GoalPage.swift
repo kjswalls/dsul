@@ -256,7 +256,7 @@ private struct MilestoneRowView: View {
                 .fill(Color(.secondarySystemGroupedBackground))
             switch line.state {
             case .achieved:
-                TickCircle(done: true, habit: false, diameter: node)
+                TickBox(done: true, habit: false, diameter: node)
             case .next:
                 Circle()
                     .strokeBorder(Color.accentColor, lineWidth: 2)

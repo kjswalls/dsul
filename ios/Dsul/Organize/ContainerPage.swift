@@ -600,7 +600,7 @@ struct MemberRowView: View {
                 // Drawn at 22 in a 30pt column, hit over 44pt: the overhang
                 // grows the hit shape and leaves the layout alone.
                 Button(action: toggle) {
-                    TickCircle(done: row.done, habit: row.item.isHabit)
+                    TickBox(done: row.done, habit: row.item.isHabit)
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
@@ -683,7 +683,7 @@ struct MemberRowView: View {
                 .foregroundStyle(Color.secondary)
                 .frame(width: 30, height: 30)
         } else {
-            TickCircle(done: row.done, habit: row.item.isHabit)
+            TickBox(done: row.done, habit: row.item.isHabit)
                 .frame(width: 30, height: 30)
         }
     }
