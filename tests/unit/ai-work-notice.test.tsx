@@ -3,10 +3,10 @@ import { cleanup, render, renderHook } from '@testing-library/react';
 
 /**
  * The dock's one line about the AI's work (components/notices/ai-work-notice.tsx):
- * what is ready, said once for the account instead of on every row, its words
  * what waits on an answer, under a slow sheen, and Answer, which opens the
- * quick round; the relay as its glyph while work goes on; nothing about what
- * is ready (the do stuff key says that); nothing while doing stuff.
+ * quick round; nothing about what is being worked on (the rows say that, with
+ * the relay); nothing about what is ready (the do stuff key says that);
+ * nothing while doing stuff.
  */
 
 const work = vi.hoisted(() => ({ value: { working: false, workingCount: 0, ready: 0, questions: 0 } }));
@@ -55,25 +55,22 @@ describe('the AI work line', () => {
     expect(n.trayTitle).toBeTruthy();
   });
 
-  it("leaves the desktop's questions to the header's Needs you badge, and still says what is being worked on", () => {
-    work.value = { working: false, workingCount: 0, ready: 0, questions: 2 };
+  it("leaves the desktop's questions to the header's Needs you badge, so the desktop has no line", () => {
     const desktop = () => renderHook(() => useAIWorkNotice({ questions: false })).result.current;
-    expect(desktop()).toBeNull();
     work.value = { working: true, workingCount: 1, ready: 0, questions: 2 };
-    expect(labelOf(desktop()!).textContent).toBe('Getting 1 thing ready');
+    expect(desktop()).toBeNull();
   });
 
-  it('says what is being worked on, with the relay as its glyph', () => {
+  it('says nothing about what is being worked on: the rows carry the relay', () => {
     work.value = { working: true, workingCount: 2, ready: 0, questions: 0 };
-    const n = notice()!;
-    expect(n.label).toBe('Getting 2 things ready');
-    expect(n.rank).toBe(NOTICE_RANK.statement);
-    expect(glyphOf(n).querySelector('[data-ai-relay]')).not.toBeNull();
+    expect(notice()).toBeNull();
   });
 
-  it('keeps the relay on the questions line while work goes on', () => {
+  it('keeps the question dot on the questions line while work goes on', () => {
     work.value = { working: true, workingCount: 1, ready: 1, questions: 1 };
-    expect(glyphOf(notice()!).querySelector('[data-ai-relay]')).not.toBeNull();
+    const glyph = glyphOf(notice()!);
+    expect(glyph.querySelector('[data-ai-dot="question"]')).not.toBeNull();
+    expect(glyph.querySelector('[data-ai-relay]')).toBeNull();
   });
 
   it('is gone while doing stuff, where the lanes say it', () => {
