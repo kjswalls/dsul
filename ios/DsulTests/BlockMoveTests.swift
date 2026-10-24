@@ -359,7 +359,11 @@ private func canonical(_ object: [String: Any]?) -> String? {
         drag.beginMove(itemID: walk, durationMin: 20, source: .block(day: today), anchor: 0.25, confinedTo: today)
         #expect(DragHold.shared.isHeld)
         #expect(drag.inFlight)
-        #expect(drag.lifts(walk))
+        #expect(drag.lifts(walk, on: today))
+        // Walk is every day's: in Week × Schedule its block on another day
+        // is not the one in the air, so it stays drawn (B8, PR 10).
+        #expect(!drag.lifts(walk, on: today.adding(days: 1)))
+        #expect(!drag.lifts(walk, on: today.adding(days: -1)))
         #expect(drag.source == .block(day: today))
         _ = planner.moveBlock(walk, from: planner.blockOrigin(walk, on: today),
                               to: .hour(date: today.description, startMin: 8 * 60 + 15))
@@ -368,7 +372,7 @@ private func canonical(_ object: [String: Any]?) -> String? {
         // The session ends after the drop: what landed is still known.
         drag.reset()
         #expect(!drag.inFlight)
-        #expect(!drag.lifts(walk))
+        #expect(!drag.lifts(walk, on: today))
         #expect(drag.itemID == nil)
         #expect(drag.ghostDay == nil)
         #expect(drag.source == .block(day: today))
@@ -381,7 +385,7 @@ private func canonical(_ object: [String: Any]?) -> String? {
         #expect(DragHold.shared.isHeld)
         #expect(drag.source == .braindump)
         #expect(drag.anchor == 0.5)
-        #expect(!drag.lifts(SampleData.uuid(18)))
+        #expect(!drag.lifts(SampleData.uuid(18), on: today))
         planner.placeAnytime(SampleData.uuid(18), on: today)
         #expect(!DragHold.shared.isHeld)
         drag.beginMove(itemID: walk, durationMin: 20, source: .block(day: today), anchor: 0.5, confinedTo: today)
@@ -449,10 +453,10 @@ private func canonical(_ object: [String: Any]?) -> String? {
         #expect(drag.events.isEmpty)
 
         drag.beginMove(itemID: walk, durationMin: 20, source: .block(day: today), anchor: 0.5, confinedTo: today)
-        #expect(drag.lifts(walk))
+        #expect(drag.lifts(walk, on: today))
         drag.endStrayLift()
         #expect(!drag.inFlight)
-        #expect(!drag.lifts(walk))
+        #expect(!drag.lifts(walk, on: today))
         #expect(drag.itemID == nil)
         #expect(drag.events.last == "menu picked")
         DragHold.shared.releaseNow()

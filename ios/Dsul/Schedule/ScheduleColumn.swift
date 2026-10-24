@@ -4,7 +4,9 @@ import SwiftUI
 /// One day's 24 hours, right of the gutter (design §5.1): the hour lines, the
 /// lane, the day's blocks where the overlap pass put them, the now marker on
 /// today, and the drop ghost. Day's grid is the gutter and one column; Week ×
-/// Schedule (PR 10) will be the gutter and seven.
+/// Schedule (PR 10, WeekSchedule.swift) is the gutter and seven, each in its
+/// compact form (`compact`: a block says its title and, from 45 minutes up,
+/// its start) and opening its blocks on its own day (`opensOn`).
 ///
 /// The column draws `day`, a value laid out once by ScheduleView, and never
 /// reads the drag itself: the ghost is `ScheduleDragLayer`, and a lifted
@@ -30,6 +32,12 @@ struct ScheduleColumn: View {
     /// Now, on today only.
     let nowMin: Int?
     let timeFormat: TimeFormat
+    /// The day a block's sheet acts on: the selected day's on Day, the
+    /// column's own in Week × Schedule (`.on(day)`), as Week × List's rows.
+    var opensOn: SheetDay = .selected
+    /// Week × Schedule's blocks (design §4.5): one line of title, and the
+    /// mono start under it from 45 minutes up.
+    var compact = false
 
     @Environment(SamplePlanner.self) private var planner
     /// Written from the drag session's and the menu's callbacks only, never
@@ -91,11 +99,12 @@ struct ScheduleColumn: View {
         let actions = planner.spokenActions(for: block, in: day)
         let tint = accent(for: block)
         return ResizableBlock(block: block, day: day.day) { drawn, selected, held in
-            BlockView(block: drawn, fieldWidth: width, nowMin: nowMin, timeFormat: timeFormat, accent: tint,
-                      actions: actions, selected: selected, showsRange: held,
-                      onOpen: { planner.open(block.id, day: .selected) },
+            BlockView(block: drawn, day: day.day, fieldWidth: width, nowMin: nowMin, timeFormat: timeFormat,
+                      accent: tint, actions: actions, selected: selected, showsRange: held,
+                      onOpen: { planner.open(block.id, day: opensOn) },
                       onTick: { tick(block) },
-                      onAction: { action in run(action, on: block) })
+                      onAction: { action in run(action, on: block) },
+                      compact: compact)
         }
         .contextMenu {
             BlockMenuItems(menu: planner.blockMenu(for: block, in: day)) { entry in
@@ -409,9 +418,10 @@ private struct BlockMenuItems: View {
 /// The drop ghost: where a dragged row or block would land, drawn as a lone
 /// block (`blockFrame` with no plan) of the item's own length, a lime tint
 /// with dashed lime edges and its landing time in ink, on the column the
-/// drag says (`ghostDay`). The only view on the grid that reads the drag's
-/// every step, and the one that ticks a selection haptic at each 15-minute
-/// step (design §5.8).
+/// drag says (`ghostDay`). The only view on a column that reads the drag's
+/// every step. The selection haptic at each 15-minute step (design §5.8) is
+/// ScheduleView's `GhostStepHaptic`, once for the Schedule, so Week ×
+/// Schedule's seven columns never play it seven times.
 private struct ScheduleDragLayer: View {
     let day: DayString
     let fieldWidth: Double
@@ -433,7 +443,6 @@ private struct ScheduleDragLayer: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
-        .sensoryFeedback(.selection, trigger: drag.ghostStartMin)
     }
 }
 

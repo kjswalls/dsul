@@ -7,8 +7,9 @@ import UIKit
 
 /// The Schedule as SwiftUI draws it (Week and blocks PRs 4 to 6), hosted in a
 /// window: a ghost step, or a grip's step (PR 9), re-renders only its own
-/// small views and derives nothing, while a change to the planner still lays
-/// the day out again; and every SF Symbol a block or the band draws exists.
+/// small views and derives nothing, in Day and in Week × Schedule (PR 10),
+/// while a change to the planner still lays the day (or the week) out
+/// again; and every SF Symbol a block or the band draws exists.
 /// Runs on the xcode-27 runner only; the Linux shim never compiles it
 /// (ScheduleLayoutTests is the shim's half).
 @MainActor
@@ -123,6 +124,66 @@ import UIKit
         let after = await settle(window, planner)
         #expect(after > rendered, "A length lays the day out again")
         drag.resize.clear()
+        DragHold.shared.releaseNow()
+    }
+
+    /// Week × Schedule (PR 10, design §4.5 "Cost"): the week is laid out
+    /// once, from a kept `week(of:)`, and a ghost walked down a column and
+    /// across to the next redraws the ghost and derives nothing; a tick lays
+    /// the week out again. It opens with the hours under the pinned heads
+    /// and the selected day at the leading edge (a Thursday, the fifth of a
+    /// week starting Sunday, which the week's end allows to lead).
+    @Test func aWeekGhostStepDerivesNothing() async {
+        let planner = makePlanner()
+        let drag = ScheduleDrag()
+        let window = host(ScheduleView(showProbe: false, nowMin: 10 * 60, scope: .week, drag: drag)
+            .environment(planner))
+        defer { window.isHidden = true }
+
+        let rendered = await settle(window, planner)
+        #expect(rendered > 0, "The Schedule laid its week out")
+        #expect(drag.hoursTop > 0, "The hours start under the pinned heads")
+        #expect(drag.columnDays.count == 7)
+        #expect(drag.columnWidth > 0, "The columns were measured")
+        // The outer scroll geometry is the hours' own scroll view, not the
+        // columns' nested inside it: only the hours' content is taller than
+        // its viewport, and only it opened toward 8:00 (a safe-area inset
+        // may sit between the two readings, never 120pt).
+        #expect(drag.viewportH > 0 && drag.viewportH < drag.contentH, "The hours' scroll view reports")
+        #expect(abs(drag.offsetY - 8 * ScheduleMetrics.hourPx) < 120, "The hours opened at 8:00")
+        // The opening column can land a frame after the derive count holds
+        // still: wait for the offset to hold still too, five frames running.
+        var lastX = drag.offsetX
+        var stillFrames = 0
+        var frames = 0
+        while stillFrames < 5 && frames < 120 {
+            await frame(window)
+            frames += 1
+            stillFrames = abs(drag.offsetX - lastX) < 0.5 ? stillFrames + 1 : 0
+            lastX = drag.offsetX
+        }
+        #expect(abs(drag.offsetX - 4 * drag.columnWidth) < 1, "The selected day leads")
+
+        // Within the visible hours, clear of both edges' zones, so neither
+        // autoscroll moves; one column, then the next.
+        let days = drag.columnDays
+        let top = drag.offsetY + drag.hoursTop
+        for (step, y) in stride(from: top + 100, through: top + 300, by: 20).enumerated() {
+            drag.columnUpdate(day: days[step < 5 ? 4 : 5], phase: .active, y: y)
+            await frame(window)
+        }
+        #expect(drag.ghostStartMin != nil)
+        #expect(drag.ghostDay == days[5])
+        #expect(planner.derivations == rendered, "A ghost step re-derived the week")
+
+        drag.reset()
+        await settle(window, planner)
+        #expect(planner.derivations == rendered)
+
+        let standup = planner.items.first { $0.title == "Standup" }!
+        planner.toggleRow(standup.id, on: planner.today)
+        let after = await settle(window, planner)
+        #expect(after > rendered, "A tick lays the week out again")
         DragHold.shared.releaseNow()
     }
     #endif

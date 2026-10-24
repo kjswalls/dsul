@@ -198,14 +198,41 @@ enum ScheduleAutoscroll {
     /// with both on, the two would scroll it twice.
     static let handDrivesTopEdge = false
 
+    /// Whether the phone scrolls Week × Schedule's columns sideways itself
+    /// while a drag rests at a side edge (`SideAutoscroll`, PR 10). On: the
+    /// columns are a scroll view inside the hours' scroll view, which the
+    /// system's drag autoscroll is not known to reach. Turn it off if device
+    /// check W-S3 (ios/README.md, "Checking Week × Schedule") finds the
+    /// columns scroll twice at an edge, the system's and this one.
+    static let handDrivesSideEdges = true
+
+    /// Whether the phone scrolls Week × Schedule's top edge itself, from just
+    /// below the pinned strips (`visibleTop: hoursTop`, design §4.5): on,
+    /// since the system's own zone sits at the top of the scroll view, under
+    /// the headings, where a finger over the hours never is. Turn it off if
+    /// device check W-S3 (ios/README.md, "Checking Week × Schedule") finds
+    /// the hours scroll up twice as fast just below the strips, the system's
+    /// and this one. If they scroll while the finger is over a strip or a
+    /// heading, that is the system's zone, which no switch here reaches: the
+    /// design's fallback is heads that scroll away with the hours.
+    static let handDrivesWeekTopEdge = true
+
+    /// Does a drag scroll the top edge by hand? Behind `handDrivesTopEdge`
+    /// on Day; under Week × Schedule's pinned heads (`hoursTop` above 0),
+    /// behind `handDrivesWeekTopEdge`, whose zone starts below the strips.
+    static func drivesTopEdge(hoursTop: Double) -> Bool {
+        return handDrivesTopEdge || (hoursTop > 0 && handDrivesWeekTopEdge)
+    }
+
     /// One frame's scroll, in points (negative is up), for a finger
     /// `fingerY` points down the grid's viewport, `viewportH` tall with its
-    /// bottom `coveredBottom` points under the sheet: DsulCore's
-    /// `autoscrollStep` over the part of the grid that shows, with the top
-    /// edge only when `topEdge`.
+    /// bottom `coveredBottom` points under the sheet and its top `visibleTop`
+    /// points under Week's pinned heads: DsulCore's `autoscrollStep` over the
+    /// part of the grid that shows, with the top edge only when `topEdge`.
     static func step(fingerY: Double, viewportH: Double, coveredBottom: Double, dt: Double,
-                     topEdge: Bool = handDrivesTopEdge) -> Double {
-        let step = autoscrollStep(fingerY: fingerY, visibleTop: 0, visibleBottom: viewportH - coveredBottom, dt: dt)
+                     topEdge: Bool = handDrivesTopEdge, visibleTop: Double = 0) -> Double {
+        let step = autoscrollStep(fingerY: fingerY, visibleTop: visibleTop, visibleBottom: viewportH - coveredBottom,
+                                  dt: dt)
         return step < 0 && !topEdge ? 0 : step
     }
 }
@@ -331,6 +358,51 @@ extension SamplePlanner {
     func dropSource(_ id: UUID, said: DragSource?, on day: DayString) -> DragSource {
         if let said, said.day != nil { return said }
         return braindump.contains { $0.id == id } ? .braindump : .block(day: day)
+    }
+
+    /// `id` let go on `day`'s hours at `startMin`, by whichever surface took
+    /// it: Day's grid or a Week × Schedule column (PR 10). Routed by the item
+    /// (`dropSource`, with what the drag says of it, `said`): a block or an
+    /// Anytime row moves by the drop rule from the day it was lifted on
+    /// (`moveBlock`), so a one-off carried to another column takes that
+    /// column's day and a habit or a series keeps its own (B18); a braindump
+    /// row keeps its hour drop on `day` (`schedule(_:on:startMin:)`).
+    func dropOnHour(_ id: UUID, said: DragSource?, on day: DayString, startMin: Int) {
+        switch dropSource(id, said: said, on: day) {
+        case .block(let from), .anytime(let from):
+            moveBlock(id, from: blockOrigin(id, on: from), to: .hour(date: day.description, startMin: startMin))
+        case .braindump:
+            schedule(id, on: day, startMin: startMin)
+        }
+    }
+
+    /// `id` let go on `day`'s Anytime band (Day) or strip (a Week × Schedule
+    /// column), routed as `dropOnHour` is: a block or an Anytime row by the
+    /// drop rule to `.anytime` (which refuses another day's, B22), a
+    /// braindump row through `placeAnytime`.
+    func dropOnAnytime(_ id: UUID, said: DragSource?, on day: DayString) {
+        switch dropSource(id, said: said, on: day) {
+        case .block(let from), .anytime(let from):
+            moveBlock(id, from: blockOrigin(id, on: from), to: .anytime(date: day.description))
+        case .braindump:
+            placeAnytime(id, on: day)
+        }
+    }
+
+    /// The band's or a strip's proposal while `id` is in the air over
+    /// `day`'s Anytime (design §5.4): true for the forbidden badge. A block
+    /// or an Anytime row asks the drop rule from the day it was lifted on
+    /// (`refusesDrop`), which refuses another day's Anytime in v1 (B22); a
+    /// braindump row, or a drag whose lift was missed, asks the Date chip's
+    /// gate (`canPlaceAnytime`). With nothing in the air, it refuses.
+    func refusesAnytimeDrop(_ id: UUID?, source: DragSource?, on day: DayString) -> Bool {
+        guard let id else { return true }
+        switch source {
+        case .block(let from)?, .anytime(let from)?:
+            return refusesDrop(id, from: blockOrigin(id, on: from), to: .anytime(date: day.description))
+        case .braindump?, nil:
+            return !canPlaceAnytime(id, on: day)
+        }
     }
 
     /// May `id` go to Anytime on `day`, keeping the day and dropping its

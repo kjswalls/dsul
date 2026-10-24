@@ -195,6 +195,13 @@ final class SamplePlanner {
     /// Ignored by Observation, so counting re-renders nothing.
     @ObservationIgnored private(set) var derivations = 0
     #endif
+    /// The last week `week(of:)` worked out, with what it was worked out
+    /// from (design §4.6): Week × Schedule asks for its week on every render,
+    /// and a ghost step must not derive seven days again. Ignored by
+    /// Observation, so filling it re-renders nothing; `week(of:)` still reads
+    /// every input it is keyed on, so a view that asked is told when any of
+    /// them moves.
+    @ObservationIgnored private var weekCache: (key: WeekInputs, week: [DayString: DayItems])?
 
     /// What RootView presents: the sheet, unless the braindump sheet is up,
     /// since a view can't present over a sheet its own subtree put up.
@@ -396,13 +403,32 @@ final class SamplePlanner {
     /// is held back and what shows resolved at each day's own date, so a pause
     /// ending mid-week or a season starting Thursday lands on the right day
     /// (design §4.6; the web's week views do the same, per date).
+    ///
+    /// Worked out once per change (PR 10): the answer is kept with the inputs
+    /// it was worked out from (`WeekInputs`, everything `derive` reads, and
+    /// the week's first day), and asked again with the same inputs it is
+    /// handed back without deriving anything. Keyed on the inputs themselves
+    /// rather than a revision the writes bump, so no write, fetch, container
+    /// change or zone change can be missed. An unchanged array compares in
+    /// constant time (Swift's `==` checks the storage first), and a changed
+    /// one stops at its first difference. A hit keeps the key it was asked
+    /// with, so after a fetch hands back equal arrays in new storage, only the
+    /// first ask compares them element by element.
     func week(of day: DayString) -> [DayString: DayItems] {
-        let split = DsulCore.project(items)
-        let zone = timeZoneID
-        var out: [DayString: DayItems] = [:]
-        for date in weekDays(of: day, settings.weekStartDay) {
-            out[date] = derive(on: date, split: split, zone: zone)
+        let days = weekDays(of: day, settings.weekStartDay)
+        let key = WeekInputs(start: days.first ?? day, items: items, projects: projectRecords, routines: routines,
+                             seasons: seasons, away: awayPeriods, showCompletedTasks: settings.showCompletedTasks,
+                             zone: timeZoneID)
+        if let cached = weekCache, cached.key == key {
+            weekCache = (key, cached.week)
+            return cached.week
         }
+        let split = DsulCore.project(items)
+        var out: [DayString: DayItems] = [:]
+        for date in days {
+            out[date] = derive(on: date, split: split, zone: key.zone)
+        }
+        weekCache = (key, out)
         return out
     }
 
@@ -480,15 +506,22 @@ final class SamplePlanner {
                       snapshot: before)
     }
 
-    /// Puts an item on the selected day's grid at `startMin`: a braindump row
-    /// dropped on an hour (or VoiceOver's "Schedule at 9:00"); a block or an
+    /// Puts an item on the selected day's grid at `startMin`
+    /// (`schedule(_:on:startMin:)` on `selectedDay`): VoiceOver's "Schedule
+    /// at 9:00", and a braindump row dropped on Day's hours.
+    func schedule(_ id: UUID, startMin: Int) {
+        schedule(id, on: selectedDay, startMin: startMin)
+    }
+
+    /// Puts an item on `day`'s grid at `startMin`: a braindump row dropped
+    /// on an hour, Day's or a Week × Schedule column's (PR 10); a block or an
     /// Anytime row moves through the drop rule instead (`moveBlock`,
     /// ScheduleMoves.swift). The web's hour drop (`placing`,
     /// lib/dnd/handle-drag-end.ts → `scheduleTask`): scheduled, the hour's
     /// bucket, the time, out of any project block (its stash cleared), and
     /// anchored to the day it was dropped on. Also ends the drag's hold on
     /// fetched data: the drop has landed.
-    func schedule(_ id: UUID, startMin: Int) {
+    func schedule(_ id: UUID, on day: DayString, startMin: Int) {
         DragHold.shared.releaseNow()
         guard let i = items.firstIndex(where: { $0.id == id }) else { return }
         let before = items[i]
@@ -498,8 +531,9 @@ final class SamplePlanner {
         // the braindump, and a real one almost never is.
         guard !before.isHabit else { return }
         let time = minutesToTime(startMin)
-        items[i] = placing(before, on: selectedDayString, startMin: startMin)
-        sync?.enqueue(.schedule(id: id, date: selectedDayString, startTime: time), snapshot: before)
+        let date = day.description
+        items[i] = placing(before, on: date, startMin: startMin)
+        sync?.enqueue(.schedule(id: id, date: date, startTime: time), snapshot: before)
     }
 
     /// Captures a thought into the braindump, as the web's `addTask` with no
@@ -1812,4 +1846,18 @@ extension DayString {
     func localDate(calendar: Calendar = .current) -> Date {
         calendar.date(from: DateComponents(year: year, month: month, day: day)) ?? Date()
     }
+}
+
+/// Everything `SamplePlanner.week(of:)` derives a week from (design §4.6):
+/// the week's first day, and each input `derive` reads. Two equal values
+/// derive the same seven days, which is what lets the week be kept.
+struct WeekInputs: Equatable {
+    let start: DayString
+    let items: [SampleItem]
+    let projects: [Project]
+    let routines: [Routine]
+    let seasons: [Season]
+    let away: [AwayPeriod]
+    let showCompletedTasks: Bool
+    let zone: String
 }

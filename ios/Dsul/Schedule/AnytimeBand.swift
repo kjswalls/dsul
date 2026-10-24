@@ -170,31 +170,19 @@ struct AnytimeBand: View {
     }
 
     /// The band's proposal for the drag in the air (design §5.4): forbidden
-    /// for a drop it won't take, else a move. A block or an Anytime row asks
-    /// the drop rule from the day it was lifted on (`refusesDrop`); a
-    /// braindump row asks the Date chip's gate (`canPlaceAnytime`).
+    /// for a drop it won't take, else a move (`refusesAnytimeDrop`, which a
+    /// Week × Schedule strip asks too). A block or an Anytime row asks the
+    /// drop rule from the day it was lifted on; a braindump row asks the
+    /// Date chip's gate (`canPlaceAnytime`).
     private func proposal() -> DropOperation {
-        guard let id = drag.itemID else { return .forbidden }
-        switch drag.source {
-        case .block(let from)?, .anytime(let from)?:
-            let refused = planner.refusesDrop(id, from: planner.blockOrigin(id, on: from),
-                                              to: .anytime(date: day.description))
-            return refused ? .forbidden : .move
-        case .braindump?, nil:
-            return planner.canPlaceAnytime(id, on: day) ? .move : .forbidden
-        }
+        return planner.refusesAnytimeDrop(drag.itemID, source: drag.source, on: day) ? .forbidden : .move
     }
 
-    /// `id` let go on the band, routed by the item (`dropSource`) as the
-    /// grid's drop is. Nothing is selected after it (B3).
+    /// `id` let go on the band, routed by the item (`dropOnAnytime`, through
+    /// `dropSource`) as the grid's drop is. Nothing is selected after it (B3).
     private func drop(_ id: UUID) {
-        switch planner.dropSource(id, said: drag.source(of: id), on: day) {
-        case .block(let from), .anytime(let from):
-            withAnimation(.snappy) {
-                _ = planner.moveBlock(id, from: planner.blockOrigin(id, on: from), to: .anytime(date: day.description))
-            }
-        case .braindump:
-            withAnimation(.snappy) { planner.placeAnytime(id, on: day) }
+        withAnimation(.snappy) {
+            planner.dropOnAnytime(id, said: drag.source(of: id), on: day)
         }
         drag.note("drop anytime")
     }

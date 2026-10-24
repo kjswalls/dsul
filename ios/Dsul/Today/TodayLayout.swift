@@ -39,12 +39,13 @@ enum TodayLayout: String, CaseIterable, Identifiable, Sendable {
     /// The AppStorage key, shared by Today and the capture bar's tray button.
     static let storageKey = "today.layout"
 
-    /// Has this layout a week form? List and Buckets do. Schedule has none
-    /// yet (design PR 10), so a stored Week draws Day there (W17).
+    /// Has this layout a week form? All three do since Week × Schedule (design
+    /// PR 10). The question stays, with `effectiveScope` and `scopes`, for a
+    /// layout added later without one: a stored Week then draws Day there
+    /// (W17).
     var hasWeek: Bool {
         switch self {
-        case .list, .buckets: true
-        case .schedule: false
+        case .list, .buckets, .schedule: true
         }
     }
 
@@ -223,6 +224,15 @@ extension PlannerFormat {
     /// A week day's heading, beside the weekday: "Oct 1".
     static func headingDate(_ day: DayString, locale: Locale = .autoupdatingCurrent) -> String {
         return dayStyle(locale).month(.abbreviated).day().format(noon(day))
+    }
+
+    /// A Week × Schedule column's heading: "Thu 1", the short weekday and
+    /// the day of the month, which a column a third of the screen wide holds.
+    /// The two are put side by side here, each in the locale's words, since
+    /// the skeleton for both reads "1 Thu" in English.
+    static func columnHeading(_ day: DayString, locale: Locale = .autoupdatingCurrent) -> String {
+        let weekday = dayStyle(locale).weekday(.abbreviated).format(noon(day))
+        return weekday + " " + dayStyle(locale).day().format(noon(day))
     }
 
     /// A week day's heading as VoiceOver hears it: "Thursday, October 1", and

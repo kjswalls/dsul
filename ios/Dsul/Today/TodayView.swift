@@ -4,10 +4,9 @@ import SwiftUI
 /// Today: one day, or its week, in three layouts, List, Buckets and Schedule
 /// (G board). The title is the day (or the week); a tap on it picks another
 /// day, and the week is that day's. The layout capsule and the avatar sit top
-/// right; the capsule's menu holds Day and Week. Schedule has no week form
-/// yet, so there a stored Week draws Day (design W17). The planner's banner
-/// ("Signed in as …", a write that didn't save) shows over the top for a few
-/// seconds.
+/// right; the capsule's menu holds Day and Week, on every layout since Week ×
+/// Schedule (design PR 10). The planner's banner ("Signed in as …", a write
+/// that didn't save) shows over the top for a few seconds.
 struct TodayView: View {
     @Environment(SamplePlanner.self) private var planner
     @AppStorage(TodayLayout.storageKey) private var layout: TodayLayout = .list
@@ -75,8 +74,10 @@ struct TodayView: View {
             BucketsLayout(nowMin: nowMin)
         case (.buckets, .week):
             WeekBuckets(nowMin: nowMin, openDay: { openDay($0) })
-        case (.schedule, _):
-            ScheduleView(showProbe: showProbe, nowMin: nowMin)
+        case (.schedule, let shown):
+            // One view for both, so the braindump sheet, the drag and the
+            // hours' scroll carry across the Day/Week switch.
+            ScheduleView(showProbe: showProbe, nowMin: nowMin, scope: shown, openDay: { openDay($0) })
         }
     }
 
@@ -99,6 +100,7 @@ private struct TodayTitle: View {
     var scope: TodayScope
 
     @Environment(SamplePlanner.self) private var planner
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 10) {
@@ -121,7 +123,8 @@ private struct TodayTitle: View {
 
             if showsToday {
                 Button("Today") {
-                    withAnimation(.snappy) { planner.goToToday() }
+                    // No slide under Reduce Motion (design §5.10).
+                    withAnimation(reduceMotion ? nil : .snappy) { planner.goToToday() }
                 }
                 .font(.caption.weight(.semibold))
                 .buttonStyle(.bordered)

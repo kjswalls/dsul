@@ -19,14 +19,25 @@ import SwiftUI
 ///
 /// While it is the block in the air (PR 8) it draws hollow, an outline where
 /// its pane was and no fill (design B8): never a fade, which would dim its
-/// lime rail and check.
+/// lime rail and check. Only the copy on the day it was lifted from (`day`):
+/// in Week × Schedule a repeating block's other days stay drawn.
 ///
 /// Selected through Change length (PR 9) its pane wears a 1.5pt ink outline,
 /// and while a grip is in the hand the column draws it at the grip's span
 /// (`ScheduleBlock.resized(to:)`), so its length and range read live. The
 /// grips are the column's, drawn over the blocks (design §5.6).
+///
+/// Compact (Week × Schedule, PR 10, design §4.5): one line of title, no
+/// length, and the mono start time under it from 45 minutes up
+/// (`WeekScheduleRules.startLine`); while a grip is in the hand the range
+/// takes the start's place, or the title line's end when one line is all
+/// that fits. Everything else (rail, bead, check, states, VoiceOver) is the
+/// same block.
 struct BlockView: View {
     let block: ScheduleBlock
+    /// The column's day: the block draws hollow only while it is lifted
+    /// from this day.
+    let day: DayString
     let fieldWidth: Double
     /// Now, on today only (the "now" value).
     let nowMin: Int?
@@ -43,6 +54,8 @@ struct BlockView: View {
     let onOpen: () -> Void
     let onTick: () -> Void
     let onAction: (BlockSpokenAction) -> Void
+    /// Week × Schedule's form: the title and its start, never the length.
+    var compact = false
 
     /// One line of block text (the web's `LINE_H`, scaled): a tall pane's
     /// title line is at least this tall.
@@ -53,7 +66,7 @@ struct BlockView: View {
         let box = bounds(geometry)
         let pane = CGRect(x: CGFloat(geometry.paneX) - box.minX, y: CGFloat(geometry.paneTop) - box.minY,
                           width: CGFloat(geometry.paneWidth), height: CGFloat(geometry.paneHeight))
-        HollowWhileLifted(id: block.id, pane: pane) {
+        HollowWhileLifted(id: block.id, day: day, pane: pane) {
             ZStack(alignment: .topLeading) {
                 rail(geometry, in: box)
                 bead(geometry, in: box)
@@ -63,7 +76,7 @@ struct BlockView: View {
                 } else {
                     BlockPane(block: block, geometry: geometry, narrow: block.isNarrow(fieldWidth: fieldWidth),
                               timeFormat: timeFormat, lineHeight: lineHeight, selected: selected,
-                              showsRange: showsRange, onOpen: onOpen, onTick: onTick)
+                              showsRange: showsRange, compact: compact, onOpen: onOpen, onTick: onTick)
                         .offset(x: pane.minX, y: pane.minY)
                 }
             }
@@ -165,11 +178,14 @@ struct BlockView: View {
 
 /// The block, or while it is the one in the air (`ScheduleDrag.lifts`) an
 /// outline where its pane was and nothing else: the source draws hollow
-/// (design B8). Its own small view, the only part of a block that reads the
-/// drag, and only whether this block is lifted, so a ghost step never
-/// re-renders it. The system's lifted copy is the block as it was.
+/// (design B8), on the day it was lifted from alone. Its own small view, the
+/// only part of a block that reads the drag, and only whether this block is
+/// lifted, so a ghost step never re-renders it. The system's lifted copy is
+/// the block as it was.
 private struct HollowWhileLifted<Content: View>: View {
     let id: UUID
+    /// The column's day.
+    let day: DayString
     /// The pane's rect in the block's bounds.
     let pane: CGRect
     @ViewBuilder let content: () -> Content
@@ -177,7 +193,7 @@ private struct HollowWhileLifted<Content: View>: View {
     @Environment(ScheduleDrag.self) private var drag
 
     var body: some View {
-        if drag.lifts(id) {
+        if drag.lifts(id, on: day) {
             RoundedRectangle(cornerRadius: CGFloat(ScheduleMetrics.paneRadius), style: .continuous)
                 .strokeBorder(Color.secondary, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
                 .frame(width: pane.width, height: pane.height)
@@ -210,6 +226,8 @@ private struct BlockPane: View {
     /// length's place wherever no range line shows, a narrow pane's
     /// included, whose title gives way to it.
     let showsRange: Bool
+    /// Week × Schedule's form (`compactWords`).
+    let compact: Bool
     let onOpen: () -> Void
     let onTick: () -> Void
 
@@ -271,7 +289,11 @@ private struct BlockPane: View {
         let leading = block.hasCheck ? checkLeading + CGFloat(ScheduleBlockMetrics.checkSize) + checkGap
             : (narrow ? 6 : 10)
         let trailing: CGFloat = narrow ? 4 : 8
-        if tall {
+        if compact {
+            compactWords
+                .padding(.leading, leading)
+                .padding(.trailing, trailing)
+        } else if tall {
             // Two lines when they fit; at a large text size, the title alone.
             ViewThatFits(in: .vertical) {
                 VStack(alignment: .leading, spacing: 1) {
@@ -289,6 +311,33 @@ private struct BlockPane: View {
             measured(titleLine(meta: oneLineMeta))
                 .padding(.leading, leading)
                 .padding(.trailing, trailing)
+        }
+    }
+
+    /// Week × Schedule's words (design §4.5): the title alone on its line,
+    /// and under it the start from 45 minutes up (`WeekScheduleRules.
+    /// startLine`), or the range while a grip is in the hand. Two lines when
+    /// they fit; otherwise the title's line alone, the range at its end
+    /// while a grip is held, as a narrow pane says it on Day.
+    @ViewBuilder
+    private var compactWords: some View {
+        let range = block.rangeText(timeFormat)
+        let under = showsRange ? range : WeekScheduleRules.startLine(block, timeFormat: timeFormat)
+        let oneLine = measured(titleLine(meta: showsRange ? range : nil))
+        if let under {
+            ViewThatFits(in: .vertical) {
+                VStack(alignment: .leading, spacing: 1) {
+                    measured(titleLine(meta: nil).frame(minHeight: lineHeight))
+                    Text(under)
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(metaStyle)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+                oneLine
+            }
+        } else {
+            oneLine
         }
     }
 

@@ -17,6 +17,11 @@ import SwiftUI
 /// (`ResizeGrips.viewportSpace`), which a grip's gesture measures in, and a
 /// tap anywhere on the hours but a block clears the selected block
 /// (`TapClearsSelection`). Scrolling keeps it.
+///
+/// Week × Schedule (PR 10) is WeekSchedule.swift: the same gutter, the same
+/// tap, the same drop and the same session updates (`columnUpdate`), seven
+/// columns across. Day's hours start at the top of the scroll's content, so
+/// it sets the drag's `hoursTop` to 0 and its sideways geometry to none.
 struct ScheduleGrid: View {
     @Binding var position: ScrollPosition
     /// The day, laid out once by ScheduleView.
@@ -59,15 +64,11 @@ struct ScheduleGrid: View {
                 drop(ref.id, at: Double(session.location.y))
             }
             .onDropSessionUpdated { session in
-                drag.noteDropUpdate()
-                switch session.phase {
-                case .entering, .active:
-                    drag.setContentY(Double(session.location.y), on: day.day)
-                case .exiting, .ended:
-                    drag.clearGhost()
-                default:
-                    break
+                guard let phase = ColumnDropPhase(session.phase) else {
+                    drag.noteDropUpdate()
+                    return
                 }
+                drag.columnUpdate(day: day.day, phase: phase, y: Double(session.location.y))
             }
             // Room under midnight for the latest block's floored pane (its
             // nudge and the 34pt floor, so one at 23:59 still shows whole),
@@ -89,31 +90,41 @@ struct ScheduleGrid: View {
             drag.viewportBottomGlobal = Double(bottom)
         }
         .onAppear {
+            drag.hoursTop = 0
+            drag.columnDays = []
             position.scrollTo(y: 8 * hourPx)
         }
     }
 
     /// `id` let go at `contentY` on the day's hours: where the ghost showed
-    /// it, the item's own length held at the drag's grab point. A braindump
-    /// row keeps its hour drop (`schedule`); a block or an Anytime row moves
-    /// by the drop rule from the day it was lifted on (`moveBlock`), which
-    /// sends one write, or none for a drop it refuses. Routed by the item
-    /// (`dropSource`), not by the drag's memory alone, which a missed lift
+    /// it, the item's own length held at the drag's grab point
+    /// (`ScheduleDrag.dropStart`). A braindump row keeps its hour drop
+    /// (`schedule`); a block or an Anytime row moves by the drop rule from
+    /// the day it was lifted on (`moveBlock`), which sends one write, or none
+    /// for a drop it refuses. Routed by the item (`dropOnHour`, through
+    /// `dropSource`), not by the drag's memory alone, which a missed lift
     /// leaves another item's. Nothing is selected after it (B3).
     private func drop(_ id: UUID, at contentY: Double) {
         let duration = planner.item(id)?.durationMin ?? drag.durationMin
-        let start = snappedStart(contentY: contentY, hourPx: ScheduleMetrics.hourPx, durationMin: duration,
-                                 anchor: drag.anchor)
-        switch planner.dropSource(id, said: drag.source(of: id), on: day.day) {
-        case .block(let from), .anytime(let from):
-            withAnimation(.snappy) {
-                _ = planner.moveBlock(id, from: planner.blockOrigin(id, on: from),
-                                      to: .hour(date: day.day.description, startMin: start))
-            }
-        case .braindump:
-            planner.schedule(id, startMin: start)
+        let start = drag.dropStart(contentY: contentY, durationMin: duration)
+        withAnimation(.snappy) {
+            planner.dropOnHour(id, said: drag.source(of: id), on: day.day, startMin: start)
         }
         drag.note("drop \(minutesToTime(start))")
+    }
+}
+
+extension ColumnDropPhase {
+    /// SwiftUI's drop session phase as `ScheduleDrag.columnUpdate` takes it;
+    /// nil for a phase that moves no ghost (the data's transfer done).
+    init?(_ phase: DropSession.Phase) {
+        switch phase {
+        case .entering: self = .entering
+        case .active: self = .active
+        case .exiting: self = .exiting
+        case .ended: self = .ended
+        default: return nil
+        }
     }
 }
 
@@ -122,8 +133,9 @@ struct ScheduleGrid: View {
 /// own tap still opens it, since a child's gesture wins over this one, and a
 /// grip's gesture is its own. Its own modifier, so a selection re-renders
 /// this alone, never the grid; with nothing selected the tap is off
-/// (`.subviews`), and the hours take touches exactly as before.
-private struct TapClearsSelection: ViewModifier {
+/// (`.subviews`), and the hours take touches exactly as before. Day's grid
+/// and Week × Schedule's both wear it.
+struct TapClearsSelection: ViewModifier {
     @Environment(ScheduleDrag.self) private var drag
 
     func body(content: Content) -> some View {
@@ -136,8 +148,10 @@ private struct TapClearsSelection: ViewModifier {
 /// The hours down the left: each hour's mark in the user's time format
 /// (DsulCore `formatHourLabel`, "9 am" or "09:00"), top-aligned under its
 /// line, and on today the time now, in ink, centred on the marker. The mark
-/// the reading would run into steps aside (`eclipsedHour`).
-private struct HourGutter: View {
+/// the reading would run into steps aside (`eclipsedHour`). Day's grid and
+/// Week × Schedule's share it; in Week it reads now when the week holds
+/// today, whichever columns show.
+struct HourGutter: View {
     let timeFormat: TimeFormat
     let nowMin: Int?
 

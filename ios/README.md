@@ -15,7 +15,7 @@ Today shows one day in three layouts: List (filter chips, then sections per
 routine and per project, each project's dot in its own colour, as on the
 web), Buckets (Morning, Afternoon, Evening, Anytime) and Schedule (the hour
 grid in the web's block look, the day's untimed rows in an Anytime band above
-it, and the braindump sheet over it). List and Buckets
+it, and the braindump sheet over it). List, Buckets and Schedule
 can show the day's whole week instead, seven days from your Week starts on
 setting. The capsule top right switches them: tap for the next, swipe along it
 to step, long-press for the menu, whose Show section picks Day or Week. Tap
@@ -1577,7 +1577,8 @@ colour.
 ## Checking Week
 
 Week draws List or Buckets as the seven days of the selected day's week,
-starting on your Week starts on setting (Sunday on the sample). The hosted
+starting on your Week starts on setting (Sunday on the sample); Schedule's
+week is its own section (Checking Week × Schedule, below). The hosted
 tests pin its words and the sample's week; these checks are for how it reads
 and feels. On the sample, today is the day the app opened, and four one-off
 tasks with no project sit around it: Pick up the dry cleaning three days back
@@ -1616,10 +1617,12 @@ today (Walk, every day's, is: see Moving a block).
    the day (Morning, Afternoon, Evening, Anytime), the empty ones left out,
    and "Nothing planned." on a day with nothing. Rows tick and open on their
    own day, as on List.
-6. On Schedule, the capsule's Show section offers Day only, and the title
-   and the grid are the day's. Step back to List: the week is still there.
+6. On Schedule, the capsule's Show section offers Day and Week, as on List
+   and Buckets; Week there is the week's columns (Checking Week × Schedule,
+   below), and the title reads the week. Step back to List: the week is
+   still there.
 7. VoiceOver: the capsule reads "Layout, List, week", and its actions offer
-   Show day (Show week while it shows Day, never on Schedule). The title
+   Show day (Show week while it shows Day, on every layout). The title
    reads "This week, October 19 to 25, List". A day's heading reads as a
    heading, "Thursday, October 1" with ", today" on today, and a double tap
    opens that day.
@@ -1886,6 +1889,83 @@ in order.
    45 minutes). "Make 15 minutes longer" on Cook dinner says "7 to 8 PM",
    and the block is an hour long. Standup offers longer and not shorter.
    The grips are never read.
+
+## Checking Week × Schedule
+
+On Schedule, Week draws the selected day's week as day columns (Week and
+blocks PR 10): three across, each its heading and its Anytime strip pinned
+over that day's hours, swiped sideways a day at a time beside the hour
+gutter. Blocks move between days, Anytime rows and braindump rows drop onto
+any column, and ticking and Change length work in every column, as on Day.
+What each drop writes is Day's rule, which the hosted tests pin
+(WeekScheduleTests, and ScheduleRenderTests for the week laid out once);
+these checks are for how it feels. The PR stays a draft until W-S1 to W-S3
+pass on a phone. Start on a fresh sample (Try with sample data), switch
+Today to Schedule, then hold the capsule and pick Show, Week.
+
+1. (W-S1) Three columns, each headed by its short weekday and date ("Thu
+   1"), today's with a lime dot after it and both words in ink. The selected
+   day is the first column, or as near it as the week's end allows (on the
+   week's last two days the last three columns show). A sideways swipe
+   moves one day and stops on a column's edge; swipe across all seven and
+   back. The hour gutter never moves sideways; while the week holds today,
+   the time now reads in the gutter and the marker is in today's column
+   only. The title reads This week over the week's dates and Schedule.
+   Tap the title and pick a day next week, then tap Today: each time the
+   columns are on the new week at once, with no sideways slide.
+2. (W-S2) Scroll down to 3 PM: the headings and the Anytime strips stay
+   pinned over the hours, the gutter's cell beside them too, and no hour
+   line or block shows through them. Each sample strip shows its day's
+   morning habits first, three rows, then "+N more" (today's reads "+4
+   more"). Tick Journal in today's pinned strip: it ticks on today alone
+   (tomorrow's Journal stays open). Drag Standup (11:15 AM) onto today's
+   pinned strip: it leaves the hours rather than landing on the hour behind
+   the strip, and today's line reads "+5 more". Tap that line: Today shows
+   the day in Day, Standup in its Anytime band. A heading's tap does the
+   same for its day. (Signed in, a day with nothing untimed says Anytime in
+   its strip; every sample day has its habits.)
+3. (W-S3) Drag Lunch walk (12:30 PM) onto 10 AM in the column two days on
+   (on the week's last two days, the first column showing): it lands on
+   that day at 10:00, not off by the strips' height. Drag Lunch walk again
+   and rest your finger just inside the columns' right edge: after a moment
+   they step one day, then another while you hold, and the ghost moves to
+   the column now under your finger; let go and it lands there. Just
+   inside the left edge, right of the hour labels, the same the other way.
+   Over the hour labels, or in the thin margin past the last column, the
+   drag has left the hours: the ghost goes and nothing scrolls. If the
+   columns move twice a step, or slide on their own before the pause, the
+   system scrolls them as well: turn off
+   `ScheduleAutoscroll.handDrivesSideEdges`. Drag Lunch walk up toward the
+   strips: once your finger is just below them, the hours scroll up. If
+   they scroll twice as fast there, turn off
+   `ScheduleAutoscroll.handDrivesWeekTopEdge`; if they scroll while your
+   finger is over a strip or a heading, say so (the fallback is heads that
+   scroll away with the hours). Drag it down past the bottom, with the
+   braindump open and closed: they scroll down. Pick Change length on Cook
+   dinner (7 PM) and drag its top grip up toward the strips: the hours
+   scroll once your finger is just below them. Switch to Day (capsule,
+   Show, Day): the grips are gone.
+4. Drag Walk (7:45 AM, every day's) sideways onto another column at 8:30
+   AM: only today's Walk turns to an outline, its ghost stays in today's
+   column the whole way, resting at a side edge steps no columns, and Walk
+   lands at 8:30 on every day (look at yesterday and a day next week).
+   Team sync does the same on its own day.
+5. Drag Review PRs (1:30 PM) onto another day's Anytime strip: the
+   forbidden badge, and letting go there leaves it at 1:30 PM today.
+6. Open the braindump and drop Call the bank on 2 PM in tomorrow's column
+   (on the week's last day, yesterday's): it lands there, and on Day that
+   day shows it at 2 PM.
+7. The largest accessibility text size (Settings, Accessibility, Display &
+   Text Size, Larger Text): two columns, not three, each strip one row and
+   then "+N more"; the gutter's marks stop growing at the first
+   accessibility size and the blocks' and strips' words at the second, so
+   nothing clips.
+8. Load 40 blocks (the avatar's Drag spike section), then Week: no stutter
+   scrolling down, sideways, or while dragging a block across columns.
+9. VoiceOver: each column is a group named for its day ("Thursday, October
+   1, today"). Its heading reads as a heading with the hint "Opens this
+   day"; its blocks read in time order, each with Day's actions; a strip's
+   row reads as the band's does, with Mark done among its actions.
 
 ## Rules
 
