@@ -194,3 +194,17 @@ describe('catchUpPlanner', () => {
     expect(store().items).toEqual([]);
   });
 });
+
+describe('heldItemIds', () => {
+  it('holds the item open over the phone’s Ask tab', async () => {
+    const { heldItemIds } = await import('@/hooks/use-planner-catch-up');
+    const { useRailStore } = await import('@/lib/rail-store');
+    const before = useRailStore.getState().stacks;
+    useRailStore.setState({ stacks: { ...before, phone: [...before.phone, { kind: 'item', itemId: 'a' }] } });
+    try {
+      expect(heldItemIds().has('a')).toBe(true);
+    } finally {
+      useRailStore.setState({ stacks: before });
+    }
+  });
+});
