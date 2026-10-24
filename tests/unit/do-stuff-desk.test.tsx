@@ -163,10 +163,14 @@ function start({ host = true }: { host?: boolean } = {}) {
   fireEvent.click(screen.getByTestId('do-stuff-start'));
 }
 
-const open = () =>
+// An item with notes or steps opens the desk by itself at the start
+// (useDeskByDefault); a bare one waits for the ⤢.
+const open = () => {
+  if (useDoStuffStore.getState().desk) return;
   act(() => {
     fireEvent.click(screen.getByTestId('do-stuff-open-desk'));
   });
+};
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -176,10 +180,8 @@ describe('the desk', () => {
   it('opens on the current item, on today, with its notes and steps', () => {
     seed(ITEMS);
     start();
-    expect(screen.queryByTestId('do-stuff-desk')).toBeNull();
-    act(() => {
-      fireEvent.click(screen.getByTestId('do-stuff-open-desk'));
-    });
+    // 'a' has notes and steps, so the desk opens with the start.
+    open();
     const next = useDoStuffStore.getState().next!;
     expect(next.id).toBe('a');
     const desk = screen.getByTestId('do-stuff-desk-item');
@@ -197,9 +199,7 @@ describe('the desk', () => {
   it('ticks a step, and a jot lands at the foot of the notes', () => {
     seed(ITEMS);
     start();
-    act(() => {
-      fireEvent.click(screen.getByTestId('do-stuff-open-desk'));
-    });
+    open();
     act(() => {
       fireEvent.click(screen.getByRole('checkbox', { name: 'check the renewal date' }));
     });
@@ -216,9 +216,7 @@ describe('the desk', () => {
   it('follows the walk on done, and Esc goes back to the day', () => {
     seed(ITEMS);
     start();
-    act(() => {
-      fireEvent.click(screen.getByTestId('do-stuff-open-desk'));
-    });
+    open();
     act(() => {
       fireEvent.click(screen.getByTestId('do-stuff-desk-done'));
     });
@@ -232,16 +230,14 @@ describe('the desk', () => {
     expect(useDoStuffStore.getState().desk).toBe(false);
   });
 
-  it('opens by itself on an item with something to work with, once the sort lands, and stays shut once closed', () => {
+  it('opens by itself, at once, on an item with something to work with, and stays shut once closed', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     try {
       seed(ITEMS);
       start();
-      expect(useDoStuffStore.getState().desk).toBe(false);
-      // 'a' has notes and steps: worth a desk (Kirby, 2026-10-23).
-      act(() => {
-        vi.advanceTimersByTime(5000);
-      });
+      // 'a' has notes and steps: worth a desk (Kirby, 2026-10-23), opened with
+      // the start rather than after the sort, so the column never eases out
+      // and back (2026-10-24).
       expect(useDoStuffStore.getState().desk).toBe(true);
       expect(screen.getByTestId('do-stuff-desk-item').textContent).toContain('reply to sam about the lease');
       // Closed by the person: left closed for the run.
@@ -275,13 +271,13 @@ describe('the desk', () => {
   it('closes when the mode stops', () => {
     seed(ITEMS);
     start();
-    act(() => {
-      fireEvent.click(screen.getByTestId('do-stuff-open-desk'));
-    });
+    open();
     act(() => useDoStuffStore.getState().stop());
     expect(screen.queryByTestId('do-stuff-desk')).toBeNull();
-    act(() => useDoStuffStore.getState().start());
     expect(useDoStuffStore.getState().desk).toBe(false);
+    // A new run starts fresh: 'a' is worth a desk, so it opens again by itself.
+    act(() => useDoStuffStore.getState().start());
+    expect(useDoStuffStore.getState().desk).toBe(true);
   });
 
   it('takes the focus as it opens, and ↵ S T F work from it', () => {
@@ -292,9 +288,9 @@ describe('the desk', () => {
       open();
       const pane = screen.getByRole('region', { name: 'Desk' });
       expect(document.activeElement).toBe(pane);
-      // T: onto today, the card's own key. The row leaves do it now for the
-      // today lane, so the walk moves on.
-      expect(screen.getByTestId('do-stuff-desk-today').getAttribute('aria-keyshortcuts')).toBe('T');
+      // T: onto today, the card's own key (no button since 2026-10-24). The
+      // row leaves do it now for the today lane, so the walk moves on.
+      expect(screen.queryByTestId('do-stuff-desk-today')).toBeNull();
       act(() => {
         fireEvent.keyDown(pane, { key: 't' });
       });
@@ -442,7 +438,7 @@ describe('the desk', () => {
     seed(ITEMS);
     start();
     open();
-    act(() => useDoStuffStore.setState({ slot: false, desk: false }));
+    act(() => useDoStuffStore.setState({ slot: false, desk: false, deskDeclined: true }));
     const card = screen.getByTestId('do-stuff-next');
     expect(screen.getByTestId('do-stuff-done')).toHaveAccessibleName(/^Done: /);
     expect(screen.getByTestId('do-stuff-skip')).toBeTruthy();
@@ -467,9 +463,9 @@ describe('the desk', () => {
     const close = screen.getByTestId('do-stuff-desk-close');
     expect(close.parentElement).toBe(screen.getByTestId('do-stuff-desk-kicker').parentElement);
     expect(screen.getByTestId('do-stuff-desk-done').parentElement!.contains(close)).toBe(false);
-    // Done, skip and today wait in the bar at the foot of the room.
+    // Done and skip wait in the bar at the foot of the room.
     const bar = screen.getByTestId('do-stuff-desk-bar');
-    for (const id of ['do-stuff-desk-done', 'do-stuff-desk-skip', 'do-stuff-desk-today']) {
+    for (const id of ['do-stuff-desk-done', 'do-stuff-desk-skip']) {
       expect(bar.contains(screen.getByTestId(id))).toBe(true);
     }
     expect(item.contains(bar)).toBe(true);

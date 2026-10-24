@@ -621,6 +621,13 @@ this gap?". Four pieces were proposed; the first is built.
 > the row to the today lane). Keys show only in a footer while the card has keyboard focus. The
 > schedule slot's done and skip use the same capsule.
 
+> **The desk, 2026-10-24 (Kirby):** its bar takes the card's capsule (done · skip; T still puts the
+> item on today), over a hairline instead of a filled strip. And the desk now opens WITH the start,
+> before the frame paints, instead of after the sort: waiting meant the column eased out to its Do
+> stuff width and then straight back when the desk arrived ("wonky"). The column's start waits one
+> frame (sidebar.tsx) so it finds the desk already open and never moves. The store's `next` is
+> published in a layout effect so `openDesk()` sees it in that same frame.
+
 > **Desk by default, 2026-10-23 (Kirby):** the desk opens by itself, once the sort lands, when
 > the walk reaches an item with something to work with (`deskWorthIt`: a pack, steps or notes).
 > Once open it stays for the walk; once closed (D, ✕, Esc, leaving today) it stays closed for the
