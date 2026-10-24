@@ -931,4 +931,211 @@ import Testing
         #expect(PlannerFormat.title(selected: planner.selectedDay, today: planner.today) != "Today")
         #expect(PlannerFormat.subtitle(selected: planner.selectedDay, layout: .buckets).hasSuffix("\u{00B7} Buckets"))
     }
+
+    // MARK: Week: the day-keyed twins (design §4.6, PR 1)
+
+    private func day(_ s: String) -> DayString { DayString(s)! }
+
+    /// The sample's week from Thursday 2026-10-01: Sunday Sep 27 to Saturday
+    /// Oct 3, the sample keeping the default Week starts on.
+    private var sampleWeek: [DayString] {
+        return ["2026-09-27", "2026-09-28", "2026-09-29", "2026-09-30", "2026-10-01", "2026-10-02",
+                "2026-10-03"].map(day)
+    }
+
+    @Test func theSelectedWeekStartsOnTheUsersWeekStart() {
+        let planner = makePlanner()
+        #expect(planner.settings.weekStartDay == .sunday)
+        #expect(planner.selectedWeek == sampleWeek)
+        #expect(planner.isOnTodaysWeek)
+        planner.shiftDay(by: 2)                           // Saturday, its last day
+        #expect(planner.selectedWeek == sampleWeek)
+        #expect(planner.isOnTodaysWeek)
+        planner.shiftDay(by: 1)                           // Sunday, the next week
+        #expect(!planner.isOnTodaysWeek)
+        #expect(planner.selectedWeek.first == day("2026-10-04"))
+        planner.shiftDay(by: -7)                          // Sunday Sep 27, its first day
+        #expect(planner.isOnTodaysWeek)
+        planner.shiftDay(by: -1)
+        #expect(!planner.isOnTodaysWeek)
+    }
+
+    /// `week(of:)` is seven `derive(on:)`s over one split, and `weekRows(of:)`
+    /// is each day's `dayItems(on:)`: a week can never say something a day
+    /// wouldn't.
+    @Test func aWeekIsSevenDaysEachAsItsDayDerivesIt() {
+        let planner = makePlanner()
+        let week = planner.week(of: planner.selectedDay)
+        #expect(Set(week.keys) == Set(sampleWeek))
+        for date in sampleWeek {
+            #expect(week[date] == planner.derive(on: date), "\(date)")
+        }
+        // Any day of the week answers the same week.
+        #expect(planner.week(of: day("2026-09-27")) == week)
+        #expect(planner.week(of: day("2026-10-03")) == week)
+
+        let rows = planner.weekRows(of: planner.selectedDay)
+        #expect(rows.map(\.day) == sampleWeek)
+        for date in rows {
+            #expect(date.rows == planner.dayItems(on: date.day), "\(date.day)")
+        }
+    }
+
+    /// The selected-day forms are their day-keyed twins at `selectedDay`, on
+    /// every day of the week.
+    @Test func theSelectedDaysFormsAreTheirTwins() {
+        let planner = makePlanner()
+        for date in sampleWeek {
+            planner.select(date)
+            #expect(planner.dayItems == planner.dayItems(on: date), "\(date)")
+            #expect(planner.listSections(.all) == planner.listSections(.all, on: date), "\(date)")
+            #expect(planner.listSections(.habits) == planner.listSections(.habits, rows: planner.dayItems,
+                                                                          on: date), "\(date)")
+            #expect(planner.buckets() == planner.buckets(on: date), "\(date)")
+            #expect(planner.buckets() == planner.buckets(planner.dayItems(on: date)), "\(date)")
+            #expect(planner.scheduled == planner.scheduled(on: date), "\(date)")
+            #expect(planner.count(.habits) == planner.count(.habits, on: [date]), "\(date)")
+            #expect(planner.count(.all) == planner.count(.all, in: planner.dayItems(on: date)), "\(date)")
+            #expect(planner.dayProjects == planner.dayProjects(on: [date]), "\(date)")
+        }
+    }
+
+    /// A twin reads its own day, never the selected one: from Thursday,
+    /// Wednesday's rows have Water the plants and no blocks, and its routine
+    /// counts Wednesday's ticks.
+    @Test func aTwinReadsItsOwnDay() throws {
+        let planner = makePlanner()
+        let wednesday = day("2026-09-30")
+        #expect(planner.selectedDay == day("2026-10-01"))
+        #expect(planner.dayItems(on: wednesday).contains { $0.title == "Water the plants" })
+        #expect(!planner.dayItems.contains { $0.title == "Water the plants" })
+        #expect(planner.scheduled(on: wednesday).isEmpty)
+        #expect(!planner.scheduled.isEmpty)
+        let journal = first(planner, "Journal")
+        #expect(planner.isDone(journal, on: wednesday))   // done one day back
+        #expect(!planner.isDone(journal))
+        // Wednesday: Meds, Stretch and Journal all done a day back.
+        let routine = try #require(planner.listSections(.all, on: wednesday).first)
+        #expect(routine.kind == .routine)
+        #expect(routine.doneCount == 3)
+        #expect(planner.listSections(.all).first?.doneCount == 2)
+        #expect(planner.anytime(on: wednesday).map(\.title).contains("Water the plants"))
+    }
+
+    /// A week row's tick lands on its own day and no other.
+    @Test func aRowTicksOnlyItsOwnDay() throws {
+        let planner = makePlanner()
+        let journal = first(planner, "Journal")
+        let saturday = day("2026-10-03")
+        planner.toggleRow(journal.id, on: saturday)
+        let after = try #require(planner.item(journal.id))
+        #expect(planner.isDone(after, on: saturday))
+        #expect(!planner.isDone(after))                   // Thursday, the selected day
+        #expect(!planner.isDone(after, on: day("2026-10-02")))
+        #expect(after.completedDates.contains("2026-10-03"))
+        #expect(!after.completedDates.contains("2026-10-01"))
+        #expect(planner.selectedDay == day("2026-10-01"))
+        planner.toggleRow(journal.id, on: saturday)
+        #expect(try !planner.isDone(#require(planner.item(journal.id)), on: saturday))
+        #expect(planner.sync == nil)
+    }
+
+    /// A sheet opened from a week row acts on that row's day (`SheetDay.on`),
+    /// whatever Today has selected: its Skip skips that day alone.
+    @Test func aSheetOpenedOnADayActsOnIt() throws {
+        let planner = makePlanner()
+        let meds = first(planner, "Meds")
+        let friday = day("2026-10-02")
+        planner.open(meds.id, day: .on(friday))
+        #expect(planner.activeSheet == .item(meds.id, day: .on(friday)))
+        #expect(planner.actingDay(.on(friday)) == friday)
+        #expect(planner.actingDay(.selected) == planner.selectedDay)
+        #expect(planner.verbContext(for: meds, day: .on(friday)) == planner.verbContext(for: meds, on: friday))
+        planner.skip(meds.id, on: planner.actingDay(.on(friday)))
+        let after = try #require(planner.item(meds.id))
+        #expect(planner.isSkipped(after, on: friday))
+        #expect(!planner.isSkipped(after))
+        #expect(planner.isDone(after))                    // Thursday keeps its tick
+        #expect(planner.selectedDay == day("2026-10-01"))
+    }
+
+    // MARK: Week: the sample's week (PR 2)
+
+    /// The rest of the week's four tasks: made after every other id (55 to
+    /// 58), none on the anchor or on Wednesday, all inside the anchor's week
+    /// from Sunday or Monday.
+    @Test func theSamplesRestOfTheWeek() throws {
+        let planner = makePlanner()
+        let titles = ["Pick up the dry cleaning", "Bike service", "Coffee with Priya", "Post the birthday card"]
+        let days = ["2026-09-28", "2026-09-29", "2026-10-02", "2026-10-03"]
+        for (n, (title, date)) in zip(55...58, zip(titles, days)) {
+            let task = try #require(planner.item(SampleData.uuid(n)), "\(n)")
+            #expect(task.title == title)
+            #expect(task.type == "task")
+            #expect(task.startDate == date)
+            #expect(task.project == nil)
+            #expect(planner.dayItems(on: day(date)).contains { $0.id == task.id }, "\(title)")
+        }
+        #expect(planner.item(SampleData.uuid(59)) == nil)
+        let mondayWeek = weekDays(of: planner.selectedDay, .monday).map(\.description)
+        #expect(days.allSatisfy { sampleWeek.map(\.description).contains($0) && mondayWeek.contains($0) })
+        let own = Set((55...58).map(SampleData.uuid))
+        #expect(!planner.dayItems.contains { own.contains($0.id) })
+        #expect(!planner.dayItems(on: day("2026-09-30")).contains { own.contains($0.id) })
+        #expect(!planner.braindump.contains { own.contains($0.id) })
+        // Two afternoon blocks, a morning block, and one untimed.
+        #expect(planner.scheduled(on: day("2026-09-28")).map(\.title) == ["Pick up the dry cleaning"])
+        #expect(planner.buckets(on: day("2026-09-29"))[.afternoon]?.map(\.title) == ["Bike service"])
+        #expect(planner.buckets(on: day("2026-10-02"))[.morning]?.map(\.title).contains("Coffee with Priya") == true)
+        #expect(planner.anytime(on: day("2026-10-03")).map(\.title).contains("Post the birthday card"))
+    }
+
+    /// The chips over a week count every occurrence (design W16): a daily
+    /// habit counts seven.
+    @Test func theWeeksChipsCountEveryOccurrence() {
+        let planner = makePlanner()
+        let rows = planner.weekRows(of: planner.selectedDay).flatMap(\.rows)
+        // Three daily routine habits, Plan tomorrow on the five weekdays,
+        // Water the plants on Sunday and Wednesday.
+        #expect(planner.count(.habits, in: rows) == 3 * 7 + 5 + 2)
+        // Thursday's twelve, the four around it, and the run review, done
+        // on Sunday.
+        #expect(planner.count(.tasks, in: rows) == 12 + 4 + 1)
+        #expect(planner.count(.all, in: rows) == 45)
+        #expect(planner.weekRows(of: planner.selectedDay).map(\.rows.count) == [5, 5, 5, 5, 16, 5, 4])
+        // Home: three of Thursday's tasks and Water the plants twice.
+        #expect(planner.count(.project("Home"), in: rows) == 5)
+        #expect(planner.count(.all, in: rows) == planner.count(.tasks, in: rows) + planner.count(.habits, in: rows))
+        #expect(planner.count(.all, in: rows) == planner.count(.all, on: sampleWeek))
+        #expect(planner.count(.project("Work"), in: rows) == planner.count(.project("Work")))
+        #expect(planner.chipProjects(in: rows) == planner.dayProjects(on: sampleWeek))
+        #expect(planner.chipProjects(in: rows).first == "Work")
+        // From Monday the week is Sep 28 to Oct 4: the same habits (Water the
+        // plants on Wednesday and on Sunday Oct 4), the four tasks still in
+        // it, and the run review on its Sunday.
+        let monday = weekDays(of: planner.selectedDay, .monday)
+        #expect(monday.first == day("2026-09-28"))
+        #expect(monday.last == day("2026-10-04"))
+        #expect(planner.count(.habits, on: monday) == 3 * 7 + 5 + 2)
+        #expect(planner.count(.all, on: monday) == 45)
+        #expect(planner.dayItems(on: day("2026-10-04")).contains { $0.title == "Weekly run review" })
+    }
+
+    /// Week groups each day on its own, as Day does: Monday's one task is a
+    /// No project section of one, and its routine counts Monday's ticks.
+    @Test func aWeekDayGroupsAsItsDayDoes() throws {
+        let planner = makePlanner()
+        let week = planner.weekRows(of: planner.selectedDay)
+        let monday = try #require(week.first { $0.day == day("2026-09-28") })
+        let sections = planner.listSections(.all, rows: monday.rows, on: monday.day)
+        #expect(sections == planner.listSections(.all, on: monday.day))
+        #expect(sections.first?.kind == .routine)
+        #expect(sections.first?.doneCount == 1)          // Journal, three days back
+        #expect(sections.last?.kind == .loose)
+        #expect(sections.last?.title == ContainerWords.noProject)
+        #expect(sections.last?.items.map(\.title).contains("Pick up the dry cleaning") == true)
+        #expect(planner.listSections(.tasks, rows: monday.rows, on: monday.day).flatMap(\.items).map(\.title)
+            == ["Pick up the dry cleaning"])
+        #expect(planner.listSections(.project("Home"), rows: monday.rows, on: monday.day).isEmpty)
+    }
 }

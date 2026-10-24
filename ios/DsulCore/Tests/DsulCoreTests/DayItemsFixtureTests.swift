@@ -4,7 +4,8 @@ import DsulCore
 
 // The web's own answers for what a day shows, checked against DayItems.swift:
 // the task/habit split and `deriveDayItems` (day-items.json), the Schedule's
-// timed entries (timed.json), braindump membership (braindump.json) and
+// timed entries and the rows off its grid (timed.json's `expected` and
+// `untimed`), braindump membership (braindump.json) and
 // routine grouping (routine-groups.json). tests/unit/day-fixtures.test.ts runs
 // every case through the real TS and commits the results under
 // tests/fixtures/day/; never edit them by hand.
@@ -52,6 +53,8 @@ private struct TimedScenario: Decodable, Sendable {
     let date: String
     let showCompletedTasks: Bool
     let expected: [TimedOut]
+    /// `deriveUntimedRows` ids, beside `expected` rather than in it.
+    let untimed: [String]
 }
 
 private struct TimedFixture: Decodable, Sendable {
@@ -173,6 +176,21 @@ private func run(_ world: DayWorld, date: DayString, showCompletedTasks: Bool) -
         }
     }
 
+    @Test func deriveUntimedRowsMatchesTheWeb() throws {
+        let f = try loadFixture("timed", as: TimedFixture.self)
+        for s in f.scenarios {
+            let world = try #require(f.worlds[s.world], "\(s.name): no world \(s.world)")
+            let date = try #require(DayString(s.date), "\(s.name): bad date \(s.date)")
+            let day = run(world, date: date, showCompletedTasks: s.showCompletedTasks).day
+            let untimed = ids(deriveUntimedRows(day))
+            #expect(untimed == s.untimed, "\(s.name)")
+            // The grid and the rows off it never share a row, and both come from the day's rows.
+            let timed = Set(s.expected.map(\.id))
+            #expect(timed.isDisjoint(with: untimed), "\(s.name): a row both on and off the grid")
+            #expect(Set(untimed).isSubset(of: ids(flattenDayRows(day))), "\(s.name): an untimed row not on the day")
+        }
+    }
+
     @Test func braindumpMembersMatchTheWeb() throws {
         for c in try loadFixture("braindump", as: BraindumpFixture.self).cases {
             let split = project(c.items)
@@ -216,6 +234,27 @@ private func run(_ world: DayWorld, date: DayString, showCompletedTasks: Bool) -
         )
         #expect(out.totalCount == 1)
         #expect(out.tasksByBucket[.morning]?.map(\.title) == ["t2"])
+    }
+
+    @Test func untimedIsTheWebsTruthinessAndNeverABlocksTask() {
+        let habitId = UUID(uuidString: "00000000-0000-4000-8000-000000000009")!
+        let inBlockHabit = Item(id: habitId, type: "habit", title: "h9", status: "pending", startTime: "",
+                                timeBucket: "anytime", repeatFrequency: "daily", inProjectBlock: true)
+        let unreadHabit = Item(id: UUID(uuidString: "00000000-0000-4000-8000-000000000010")!, type: "habit",
+                               title: "h10", status: "pending", startTime: "7am", timeBucket: "morning",
+                               repeatFrequency: "daily")
+        var inBlock = task(3, bucket: "evening")
+        inBlock.inProjectBlock = true
+        let rows = [task(1, bucket: "morning", time: ""), task(2, bucket: "morning", time: "9am"), inBlock,
+                    task(4, bucket: "anytime"), task(5, bucket: "morning", time: "09:00")]
+        let out = deriveDayItems(
+            tasks: rows, habits: [inBlockHabit, unreadHabit], projects: [], date: day, timeZone: "UTC", showCompletedTasks: true,
+            inactive: []
+        )
+        // An empty time is no time; a habit's inProjectBlock is not read; the in-block task
+        // (its block not on today) and the unreadable times are in neither list.
+        #expect(deriveUntimedRows(out).map(\.title) == ["h9", "t4", "t1"])
+        #expect(deriveTimedEntries(out).map(\.item.title) == ["t5"])
     }
 
     @Test func aMalformedTimeIsLeftOffTheGrid() {

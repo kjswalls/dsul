@@ -14,6 +14,15 @@ enum ListFilter: Hashable, Sendable {
     case project(String)
 }
 
+/// One day of a week and its rows, in `SamplePlanner.dayItems(on:)` order:
+/// what `weekRows(of:)` answers for Week × List and Week × Buckets.
+struct WeekDayRows: Identifiable, Hashable, Sendable {
+    let day: DayString
+    let rows: [SampleItem]
+
+    var id: DayString { day }
+}
+
 /// One section of the List layout: a routine (with done/total), a project,
 /// or the day's loose items.
 struct ListSection: Identifiable, Hashable, Sendable {
@@ -55,9 +64,13 @@ enum PlannerSheet: Identifiable, Hashable, Sendable {
 /// - `selected`: the day Today shows. A row on List, Buckets, Schedule or the
 ///   braindump opens with it, so the sheet acts on the day the row was drawn on.
 /// - `today`: the user's day now. Search opens with it: it has no day of its own.
+/// - `on(day)`: that day, whatever Today has selected. A row in a Week section
+///   opens with its own day, so Thursday's row ticks and skips Thursday while
+///   the week's anchor is Monday (design W13).
 /// Pause and Resume are dateless and read today either way.
 enum SheetDay: Hashable, Sendable {
     case selected, today
+    case on(DayString)
 }
 
 /// A one-line message over Today: "Signed in as …", or a write or fetch the
@@ -261,6 +274,20 @@ final class SamplePlanner {
     func shiftDay(by days: Int) { selectedDay = selectedDay.adding(days: days) }
     func goToToday() { selectedDay = today }
 
+    /// The selected day's week, its first day first, by the user's Week starts
+    /// on (DsulCore `weekDays`, the web's week views' start + i). Week draws
+    /// these seven; `selectedDay` stays the anchor, so Go to date picks a day
+    /// and the week follows.
+    var selectedWeek: [DayString] {
+        return weekDays(of: selectedDay, settings.weekStartDay)
+    }
+
+    /// Does the selected day's week hold today? Week's Today button shows
+    /// only when it doesn't, as Day's does off today.
+    var isOnTodaysWeek: Bool {
+        return weekStartOf(selectedDay, settings.weekStartDay) == weekStartOf(today, settings.weekStartDay)
+    }
+
     /// The zone every day here is read in: the stored one, trimmed, when this
     /// device knows it (`timezone?.trim() || device`, as the web's store and
     /// components/supabase-provider.tsx resolve it); the device's otherwise.
@@ -318,39 +345,94 @@ final class SamplePlanner {
     /// `date`'s rows as the web files them: DsulCore `deriveDayItems` over the
     /// task/habit split, with what is paused or out of season on `date` held
     /// back (`inactiveItemIdsOn`), and the phone's defaults (no filters).
-    private func derive(on date: DayString) -> DayItems {
-        let zone = timeZoneID
-        let split = DsulCore.project(items)
+    /// Internal, not private, so a hosted test can hold `week(of:)` to it.
+    func derive(on date: DayString) -> DayItems {
+        return derive(on: date, split: DsulCore.project(items), zone: timeZoneID)
+    }
+
+    /// One day of the pipeline over a split made once: `week(of:)` splits
+    /// the items a single time for its seven days, as the web's
+    /// `useDayItemsForDates` asks `deriveDayItems` once per date over one
+    /// projection (hooks/use-day-items.ts).
+    private func derive(on date: DayString, split: (tasks: [Item], habits: [Item]), zone: String) -> DayItems {
         let inactive = inactiveItemIdsOn(items: items, date: date, timeZone: zone, routines: routines, seasons: seasons,
                                          away: awayPeriods)
         return deriveDayItems(tasks: split.tasks, habits: split.habits, projects: projectRecords, date: date,
                               timeZone: zone, showCompletedTasks: settings.showCompletedTasks, inactive: inactive)
     }
 
-    /// The selected day's items: habits, then tasks, each in bucket and time
-    /// order (lib/day-items.ts `flattenDayRows`).
+    /// The seven days of `day`'s week (`weekDays`, from the user's Week starts
+    /// on), each as `derive(on:)` answers it: `project(items)` once, then what
+    /// is held back and what shows resolved at each day's own date, so a pause
+    /// ending mid-week or a season starting Thursday lands on the right day
+    /// (design §4.6; the web's week views do the same, per date).
+    func week(of day: DayString) -> [DayString: DayItems] {
+        let split = DsulCore.project(items)
+        let zone = timeZoneID
+        var out: [DayString: DayItems] = [:]
+        for date in weekDays(of: day, settings.weekStartDay) {
+            out[date] = derive(on: date, split: split, zone: zone)
+        }
+        return out
+    }
+
+    /// The seven days of `day`'s week, each with its rows in `dayItems(on:)`
+    /// order, from one `week(of:)`: what Week × List and Week × Buckets draw,
+    /// so a render derives the week once rather than once per question.
+    func weekRows(of day: DayString) -> [WeekDayRows] {
+        let week = week(of: day)
+        return weekDays(of: day, settings.weekStartDay).map { date in
+            WeekDayRows(day: date, rows: week[date].map(flattenDayRows) ?? [])
+        }
+    }
+
+    /// `day`'s items: habits, then tasks, each in bucket and time order
+    /// (lib/day-items.ts `flattenDayRows`).
+    func dayItems(on day: DayString) -> [SampleItem] {
+        return flattenDayRows(derive(on: day))
+    }
+
+    /// The selected day's items (`dayItems(on:)`).
     var dayItems: [SampleItem] {
-        return flattenDayRows(derive(on: selectedDay))
+        return dayItems(on: selectedDay)
     }
 
-    /// Ticked on the selected day (lib/item-toggle.ts `isRowDone`): a habit
-    /// or a recurring task by its date, a one-off task by its status.
+    /// Ticked on `day` (lib/item-toggle.ts `isRowDone`): a habit or a
+    /// recurring task by its date, a one-off task by its status. A week row
+    /// asks at its own day, never the anchor.
+    func isDone(_ item: SampleItem, on day: DayString) -> Bool {
+        return isRowDone(item, on: day)
+    }
+
+    /// Ticked on the selected day (`isDone(_:on:)`).
     func isDone(_ item: SampleItem) -> Bool {
-        return isRowDone(item, on: selectedDay)
+        return isDone(item, on: selectedDay)
     }
 
-    /// Skipped on the selected day: drawn as a strip, and a tick on it is
-    /// refused (`toggle`).
+    /// Skipped on `day`: drawn as a strip, and a tick on it is refused
+    /// (`toggleRow`).
+    func isSkipped(_ item: SampleItem, on day: DayString) -> Bool {
+        return isRowSkipped(item, on: day)
+    }
+
+    /// Skipped on the selected day (`isSkipped(_:on:)`).
     func isSkipped(_ item: SampleItem) -> Bool {
-        return isRowSkipped(item, on: selectedDay)
+        return isSkipped(item, on: selectedDay)
     }
 
     // MARK: Writes
 
-    /// A row's tick: ticks or unticks an item on the selected day, as the
-    /// web's row checkbox (`toggleRowDone`) does. See `tick(_:on:)`.
+    /// A row's tick on `day`: ticks or unticks an item there, as the web's row
+    /// checkbox (`toggleRowDone`) does, with no verb gate. A week row ticks on
+    /// its own day; the sheet's tick stays `toggle(_:on:)`, gated. See
+    /// `tick(_:on:)`.
+    func toggleRow(_ id: UUID, on day: DayString) {
+        tick(id, on: day)
+    }
+
+    /// A row's tick on the selected day (`toggleRow(_:on:)`).
     func toggle(_ id: UUID) {
-        tick(id, on: selectedDay)
+        toggleRow(id, on: selectedDay)
     }
 
     /// The tick on `day`, as lib/item-toggle.ts `toggleRowDone` resolves it
@@ -418,13 +500,15 @@ final class SamplePlanner {
         activeSheet = .item(id, day: day)
     }
 
-    /// The day a sheet opened with `day` acts on: the selected day, or today.
-    /// A read, so a view's body may ask it; `today` itself moves only in
-    /// `refreshToday` (RootView's minute check, `open`, a pause or resume).
+    /// The day a sheet opened with `day` acts on: the selected day, today, or
+    /// the day it names. A read, so a view's body may ask it; `today` itself
+    /// moves only in `refreshToday` (RootView's minute check, `open`, a pause
+    /// or resume).
     func actingDay(_ day: SheetDay) -> DayString {
         switch day {
         case .selected: return selectedDay
         case .today: return today
+        case .on(let named): return named
         }
     }
 
@@ -1271,44 +1355,81 @@ final class SamplePlanner {
         return itemProject.lowercased() == name.lowercased()
     }
 
-    func count(_ filter: ListFilter) -> Int {
-        dayItems.filter { passes($0, filter) }.count
+    /// The rows among `rows` that `filter` passes. Over a week's rows a daily
+    /// habit counts seven, as the rows under the chips show it (design W16).
+    func count(_ filter: ListFilter, in rows: [SampleItem]) -> Int {
+        return rows.filter { passes($0, filter) }.count
     }
 
-    /// The projects with something on the selected day, for the chips.
-    var dayProjects: [String] {
-        let present = Set(dayItems.compactMap { $0.project?.lowercased() })
+    /// The rows `filter` passes on `days`, each day's counted.
+    func count(_ filter: ListFilter, on days: [DayString]) -> Int {
+        return count(filter, in: days.flatMap { dayItems(on: $0) })
+    }
+
+    /// The rows `filter` passes on the selected day (`count(_:on:)`).
+    func count(_ filter: ListFilter) -> Int {
+        return count(filter, on: [selectedDay])
+    }
+
+    /// The projects something among `rows` is filed under, in container
+    /// order, for the chips.
+    func chipProjects(in rows: [SampleItem]) -> [String] {
+        let present = Set(rows.compactMap { $0.project?.lowercased() })
         return projects.filter { present.contains($0.lowercased()) }
     }
 
-    /// The List layout: routines first (DsulCore `routineGroups`, the port of
-    /// lib/grouping.ts: one row, one group, in the routine's own order), then
-    /// one section per project, then the loose items.
-    func listSections(_ filter: ListFilter) -> [ListSection] {
-        let rows = sortedForList(dayItems.filter { passes($0, filter) })
+    /// The projects with something on any of `days`.
+    func dayProjects(on days: [DayString]) -> [String] {
+        return chipProjects(in: days.flatMap { dayItems(on: $0) })
+    }
+
+    /// The projects with something on the selected day (`dayProjects(on:)`).
+    var dayProjects: [String] {
+        return dayProjects(on: [selectedDay])
+    }
+
+    /// The List layout on `day`: routines first (DsulCore `routineGroups`, the
+    /// port of lib/grouping.ts: one row, one group, in the routine's own
+    /// order), then one section per project, then the loose items. A routine's
+    /// done count is at `day`. Week draws one day's worth per section, as the
+    /// web groups each day of a week on its own (week-list.tsx).
+    func listSections(_ filter: ListFilter, on day: DayString) -> [ListSection] {
+        return listSections(filter, rows: dayItems(on: day), on: day)
+    }
+
+    /// `listSections(_:on:)` over `day`'s rows already derived (`weekRows`).
+    func listSections(_ filter: ListFilter, rows dayRows: [SampleItem], on day: DayString) -> [ListSection] {
+        let rows = sortedForList(dayRows.filter { passes($0, filter) })
         let grouped = routineGroups(rows, routines: routines)
         var sections: [ListSection] = []
         for (routine, members) in grouped.groups {
             sections.append(section(id: "routine:\(routine.id)", title: routine.name, kind: .routine,
-                                    items: members))
+                                    items: members, on: day))
         }
         let rest = grouped.loose
         for name in projects {
             let members = rest.filter { Self.sameProject($0.project, name) }
             guard !members.isEmpty else { continue }
-            sections.append(section(id: "project:\(name)", title: name, kind: .project, items: members))
+            sections.append(section(id: "project:\(name)", title: name, kind: .project, items: members, on: day))
         }
         let known = Set(projects.map { $0.lowercased() })
         let loose = rest.filter { item in item.project.map { !known.contains($0.lowercased()) } ?? true }
         if !loose.isEmpty {
-            sections.append(section(id: "loose", title: ContainerWords.noProject, kind: .loose, items: loose))
+            sections.append(section(id: "loose", title: ContainerWords.noProject, kind: .loose, items: loose,
+                                    on: day))
         }
         return sections
     }
 
-    private func section(id: String, title: String, kind: ListSection.Kind, items: [SampleItem]) -> ListSection {
+    /// The List layout on the selected day (`listSections(_:on:)`).
+    func listSections(_ filter: ListFilter) -> [ListSection] {
+        return listSections(filter, on: selectedDay)
+    }
+
+    private func section(id: String, title: String, kind: ListSection.Kind, items: [SampleItem],
+                         on day: DayString) -> ListSection {
         return ListSection(id: id, title: title, kind: kind, items: items,
-                           doneCount: items.filter { isDone($0) }.count)
+                           doneCount: items.filter { isDone($0, on: day) }.count)
     }
 
     /// Timed rows first by time, then untimed by order (lib/day-items.ts
@@ -1320,17 +1441,26 @@ final class SamplePlanner {
 
     // MARK: Buckets layout
 
-    /// The selected day filed by bucket, each bucket in the web's row order
-    /// (DsulCore `bucketDayRows`).
-    func buckets() -> [DayBucket: [SampleItem]] {
-        let day = dayItems
-        let byID = Dictionary(day.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        let ids = bucketDayRows(day.map(Self.bucketRow))
+    /// `day` filed by bucket, each bucket in the web's row order (DsulCore
+    /// `bucketDayRows`).
+    func buckets(on day: DayString) -> [DayBucket: [SampleItem]] {
+        return buckets(dayItems(on: day))
+    }
+
+    /// One day's rows (in `dayItems` order) filed by bucket.
+    func buckets(_ rows: [SampleItem]) -> [DayBucket: [SampleItem]] {
+        let byID = Dictionary(rows.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let ids = bucketDayRows(rows.map(Self.bucketRow))
         var out: [DayBucket: [SampleItem]] = [:]
         for (bucket, list) in ids {
             out[bucket] = list.compactMap { byID[$0] }
         }
         return out
+    }
+
+    /// The selected day filed by bucket (`buckets(on:)`).
+    func buckets() -> [DayBucket: [SampleItem]] {
+        return buckets(on: selectedDay)
     }
 
     nonisolated private static func bucketRow(_ item: SampleItem) -> BucketRow<UUID> {
@@ -1340,14 +1470,14 @@ final class SamplePlanner {
 
     // MARK: Schedule layout and the braindump
 
-    /// The selected day's blocks (day-schedule.tsx `deriveTimedEntries`):
-    /// timed rows, plus tasks in a project's recurring block. Each comes back
-    /// with the time and length it is DRAWN at, which for a project-block task
-    /// is the block's; `item(_:)` still answers with the stored item.
-    var scheduled: [SampleItem] {
+    /// `day`'s blocks (day-schedule.tsx `deriveTimedEntries`): timed rows,
+    /// plus tasks in a project's recurring block. Each comes back with the
+    /// time and length it is DRAWN at, which for a project-block task is the
+    /// block's; `item(_:)` still answers with the stored item.
+    func scheduled(on day: DayString) -> [SampleItem] {
         var seen = Set<UUID>()
         var blocks: [SampleItem] = []
-        for entry in deriveTimedEntries(derive(on: selectedDay)) {
+        for entry in deriveTimedEntries(derive(on: day)) {
             guard seen.insert(entry.item.id).inserted else { continue }
             var block = entry.item
             block.startTime = minutesToTime(entry.startMin)
@@ -1355,6 +1485,20 @@ final class SamplePlanner {
             blocks.append(block)
         }
         return blocks
+    }
+
+    /// The selected day's blocks (`scheduled(on:)`).
+    var scheduled: [SampleItem] {
+        return scheduled(on: selectedDay)
+    }
+
+    /// `day`'s rows off the hour grid (day-schedule.tsx `deriveUntimedRows`,
+    /// through DsulCore): untimed habits, then untimed tasks not in a project
+    /// block. A project-block task whose block is not on `day` is in neither
+    /// this nor `scheduled(on:)`, as on the web; List and Buckets still show
+    /// it. Nothing draws it yet: a Schedule week's Anytime strip will.
+    func anytime(on day: DayString) -> [SampleItem] {
+        return deriveUntimedRows(derive(on: day))
     }
 
     /// What's captured and not yet placed (DsulCore `braindumpMembers`), in
