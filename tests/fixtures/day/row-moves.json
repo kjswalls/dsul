@@ -195,6 +195,34 @@
       "expected": true
     },
     {
+      "name": "a braindump row",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000002bd",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0
+      },
+      "kind": "task",
+      "dateStr": "2026-10-02",
+      "expected": true
+    },
+    {
+      "name": "a done braindump row",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000002bd",
+        "title": "buy milk",
+        "status": "completed",
+        "isScheduled": false,
+        "order": 0
+      },
+      "kind": "task",
+      "dateStr": "2026-10-02",
+      "expected": false
+    },
+    {
       "name": "repeat none is a one-off",
       "item": {
         "type": "task",
@@ -453,6 +481,34 @@
       "kind": "task",
       "dateStr": "2026-10-02",
       "expected": true
+    },
+    {
+      "name": "a braindump row",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000002bd",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0
+      },
+      "kind": "task",
+      "dateStr": "2026-10-02",
+      "expected": true
+    },
+    {
+      "name": "a done braindump row",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000002bd",
+        "title": "buy milk",
+        "status": "completed",
+        "isScheduled": false,
+        "order": 0
+      },
+      "kind": "task",
+      "dateStr": "2026-10-02",
+      "expected": false
     },
     {
       "name": "repeat none is a one-off",
@@ -718,6 +774,36 @@
       "dateStr": "2026-10-02",
       "milestoneIds": [],
       "expected": true
+    },
+    {
+      "name": "a braindump row",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000002bd",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0
+      },
+      "kind": "task",
+      "dateStr": "2026-10-02",
+      "milestoneIds": [],
+      "expected": true
+    },
+    {
+      "name": "a done braindump row",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000002bd",
+        "title": "buy milk",
+        "status": "completed",
+        "isScheduled": false,
+        "order": 0
+      },
+      "kind": "task",
+      "dateStr": "2026-10-02",
+      "milestoneIds": [],
+      "expected": false
     },
     {
       "name": "repeat none is a one-off",

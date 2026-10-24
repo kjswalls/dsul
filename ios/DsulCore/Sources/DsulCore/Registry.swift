@@ -2,11 +2,13 @@ import Foundation
 
 // Port of the slice of lib/item-registry.ts that the phone asks: what "done"
 // is called, whether the type has a skip status of its own, its repeat when the
-// column is NULL, the block length a timed item gets when it has none, and the
-// capabilities the item sheet's verbs, chips and fields read (label, skippable,
-// pausable, dated, remindable, collectible, subtasks, the counters, priority,
-// notes, duration, from 2e the frequencies the Repeat chip offers, and from 2f
-// the project axis: its container kind and whether it may be left unfiled),
+// column is NULL, the block length a timed item gets when it has none (and,
+// from Week and blocks PR 9, whether its block's length may be changed on the
+// grid, `schedule.resizable`), and the capabilities the item sheet's verbs,
+// chips and fields read (label, skippable, pausable, dated, remindable,
+// collectible, subtasks, the counters, priority, notes, duration, from 2e the
+// frequencies the Repeat chip offers, and from 2f the project axis: its
+// container kind and whether it may be left unfiled),
 // with the item-level questions built on them (`isSkippable`, `isPausable`,
 // `isRemindable`, `isCollectible`, lib/item-edit.ts `subtaskRefusal` as
 // `canAddSubtask`, and lib/bulk-edit.ts
@@ -43,6 +45,13 @@ public struct ItemCaps: Sendable, Hashable {
     /// `schedule.defaultBlockMinutes`: a timed block's length when it has no
     /// `duration`.
     public var defaultBlockMinutes: Int
+    /// `schedule.resizable`: the grid lets the type's blocks change length
+    /// (the web's resize handles; the phone's Change length and its two
+    /// grips). True for every shipped type and the custom template. It is the
+    /// type's half of the gate: the web's block also needs a start time and
+    /// not to sit in a project block (components/views/day-schedule.tsx
+    /// `canResize`), and a skipped occurrence draws no handles.
+    public var resizable: Bool
     /// `dateAnchored`: the item's `startDate` is a day it happens on (habits
     /// have none).
     public var dateAnchored: Bool
@@ -102,6 +111,7 @@ public struct ItemCaps: Sendable, Hashable {
         skipStatus: String?,
         defaultFrequency: String,
         defaultBlockMinutes: Int,
+        resizable: Bool = true,
         dateAnchored: Bool,
         dateAddressable: Bool,
         skippable: Bool,
@@ -126,6 +136,7 @@ public struct ItemCaps: Sendable, Hashable {
         self.skipStatus = skipStatus
         self.defaultFrequency = defaultFrequency
         self.defaultBlockMinutes = defaultBlockMinutes
+        self.resizable = resizable
         self.dateAnchored = dateAnchored
         self.dateAddressable = dateAddressable
         self.skippable = skippable
@@ -149,7 +160,7 @@ public struct ItemCaps: Sendable, Hashable {
     /// `ITEM_TYPES.task`.
     public static let task = ItemCaps(
         label: "Task", doneStatus: "completed", skipStatus: nil, defaultFrequency: "none", defaultBlockMinutes: 30,
-        dateAnchored: true, dateAddressable: true, skippable: true, pausable: true, remindable: true,
+        resizable: true, dateAnchored: true, dateAddressable: true, skippable: true, pausable: true, remindable: true,
         collectible: true, braindumpEligible: true, subtasks: true, streakCounter: false, dailyCounts: false,
         hasPriority: true, hasNotes: true, hasDuration: true, allowedFrequencies: repeatFrequencyOrder,
         containerKind: "projects", containerRequired: false,
@@ -159,7 +170,7 @@ public struct ItemCaps: Sendable, Hashable {
     /// `ITEM_TYPES.habit`.
     public static let habit = ItemCaps(
         label: "Habit", doneStatus: "done", skipStatus: "skipped", defaultFrequency: "daily", defaultBlockMinutes: 30,
-        dateAnchored: false, dateAddressable: false, skippable: true, pausable: true, remindable: true,
+        resizable: true, dateAnchored: false, dateAddressable: false, skippable: true, pausable: true, remindable: true,
         collectible: true, braindumpEligible: false, subtasks: false, streakCounter: true, dailyCounts: true,
         hasPriority: false, hasNotes: true, hasDuration: true,
         allowedFrequencies: ["daily", "weekdays", "weekends", "monthly", "custom"],
@@ -181,9 +192,9 @@ public struct ItemCaps: Sendable, Hashable {
         }
         return ItemCaps(
             label: noun, doneStatus: "completed", skipStatus: nil, defaultFrequency: "none",
-            defaultBlockMinutes: 30, dateAnchored: true, dateAddressable: true, skippable: true, pausable: true,
-            remindable: true, collectible: true, braindumpEligible: true, subtasks: true, streakCounter: false,
-            dailyCounts: false, hasPriority: true, hasNotes: true, hasDuration: true,
+            defaultBlockMinutes: 30, resizable: true, dateAnchored: true, dateAddressable: true, skippable: true,
+            pausable: true, remindable: true, collectible: true, braindumpEligible: true, subtasks: true,
+            streakCounter: false, dailyCounts: false, hasPriority: true, hasNotes: true, hasDuration: true,
             allowedFrequencies: repeatFrequencyOrder, containerKind: "projects", containerRequired: false,
             titlePlaceholder: "Add a \(jsLowercased(noun))\u{2026}", deleteNamesHistory: false
         )

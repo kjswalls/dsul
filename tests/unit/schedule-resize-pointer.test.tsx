@@ -22,6 +22,9 @@ import { DndContext } from '@dnd-kit/core';
  * would disable resize outright on any engine that leaves the field empty.
  */
 
+// The two writes a resize can end in, held so the last describe can read them.
+const writes = vi.hoisted(() => ({ updateTask: vi.fn(), updateHabit: vi.fn() }));
+
 vi.mock('@/lib/planner-store', () => ({
   usePlannerStore: () => ({
     getProjectColor: () => 'var(--accent-3)',
@@ -29,8 +32,8 @@ vi.mock('@/lib/planner-store', () => ({
     selectedDate: new Date('2026-07-29T12:00:00Z'),
     userTimezone: 'UTC',
     toggleTaskStatus: vi.fn(),
-    updateTask: vi.fn(),
-    updateHabit: vi.fn(),
+    updateTask: writes.updateTask,
+    updateHabit: writes.updateHabit,
   }),
 }));
 vi.mock('@/lib/use-time-format', () => ({ useTimeFormat: () => 'h:mm a' }));
@@ -139,5 +142,137 @@ describe('an unlabelled pointerType', () => {
     fireEvent.pointerDown(handle('duration'), { clientY: 100, pointerId: 1 });
 
     expect(resizing()).toBe(true);
+  });
+});
+
+/**
+ * What a mouse resize writes, end to end through the block: the press, one
+ * move and the release, with the grid's scroll viewport around it (the
+ * component reads its scroll offset, and without one it previews nothing).
+ * The maths is lib/schedule-resize.ts's, pinned there and in
+ * tests/fixtures/day/resize.json; these cases say the block still asks it, and
+ * still writes the store action of the item's own type.
+ */
+describe('what a mouse resize writes', () => {
+  let raf: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    writes.updateTask.mockClear();
+    writes.updateHabit.mockClear();
+    // The auto-scroll loop is a frame callback; jsdom measures every box as
+    // zero, which would read as a pointer below the viewport and scroll it.
+    raf = vi.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 0);
+  });
+
+  afterEach(() => raf.mockRestore());
+
+  const block = (startTime: string, duration: number, over: Record<string, unknown> = {}): TimedEntry => {
+    const [h, m] = startTime.split(':').map(Number);
+    return {
+      ...entry,
+      item: { ...(entry.item as object), startTime, duration, ...over } as never,
+      startMin: h * 60 + m,
+      duration,
+    };
+  };
+
+  /** Press `edge` at y 100, move `dy` pixels (52 to the hour), release. */
+  function resize(e: TimedEntry, edge: 'start' | 'duration', dy: number) {
+    const { container } = render(
+      <DndContext>
+        <div data-slot="scroll-area-viewport">
+          <ScheduleBlock entry={e} gridStartMin={0} hourPx={HOUR} fieldWidth={900} />
+        </div>
+      </DndContext>
+    );
+    const handle = container.querySelector(`[aria-label="Resize ${edge}"]`) as HTMLElement;
+    fireEvent.pointerDown(handle, { pointerType: 'mouse', clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(handle, { pointerType: 'mouse', clientY: 100 + dy, pointerId: 1 });
+    fireEvent.pointerUp(handle, { pointerType: 'mouse', clientY: 100 + dy, pointerId: 1 });
+  }
+
+  it('the bottom edge writes the length alone', () => {
+    resize(block('10:00', 60), 'duration', HOUR / 2);
+    expect(writes.updateTask).toHaveBeenCalledTimes(1);
+    expect(writes.updateTask).toHaveBeenCalledWith('gym', { duration: 90 });
+  });
+
+  it('the bottom edge stops at the 15-minute floor', () => {
+    resize(block('10:00', 60), 'duration', -2 * HOUR);
+    expect(writes.updateTask).toHaveBeenCalledWith('gym', { duration: 15 });
+  });
+
+  it('a move that snaps back to the same length writes nothing', () => {
+    resize(block('10:00', 60), 'duration', 5);
+    expect(writes.updateTask).not.toHaveBeenCalled();
+  });
+
+  it('the top edge writes the start, the length and the start’s part of day, the end fixed', () => {
+    resize(block('10:00', 60), 'start', -HOUR / 2);
+    expect(writes.updateTask).toHaveBeenCalledWith('gym', { startTime: '09:30', duration: 90, timeBucket: 'morning' });
+  });
+
+  it('the top edge files the new start in its own part of day', () => {
+    resize(block('11:00', 120), 'start', (HOUR * 3) / 2);
+    expect(writes.updateTask).toHaveBeenCalledWith('gym', { startTime: '12:30', duration: 30, timeBucket: 'afternoon' });
+  });
+
+  it('the top edge stops 15 minutes before the end, and at midnight', () => {
+    resize(block('10:00', 60), 'start', 2 * HOUR);
+    expect(writes.updateTask).toHaveBeenLastCalledWith('gym', { startTime: '10:45', duration: 15, timeBucket: 'morning' });
+    cleanup();
+    resize(block('00:30', 60), 'start', -2 * HOUR);
+    expect(writes.updateTask).toHaveBeenLastCalledWith('gym', { startTime: '00:00', duration: 90, timeBucket: 'morning' });
+  });
+
+  it('the bottom edge stops at midnight', () => {
+    // The one change PR 9 makes to the web's resize: the end no longer runs on
+    // past 24:00, where nothing draws.
+    resize(block('23:00', 30), 'duration', 2 * HOUR);
+    expect(writes.updateTask).toHaveBeenCalledWith('gym', { duration: 60 });
+  });
+
+  it('the top edge of a block that runs past midnight never reaches 24:00', () => {
+    // Its end comes back to midnight and the start stops at 23:45, a time the
+    // day has, where it once ran on to "24:15" (and, dragged up, to a length
+    // over a day).
+    resize(block('23:30', 60), 'start', 2 * HOUR);
+    expect(writes.updateTask).toHaveBeenCalledWith('gym', { startTime: '23:45', duration: 15, timeBucket: 'evening' });
+  });
+
+  it('the bottom edge of a block stored at 24:15 writes nothing', () => {
+    // The start stays, and none after midnight has a length that ends inside
+    // the day; this once wrote a length under zero.
+    resize(block('24:15', 30), 'duration', HOUR);
+    expect(writes.updateTask).not.toHaveBeenCalled();
+  });
+
+  it('the top edge of a block that ends before 0:15 stays at 0:00', () => {
+    // The start can't go before midnight to keep 15 minutes, so the floor gives
+    // way and nothing changes; this once wrote a start of "-1:-5".
+    resize(block('00:00', 10), 'start', HOUR / 4);
+    expect(writes.updateTask).not.toHaveBeenCalled();
+  });
+
+  it('a habit writes through its own action', () => {
+    const stretch: TimedEntry = {
+      itemType: 'habit',
+      item: {
+        id: 'stretch',
+        title: 'Stretch',
+        type: 'habit',
+        startTime: '18:00',
+        duration: 30,
+        timeBucket: 'evening',
+        repeatFrequency: 'daily',
+        completedDates: [],
+        streak: 0,
+      } as never,
+      startMin: 18 * 60,
+      duration: 30,
+    };
+    resize(stretch, 'start', -HOUR);
+    expect(writes.updateTask).not.toHaveBeenCalled();
+    expect(writes.updateHabit).toHaveBeenCalledWith('stretch', { startTime: '17:00', duration: 90, timeBucket: 'evening' });
   });
 });

@@ -14,12 +14,13 @@ import SwiftUI
 struct LayoutSwitcher: View {
     @Binding var layout: TodayLayout
     /// The stored scope. What the layout draws of it is
-    /// `layout.effectiveScope(scope)`: Day on Schedule, whatever is stored.
+    /// `layout.effectiveScope(scope)`: the stored one on every layout since
+    /// Week × Schedule (design PR 10); Day on a layout with no week form.
     @Binding var scope: TodayScope
 
     /// Counts the capsule's own Day or Week picks that change what shows, so
     /// its selection haptic follows them alone: not a week heading's tap
-    /// (which stores Day from outside), nor Day picked again on Schedule.
+    /// (which stores Day from outside), nor a pick of what already shows.
     @State private var scopePicks = 0
 
     /// Steps already applied during the current swipe. Gesture state, so it
@@ -51,8 +52,9 @@ struct LayoutSwitcher: View {
                 }
                 .pickerStyle(.inline)
             }
-            // Schedule has no week form yet, so there Day is the only choice
-            // rather than a dead one. The check is on what the layout draws.
+            // A layout with no week form would offer Day alone rather than a
+            // dead choice (all three have one since Week × Schedule). The
+            // check is on what the layout draws.
             Section("Show") {
                 Picker("Show", selection: shownScope) {
                     ForEach(layout.scopes) { option in
@@ -95,8 +97,8 @@ struct LayoutSwitcher: View {
         }
     }
 
-    /// The Show picker's selection: the scope the layout draws, so Day is
-    /// checked on Schedule whatever is stored; a pick stores it.
+    /// The Show picker's selection: the scope the layout draws (Day on a
+    /// layout with no week form, whatever is stored); a pick stores it.
     private var shownScope: Binding<TodayScope> {
         Binding(get: { layout.effectiveScope(scope) }, set: { pick($0) })
     }

@@ -214,9 +214,29 @@ extension SamplePlanner {
     /// the untimed rows (`anytime(on:)`'s). The tick's label and the done and
     /// skipped states are asked at `day`.
     func daySchedule(on day: DayString, fieldWidth: Double?) -> DaySchedule {
-        let derived = derive(on: day)
+        return laidOut(day, derive(on: day), variant: .day, fieldWidth: fieldWidth)
+    }
+
+    /// `day`'s week for Week × Schedule (PR 10, design §4.5): its seven days
+    /// in column order, each laid out as `daySchedule` lays a day out, from
+    /// ONE `week(of:)`, which is kept until something it reads changes, so a
+    /// render (a ghost step's included) derives nothing twice. The overlap
+    /// pass is the web's week variant (a shingle of 10pt, ties tiled), with
+    /// no width cap, at the column's fixed `columnWidth`.
+    func weekSchedule(of day: DayString, columnWidth: Double?) -> [DaySchedule] {
+        let week = week(of: day)
+        return weekDays(of: day, settings.weekStartDay).map { date in
+            laidOut(date, week[date] ?? derive(on: date), variant: .week, fieldWidth: columnWidth)
+        }
+    }
+
+    /// One day's blocks and Anytime rows from its derive: Day's overlap pass
+    /// capped at the field's width, Week's uncapped (`planOverlaps`).
+    private func laidOut(_ day: DayString, _ derived: DayItems, variant: OverlapVariant,
+                         fieldWidth: Double?) -> DaySchedule {
         let entries = drawnTimedEntries(derived)
-        let plans = planOverlaps(entries.map { OverlapEntry($0) }, fieldWidth: fieldWidth)
+        let plans = planOverlaps(entries.map { OverlapEntry($0) }, variant: variant,
+                                 fieldWidth: variant == .day ? fieldWidth : nil)
         let blocks = entries.map { entry -> ScheduleBlock in
             let drawn = entry.item
             let skipped = isSkipped(drawn, on: day)

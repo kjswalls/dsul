@@ -1,0 +1,3442 @@
+{
+  "cases": [
+    {
+      "name": "one-off: a new hour on its own day",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-04",
+        "startTime": "10:15"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "morning",
+        "startTime": "10:15",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-04"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "post the letter",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "10:15",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      }
+    },
+    {
+      "name": "one-off: its own time",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "one-off: an hour in another column",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-08",
+        "startTime": "14:00"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "afternoon",
+        "startTime": "14:00",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-08"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "post the letter",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-08",
+        "timeBucket": "afternoon",
+        "startTime": "14:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      }
+    },
+    {
+      "name": "one-off: an evening hour",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-04",
+        "startTime": "19:15"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "evening",
+        "startTime": "19:15",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-04"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "post the letter",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "evening",
+        "startTime": "19:15",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      }
+    },
+    {
+      "name": "one-off: Anytime on its own day",
+      "write": {
+        "action": "time",
+        "timeBucket": "anytime",
+        "startTime": null
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "startTime": null,
+        "isScheduled": true,
+        "timeBucket": "anytime",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "post the letter",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "anytime",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      }
+    },
+    {
+      "name": "one-off: Anytime in another column",
+      "write": null,
+      "phoneRefusal": "another-day",
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "one-off: the braindump",
+      "write": {
+        "action": "unschedule"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": false,
+        "timeBucket": null,
+        "startTime": null,
+        "startDate": null
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "post the letter",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      }
+    },
+    {
+      "name": "repeating task: a new hour on its own day",
+      "write": {
+        "action": "time",
+        "timeBucket": "morning",
+        "startTime": "10:15"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "startTime": "10:15"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000386",
+        "title": "water plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "morning",
+        "startTime": "10:15",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "repeatFrequency": "daily"
+      }
+    },
+    {
+      "name": "repeating task: its own time",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "repeating task: an hour in another column",
+      "write": {
+        "action": "time",
+        "timeBucket": "afternoon",
+        "startTime": "14:00"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "startTime": "14:00",
+        "timeBucket": "afternoon",
+        "isScheduled": true,
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000386",
+        "title": "water plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "afternoon",
+        "startTime": "14:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "repeatFrequency": "daily"
+      }
+    },
+    {
+      "name": "repeating task: an evening hour",
+      "write": {
+        "action": "time",
+        "timeBucket": "evening",
+        "startTime": "19:15"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "startTime": "19:15",
+        "timeBucket": "evening",
+        "isScheduled": true,
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000386",
+        "title": "water plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "evening",
+        "startTime": "19:15",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "repeatFrequency": "daily"
+      }
+    },
+    {
+      "name": "repeating task: Anytime on its own day",
+      "write": {
+        "action": "time",
+        "timeBucket": "anytime",
+        "startTime": null
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "startTime": null,
+        "isScheduled": true,
+        "timeBucket": "anytime",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000386",
+        "title": "water plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "anytime",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "repeatFrequency": "daily"
+      }
+    },
+    {
+      "name": "repeating task: Anytime in another column",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "repeating task: the braindump",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "repeating task in a project block: a new hour on its own day",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-01",
+        "startTime": "10:15"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "morning",
+        "startTime": "10:15",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-01"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000387",
+        "title": "standup notes",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "morning",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "repeatFrequency": "weekdays",
+        "project": "Work",
+        "startTime": "10:15"
+      }
+    },
+    {
+      "name": "repeating task in a project block: nine, having no time of its own",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-01",
+        "startTime": "09:00"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-01"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000387",
+        "title": "standup notes",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "morning",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "repeatFrequency": "weekdays",
+        "project": "Work",
+        "startTime": "09:00"
+      }
+    },
+    {
+      "name": "repeating task in a project block: an hour in another column",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-01",
+        "startTime": "14:00"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "afternoon",
+        "startTime": "14:00",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-01"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000387",
+        "title": "standup notes",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "afternoon",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "repeatFrequency": "weekdays",
+        "project": "Work",
+        "startTime": "14:00"
+      }
+    },
+    {
+      "name": "repeating task in a project block: an evening hour",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-01",
+        "startTime": "19:15"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "evening",
+        "startTime": "19:15",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-01"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000387",
+        "title": "standup notes",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "evening",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "repeatFrequency": "weekdays",
+        "project": "Work",
+        "startTime": "19:15"
+      }
+    },
+    {
+      "name": "repeating task in a project block: Anytime on its own day",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "repeating task in a project block: Anytime in another column",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "repeating task in a project block: the braindump",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "habit: a new hour on its own day",
+      "write": {
+        "action": "time",
+        "timeBucket": "morning",
+        "startTime": "10:15"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "startTime": "10:15",
+        "timeBucket": "morning"
+      },
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000388",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "repeatFrequency": "daily",
+        "timeBucket": "morning",
+        "startTime": "10:15",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {}
+      }
+    },
+    {
+      "name": "habit: its own time",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "habit: an hour in another column",
+      "write": {
+        "action": "time",
+        "timeBucket": "afternoon",
+        "startTime": "14:00"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "startTime": "14:00",
+        "timeBucket": "afternoon"
+      },
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000388",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "repeatFrequency": "daily",
+        "timeBucket": "afternoon",
+        "startTime": "14:00",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {}
+      }
+    },
+    {
+      "name": "habit: an evening hour",
+      "write": {
+        "action": "time",
+        "timeBucket": "evening",
+        "startTime": "19:15"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "startTime": "19:15",
+        "timeBucket": "evening"
+      },
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000388",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "repeatFrequency": "daily",
+        "timeBucket": "evening",
+        "startTime": "19:15",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {}
+      }
+    },
+    {
+      "name": "habit: Anytime on its own day",
+      "write": {
+        "action": "time",
+        "timeBucket": "anytime",
+        "startTime": null
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "startTime": null,
+        "timeBucket": "anytime"
+      },
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000388",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "repeatFrequency": "daily",
+        "timeBucket": "anytime",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {}
+      }
+    },
+    {
+      "name": "habit: Anytime in another column",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "habit: the braindump",
+      "write": null,
+      "phoneRefusal": "pause",
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "untimed habit: a new hour on its own day",
+      "write": {
+        "action": "time",
+        "timeBucket": "morning",
+        "startTime": "10:15"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "startTime": "10:15",
+        "timeBucket": "morning"
+      },
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000389",
+        "title": "read",
+        "streak": 0,
+        "status": "pending",
+        "repeatFrequency": "daily",
+        "timeBucket": "morning",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "startTime": "10:15"
+      }
+    },
+    {
+      "name": "untimed habit: nine, having no time of its own",
+      "write": {
+        "action": "time",
+        "timeBucket": "morning",
+        "startTime": "09:00"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "startTime": "09:00",
+        "timeBucket": "morning"
+      },
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000389",
+        "title": "read",
+        "streak": 0,
+        "status": "pending",
+        "repeatFrequency": "daily",
+        "timeBucket": "morning",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "startTime": "09:00"
+      }
+    },
+    {
+      "name": "untimed habit: an hour in another column",
+      "write": {
+        "action": "time",
+        "timeBucket": "afternoon",
+        "startTime": "14:00"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "startTime": "14:00",
+        "timeBucket": "afternoon"
+      },
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000389",
+        "title": "read",
+        "streak": 0,
+        "status": "pending",
+        "repeatFrequency": "daily",
+        "timeBucket": "afternoon",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "startTime": "14:00"
+      }
+    },
+    {
+      "name": "untimed habit: an evening hour",
+      "write": {
+        "action": "time",
+        "timeBucket": "evening",
+        "startTime": "19:15"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "startTime": "19:15",
+        "timeBucket": "evening"
+      },
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000389",
+        "title": "read",
+        "streak": 0,
+        "status": "pending",
+        "repeatFrequency": "daily",
+        "timeBucket": "evening",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "startTime": "19:15"
+      }
+    },
+    {
+      "name": "untimed habit: Anytime on its own day",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "untimed habit: Anytime in another column",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "untimed habit: the braindump",
+      "write": null,
+      "phoneRefusal": "pause",
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "done one-off: a new hour on its own day",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-04",
+        "startTime": "10:15"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "morning",
+        "startTime": "10:15",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-04"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038a",
+        "title": "call the bank",
+        "status": "completed",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "10:15",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      }
+    },
+    {
+      "name": "done one-off: its own time",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "done one-off: an hour in another column",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-08",
+        "startTime": "14:00"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "afternoon",
+        "startTime": "14:00",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-08"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038a",
+        "title": "call the bank",
+        "status": "completed",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-08",
+        "timeBucket": "afternoon",
+        "startTime": "14:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      }
+    },
+    {
+      "name": "done one-off: an evening hour",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-04",
+        "startTime": "19:15"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "evening",
+        "startTime": "19:15",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-04"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038a",
+        "title": "call the bank",
+        "status": "completed",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "evening",
+        "startTime": "19:15",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      }
+    },
+    {
+      "name": "done one-off: Anytime on its own day",
+      "write": {
+        "action": "time",
+        "timeBucket": "anytime",
+        "startTime": null
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "startTime": null,
+        "isScheduled": true,
+        "timeBucket": "anytime",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038a",
+        "title": "call the bank",
+        "status": "completed",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "anytime",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      }
+    },
+    {
+      "name": "done one-off: Anytime in another column",
+      "write": null,
+      "phoneRefusal": "another-day",
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "done one-off: the braindump",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "in-block one-off: a new hour on its own day",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-04",
+        "startTime": "10:15"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "morning",
+        "startTime": "10:15",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-04"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038b",
+        "title": "draft the brief",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "project": "Work",
+        "startTime": "10:15"
+      }
+    },
+    {
+      "name": "in-block one-off: nine, having no time of its own",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-04",
+        "startTime": "09:00"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-04"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038b",
+        "title": "draft the brief",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "project": "Work",
+        "startTime": "09:00"
+      }
+    },
+    {
+      "name": "in-block one-off: an hour in another column",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-08",
+        "startTime": "14:00"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "afternoon",
+        "startTime": "14:00",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-08"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038b",
+        "title": "draft the brief",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-08",
+        "timeBucket": "afternoon",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "project": "Work",
+        "startTime": "14:00"
+      }
+    },
+    {
+      "name": "in-block one-off: an evening hour",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-04",
+        "startTime": "19:15"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "evening",
+        "startTime": "19:15",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-04"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038b",
+        "title": "draft the brief",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "evening",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "project": "Work",
+        "startTime": "19:15"
+      }
+    },
+    {
+      "name": "in-block one-off: Anytime on its own day",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "in-block one-off: Anytime in another column",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "in-block one-off: the braindump",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "milestone: a new hour on its own day",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-04",
+        "startTime": "10:15"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "morning",
+        "startTime": "10:15",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-04"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038c",
+        "title": "first 10K",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "startTime": "10:15"
+      }
+    },
+    {
+      "name": "milestone: nine, having no time of its own",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-04",
+        "startTime": "09:00"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-04"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038c",
+        "title": "first 10K",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "startTime": "09:00"
+      }
+    },
+    {
+      "name": "milestone: an hour in another column",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-08",
+        "startTime": "14:00"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "afternoon",
+        "startTime": "14:00",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-08"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038c",
+        "title": "first 10K",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-08",
+        "timeBucket": "afternoon",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "startTime": "14:00"
+      }
+    },
+    {
+      "name": "milestone: an evening hour",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-04",
+        "startTime": "19:15"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "evening",
+        "startTime": "19:15",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-04"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038c",
+        "title": "first 10K",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "evening",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "startTime": "19:15"
+      }
+    },
+    {
+      "name": "milestone: Anytime on its own day",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "milestone: Anytime in another column",
+      "write": null,
+      "phoneRefusal": "another-day",
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "milestone: the braindump",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "row in the braindump: a new hour on its own day",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-04",
+        "startTime": "10:15"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "morning",
+        "startTime": "10:15",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-04"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038d",
+        "title": "idea",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "timeBucket": "morning",
+        "startTime": "10:15",
+        "startDate": "2026-07-04"
+      }
+    },
+    {
+      "name": "row in the braindump: nine, having no time of its own",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-04",
+        "startTime": "09:00"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-04"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038d",
+        "title": "idea",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "startDate": "2026-07-04"
+      }
+    },
+    {
+      "name": "row in the braindump: an hour in another column",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-08",
+        "startTime": "14:00"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "afternoon",
+        "startTime": "14:00",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-08"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038d",
+        "title": "idea",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "timeBucket": "afternoon",
+        "startTime": "14:00",
+        "startDate": "2026-07-08"
+      }
+    },
+    {
+      "name": "row in the braindump: an evening hour",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-04",
+        "startTime": "19:15"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "evening",
+        "startTime": "19:15",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-04"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038d",
+        "title": "idea",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "timeBucket": "evening",
+        "startTime": "19:15",
+        "startDate": "2026-07-04"
+      }
+    },
+    {
+      "name": "row in the braindump: Anytime on its own day",
+      "write": null,
+      "phoneRefusal": "another-day",
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "row in the braindump: Anytime in another column",
+      "write": null,
+      "phoneRefusal": "another-day",
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "row in the braindump: the braindump",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "dated row in the braindump: a new hour on its own day",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-04",
+        "startTime": "10:15"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "morning",
+        "startTime": "10:15",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-04"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038e",
+        "title": "dentist",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "timeBucket": "morning",
+        "startTime": "10:15"
+      }
+    },
+    {
+      "name": "dated row in the braindump: nine, having no time of its own",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-04",
+        "startTime": "09:00"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-04"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038e",
+        "title": "dentist",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "timeBucket": "morning",
+        "startTime": "09:00"
+      }
+    },
+    {
+      "name": "dated row in the braindump: an hour in another column",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-08",
+        "startTime": "14:00"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "afternoon",
+        "startTime": "14:00",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-08"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038e",
+        "title": "dentist",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-08",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "timeBucket": "afternoon",
+        "startTime": "14:00"
+      }
+    },
+    {
+      "name": "dated row in the braindump: an evening hour",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-04",
+        "startTime": "19:15"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "evening",
+        "startTime": "19:15",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-04"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038e",
+        "title": "dentist",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "timeBucket": "evening",
+        "startTime": "19:15"
+      }
+    },
+    {
+      "name": "dated row in the braindump: Anytime on its own day",
+      "write": {
+        "action": "time",
+        "timeBucket": "anytime",
+        "startTime": null
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "anytime",
+        "startTime": null,
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038e",
+        "title": "dentist",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "timeBucket": "anytime"
+      }
+    },
+    {
+      "name": "dated row in the braindump: Anytime in another column",
+      "write": null,
+      "phoneRefusal": "another-day",
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "dated row in the braindump: the braindump",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "custom one-off: a new hour on its own day",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-04",
+        "startTime": "10:15"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "morning",
+        "startTime": "10:15",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-04"
+      },
+      "after": {
+        "type": "custom",
+        "id": "00000000-0000-4000-8000-00000000038f",
+        "title": "post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "10:15",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "customType": "errand"
+      }
+    },
+    {
+      "name": "custom one-off: its own time",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "custom one-off: an hour in another column",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-08",
+        "startTime": "14:00"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "afternoon",
+        "startTime": "14:00",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-08"
+      },
+      "after": {
+        "type": "custom",
+        "id": "00000000-0000-4000-8000-00000000038f",
+        "title": "post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-08",
+        "timeBucket": "afternoon",
+        "startTime": "14:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "customType": "errand"
+      }
+    },
+    {
+      "name": "custom one-off: an evening hour",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-04",
+        "startTime": "19:15"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "evening",
+        "startTime": "19:15",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-04"
+      },
+      "after": {
+        "type": "custom",
+        "id": "00000000-0000-4000-8000-00000000038f",
+        "title": "post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "evening",
+        "startTime": "19:15",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "customType": "errand"
+      }
+    },
+    {
+      "name": "custom one-off: Anytime on its own day",
+      "write": {
+        "action": "time",
+        "timeBucket": "anytime",
+        "startTime": null
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "startTime": null,
+        "isScheduled": true,
+        "timeBucket": "anytime",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null
+      },
+      "after": {
+        "type": "custom",
+        "id": "00000000-0000-4000-8000-00000000038f",
+        "title": "post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "anytime",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "customType": "errand"
+      }
+    },
+    {
+      "name": "custom one-off: Anytime in another column",
+      "write": null,
+      "phoneRefusal": "another-day",
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "custom one-off: the braindump",
+      "write": {
+        "action": "unschedule"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": false,
+        "timeBucket": null,
+        "startTime": null,
+        "startDate": null
+      },
+      "after": {
+        "type": "custom",
+        "id": "00000000-0000-4000-8000-00000000038f",
+        "title": "post office",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "customType": "errand"
+      }
+    },
+    {
+      "name": "custom repeating: a new hour on its own day",
+      "write": {
+        "action": "time",
+        "timeBucket": "morning",
+        "startTime": "10:15"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "startTime": "10:15"
+      },
+      "after": {
+        "type": "custom",
+        "id": "00000000-0000-4000-8000-000000000390",
+        "title": "market run",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "morning",
+        "startTime": "10:15",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "customType": "errand",
+        "repeatFrequency": "weekdays"
+      }
+    },
+    {
+      "name": "custom repeating: its own time",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "custom repeating: an hour in another column",
+      "write": {
+        "action": "time",
+        "timeBucket": "afternoon",
+        "startTime": "14:00"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "startTime": "14:00",
+        "timeBucket": "afternoon",
+        "isScheduled": true,
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null
+      },
+      "after": {
+        "type": "custom",
+        "id": "00000000-0000-4000-8000-000000000390",
+        "title": "market run",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "afternoon",
+        "startTime": "14:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "customType": "errand",
+        "repeatFrequency": "weekdays"
+      }
+    },
+    {
+      "name": "custom repeating: an evening hour",
+      "write": {
+        "action": "time",
+        "timeBucket": "evening",
+        "startTime": "19:15"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "startTime": "19:15",
+        "timeBucket": "evening",
+        "isScheduled": true,
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null
+      },
+      "after": {
+        "type": "custom",
+        "id": "00000000-0000-4000-8000-000000000390",
+        "title": "market run",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "evening",
+        "startTime": "19:15",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "customType": "errand",
+        "repeatFrequency": "weekdays"
+      }
+    },
+    {
+      "name": "custom repeating: Anytime on its own day",
+      "write": {
+        "action": "time",
+        "timeBucket": "anytime",
+        "startTime": null
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "startTime": null,
+        "isScheduled": true,
+        "timeBucket": "anytime",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null
+      },
+      "after": {
+        "type": "custom",
+        "id": "00000000-0000-4000-8000-000000000390",
+        "title": "market run",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "anytime",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "customType": "errand",
+        "repeatFrequency": "weekdays"
+      }
+    },
+    {
+      "name": "custom repeating: Anytime in another column",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "custom repeating: the braindump",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "let-go one-off: a new hour on its own day",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-04",
+        "startTime": "10:15"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "morning",
+        "startTime": "10:15",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-04"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000391",
+        "title": "old plan",
+        "status": "cancelled",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "10:15",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      }
+    },
+    {
+      "name": "let-go one-off: its own time",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "let-go one-off: an hour in another column",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-08",
+        "startTime": "14:00"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "afternoon",
+        "startTime": "14:00",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-08"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000391",
+        "title": "old plan",
+        "status": "cancelled",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-08",
+        "timeBucket": "afternoon",
+        "startTime": "14:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      }
+    },
+    {
+      "name": "let-go one-off: an evening hour",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-04",
+        "startTime": "19:15"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "evening",
+        "startTime": "19:15",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-04"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000391",
+        "title": "old plan",
+        "status": "cancelled",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "evening",
+        "startTime": "19:15",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      }
+    },
+    {
+      "name": "let-go one-off: Anytime on its own day",
+      "write": {
+        "action": "time",
+        "timeBucket": "anytime",
+        "startTime": null
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "startTime": null,
+        "isScheduled": true,
+        "timeBucket": "anytime",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000391",
+        "title": "old plan",
+        "status": "cancelled",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "anytime",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      }
+    },
+    {
+      "name": "let-go one-off: Anytime in another column",
+      "write": null,
+      "phoneRefusal": "another-day",
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "let-go one-off: the braindump",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "one-off under Anytime: a new hour on its own day",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-04",
+        "startTime": "10:15"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "morning",
+        "startTime": "10:15",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-04"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000392",
+        "title": "tidy desk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "startTime": "10:15"
+      }
+    },
+    {
+      "name": "one-off under Anytime: nine, having no time of its own",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-04",
+        "startTime": "09:00"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-04"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000392",
+        "title": "tidy desk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "startTime": "09:00"
+      }
+    },
+    {
+      "name": "one-off under Anytime: an hour in another column",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-08",
+        "startTime": "14:00"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "afternoon",
+        "startTime": "14:00",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-08"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000392",
+        "title": "tidy desk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-08",
+        "timeBucket": "afternoon",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "startTime": "14:00"
+      }
+    },
+    {
+      "name": "one-off under Anytime: an evening hour",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-04",
+        "startTime": "19:15"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "evening",
+        "startTime": "19:15",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-04"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000392",
+        "title": "tidy desk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "evening",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "startTime": "19:15"
+      }
+    },
+    {
+      "name": "one-off under Anytime: Anytime on its own day",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "one-off under Anytime: Anytime in another column",
+      "write": null,
+      "phoneRefusal": "another-day",
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "one-off under Anytime: the braindump",
+      "write": {
+        "action": "unschedule"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": false,
+        "timeBucket": null,
+        "startTime": null,
+        "startDate": null
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000392",
+        "title": "tidy desk",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      }
+    },
+    {
+      "name": "repeating task with no start date: a new hour on its own day",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-04",
+        "startTime": "10:15"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "morning",
+        "startTime": "10:15",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-04"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000393",
+        "title": "floss",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "timeBucket": "morning",
+        "startTime": "10:15",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "repeatFrequency": "daily",
+        "startDate": "2026-07-04"
+      }
+    },
+    {
+      "name": "repeating task with no start date: its own time",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-04",
+        "startTime": "09:00"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-04"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000393",
+        "title": "floss",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "repeatFrequency": "daily",
+        "startDate": "2026-07-04"
+      }
+    },
+    {
+      "name": "repeating task with no start date: an hour in another column",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-08",
+        "startTime": "14:00"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "afternoon",
+        "startTime": "14:00",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-08"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000393",
+        "title": "floss",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "timeBucket": "afternoon",
+        "startTime": "14:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "repeatFrequency": "daily",
+        "startDate": "2026-07-08"
+      }
+    },
+    {
+      "name": "repeating task with no start date: an evening hour",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-04",
+        "startTime": "19:15"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "evening",
+        "startTime": "19:15",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-04"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000393",
+        "title": "floss",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "timeBucket": "evening",
+        "startTime": "19:15",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "repeatFrequency": "daily",
+        "startDate": "2026-07-04"
+      }
+    },
+    {
+      "name": "repeating task with no start date: Anytime on its own day",
+      "write": null,
+      "phoneRefusal": "another-day",
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "repeating task with no start date: Anytime in another column",
+      "write": null,
+      "phoneRefusal": "another-day",
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "repeating task with no start date: the braindump",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "one-off with a legacy ISO date: a new hour on its own day",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-04",
+        "startTime": "10:15"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "morning",
+        "startTime": "10:15",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-04"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000394",
+        "title": "renew pass",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "10:15",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      }
+    },
+    {
+      "name": "one-off with a legacy ISO date: its own time",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-04",
+        "startTime": "09:00"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-04"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000394",
+        "title": "renew pass",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      }
+    },
+    {
+      "name": "one-off with a legacy ISO date: an hour in another column",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-08",
+        "startTime": "14:00"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "afternoon",
+        "startTime": "14:00",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-08"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000394",
+        "title": "renew pass",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-08",
+        "timeBucket": "afternoon",
+        "startTime": "14:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      }
+    },
+    {
+      "name": "one-off with a legacy ISO date: an evening hour",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-04",
+        "startTime": "19:15"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "evening",
+        "startTime": "19:15",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-04"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000394",
+        "title": "renew pass",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "evening",
+        "startTime": "19:15",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      }
+    },
+    {
+      "name": "one-off with a legacy ISO date: Anytime on its own day",
+      "write": {
+        "action": "time",
+        "timeBucket": "anytime",
+        "startTime": null
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "startTime": null,
+        "isScheduled": true,
+        "timeBucket": "anytime",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000394",
+        "title": "renew pass",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04T00:00:00.000Z",
+        "timeBucket": "anytime",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      }
+    },
+    {
+      "name": "one-off with a legacy ISO date: Anytime in another column",
+      "write": null,
+      "phoneRefusal": "another-day",
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "one-off with a legacy ISO date: the braindump",
+      "write": {
+        "action": "unschedule"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": false,
+        "timeBucket": null,
+        "startTime": null,
+        "startDate": null
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000394",
+        "title": "renew pass",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      }
+    },
+    {
+      "name": "habit subtask: a new hour on its own day",
+      "write": {
+        "action": "time",
+        "timeBucket": "morning",
+        "startTime": "10:15"
+      },
+      "phoneRefusal": null,
+      "status": 400,
+      "error": "not_for_subtask",
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "habit subtask: its own time",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "habit subtask: an hour in another column",
+      "write": {
+        "action": "time",
+        "timeBucket": "afternoon",
+        "startTime": "14:00"
+      },
+      "phoneRefusal": null,
+      "status": 400,
+      "error": "not_for_subtask",
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "habit subtask: an evening hour",
+      "write": {
+        "action": "time",
+        "timeBucket": "evening",
+        "startTime": "19:15"
+      },
+      "phoneRefusal": null,
+      "status": 400,
+      "error": "not_for_subtask",
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "habit subtask: Anytime on its own day",
+      "write": {
+        "action": "time",
+        "timeBucket": "anytime",
+        "startTime": null
+      },
+      "phoneRefusal": null,
+      "status": 400,
+      "error": "not_for_subtask",
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "habit subtask: Anytime in another column",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "habit subtask: the braindump",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "skipped occurrence: a new hour",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "skipped occurrence: another column",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "skipped occurrence: Anytime",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "skipped occurrence: the braindump",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "skipped habit: a new hour",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "repeating task skipped on another day: a new hour",
+      "write": {
+        "action": "time",
+        "timeBucket": "morning",
+        "startTime": "08:00"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "startTime": "08:00"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000396",
+        "title": "run",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "morning",
+        "startTime": "08:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [
+          "2026-07-08"
+        ],
+        "repeatFrequency": "daily"
+      }
+    },
+    {
+      "name": "one-off: the braindump while milestones are unknown",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "milestone: the braindump while milestones are unknown",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "milestone: the braindump once no goal holds it",
+      "write": {
+        "action": "unschedule"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": false,
+        "timeBucket": null,
+        "startTime": null,
+        "startDate": null
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038c",
+        "title": "first 10K",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      }
+    },
+    {
+      "name": "habit: the braindump while milestones are unknown",
+      "write": null,
+      "phoneRefusal": "pause",
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "one-off: minute -15",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "habit: minute -15",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "one-off: minute 1440",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "habit: minute 1440",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "one-off: midnight",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-04",
+        "startTime": "00:00"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "morning",
+        "startTime": "00:00",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-04"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "post the letter",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "00:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      }
+    },
+    {
+      "name": "one-off: the last minute",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-04",
+        "startTime": "23:59"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "evening",
+        "startTime": "23:59",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-04"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "post the letter",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "evening",
+        "startTime": "23:59",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      }
+    },
+    {
+      "name": "one-off: noon",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-04",
+        "startTime": "12:00"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "afternoon",
+        "startTime": "12:00",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-04"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "post the letter",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "afternoon",
+        "startTime": "12:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      }
+    },
+    {
+      "name": "one-off: five in the afternoon",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-04",
+        "startTime": "17:00"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "evening",
+        "startTime": "17:00",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-04"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "post the letter",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "evening",
+        "startTime": "17:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      }
+    },
+    {
+      "name": "one-off filed under the wrong part of day: its own time",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-04",
+        "startTime": "09:00"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-04"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000398",
+        "title": "pay rent",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      }
+    },
+    {
+      "name": "one-off holding a stashed time: its own time",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-04",
+        "startTime": "09:00"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-04"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000399",
+        "title": "gym bag",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      }
+    },
+    {
+      "name": "repeating task holding a stashed date: its own time",
+      "write": {
+        "action": "time",
+        "timeBucket": "morning",
+        "startTime": "09:00"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {},
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000039a",
+        "title": "vitamins",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "repeatFrequency": "daily",
+        "previousStartDate": "2026-06-30"
+      }
+    },
+    {
+      "name": "one-off under Anytime, not on the grid: Anytime on its own day",
+      "write": {
+        "action": "time",
+        "timeBucket": "anytime",
+        "startTime": null
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {},
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000039b",
+        "title": "sort mail",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "anytime",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      }
+    },
+    {
+      "name": "one-off under Anytime holding a stashed time: Anytime on its own day",
+      "write": {
+        "action": "time",
+        "timeBucket": "anytime",
+        "startTime": null
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {},
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000039c",
+        "title": "water the fern",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "anytime",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "previousStartTime": "08:00"
+      }
+    },
+    {
+      "name": "one-off under Anytime holding a stashed date: Anytime on its own day",
+      "write": {
+        "action": "time",
+        "timeBucket": "anytime",
+        "startTime": null
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {},
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000039d",
+        "title": "file receipts",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "anytime",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "previousStartDate": "2026-06-30"
+      }
+    },
+    {
+      "name": "habit under Anytime holding a stashed time: Anytime on its own day",
+      "write": {
+        "action": "time",
+        "timeBucket": "anytime",
+        "startTime": null
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {},
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-00000000039e",
+        "title": "breathe",
+        "streak": 0,
+        "status": "pending",
+        "repeatFrequency": "daily",
+        "timeBucket": "anytime",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "previousStartTime": "07:00"
+      }
+    },
+    {
+      "name": "repeating habit with no part of day: the braindump",
+      "write": null,
+      "phoneRefusal": "pause",
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "habit that does not repeat, with no part of day: the braindump",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "repeating habit subtask with no part of day: the braindump",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "let-go row in the braindump: the braindump",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "one-off with a part of day and no date: the braindump",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "one-off subtask: the braindump",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "repeating task in the braindump with a start date: an hour in another column",
+      "write": {
+        "action": "schedule",
+        "date": "2026-07-08",
+        "startTime": "14:00"
+      },
+      "phoneRefusal": null,
+      "status": 200,
+      "error": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "afternoon",
+        "startTime": "14:00",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null,
+        "startDate": "2026-07-08"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000003a5",
+        "title": "stretch calves",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-08",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "repeatFrequency": "daily",
+        "timeBucket": "afternoon",
+        "startTime": "14:00"
+      }
+    },
+    {
+      "name": "repeating task in the braindump with a start date: Anytime in another column",
+      "write": null,
+      "phoneRefusal": "another-day",
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    },
+    {
+      "name": "repeating task in the braindump with a start date: the braindump",
+      "write": null,
+      "phoneRefusal": null,
+      "status": null,
+      "error": null,
+      "updates": null,
+      "after": null
+    }
+  ]
+}

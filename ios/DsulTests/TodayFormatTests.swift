@@ -46,21 +46,16 @@ import UIKit
         #expect(TodayScope(rawValue: "month") == nil)
     }
 
-    /// Schedule has no week form yet (design PR 10): a stored Week draws Day
-    /// there, the Show section offers Day alone, and VoiceOver hears "day".
-    @Test func scheduleDrawsDayWhateverIsStored() {
-        #expect(TodayLayout.list.hasWeek)
-        #expect(TodayLayout.buckets.hasWeek)
-        #expect(!TodayLayout.schedule.hasWeek)
-        #expect(TodayLayout.list.effectiveScope(.week) == .week)
-        #expect(TodayLayout.buckets.effectiveScope(.week) == .week)
-        #expect(TodayLayout.schedule.effectiveScope(.week) == .day)
+    /// Every layout has a week form since Week × Schedule (design PR 10): a
+    /// stored Week draws Week on each, the Show section offers both, and Day
+    /// stays Day.
+    @Test func everyLayoutDrawsTheStoredScope() {
         for layout in TodayLayout.allCases {
-            #expect(layout.effectiveScope(.day) == .day)
+            #expect(layout.hasWeek, "\(layout)")
+            #expect(layout.effectiveScope(.week) == .week, "\(layout)")
+            #expect(layout.effectiveScope(.day) == .day, "\(layout)")
+            #expect(layout.scopes == [.day, .week], "\(layout)")
         }
-        #expect(TodayLayout.list.scopes == [.day, .week])
-        #expect(TodayLayout.buckets.scopes == [.day, .week])
-        #expect(TodayLayout.schedule.scopes == [.day])
     }
 
     @Test func theCapsuleSaysTheLayoutAndTheScope() {
@@ -70,7 +65,8 @@ import UIKit
         #expect(TodayScope.day.showActionName == "Show day")
         #expect(TodayLayout.list.spokenValue(.week) == "List, week")
         #expect(TodayLayout.buckets.spokenValue(.day) == "Buckets, day")
-        #expect(TodayLayout.schedule.spokenValue(.week) == "Schedule, day")
+        #expect(TodayLayout.schedule.spokenValue(.week) == "Schedule, week")
+        #expect(TodayLayout.schedule.spokenValue(.day) == "Schedule, day")
     }
 
     // MARK: The week's title
@@ -167,6 +163,9 @@ import UIKit
         let thursday = day("2026-10-01")
         #expect(PlannerFormat.weekdayName(thursday, locale: us) == "Thursday")
         #expect(PlannerFormat.headingDate(thursday, locale: us) == "Oct 1")
+        // Week × Schedule's column heading, a third of the screen wide.
+        #expect(PlannerFormat.columnHeading(thursday, locale: us) == "Thu 1")
+        #expect(PlannerFormat.columnHeading(day("2026-10-19"), locale: us) == "Mon 19")
         #expect(PlannerFormat.spokenHeading(thursday, isToday: false, locale: us) == "Thursday, October 1")
         #expect(PlannerFormat.spokenHeading(thursday, isToday: true, locale: us) == "Thursday, October 1, today")
         #expect(PlannerFormat.opensThisDay == "Opens this day")

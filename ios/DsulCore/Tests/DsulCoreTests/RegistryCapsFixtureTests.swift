@@ -23,6 +23,8 @@ private struct TypeCase: Decodable, Sendable {
     let skipStatus: String?
     let defaultFrequency: String
     let defaultBlockMinutes: Int
+    /// `config.schedule.resizable` (Week and blocks PR 9).
+    let resizable: Bool
     let dateAnchored: Bool
     let dateAddressable: Bool
     let skippable: Bool
@@ -120,6 +122,7 @@ private func loadFixture(_ here: String = #filePath) throws -> Fixture {
             #expect(c.skipStatus == t.skipStatus, "\(t.name): skipStatus")
             #expect(c.defaultFrequency == t.defaultFrequency, "\(t.name): defaultFrequency")
             #expect(c.defaultBlockMinutes == t.defaultBlockMinutes, "\(t.name): defaultBlockMinutes")
+            #expect(c.resizable == t.resizable, "\(t.name): resizable")
             #expect(c.dateAnchored == t.dateAnchored, "\(t.name): dateAnchored")
             #expect(c.dateAddressable == t.dateAddressable, "\(t.name): dateAddressable")
             #expect(c.skippable == t.skippable, "\(t.name): skippable")

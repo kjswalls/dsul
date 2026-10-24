@@ -54,7 +54,12 @@ import path from 'path';
  * The Time chip's cases (2d) go through commitEdit's both passes: a part of
  * day picked away from the stored one is scheduleTask, which releases a
  * project block; a new time alone is updateTask twice (the mapper, then the
- * second pass's setTime), auto-corrected, and keeps the block.
+ * second pass's setTime), auto-corrected, and keeps the block. One is the
+ * Schedule's top grip (Week and blocks PR 9), `time-top-grip-anytime-stored`:
+ * a timed block stored under Anytime, given the start, its length and its
+ * part of day together, as lib/schedule-resize.ts resizeWrite builds them.
+ * Sent without the part of day it is the row's refusal
+ * (`time-refused-time-on-anytime`), which is why the grip sends it.
  *
  * The Repeat chip's cases (2e) are the chip's rows: a frequency, then Custom
  * days' keys or Monthly's day, written by the mappers as all three keys
@@ -212,6 +217,7 @@ import { disableExtensions, enableExtensions } from './support/extensions';
 import { getItemTypeConfig, isCollectible, itemTypeName } from '@/lib/item-registry';
 import { capabilityShape } from '@/lib/item-pause';
 import { BUCKET_START_TIMES, autoCorrectBucket, getBucketForTime } from '@/lib/time-bucket';
+import { resizePreview, resizeWrite } from '@/lib/schedule-resize';
 import {
   REPEAT_FREQUENCY_LABELS,
   WEEKDAY_LABELS,
@@ -319,6 +325,21 @@ const shapeOf = (item: Item) => {
 const NOW = '2026-10-01T15:00:00.000Z';
 const TODAY = '2026-10-01';
 const NY = 'America/New_York';
+
+/**
+ * The Schedule's top grip (lib/schedule-resize.ts): a block stored under
+ * Anytime at 13:00 for an hour, its top edge dragged 90 minutes up, the end
+ * kept at 14:00. `topGrip` is the write the grip ends in, which the phone
+ * sends as `time`.
+ */
+const anytimeBlock = (n: number) =>
+  task(n, 'Team sync', { startDate: TODAY, timeBucket: 'anytime', startTime: '13:00', duration: 60 });
+const GRIP_PRESSED = { startMin: 13 * 60, duration: 60 };
+const topGrip = resizeWrite(
+  'top',
+  GRIP_PRESSED,
+  resizePreview('top', GRIP_PRESSED.startMin, GRIP_PRESSED.duration, -90),
+)!;
 
 const store = () => usePlannerStore.getState();
 
@@ -939,6 +960,10 @@ async function build(): Promise<EditWrites> {
       'invalid',
     ],
     ['time-refused-empty', task(1274, 'Groceries', { startDate: TODAY, timeBucket: 'morning' }), { action: 'time' }, 'invalid'],
+    // The Schedule's top grip on a block stored under Anytime with a time (the
+    // auto-correct exempts Anytime, so the grid draws it at 13:00): dragged up an
+    // hour and a half, its end kept at 14:00.
+    ['time-top-grip-anytime-stored', anytimeBlock(1275), { action: 'time', ...topGrip }],
   ] as [string, Item, ItemEdit, string?][]) {
     cases.push(await editCase(...args));
   }
@@ -1354,6 +1379,32 @@ describe('edit writes shared with DsulCore', () => {
     ]);
     const released = blocks.find((c) => c.name === 'time-in-project-block-by-bucket')!;
     expect(released.updates).toMatchObject({ inProjectBlock: false, previousStartTime: null, previousStartDate: null });
+  });
+
+  it('the top grip sends the part of day with the start, and lands where the web’s resize does', async () => {
+    const c = generated.cases.find((x) => x.name === 'time-top-grip-anytime-stored')!;
+    expect(c.edit).toEqual({ action: 'time', startTime: '11:30', duration: 150, timeBucket: 'morning' });
+    expect(c.refusal).toBeNull();
+    // Without the part of day, the same start beside the stored Anytime is the row's refusal.
+    const config = getItemTypeConfig(itemTypeName(c.item));
+    const sent = ItemWriteSchema.parse(c.edit) as Extract<ItemEdit, { action: 'time' }>;
+    const bare: ItemEdit = { action: 'time', startTime: sent.startTime, duration: sent.duration };
+    expect(ItemWriteSchema.safeParse(bare).success).toBe(true);
+    expect(editRefusal(shapeOf(c.item), bare, config)?.code).toBe('invalid');
+    // The web's own resize of the same block: the store action with resizeWrite's patch.
+    const { after: web } = await run([c.item], () => store().updateTask(c.item.id, topGrip));
+    const columns = (i: Item | null) => {
+      const x = i as { startDate?: string; timeBucket?: string; startTime?: string; duration?: number; isScheduled?: boolean };
+      return { startDate: x.startDate, timeBucket: x.timeBucket, startTime: x.startTime, duration: x.duration, isScheduled: x.isScheduled };
+    };
+    expect(columns(c.after)).toEqual({
+      startDate: TODAY,
+      timeBucket: 'morning',
+      startTime: '11:30',
+      duration: 150,
+      isScheduled: true,
+    });
+    expect(columns(web)).toEqual(columns(c.after));
   });
 
   it('a repeat writes its three keys together, and nothing else', () => {

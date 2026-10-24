@@ -13,6 +13,7 @@ import { PrepWorking } from '@/components/ai/ai-work-badge';
 import { useDayItems } from '@/hooks/use-day-items';
 import { useFieldWidth, useFitHourPx, useResizeScrollCompensation } from '@/lib/use-fit-hour-px';
 import { useScheduleResizeStore } from '@/lib/schedule-resize-store';
+import { resizeDeltaMin, resizePreview, resizeWrite } from '@/lib/schedule-resize';
 import { isTouchPointer } from '@/lib/dnd/sensors';
 import {
   HOUR_PX,
@@ -61,7 +62,7 @@ import { SlotLayer } from '@/components/planner/slot-layer';
 import { AddRow } from '@/components/planner/slot-composer';
 import { rowScope } from '@/lib/slot-add';
 import type { DayItems } from '@/lib/day-items';
-import type { Task, HabitItem, TimeBucket, Item } from '@/lib/planner-types';
+import type { Task, HabitItem, Item } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 import { ItemTick, springItemCheck } from '@/components/primitives/item-check';
 import { BlockAsk, hasOpenQuestion } from '@/components/ai/needs-you/block-ask';
@@ -665,9 +666,9 @@ export function ScheduleBlock({
   // lands on pointer-up.
   //
   // WHETHER a type may be resized is a registry capability, not a task-vs-habit
-  // branch — habits declare `resizable: false` because habitShape carries no
-  // `duration` field to write the result to, and custom types declare true and
-  // ride the task pipeline. The projected `Task`/`Habit` doesn't type its own
+  // branch: every shipped type declares `resizable: true` (habits since
+  // `duration` joined habitShape), and custom types ride the task pipeline.
+  // The projected `Task`/`Habit` doesn't type its own
   // discriminator, so the registry name is resolved the way TaskRow's
   // delete-confirm resolves it. Project blocks are still excluded outright: they
   // take their extent from the project, not from the item.
@@ -729,14 +730,8 @@ export function ScheduleBlock({
   const pointerYRef = useRef(0);
   const rafRef = useRef<number | null>(null);
 
-  const snap = (m: number) => Math.round(m / 15) * 15;
-  const minToTime = (m: number) =>
-    `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
-  const bucketForMin = (m: number): TimeBucket => {
-    const h = Math.floor(m / 60);
-    return h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening';
-  };
-
+  // Where the edge lands and what it writes are lib/schedule-resize.ts's (the
+  // iPhone's grips port the same maths); this block supplies the travel.
   const applyResize = () => {
     const r = resizeRef.current;
     if (!r || !r.viewport) return;
@@ -744,14 +739,7 @@ export function ScheduleBlock({
     // settled — so only genuine (auto/user) scrolling extends the resize.
     if (r.scrollTopBase === null) r.scrollTopBase = r.viewport.scrollTop;
     const deltaPx = pointerYRef.current - r.clientYBase + (r.viewport.scrollTop - r.scrollTopBase);
-    const delta = (deltaPx / r.hourPx) * 60;
-    if (r.edge === 'bottom') {
-      setPreview({ startMin: r.startMin, duration: Math.max(15, snap(r.duration + delta)) });
-    } else {
-      const end = r.startMin + r.duration;
-      const ns = Math.min(Math.max(0, snap(r.startMin + delta)), end - 15);
-      setPreview({ startMin: ns, duration: end - ns });
-    }
+    setPreview(resizePreview(r.edge, r.startMin, r.duration, resizeDeltaMin(deltaPx, r.hourPx)));
   };
 
   // While resizing, scroll the viewport when the cursor nears its top/bottom edge
@@ -838,15 +826,8 @@ export function ScheduleBlock({
     // resize through it would preview correctly and then silently no-op on
     // release. Both actions take the same Partial shape.
     const commit = isTask ? updateTask : updateHabit;
-    if (r.edge === 'bottom') {
-      if (p.duration !== entry.duration) commit(item.id, { duration: p.duration });
-    } else if (p.startMin !== entry.startMin || p.duration !== entry.duration) {
-      commit(item.id, {
-        startTime: minToTime(p.startMin),
-        duration: p.duration,
-        timeBucket: bucketForMin(p.startMin),
-      });
-    }
+    const write = resizeWrite(r.edge, entry, p);
+    if (write) commit(item.id, write);
   };
 
   // Stop the auto-scroll loop if the block unmounts mid-resize.

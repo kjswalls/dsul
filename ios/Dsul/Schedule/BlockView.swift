@@ -14,18 +14,48 @@ import SwiftUI
 /// Placed in the field's points from `block.frame(fieldWidth:)`: the view is
 /// the block's own bounds, offset into the column, so VoiceOver's frame is
 /// the block. To VoiceOver it is one element: "Draft Q4 roadmap, 9 to 11 AM,
-/// Work", its state as the value, activation opens it, and the tick is a
-/// named action (design §5.9).
+/// Work", its state as the value, activation opens it, and its verbs and
+/// moves are named actions (design §5.9), never the adjustable trait.
+///
+/// While it is the block in the air (PR 8) it draws hollow, an outline where
+/// its pane was and no fill (design B8): never a fade, which would dim its
+/// lime rail and check. Only the copy on the day it was lifted from (`day`):
+/// in Week × Schedule a repeating block's other days stay drawn.
+///
+/// Selected through Change length (PR 9) its pane wears a 1.5pt ink outline,
+/// and while a grip is in the hand the column draws it at the grip's span
+/// (`ScheduleBlock.resized(to:)`), so its length and range read live. The
+/// grips are the column's, drawn over the blocks (design §5.6).
+///
+/// Compact (Week × Schedule, PR 10, design §4.5): one line of title, no
+/// length, and the mono start time under it from 45 minutes up
+/// (`WeekScheduleRules.startLine`); while a grip is in the hand the range
+/// takes the start's place, or the title line's end when one line is all
+/// that fits. Everything else (rail, bead, check, states, VoiceOver) is the
+/// same block.
 struct BlockView: View {
     let block: ScheduleBlock
+    /// The column's day: the block draws hollow only while it is lifted
+    /// from this day.
+    let day: DayString
     let fieldWidth: Double
     /// Now, on today only (the "now" value).
     let nowMin: Int?
     let timeFormat: TimeFormat
     /// The rail and bead's colour when open: the project's, or lime.
     let accent: Color
+    /// Its VoiceOver actions, in order (`SamplePlanner.spokenActions`).
+    let actions: [BlockSpokenAction]
+    /// Selected through Change length: the ink outline.
+    let selected: Bool
+    /// A grip is in the hand: a pane with no range line, narrow or short,
+    /// says its range where its length was, so both ends read as they move.
+    let showsRange: Bool
     let onOpen: () -> Void
     let onTick: () -> Void
+    let onAction: (BlockSpokenAction) -> Void
+    /// Week × Schedule's form: the title and its start, never the length.
+    var compact = false
 
     /// One line of block text (the web's `LINE_H`, scaled): a tall pane's
     /// title line is at least this tall.
@@ -34,16 +64,21 @@ struct BlockView: View {
     var body: some View {
         let geometry = block.frame(fieldWidth: fieldWidth)
         let box = bounds(geometry)
-        ZStack(alignment: .topLeading) {
-            rail(geometry, in: box)
-            bead(geometry, in: box)
-            if block.skipped {
-                skippedStrip(geometry)
-                    .offset(x: CGFloat(geometry.paneX) - box.minX, y: CGFloat(geometry.paneTop) - box.minY)
-            } else {
-                BlockPane(block: block, geometry: geometry, narrow: block.isNarrow(fieldWidth: fieldWidth),
-                          timeFormat: timeFormat, lineHeight: lineHeight, onOpen: onOpen, onTick: onTick)
-                    .offset(x: CGFloat(geometry.paneX) - box.minX, y: CGFloat(geometry.paneTop) - box.minY)
+        let pane = CGRect(x: CGFloat(geometry.paneX) - box.minX, y: CGFloat(geometry.paneTop) - box.minY,
+                          width: CGFloat(geometry.paneWidth), height: CGFloat(geometry.paneHeight))
+        HollowWhileLifted(id: block.id, day: day, pane: pane) {
+            ZStack(alignment: .topLeading) {
+                rail(geometry, in: box)
+                bead(geometry, in: box)
+                if block.skipped {
+                    skippedStrip(geometry)
+                        .offset(x: pane.minX, y: pane.minY)
+                } else {
+                    BlockPane(block: block, geometry: geometry, narrow: block.isNarrow(fieldWidth: fieldWidth),
+                              timeFormat: timeFormat, lineHeight: lineHeight, selected: selected,
+                              showsRange: showsRange, compact: compact, onOpen: onOpen, onTick: onTick)
+                        .offset(x: pane.minX, y: pane.minY)
+                }
             }
         }
         .frame(width: box.width, height: box.height, alignment: .topLeading)
@@ -55,8 +90,8 @@ struct BlockView: View {
         .accessibilityHint("Opens details")
         .accessibilityAction { onOpen() }
         .accessibilityActions {
-            if let label = block.tickLabel {
-                Button(label, action: onTick)
+            ForEach(actions, id: \.self) { action in
+                Button(action.name) { onAction(action) }
             }
         }
         .accessibilityInputLabels([Text(block.item.title)])
@@ -141,6 +176,36 @@ struct BlockView: View {
     }
 }
 
+/// The block, or while it is the one in the air (`ScheduleDrag.lifts`) an
+/// outline where its pane was and nothing else: the source draws hollow
+/// (design B8), on the day it was lifted from alone. Its own small view, the
+/// only part of a block that reads the drag, and only whether this block is
+/// lifted, so a ghost step never re-renders it. The system's lifted copy is
+/// the block as it was.
+private struct HollowWhileLifted<Content: View>: View {
+    let id: UUID
+    /// The column's day.
+    let day: DayString
+    /// The pane's rect in the block's bounds.
+    let pane: CGRect
+    @ViewBuilder let content: () -> Content
+
+    @Environment(ScheduleDrag.self) private var drag
+
+    var body: some View {
+        if drag.lifts(id, on: day) {
+            RoundedRectangle(cornerRadius: CGFloat(ScheduleMetrics.paneRadius), style: .continuous)
+                .strokeBorder(Color.secondary, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                .frame(width: pane.width, height: pane.height)
+                .offset(x: pane.minX, y: pane.minY)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .allowsHitTesting(false)
+        } else {
+            content()
+        }
+    }
+}
+
 /// A block's pane: the plate, its words centred in the content band the
 /// overlap plan leaves clear (the web's `justify-center`), and a task's check
 /// on the title's line. A tap anywhere but the check opens the item; a tap
@@ -154,6 +219,15 @@ private struct BlockPane: View {
     let narrow: Bool
     let timeFormat: TimeFormat
     let lineHeight: CGFloat
+    /// Selected through Change length: a 1.5pt ink outline for the
+    /// hairline (design §5.6). Ink, never lime: lime is a mark.
+    let selected: Bool
+    /// A grip is in the hand: the title's line says the range in the
+    /// length's place wherever no range line shows, a narrow pane's
+    /// included, whose title gives way to it.
+    let showsRange: Bool
+    /// Week × Schedule's form (`compactWords`).
+    let compact: Bool
     let onOpen: () -> Void
     let onTick: () -> Void
 
@@ -196,11 +270,17 @@ private struct BlockPane: View {
     }
 
     /// Elevated paper with a hairline and a soft shadow; done, a thinner
-    /// plate with no shadow.
+    /// plate with no shadow. Selected, the hairline is a 1.5pt ink outline.
     private var plate: some View {
         shape
             .fill(block.done ? Color(.tertiarySystemFill) : Color(.secondarySystemGroupedBackground))
-            .overlay { shape.strokeBorder(.separator, lineWidth: 0.5) }
+            .overlay {
+                if selected {
+                    shape.strokeBorder(Color.primary, lineWidth: 1.5)
+                } else {
+                    shape.strokeBorder(.separator, lineWidth: 0.5)
+                }
+            }
             .shadow(color: block.done ? Color.clear : Color.black.opacity(0.08), radius: 2, y: 1)
     }
 
@@ -209,25 +289,62 @@ private struct BlockPane: View {
         let leading = block.hasCheck ? checkLeading + CGFloat(ScheduleBlockMetrics.checkSize) + checkGap
             : (narrow ? 6 : 10)
         let trailing: CGFloat = narrow ? 4 : 8
-        if tall {
+        if compact {
+            compactWords
+                .padding(.leading, leading)
+                .padding(.trailing, trailing)
+        } else if tall {
             // Two lines when they fit; at a large text size, the title alone.
             ViewThatFits(in: .vertical) {
                 VStack(alignment: .leading, spacing: 1) {
-                    measured(titleLine.frame(minHeight: lineHeight))
+                    measured(titleLine(meta: block.durationText).frame(minHeight: lineHeight))
                     Text(block.rangeText(timeFormat))
                         .font(.caption2.monospaced())
                         .foregroundStyle(metaStyle)
                         .lineLimit(1)
                 }
-                measured(titleLine.frame(minHeight: lineHeight))
+                measured(titleLine(meta: oneLineMeta).frame(minHeight: lineHeight))
             }
             .padding(.leading, leading)
             .padding(.trailing, trailing)
         } else {
-            measured(titleLine)
+            measured(titleLine(meta: oneLineMeta))
                 .padding(.leading, leading)
                 .padding(.trailing, trailing)
         }
+    }
+
+    /// Week × Schedule's words (design §4.5): the title alone on its line,
+    /// and under it the start from 45 minutes up (`WeekScheduleRules.
+    /// startLine`), or the range while a grip is in the hand. Two lines when
+    /// they fit; otherwise the title's line alone, the range at its end
+    /// while a grip is held, as a narrow pane says it on Day.
+    @ViewBuilder
+    private var compactWords: some View {
+        let range = block.rangeText(timeFormat)
+        let under = showsRange ? range : WeekScheduleRules.startLine(block, timeFormat: timeFormat)
+        let oneLine = measured(titleLine(meta: showsRange ? range : nil))
+        if let under {
+            ViewThatFits(in: .vertical) {
+                VStack(alignment: .leading, spacing: 1) {
+                    measured(titleLine(meta: nil).frame(minHeight: lineHeight))
+                    Text(under)
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(metaStyle)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+                oneLine
+            }
+        } else {
+            oneLine
+        }
+    }
+
+    /// What the title's line says on its right when it is the pane's only
+    /// line: the length, or the range while a grip is in the hand.
+    private var oneLineMeta: String? {
+        return showsRange ? block.rangeText(timeFormat) : block.durationText
     }
 
     /// `line`, reporting where its middle sits in the content band.
@@ -239,8 +356,12 @@ private struct BlockPane: View {
         }
     }
 
-    /// The title, and the length on the right unless the pane is narrow.
-    private var titleLine: some View {
+    /// The title, and `meta` (the length, or the range) on the right unless
+    /// the pane is narrow. While a grip is in the hand the range shows on a
+    /// narrow pane too, the title truncating before it, so a length always
+    /// reads as it changes (design §5.6, "the pane's mono range updates
+    /// live"); the web's narrow pane shows none.
+    private func titleLine(meta: String?) -> some View {
         HStack(spacing: 6) {
             Text(block.item.title)
                 .font(.footnote.weight(.medium))
@@ -248,8 +369,8 @@ private struct BlockPane: View {
                 .foregroundStyle(block.done ? Color.secondary : Color.primary)
                 .lineLimit(1)
             Spacer(minLength: 0)
-            if !narrow, let length = block.durationText {
-                Text(length)
+            if !narrow || showsRange, let meta {
+                Text(meta)
                     .font(.caption2.monospaced())
                     .foregroundStyle(metaStyle)
                     .lineLimit(1)

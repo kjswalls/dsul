@@ -213,7 +213,13 @@ extension PlannerFormat {
     static func spokenRowTime(startMin: Int?, durationMin: Int) -> String? {
         guard let start = startMin else { return nil }
         guard durationMin >= 60 else { return clock(start) }
-        let end = start + durationMin
+        return spokenRange(startMin: start, endMin: start + durationMin)
+    }
+
+    /// A span as VoiceOver says it: "9 to 11 AM", "11 AM to 1 PM", the
+    /// meridiem said once when both ends share it. A row's range above, and
+    /// what a block says after its length changes (`BlockResizeWords`).
+    static func spokenRange(startMin start: Int, endMin end: Int) -> String {
         let sameHalf = ((start / 60) % 24 < 12) == ((end / 60) % 24 < 12)
         return clock(start, meridiem: !sameHalf) + " to " + clock(end)
     }

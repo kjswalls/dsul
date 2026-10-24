@@ -7,6 +7,14 @@ import SwiftUI
 /// At .large the sheet dims what is behind it, and a dimmed grid can't take a
 /// drop, so a drag that starts at .large drops the sheet to .medium at once,
 /// and to .peek as soon as the finger leaves the sheet.
+///
+/// It is also where a block or an Anytime row goes to the braindump by drag
+/// (Move to Braindump, design §5.4, PR 8): a drop target on the whole
+/// `NavigationStack`, so the peek, mostly its navigation bar, still takes
+/// one. It takes no drag that began in it, so a row let go back inside
+/// still ends as a cancel and the sheet goes back to its size; a drop the
+/// rule refuses (a habit, a repeating task) gets the system's forbidden
+/// badge. A drag from the grid leaves the sheet's size alone.
 struct BraindumpSheet: View {
     @Binding var detent: PresentationDetent
 
@@ -83,6 +91,14 @@ struct BraindumpSheet: View {
                 }
             }
         }
+        .dropDestination(for: ItemRef.self, isEnabled: takesDrops) {
+            (refs: [ItemRef], _: DropSession) in
+            guard let ref = refs.first else { return }
+            drop(ref.id)
+        }
+        .dropConfiguration { _ in
+            DropConfiguration(operation: proposal())
+        }
         .coordinateSpace(.named(braindumpSheetSpace))
         .onGeometryChange(for: CGFloat.self) { proxy in
             proxy.frame(in: .global).minY
@@ -98,7 +114,47 @@ struct BraindumpSheet: View {
         // so the drag's hold on fetched data is let go here.
         .onDisappear {
             if drag.phase != "idle" { drag.reset() }
+            // No sheet covers the grid now: a later drag's bottom edge is the
+            // grid's own (design §5.4, "A stale sheet top").
+            drag.sheetTopGlobal = .infinity
         }
+    }
+
+    /// Whether the sheet is a destination: always, but while one of its own
+    /// rows is in the air, so a row let go inside still ends as a cancel and
+    /// the sheet goes back to its size. Read off the live drag, never
+    /// `source` alone, which outlives `reset`: an idle sheet stays enabled,
+    /// so a block's drag never has to switch it on mid-session (README,
+    /// Moving a block, check 6). `proposal()` answers a cancel for a
+    /// braindump row too, in case the switch off lands late.
+    private var takesDrops: Bool {
+        return !(drag.inFlight && drag.source == DragSource.braindump)
+    }
+
+    /// The sheet's proposal for the drag in the air, decided from what the
+    /// drag says was lifted (the `ItemRef` is read only at the drop): no drop
+    /// for a braindump row (a cancel, as with no destination at all); for a
+    /// block or an Anytime row, forbidden when the rule or a gate refuses
+    /// the braindump from the day it was lifted on (`refusesDrop`), else a
+    /// move.
+    private func proposal() -> DropOperation {
+        guard let from = drag.source?.day else { return .cancel }
+        guard let id = drag.itemID else { return .forbidden }
+        let refused = planner.refusesDrop(id, from: planner.blockOrigin(id, on: from), to: .braindump)
+        return refused ? .forbidden : .move
+    }
+
+    /// A block or an Anytime row let go on the sheet: Move to Braindump
+    /// through the drop rule (`moveBlock`), one `unschedule`, or nothing for
+    /// a drop it refuses. A braindump row (`dropSource`, routed by the item
+    /// as the grid's drop is) is already there, and lands as nothing.
+    private func drop(_ id: UUID) {
+        guard let from = planner.dropSource(id, said: drag.source(of: id), on: planner.selectedDay).day
+        else { return }
+        withAnimation(.snappy) {
+            _ = planner.moveBlock(id, from: planner.blockOrigin(id, on: from), to: .braindump)
+        }
+        drag.note("drop braindump")
     }
 }
 

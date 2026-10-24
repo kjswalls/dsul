@@ -183,6 +183,16 @@ describe('the iOS change filter', () => {
       'lib/time-bucket.ts',
       'lib/recurrence.ts',
       'tests/fixtures/day/block-moves.json',
+      // The phone's drops (PR 8): each answer's intent through the route
+      // (app/api/app/, and the `schedule` and `time` writes in lib/app-api.ts
+      // and lib/item-edit.ts), pinned by block-drop-writes.json for the
+      // iPhone's hosted tests. lib/item-intents.ts (`unschedule`'s handler) is
+      // cited by no header; a change there that moves a write moves that
+      // fixture, which is in the filter.
+      'tests/fixtures/day/block-drop-writes.json',
+      'app/api/app/items/[id]/route.ts',
+      'lib/app-api.ts',
+      'lib/item-edit.ts',
     ]) {
       expect(filter.test(p), p).toBe(true);
     }
@@ -319,6 +329,33 @@ describe('the iOS change filter', () => {
       'lib/settle.ts',
       'tests/unit/overlap-fixtures.test.ts',
       'tests/unit/schedule-overlap.test.ts',
+    ]) {
+      expect(filter.test(p), p).toBe(false);
+    }
+  });
+
+  it('matches what Change length reads (Week and blocks PR 9), and not the web’s resize flag', () => {
+    // Where a dragged edge lands and what it writes (lib/schedule-resize.ts
+    // `resizePreview`, `resizeWrite`, resize.json), whether a type resizes
+    // (lib/item-registry.ts `schedule.resizable`, caps.json), and the top grip's
+    // write through the Time edit (lib/item-edit.ts, edit-writes.json).
+    for (const p of [
+      'lib/schedule-resize.ts',
+      'tests/fixtures/day/resize.json',
+      'tests/fixtures/day/caps.json',
+      'tests/fixtures/day/edit-writes.json',
+      'lib/item-registry.ts',
+      'lib/item-edit.ts',
+      'lib/time-bucket.ts',
+    ]) {
+      expect(filter.test(p), p).toBe(true);
+    }
+    // The web's grid-wide "a block is resizing" flag (it expands and freezes the
+    // desktop grid) shares the name's prefix and is not a port; nor are the tests.
+    for (const p of [
+      'lib/schedule-resize-store.ts',
+      'tests/unit/schedule-resize.test.ts',
+      'tests/unit/schedule-resize-pointer.test.tsx',
     ]) {
       expect(filter.test(p), p).toBe(false);
     }

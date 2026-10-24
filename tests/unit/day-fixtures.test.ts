@@ -17,6 +17,17 @@ import { deriveDayItems, flattenDayRows, BUCKET_ORDER, type DayItems } from '@/l
 import { deriveTimedEntries, deriveUntimedRows, formatClock, formatHourLabel } from '@/components/views/day-schedule';
 import { formatDuration } from '@/components/primitives/pills';
 import { timeFormatPattern } from '@/lib/use-time-format';
+import {
+  DAY_END_MIN,
+  RESIZE_MIN_DURATION,
+  RESIZE_SNAP_MIN,
+  resizeDeltaMin,
+  resizePreview,
+  resizeWrite,
+  type BlockSpan,
+  type ResizeEdge,
+  type ResizeWrite,
+} from '@/lib/schedule-resize';
 import { braindumpMembers } from '@/lib/braindump-members';
 import { groupRows } from '@/lib/grouping';
 import { isRowDone, isRowSkipped, toggleRowDone, type ItemToggleActions } from '@/lib/item-toggle';
@@ -88,7 +99,9 @@ import type { HabitItem, Item, Project, Routine, Season, Task } from '@/lib/plan
  * lib/reminders/due.ts (due.json) and lib/reminders/copy.ts with the copy
  * contract's pattern (copy.json); and what a schedule block and its gutter
  * print (schedule-copy.json: day-schedule.tsx `formatClock` and
- * `formatHourLabel`, components/primitives/pills.tsx `formatDuration`). The
+ * `formatHourLabel`, components/primitives/pills.tsx `formatDuration`), and
+ * where a block's dragged edge lands and what it writes (resize.json:
+ * lib/schedule-resize.ts `resizePreview`, `resizeWrite`, `resizeDeltaMin`). The
  * overlap pass is in tests/unit/overlap-fixtures.test.ts (overlap.json).
  * Every case is built here, run through the
  * real TS, and written with its answer to tests/fixtures/day/*.json.
@@ -1393,6 +1406,10 @@ function buildRowMoves(): RowMovesFixture {
       ['one-off cancelled', oneOff({ status: 'cancelled' }), 'task'],
       ['one-off in a project block', oneOff({ inProjectBlock: true }), 'task'],
       ['one-off undated', oneOff({ startDate: undefined }), 'task'],
+      // A row the braindump lists, as the phone's Anytime band asks before it
+      // takes one through `move` (Week and blocks PR 8, design §5.2).
+      ['a braindump row', oneOff({ startDate: undefined, isScheduled: false }), 'task'],
+      ['a done braindump row', oneOff({ startDate: undefined, isScheduled: false, status: 'completed' }), 'task'],
       ['repeat none is a one-off', oneOff({ repeatFrequency: 'none' }), 'task'],
       ['recurring task', oneOff({ repeatFrequency: 'daily' }), 'task'],
       ['recurring task done that day', oneOff({ repeatFrequency: 'daily', completedDates: [T] }), 'task'],
@@ -1610,6 +1627,11 @@ type TypeCaps = {
   skipStatus: string | null;
   defaultFrequency: string;
   defaultBlockMinutes: number;
+  /**
+   * `schedule.resizable`: the grid offers a block's resize handles (the web) or Change length
+   * (the phone), with a start time, outside a project block, on a day it is not skipped.
+   */
+  resizable: boolean;
   dateAnchored: boolean;
   dateAddressable: boolean;
   skippable: boolean;
@@ -1700,6 +1722,7 @@ function buildCaps(): CapsFixture {
       skipStatus: c.skipStatus,
       defaultFrequency: c.defaultFrequency,
       defaultBlockMinutes: c.schedule.defaultBlockMinutes,
+      resizable: c.schedule.resizable,
       dateAnchored: c.dateAnchored,
       dateAddressable: c.dateAddressable,
       skippable: c.skippable,
@@ -2261,6 +2284,95 @@ function buildScheduleCopy(): ScheduleCopyFixture {
   };
 }
 
+// ── Changing a block's length (resize.json) ──────────────────────────────────
+
+/**
+ * Where a block's dragged edge lands and what it writes (lib/schedule-resize.ts):
+ * the web's resize handles and the phone's grips. `preview` is a press on
+ * `edge` of the block at `startMin` for `duration`, moved `deltaMin` minutes
+ * (positive is later), answered by `resizePreview` (`expected`) and the write
+ * that release sends (`write`, `resizeWrite`, null for none). `deltaMin` is
+ * `resizeDeltaMin`: the travel in points at an hour height, in minutes.
+ */
+type ResizeDeltaCase = { name: string; deltaPx: number; hourPx: number; expected: number };
+type ResizeCase = {
+  name: string;
+  edge: ResizeEdge;
+  startMin: number;
+  duration: number;
+  deltaMin: number;
+  expected: BlockSpan;
+  write: ResizeWrite | null;
+};
+type ResizeFixture = {
+  constants: { RESIZE_SNAP_MIN: number; RESIZE_MIN_DURATION: number; DAY_END_MIN: number };
+  deltaMin: ResizeDeltaCase[];
+  preview: ResizeCase[];
+};
+
+/** A row name's clock: 570 is 9:30, 1455 is 24:15, -65 is -1:05. */
+const clockOf = (m: number): string =>
+  m < 0 ? `-${clockOf(-m)}` : `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`;
+
+function buildResize(): ResizeFixture {
+  // The phone's 75pt hour and two of the web's fitted heights; quarter steps,
+  // a point either side of a half quarter, and travel past the day both ways.
+  const deltaMin = [75, 52, 40].flatMap((hourPx) =>
+    [0, 1, 9.3, 9.375, 9.4, 18.75, -18.75, 37.5, -37.5, 75, -150, 1800].map((deltaPx) => ({
+      name: `${deltaPx}pt at ${hourPx}`,
+      deltaPx,
+      hourPx,
+      expected: resizeDeltaMin(deltaPx, hourPx),
+    }))
+  );
+  // A plain hour; odd starts and ends; a zero and a short length; the hour
+  // either side of noon and of 17:00 (where the top edge's part of day turns);
+  // the day's first quarter, a block ending before 0:15, the last hour, a
+  // block stored past midnight, one starting after 23:45, and the whole day;
+  // then blocks stored starting outside the day, as the old maths could write
+  // them ("24:00", "24:15", and "-1:-5", which reads back as -65), one of them
+  // ending inside it.
+  const blocks: [number, number][] = [
+    [600, 60],
+    [550, 50],
+    [550, 30],
+    [600, 0],
+    [600, 10],
+    [660, 120],
+    [990, 60],
+    [30, 60],
+    [0, 10],
+    [1380, 30],
+    [1410, 60],
+    [1430, 10],
+    [0, 1440],
+    [1440, 30],
+    [1455, 30],
+    [-65, 15],
+    [-65, 120],
+  ];
+  // No travel, under and over a half quarter (7.5 rounds up), whole quarters,
+  // and a day's worth either way.
+  const deltas = [0, 3.2, 7.4, 7.5, -7.5, -7.6, 15, -15, 30, -30, 90, -90, 600, 1500, -1500];
+  const preview = (['bottom', 'top'] as const).flatMap((edge) =>
+    blocks.flatMap(([startMin, duration]) =>
+      deltas.map((delta) => {
+        const expected = resizePreview(edge, startMin, duration, delta);
+        return {
+          name: `${edge}: ${clockOf(startMin)} for ${duration}, ${delta > 0 ? '+' : ''}${delta}`,
+          edge,
+          startMin,
+          duration,
+          deltaMin: delta,
+          expected,
+          write: resizeWrite(edge, { startMin, duration }, expected),
+        };
+      })
+    )
+  );
+  return { constants: { RESIZE_SNAP_MIN, RESIZE_MIN_DURATION, DAY_END_MIN }, deltaMin, preview };
+}
+
 // ── Writing and checking ─────────────────────────────────────────────────────
 
 const FIXTURES: Record<string, () => unknown> = {
@@ -2281,6 +2393,7 @@ const FIXTURES: Record<string, () => unknown> = {
   due: buildDue,
   copy: buildCopy,
   'schedule-copy': buildScheduleCopy,
+  resize: buildResize,
 };
 
 const serialize = (f: unknown) => JSON.stringify(f, null, 2) + '\n';
@@ -2552,5 +2665,51 @@ describe('day fixtures shared with DsulCore', () => {
     expect(sc.formatHourLabel.find((c) => c.hour === 7 && c.timeFormat === '24h')?.expected).toBe('07:00');
     const dur = (m: number) => sc.formatDuration.find((c) => c.minutes === m)?.expected;
     expect([dur(30), dur(60), dur(90), dur(1440)]).toEqual(['30m', '1h', '1h 30m', '24h']);
+  });
+
+  it('the resize cases reach every stop, both writes and every part of day', () => {
+    const rz = generated.resize as ResizeFixture;
+    const end = (c: ResizeCase) => c.expected.startMin + c.expected.duration;
+    const bottom = rz.preview.filter((c) => c.edge === 'bottom');
+    const top = rz.preview.filter((c) => c.edge === 'top');
+    // The edge that stays, stays: the start, or the end held to 24:00; and an
+    // edge with nothing inside the day to hold to keeps the block as it was.
+    const held = (c: ResizeCase) => c.expected.startMin === c.startMin && c.expected.duration === c.duration;
+    for (const c of bottom) expect(c.expected.startMin, c.name).toBe(c.startMin);
+    for (const c of top) {
+      if (c.startMin + c.duration <= 0) expect(held(c), c.name).toBe(true);
+      else expect(end(c), c.name).toBe(Math.min(c.startMin + c.duration, 1440));
+    }
+    expect(bottom.some((c) => c.startMin >= 1440 && held(c) && c.deltaMin !== 0)).toBe(true);
+    expect(bottom.some((c) => c.startMin < 0 && held(c) && c.deltaMin !== 0)).toBe(true);
+    expect(top.some((c) => c.startMin + c.duration <= 0 && held(c) && c.deltaMin !== 0)).toBe(true);
+    // Every answer that moved is inside the day and at most a day long.
+    for (const c of rz.preview) {
+      if (held(c)) continue;
+      expect(c.expected.startMin >= 0 && end(c) <= 1440 && c.expected.duration >= 1, c.name).toBe(true);
+    }
+    // The floor, the midnight stop and the floor giving way to it.
+    expect(bottom.some((c) => c.expected.duration === 15 && c.duration + c.deltaMin < 15)).toBe(true);
+    expect(bottom.some((c) => end(c) === 1440 && c.duration + c.deltaMin > 1440 - c.startMin)).toBe(true);
+    expect(bottom.some((c) => c.expected.duration < 15)).toBe(true);
+    // The top edge's three stops: 15 before the end, 23:45 on a block stored
+    // past midnight, and 0:00, the last also where it gives the floor way.
+    expect(top.some((c) => c.expected.duration === 15 && end(c) < 1440)).toBe(true);
+    expect(top.some((c) => c.expected.startMin === 1425 && c.startMin + c.duration > 1440)).toBe(true);
+    expect(top.some((c) => c.expected.startMin === 0 && c.startMin + c.deltaMin < 0)).toBe(true);
+    expect(top.some((c) => c.expected.startMin === 0 && c.expected.duration < 15)).toBe(true);
+    // A half quarter rounds up.
+    const half = bottom.find((c) => c.startMin === 600 && c.duration === 60 && c.deltaMin === 7.5)!;
+    expect(half.expected.duration).toBe(75);
+    // The bottom edge writes the length alone; the top edge the start, its
+    // length and its part of day, in each part of day; neither writes for no change.
+    for (const c of bottom) if (c.write) expect(Object.keys(c.write), c.name).toEqual(['duration']);
+    for (const c of top) if (c.write) expect(Object.keys(c.write).sort(), c.name).toEqual(['duration', 'startTime', 'timeBucket']);
+    const buckets = new Set(top.flatMap((c) => (c.write && 'timeBucket' in c.write ? [c.write.timeBucket] : [])));
+    expect(buckets).toEqual(new Set(['morning', 'afternoon', 'evening']));
+    expect(bottom.some((c) => c.write === null)).toBe(true);
+    expect(top.some((c) => c.write === null)).toBe(true);
+    // The travel at the phone's hour height.
+    expect(rz.deltaMin.find((c) => c.deltaPx === 18.75 && c.hourPx === 75)?.expected).toBe(15);
   });
 });

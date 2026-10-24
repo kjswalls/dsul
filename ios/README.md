@@ -15,7 +15,7 @@ Today shows one day in three layouts: List (filter chips, then sections per
 routine and per project, each project's dot in its own colour, as on the
 web), Buckets (Morning, Afternoon, Evening, Anytime) and Schedule (the hour
 grid in the web's block look, the day's untimed rows in an Anytime band above
-it, and the braindump sheet over it). List and Buckets
+it, and the braindump sheet over it). List, Buckets and Schedule
 can show the day's whole week instead, seven days from your Week starts on
 setting. The capsule top right switches them: tap for the next, swipe along it
 to step, long-press for the menu, whose Show section picks Day or Week. Tap
@@ -373,11 +373,14 @@ how it feels. Check on the iPhone, on the sample or signed in once the
 server's `skip`, `move` and `pause` writes are deployed (an older server's
 verbs simply don't show); a check that needs one or the other says so. The
 sample's habits are Meds and Stretch 10 min (daily, already done today),
-Journal (daily, not done today), Plan tomorrow (weekdays) and Water the
-plants (Sundays and Wednesdays), and its tasks are all one-offs but Pay
-rent, last in the braindump, which repeats monthly on the 1st and has no day.
-Four of the one-offs sit on the days around today, for Week (see Checking
-Week).
+Journal (daily, not done today), Plan tomorrow (weekdays), Water the plants
+(Sundays and Wednesdays) and Walk (daily at 7:45 AM, on the grid), and its
+tasks are one-offs but three: Pay rent, last in the braindump, which repeats
+monthly on the 1st and has no day; Team sync, weekly on today's weekday at
+4:45 PM since two weeks back; and Weekly run review, a goal's check-in (see
+Checking Organize). Four of the one-offs sit on the days around today, for
+Week (see Checking Week), and Walk and Team sync are there to move (see
+Moving a block).
 Its routines are Morning routine (Meds, Stretch 10 min and Journal) and Wind
 down, which is empty, and its one season, Autumn, holds Journal. Draft Q4
 roadmap has two subtasks (Pull the September numbers, done, and Write the
@@ -1574,15 +1577,16 @@ colour.
 ## Checking Week
 
 Week draws List or Buckets as the seven days of the selected day's week,
-starting on your Week starts on setting (Sunday on the sample). The hosted
+starting on your Week starts on setting (Sunday on the sample); Schedule's
+week is its own section (Checking Week × Schedule, below). The hosted
 tests pin its words and the sample's week; these checks are for how it reads
 and feels. On the sample, today is the day the app opened, and four one-off
 tasks with no project sit around it: Pick up the dry cleaning three days back
 (4:30 PM), Bike service two days back (2 PM), Coffee with Priya tomorrow
 (10 AM) and Post the birthday card the day after (Anytime). Which of them
 fall in this week depends on today's weekday (from a Thursday all four do);
-the others are in Last week or Next week. Nothing new is on the day before
-today.
+the others are in Last week or Next week. None of them is on the day before
+today (Walk, every day's, is: see Moving a block).
 
 1. Hold the capsule, then Show, Week, on List. Seven day sections, from
    your Week starts on setting, each headed by its weekday and date. Today's
@@ -1613,10 +1617,12 @@ today.
    the day (Morning, Afternoon, Evening, Anytime), the empty ones left out,
    and "Nothing planned." on a day with nothing. Rows tick and open on their
    own day, as on List.
-6. On Schedule, the capsule's Show section offers Day only, and the title
-   and the grid are the day's. Step back to List: the week is still there.
+6. On Schedule, the capsule's Show section offers Day and Week, as on List
+   and Buckets; Week there is the week's columns (Checking Week × Schedule,
+   below), and the title reads the week. Step back to List: the week is
+   still there.
 7. VoiceOver: the capsule reads "Layout, List, week", and its actions offer
-   Show day (Show week while it shows Day, never on Schedule). The title
+   Show day (Show week while it shows Day, on every layout). The title
    reads "This week, October 19 to 25, List". A day's heading reads as a
    heading, "Thursday, October 1" with ", today" on today, and a double tap
    opens that day.
@@ -1675,8 +1681,8 @@ Today to Schedule and scroll from 7 AM to 10 PM.
 1. Light and dark: each block is a pane with a hairline and a soft shadow,
    beside a 2pt rail that runs its true length and a bead at its start. Draft
    Q4 roadmap and Standup (filed "work") wear Work's colour, Review PRs
-   dsul's, Gym Health's; Lunch walk and Read, which have no project, wear a
-   lime rail and bead at full strength.
+   dsul's, Gym Health's; Lunch walk, Read, Walk and Team sync, which have no
+   project, wear a lime rail and bead at full strength.
 2. Standup (15 minutes) shows its title and "15m" on one line, Morning pages
    "30m"; Draft Q4 roadmap (2 hours) adds "9:00–11:00" under its title,
    12-hour as Settings says. Standup's pane is taller than its quarter hour
@@ -1751,6 +1757,215 @@ fresh sample each time.
    the other's title.
 5. Load 40 blocks (avatar menu, Drag spike): the grid scrolls without a
    stutter, and a drag's ghost keeps up with the finger.
+
+## Moving a block
+
+On Day's Schedule a block moves (Week and blocks PR 8): hold it still for
+its menu, or hold and move to drag it to another time, onto the Anytime band
+or onto the braindump sheet. An Anytime row drags back onto an hour, and a
+braindump row drops onto the band. What each drop writes is the web's rule
+(`planBlockDrop`), which the hosted tests pin; these checks are for how it
+feels. Run the spike's five checks first (Trying the drag, above): they
+still pass. Then, on a fresh sample each time (Try with sample data),
+switch Today to Schedule. Walk (7:45 AM, a daily habit) and Team sync
+(4:45 PM, a weekly task on today's weekday) are the sample's blocks that
+repeat.
+
+1. (M1) Hold Lunch walk (12:30 PM) still: its menu opens and nothing
+   lifts. It reads Mark done and Pause; then Move to tomorrow, with
+   tomorrow's date under it, Reschedule (Today, Tomorrow, Next week) and
+   Move to Braindump; then Change length and Move to Anytime, a divider
+   between each group. Walk's reads Done today, Skip today and Pause, then
+   Change length and Move to Anytime.
+   Skip today on Walk: its strip's menu starts with Unskip today, and the
+   strip never lifts. While a menu is open, and after you pick from it or
+   dismiss it, no block shows a dashed outline and the Anytime band's
+   header keeps its own words.
+2. (M2) Hold Lunch walk and move: the menu folds into the lifted block, and
+   a ghost with its landing time follows in 15-minute steps, with a tick at
+   each. Where the block was, a dashed outline with no fill; nothing fades.
+   Grab it near its foot and let go: it lands where you held it, not
+   centred on your finger, and it shows no grips.
+3. Drop it on 3:30 PM: it lands there, and the outline is gone.
+4. (M3) Drag a block up past the grid's top edge: the grid scrolls up (the
+   system's own scroll; if it doesn't, the hand-driven top edge is one
+   switch, `ScheduleAutoscroll.handDrivesTopEdge`). Drag one down past the
+   bottom, with the braindump sheet open and closed: it scrolls down.
+5. Start any drag: the Anytime band's header reads "Drop here to keep it
+   time-free" until you let go. Drop Standup (11:15 AM) on the band: it
+   leaves the hours and shows in the band. Drag that row back onto 11:15
+   AM: it is a block again. Open the braindump and drag Call the bank onto
+   the band: it lands on today, with no time. Tick Groceries in the band,
+   then drag it onto an hour: done rows move as the web's do.
+6. (M4) Open the braindump sheet at its medium size and drop Gym (5:30 PM)
+   on it: Gym joins the braindump. Drag Walk or Team sync over the sheet:
+   the forbidden badge; let go there and it stays where it was. Then drag a
+   braindump row onto an hour, and drop that new block back on the sheet
+   at once: it still joins the braindump, so a row's drag leaves the sheet
+   taking drops.
+7. Open the braindump at its large size, start dragging a row, and let go
+   inside the sheet: the sheet goes back to large and nothing changes.
+8. Drag Walk to 8:15 AM: Walk is at 8:15 on every day (pick yesterday and a
+   day next week from the title). Drag Team sync to 4 PM: the weeks before
+   still show it, at 4 PM too, since a repeat moves in time only and keeps
+   its start date.
+9. A flick that starts on a block scrolls the grid and never lifts it.
+10. VoiceOver: a block's actions hold its menu's verbs (Lunch walk's: Mark
+    done, Pause, Move to tomorrow, Move to Braindump), then "15 minutes
+    later", "15 minutes earlier", "Make 15 minutes longer", "Make 15 minutes
+    shorter" and Move to Anytime. A swipe up or down on
+    a block moves nothing. "15 minutes later" on Lunch walk says "Moved to
+    12:45 PM"; on Walk (7:45), "Moved to 8 AM, every day it repeats".
+11. Signed in, turn on Airplane Mode and drag a block to another hour: it
+    lands at once, then the banner says "Couldn't reach dsul, so that change
+    was undone." and the block goes back. Turn Airplane Mode off.
+
+## Changing a block's length
+
+On Day's Schedule a block's start or end moves by its grips (Week and blocks
+PR 9). Change length in the block's menu is the only thing that shows them,
+and a drop never does, so no scroll that starts near a block becomes a
+length by accident. What a length writes is the existing time edit (the
+bottom grip sends the length alone, the top one the start, the length and the
+start's part of day), which the hosted tests pin; these checks are for how
+it feels. The PR stays a draft until they pass on a phone. Start on a fresh
+sample (Try with sample data), switch Today to Schedule, and run the checks
+in order.
+
+1. Hold Lunch walk (12:30 PM, 45 minutes) still and pick Change length: its
+   pane gets an ink outline, with a small ink grip on its top edge at the
+   left and one on its bottom edge at the right; nothing about it is lime
+   but its rail and bead. Press the bottom grip: a light tap. Drag it down:
+   the block grows in 15-minute steps with a tick at each, and while you
+   hold, its range shows: in its length's place while the pane has one
+   line, on a line of its own once it is taller. Let go when the range reads
+   12:30 to 1:30: Lunch walk is an hour long, and its grips stay for another
+   go. Press a grip and let go without moving: nothing changes. Then a block
+   off the quarter hour, where a press that moved even a little would snap:
+   tap Gym (5:30 PM), set its time to 5:40 PM (the time chip, Specific
+   time) and close the sheet; pick Change length on Gym, then press each
+   grip in turn, rest your finger on it a moment and let go: Gym still reads
+   5:40 to 6:40. Signed in, with Airplane Mode on, a length lands and then
+   goes back with the banner.
+2. Drag Lunch walk's top grip up an hour: the start moves in 15-minute steps
+   and the end stays at 1:30. Let go at 11:30 AM: it starts there and ends
+   where it did, and on Buckets it now sits under Morning. Back on Schedule,
+   select it again and drag the top grip down past the end: it stops 15
+   minutes short of it. On a block half the width (drag two braindump rows
+   onto 4 PM, as in Checking overlapping blocks, and pick Change length on
+   one), a held grip shows the range on the title's line, the title cut
+   short to make room.
+3. (R1) With Lunch walk selected, start a scroll anywhere but a grip (on a
+   block, the gutter, an empty hour): the grid scrolls and no length
+   changes. Flick fast up and down across a grip: the same. A drag that
+   starts on a grip resizes and never scrolls the grid. Press a grip and
+   hold still for a second, then drag: the length changes, no menu opens
+   and the block never lifts. If either fails, the grip's gesture needs the
+   UIKit fallback (memory/plans/ios-app.md, "Changing a length").
+4. Select Read (9:30 PM) and drag its bottom grip to the bottom of the
+   screen, then hold still: the grid scrolls and the end keeps following
+   your finger, a tick at each quarter hour, until it stops at midnight.
+   Scroll up until Morning pages (7 AM) sits at the very top of the screen
+   and select it. Press its top grip and let go without moving: nothing
+   scrolls and nothing changes. Now drag the top grip up: the grid scrolls
+   up and the start follows. Open the braindump at its medium size (which
+   clears the selection), select Lunch walk above it and drag its bottom
+   grip down: the grid scrolls once the finger is just above the sheet.
+5. Tap an empty hour or the gutter: the outline and the grips go. Select
+   Lunch walk again and scroll: they stay. Tap Lunch walk itself: its sheet
+   opens and they go. Opening the braindump, picking another day from the
+   title and switching to List each clear them too. Select it once more and
+   drag Call the dentist (3 PM) to a new hour: the grips go, and nothing
+   shows grips after the drop. Select Standup (11:15 AM, 15 minutes) and
+   tap its check: nothing ticks, since the top grip's target covers it; tap
+   an empty hour, then the check: it ticks. If that reads as wrong, say so:
+   the top grip can move in past the check.
+6. Skip today on Walk: its strip's menu has no Change length. Tick Lunch
+   walk done: its menu keeps Change length. Signed in, a task the web shows
+   inside a project's time block has no Change length either (its block
+   takes the project's time; the sample has none).
+7. VoiceOver: a block's actions add "Make 15 minutes longer" and "Make 15
+   minutes shorter" after "15 minutes earlier" (Cook dinner's, at 7 PM, for
+   45 minutes). "Make 15 minutes longer" on Cook dinner says "7 to 8 PM",
+   and the block is an hour long. Standup offers longer and not shorter.
+   The grips are never read.
+
+## Checking Week × Schedule
+
+On Schedule, Week draws the selected day's week as day columns (Week and
+blocks PR 10): three across, each its heading and its Anytime strip pinned
+over that day's hours, swiped sideways a day at a time beside the hour
+gutter. Blocks move between days, Anytime rows and braindump rows drop onto
+any column, and ticking and Change length work in every column, as on Day.
+What each drop writes is Day's rule, which the hosted tests pin
+(WeekScheduleTests, and ScheduleRenderTests for the week laid out once);
+these checks are for how it feels. The PR stays a draft until W-S1 to W-S3
+pass on a phone. Start on a fresh sample (Try with sample data), switch
+Today to Schedule, then hold the capsule and pick Show, Week.
+
+1. (W-S1) Three columns, each headed by its short weekday and date ("Thu
+   1"), today's with a lime dot after it and both words in ink. The selected
+   day is the first column, or as near it as the week's end allows (on the
+   week's last two days the last three columns show). A sideways swipe
+   moves one day and stops on a column's edge; swipe across all seven and
+   back. The hour gutter never moves sideways; while the week holds today,
+   the time now reads in the gutter and the marker is in today's column
+   only. The title reads This week over the week's dates and Schedule.
+   Tap the title and pick a day next week, then tap Today: each time the
+   columns are on the new week at once, with no sideways slide.
+2. (W-S2) Scroll down to 3 PM: the headings and the Anytime strips stay
+   pinned over the hours, the gutter's cell beside them too, and no hour
+   line or block shows through them. Each sample strip shows its day's
+   morning habits first, three rows, then "+N more" (today's reads "+4
+   more"). Tick Journal in today's pinned strip: it ticks on today alone
+   (tomorrow's Journal stays open). Drag Standup (11:15 AM) onto today's
+   pinned strip: it leaves the hours rather than landing on the hour behind
+   the strip, and today's line reads "+5 more". Tap that line: Today shows
+   the day in Day, Standup in its Anytime band. A heading's tap does the
+   same for its day. (Signed in, a day with nothing untimed says Anytime in
+   its strip; every sample day has its habits.)
+3. (W-S3) Drag Lunch walk (12:30 PM) onto 10 AM in the column two days on
+   (on the week's last two days, the first column showing): it lands on
+   that day at 10:00, not off by the strips' height. Drag Lunch walk again
+   and rest your finger just inside the columns' right edge: after a moment
+   they step one day, then another while you hold, and the ghost moves to
+   the column now under your finger; let go and it lands there. Just
+   inside the left edge, right of the hour labels, the same the other way.
+   Over the hour labels, or in the thin margin past the last column, the
+   drag has left the hours: the ghost goes and nothing scrolls. If the
+   columns move twice a step, or slide on their own before the pause, the
+   system scrolls them as well: turn off
+   `ScheduleAutoscroll.handDrivesSideEdges`. Drag Lunch walk up toward the
+   strips: once your finger is just below them, the hours scroll up. If
+   they scroll twice as fast there, turn off
+   `ScheduleAutoscroll.handDrivesWeekTopEdge`; if they scroll while your
+   finger is over a strip or a heading, say so (the fallback is heads that
+   scroll away with the hours). Drag it down past the bottom, with the
+   braindump open and closed: they scroll down. Pick Change length on Cook
+   dinner (7 PM) and drag its top grip up toward the strips: the hours
+   scroll once your finger is just below them. Switch to Day (capsule,
+   Show, Day): the grips are gone.
+4. Drag Walk (7:45 AM, every day's) sideways onto another column at 8:30
+   AM: only today's Walk turns to an outline, its ghost stays in today's
+   column the whole way, resting at a side edge steps no columns, and Walk
+   lands at 8:30 on every day (look at yesterday and a day next week).
+   Team sync does the same on its own day.
+5. Drag Review PRs (1:30 PM) onto another day's Anytime strip: the
+   forbidden badge, and letting go there leaves it at 1:30 PM today.
+6. Open the braindump and drop Call the bank on 2 PM in tomorrow's column
+   (on the week's last day, yesterday's): it lands there, and on Day that
+   day shows it at 2 PM.
+7. The largest accessibility text size (Settings, Accessibility, Display &
+   Text Size, Larger Text): two columns, not three, each strip one row and
+   then "+N more"; the gutter's marks stop growing at the first
+   accessibility size and the blocks' and strips' words at the second, so
+   nothing clips.
+8. Load 40 blocks (the avatar's Drag spike section), then Week: no stutter
+   scrolling down, sideways, or while dragging a block across columns.
+9. VoiceOver: each column is a group named for its day ("Thursday, October
+   1, today"). Its heading reads as a heading with the hint "Opens this
+   day"; its blocks read in time order, each with Day's actions; a strip's
+   row reads as the band's does, with Mark done among its actions.
 
 ## Rules
 
