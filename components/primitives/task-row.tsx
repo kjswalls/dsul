@@ -826,9 +826,9 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
             space. The pill returns null on its own for an unassigned or finished
             item, so most rows render nothing and start no timer. */}
         {task && typeConfig.agentAssignable && <AgentPill item={task} className="-ml-0.5" />}
-        {/* The AI getting this row ready (a prep pack): the title's sheen. What
-            is ready says so once, in the dock (components/notices/ai-work-notice.tsx),
-            not on the row. Do stuff's lanes pass their own trailing chip. */}
+        {/* The AI getting this row ready (a prep pack): the relay beside the
+            title, and the title's sheen. The row is the one place that says
+            it; what is ready the do stuff key counts, not the row. */}
         {task && <PrepWorking itemId={task.id} />}
 
         {/* Trailing metadata — the "quiet rail". Fixed order, innermost to the

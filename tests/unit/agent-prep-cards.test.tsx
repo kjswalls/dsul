@@ -41,12 +41,15 @@ describe('the pill', () => {
     expect(container.textContent).toBe('');
   });
 
-  it('is only the invisible working mark during a live run, so the title alone shimmers', () => {
+  it("is the relay during a live run, the title's sibling so the title shimmers too", () => {
     const at = new Date(Date.now() - 60_000).toISOString();
     const { getByTestId, container } = render(
       <AgentPill item={{ assignee: 'openclaw', aiStatus: 'working', aiStatusAt: at, status: 'pending' }} />
     );
-    expect(getByTestId('ai-working').className).toContain('sr-only');
-    expect(container.querySelector('[data-ai-relay]')).toBeNull();
+    const mark = getByTestId('ai-working');
+    expect(mark.hasAttribute('data-ai-relay')).toBe(true);
+    expect(mark.hasAttribute('data-ai-working')).toBe(true);
+    expect(mark.querySelectorAll('i')).toHaveLength(6);
+    expect(container.textContent).not.toBe('');
   });
 });

@@ -380,7 +380,6 @@ export function DoStuffRow({ rows }: { rows: readonly RowItem[] }) {
   const doneCount = useDoStuffStore((s) => s.doneCount);
   const { stop } = useDoStuffStore.getState();
   const plan = usePlan(rows);
-  const preparing = usePrepPacksStore((s) => Object.keys(s.preparing).length);
 
   // Started from the key in the header (DoStuffKey) or its chord; off, there
   // is no strip.
@@ -394,7 +393,6 @@ export function DoStuffRow({ rows }: { rows: readonly RowItem[] }) {
   const label = [
     doneCount > 0 && `${doneCount} done`,
     left > 0 && `${left} to do now`,
-    preparing > 0 && 'getting things ready…',
   ]
     .filter(Boolean)
     .join(' · ');
@@ -1335,7 +1333,6 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
   const prepError = usePrepPacksStore((s) => s.error);
   const docked = useDoStuffStore((s) => s.docked);
   const doneCount = useDoStuffStore((s) => s.doneCount);
-  const preparing = usePrepPacksStore((s) => Object.keys(s.preparing).length);
   const left = plan.lanes.now.filter(isOpen).length;
 
   // What make it so would write, for the dock's key, which has no rows of its
@@ -1437,9 +1434,9 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
     <div ref={listRef} data-do-stuff-list className="flex flex-col gap-1" data-testid="do-stuff-list">
       {/* With the dock carrying the key there is no strip: what it said is a
           quiet line above the lanes, and only while there is something to say. */}
-      {docked && (doneCount > 0 || preparing > 0) && (
+      {docked && doneCount > 0 && (
         <p className="px-2 pb-1 text-xs text-muted-foreground" data-testid="do-stuff-progress">
-          {[doneCount > 0 && `${doneCount} done`, left > 0 && `${left} to do now`, preparing > 0 && 'getting things ready…']
+          {[doneCount > 0 && `${doneCount} done`, left > 0 && `${left} to do now`]
             .filter(Boolean)
             .join(' · ')}
         </p>

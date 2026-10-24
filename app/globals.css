@@ -2770,13 +2770,13 @@ body {
    components/ai/ai-work-badge.tsx (Kirby's picks, 2026-10-20). What a row
    says while the AI works on it, and once something waits for the person.
 
-     [data-ai-working] a row being worked on: an invisible sibling of the
-                       title (the words for a screen reader), which makes the
-                       title shimmer lime into teal. Nothing else is drawn on
-                       a row (Kirby, 2026-10-22: a badge on every row was a lot).
-     [data-ai-relay]   the account's working mark, never a row's: the relay
-                       field in one row, six tiles a glowing wave walks
-                       across, on the do stuff key and the dock's AI line.
+     [data-ai-working] a row being worked on, wherever it is (Kirby,
+                       2026-10-24): the relay, as the title's sibling, which
+                       makes the title shimmer lime into teal. The row is the
+                       one place that says it; the dock has no working line.
+     [data-ai-relay]   the relay field in one row, six tiles a glowing wave
+                       walks across: a working row's mark, and the do stuff
+                       key's bolt while anything is being worked on.
      [data-ai-chip]    a few words in aurora ink, still, for Do stuff's
                        lanes and the key's count (a fill until 2026-10-23).
                        ='question' is the warm one, honey into coral.
@@ -2847,6 +2847,16 @@ body {
     scale: 1.15;
     box-shadow: 0 0 4px 1px color-mix(in oklch, var(--c) var(--ai-relay-glow), transparent);
   }
+}
+
+/* A working row's relay sits against the title's last word, not out at the
+   end of the title's box: the title stops growing and the space it gave up
+   opens after the relay instead, so the rails after it keep their columns. */
+[data-row-title]:has(~ [data-ai-working]) {
+  flex: 0 1 auto;
+}
+[data-ai-working] {
+  margin-inline-end: auto;
 }
 
 /* The title's sheen: its own ink, clipped to its glyphs, with one band of

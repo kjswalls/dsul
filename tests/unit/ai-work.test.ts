@@ -89,7 +89,7 @@ describe('the badges in the stylesheet', () => {
     expect(section).toMatch(/\[data-reduce-motion='true'\] \[data-ai-sheen-slow\]/);
   });
 
-  it('shimmers a working row by its title alone: the mark beside it draws nothing', () => {
+  it("shimmers a working row's title off the working mark, not off every relay (the do stuff key has one)", () => {
     expect(section).toMatch(/\[data-row-title='open'\]:has\(~ \[data-ai-working\]\)/);
     expect(section).not.toMatch(/:has\(~ \[data-ai-relay\]\)/);
   });

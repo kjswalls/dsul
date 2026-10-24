@@ -675,8 +675,9 @@ export function ScheduleBlock({
   const typeName = projected.type === 'custom' ? projected.customType! : itemType;
   const typeConfig = getItemTypeConfig(typeName);
   // The AI working on this block (components/ai/ai-work-badge.tsx): only the
-  // relay, beside the title so the title takes its sheen. The chips need a
-  // row's width; a tall block's question already has its card (BlockAsk).
+  // relay, beside the title so the title takes its sheen, in every layout of
+  // the block, the week's wrapping columns included. The chips need a row's
+  // width; a tall block's question already has its card (BlockAsk).
   const aiWorking =
     task && !done ? (
       <>
@@ -1430,6 +1431,7 @@ export function ScheduleBlock({
                   >
                     <RowTitleText text={item.title} />
                   </span>
+                  {aiWorking}
                 </div>
                 {/* No width to overlay here without covering the title, so the
                     controls take their own row under it, shown only on hover. The

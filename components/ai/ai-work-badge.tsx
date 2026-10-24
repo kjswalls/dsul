@@ -11,13 +11,13 @@ import { cn } from '@/lib/utils';
  * 2026-10-22, memory/plans/power-mode.md): what the AI is doing, said as
  * quietly as it can be.
  *
- *   working  on a row, the title alone: it shimmers lime into teal while the
- *            AI works on it (globals.css). WorkingMark is the title's
- *            invisible sibling that turns the sheen on, and the words a screen
- *            reader hears.
- *   relay    six tiles with a glowing wave walking across them. The account's
- *            mark, never a row's: the do stuff key's bolt and the dock's line
- *            while anything is being worked on.
+ *   working  on the row itself, wherever the item is (Kirby, 2026-10-24):
+ *            the relay beside the title, and the title shimmering lime into
+ *            teal (globals.css). WorkingMark is the title's sibling that draws
+ *            the relay, turns the sheen on, and carries the words a screen
+ *            reader hears. Nothing else says it: no dock line, no count.
+ *   relay    six tiles with a glowing wave walking across them: a working
+ *            row's mark, and the do stuff key's bolt while anything is.
  *   ready    nothing on the rows. One line in the dock counts what is ready
  *            (components/notices/ai-work-notice.tsx), and the item panel shows
  *            the pack. AiChip, the aurora words, is left to Do stuff's own
@@ -30,7 +30,7 @@ import { cn } from '@/lib/utils';
 
 const TILES = [0, 1, 2, 3, 4, 5];
 
-/** The working mark. `label` is for assistive tech; the tiles are hidden. */
+/** The relay. `label` is for assistive tech; the tiles are hidden. */
 export function RelayRow({
   label,
   className,
@@ -64,17 +64,12 @@ export function AiChip({
 }
 
 /**
- * A row's working mark: the title beside it shimmers (globals.css,
- * `[data-ai-working]`), and this says what for to assistive tech. Nothing
- * else is drawn, so a list with work going on reads as a list, not a row of
- * badges.
+ * A row's working mark: the relay, beside the title, and the title shimmers
+ * (globals.css, `[data-ai-working]`, which needs this to be the title's
+ * sibling). The label says what for to assistive tech.
  */
 export function WorkingMark({ label }: { label: string }) {
-  return (
-    <span data-ai-working="" data-testid="ai-working" className="sr-only">
-      {label}
-    </span>
-  );
+  return <RelayRow label={label} data-ai-working="" />;
 }
 
 /**
