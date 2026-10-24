@@ -319,14 +319,22 @@ export const Sidebar = memo(function Sidebar() {
       apply(rail.reserveInstant || prefersReducedMotion());
     });
     // Starting and stopping do stuff open and close the column, over its ease;
-    // so do opening and closing the desk.
+    // so do opening and closing the desk. A start waits one frame: the desk
+    // may open with it (useDeskByDefault, before that frame paints), and then
+    // the column stays at the user's width rather than easing out to the
+    // Do stuff width and straight back.
+    let startFrame = 0;
     const unsubscribeDoStuff = useDoStuffStore.subscribe((d, prev) => {
-      if (d.on !== prev.on || d.desk !== prev.desk) apply(prefersReducedMotion());
+      if (d.on && !prev.on) {
+        cancelAnimationFrame(startFrame);
+        startFrame = requestAnimationFrame(() => apply(prefersReducedMotion()));
+      } else if (d.on !== prev.on || d.desk !== prev.desk) apply(prefersReducedMotion());
     });
     return () => {
       window.removeEventListener('resize', onResize);
       unsubscribe();
       unsubscribeDoStuff();
+      cancelAnimationFrame(startFrame);
     };
   }, [leftSidebarWidth, publish, publishInstant, showRendered]);
 

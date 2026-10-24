@@ -1243,7 +1243,12 @@ function usePrepOnStart(candidates: readonly PrepItem[], todayStr: string) {
 /**
  * The desk opens by itself (Kirby, 2026-10-23) when the walk reaches an item
  * with something to work with there (`deskWorthIt`: a pack, steps or notes),
- * after the sort has landed so the rows glide first. Once open it stays for
+ * at once, before the frame paints. It used to wait for the sort to land, and
+ * the column had already eased out to its Do stuff width by then, so the desk
+ * arrived as a second move that eased it straight back (Kirby: "wonky",
+ * 2026-10-24). Now the column's start waits a frame (sidebar.tsx) and finds
+ * the desk already open, so it never moves; the rows still sort beside the
+ * desk. Once open it stays for
  * the walk; once the person closes it, it is left closed for the run
  * (`deskDeclined`). Only where a desk can be drawn (useDeskHosted), so never
  * on the phone.
@@ -1255,13 +1260,9 @@ function useDeskByDefault(next: RowItem | undefined, hasPack: boolean) {
   const items = usePlannerStore((s) => s.items);
   const id = next?.item.id;
   const worth = !!next && deskWorthIt(next.item as { id: string; notes?: string }, { hasPack, items });
-  useEffect(() => {
-    if (!id || !worth || !hosted || declined || desk) return;
-    const t = setTimeout(() => {
-      const s = useDoStuffStore.getState();
-      if (s.on && !s.desk && !s.deskDeclined && s.next?.id === id) openDesk();
-    }, sortDelay());
-    return () => clearTimeout(t);
+  useLayoutEffect(() => {
+  if (!id || !worth || !hosted || declined || desk) return;
+    if (useDoStuffStore.getState().on) openDesk();
   }, [id, worth, hosted, declined, desk]);
 }
 
@@ -1288,7 +1289,6 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
   // The one after it, for the desk's bar ("next · Book the dentist"): what a
   // done or a skip would bring up.
   const then = pick((r: RowItem) => isOpen(r) && r.item.id !== next?.item.id);
-  useDeskByDefault(next, plan.packs.has(next?.item.id ?? ''));
   const slot = useDoStuffStore((s) => s.slot);
   const order = LANES.map((l) => plan.lanes[l.key].map((r) => r.item.id).join(',')).join('|');
   // A row that leaves the list under the pointer (done, let go) fires no
@@ -1351,12 +1351,15 @@ export function DoStuffList({ rows, touch }: { rows: readonly RowItem[]; touch?:
   const nextTitle = next?.item.title;
   const thenId = then?.item.id;
   const thenTitle = then?.item.title;
-  useEffect(() => {
+  // A layout effect, so the store knows the item before the frame paints:
+  // the desk opens on it in the same frame (useDeskByDefault, after this).
+  useLayoutEffect(() => {
     useDoStuffStore.setState({
       next: nextId && nextTitle !== undefined ? { id: nextId, title: nextTitle } : null,
       then: thenId && thenTitle !== undefined ? { id: thenId, title: thenTitle } : null,
     });
   }, [nextId, nextTitle, thenId, thenTitle]);
+  useDeskByDefault(next, plan.packs.has(next?.item.id ?? ''));
   const packChip = (r: RowItem) => {
     const pack = plan.packs.get(r.item.id);
     return pack && isOpen(r) ? (
