@@ -1066,7 +1066,8 @@ Off, Dates), and Resume on Paused for routines and seasons; O8b a goal's
 Status (Active, Achieved, Set aside), a routine's usual time, a season's
 Runs, a goal's window and the notes (a goal's why); O9 the ⋯ menu's
 Rename… and Icon and color… on every page; O10 its Delete…; O11 the list's
-+ and its name sheet.
++ and its name sheet; O12 a routine's Edit mode, its swipe Remove and "Add
+from your items…"; O13 a season's "Add a routine…" and its swipe Take out.
 
 1. (O1) Sample: Organize shows Routines, Seasons, Goals and Projects, in that
    order. Morning routine has a honey sunrise tile, Wind down a plum moon,
@@ -1438,6 +1439,96 @@ Rename… and Icon and color… on every page; O10 its Delete…; O11 the list's
     name sheet, Delete… and the dialog are never lime (Delete is the
     system's red), the sheet's hint and the clash sentence wrap, and the
     field stays above the keyboard at the sheet's medium height.
+67. (O12) Sample: Morning routine's bar has Edit left of ⋯. Tap Edit: Today
+    and Other days give way to one Items list, every row with a grip, and
+    the bar reads Done. Drag a step two rows down: it lands there and the
+    list keeps the new order. Done puts Today and Other days back, with the
+    order it was dragged into. Wind down, which holds nothing, has no Edit
+    button, and neither does a routine of one step: there is nothing to put
+    in order. Swipe Remove on Morning's steps until one is left: the Edit
+    button goes. With VoiceOver, Remove in Edit mode down to one step: the
+    page leaves Edit mode by itself.
+68. (O12) Sample: "Add from your items…" sits under the list, at rest and in
+    Edit mode both. Tap it: the sheet pools the items the routine doesn't
+    hold, each with its cadence. Type a few letters: the list narrows; type
+    something no item has: "Nothing matches “zzz”.". Clear the field and the
+    whole pool is back. Pick a row: it leaves the list and the sheet stays
+    up, so a second pick needs no reopening. Done closes it, and both items
+    are in the routine. Keep picking until the pool is empty: the sheet reads
+    "Everything is already in here." and the routine holds them all. A
+    subtask is never in the pool. On Wind down the row sits under "Nothing
+    is in it yet.": the first pick takes the sentence away and the sheet
+    stays up.
+69. (O12) Sample: swipe a step on Today or Other days from the right:
+    Remove, and only Remove. It is the system's red, never Delete, and a
+    half swipe doesn't fire it. Remove a step: it leaves the routine and the
+    item is still on Today (or in the braindump), because nothing was
+    deleted.
+70. (O12) VoiceOver on a step in Edit mode: the actions are Move up, Move
+    down and Remove. The first row has no Move up and the last no Move down.
+    Move up on the second row makes it first; Move up again does nothing new
+    (there is no action to take). The row reads its title, then its cadence
+    and, where it has one, why it isn't on today.
+71. (O12) Signed in: open Morning routine on a web tab first. Then reorder
+    two steps on the phone, and on that web tab, without refreshing it, add
+    an item to the routine. Pull to refresh on the phone: the phone's order
+    holds and the web's item is last (the stale tab writes only its own add,
+    O6). Reorder on the web and pull: the phone follows.
+72. (O12) Signed in, with flight mode on: drag a step. It moves, then the
+    refetch fails, the order goes back to what it was, and the banner says
+    so. Swipe Remove with flight mode on: the step comes back the same way.
+73. (O12) Signed in: open Morning routine on the phone and on the web, and
+    take its second step out of the routine on the web. On the phone, without
+    refreshing, drag that removed step, or drop another step directly under
+    it (its anchor). The write is refused and the banner reads "It changed on
+    another device. Showing the latest.", with the routine as the web left
+    it. Any other drop lands.
+74. (O13) Sample: Autumn's Routines section ends with "Add a routine…". Tap
+    it: the live routines Autumn doesn't hold, each with its tile and name.
+    Pick Wind down: it joins Autumn's Routines with no question, since it
+    holds nothing to hide.
+75. (O13) Sample: switch Autumn off (Status, Off), then add Morning
+    routine. The confirm reads "This will hide 1 item for now": Journal,
+    which the routine kept on Today while Autumn was off (Meds and Stretch
+    are done today, and a done item is never hidden, so they don't count).
+    It says what hands over to Autumn and that the item stays hidden until
+    Autumn is switched on, and offers "Add it anyway" against Cancel. Cancel
+    changes nothing. "Add it anyway" attaches it: Journal leaves Today, and
+    Meds and Stretch stay, done.
+76. (O13) Sample: swipe a routine in that section: Take out. It asks
+    nothing, the routine leaves the season, and the items it was holding off
+    are on Today again.
+77. (O13) Sample: a season holding every live routine draws "Add a routine…"
+    greyed, with "Every routine is already here" under it, and the row does
+    not open.
+78. (O13) Signed in: attach a routine on the phone, then take it out on the
+    web and attach it to another season. Pull to refresh: the phone shows
+    the web's seasons. Then, on a season page the phone has not refreshed,
+    attach (or Take out) a routine the web has deleted meanwhile: the banner
+    reads "It changed on another device. Showing the latest." Attach from a
+    stale page whose season the web deleted: the banner reads "That change
+    didn't save. Checking with the server…" (the route's 404), and the page
+    pops once the refetch lands.
+79. (O13) Signed in: attach a routine to a season on the phone. On a web tab
+    opened before that, rename the season: the phone's hold survives a pull
+    to refresh (the stale tab writes only its own change, O7). Separately,
+    edit the season on the web, attach a routine on the phone, then ⌘Z that
+    earlier edit on the web: the hold survives that too.
+80. (O12, O13) Turn Organize off on the web and pull: no Edit button on a
+    routine, no "Add from your items…", no swipe Remove, no "Add a
+    routine…" and no Take out, on every page. Before the first fetch lands,
+    the same. From a server older than this PR (no `"moveMember"` or
+    `"holdRoutine"` in `containerWrites`): no Edit button, no "Add a
+    routine…" and no Take out, while "Add from your items…" and swipe Remove
+    stay, since they are the item write such a server already takes
+    (`collect`). Against a server with `moveMember` but no `collect` in
+    `writes` (older than the item sheet's routine toggles), Edit reorders
+    and offers neither Remove nor the add row.
+81. (O12, O13) Dark mode and the largest Dynamic Type: Edit, Done, the add
+    rows, the picker and the confirm are never lime (Remove and Take out are
+    the system's red), the confirm's sentence and "Every routine is already
+    here" wrap, and the picker's search field stays above the keyboard at
+    the sheet's medium height.
 
 ## Rules
 

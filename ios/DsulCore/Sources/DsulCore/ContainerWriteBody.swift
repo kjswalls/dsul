@@ -22,7 +22,12 @@ import Foundation
 // - from O9, on every kind: `{"action":"rename","name":…}`,
 //   `{"action":"icon","icon":"icon:<Name>"}` (never null) and
 //   `{"action":"color","color":"var(--accent-N)"|null}` (null is Auto);
-// - from O10, on every kind: `{"action":"delete"}`, and nothing else.
+// - from O10, on every kind: `{"action":"delete"}`, and nothing else;
+// - from O12, a routine's `{"action":"moveMember","itemId":…,"afterId":…|null}`
+//   (`afterId` always, null for first), and from O13 a season's
+//   `{"action":"holdRoutine","routineId":…,"hold":true|false}`: the two
+//   membership intents, `MembershipWriteBody` below, each id lowercased as the
+//   route's `Id` reads it.
 // Every member is `.strict()` there, so a key the route doesn't name is a 400,
 // and `encode(to:)` is written out by hand, so it writes exactly these keys. A
 // body goes only to a kind whose union holds its intent, with values its
@@ -116,6 +121,53 @@ public struct ContainerWriteBody: Encodable, Sendable, Hashable {
     static func sendableZone(_ zone: String?) -> String? {
         guard let zone, !zone.isEmpty, zone.utf16.count <= 100 else { return nil }
         return zone
+    }
+}
+
+/// One membership write (O12, O13), ready to encode: a routine's step move or
+/// a season's routine hold, to the same route as a field write
+/// (`ContainerRoutes.write`, the container's kind and id).
+public struct MembershipWriteBody: Encodable, Sendable, Hashable {
+    /// The kind whose route takes it: a routine for a move, a season for a
+    /// hold.
+    public let kind: OrganizeKind
+    /// What it asks.
+    public let intent: MembershipIntent
+
+    /// The body of `intent` for `kind`'s route, or nil when the route would
+    /// answer 400: another kind's route (`applies(to:)`), a step placed after
+    /// itself (`isWellFormed`), or a routine id the route's `Id` (lib/app-http.ts
+    /// `UUID`) doesn't read, a sample's. The sample never sends.
+    public init?(_ intent: MembershipIntent, for kind: OrganizeKind) {
+        guard intent.applies(to: kind), intent.isWellFormed else { return nil }
+        if case .holdRoutine(let routineId, _) = intent, !isUUIDText(routineId) { return nil }
+        self.kind = kind
+        self.intent = intent
+    }
+
+    /// The route's `action`, which `containerWrites` lists.
+    public var action: ContainerAction { intent.action }
+
+    private enum Key: String, CodingKey {
+        case action, itemId, afterId, routineId, hold
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: Key.self)
+        try c.encode(intent.action.rawValue, forKey: .action)
+        switch intent {
+        case .moveMember(let item, let after):
+            try c.encode(item.uuidString.lowercased(), forKey: .itemId)
+            // Required, null for first: the schema's `Id.nullable()`.
+            if let after {
+                try c.encode(after.uuidString.lowercased(), forKey: .afterId)
+            } else {
+                try c.encodeNil(forKey: .afterId)
+            }
+        case .holdRoutine(let routineId, let hold):
+            try c.encode(routineId.lowercased(), forKey: .routineId)
+            try c.encode(hold, forKey: .hold)
+        }
     }
 }
 

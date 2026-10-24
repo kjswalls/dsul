@@ -271,11 +271,14 @@ enum PlannerJSON {
 
     /// What POST /api/app/containers/:kind/:id takes (lib/app-containers.ts
     /// `CONTAINER_WRITES`: O8a's states, O8b's fields, O9's rename, icon and
-    /// colour, O10's delete), and O11's `create`, POST
-    /// /api/app/containers/:kind, as planner-response.json carries it.
+    /// colour, O10's delete, O12's `moveMember` and O13's `holdRoutine`), and
+    /// O11's `create`, POST /api/app/containers/:kind, as
+    /// planner-response.json carries it.
     static let allContainerWrites =
-        "{\"routine\":[\"pause\",\"usualTime\",\"notes\",\"rename\",\"icon\",\"color\",\"delete\",\"create\"],"
-        + "\"season\":[\"state\",\"dates\",\"notes\",\"rename\",\"icon\",\"color\",\"delete\",\"create\"],"
+        "{\"routine\":[\"pause\",\"usualTime\",\"notes\",\"rename\",\"icon\",\"color\",\"moveMember\","
+        + "\"delete\",\"create\"],"
+        + "\"season\":[\"state\",\"dates\",\"notes\",\"rename\",\"icon\",\"color\",\"holdRoutine\","
+        + "\"delete\",\"create\"],"
         + "\"goal\":[\"state\",\"window\",\"why\",\"rename\",\"icon\",\"color\",\"delete\",\"create\"],"
         + "\"project\":[\"notes\",\"rename\",\"icon\",\"color\",\"delete\",\"create\"]}"
 
@@ -340,12 +343,15 @@ enum PlannerJSON {
             + "\"milestoneIds\":[" + ids.joined(separator: ",") + "],\"checkinIds\":[]}"
     }
 
-    /// A season holding `items` directly, following no dates (state auto,
-    /// none set), so it is live every day and hides nothing.
-    static func seasonJSON(_ id: String, _ name: String, _ items: [UUID]) -> String {
+    /// A season holding `items` directly, and the routines `routines` names
+    /// (O13), following no dates (state auto, none set), so it is live every
+    /// day and hides nothing.
+    static func seasonJSON(_ id: String, _ name: String, _ items: [UUID],
+                           routines: [String] = []) -> String {
         let ids: [String] = items.map { "\"\(lowerID($0))\"" }
+        let held: [String] = routines.map { "\"\($0)\"" }
         return "{\"id\":\"\(id)\",\"name\":\"\(name)\",\"state\":\"auto\",\"itemIds\":["
-            + ids.joined(separator: ",") + "],\"routineIds\":[]}"
+            + ids.joined(separator: ",") + "],\"routineIds\":[" + held.joined(separator: ",") + "]}"
     }
 
     /// Review PRs, a task parked in Work's block today
@@ -1354,6 +1360,32 @@ final class DragFlag {
             #expect(create.proves.isEmpty)
             #expect(create.refiledSubjects.isEmpty)
         }
+
+        // (O12) A step's move names the one membership, as a toggle does, and
+        // proves its item and the routine: the route answers 409
+        // `member_gone` and `container_gone` for either.
+        let moved = PlannerSync.Write.moveMember(routineId: PlannerJSON.morning, item: id,
+                                                 after: PlannerJSON.water)
+        #expect(moved.subjects == membership)
+        #expect(moved.proves == [.item(id), .container(morning)])
+        #expect(moved.refiledSubjects.isEmpty)
+        #expect(PlannerSync.Write.moveMember(routineId: PlannerJSON.morning, item: id, after: nil).subjects
+                == membership)
+
+        // (O13) A season's hold names its own row, which is neither an item's
+        // nor a container's, and proves both containers: the route refuses a
+        // season or a routine it cannot find.
+        let held = PlannerSync.Write.holdRoutine(seasonId: PlannerJSON.autumn, routineId: PlannerJSON.morning,
+                                                 hold: true)
+        let hold: Set<PlannerSync.Subject> = [.hold(seasonId: PlannerJSON.autumn, routineId: PlannerJSON.morning)]
+        #expect(held.subjects == hold)
+        #expect(held.proves == [.container(autumn), .container(morning)])
+        #expect(held.refiledSubjects.isEmpty)
+        #expect(PlannerSync.Write.holdRoutine(seasonId: PlannerJSON.autumn, routineId: PlannerJSON.morning,
+                                              hold: false).subjects == hold)
+        // A hold is no item's write, so nothing waits on an item for it.
+        #expect(PlannerSync.Subject.hold(seasonId: PlannerJSON.autumn,
+                                         routineId: PlannerJSON.morning).itemId == nil)
     }
 
     // MARK: The rebase's worked cases (design §3.5)
@@ -2877,6 +2909,271 @@ final class DragFlag {
         await drain(planner)
         #expect(planner.banner?.text == OrganizeCopy.nameInTrashSentence(noun: "project", name: "Errands"))
         #expect(!planner.projectRecords.contains { $0.id == ref.id })
+    }
+
+    // MARK: Steps and season routines (O12, O13)
+
+    /// Morning routine holding Water, Stretch and Groceries in that order,
+    /// and Autumn holding `routineIds` and no items of its own, from a server
+    /// that takes the membership writes.
+    private func stepsPayload(routineIds: [String] = []) -> String {
+        let morning = PlannerJSON.routineJSON(PlannerJSON.morning, "Morning routine",
+                                              [PlannerJSON.water, PlannerJSON.stretch, PlannerJSON.groceries])
+        let autumn = PlannerJSON.seasonJSON(PlannerJSON.autumn, "Autumn", [], routines: routineIds)
+        return PlannerJSON.payload(routines: [morning], seasons: [autumn], organizeEnabled: true,
+                                   containerWrites: PlannerJSON.allContainerWrites)
+    }
+
+    /// (O12) A step moved: the list in its new order at once, and the place
+    /// sent to the container route, as a place and not an index. First is an
+    /// explicit null `afterId`, since the route's schema requires the key.
+    @Test func aStepMoveSendsThePlaceItLandsAfter() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, stepsPayload()))
+        await server.on(routineRoute, .status(200, ok))
+        let planner = await loaded(server)
+        #expect(planner.canWrite(kind: .routine, action: .moveMember))
+
+        planner.moveMember(PlannerJSON.morning, item: PlannerJSON.groceries, after: nil)
+        #expect(routine(planner)?.itemIds == [PlannerJSON.groceries, PlannerJSON.water, PlannerJSON.stretch])
+        planner.moveMember(PlannerJSON.morning, item: PlannerJSON.groceries, after: PlannerJSON.water)
+        #expect(routine(planner)?.itemIds == [PlannerJSON.water, PlannerJSON.groceries, PlannerJSON.stretch])
+        // Dropped where it already is: nothing to send.
+        planner.moveMember(PlannerJSON.morning, item: PlannerJSON.groceries, after: PlannerJSON.water)
+        await drain(planner)
+
+        let requests = await server.requests
+        let bodies = requests.filter { $0.route == routineRoute }.compactMap { bodyJSON($0) }
+        #expect(bodies.count == 2)
+        #expect(bodies[0]["action"] as? String == "moveMember")
+        #expect(bodies[0]["itemId"] as? String == lowerID(PlannerJSON.groceries))
+        #expect(bodies[0]["afterId"] is NSNull)
+        #expect(bodies[0].count == 3)
+        #expect(bodies[1]["afterId"] as? String == lowerID(PlannerJSON.water))
+        #expect(bodies[1].count == 3)
+        // Nothing went to an item's route: a move is the container's write.
+        #expect(requests.filter { $0.route.hasPrefix("POST /api/app/items") }.isEmpty)
+        #expect(planner.banner == nil)
+    }
+
+    /// (O12) A move that never landed: the step back in the place it held
+    /// before it, once the refetch fails too.
+    @Test func aFailedStepMoveGoesBackWhereItStood() async {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, stepsPayload()), .offline)
+        await server.on(routineRoute, .offline)
+        let planner = await loaded(server)
+
+        planner.moveMember(PlannerJSON.morning, item: PlannerJSON.groceries, after: nil)
+        #expect(routine(planner)?.itemIds == [PlannerJSON.groceries, PlannerJSON.water, PlannerJSON.stretch])
+        await drain(planner)
+
+        #expect(routine(planner)?.itemIds == [PlannerJSON.water, PlannerJSON.stretch, PlannerJSON.groceries])
+        #expect(planner.banner?.text == undone)
+    }
+
+    /// (O12) A move that landed after one that didn't: the revert is to the
+    /// place the landed move named, not to the index the failed one started
+    /// from, so what the server holds is what the page shows.
+    @Test func aLandedStepMoveKeepsItsPlaceOverAFailedOne() async {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, stepsPayload()), .offline)
+        await server.on(routineRoute, .offline, .status(200, ok))
+        let planner = await loaded(server)
+
+        planner.moveMember(PlannerJSON.morning, item: PlannerJSON.groceries, after: nil)
+        planner.moveMember(PlannerJSON.morning, item: PlannerJSON.groceries, after: PlannerJSON.water)
+        await drain(planner)
+
+        #expect(routine(planner)?.itemIds == [PlannerJSON.water, PlannerJSON.groceries, PlannerJSON.stretch])
+        #expect(planner.banner?.text != undone)
+    }
+
+    /// (O13) A routine put in a season and taken back out: the season's own
+    /// row sent each time, with its items untouched.
+    @Test func aSeasonHoldSendsItsOwnRow() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, stepsPayload()))
+        await server.on(seasonRoute, .status(200, ok))
+        let planner = await loaded(server)
+        #expect(planner.canWrite(kind: .season, action: .holdRoutine))
+
+        planner.holdRoutine(PlannerJSON.autumn, routineId: PlannerJSON.morning, hold: true)
+        #expect(season(planner)?.routineIds == [PlannerJSON.morning])
+        planner.holdRoutine(PlannerJSON.autumn, routineId: PlannerJSON.morning, hold: false)
+        #expect(season(planner)?.routineIds == [])
+        // Already out: nothing to send.
+        planner.holdRoutine(PlannerJSON.autumn, routineId: PlannerJSON.morning, hold: false)
+        await drain(planner)
+
+        let requests = await server.requests
+        let bodies = requests.filter { $0.route == seasonRoute }.compactMap { bodyJSON($0) }
+        #expect(bodies.count == 2)
+        #expect(bodies[0]["action"] as? String == "holdRoutine")
+        #expect(bodies[0]["routineId"] as? String == PlannerJSON.morning)
+        #expect(bodies[0]["hold"] as? Bool == true)
+        #expect(bodies[0].count == 3)
+        #expect(bodies[1]["hold"] as? Bool == false)
+        #expect(season(planner)?.itemIds == [])
+        #expect(planner.banner == nil)
+    }
+
+    /// (O13) A hold that never landed is taken back, and so is a take-out:
+    /// the routine goes back into the season's list in the place it held.
+    @Test func aFailedHoldAndAFailedTakeOutBothGoBack() async {
+        let joining = FakeServer()
+        await joining.on(plannerRoute, .status(200, stepsPayload()), .offline)
+        await joining.on(seasonRoute, .offline)
+        let join = await loaded(joining)
+        join.holdRoutine(PlannerJSON.autumn, routineId: PlannerJSON.morning, hold: true)
+        #expect(season(join)?.routineIds == [PlannerJSON.morning])
+        await drain(join)
+        #expect(season(join)?.routineIds == [])
+        #expect(join.banner?.text == undone)
+
+        let leaving = FakeServer()
+        await leaving.on(plannerRoute, .status(200, stepsPayload(routineIds: [PlannerJSON.morning])), .offline)
+        await leaving.on(seasonRoute, .offline)
+        let leave = await loaded(leaving)
+        #expect(season(leave)?.routineIds == [PlannerJSON.morning])
+        leave.holdRoutine(PlannerJSON.autumn, routineId: PlannerJSON.morning, hold: false)
+        #expect(season(leave)?.routineIds == [])
+        await drain(leave)
+        #expect(season(leave)?.routineIds == [PlannerJSON.morning])
+        #expect(leave.banner?.text == undone)
+    }
+
+    /// (O13) The revert's order for a hold (design §6.4): Morning taken out of
+    /// Autumn, then Autumn deleted, both offline, and the refetch fails.
+    /// Autumn comes back first, whole and in its place, with the lists the
+    /// delete recorded (Morning already out), and then the hold goes back in,
+    /// so Autumn holds Morning, as the server does. Holds before the
+    /// containers would find no Autumn, and it would come back without it.
+    @Test func aFailedTakeOutThenAFailedDeleteBringTheSeasonBackHoldingTheRoutine() async {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, stepsPayload(routineIds: [PlannerJSON.morning])), .offline)
+        await server.on(seasonRoute, .offline)
+        let planner = await loaded(server)
+        #expect(planner.canWrite(kind: .season, action: .delete))
+
+        planner.holdRoutine(PlannerJSON.autumn, routineId: PlannerJSON.morning, hold: false)
+        #expect(season(planner)?.routineIds == [])
+        planner.deleteContainer(ContainerRef(kind: .season, id: PlannerJSON.autumn))
+        #expect(season(planner) == nil)
+        await drain(planner)
+
+        let sent = await server.count(seasonRoute)
+        #expect(sent == 2)
+        #expect(planner.seasons.map(\.id) == [PlannerJSON.autumn])
+        #expect(season(planner)?.routineIds == [PlannerJSON.morning])
+        #expect(season(planner)?.name == "Autumn")
+        #expect(planner.banner?.text == undone)
+    }
+
+    /// (O13) A hold that lands after failed ones is what the season keeps
+    /// when the refetch fails: the rebase plays it over the place the
+    /// earliest failure recorded. Put in, taken out (both lost) and put in
+    /// again (landed) stays in; taken out, put in (both lost) and taken out
+    /// again (landed) stays out. Started from the earliest failure alone,
+    /// each would come back the other way round.
+    @Test func aLandedHoldIsKeptOverTheFailedOnesBeforeIt() async {
+        let joining = FakeServer()
+        await joining.on(plannerRoute, .status(200, stepsPayload()), .offline)
+        await joining.on(seasonRoute, .offline, .offline, .status(200, ok))
+        let join = await loaded(joining)
+        join.holdRoutine(PlannerJSON.autumn, routineId: PlannerJSON.morning, hold: true)    // lost
+        join.holdRoutine(PlannerJSON.autumn, routineId: PlannerJSON.morning, hold: false)   // lost
+        join.holdRoutine(PlannerJSON.autumn, routineId: PlannerJSON.morning, hold: true)    // lands
+        await drain(join)
+        let joinSent = await joining.count(seasonRoute)
+        #expect(joinSent == 3)
+        #expect(season(join)?.routineIds == [PlannerJSON.morning])
+        #expect(join.banner?.text != undone)
+
+        let leaving = FakeServer()
+        await leaving.on(plannerRoute, .status(200, stepsPayload(routineIds: [PlannerJSON.morning])), .offline)
+        await leaving.on(seasonRoute, .offline, .offline, .status(200, ok))
+        let leave = await loaded(leaving)
+        leave.holdRoutine(PlannerJSON.autumn, routineId: PlannerJSON.morning, hold: false)  // lost
+        leave.holdRoutine(PlannerJSON.autumn, routineId: PlannerJSON.morning, hold: true)   // lost
+        leave.holdRoutine(PlannerJSON.autumn, routineId: PlannerJSON.morning, hold: false)  // lands
+        await drain(leave)
+        let leaveSent = await leaving.count(seasonRoute)
+        #expect(leaveSent == 3)
+        #expect(season(leave)?.routineIds == [])
+        #expect(leave.banner?.text != undone)
+    }
+
+    /// (O12, O13) The three 409s a membership write comes back with say the
+    /// one sentence: it changed on another device, and the page shows the
+    /// latest. The refetch's answer replaces the guess.
+    @Test func aRefusedMembershipWriteSaysTheListChanged() async {
+        for code in ["member_gone", "anchor_gone", "container_gone"] {
+            let server = FakeServer()
+            await server.on(plannerRoute, .status(200, stepsPayload()))
+            await server.on(routineRoute, .status(409, "{\"error\":\"\(code)\"}"))
+            let planner = await loaded(server)
+
+            planner.moveMember(PlannerJSON.morning, item: PlannerJSON.groceries, after: nil)
+            await drain(planner)
+            #expect(planner.banner?.text == OrganizeCopy.changedElsewhere)
+            #expect(planner.banner?.text == "It changed on another device. Showing the latest.")
+            #expect(routine(planner)?.itemIds == [PlannerJSON.water, PlannerJSON.stretch, PlannerJSON.groceries])
+        }
+
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, stepsPayload(routineIds: [PlannerJSON.morning])))
+        await server.on(seasonRoute, .status(409, "{\"error\":\"container_gone\"}"))
+        let planner = await loaded(server)
+        planner.holdRoutine(PlannerJSON.autumn, routineId: PlannerJSON.morning, hold: false)
+        await drain(planner)
+        #expect(planner.banner?.text == OrganizeCopy.changedElsewhere)
+        #expect(season(planner)?.routineIds == [PlannerJSON.morning])
+    }
+
+    /// (O12, O13) A step or an anchor the planner's own list says has gone is
+    /// refused here, with the same words, and nothing is sent; so is a hold
+    /// of a routine the planner cannot find, which the route answers 409
+    /// `container_gone` for.
+    @Test func aMoveTheListAlreadyRefusesIsNotSent() async {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, stepsPayload()))
+        let planner = await loaded(server)
+
+        planner.moveMember(PlannerJSON.morning, item: PlannerJSON.bank, after: nil)
+        #expect(planner.banner?.text == OrganizeCopy.changedElsewhere)
+        #expect(routine(planner)?.itemIds == [PlannerJSON.water, PlannerJSON.stretch, PlannerJSON.groceries])
+        planner.moveMember(PlannerJSON.morning, item: PlannerJSON.groceries, after: PlannerJSON.bank)
+        #expect(routine(planner)?.itemIds == [PlannerJSON.water, PlannerJSON.stretch, PlannerJSON.groceries])
+        planner.holdRoutine(PlannerJSON.autumn, routineId: "0d000000-0000-4000-8000-0000000000ff", hold: true)
+        #expect(season(planner)?.routineIds == [])
+        await drain(planner)
+
+        let posts = await postCount(server)
+        #expect(posts == 0)
+    }
+
+    /// A server older than the route takes neither write: the page offers no
+    /// Edit mode and no "Add a routine…", and nothing is sent.
+    @Test func anOlderServerTakesNoMembershipWrite() async {
+        let server = FakeServer()
+        let morning = PlannerJSON.routineJSON(PlannerJSON.morning, "Morning routine",
+                                              [PlannerJSON.water, PlannerJSON.stretch])
+        let autumn = PlannerJSON.seasonJSON(PlannerJSON.autumn, "Autumn", [])
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(routines: [morning], seasons: [autumn],
+                                                                       organizeEnabled: true)))
+        let planner = await loaded(server)
+
+        #expect(!planner.canWrite(kind: .routine, action: .moveMember))
+        #expect(!planner.canWrite(kind: .season, action: .holdRoutine))
+        planner.moveMember(PlannerJSON.morning, item: PlannerJSON.stretch, after: nil)
+        #expect(routine(planner)?.itemIds == [PlannerJSON.water, PlannerJSON.stretch])
+        planner.holdRoutine(PlannerJSON.autumn, routineId: PlannerJSON.morning, hold: true)
+        #expect(season(planner)?.routineIds == [])
+        #expect(planner.banner == nil)
+        await drain(planner)
+        let posts = await postCount(server)
+        #expect(posts == 0)
     }
 
     // MARK: A new subtask

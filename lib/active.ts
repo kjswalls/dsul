@@ -553,8 +553,8 @@ export function routineStandingOn(
  * routine was carrying the whole time, and for items the same season also held
  * directly. Nothing left; nothing came back.
  *
- * `wouldHide` in the console's seasons section already reasons this way — the
- * shared shape, so it stops being copied.
+ * `wouldHideAttaching` (lib/organize.ts, the season attach confirm's count)
+ * reasons the same way: the shared shape, so it stops being copied.
  *
  * Cost is two `inactiveItemIdsOn` passes, linear in items + memberships, on a
  * pane rendering at most a few dozen members.

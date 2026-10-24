@@ -4875,6 +4875,230 @@
         "status": 400,
         "error": "invalid"
       }
+    },
+    {
+      "name": "a step moved after itself",
+      "kind": "routine",
+      "body": {
+        "action": "moveMember",
+        "itemId": "00000000-0000-4000-8000-000000000001",
+        "afterId": "00000000-0000-4000-8000-000000000001"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a step moved after itself, its anchor in capitals",
+      "kind": "routine",
+      "body": {
+        "action": "moveMember",
+        "itemId": "bbbbbbbb-0000-4000-8000-000000000001",
+        "afterId": "BBBBBBBB-0000-4000-8000-000000000001"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a move with no afterId: first is null, never left out",
+      "kind": "routine",
+      "body": {
+        "action": "moveMember",
+        "itemId": "00000000-0000-4000-8000-000000000001"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a move with no itemId",
+      "kind": "routine",
+      "body": {
+        "action": "moveMember",
+        "afterId": "00000000-0000-4000-8000-000000000001"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a move naming a sample step",
+      "kind": "routine",
+      "body": {
+        "action": "moveMember",
+        "itemId": "sample-water",
+        "afterId": null
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a move carrying the whole order",
+      "kind": "routine",
+      "body": {
+        "action": "moveMember",
+        "itemId": "00000000-0000-4000-8000-000000000001",
+        "afterId": null,
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002"
+        ]
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a step moved in a season",
+      "kind": "season",
+      "body": {
+        "action": "moveMember",
+        "itemId": "00000000-0000-4000-8000-000000000001",
+        "afterId": null
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a step moved in a goal",
+      "kind": "goal",
+      "body": {
+        "action": "moveMember",
+        "itemId": "00000000-0000-4000-8000-000000000001",
+        "afterId": null
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a step moved in a project",
+      "kind": "project",
+      "body": {
+        "action": "moveMember",
+        "itemId": "00000000-0000-4000-8000-000000000001",
+        "afterId": null
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a routine held by a routine",
+      "kind": "routine",
+      "body": {
+        "action": "holdRoutine",
+        "routineId": "aaaaaaaa-0000-4000-8000-000000000001",
+        "hold": true
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a routine held by a goal",
+      "kind": "goal",
+      "body": {
+        "action": "holdRoutine",
+        "routineId": "aaaaaaaa-0000-4000-8000-000000000001",
+        "hold": true
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a routine held by a project",
+      "kind": "project",
+      "body": {
+        "action": "holdRoutine",
+        "routineId": "aaaaaaaa-0000-4000-8000-000000000001",
+        "hold": true
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a hold with no hold",
+      "kind": "season",
+      "body": {
+        "action": "holdRoutine",
+        "routineId": "aaaaaaaa-0000-4000-8000-000000000001"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a hold that is not true or false",
+      "kind": "season",
+      "body": {
+        "action": "holdRoutine",
+        "routineId": "aaaaaaaa-0000-4000-8000-000000000001",
+        "hold": "true"
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a hold naming no routine",
+      "kind": "season",
+      "body": {
+        "action": "holdRoutine",
+        "hold": true
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a hold naming a sample routine",
+      "kind": "season",
+      "body": {
+        "action": "holdRoutine",
+        "routineId": "sample-wind-down",
+        "hold": true
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
+    },
+    {
+      "name": "a hold carrying the whole list",
+      "kind": "season",
+      "body": {
+        "action": "holdRoutine",
+        "routineId": "aaaaaaaa-0000-4000-8000-000000000001",
+        "hold": true,
+        "routineIds": [
+          "aaaaaaaa-0000-4000-8000-000000000001"
+        ]
+      },
+      "expected": {
+        "status": 400,
+        "error": "invalid"
+      }
     }
   ],
   "deletes": [
@@ -5366,6 +5590,554 @@
       "expected": {
         "status": 400,
         "error": "invalid"
+      }
+    }
+  ],
+  "moves": [
+    {
+      "name": "a step moved down one",
+      "kind": "routine",
+      "before": {
+        "itemIds": [
+          "bbbbbbbb-0000-4000-8000-000000000001",
+          "bbbbbbbb-0000-4000-8000-000000000002",
+          "bbbbbbbb-0000-4000-8000-000000000003",
+          "bbbbbbbb-0000-4000-8000-000000000004"
+        ]
+      },
+      "body": {
+        "action": "moveMember",
+        "itemId": "bbbbbbbb-0000-4000-8000-000000000001",
+        "afterId": "bbbbbbbb-0000-4000-8000-000000000002"
+      },
+      "expected": {
+        "status": 200,
+        "error": null,
+        "itemIds": [
+          "bbbbbbbb-0000-4000-8000-000000000002",
+          "bbbbbbbb-0000-4000-8000-000000000001",
+          "bbbbbbbb-0000-4000-8000-000000000003",
+          "bbbbbbbb-0000-4000-8000-000000000004"
+        ]
+      }
+    },
+    {
+      "name": "a step moved up one",
+      "kind": "routine",
+      "before": {
+        "itemIds": [
+          "bbbbbbbb-0000-4000-8000-000000000001",
+          "bbbbbbbb-0000-4000-8000-000000000002",
+          "bbbbbbbb-0000-4000-8000-000000000003",
+          "bbbbbbbb-0000-4000-8000-000000000004"
+        ]
+      },
+      "body": {
+        "action": "moveMember",
+        "itemId": "bbbbbbbb-0000-4000-8000-000000000003",
+        "afterId": "bbbbbbbb-0000-4000-8000-000000000001"
+      },
+      "expected": {
+        "status": 200,
+        "error": null,
+        "itemIds": [
+          "bbbbbbbb-0000-4000-8000-000000000001",
+          "bbbbbbbb-0000-4000-8000-000000000003",
+          "bbbbbbbb-0000-4000-8000-000000000002",
+          "bbbbbbbb-0000-4000-8000-000000000004"
+        ]
+      }
+    },
+    {
+      "name": "a step moved to the top: afterId null",
+      "kind": "routine",
+      "before": {
+        "itemIds": [
+          "bbbbbbbb-0000-4000-8000-000000000001",
+          "bbbbbbbb-0000-4000-8000-000000000002",
+          "bbbbbbbb-0000-4000-8000-000000000003",
+          "bbbbbbbb-0000-4000-8000-000000000004"
+        ]
+      },
+      "body": {
+        "action": "moveMember",
+        "itemId": "bbbbbbbb-0000-4000-8000-000000000003",
+        "afterId": null
+      },
+      "expected": {
+        "status": 200,
+        "error": null,
+        "itemIds": [
+          "bbbbbbbb-0000-4000-8000-000000000003",
+          "bbbbbbbb-0000-4000-8000-000000000001",
+          "bbbbbbbb-0000-4000-8000-000000000002",
+          "bbbbbbbb-0000-4000-8000-000000000004"
+        ]
+      }
+    },
+    {
+      "name": "a step moved to the bottom",
+      "kind": "routine",
+      "before": {
+        "itemIds": [
+          "bbbbbbbb-0000-4000-8000-000000000001",
+          "bbbbbbbb-0000-4000-8000-000000000002",
+          "bbbbbbbb-0000-4000-8000-000000000003",
+          "bbbbbbbb-0000-4000-8000-000000000004"
+        ]
+      },
+      "body": {
+        "action": "moveMember",
+        "itemId": "bbbbbbbb-0000-4000-8000-000000000001",
+        "afterId": "bbbbbbbb-0000-4000-8000-000000000004"
+      },
+      "expected": {
+        "status": 200,
+        "error": null,
+        "itemIds": [
+          "bbbbbbbb-0000-4000-8000-000000000002",
+          "bbbbbbbb-0000-4000-8000-000000000003",
+          "bbbbbbbb-0000-4000-8000-000000000004",
+          "bbbbbbbb-0000-4000-8000-000000000001"
+        ]
+      }
+    },
+    {
+      "name": "the last step moved up two",
+      "kind": "routine",
+      "before": {
+        "itemIds": [
+          "bbbbbbbb-0000-4000-8000-000000000001",
+          "bbbbbbbb-0000-4000-8000-000000000002",
+          "bbbbbbbb-0000-4000-8000-000000000003",
+          "bbbbbbbb-0000-4000-8000-000000000004"
+        ]
+      },
+      "body": {
+        "action": "moveMember",
+        "itemId": "bbbbbbbb-0000-4000-8000-000000000004",
+        "afterId": "bbbbbbbb-0000-4000-8000-000000000001"
+      },
+      "expected": {
+        "status": 200,
+        "error": null,
+        "itemIds": [
+          "bbbbbbbb-0000-4000-8000-000000000001",
+          "bbbbbbbb-0000-4000-8000-000000000004",
+          "bbbbbbbb-0000-4000-8000-000000000002",
+          "bbbbbbbb-0000-4000-8000-000000000003"
+        ]
+      }
+    },
+    {
+      "name": "a step moved to where it is: the same order",
+      "kind": "routine",
+      "before": {
+        "itemIds": [
+          "bbbbbbbb-0000-4000-8000-000000000001",
+          "bbbbbbbb-0000-4000-8000-000000000002",
+          "bbbbbbbb-0000-4000-8000-000000000003",
+          "bbbbbbbb-0000-4000-8000-000000000004"
+        ]
+      },
+      "body": {
+        "action": "moveMember",
+        "itemId": "bbbbbbbb-0000-4000-8000-000000000002",
+        "afterId": "bbbbbbbb-0000-4000-8000-000000000001"
+      },
+      "expected": {
+        "status": 200,
+        "error": null,
+        "itemIds": [
+          "bbbbbbbb-0000-4000-8000-000000000001",
+          "bbbbbbbb-0000-4000-8000-000000000002",
+          "bbbbbbbb-0000-4000-8000-000000000003",
+          "bbbbbbbb-0000-4000-8000-000000000004"
+        ]
+      }
+    },
+    {
+      "name": "the first step moved to the top: the same order",
+      "kind": "routine",
+      "before": {
+        "itemIds": [
+          "bbbbbbbb-0000-4000-8000-000000000001",
+          "bbbbbbbb-0000-4000-8000-000000000002",
+          "bbbbbbbb-0000-4000-8000-000000000003",
+          "bbbbbbbb-0000-4000-8000-000000000004"
+        ]
+      },
+      "body": {
+        "action": "moveMember",
+        "itemId": "bbbbbbbb-0000-4000-8000-000000000001",
+        "afterId": null
+      },
+      "expected": {
+        "status": 200,
+        "error": null,
+        "itemIds": [
+          "bbbbbbbb-0000-4000-8000-000000000001",
+          "bbbbbbbb-0000-4000-8000-000000000002",
+          "bbbbbbbb-0000-4000-8000-000000000003",
+          "bbbbbbbb-0000-4000-8000-000000000004"
+        ]
+      }
+    },
+    {
+      "name": "a routine of two, swapped",
+      "kind": "routine",
+      "before": {
+        "itemIds": [
+          "bbbbbbbb-0000-4000-8000-000000000001",
+          "bbbbbbbb-0000-4000-8000-000000000002"
+        ]
+      },
+      "body": {
+        "action": "moveMember",
+        "itemId": "bbbbbbbb-0000-4000-8000-000000000001",
+        "afterId": "bbbbbbbb-0000-4000-8000-000000000002"
+      },
+      "expected": {
+        "status": 200,
+        "error": null,
+        "itemIds": [
+          "bbbbbbbb-0000-4000-8000-000000000002",
+          "bbbbbbbb-0000-4000-8000-000000000001"
+        ]
+      }
+    },
+    {
+      "name": "a step taken out on another device",
+      "kind": "routine",
+      "before": {
+        "itemIds": [
+          "bbbbbbbb-0000-4000-8000-000000000001",
+          "bbbbbbbb-0000-4000-8000-000000000002",
+          "bbbbbbbb-0000-4000-8000-000000000003",
+          "bbbbbbbb-0000-4000-8000-000000000004"
+        ]
+      },
+      "body": {
+        "action": "moveMember",
+        "itemId": "bbbbbbbb-0000-4000-8000-000000000009",
+        "afterId": "bbbbbbbb-0000-4000-8000-000000000001"
+      },
+      "expected": {
+        "status": 409,
+        "error": "member_gone",
+        "itemIds": [
+          "bbbbbbbb-0000-4000-8000-000000000001",
+          "bbbbbbbb-0000-4000-8000-000000000002",
+          "bbbbbbbb-0000-4000-8000-000000000003",
+          "bbbbbbbb-0000-4000-8000-000000000004"
+        ]
+      }
+    },
+    {
+      "name": "the step it goes after taken out on another device",
+      "kind": "routine",
+      "before": {
+        "itemIds": [
+          "bbbbbbbb-0000-4000-8000-000000000001",
+          "bbbbbbbb-0000-4000-8000-000000000002",
+          "bbbbbbbb-0000-4000-8000-000000000003",
+          "bbbbbbbb-0000-4000-8000-000000000004"
+        ]
+      },
+      "body": {
+        "action": "moveMember",
+        "itemId": "bbbbbbbb-0000-4000-8000-000000000001",
+        "afterId": "bbbbbbbb-0000-4000-8000-000000000009"
+      },
+      "expected": {
+        "status": 409,
+        "error": "anchor_gone",
+        "itemIds": [
+          "bbbbbbbb-0000-4000-8000-000000000001",
+          "bbbbbbbb-0000-4000-8000-000000000002",
+          "bbbbbbbb-0000-4000-8000-000000000003",
+          "bbbbbbbb-0000-4000-8000-000000000004"
+        ]
+      }
+    },
+    {
+      "name": "both taken out: the step is named first",
+      "kind": "routine",
+      "before": {
+        "itemIds": [
+          "bbbbbbbb-0000-4000-8000-000000000001",
+          "bbbbbbbb-0000-4000-8000-000000000002",
+          "bbbbbbbb-0000-4000-8000-000000000003",
+          "bbbbbbbb-0000-4000-8000-000000000004"
+        ]
+      },
+      "body": {
+        "action": "moveMember",
+        "itemId": "bbbbbbbb-0000-4000-8000-000000000008",
+        "afterId": "bbbbbbbb-0000-4000-8000-000000000009"
+      },
+      "expected": {
+        "status": 409,
+        "error": "member_gone",
+        "itemIds": [
+          "bbbbbbbb-0000-4000-8000-000000000001",
+          "bbbbbbbb-0000-4000-8000-000000000002",
+          "bbbbbbbb-0000-4000-8000-000000000003",
+          "bbbbbbbb-0000-4000-8000-000000000004"
+        ]
+      }
+    },
+    {
+      "name": "the step taken out, moved to the top",
+      "kind": "routine",
+      "before": {
+        "itemIds": [
+          "bbbbbbbb-0000-4000-8000-000000000001",
+          "bbbbbbbb-0000-4000-8000-000000000002",
+          "bbbbbbbb-0000-4000-8000-000000000003",
+          "bbbbbbbb-0000-4000-8000-000000000004"
+        ]
+      },
+      "body": {
+        "action": "moveMember",
+        "itemId": "bbbbbbbb-0000-4000-8000-000000000009",
+        "afterId": null
+      },
+      "expected": {
+        "status": 409,
+        "error": "member_gone",
+        "itemIds": [
+          "bbbbbbbb-0000-4000-8000-000000000001",
+          "bbbbbbbb-0000-4000-8000-000000000002",
+          "bbbbbbbb-0000-4000-8000-000000000003",
+          "bbbbbbbb-0000-4000-8000-000000000004"
+        ]
+      }
+    },
+    {
+      "name": "ids sent in capitals are read lowercase",
+      "kind": "routine",
+      "before": {
+        "itemIds": [
+          "bbbbbbbb-0000-4000-8000-000000000001",
+          "bbbbbbbb-0000-4000-8000-000000000002",
+          "bbbbbbbb-0000-4000-8000-000000000003",
+          "bbbbbbbb-0000-4000-8000-000000000004"
+        ]
+      },
+      "body": {
+        "action": "moveMember",
+        "itemId": "BBBBBBBB-0000-4000-8000-000000000004",
+        "afterId": "BBBBBBBB-0000-4000-8000-000000000002"
+      },
+      "expected": {
+        "status": 200,
+        "error": null,
+        "itemIds": [
+          "bbbbbbbb-0000-4000-8000-000000000001",
+          "bbbbbbbb-0000-4000-8000-000000000002",
+          "bbbbbbbb-0000-4000-8000-000000000004",
+          "bbbbbbbb-0000-4000-8000-000000000003"
+        ]
+      }
+    }
+  ],
+  "holds": [
+    {
+      "name": "a routine put in a season",
+      "kind": "season",
+      "before": {
+        "routineIds": [
+          "aaaaaaaa-0000-4000-8000-000000000001"
+        ]
+      },
+      "routineLive": true,
+      "body": {
+        "action": "holdRoutine",
+        "routineId": "aaaaaaaa-0000-4000-8000-000000000002",
+        "hold": true
+      },
+      "expected": {
+        "status": 200,
+        "error": null,
+        "routineIds": [
+          "aaaaaaaa-0000-4000-8000-000000000001",
+          "aaaaaaaa-0000-4000-8000-000000000002"
+        ]
+      }
+    },
+    {
+      "name": "a routine put in a season with none",
+      "kind": "season",
+      "before": {
+        "routineIds": []
+      },
+      "routineLive": true,
+      "body": {
+        "action": "holdRoutine",
+        "routineId": "aaaaaaaa-0000-4000-8000-000000000001",
+        "hold": true
+      },
+      "expected": {
+        "status": 200,
+        "error": null,
+        "routineIds": [
+          "aaaaaaaa-0000-4000-8000-000000000001"
+        ]
+      }
+    },
+    {
+      "name": "a routine put in that it already holds: already so",
+      "kind": "season",
+      "before": {
+        "routineIds": [
+          "aaaaaaaa-0000-4000-8000-000000000001"
+        ]
+      },
+      "routineLive": true,
+      "body": {
+        "action": "holdRoutine",
+        "routineId": "aaaaaaaa-0000-4000-8000-000000000001",
+        "hold": true
+      },
+      "expected": {
+        "status": 200,
+        "error": null,
+        "routineIds": [
+          "aaaaaaaa-0000-4000-8000-000000000001"
+        ]
+      }
+    },
+    {
+      "name": "a routine taken out",
+      "kind": "season",
+      "before": {
+        "routineIds": [
+          "aaaaaaaa-0000-4000-8000-000000000001",
+          "aaaaaaaa-0000-4000-8000-000000000002"
+        ]
+      },
+      "routineLive": true,
+      "body": {
+        "action": "holdRoutine",
+        "routineId": "aaaaaaaa-0000-4000-8000-000000000001",
+        "hold": false
+      },
+      "expected": {
+        "status": 200,
+        "error": null,
+        "routineIds": [
+          "aaaaaaaa-0000-4000-8000-000000000002"
+        ]
+      }
+    },
+    {
+      "name": "the last routine taken out",
+      "kind": "season",
+      "before": {
+        "routineIds": [
+          "aaaaaaaa-0000-4000-8000-000000000002"
+        ]
+      },
+      "routineLive": true,
+      "body": {
+        "action": "holdRoutine",
+        "routineId": "aaaaaaaa-0000-4000-8000-000000000002",
+        "hold": false
+      },
+      "expected": {
+        "status": 200,
+        "error": null,
+        "routineIds": []
+      }
+    },
+    {
+      "name": "a routine taken out that it does not hold: already so",
+      "kind": "season",
+      "before": {
+        "routineIds": [
+          "aaaaaaaa-0000-4000-8000-000000000001"
+        ]
+      },
+      "routineLive": true,
+      "body": {
+        "action": "holdRoutine",
+        "routineId": "aaaaaaaa-0000-4000-8000-000000000002",
+        "hold": false
+      },
+      "expected": {
+        "status": 200,
+        "error": null,
+        "routineIds": [
+          "aaaaaaaa-0000-4000-8000-000000000001"
+        ]
+      }
+    },
+    {
+      "name": "a routine put in from the bin",
+      "kind": "season",
+      "before": {
+        "routineIds": [
+          "aaaaaaaa-0000-4000-8000-000000000001"
+        ]
+      },
+      "routineLive": false,
+      "body": {
+        "action": "holdRoutine",
+        "routineId": "aaaaaaaa-0000-4000-8000-000000000003",
+        "hold": true
+      },
+      "expected": {
+        "status": 409,
+        "error": "container_gone",
+        "routineIds": [
+          "aaaaaaaa-0000-4000-8000-000000000001"
+        ]
+      }
+    },
+    {
+      "name": "a routine in the bin taken out",
+      "kind": "season",
+      "before": {
+        "routineIds": [
+          "aaaaaaaa-0000-4000-8000-000000000001"
+        ]
+      },
+      "routineLive": false,
+      "body": {
+        "action": "holdRoutine",
+        "routineId": "aaaaaaaa-0000-4000-8000-000000000003",
+        "hold": false
+      },
+      "expected": {
+        "status": 409,
+        "error": "container_gone",
+        "routineIds": [
+          "aaaaaaaa-0000-4000-8000-000000000001"
+        ]
+      }
+    },
+    {
+      "name": "a routine id sent in capitals is read lowercase",
+      "kind": "season",
+      "before": {
+        "routineIds": [
+          "aaaaaaaa-0000-4000-8000-000000000001"
+        ]
+      },
+      "routineLive": true,
+      "body": {
+        "action": "holdRoutine",
+        "routineId": "AAAAAAAA-0000-4000-8000-000000000002",
+        "hold": true
+      },
+      "expected": {
+        "status": 200,
+        "error": null,
+        "routineIds": [
+          "aaaaaaaa-0000-4000-8000-000000000001",
+          "aaaaaaaa-0000-4000-8000-000000000002"
+        ]
       }
     }
   ]

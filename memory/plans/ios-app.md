@@ -26,8 +26,10 @@ item's Resume) and Trash (with Restore), O8a the first container writes:
 a routine's and a season's Status, and Resume on Paused for both, O8b a
 goal's Status, a routine's usual time, a season's Runs, a goal's window and
 the notes, O9 Rename… and Icon and color… on every page, O10 Delete…
-there, and O11 the list's + menu, which makes a routine, season, goal or
-project from a name (see Organize below).
+there, O11 the list's + menu, which makes a routine, season, goal or
+project from a name, O12 a routine's steps (Edit, reorder, "Add from your
+items…", Remove) and O13 a season's routines ("Add a routine…" with the
+attach confirm, Take out) (see Organize below).
 Designs, the stack comparison and the board images live in the project's
 shared folder (`ios-app/`): `stack.md` has a SwiftUI build note for every
 interaction, and `expo-vs-swiftui.md` ends with the fact-check.
@@ -179,6 +181,17 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   `delete` intent (`removesContainer`, `.removed`), and `OrganizeCopy.swift`
   the delete titles, buttons and `deleteConsequence` and the create sheet's
   words (`createCopy`) ← `lib/organize-copy.ts`.
+  O12 and O13 add `MembershipIntent` and `MembershipWriteBody`
+  ← `lib/app-containers.ts` (a move's and a hold's bodies, checked against
+  the same fixture's `moves` and `holds`), `memberMoveResult` and
+  `routineHoldResult` (what a move or a hold would change, or why it changes
+  nothing), `moveMemberAfter` and `wouldHideAttaching` in `Organize.swift`
+  ← `lib/organize.ts`, `placingMember` in `Membership.swift` (the phone's
+  own: a failed move's way back, after its anchor or at its old place), and
+  in `OrganizeCopy.swift` the attach confirm
+  (`attachConfirmTitle`, `attachConfirmDescription`, `attachConfirmLabel`)
+  and `changedElsewhere`, the banner for a membership write another device
+  got to first.
   Each cites what it mirrors.
 - `ios/Dsul/App`: `DsulApp` (one `AuthStore`), `AppGate` (sign-in screen,
   sample or the user's planner, keyed on `AuthStore.gateKey`), `AppConfig`.
@@ -221,7 +234,15 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   `ContainerPage` `SettledAnnouncement` (a VoiceOver announcement once a
   push or pop has settled). O11 adds `CreateSheet` (the name sheet), and
   `OrganizeView` the bar's + (`CreateMenu`); what each offers and says is
-  `ContainerEditModel`'s (`DeleteEdit`, `CreateEdit`). `ios/Dsul/App` gains
+  `ContainerEditModel`'s (`DeleteEdit`, `CreateEdit`). O12 and O13 add no
+  file either: `ContainerPage` gains the bar's Edit button (the host's own
+  `editMode`), `PageAddRow` (an add row anything may wear), `onRemove` on
+  `MemberRowView` and `onTakeOut` on `ContainerLinkRow`; `RoutinePage` the
+  Edit-mode Items list, `StepRowView` and the picker sheet; `SeasonPage`
+  "Add a routine…", its list and the attach confirm; and
+  `ContainerEditModel` what each offers and says (`StepsEdit`,
+  `StepPicker`, `SeasonRoutinesEdit`, `AttachConfirm`, `stepDrag`).
+  `ios/Dsul/App` gains
   `AvatarMenu` (moved out of `TodayView`, with the tab's own sections passed
   in) and `PlannerBannerOverlay` (`.plannerBanner()`, Today's banner, also on
   Organize, with `BannerView`).
@@ -1192,7 +1213,13 @@ and O9, and `organize/o10/` for O10 and O11).
   sample's creates and deletes) are in `OrganizePageTests`, the nothing-yet
   line in `OrganizeTests`, and the bodies and routes, the revert order, the
   404 rule, the lost create a collect settles and the offline create in
-  `PlannerSyncTests`.
+  `PlannerSyncTests`. O12's and O13's (the Edit mode's anchors at both ends,
+  the Edit button's two-step gate, the picker's pool, its filter and the
+  planner's own copy of it, the gates, the attach confirm's count and words,
+  the sample's moves, holds and confirm) are in `OrganizePageTests`, and the
+  two bodies, the subjects each names and proves, the rebases, a hold's
+  place in the revert order, a landed hold played over failed ones and the
+  refusals in `PlannerSyncTests`.
 - **O10: Delete….** Every kind takes `{"action":"delete"}` on the
   container route: it puts the row in the Trash and touches no item and no
   join row (a project's members keep their name and id, as after the web's
@@ -1250,11 +1277,62 @@ and O9, and `organize/o10/` for O10 and O11).
   `.container(ref)`, since a 200 there proves it exists, so a create whose
   answer was lost and a collect that landed keep it, while a create and a
   collect both offline are both undone.
-- **Waits for later PRs:** the other writes (O12 and O13: a routine's steps
-  reordered and added, a season's routines added and taken out), and Today's
-  project colours (O15, Kirby's call). A project's time block stays the
-  web's (the project union has no time action). Today keeps `ProjectPalette` until
-  then, so a project's dot on Today and its tile on Organize can differ.
+- **O12: a routine's steps, reordered and added.** The route takes
+  `moveMember` on a routine: one step, and the step it now sits after
+  (`afterId` null for first), as the web's rail moves one. The page's bar
+  carries Edit where it does (`"moveMember"` in `containerWrites`, Organize
+  on, and two steps or more, `StepsEdit.reorderable`: an empty routine, one
+  of one step, and a server that takes the add but not the order show no
+  Edit), and in Edit mode Today and Other days give way to one Items
+  list, the web's member-list label, each row with a grip; a drag asks
+  `stepDrag` for the step and its new anchor (`Array.move` is SwiftUI's, so
+  the anchor is worked out by hand) and sends it. "Add from your items…"
+  opens the collectible items the routine doesn't hold, in the planner's
+  order, each with its cadence, filtered as the web's picker filters
+  ("Nothing matches “cat”." for one that matches nothing); a pick reuses the
+  item sheet's own collect write and the sheet stays up, reading the live
+  pool, so the picked row leaves and a second pick needs no reopening. A
+  swipe Remove on a resting row takes the step out the same way; it is
+  never "Delete", because nothing is deleted. Both the add row and Remove
+  ask the item write (`"collect"`), not `moveMember`, so an older server
+  can reorder and not add. VoiceOver gets Move up, Move down and Remove as
+  actions on a step (the design's short names, not the web's long
+  aria-labels), with no Move up on the first row and no Move down on the
+  last.
+- **O13: a season's routines, added and taken out.** The route takes
+  `holdRoutine` on a season: one `season_routines` row, in or out. The
+  Routines section's last row is "Add a routine…" where the server takes it,
+  drawn and disabled with "Every routine is already here" when the season
+  holds them all, as the web's pill is always there. A pick whose join would
+  take items off today asks first, in the web's words ("This will hide 3
+  items for now", `wouldHideAttaching`), with "Add it anyway" against the
+  system's Cancel; the confirm comes up once the sheet has gone, because a
+  confirm cannot show under a sheet. A swipe Take out hands the routine
+  back and asks nothing: nothing the user can see is hidden by it. Only
+  live routines are offered and drawn, so neither write names one the Trash
+  holds.
+- **A membership write is its own subject (O12, O13).** PlannerSync's
+  `moveMember` and `holdRoutine` each name ONE membership, never a list: a
+  step's place keeps the `.member` subject the item sheet's toggles own (its
+  Before is unchanged; the anchor a landed move left lives in the rebase's
+  `MemberTarget`), and a season's hold of a routine is its own
+  `.hold(seasonId:routineId:)` with `Before.hold(held:index:)`. So a
+  container's failed field write can never put back an order or a hold that
+  landed, and a failed move or hold never puts a field back. A failed
+  move's revert puts the step back after the step a landed move left it
+  after (`rebaseMember`, DsulCore `placingMember`), or where it stood
+  before its earliest failure; a failed hold goes back in or out at its old
+  place (`rebaseHold`), after the containers that come back whole and
+  before the memberships, so a hold never lands in a season that isn't back
+  yet. A move proves its step and its routine, and a hold its season and
+  its routine (no item). The route's
+  `member_gone`, `anchor_gone` and `container_gone` are all one sentence on
+  the phone ("It changed on another device. Showing the latest."), since a
+  move and a hold send no name to quote back.
+- **Waits for later PRs:** Today's project colours (O15, Kirby's call). A
+  project's time block stays the web's (the project union has no time
+  action). Today keeps `ProjectPalette` until then, so a project's dot on
+  Today and its tile on Organize can differ.
 
 ## CI
 `.github/workflows/ios.yml`, on PRs to main and pushes to main. A `changes`
@@ -1760,10 +1838,9 @@ animations.
 
 ## Not yet
 Week, density (`DensityMetrics`), swipe actions on rows, the zoom transition
-from the bar to the braindump sheet, the rest of Organize (a routine's steps
-reordered and added from its page, a season's routines added and taken out,
-and Today's project colours: O12, O13 and O15 in the Organize design; a
-project's time block stays the web's), undo right after a delete, an item's
+from the bar to the braindump sheet, the rest of Organize (Today's project
+colours: O15 in the Organize design; a project's time block stays the
+web's), undo right after a delete, an item's
 or a container's (Organize's Trash restores either, O14),
 Change type, Duplicate and Copy link, the rest of the sheet
 (a routine's or a season's hold, the goal chip, which goals in the payload

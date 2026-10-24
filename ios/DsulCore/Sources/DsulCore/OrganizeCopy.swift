@@ -16,7 +16,11 @@ import Foundation
 // offers no undo and ends on `deleteStaysInTrash(kind)`), and from O11 the create
 // sheet's words and starting glyph (`createCopy`, lib/organize-copy.ts
 // `CONTAINER_CREATE_COPY`), whose name refusals `refusal(code:for:)` words by
-// the name the create sent.
+// the name the create sent. From O13 the season page's attach confirm
+// (`attachConfirmTitle`, `attachConfirmDescription`, `attachConfirmLabel`),
+// counted by Organize.swift's `wouldHideAttaching`, and from O12 and O13 the
+// banner for a membership write another device got to first
+// (`changedElsewhere`, for `member_gone`, `anchor_gone` and `container_gone`).
 // Keep in step: a change there without the same change here is drift, and
 // the phone words a container differently from the web. Checked against the
 // web by OrganizeCopyFixtureTests (tests/fixtures/organize/copy.json), byte
@@ -279,6 +283,43 @@ public enum OrganizeCopy {
         guard let span = seasonSpan(startsOn, endsOn) else { return nil }
         return upperFirstUnit(span)
     }
+
+    /// `attachConfirmTitle`: the attach confirm's title, "This will hide 3
+    /// items for now", for putting a routine in a season that would hide
+    /// `hides` of its items (`wouldHideAttaching`; nothing is asked at 0). No
+    /// full stop: it is a heading.
+    public static func attachConfirmTitle(hides: Int) -> String {
+        return "This will hide \(hides) \(hides == 1 ? "item" : "items") for now"
+    }
+
+    /// `attachConfirmDescription`: what the attach does, said out loud. The
+    /// routine looked after itself, the season answers for it now, and the
+    /// season is off, so its items wait for it: until the season's start for
+    /// one following its dates that starts later ("come back on Nov 1"),
+    /// else until it is switched on. The rule is the web pane's own (`state`
+    /// "auto", a non-empty start, and today before it, compared as strings),
+    /// not `seasonResumeDate`'s, so the words stay exactly the web's: a
+    /// backwards range still names its start, and a start stamped with a time
+    /// names its day. One item is said in the singular ("its 1 item comes
+    /// back", "restores it"), the fix both shells took. `hides` is
+    /// `wouldHideAttaching`'s count, never a member count.
+    public static func attachConfirmDescription(routineName: String, season: Season, hides: Int, today: DayString) -> String {
+        var returns: String? = nil
+        if season.state == "auto", let starts = season.startsOn, !starts.isEmpty, today.description < starts {
+            returns = formatDay(starts)
+        }
+        let one = hides == 1
+        let items = "\(hides) \(one ? "item" : "items")"
+        let tail = returns.map { "\(one ? "comes" : "come") back on \($0)" }
+            ?? "\(one ? "stays" : "stay") hidden until you switch it on"
+        return "\u{201C}\(routineName)\u{201D} looks after itself today. Putting it in \(season.name) hands that over. "
+            + "\(season.name) is off, so its \(items) \(tail). "
+            + "Nothing is deleted, and taking it back out restores \(one ? "it" : "them")."
+    }
+
+    /// `ATTACH_CONFIRM_LABEL`: the attach confirm's button. The other is the
+    /// system's Cancel.
+    public static let attachConfirmLabel = "Add it anyway"
 
     /* ── a goal ────────────────────────────────────────────────────────── */
 
@@ -626,6 +667,14 @@ public enum OrganizeCopy {
     /// writes, and says nothing.
     public static let pauseRefused = "That day is no longer after today, so nothing was paused."
 
+    /// `CHANGED_ELSEWHERE`: the banner for a membership write refused because
+    /// another device got there first: a routine step's move whose step
+    /// (`member_gone`) or the step it was to follow (`anchor_gone`) has left
+    /// the routine, and a season hold whose routine is gone
+    /// (`container_gone`). The phone refetches on any failed write, so what it
+    /// shows next is the server's. Phone-only, as every refusal's words are.
+    public static let changedElsewhere = "It changed on another device. Showing the latest."
+
     /// `nameTakenSentence`: a name a live sibling already has, folding case
     /// (the web's inline rename check, and the phone's banner for a project
     /// rename refused 409 `name_taken`). The noun is the caller's, lower-cased.
@@ -641,14 +690,17 @@ public enum OrganizeCopy {
     ///   name a project in the Trash still holds) is `nameInTrashSentence`,
     ///   both naming the project by `sentName`, the name the write sent, never
     ///   the answer's body. Without one, they have no words.
+    /// - `member_gone`, `anchor_gone` (a step's move, O12) and
+    ///   `container_gone` (a season's hold, O13) are `changedElsewhere`,
+    ///   whatever was sent.
     /// Nil for a code with no words of its own (an answer that never came, a
     /// 404, a 500), where the sync says what it says for any failed write.
-    /// Later parts add their codes here (`container_gone`, `member_gone`,
-    /// `anchor_gone`). The two overloads below take the name from the write.
+    /// The overloads below take the name from the write.
     public static func refusal(code: String?, sentName: String?) -> String? {
         let noun = jsLowercased(ContainerWords.project)
         switch code {
         case "pause_refused": return pauseRefused
+        case "member_gone", "anchor_gone", "container_gone": return changedElsewhere
         case "name_taken": return sentName.map { nameTakenSentence(noun: noun, name: $0) }
         case "name_in_trash": return sentName.map { nameInTrashSentence(noun: noun, name: $0) }
         default: return nil
@@ -662,6 +714,13 @@ public enum OrganizeCopy {
         var sentName: String? = nil
         if case .rename(let name) = intent { sentName = jsTrim(name) }
         return refusal(code: code, sentName: sentName)
+    }
+
+    /// `containerRefusal` for a membership write (O12, O13): a move or a hold
+    /// sends no name, so only `changedElsewhere` (and the codes with words
+    /// whatever was sent) can answer.
+    public static func refusal(code: String?, for intent: MembershipIntent) -> String? {
+        return refusal(code: code, sentName: nil)
     }
 
     /// `containerRefusal` for a create (O11): the name the create sent, trimmed

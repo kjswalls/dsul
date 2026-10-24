@@ -219,6 +219,18 @@ final class APIClient {
         _ = try await send("POST", ContainerRoutes.write(ref), body: try Self.encode(body))
     }
 
+    /// POST /api/app/containers/:kind/:id (O12, O13, lib/app-containers.ts):
+    /// one membership of one container, as DsulCore's `MembershipWriteBody`
+    /// sends it (a routine's step placed right after another step, or first;
+    /// a season's routine put in or taken out). One membership, never a list,
+    /// so a change from another device in between is kept. The kind and the id
+    /// are the path (`ContainerRoutes.write`), never the body. A refusal
+    /// throws `rejected` with the route's code (`member_gone`, `anchor_gone`,
+    /// `container_gone`), which PlannerSync words.
+    func writeMembership(_ ref: ContainerRef, body: MembershipWriteBody) async throws {
+        _ = try await send("POST", ContainerRoutes.write(ref), body: try Self.encode(body))
+    }
+
     /// POST /api/app/containers/:kind (O11, lib/app-containers.ts
     /// `postContainerCreate`): a new routine, season, goal or project, as
     /// DsulCore's `ContainerCreateBody` sends it (the phone's own id, the name

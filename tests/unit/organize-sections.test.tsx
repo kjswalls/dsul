@@ -434,8 +434,9 @@ describe('a member the routine is NOT the only path to', () => {
    * an item has a second live path — which is the situation the disjunctive rule
    * exists to create, so it is not an exotic case.
    *
-   * The repo already had the right shape: `wouldHide` in seasons.tsx answers
-   * with an `inactiveItemIdsOn` DELTA rather than a container's own state.
+   * The repo already had the right shape: the season pane's attach count
+   * (now lib/organize.ts wouldHideAttaching) answers with an
+   * `inactiveItemIdsOn` DELTA rather than a container's own state.
    */
   const twoRoutines = () =>
     seed({

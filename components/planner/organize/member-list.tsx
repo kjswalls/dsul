@@ -845,8 +845,9 @@ export function MemberPicker({
  *
  * Attaching is the one membership write in the app with a NON-OBVIOUS
  * consequence, so it is the one that confirms first — the caller owns that
- * dialog and passes `onRequestAttach`, because the `wouldHide` simulation needs
- * the whole store and does not belong in a list component.
+ * dialog and passes `onRequestAttach`, because the `wouldHideAttaching`
+ * simulation (lib/organize.ts) needs the whole store and does not belong in a
+ * list component.
  */
 export function RoutineMemberList({
   season,

@@ -6,7 +6,10 @@ import Foundation
 // OrganizeModel does for the list. Foundation only: the shim compiles it on
 // Linux.
 //
-// Read-only but for the container's own fields. From O8a the Status chip: a
+// Read-only but for the container's own fields and, from O12 and O13, its
+// members: a routine's Edit mode (`RoutinePage.steps`, ContainerEditModel) and
+// a season's "Add a routine…" with Take out (`SeasonPage.routinesEdit`).
+// From O8a the Status chip: a
 // routine's Pause, Pause until and Resume, a season's On, Off and Dates
 // (`StatusMenu`). From O8b a goal's Status (Active, Achieved, Set aside), the
 // chips that open a sheet (a routine's usual time, a season's Runs, a goal's
@@ -45,10 +48,16 @@ protocol OrganizePageModel: Hashable, Sendable {
     /// The notes sheet and the ⋯ menu's rows; nil on a page that edits
     /// nothing (a paused routine's or season's detail).
     var edits: PageEdits? { get }
+    /// (O12) The page's Edit mode, and what it shows there: a routine's
+    /// steps. Nil on every other page, and on a routine whose order and
+    /// membership are both read-only. The bar's Edit button shows only while
+    /// it is `reorderable`.
+    var steps: StepsEdit? { get }
 }
 
 extension OrganizePageModel {
     var edits: PageEdits? { nil }
+    var steps: StepsEdit? { nil }
 }
 
 /// What a container's page shows: the page, or, while its extension is off,
@@ -178,6 +187,11 @@ struct MemberRow: Identifiable, Hashable, Sendable {
     /// The row as one VoiceOver element: the title, the meta, the hidden
     /// note, "skipped", "streak N". Done is the element's value.
     let spokenLabel: String
+    /// (O12) Swipe Remove, and its named action: the step may be taken out of
+    /// the routine whose page this is (`ContainerEditModel.mayRemoveStep`).
+    /// False on every other page's rows, which offer no remove, and on a
+    /// picker's rows, which are not members yet.
+    var removable: Bool = false
 
     var id: UUID { item.id }
 }
@@ -250,6 +264,12 @@ struct RoutinePage: OrganizePageModel {
     let usualTime: UsualTimeEdit?
     /// The notes sheet and the ⋯ menu (O8b, O9).
     let edits: PageEdits?
+    /// Edit mode (O12): one list of every step in the routine's own order in
+    /// place of Today and Other days, behind the bar's Edit button while it
+    /// is `reorderable`, and the row that adds from your items, which the
+    /// resting and the empty page show too. Nil while neither the order nor
+    /// the membership may be written.
+    let steps: StepsEdit?
     /// "Held by": one row per season holding it, in the seasons' order, each
     /// pushing that season ("on", "off until Nov 1").
     let heldBy: [OrganizeRow]
@@ -282,8 +302,12 @@ struct SeasonPage: OrganizePageModel {
     /// The notes sheet and the ⋯ menu (O8b, O9).
     let edits: PageEdits?
     /// The routines it holds, in the routines' own order, each pushing its
-    /// page (the list's routine row).
+    /// page (the list's routine row). Only the live ones: a hold whose
+    /// routine is in the Trash is drawn nowhere and never offered Take out.
     let routines: [OrganizeRow]
+    /// (O13) "Add a routine…" and swipe Take out; nil while the section is
+    /// read-only.
+    let routinesEdit: SeasonRoutinesEdit?
     /// Its own items.
     let items: [MemberRow]
     /// Over its items and its routines' items.
@@ -502,7 +526,7 @@ enum ContainerPageModel {
     /// (lib/container-schedule.ts `stateOn`), drawn skipped and never offered
     /// a tick the `tick` gate would refuse.
     static func memberRow(_ item: Item, _ s: OrganizeSnapshot, onToday: [UUID: OccurrenceState], meta: [String] = [],
-                          hidden: String? = nil) -> MemberRow {
+                          hidden: String? = nil, removable: Bool = false) -> MemberRow {
         let state = onToday[item.id]
         let on = state != nil
         let skipped = state == .skipped
@@ -514,7 +538,8 @@ enum ContainerPageModel {
         if flame { spoken.append("streak \(item.streak ?? 0)") }
         return MemberRow(item: item, tickable: on && !skipped, done: isRowDone(item, on: s.today), skipped: skipped,
                          meta: segments.isEmpty ? nil : segments.joined(separator: OrganizeModel.separator),
-                         hiddenNote: hidden, flame: flame, spokenLabel: spoken.joined(separator: ", "))
+                         hiddenNote: hidden, flame: flame, spokenLabel: spoken.joined(separator: ", "),
+                         removable: removable)
     }
 
     /// Why `item` is not on today, in the short words a row's meta takes, or
@@ -607,6 +632,7 @@ enum ContainerPageModel {
 
         var checklist: TodayChecklist? = nil
         var otherDays: [MemberRow] = []
+        var editRows: [MemberRow] = []
         var strip: DayStrip? = nil
         if !members.isEmpty {
             let schedule = stripSchedule(routine.itemIds, s, source: source)
@@ -616,7 +642,8 @@ enum ContainerPageModel {
             let rows: [MemberRow] = run.rows.compactMap { r in
                 guard let item = byId[r.itemId], listed.insert(r.itemId).inserted else { return nil }
                 let meta = r.itemId == run.nextId ? [OrganizeCopy.routineTodayNext] : []
-                return memberRow(item, s, onToday: on, meta: meta)
+                return memberRow(item, s, onToday: on, meta: meta,
+                                 removable: ContainerEditModel.mayRemoveStep(item, s))
             }
             checklist = TodayChecklist(
                 rows: rows,
@@ -630,7 +657,16 @@ enum ContainerPageModel {
             // never reads "Daily" with nothing to explain it. One merely off
             // today keeps its plain cadence: `hiddenNote` is nil for it.
             otherDays = members.filter { !listed.contains($0.id) }.map { item in
-                memberRow(item, s, onToday: on, meta: [cadenceLabel(item)], hidden: hiddenNote(item, s))
+                memberRow(item, s, onToday: on, meta: [cadenceLabel(item)], hidden: hiddenNote(item, s),
+                          removable: ContainerEditModel.mayRemoveStep(item, s))
+            }
+            // Edit mode's one list (O12): every live member in the routine's
+            // own order, each with its cadence and why it is held off, as
+            // "Other days" reads them, since a list being reordered says
+            // nothing about today.
+            editRows = members.map { item in
+                memberRow(item, s, onToday: on, meta: [cadenceLabel(item)], hidden: hiddenNote(item, s),
+                          removable: ContainerEditModel.mayRemoveStep(item, s))
             }
             strip = dayStrip(schedule, today: today)
         }
@@ -643,6 +679,7 @@ enum ContainerPageModel {
             statusMenu: statusMenu,
             usualTime: usualTime,
             edits: ContainerEditModel.pageEdits(.routine(routine), s),
+            steps: ContainerEditModel.stepsEdit(routine.id, members: editRows, s),
             heldBy: heldBy,
             heldByEmpty: heldBy.isEmpty ? OrganizeCopy.heldByNone : nil,
             today: checklist,
@@ -748,6 +785,7 @@ enum ContainerPageModel {
             runs: runsEdit,
             edits: ContainerEditModel.pageEdits(.season(season), s),
             routines: routines,
+            routinesEdit: ContainerEditModel.seasonRoutinesEdit(season, s),
             items: items,
             strip: dayStrip(schedule, today: today),
             empty: routines.isEmpty && items.isEmpty ? OrganizeCopy.nothingInItYet : nil
@@ -988,6 +1026,22 @@ extension SamplePlanner {
 
     func routinePage(_ id: String) -> PageContent<RoutinePage>? {
         return ContainerPageModel.routinePage(id, organizeSnapshot)
+    }
+
+    /// (O12) "Add from your items…" for routine `id`, as its page offers it
+    /// (`RoutinePage.steps?.add`), without building the page: what the
+    /// picker's sheet reads, so a keystroke in its field builds the pool and
+    /// not the routine's schedules and strip. Nil under the page's own gates:
+    /// the routine gone, Organize off, or the server not taking the item
+    /// write an add is (`collect`). The snapshot holds only what the pool
+    /// reads, so the sheet observes those alone.
+    func stepPicker(_ id: String) -> StepPicker? {
+        let s = OrganizeSnapshot(hasLoaded: hasLoaded, settings: settings, today: today, timeZone: timeZoneID,
+                                 items: items, routines: routines, collects: canWrite("collect"))
+        guard s.settings.organizeEnabled, s.collects,
+              let routine = s.routines.first(where: { $0.id == id })
+        else { return nil }
+        return ContainerEditModel.stepPicker(id, holding: Set(routine.itemIds), s)
     }
 
     func seasonPage(_ id: String) -> PageContent<SeasonPage>? {

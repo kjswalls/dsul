@@ -2,10 +2,12 @@ import DsulCore
 import Foundation
 
 // What a container's page may edit beyond its Status chip, and in what words
-// (design §6.3, O8b to O11): a routine's usual time, a season's Runs, a goal's
+// (design §6.3, O8b to O13): a routine's usual time, a season's Runs, a goal's
 // window, the notes (a goal's why), the ⋯ menu's Rename…, Icon and colour…
-// and Delete… (O10), and the list's + menu with its name sheet (O11). Worked
-// out apart from the views so the hosted tests pin it (OrganizePageTests), as
+// and Delete… (O10), the list's + menu with its name sheet (O11), a routine's
+// Edit mode with its step moves, Remove and "Add from your items…" (O12), and
+// a season's "Add a routine…" with its confirm and Take out (O13). Worked out
+// apart from the views so the hosted tests pin it (OrganizePageTests), as
 // ContainerPageModel does for what a page shows. Foundation only: the shim
 // compiles it on Linux.
 //
@@ -22,8 +24,12 @@ import Foundation
 // "Target" (`DateRangeChip`), "Add a note…" and "Why this matters…" and the
 // notes' field names (container-fields.tsx), and the delete confirms and the
 // create sheet's words (lib/organize-copy.ts, through DsulCore
-// `OrganizeCopy`). No em dashes, and nothing here asks for a hue: the views
-// draw a colour only as a swatch or a tile.
+// `OrganizeCopy`). From O12 and O13: the step picker's placeholder and its
+// two empty lines, and the disabled add row's reason, are the web's
+// (member-list.tsx); the add rows, Remove, Take out and the moves are the
+// phone's own, and Remove is never "Delete" (the item stays where it is).
+// No em dashes, and nothing here asks for a hue: the views draw a colour only
+// as a swatch or a tile.
 
 /// What a container page edits beyond its chips (O8b to O10): its notes (a
 /// goal's why) and the ⋯ menu's three rows. Each nil while read-only.
@@ -217,6 +223,156 @@ struct RangeDraft: Hashable, Sendable {
     var end: DayString?
 }
 
+/* ── a routine's steps (O12) ──────────────────────────────────────────── */
+
+/// Where a step goes: right after another step, or first. The `after` a
+/// `moveMember` carries, as a place a list can name rather than an index,
+/// since the list the phone draws skips a member whose item is in the Trash
+/// and an index into it is not an index into the routine (DsulCore
+/// `moveMemberAfter`). PlannerSync's revert reads it too, for the anchor a
+/// landed move left.
+enum StepAnchor: Hashable, Sendable {
+    /// First in the routine, with nothing above it.
+    case first
+    /// Right after this step.
+    case after(UUID)
+
+    /// The `after` the write carries: the step's id, or nil for first.
+    var id: UUID? {
+        switch self {
+        case .first: return nil
+        case .after(let id): return id
+        }
+    }
+}
+
+/// (O12) One step's move: the step, and where it goes. What a drag in Edit
+/// mode (`ContainerEditModel.stepDrag`) and Move up and Move down ask for.
+struct StepMove: Hashable, Sendable {
+    let item: UUID
+    let to: StepAnchor
+}
+
+/// (O12) One row of a routine's Edit mode: the step as the page draws it,
+/// where a move would put it, and whether it may be taken out.
+struct StepEditRow: Identifiable, Hashable, Sendable {
+    /// The step as a page row (its title, its meta, why it is held off, and
+    /// its spoken label). Edit mode draws it without the tick: the circle is
+    /// a write, and a list being reordered is not where to take it.
+    let row: MemberRow
+    /// Where Move up puts it: the step it would then sit after, or first.
+    /// Nil on the first row, which cannot move up, and while the order is
+    /// read-only.
+    let moveUp: StepAnchor?
+    /// Where Move down puts it. Nil on the last row, and while the order is
+    /// read-only.
+    let moveDown: StepAnchor?
+
+    var id: UUID { row.id }
+    var item: Item { row.item }
+    /// Swipe Remove and its named action, as the resting rows have it.
+    var removable: Bool { row.removable }
+}
+
+/// (O12) A routine's Edit mode: one list of every live step in the routine's
+/// own order, in place of Today and Other days, and the row that adds more.
+/// Nil on a page that may write neither the order nor the membership. The
+/// bar's Edit button shows only while `reorderable`; the add row and swipe
+/// Remove live on the resting page, so a page that may add but not reorder
+/// keeps them with no Edit mode to go into.
+struct StepsEdit: Hashable, Sendable {
+    let routineId: String
+    /// Every live step, in the routine's own order.
+    let rows: [StepEditRow]
+    /// Whether a drag, and Move up and Move down, may reorder them (the
+    /// server takes a routine's `moveMember`). False leaves the list as a
+    /// list, with Remove and the add row still there.
+    let reorders: Bool
+    /// "Add from your items…": the picker, or nil where the server doesn't
+    /// take the item write an add is (`collect`).
+    let add: StepPicker?
+
+    /// Whether Edit mode has anything to do: the server takes the order, and
+    /// there are two steps or more to put in one. An empty routine, a routine
+    /// of one step, and a server that takes the add but not the order show no
+    /// Edit button, since a list with no grip that can go anywhere is a mode
+    /// with nothing in it.
+    var reorderable: Bool { reorders && rows.count > 1 }
+}
+
+/// (O12) "Add from your items…": the items a routine may take, searched as
+/// the web's member picker searches them. A pick is the item write
+/// (`collect`), which lands the step last, so the sheet stays up and the
+/// row leaves the list, as the web's picker does.
+struct StepPicker: Identifiable, Hashable, Sendable {
+    let routineId: String
+    /// The sheet's title: the row's words without the ellipsis.
+    let title: String
+    /// The field's placeholder, the web picker's.
+    let placeholder: String
+    /// Every item the routine may take, in the planner's order: the
+    /// collectible ones (never a subtask) it doesn't already hold, as the
+    /// web pools them.
+    let candidates: [MemberRow]
+    /// With nothing left to add: the web's line in place of the rows; nil
+    /// while something is left.
+    let empty: String?
+
+    var id: String { routineId }
+}
+
+/* ── a season's routines (O13) ────────────────────────────────────────── */
+
+/// (O13) A season's Routines section while the server takes its
+/// `holdRoutine`: the "Add a routine…" row, and with it swipe Take out on
+/// each routine the season holds. Nil leaves the section read-only.
+struct SeasonRoutinesEdit: Identifiable, Hashable, Sendable {
+    let seasonId: String
+    /// The row that opens the list, and the sheet's title: "Add a routine…"
+    /// and "Add a routine".
+    let title: String
+    /// The live routines the season doesn't hold, in the routines' own
+    /// order.
+    let candidates: [RoutineChoice]
+    /// With none left to add: the web's words on its disabled pill; nil
+    /// while one is left. The row is drawn either way, as the web's pill is
+    /// (disabled with its reason, never hidden: a missing one reads as
+    /// "a season cannot hold routines").
+    let none: String?
+
+    var id: String { seasonId }
+}
+
+/// (O13) One routine on "Add a routine…": its tile and its name, as the
+/// web's candidate row draws it (the glyph and the name, nothing else).
+struct RoutineChoice: Identifiable, Hashable, Sendable {
+    let id: String
+    let name: String
+    /// The tile's SF Symbol and its colour, the list row's own
+    /// (`containerSymbol`, `containerAccent`). Hue on the tile and its
+    /// glyph alone, never on the name.
+    let symbol: String
+    let accent: ContainerAccent
+}
+
+/// (O13) What putting a routine in a season asks first, when the join would
+/// take items off today: the web's confirm, worked out when the routine is
+/// picked, so what it counts is what was on screen when it was asked.
+struct AttachConfirm: Identifiable, Hashable, Sendable {
+    let seasonId: String
+    let routineId: String
+    /// "This will hide 3 items for now" (`OrganizeCopy.attachConfirmTitle`).
+    /// No full stop: it is a heading.
+    let title: String
+    /// What the season takes over, and when the items come back
+    /// (`OrganizeCopy.attachConfirmDescription`).
+    let message: String
+    /// The button: "Add it anyway". The other is the system's Cancel.
+    let confirmLabel: String
+
+    var id: String { seasonId + "/" + routineId }
+}
+
 enum ContainerEditModel {
     // MARK: Words
 
@@ -240,6 +396,33 @@ enum ContainerEditModel {
     static let deleteWord = "Delete\u{2026}"
     /// The list's + menu to VoiceOver (O11).
     static let newLabel = "New"
+
+    /// The bar's Edit button on a routine's page, and its Done (O12).
+    static let editWord = "Edit"
+    static let editDoneWord = "Done"
+    /// The row that adds a step, in a routine's Edit mode and under an empty
+    /// routine's sentence (O12), and its sheet's title: the same words
+    /// without the ellipsis, as the look rows and their sheet are.
+    static let addStepWord = "Add from your items\u{2026}"
+    static let addStepTitle = "Add from your items"
+    /// The row that puts a routine in a season (O13), and its sheet's title.
+    static let addRoutineWord = "Add a routine\u{2026}"
+    static let addRoutineTitle = "Add a routine"
+    /// Swipe Remove on a step, and its named action: it takes the step out of
+    /// the routine. Never "Delete": the item itself stays where it is.
+    static let removeStepWord = "Remove"
+    /// Swipe Take out on a season's routine, and its named action.
+    static let takeOutWord = "Take out"
+    /// A step's moves as VoiceOver names them, in Edit mode (design §6.8).
+    static let moveUpWord = "Move up"
+    static let moveDownWord = "Move down"
+    /// The step picker's field, the web's placeholder (member-list.tsx).
+    static let findStepPlaceholder = "Find an item\u{2026}"
+    /// With every collectible item already in the routine: the web's line.
+    static let everythingAlreadyIn = "Everything is already in here."
+    /// With no routine left to add: the web's words on its disabled pill, as
+    /// it has them, with no full stop.
+    static let everyRoutineAlreadyHere = "Every routine is already here"
 
     /// The web's notes placeholders.
     static let notePlaceholder = "Add a note\u{2026}"
@@ -655,6 +838,144 @@ enum ContainerEditModel {
     /// "Routine created", said once the new page has settled.
     static func createdAnnouncement(_ kind: OrganizeKind) -> String {
         return OrganizeModel.noun(kind) + " created"
+    }
+
+    // MARK: A routine's steps (O12)
+
+    /// May this step be taken out of the routine, or another item be added to
+    /// it? The server takes the item write both are (`collect`), and the item
+    /// is collectible (never a subtask): the gate the item sheet's own routine
+    /// toggles ask (`SamplePlanner.canEdit("collect", item)`, DsulCore
+    /// `editAllowed`, which for `collect` is `isCollectible`). The page's own
+    /// switch is not asked again: a page with Organize off is the web's
+    /// sentence, never a list.
+    static func mayRemoveStep(_ item: Item, _ s: OrganizeSnapshot) -> Bool {
+        return s.collects && isCollectible(item)
+    }
+
+    /// (O12) A routine's Edit mode over `rows`, its live steps as the page
+    /// draws them, in the routine's own order; nil where neither the order nor
+    /// the membership may be written, which is a page with no Edit button.
+    ///
+    /// The move anchors are places, never indexes: Move up puts a step after
+    /// the step two above it (or first from the second row), Move down after
+    /// the step below it, and the first and last rows offer neither, as the
+    /// web's rail disables its arrows at the ends.
+    static func stepsEdit(_ routineId: String, members rows: [MemberRow], _ s: OrganizeSnapshot) -> StepsEdit? {
+        let reorders = OrganizeModel.canEdit(.moveMember, on: .routine, takes: s.containerTakes,
+                                             settings: s.settings)
+        let add = s.collects ? stepPicker(routineId, members: rows, s) : nil
+        guard reorders || add != nil else { return nil }
+        let ids = rows.map(\.id)
+        let steps = rows.enumerated().map { i, row in
+            StepEditRow(
+                row: row,
+                moveUp: reorders && i > 0 ? (i >= 2 ? .after(ids[i - 2]) : .first) : nil,
+                moveDown: reorders && i + 1 < ids.count ? .after(ids[i + 1]) : nil
+            )
+        }
+        return StepsEdit(routineId: routineId, rows: steps, reorders: reorders, add: add)
+    }
+
+    /// (O12) "Add from your items…" for the routine holding `rows`: every
+    /// collectible item it doesn't hold, in the planner's order, as the web's
+    /// picker pools them (`isCollectible`, the registry's answer, so a type
+    /// made today joins routines today). Shown with none left too, saying so.
+    static func stepPicker(_ routineId: String, members rows: [MemberRow], _ s: OrganizeSnapshot) -> StepPicker {
+        return stepPicker(routineId, holding: Set(rows.map(\.id)), s)
+    }
+
+    /// (O12) The same pool from the routine's member ids alone, as the
+    /// picker's sheet asks for it on every keystroke
+    /// (`SamplePlanner.stepPicker`), without the page's rows. An id whose
+    /// item is not in `s.items` (in the Trash) changes nothing: only a live
+    /// item is ever a candidate.
+    static func stepPicker(_ routineId: String, holding held: Set<UUID>, _ s: OrganizeSnapshot) -> StepPicker {
+        let candidates = s.items.filter { isCollectible($0) && !held.contains($0.id) }.map { item in
+            ContainerPageModel.memberRow(item, s, onToday: [:], meta: [cadenceLabel(item)])
+        }
+        return StepPicker(routineId: routineId, title: addStepTitle,
+                          placeholder: findStepPlaceholder, candidates: candidates,
+                          empty: candidates.isEmpty ? everythingAlreadyIn : nil)
+    }
+
+    /// The picker's rows for `query`: all of them while it trims to nothing,
+    /// so an empty field browses the whole pool, else the ones whose title
+    /// holds it, as the web's picker filters them
+    /// (`title.toLowerCase().includes(q)` over the trimmed, lowered query).
+    static func matching(_ rows: [MemberRow], query: String) -> [MemberRow] {
+        let q = jsLowercased(jsTrim(query))
+        guard !q.isEmpty else { return rows }
+        return rows.filter { jsLowercased($0.item.title).contains(q) }
+    }
+
+    /// With a query that matches nothing: the web's line, naming what was
+    /// typed as it was typed, trimmed (`Nothing matches “cat”.`).
+    static func noStepMatches(_ query: String) -> String {
+        return "Nothing matches \u{201C}\(jsTrim(query))\u{201D}."
+    }
+
+    /// (O12) What a drag in Edit mode asks for: the step it took, and the step
+    /// it now sits after (first at the top), worked out from the list's own
+    /// offsets, where `destination` is an index into the list as it was. Nil
+    /// when nothing moved (a step dropped back where it stood), when the list
+    /// moved more than one row (a List moves one at a time), or when the
+    /// offsets name no step.
+    static func stepDrag(_ ids: [UUID], from source: IndexSet, to destination: Int) -> StepMove? {
+        guard source.count == 1, let from = source.first, ids.indices.contains(from) else { return nil }
+        var rest = ids
+        let item = rest.remove(at: from)
+        let at = min(max(destination > from ? destination - 1 : destination, 0), rest.count)
+        guard at != from else { return nil }
+        return StepMove(item: item, to: at == 0 ? .first : .after(rest[at - 1]))
+    }
+
+    // MARK: A season's routines (O13)
+
+    /// (O13) A season's Routines section while the server takes `holdRoutine`
+    /// and Organize is on: the "Add a routine…" row with the live routines it
+    /// doesn't hold, in the routines' own order, and swipe Take out on the
+    /// ones it does. Nil leaves the section read-only.
+    ///
+    /// Only live routines are offered, and only live ones are drawn
+    /// (`ContainerPageModel.seasonPage`): the payload can carry a hold of a
+    /// routine that is in the Trash, and both the add and the take-out of one
+    /// the planner cannot find would answer 409 `container_gone` and change
+    /// nothing.
+    static func seasonRoutinesEdit(_ season: Season, _ s: OrganizeSnapshot) -> SeasonRoutinesEdit? {
+        guard OrganizeModel.canEdit(.holdRoutine, on: .season, takes: s.containerTakes, settings: s.settings) else {
+            return nil
+        }
+        let held = Set(season.routineIds)
+        let candidates = s.routines.filter { !held.contains($0.id) }.map { routine in
+            RoutineChoice(id: routine.id, name: routine.name,
+                          symbol: containerSymbol(glyph: routine.icon, name: routine.name, kind: .routine),
+                          accent: containerAccent(routine.color, name: routine.name))
+        }
+        return SeasonRoutinesEdit(seasonId: season.id, title: addRoutineWord, candidates: candidates,
+                                  none: candidates.isEmpty ? everyRoutineAlreadyHere : nil)
+    }
+
+    /// (O13) What putting routine `routineId` in season `seasonId` asks
+    /// first: nil when the join would hide nothing on today, which is a hold
+    /// sent at once (`wouldHideAttaching` is 0 for a routine another season
+    /// already holds, for one whose items are hidden or carried anyway, and
+    /// for a season or a routine the planner doesn't hold); else the web's
+    /// confirm, counting what would go and saying when it comes back.
+    static func attachConfirm(_ seasonId: String, routineId: String, _ s: OrganizeSnapshot) -> AttachConfirm? {
+        guard let season = s.seasons.first(where: { $0.id == seasonId }),
+              let routine = s.routines.first(where: { $0.id == routineId })
+        else { return nil }
+        let hides = wouldHideAttaching(seasonId: seasonId, routineId: routineId, items: s.items, on: s.today,
+                                       timeZone: s.timeZone, routines: s.routines, seasons: s.seasons)
+        guard hides > 0 else { return nil }
+        return AttachConfirm(
+            seasonId: seasonId, routineId: routineId,
+            title: OrganizeCopy.attachConfirmTitle(hides: hides),
+            message: OrganizeCopy.attachConfirmDescription(routineName: routine.name, season: season, hides: hides,
+                                                           today: s.today),
+            confirmLabel: OrganizeCopy.attachConfirmLabel
+        )
     }
 
     // MARK: Chips

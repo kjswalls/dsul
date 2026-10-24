@@ -7,8 +7,9 @@ import {
   type WeekStartDay,
 } from './container-schedule';
 import { isGoalActive, nextMilestone, sortGoalsForDisplay } from './goals';
+import { inactiveItemIdsOn } from './active';
 import { toDateOnly } from './overdue';
-import type { Goal, Item } from './planner-types';
+import type { Goal, Item, Routine, Season } from './planner-types';
 
 /**
  * organize.ts: the answers Organize's summary needs that no one component
@@ -20,6 +21,10 @@ import type { Goal, Item } from './planner-types';
  * answer for each day (deriveContainerSchedule), counted by the rule every
  * member list already counts with (weekTotals): what is done, out of what is
  * done or still ahead. The next milestone is each goal's own nextMilestone.
+ * What putting a routine in a season would hide is the resolver's own answer
+ * (inactiveItemIdsOn), asked twice. A routine step's new place is one id
+ * moved in a list, the order the container route writes (lib/app-containers.ts
+ * moveMember) and the phone steps by.
  */
 
 /* ── THIS WEEK ────────────────────────────────────────────────────────── */
@@ -93,4 +98,86 @@ export function nextMilestoneAcross(goals: readonly Goal[], itemsById: Map<strin
     }
   }
   return dated ?? undated;
+}
+
+/* ── A ROUTINE'S STEPS ────────────────────────────────────────────────── */
+
+/**
+ * A routine's member order with `item` moved to sit right after `after`, or
+ * first when `after` is null: the order a routine page's drag (and its "Move
+ * up" and "Move down") asks for, one item placed after another, never a list
+ * sent whole.
+ *
+ * Every other member keeps its order relative to the rest. An `item` that is
+ * not in `ids`, an `after` that is not (once `item` is taken out), or an
+ * `after` that is `item` itself changes nothing: the answer is `ids` as it
+ * was. The container route refuses the first two before it gets here (409
+ * `member_gone`, `anchor_gone`) and the third as a body (400), so the phone's
+ * optimistic step and the server always agree on what was moved.
+ *
+ * Pure, over ids only: a member whose item is in the Trash (its join row
+ * outlives the item's soft delete) keeps its place among the rest, so the
+ * order the phone draws, which skips it, is the order it asked for.
+ */
+export function moveMemberAfter(ids: readonly string[], item: string, after: string | null): string[] {
+  if (after === item || !ids.includes(item)) return [...ids];
+  const rest = ids.filter((id) => id !== item);
+  if (after === null) return [item, ...rest];
+  const at = rest.indexOf(after);
+  if (at < 0) return [...ids];
+  return [...rest.slice(0, at + 1), item, ...rest.slice(at + 1)];
+}
+
+/* ── A SEASON'S ROUTINES ──────────────────────────────────────────────── */
+
+/** What wouldHideAttaching asks the resolver with: the live routines and seasons, and the zone. */
+export interface AttachWorld {
+  userTimezone: string;
+  /** The user's LIVE routines (ActivationContext's contract). */
+  routines: readonly Routine[];
+  /** The user's LIVE seasons, the one the routine would join among them. */
+  seasons: readonly Season[];
+}
+
+/**
+ * How many items putting routine `routineId` in season `seasonId` would
+ * ACTUALLY take off `dateStr`: the attach confirm's count (the web's seasons
+ * pane; the iPhone's season page, "This will hide 3 items for now"). Zero
+ * means no confirm: the routine goes straight in.
+ *
+ * A routine that belongs to NO season answers for itself. Put it in its
+ * first season and the season answers too, so attaching a live routine to a
+ * season that is off makes its items leave today as a side effect of a join
+ * write. Only that first season rescopes it: a routine another season
+ * already holds is purely added to (the path algebra is disjunctive), so it
+ * hides nothing and is never asked about, which keeps the one prompt that
+ * has something to say from being dismissed unread.
+ *
+ * The count is the resolver's DELTA, asked by simulating the join, never a
+ * member count: a member already hidden (its own pause, the routine's), one
+ * a second live path still carries (another routine, the season's own items)
+ * and one with nothing left to do today would all move nothing.
+ *
+ * Asked with the routines and seasons and no trips, as the web's pane asks
+ * it: a trip's rest is a hold of its own, and the season would still be
+ * holding the item when the trip ends.
+ */
+export function wouldHideAttaching(
+  seasonId: string,
+  routineId: string,
+  items: readonly Item[],
+  world: AttachWorld,
+  dateStr: string,
+): number {
+  const { userTimezone, routines, seasons } = world;
+  if (seasons.some((s) => s.id !== seasonId && s.routineIds.includes(routineId))) return 0;
+  const before = inactiveItemIdsOn(items, dateStr, { userTimezone, routines, seasons });
+  const after = inactiveItemIdsOn(items, dateStr, {
+    userTimezone,
+    routines,
+    seasons: seasons.map((s) => (s.id === seasonId ? { ...s, routineIds: [...s.routineIds, routineId] } : s)),
+  });
+  let n = 0;
+  for (const id of after) if (!before.has(id)) n += 1;
+  return n;
 }

@@ -2,13 +2,15 @@ import { postContainerWrite } from '@/lib/app-containers';
 
 /**
  * POST /api/app/containers/:kind/:id: one field of one routine, season, goal
- * or project, or its delete, from the iPhone app. `:kind` is routine, season,
- * goal or project (it picks the table; ids are unique per table only), `:id`
- * the container's uuid. The body is one strict intent of that kind:
+ * or project, its delete, a routine's step move or a season's routine hold,
+ * from the iPhone app. `:kind` is routine, season, goal or project (it picks
+ * the table; ids are unique per table only), `:id` the container's uuid. The
+ * body is one strict intent of that kind:
  *   routine  pause { paused, pausedUntil?, timeZone? }, usualTime { usualTime },
- *            notes { notes }
+ *            notes { notes }, moveMember { itemId, afterId: uuid | null }
  *   season   state { state: 'auto' | 'active' | 'paused' },
- *            dates { startsOn, endsOn }, notes { notes }
+ *            dates { startsOn, endsOn }, notes { notes },
+ *            holdRoutine { routineId, hold: boolean }
  *   goal     state { state: 'active' | 'achieved' | 'abandoned' },
  *            window { startsOn, targetOn }, why { why }
  *   project  notes { notes }
@@ -21,8 +23,11 @@ import { postContainerWrite } from '@/lib/app-containers';
  * unknown kind, a malformed id, or no live container of the caller's: never
  * one, in the Trash, or purged; a delete answers 200 for one already in the
  * Trash, and 404 only when there is no row at all), and 409 `pause_refused`
- * (a resume day not after today on a routine that is not paused), or for a
- * project rename `name_taken` / `name_in_trash`. The extension switches gate
+ * (a resume day not after today on a routine that is not paused), for a
+ * project rename `name_taken` / `name_in_trash`, for a move `member_gone` /
+ * `anchor_gone` (the step, or the one it was to follow, has left the
+ * routine), and for a hold `container_gone` (the routine is gone). A move
+ * with `afterId` equal to `itemId` is 400. The extension switches gate
  * nothing here. No webhook, no item_events, never the service role. The
  * handler is in lib/app-containers.ts.
  */
