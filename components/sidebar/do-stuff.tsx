@@ -1117,6 +1117,34 @@ function useReflow(listRef: React.RefObject<HTMLDivElement | null>, order: strin
   });
 }
 
+/**
+ * The current item's card, held as the one-line row it was: its title's first
+ * line where the row stood, the rest clipped away, then opening to the full
+ * card as the rows glide. Moved and clipped on one easing, its edges keep
+ * pace with the rows around it, so the rows still on their way never cross
+ * it. Drawn whole at once, the card sat over the rows held in the braindump's
+ * places for half a second (Kirby: the start's sort "looked weird").
+ * Null for any other row.
+ */
+function cardFrom(el: HTMLElement, dy: number): Keyframe[] | null {
+  const title = el.querySelector<HTMLElement>('[data-testid="do-stuff-next-title"]');
+  if (!title) return null;
+  const box = el.getBoundingClientRect();
+  const line = title.getBoundingClientRect();
+  const lineH = parseFloat(getComputedStyle(title).lineHeight) || line.height;
+  const top = line.top - box.top;
+  const bottom = Math.max(0, box.bottom - (line.top + lineH));
+  // The row's text sat a few pixels under its top; the title lands there.
+  const from = dy - top + ROW_TEXT_INSET;
+  return [
+    { transform: `translate(0, ${from}px)`, clipPath: `inset(${top}px 0 ${bottom}px 0)` },
+    { transform: 'none', clipPath: 'inset(0)' },
+  ];
+}
+
+/** How far a braindump row's text sits under the row's top. */
+const ROW_TEXT_INSET = 4;
+
 /** The column's widen to two fifths of the window (braindump-pane.tsx, duration-300). */
 const WIDEN_MS = 300;
 const GLIDE_MS = 420;
@@ -1171,12 +1199,14 @@ function useSort(listRef: React.RefObject<HTMLDivElement | null>) {
       );
     }
     for (const { el, dy, lane } of moves) {
-      el.animate([{ transform: `translate(0, ${dy}px)` }, { transform: 'none' }], {
+      const timing = {
         duration: GLIDE_MS,
         delay: WIDEN_MS + lane * LANE_STAGGER_MS,
         easing: 'cubic-bezier(.2,.8,.2,1)',
-        fill: 'backwards',
-      });
+        fill: 'backwards' as const,
+      };
+      const card = cardFrom(el, dy);
+      el.animate(card ?? [{ transform: `translate(0, ${dy}px)` }, { transform: 'none' }], timing);
     }
     // The labels start as the last lane's rows settle, not after the tail of
     // the ease, which reads as a pause.
