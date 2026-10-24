@@ -86,6 +86,7 @@ import { useTimezoneSync } from '@/hooks/use-timezone-sync';
 import { useDeviceRegistration } from '@/hooks/use-device-registration';
 import { useLocalCueTick } from '@/hooks/use-local-cue-tick';
 import { usePlannerCatchUp } from '@/hooks/use-planner-catch-up';
+import { useDayRollover } from '@/hooks/use-day-rollover';
 import { useOverdueSweep } from '@/hooks/use-overdue-sweep';
 import { useAwaySettle } from '@/hooks/use-away-settle';
 import { useCompletionFiling } from '@/hooks/use-completion-filing';
@@ -344,6 +345,8 @@ export function AppShell() {
   useLocalCueTick();
   // Another device's changes land here when the planner is looked at again.
   usePlannerCatchUp();
+  // A page left open across midnight moves to the new day.
+  useDayRollover();
   // Opt-in past-due decay (off by default). Mounted here, above the
   // desktop/mobile split, so the once-per-day sweep runs on every platform and
   // survives view changes — and declared AFTER useUndoToast so the batched

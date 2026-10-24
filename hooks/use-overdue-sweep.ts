@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useDayStore } from '@/lib/day-clock';
 import { useMorningStore, readPersistedAutoAgeLastRunDate } from '@/lib/morning-store';
 import { toDateStr } from '@/lib/recurrence';
 import { selectOverdue, daysOverdue, toDateOnly } from '@/lib/overdue';
@@ -191,6 +192,9 @@ export function useOverdueSweep() {
   // Trips load beside the planner (supabase-provider). While this account's are
   // still in flight, every held item would read as unprotected.
   const awayPending = useAwayStore((s) => s.userId === userId && !s.loaded);
+  // A page left open across midnight sweeps the new day, as a reload would
+  // (hooks/use-day-rollover.ts); gate 6 still holds it to once a day.
+  const today = useDayStore((s) => s.todayStr);
 
   useEffect(() => {
     // ── Gate 1: items have actually finished hydrating from Supabase ──────────
@@ -422,5 +426,6 @@ export function useOverdueSweep() {
     loadError,
     userTimezone,
     awayPending,
+    today,
   ]);
 }
