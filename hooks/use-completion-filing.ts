@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useDayStore } from '@/lib/day-clock';
 import { useAwayStore } from '@/lib/away-store';
 import { useMorningStore } from '@/lib/morning-store';
 import { toDateStr } from '@/lib/recurrence';
@@ -45,8 +46,8 @@ function candidatesFor(items: readonly Item[], todayStr: string, userTimezone: s
  * resolved timezone — the day boundary has to be the user's, or a task
  * finished at 23:30 files onto the wrong day. Any doubt means file nothing.
  *
- * An app left open across midnight files on its next load, the same bargain
- * the rest of the app makes with the rollover.
+ * An app left open across midnight files when the day turns over
+ * (hooks/use-day-rollover.ts), once per day as on a load.
  */
 export function useCompletionFiling() {
   const userId = usePlannerStore((s) => s.userId);
@@ -54,6 +55,7 @@ export function useCompletionFiling() {
   const loadError = usePlannerStore((s) => s.error);
   const userTimezone = usePlannerStore((s) => s.userTimezone);
   const settingsHydratedUserId = useMorningStore((s) => s.settingsHydratedUserId);
+  const today = useDayStore((s) => s.todayStr);
 
   useEffect(() => {
     if (!userId || isLoading || loadError) return;
@@ -96,5 +98,5 @@ export function useCompletionFiling() {
       // written nothing, so it must not have spent the day.
       if (!settled) ran.delete(key);
     };
-  }, [userId, isLoading, loadError, userTimezone, settingsHydratedUserId]);
+  }, [userId, isLoading, loadError, userTimezone, settingsHydratedUserId, today]);
 }

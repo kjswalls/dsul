@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useDayStore } from '@/lib/day-clock';
 import { selectPlannerLoaded } from '@/lib/planner-ready';
 import { useAwayStore } from '@/lib/away-store';
 import { awayInputsNow } from '@/lib/away-actions';
@@ -22,6 +23,8 @@ export function useAwaySettle(): void {
   const plannerLoaded = usePlannerStore(selectPlannerLoaded);
   const awayReady = useAwayStore((s) => s.loaded && s.available && s.userId === userId);
   const periods = useAwayStore((s) => s.periods);
+  // A trip that ends while the page is open settles when the day turns over.
+  const today = useDayStore((s) => s.todayStr);
 
   useEffect(() => {
     if (!userId || !plannerLoaded || !awayReady) return;
@@ -32,5 +35,5 @@ export function useAwaySettle(): void {
       const after = new Map(usePlannerStore.getState().items.map((i) => [i.id, i]));
       return ids.filter((id) => !(after.get(id) as { startDate?: string } | undefined)?.startDate);
     });
-  }, [userId, plannerLoaded, awayReady, periods]);
+  }, [userId, plannerLoaded, awayReady, periods, today]);
 }
