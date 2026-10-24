@@ -77,7 +77,7 @@ struct ItemRow: View {
             // side), with the 44pt square overhanging it by 7pt all round, so
             // the column, the strip's skip mark and the row height stay put.
             Button(action: onToggle) {
-                TickCircle(done: done, habit: item.isHabit)
+                TickBox(done: done, habit: item.isHabit)
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
@@ -132,28 +132,57 @@ struct ItemRow: View {
     }
 }
 
-/// Filled with a tick when done; a dashed ring for an open habit, a solid one
-/// for an open task. Drawn at `diameter`; the caller gives it its hit area.
-struct TickCircle: View {
+/// The item checkbox, drawn as the web's (components/primitives/item-check.tsx
+/// and the `--check-*` tokens in app/globals.css): a rounded square, filled
+/// grey with a fine lime tick when done. Light fills a mid pewter with the
+/// most saturated lime, since the brand lime is too close to pewter in
+/// lightness and reads washed out on it; dark fills a raised graphite with the
+/// accent. Open, it is a ring: dashed for a habit, solid for a task. The box is
+/// 90% of `diameter`, so it sits at the weight the old circle did; the caller
+/// gives it its hit area.
+struct TickBox: View {
     var done: Bool
     var habit: Bool
     var diameter: CGFloat = 22
 
+    @Environment(\.colorScheme) private var scheme
+
+    // oklch(0.5 0.016 272) and oklch(0.36 0.008 286): `--check-fill`.
+    private static let pewter = Color(red: 96 / 255, green: 99 / 255, blue: 109 / 255)
+    private static let graphite = Color(red: 61 / 255, green: 61 / 255, blue: 65 / 255)
+    // oklch(0.9 0.2 125), clipped to sRGB: light mode's `--check-tick`.
+    private static let vividLime = Color(red: 192 / 255, green: 244 / 255, blue: 71 / 255)
+
     var body: some View {
+        let side = diameter * 0.9
+        let shape = RoundedRectangle(cornerRadius: side * 5 / 16, style: .continuous)
         ZStack {
             if done {
-                Image(systemName: "checkmark.circle.fill")
-                    .resizable()
-                    .foregroundStyle(Color.accentColor)
+                shape.fill(scheme == .dark ? Self.graphite : Self.pewter)
+                ItemTickShape()
+                    .stroke(scheme == .dark ? Color.accentColor : Self.vividLime,
+                            style: StrokeStyle(lineWidth: side * (scheme == .dark ? 1.3 : 1.5) / 16,
+                                               lineCap: .round, lineJoin: .round))
             } else if habit {
-                Circle()
-                    .strokeBorder(Color.secondary, style: StrokeStyle(lineWidth: 1.5, dash: [3, 3]))
+                shape.strokeBorder(Color.secondary, style: StrokeStyle(lineWidth: 1.5, dash: [3, 3]))
             } else {
-                Circle()
-                    .strokeBorder(Color.secondary, lineWidth: 1.5)
+                shape.strokeBorder(Color.secondary, lineWidth: 1.5)
             }
         }
+        .frame(width: side, height: side)
         .frame(width: diameter, height: diameter)
+    }
+}
+
+/// The web's tick, `M4.3 8.4 7 11.1 12 5.4` on a 16-unit box.
+struct ItemTickShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let u = rect.width / 16
+        var p = Path()
+        p.move(to: CGPoint(x: rect.minX + 4.3 * u, y: rect.minY + 8.4 * u))
+        p.addLine(to: CGPoint(x: rect.minX + 7 * u, y: rect.minY + 11.1 * u))
+        p.addLine(to: CGPoint(x: rect.minX + 12 * u, y: rect.minY + 5.4 * u))
+        return p
     }
 }
 

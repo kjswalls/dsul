@@ -370,7 +370,7 @@ struct ItemDetail: View {
                 Button {
                     run(.tick)
                 } label: {
-                    TickCircle(done: isDoneOn(item, on: ctx.dateStr), habit: item.isHabit, diameter: circle)
+                    TickBox(done: isDoneOn(item, on: ctx.dateStr), habit: item.isHabit, diameter: circle)
                         .frame(width: hit, height: hit)
                         .contentShape(Rectangle())
                 }
@@ -768,14 +768,14 @@ struct ItemDetail: View {
                 Button {
                     tickSubtask(childID)
                 } label: {
-                    TickCircle(done: done, habit: false)
+                    TickBox(done: done, habit: false)
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(PressScaleStyle())
                 .padding(.horizontal, -11)
             } else {
-                TickCircle(done: done, habit: false)
+                TickBox(done: done, habit: false)
             }
 
             Button {
