@@ -5,6 +5,7 @@ import { catchUpPlanner, usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
 import { useRenameStore } from '@/lib/item-rename';
 import { useDragStore } from '@/lib/drag-store';
+import { useRailStore } from '@/lib/rail-store';
 
 /** The least time between two catch-ups, however often focus comes and goes. */
 export const CATCH_UP_GAP_MS = 5_000;
@@ -12,12 +13,18 @@ export const CATCH_UP_GAP_MS = 5_000;
 /**
  * The items this tab is in the middle of changing, which a catch-up leaves
  * alone: the one open in the item panel (its draft saves over whatever it is
- * given), the one being renamed in place, and the one being dragged.
+ * given), the one being renamed in place, and the one being dragged. On the
+ * phone, an item opened while the Ask tab is mounted is pushed over Ask
+ * (rail-store's `stacks.phone`) instead of filling the `edit-item` slot, so
+ * both are asked.
  */
 export function heldItemIds(): Set<string> {
   const held = new Set<string>();
   const dialog = useUIStore.getState().activeDialog;
   if (dialog?.type === 'edit-item') held.add(dialog.item.id);
+  const phone = useRailStore.getState().stacks.phone;
+  const top = phone[phone.length - 1];
+  if (top?.kind === 'item') held.add(top.itemId);
   const renaming = useRenameStore.getState().target;
   if (renaming) held.add(renaming.id);
   const dragging = useDragStore.getState().activeId;
