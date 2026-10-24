@@ -4,9 +4,11 @@
  * milestones, morning triage). The box itself stays each surface's own button;
  * these are the parts that must read identically everywhere.
  *
- * A ticked box is graphite (`bg-check-fill`, the ink in light, a raised graphite
- * in dark) with a fine tick in the accent, and a multi-count habit's progress
- * rises in the same graphite. The lime lives only in the tick, at full strength.
+ * A ticked box is grey (`bg-check-fill`, a mid pewter in light, a raised
+ * graphite in dark) with a fine tick in the accent (`text-check-tick`), and a
+ * multi-count habit's progress rises in the same grey, its ring in that grey
+ * too, so the outline runs all the way round the part-filled box. The lime
+ * lives only in the tick, at full strength.
  *
  * The box draws its edge with an inset ring, never a border: a border insets
  * the padding box by 1px, so a multi-count habit's rising fill stopped short of
@@ -25,7 +27,7 @@ export function ItemTick({ className }: { className?: string }) {
     <svg
       viewBox="0 0 16 16"
       aria-hidden="true"
-      className={cn('item-tick absolute inset-0 size-full text-primary', className)}
+      className={cn('item-tick absolute inset-0 size-full text-check-tick', className)}
     >
       <path pathLength={1} d="M4.3 8.4 7 11.1 12 5.4" />
     </svg>

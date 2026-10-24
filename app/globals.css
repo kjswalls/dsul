@@ -118,10 +118,17 @@
   --success: var(--lime-solid);
   --success-foreground: var(--lime-ink);
   --warning: var(--honey-solid);
-  /* A ticked item's box (components/primitives/item-check.tsx): graphite, with
-     the tick in the accent. The ink in light; in dark a raised graphite, since
-     the ink there is near-white and a lime tick on it would disappear. */
-  --check-fill: var(--ink-0);
+  /* A ticked item's box (components/primitives/item-check.tsx): a grey box with
+     the tick in the accent. In light a mid pewter, so a list of done rows sits
+     at the weight of its struck-through titles instead of reading as a column
+     of near-black squares; the tick is the most saturated lime at 1.5, since
+     the brand lime is too close to pewter in lightness and reads washed out on
+     it. In dark a raised graphite, since the ink there is near-white and a lime
+     tick on it would disappear. (Kirby picked pewter 2026-10-24; the ink fill,
+     var(--ink-0), with the brand lime at 1.3 is the fallback.) */
+  --check-fill: oklch(0.5 0.016 272);
+  --check-tick: oklch(0.9 0.2 125);
+  --check-tick-w: 1.5;
   --warning-foreground: var(--honey-ink);
   --ai: var(--honey-solid);            /* Beacon / coaching surfaces */
   --ai-foreground: var(--honey-ink);
@@ -336,6 +343,8 @@
   --success-foreground: var(--lime-ink);
   --warning: var(--honey-solid);
   --check-fill: oklch(0.36 0.008 286);
+  --check-tick: var(--primary);
+  --check-tick-w: 1.3;
   --warning-foreground: var(--honey-ink);
   --ai: var(--honey-solid);
   --ai-foreground: var(--honey-ink);
@@ -568,6 +577,7 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-check-fill: var(--check-fill);
+  --color-check-tick: var(--check-tick);
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
@@ -4117,7 +4127,7 @@ button[data-ai-chip]:focus-visible {
 }
 
 /* The item tick (components/primitives/item-check.tsx). One drawing on every
-   surface that ticks an item: a fine stroke in the accent on a graphite box.
+   surface that ticks an item: a fine stroke in the accent on a grey box.
    The motion runs only while animateItemCheck() has marked the box
    ([data-ticking]): the box settles in from 88% with no overshoot while the
    tick draws, so a tick that arrives on load, from another device or on undo
@@ -4129,7 +4139,7 @@ button[data-ai-chip]:focus-visible {
 .item-tick path {
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.3;
+  stroke-width: var(--check-tick-w);
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-dasharray: 1 2;

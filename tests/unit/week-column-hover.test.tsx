@@ -107,8 +107,8 @@ const task = (over: Partial<Task>): Task =>
  * Everything lime an ordinary column can hold, all of it filed on PLAIN_STR:
  *   - a project-LESS timed task, whose block rail and start bead are
  *     `var(--primary)` (day-schedule's `accent` fallback);
- *   - a completed untimed task, whose checkbox is graphite with a `text-primary`
- *     tick (an <svg>, components/primitives/item-check.tsx) inside it.
+ *   - a completed untimed task, whose checkbox is grey with a `text-check-tick`
+ *     (lime) tick (an <svg>, components/primitives/item-check.tsx) inside it.
  * Neither needs a setting turned on beyond showCompletedTasks, which is on by
  * default.
  */
@@ -158,13 +158,14 @@ const columns = (root: ParentNode) =>
   [...root.querySelectorAll('[data-testid="week-column"]')] as HTMLElement[];
 
 /**
- * Does this element paint an accent — lime (--primary / --success-text) or a
+ * Does this element paint an accent — lime (--primary / --success-text /
+ * --check-tick) or a
  * colour off the user-content ramp, one rung of which (--accent-8) IS lime?
  * Matches both the utility spelling and the `var()` spelling, in class names and
  * in inline styles, because the views use all four.
  */
 const ACCENT =
-  /(?:^|[\s:[(])(?:bg|text|border|ring|fill|stroke|shadow|from|via|to)-primary\b|var\(--primary\)|var\(--accent-\d|text-success-text|--blk-mk/;
+  /(?:^|[\s:[(])(?:bg|text|border|ring|fill|stroke|shadow|from|via|to)-primary\b|var\(--primary\)|var\(--accent-\d|text-success-text|text-check-tick|--blk-mk/;
 
 // getAttribute, not className: an <svg>'s className is an SVGAnimatedString,
 // and the item tick is an <svg>.
