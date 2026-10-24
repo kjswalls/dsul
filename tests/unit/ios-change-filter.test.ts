@@ -27,7 +27,6 @@ const NOT_MIRRORED: Record<string, string> = {
     'the server\'s row mapping and membership writes, described, not ported: the phone meets them only through app/api/app/ and tests/fixtures/app/, both in the filter',
   'components/planner/item-dialog.tsx': 'EditCopy.swift: a reader of lib/item-edit.ts EDIT_COPY, whose words are the source (in the filter)',
   'components/planner/item-detail-sections.tsx': 'EditCopy.swift: a reader of lib/item-edit.ts EDIT_COPY (in the filter)',
-  'components/primitives/pills.tsx': 'EditCopy.swift: a reader of lib/item-edit.ts streakRunText (in the filter)',
 };
 
 /** The pattern the `changes` job greps the changed paths with. */
@@ -259,6 +258,38 @@ describe('the iOS change filter', () => {
       'components/primitives/lane-cap.tsx',
       'components/primitives/display-menu.tsx',
       'components/shell/bulk-edit-menu.tsx',
+    ]) {
+      expect(filter.test(p), p).toBe(false);
+    }
+  });
+
+  it('matches what the Schedule’s blocks read (Week and blocks PRs 4 to 6), and not the web’s grid around them', () => {
+    // A block's words (schedule-copy.json: formatClock and formatHourLabel in
+    // day-schedule.tsx, formatDuration in pills.tsx, the stored time format
+    // through use-time-format.ts), its pane and lane numbers
+    // (schedule-constants.ts) and the overlap pass (schedule-overlap.ts
+    // `planOverlaps`, overlap.json).
+    for (const p of [
+      'tests/fixtures/day/schedule-copy.json',
+      'tests/fixtures/day/overlap.json',
+      'components/views/day-schedule.tsx',
+      'components/primitives/pills.tsx',
+      'lib/use-time-format.ts',
+      'lib/schedule-constants.ts',
+      'lib/schedule-overlap.ts',
+    ]) {
+      expect(filter.test(p), p).toBe(true);
+    }
+    // The desktop grid around the blocks: grouping lanes and their focus, the
+    // fit-to-window hour height and the settle glide. The phone has none of
+    // them (a fixed 75pt hour, one field, no lanes).
+    for (const p of [
+      'lib/schedule-lanes.ts',
+      'lib/schedule-focus-store.ts',
+      'lib/use-fit-hour-px.ts',
+      'lib/settle.ts',
+      'tests/unit/overlap-fixtures.test.ts',
+      'tests/unit/schedule-overlap.test.ts',
     ]) {
       expect(filter.test(p), p).toBe(false);
     }

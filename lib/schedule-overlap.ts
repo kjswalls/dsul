@@ -62,15 +62,23 @@ import {
  * The pass is pure. An entry with no overlap is absent from the returned map, and
  * the renderer then emits today's markup byte-for-byte — an uncrowded day pays
  * nothing for this file existing.
+ *
+ * ── Two answers, one pass ─────────────────────────────────────────────────
+ * `planOverlaps` is the pass itself, and answers in numbers: every horizontal
+ * length is a percentage plus px (`BandLength`). `layoutOverlaps` is that plan
+ * written as the CSS lengths the web's renderer sets. The iPhone ports the
+ * numeric pass (ios/DsulCore ScheduleOverlap.swift, pinned by
+ * tests/fixtures/day/overlap.json) and draws `pct / 100 × width + px`, so a
+ * phone and a browser lay the same day out from one rule.
  */
 
 /** Minutes, for a gate that must not depend on hourPx. */
-const MIN_HOST_FREE_MIN = 30;
-const MIN_HOST_FREE_FRAC = 0.15;
+export const MIN_HOST_FREE_MIN = 30;
+export const MIN_HOST_FREE_FRAC = 0.15;
 
 /** A double-booking is a genuine one: anything looser is a crossing and takes
  *  columns. 2 minutes absorbs nothing but rounding. */
-const IDENTICAL_TOL = 2;
+export const IDENTICAL_TOL = 2;
 
 export type OverlapEntry = {
   id: string;
@@ -164,6 +172,34 @@ export type BlockLayout = {
 
 export type OverlapLayout = Map<string, BlockLayout>;
 
+/**
+ * A horizontal length as the pass computes it: `pct` percent of the box it
+ * resolves against, plus `px`. `left` and `right` resolve against the field
+ * (the events layer); `paneLeft`, `paneRight`, `railX`, `beadX` and `startTie`
+ * against the block's own band, as their CSS does. `band()` writes one as CSS.
+ */
+export type BandLength = { pct: number; px: number };
+
+/**
+ * `BlockLayout` in numbers, the pass's own answer. Every field means what the
+ * `BlockLayout` field of the same name means; each CSS length is a
+ * `BandLength` here.
+ */
+export type OverlapPlan = Omit<
+  BlockLayout,
+  'left' | 'right' | 'paneLeft' | 'paneRight' | 'railX' | 'beadX' | 'startTie'
+> & {
+  left: BandLength;
+  right: BandLength;
+  paneLeft: BandLength;
+  paneRight: BandLength;
+  railX: BandLength;
+  beadX: BandLength;
+  startTie: BandLength | null;
+};
+
+export type OverlapPlans = Map<string, OverlapPlan>;
+
 type Band = { leftPct: number; leftPx: number; rightPct: number; rightPx: number };
 
 type Node = {
@@ -184,7 +220,7 @@ type Node = {
 };
 
 /** Everything a block needs before the occlusion pass decides its title band. */
-type Placed = Omit<BlockLayout, 'contentTop' | 'contentHeight'> & {
+type Placed = Omit<OverlapPlan, 'contentTop' | 'contentHeight'> & {
   node: Node;
   numericBand: Band;
   paneTop: number;
@@ -209,7 +245,7 @@ function paintRank(p: Placed): number {
 
 /** Nominal field width for horizontal-intersection tests. Column boundaries are
  *  percentages of this, so the comparison is exact for any realistic field. */
-const NOMINAL_FIELD = { day: 800, week: 140 };
+export const NOMINAL_FIELD = { day: 800, week: 140 } as const;
 
 function edges(b: Band, w: number): { l: number; r: number } {
   return {
@@ -243,6 +279,35 @@ function band(pct: number, px: number): string {
   if (Math.abs(pct) < 1e-9) return `${p}px`;
   const q = Math.round(pct * 1000) / 1000;
   return `calc(${q}% ${p < 0 ? `- ${Math.abs(p)}` : `+ ${p}`}px)`;
+}
+
+const len = (pct: number, px: number): BandLength => ({ pct, px });
+const css = (l: BandLength): string => band(l.pct, l.px);
+
+/** A plan written as the CSS lengths the renderer sets. */
+function layoutOf(p: OverlapPlan): BlockLayout {
+  return {
+    depth: p.depth,
+    left: css(p.left),
+    right: css(p.right),
+    paneLeft: css(p.paneLeft),
+    paneRight: css(p.paneRight),
+    railX: css(p.railX),
+    beadX: css(p.beadX),
+    startTie: p.startTie ? css(p.startTie) : null,
+    z: p.z,
+    zHover: p.zHover,
+    wash: p.wash,
+    solid: p.solid,
+    pockets: p.pockets,
+    branchTicks: p.branchTicks,
+    beadOnPocket: p.beadOnPocket,
+    contentTop: p.contentTop,
+    contentHeight: p.contentHeight,
+    handleTopLane: p.handleTopLane,
+    handleBottomLane: p.handleBottomLane,
+    widthFraction: p.widthFraction,
+  };
 }
 
 /**
@@ -362,15 +427,15 @@ export function bandOnly(layout: BlockLayout | undefined): BlockLayout | undefin
 }
 
 /** The band-only layout an un-overlapped block gets inside a lane. */
-function soloLayout(leftPct: number, rightPct: number): BlockLayout {
+function soloPlan(leftPct: number, rightPct: number): OverlapPlan {
   return {
     depth: 0,
-    left: band(leftPct, 0),
-    right: band(rightPct, 4),
-    paneLeft: `${LANE_PX}px`,
-    paneRight: '0px',
-    railX: '5px',
-    beadX: '3px',
+    left: len(leftPct, 0),
+    right: len(rightPct, 4),
+    paneLeft: len(0, LANE_PX),
+    paneRight: len(0, 0),
+    railX: len(0, 5),
+    beadX: len(0, 3),
     startTie: null,
     z: 2,
     zHover: HOVER_Z,
@@ -387,15 +452,30 @@ function soloLayout(leftPct: number, rightPct: number): BlockLayout {
   };
 }
 
-export function layoutOverlaps(
+/**
+ * Where overlapping blocks go, as CSS lengths: `planOverlaps`, written for the
+ * web's renderer. Same keys, same order, and every length is the plan's
+ * `pct` and `px` through `band()`.
+ */
+export function layoutOverlaps(entries: OverlapEntry[], options: LayoutOptions): OverlapLayout {
+  const out: OverlapLayout = new Map();
+  for (const [id, plan] of planOverlaps(entries, options)) out.set(id, layoutOf(plan));
+  return out;
+}
+
+/**
+ * The overlap pass, in numbers. Everything in the file header and on
+ * `LayoutOptions` holds here; `layoutOverlaps` is this, written as CSS.
+ */
+export function planOverlaps(
   entries: OverlapEntry[],
   { hourPx, gridStartMin, variant = 'day', fieldWidth, maxCols, root }: LayoutOptions
-): OverlapLayout {
-  const out: OverlapLayout = new Map();
+): OverlapPlans {
+  const out: OverlapPlans = new Map();
   // A lone entry in a lane still needs its band; a lone entry on the open field
   // is already where it belongs.
   if (entries.length < 2) {
-    if (root) for (const e of entries) out.set(e.id, soloLayout(root.leftPct, root.rightPct));
+    if (root) for (const e of entries) out.set(e.id, soloPlan(root.leftPct, root.rightPct));
     return out;
   }
 
@@ -493,8 +573,8 @@ export function layoutOverlaps(
       // lone member) resolves to the byte-identical `12px`/`0px` it always had.
       const fL = k / n;
       const fR = (n - 1 - k) / n;
-      const paneLeft = band(fL * 100, LANE_PX);
-      const paneRight = band(fR * 100, 0);
+      const paneLeft = len(fL * 100, LANE_PX);
+      const paneRight = len(fR * 100, 0);
 
       // Pockets + branch ticks for this node's own children, on PAINTED extents
       // (a floored pane covers more grid than it owns).
@@ -518,21 +598,21 @@ export function layoutOverlaps(
         paintedTop: painted.top,
         paintedBottom: painted.top + painted.height,
         depth,
-        left: band(b.leftPct, b.leftPx),
-        right: band(b.rightPct, b.rightPx),
+        left: len(b.leftPct, b.leftPx),
+        right: len(b.rightPct, b.rightPx),
         paneLeft,
         paneRight,
         // Rail and bead sit in this tile's own lane, at the tile's left + the
         // same 5px/3px a solo block uses. For n === 1 (fL === 0) that is the
         // literal '5px'/'3px'; a tiled member offsets by its tile fraction, so
         // its rail rides just left of its own pane.
-        railX: band(fL * 100, 5),
-        beadX: band(fL * 100, 3),
+        railX: len(fL * 100, 5),
+        beadX: len(fL * 100, 3),
         // The clash cue: the FIRST member of a real conflict unit (>1) draws a
         // hairline from its bead across to the last member's bead. `100 / n`
         // lands its right edge under the last bead centre (band(…, 6)); the −6px
         // trims back to that centre. null for a lone member and every follower.
-        startTie: n > 1 && k === 0 ? band(100 / n, -6) : null,
+        startTie: n > 1 && k === 0 ? len(100 / n, -6) : null,
         /*
          * Two per level, not one, so a container's hover lift (`z + 1`) still
          * lands BELOW its own children. With a step of one there is no room
@@ -720,7 +800,7 @@ export function layoutOverlaps(
   if (root) {
     const laidOut = new Set(placed.map((p) => p.node.e.id));
     for (const e of entries) {
-      if (!laidOut.has(e.id)) out.set(e.id, soloLayout(root.leftPct, root.rightPct));
+      if (!laidOut.has(e.id)) out.set(e.id, soloPlan(root.leftPct, root.rightPct));
     }
   }
 

@@ -189,6 +189,12 @@ final class SamplePlanner {
     /// optimistic step) or a revert (false). NotificationHub listens (AppGate
     /// attaches it); nil for the sample.
     @ObservationIgnored var onChange: (@MainActor (_ fetched: Bool) -> Void)? = nil
+    #if DEBUG
+    /// How many days `derive` has worked out, for tests only: a ghost step
+    /// on the Schedule must not move it (design §5.1, "What reads what").
+    /// Ignored by Observation, so counting re-renders nothing.
+    @ObservationIgnored private(set) var derivations = 0
+    #endif
 
     /// What RootView presents: the sheet, unless the braindump sheet is up,
     /// since a view can't present over a sheet its own subtree put up.
@@ -376,6 +382,9 @@ final class SamplePlanner {
     /// `useDayItemsForDates` asks `deriveDayItems` once per date over one
     /// projection (hooks/use-day-items.ts).
     private func derive(on date: DayString, split: (tasks: [Item], habits: [Item]), zone: String) -> DayItems {
+        #if DEBUG
+        derivations += 1
+        #endif
         let inactive = inactiveItemIdsOn(items: items, date: date, timeZone: zone, routines: routines, seasons: seasons,
                                          away: awayPeriods)
         return deriveDayItems(tasks: split.tasks, habits: split.habits, projects: projectRecords, date: date,
@@ -1543,16 +1552,7 @@ final class SamplePlanner {
     /// time and length it is DRAWN at, which for a project-block task is the
     /// block's; `item(_:)` still answers with the stored item.
     func scheduled(on day: DayString) -> [SampleItem] {
-        var seen = Set<UUID>()
-        var blocks: [SampleItem] = []
-        for entry in deriveTimedEntries(derive(on: day)) {
-            guard seen.insert(entry.item.id).inserted else { continue }
-            var block = entry.item
-            block.startTime = minutesToTime(entry.startMin)
-            block.duration = entry.duration
-            blocks.append(block)
-        }
-        return blocks
+        return drawnTimedEntries(derive(on: day)).map(\.item)
     }
 
     /// The selected day's blocks (`scheduled(on:)`).
@@ -1564,7 +1564,8 @@ final class SamplePlanner {
     /// through DsulCore): untimed habits, then untimed tasks not in a project
     /// block. A project-block task whose block is not on `day` is in neither
     /// this nor `scheduled(on:)`, as on the web; List and Buckets still show
-    /// it. Nothing draws it yet: a Schedule week's Anytime strip will.
+    /// it. Day's Schedule draws it in the Anytime band (`daySchedule(on:)`,
+    /// ScheduleLayout.swift, from the same derive as the blocks).
     func anytime(on day: DayString) -> [SampleItem] {
         return deriveUntimedRows(derive(on: day))
     }

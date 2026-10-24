@@ -14,7 +14,8 @@ which needs no account and whose changes last until the app quits.
 Today shows one day in three layouts: List (filter chips, then sections per
 routine and per project, each project's dot in its own colour, as on the
 web), Buckets (Morning, Afternoon, Evening, Anytime) and Schedule (the hour
-grid, with the braindump sheet over it). List and Buckets
+grid in the web's block look, the day's untimed rows in an Anytime band above
+it, and the braindump sheet over it). List and Buckets
 can show the day's whole week instead, seven days from your Week starts on
 setting. The capsule top right switches them: tap for the next, swipe along it
 to step, long-press for the menu, whose Show section picks Day or Week. Tap
@@ -35,7 +36,8 @@ the notes to edit them in place. Tap the priority, date, time, times per day,
 repeat, reminder, project, routine or season chip to change it, and Add
 property (a plus once there are chips) to add one. The streak chip opens this
 week and Reset streak. Add a subtask from the Subtasks section, one at a time
-or by pasting a list. A tap on a row's circle still just ticks it.
+or by pasting a list. A tap on a row's circle, or a task block's square,
+still just ticks it.
 
 - `Dsul/` is the app. `DsulTests/` tests it in the simulator.
   - `App/`: the app, `AppGate` (sign-in screen, sample or your planner),
@@ -61,7 +63,8 @@ or by pasting a list. A tap on a row's circle still just ticks it.
   tick means, the item sheet's verbs (when each is offered, what it writes)
   and the words its chips say, the sign-in requests, which reminder
   notifications the phone will arm and in what words, a project's colour on
-  Today, and how a container looks and is described on Organize (its
+  Today, a Schedule block's words and where the web's overlap pass puts
+  it, and how a container looks and is described on Organize (its
   colour, glyph, state and counts, a goal's progress). It has no UI, so
   `swift test` runs it on Linux as well as macOS.
 - `project.yml` describes the Xcode project. XcodeGen generates
@@ -1660,6 +1663,94 @@ never gets it), so a server older than that offers it nowhere.
    pull to refresh on the phone: its ⋯ no longer offers the verb.
 5. VoiceOver: the ⋯ entry reads "Move to Braindump". Nothing is announced
    after it; the sheet's chips say where the task now is.
+
+## Checking the Schedule's look
+
+Schedule draws each block as the web's day grid does (Week and blocks PR 4):
+a paper pane beside a thin rail in its project's colour, a bead at the start,
+the time mono. The hosted tests pin the words and the geometry; these checks
+are for how it looks and feels. On the sample (Try with sample data), switch
+Today to Schedule and scroll from 7 AM to 10 PM.
+
+1. Light and dark: each block is a pane with a hairline and a soft shadow,
+   beside a 2pt rail that runs its true length and a bead at its start. Draft
+   Q4 roadmap and Standup (filed "work") wear Work's colour, Review PRs
+   dsul's, Gym Health's; Lunch walk and Read, which have no project, wear a
+   lime rail and bead at full strength.
+2. Standup (15 minutes) shows its title and "15m" on one line, Morning pages
+   "30m"; Draft Q4 roadmap (2 hours) adds "9:00–11:00" under its title,
+   12-hour as Settings says. Standup's pane is taller than its quarter hour
+   (34pt, so its line reads), and its rail is still a quarter hour long.
+3. Tick Standup's square: it fills lime at full strength with a dark tick,
+   the title strikes through, the plate thins and its shadow goes, and the
+   rail and bead turn grey; nothing fades, pressed or not. Tick it again to
+   clear it. A tap just above or below Standup's pane never ticks it: the
+   square's target is 44pt wide but no taller than the pane. A tap on the
+   middle of the pane opens Standup's sheet (the square's target reaches over
+   the title's first letters, so a tap there ticks). Habits' blocks have no
+   square. On Draft Q4 roadmap the title and its range sit in the middle of
+   the pane, and the square sits on the title's line.
+4. Signed in, change the time format to 24-hour in the web's Settings, then
+   leave the app and come back (a fresh fetch): the gutter reads "07:00",
+   "08:00", a 2-hour block's range "09:00–11:00", and the now reading is
+   24-hour too ("14:05").
+5. Today: a lime diamond on the lane and a short lime stub off it mark now,
+   never a line across a pane, and the time reads in ink in the gutter beside
+   it; the hour mark it would cover steps aside. Pick tomorrow from the
+   title: no diamond, no stub, no reading.
+6. The largest accessibility text size (Settings, Accessibility, Display &
+   Text Size, Larger Text): the gutter widens and then stops, titles stay on
+   one line and truncate, and nothing runs into the gutter or out of its
+   pane. With VoiceOver a block reads "Draft Q4 roadmap, 9 to 11 AM, Work",
+   then "done", "skipped" or "now" when it is, and its actions offer the
+   tick ("Mark done") on a task; a double tap opens it.
+
+## Checking the Anytime band
+
+Above the hours, a band lists the day's untimed rows (Week and blocks PR 5):
+untimed habits, then untimed tasks not in a project block, as on the web.
+
+1. The band's header reads "Anytime · 7" on the sample's Thursday (the count
+   moves with the weekday: Plan tomorrow is weekdays only, Water the plants
+   Sundays and Wednesdays). Three rows show; the rest scroll inside the
+   band, whose scroll bar flashes once when it appears. At the accessibility
+   text sizes one row shows and the rest scroll, so the hours keep their
+   room.
+2. Tick a habit in the band: it ticks on the day shown, as on List (pick
+   tomorrow from the title and tick Journal there: today's Journal is as it
+   was). Tap a row: its sheet opens.
+3. Tap the header: the rows fold away and the chevron turns. Switch to List
+   and back, or quit and reopen the app: still folded. Tap it again: back.
+4. Signed in, on a day with nothing untimed, the header reads "Anytime"
+   alone, with no chevron, and the hours start where they do under a folded
+   band.
+5. Open the braindump (the count at the right of the capture bar): the band
+   folds to its header, so the hours get its room, and its header does
+   nothing while the sheet is up. Close the sheet: the rows are back as you
+   left them (still folded if you had folded them).
+6. VoiceOver: the header reads "Anytime, 7 items", a heading and a button,
+   "Expanded" or "Collapsed", and a double tap folds or unfolds it.
+
+## Checking overlapping blocks
+
+Blocks that share their time sit side by side or inset, as the web's
+overlap pass lays them out (Week and blocks PR 6). The sample's day has no
+overlaps, so make them from the braindump (Trying the drag, above), on a
+fresh sample each time.
+
+1. Drag "Call the bank" and "Email Sam back" (15 minutes each) onto 4 PM:
+   they tile, half the width each, each with its own rail and bead; on a
+   tile this narrow the title keeps the width and the length is left off.
+2. Drag "Renew passport" (30 minutes) onto 9:30: it sits inset inside Draft
+   Q4 roadmap (9 to 11), over it, and Draft's title still reads above it.
+3. Drag "Fix the bike light" (1 hour) onto 6 PM: it crosses Gym (5:30 to
+   6:30), and the two take a column each, side by side.
+4. Drag "Book a haircut" onto 8 PM and "Look into a standing desk" onto
+   8:15 PM (15 minutes each): back to back, their panes (34pt, taller than a
+   quarter hour) would overlap, so they sit side by side, and neither hides
+   the other's title.
+5. Load 40 blocks (avatar menu, Drag spike): the grid scrolls without a
+   stutter, and a drag's ghost keeps up with the finger.
 
 ## Rules
 

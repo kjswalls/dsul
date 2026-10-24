@@ -76,7 +76,7 @@ struct TodayView: View {
         case (.buckets, .week):
             WeekBuckets(nowMin: nowMin, openDay: { openDay($0) })
         case (.schedule, _):
-            ScheduleView(showProbe: showProbe)
+            ScheduleView(showProbe: showProbe, nowMin: nowMin)
         }
     }
 
