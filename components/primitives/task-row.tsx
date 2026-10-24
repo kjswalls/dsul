@@ -691,7 +691,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
             completed
               ? 'inset-ring-check-fill bg-check-fill'
               : multiPartial
-                ? 'inset-ring-muted-foreground/60 bg-surface-3 hover:inset-ring-muted-foreground'
+                ? 'inset-ring-check-fill bg-surface-3'
                 : 'inset-ring-muted-foreground/45 bg-surface-3 hover:inset-ring-muted-foreground'
           )}
         >
