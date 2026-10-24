@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { addDays, format, isAfter, startOfDay, startOfWeek, subWeeks } from 'date-fns';
-import { Plus, Split, X } from 'lucide-react';
+import { Pencil, Plus, Split, X } from 'lucide-react';
 import { AskMark } from '@/components/ai/ask-mark';
 import { Input } from '@/components/ui/input';
 import { usePlannerStore } from '@/lib/planner-store';
@@ -35,6 +35,9 @@ import { toast } from 'sonner';
 import type { Item, TaskItem } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 import { ItemTick, springItemCheck } from '@/components/primitives/item-check';
+import { RowRenameInput } from '@/components/primitives/row-rename-input';
+import { hoveredItem, setHoveredItemRef } from '@/lib/hovered-item';
+import { isRenaming, startRename, useRenameStore } from '@/lib/item-rename';
 
 /**
  * The item detail sections — what the dialog never had room for. One component
@@ -98,6 +101,19 @@ function SubtasksSection({ item, offerSetup }: { item: Item; offerSetup: boolean
   // subtask list must reflect toggles immediately.
   const children = items.filter(
     (i): i is TaskItem => i.type !== 'habit' && i.parentItemId === item.id
+  );
+
+  // A panel that closes under the pointer gets no mouseleave: drop the ref so
+  // E, F2 or Backspace never reach a subtask that is no longer on screen.
+  useEffect(
+    () => () => {
+      const id = hoveredItem.id;
+      const ours = usePlannerStore
+        .getState()
+        .items.some((i) => i.id === id && i.type !== 'habit' && i.parentItemId === item.id);
+      if (ours) setHoveredItemRef(null, null);
+    },
+    [item.id]
   );
 
   const addSubtask = () => {
@@ -182,7 +198,15 @@ function SubtasksSection({ item, offerSetup }: { item: Item; offerSetup: boolean
       </div>
 
       {children.map((child) => (
-        <div key={child.id} className="group flex items-center gap-2" data-testid="subtask-row">
+        <div
+          key={child.id}
+          className="group flex items-center gap-2"
+          data-testid="subtask-row"
+          // F2 over a subtask renames it in place, as over a planner row
+          // (rename_hovered reads this ref; so do E and Backspace).
+          onMouseEnter={() => setHoveredItemRef(child.id, 'task')}
+          onMouseLeave={() => setHoveredItemRef(null, null)}
+        >
           <button
             type="button"
             onClick={(e) => {
@@ -200,14 +224,7 @@ function SubtasksSection({ item, offerSetup }: { item: Item; offerSetup: boolean
           >
             {child.status === 'completed' && <ItemTick />}
           </button>
-          <span
-            className={cn(
-              'min-w-0 flex-1 truncate text-sm',
-              child.status === 'completed' && 'text-muted-foreground line-through'
-            )}
-          >
-            {child.title}
-          </span>
+          <SubtaskTitle child={child} />
           <button
             type="button"
             onClick={() => deleteTask(child.id)}
@@ -257,6 +274,48 @@ function SubtasksSection({ item, offerSetup }: { item: Item; offerSetup: boolean
         />
       </div>
     </div>
+  );
+}
+
+/**
+ * A subtask's title, renamed in place (lib/item-rename.ts) with the planner
+ * rows' field. One click is enough here, unlike a row's double-click: a row's
+ * click opens the panel, but a subtask's title does nothing else, and a click
+ * is the only way in on a phone, where a double tap zooms. A soft tint and a
+ * pencil on hover say it is a field, as on the panel's own title.
+ */
+function SubtaskTitle({ child }: { child: TaskItem }) {
+  // Any target with no day (F2 over the row, or the click below) is this one.
+  const renaming = useRenameStore((s) => isRenaming(s, child.id, ''));
+  const completed = child.status === 'completed';
+  if (renaming) {
+    return <RowRenameInput itemId={child.id} title={child.title} className="font-sans text-sm" />;
+  }
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      aria-label={`Rename subtask ${child.title}`}
+      data-testid="subtask-title"
+      onClick={() => startRename(child.id)}
+      onKeyDown={(e) => {
+        if (e.key !== 'Enter' && e.key !== 'F2') return;
+        e.preventDefault();
+        e.stopPropagation();
+        startRename(child.id);
+      }}
+      className={cn(
+        'group/subtitle relative -mx-1 min-w-0 flex-1 cursor-text truncate rounded-[3px] px-1 pr-5 text-sm transition-colors hover:bg-accent',
+        'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
+        completed && 'text-muted-foreground line-through'
+      )}
+    >
+      {child.title}
+      <Pencil
+        aria-hidden="true"
+        className="text-muted-foreground pointer-events-none absolute top-1/2 right-1 size-3 -translate-y-1/2 opacity-0 transition-opacity group-hover/subtitle:opacity-100"
+      />
+    </span>
   );
 }
 

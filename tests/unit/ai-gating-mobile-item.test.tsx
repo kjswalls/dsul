@@ -660,6 +660,33 @@ describe('the item panel', () => {
     expect(updateTask).toHaveBeenCalledWith('item-1', { assignee: 'openclaw', aiStatus: 'queued' });
   });
 
+  it('renames a subtask in place: a click opens the field, Enter saves, Escape keeps the old title', () => {
+    seed();
+    const child = { ...TASK, id: 'sub-1', title: 'Call them', parentItemId: 'item-1' } as TaskItem;
+    usePlannerStore.setState({ items: [TASK, child] });
+    render(<ItemDetailSections item={TASK} conversation="inline" />);
+
+    fireEvent.click(screen.getByTestId('subtask-title'));
+    const field = screen.getByTestId('item-rename-input');
+    expect(field).toHaveValue('Call them');
+    fireEvent.change(field, { target: { value: 'Call the dentist' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(updateTask).toHaveBeenCalledWith(
+      'sub-1',
+      { title: 'Call the dentist' },
+      { label: 'Rename: Call them' }
+    );
+    expect(screen.queryByTestId('item-rename-input')).toBeNull();
+
+    updateTask.mockClear();
+    fireEvent.keyDown(screen.getByTestId('subtask-title'), { key: 'F2' });
+    const again = screen.getByTestId('item-rename-input');
+    fireEvent.change(again, { target: { value: 'Nope' } });
+    fireEvent.keyDown(again, { key: 'Escape' });
+    expect(updateTask).not.toHaveBeenCalled();
+    expect(screen.getByTestId('subtask-title')).toHaveTextContent('Call them');
+  });
+
   it('reads a stored beacon assignee as AI, in the chip and in the timeline', async () => {
     seed();
     events.rows = [
