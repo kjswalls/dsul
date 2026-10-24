@@ -1,0 +1,1549 @@
+{
+  "formatClock": [
+    {
+      "name": "0, 12h",
+      "minutes": 0,
+      "timeFormat": "12h",
+      "meridiem": true,
+      "expected": "12:00 am"
+    },
+    {
+      "name": "0, 12h, no meridiem",
+      "minutes": 0,
+      "timeFormat": "12h",
+      "meridiem": false,
+      "expected": "12:00"
+    },
+    {
+      "name": "0, 24h",
+      "minutes": 0,
+      "timeFormat": "24h",
+      "meridiem": true,
+      "expected": "00:00"
+    },
+    {
+      "name": "0, 24h, no meridiem",
+      "minutes": 0,
+      "timeFormat": "24h",
+      "meridiem": false,
+      "expected": "00:00"
+    },
+    {
+      "name": "1, 12h",
+      "minutes": 1,
+      "timeFormat": "12h",
+      "meridiem": true,
+      "expected": "12:01 am"
+    },
+    {
+      "name": "1, 12h, no meridiem",
+      "minutes": 1,
+      "timeFormat": "12h",
+      "meridiem": false,
+      "expected": "12:01"
+    },
+    {
+      "name": "1, 24h",
+      "minutes": 1,
+      "timeFormat": "24h",
+      "meridiem": true,
+      "expected": "00:01"
+    },
+    {
+      "name": "1, 24h, no meridiem",
+      "minutes": 1,
+      "timeFormat": "24h",
+      "meridiem": false,
+      "expected": "00:01"
+    },
+    {
+      "name": "59, 12h",
+      "minutes": 59,
+      "timeFormat": "12h",
+      "meridiem": true,
+      "expected": "12:59 am"
+    },
+    {
+      "name": "59, 12h, no meridiem",
+      "minutes": 59,
+      "timeFormat": "12h",
+      "meridiem": false,
+      "expected": "12:59"
+    },
+    {
+      "name": "59, 24h",
+      "minutes": 59,
+      "timeFormat": "24h",
+      "meridiem": true,
+      "expected": "00:59"
+    },
+    {
+      "name": "59, 24h, no meridiem",
+      "minutes": 59,
+      "timeFormat": "24h",
+      "meridiem": false,
+      "expected": "00:59"
+    },
+    {
+      "name": "60, 12h",
+      "minutes": 60,
+      "timeFormat": "12h",
+      "meridiem": true,
+      "expected": "1:00 am"
+    },
+    {
+      "name": "60, 12h, no meridiem",
+      "minutes": 60,
+      "timeFormat": "12h",
+      "meridiem": false,
+      "expected": "1:00"
+    },
+    {
+      "name": "60, 24h",
+      "minutes": 60,
+      "timeFormat": "24h",
+      "meridiem": true,
+      "expected": "01:00"
+    },
+    {
+      "name": "60, 24h, no meridiem",
+      "minutes": 60,
+      "timeFormat": "24h",
+      "meridiem": false,
+      "expected": "01:00"
+    },
+    {
+      "name": "405, 12h",
+      "minutes": 405,
+      "timeFormat": "12h",
+      "meridiem": true,
+      "expected": "6:45 am"
+    },
+    {
+      "name": "405, 12h, no meridiem",
+      "minutes": 405,
+      "timeFormat": "12h",
+      "meridiem": false,
+      "expected": "6:45"
+    },
+    {
+      "name": "405, 24h",
+      "minutes": 405,
+      "timeFormat": "24h",
+      "meridiem": true,
+      "expected": "06:45"
+    },
+    {
+      "name": "405, 24h, no meridiem",
+      "minutes": 405,
+      "timeFormat": "24h",
+      "meridiem": false,
+      "expected": "06:45"
+    },
+    {
+      "name": "540, 12h",
+      "minutes": 540,
+      "timeFormat": "12h",
+      "meridiem": true,
+      "expected": "9:00 am"
+    },
+    {
+      "name": "540, 12h, no meridiem",
+      "minutes": 540,
+      "timeFormat": "12h",
+      "meridiem": false,
+      "expected": "9:00"
+    },
+    {
+      "name": "540, 24h",
+      "minutes": 540,
+      "timeFormat": "24h",
+      "meridiem": true,
+      "expected": "09:00"
+    },
+    {
+      "name": "540, 24h, no meridiem",
+      "minutes": 540,
+      "timeFormat": "24h",
+      "meridiem": false,
+      "expected": "09:00"
+    },
+    {
+      "name": "599, 12h",
+      "minutes": 599,
+      "timeFormat": "12h",
+      "meridiem": true,
+      "expected": "9:59 am"
+    },
+    {
+      "name": "599, 12h, no meridiem",
+      "minutes": 599,
+      "timeFormat": "12h",
+      "meridiem": false,
+      "expected": "9:59"
+    },
+    {
+      "name": "599, 24h",
+      "minutes": 599,
+      "timeFormat": "24h",
+      "meridiem": true,
+      "expected": "09:59"
+    },
+    {
+      "name": "599, 24h, no meridiem",
+      "minutes": 599,
+      "timeFormat": "24h",
+      "meridiem": false,
+      "expected": "09:59"
+    },
+    {
+      "name": "600, 12h",
+      "minutes": 600,
+      "timeFormat": "12h",
+      "meridiem": true,
+      "expected": "10:00 am"
+    },
+    {
+      "name": "600, 12h, no meridiem",
+      "minutes": 600,
+      "timeFormat": "12h",
+      "meridiem": false,
+      "expected": "10:00"
+    },
+    {
+      "name": "600, 24h",
+      "minutes": 600,
+      "timeFormat": "24h",
+      "meridiem": true,
+      "expected": "10:00"
+    },
+    {
+      "name": "600, 24h, no meridiem",
+      "minutes": 600,
+      "timeFormat": "24h",
+      "meridiem": false,
+      "expected": "10:00"
+    },
+    {
+      "name": "615, 12h",
+      "minutes": 615,
+      "timeFormat": "12h",
+      "meridiem": true,
+      "expected": "10:15 am"
+    },
+    {
+      "name": "615, 12h, no meridiem",
+      "minutes": 615,
+      "timeFormat": "12h",
+      "meridiem": false,
+      "expected": "10:15"
+    },
+    {
+      "name": "615, 24h",
+      "minutes": 615,
+      "timeFormat": "24h",
+      "meridiem": true,
+      "expected": "10:15"
+    },
+    {
+      "name": "615, 24h, no meridiem",
+      "minutes": 615,
+      "timeFormat": "24h",
+      "meridiem": false,
+      "expected": "10:15"
+    },
+    {
+      "name": "690, 12h",
+      "minutes": 690,
+      "timeFormat": "12h",
+      "meridiem": true,
+      "expected": "11:30 am"
+    },
+    {
+      "name": "690, 12h, no meridiem",
+      "minutes": 690,
+      "timeFormat": "12h",
+      "meridiem": false,
+      "expected": "11:30"
+    },
+    {
+      "name": "690, 24h",
+      "minutes": 690,
+      "timeFormat": "24h",
+      "meridiem": true,
+      "expected": "11:30"
+    },
+    {
+      "name": "690, 24h, no meridiem",
+      "minutes": 690,
+      "timeFormat": "24h",
+      "meridiem": false,
+      "expected": "11:30"
+    },
+    {
+      "name": "719, 12h",
+      "minutes": 719,
+      "timeFormat": "12h",
+      "meridiem": true,
+      "expected": "11:59 am"
+    },
+    {
+      "name": "719, 12h, no meridiem",
+      "minutes": 719,
+      "timeFormat": "12h",
+      "meridiem": false,
+      "expected": "11:59"
+    },
+    {
+      "name": "719, 24h",
+      "minutes": 719,
+      "timeFormat": "24h",
+      "meridiem": true,
+      "expected": "11:59"
+    },
+    {
+      "name": "719, 24h, no meridiem",
+      "minutes": 719,
+      "timeFormat": "24h",
+      "meridiem": false,
+      "expected": "11:59"
+    },
+    {
+      "name": "720, 12h",
+      "minutes": 720,
+      "timeFormat": "12h",
+      "meridiem": true,
+      "expected": "12:00 pm"
+    },
+    {
+      "name": "720, 12h, no meridiem",
+      "minutes": 720,
+      "timeFormat": "12h",
+      "meridiem": false,
+      "expected": "12:00"
+    },
+    {
+      "name": "720, 24h",
+      "minutes": 720,
+      "timeFormat": "24h",
+      "meridiem": true,
+      "expected": "12:00"
+    },
+    {
+      "name": "720, 24h, no meridiem",
+      "minutes": 720,
+      "timeFormat": "24h",
+      "meridiem": false,
+      "expected": "12:00"
+    },
+    {
+      "name": "721, 12h",
+      "minutes": 721,
+      "timeFormat": "12h",
+      "meridiem": true,
+      "expected": "12:01 pm"
+    },
+    {
+      "name": "721, 12h, no meridiem",
+      "minutes": 721,
+      "timeFormat": "12h",
+      "meridiem": false,
+      "expected": "12:01"
+    },
+    {
+      "name": "721, 24h",
+      "minutes": 721,
+      "timeFormat": "24h",
+      "meridiem": true,
+      "expected": "12:01"
+    },
+    {
+      "name": "721, 24h, no meridiem",
+      "minutes": 721,
+      "timeFormat": "24h",
+      "meridiem": false,
+      "expected": "12:01"
+    },
+    {
+      "name": "750, 12h",
+      "minutes": 750,
+      "timeFormat": "12h",
+      "meridiem": true,
+      "expected": "12:30 pm"
+    },
+    {
+      "name": "750, 12h, no meridiem",
+      "minutes": 750,
+      "timeFormat": "12h",
+      "meridiem": false,
+      "expected": "12:30"
+    },
+    {
+      "name": "750, 24h",
+      "minutes": 750,
+      "timeFormat": "24h",
+      "meridiem": true,
+      "expected": "12:30"
+    },
+    {
+      "name": "750, 24h, no meridiem",
+      "minutes": 750,
+      "timeFormat": "24h",
+      "meridiem": false,
+      "expected": "12:30"
+    },
+    {
+      "name": "779, 12h",
+      "minutes": 779,
+      "timeFormat": "12h",
+      "meridiem": true,
+      "expected": "12:59 pm"
+    },
+    {
+      "name": "779, 12h, no meridiem",
+      "minutes": 779,
+      "timeFormat": "12h",
+      "meridiem": false,
+      "expected": "12:59"
+    },
+    {
+      "name": "779, 24h",
+      "minutes": 779,
+      "timeFormat": "24h",
+      "meridiem": true,
+      "expected": "12:59"
+    },
+    {
+      "name": "779, 24h, no meridiem",
+      "minutes": 779,
+      "timeFormat": "24h",
+      "meridiem": false,
+      "expected": "12:59"
+    },
+    {
+      "name": "780, 12h",
+      "minutes": 780,
+      "timeFormat": "12h",
+      "meridiem": true,
+      "expected": "1:00 pm"
+    },
+    {
+      "name": "780, 12h, no meridiem",
+      "minutes": 780,
+      "timeFormat": "12h",
+      "meridiem": false,
+      "expected": "1:00"
+    },
+    {
+      "name": "780, 24h",
+      "minutes": 780,
+      "timeFormat": "24h",
+      "meridiem": true,
+      "expected": "13:00"
+    },
+    {
+      "name": "780, 24h, no meridiem",
+      "minutes": 780,
+      "timeFormat": "24h",
+      "meridiem": false,
+      "expected": "13:00"
+    },
+    {
+      "name": "1020, 12h",
+      "minutes": 1020,
+      "timeFormat": "12h",
+      "meridiem": true,
+      "expected": "5:00 pm"
+    },
+    {
+      "name": "1020, 12h, no meridiem",
+      "minutes": 1020,
+      "timeFormat": "12h",
+      "meridiem": false,
+      "expected": "5:00"
+    },
+    {
+      "name": "1020, 24h",
+      "minutes": 1020,
+      "timeFormat": "24h",
+      "meridiem": true,
+      "expected": "17:00"
+    },
+    {
+      "name": "1020, 24h, no meridiem",
+      "minutes": 1020,
+      "timeFormat": "24h",
+      "meridiem": false,
+      "expected": "17:00"
+    },
+    {
+      "name": "1305, 12h",
+      "minutes": 1305,
+      "timeFormat": "12h",
+      "meridiem": true,
+      "expected": "9:45 pm"
+    },
+    {
+      "name": "1305, 12h, no meridiem",
+      "minutes": 1305,
+      "timeFormat": "12h",
+      "meridiem": false,
+      "expected": "9:45"
+    },
+    {
+      "name": "1305, 24h",
+      "minutes": 1305,
+      "timeFormat": "24h",
+      "meridiem": true,
+      "expected": "21:45"
+    },
+    {
+      "name": "1305, 24h, no meridiem",
+      "minutes": 1305,
+      "timeFormat": "24h",
+      "meridiem": false,
+      "expected": "21:45"
+    },
+    {
+      "name": "1439, 12h",
+      "minutes": 1439,
+      "timeFormat": "12h",
+      "meridiem": true,
+      "expected": "11:59 pm"
+    },
+    {
+      "name": "1439, 12h, no meridiem",
+      "minutes": 1439,
+      "timeFormat": "12h",
+      "meridiem": false,
+      "expected": "11:59"
+    },
+    {
+      "name": "1439, 24h",
+      "minutes": 1439,
+      "timeFormat": "24h",
+      "meridiem": true,
+      "expected": "23:59"
+    },
+    {
+      "name": "1439, 24h, no meridiem",
+      "minutes": 1439,
+      "timeFormat": "24h",
+      "meridiem": false,
+      "expected": "23:59"
+    },
+    {
+      "name": "1440, 12h",
+      "minutes": 1440,
+      "timeFormat": "12h",
+      "meridiem": true,
+      "expected": "12:00 am"
+    },
+    {
+      "name": "1440, 12h, no meridiem",
+      "minutes": 1440,
+      "timeFormat": "12h",
+      "meridiem": false,
+      "expected": "12:00"
+    },
+    {
+      "name": "1440, 24h",
+      "minutes": 1440,
+      "timeFormat": "24h",
+      "meridiem": true,
+      "expected": "00:00"
+    },
+    {
+      "name": "1440, 24h, no meridiem",
+      "minutes": 1440,
+      "timeFormat": "24h",
+      "meridiem": false,
+      "expected": "00:00"
+    },
+    {
+      "name": "1455, 12h",
+      "minutes": 1455,
+      "timeFormat": "12h",
+      "meridiem": true,
+      "expected": "12:15 am"
+    },
+    {
+      "name": "1455, 12h, no meridiem",
+      "minutes": 1455,
+      "timeFormat": "12h",
+      "meridiem": false,
+      "expected": "12:15"
+    },
+    {
+      "name": "1455, 24h",
+      "minutes": 1455,
+      "timeFormat": "24h",
+      "meridiem": true,
+      "expected": "00:15"
+    },
+    {
+      "name": "1455, 24h, no meridiem",
+      "minutes": 1455,
+      "timeFormat": "24h",
+      "meridiem": false,
+      "expected": "00:15"
+    },
+    {
+      "name": "1500, 12h",
+      "minutes": 1500,
+      "timeFormat": "12h",
+      "meridiem": true,
+      "expected": "1:00 am"
+    },
+    {
+      "name": "1500, 12h, no meridiem",
+      "minutes": 1500,
+      "timeFormat": "12h",
+      "meridiem": false,
+      "expected": "1:00"
+    },
+    {
+      "name": "1500, 24h",
+      "minutes": 1500,
+      "timeFormat": "24h",
+      "meridiem": true,
+      "expected": "01:00"
+    },
+    {
+      "name": "1500, 24h, no meridiem",
+      "minutes": 1500,
+      "timeFormat": "24h",
+      "meridiem": false,
+      "expected": "01:00"
+    },
+    {
+      "name": "2880, 12h",
+      "minutes": 2880,
+      "timeFormat": "12h",
+      "meridiem": true,
+      "expected": "12:00 am"
+    },
+    {
+      "name": "2880, 12h, no meridiem",
+      "minutes": 2880,
+      "timeFormat": "12h",
+      "meridiem": false,
+      "expected": "12:00"
+    },
+    {
+      "name": "2880, 24h",
+      "minutes": 2880,
+      "timeFormat": "24h",
+      "meridiem": true,
+      "expected": "00:00"
+    },
+    {
+      "name": "2880, 24h, no meridiem",
+      "minutes": 2880,
+      "timeFormat": "24h",
+      "meridiem": false,
+      "expected": "00:00"
+    },
+    {
+      "name": "-1, 12h",
+      "minutes": -1,
+      "timeFormat": "12h",
+      "meridiem": true,
+      "expected": "11:59 pm"
+    },
+    {
+      "name": "-1, 12h, no meridiem",
+      "minutes": -1,
+      "timeFormat": "12h",
+      "meridiem": false,
+      "expected": "11:59"
+    },
+    {
+      "name": "-1, 24h",
+      "minutes": -1,
+      "timeFormat": "24h",
+      "meridiem": true,
+      "expected": "23:59"
+    },
+    {
+      "name": "-1, 24h, no meridiem",
+      "minutes": -1,
+      "timeFormat": "24h",
+      "meridiem": false,
+      "expected": "23:59"
+    },
+    {
+      "name": "-15, 12h",
+      "minutes": -15,
+      "timeFormat": "12h",
+      "meridiem": true,
+      "expected": "11:45 pm"
+    },
+    {
+      "name": "-15, 12h, no meridiem",
+      "minutes": -15,
+      "timeFormat": "12h",
+      "meridiem": false,
+      "expected": "11:45"
+    },
+    {
+      "name": "-15, 24h",
+      "minutes": -15,
+      "timeFormat": "24h",
+      "meridiem": true,
+      "expected": "23:45"
+    },
+    {
+      "name": "-15, 24h, no meridiem",
+      "minutes": -15,
+      "timeFormat": "24h",
+      "meridiem": false,
+      "expected": "23:45"
+    },
+    {
+      "name": "-60, 12h",
+      "minutes": -60,
+      "timeFormat": "12h",
+      "meridiem": true,
+      "expected": "11:00 pm"
+    },
+    {
+      "name": "-60, 12h, no meridiem",
+      "minutes": -60,
+      "timeFormat": "12h",
+      "meridiem": false,
+      "expected": "11:00"
+    },
+    {
+      "name": "-60, 24h",
+      "minutes": -60,
+      "timeFormat": "24h",
+      "meridiem": true,
+      "expected": "23:00"
+    },
+    {
+      "name": "-60, 24h, no meridiem",
+      "minutes": -60,
+      "timeFormat": "24h",
+      "meridiem": false,
+      "expected": "23:00"
+    }
+  ],
+  "formatHourLabel": [
+    {
+      "name": "0, 12h",
+      "hour": 0,
+      "timeFormat": "12h",
+      "expected": "12 am"
+    },
+    {
+      "name": "0, 24h",
+      "hour": 0,
+      "timeFormat": "24h",
+      "expected": "00:00"
+    },
+    {
+      "name": "1, 12h",
+      "hour": 1,
+      "timeFormat": "12h",
+      "expected": "1 am"
+    },
+    {
+      "name": "1, 24h",
+      "hour": 1,
+      "timeFormat": "24h",
+      "expected": "01:00"
+    },
+    {
+      "name": "2, 12h",
+      "hour": 2,
+      "timeFormat": "12h",
+      "expected": "2 am"
+    },
+    {
+      "name": "2, 24h",
+      "hour": 2,
+      "timeFormat": "24h",
+      "expected": "02:00"
+    },
+    {
+      "name": "3, 12h",
+      "hour": 3,
+      "timeFormat": "12h",
+      "expected": "3 am"
+    },
+    {
+      "name": "3, 24h",
+      "hour": 3,
+      "timeFormat": "24h",
+      "expected": "03:00"
+    },
+    {
+      "name": "4, 12h",
+      "hour": 4,
+      "timeFormat": "12h",
+      "expected": "4 am"
+    },
+    {
+      "name": "4, 24h",
+      "hour": 4,
+      "timeFormat": "24h",
+      "expected": "04:00"
+    },
+    {
+      "name": "5, 12h",
+      "hour": 5,
+      "timeFormat": "12h",
+      "expected": "5 am"
+    },
+    {
+      "name": "5, 24h",
+      "hour": 5,
+      "timeFormat": "24h",
+      "expected": "05:00"
+    },
+    {
+      "name": "6, 12h",
+      "hour": 6,
+      "timeFormat": "12h",
+      "expected": "6 am"
+    },
+    {
+      "name": "6, 24h",
+      "hour": 6,
+      "timeFormat": "24h",
+      "expected": "06:00"
+    },
+    {
+      "name": "7, 12h",
+      "hour": 7,
+      "timeFormat": "12h",
+      "expected": "7 am"
+    },
+    {
+      "name": "7, 24h",
+      "hour": 7,
+      "timeFormat": "24h",
+      "expected": "07:00"
+    },
+    {
+      "name": "8, 12h",
+      "hour": 8,
+      "timeFormat": "12h",
+      "expected": "8 am"
+    },
+    {
+      "name": "8, 24h",
+      "hour": 8,
+      "timeFormat": "24h",
+      "expected": "08:00"
+    },
+    {
+      "name": "9, 12h",
+      "hour": 9,
+      "timeFormat": "12h",
+      "expected": "9 am"
+    },
+    {
+      "name": "9, 24h",
+      "hour": 9,
+      "timeFormat": "24h",
+      "expected": "09:00"
+    },
+    {
+      "name": "10, 12h",
+      "hour": 10,
+      "timeFormat": "12h",
+      "expected": "10 am"
+    },
+    {
+      "name": "10, 24h",
+      "hour": 10,
+      "timeFormat": "24h",
+      "expected": "10:00"
+    },
+    {
+      "name": "11, 12h",
+      "hour": 11,
+      "timeFormat": "12h",
+      "expected": "11 am"
+    },
+    {
+      "name": "11, 24h",
+      "hour": 11,
+      "timeFormat": "24h",
+      "expected": "11:00"
+    },
+    {
+      "name": "12, 12h",
+      "hour": 12,
+      "timeFormat": "12h",
+      "expected": "12 pm"
+    },
+    {
+      "name": "12, 24h",
+      "hour": 12,
+      "timeFormat": "24h",
+      "expected": "12:00"
+    },
+    {
+      "name": "13, 12h",
+      "hour": 13,
+      "timeFormat": "12h",
+      "expected": "1 pm"
+    },
+    {
+      "name": "13, 24h",
+      "hour": 13,
+      "timeFormat": "24h",
+      "expected": "13:00"
+    },
+    {
+      "name": "14, 12h",
+      "hour": 14,
+      "timeFormat": "12h",
+      "expected": "2 pm"
+    },
+    {
+      "name": "14, 24h",
+      "hour": 14,
+      "timeFormat": "24h",
+      "expected": "14:00"
+    },
+    {
+      "name": "15, 12h",
+      "hour": 15,
+      "timeFormat": "12h",
+      "expected": "3 pm"
+    },
+    {
+      "name": "15, 24h",
+      "hour": 15,
+      "timeFormat": "24h",
+      "expected": "15:00"
+    },
+    {
+      "name": "16, 12h",
+      "hour": 16,
+      "timeFormat": "12h",
+      "expected": "4 pm"
+    },
+    {
+      "name": "16, 24h",
+      "hour": 16,
+      "timeFormat": "24h",
+      "expected": "16:00"
+    },
+    {
+      "name": "17, 12h",
+      "hour": 17,
+      "timeFormat": "12h",
+      "expected": "5 pm"
+    },
+    {
+      "name": "17, 24h",
+      "hour": 17,
+      "timeFormat": "24h",
+      "expected": "17:00"
+    },
+    {
+      "name": "18, 12h",
+      "hour": 18,
+      "timeFormat": "12h",
+      "expected": "6 pm"
+    },
+    {
+      "name": "18, 24h",
+      "hour": 18,
+      "timeFormat": "24h",
+      "expected": "18:00"
+    },
+    {
+      "name": "19, 12h",
+      "hour": 19,
+      "timeFormat": "12h",
+      "expected": "7 pm"
+    },
+    {
+      "name": "19, 24h",
+      "hour": 19,
+      "timeFormat": "24h",
+      "expected": "19:00"
+    },
+    {
+      "name": "20, 12h",
+      "hour": 20,
+      "timeFormat": "12h",
+      "expected": "8 pm"
+    },
+    {
+      "name": "20, 24h",
+      "hour": 20,
+      "timeFormat": "24h",
+      "expected": "20:00"
+    },
+    {
+      "name": "21, 12h",
+      "hour": 21,
+      "timeFormat": "12h",
+      "expected": "9 pm"
+    },
+    {
+      "name": "21, 24h",
+      "hour": 21,
+      "timeFormat": "24h",
+      "expected": "21:00"
+    },
+    {
+      "name": "22, 12h",
+      "hour": 22,
+      "timeFormat": "12h",
+      "expected": "10 pm"
+    },
+    {
+      "name": "22, 24h",
+      "hour": 22,
+      "timeFormat": "24h",
+      "expected": "22:00"
+    },
+    {
+      "name": "23, 12h",
+      "hour": 23,
+      "timeFormat": "12h",
+      "expected": "11 pm"
+    },
+    {
+      "name": "23, 24h",
+      "hour": 23,
+      "timeFormat": "24h",
+      "expected": "23:00"
+    }
+  ],
+  "formatDuration": [
+    {
+      "name": "0",
+      "minutes": 0,
+      "expected": "0m"
+    },
+    {
+      "name": "1",
+      "minutes": 1,
+      "expected": "1m"
+    },
+    {
+      "name": "5",
+      "minutes": 5,
+      "expected": "5m"
+    },
+    {
+      "name": "10",
+      "minutes": 10,
+      "expected": "10m"
+    },
+    {
+      "name": "15",
+      "minutes": 15,
+      "expected": "15m"
+    },
+    {
+      "name": "30",
+      "minutes": 30,
+      "expected": "30m"
+    },
+    {
+      "name": "45",
+      "minutes": 45,
+      "expected": "45m"
+    },
+    {
+      "name": "59",
+      "minutes": 59,
+      "expected": "59m"
+    },
+    {
+      "name": "60",
+      "minutes": 60,
+      "expected": "1h"
+    },
+    {
+      "name": "61",
+      "minutes": 61,
+      "expected": "1h 1m"
+    },
+    {
+      "name": "75",
+      "minutes": 75,
+      "expected": "1h 15m"
+    },
+    {
+      "name": "90",
+      "minutes": 90,
+      "expected": "1h 30m"
+    },
+    {
+      "name": "105",
+      "minutes": 105,
+      "expected": "1h 45m"
+    },
+    {
+      "name": "120",
+      "minutes": 120,
+      "expected": "2h"
+    },
+    {
+      "name": "135",
+      "minutes": 135,
+      "expected": "2h 15m"
+    },
+    {
+      "name": "150",
+      "minutes": 150,
+      "expected": "2h 30m"
+    },
+    {
+      "name": "165",
+      "minutes": 165,
+      "expected": "2h 45m"
+    },
+    {
+      "name": "180",
+      "minutes": 180,
+      "expected": "3h"
+    },
+    {
+      "name": "195",
+      "minutes": 195,
+      "expected": "3h 15m"
+    },
+    {
+      "name": "210",
+      "minutes": 210,
+      "expected": "3h 30m"
+    },
+    {
+      "name": "225",
+      "minutes": 225,
+      "expected": "3h 45m"
+    },
+    {
+      "name": "240",
+      "minutes": 240,
+      "expected": "4h"
+    },
+    {
+      "name": "255",
+      "minutes": 255,
+      "expected": "4h 15m"
+    },
+    {
+      "name": "270",
+      "minutes": 270,
+      "expected": "4h 30m"
+    },
+    {
+      "name": "285",
+      "minutes": 285,
+      "expected": "4h 45m"
+    },
+    {
+      "name": "300",
+      "minutes": 300,
+      "expected": "5h"
+    },
+    {
+      "name": "315",
+      "minutes": 315,
+      "expected": "5h 15m"
+    },
+    {
+      "name": "330",
+      "minutes": 330,
+      "expected": "5h 30m"
+    },
+    {
+      "name": "345",
+      "minutes": 345,
+      "expected": "5h 45m"
+    },
+    {
+      "name": "360",
+      "minutes": 360,
+      "expected": "6h"
+    },
+    {
+      "name": "375",
+      "minutes": 375,
+      "expected": "6h 15m"
+    },
+    {
+      "name": "390",
+      "minutes": 390,
+      "expected": "6h 30m"
+    },
+    {
+      "name": "405",
+      "minutes": 405,
+      "expected": "6h 45m"
+    },
+    {
+      "name": "420",
+      "minutes": 420,
+      "expected": "7h"
+    },
+    {
+      "name": "435",
+      "minutes": 435,
+      "expected": "7h 15m"
+    },
+    {
+      "name": "450",
+      "minutes": 450,
+      "expected": "7h 30m"
+    },
+    {
+      "name": "465",
+      "minutes": 465,
+      "expected": "7h 45m"
+    },
+    {
+      "name": "480",
+      "minutes": 480,
+      "expected": "8h"
+    },
+    {
+      "name": "495",
+      "minutes": 495,
+      "expected": "8h 15m"
+    },
+    {
+      "name": "510",
+      "minutes": 510,
+      "expected": "8h 30m"
+    },
+    {
+      "name": "525",
+      "minutes": 525,
+      "expected": "8h 45m"
+    },
+    {
+      "name": "540",
+      "minutes": 540,
+      "expected": "9h"
+    },
+    {
+      "name": "555",
+      "minutes": 555,
+      "expected": "9h 15m"
+    },
+    {
+      "name": "570",
+      "minutes": 570,
+      "expected": "9h 30m"
+    },
+    {
+      "name": "585",
+      "minutes": 585,
+      "expected": "9h 45m"
+    },
+    {
+      "name": "600",
+      "minutes": 600,
+      "expected": "10h"
+    },
+    {
+      "name": "615",
+      "minutes": 615,
+      "expected": "10h 15m"
+    },
+    {
+      "name": "630",
+      "minutes": 630,
+      "expected": "10h 30m"
+    },
+    {
+      "name": "645",
+      "minutes": 645,
+      "expected": "10h 45m"
+    },
+    {
+      "name": "660",
+      "minutes": 660,
+      "expected": "11h"
+    },
+    {
+      "name": "675",
+      "minutes": 675,
+      "expected": "11h 15m"
+    },
+    {
+      "name": "690",
+      "minutes": 690,
+      "expected": "11h 30m"
+    },
+    {
+      "name": "705",
+      "minutes": 705,
+      "expected": "11h 45m"
+    },
+    {
+      "name": "720",
+      "minutes": 720,
+      "expected": "12h"
+    },
+    {
+      "name": "735",
+      "minutes": 735,
+      "expected": "12h 15m"
+    },
+    {
+      "name": "750",
+      "minutes": 750,
+      "expected": "12h 30m"
+    },
+    {
+      "name": "765",
+      "minutes": 765,
+      "expected": "12h 45m"
+    },
+    {
+      "name": "780",
+      "minutes": 780,
+      "expected": "13h"
+    },
+    {
+      "name": "795",
+      "minutes": 795,
+      "expected": "13h 15m"
+    },
+    {
+      "name": "810",
+      "minutes": 810,
+      "expected": "13h 30m"
+    },
+    {
+      "name": "825",
+      "minutes": 825,
+      "expected": "13h 45m"
+    },
+    {
+      "name": "840",
+      "minutes": 840,
+      "expected": "14h"
+    },
+    {
+      "name": "855",
+      "minutes": 855,
+      "expected": "14h 15m"
+    },
+    {
+      "name": "870",
+      "minutes": 870,
+      "expected": "14h 30m"
+    },
+    {
+      "name": "885",
+      "minutes": 885,
+      "expected": "14h 45m"
+    },
+    {
+      "name": "900",
+      "minutes": 900,
+      "expected": "15h"
+    },
+    {
+      "name": "915",
+      "minutes": 915,
+      "expected": "15h 15m"
+    },
+    {
+      "name": "930",
+      "minutes": 930,
+      "expected": "15h 30m"
+    },
+    {
+      "name": "945",
+      "minutes": 945,
+      "expected": "15h 45m"
+    },
+    {
+      "name": "960",
+      "minutes": 960,
+      "expected": "16h"
+    },
+    {
+      "name": "975",
+      "minutes": 975,
+      "expected": "16h 15m"
+    },
+    {
+      "name": "990",
+      "minutes": 990,
+      "expected": "16h 30m"
+    },
+    {
+      "name": "1005",
+      "minutes": 1005,
+      "expected": "16h 45m"
+    },
+    {
+      "name": "1020",
+      "minutes": 1020,
+      "expected": "17h"
+    },
+    {
+      "name": "1035",
+      "minutes": 1035,
+      "expected": "17h 15m"
+    },
+    {
+      "name": "1050",
+      "minutes": 1050,
+      "expected": "17h 30m"
+    },
+    {
+      "name": "1065",
+      "minutes": 1065,
+      "expected": "17h 45m"
+    },
+    {
+      "name": "1080",
+      "minutes": 1080,
+      "expected": "18h"
+    },
+    {
+      "name": "1095",
+      "minutes": 1095,
+      "expected": "18h 15m"
+    },
+    {
+      "name": "1110",
+      "minutes": 1110,
+      "expected": "18h 30m"
+    },
+    {
+      "name": "1125",
+      "minutes": 1125,
+      "expected": "18h 45m"
+    },
+    {
+      "name": "1140",
+      "minutes": 1140,
+      "expected": "19h"
+    },
+    {
+      "name": "1155",
+      "minutes": 1155,
+      "expected": "19h 15m"
+    },
+    {
+      "name": "1170",
+      "minutes": 1170,
+      "expected": "19h 30m"
+    },
+    {
+      "name": "1185",
+      "minutes": 1185,
+      "expected": "19h 45m"
+    },
+    {
+      "name": "1200",
+      "minutes": 1200,
+      "expected": "20h"
+    },
+    {
+      "name": "1215",
+      "minutes": 1215,
+      "expected": "20h 15m"
+    },
+    {
+      "name": "1230",
+      "minutes": 1230,
+      "expected": "20h 30m"
+    },
+    {
+      "name": "1245",
+      "minutes": 1245,
+      "expected": "20h 45m"
+    },
+    {
+      "name": "1260",
+      "minutes": 1260,
+      "expected": "21h"
+    },
+    {
+      "name": "1275",
+      "minutes": 1275,
+      "expected": "21h 15m"
+    },
+    {
+      "name": "1290",
+      "minutes": 1290,
+      "expected": "21h 30m"
+    },
+    {
+      "name": "1305",
+      "minutes": 1305,
+      "expected": "21h 45m"
+    },
+    {
+      "name": "1320",
+      "minutes": 1320,
+      "expected": "22h"
+    },
+    {
+      "name": "1335",
+      "minutes": 1335,
+      "expected": "22h 15m"
+    },
+    {
+      "name": "1350",
+      "minutes": 1350,
+      "expected": "22h 30m"
+    },
+    {
+      "name": "1365",
+      "minutes": 1365,
+      "expected": "22h 45m"
+    },
+    {
+      "name": "1380",
+      "minutes": 1380,
+      "expected": "23h"
+    },
+    {
+      "name": "1395",
+      "minutes": 1395,
+      "expected": "23h 15m"
+    },
+    {
+      "name": "1410",
+      "minutes": 1410,
+      "expected": "23h 30m"
+    },
+    {
+      "name": "1425",
+      "minutes": 1425,
+      "expected": "23h 45m"
+    },
+    {
+      "name": "1439",
+      "minutes": 1439,
+      "expected": "23h 59m"
+    },
+    {
+      "name": "1440",
+      "minutes": 1440,
+      "expected": "24h"
+    },
+    {
+      "name": "1500",
+      "minutes": 1500,
+      "expected": "25h"
+    },
+    {
+      "name": "2880",
+      "minutes": 2880,
+      "expected": "48h"
+    }
+  ]
+}

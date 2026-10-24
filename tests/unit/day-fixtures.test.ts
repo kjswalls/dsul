@@ -14,7 +14,9 @@ import {
 } from '@/lib/active';
 import type { AwayPeriod } from '@/lib/away';
 import { deriveDayItems, flattenDayRows, BUCKET_ORDER, type DayItems } from '@/lib/day-items';
-import { deriveTimedEntries, deriveUntimedRows } from '@/components/views/day-schedule';
+import { deriveTimedEntries, deriveUntimedRows, formatClock, formatHourLabel } from '@/components/views/day-schedule';
+import { formatDuration } from '@/components/primitives/pills';
+import { timeFormatPattern } from '@/lib/use-time-format';
 import { braindumpMembers } from '@/lib/braindump-members';
 import { groupRows } from '@/lib/grouping';
 import { isRowDone, isRowSkipped, toggleRowDone, type ItemToggleActions } from '@/lib/item-toggle';
@@ -84,7 +86,11 @@ import type { HabitItem, Item, Project, Routine, Season, Task } from '@/lib/plan
  * (lib/active.ts `resolvePauseWrite`), the registry capabilities and the chip
  * copy; and, for the phone's local reminders, the rest of
  * lib/reminders/due.ts (due.json) and lib/reminders/copy.ts with the copy
- * contract's pattern (copy.json). Every case is built here, run through the
+ * contract's pattern (copy.json); and what a schedule block and its gutter
+ * print (schedule-copy.json: day-schedule.tsx `formatClock` and
+ * `formatHourLabel`, components/primitives/pills.tsx `formatDuration`). The
+ * overlap pass is in tests/unit/overlap-fixtures.test.ts (overlap.json).
+ * Every case is built here, run through the
  * real TS, and written with its answer to tests/fixtures/day/*.json.
  * DsulCore's *FixtureTests.swift (ios/DsulCore/Tests/DsulCoreTests/) read the
  * same files and assert the Swift port answers identically. The sheet's optimistic writes, which need the real
@@ -2192,6 +2198,69 @@ function buildCopy(): CopyFixture {
   };
 }
 
+// ── The Schedule's words (schedule-copy.json) ────────────────────────────────
+
+/**
+ * What a schedule block and the hour gutter print: the clock
+ * (components/views/day-schedule.tsx `formatClock`; a block's range is two of
+ * them with `meridiem` false, joined by an en dash, and the now reading is one
+ * with it), the gutter's hour mark (`formatHourLabel`) and the duration
+ * (components/primitives/pills.tsx `formatDuration`). Each case carries the
+ * stored setting, '12h' or '24h', and goes through lib/use-time-format.ts
+ * `timeFormatPattern`, the rule the web's `useTimeFormat` answers with.
+ * Minutes are whole: the phone's grid never holds a fraction.
+ */
+type ScheduleClockCase = { name: string; minutes: number; timeFormat: '12h' | '24h'; meridiem: boolean; expected: string };
+type ScheduleHourCase = { name: string; hour: number; timeFormat: '12h' | '24h'; expected: string };
+type ScheduleDurationCase = { name: string; minutes: number; expected: string };
+type ScheduleCopyFixture = {
+  formatClock: ScheduleClockCase[];
+  formatHourLabel: ScheduleHourCase[];
+  formatDuration: ScheduleDurationCase[];
+};
+
+const TIME_FORMATS = ['12h', '24h'] as const;
+
+function buildScheduleCopy(): ScheduleCopyFixture {
+  // Midnight, the hour either side of noon, the last minute, and past the
+  // day's end both ways: an end time of start + duration wraps (23:00 for two
+  // hours ends at 1:00), and the wrap is the TS's own, never the phone's.
+  const clockMinutes = [
+    0, 1, 59, 60, 405, 540, 599, 600, 615, 690, 719, 720, 721, 750, 779, 780, 1020, 1305, 1439, 1440, 1455,
+    1500, 2880, -1, -15, -60,
+  ];
+  const formatClockCases = clockMinutes.flatMap((minutes) =>
+    TIME_FORMATS.flatMap((timeFormat) =>
+      [true, false].map((meridiem) => ({
+        name: `${minutes}, ${timeFormat}${meridiem ? '' : ', no meridiem'}`,
+        minutes,
+        timeFormat,
+        meridiem,
+        expected: formatClock(minutes, timeFormatPattern(timeFormat), meridiem),
+      }))
+    )
+  );
+  const formatHourLabelCases = Array.from({ length: 24 }, (_, hour) =>
+    TIME_FORMATS.map((timeFormat) => ({
+      name: `${hour}, ${timeFormat}`,
+      hour,
+      timeFormat,
+      expected: formatHourLabel(hour, timeFormatPattern(timeFormat)),
+    }))
+  ).flat();
+  // Every quarter hour a block can last, and the lengths around it the web can
+  // store (a 5-minute block, a day and more).
+  const durations = [
+    ...[0, 1, 5, 10, 59, 61, 1439, 1500, 2880],
+    ...Array.from({ length: 96 }, (_, i) => (i + 1) * 15),
+  ].sort((a, b) => a - b);
+  return {
+    formatClock: formatClockCases,
+    formatHourLabel: formatHourLabelCases,
+    formatDuration: durations.map((minutes) => ({ name: `${minutes}`, minutes, expected: formatDuration(minutes) })),
+  };
+}
+
 // ── Writing and checking ─────────────────────────────────────────────────────
 
 const FIXTURES: Record<string, () => unknown> = {
@@ -2211,6 +2280,7 @@ const FIXTURES: Record<string, () => unknown> = {
   chips: buildChips,
   due: buildDue,
   copy: buildCopy,
+  'schedule-copy': buildScheduleCopy,
 };
 
 const serialize = (f: unknown) => JSON.stringify(f, null, 2) + '\n';
@@ -2460,5 +2530,27 @@ describe('day fixtures shared with DsulCore', () => {
       copy.eodCopy.body,
     ];
     for (const line of lines) expect(line, line).not.toMatch(NEVER_SCOLDS);
+  });
+
+  it('the schedule copy cases reach both formats, the wrap and every hour', () => {
+    const sc = generated['schedule-copy'] as ScheduleCopyFixture;
+    const clock = (minutes: number, timeFormat: '12h' | '24h', meridiem: boolean) =>
+      sc.formatClock.find((c) => c.minutes === minutes && c.timeFormat === timeFormat && c.meridiem === meridiem)
+        ?.expected;
+    // The block's range and the now reading, as the web prints them.
+    expect(clock(600, '12h', false)).toBe('10:00');
+    expect(clock(720, '12h', false)).toBe('12:00');
+    expect(clock(780, '12h', true)).toBe('1:00 pm');
+    expect(clock(0, '12h', true)).toBe('12:00 am');
+    expect(clock(540, '24h', true)).toBe('09:00');
+    // Past midnight either way wraps into the day.
+    expect(clock(1440, '24h', true)).toBe(clock(0, '24h', true));
+    expect(clock(1500, '12h', false)).toBe('1:00');
+    expect(clock(-15, '24h', true)).toBe('23:45');
+    expect(sc.formatHourLabel.map((c) => c.hour)).toEqual(Array.from({ length: 48 }, (_, i) => Math.floor(i / 2)));
+    expect(sc.formatHourLabel.find((c) => c.hour === 9 && c.timeFormat === '12h')?.expected).toBe('9 am');
+    expect(sc.formatHourLabel.find((c) => c.hour === 7 && c.timeFormat === '24h')?.expected).toBe('07:00');
+    const dur = (m: number) => sc.formatDuration.find((c) => c.minutes === m)?.expected;
+    expect([dur(30), dur(60), dur(90), dur(1440)]).toEqual(['30m', '1h', '1h 30m', '24h']);
   });
 });

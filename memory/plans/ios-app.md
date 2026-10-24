@@ -253,6 +253,13 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   `WeekDayHeader`; `TodayLayout.swift`, Foundation only (the shim compiles
   it), holds `TodayScope` beside `TodayLayout` and the week's words in
   `PlannerFormat`, pinned by `TodayFormatTests`.
+  `ios/Dsul/Schedule` (Week and blocks PRs 4 to 6) gains `ScheduleLayout`,
+  Foundation only (the shim compiles it: `DaySchedule`, `ScheduleBlock`,
+  `AnytimeBandRules`, `SamplePlanner.daySchedule(on:fieldWidth:)`), and the
+  views `ScheduleColumn` (with the drag's own layer), `BlockView`,
+  `NowMarker` and `AnytimeBand`; `ScheduleGrid` is the hour gutter and one
+  column. `ScheduleLayoutTests` (shim) and `ScheduleRenderTests` (UIKit, the
+  runner only) test them.
   `ios/Dsul/App` gains
   `AvatarMenu` (moved out of `TodayView`, with the tab's own sections passed
   in) and `PlannerBannerOverlay` (`.plannerBanner()`, Today's banner, also on
@@ -379,6 +386,81 @@ Schedule is the design's PR 10; until then Schedule draws Day.
   - W7: on the web a day's heading selects that day in place and stays in
     Week; on the phone it opens the day in Day, since a selected day in
     place would only move a mark.
+
+## Schedule blocks
+Week and blocks PRs 4 to 6 of the shared folder's
+`ios-app/week-and-blocks/design.md` (§5.1 to §5.3, §5.9, §5.10), built as one
+PR; the builders' notes are in `week/pr4/`. PR 4 draws the blocks in the web's
+look, PR 5 adds the Anytime band, PR 6 the web's overlap pass and the 34pt pane
+floor. Nothing moves, resizes or drags a block yet (PRs 7 to 9).
+
+- **One derive per change, and the drag reads none of it.** ScheduleView
+  lays the day out once in its body (`daySchedule(on:fieldWidth:)`: the timed
+  entries as `scheduled(on:)` draws them, the overlap plan over them, each
+  block's done, skipped and tick label, and the band's untimed rows, all from
+  one `derive`) and hands it down as a value. Only `ScheduleDragLayer` (the
+  ghost and its 15-minute haptic) and `AutoscrollSwitch` (the edge
+  autoscroll's start and stop) read `ScheduleDrag`, so a ghost step re-renders
+  those two and derives nothing. A `#if DEBUG` count on `derive`
+  (`SamplePlanner.derivations`, ignored by Observation) lets
+  `ScheduleRenderTests` prove it.
+- **The block, after day-schedule.tsx.** A 2pt rail over the true time in the
+  project's colour (`projectAccent`, O15's port, no second one), lime with no
+  project; a 6pt bead at the start ringed in what it sits on; a pane of radius
+  5 with a hairline and a soft shadow (`secondarySystemGroupedBackground`).
+  Task-like blocks start with a square check (16pt, 44pt wide, no taller than
+  the content band, B25, centred on the title's measured line); habits have
+  none. One line of title with the mono length on the right
+  (`formatDuration`); a tall content band (56 and up) adds the mono range
+  (`formatClockRange`); either way the words centre in the content band, as
+  the web's `justify-center`. A pane under 200pt (`PANE_WRAP_PX`, field width
+  times the plan's share, DsulCore's `ScheduleMetrics.paneWrapPx`) drops the
+  length and range. Done strikes the title, thins the plate to
+  `tertiarySystemFill` and turns the rail and bead muted ink; nothing fades,
+  so the lime check keeps its strength, its tick in the web's `--lime-ink`.
+  A bead on a stepped plate (z above 2: nested or cascaded, the web's
+  `beadOnPocket`) is ringed in the plate's colour, else the canvas's. Skipped
+  is a 24pt strip with the skip mark and the bead, no check, opening the sheet.
+  The check is the row tick on the column's day (`tickBlock(_:in:)`, which
+  takes the laid-out day, so a column can't tick the selected day by
+  mistake), ungated like the List's circle; VoiceOver's action carries the
+  ported label ("Mark done", "Done today").
+- **Geometry.** The column is measured (`onGeometryChange`) and the width
+  stored in ScheduleView, so the overlap pass runs on the real field (Day's
+  `minChannelPx` cap needs it); until the first measure no block draws. Each
+  block is its own bounds, offset into the column, so VoiceOver's frame is the
+  block; rails and beads let taps through to a host's pane.
+- **Gutter and now.** `formatHourLabel` in mono caption, top-aligned 3pt
+  under each line, in a gutter that scales with the text up to
+  accessibility1. On today the time (`formatClock`) in ink, centred on now,
+  and the hour mark it would cover hidden (`eclipsedHour`, its distance scaled
+  with the text). In the field a lime diamond on the lane and a 24pt stub.
+- **The Anytime band.** Pinned above the hours' ScrollView. Its header is
+  always there ("Anytime" or "Anytime · 4"), folds the rows
+  (`@AppStorage("schedule.anytimeOpen")`, open by default, add, never rename),
+  and shows alone while the braindump sheet is up without writing the
+  choice. Up to three `ItemRow`s (one at the accessibility sizes, so the
+  hours keep their room), then a capped ScrollView. Rows tick and open on the
+  band's day (`tickAnytimeRow(_:in:)`). No drops or drags yet (PR 8).
+- **Where it departs from the design or the web.**
+  - The design lists `ScheduleColumn` holding the drop destination; the
+    destination stays on ScheduleGrid's 24-hour content (gutter and column),
+    as the spike built it, so drop locations stay in content space.
+  - The block's tests live in a new `ScheduleLayoutTests`, not
+    `SamplePlannerTests` (which another PR edits at the same time).
+  - Hour lines run from the lane's edge to 4pt short of the field's right;
+    the web insets them 17. A skipped strip spans the pane's width, not the
+    band's from the lane.
+  - Block and ghost text stops growing at accessibility2, where a footnote
+    line no longer fits a 34pt pane; the text is clipped to its content band
+    past that.
+  - The check's 44pt target starts at the pane's left edge, so its last 14pt
+    sit over the title's first letters: a tap there ticks.
+  - A narrow pane keeps its title to one line, centred like a wide one's,
+    where the web wraps it from the pane's top and grows it on hover: the
+    design keeps block text to one line (§5.10), and a phone has no hover.
+  - The web's hover, glass and pocket details of the overlap pass are not
+    drawn (§5.3's ported subset only).
 
 ## Item detail, part 1
 - **One sheet, every surface.** `PlannerSheet.item(UUID, day: SheetDay)` in
@@ -2049,3 +2131,10 @@ want consent before sending data to a model. Notifications shipped
 (#446 to #524: the phone plans and arms its own, stores its time zone,
 registers as a device and is woken by APNs); what is left of them is in
 [reminders-platforms.md](reminders-platforms.md).
+
+The block work named above (moving and resizing blocks, Week × Schedule) is
+Week and blocks' design PRs 7 to 10, which also bring the block's menu,
+VoiceOver's 15-minute and length actions, and the Anytime band as a drop
+target with its rows as drag sources. The blocks themselves are drawn in the
+web's look and laid out by its overlap pass (PRs 4 to 6, Schedule blocks
+above).
