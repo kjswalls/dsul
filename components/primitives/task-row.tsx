@@ -1,13 +1,15 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, useMemo } from 'react';
-import { Trash2, Minus, Plus, SkipForward, ArrowLeftToLine, Redo2, Undo2, MoreHorizontal,
+import { ArrowDown, ArrowUp, Trash2, Minus, Plus, SkipForward, ArrowLeftToLine, Redo2, Undo2, MoreHorizontal,
   Flag,
   Repeat,
   Sun,
 } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
-import { ItemContextMenu } from '@/components/planner/item-context-menu';
+import { ItemContextMenu, ItemMenuRow } from '@/components/planner/item-context-menu';
+import { useReorder } from '@/components/primitives/reorder-section';
+import { isApplePlatform } from '@/lib/commands/keys';
 import { DoStuffMark } from '@/components/sidebar/do-stuff-mark';
 import { Button } from '@/components/ui/button';
 import { usePlannerStore } from '@/lib/planner-store';
@@ -87,6 +89,21 @@ interface TaskRowProps {
 /** How long the title's fade runs before the hover controls, in px. */
 const TITLE_FADE_PX = 24;
 
+/**
+ * Move up / Move down in the row's right-click menu (drag to reorder's
+ * no-drag twin). A component so the platform is read when the menu opens,
+ * never during a server render.
+ */
+function MoveMenuRows({ up, down }: { up: (() => void) | null; down: (() => void) | null }) {
+  const alt = isApplePlatform() ? '⌥' : 'Alt+';
+  return (
+    <>
+      {up && <ItemMenuRow icon={<ArrowUp className="size-3.5" />} label="Move up" detail={`${alt}↑`} testId="item-menu-move-up" onSelect={up} />}
+      {down && <ItemMenuRow icon={<ArrowDown className="size-3.5" />} label="Move down" detail={`${alt}↓`} testId="item-menu-move-down" onSelect={down} />}
+    </>
+  );
+}
+
 export function TaskRow({ row, context = 'bucket', density = 'default', date, trailing }: TaskRowProps) {
   const {
     toggleTaskStatus,
@@ -120,6 +137,8 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
   // (The pulse dot is deliberately gone for now; it will return as the signal
   // that OpenClaw/Beacon is working an item.)
   const isMultiSelected = useSelectionStore((s) => s.selectedIds.has(item.id));
+  // The list this row can be put in order within, if any (drag to reorder).
+  const reorder = useReorder();
 
   const timezone = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const rowDate = date ?? selectedDate;
@@ -514,10 +533,28 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
     toggleHabitStatus(habit.id, 'pending', habitEffectiveCount - 1, rowDate);
   };
 
+  // Drag to reorder (lib/reorder.ts). The whole row already drags; the grip in
+  // the gutter is how a list says its rows can be put in order, and Alt+↑/↓ and
+  // the menu's Move up / Move down are the same step without a drag.
+  const movable = !!reorder?.canMove(item.id);
+  const moveUp = movable ? reorder!.step(item.id, -1) : null;
+  const moveDown = movable ? reorder!.step(item.id, 1) : null;
+  const handleReorderKey = (e: React.KeyboardEvent) => {
+    if (!e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    const run = e.key === 'ArrowUp' ? moveUp : e.key === 'ArrowDown' ? moveDown : undefined;
+    if (run === undefined) return;
+    e.preventDefault();
+    run?.();
+  };
+
   const rowContent = (
     // Right-click, on the row's own day (components/planner/item-context-menu.tsx).
     // Touch keeps the swipe and the ⋯ sheet — the trigger is off there.
-    <ItemContextMenu item={item} date={rowDate}>
+    <ItemContextMenu
+      item={item}
+      date={rowDate}
+      extra={moveUp || moveDown ? <MoveMenuRows up={moveUp} down={moveDown} /> : undefined}
+    >
       <div
         ref={setNodeRef}
         style={style}
@@ -592,7 +629,25 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
         }}
         onPointerDownCapture={titleTip.reset}
         onFocusCapture={measureTitle}
+        onKeyDown={movable ? handleReorderKey : undefined}
+        data-movable={movable ? 'true' : undefined}
       >
+        {/* The reorder grip, in the gutter left of the row. Visual only — the
+            whole row is the drag handle — and pointer-only: a phone has no
+            hover, and reorders through the ⋯ sheet. */}
+        {movable && !isMobile && (
+          <span
+            aria-hidden
+            data-testid="reorder-grip"
+            className="pointer-events-none absolute -left-3.5 top-1/2 flex h-5 w-3 -translate-y-1/2 items-center justify-center text-muted-foreground/60 opacity-0 transition-opacity group-hover:opacity-100"
+          >
+            <svg viewBox="0 0 6 10" className="h-2.5 w-1.5" fill="currentColor">
+              <circle cx="1" cy="1" r="1" /><circle cx="5" cy="1" r="1" />
+              <circle cx="1" cy="5" r="1" /><circle cx="5" cy="5" r="1" />
+              <circle cx="1" cy="9" r="1" /><circle cx="5" cy="9" r="1" />
+            </svg>
+          </span>
+        )}
 
         {/* Checkbox — 16px on EVERY row of both types in every state, so the
             leading edge is one straight column and nothing downstream of it can
@@ -941,7 +996,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
               className="h-7 w-7 text-muted-foreground"
               aria-label="Actions"
               data-testid="item-actions-button"
-              onClick={() => useScheduleSheet.getState().open(row, inBraindump ? null : dateStr)}
+              onClick={() => useScheduleSheet.getState().open(row, inBraindump ? null : dateStr, movable ? { up: moveUp, down: moveDown } : null)}
             >
               <MoreHorizontal className="h-4 w-4" />
             </Button>

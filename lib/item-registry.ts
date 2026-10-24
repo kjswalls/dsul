@@ -389,7 +389,9 @@ export const ITEM_TYPES: Record<KnownItemType, ItemTypeConfig> = {
     // history and a streak. It serves a goal as a member, or as a `checkin`
     // when the goal wants a recurring review.
     milestoneEligible: false,
-    orderable: false,
+    // Drag to reorder (2026-10-24, lib/reorder.ts): habits reorder among
+    // habits, on their own `order` sequence.
+    orderable: true,
     // 'projects' since 039 — a habit answers on the same one CLASSIFY axis as
     // everything else. Optional since 2026-10-01 (Kirby): the requirement was
     // the old habit_groups table's NOT NULL carried forward, not a product

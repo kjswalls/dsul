@@ -45,6 +45,8 @@ import {
 import { DoStuffKey, DoStuffList, DoStuffRow, wantsDoStuffRow } from '@/components/sidebar/do-stuff';
 import { useDoStuffStore } from '@/lib/do-stuff';
 import { groupRows, type RowGroup } from '@/lib/grouping';
+import { inPlannerOrder, reorderAllowed } from '@/lib/reorder';
+import { ReorderSection } from '@/components/primitives/reorder-section';
 import { isRowCompletedOn, orderRows } from '@/lib/sort-rows';
 import { useSinkHold } from '@/hooks/use-sink-hold';
 import { RELAY } from '@/lib/relay-config';
@@ -595,8 +597,9 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
    * The list as it will read after the drop: the same membership and filters,
    * run over the tasks as `unscheduleTask` will leave them. Grouping and sorting
    * below then put each incoming item exactly where it will appear, and that
-   * slot is what lights — there is no reorder in dsul (dnd-no-reorder.test.ts),
-   * so where the row lands is decided by the list, not by the pointer.
+   * slot is what lights — a drop from elsewhere never reorders (only a row
+   * already here can be dragged into a new place, lib/reorder.ts), so where
+   * the row lands is decided by the list, not by the pointer.
    */
   const shownRows = useMemo(() => {
     if (landingIds.size === 0) return rows;
@@ -712,6 +715,8 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
    * one-shot rows — which are what this list is almost entirely made of — sink.
    */
   const { completedAs, rootRef: sinkRootRef } = useSinkHold<HTMLElement>(setNodeRef);
+  // In the user's own order, so rows can be dragged into a new one (lib/reorder.ts).
+  const canReorder = reorderAllowed(braindumpSortBy, braindumpGroupBy);
   const grouped: RowGroup<RowItem>[] = useMemo(() => {
     // 'type' is the braindump's own value and has no canvas counterpart — the
     // canvas answers "what is in here" with the Type FILTER instead. Everything
@@ -727,8 +732,11 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
           // goals the aspire one; each is inert for the values it does not
           // answer, so passing all three always is harmless.
           groupRows(shownRows, braindumpGroupBy, { routines, seasons, goals });
-    return groups.map((g) => ({ ...g, rows: orderRows(g.rows, braindumpSortBy, null, completedAs) }));
-  }, [shownRows, braindumpGroupBy, braindumpSortBy, routines, seasons, goals, completedAs]);
+    return groups.map((g) => ({
+      ...g,
+      rows: orderRows(canReorder ? inPlannerOrder(g.rows) : g.rows, braindumpSortBy, null, completedAs),
+    }));
+  }, [shownRows, braindumpGroupBy, braindumpSortBy, routines, seasons, goals, completedAs, canReorder]);
 
   // The first incoming row scrolls itself into view, so a slot below the fold
   // still shows. Only one: several revealing at once would fight.
@@ -994,12 +1002,22 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
                   className="pt-5 first:pt-1"
                   forceOpen={landingIds.size > 0 && g.rows.some((r) => landingIds.has(r.item.id))}
                 >
-                  {g.rows.map(renderRow)}
+                  <ReorderSection id={`braindump:${g.key}`} rows={g.rows} dateStr={null} completedAs={completedAs} enabled={canReorder}>
+                    {g.rows.map(renderRow)}
+                  </ReorderSection>
                 </GroupSection>
               ) : (
-                <div key="all" className="space-y-0">
+                <ReorderSection
+                  key="all"
+                  id="braindump:all"
+                  rows={g.rows}
+                  dateStr={null}
+                  completedAs={completedAs}
+                  enabled={canReorder}
+                  className="space-y-0"
+                >
                   {g.rows.map(renderRow)}
-                </div>
+                </ReorderSection>
               )
             )
           )}

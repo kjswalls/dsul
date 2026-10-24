@@ -419,6 +419,12 @@ const habitItemShape = {
     project: z.string().optional(),
     /** See taskShape.projectId: the name stays authoritative, the id survives renames. */
     projectId: z.string().optional(),
+    /**
+     * Where the habit sits among habits in a list (`items.order`), set by drag to
+     * reorder. On the ITEM shape only: the legacy `habits[]` projection never
+     * carried it, and `toLegacyHabit` keeps it out.
+     */
+    order: z.number().int().optional(),
 };
 export const TaskSchema = z.object(taskShape).superRefine(requireCustomDays);
 export const HabitSchema = z.object(habitShape).superRefine(requireCustomDays);

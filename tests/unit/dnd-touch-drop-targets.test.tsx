@@ -11,7 +11,7 @@ import type { DragStartEvent } from '@dnd-kit/core';
  * rows — a third of WCAG 2.5.8's 24px minimum target size, on the input with
  * the coarsest pointer. Mechanically it is a MOVE like every other drop
  * (`inferDropTime` resolves it as ±30 min from the reference row's own time), so
- * it is not the drag-to-reorder `dnd-no-reorder.test.ts` forbids and it survived
+ * it is not the drag-to-reorder `dnd-reorder-pointer-only.test.ts` keeps out of the drop grammar and it survived
  * that sweep. Kirby then removed it for touch anyway, with the cost accepted: on
  * a phone there is no "put this just before that one" — you drop the row in the
  * bucket and set a time.
@@ -95,7 +95,7 @@ import type { Habit, Task } from '@/lib/planner-types';
 
 /**
  * Every droppable ID pattern in CONTRACT.md § Droppable IDs — the same list
- * `dnd-no-reorder.test.ts` sweeps, for the same reason: it is the contract
+ * `dnd-reorder-pointer-only.test.ts` sweeps, for the same reason: it is the contract
  * restated, so a grammar entry that stops classifying shows up here.
  */
 const EVERY_DROP_TARGET = [

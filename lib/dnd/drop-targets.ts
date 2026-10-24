@@ -14,7 +14,7 @@ import type { DragInput } from './sensors';
  *
  * Mechanically it is a MOVE like every other drop — `inferDropTime` resolves it
  * as ±30 min from the reference row's own time — so it is not the
- * drag-to-reorder that `dnd-no-reorder.test.ts` forbids, and it survived that
+ * drag-to-reorder that `dnd-reorder-pointer-only.test.ts` keeps out of the drop grammar, and it survived that
  * sweep. Kirby's call: remove it for touch, and accept the cost — on a phone
  * there is no longer a way to say "put this just before that one"; you drop the
  * row in the bucket and set its time. Mouse and pen keep it exactly as it was.

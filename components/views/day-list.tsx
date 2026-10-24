@@ -11,6 +11,8 @@ import { useCanvasGroupBy } from '@/lib/extension-gates';
 import { flattenDayRows } from '@/lib/day-items';
 import { toDateStr } from '@/lib/recurrence';
 import { groupRows, type RowGroup } from '@/lib/grouping';
+import { inPlannerOrder, reorderAllowed } from '@/lib/reorder';
+import { ReorderSection } from '@/components/primitives/reorder-section';
 import { orderRows } from '@/lib/sort-rows';
 import { useSinkHold } from '@/hooks/use-sink-hold';
 import { ListDropZone } from '@/components/views/list-drop-zone';
@@ -78,12 +80,17 @@ export function DayList() {
    */
   const dateStr = toDateStr(selectedDate, userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
   const rows = flattenDayRows(day);
+  // In the user's own order, so rows can be dragged into a new one (lib/reorder.ts).
+  const canReorder = reorderAllowed(sortBy, canvasGroupBy);
   const addHere = !useIsMobile();
   const groups = (
     canvasGroupBy === 'none'
       ? defaultListGroups(rows)
       : groupRows(rows, canvasGroupBy, { routines, seasons, goals })
-  ).map((g) => ({ ...g, rows: orderRows(g.rows, sortBy, dateStr, completedAs) }));
+  ).map((g) => ({
+    ...g,
+    rows: orderRows(canReorder ? inPlannerOrder(g.rows) : g.rows, sortBy, dateStr, completedAs),
+  }));
 
   return (
     <ScrollArea className="h-full flex-1">
@@ -107,9 +114,17 @@ export function DayList() {
           ) : (
             groups.map((g) => (
               <GroupSection key={g.key} groupKey={g.key} label={g.label} gate={g.gate} variant="canvas">
-                {g.rows.map((row) => (
-                  <TaskRow key={row.item.id} row={row as never} />
-                ))}
+                <ReorderSection
+                  id={`list:${dateStr}:${g.key}`}
+                  rows={g.rows}
+                  dateStr={dateStr}
+                  completedAs={completedAs}
+                  enabled={canReorder}
+                >
+                  {g.rows.map((row) => (
+                    <TaskRow key={row.item.id} row={row as never} />
+                  ))}
+                </ReorderSection>
               </GroupSection>
             ))
           )}

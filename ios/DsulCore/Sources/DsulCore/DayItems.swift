@@ -53,7 +53,8 @@ private func nonEmpty(_ s: String?) -> String? {
 }
 
 /// lib/day-items.ts `byTimeThenOrder`, stable as JavaScript's sort is: timed
-/// rows first by `startTime` ("HH:mm" compares as text), then untimed by `order`.
+/// rows first by `startTime` ("HH:mm" compares as text), then untimed by `order`,
+/// a missing one last.
 private func sortedItemsByTimeThenOrder(_ rows: [Item]) -> [Item] {
     let indexed = Array(rows.enumerated())
     let sorted = indexed.sorted { a, b in
@@ -67,9 +68,18 @@ private func sortedItemsByTimeThenOrder(_ rows: [Item]) -> [Item] {
         case (nil, .some):
             return false
         case (nil, nil):
-            let ox = x.order ?? 0
-            let oy = y.order ?? 0
-            if ox != oy { return ox < oy }
+            // A missing order sorts LAST, as the load's `ORDER BY "order"` puts
+            // NULLs (habits made before drag to reorder never wrote one).
+            switch (x.order, y.order) {
+            case let (ox?, oy?):
+                if ox != oy { return ox < oy }
+            case (.some, nil):
+                return true
+            case (nil, .some):
+                return false
+            case (nil, nil):
+                break
+            }
         }
         return a.offset < b.offset
     }

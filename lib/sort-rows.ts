@@ -35,14 +35,11 @@ import { isCompletedOnDate, isRecurring, isSkippedOnDate } from './recurrence';
  * spine at all (its cells carry no per-row droppable) and takes it whole.
  * See the call sites in components/views/*.tsx for the per-surface reasoning.
  *
- * "The untimed section has none" is true today, and by accident rather than by
- * design: lib/day-items.ts sorts untimed rows by `order`, `task.orderable` is
- * true, and planner-store.ts exposes `reorderTasks` — but nothing under
- * components/ or app/ calls it, so that `order` is a creation sequence nobody
- * has dragged. Wire drag-to-reorder into the untimed section and the sink
- * begins silently overriding an order the user DID author, which is the one
- * thing the paragraph above says it must not do. Revisit this file then, not
- * only the call site.
+ * Since drag to reorder (lib/reorder.ts) the untimed section DOES carry an
+ * order the user authored, and the sink still runs over it on purpose: the
+ * order governs OPEN rows only. A finished row cannot be dragged, sinks below
+ * the order, and returns to its place in it when unticked, because the sink
+ * moves rows without writing `order`.
  */
 
 export type SortBy = 'default' | 'priority' | 'title';
