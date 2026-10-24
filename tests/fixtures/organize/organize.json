@@ -105,6 +105,237 @@
       }
     ]
   },
+  "attachWorld": {
+    "items": [
+      {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000001",
+        "title": "Water",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000002",
+        "title": "Stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000003",
+        "title": "Journal",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "pausedAt": "2026-10-20T13:00:00Z"
+      },
+      {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000004",
+        "title": "Read",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000005",
+        "title": "Done today",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [
+          "2026-10-23"
+        ],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000006",
+        "title": "Undated",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0
+      },
+      {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000007",
+        "title": "Meditate",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000008",
+        "title": "Floss",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-00000000000a",
+        "title": "Rest",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-00000000000b",
+        "title": "Wax the skis",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-00000000000c",
+        "title": "Weed the beds",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      }
+    ],
+    "routines": [
+      {
+        "id": "r-morning",
+        "name": "Morning",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002",
+          "00000000-0000-4000-8000-000000000003",
+          "00000000-0000-4000-8000-000000000004",
+          "00000000-0000-4000-8000-000000000005",
+          "00000000-0000-4000-8000-000000000006",
+          "00000000-0000-4000-8000-000000000007"
+        ]
+      },
+      {
+        "id": "r-desk",
+        "name": "Desk",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000002"
+        ]
+      },
+      {
+        "id": "r-evening",
+        "name": "Evening",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000008"
+        ]
+      },
+      {
+        "id": "r-rest",
+        "name": "Rest days",
+        "itemIds": [
+          "00000000-0000-4000-8000-00000000000a"
+        ],
+        "pausedAt": "2026-10-20T13:00:00Z"
+      },
+      {
+        "id": "r-ski",
+        "name": "Ski prep",
+        "itemIds": [
+          "00000000-0000-4000-8000-00000000000b"
+        ]
+      },
+      {
+        "id": "r-garden",
+        "name": "Garden",
+        "itemIds": [
+          "00000000-0000-4000-8000-00000000000c"
+        ]
+      },
+      {
+        "id": "r-empty",
+        "name": "Empty",
+        "itemIds": []
+      }
+    ],
+    "seasons": [
+      {
+        "id": "s-shelf",
+        "name": "Shelf",
+        "state": "paused",
+        "itemIds": [],
+        "routineIds": []
+      },
+      {
+        "id": "s-winter",
+        "name": "Winter",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [
+          "r-ski"
+        ],
+        "startsOn": "2026-11-01",
+        "endsOn": "2027-02-28"
+      },
+      {
+        "id": "s-summer",
+        "name": "Summer",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-06-01",
+        "endsOn": "2026-10-01"
+      },
+      {
+        "id": "s-autumn",
+        "name": "Autumn",
+        "state": "auto",
+        "itemIds": [
+          "00000000-0000-4000-8000-000000000004"
+        ],
+        "routineIds": [
+          "r-garden"
+        ],
+        "startsOn": "2026-09-01",
+        "endsOn": "2026-11-30"
+      },
+      {
+        "id": "s-always",
+        "name": "Always",
+        "state": "active",
+        "itemIds": [],
+        "routineIds": []
+      }
+    ],
+    "timeZone": "America/New_York"
+  },
   "organizeWeek": [
     {
       "name": "a Sunday week: done of done-or-due, everything the grid shows",
@@ -2202,6 +2433,312 @@
       "name": "no goals: no card",
       "goals": [],
       "expected": null
+    }
+  ],
+  "moveMemberAfter": [
+    {
+      "name": "down the list, after another",
+      "ids": [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000003",
+        "00000000-0000-4000-8000-000000000004",
+        "00000000-0000-4000-8000-000000000005"
+      ],
+      "item": "00000000-0000-4000-8000-000000000001",
+      "after": "00000000-0000-4000-8000-000000000003",
+      "expected": [
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000003",
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000004",
+        "00000000-0000-4000-8000-000000000005"
+      ]
+    },
+    {
+      "name": "up the list, after another",
+      "ids": [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000003",
+        "00000000-0000-4000-8000-000000000004",
+        "00000000-0000-4000-8000-000000000005"
+      ],
+      "item": "00000000-0000-4000-8000-000000000004",
+      "after": "00000000-0000-4000-8000-000000000001",
+      "expected": [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000004",
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000003",
+        "00000000-0000-4000-8000-000000000005"
+      ]
+    },
+    {
+      "name": "first, with no anchor",
+      "ids": [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000003",
+        "00000000-0000-4000-8000-000000000004",
+        "00000000-0000-4000-8000-000000000005"
+      ],
+      "item": "00000000-0000-4000-8000-000000000003",
+      "after": null,
+      "expected": [
+        "00000000-0000-4000-8000-000000000003",
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000004",
+        "00000000-0000-4000-8000-000000000005"
+      ]
+    },
+    {
+      "name": "last, after the last one",
+      "ids": [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000003",
+        "00000000-0000-4000-8000-000000000004",
+        "00000000-0000-4000-8000-000000000005"
+      ],
+      "item": "00000000-0000-4000-8000-000000000002",
+      "after": "00000000-0000-4000-8000-000000000005",
+      "expected": [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000003",
+        "00000000-0000-4000-8000-000000000004",
+        "00000000-0000-4000-8000-000000000005",
+        "00000000-0000-4000-8000-000000000002"
+      ]
+    },
+    {
+      "name": "after the one already above it: no change",
+      "ids": [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000003",
+        "00000000-0000-4000-8000-000000000004",
+        "00000000-0000-4000-8000-000000000005"
+      ],
+      "item": "00000000-0000-4000-8000-000000000003",
+      "after": "00000000-0000-4000-8000-000000000002",
+      "expected": [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000003",
+        "00000000-0000-4000-8000-000000000004",
+        "00000000-0000-4000-8000-000000000005"
+      ]
+    },
+    {
+      "name": "first when it is first already: no change",
+      "ids": [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000003",
+        "00000000-0000-4000-8000-000000000004",
+        "00000000-0000-4000-8000-000000000005"
+      ],
+      "item": "00000000-0000-4000-8000-000000000001",
+      "after": null,
+      "expected": [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000003",
+        "00000000-0000-4000-8000-000000000004",
+        "00000000-0000-4000-8000-000000000005"
+      ]
+    },
+    {
+      "name": "after itself: no change",
+      "ids": [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000003",
+        "00000000-0000-4000-8000-000000000004",
+        "00000000-0000-4000-8000-000000000005"
+      ],
+      "item": "00000000-0000-4000-8000-000000000002",
+      "after": "00000000-0000-4000-8000-000000000002",
+      "expected": [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000003",
+        "00000000-0000-4000-8000-000000000004",
+        "00000000-0000-4000-8000-000000000005"
+      ]
+    },
+    {
+      "name": "an item that is not a member: no change",
+      "ids": [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000003"
+      ],
+      "item": "00000000-0000-4000-8000-000000000009",
+      "after": "00000000-0000-4000-8000-000000000001",
+      "expected": [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000003"
+      ]
+    },
+    {
+      "name": "an anchor that is not a member: no change",
+      "ids": [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000003"
+      ],
+      "item": "00000000-0000-4000-8000-000000000002",
+      "after": "00000000-0000-4000-8000-000000000009",
+      "expected": [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000003"
+      ]
+    },
+    {
+      "name": "two steps swapped",
+      "ids": [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002"
+      ],
+      "item": "00000000-0000-4000-8000-000000000001",
+      "after": "00000000-0000-4000-8000-000000000002",
+      "expected": [
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000001"
+      ]
+    },
+    {
+      "name": "one step, first: no change",
+      "ids": [
+        "00000000-0000-4000-8000-000000000001"
+      ],
+      "item": "00000000-0000-4000-8000-000000000001",
+      "after": null,
+      "expected": [
+        "00000000-0000-4000-8000-000000000001"
+      ]
+    },
+    {
+      "name": "no steps at all",
+      "ids": [],
+      "item": "00000000-0000-4000-8000-000000000001",
+      "after": null,
+      "expected": []
+    },
+    {
+      "name": "a member whose item is in the Trash keeps its place among the rest",
+      "ids": [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000063",
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000003"
+      ],
+      "item": "00000000-0000-4000-8000-000000000003",
+      "after": "00000000-0000-4000-8000-000000000001",
+      "expected": [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000003",
+        "00000000-0000-4000-8000-000000000063",
+        "00000000-0000-4000-8000-000000000002"
+      ]
+    }
+  ],
+  "wouldHideAttaching": [
+    {
+      "name": "a season switched off takes what nothing else carries",
+      "seasonId": "s-shelf",
+      "routineId": "r-morning",
+      "today": "2026-10-23",
+      "expected": 3
+    },
+    {
+      "name": "one item: the routine’s only step",
+      "seasonId": "s-shelf",
+      "routineId": "r-evening",
+      "today": "2026-10-23",
+      "expected": 1
+    },
+    {
+      "name": "a season that starts later hides them until it does",
+      "seasonId": "s-winter",
+      "routineId": "r-evening",
+      "today": "2026-10-23",
+      "expected": 1
+    },
+    {
+      "name": "a season whose run has ended hides them",
+      "seasonId": "s-summer",
+      "routineId": "r-evening",
+      "today": "2026-10-23",
+      "expected": 1
+    },
+    {
+      "name": "a season live today hides nothing",
+      "seasonId": "s-autumn",
+      "routineId": "r-morning",
+      "today": "2026-10-23",
+      "expected": 0
+    },
+    {
+      "name": "a season switched on by hand hides nothing",
+      "seasonId": "s-always",
+      "routineId": "r-evening",
+      "today": "2026-10-23",
+      "expected": 0
+    },
+    {
+      "name": "the first season only: a routine an off season already holds is never asked about",
+      "seasonId": "s-shelf",
+      "routineId": "r-ski",
+      "today": "2026-10-23",
+      "expected": 0
+    },
+    {
+      "name": "the first season only: a routine a live season holds stays carried",
+      "seasonId": "s-shelf",
+      "routineId": "r-garden",
+      "today": "2026-10-23",
+      "expected": 0
+    },
+    {
+      "name": "a routine the same season already holds hides nothing more",
+      "seasonId": "s-winter",
+      "routineId": "r-ski",
+      "today": "2026-10-23",
+      "expected": 0
+    },
+    {
+      "name": "a paused routine’s items are off already: nothing more hides",
+      "seasonId": "s-shelf",
+      "routineId": "r-rest",
+      "today": "2026-10-23",
+      "expected": 0
+    },
+    {
+      "name": "an empty routine hides nothing",
+      "seasonId": "s-shelf",
+      "routineId": "r-empty",
+      "today": "2026-10-23",
+      "expected": 0
+    },
+    {
+      "name": "a season no longer in the list hides nothing",
+      "seasonId": "s-gone",
+      "routineId": "r-evening",
+      "today": "2026-10-23",
+      "expected": 0
+    },
+    {
+      "name": "on the day a season starts it is on: nothing hides",
+      "seasonId": "s-winter",
+      "routineId": "r-evening",
+      "today": "2026-11-01",
+      "expected": 0
     }
   ],
   "weekCardSentence": [

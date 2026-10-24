@@ -215,6 +215,53 @@ export function seasonRunsLabel(startsOn: string | undefined, endsOn: string | u
   return span ? span[0].toUpperCase() + span.slice(1) : null;
 }
 
+/**
+ * The attach confirm: putting a routine in a season that would hide some of
+ * its items (lib/organize.ts wouldHideAttaching counts them; nothing is asked
+ * when it is 0). The web's seasons pane and the iPhone's season page say the
+ * same title, description and button; the phone's Cancel is the system's.
+ *
+ * The title has no full stop: it is a heading.
+ */
+export function attachConfirmTitle(hides: number): string {
+  return `This will hide ${hides} ${hides === 1 ? 'item' : 'items'} for now`;
+}
+
+/**
+ * What the attach does, said out loud: the routine looked after itself, the
+ * season answers for it now, and the season is off, so its items wait for it.
+ * A season following its dates that starts later names the day they come
+ * back; any other waits for the switch.
+ *
+ * The rule is the pane's own (`state` auto, a start after today), not
+ * seasonResumeDate's, so the words stay exactly the web's. `hides` is
+ * wouldHideAttaching's count, never a member count. One item is said in the
+ * singular ("its 1 item comes back", "restores it"); the web said "its 1 item
+ * come back", and both shells take the fix, as #579's delete sentences did.
+ */
+export function attachConfirmDescription(
+  routineName: string,
+  season: Pick<Season, 'name' | 'state' | 'startsOn'>,
+  hides: number,
+  todayStr: string,
+): string {
+  const returns =
+    season.state === 'auto' && season.startsOn && todayStr < season.startsOn ? formatDay(season.startsOn) : null;
+  const one = hides === 1;
+  const items = `${hides} ${one ? 'item' : 'items'}`;
+  const waits = returns
+    ? `${one ? 'comes' : 'come'} back on ${returns}`
+    : `${one ? 'stays' : 'stay'} hidden until you switch it on`;
+  return (
+    `“${routineName}” looks after itself today. Putting it in ${season.name} hands that over. ` +
+    `${season.name} is off, so its ${items} ${waits}. ` +
+    `Nothing is deleted, and taking it back out restores ${one ? 'it' : 'them'}.`
+  );
+}
+
+/** The attach confirm's button. */
+export const ATTACH_CONFIRM_LABEL = 'Add it anyway';
+
 /* ── a goal ───────────────────────────────────────────────────────────── */
 
 /**
@@ -636,12 +683,23 @@ export function restoreRefusal(code: string | undefined, name: string): string {
 export const PAUSE_REFUSED = 'That day is no longer after today, so nothing was paused.';
 
 /**
+ * The iPhone's words for a membership write refused because another device
+ * got there first: a routine step's move whose item (`member_gone`) or anchor
+ * (`anchor_gone`) has left the routine, and a season hold whose routine is
+ * gone (`container_gone`). The phone refetches on any failed write, so what
+ * it shows next is the server's.
+ */
+export const CHANGED_ELSEWHERE = 'It changed on another device. Showing the latest.';
+
+/**
  * The iPhone's words for a refused container write (lib/app-containers.ts):
  *   - `pause_refused` is {@link PAUSE_REFUSED};
  *   - `name_taken` (a project renamed onto a live project's name, folding
  *     case) is {@link nameTakenSentence};
  *   - `name_in_trash` (a project renamed onto the exact name a project in the
- *     Trash still holds) is {@link nameInTrashSentence}.
+ *     Trash still holds) is {@link nameInTrashSentence};
+ *   - `member_gone`, `anchor_gone` (a routine step's move, O12) and
+ *     `container_gone` (a season hold, O13) are {@link CHANGED_ELSEWHERE}.
  * The two name sentences name the container by `sentName`, the name the phone
  * sent in its rename, never the answer's body; without one they have no
  * words. Null for a code with no words of its own (a 404, a 500, no answer at
@@ -651,6 +709,7 @@ export const PAUSE_REFUSED = 'That day is no longer after today, so nothing was 
 export function containerRefusal(code: string | undefined, sentName?: string): string | null {
   const noun = CONTAINER_KINDS.project.label.toLowerCase();
   if (code === 'pause_refused') return PAUSE_REFUSED;
+  if (code === 'member_gone' || code === 'anchor_gone' || code === 'container_gone') return CHANGED_ELSEWHERE;
   if (code === 'name_taken' && sentName !== undefined) return nameTakenSentence(noun, sentName);
   if (code === 'name_in_trash' && sentName !== undefined) return nameInTrashSentence(noun, sentName);
   return null;

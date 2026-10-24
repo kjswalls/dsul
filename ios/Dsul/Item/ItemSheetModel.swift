@@ -38,13 +38,16 @@ import Foundation
 // Season ▸ (`routineChoices`, `seasonChoices`, `liveMember`,
 // `toggleKeepsMenuOpen`, `removeFromWord`): one toggle per container, read
 // live as the item panel's toggle reads the store (item-dialog.tsx
-// `toggleRoutine`), and its Remove from rows (`RemoveRows`).
+// `toggleRoutine`), and its Remove from rows (`RemoveRows`). From Week and
+// blocks PR 3, Move to Braindump behind ⋯ (`SheetVerb.braindump`), the web's
+// `braindump` verb in its declaration order.
 
 /// One thing the sheet can do: the web's verbs it offers, plus Pause until
 /// (the `pause` verb with a resume day, which the bar shows as its own slot).
-/// Delete is the web's last verb and sits last behind ⋯, never in the bar.
+/// Delete is the web's last verb and sits last behind ⋯, never in the bar;
+/// Move to Braindump (Week and blocks PR 3) sits behind ⋯ too, just before it.
 enum SheetVerb: String, Hashable, Sendable, CaseIterable {
-    case tick, skip, unskip, pause, pauseUntil, resume, nextDay, reschedule, delete
+    case tick, skip, unskip, pause, pauseUntil, resume, nextDay, reschedule, braindump, delete
 
     /// The web verb whose gate answers for it.
     var verb: VerbID {
@@ -56,6 +59,7 @@ enum SheetVerb: String, Hashable, Sendable, CaseIterable {
         case .resume: .resume
         case .nextDay: .nextDay
         case .reschedule: .reschedule
+        case .braindump: .braindump
         case .delete: .delete
         }
     }
@@ -71,14 +75,15 @@ enum SheetVerb: String, Hashable, Sendable, CaseIterable {
         case .pauseUntil: "pauseUntil"
         case .nextDay: "nextDay"
         case .reschedule: "reschedule"
+        case .braindump: "braindump"
         case .delete: "delete"
         }
     }
 }
 
 /// Where the sheet's verbs go: up to three in the bar, the rest of the pause
-/// family and Delete behind ⋯, or, on a day a recurring item doesn't fall
-/// on, a "Not due" line instead of the bar.
+/// family, Move to Braindump and Delete behind ⋯, or, on a day a recurring
+/// item doesn't fall on, a "Not due" line instead of the bar.
 struct SheetVerbs: Hashable, Sendable {
     var bar: [SheetVerb]
     var menu: [SheetVerb]
@@ -307,11 +312,16 @@ enum ItemSheetModel {
     /// - a recurring task-like item: the tick, Skip or Unskip, Pause.
     /// ⋯ holds whatever of Pause, Pause until and Reschedule the bar doesn't:
     /// a series' Reschedule (lib/row-moves.ts `canReschedule`) moves its start,
-    /// so it waits there rather than beside the day's verbs. Then Delete,
-    /// last, in every case it is offered (paused and not due included), as
-    /// the web declares it: a habit's ⋯ is Delete alone. A subtask is offered
-    /// the tick and Delete, so it gets the tick and ⋯ → Delete. A server that
-    /// doesn't take `delete` leaves ⋯ as part 1 had it.
+    /// so it waits there rather than beside the day's verbs. Then Move to
+    /// Braindump where it is offered (a dated one-off task the braindump
+    /// doesn't list yet; never the bar's), after Reschedule as the web
+    /// declares it. Then Delete, last, in every case it is offered (paused
+    /// and not due included), as the web declares it: a habit's ⋯ is Delete
+    /// alone. A subtask is offered the tick and Delete, so it gets the tick
+    /// and ⋯ → Delete. A server that doesn't take `delete` leaves ⋯ as part 1
+    /// had it. Paused today, ⋯ holds Delete alone, as every verb but Resume
+    /// waits for the pause to end (Move to Braindump too, though the web's
+    /// gate has no pause test).
     static func verbs(_ item: SampleItem, _ ctx: VerbContext, offered: [VerbID]) -> SheetVerbs {
         let has = Set(offered)
         let delete: [SheetVerb] = has.contains(.delete) ? [.delete] : []
@@ -321,6 +331,7 @@ enum ItemSheetModel {
         }
         let pauseFamily: [SheetVerb] = has.contains(.pause) ? [.pause, .pauseUntil] : []
         let overflow: [SheetVerb] = pauseFamily + (has.contains(.reschedule) ? [.reschedule] : [])
+            + (has.contains(.braindump) ? [.braindump] : [])
         if item.recurs && ctx.occurrence == .absent {
             return SheetVerbs(bar: [], menu: overflow + delete, notDue: true)
         }
@@ -376,6 +387,8 @@ enum ItemSheetModel {
             }
         case .reschedule:
             return verbLabel(.reschedule, item, ctx)
+        case .braindump:
+            return verbLabel(.braindump, item, ctx)
         case .delete:
             return verbLabel(.delete, item, ctx)
         }
@@ -389,7 +402,7 @@ enum ItemSheetModel {
             return onDay(verbLabel(verb.verb, item, ctx), ctx)
         case .pauseUntil:
             return "Pause until a day"
-        case .pause, .resume, .reschedule, .delete:
+        case .pause, .resume, .reschedule, .braindump, .delete:
             return barLabel(verb, item, ctx)
         }
     }
@@ -402,7 +415,8 @@ enum ItemSheetModel {
     }
 
     /// The ⋯ menu's words. It only ever holds Pause, Pause until, a series'
-    /// Reschedule and Delete, which ⋯ names after the type
+    /// Reschedule, Move to Braindump (the port's label, `verbLabel`, which
+    /// is the same for every item) and Delete, which ⋯ names after the type
     /// (`deleteMenuTitle`); the rest are named for completeness.
     static func menuTitle(_ verb: SheetVerb) -> String {
         switch verb {
@@ -414,11 +428,13 @@ enum ItemSheetModel {
         case .unskip: "Unskip"
         case .nextDay: "Tomorrow"
         case .reschedule: "Reschedule"
+        case .braindump: "Move to Braindump"
         case .delete: "Delete"
         }
     }
 
-    /// The verb's SF Symbol.
+    /// The verb's SF Symbol. Move to Braindump's is the braindump's own tray
+    /// (the capture bar's), with the arrow going in.
     static func symbol(_ verb: SheetVerb, _ item: SampleItem, _ ctx: VerbContext) -> String {
         switch verb {
         case .tick: isDoneOn(item, on: ctx.dateStr) ? "arrow.uturn.backward" : "checkmark"
@@ -429,6 +445,7 @@ enum ItemSheetModel {
         case .resume: "play"
         case .nextDay: "arrow.right"
         case .reschedule: "calendar"
+        case .braindump: "tray.and.arrow.down"
         case .delete: "trash"
         }
     }

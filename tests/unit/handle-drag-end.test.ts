@@ -1,5 +1,14 @@
 import { describe, it, expect, vi } from 'vitest';
-import { listGroupMovers, parseProjectBlockId, placementOf, resolveDrop, type DropContext } from '@/lib/dnd/handle-drag-end';
+import {
+  listGroupMovers,
+  parseProjectBlockId,
+  placementOf,
+  resolveDrop,
+  type DropCommand,
+  type DropContext,
+} from '@/lib/dnd/handle-drag-end';
+import { scheduleHabitPatch, scheduleTaskPatch, UNSCHEDULE_TASK_PATCH } from '@/lib/item-edit';
+import type { Item } from '@/lib/planner-types';
 
 function ctx(overrides: Partial<DropContext> = {}): DropContext {
   return {
@@ -296,5 +305,250 @@ describe('resolveDrop — droppable ID grammar (lib/dnd/CONTRACT.md)', () => {
         listGroupMovers(['inbox', 'same', 'other', 'series', 'milestone'], '2026-07-09', tasks, new Set(['milestone']))
       ).toEqual(['inbox', 'other']);
     });
+  });
+});
+
+/**
+ * Week and blocks PR 11: a placed task's hour, week-hour and braindump drops
+ * ask the shared drop rule (lib/block-moves.ts planBlockDrop), and the web
+ * changes in exactly two ways. A repeating task moved to a new time keeps its
+ * start date, so no earlier day loses it. A repeating, finished, in-block or
+ * milestone task dropped on the braindump stays where it was, as Move to
+ * Braindump already refuses it (lib/row-moves.ts canSendToBraindump). Every
+ * other drop ends in the row it ended in before: one-offs, braindump rows
+ * dragged onto the grid, habits, the Anytime strips and the bucket cells.
+ *
+ * Each case is asserted as the ROW the shell's store call leaves
+ * (components/shell/app-shell.tsx handleDragEnd's switch, over the store's
+ * patches), so a drop the rule answers `none` (a block let go where it was)
+ * reads as the same row as the no-op write it used to make. These ran on the
+ * code before the rule: the "unchanged" cases passed there, the "changed"
+ * cases failed there, and both pass now.
+ */
+describe('resolveDrop: block drops follow the shared drop rule (PR 11)', () => {
+  const DAY = '2026-07-04';
+  const COLUMN = '2026-07-08';
+  const SERIES_START = '2026-07-01';
+
+  const task = (id: string, over: Record<string, unknown> = {}) =>
+    ({
+      type: 'task',
+      id,
+      title: id,
+      status: 'pending',
+      isScheduled: true,
+      startDate: DAY,
+      timeBucket: 'morning',
+      startTime: '09:00',
+      duration: 30,
+      inProjectBlock: false,
+      completedDates: [],
+      skippedDates: [],
+      ...over,
+    }) as unknown as Item;
+  const custom = (id: string, over: Record<string, unknown> = {}) =>
+    task(id, { type: 'custom', customType: 'errand', ...over });
+
+  const items = {
+    oneOff: task('one-off'),
+    series: task('series', { repeatFrequency: 'daily', startDate: SERIES_START }),
+    seriesInBlock: task('series-in-block', {
+      repeatFrequency: 'weekdays',
+      startDate: SERIES_START,
+      startTime: undefined,
+      inProjectBlock: true,
+      project: 'Work',
+      previousStartTime: '08:00',
+      previousStartDate: '2026-06-30',
+    }),
+    inBlock: task('in-block', { startTime: undefined, inProjectBlock: true, project: 'Work' }),
+    done: task('done', { status: 'completed' }),
+    letGo: task('let-go', { status: 'cancelled' }),
+    milestone: task('milestone'),
+    customOneOff: custom('custom-one-off'),
+    customSeries: custom('custom-series', { repeatFrequency: 'weekdays', startDate: SERIES_START }),
+    // A series whose occurrence on the column is skipped: the web never lifts
+    // a skipped strip, so a drop there is another day's block landing.
+    seriesSkippedThere: task('series-skipped-there', {
+      repeatFrequency: 'daily',
+      startDate: SERIES_START,
+      skippedDates: [COLUMN],
+    }),
+    braindumpRow: task('braindump-row', {
+      isScheduled: false,
+      startDate: undefined,
+      timeBucket: undefined,
+      startTime: undefined,
+    }),
+    datedBraindumpRow: task('dated-braindump-row', { isScheduled: false, timeBucket: undefined, startTime: undefined }),
+    habit: {
+      type: 'habit',
+      id: 'stretch',
+      title: 'stretch',
+      status: 'pending',
+      repeatFrequency: 'daily',
+      timeBucket: 'morning',
+      startTime: '07:30',
+      completedDates: [],
+      skippedDates: [],
+    } as unknown as Item,
+  } as const;
+  type Key = keyof typeof items;
+  const MILESTONES: ReadonlySet<string> = new Set(['milestone']);
+
+  /** The shell's ctx for a drag of `key`, as handleDragEnd builds it. */
+  const dragCtx = (key: Key): DropContext => {
+    const item = items[key];
+    return ctx({
+      itemType: item.type === 'habit' ? 'habit' : 'task',
+      draggedTaskProject: (item as { project?: string }).project,
+      draggedPlacement: placementOf(item),
+      draggedItem: item,
+      milestoneIds: MILESTONES,
+    } as Partial<DropContext>);
+  };
+
+  /**
+   * The row the shell's store call leaves, applied as the store applies its
+   * patches (spread over the item). An absent key and a cleared one read the
+   * same, and so do `inProjectBlock` false and absent, as every reader asks it.
+   */
+  const endRow = (item: Item, command: DropCommand | null): Record<string, unknown> => {
+    const clean = (row: Record<string, unknown>) =>
+      JSON.parse(JSON.stringify({ ...row, inProjectBlock: row.inProjectBlock || undefined })) as Record<string, unknown>;
+    const it = item as unknown as Record<string, unknown>;
+    if (!command) return clean(it);
+    switch (command.kind) {
+      case 'schedule-task':
+        return clean({
+          ...it,
+          ...scheduleTaskPatch(command.bucket, command.time),
+          ...(command.dateStr ? { startDate: command.dateStr } : {}),
+        });
+      case 'schedule-habit':
+        return clean({ ...it, ...scheduleHabitPatch(command.bucket, command.time) });
+      case 'assign-habit-bucket':
+        return clean({ ...it, timeBucket: command.bucket, startTime: undefined });
+      case 'unschedule':
+        return clean({ ...it, ...UNSCHEDULE_TASK_PATCH });
+      case 'move-task-to-date':
+        return clean({ ...it, startDate: command.dateStr, timeBucket: it.timeBucket ?? 'anytime' });
+      case 'move-task-to-project-block':
+        return clean({ ...it, inProjectBlock: true });
+      case 'pause-item':
+        return clean({ ...it, paused: true });
+    }
+  };
+  const row = (key: Key, over: Record<string, unknown> = {}) =>
+    endRow({ ...items[key], ...over } as Item, null);
+  const drop = (key: Key, target: string) => endRow(items[key], resolveDrop(items[key].id, target, dragCtx(key)));
+
+  /** At an hour: on the grid, out of any block, the time and its part of day. */
+  const at = (key: Key, time: string, startDate: string | undefined, over: Record<string, unknown> = {}) =>
+    row(key, {
+      isScheduled: true,
+      startTime: time,
+      timeBucket: Number(time.slice(0, 2)) < 12 ? 'morning' : Number(time.slice(0, 2)) < 17 ? 'afternoon' : 'evening',
+      startDate,
+      inProjectBlock: false,
+      previousStartTime: undefined,
+      previousStartDate: undefined,
+      ...over,
+    });
+  const inBraindump = (key: Key) =>
+    row(key, { isScheduled: false, timeBucket: undefined, startTime: undefined, startDate: undefined });
+
+  describe('unchanged: the row each drop ended in before the rule', () => {
+    it.each([
+      ['oneOff', 'hour:10', () => at('oneOff', '10:00', DAY)],
+      ['oneOff', `weekhour:${COLUMN}:14`, () => at('oneOff', '14:00', COLUMN)],
+      ['oneOff', 'hour:9', () => row('oneOff')],
+      ['done', 'hour:10', () => at('done', '10:00', DAY)],
+      ['inBlock', 'hour:10', () => at('inBlock', '10:00', DAY)],
+      ['inBlock', `weekhour:${COLUMN}:18`, () => at('inBlock', '18:00', COLUMN)],
+      ['milestone', 'hour:10', () => at('milestone', '10:00', DAY)],
+      ['milestone', `weekhour:${COLUMN}:10`, () => at('milestone', '10:00', COLUMN)],
+      ['customOneOff', 'hour:15', () => at('customOneOff', '15:00', DAY)],
+      ['braindumpRow', 'hour:9', () => at('braindumpRow', '09:00', DAY)],
+      ['braindumpRow', `weekhour:${COLUMN}:9`, () => at('braindumpRow', '09:00', COLUMN)],
+      ['datedBraindumpRow', 'hour:13', () => at('datedBraindumpRow', '13:00', DAY)],
+      ['habit', 'hour:6', () => row('habit', { startTime: '06:00', timeBucket: 'morning' })],
+      ['habit', `weekhour:${COLUMN}:20`, () => row('habit', { startTime: '20:00', timeBucket: 'evening' })],
+    ] as const)('%s dropped on %s', (key, target, expected) => {
+      expect(drop(key, target)).toEqual(expected());
+    });
+
+    it.each([
+      ['oneOff', () => inBraindump('oneOff')],
+      ['customOneOff', () => inBraindump('customOneOff')],
+      // Rows already in the braindump write the braindump's shape again, as
+      // before: the rule is asked only of a row on the canvas.
+      ['braindumpRow', () => inBraindump('braindumpRow')],
+      ['datedBraindumpRow', () => inBraindump('datedBraindumpRow')],
+      ['habit', () => row('habit', { paused: true })],
+    ] as const)('%s dropped on the braindump', (key, expected) => {
+      expect(drop(key, 'sidebar')).toEqual(expected());
+    });
+
+    it('an unplaced habit dropped on the braindump stays put', () => {
+      const loose = { ...items.habit, repeatFrequency: 'none', timeBucket: undefined, startTime: undefined } as Item;
+      const c = ctx({
+        itemType: 'habit',
+        draggedPlacement: placementOf(loose),
+        draggedItem: loose,
+        milestoneIds: MILESTONES,
+      } as Partial<DropContext>);
+      expect(resolveDrop(loose.id, 'sidebar', c)).toBeNull();
+    });
+
+    it.each([
+      // The Anytime strips and the bucket cells are not block drops the rule
+      // answers on the web: each ends where it did, a series' date included.
+      ['series', 'unscheduled:anytime', () => row('series', { isScheduled: true, timeBucket: 'anytime', startTime: undefined, startDate: DAY, inProjectBlock: false })],
+      ['series', `week:${COLUMN}:anytime`, () => row('series', { isScheduled: true, timeBucket: 'anytime', startTime: undefined, startDate: COLUMN, inProjectBlock: false })],
+      ['oneOff', `week:${COLUMN}:anytime`, () => row('oneOff', { isScheduled: true, timeBucket: 'anytime', startTime: undefined, startDate: COLUMN, inProjectBlock: false })],
+      ['inBlock', 'unscheduled:anytime', () => row('inBlock', { isScheduled: true, timeBucket: 'anytime', startTime: undefined, inProjectBlock: false })],
+      ['series', `week:${COLUMN}:evening`, () => row('series', { isScheduled: true, timeBucket: 'evening', startTime: undefined, startDate: COLUMN, inProjectBlock: false })],
+      ['oneOff', 'unscheduled:afternoon', () => row('oneOff', { isScheduled: true, timeBucket: 'afternoon', startTime: undefined, inProjectBlock: false })],
+      ['habit', `week:${COLUMN}:anytime`, () => row('habit', { timeBucket: 'anytime', startTime: undefined })],
+      ['oneOff', `list:${COLUMN}`, () => row('oneOff', { startDate: COLUMN })],
+      ['series', `list:${COLUMN}`, () => row('series')],
+    ] as const)('%s dropped on %s', (key, target, expected) => {
+      expect(drop(key, target)).toEqual(expected());
+    });
+
+    it('the grammar without the dragged item answers as before (the shell asks it for a group)', () => {
+      expect(resolveDrop('series', 'hour:10', ctx())).toEqual({
+        kind: 'schedule-task',
+        taskId: 'series',
+        bucket: 'morning',
+        time: '10:00',
+        dateStr: DAY,
+      });
+      expect(resolveDrop('series', 'sidebar', ctx())).toEqual({ kind: 'unschedule', itemId: 'series' });
+    });
+  });
+
+  describe('changed: a series moves in time only, and the braindump takes only what Move to Braindump takes', () => {
+    it.each([
+      ['series', 'hour:10', () => at('series', '10:00', SERIES_START)],
+      ['series', 'hour:14', () => at('series', '14:00', SERIES_START)],
+      ['series', `weekhour:${COLUMN}:19`, () => at('series', '19:00', SERIES_START)],
+      ['customSeries', 'hour:11', () => at('customSeries', '11:00', SERIES_START)],
+      ['seriesSkippedThere', `weekhour:${COLUMN}:8`, () => at('seriesSkippedThere', '08:00', SERIES_START)],
+      // In a project block a time alone would leave it there, so the drop
+      // releases it with its own start date.
+      ['seriesInBlock', 'hour:10', () => at('seriesInBlock', '10:00', SERIES_START)],
+      ['seriesInBlock', `weekhour:${COLUMN}:16`, () => at('seriesInBlock', '16:00', SERIES_START)],
+    ] as const)('%s dropped on %s keeps its start date', (key, target, expected) => {
+      expect(drop(key, target)).toEqual(expected());
+    });
+
+    it.each(['series', 'seriesInBlock', 'inBlock', 'done', 'letGo', 'milestone', 'customSeries'] as const)(
+      '%s dropped on the braindump stays where it was',
+      (key) => {
+        expect(drop(key, 'sidebar')).toEqual(row(key));
+      }
+    );
   });
 });

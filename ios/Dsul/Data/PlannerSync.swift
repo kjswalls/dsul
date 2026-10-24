@@ -79,6 +79,20 @@ import Foundation
 ///   toggle into it proves it (`collect` proves its container from O11: the
 ///   route refuses one it doesn't hold, 409 `container_gone`, so a 200 proves
 ///   it is there), which settles a create whose answer was lost.
+/// - **A routine's steps and a season's routines are membership writes, not
+///   field writes** (O12, O13: `moveMember`, `holdRoutine`). Each names ONE
+///   membership, never a list: a step placed after another step (the `.member`
+///   subject the toggles already own), or one `season_routines` row (`.hold`,
+///   its own subject). So a container's failed field write can never put back
+///   an order or a hold that landed, and a failed move or hold never puts a
+///   field back. A failed move's revert puts the step back after the step a
+///   landed move left it after (`rebaseMember`, DsulCore `placingMember`), or
+///   at the place it held before its earliest failure; a failed hold goes back
+///   in or out at its old place (`rebaseHold`), put back after the containers
+///   and before the memberships, so a hold never goes into a season that isn't
+///   back yet. Each refusal the route words (`member_gone`, `anchor_gone`,
+///   `container_gone`) reads "It changed on another device. Showing the
+///   latest.", and the drain refetches.
 /// - **A project rename re-files its items** (O9). The route renames the
 ///   project, then gives every item filed under it by `projectId` the new
 ///   name. The write can't name those items later, so the planner records
@@ -132,10 +146,13 @@ final class PlannerSync {
     /// (tick, braindump row to an hour, Skip/Unskip today, Tomorrow and
     /// Reschedule, Pause/Pause until/Resume, the item sheet's title, notes,
     /// priority, times a day, reminder, time, repeat and project, Delete, Add
-    /// a subtask, Reset streak, and its routine and season toggles), a
+    /// a subtask, Reset streak, its routine and season toggles, and from Week
+    /// and blocks PR 3 Move to Braindump), a
     /// notification's Snooze, and from O8a one field of a routine, a season,
     /// a goal or a project (POST /api/app/containers/:kind/:id), from O10 its
-    /// delete, and from O11 a new one (POST /api/app/containers/:kind).
+    /// delete, from O11 a new one (POST /api/app/containers/:kind), and from
+    /// O12 and O13 one membership of one container (a routine's step moved, a
+    /// season's routine put in or taken out), to a field write's own route.
     enum Write: Sendable, Hashable {
         case complete(id: UUID, date: String, done: Bool, count: Int?)
         case schedule(id: UUID, date: String, startTime: String)
@@ -161,6 +178,12 @@ final class PlannerSync {
         case addSubtask(id: UUID, parent: UUID, title: String)
         /// Reset streak: the counter to 0, the completion history kept.
         case resetStreak(id: UUID)
+        /// (Week and blocks PR 3) Move to Braindump: off every day, back to
+        /// the braindump. The body is the action alone (DsulCore
+        /// `ItemWriteBody.unschedule`); the server asks its own copy of the
+        /// web's gate and writes the store's `UNSCHEDULE_TASK_PATCH`, so the
+        /// planner's step (`unscheduling`) is what it holds after.
+        case unschedule(id: UUID)
         /// (2f-b) Join (`member`) or leave one routine or season: one
         /// membership row. Changes no item field.
         case collect(id: UUID, kind: ContainerKind, containerId: String, member: Bool)
@@ -184,6 +207,31 @@ final class PlannerSync {
         /// lowercased, the name as typed, the kind's starting glyph and a
         /// goal's first day), sent to the kind's route.
         case createContainer(ContainerCreateBody)
+        /// (O12) One step of one routine moved: `item` placed right after the
+        /// step `after`, or first when that is nil (DsulCore
+        /// `MembershipIntent.moveMember`), to the routine's own route. It
+        /// changes the routine's `itemIds` and nothing else: no field of the
+        /// routine, and no field of any item.
+        case moveMember(routineId: String, item: UUID, after: UUID?)
+        /// (O13) One routine put into one season (`hold`) or taken out of it:
+        /// one `season_routines` row (DsulCore
+        /// `MembershipIntent.holdRoutine`), to the season's own route. It
+        /// changes the season's `routineIds` and nothing else.
+        case holdRoutine(seasonId: String, routineId: String, hold: Bool)
+
+        /// (O12, O13) What a membership write asks, and of which container's
+        /// route; nil for every other write.
+        var membership: (ref: ContainerRef, intent: MembershipIntent)? {
+            switch self {
+            case .moveMember(let routineId, let item, let after):
+                return (ContainerRef(kind: .routine, id: routineId), .moveMember(item: item, after: after))
+            case .holdRoutine(let seasonId, let routineId, let hold):
+                return (ContainerRef(kind: .season, id: seasonId), .holdRoutine(routineId: routineId, hold: hold))
+            case .complete, .schedule, .capture, .skip, .move, .pause, .edit, .delete, .addSubtask, .resetStreak,
+                 .unschedule, .collect, .snooze, .container, .createContainer:
+                return nil
+            }
+        }
 
         /// What this write changes: its item (a new subtask's is the
         /// subtask, not the parent whose route it goes to), for a delete each
@@ -204,11 +252,15 @@ final class PlannerSync {
                 return named
             case .createContainer(let body):
                 return [.container(body.ref)]
+            case .moveMember(let routineId, let item, _):
+                return [.member(.routine, containerId: routineId, item: item)]
+            case .holdRoutine(let seasonId, let routineId, _):
+                return [.hold(seasonId: seasonId, routineId: routineId)]
             case .snooze:
                 return []
             case .complete(let id, _, _, _), .schedule(let id, _, _), .capture(let id, _), .skip(let id, _, _),
                  .move(let id, _), .pause(let id, _, _, _), .edit(let id, _), .addSubtask(let id, _, _),
-                 .resetStreak(let id):
+                 .resetStreak(let id), .unschedule(let id):
                 return [.item(id)]
             }
         }
@@ -218,16 +270,25 @@ final class PlannerSync {
         /// subtask proves its parent, since the route answers 404 for a parent
         /// that isn't there, and a toggle its item (404 for a missing one) and
         /// (O11) its container (409 `container_gone` for one the route doesn't
-        /// hold live): what settles a create whose answer was lost. No other
-        /// write proves anything it doesn't name.
+        /// hold live): what settles a create whose answer was lost. From O12 a
+        /// step's move proves its step (409 `member_gone` for one the routine
+        /// no longer holds, so a 200 says the join row, and with it the item,
+        /// is there) and its routine (404 for one the user doesn't hold live);
+        /// from O13 a hold proves both its season (404) and its routine (409
+        /// `container_gone`). No other write proves anything it doesn't name.
         var proves: Set<Subject> {
             switch self {
             case .addSubtask(_, let parent, _):
                 return [.item(parent)]
             case .collect(let id, let kind, let containerId, _):
                 return [.item(id), .container(ContainerRef(kind: OrganizeKind(kind), id: containerId))]
-            case .complete, .schedule, .capture, .skip, .move, .pause, .edit, .delete, .resetStreak, .snooze,
-                 .container, .createContainer:
+            case .moveMember(let routineId, let item, _):
+                return [.item(item), .container(ContainerRef(kind: .routine, id: routineId))]
+            case .holdRoutine(let seasonId, let routineId, _):
+                return [.container(ContainerRef(kind: .season, id: seasonId)),
+                        .container(ContainerRef(kind: .routine, id: routineId))]
+            case .complete, .schedule, .capture, .skip, .move, .pause, .edit, .delete, .resetStreak, .unschedule,
+                 .snooze, .container, .createContainer:
                 return []
             }
         }
@@ -255,14 +316,19 @@ final class PlannerSync {
         /// member lists (a routine's or a season's `itemIds`, a season's
         /// `routineIds`, a goal's three roles), which other subjects own.
         case container(ContainerRef)
+        /// (O13) Whether one season holds one routine: the one
+        /// `season_routines` row a `holdRoutine` writes. Its own subject, so a
+        /// failed field write on either container can't put a hold back and a
+        /// failed hold can't put a field back.
+        case hold(seasonId: String, routineId: String)
 
         /// The item it is about: its own id, or the member's; nil for a
-        /// container.
+        /// container and for a hold, which are about no item.
         var itemId: UUID? {
             switch self {
             case .item(let id): id
             case .member(_, _, let item): item
-            case .container: nil
+            case .container, .hold: nil
             }
         }
     }
@@ -273,9 +339,14 @@ final class PlannerSync {
         case item(Item, Place)
         /// It didn't yet: a capture or a new subtask, which made `created`.
         case absent(created: Item)
-        /// (2f-b) Where the item stood in the container's `itemIds` before
-        /// the toggle; nil when it wasn't in it.
+        /// (2f-b, O12) Where the item stood in the container's `itemIds`
+        /// before the toggle, or before a step's move; nil when it wasn't in
+        /// it.
         case member(index: Int?)
+        /// (O13) Whether the season held the routine before the write, and
+        /// where it stood in its `routineIds`. `index` is read only with
+        /// `held`: a take-out puts nothing back at a place.
+        case hold(held: Bool, index: Int?)
         /// (O8a) The container, whole, and its place in the planner's list of
         /// its kind. A revert onto a container still there takes only its
         /// fields; one that is gone (a delete's, O10) comes back whole at
@@ -285,13 +356,13 @@ final class PlannerSync {
         /// `created` (DsulCore `containerCreateRecord`).
         case containerAbsent(created: ContainerSnapshot)
 
-        /// The item it holds, made yet or not; nil for a membership or a
-        /// container.
+        /// The item it holds, made yet or not; nil for a membership, a hold or
+        /// a container.
         var snapshot: Item? {
             switch self {
             case .item(let item, _): item
             case .absent(let created): created
-            case .member, .container, .containerAbsent: nil
+            case .member, .hold, .container, .containerAbsent: nil
             }
         }
     }
@@ -339,6 +410,19 @@ final class PlannerSync {
     private struct MemberTarget {
         let subject: Subject
         let member: Bool
+        let index: Int?
+        /// (O12) Where a landed step move left it: right after another step,
+        /// or first. Nil when no move landed on it, and `index` is the word.
+        let anchor: StepAnchor?
+        /// Its earliest failure, which recorded `index`.
+        let seq: Int
+    }
+
+    /// (O13) One season_routines row's rebase: whether the season holds the
+    /// routine, and at what place in its `routineIds`, nil for last.
+    private struct HoldTarget {
+        let subject: Subject
+        let held: Bool
         let index: Int?
         /// Its earliest failure, which recorded `index`.
         let seq: Int
@@ -570,6 +654,11 @@ final class PlannerSync {
             try await api.addSubtask(parent: parent, id: id, title: title)
         case .resetStreak(let id):
             try await api.resetStreak(id: id)
+        case .unschedule(let id):
+            // No 404 exception: a row that isn't there was never unscheduled,
+            // so it fails and reverts. A 200 for a row already in the
+            // braindump's shape (a retry whose first answer was lost) landed.
+            try await api.unschedule(id: id)
         case .collect(let id, let kind, let containerId, let member):
             try await api.collect(id: id, kind: kind, containerId: containerId, member: member)
         case .snooze(let id, let date, let minutes, let timeZone):
@@ -593,6 +682,18 @@ final class PlannerSync {
             // No 404 exception: a 404 is a kind with no route, and nothing
             // was made.
             try await api.createContainer(body)
+        case .moveMember, .holdRoutine:
+            // No 404 exception either: a container the user doesn't hold
+            // live refuses the whole write (a routine's 404, a season's 404,
+            // and 409 `container_gone` for a hold's routine), and no
+            // membership was written. The body is nil only where the route
+            // would answer 400 (a step placed after itself, a routine id its
+            // `Id` can't read), which no gated control sends; refused here as
+            // the route would refuse it.
+            guard let membership = write.membership,
+                  let body = MembershipWriteBody(membership.intent, for: membership.ref.kind)
+            else { throw APIError.rejected(status: 400, code: "invalid") }
+            try await api.writeMembership(membership.ref, body: body)
         }
     }
 
@@ -822,11 +923,12 @@ final class PlannerSync {
     /// the server never took it. A capture or a new subtask whose own answer
     /// was lost starts from nothing unless a later write that names or proves
     /// it landed. A container's fields are rebased in their own pass
-    /// (`rebaseContainer`) and a membership in another (`rebaseMember`). They
-    /// go back in this order, so a membership never goes into a container
-    /// that isn't back yet: the items; the containers' field restores and
-    /// removals; the containers that come back whole, newest failure first;
-    /// the memberships, newest failure first.
+    /// (`rebaseContainer`), a membership in another (`rebaseMember`) and a
+    /// season's hold of a routine in a third (`rebaseHold`). They go back in
+    /// this order, so a membership or a hold never goes into a container that
+    /// isn't back yet: the items; the containers' field restores and removals;
+    /// the containers that come back whole, newest failure first; the holds,
+    /// newest failure first; the memberships, newest failure first.
     ///
     /// A subject with a write still queued that names or proves it, or that a
     /// queued delete may take with its parent, waits: its failures are kept,
@@ -851,6 +953,7 @@ final class PlannerSync {
         if let planner {
             var targets: [Target] = []
             var containers: [ContainerTarget] = []
+            var holds: [HoldTarget] = []
             var memberships: [MemberTarget] = []
             for (subject, first) in firsts where !waiting.contains(subject) {
                 guard let start = first.before[subject] else { continue }
@@ -859,9 +962,9 @@ final class PlannerSync {
                     targets.append(rebase(subject, from: start, after: first.seq, ordered: ordered,
                                           planner: planner))
                 case .member:
-                    let (member, index) = rebaseMember(subject, from: start, after: first.seq)
-                    memberships.append(MemberTarget(subject: subject, member: member, index: index,
-                                                    seq: first.seq))
+                    memberships.append(rebaseMember(subject, from: start, after: first.seq))
+                case .hold:
+                    holds.append(rebaseHold(subject, from: start, after: first.seq))
                 case .container:
                     if let target = rebaseContainer(subject, from: start, after: first.seq, ordered: ordered,
                                                     planner: planner) {
@@ -875,6 +978,14 @@ final class PlannerSync {
             let goals = planner.goals
             changed = put(targets, on: planner)
             putContainers(containers, on: planner)
+            // (O13) The holds after the containers and before the
+            // memberships, so a hold never goes into a season that isn't back
+            // yet, and newest failure first, each onto the list it was
+            // measured against, as the memberships below.
+            for target in holds.sorted(by: { $0.seq > $1.seq }) {
+                guard case .hold(let seasonId, let routineId) = target.subject else { continue }
+                planner.restoreHold(seasonId, routineId: routineId, held: target.held, at: target.index)
+            }
             // Each index was measured against the list the toggles before it
             // had left (`firsts` is in hash order), so the newest failure goes
             // back first, each onto the list it was measured against, as
@@ -883,7 +994,14 @@ final class PlannerSync {
             // oldest first would give [b, a, c].
             for target in memberships.sorted(by: { $0.seq > $1.seq }) {
                 guard case .member(let kind, let containerId, let item) = target.subject else { continue }
-                planner.restoreMembership(kind, containerId, item: item, member: target.member, at: target.index)
+                // (O12) A move that landed since says where the server put the
+                // step, which beats the place it held before.
+                if let anchor = target.anchor {
+                    planner.restoreMembership(kind, containerId, item: item, after: anchor.id, at: target.index)
+                } else {
+                    planner.restoreMembership(kind, containerId, item: item, member: target.member,
+                                              at: target.index)
+                }
             }
             changed = changed || planner.routines != routines || planner.seasons != seasons
                 || planner.projectRecords != projects || planner.goals != goals
@@ -932,9 +1050,9 @@ final class PlannerSync {
                     || ($0.subjects.contains(subject) && !$0.write.refiledSubjects.contains(subject))
             }
             state = proven ? created : nil
-        case .member, .container, .containerAbsent:
-            // Never reached: a membership goes to `rebaseMember`, a
-            // container to `rebaseContainer`.
+        case .member, .hold, .container, .containerAbsent:
+            // Never reached: a membership goes to `rebaseMember`, a hold to
+            // `rebaseHold`, a container to `rebaseContainer`.
             break
         }
         let zone = planner.timeZoneID
@@ -953,23 +1071,62 @@ final class PlannerSync {
         return Target(subject: subject, item: state, place: recorded?.place, placeSeq: recorded?.seq, seq: seq)
     }
 
-    /// (2f-b) A membership from before its earliest failed toggle, with every
-    /// toggle of it that landed since played in order: out on a remove; in on
-    /// an add, at its old place when it was in before (the server keeps a
-    /// member's place) and else last. `revertFailures` puts the answers back
-    /// through the planner, newest failure first.
-    private func rebaseMember(_ subject: Subject, from start: Before, after seq: Int) -> (member: Bool, index: Int?) {
+    /// (2f-b) A membership from before its earliest failed toggle or step
+    /// move, with every write of it that landed since played in order: out on
+    /// a remove; in on an add, at its old place when it was in before (the
+    /// server keeps a member's place) and else last. (O12) A move that landed
+    /// leaves the step in, after the step it named (`anchor`, nil for first),
+    /// which is where the server holds it and so beats the recorded place; a
+    /// toggle after it drops the anchor again. `revertFailures` puts the
+    /// answers back through the planner, newest failure first.
+    private func rebaseMember(_ subject: Subject, from start: Before, after seq: Int) -> MemberTarget {
         var index: Int? = nil
         if case .member(let at) = start { index = at }
         var member = index != nil
+        var anchor: StepAnchor? = nil
         for write in landed where write.seq > seq && write.subjects.contains(subject) {
-            guard case .collect(_, _, _, let landedMember) = write.write else { continue }
-            member = landedMember
-            // A remove that landed took its place with it: an add after it
-            // goes last, as the server's does.
-            if !landedMember { index = nil }
+            switch write.write {
+            case .collect(_, _, _, let landedMember):
+                member = landedMember
+                // A remove that landed took its place with it: an add after it
+                // goes last, as the server's does.
+                if !landedMember { index = nil }
+                anchor = nil
+            case .moveMember(_, _, let after):
+                // A 200 says the routine holds the step (it answers 409
+                // `member_gone` otherwise), right after the step it named.
+                member = true
+                anchor = after.map { StepAnchor.after($0) } ?? .first
+            case .complete, .schedule, .capture, .skip, .move, .pause, .edit, .delete, .addSubtask, .resetStreak,
+                 .unschedule, .snooze, .container, .createContainer, .holdRoutine:
+                // No other write names a membership.
+                continue
+            }
         }
-        return (member, index)
+        return MemberTarget(subject: subject, member: member, index: index, anchor: anchor, seq: seq)
+    }
+
+    /// (O13) One season's hold of one routine from before its earliest failed
+    /// write, with every hold of that row that landed since played in order:
+    /// in on a hold, out on a take-out, and at the place it held before when
+    /// it was held (the server orders a season's routines not at all, so the
+    /// place is only the list the phone drew). `revertFailures` puts the
+    /// answers back through the planner, newest failure first.
+    private func rebaseHold(_ subject: Subject, from start: Before, after seq: Int) -> HoldTarget {
+        var held = false
+        var index: Int? = nil
+        if case .hold(let was, let at) = start {
+            held = was
+            index = was ? at : nil
+        }
+        for write in landed where write.seq > seq && write.subjects.contains(subject) {
+            guard case .holdRoutine(_, _, let landedHold) = write.write else { continue }
+            held = landedHold
+            // A take-out that landed took its place with it: a hold after it
+            // goes last, as the optimistic step appends it.
+            if !landedHold { index = nil }
+        }
+        return HoldTarget(subject: subject, held: held, index: index, seq: seq)
     }
 
     /// (O8a) A container from before its earliest failed write, with every
@@ -1002,7 +1159,7 @@ final class PlannerSync {
             // create landed after all.
             let proven = later.contains { $0.proves.contains(subject) || $0.subjects.contains(subject) }
             state = proven ? created : nil
-        case .item, .absent, .member:
+        case .item, .absent, .member, .hold:
             return nil
         }
         let stored = planner.settings.timezone
@@ -1121,16 +1278,22 @@ final class PlannerSync {
             return editing(item, edit)
         case .resetStreak:
             return resettingStreak(item)
+        case .unschedule:
+            // Dateless: the server clears the four columns whatever day the
+            // phone sent it from, and keeps the rest (DsulCore
+            // `unscheduling`), so the replay needs no day either.
+            return unscheduling(item)
         case .delete:
             return nil
         case .capture, .addSubtask:
             // It made the item, so there is nothing to play: a rebase already
             // starts from what it made (`created`).
             return item
-        case .collect, .snooze, .createContainer:
-            // Never asked: a toggle names a membership, not its item, a
-            // snooze names nothing, and a create (O11) names only its new
-            // container; none changes a field of the item.
+        case .collect, .snooze, .createContainer, .moveMember, .holdRoutine:
+            // Never asked: a toggle and a step's move (O12) name a
+            // membership, not its item, a snooze names nothing, a create
+            // (O11) names only its new container, and a hold (O13) only its
+            // one join row; none changes a field of the item.
             return item
         case .container(let ref, let intent, _):
             // A project rename (O9) gives each member the new name, by
@@ -1163,11 +1326,12 @@ final class PlannerSync {
 
     // MARK: Words
 
-    /// What the banner says when `write` fails: a container write's or a
-    /// create's refusal in the route's own terms when it has words
-    /// (`OrganizeCopy.refusal`, a `pause_refused` among them, and a project
-    /// create's `name_taken` and `name_in_trash` naming the name it sent),
-    /// else what any failed write says.
+    /// What the banner says when `write` fails: a container write's, a
+    /// create's or a membership write's refusal in the route's own terms when
+    /// it has words (`OrganizeCopy.refusal`, a `pause_refused` among them, a
+    /// project create's `name_taken` and `name_in_trash` naming the name it
+    /// sent, and O12's and O13's three `*_gone` codes), else what any failed
+    /// write says.
     static func writeFailureText(_ error: Error, for write: Write) -> String {
         if case .rejected(_, let code)? = error as? APIError {
             switch write {
@@ -1175,6 +1339,12 @@ final class PlannerSync {
                 if let words = OrganizeCopy.refusal(code: code, for: intent) { return words }
             case .createContainer(let body):
                 if let words = OrganizeCopy.refusal(code: code, for: body) { return words }
+            case .moveMember, .holdRoutine:
+                // (O12, O13) `member_gone`, `anchor_gone` and
+                // `container_gone` all read "It changed on another device.
+                // Showing the latest.", whatever was sent.
+                if let membership = write.membership,
+                   let words = OrganizeCopy.refusal(code: code, for: membership.intent) { return words }
             default:
                 break
             }

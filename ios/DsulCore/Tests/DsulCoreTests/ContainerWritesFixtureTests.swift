@@ -30,6 +30,16 @@ import DsulCore
 // (`after`), which the phone's own (`containerCreateRecord`) must equal; and
 // `createInvalid`, bodies the route answers 400 and the phone never builds
 // (ContainerCreate.swift).
+//
+// From O12, `moves`: a routine's `moveMember` over the member order the route
+// read (`before.itemIds`), answered 200 with the order it wrote, or 409
+// `member_gone` / `anchor_gone` with the order untouched; and from O13,
+// `holds`: a season's `holdRoutine` over the routines it held, with whether
+// the routine named is live, answered 200 with the routines it holds after
+// (in the payload's routine-id order, so compared as a set) or 409
+// `container_gone`. `invalid` gains the membership bodies the route refuses.
+// The phone must send exactly the body (ids lowercased), and its own answer
+// (`memberMoveResult`, `routineHoldResult`) must be the route's.
 
 /// One case of `cases`, its containers read as the kind says.
 private struct WriteCase: Decodable, Sendable {
@@ -150,6 +160,48 @@ private struct CreateCase: Decodable, Sendable {
     }
 }
 
+/// One row of `moves` (O12): the routine's member order as the route read
+/// it, the body sent, and what the route answered with the order after.
+private struct MoveCase: Decodable, Sendable {
+    let name: String
+    let kind: String
+    let before: MoveBefore
+    let body: JSONValue
+    let expected: MoveExpected
+}
+
+private struct MoveBefore: Decodable, Sendable {
+    let itemIds: [String]
+}
+
+private struct MoveExpected: Decodable, Sendable {
+    let status: Int
+    let error: String?
+    let itemIds: [String]
+}
+
+/// One row of `holds` (O13): the season's routines as the route read them,
+/// whether the routine named is live, the body sent, and what the route
+/// answered with the routines after.
+private struct HoldCase: Decodable, Sendable {
+    let name: String
+    let kind: String
+    let before: HoldBefore
+    let routineLive: Bool
+    let body: JSONValue
+    let expected: HoldExpected
+}
+
+private struct HoldBefore: Decodable, Sendable {
+    let routineIds: [String]
+}
+
+private struct HoldExpected: Decodable, Sendable {
+    let status: Int
+    let error: String?
+    let routineIds: [String]
+}
+
 private struct ContainerWritesFixture: Decodable, Sendable {
     let cases: [WriteCase]
     let invalid: [InvalidCase]
@@ -157,6 +209,8 @@ private struct ContainerWritesFixture: Decodable, Sendable {
     let creates: [CreateCase]
     /// Shaped as `invalid`: each answered 400 `invalid`.
     let createInvalid: [InvalidCase]
+    let moves: [MoveCase]
+    let holds: [HoldCase]
 }
 
 private func load() throws -> ContainerWritesFixture {
@@ -284,6 +338,61 @@ private func phoneIntent(_ body: JSONValue, kind: OrganizeKind) -> ContainerInte
     }
 }
 
+/// The membership intent a body means (O12, O13), read by shape as strictly
+/// as the route's schema reads it: nil for any body no membership intent can
+/// carry (another action, a key the schema doesn't name, a missing `afterId`
+/// or `hold`, a hold that is not a boolean, a step id that is no uuid). Which
+/// kind takes it, a step after itself, and a routine id that is no uuid are
+/// left to `MembershipWriteBody`'s own answer. A routine id is kept as sent
+/// (the planner's ids are never parsed).
+private func phoneMembership(_ body: JSONValue) -> MembershipIntent? {
+    guard case .object(let o) = body, case .string(let action)? = o["action"] else { return nil }
+    let keys = Set(o.keys)
+    switch action {
+    case "moveMember":
+        guard keys == ["action", "itemId", "afterId"], case .string(let raw)? = o["itemId"],
+              let item = UUID(uuidString: raw)
+        else { return nil }
+        switch o["afterId"] {
+        case .null?: return .moveMember(item: item, after: nil)
+        case .string(let after)?:
+            guard let anchor = UUID(uuidString: after) else { return nil }
+            return .moveMember(item: item, after: anchor)
+        default: return nil
+        }
+    case "holdRoutine":
+        guard keys == ["action", "routineId", "hold"], case .string(let routine)? = o["routineId"],
+              case .bool(let hold)? = o["hold"]
+        else { return nil }
+        return .holdRoutine(routineId: routine, hold: hold)
+    default:
+        return nil
+    }
+}
+
+/// A body's value at `key`, or nil when it has none (or is no object).
+private func field(_ body: JSONValue, _ key: String) -> JSONValue? {
+    guard case .object(let o) = body else { return nil }
+    return o[key]
+}
+
+/// `body` as the JSON it encodes to.
+private func json(_ body: MembershipWriteBody) throws -> JSONValue {
+    let data = try JSONEncoder().encode(body)
+    return try JSONDecoder().decode(JSONValue.self, from: data)
+}
+
+/// A membership body as the phone sends it: the route reads every id
+/// lowercased, and the phone sends them lowercased, so a row that sends
+/// capitals is the same write with its ids lowercased.
+private func lowercasedIDs(_ body: JSONValue) -> JSONValue {
+    guard case .object(var o) = body else { return body }
+    for key in ["itemId", "afterId", "routineId"] {
+        if case .string(let id)? = o[key] { o[key] = .string(id.lowercased()) }
+    }
+    return .object(o)
+}
+
 /// What a create body carries, read by shape as strictly as the route's
 /// schema reads it: nil for a body no create can carry (not an object, a key
 /// no create schema names, a missing or mistyped id or name, a null icon or
@@ -383,6 +492,32 @@ private func buildable(from bodies: [JSONValue]) -> [ContainerIntent] {
     return out
 }
 
+/// Every membership intent the phone could build out of the ids the fixture
+/// names (each step id with every anchor and none; each routine id put in and
+/// taken out): the nearest the phone could come to each refused body.
+private func buildableMemberships(from bodies: [JSONValue]) -> [MembershipIntent] {
+    var steps: [UUID] = []
+    var routines: [String] = []
+    func add<T: Equatable>(_ value: T, to list: inout [T]) { if !list.contains(value) { list.append(value) } }
+    for body in bodies {
+        guard case .object(let o) = body else { continue }
+        for key in ["itemId", "afterId"] {
+            if case .string(let s)? = o[key], let id = UUID(uuidString: s) { add(id, to: &steps) }
+        }
+        if case .string(let s)? = o["routineId"] { add(s, to: &routines) }
+    }
+    var out: [MembershipIntent] = []
+    for item in steps {
+        out.append(.moveMember(item: item, after: nil))
+        for after in steps { out.append(.moveMember(item: item, after: after)) }
+    }
+    for routine in routines {
+        out.append(.holdRoutine(routineId: routine, hold: true))
+        out.append(.holdRoutine(routineId: routine, hold: false))
+    }
+    return out
+}
+
 @Suite struct ContainerWritesFixtureTests {
     /// Every action the phone has is in the fixture on every kind that takes
     /// it, and every state of each kind's Status.
@@ -397,8 +532,10 @@ private func buildable(from bodies: [JSONValue]) -> [ContainerIntent] {
         let intents = f.cases.compactMap { c in phoneIntent(c.body, kind: c.kind).map { (c.kind, $0) } }
         #expect(intents.count == f.cases.count)
         // `cases` are the field intents; the delete and the create have their
-        // own sections, each on every kind.
-        for action in ContainerAction.allCases where action != .delete && action != .create {
+        // own sections, each on every kind, and so do a move and a hold (O12,
+        // O13), each on its one kind.
+        let ownSections: Set<ContainerAction> = [.delete, .create, .moveMember, .holdRoutine]
+        for action in ContainerAction.allCases where !ownSections.contains(action) {
             for kind in action.kinds {
                 #expect(intents.contains { $0.0 == kind && $0.1.action == action }, "\(action) on \(kind)")
             }
@@ -411,6 +548,16 @@ private func buildable(from bodies: [JSONValue]) -> [ContainerIntent] {
             #expect(f.creates.contains { $0.kind == kind }, "create on \(kind)")
             #expect(f.createInvalid.contains { $0.kind == kind.rawValue }, "an invalid create on \(kind)")
         }
+        #expect(f.moves.allSatisfy { $0.kind == "routine" } && ContainerAction.moveMember.kinds == [.routine])
+        #expect(f.holds.allSatisfy { $0.kind == "season" } && ContainerAction.holdRoutine.kinds == [.season])
+        for code in ["member_gone", "anchor_gone"] {
+            #expect(f.moves.contains { $0.expected.error == code }, "\(code)")
+        }
+        #expect(f.moves.contains { $0.expected.status == 200 && field($0.body, "afterId") == .null })
+        #expect(f.holds.contains { $0.expected.error == "container_gone" })
+        #expect(f.holds.contains { c in c.expected.status == 200 && field(c.body, "hold") == .bool(true) })
+        #expect(f.holds.contains { c in c.expected.status == 200 && field(c.body, "hold") == .bool(false) })
+        #expect(f.invalid.contains { phoneMembership($0.body) != nil })
         #expect(intents.contains { if case .pause = $0.1 { return true }; return false })
         #expect(intents.contains { if case .resume = $0.1 { return true }; return false })
         for state in SeasonState.allCases {
@@ -506,10 +653,17 @@ private func buildable(from bodies: [JSONValue]) -> [ContainerIntent] {
         let f = try load()
         let intents = buildable(from: f.cases.map(\.body) + f.invalid.map(\.body))
         var built: [OrganizeKind: Set<JSONValue>] = [:]
+        let memberships = buildableMemberships(
+            from: f.cases.map(\.body) + f.invalid.map(\.body) + f.moves.map(\.body) + f.holds.map(\.body)
+        )
         for kind in OrganizeKind.allCases {
             var bodies = Set<JSONValue>()
             for intent in intents {
                 guard let body = ContainerWriteBody(intent, for: kind) else { continue }
+                bodies.insert(try json(body))
+            }
+            for intent in memberships {
+                guard let body = MembershipWriteBody(intent, for: kind) else { continue }
                 bodies.insert(try json(body))
             }
             built[kind] = bodies
@@ -517,6 +671,9 @@ private func buildable(from bodies: [JSONValue]) -> [ContainerIntent] {
         for c in f.invalid {
             #expect(c.expected.status == 400 && c.expected.error == "invalid", "\(c.name)")
             let kind = try #require(OrganizeKind(rawValue: c.kind), "\(c.name): kind \(c.kind)")
+            if let membership = phoneMembership(c.body) {
+                #expect(MembershipWriteBody(membership, for: kind) == nil, "\(c.name): the phone would build it")
+            }
             if let intent = phoneIntent(c.body, kind: kind) {
                 #expect(ContainerWriteBody(intent, for: kind) == nil, "\(c.name): the phone would build it")
                 if let container = sample(kind) {
@@ -551,6 +708,79 @@ private func buildable(from bodies: [JSONValue]) -> [ContainerIntent] {
             // No field moves: the fields-only step hands it back as it was.
             #expect(applyingContainer(intent, to: container, at: noon, timeZone: "UTC", today: "2026-10-23")
                 == container, "\(c.name)")
+        }
+    }
+
+    /// O12: the phone's move is the body the route took, ids lowercased and
+    /// `afterId` always (null for first); and its own answer over the order
+    /// the route read is the route's: the order it wrote, or the refusal with
+    /// nothing moved. A second send of a move that landed writes nothing.
+    @Test func eachMoveIsTheRoutes() throws {
+        let moves = try load().moves
+        #expect(moves.count >= 10)
+        // One row sends capitals; the route reads them lowercase.
+        #expect(moves.contains { lowercasedIDs($0.body) != $0.body })
+        for c in moves {
+            let intent = try #require(phoneMembership(c.body), "\(c.name): a body the phone can't mean")
+            guard case .moveMember(let item, let after) = intent else {
+                Issue.record("\(c.name): not a move")
+                continue
+            }
+            #expect(intent.action == .moveMember && intent.kind == .routine, "\(c.name)")
+            let body = try #require(MembershipWriteBody(intent, for: .routine), "\(c.name): the phone builds none")
+            #expect(body.action == .moveMember, "\(c.name)")
+            #expect(try json(body) == lowercasedIDs(c.body), "\(c.name)")
+            let before = try #require(organizeUUIDs(c.before.itemIds), "\(c.name): before")
+            let expected = try #require(organizeUUIDs(c.expected.itemIds), "\(c.name): expected")
+            switch memberMoveResult(before, item: item, after: after) {
+            case .members(let order):
+                #expect(c.expected.status == 200 && c.expected.error == nil, "\(c.name): expected \(c.expected.error ?? "")")
+                #expect(order == expected, "\(c.name): \(order)")
+                #expect(order == moveMemberAfter(before, item: item, after: after), "\(c.name): moveMemberAfter")
+                #expect(memberMoveResult(order, item: item, after: after) == .members(order), "\(c.name): a retry")
+            case .refused(let code, let status):
+                #expect(code == c.expected.error && status == c.expected.status, "\(c.name): refused \(code)")
+                #expect(expected == before, "\(c.name): a refusal moves nothing")
+            }
+        }
+    }
+
+    /// O13: the phone's hold is the body the route took, the routine id
+    /// lowercased; and its own answer over the routines the route read is the
+    /// route's: them with the routine in or out (the payload lists them by
+    /// routine id, so as a set), or `container_gone` with nothing changed for
+    /// a routine that is not live. A second send writes nothing.
+    @Test func eachHoldIsTheRoutes() throws {
+        let holds = try load().holds
+        #expect(holds.count >= 6)
+        #expect(holds.contains { lowercasedIDs($0.body) != $0.body })
+        for c in holds {
+            let intent = try #require(phoneMembership(c.body), "\(c.name): a body the phone can't mean")
+            guard case .holdRoutine(let sent, let hold) = intent else {
+                Issue.record("\(c.name): not a hold")
+                continue
+            }
+            #expect(intent.action == .holdRoutine && intent.kind == .season, "\(c.name)")
+            let body = try #require(MembershipWriteBody(intent, for: .season), "\(c.name): the phone builds none")
+            #expect(body.action == .holdRoutine, "\(c.name)")
+            #expect(try json(body) == lowercasedIDs(c.body), "\(c.name)")
+            // The route reads the id lowercased; the phone's ids already are.
+            let routineId = sent.lowercased()
+            switch routineHoldResult(c.before.routineIds, routineId: routineId, hold: hold, routineLive: c.routineLive) {
+            case .members(let held):
+                #expect(c.expected.status == 200 && c.expected.error == nil, "\(c.name): expected \(c.expected.error ?? "")")
+                #expect(Set(held) == Set(c.expected.routineIds) && held.count == c.expected.routineIds.count,
+                        "\(c.name): \(held)")
+                #expect(routineHoldResult(held, routineId: routineId, hold: hold, routineLive: true) == .members(held),
+                        "\(c.name): a retry")
+                // A hold or take-out already so is the list as it was, in its order.
+                if Set(c.before.routineIds) == Set(c.expected.routineIds) {
+                    #expect(held == c.before.routineIds, "\(c.name): already so")
+                }
+            case .refused(let code, let status):
+                #expect(code == c.expected.error && status == c.expected.status, "\(c.name): refused \(code)")
+                #expect(c.expected.routineIds == c.before.routineIds, "\(c.name): a refusal changes nothing")
+            }
         }
     }
 
@@ -685,6 +915,8 @@ private let oct23 = DayString("2026-10-23")!
         for action in [ContainerAction.rename, .icon, .color, .delete, .create] {
             #expect(action.kinds == [.routine, .season, .goal, .project])
         }
+        #expect(ContainerAction.moveMember.kinds == [.routine])
+        #expect(ContainerAction.holdRoutine.kinds == [.season])
         #expect(ContainerIntent.delete.action == .delete)
         for kind in OrganizeKind.allCases {
             #expect(ContainerIntent.delete.applies(to: kind))
@@ -725,8 +957,12 @@ private let oct23 = DayString("2026-10-23")!
         func list(_ kind: OrganizeKind) -> [String] {
             ContainerAction.allCases.filter { $0.kinds.contains(kind) }.map(\.rawValue)
         }
-        #expect(list(.routine) == ["pause", "usualTime", "notes", "rename", "icon", "color", "delete", "create"])
-        #expect(list(.season) == ["state", "dates", "notes", "rename", "icon", "color", "delete", "create"])
+        #expect(list(.routine) == [
+            "pause", "usualTime", "notes", "rename", "icon", "color", "moveMember", "delete", "create",
+        ])
+        #expect(list(.season) == [
+            "state", "dates", "notes", "rename", "icon", "color", "holdRoutine", "delete", "create",
+        ])
         #expect(list(.goal) == ["state", "window", "why", "rename", "icon", "color", "delete", "create"])
         #expect(list(.project) == ["notes", "rename", "icon", "color", "delete", "create"])
     }
@@ -1157,6 +1393,131 @@ private let oct23 = DayString("2026-10-23")!
         #expect(!o11.takes(.create, on: .goal))
         #expect(!o11.takes(ContainerAction.delete, on: .project))
         #expect(!o11.takes(.create, on: .project))
+        // O12 and O13: a move on a routine and a hold on a season, each only
+        // where listed, and only on its own kind.
+        let move = MembershipIntent.moveMember(item: one, after: nil)
+        let hold = MembershipIntent.holdRoutine(routineId: "r", hold: true)
+        #expect(!full.takes(.moveMember, on: .routine))
+        #expect(!full.takes(move, on: .routine))
+        #expect(!full.takes(hold, on: .season))
+        let o12 = ContainerWrites(routine: ["moveMember"], season: ["holdRoutine"], goal: ["moveMember"],
+                                  project: ["holdRoutine"])
+        #expect(o12.takes(.moveMember, on: .routine))
+        #expect(o12.takes(move, on: .routine))
+        #expect(o12.takes(.holdRoutine, on: .season))
+        #expect(o12.takes(hold, on: .season))
+        #expect(!o12.takes(.moveMember, on: .goal))
+        #expect(!o12.takes(move, on: .goal))
+        #expect(!o12.takes(.holdRoutine, on: .project))
+        #expect(!o12.takes(hold, on: .project))
+        #expect(!ContainerWrites(season: ["moveMember"]).takes(move, on: .season))
+    }
+
+    /// O12 and O13: each membership intent goes to its one kind's route, and a
+    /// step placed after itself is no body at all.
+    @Test func aMembershipBodyIsBuiltOnlyForItsKind() throws {
+        let move = MembershipIntent.moveMember(item: one, after: two)
+        let first = MembershipIntent.moveMember(item: three, after: nil)
+        let hold = MembershipIntent.holdRoutine(routineId: "AAAAAAAA-0000-4000-8000-000000000001", hold: true)
+        let out = MembershipIntent.holdRoutine(routineId: "aaaaaaaa-0000-4000-8000-000000000002", hold: false)
+        #expect(move.action == .moveMember && move.kind == .routine)
+        #expect(hold.action == .holdRoutine && hold.kind == .season)
+        for kind in OrganizeKind.allCases {
+            #expect((MembershipWriteBody(move, for: kind) != nil) == (kind == .routine), "\(kind)")
+            #expect((MembershipWriteBody(hold, for: kind) != nil) == (kind == .season), "\(kind)")
+            #expect(move.applies(to: kind) == (kind == .routine), "\(kind)")
+            #expect(hold.applies(to: kind) == (kind == .season), "\(kind)")
+        }
+        #expect(try json(#require(MembershipWriteBody(move, for: .routine))) == .object([
+            "action": .string("moveMember"), "itemId": .string("00000000-0000-4000-8000-000000000001"),
+            "afterId": .string("00000000-0000-4000-8000-000000000002"),
+        ]))
+        // First: `afterId` is sent as null, never left out.
+        #expect(try json(#require(MembershipWriteBody(first, for: .routine))) == .object([
+            "action": .string("moveMember"), "itemId": .string("00000000-0000-4000-8000-000000000003"),
+            "afterId": .null,
+        ]))
+        #expect(try json(#require(MembershipWriteBody(hold, for: .season))) == .object([
+            "action": .string("holdRoutine"), "routineId": .string("aaaaaaaa-0000-4000-8000-000000000001"),
+            "hold": .bool(true),
+        ]))
+        #expect(try json(#require(MembershipWriteBody(out, for: .season))) == .object([
+            "action": .string("holdRoutine"), "routineId": .string("aaaaaaaa-0000-4000-8000-000000000002"),
+            "hold": .bool(false),
+        ]))
+        // A step after itself names no place; a sample routine is no uuid.
+        let itself = MembershipIntent.moveMember(item: one, after: one)
+        #expect(!itself.isWellFormed)
+        #expect(MembershipWriteBody(itself, for: .routine) == nil)
+        #expect(move.isWellFormed && first.isWellFormed && hold.isWellFormed)
+        let sample = MembershipIntent.holdRoutine(routineId: "sample-wind-down", hold: true)
+        #expect(sample.isWellFormed)
+        #expect(MembershipWriteBody(sample, for: .season) == nil)
+        // The route is the container's, as for a field write.
+        #expect(ContainerRoutes.write(ContainerRef(kind: .routine, id: "R1")) == "/api/app/containers/routine/r1")
+    }
+
+    /// The route's answers, by hand, at their edges: a step after itself is
+    /// the body's 400 before anything is read; a gone step is named before a
+    /// gone anchor; a routine not live is refused whichever way it was asked.
+    @Test func theMembershipAnswersAreTheRoutes() {
+        #expect(memberMoveResult([one, two], item: one, after: one) == .refused(code: "invalid", status: 400))
+        #expect(memberMoveResult([one, two], item: three, after: three) == .refused(code: "invalid", status: 400))
+        #expect(memberMoveResult([one, two], item: three, after: UUID()) == .refused(code: "member_gone", status: 409))
+        #expect(memberMoveResult([one, two], item: two, after: three) == .refused(code: "anchor_gone", status: 409))
+        #expect(memberMoveResult([one, two], item: two, after: nil) == .members([two, one]))
+        #expect(memberMoveResult([one, two, three], item: one, after: three) == .members([two, three, one]))
+        #expect(memberMoveResult([], item: one, after: nil) == .refused(code: "member_gone", status: 409))
+        #expect(routineHoldResult(["a"], routineId: "b", hold: true, routineLive: true) == .members(["a", "b"]))
+        #expect(routineHoldResult(["a", "b"], routineId: "a", hold: false, routineLive: true) == .members(["b"]))
+        #expect(routineHoldResult(["a"], routineId: "a", hold: true, routineLive: true) == .members(["a"]))
+        #expect(routineHoldResult(["a"], routineId: "b", hold: false, routineLive: true) == .members(["a"]))
+        for hold in [true, false] {
+            #expect(routineHoldResult(["a"], routineId: "a", hold: hold, routineLive: false)
+                == .refused(code: "container_gone", status: 409))
+        }
+        // The sample's ids step the same way.
+        #expect(routineHoldResult([], routineId: "sample-wind-down", hold: true, routineLive: true)
+            == .members(["sample-wind-down"]))
+    }
+
+    /// The phone's revert of a step (design §6.4): after the anchor a landed
+    /// move named while it is still there, first for none, else back at its
+    /// old place; and the generic membership toggle over a season's routines.
+    @Test func aStepIsPutBackAfterItsAnchorOrInItsPlace() {
+        let four = UUID(uuidString: "00000000-0000-4000-8000-000000000004")!
+        #expect(placingMember([one, two, three], item: one, after: three, orAt: 0) == [two, three, one])
+        #expect(placingMember([one, two, three], item: three, after: nil, orAt: 2) == [three, one, two])
+        // The anchor is gone: its old place.
+        #expect(placingMember([one, two, three], item: three, after: four, orAt: 0) == [three, one, two])
+        #expect(placingMember([one, two, three], item: three, after: four, orAt: nil) == [one, two, three])
+        // The anchor is itself: its old place.
+        #expect(placingMember([one, two, three], item: two, after: two, orAt: 0) == [two, one, three])
+        // Not in the list: put back, after the anchor or at its place.
+        #expect(placingMember([one, two], item: three, after: one, orAt: nil) == [one, three, two])
+        #expect(placingMember([one, two], item: three, after: four, orAt: 1) == [one, three, two])
+        #expect(placingMember([one, two], item: three, after: four, orAt: nil) == [one, two, three])
+        // A season's routines, by the same toggle as a member's.
+        #expect(settingMembership(["a", "b"], item: "c", member: true) == ["a", "b", "c"])
+        #expect(settingMembership(["a", "b"], item: "a", member: false) == ["b"])
+        #expect(settingMembership(["a", "b"], item: "b", member: true, at: 0) == ["b", "a"])
+    }
+
+    /// The membership refusals all say one thing, whatever was sent.
+    @Test func aRefusedMembershipWriteSaysItChangedElsewhere() {
+        let writes: [MembershipIntent] = [
+            .moveMember(item: one, after: two), .moveMember(item: one, after: nil),
+            .holdRoutine(routineId: "r", hold: true), .holdRoutine(routineId: "r", hold: false),
+        ]
+        for write in writes {
+            for code in ["member_gone", "anchor_gone", "container_gone"] {
+                #expect(OrganizeCopy.refusal(code: code, for: write) == OrganizeCopy.changedElsewhere, "\(code)")
+            }
+            #expect(OrganizeCopy.refusal(code: "not_found", for: write) == nil)
+            #expect(OrganizeCopy.refusal(code: nil, for: write) == nil)
+            #expect(OrganizeCopy.refusal(code: "name_taken", for: write) == nil)
+        }
+        #expect(OrganizeCopy.changedElsewhere == "It changed on another device. Showing the latest.")
     }
 
     @Test func aRefusedPauseIsWorded() {

@@ -27,7 +27,6 @@ const NOT_MIRRORED: Record<string, string> = {
     'the server\'s row mapping and membership writes, described, not ported: the phone meets them only through app/api/app/ and tests/fixtures/app/, both in the filter',
   'components/planner/item-dialog.tsx': 'EditCopy.swift: a reader of lib/item-edit.ts EDIT_COPY, whose words are the source (in the filter)',
   'components/planner/item-detail-sections.tsx': 'EditCopy.swift: a reader of lib/item-edit.ts EDIT_COPY (in the filter)',
-  'components/primitives/pills.tsx': 'EditCopy.swift: a reader of lib/item-edit.ts streakRunText (in the filter)',
 };
 
 /** The pattern the `changes` job greps the changed paths with. */
@@ -111,6 +110,94 @@ describe('the iOS change filter', () => {
     }
   });
 
+  it('matches what Week reads, and the fixtures that pin it', () => {
+    // A phone week is seven calls of the day pipeline (week.json), each day's
+    // Anytime rows `deriveUntimedRows` (timed.json's `untimed`), its days
+    // `weekStartOf` plus `addDaysStr`.
+    for (const p of [
+      'tests/fixtures/day/week.json',
+      'tests/fixtures/day/timed.json',
+      'components/views/day-schedule.tsx',
+      'lib/container-schedule.ts',
+      'lib/day-items.ts',
+      'lib/active.ts',
+      'lib/away.ts',
+    ]) {
+      expect(filter.test(p), p).toBe(true);
+    }
+    // The web's week views and their desktop geometry are not ported: the phone
+    // draws its own seven sections over the same per-day answers.
+    for (const p of [
+      'components/views/week-list.tsx',
+      'components/views/week-buckets.tsx',
+      'components/shell/day-tabs.tsx',
+      'lib/week-columns.ts',
+      'lib/use-week-columns.ts',
+    ]) {
+      expect(filter.test(p), p).toBe(false);
+    }
+  });
+
+  it('matches what Move to Braindump reads, and the fixtures that pin it', () => {
+    // The gate (lib/row-moves.ts canSendToBraindump, through lib/verb-gates.ts
+    // VERB_GATES.braindump and lib/item-verbs.ts), the step (the store's
+    // unscheduleTask, lib/item-edit.ts UNSCHEDULE_TASK_PATCH), the milestones
+    // (lib/goals.ts milestoneItemIds), "already listed" (lib/braindump-members.ts)
+    // and the route's `unschedule` intent (lib/app-api.ts, app/api/app/).
+    for (const p of [
+      'lib/row-moves.ts',
+      'lib/verb-gates.ts',
+      'lib/item-verbs.ts',
+      'lib/item-edit.ts',
+      'lib/planner-store.ts',
+      'lib/goals.ts',
+      'lib/braindump-members.ts',
+      'lib/item-registry.ts',
+      'lib/app-api.ts',
+      'app/api/app/items/[id]/route.ts',
+      'tests/fixtures/day/row-moves.json',
+      'tests/fixtures/day/verbs.json',
+      'tests/fixtures/day/verb-writes.json',
+      'tests/fixtures/app/planner-response.json',
+    ]) {
+      expect(filter.test(p), p).toBe(true);
+    }
+    // The web's own surfaces each check "already in the braindump" inline; the
+    // phone asks lib/braindump-members.ts instead, so they are not ported.
+    for (const p of ['components/primitives/task-row.tsx', 'components/mobile/schedule-sheet.tsx']) {
+      expect(filter.test(p), p).toBe(false);
+    }
+  });
+
+  it('matches the shared block drop rule, and not the web drop that maps it', () => {
+    // The rule (lib/block-moves.ts planBlockDrop, PR 7) and what it reads: the
+    // registry's dateAnchored and pausable, Move to Braindump's gate
+    // (lib/row-moves.ts), "already listed" (lib/braindump-members.ts), the
+    // hour's part of day (lib/time-bucket.ts), and the fixture BlockMoves.swift
+    // is checked against.
+    for (const p of [
+      'lib/block-moves.ts',
+      'lib/row-moves.ts',
+      'lib/item-registry.ts',
+      'lib/braindump-members.ts',
+      'lib/time-bucket.ts',
+      'lib/recurrence.ts',
+      'tests/fixtures/day/block-moves.json',
+    ]) {
+      expect(filter.test(p), p).toBe(true);
+    }
+    // The web maps the rule's answers to store calls (PR 11); the phone maps
+    // them to intents of its own, so none of these is ported.
+    for (const p of [
+      'lib/dnd/handle-drag-end.ts',
+      'lib/dnd/sidebar-drop.ts',
+      'components/shell/app-shell.tsx',
+      'components/sidebar/braindump.tsx',
+    ]) {
+      expect(filter.test(p), p).toBe(false);
+    }
+  });
+
   it('matches what Organize ports, and the fixtures that pin it', () => {
     for (const p of [
       'tests/fixtures/organize/labels.json',
@@ -175,6 +262,63 @@ describe('the iOS change filter', () => {
       'lib/gate-toggle.test.ts',
       'tests/fixtures/organize.json',
       'lib/category-icons.test.ts',
+    ]) {
+      expect(filter.test(p), p).toBe(false);
+    }
+  });
+
+  it('matches the rule Today’s project dots read (O15), and not the web rows that draw it', () => {
+    // Today's dots and section marks, the item sheet's chip and its project
+    // menu rows are the grid's rule: projectColorToken (lib/accent-colors.ts),
+    // which planner-store's getProjectColor answers through, folding as the
+    // project kind does, pinned by look.json's projectColor, tokens and colors.
+    for (const p of [
+      'lib/accent-colors.ts',
+      'lib/planner-store.ts',
+      'lib/container-registry.ts',
+      'tests/fixtures/organize/look.json',
+    ]) {
+      expect(filter.test(p), p).toBe(true);
+    }
+    // The web's readers of getProjectColor: the rule lives in lib/, so how a
+    // web row draws its dot is not a port.
+    for (const p of [
+      'components/primitives/task-row.tsx',
+      'components/primitives/lane-cap.tsx',
+      'components/primitives/display-menu.tsx',
+      'components/shell/bulk-edit-menu.tsx',
+    ]) {
+      expect(filter.test(p), p).toBe(false);
+    }
+  });
+
+  it('matches what the Schedule’s blocks read (Week and blocks PRs 4 to 6), and not the web’s grid around them', () => {
+    // A block's words (schedule-copy.json: formatClock and formatHourLabel in
+    // day-schedule.tsx, formatDuration in pills.tsx, the stored time format
+    // through use-time-format.ts), its pane and lane numbers
+    // (schedule-constants.ts) and the overlap pass (schedule-overlap.ts
+    // `planOverlaps`, overlap.json).
+    for (const p of [
+      'tests/fixtures/day/schedule-copy.json',
+      'tests/fixtures/day/overlap.json',
+      'components/views/day-schedule.tsx',
+      'components/primitives/pills.tsx',
+      'lib/use-time-format.ts',
+      'lib/schedule-constants.ts',
+      'lib/schedule-overlap.ts',
+    ]) {
+      expect(filter.test(p), p).toBe(true);
+    }
+    // The desktop grid around the blocks: grouping lanes and their focus, the
+    // fit-to-window hour height and the settle glide. The phone has none of
+    // them (a fixed 75pt hour, one field, no lanes).
+    for (const p of [
+      'lib/schedule-lanes.ts',
+      'lib/schedule-focus-store.ts',
+      'lib/use-fit-hour-px.ts',
+      'lib/settle.ts',
+      'tests/unit/overlap-fixtures.test.ts',
+      'tests/unit/schedule-overlap.test.ts',
     ]) {
       expect(filter.test(p), p).toBe(false);
     }

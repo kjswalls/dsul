@@ -14,6 +14,15 @@ enum ListFilter: Hashable, Sendable {
     case project(String)
 }
 
+/// One day of a week and its rows, in `SamplePlanner.dayItems(on:)` order:
+/// what `weekRows(of:)` answers for Week × List and Week × Buckets.
+struct WeekDayRows: Identifiable, Hashable, Sendable {
+    let day: DayString
+    let rows: [SampleItem]
+
+    var id: DayString { day }
+}
+
 /// One section of the List layout: a routine (with done/total), a project,
 /// or the day's loose items.
 struct ListSection: Identifiable, Hashable, Sendable {
@@ -55,9 +64,13 @@ enum PlannerSheet: Identifiable, Hashable, Sendable {
 /// - `selected`: the day Today shows. A row on List, Buckets, Schedule or the
 ///   braindump opens with it, so the sheet acts on the day the row was drawn on.
 /// - `today`: the user's day now. Search opens with it: it has no day of its own.
+/// - `on(day)`: that day, whatever Today has selected. A row in a Week section
+///   opens with its own day, so Thursday's row ticks and skips Thursday while
+///   the week's anchor is Monday (design W13).
 /// Pause and Resume are dateless and read today either way.
 enum SheetDay: Hashable, Sendable {
     case selected, today
+    case on(DayString)
 }
 
 /// A one-line message over Today: "Signed in as …", or a write or fetch the
@@ -87,8 +100,9 @@ struct PlannerBanner: Identifiable, Equatable, Sendable {
 /// `deleteTask` / `deleteHabit` (the time as the dialog's `commitEdit` saves
 /// it; the date is Reschedule's `move`; the project as the bulk Move to
 /// project files it), Add a subtask the store's `addTask`, Reset streak its
-/// `resetHabitStreak` (DsulCore ItemEdit.swift) and the routine and season
-/// toggles its `setItemsCollected` (DsulCore Membership.swift), so the phone
+/// `resetHabitStreak` (DsulCore ItemEdit.swift), the routine and season
+/// toggles its `setItemsCollected` (DsulCore Membership.swift) and Move to
+/// Braindump its `unscheduleTask` (DsulCore VerbWrites.swift), so the phone
 /// and the web agree on the same data. Every change here is optimistic and
 /// immediate; when signed in, `sync` then sends it to the server
 /// (PlannerSync). A verb or an edit re-reads its item and asks its gate again
@@ -113,7 +127,8 @@ final class SamplePlanner {
     /// read them (`PlannerPayload.goals`), which hides the section rather
     /// than saying there are none. Decoded whatever `settings.goalsEnabled`
     /// says: the switch is a display gate, as on the web. A goal gates
-    /// nothing on a day, so no rule here reads them.
+    /// nothing on a day; the one rule here that reads them is Move to
+    /// Braindump's, which never takes a milestone (`milestoneIds`).
     private(set) var goals: [Goal]? = nil
     /// The user's trips (`PlannerPayload.awayPeriods`, vacation mode): asked
     /// first by every "is this live" question here, as on the web, so a trip
@@ -174,6 +189,12 @@ final class SamplePlanner {
     /// optimistic step) or a revert (false). NotificationHub listens (AppGate
     /// attaches it); nil for the sample.
     @ObservationIgnored var onChange: (@MainActor (_ fetched: Bool) -> Void)? = nil
+    #if DEBUG
+    /// How many days `derive` has worked out, for tests only: a ghost step
+    /// on the Schedule must not move it (design §5.1, "What reads what").
+    /// Ignored by Observation, so counting re-renders nothing.
+    @ObservationIgnored private(set) var derivations = 0
+    #endif
 
     /// What RootView presents: the sheet, unless the braindump sheet is up,
     /// since a view can't present over a sheet its own subtree put up.
@@ -252,6 +273,25 @@ final class SamplePlanner {
     /// The project names, in container order: the chips, the sections, Organize.
     var projects: [String] { projectRecords.map(\.name) }
 
+    /// The colour a project wears on Today and in the item sheet (O15): the
+    /// dot on its List section, its filter chip and its Week caption, and on
+    /// the sheet's project chip and each project menu row. DsulCore
+    /// `projectAccent`, the web's grid rule (planner-store `getProjectColor`)
+    /// over the project records, colours and all: the stored colour of the
+    /// project the name folds to, else a legacy `--habit-*` token for a
+    /// folded "wellness", "work" or "personal", else the folded name's ramp
+    /// step. Folded as JavaScript does (`jsLowercased`), as the project menu
+    /// checks its rows (`ProjectChoice.key`), so an item filed "work" wears
+    /// Work's colour and the chip's dot and the menu's check agree on every
+    /// name, a final sigma included. A name no project holds still has a
+    /// colour, as on the web. Organize's tile is the other rule
+    /// (`containerAccent`): the two differ, as they do on the web, where no
+    /// colour the phone can read is stored and the name is Work, Personal or
+    /// Wellness, or folds to another ramp step.
+    func projectAccent(for name: String) -> ContainerAccent {
+        return DsulCore.projectAccent(name, projects: projectRecords)
+    }
+
     // MARK: Days
 
     var isOnToday: Bool { selectedDay == today }
@@ -260,6 +300,20 @@ final class SamplePlanner {
     func select(_ day: DayString) { selectedDay = day }
     func shiftDay(by days: Int) { selectedDay = selectedDay.adding(days: days) }
     func goToToday() { selectedDay = today }
+
+    /// The selected day's week, its first day first, by the user's Week starts
+    /// on (DsulCore `weekDays`, the web's week views' start + i). Week draws
+    /// these seven; `selectedDay` stays the anchor, so Go to date picks a day
+    /// and the week follows.
+    var selectedWeek: [DayString] {
+        return weekDays(of: selectedDay, settings.weekStartDay)
+    }
+
+    /// Does the selected day's week hold today? Week's Today button shows
+    /// only when it doesn't, as Day's does off today.
+    var isOnTodaysWeek: Bool {
+        return weekStartOf(selectedDay, settings.weekStartDay) == weekStartOf(today, settings.weekStartDay)
+    }
 
     /// The zone every day here is read in: the stored one, trimmed, when this
     /// device knows it (`timezone?.trim() || device`, as the web's store and
@@ -318,39 +372,97 @@ final class SamplePlanner {
     /// `date`'s rows as the web files them: DsulCore `deriveDayItems` over the
     /// task/habit split, with what is paused or out of season on `date` held
     /// back (`inactiveItemIdsOn`), and the phone's defaults (no filters).
-    private func derive(on date: DayString) -> DayItems {
-        let zone = timeZoneID
-        let split = DsulCore.project(items)
+    /// Internal, not private, so a hosted test can hold `week(of:)` to it.
+    func derive(on date: DayString) -> DayItems {
+        return derive(on: date, split: DsulCore.project(items), zone: timeZoneID)
+    }
+
+    /// One day of the pipeline over a split made once: `week(of:)` splits
+    /// the items a single time for its seven days, as the web's
+    /// `useDayItemsForDates` asks `deriveDayItems` once per date over one
+    /// projection (hooks/use-day-items.ts).
+    private func derive(on date: DayString, split: (tasks: [Item], habits: [Item]), zone: String) -> DayItems {
+        #if DEBUG
+        derivations += 1
+        #endif
         let inactive = inactiveItemIdsOn(items: items, date: date, timeZone: zone, routines: routines, seasons: seasons,
                                          away: awayPeriods)
         return deriveDayItems(tasks: split.tasks, habits: split.habits, projects: projectRecords, date: date,
                               timeZone: zone, showCompletedTasks: settings.showCompletedTasks, inactive: inactive)
     }
 
-    /// The selected day's items: habits, then tasks, each in bucket and time
-    /// order (lib/day-items.ts `flattenDayRows`).
+    /// The seven days of `day`'s week (`weekDays`, from the user's Week starts
+    /// on), each as `derive(on:)` answers it: `project(items)` once, then what
+    /// is held back and what shows resolved at each day's own date, so a pause
+    /// ending mid-week or a season starting Thursday lands on the right day
+    /// (design §4.6; the web's week views do the same, per date).
+    func week(of day: DayString) -> [DayString: DayItems] {
+        let split = DsulCore.project(items)
+        let zone = timeZoneID
+        var out: [DayString: DayItems] = [:]
+        for date in weekDays(of: day, settings.weekStartDay) {
+            out[date] = derive(on: date, split: split, zone: zone)
+        }
+        return out
+    }
+
+    /// The seven days of `day`'s week, each with its rows in `dayItems(on:)`
+    /// order, from one `week(of:)`: what Week × List and Week × Buckets draw,
+    /// so a render derives the week once rather than once per question.
+    func weekRows(of day: DayString) -> [WeekDayRows] {
+        let week = week(of: day)
+        return weekDays(of: day, settings.weekStartDay).map { date in
+            WeekDayRows(day: date, rows: week[date].map(flattenDayRows) ?? [])
+        }
+    }
+
+    /// `day`'s items: habits, then tasks, each in bucket and time order
+    /// (lib/day-items.ts `flattenDayRows`).
+    func dayItems(on day: DayString) -> [SampleItem] {
+        return flattenDayRows(derive(on: day))
+    }
+
+    /// The selected day's items (`dayItems(on:)`).
     var dayItems: [SampleItem] {
-        return flattenDayRows(derive(on: selectedDay))
+        return dayItems(on: selectedDay)
     }
 
-    /// Ticked on the selected day (lib/item-toggle.ts `isRowDone`): a habit
-    /// or a recurring task by its date, a one-off task by its status.
+    /// Ticked on `day` (lib/item-toggle.ts `isRowDone`): a habit or a
+    /// recurring task by its date, a one-off task by its status. A week row
+    /// asks at its own day, never the anchor.
+    func isDone(_ item: SampleItem, on day: DayString) -> Bool {
+        return isRowDone(item, on: day)
+    }
+
+    /// Ticked on the selected day (`isDone(_:on:)`).
     func isDone(_ item: SampleItem) -> Bool {
-        return isRowDone(item, on: selectedDay)
+        return isDone(item, on: selectedDay)
     }
 
-    /// Skipped on the selected day: drawn as a strip, and a tick on it is
-    /// refused (`toggle`).
+    /// Skipped on `day`: drawn as a strip, and a tick on it is refused
+    /// (`toggleRow`).
+    func isSkipped(_ item: SampleItem, on day: DayString) -> Bool {
+        return isRowSkipped(item, on: day)
+    }
+
+    /// Skipped on the selected day (`isSkipped(_:on:)`).
     func isSkipped(_ item: SampleItem) -> Bool {
-        return isRowSkipped(item, on: selectedDay)
+        return isSkipped(item, on: selectedDay)
     }
 
     // MARK: Writes
 
-    /// A row's tick: ticks or unticks an item on the selected day, as the
-    /// web's row checkbox (`toggleRowDone`) does. See `tick(_:on:)`.
+    /// A row's tick on `day`: ticks or unticks an item there, as the web's row
+    /// checkbox (`toggleRowDone`) does, with no verb gate. A week row ticks on
+    /// its own day; the sheet's tick stays `toggle(_:on:)`, gated. See
+    /// `tick(_:on:)`.
+    func toggleRow(_ id: UUID, on day: DayString) {
+        tick(id, on: day)
+    }
+
+    /// A row's tick on the selected day (`toggleRow(_:on:)`).
     func toggle(_ id: UUID) {
-        tick(id, on: selectedDay)
+        toggleRow(id, on: selectedDay)
     }
 
     /// The tick on `day`, as lib/item-toggle.ts `toggleRowDone` resolves it
@@ -418,13 +530,15 @@ final class SamplePlanner {
         activeSheet = .item(id, day: day)
     }
 
-    /// The day a sheet opened with `day` acts on: the selected day, or today.
-    /// A read, so a view's body may ask it; `today` itself moves only in
-    /// `refreshToday` (RootView's minute check, `open`, a pause or resume).
+    /// The day a sheet opened with `day` acts on: the selected day, today, or
+    /// the day it names. A read, so a view's body may ask it; `today` itself
+    /// moves only in `refreshToday` (RootView's minute check, `open`, a pause
+    /// or resume).
     func actingDay(_ day: SheetDay) -> DayString {
         switch day {
         case .selected: return selectedDay
         case .today: return today
+        case .on(let named): return named
         }
     }
 
@@ -437,15 +551,28 @@ final class SamplePlanner {
     /// What the web's verbs are handed for `item` on `day`: the day, today,
     /// the zone, the item's state there (DsulCore `occurrenceOn`: absent when
     /// a recurring item doesn't fall on the day, else done, skipped, due from
-    /// today on, or open before it; nil for a one-off), and whether Streaks is
-    /// on (`settings.streaksEnabled`, the web's `streaksEnabled()`).
+    /// today on, or open before it; nil for a one-off), whether Streaks is
+    /// on (`settings.streaksEnabled`, the web's `streaksEnabled()`), and the
+    /// goals' milestones (`milestoneIds`, nil while goals are unread).
     func verbContext(for item: SampleItem, on day: DayString) -> VerbContext {
         let zone = timeZoneID
         let dateStr = day.description
         let todayStr = today.description
         return VerbContext(dateStr: dateStr, todayStr: todayStr, timeZone: zone,
                            occurrence: occurrenceOn(item, on: dateStr, today: todayStr, timeZone: zone),
-                           streaksEnabled: settings.streaksEnabled)
+                           streaksEnabled: settings.streaksEnabled, milestoneIds: milestoneIds)
+    }
+
+    /// (Week and blocks PR 3) The items that are some goal's milestone
+    /// (DsulCore `milestoneItemIds` over `goals`, as the web's verbs read
+    /// them off the store's raw goals, whatever the Goals switch says), which
+    /// Move to Braindump never takes: a milestone's date is its target. Nil
+    /// while goals are unread (before the first fetch, and from a server that
+    /// couldn't read them or is older than the field), and then the verb is
+    /// offered nowhere, rather than on a milestone the server would refuse.
+    /// The sample's goals are its own, so it always knows.
+    var milestoneIds: Set<UUID>? {
+        return goals.map(milestoneItemIds)
     }
 
     /// The item writes a server older than `PlannerPayload.writes` takes.
@@ -498,19 +625,27 @@ final class SamplePlanner {
         case .skip, .unskip: return "skip"
         case .pause, .resume: return "pause"
         case .nextDay, .reschedule: return "move"
+        case .braindump: return "unschedule"
         case .resetStreak: return "resetStreak"
         case .delete: return "delete"
         }
     }
 
-    /// May the sheet offer `verb` on `item` in `ctx`? Three answers, all yes:
+    /// May the sheet offer `verb` on `item` in `ctx`? Four answers, all yes
+    /// (the third asked of Move to Braindump alone):
     /// - the web's gate (DsulCore `verbEligible`, lib/item-verbs.ts);
     /// - the server's own gate where it asks more (lib/app-api.ts): it never
-    ///   skips or carries a subtask, which has no day of its own, pauses or
-    ///   resumes only what `isPausable` allows, and resets a streak only on a
-    ///   type that keeps one (`streakCounter`, its `no_streak`), where the
-    ///   web's gate asks only `isHabit`. Delete it takes on anything, a subtask
-    ///   included;
+    ///   skips, carries or unschedules a subtask, which has no day of its own,
+    ///   pauses or resumes only what `isPausable` allows, and resets a streak
+    ///   only on a type that keeps one (`streakCounter`, its `no_streak`),
+    ///   where the web's gate asks only `isHabit`. Delete it takes on
+    ///   anything, a subtask included;
+    /// - for Move to Braindump, the surfaces' own rule (design B24): never on
+    ///   a row the braindump already lists, neither scheduled nor in a part of
+    ///   day (DsulCore `isTaskScheduled`, lib/braindump-members.ts's test),
+    ///   as the web's row and mobile sheet ask before they offer it. The gate
+    ///   itself (`verbEligible`) also needs the milestones known
+    ///   (`ctx.milestoneIds`);
     /// - the server takes the write (`canWrite`).
     func offers(_ verb: VerbID, _ item: SampleItem, _ ctx: VerbContext) -> Bool {
         guard canWrite(verb), verbEligible(verb, item, ctx) else { return false }
@@ -519,6 +654,7 @@ final class SamplePlanner {
         case .skip, .unskip: return isSkippable(item) && !item.isSubtask
         case .nextDay, .reschedule: return !item.isSubtask
         case .pause, .resume: return isPausable(item)
+        case .braindump: return !item.isSubtask && isTaskScheduled(item)
         case .resetStreak: return caps(for: item).streakCounter
         case .delete: return true
         }
@@ -526,9 +662,9 @@ final class SamplePlanner {
 
     /// Every verb the sheet may offer `item` on its day, in the web's
     /// declaration order (tick, skip, unskip, pause, resume, nextDay,
-    /// reschedule, resetStreak, delete). Which ones the bar shows, and in what
-    /// slots, is the view's; Reset streak is the streak chip's, never the
-    /// bar's or ⋯'s.
+    /// reschedule, braindump, resetStreak, delete). Which ones the bar shows,
+    /// and in what slots, is the view's; Reset streak is the streak chip's,
+    /// never the bar's or ⋯'s, and Move to Braindump is ⋯'s.
     func offeredVerbs(for item: SampleItem, day: SheetDay) -> [VerbID] {
         let ctx = verbContext(for: item, day: day)
         return VerbID.allCases.filter { offers($0, item, ctx) }
@@ -586,6 +722,30 @@ final class SamplePlanner {
         guard after != before else { return }
         items[i] = after
         sync?.enqueue(.move(id: id, date: date), snapshot: before)
+    }
+
+    /// Move to Braindump (⋯, Week and blocks PR 3): takes a dated one-off
+    /// task off every day and back to the braindump, as the store's
+    /// `unscheduleTask` does (DsulCore `unscheduling`): not scheduled, and no
+    /// start date, part of day or time; its length, order, project, priority,
+    /// notes and any pause kept. No `order` is written, so it shows in the
+    /// braindump at its stored place. Behind `offers(.braindump)`, asked
+    /// again here off the item as it is now: the web's gate (task-like, the
+    /// type `braindumpEligible`, dated, not recurring, not in a project
+    /// block, open, not a milestone, which needs the goals read), the server's
+    /// (no subtask), not already a braindump row, and the server taking
+    /// `unschedule`. The gate reads the row's own start date, so `day` (the
+    /// sheet's) changes nothing today; it is the day the verb was drawn for.
+    /// The write is the action alone; the server writes the same four
+    /// columns.
+    func unschedule(_ id: UUID, on day: DayString) {
+        guard let i = items.firstIndex(where: { $0.id == id }) else { return }
+        let before = items[i]
+        guard offers(.braindump, before, verbContext(for: before, on: day)) else { return }
+        let after = unscheduling(before)
+        guard after != before else { return }
+        items[i] = after
+        sync?.enqueue(.unschedule(id: id), snapshot: before)
     }
 
     /// Pause, or Pause until `until` (the exclusive resume day, yyyy-MM-dd; nil
@@ -686,6 +846,21 @@ final class SamplePlanner {
         noteChanged()
     }
 
+    /// (O12) Puts one step back as PlannerSync's rebase found the server
+    /// holds it: right after the step `after` while the container still holds
+    /// that step (DsulCore `placingMember`), first when `after` is nil, and
+    /// otherwise at `index`, the place it held before its earliest failed
+    /// move. The step goes back in when the list no longer holds it, since a
+    /// move's revert is about a member. A container the planner no longer
+    /// holds changes nothing.
+    func restoreMembership(_ kind: ContainerKind, _ containerId: String, item: UUID, after: UUID?, at index: Int?) {
+        guard let ids = members(kind, containerId) else { return }
+        let next = placingMember(ids, item: item, after: after, orAt: index)
+        guard next != ids else { return }
+        setMembers(kind, containerId, next)
+        noteChanged()
+    }
+
     /// The `itemIds` of the routine or season `containerId` names; nil when
     /// the planner holds none.
     private func members(_ kind: ContainerKind, _ containerId: String) -> [UUID]? {
@@ -704,6 +879,83 @@ final class SamplePlanner {
             guard let i = seasons.firstIndex(where: { $0.id == containerId }) else { return }
             seasons[i].itemIds = ids
         }
+    }
+
+    // MARK: A routine's steps and a season's routines (O12, O13)
+
+    /// A routine's step moved, from a drag in Edit mode or from Move up or
+    /// Move down: `item` placed right after the step `after`, or first when
+    /// `after` is nil, at once (lib/app-containers.ts `moveMember`, DsulCore
+    /// `memberMoveResult` over the routine's own `itemIds`, the rule the route
+    /// applies to the same request, so the step and the write agree). Behind
+    /// the page's gate (`canWrite(kind:action:)`).
+    ///
+    /// A move the route would refuse is not sent: the planner's own list
+    /// already says the step or its anchor has gone (another device moved or
+    /// removed it since the page was drawn), and the banner says so
+    /// (`changedElsewhere`), over the list as it stands. One that changes
+    /// nothing writes nothing, so a step dropped back where it was is silent.
+    /// The write names the one membership, never the list, so a step another
+    /// device added in between keeps its place.
+    func moveMember(_ routineId: String, item: UUID, after: UUID?) {
+        guard canWrite(kind: .routine, action: .moveMember), let before = members(.routine, routineId) else { return }
+        let intent = MembershipIntent.moveMember(item: item, after: after)
+        switch memberMoveResult(before, item: item, after: after) {
+        case .refused(let code, _):
+            if let words = OrganizeCopy.refusal(code: code, for: intent) { show(words, isError: true) }
+        case .members(let next):
+            guard next != before else { return }
+            setMembers(.routine, routineId, next)
+            sync?.enqueue(.moveMember(routineId: routineId, item: item, after: after),
+                          before: [.member(.routine, containerId: routineId, item: item):
+                                    .member(index: before.firstIndex(of: item))])
+        }
+    }
+
+    /// A season's routine put in ("Add a routine…") or taken out (Take out):
+    /// one `season_routines` row, at once (lib/app-containers.ts
+    /// `holdRoutine`, DsulCore `routineHoldResult`). Behind the page's gate
+    /// (`canWrite(kind:action:)`).
+    ///
+    /// A routine the planner doesn't hold live is refused here as the route
+    /// refuses it (409 `container_gone`), with the same words: the payload can
+    /// carry a season's hold of a routine that is in the Trash, and a page
+    /// never offers Take out for one it cannot find. A hold already so writes
+    /// nothing. An optimistic hold appends the id; the server keeps a season's
+    /// routines in no order, so a page draws them in the routines' own order.
+    func holdRoutine(_ seasonId: String, routineId: String, hold: Bool) {
+        guard canWrite(kind: .season, action: .holdRoutine),
+              let i = seasons.firstIndex(where: { $0.id == seasonId })
+        else { return }
+        let before = seasons[i].routineIds
+        let intent = MembershipIntent.holdRoutine(routineId: routineId, hold: hold)
+        switch routineHoldResult(before, routineId: routineId, hold: hold,
+                                 routineLive: routines.contains(where: { $0.id == routineId })) {
+        case .refused(let code, _):
+            if let words = OrganizeCopy.refusal(code: code, for: intent) { show(words, isError: true) }
+        case .members(let next):
+            guard next != before else { return }
+            seasons[i].routineIds = next
+            sync?.enqueue(.holdRoutine(seasonId: seasonId, routineId: routineId, hold: hold),
+                          before: [.hold(seasonId: seasonId, routineId: routineId):
+                                    .hold(held: before.contains(routineId),
+                                          index: before.firstIndex(of: routineId))])
+        }
+    }
+
+    /// (O13) Puts one season's hold of one routine back as PlannerSync's
+    /// rebase found the server holds it: the routine in the season's
+    /// `routineIds` at `index` (clamped; last when nil), or out. A season the
+    /// planner no longer holds changes nothing. Whether the planner still
+    /// holds the routine is not asked: the id is the season's row, and the
+    /// page draws only the routines it finds.
+    func restoreHold(_ seasonId: String, routineId: String, held: Bool, at index: Int?) {
+        guard let i = seasons.firstIndex(where: { $0.id == seasonId }) else { return }
+        let ids = seasons[i].routineIds
+        let next = settingMembership(ids, item: routineId, member: held, at: held ? index : nil)
+        guard next != ids else { return }
+        seasons[i].routineIds = next
+        noteChanged()
     }
 
     // MARK: Containers (O8a, O8b, O9, O10, O11)
@@ -819,7 +1071,8 @@ final class SamplePlanner {
     /// A delete (O10) takes the container out of its kind's list at once,
     /// as the route takes it to the Trash, and nothing else: its items keep
     /// their fields (a project's members their name and id, so their chips
-    /// say it with a gray dot), and the join rows stay on the server, which
+    /// still say it, the dot in the name's own colour, `projectAccent`, as on
+    /// the web), and the join rows stay on the server, which
     /// is what a restore brings back. Its Before is the container whole and
     /// its place, so a failed one comes back where it stood.
     func applyContainer(_ ref: ContainerRef, _ intent: ContainerIntent) {
@@ -1179,44 +1432,81 @@ final class SamplePlanner {
         return itemProject.lowercased() == name.lowercased()
     }
 
-    func count(_ filter: ListFilter) -> Int {
-        dayItems.filter { passes($0, filter) }.count
+    /// The rows among `rows` that `filter` passes. Over a week's rows a daily
+    /// habit counts seven, as the rows under the chips show it (design W16).
+    func count(_ filter: ListFilter, in rows: [SampleItem]) -> Int {
+        return rows.filter { passes($0, filter) }.count
     }
 
-    /// The projects with something on the selected day, for the chips.
-    var dayProjects: [String] {
-        let present = Set(dayItems.compactMap { $0.project?.lowercased() })
+    /// The rows `filter` passes on `days`, each day's counted.
+    func count(_ filter: ListFilter, on days: [DayString]) -> Int {
+        return count(filter, in: days.flatMap { dayItems(on: $0) })
+    }
+
+    /// The rows `filter` passes on the selected day (`count(_:on:)`).
+    func count(_ filter: ListFilter) -> Int {
+        return count(filter, on: [selectedDay])
+    }
+
+    /// The projects something among `rows` is filed under, in container
+    /// order, for the chips.
+    func chipProjects(in rows: [SampleItem]) -> [String] {
+        let present = Set(rows.compactMap { $0.project?.lowercased() })
         return projects.filter { present.contains($0.lowercased()) }
     }
 
-    /// The List layout: routines first (DsulCore `routineGroups`, the port of
-    /// lib/grouping.ts: one row, one group, in the routine's own order), then
-    /// one section per project, then the loose items.
-    func listSections(_ filter: ListFilter) -> [ListSection] {
-        let rows = sortedForList(dayItems.filter { passes($0, filter) })
+    /// The projects with something on any of `days`.
+    func dayProjects(on days: [DayString]) -> [String] {
+        return chipProjects(in: days.flatMap { dayItems(on: $0) })
+    }
+
+    /// The projects with something on the selected day (`dayProjects(on:)`).
+    var dayProjects: [String] {
+        return dayProjects(on: [selectedDay])
+    }
+
+    /// The List layout on `day`: routines first (DsulCore `routineGroups`, the
+    /// port of lib/grouping.ts: one row, one group, in the routine's own
+    /// order), then one section per project, then the loose items. A routine's
+    /// done count is at `day`. Week draws one day's worth per section, as the
+    /// web groups each day of a week on its own (week-list.tsx).
+    func listSections(_ filter: ListFilter, on day: DayString) -> [ListSection] {
+        return listSections(filter, rows: dayItems(on: day), on: day)
+    }
+
+    /// `listSections(_:on:)` over `day`'s rows already derived (`weekRows`).
+    func listSections(_ filter: ListFilter, rows dayRows: [SampleItem], on day: DayString) -> [ListSection] {
+        let rows = sortedForList(dayRows.filter { passes($0, filter) })
         let grouped = routineGroups(rows, routines: routines)
         var sections: [ListSection] = []
         for (routine, members) in grouped.groups {
             sections.append(section(id: "routine:\(routine.id)", title: routine.name, kind: .routine,
-                                    items: members))
+                                    items: members, on: day))
         }
         let rest = grouped.loose
         for name in projects {
             let members = rest.filter { Self.sameProject($0.project, name) }
             guard !members.isEmpty else { continue }
-            sections.append(section(id: "project:\(name)", title: name, kind: .project, items: members))
+            sections.append(section(id: "project:\(name)", title: name, kind: .project, items: members, on: day))
         }
         let known = Set(projects.map { $0.lowercased() })
         let loose = rest.filter { item in item.project.map { !known.contains($0.lowercased()) } ?? true }
         if !loose.isEmpty {
-            sections.append(section(id: "loose", title: ContainerWords.noProject, kind: .loose, items: loose))
+            sections.append(section(id: "loose", title: ContainerWords.noProject, kind: .loose, items: loose,
+                                    on: day))
         }
         return sections
     }
 
-    private func section(id: String, title: String, kind: ListSection.Kind, items: [SampleItem]) -> ListSection {
+    /// The List layout on the selected day (`listSections(_:on:)`).
+    func listSections(_ filter: ListFilter) -> [ListSection] {
+        return listSections(filter, on: selectedDay)
+    }
+
+    private func section(id: String, title: String, kind: ListSection.Kind, items: [SampleItem],
+                         on day: DayString) -> ListSection {
         return ListSection(id: id, title: title, kind: kind, items: items,
-                           doneCount: items.filter { isDone($0) }.count)
+                           doneCount: items.filter { isDone($0, on: day) }.count)
     }
 
     /// Timed rows first by time, then untimed by order (lib/day-items.ts
@@ -1228,17 +1518,26 @@ final class SamplePlanner {
 
     // MARK: Buckets layout
 
-    /// The selected day filed by bucket, each bucket in the web's row order
-    /// (DsulCore `bucketDayRows`).
-    func buckets() -> [DayBucket: [SampleItem]] {
-        let day = dayItems
-        let byID = Dictionary(day.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        let ids = bucketDayRows(day.map(Self.bucketRow))
+    /// `day` filed by bucket, each bucket in the web's row order (DsulCore
+    /// `bucketDayRows`).
+    func buckets(on day: DayString) -> [DayBucket: [SampleItem]] {
+        return buckets(dayItems(on: day))
+    }
+
+    /// One day's rows (in `dayItems` order) filed by bucket.
+    func buckets(_ rows: [SampleItem]) -> [DayBucket: [SampleItem]] {
+        let byID = Dictionary(rows.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let ids = bucketDayRows(rows.map(Self.bucketRow))
         var out: [DayBucket: [SampleItem]] = [:]
         for (bucket, list) in ids {
             out[bucket] = list.compactMap { byID[$0] }
         }
         return out
+    }
+
+    /// The selected day filed by bucket (`buckets(on:)`).
+    func buckets() -> [DayBucket: [SampleItem]] {
+        return buckets(on: selectedDay)
     }
 
     nonisolated private static func bucketRow(_ item: SampleItem) -> BucketRow<UUID> {
@@ -1248,21 +1547,27 @@ final class SamplePlanner {
 
     // MARK: Schedule layout and the braindump
 
-    /// The selected day's blocks (day-schedule.tsx `deriveTimedEntries`):
-    /// timed rows, plus tasks in a project's recurring block. Each comes back
-    /// with the time and length it is DRAWN at, which for a project-block task
-    /// is the block's; `item(_:)` still answers with the stored item.
+    /// `day`'s blocks (day-schedule.tsx `deriveTimedEntries`): timed rows,
+    /// plus tasks in a project's recurring block. Each comes back with the
+    /// time and length it is DRAWN at, which for a project-block task is the
+    /// block's; `item(_:)` still answers with the stored item.
+    func scheduled(on day: DayString) -> [SampleItem] {
+        return drawnTimedEntries(derive(on: day)).map(\.item)
+    }
+
+    /// The selected day's blocks (`scheduled(on:)`).
     var scheduled: [SampleItem] {
-        var seen = Set<UUID>()
-        var blocks: [SampleItem] = []
-        for entry in deriveTimedEntries(derive(on: selectedDay)) {
-            guard seen.insert(entry.item.id).inserted else { continue }
-            var block = entry.item
-            block.startTime = minutesToTime(entry.startMin)
-            block.duration = entry.duration
-            blocks.append(block)
-        }
-        return blocks
+        return scheduled(on: selectedDay)
+    }
+
+    /// `day`'s rows off the hour grid (day-schedule.tsx `deriveUntimedRows`,
+    /// through DsulCore): untimed habits, then untimed tasks not in a project
+    /// block. A project-block task whose block is not on `day` is in neither
+    /// this nor `scheduled(on:)`, as on the web; List and Buckets still show
+    /// it. Day's Schedule draws it in the Anytime band (`daySchedule(on:)`,
+    /// ScheduleLayout.swift, from the same derive as the blocks).
+    func anytime(on day: DayString) -> [SampleItem] {
+        return deriveUntimedRows(derive(on: day))
     }
 
     /// What's captured and not yet placed (DsulCore `braindumpMembers`), in
@@ -1426,9 +1731,10 @@ final class SamplePlanner {
     /// delete that did). One that is gone (a delete that never landed) comes
     /// back at `place`, through DsulCore `reinserting`: after the item it
     /// followed when that is here, else at its index; at the end without one.
-    /// A membership comes back through `restoreMembership` instead, and a
-    /// container's fields through `restoreContainer`, so neither does
-    /// anything here.
+    /// A membership comes back through `restoreMembership` instead, a
+    /// season's hold of a routine through `restoreHold`, and a container's
+    /// fields through `restoreContainer`, so none of the three does anything
+    /// here.
     func restore(_ subject: PlannerSync.Subject, to item: SampleItem?, place: Place?) {
         switch subject {
         case .item(let id):
@@ -1438,7 +1744,7 @@ final class SamplePlanner {
             } else {
                 items.removeAll { $0.id == id }
             }
-        case .member, .container:
+        case .member, .hold, .container:
             return
         }
         closeSheetIfItsItemIsGone()

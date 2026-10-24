@@ -1,5 +1,7 @@
-import type { TimeBucket } from '../planner-types';
+import { planBlockDrop, startTimeOf, type BlockDrop, type BlockTarget } from '../block-moves';
+import type { Item, TimeBucket } from '../planner-types';
 import { toDateStr } from '../recurrence';
+import { getBucketForTime } from '../time-bucket';
 import { isDropTargetOffered } from './drop-targets';
 import type { DragInput } from './sensors';
 
@@ -16,7 +18,12 @@ export const BUCKET_IDS: readonly TimeBucket[] = ['anytime', 'morning', 'afterno
 export type DropPosition = 'before' | 'after' | 'empty';
 
 export type DropCommand =
-  | { kind: 'schedule-task'; taskId: string; bucket: TimeBucket; time?: string; dateStr: string }
+  /**
+   * `dateStr` absent keeps the task's date (a series moved in time only).
+   * `landsOn` is the day it was dropped on when that is not `dateStr`, for the
+   * store's "hidden where it landed" receipt only.
+   */
+  | { kind: 'schedule-task'; taskId: string; bucket: TimeBucket; time?: string; dateStr?: string; landsOn?: string }
   | { kind: 'schedule-habit'; habitId: string; bucket: TimeBucket; time?: string }
   | { kind: 'assign-habit-bucket'; habitId: string; bucket: TimeBucket }
   | { kind: 'unschedule'; itemId: string }
@@ -135,6 +142,20 @@ export interface DropContext {
   /** Project of the dragged task, for the projectblock guard. */
   draggedTaskProject?: string;
   /**
+   * The dragged item itself. With it, a task on the canvas dropped on an hour
+   * (`hour:`, `weekhour:`) or on the braindump (`sidebar`) asks the shared
+   * block drop rule (lib/block-moves.ts planBlockDrop, see blockDropCommand).
+   * Omitted, those drops answer from the id alone, which is what the shell
+   * asks for a group's target slot.
+   */
+  draggedItem?: Item;
+  /**
+   * Every live goal's milestone ids, for the rule's braindump answer (Move to
+   * Braindump never takes a milestone). Omitted reads as unknown, and the rule
+   * then refuses the braindump drop.
+   */
+  milestoneIds?: ReadonlySet<string>;
+  /**
    * Where the dragged item sits now, for the `list:{date}` guard. Omitted reads
    * as "in the braindump", the one case where every list drop acts.
    */
@@ -164,6 +185,61 @@ export interface DropContext {
 export function parseProjectBlockId(targetId: string): { dateStr: string; projectName: string } | null {
   const m = /^projectblock:(\d{4}-\d{2}-\d{2}):(.+)$/.exec(targetId);
   return m ? { dateStr: m[1], projectName: m[2] } : null;
+}
+
+/**
+ * A canvas task's block drop, as the shared rule answers it (lib/block-moves.ts),
+ * mapped to a store call: `place` and `retime` are `scheduleTask` with and
+ * without the date (no date keeps the series anchor), `anytime` the same under
+ * Anytime, `braindump` is `unscheduleTask`, `pause` is `setItemPaused`. The
+ * phone maps the same answers to intents of its own (DsulCore BlockMoves.swift).
+ *
+ * `undefined` when the rule is not asked: no dragged item, a habit (habits drop
+ * as they always have: a time on an hour, a pause on the braindump), or a row
+ * from the braindump (not a block; it is placed on the day as before). `null`
+ * when the drop does nothing: the block let go where it already was, or a drop
+ * the rule refuses.
+ *
+ * The web never lifts a skipped occurrence (a skipped row gets no draggable),
+ * so the origin is never skipped. `fromDate` is the day the drop resolves
+ * against; no hour or braindump answer reads it for a one-off, and a series'
+ * hour answer keeps its own date whatever the column.
+ */
+function blockDropCommand(
+  itemId: string,
+  target: BlockTarget,
+  fromDate: string,
+  ctx: DropContext
+): DropCommand | null | undefined {
+  const item = ctx.draggedItem;
+  if (ctx.itemType !== 'task' || !item || !placementOf(item).placed) return undefined;
+  const answer: BlockDrop = planBlockDrop(item, { date: fromDate, skipped: false }, target, {
+    milestoneIds: ctx.milestoneIds ?? null,
+  });
+  // The day it was let go on, when the write keeps another (a series keeps its
+  // start date): the receipt judges what it hides there, not on the anchor.
+  const day = target.kind === 'braindump' ? undefined : target.date;
+  const landsOn = (dateStr: string | undefined) => (day && day !== dateStr ? { landsOn: day } : {});
+  switch (answer.kind) {
+    case 'place':
+    case 'retime': {
+      const time = startTimeOf(answer.startMin);
+      const at = { kind: 'schedule-task', taskId: itemId, bucket: getBucketForTime(time), time } as const;
+      if (answer.kind === 'retime') return { ...at, ...landsOn(undefined) };
+      return { ...at, dateStr: answer.date, ...landsOn(answer.date) };
+    }
+    case 'anytime':
+      return answer.date
+        ? { kind: 'schedule-task', taskId: itemId, bucket: 'anytime', dateStr: answer.date }
+        : { kind: 'schedule-task', taskId: itemId, bucket: 'anytime', ...landsOn(undefined) };
+    case 'braindump':
+      return { kind: 'unschedule', itemId };
+    case 'pause':
+      return { kind: 'pause-item', itemId };
+    case 'none':
+    case 'refused':
+      return null;
+  }
 }
 
 export function resolveDrop(
@@ -239,16 +315,20 @@ export function resolveDrop(
       : { kind: 'assign-habit-bucket', habitId: itemId, bucket };
   }
 
-  // sidebar — drop back into the Braindump. A task is unscheduled. A habit on
-  // the canvas recurs and has no day to take away, so it is paused instead and
-  // shows in Organize's Paused section (the braindump's moon); one already in the braindump stays
-  // put. Whether it CAN pause (capability, not already paused) is the store's
-  // check, and the shell asks it through sidebarDropPlan (lib/dnd/sidebar-drop.ts).
+  // sidebar: drop back into the Braindump. A task on the canvas goes back
+  // only where Move to Braindump would take it (the shared rule: not repeating,
+  // finished, in a project block or a milestone); a braindump row writes the
+  // braindump's shape again. A habit on the canvas recurs and has no day to
+  // take away, so it is paused instead and shows in Organize's Paused section
+  // (the braindump's moon); one already in the braindump stays put. Whether it
+  // CAN pause (capability, not already paused) is the store's check, and the
+  // shell asks it through sidebarDropPlan (lib/dnd/sidebar-drop.ts).
   if (targetId === 'sidebar') {
     if (itemType === 'habit') {
       return ctx.draggedPlacement?.placed ? { kind: 'pause-item', itemId } : null;
     }
-    return { kind: 'unschedule', itemId };
+    const asked = blockDropCommand(itemId, { kind: 'braindump' }, selectedDateStr, ctx);
+    return asked === undefined ? { kind: 'unschedule', itemId } : asked;
   }
 
   // projectblock:{date}:{projectName} — only tasks belonging to that project.
@@ -262,10 +342,14 @@ export function resolveDrop(
   }
 
   // hour:{H} — day-schedule grid slot; drop lands at the top of that hour
-  // in the bucket that owns it (P5d "drop-on-hour" v1)
+  // in the bucket that owns it (P5d "drop-on-hour" v1). A canvas task asks the
+  // shared rule, so a series moves in time and keeps its start date.
   if (targetId.startsWith('hour:')) {
     const hour = Number(targetId.slice(5));
     if (!Number.isInteger(hour) || hour < 0 || hour > 23) return null;
+    const target: BlockTarget = { kind: 'hour', date: selectedDateStr, startMin: hour * 60 };
+    const asked = blockDropCommand(itemId, target, selectedDateStr, ctx);
+    if (asked !== undefined) return asked;
     const bucket: TimeBucket = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
     const time = `${String(hour).padStart(2, '0')}:00`;
     return itemType === 'task'
@@ -274,12 +358,18 @@ export function resolveDrop(
   }
 
   // weekhour:{yyyy-MM-dd}:{H} — week-schedule grid slot; drop lands at the top
-  // of that hour on that day's column (date has no colons, so split is safe)
+  // of that hour on that day's column (date has no colons, so split is safe).
+  // A canvas task asks the shared rule: a one-off lands on the column, a series
+  // takes the time on its own days. The grid shares one drag id across its
+  // seven columns, so the origin day is not known here, and no hour answer
+  // reads it.
   if (targetId.startsWith('weekhour:')) {
     const parts = targetId.split(':');
     const dateStr = parts[1];
     const hour = Number(parts[2]);
     if (!Number.isInteger(hour) || hour < 0 || hour > 23) return null;
+    const asked = blockDropCommand(itemId, { kind: 'hour', date: dateStr, startMin: hour * 60 }, dateStr, ctx);
+    if (asked !== undefined) return asked;
     const bucket: TimeBucket = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
     const time = `${String(hour).padStart(2, '0')}:00`;
     return itemType === 'task'

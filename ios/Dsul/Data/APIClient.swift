@@ -69,7 +69,8 @@ enum APIError: Error, Equatable, Sendable {
 /// Supabase access token as the bearer: capture, and the item writes (tick,
 /// braindump row to an hour, skip, move, pause, and the item sheet's title,
 /// notes, priority, times a day, reminder, time, repeat and project, Delete,
-/// Add a subtask, Reset streak and its routine and season toggles). And
+/// Add a subtask, Reset streak and its routine and season toggles, and from
+/// Week and blocks PR 3 Move to Braindump). And
 /// Delete account's two calls, on the account routes (lib/account-types.ts):
 /// what the sheet says, and the deletion. And the Trash's two (from O14,
 /// lib/app-containers.ts): the bin, and a restore, which PlannerSync sends
@@ -179,6 +180,20 @@ final class APIClient {
         _ = try await send("POST", Self.itemPath(id), body: try Self.encode(ItemWriteBody.resetStreak))
     }
 
+    /// POST /api/app/items/:id `unschedule` (Week and blocks PR 3): Move to
+    /// Braindump, as DsulCore's `ItemWriteBody.unschedule` sends it,
+    /// `{"action":"unschedule"}` and nothing beside it (the route is
+    /// `.strict()`). The server writes the store's `UNSCHEDULE_TASK_PATCH`
+    /// behind its own copy of the web's gate, and answers 409
+    /// `not_unschedulable` for a row the gate refuses (a habit, a series, a
+    /// subtask, a task in a project block, a finished one, an undated one, a
+    /// milestone of a live goal); a row already in the braindump's shape is
+    /// answered 200 with nothing written, so a retry lands. An older server
+    /// answers 400 `invalid`; the sheet hides the verb until `writes` lists it.
+    func unschedule(id: UUID) async throws {
+        _ = try await send("POST", Self.itemPath(id), body: try Self.encode(ItemWriteBody.unschedule))
+    }
+
     /// POST /api/app/items/:id `collect`: one membership row, the item added
     /// to one routine or season (last in a routine's order) or taken out of
     /// it, by the container's id. Never a list, so a toggle from another
@@ -216,6 +231,18 @@ final class APIClient {
     /// and a project rename's `name_taken` and `name_in_trash`), which
     /// PlannerSync words.
     func writeContainer(_ ref: ContainerRef, body: ContainerWriteBody) async throws {
+        _ = try await send("POST", ContainerRoutes.write(ref), body: try Self.encode(body))
+    }
+
+    /// POST /api/app/containers/:kind/:id (O12, O13, lib/app-containers.ts):
+    /// one membership of one container, as DsulCore's `MembershipWriteBody`
+    /// sends it (a routine's step placed right after another step, or first;
+    /// a season's routine put in or taken out). One membership, never a list,
+    /// so a change from another device in between is kept. The kind and the id
+    /// are the path (`ContainerRoutes.write`), never the body. A refusal
+    /// throws `rejected` with the route's code (`member_gone`, `anchor_gone`,
+    /// `container_gone`), which PlannerSync words.
+    func writeMembership(_ ref: ContainerRef, body: MembershipWriteBody) async throws {
         _ = try await send("POST", ContainerRoutes.write(ref), body: try Self.encode(body))
     }
 

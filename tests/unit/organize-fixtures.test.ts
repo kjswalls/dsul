@@ -38,7 +38,7 @@ import {
   type ScheduleContainer,
   type WeekStartDay,
 } from '@/lib/container-schedule';
-import { nextMilestoneAcross, organizeWeek } from '@/lib/organize';
+import { moveMemberAfter, nextMilestoneAcross, organizeWeek, wouldHideAttaching } from '@/lib/organize';
 import {
   NOTHING_PAUSED,
   PAUSED_NO_DATE,
@@ -66,6 +66,8 @@ import {
   type OrganizeKind,
 } from '@/lib/app-containers';
 import {
+  ATTACH_CONFIRM_LABEL,
+  CHANGED_ELSEWHERE,
   CONTAINER_CREATE_COPY,
   DELETE_CONFIRM_LABELS,
   DELETE_STAYS_IN_TRASH,
@@ -90,6 +92,8 @@ import {
   TRASH_LOAD_FAILED,
   TRASH_TEACHING,
   TRASH_WINDOW_DAYS,
+  attachConfirmDescription,
+  attachConfirmTitle,
   checkinMeta,
   containerRefusal,
   daysUntilPurge,
@@ -1463,6 +1467,8 @@ function buildLook() {
     { name: 'the work legacy name with no project takes its token', input: 'WORK', projects: withoutWork },
     { name: 'a legacy name with no colour takes its token', input: 'personal' },
     { name: 'a legacy name with no project takes its token', input: 'Wellness' },
+    // `project?.color` is truthiness: a stored "" is no colour (O15's dot).
+    { name: 'an empty colour is no colour', input: 'Work', projects: [project('p-work', 'Work', { color: '' })] },
     { name: 'no colour: the folded name’s ramp step', input: 'Health' },
     { name: 'no project: the folded name’s ramp step', input: 'Errands' },
     { name: 'folded before hashing', input: 'ERRANDS' },
@@ -1819,7 +1825,51 @@ function buildCopy() {
     { name: 'a rename refused for another reason', code: 'not_found', sentName: 'House' },
     { name: 'a pause refused, whatever name was sent', code: 'pause_refused', sentName: 'House' },
     { name: 'a name refusal with no name sent', code: 'name_taken', sentName: null },
+    // O12 and O13: a membership write another device got to first.
+    { name: 'a step moved whose item has left the routine', code: 'member_gone', sentName: null },
+    { name: 'a step moved after one that has left the routine', code: 'anchor_gone', sentName: null },
+    { name: 'a routine held or taken out that is gone', code: 'container_gone', sentName: null },
+    { name: 'a membership refusal, whatever name was sent', code: 'member_gone', sentName: 'House' },
   ].map((c) => ({ ...c, expected: containerRefusal(c.code ?? undefined, c.sentName ?? undefined) }));
+
+  // O13: the attach confirm, shown when putting a routine in a season would
+  // hide some of its items (`hides` is lib/organize.ts wouldHideAttaching's
+  // count, pinned in organize.json). Its button is tables.attachConfirmLabel.
+  const attachAsks: { name: string; routineName: string; season: Season; hides: number }[] = [
+    { name: 'one item, a season switched off', routineName: 'Evening', season: OFF_PAUSED, hides: 1 },
+    { name: 'a season that starts later: the day they come back', routineName: 'Morning', season: OFF_LATER, hides: 3 },
+    { name: 'one item coming back on a day, said in the singular', routineName: 'Evening', season: OFF_LATER_SAME_DAY, hides: 1 },
+    { name: 'a season whose run has ended: hidden until it is switched on', routineName: 'Morning', season: OFF_ENDED, hides: 2 },
+    {
+      name: 'a season switched off with a start ahead: no day, since the switch wins',
+      routineName: 'Morning',
+      season: season('s-term', 'Term', 'paused', { startsOn: '2026-11-01' }),
+      hides: 2,
+    },
+    {
+      name: 'a backwards range still names its start, as the web’s confirm does',
+      routineName: 'Evening',
+      season: OFF_INVERTED,
+      hides: 1,
+    },
+    {
+      name: 'a start stamped with a time: its day',
+      routineName: 'Evening',
+      season: season('s-legacy', 'Legacy', 'auto', { startsOn: '2026-11-01T00:00:00Z' }),
+      hides: 2,
+    },
+    {
+      name: 'names with quotes and an emoji, said as they are',
+      routineName: 'Mum’s “quiet” hour ☕',
+      season: season('s-push', 'Q4 “push”', 'paused'),
+      hides: 4,
+    },
+  ];
+  const attachConfirmCases = attachAsks.map((c) => ({
+    ...c,
+    today: TODAY,
+    expected: { title: attachConfirmTitle(c.hides), description: attachConfirmDescription(c.routineName, c.season, c.hides, TODAY) },
+  }));
 
   const nameInTrashCases = [
     { name: 'a project', noun: 'project', heldName: 'Admin' },
@@ -1908,6 +1958,10 @@ function buildCopy() {
       deleteStaysInTrash: DELETE_STAYS_IN_TRASH,
       deleteConfirmLabels: DELETE_CONFIRM_LABELS,
       createCopy: CONTAINER_CREATE_COPY,
+      // O12 and O13: the attach confirm's button, and the words for a
+      // membership write another device got to first.
+      attachConfirmLabel: ATTACH_CONFIRM_LABEL,
+      changedElsewhere: CHANGED_ELSEWHERE,
     },
     heldWorld: { items: HELD_ITEMS },
     switchedOff: switchedOffCases,
@@ -1932,6 +1986,7 @@ function buildCopy() {
     containerRefusal: containerRefusalCases,
     deleteTitle: deleteTitleCases,
     deleteConsequence: deleteConsequenceCases,
+    attachConfirm: attachConfirmCases,
   };
 }
 
@@ -1987,6 +2042,70 @@ const WEEK_TRIP: AwayPeriod = {
   returns: {},
   fromTrip: {},
 };
+
+/*
+ * Putting a routine in a season (wouldHideAttaching), asked of one world in
+ * New York on TODAY:
+ *   - Morning holds Water and Meditate (nothing else carries them), Stretch
+ *     (Desk carries it too), Journal (paused by hand), Read (Autumn holds it
+ *     directly), a habit done today and an undated task;
+ *   - Evening holds Floss alone; Rest days is paused; Ski prep is Winter's;
+ *     Garden is Autumn's; Empty holds nothing;
+ *   - Shelf is off by hand, Winter starts Nov 1, Summer has ended, Autumn is
+ *     live today and Always is on by hand.
+ */
+const ATTACH_ITEMS: Item[] = [
+  habit(1, 'Water'),
+  habit(2, 'Stretch'),
+  habit(3, 'Journal', { pausedAt: '2026-10-20T13:00:00Z' }),
+  habit(4, 'Read'),
+  habit(5, 'Done today', { completedDates: [TODAY] }),
+  task(6, 'Undated', { isScheduled: false }),
+  habit(7, 'Meditate'),
+  habit(8, 'Floss'),
+  habit(10, 'Rest'),
+  habit(11, 'Wax the skis'),
+  habit(12, 'Weed the beds'),
+];
+const ATTACH_ROUTINES: Routine[] = [
+  routine('r-morning', 'Morning', { itemIds: [uid(1), uid(2), uid(3), uid(4), uid(5), uid(6), uid(7)] }),
+  routine('r-desk', 'Desk', { itemIds: [uid(2)] }),
+  routine('r-evening', 'Evening', { itemIds: [uid(8)] }),
+  routine('r-rest', 'Rest days', { itemIds: [uid(10)], pausedAt: '2026-10-20T13:00:00Z' }),
+  routine('r-ski', 'Ski prep', { itemIds: [uid(11)] }),
+  routine('r-garden', 'Garden', { itemIds: [uid(12)] }),
+  routine('r-empty', 'Empty'),
+];
+const ATTACH_SEASONS: Season[] = [
+  OFF_PAUSED,
+  { ...OFF_LATER, routineIds: ['r-ski'] },
+  OFF_ENDED,
+  { ...ON_RANGE, itemIds: [uid(4)], routineIds: ['r-garden'] },
+  season('s-always', 'Always', 'active'),
+];
+const ATTACH_ASKS: { name: string; seasonId: string; routineId: string; today?: string }[] = [
+  { name: 'a season switched off takes what nothing else carries', seasonId: 's-shelf', routineId: 'r-morning' },
+  { name: 'one item: the routine’s only step', seasonId: 's-shelf', routineId: 'r-evening' },
+  { name: 'a season that starts later hides them until it does', seasonId: 's-winter', routineId: 'r-evening' },
+  { name: 'a season whose run has ended hides them', seasonId: 's-summer', routineId: 'r-evening' },
+  { name: 'a season live today hides nothing', seasonId: 's-autumn', routineId: 'r-morning' },
+  { name: 'a season switched on by hand hides nothing', seasonId: 's-always', routineId: 'r-evening' },
+  {
+    name: 'the first season only: a routine an off season already holds is never asked about',
+    seasonId: 's-shelf',
+    routineId: 'r-ski',
+  },
+  {
+    name: 'the first season only: a routine a live season holds stays carried',
+    seasonId: 's-shelf',
+    routineId: 'r-garden',
+  },
+  { name: 'a routine the same season already holds hides nothing more', seasonId: 's-winter', routineId: 'r-ski' },
+  { name: 'a paused routine’s items are off already: nothing more hides', seasonId: 's-shelf', routineId: 'r-rest' },
+  { name: 'an empty routine hides nothing', seasonId: 's-shelf', routineId: 'r-empty' },
+  { name: 'a season no longer in the list hides nothing', seasonId: 's-gone', routineId: 'r-evening' },
+  { name: 'on the day a season starts it is on: nothing hides', seasonId: 's-winter', routineId: 'r-evening', today: '2026-11-01' },
+];
 
 interface WeekAsk {
   name: string;
@@ -2108,11 +2227,59 @@ function buildOrganize() {
     };
   });
 
+  // O12: a routine's step placed after another (or first, after null).
+  const ms = (...ns: number[]) => ns.map(uid);
+  const moveAsks: { name: string; ids: string[]; item: string; after: string | null }[] = [
+    { name: 'down the list, after another', ids: ms(1, 2, 3, 4, 5), item: uid(1), after: uid(3) },
+    { name: 'up the list, after another', ids: ms(1, 2, 3, 4, 5), item: uid(4), after: uid(1) },
+    { name: 'first, with no anchor', ids: ms(1, 2, 3, 4, 5), item: uid(3), after: null },
+    { name: 'last, after the last one', ids: ms(1, 2, 3, 4, 5), item: uid(2), after: uid(5) },
+    { name: 'after the one already above it: no change', ids: ms(1, 2, 3, 4, 5), item: uid(3), after: uid(2) },
+    { name: 'first when it is first already: no change', ids: ms(1, 2, 3, 4, 5), item: uid(1), after: null },
+    { name: 'after itself: no change', ids: ms(1, 2, 3, 4, 5), item: uid(2), after: uid(2) },
+    { name: 'an item that is not a member: no change', ids: ms(1, 2, 3), item: uid(9), after: uid(1) },
+    { name: 'an anchor that is not a member: no change', ids: ms(1, 2, 3), item: uid(2), after: uid(9) },
+    { name: 'two steps swapped', ids: ms(1, 2), item: uid(1), after: uid(2) },
+    { name: 'one step, first: no change', ids: ms(1), item: uid(1), after: null },
+    { name: 'no steps at all', ids: [], item: uid(1), after: null },
+    // uid(99)'s item is in the Trash: its join row outlives it, and the page skips it.
+    {
+      name: 'a member whose item is in the Trash keeps its place among the rest',
+      ids: ms(1, 99, 2, 3),
+      item: uid(3),
+      after: uid(1),
+    },
+  ];
+  const moveMemberAfterCases = moveAsks.map((c) => ({ ...c, expected: moveMemberAfter(c.ids, c.item, c.after) }));
+
+  // O13: what putting a routine in a season would hide today (the attach
+  // confirm's count; nothing is asked at 0). One world, each case a season, a
+  // routine and the day.
+  const attachCases = ATTACH_ASKS.map((c) => {
+    const today = c.today ?? TODAY;
+    return {
+      name: c.name,
+      seasonId: c.seasonId,
+      routineId: c.routineId,
+      today,
+      expected: wouldHideAttaching(
+        c.seasonId,
+        c.routineId,
+        ATTACH_ITEMS,
+        { userTimezone: ZONE, routines: ATTACH_ROUTINES, seasons: ATTACH_SEASONS },
+        today,
+      ),
+    };
+  });
+
   return {
     tables: { nothingOnThisWeek: NOTHING_ON_THIS_WEEK },
     milestoneWorld: { items: milestoneItems },
+    attachWorld: { items: ATTACH_ITEMS, routines: ATTACH_ROUTINES, seasons: ATTACH_SEASONS, timeZone: ZONE },
     organizeWeek: week,
     nextMilestoneAcross: nextMilestoneAcrossCases,
+    moveMemberAfter: moveMemberAfterCases,
+    wouldHideAttaching: attachCases,
     weekCardSentence: [
       { name: 'part way', done: 18, counted: 23 },
       { name: 'none done yet', done: 0, counted: 4 },
@@ -2581,6 +2748,37 @@ function buildContainerWrites() {
     // O10: the delete takes nothing but its action.
     { name: 'a delete with a key it does not take', kind: 'routine', body: { action: 'delete', permanent: true } },
     { name: 'a delete naming its own id', kind: 'project', body: { action: 'delete', id: CW_NEW(1) } },
+    // O12: a step's move names the step and the one it goes after (null: first).
+    { name: 'a step moved after itself', kind: 'routine', body: { action: 'moveMember', itemId: uid(1), afterId: uid(1) } },
+    {
+      name: 'a step moved after itself, its anchor in capitals',
+      kind: 'routine',
+      body: { action: 'moveMember', itemId: CW_STEP(1), afterId: CW_STEP(1).toUpperCase() },
+    },
+    { name: 'a move with no afterId: first is null, never left out', kind: 'routine', body: { action: 'moveMember', itemId: uid(1) } },
+    { name: 'a move with no itemId', kind: 'routine', body: { action: 'moveMember', afterId: uid(1) } },
+    { name: 'a move naming a sample step', kind: 'routine', body: { action: 'moveMember', itemId: 'sample-water', afterId: null } },
+    {
+      name: 'a move carrying the whole order',
+      kind: 'routine',
+      body: { action: 'moveMember', itemId: uid(1), afterId: null, itemIds: [uid(1), uid(2)] },
+    },
+    { name: 'a step moved in a season', kind: 'season', body: { action: 'moveMember', itemId: uid(1), afterId: null } },
+    { name: 'a step moved in a goal', kind: 'goal', body: { action: 'moveMember', itemId: uid(1), afterId: null } },
+    { name: 'a step moved in a project', kind: 'project', body: { action: 'moveMember', itemId: uid(1), afterId: null } },
+    // O13: a season holds a routine or lets it go.
+    { name: 'a routine held by a routine', kind: 'routine', body: { action: 'holdRoutine', routineId: CW_HOLD(1), hold: true } },
+    { name: 'a routine held by a goal', kind: 'goal', body: { action: 'holdRoutine', routineId: CW_HOLD(1), hold: true } },
+    { name: 'a routine held by a project', kind: 'project', body: { action: 'holdRoutine', routineId: CW_HOLD(1), hold: true } },
+    { name: 'a hold with no hold', kind: 'season', body: { action: 'holdRoutine', routineId: CW_HOLD(1) } },
+    { name: 'a hold that is not true or false', kind: 'season', body: { action: 'holdRoutine', routineId: CW_HOLD(1), hold: 'true' } },
+    { name: 'a hold naming no routine', kind: 'season', body: { action: 'holdRoutine', hold: true } },
+    { name: 'a hold naming a sample routine', kind: 'season', body: { action: 'holdRoutine', routineId: 'sample-wind-down', hold: true } },
+    {
+      name: 'a hold carrying the whole list',
+      kind: 'season',
+      body: { action: 'holdRoutine', routineId: CW_HOLD(1), hold: true, routineIds: [CW_HOLD(1)] },
+    },
   ];
   const invalid = invalidAsks.map((c) => {
     if (CONTAINER_WRITE_SCHEMAS[c.kind].safeParse(c.body).success) throw new Error(`${c.name}: the route would take this body`);
@@ -2689,11 +2887,83 @@ function buildContainerWrites() {
     return { ...c, expected: { status: 400, error: 'invalid' } };
   });
 
-  return { cases, invalid, deletes, creates, createInvalid };
+  // O12: POST /api/app/containers/routine/:id {action:'moveMember'}. The
+  // routine's steps as the payload orders them (`before.itemIds`, which is
+  // also what the server holds), one step placed after another (afterId null:
+  // first). `expected.itemIds` is the order the server stores and the phone's
+  // optimistic step (moveMemberAfter, organize.json) draws; a refusal stores
+  // nothing, so its itemIds are the ones before, and the phone shows the
+  // latest (copy.json containerRefusal).
+  const STEPS = [CW_STEP(1), CW_STEP(2), CW_STEP(3), CW_STEP(4)];
+  const moveAsks: { name: string; itemIds: string[]; itemId: string; afterId: string | null }[] = [
+    { name: 'a step moved down one', itemIds: STEPS, itemId: CW_STEP(1), afterId: CW_STEP(2) },
+    { name: 'a step moved up one', itemIds: STEPS, itemId: CW_STEP(3), afterId: CW_STEP(1) },
+    { name: 'a step moved to the top: afterId null', itemIds: STEPS, itemId: CW_STEP(3), afterId: null },
+    { name: 'a step moved to the bottom', itemIds: STEPS, itemId: CW_STEP(1), afterId: CW_STEP(4) },
+    { name: 'the last step moved up two', itemIds: STEPS, itemId: CW_STEP(4), afterId: CW_STEP(1) },
+    { name: 'a step moved to where it is: the same order', itemIds: STEPS, itemId: CW_STEP(2), afterId: CW_STEP(1) },
+    { name: 'the first step moved to the top: the same order', itemIds: STEPS, itemId: CW_STEP(1), afterId: null },
+    { name: 'a routine of two, swapped', itemIds: [CW_STEP(1), CW_STEP(2)], itemId: CW_STEP(1), afterId: CW_STEP(2) },
+    { name: 'a step taken out on another device', itemIds: STEPS, itemId: CW_STEP(9), afterId: CW_STEP(1) },
+    { name: 'the step it goes after taken out on another device', itemIds: STEPS, itemId: CW_STEP(1), afterId: CW_STEP(9) },
+    { name: 'both taken out: the step is named first', itemIds: STEPS, itemId: CW_STEP(8), afterId: CW_STEP(9) },
+    { name: 'the step taken out, moved to the top', itemIds: STEPS, itemId: CW_STEP(9), afterId: null },
+    { name: 'ids sent in capitals are read lowercase', itemIds: STEPS, itemId: CW_STEP(4).toUpperCase(), afterId: CW_STEP(2).toUpperCase() },
+  ];
+  const moves = moveAsks.map((c) => {
+    const body = { action: 'moveMember', itemId: c.itemId, afterId: c.afterId };
+    const parsed = CONTAINER_WRITE_SCHEMAS.routine.safeParse(body);
+    if (!parsed.success || parsed.data.action !== 'moveMember') throw new Error(`${c.name}: the route would refuse this body`);
+    const { itemId, afterId } = parsed.data;
+    const error = !c.itemIds.includes(itemId)
+      ? 'member_gone'
+      : afterId !== null && !c.itemIds.includes(afterId)
+        ? 'anchor_gone'
+        : null;
+    const expected = error
+      ? { status: 409, error, itemIds: [...c.itemIds] }
+      : { status: 200, error: null, itemIds: moveMemberAfter(c.itemIds, itemId, afterId) };
+    return { name: c.name, kind: 'routine' as const, before: { itemIds: c.itemIds }, body, expected };
+  });
+
+  // O13: POST /api/app/containers/season/:id {action:'holdRoutine'}. The
+  // season's routines as the payload lists them (`before.routineIds`, by id),
+  // one routine put in or taken out. `routineLive` is whether the routine
+  // named is the user's and out of the bin: when it is not, the route answers
+  // container_gone either way. `expected.routineIds` is what the payload lists
+  // after, in its order (by id); the phone compares it as a set.
+  const holdAsks: { name: string; routineIds: string[]; routineId: string; hold: boolean; routineLive: boolean }[] = [
+    { name: 'a routine put in a season', routineIds: [CW_HOLD(1)], routineId: CW_HOLD(2), hold: true, routineLive: true },
+    { name: 'a routine put in a season with none', routineIds: [], routineId: CW_HOLD(1), hold: true, routineLive: true },
+    { name: 'a routine put in that it already holds: already so', routineIds: [CW_HOLD(1)], routineId: CW_HOLD(1), hold: true, routineLive: true },
+    { name: 'a routine taken out', routineIds: [CW_HOLD(1), CW_HOLD(2)], routineId: CW_HOLD(1), hold: false, routineLive: true },
+    { name: 'the last routine taken out', routineIds: [CW_HOLD(2)], routineId: CW_HOLD(2), hold: false, routineLive: true },
+    { name: 'a routine taken out that it does not hold: already so', routineIds: [CW_HOLD(1)], routineId: CW_HOLD(2), hold: false, routineLive: true },
+    { name: 'a routine put in from the bin', routineIds: [CW_HOLD(1)], routineId: CW_HOLD(3), hold: true, routineLive: false },
+    { name: 'a routine in the bin taken out', routineIds: [CW_HOLD(1)], routineId: CW_HOLD(3), hold: false, routineLive: false },
+    { name: 'a routine id sent in capitals is read lowercase', routineIds: [CW_HOLD(1)], routineId: CW_HOLD(2).toUpperCase(), hold: true, routineLive: true },
+  ];
+  const holds = holdAsks.map((c) => {
+    const body = { action: 'holdRoutine', routineId: c.routineId, hold: c.hold };
+    const parsed = CONTAINER_WRITE_SCHEMAS.season.safeParse(body);
+    if (!parsed.success || parsed.data.action !== 'holdRoutine') throw new Error(`${c.name}: the route would refuse this body`);
+    const { routineId } = parsed.data;
+    const after = c.hold ? [...new Set([...c.routineIds, routineId])] : c.routineIds.filter((r) => r !== routineId);
+    const expected = c.routineLive
+      ? { status: 200, error: null, routineIds: after.sort() }
+      : { status: 409, error: 'container_gone', routineIds: [...c.routineIds] };
+    return { name: c.name, kind: 'season' as const, before: { routineIds: c.routineIds }, routineLive: c.routineLive, body, expected };
+  });
+
+  return { cases, invalid, deletes, creates, createInvalid, moves, holds };
 }
 
 /** A new container's id, as the phone mints one: a lowercase uuid. */
 const CW_NEW = (n: number) => `cccccccc-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
+/** A routine's step a move names: a lowercase uuid with letters in it, so its capitals differ. */
+const CW_STEP = (n: number) => `bbbbbbbb-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
+/** A routine a season's hold names: a lowercase uuid, as the payload carries one. */
+const CW_HOLD = (n: number) => `aaaaaaaa-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
 
 /** A routine, a season, a goal and a project as the field cases find them. */
 const CW_ROUTINE = (over: Partial<Routine> = {}) =>
@@ -3001,6 +3271,10 @@ describe('the cases say what they claim', () => {
     // map in DsulCore is pinned entry by entry.
     const reached = new Set(look.projectColor.map((c) => c.expected));
     for (const token of Object.values(LEGACY_PROJECT_TOKENS)) expect(reached.has(token), token).toBe(true);
+    // A stored "" never reaches CSS: the grid falls through to the legacy token.
+    expect(look.projectColor.find((c) => c.name === 'an empty colour is no colour')?.expected).toBe(
+      'var(--habit-work)',
+    );
     expect(look.hash.find((c) => c.input === 'evadgrga')?.hash).toBe(2 ** 31);
     expect(look.icons.find((c) => c.containerName === 'evadgrga')?.expected).toBe(
       CATEGORY_ICON_NAMES[2 ** 31 % CATEGORY_ICON_NAMES.length],
@@ -3151,6 +3425,32 @@ describe('the cases say what they claim', () => {
       'a custom type with an empty label: its slug capitalised': 'Side-quest',
       'a custom type with no row: its slug capitalised': 'Errand',
     });
+  });
+
+  it('a step’s move reaches no change, both refusals and the top; the attach count reaches 0, more than 0 and the first-season rule', () => {
+    const organize = buildOrganize();
+    const moved = organize.moveMemberAfter;
+    expect(moved.some((c) => c.after === null && c.expected[0] === c.item && c.ids[0] !== c.item)).toBe(true);
+    expect(moved.some((c) => JSON.stringify(c.expected) === JSON.stringify(c.ids))).toBe(true);
+    expect(moved.some((c) => JSON.stringify(c.expected) !== JSON.stringify(c.ids))).toBe(true);
+    const counts = organize.wouldHideAttaching.map((c) => c.expected);
+    expect(counts).toContain(0);
+    expect(counts.some((n) => n > 1)).toBe(true);
+    expect(counts).toContain(1);
+    // The first-season rule: a routine an off season holds is never asked about,
+    // though the season asked is off too.
+    const first = organize.wouldHideAttaching.find((c) => c.name.startsWith('the first season only: a routine an off season'));
+    expect(first?.expected).toBe(0);
+    const writes = buildContainerWrites();
+    expect(new Set(writes.moves.map((c) => c.expected.error))).toEqual(new Set([null, 'member_gone', 'anchor_gone']));
+    expect(writes.moves.some((c) => c.body.afterId === null && c.expected.status === 200)).toBe(true);
+    expect(new Set(writes.holds.map((c) => `${c.body.hold} ${c.expected.error}`))).toEqual(
+      new Set(['true null', 'false null', 'true container_gone', 'false container_gone']),
+    );
+    // Every body the phone sends carries lowercase ids but the one case that says otherwise.
+    const ids = (body: Record<string, unknown>) => [body.itemId, body.afterId, body.routineId].filter((v): v is string => typeof v === 'string');
+    const upper = [...writes.moves, ...writes.holds].filter((c) => ids(c.body).some((v) => v !== v.toLowerCase()));
+    expect(upper.map((c) => c.name)).toEqual(['ids sent in capitals are read lowercase', 'a routine id sent in capitals is read lowercase']);
   });
 
   it('the shared words hold the copy rules: no em dash, nothing "missed"', () => {

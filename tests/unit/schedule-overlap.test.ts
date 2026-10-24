@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { layoutOverlaps, pickContentBand, type OverlapEntry } from '@/lib/schedule-overlap';
+import {
+  layoutOverlaps,
+  pickContentBand,
+  planOverlaps,
+  type BandLength,
+  type BlockLayout,
+  type LayoutOptions,
+  type OverlapEntry,
+} from '@/lib/schedule-overlap';
 import {
   BAND_COMFORT,
   HOVER_Z,
@@ -524,5 +532,89 @@ describe('pickContentBand', () => {
 
   it('gives up rather than printing a clipped half-line', () => {
     expect(pickContentBand(40, [{ top: 8, bottom: 40 }])).toBeNull();
+  });
+});
+
+/**
+ * `layoutOverlaps` is `planOverlaps` written as CSS, and the iPhone ports the
+ * numbers (tests/fixtures/day/overlap.json). Over every input this file asks
+ * of `layoutOverlaps`, plus the lanes' root band, the two answers carry the
+ * same ids in the same order, the same non-length fields, and every CSS length
+ * reads back as the plan's percentage and px.
+ */
+describe('planOverlaps: the numbers layoutOverlaps writes', () => {
+  const WEEK = { hourPx: 52, variant: 'week' as const };
+  const five = [0, 1, 2, 3, 4].map((i) => entry(`c${i}`, HM(10) + i * 15, 180));
+  const nestedPair = [entry('span', HM(10), 420), entry('task', HM(14), 180)];
+  const crossing = [entry('a', HM(10), 120), entry('b', HM(11), 120)];
+  const doubled = [entry('standup', HM(9), 60), entry('dentist', HM(9), 60)];
+  const cases: [string, OverlapEntry[], LayoutOptions][] = [
+    ['one entry', [entry('a', HM(10), 60)], DAY],
+    ['far apart', [entry('a', HM(10), 60), entry('b', HM(13), 60)], DAY],
+    ['touching short items', [entry('a', HM(9), 30), entry('b', HM(9, 30), 30)], DAY],
+    ['nested', nestedPair, DAY],
+    ['crossing', crossing, DAY],
+    ['double-booked', doubled, { ...DAY, gridStartMin: HM(8) }],
+    ['three at once', [entry('a', HM(9), 60), entry('b', HM(9), 60), entry('c', HM(9), 60)], { ...DAY, gridStartMin: HM(8) }],
+    ['a quarter apart', [entry('a', HM(9), 60), entry('b', HM(9, 15), 60)], { ...DAY, gridStartMin: HM(8) }],
+    ['one project block', [entry('t1', HM(10), 60, 'Ship it'), entry('t2', HM(10), 60, 'Ship it'), entry('t3', HM(10), 60, 'Ship it')], DAY],
+    ['two project blocks', [entry('a1', HM(10), 60, 'Alpha'), entry('b1', HM(10), 60, 'Beta')], DAY],
+    ...[40, 45, 52, 60, 68, 75].map((hourPx): [string, OverlapEntry[], LayoutOptions] => [`nested at ${hourPx}`, nestedPair, { ...DAY, hourPx }]),
+    ['five minutes short', [entry('p', HM(10), 60), entry('c', HM(10), 55)], DAY],
+    ['capped at two', [entry('a', HM(10), 180), entry('b', HM(10, 30), 180), entry('c', HM(11), 180)], { ...DAY, maxCols: 2 }],
+    ['busy', [entry('span', HM(10), 420), entry('mid', HM(11), 240), entry('x', HM(12), 60), entry('y', HM(12), 60)], DAY],
+    ['a pile', [entry('outer', HM(9), 480), entry('mid', HM(10), 240), entry('inner', HM(11), 60)], { ...DAY, gridStartMin: HM(8) }],
+    ...[900, 294, 200].map((fieldWidth): [string, OverlapEntry[], LayoutOptions] => [`five in ${fieldWidth}`, five, { ...DAY, fieldWidth }]),
+    ['five uncapped', five, DAY],
+    ['two children', [entry('span', HM(9), 240), entry('k1', HM(10), 60), entry('k2', HM(10, 30), 60)], { ...DAY, gridStartMin: HM(8), fieldWidth: 900 }],
+    ...[140, 294, 500, 900, 1600].map((fieldWidth): [string, OverlapEntry[], LayoutOptions] => [`nested in ${fieldWidth}`, nestedPair, { ...DAY, fieldWidth }]),
+    ['week nested', nestedPair, { ...WEEK, gridStartMin: HM(9) }],
+    ['week double-booked', doubled, { ...WEEK, gridStartMin: HM(8) }],
+    ['week crossing', crossing, { ...WEEK, gridStartMin: HM(9) }],
+    ['a lane, alone', [entry('a', HM(10), 60)], { ...DAY, root: { leftPct: 50, rightPct: 0 } }],
+    ['a lane, crossing', crossing, { ...DAY, fieldWidth: 900, root: { leftPct: 100 / 3, rightPct: 100 / 3 } }],
+    ['a lane, doubled', doubled, { ...DAY, root: { leftPct: 0, rightPct: 50 } }],
+  ];
+
+  /** A length as `band()` writes it, read back. */
+  function readLength(css: string): BandLength {
+    const px = /^(-?[\d.]+)px$/.exec(css);
+    if (px) return { pct: 0, px: Number(px[1]) };
+    const calc = /^calc\((-?[\d.]+)% ([+-]) ([\d.]+)px\)$/.exec(css);
+    expect(calc, css).not.toBeNull();
+    const [, pct, sign, abs] = calc as RegExpExecArray;
+    return { pct: Number(pct), px: (sign === '-' ? -1 : 1) * Number(abs) };
+  }
+
+  const LENGTHS = ['left', 'right', 'paneLeft', 'paneRight', 'railX', 'beadX'] as const;
+
+  it.each(cases)('%s', (_name, entries, options) => {
+    const plans = planOverlaps(entries, options);
+    const layout = layoutOverlaps(entries, options);
+    expect([...layout.keys()]).toEqual([...plans.keys()]);
+    for (const [id, plan] of plans) {
+      const css = layout.get(id) as BlockLayout;
+      const lengths: [string, string | null, BandLength | null][] = [
+        ...LENGTHS.map((k): [string, string, BandLength] => [k, css[k], plan[k]]),
+        ['startTie', css.startTie, plan.startTie],
+      ];
+      for (const [key, written, planned] of lengths) {
+        if (planned === null || written === null) {
+          expect(written, `${id}.${key}`).toBe(planned);
+          continue;
+        }
+        const read = readLength(written);
+        // band() rounds a percentage to 0.001 and px to 0.01, and drops a zero
+        // percentage altogether.
+        expect(Math.abs(read.pct - planned.pct), `${id}.${key} ${written}`).toBeLessThanOrEqual(0.0005);
+        expect(Math.abs(read.px - planned.px), `${id}.${key} ${written}`).toBeLessThanOrEqual(0.005);
+        if (Math.abs(planned.pct) < 1e-9) expect(written, `${id}.${key}`).toMatch(/^-?[\d.]+px$/);
+      }
+      const rest = (l: object) =>
+        Object.fromEntries(
+          Object.entries(l).filter(([k]) => !(LENGTHS as readonly string[]).includes(k) && k !== 'startTie')
+        );
+      expect(rest(css), id).toEqual(rest(plan));
+    }
   });
 });

@@ -10,7 +10,10 @@ import DsulCore
 // and from O9 its name refusals, by the name a rename sent, and
 // `nameTakenSentence`. From O10 a delete's confirm (its title, button and the
 // phone's consequence sentence, every row the PHONE shell), and from O11 the
-// create sheet's words and starting glyph (`tables.createCopy`).
+// create sheet's words and starting glyph (`tables.createCopy`). From O13 the
+// season page's attach confirm (`attachConfirm`, `tables.attachConfirmLabel`),
+// and from O12 and O13 the membership refusals' one sentence
+// (`tables.changedElsewhere`, through `containerRefusal`).
 // The summary cards' lines are pinned by organize.json (OrganizeFixtureTests).
 
 private struct StateTables: Decodable, Sendable {
@@ -39,6 +42,8 @@ private struct Tables: Decodable, Sendable {
     let deleteStaysInTrash: [String: String]
     let deleteConfirmLabels: [String: String]
     let createCopy: [String: CreateCopyCase]
+    let attachConfirmLabel: String
+    let changedElsewhere: String
 }
 
 private struct CreateCopyCase: Decodable, Sendable, Equatable {
@@ -251,6 +256,22 @@ private struct ContainerRefusalCase: Decodable, Sendable {
     let expected: String?
 }
 
+/// One row of `attachConfirm` (O13): the routine's name, the season it would
+/// join, how many items that hides, today, and the confirm's two lines.
+private struct AttachConfirmCase: Decodable, Sendable {
+    let name: String
+    let routineName: String
+    let season: Season
+    let hides: Int
+    let today: String
+    let expected: AttachConfirmExpected
+}
+
+private struct AttachConfirmExpected: Decodable, Sendable {
+    let title: String
+    let description: String
+}
+
 private struct NameTakenCase: Decodable, Sendable {
     let name: String
     let noun: String
@@ -283,6 +304,7 @@ private struct CopyFixture: Decodable, Sendable {
     let containerRefusal: [ContainerRefusalCase]
     let deleteTitle: [DeleteTitleCase]
     let deleteConsequence: [ConsequenceCase]
+    let attachConfirm: [AttachConfirmCase]
 }
 
 private func load() throws -> CopyFixture {
@@ -338,6 +360,15 @@ private func table(_ states: [StateLabel]) -> [String: String] {
         })
         #expect(kinds == Set(OrganizeKind.allCases.map(\.rawValue)))
         #expect(f.deleteConsequence.contains { $0.dropped })
+        // O12 and O13: every membership refusal has a row, and the attach
+        // confirm has both endings, one item and several.
+        for code in ["member_gone", "anchor_gone", "container_gone"] {
+            #expect(f.containerRefusal.contains { $0.code == code }, "\(code)")
+        }
+        #expect(f.attachConfirm.count >= 4)
+        #expect(f.attachConfirm.contains { $0.hides == 1 } && f.attachConfirm.contains { $0.hides > 1 })
+        #expect(f.attachConfirm.contains { $0.expected.description.contains("come back on") })
+        #expect(f.attachConfirm.contains { $0.expected.description.contains("until you switch it on") })
     }
 
     @Test func theTablesAreTheWebs() throws {
@@ -366,6 +397,9 @@ private func table(_ states: [StateLabel]) -> [String: String] {
         #expect(OrganizeCopy.restoreFailed == t.restoreFailed)
         #expect(OrganizeCopy.restoreGone == t.restoreGone)
         #expect(OrganizeCopy.pauseRefused == t.pauseRefused)
+        // O12 and O13.
+        #expect(OrganizeCopy.attachConfirmLabel == t.attachConfirmLabel)
+        #expect(OrganizeCopy.changedElsewhere == t.changedElsewhere)
         // O10 and O11.
         #expect(Set(t.deleteStaysInTrash.keys) == Set(OrganizeKind.allCases.map(\.rawValue)))
         for kind in OrganizeKind.allCases {
@@ -561,7 +595,8 @@ private func table(_ states: [StateLabel]) -> [String: String] {
     /// A refused container write's banner (O8a, O9). A case with a
     /// `sentName` is a rename that sent it (padded too, since the route reads
     /// the name trimmed); one without is every other write the phone sends,
-    /// which has no name for the name codes to give.
+    /// which has no name for the name codes to give, a step's move and a
+    /// season's hold (O12, O13) among them.
     @Test func theContainerRefusalWordsMatchTheWeb() throws {
         let intents: [ContainerIntent] = [
             .pause(until: nil, timeZone: nil), .resume(timeZone: nil), .state(.paused), .goalState(.achieved),
@@ -585,13 +620,55 @@ private func table(_ states: [StateLabel]) -> [String: String] {
                 for intent in intents + [.delete] {
                     #expect(OrganizeCopy.refusal(code: c.code, for: intent) == c.expected, "\(c.name)")
                 }
+                for membership in memberships {
+                    #expect(OrganizeCopy.refusal(code: c.code, for: membership) == c.expected, "\(c.name)")
+                }
             }
         }
+    }
+
+    /// O13: the attach confirm's title and description, byte for byte: the
+    /// count's own grammar in the title and the description ("its 1 item
+    /// comes back"), the start's day only for a season following its dates
+    /// that starts after today.
+    @Test func theAttachConfirmMatchesTheWeb() throws {
+        for c in try load().attachConfirm {
+            let today = try #require(DayString(c.today), "\(c.name): bad today")
+            #expect(OrganizeCopy.attachConfirmTitle(hides: c.hides) == c.expected.title, "\(c.name)")
+            #expect(OrganizeCopy.attachConfirmDescription(
+                routineName: c.routineName, season: c.season, hides: c.hides, today: today
+            ) == c.expected.description, "\(c.name)")
+        }
+    }
+
+    /// The rule's edges the fixture doesn't name: the start's day is the
+    /// season's own (not `seasonResumeDate`'s), only under Dates, only while
+    /// today is before it; an empty start is none.
+    @Test func theAttachConfirmNamesTheStartOnlyWhileItIsAhead() throws {
+        let today = try #require(DayString("2026-10-23"))
+        func tail(_ season: Season) -> String {
+            OrganizeCopy.attachConfirmDescription(routineName: "Morning", season: season, hides: 2, today: today)
+        }
+        let ahead = Season(id: "s", name: "Winter", state: "auto", startsOn: "2026-10-24")
+        #expect(tail(ahead).contains("its 2 items come back on Oct 24."))
+        var onTheDay = ahead
+        onTheDay.startsOn = "2026-10-23"
+        #expect(tail(onTheDay).contains("its 2 items stay hidden until you switch it on."))
+        var pinnedOn = ahead
+        pinnedOn.state = "active"
+        #expect(tail(pinnedOn).contains("stay hidden until you switch it on."))
+        var blank = ahead
+        blank.startsOn = ""
+        #expect(tail(blank).contains("stay hidden until you switch it on."))
+        #expect(OrganizeCopy.attachConfirmTitle(hides: 1) == "This will hide 1 item for now")
+        #expect(OrganizeCopy.attachConfirmTitle(hides: 12) == "This will hide 12 items for now")
+        #expect(!OrganizeCopy.attachConfirmTitle(hides: 2).hasSuffix("."))
     }
 
     /// The copy rules (design §6.9): no em dash and no "missed" in any word
     /// this file says.
     @Test func noWordBreaksTheCopyRules() throws {
+        let attach = try load().attachConfirm.flatMap { [$0.expected.title, $0.expected.description] }
         let f = try load()
         let today = try #require(DayString("2026-10-23"))
         var words: [String] = [
@@ -621,6 +698,7 @@ private func table(_ states: [StateLabel]) -> [String: String] {
                     OrganizeCopy.deleteConfirmLabel(kind)]
         }
         words += OrganizeKind.allCases.map(OrganizeCopy.deleteStaysInTrash)
+        words += attach + [OrganizeCopy.attachConfirmLabel, OrganizeCopy.changedElsewhere]
         for word in words {
             #expect(!word.unicodeScalars.contains("\u{2014}"), "\(word)")
             #expect(!word.lowercased().contains("missed"), "\(word)")
@@ -636,3 +714,14 @@ private func table(_ states: [StateLabel]) -> [String: String] {
         #expect(OrganizeCopy.seasonRunsLabel(startsOn: nil, endsOn: "2026-12-01T00:00:00Z") == "Until Dec 1")
     }
 }
+
+/// The two membership writes the phone sends (O12, O13), which send no name.
+private let memberships: [MembershipIntent] = [
+    .moveMember(item: UUID(uuidString: "bbbbbbbb-0000-4000-8000-000000000001")!, after: nil),
+    .moveMember(
+        item: UUID(uuidString: "bbbbbbbb-0000-4000-8000-000000000001")!,
+        after: UUID(uuidString: "bbbbbbbb-0000-4000-8000-000000000002")!
+    ),
+    .holdRoutine(routineId: "aaaaaaaa-0000-4000-8000-000000000001", hold: true),
+    .holdRoutine(routineId: "aaaaaaaa-0000-4000-8000-000000000001", hold: false),
+]

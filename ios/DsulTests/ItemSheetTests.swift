@@ -1,6 +1,9 @@
 import DsulCore
 import Foundation
 import Testing
+#if canImport(UIKit)
+import UIKit
+#endif
 @testable import Dsul
 
 /// The item sheet's words and slots (ItemSheetModel) and a row's VoiceOver
@@ -60,7 +63,7 @@ import Testing
         let (ctx, _, verbs) = sheet(planner, roadmap)
 
         #expect(verbs.bar == [.tick, .nextDay, .reschedule])
-        #expect(verbs.menu == [.pause, .pauseUntil, .delete])
+        #expect(verbs.menu == [.pause, .pauseUntil, .braindump, .delete])
         #expect(!verbs.notDue)
         #expect(ItemSheetModel.barLabel(.tick, roadmap, ctx) == "Done")
         #expect(ItemSheetModel.spokenLabel(.tick, roadmap, ctx) == "Mark done")
@@ -208,9 +211,9 @@ import Testing
 
     /// Delete is offered on everything, so ⋯ always shows, Delete last: a
     /// habit's ⋯ is Delete alone, a day the item doesn't fall on is Pause,
-    /// Pause until… and Delete, and so is ⋯ on a one-off (its bar holds the
-    /// rest). The view draws a divider before Delete when anything is above
-    /// it.
+    /// Pause until… and Delete, and ⋯ on a dated one-off is those with Move
+    /// to Braindump before Delete (its bar holds the rest). The view draws a
+    /// divider before Delete when anything is above it.
     @Test func moreEndsWithDeleteWhateverTheItem() throws {
         let planner = makePlanner()
         let journal = try named(planner, "Journal")
@@ -227,7 +230,8 @@ import Testing
                 == "trash")
     }
 
-    /// A server whose `writes` lacks `delete` offers no Delete, and ⋯ is part
+    /// A server whose `writes` lacks `delete` (and so `unschedule`, which
+    /// came later) offers no Delete and no Move to Braindump, and ⋯ is part
     /// 1's: empty (and so hidden) for a habit, the pause family for a one-off.
     @Test func withoutTheDeleteWriteMoreIsPartOnes() throws {
         let planner = makePlanner()
@@ -235,12 +239,80 @@ import Testing
         let roadmap = try named(planner, "Draft Q4 roadmap")
         let habit = sheet(planner, journal)
         let task = sheet(planner, roadmap)
+        let partOne: (VerbID) -> Bool = { $0 != .delete && $0 != .braindump }
 
-        let habitVerbs = ItemSheetModel.verbs(journal, habit.ctx, offered: habit.offered.filter { $0 != .delete })
-        let taskVerbs = ItemSheetModel.verbs(roadmap, task.ctx, offered: task.offered.filter { $0 != .delete })
+        let habitVerbs = ItemSheetModel.verbs(journal, habit.ctx, offered: habit.offered.filter(partOne))
+        let taskVerbs = ItemSheetModel.verbs(roadmap, task.ctx, offered: task.offered.filter(partOne))
         #expect(habitVerbs.menu.isEmpty)
         #expect(taskVerbs.menu == [.pause, .pauseUntil])
     }
+
+    /// Move to Braindump (Week and blocks PR 3) is ⋯'s, never the bar's: on
+    /// every sample item offered it, it sits right before Delete. Its words
+    /// are the port's label everywhere (the bar's, the spoken one, ⋯'s), it
+    /// has no spoken value, and it takes a slot of its own.
+    @Test func moveToBraindumpSitsInMoreJustBeforeDelete() throws {
+        let planner = makePlanner()
+        let roadmap = try named(planner, "Draft Q4 roadmap")
+        let ctx = planner.verbContext(for: roadmap, on: planner.today)
+        #expect(ItemSheetModel.barLabel(.braindump, roadmap, ctx) == "Move to Braindump")
+        #expect(ItemSheetModel.spokenLabel(.braindump, roadmap, ctx) == "Move to Braindump")
+        #expect(ItemSheetModel.spokenValue(.braindump, roadmap, ctx) == nil)
+        #expect(ItemSheetModel.menuTitle(.braindump) == verbLabel(.braindump, roadmap, ctx))
+        #expect(ItemSheetModel.symbol(.braindump, roadmap, ctx) == "tray.and.arrow.down")
+        #expect(SheetVerb.braindump.slotID == "braindump")
+        #expect(SheetVerb.braindump.verb == VerbID.braindump)
+        #expect(SheetVerb.allCases == [.tick, .skip, .unskip, .pause, .pauseUntil, .resume, .nextDay, .reschedule,
+                                       .braindump, .delete])
+
+        var offeredOn: [String] = []
+        for item in planner.items {
+            let (_, offered, verbs) = sheet(planner, item)
+            #expect(!verbs.bar.contains(.braindump), "\(item.title)")
+            guard offered.contains(.braindump) else {
+                #expect(!verbs.menu.contains(.braindump), "\(item.title)")
+                continue
+            }
+            offeredOn.append(item.title)
+            #expect(Array(verbs.menu.suffix(2)) == [.braindump, .delete], "\(item.title)")
+        }
+        #expect(offeredOn.contains("Draft Q4 roadmap"))
+        #expect(offeredOn.contains("Groceries"))
+        #expect(offeredOn.contains("Coffee with Priya"))
+        #expect(!offeredOn.contains("Run a 10K"))
+    }
+
+    /// Paused today, a dated one-off is still offered Move to Braindump (the
+    /// web's gate has no pause test), but the sheet holds it back with every
+    /// verb but Resume: the bar is Resume alone and ⋯ is Delete alone.
+    @Test func aPausedOneOffHoldsMoveToBraindumpBackUntilItResumes() throws {
+        let planner = makePlanner()
+        let roadmap = try named(planner, "Draft Q4 roadmap")
+        planner.pause(roadmap.id, until: nil)
+        let paused = try named(planner, "Draft Q4 roadmap")
+        let (_, offered, verbs) = sheet(planner, paused)
+
+        #expect(offered.contains(.braindump))
+        #expect(verbs.bar == [.resume])
+        #expect(verbs.menu == [.delete])
+    }
+
+    #if canImport(UIKit)
+    /// Every symbol the bar and ⋯ draw exists on this iOS (xcode-27 runner
+    /// only: the shim has no UIKit), the tick's undo included.
+    @Test func everyVerbSymbolExists() throws {
+        let planner = makePlanner()
+        let roadmap = try named(planner, "Draft Q4 roadmap")
+        let ctx = planner.verbContext(for: roadmap, on: planner.today)
+        var names = SheetVerb.allCases.map { ItemSheetModel.symbol($0, roadmap, ctx) }
+        planner.toggle(roadmap.id, on: planner.today)
+        let done = try #require(planner.item(roadmap.id))
+        names.append(ItemSheetModel.symbol(.tick, done, ctx))
+        for name in names {
+            #expect(UIImage(systemName: name) != nil, "\(name)")
+        }
+    }
+    #endif
 
     /// The confirm's words: lib/item-verbs.ts `deleteConfirmTitle`, the
     /// registry's description (to the Trash for 30 days; a habit's history

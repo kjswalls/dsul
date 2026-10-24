@@ -62,8 +62,11 @@ private struct RawItems: Decodable, Sendable {
         #expect(p.settings.timeFormat == .twentyFourHour)
         #expect(p.writes == [
             "complete", "schedule", "skip", "move", "pause", "title", "notes", "delete", "addSubtask", "resetStreak",
-            "priority", "timesPerDay", "reminder", "time", "repeat", "project", "collect", "snooze",
+            "priority", "timesPerDay", "reminder", "time", "repeat", "project", "collect", "snooze", "unschedule",
         ])
+        // Move to Braindump's body names the action the route lists last
+        // (Week and blocks PR 3), so `canWrite` finds it.
+        #expect(p.writes?.last == ItemWriteBody.unschedule.action)
         // The Trash's two routes (lib/app-containers.ts TRASH_WRITES, O14).
         #expect(p.trashWrites == ["list", "restore"])
         #expect(TrashRoutes.offered(p.trashWrites))
@@ -71,10 +74,11 @@ private struct RawItems: Decodable, Sendable {
         // CONTAINER_WRITES): O8a's routine pause and season state; O8b's usual
         // time, Runs, a goal's Status and window, notes and a why; O9's
         // rename, icon and colour on every kind; O10's delete and O11's
-        // create (the + menu, its own route) on every kind, last.
+        // create (the + menu, its own route) on every kind, last; O12's
+        // routine step move and O13's season routine hold, before the delete.
         #expect(p.containerWrites == ContainerWrites(
-            routine: ["pause", "usualTime", "notes", "rename", "icon", "color", "delete", "create"],
-            season: ["state", "dates", "notes", "rename", "icon", "color", "delete", "create"],
+            routine: ["pause", "usualTime", "notes", "rename", "icon", "color", "moveMember", "delete", "create"],
+            season: ["state", "dates", "notes", "rename", "icon", "color", "holdRoutine", "delete", "create"],
             goal: ["state", "window", "why", "rename", "icon", "color", "delete", "create"],
             project: ["notes", "rename", "icon", "color", "delete", "create"]
         ))
@@ -83,6 +87,8 @@ private struct RawItems: Decodable, Sendable {
         #expect(writes.takes(.state(.active), on: .season))
         #expect(writes.takes(.goalState(.achieved), on: .goal))
         #expect(writes.takes(.rename("House"), on: .project))
+        #expect(writes.takes(MembershipIntent.moveMember(item: UUID(), after: nil), on: .routine))
+        #expect(writes.takes(MembershipIntent.holdRoutine(routineId: "r", hold: true), on: .season))
         for kind in OrganizeKind.allCases {
             #expect(writes.takes(ContainerIntent.delete, on: kind), "delete on \(kind)")
             #expect(writes.takes(.create, on: kind), "create on \(kind)")
@@ -326,6 +332,24 @@ private struct RawItems: Decodable, Sendable {
         #expect(cooked.memberIds.isEmpty && cooked.milestoneIds.isEmpty && cooked.checkinIds.isEmpty)
         #expect(progressLabel(cooked, goalProgress(cooked, items: p.items)) == "No milestones yet")
         #expect(sortGoalsForDisplay(goals).map(\.id) == goals.map(\.id))
+
+        // Move to Braindump's milestone set is every goal's milestones, the
+        // achieved goal's included (it has none here). With it, a dated
+        // one-off that is no milestone is offered the verb; with no set
+        // (a payload without goals) nothing is.
+        let milestones = milestoneItemIds(goals)
+        #expect(milestones == Set(spanish.milestoneIds))
+        let bank = try #require(p.items.first { $0.title == "Call the bank" })
+        let ctx = VerbContext(
+            dateStr: "2026-10-02", todayStr: "2026-10-02", timeZone: p.settings.timezone ?? "UTC", milestoneIds: milestones
+        )
+        #expect(verbEligible(.braindump, bank, ctx))
+        var unknown = ctx
+        unknown.milestoneIds = nil
+        #expect(!verbEligible(.braindump, bank, unknown))
+        var asMilestone = ctx
+        asMilestone.milestoneIds = milestones.union([bank.id])
+        #expect(!verbEligible(.braindump, bank, asMilestone))
     }
 }
 

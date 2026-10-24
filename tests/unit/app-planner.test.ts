@@ -723,6 +723,7 @@ describe('the payload fixture shared with DsulCore', () => {
       'project',
       'collect',
       'snooze',
+      'unschedule',
     ]);
     // What the Trash routes take (lib/app-containers.ts). Additive too: an
     // older server sends no list, and the phone then offers no Trash.
@@ -734,8 +735,8 @@ describe('the payload fixture shared with DsulCore', () => {
     // an older server sends no key, and the phone then hides every container
     // editor. Each editor shows only while its own action is listed.
     expect(generated.containerWrites).toEqual({
-      routine: ['pause', 'usualTime', 'notes', 'rename', 'icon', 'color', 'delete', 'create'],
-      season: ['state', 'dates', 'notes', 'rename', 'icon', 'color', 'delete', 'create'],
+      routine: ['pause', 'usualTime', 'notes', 'rename', 'icon', 'color', 'moveMember', 'delete', 'create'],
+      season: ['state', 'dates', 'notes', 'rename', 'icon', 'color', 'holdRoutine', 'delete', 'create'],
       goal: ['state', 'window', 'why', 'rename', 'icon', 'color', 'delete', 'create'],
       project: ['notes', 'rename', 'icon', 'color', 'delete', 'create'],
     });

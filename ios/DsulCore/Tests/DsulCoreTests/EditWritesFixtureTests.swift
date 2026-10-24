@@ -350,6 +350,8 @@ func phoneBody(_ wire: JSONValue, projects: [String: String] = fixtureProjectNam
         return .addSubtask(id: id, title: title)
     case "resetStreak":
         return fields.count == 1 ? .resetStreak : nil
+    case "unschedule":
+        return fields.count == 1 ? .unschedule : nil
     case "priority":
         guard fields.count == 2, let priority = fields["priority"] else { return nil }
         switch priority {

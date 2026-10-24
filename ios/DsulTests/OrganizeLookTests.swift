@@ -1,5 +1,6 @@
 #if canImport(UIKit)
 import DsulCore
+import SwiftUI
 import Testing
 import UIKit
 @testable import Dsul
@@ -62,6 +63,30 @@ import UIKit
         for symbol in Set(symbols).sorted() {
             #expect(UIImage(systemName: symbol) != nil, "\(symbol)")
         }
+    }
+
+    /// O15: a project's dot keeps its own value in each appearance on the way
+    /// to a menu row, which draws it as a `UIColor` on a tinted image
+    /// (PropertyMenus.swift `projectDot`), as on the chip, which fills a
+    /// `Circle` with the `Color`. So the chip and its row under it are one
+    /// colour in light and in dark mode: the sample's Home is Teal, its two
+    /// values from look.json.
+    @Test func aProjectDotIsItsTokenInEachAppearance() {
+        let planner = SamplePlanner(todayString: "2026-10-01", now: { PlannerJSON.noon })
+        let home = planner.projectAccent(for: "Home")
+        #expect(home.token == "var(--accent-2)")
+        let menuRow = UIColor(home.color)
+        for (style, want) in [(UIUserInterfaceStyle.light, home.light), (UIUserInterfaceStyle.dark, home.dark)] {
+            let resolved = menuRow.resolvedColor(with: UITraitCollection(userInterfaceStyle: style))
+            var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+            let read = resolved.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+            #expect(read, "\(style.rawValue) reads as RGB")
+            #expect(abs(Double(red) - want.red) < 0.002, "\(style.rawValue) red")
+            #expect(abs(Double(green) - want.green) < 0.002, "\(style.rawValue) green")
+            #expect(abs(Double(blue) - want.blue) < 0.002, "\(style.rawValue) blue")
+            #expect(alpha == 1)
+        }
+        #expect(home.light != home.dark)
     }
 }
 #endif

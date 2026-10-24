@@ -5,8 +5,9 @@ import DsulCore
 // ItemWriteBody.swift: the wire JSON of the item sheet's edits (the fields and
 // the chips, the time chip's keys only when they changed, the repeat chip's
 // days and day only beside their frequency, the project chip's id or null),
-// its Delete, Add a subtask and Reset streak, and its routine and season
-// toggles (one membership: the kind, the container's id, and a boolean).
+// its Delete, Add a subtask and Reset streak, its routine and season toggles
+// (one membership: the kind, the container's id, and a boolean), and Move to
+// Braindump (the action alone).
 // Each case in tests/fixtures/day/edit-writes.json records the exact body the
 // web's gesture means (keys absent or null exactly as sent), and lib/app-api.ts
 // parses every one of them through `ItemWriteSchema`; the phone's body for the
@@ -128,6 +129,12 @@ private let autumn = "00000000-0000-4000-8000-00000000053d"
         ]))
         let reset = try json(ItemWriteBody.resetStreak)
         #expect(reset == JSONValue.object(["action": .string("resetStreak")]))
+        // Move to Braindump: the action and nothing beside it, which the
+        // route's `.strict()` schema would refuse.
+        let unschedule = try json(ItemWriteBody.unschedule)
+        #expect(unschedule == JSONValue.object(["action": .string("unschedule")]))
+        #expect(phoneBody(unschedule) == .unschedule)
+        #expect(phoneBody(.object(["action": .string("unschedule"), "date": .string("2026-10-02")])) == nil)
 
         let high = try json(ItemWriteBody.edit(ItemEdit.priority("high")))
         #expect(high == JSONValue.object(["action": .string("priority"), "priority": .string("high")]))
@@ -223,6 +230,8 @@ private let autumn = "00000000-0000-4000-8000-00000000053d"
             == #"{"action":"addSubtask","id":"22222222-2222-4222-8222-22222222222a","title":"Eggs"}"#)
         let reset = try encoder.encode(ItemWriteBody.resetStreak)
         #expect(String(decoding: reset, as: UTF8.self) == #"{"action":"resetStreak"}"#)
+        let unschedule = try encoder.encode(ItemWriteBody.unschedule)
+        #expect(String(decoding: unschedule, as: UTF8.self) == #"{"action":"unschedule"}"#)
 
         let bodies: [(ItemEdit, String)] = [
             (.priority("high"), #"{"action":"priority","priority":"high"}"#),
@@ -280,6 +289,7 @@ private let autumn = "00000000-0000-4000-8000-00000000053d"
         #expect(ItemWriteBody.delete.action == "delete")
         #expect(ItemWriteBody.addSubtask(id: eggs, title: "Eggs").action == "addSubtask")
         #expect(ItemWriteBody.resetStreak.action == "resetStreak")
+        #expect(ItemWriteBody.unschedule.action == "unschedule")
         #expect(ItemEdit.title("A").action == "title")
         #expect(ItemEdit.notes("B").action == "notes")
         #expect(ItemWriteBody.edit(ItemEdit.priority("low")).action == "priority")

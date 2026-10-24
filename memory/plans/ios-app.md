@@ -26,8 +26,12 @@ item's Resume) and Trash (with Restore), O8a the first container writes:
 a routine's and a season's Status, and Resume on Paused for both, O8b a
 goal's Status, a routine's usual time, a season's Runs, a goal's window and
 the notes, O9 Rename… and Icon and color… on every page, O10 Delete…
-there, and O11 the list's + menu, which makes a routine, season, goal or
-project from a name (see Organize below).
+there, O11 the list's + menu, which makes a routine, season, goal or
+project from a name, O12 a routine's steps (Edit, reorder, "Add from your
+items…", Remove), O13 a season's routines ("Add a routine…" with the
+attach confirm, Take out) and O15 Today's project dots, the item sheet's
+project chip and its menus in each project's own colour, the web's (see
+Organize below).
 Designs, the stack comparison and the board images live in the project's
 shared folder (`ios-app/`): `stack.md` has a SwiftUI build note for every
 interaction, and `expo-vs-swiftui.md` ends with the fact-check.
@@ -179,6 +183,25 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   `delete` intent (`removesContainer`, `.removed`), and `OrganizeCopy.swift`
   the delete titles, buttons and `deleteConsequence` and the create sheet's
   words (`createCopy`) ← `lib/organize-copy.ts`.
+  O12 and O13 add `MembershipIntent` and `MembershipWriteBody`
+  ← `lib/app-containers.ts` (a move's and a hold's bodies, checked against
+  the same fixture's `moves` and `holds`), `memberMoveResult` and
+  `routineHoldResult` (what a move or a hold would change, or why it changes
+  nothing), `moveMemberAfter` and `wouldHideAttaching` in `Organize.swift`
+  ← `lib/organize.ts`, `placingMember` in `Membership.swift` (the phone's
+  own: a failed move's way back, after its anchor or at its old place), and
+  in `OrganizeCopy.swift` the attach confirm
+  (`attachConfirmTitle`, `attachConfirmDescription`, `attachConfirmLabel`)
+  and `changedElsewhere`, the banner for a membership write another device
+  got to first.
+  Week's PR 1 adds `deriveUntimedRows` to `DayItems.swift` (←
+  `components/views/day-schedule.tsx`) and `weekDays` to `Cadence.swift` (←
+  `weekStartOf` and `addDaysStr` in `lib/container-schedule.ts`), checked
+  against `tests/fixtures/day/week.json` (WeekFixtureTests) and the
+  `untimed` rows of `timed.json`.
+  Week and blocks' PR 7 adds `BlockMoves.swift` (← `lib/block-moves.ts`:
+  `planBlockDrop`, `startTimeOf`), checked against
+  `tests/fixtures/day/block-moves.json` (BlockMovesFixtureTests).
   Each cites what it mirrors.
 - `ios/Dsul/App`: `DsulApp` (one `AuthStore`), `AppGate` (sign-in screen,
   sample or the user's planner, keyed on `AuthStore.gateKey`), `AppConfig`.
@@ -221,7 +244,26 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   `ContainerPage` `SettledAnnouncement` (a VoiceOver announcement once a
   push or pop has settled). O11 adds `CreateSheet` (the name sheet), and
   `OrganizeView` the bar's + (`CreateMenu`); what each offers and says is
-  `ContainerEditModel`'s (`DeleteEdit`, `CreateEdit`). `ios/Dsul/App` gains
+  `ContainerEditModel`'s (`DeleteEdit`, `CreateEdit`). O12 and O13 add no
+  file either: `ContainerPage` gains the bar's Edit button (the host's own
+  `editMode`), `PageAddRow` (an add row anything may wear), `onRemove` on
+  `MemberRowView` and `onTakeOut` on `ContainerLinkRow`; `RoutinePage` the
+  Edit-mode Items list, `StepRowView` and the picker sheet; `SeasonPage`
+  "Add a routine…", its list and the attach confirm; and
+  `ContainerEditModel` what each offers and says (`StepsEdit`,
+  `StepPicker`, `SeasonRoutinesEdit`, `AttachConfirm`, `stepDrag`).
+  `ios/Dsul/Today` (Week's PR 2) gains `WeekList`, `WeekBuckets` and
+  `WeekDayHeader`; `TodayLayout.swift`, Foundation only (the shim compiles
+  it), holds `TodayScope` beside `TodayLayout` and the week's words in
+  `PlannerFormat`, pinned by `TodayFormatTests`.
+  `ios/Dsul/Schedule` (Week and blocks PRs 4 to 6) gains `ScheduleLayout`,
+  Foundation only (the shim compiles it: `DaySchedule`, `ScheduleBlock`,
+  `AnytimeBandRules`, `SamplePlanner.daySchedule(on:fieldWidth:)`), and the
+  views `ScheduleColumn` (with the drag's own layer), `BlockView`,
+  `NowMarker` and `AnytimeBand`; `ScheduleGrid` is the hour gutter and one
+  column. `ScheduleLayoutTests` (shim) and `ScheduleRenderTests` (UIKit, the
+  runner only) test them.
+  `ios/Dsul/App` gains
   `AvatarMenu` (moved out of `TodayView`, with the tab's own sections passed
   in) and `PlannerBannerOverlay` (`.plannerBanner()`, Today's banner, also on
   Organize, with `BannerView`).
@@ -234,7 +276,7 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   it either never both fire or double-step). A tap steps to the next layout,
   a swipe in either axis steps with `.sensoryFeedback(.selection)` and wins
   outright over the tap (`exclusively(before:)`), long press opens the full
-  menu as a context menu (Layout, and Show with Day only until Week exists),
+  menu as a context menu (Layout, and Show: Day and Week, see Week),
   and VoiceOver activates or adjusts it. `LayoutSwitcher` is self-contained so it can move
   into the capture bar if Kirby picks F. The layout is `@AppStorage`.
 - **Buckets follow the stored bucket, not the hour.** An item shows in its
@@ -253,6 +295,175 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   app, carrying the selection only if it was on today. Hidden on
   Ask; a compact rendering for the `.inline` placement. The drag probe moved
   from Today's toolbar into the avatar menu.
+
+## Week
+Week PRs 1 and 2 of the shared folder's `ios-app/week-and-blocks/design.md`
+(which has every decision, W1 to W17, and the PR plan); the builders' notes
+are in `week/w1/`. PR 1 is the data, PR 2 List and Buckets in Week. Week ×
+Schedule is the design's PR 10; until then Schedule draws Day.
+
+- **One scope, device-local.** `TodayScope` (`day`, `week`) is
+  `@AppStorage("today.scope")`, beside the layout's key: add, never rename.
+  It is never the web's `default_view`, which would change what the desktop
+  opens on (mobile web never writes it either, W9). One rule decides what
+  shows, `TodayLayout.effectiveScope(_:)`: the stored scope where the layout
+  has a week form (`hasWeek`: List and Buckets), else Day. The title, the
+  content switch and the capsule's VoiceOver value all read it, so a stored
+  Week on Schedule draws Day and says Day (W17). The capsule's tap and swipe
+  still step layouts only (W6); its menu's Show section lists
+  `layout.scopes` (Day alone on Schedule) with the effective scope checked,
+  and a pick stores it. To VoiceOver the capsule's value is "List, week",
+  with a named action, Show week or Show day, only for the one that changes
+  something.
+- **The anchor is `selectedDay`.** The week is `weekDays(of: selectedDay,
+  settings.weekStartDay)` (`selectedWeek`), so Go to date picks a day and the
+  week follows. A day's heading selects that day and stores Day, on the same
+  layout (W7). In Week the Today button shows only off today's week
+  (`isOnTodaysWeek`). The Today button is tinted ink, in Day as well: a
+  bordered button takes the tint, the lime accent, for its words.
+- **The title (W4).** `PlannerFormat.weekTitle`: This week, Next week, Last
+  week, else "Week of Oct 26", with the year when the week starts in another
+  year. The subtitle is `weekRange` · the layout: `Date.IntervalFormatStyle`
+  with the abbreviated month and the day, and the years when either end is
+  off today's year, so the dash and its spacing are iOS's (thin spaces in
+  current ICU; the tests read them as plain). VoiceOver hears "This week,
+  October 19 to 25, List". Every week date is formatted at noon UTC in a UTC
+  formatter: a `DayString` is a calendar day, and no zone may move it.
+- **Day-keyed twins (PR 1, design §4.6).** `week(of:)` splits the items once
+  (`project`) and runs `derive(on:)`'s pipeline (`inactiveItemIdsOn` with
+  trips, then `deriveDayItems`) at each of the seven dates. `dayItems(on:)`,
+  `listSections(_:on:)`, `buckets(on:)`, `scheduled(on:)`, `anytime(on:)`
+  (DsulCore `deriveUntimedRows`; nothing draws it yet), `isDone(_:on:)`,
+  `isSkipped(_:on:)`, `toggleRow(_:on:)` (the row's ungated tick; the sheet
+  keeps its gated `toggle(_:on:)`), `count(_:on:)` and `dayProjects(on:)` take
+  a day; the selected-day forms wrap them. `SheetDay.on(DayString)` makes a
+  week row's sheet act on the row's day (`actingDay`), so its "For …"
+  caption, its tick and its Skip are that day's (W13). A render derives the
+  week once, `weekRows(of:)` (seven `WeekDayRows`), and the chips and the
+  sections are asked of those rows (`count(_:in:)`, `chipProjects(in:)`,
+  `listSections(_:rows:on:)`, `buckets(_:)`). Nothing is cached: PR 10 adds
+  a cache on an items revision.
+- **Week × List (W2).** `WeekList`: the filter chips, counting every
+  occurrence over the week (a daily habit counts seven, W16), as a
+  `safeAreaBar` over the list, so opening on the selected day never scrolls
+  them away; then seven day sections in one plain `List`. Each opens with `WeekDayHeader` (the weekday
+  and its "Oct 1" side by side, the date under the weekday at the
+  accessibility sizes; a 6pt lime dot by today's weekday, with both words in
+  ink, W12; a button that opens the day, and a header to VoiceOver that says
+  "today"), then that day's own Day sections (routines with done/total, then
+  projects with their dot, then No project) as small captions that don't
+  fold (`WeekGroupLabel`), rows in Day's order. "Nothing planned." on an
+  empty day, Day's "Nothing matches this filter" when the chip hides all of
+  it. The list opens on the selected day's heading and goes back to it when
+  the selected day moves.
+- **Week × Buckets (W3).** `WeekBuckets`: the same seven headings, each over
+  one card of the day's filled parts of the day in the phone's order
+  (Anytime last), or "Nothing planned."
+- **Now (W14).** On today's rows only. `ItemRow`'s "Now ·" is now ink with a
+  6pt lime dot before it, in Day as well: it was lime text.
+- **The sample (design §8).** Four one-off tasks with no project, appended
+  after every other id (55 to 58): Pick up the dry cleaning three days back
+  (16:30), Bike service two days back (14:00), Coffee with Priya the day
+  after (10:00) and Post the birthday card two days after (Anytime). None is
+  on the anchor or the day before it.
+- **Where the build departs from the design.**
+  - The day headings are list rows, not `Section` headers, because
+    `ScrollViewReader` lands on a row's `.id` reliably and not on a header's.
+    So they don't stick while their day scrolls.
+  - Week × Buckets has no current-part mark on today (§4.4 asks for one):
+    Day's Buckets draws none on the phone, so there is nothing to copy; it
+    would be a new mark for both.
+  - On a device the sample's anchor is the real today, so its four tasks sit
+    in today's week only on some weekdays: from a Sunday start a Wednesday or
+    Thursday, from Monday a Thursday or Friday. The hosted tests anchor on a
+    Thursday, which the design's "all four sit in its week" assumes.
+  - The capsule's VoiceOver value names the scope in Day too ("List, day"),
+    so the value always says what shows.
+  - `weekRange` and `spokenWeekRange` take today, for the year rule.
+- **Where Week departs from the web (design §10).**
+  - W2: the web's week list groups and orders each day by the user's
+    group-by and sort settings, finished rows sinking
+    (components/views/week-list.tsx); the phone always groups each day as
+    its Day list does (routines, then projects, then No project), since
+    grouping options and sinking are Not yet for Day too.
+  - W7: on the web a day's heading selects that day in place and stays in
+    Week; on the phone it opens the day in Day, since a selected day in
+    place would only move a mark.
+
+## Schedule blocks
+Week and blocks PRs 4 to 6 of the shared folder's
+`ios-app/week-and-blocks/design.md` (§5.1 to §5.3, §5.9, §5.10), built as one
+PR; the builders' notes are in `week/pr4/`. PR 4 draws the blocks in the web's
+look, PR 5 adds the Anytime band, PR 6 the web's overlap pass and the 34pt pane
+floor. Nothing moves, resizes or drags a block yet (PRs 7 to 9).
+
+- **One derive per change, and the drag reads none of it.** ScheduleView
+  lays the day out once in its body (`daySchedule(on:fieldWidth:)`: the timed
+  entries as `scheduled(on:)` draws them, the overlap plan over them, each
+  block's done, skipped and tick label, and the band's untimed rows, all from
+  one `derive`) and hands it down as a value. Only `ScheduleDragLayer` (the
+  ghost and its 15-minute haptic) and `AutoscrollSwitch` (the edge
+  autoscroll's start and stop) read `ScheduleDrag`, so a ghost step re-renders
+  those two and derives nothing. A `#if DEBUG` count on `derive`
+  (`SamplePlanner.derivations`, ignored by Observation) lets
+  `ScheduleRenderTests` prove it.
+- **The block, after day-schedule.tsx.** A 2pt rail over the true time in the
+  project's colour (`projectAccent`, O15's port, no second one), lime with no
+  project; a 6pt bead at the start ringed in what it sits on; a pane of radius
+  5 with a hairline and a soft shadow (`secondarySystemGroupedBackground`).
+  Task-like blocks start with a square check (16pt, 44pt wide, no taller than
+  the content band, B25, centred on the title's measured line); habits have
+  none. One line of title with the mono length on the right
+  (`formatDuration`); a tall content band (56 and up) adds the mono range
+  (`formatClockRange`); either way the words centre in the content band, as
+  the web's `justify-center`. A pane under 200pt (`PANE_WRAP_PX`, field width
+  times the plan's share, DsulCore's `ScheduleMetrics.paneWrapPx`) drops the
+  length and range. Done strikes the title, thins the plate to
+  `tertiarySystemFill` and turns the rail and bead muted ink; nothing fades,
+  so the lime check keeps its strength, its tick in the web's `--lime-ink`.
+  A bead on a stepped plate (z above 2: nested or cascaded, the web's
+  `beadOnPocket`) is ringed in the plate's colour, else the canvas's. Skipped
+  is a 24pt strip with the skip mark and the bead, no check, opening the sheet.
+  The check is the row tick on the column's day (`tickBlock(_:in:)`, which
+  takes the laid-out day, so a column can't tick the selected day by
+  mistake), ungated like the List's circle; VoiceOver's action carries the
+  ported label ("Mark done", "Done today").
+- **Geometry.** The column is measured (`onGeometryChange`) and the width
+  stored in ScheduleView, so the overlap pass runs on the real field (Day's
+  `minChannelPx` cap needs it); until the first measure no block draws. Each
+  block is its own bounds, offset into the column, so VoiceOver's frame is the
+  block; rails and beads let taps through to a host's pane.
+- **Gutter and now.** `formatHourLabel` in mono caption, top-aligned 3pt
+  under each line, in a gutter that scales with the text up to
+  accessibility1. On today the time (`formatClock`) in ink, centred on now,
+  and the hour mark it would cover hidden (`eclipsedHour`, its distance scaled
+  with the text). In the field a lime diamond on the lane and a 24pt stub.
+- **The Anytime band.** Pinned above the hours' ScrollView. Its header is
+  always there ("Anytime" or "Anytime · 4"), folds the rows
+  (`@AppStorage("schedule.anytimeOpen")`, open by default, add, never rename),
+  and shows alone while the braindump sheet is up without writing the
+  choice. Up to three `ItemRow`s (one at the accessibility sizes, so the
+  hours keep their room), then a capped ScrollView. Rows tick and open on the
+  band's day (`tickAnytimeRow(_:in:)`). No drops or drags yet (PR 8).
+- **Where it departs from the design or the web.**
+  - The design lists `ScheduleColumn` holding the drop destination; the
+    destination stays on ScheduleGrid's 24-hour content (gutter and column),
+    as the spike built it, so drop locations stay in content space.
+  - The block's tests live in a new `ScheduleLayoutTests`, not
+    `SamplePlannerTests` (which another PR edits at the same time).
+  - Hour lines run from the lane's edge to 4pt short of the field's right;
+    the web insets them 17. A skipped strip spans the pane's width, not the
+    band's from the lane.
+  - Block and ghost text stops growing at accessibility2, where a footnote
+    line no longer fits a 34pt pane; the text is clipped to its content band
+    past that.
+  - The check's 44pt target starts at the pane's left edge, so its last 14pt
+    sit over the title's first letters: a tap there ticks.
+  - A narrow pane keeps its title to one line, centred like a wide one's,
+    where the web wraps it from the pane's top and grows it on hover: the
+    design keeps block text to one line (§5.10), and a phone has no hover.
+  - The web's hover, glass and pocket details of the overlap pass are not
+    drawn (§5.3's ported subset only).
 
 ## Item detail, part 1
 - **One sheet, every surface.** `PlannerSheet.item(UUID, day: SheetDay)` in
@@ -348,7 +559,7 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   action. Each chip is its own element with a spoken label; the streak chip
   is one ("Streak 41; this week: 3 done").
 - **Lime.** The sheet sets no tint of its own, because the done tick and
-  "Now" are `Color.accentColor`; its text controls tint themselves in the
+  Now's dot are `Color.accentColor`; its text controls tint themselves in the
   label colour, and anything lime presses by scaling (`PressScaleStyle`),
   never `.plain`'s fade. The banner dropped `.plain` for the same reason, and
   slides in without an opacity transition, which would fade its lime check.
@@ -764,14 +975,15 @@ words are fixed on every surface, below.
   "Mon Wed"; so seven days picked read "Daily" on the chip while its menu
   checks Custom days….
 - **Project** (2f). The project chip is a menu: No project (never on a type
-  whose container is required), then the projects in payload order with the
-  phone's dots, the current one checked by folded name; a name with no
-  project checks nothing, and a stored "none" (pre-#373 habits) reads as no
-  project, as the web's dialog reads it. A pick writes at once and No project
-  takes the chip away. Add property's Project ▸ lists the projects, with at
-  least one. Gated as `editAllowed(action: "project")` (not a subtask, a
-  type with the project axis). A task parked in its old project's block
-  leaves it, its own time and day back and the block's part of day kept, as
+  whose container is required), then the projects in payload order with
+  their dots (the web's colours since O15), the current one checked by
+  folded name; a name with no project checks nothing, and a stored "none"
+  (pre-#373 habits) reads as no project, as the web's dialog reads it. A
+  pick writes at once and No project takes the chip away. Add property's
+  Project ▸ lists the projects, with at least one. Gated as
+  `editAllowed(action: "project")` (not a subtask, a type with the project
+  axis). A task parked in its old project's block leaves it, its own time
+  and day back and the block's part of day kept, as
   the web's bulk Move to project, and from 2f its item dialog, release it
   (Q6). The dialog keeps a day or a time the same save set itself, and
   files such a time where it falls, as before. The stash (`previousStartTime`,
@@ -890,7 +1102,7 @@ every decision and the PR plan, is the shared folder's
 `ios-app/organize/design.md`; each PR's builders leave notes beside it
 (`organize/o1/`, `organize/o2/` for O2 and O3, built as one PR,
 `organize/o6/` for O6, O7 and O8a, one PR too, `organize/o8b/` for O8b
-and O9, and `organize/o10/` for O10 and O11).
+and O9, `organize/o10/` for O10 and O11, and `organize/o15/` for O15).
 
 - **O1: the list, read-only.** The payload gains `goals` (null when
   unreadable) and `settings.organizeEnabled` / `settings.goalsEnabled`, from
@@ -1192,7 +1404,13 @@ and O9, and `organize/o10/` for O10 and O11).
   sample's creates and deletes) are in `OrganizePageTests`, the nothing-yet
   line in `OrganizeTests`, and the bodies and routes, the revert order, the
   404 rule, the lost create a collect settles and the offline create in
-  `PlannerSyncTests`.
+  `PlannerSyncTests`. O12's and O13's (the Edit mode's anchors at both ends,
+  the Edit button's two-step gate, the picker's pool, its filter and the
+  planner's own copy of it, the gates, the attach confirm's count and words,
+  the sample's moves, holds and confirm) are in `OrganizePageTests`, and the
+  two bodies, the subjects each names and proves, the rebases, a hold's
+  place in the revert order, a landed hold played over failed ones and the
+  refusals in `PlannerSyncTests`.
 - **O10: Delete….** Every kind takes `{"action":"delete"}` on the
   container route: it puts the row in the Trash and touches no item and no
   join row (a project's members keep their name and id, as after the web's
@@ -1215,7 +1433,8 @@ and O9, and `organize/o10/` for O10 and O11).
   container off at once, the page pops itself (`OrganizePageHost`), and
   VoiceOver hears "Routine deleted" once the pop has settled. A deleted
   project's items stay filed by name, so the List puts them under No
-  project and their chip shows the name with a gray dot; on the web a
+  project and their chip shows the name (with a gray dot until O15, and
+  since then in the name's own colour, as on the web); on the web a
   reload still names the deleted project too (a known web limit).
 - **O11: + and the name sheet.** The bar's + (a `Menu` in the label colour,
   "New" to VoiceOver) lists New routine, New season, New goal and New
@@ -1250,11 +1469,102 @@ and O9, and `organize/o10/` for O10 and O11).
   `.container(ref)`, since a 200 there proves it exists, so a create whose
   answer was lost and a collect that landed keep it, while a create and a
   collect both offline are both undone.
-- **Waits for later PRs:** the other writes (O12 and O13: a routine's steps
-  reordered and added, a season's routines added and taken out), and Today's
-  project colours (O15, Kirby's call). A project's time block stays the
-  web's (the project union has no time action). Today keeps `ProjectPalette` until
-  then, so a project's dot on Today and its tile on Organize can differ.
+- **O12: a routine's steps, reordered and added.** The route takes
+  `moveMember` on a routine: one step, and the step it now sits after
+  (`afterId` null for first), as the web's rail moves one. The page's bar
+  carries Edit where it does (`"moveMember"` in `containerWrites`, Organize
+  on, and two steps or more, `StepsEdit.reorderable`: an empty routine, one
+  of one step, and a server that takes the add but not the order show no
+  Edit), and in Edit mode Today and Other days give way to one Items
+  list, the web's member-list label, each row with a grip; a drag asks
+  `stepDrag` for the step and its new anchor (`Array.move` is SwiftUI's, so
+  the anchor is worked out by hand) and sends it. "Add from your items…"
+  opens the collectible items the routine doesn't hold, in the planner's
+  order, each with its cadence, filtered as the web's picker filters
+  ("Nothing matches “cat”." for one that matches nothing); a pick reuses the
+  item sheet's own collect write and the sheet stays up, reading the live
+  pool, so the picked row leaves and a second pick needs no reopening. A
+  swipe Remove on a resting row takes the step out the same way; it is
+  never "Delete", because nothing is deleted. Both the add row and Remove
+  ask the item write (`"collect"`), not `moveMember`, so an older server
+  can reorder and not add. VoiceOver gets Move up, Move down and Remove as
+  actions on a step (the design's short names, not the web's long
+  aria-labels), with no Move up on the first row and no Move down on the
+  last.
+- **O13: a season's routines, added and taken out.** The route takes
+  `holdRoutine` on a season: one `season_routines` row, in or out. The
+  Routines section's last row is "Add a routine…" where the server takes it,
+  drawn and disabled with "Every routine is already here" when the season
+  holds them all, as the web's pill is always there. A pick whose join would
+  take items off today asks first, in the web's words ("This will hide 3
+  items for now", `wouldHideAttaching`), with "Add it anyway" against the
+  system's Cancel; the confirm comes up once the sheet has gone, because a
+  confirm cannot show under a sheet. A swipe Take out hands the routine
+  back and asks nothing: nothing the user can see is hidden by it. Only
+  live routines are offered and drawn, so neither write names one the Trash
+  holds.
+- **A membership write is its own subject (O12, O13).** PlannerSync's
+  `moveMember` and `holdRoutine` each name ONE membership, never a list: a
+  step's place keeps the `.member` subject the item sheet's toggles own (its
+  Before is unchanged; the anchor a landed move left lives in the rebase's
+  `MemberTarget`), and a season's hold of a routine is its own
+  `.hold(seasonId:routineId:)` with `Before.hold(held:index:)`. So a
+  container's failed field write can never put back an order or a hold that
+  landed, and a failed move or hold never puts a field back. A failed
+  move's revert puts the step back after the step a landed move left it
+  after (`rebaseMember`, DsulCore `placingMember`), or where it stood
+  before its earliest failure; a failed hold goes back in or out at its old
+  place (`rebaseHold`), after the containers that come back whole and
+  before the memberships, so a hold never lands in a season that isn't back
+  yet. A move proves its step and its routine, and a hold its season and
+  its routine (no item). The route's
+  `member_gone`, `anchor_gone` and `container_gone` are all one sentence on
+  the phone ("It changed on another device. Showing the latest."), since a
+  move and a hold send no name to quote back.
+- **O15: Today's project colours (Kirby picked Switch, 2026-10-24).**
+  `ProjectPalette`, the index palette Today had worn since part 2f (a
+  project's place in the list picked one of seven system colours, and a
+  name no project held was gray), is gone. Every project dot now asks
+  `SamplePlanner.projectAccent(for:)`, which is DsulCore
+  `projectAccent(_:projects:)` over `projectRecords` (colours and all,
+  never `projects`, the names): the web's grid rule (planner-store
+  `getProjectColor`, lib/accent-colors.ts `projectColorToken`), so a
+  project is one colour on the web's grid and in every one of these
+  places. The stored colour of the project the name folds to wins; then
+  the legacy `--habit-wellness|work|personal` token for those folded
+  names; then the folded name's ramp step. `ContainerColor.swift`'s
+  `ContainerAccent.color` turns it into a `Color`, as it does Organize's
+  tiles, so there is one colour port. Callers: Today's List section dots
+  and filter chips (`ListLayout.swift`), Week × List's project captions
+  (`WeekList.swift`), and the item sheet's project chip, read-only or a
+  menu, the chip's menu rows and Add property ▸ Project ▸
+  (`ItemDetail.swift`, through `PropertyMenus.swift`'s colour closures),
+  so the chip and the row under it never disagree. A row with no project
+  still wears no dot, and No project and a routine's section none. Colour
+  is a mark only: a dot, never text. Because a dot can now be lime (a
+  project coloured Lime, or a name that hashes there, as "Errands" does),
+  List's section header and the filter chips press with `RowPressStyle`
+  and `PressScaleStyle` instead of `.plain`, which faded the label, dot
+  and all, on every press. Where the phone and the web part: a free-text
+  colour an agent stored (the payload fixture's Admin is "blue") is handed
+  to CSS on the web; the phone can't read it and draws the grid's own
+  answer for no colour. Where Today and Organize part, as the web's grid
+  and Organize part: where no colour the phone can read is stored, a Work,
+  Personal or Wellness wears its legacy token on Today and its raw name's
+  ramp step on its tile (the sample's Work: a muted blue on Today, plum on
+  Organize), and a name whose fold moves its ramp step (U+0100) wears the
+  folded name's step on Today and the raw name's on its tile. A name no
+  project holds (an agent's "Fitness", a deleted project's members) has
+  the grid's no-colour answer now (its legacy token, else its folded
+  name's step), not gray, as the web's item dialog draws it. Pinned by `look.json` in DsulCore (`LookFixtureTests`' four O15
+  tests), by `SamplePlannerTests`' three (the sample's dots, a recolour
+  through Icon and color… against the tile, and a fetch's token, hex and
+  free-text colours) and, on the xcode-27 runner only,
+  `OrganizeLookTests.aProjectDotIsItsTokenInEachAppearance` (the menu
+  row's `UIColor` keeps the light and the dark value); README "Checking
+  Organize", checks 82 to 85.
+- **Waits for later PRs:** a project's time block stays the web's (the
+  project union has no time action).
 
 ## CI
 `.github/workflows/ios.yml`, on PRs to main and pushes to main. A `changes`
@@ -1718,6 +2028,51 @@ functions:
   taken (open question 2 of the 2f brief): a web write that failed is no
   longer healed by that tab's next write to the same container, so the tab
   shows the member the database lacks until it reloads.
+- **Move to Braindump** (Week and blocks PR 3, design §5.7, §6.2, §7;
+  builders' notes in `week/pr3/`): a dated, open, one-off task's ⋯ offers
+  it, after Reschedule and before Delete, as the web's row menu and mobile
+  sheet offer `unscheduleTask`. The write is `{"action":"unschedule"}` alone
+  (strict); the server asks its copy of the web's gate and writes the store's
+  `UNSCHEDULE_TASK_PATCH` (not scheduled, no start date, part of day or
+  time), 409 `not_unschedulable` for a row the gate refuses and 200 with
+  nothing written for one already in the braindump's shape, so a retry
+  lands. No webhook, and one `item_events` row, as the browser writes it
+  (lib/db.ts `updateItem`); the retry that writes nothing writes no event.
+  - The phone's gate (`SamplePlanner.offers(.braindump)`) is three asks and
+    `canWrite("unschedule")`: the web's (DsulCore `verbEligible`, through
+    `canSendToBraindump`: task-like, a braindump-eligible type, dated, not
+    recurring, not in a project block, open on its own date, no goal's
+    milestone), the server's (no subtask), and the surfaces' own (design
+    B24: `isTaskScheduled`, so a row the braindump already lists, such as a
+    dated task with no part of day, never gets it).
+  - The milestones are `SamplePlanner.milestoneIds`, DsulCore
+    `milestoneItemIds` over the payload's `goals`, whatever the Goals switch
+    and a goal's state say, as the web reads the store's raw goals. Nil while
+    goals are unread (before the first fetch, or a server that sends none),
+    and then the verb is offered nowhere. The sample knows its goals.
+  - The step, `SamplePlanner.unschedule(_:on:)`, asks the gate again off the
+    item as it is now, applies DsulCore `unscheduling` (the same four
+    columns; length, order, project, priority, notes, subtasks and any pause
+    kept, so it shows in the braindump at its stored place) and queues
+    `PlannerSync.Write.unschedule(id:)`, which names the item alone, proves
+    nothing and replays through `unscheduling` (dateless). The sheet stays
+    up on the item, now a braindump row. Its symbol is
+    `tray.and.arrow.down`; its words are the port's `verbLabel`.
+  - Where it departs from the design: the design says main's payload has no
+    goals, but it has carried them since O1, so the verb shows signed in
+    from this PR, with no payload change. Paused today, ⋯ is Delete alone,
+    so Move to Braindump waits for Resume like every other verb, though the
+    web's gate has no pause test. No VoiceOver announcement follows it ("Moved to
+    the braindump" is PR 8's, for its drops). A goal the lossy goal list
+    drops takes its milestones with it, so the phone may offer the verb on
+    one; the server refuses it, the banner shows and the refetch puts the
+    row back.
+  - Files: ios/Dsul/Data/PlannerSync.swift, APIClient.swift;
+    ios/Dsul/Model/SamplePlanner.swift; ios/Dsul/Item/ItemSheetModel.swift
+    (`SheetVerb.braindump`), ItemDetail.swift; DsulCore RowMoves.swift,
+    ItemVerbs.swift, VerbWrites.swift, ItemWriteBody.swift, Goals.swift,
+    DayItems.swift; hosted tests in PlannerSyncTests, ItemVerbsTests,
+    ItemSheetTests, SamplePlannerTests and ItemEditTests.
 
 ## Port order
 recurrence → `isPausedOn` / `isOpenLoopOn` → `isItemActiveOn` →
@@ -1735,6 +2090,115 @@ Vitest runs the real TS and writes cases and expected results
 read the same files, and CI fails when they disagree. ios.yml's `changes`
 filter includes every mirrored TS file and the app routes, so a web edit
 re-runs the Swift tests.
+
+## Dropping a block
+Week and blocks PRs 7 and 11 of `ios-app/week-and-blocks/design.md` (§5.5,
+§6.1, Q3), shipped as one PR; the builders' notes are in `week/pr7/`. What
+dropping a schedule block somewhere does is written once, in TS, and both
+clients ask it: the web's drops from this PR, the phone's from PR 8. Nothing
+on the phone calls it yet, so the app draws and does nothing new.
+
+- **The rule.** `planBlockDrop(item, from, target, ctx)` in
+  `lib/block-moves.ts`, pure, keyed on the registry's `dateAnchored` (for a
+  custom item, its slug's) and on whether the item repeats, never on task vs
+  habit (B21). `from` is the day the block was drawn on and whether that
+  occurrence is skipped; the target is an hour (`startMin` on a day), a
+  day's Anytime or the braindump; `ctx` holds the goals' milestone ids, null
+  while unknown. It answers an end state, never a write: `place {date,
+  startMin}`, `retime {startMin}` (its date untouched), `anytime {date}`
+  (null keeps its date), `braindump`, `pause`, `none` (already there) or
+  `refused` with a reason (`skipped`, `in-block`, `another-day`,
+  `not-braindump`, `milestones-unknown`, `not-pausable`, `invalid`).
+  - A skipped occurrence is refused wherever it lands.
+  - An hour: a one-off (or a series with no start date, or one still in
+    the braindump, which is not a block yet) is placed on the hour's day. A
+    dated series on the canvas and a type with no date are retimed on their
+    own days, whatever column took the drop (B7, B18), except a dated series
+    in a project block, which is placed on its own start date so the move
+    releases it.
+  - Anytime: refused for a task in a project block. What may not change its
+    date takes only its own day's Anytime (`another-day` otherwise); a dated
+    one-off moves to that day's.
+  - The braindump: a row it already lists stays (`none`, B24; a let-go row
+    is not listed); a type with no date pauses where the registry lets it; a
+    dated row goes back only where PR 3's `canSendToBraindump` takes it (B16,
+    B19), with the verb's and the server's checks beside it (a start date,
+    not a subtask), so never a series, a done or let-go task, one in a
+    project block, a goal's milestone, an undated row or a subtask.
+- **Pinned.** `tests/unit/block-moves.test.ts`, and
+  `tests/fixtures/day/block-moves.json` (153 cases written from the real TS
+  by `block-moves-fixtures.test.ts`: seventeen items by seven targets, then
+  skipped origins, unknown or empty milestones, the minute edges, four rows
+  stored just off their own place, and twelve for branches the items leave
+  out: a stash under Anytime, a habit with no part of day, a let-go,
+  undated or subtask row on the braindump, and a series still in the
+  braindump).
+  DsulCore `BlockMoves.swift` ports it (`planBlockDrop(_:from:target:context:)`,
+  `startTimeOf`, `BlockOrigin`, `BlockTarget`, `BlockDropContext`,
+  `BlockDrop`, `BlockDropRefusal`), checked by `BlockMovesFixtureTests`,
+  which also asks every custom row again as a task and every retime from
+  other columns. ios.yml's filter gains `block-moves`.
+- **The web follows it (PR 11; Kirby's Q3, Match iPhone, 2026-10-24).**
+  `resolveDrop` (lib/dnd/handle-drag-end.ts) asks it for a task on the
+  canvas dropped on `hour:`, `weekhour:` or `sidebar`, and maps each answer
+  to the store call that writes the same row: `place` and `retime` are
+  `scheduleTask` with and without the date, `braindump` is
+  `unscheduleTask`, `none` and a refusal write nothing. A move that keeps
+  its date carries the day it was let go on (`landsOn`), so the undo toast's
+  "hidden where it landed" receipt is judged there, not on the series'
+  anchor. `sidebarDropPlan` asks it of each task in a selection dropped on
+  the braindump, and says what the group writes (`rewrite`). So on the
+  web a repeating task's block dropped on a new time keeps its start date,
+  and every earlier day keeps its occurrence; a repeating, done, let-go,
+  in-block or milestone task dropped on the braindump stays where it was; a
+  placed habit dropped there still pauses; and every other drop ends in the
+  row it did before. lib/dnd/CONTRACT.md's table says which ids ask.
+- **How the phone will map it (PR 8).** `place` sends `schedule {date,
+  startTime}`; `retime` sends `time {timeBucket, startTime}` with the hour's
+  part of day, which never carries the date (M1); `anytime` with a null date
+  sends `time {timeBucket: "anytime", startTime: null}`; `braindump` sends
+  PR 3's `unschedule`. Two answers the web takes are refused on the phone in
+  v1, by that mapping and not by the rule: `pause` (B15: the phone's
+  braindump never lists a paused habit) and `anytime` with a day (B22:
+  another column's Anytime would be two writes that can land half). The
+  context is `BlockDropContext(milestoneIds: planner.milestoneIds)`, the set
+  Move to Braindump already reads.
+- **Where it departs from the design.**
+  - The web's Anytime strips (`unscheduled:anytime`, `week:{date}:anytime`)
+    don't ask the rule yet, though PR 11's file list names the week's: they
+    share their ids with the Buckets cells, where the rule would refuse
+    drops that write today (an in-block one-off's, and a series' on another
+    day). So a series dropped on the web's Anytime still takes that day as
+    its start date.
+  - A group dropped on an hour still takes the selected day's date, a
+    series' included, since groups were to stay as they were. A group
+    dropped on the braindump does ask the rule and leaves out what it
+    refuses ("the group path asks the same gate").
+  - A let-go task dropped on the braindump stays put as well: the gate's
+    "open on its date" refuses it as it refuses a done one.
+  - A selection dropped on the braindump whose only canvas tasks are ones
+    the rule keeps, with no habit to pause, writes nothing and falls through
+    to the dragged row alone, as a refused single drop does, rather than
+    rewriting the braindump rows in it with nothing landing.
+  - A series still in the braindump is not a block: an hour places it on
+    that day and another day's Anytime moves it there, as the web's
+    braindump-to-grid drop does (the web itself never asks the rule for a
+    braindump row). The braindump answer also asks for a start date and no
+    subtask, as Move to Braindump's verb and the server's `unschedule` do.
+  - On the web `none` now writes nothing, where it was a schedule to the
+    same place with an undo entry; the row is the same.
+  - The skip is an input (`from.skipped`): the client knows it drew a
+    skipped strip. In the Swift, dates stay strings (a legacy ISO start date
+    has to compare as the web's does) and minutes are an `Int`.
+- **Files.** lib/block-moves.ts; lib/dnd/handle-drag-end.ts,
+  lib/dnd/sidebar-drop.ts and CONTRACT.md; lib/planner-store.ts
+  (`scheduleTask`'s `landsOn`); components/shell/app-shell.tsx;
+  components/sidebar/braindump.tsx (its landing preview lights only what the
+  drop would send back); DsulCore BlockMoves.swift; tests block-moves,
+  block-moves-fixtures, block-drop-receipt, handle-drag-end, sidebar-drop,
+  braindump-landing and ios-change-filter, the e2e dnd spec's braindump
+  refusal, and BlockMovesFixtureTests; .github/workflows/ios.yml. No app
+  file, view or hosted test, and no new device check in ios/README.md.
 
 ## The drag spike
 The braindump sheet (detents `.peek` = 96pt, `.medium`, `.large`; background
@@ -1759,11 +2223,10 @@ and autoscroll. It works at any detent, at the cost of the system lift and drop
 animations.
 
 ## Not yet
-Week, density (`DensityMetrics`), swipe actions on rows, the zoom transition
-from the bar to the braindump sheet, the rest of Organize (a routine's steps
-reordered and added from its page, a season's routines added and taken out,
-and Today's project colours: O12, O13 and O15 in the Organize design; a
-project's time block stays the web's), undo right after a delete, an item's
+Week × Schedule (Schedule draws Day in Week; the design's PR 10), density
+(`DensityMetrics`), swipe actions on rows, the zoom transition
+from the bar to the braindump sheet, the rest of Organize (a project's
+time block stays the web's), undo right after a delete, an item's
 or a container's (Organize's Trash restores either, O14),
 Change type, Duplicate and Copy link, the rest of the sheet
 (a routine's or a season's hold, the goal chip, which goals in the payload
@@ -1771,11 +2234,21 @@ since O1 make possible, and any word that a repeat took a goal role away (the
 web then lists the item as a plain member, with no notice), the Beeminder row,
 the Streaks, Organize and Goals switches, which the phone honours but can't
 turn on or off, the thread and Ask, Focus), universal links (the email link
-uses the custom scheme), unschedule, resize and moving existing blocks from
-the phone, the overdue tray, sinking completed rows, filters and
+uses the custom scheme), resize and moving existing blocks from the phone
+(the rule a drop will follow is built, see Dropping a block, though nothing
+on the phone asks it yet; and a block's own Move to Braindump, from its
+menu or a drop; the sheet's ⋯
+has it), the overdue tray, sinking completed rows, filters and
 `showPausedOnGrid` (the phone uses the defaults), Focus as a Live Activity,
 and a local-stack password grant for development. App Store review will also
 want consent before sending data to a model. Notifications shipped
 (#446 to #524: the phone plans and arms its own, stores its time zone,
 registers as a device and is woken by APNs); what is left of them is in
 [reminders-platforms.md](reminders-platforms.md).
+
+The block work named above (moving and resizing blocks, Week × Schedule) is
+Week and blocks' design PRs 7 to 10, which also bring the block's menu,
+VoiceOver's 15-minute and length actions, and the Anytime band as a drop
+target with its rows as drag sources. The blocks themselves are drawn in the
+web's look and laid out by its overlap pass (PRs 4 to 6, Schedule blocks
+above).

@@ -44,11 +44,13 @@ import Testing
     private func snapshot(organize: Bool = true, goalsOn: Bool = true, streaks: Bool = true, items: [Item],
                           routines: [Routine] = [], seasons: [Season] = [], goals: [Goal]? = nil,
                           projects: [Project] = [], typeLabels: [String: ItemTypeLabel] = [:],
-                          takes: ContainerWrites = ContainerWrites()) -> OrganizeSnapshot {
+                          takes: ContainerWrites = ContainerWrites(),
+                          collects: Bool = false) -> OrganizeSnapshot {
         return OrganizeSnapshot(settings: PlannerSettings(streaksEnabled: streaks, organizeEnabled: organize,
                                                           goalsEnabled: goalsOn),
                                 today: today, timeZone: zone, items: items, routines: routines, seasons: seasons,
-                                goals: goals, projects: projects, typeLabels: typeLabels, containerTakes: takes)
+                                goals: goals, projects: projects, typeLabels: typeLabels, containerTakes: takes,
+                                collects: collects)
     }
 
     private struct PageMissing: Error {}
@@ -428,10 +430,19 @@ import Testing
         // Every write the phone sends, under each kind the route takes it on,
         // in the server's own order (lib/app-containers.ts CONTAINER_WRITES).
         #expect(OrganizeModel.everyContainerWrite == ContainerWrites(
-            routine: ["pause", "usualTime", "notes", "rename", "icon", "color", "delete", "create"],
-            season: ["state", "dates", "notes", "rename", "icon", "color", "delete", "create"],
+            routine: ["pause", "usualTime", "notes", "rename", "icon", "color", "moveMember", "delete", "create"],
+            season: ["state", "dates", "notes", "rename", "icon", "color", "holdRoutine", "delete", "create"],
             goal: ["state", "window", "why", "rename", "icon", "color", "delete", "create"],
             project: ["notes", "rename", "icon", "color", "delete", "create"]))
+        // (O12, O13) The two membership writes answer the same gate, each on
+        // its own kind alone: a routine orders its steps, a season holds
+        // routines, and neither does the other's.
+        #expect(OrganizeModel.canEdit(.moveMember, on: .routine, takes: every, settings: on))
+        #expect(OrganizeModel.canEdit(.holdRoutine, on: .season, takes: every, settings: on))
+        #expect(!OrganizeModel.canEdit(.moveMember, on: .season, takes: every, settings: on))
+        #expect(!OrganizeModel.canEdit(.holdRoutine, on: .routine, takes: every, settings: on))
+        #expect(!OrganizeModel.canEdit(.moveMember, on: .routine, takes: every, settings: off))
+        #expect(!OrganizeModel.canEdit(.holdRoutine, on: .season, takes: every, settings: off))
     }
 
     /// A season's Status is its three states, On, Off and Dates, the one it
@@ -1117,6 +1128,309 @@ import Testing
         #expect(planner.projectRecords.filter { $0.name.lowercased() == "writing" } == [writing])
         #expect(planner.banner?.text == "You already have a project called \u{201C}writing\u{201D}.")
         #expect(planner.createContainer(.season, name: "   ") == nil)
+    }
+
+    // MARK: Steps and season routines (O12, O13)
+
+    /// (O12) Edit mode's one list is every live step in the routine's own
+    /// order, and each move names the step it lands after, never an index:
+    /// Move up goes after the step two above it (first, from the second row),
+    /// Move down after the step below it, and the two ends offer neither.
+    @Test func editModeAnchorsEveryMoveToAPlace() throws {
+        let s = snapshot(items: routineItems, routines: [morning],
+                         takes: OrganizeModel.everyContainerWrite, collects: true)
+        let steps = try #require(try routinePage(s).steps)
+        #expect(steps.routineId == "r-morning")
+        #expect(steps.reorders)
+        #expect(steps.reorderable)
+        // The routine's order, the trashed member skipped, with no "next" and
+        // no tick: a list being reordered says nothing about today.
+        #expect(steps.rows.map(\.id) == [uid(3), uid(1), uid(2), uid(4)])
+        #expect(steps.rows.map(\.item.title) == ["Journal", "Meds", "Stretch", "Long run"])
+        #expect(steps.rows.map(\.row.meta) == ["Daily", "Daily", "Daily", cadenceLabel(routineItems[3])])
+        let ups: [StepAnchor?] = [nil, .first, .after(uid(3)), .after(uid(1))]
+        let downs: [StepAnchor?] = [.after(uid(1)), .after(uid(2)), .after(uid(4)), nil]
+        #expect(steps.rows.map(\.moveUp) == ups)
+        #expect(steps.rows.map(\.moveDown) == downs)
+        // The anchor the write carries is the step's id, nil for first.
+        #expect(steps.rows[1].moveUp?.id == nil)
+        #expect(steps.rows[2].moveUp?.id == uid(3))
+        #expect(steps.rows.allSatisfy { $0.removable })
+        #expect(steps.add != nil)
+    }
+
+    /// (O12) Edit mode is offered only where the server takes a write, and
+    /// the order's and the membership's are separate: with neither there is
+    /// no Edit mode at all, and with the switch off the page is the web's
+    /// sentence rather than a list.
+    @Test func editModeNeedsTheServersWrites() throws {
+        #expect(try routinePage(snapshot(items: routineItems, routines: [morning])).steps == nil)
+
+        // The order alone: the moves are there, and nothing may be added or
+        // taken out.
+        let orders = try #require(try routinePage(snapshot(items: routineItems, routines: [morning],
+                                                            takes: ContainerWrites(routine: ["moveMember"]))).steps)
+        #expect(orders.reorders)
+        #expect(orders.reorderable)
+        #expect(orders.add == nil)
+        #expect(orders.rows.allSatisfy { !$0.removable })
+        #expect(orders.rows[1].moveUp == .first)
+
+        // The membership alone: the add row and Remove, with no move anywhere,
+        // and no Edit button, since Edit mode would have nothing to do (the
+        // add row and swipe Remove are on the resting page).
+        let adds = try #require(try routinePage(snapshot(items: routineItems, routines: [morning],
+                                                          collects: true)).steps)
+        #expect(!adds.reorders)
+        #expect(!adds.reorderable)
+        #expect(adds.add != nil)
+        #expect(adds.rows.allSatisfy { $0.removable })
+        #expect(adds.rows.allSatisfy { $0.moveUp == nil && $0.moveDown == nil })
+
+        // Remove rides on the resting rows too, under the same gate.
+        let resting = try routinePage(snapshot(items: routineItems, routines: [morning], collects: true))
+        #expect(resting.today?.rows.allSatisfy { $0.removable } == true)
+        #expect(resting.otherDays.allSatisfy { $0.removable })
+        let readOnly = try routinePage(snapshot(items: routineItems, routines: [morning]))
+        #expect(readOnly.today?.rows.allSatisfy { !$0.removable } == true)
+        #expect(readOnly.otherDays.allSatisfy { !$0.removable })
+
+        #expect(ContainerPageModel.routinePage("r-morning",
+                                               snapshot(organize: false, items: routineItems, routines: [morning],
+                                                        takes: OrganizeModel.everyContainerWrite, collects: true))
+                == .switchedOff(OrganizeCopy.organizeOff))
+    }
+
+    /// (O12) The bar's Edit button shows only where a drag can go somewhere:
+    /// two steps or more. An empty routine and a routine of one step keep the
+    /// add row (and the one step its swipe Remove) on the resting page, with
+    /// no Edit mode to go into.
+    @Test func editModeNeedsTwoStepsToReorder() throws {
+        let every = OrganizeModel.everyContainerWrite
+        var one = morning
+        one.itemIds = [uid(1), uid(99)]
+        let single = try #require(try routinePage(snapshot(items: routineItems, routines: [one], takes: every,
+                                                            collects: true)).steps)
+        #expect(single.reorders)
+        #expect(single.rows.map(\.id) == [uid(1)])
+        #expect(!single.reorderable)
+        #expect(single.rows[0].moveUp == nil && single.rows[0].moveDown == nil)
+        #expect(single.add != nil)
+
+        var none = morning
+        none.itemIds = [uid(99)]
+        let emptyPage = try routinePage(snapshot(items: routineItems, routines: [none], takes: every, collects: true))
+        #expect(emptyPage.empty == OrganizeCopy.nothingInItYet)
+        let empty = try #require(emptyPage.steps)
+        #expect(empty.rows.isEmpty)
+        #expect(!empty.reorderable)
+        #expect(empty.add != nil)
+
+        var two = morning
+        two.itemIds = [uid(1), uid(2)]
+        #expect(try routinePage(snapshot(items: routineItems, routines: [two], takes: every)).steps?.reorderable
+                == true)
+    }
+
+    /// (O12) "Add from your items…" pools every collectible item the routine
+    /// doesn't hold, in the planner's order, and never a subtask. It searches
+    /// the title as the web's picker does, says the web's line with nothing
+    /// left, and names what was typed when nothing matches.
+    @Test func theStepPickerPoolsWhatTheRoutineDoesNotHold() throws {
+        let items = routineItems + [task(20, "Pack"), task(21, "Find the charger", parent: uid(20))]
+        let picker = try #require(try routinePage(snapshot(items: items, routines: [morning],
+                                                            collects: true)).steps?.add)
+        #expect(picker.routineId == "r-morning")
+        #expect(picker.title == "Add from your items")
+        #expect(picker.placeholder == "Find an item\u{2026}")
+        // Its members are out and so is the subtask; the rest keep the
+        // planner's order. A pool row is no member, so none is removable.
+        #expect(picker.candidates.map(\.item.title) == ["Pack"])
+        #expect(picker.candidates.allSatisfy { !$0.removable })
+        #expect(picker.empty == nil)
+
+        // Searched as the web searches: trimmed, lowered, over the title, and
+        // an empty field browses the whole pool.
+        #expect(ContainerEditModel.matching(picker.candidates, query: "   ").map(\.item.title) == ["Pack"])
+        #expect(ContainerEditModel.matching(picker.candidates, query: "  PAC ").map(\.item.title) == ["Pack"])
+        #expect(ContainerEditModel.matching(picker.candidates, query: "charger").isEmpty)
+        #expect(ContainerEditModel.noStepMatches("  cat  ") == "Nothing matches \u{201C}cat\u{201D}.")
+
+        // With everything already in it, the web's line in place of the rows.
+        var all = morning
+        all.itemIds = items.map(\.id)
+        let none = try #require(try routinePage(snapshot(items: items, routines: [all], collects: true),
+                                                "r-morning").steps?.add)
+        #expect(none.candidates.isEmpty)
+        #expect(none.empty == "Everything is already in here.")
+
+        // The pool from the member ids alone, as the picker's sheet asks for
+        // it on every keystroke, is the page's own: the trashed member's id
+        // changes nothing.
+        let s = snapshot(items: items, routines: [morning], collects: true)
+        #expect(ContainerEditModel.stepPicker("r-morning", holding: Set(morning.itemIds), s) == picker)
+    }
+
+    /// (O12) The planner's own pool for the picker's sheet is the page's
+    /// `steps.add`, with an empty routine too, under the page's gates: a
+    /// routine it doesn't hold has none.
+    @Test func thePlannersStepPickerIsThePagesOwn() throws {
+        let planner = makePlanner()
+        for id in ["sample-morning-routine", "sample-wind-down"] {
+            guard case .page(let page)? = planner.routinePage(id) else {
+                Issue.record("no page for \(id)")
+                continue
+            }
+            let add = try #require(page.steps?.add)
+            #expect(planner.stepPicker(id) == add)
+        }
+        #expect(planner.stepPicker("r-gone") == nil)
+    }
+
+    /// (O12) A drag names the step it lands after, worked out from the list's
+    /// own offsets: the top of the list is first, a step dropped where it
+    /// already stood asks for nothing, and a move a List never makes (more
+    /// than one row, an offset naming no step) asks for nothing either.
+    @Test func aStepDragNamesThePlaceItLandsAfter() {
+        let ids = [uid(1), uid(2), uid(3), uid(4)]
+        #expect(ContainerEditModel.stepDrag(ids, from: IndexSet(integer: 0), to: 2)
+                == StepMove(item: uid(1), to: .after(uid(2))))
+        #expect(ContainerEditModel.stepDrag(ids, from: IndexSet(integer: 0), to: 4)
+                == StepMove(item: uid(1), to: .after(uid(4))))
+        #expect(ContainerEditModel.stepDrag(ids, from: IndexSet(integer: 3), to: 0)
+                == StepMove(item: uid(4), to: .first))
+        #expect(ContainerEditModel.stepDrag(ids, from: IndexSet(integer: 2), to: 1)
+                == StepMove(item: uid(3), to: .after(uid(1))))
+        // Where it already is, either way round.
+        #expect(ContainerEditModel.stepDrag(ids, from: IndexSet(integer: 1), to: 1) == nil)
+        #expect(ContainerEditModel.stepDrag(ids, from: IndexSet(integer: 1), to: 2) == nil)
+        #expect(ContainerEditModel.stepDrag(ids, from: IndexSet([0, 1]), to: 3) == nil)
+        #expect(ContainerEditModel.stepDrag(ids, from: IndexSet(integer: 9), to: 0) == nil)
+        #expect(ContainerEditModel.stepDrag([], from: IndexSet(integer: 0), to: 0) == nil)
+    }
+
+    /// (O13) A season's Routines section offers every live routine it doesn't
+    /// hold, in the routines' own order, and says so where none is left. Only
+    /// a routine the planner holds is drawn, so Take out is never offered for
+    /// an id the payload carries and the planner cannot find.
+    @Test func seasonRoutinesOffersEveryLiveRoutineItDoesNotHold() throws {
+        let evening = Routine(id: "r-evening", name: "Evening", icon: "icon:Moon", color: "var(--accent-2)",
+                              sortOrder: 1, itemIds: [])
+        let autumn = Season(id: "s-autumn", name: "Autumn", routineIds: ["r-morning", "r-gone"])
+        let every = OrganizeModel.everyContainerWrite
+        let page = try seasonPage(snapshot(items: routineItems, routines: [morning, evening], seasons: [autumn],
+                                            takes: every), "s-autumn")
+        #expect(page.routines.map(\.title) == ["Morning"])
+        let edit = try #require(page.routinesEdit)
+        #expect(edit.seasonId == "s-autumn")
+        #expect(edit.id == "s-autumn")
+        #expect(edit.title == "Add a routine\u{2026}")
+        #expect(edit.candidates.map(\.id) == ["r-evening"])
+        #expect(edit.candidates.map(\.name) == ["Evening"])
+        #expect(edit.candidates.map(\.symbol)
+                == [containerSymbol(glyph: evening.icon, name: evening.name, kind: .routine)])
+        #expect(edit.candidates.first?.accent.token == "var(--accent-2)")
+        #expect(edit.none == nil)
+
+        // Holding both: the row is still there, saying there is none left.
+        var both = autumn
+        both.routineIds = ["r-morning", "r-evening"]
+        let full = try #require(try seasonPage(snapshot(items: routineItems, routines: [morning, evening],
+                                                         seasons: [both], takes: every),
+                                                "s-autumn").routinesEdit)
+        #expect(full.candidates.isEmpty)
+        #expect(full.none == "Every routine is already here")
+
+        // Without the server's write, and with the switch off, read-only.
+        #expect(try seasonPage(snapshot(items: routineItems, routines: [morning, evening], seasons: [autumn]),
+                               "s-autumn").routinesEdit == nil)
+        #expect(ContainerPageModel.seasonPage("s-autumn",
+                                              snapshot(organize: false, items: routineItems,
+                                                       routines: [morning, evening], seasons: [autumn],
+                                                       takes: every))
+                == .switchedOff(OrganizeCopy.organizeOff))
+    }
+
+    /// (O13) Putting a routine in a season asks first only where the join
+    /// would take something off today, in the web's words; where it hides
+    /// nothing it is sent at once. A season or a routine the planner cannot
+    /// find asks nothing: the write itself answers for one that has gone.
+    @Test func attachingAsksOnlyWhereItWouldHideSomething() throws {
+        let every = OrganizeModel.everyContainerWrite
+        let off = Season(id: "s-off", name: "Winter", state: "paused")
+        let s = snapshot(items: routineItems, routines: [morning], seasons: [off], takes: every)
+        let confirm = try #require(ContainerEditModel.attachConfirm("s-off", routineId: "r-morning", s))
+        #expect(confirm.id == "s-off/r-morning")
+        #expect(confirm.seasonId == "s-off")
+        #expect(confirm.routineId == "r-morning")
+        // Its three daily habits go; Long run was already off today.
+        #expect(confirm.title == "This will hide 3 items for now")
+        #expect(confirm.confirmLabel == "Add it anyway")
+        #expect(confirm.message.hasPrefix("\u{201C}Morning\u{201D} looks after itself today."))
+        #expect(confirm.message.contains("Winter is off, so its 3 items stay hidden until you switch it on."))
+        #expect(confirm.message.hasSuffix("Nothing is deleted, and taking it back out restores them."))
+
+        // A live season hides nothing, so nothing is asked.
+        let on = snapshot(items: routineItems, routines: [morning],
+                          seasons: [Season(id: "s-on", name: "Autumn", state: "active")], takes: every)
+        #expect(ContainerEditModel.attachConfirm("s-on", routineId: "r-morning", on) == nil)
+        #expect(ContainerEditModel.attachConfirm("s-gone", routineId: "r-morning", s) == nil)
+        #expect(ContainerEditModel.attachConfirm("s-off", routineId: "r-gone", s) == nil)
+    }
+
+    /// (O12, O13) The sample takes both membership writes and sends nothing:
+    /// a step lands where it was given, a routine goes in and out of a season,
+    /// and a move the server would refuse says the list changed instead.
+    @Test func theSampleMovesAStepAndHoldsARoutineWithoutSending() throws {
+        let planner = makePlanner()
+        let before = try #require(planner.routines.first { $0.id == "sample-morning-routine" }?.itemIds)
+        #expect(before.count == 3)
+        let last = try #require(before.last)
+
+        planner.moveMember("sample-morning-routine", item: last, after: nil)
+        #expect(planner.routines.first { $0.id == "sample-morning-routine" }?.itemIds
+                == [last] + before.dropLast())
+        #expect(planner.banner == nil)
+        #expect(planner.sync == nil)
+        // Where it already is: nothing moves and nothing is said.
+        planner.moveMember("sample-morning-routine", item: last, after: nil)
+        #expect(planner.routines.first { $0.id == "sample-morning-routine" }?.itemIds
+                == [last] + before.dropLast())
+        #expect(planner.banner == nil)
+
+        // A step the routine doesn't hold: the route's 409, said here.
+        planner.moveMember("sample-morning-routine", item: uid(404), after: nil)
+        #expect(planner.banner?.text == OrganizeCopy.changedElsewhere)
+
+        // (O13) A routine in, and back out.
+        planner.holdRoutine("sample-autumn", routineId: "sample-wind-down", hold: true)
+        #expect(planner.seasons.first { $0.id == "sample-autumn" }?.routineIds == ["sample-wind-down"])
+        planner.holdRoutine("sample-autumn", routineId: "sample-wind-down", hold: false)
+        #expect(planner.seasons.first { $0.id == "sample-autumn" }?.routineIds == [])
+        // A routine the planner cannot find: refused, as the route refuses it.
+        planner.holdRoutine("sample-autumn", routineId: "r-gone", hold: true)
+        #expect(planner.banner?.text == OrganizeCopy.changedElsewhere)
+        #expect(planner.seasons.first { $0.id == "sample-autumn" }?.routineIds == [])
+    }
+
+    /// (O13) The sample's confirm, as README check 75 walks it: with Autumn
+    /// switched off, putting Morning routine in counts the one habit it would
+    /// take off today. That is Journal, which the routine has kept on Today
+    /// past its own season being off; Meds and Stretch are done today, and a
+    /// done item is never hidden, so they move nothing. Wind down, which holds
+    /// nothing, is sent with no question.
+    @Test func theSamplesAttachConfirmCountsWhatAutumnWouldTake() throws {
+        let planner = makePlanner()
+        #expect(ContainerEditModel.attachConfirm("sample-autumn", routineId: "sample-morning-routine",
+                                                 planner.organizeSnapshot) == nil)
+        planner.setSeasonState("sample-autumn", .paused)
+        let confirm = try #require(ContainerEditModel.attachConfirm("sample-autumn",
+                                                                    routineId: "sample-morning-routine",
+                                                                    planner.organizeSnapshot))
+        #expect(confirm.title == "This will hide 1 item for now")
+        #expect(confirm.message.contains("Autumn is off, so its 1 item stays hidden until you switch it on."))
+        #expect(ContainerEditModel.attachConfirm("sample-autumn", routineId: "sample-wind-down",
+                                                 planner.organizeSnapshot) == nil)
     }
 
     // MARK: Switched off, and gone

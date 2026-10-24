@@ -4,12 +4,16 @@ import Foundation
 // - the task/habit split (lib/planner-store.ts `projectItems`);
 // - `deriveDayItems` and `flattenDayRows` (lib/day-items.ts), with the phone's
 //   defaults: no canvas filters, `typeFilter` 'all', no goal clause;
-// - `deriveTimedEntries` (components/views/day-schedule.tsx);
-// - braindump membership (lib/braindump-members.ts `braindumpMembers`);
+// - `deriveTimedEntries` and `deriveUntimedRows` (components/views/day-schedule.tsx):
+//   the day's rows on the hour grid and off it;
+// - braindump membership (lib/braindump-members.ts `braindumpMembers`), and
+//   its task test on one row (`isTaskScheduled`);
 // - routine grouping (lib/grouping.ts `routineGroups`, via `groupRows`).
 // Keep in step: a change there without the same change here is drift. Checked
 // against the web by DayItemsFixtureTests (tests/fixtures/day/day-items.json,
-// timed.json, braindump.json, routine-groups.json).
+// timed.json, braindump.json, routine-groups.json) and, seven days at a time,
+// by WeekFixtureTests (week.json: every day of a busy week through the whole
+// pipeline, under each week start).
 //
 // Where the two must differ: a `timeBucket` or `startTime` the web can't read
 // (free text like "noon", or not "HH:mm") throws or sorts as NaN there; here
@@ -235,6 +239,37 @@ public func deriveTimedEntries(_ day: DayItems) -> [TimedEntry] {
     }.map(\.element)
 }
 
+/// components/views/day-schedule.tsx `deriveUntimedRows`: the day's rows that
+/// sit off the hour grid. Untimed habits, then untimed tasks that are not in a
+/// project block, each walked in bucket order (anytime, morning, afternoon,
+/// evening) and the bucket's own order, as `deriveDayItems` filed them.
+///
+/// "Untimed" is the web's truthiness: no `startTime`, or an empty one. A task
+/// in a project block is never untimed: it is on the grid at its block's time
+/// when the block lands that day (`deriveTimedEntries`), and in neither list
+/// when it does not. A habit's `inProjectBlock` is not read, here or on the
+/// grid, as on the web. A time the phone can't read ("9am") is not untimed
+/// either, so, with `deriveTimedEntries` leaving it off the grid, that row is
+/// in neither; List and Buckets still show it.
+public func deriveUntimedRows(_ day: DayItems) -> [Item] {
+    let allTasks = bucketOrder.flatMap { day.tasksByBucket[$0] ?? [] }
+    let allHabits = bucketOrder.flatMap { day.habitsByBucket[$0] ?? [] }
+    let habits = allHabits.filter { nonEmpty($0.startTime) == nil }
+    let tasks = allTasks.filter { nonEmpty($0.startTime) == nil && $0.inProjectBlock != true }
+    return habits + tasks
+}
+
+/// lib/braindump-members.ts `braindumpMembers`'s task test, on one row
+/// (`task.isScheduled || task.timeBucket`): is the task marked scheduled, or
+/// filed under a part of day? One that is neither is already a braindump
+/// member, dated or not (unless it was let go or is held today, paused for
+/// one, which `braindumpMembers` drops as `suppressed`), so Move to
+/// Braindump is not offered on it: the web's row and mobile sheet ask the
+/// same before they offer the verb. `startDate` is not consulted, as there.
+public func isTaskScheduled(_ task: Item) -> Bool {
+    return task.isScheduled == true || nonEmpty(task.timeBucket) != nil
+}
+
 /// lib/braindump-members.ts `braindumpMembers`: tasks with no `isScheduled`,
 /// no bucket and not let go (`cancelled`), then habits with no bucket and no repeat, minus `suppressed`.
 /// The caller resolves `suppressed` at TODAY, never the selected day: the
@@ -243,7 +278,7 @@ public func deriveTimedEntries(_ day: DayItems) -> [TimedEntry] {
 public func braindumpMembers(tasks: [Item], habits: [Item], suppressed: Set<UUID>) -> [Item] {
     let unscheduledTasks = tasks.filter { task in
         if suppressed.contains(task.id) { return false }
-        if task.isScheduled == true || nonEmpty(task.timeBucket) != nil { return false }
+        if isTaskScheduled(task) { return false }
         if task.status == "cancelled" { return false }
         return true
     }

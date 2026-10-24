@@ -78,9 +78,12 @@ struct ListLayout: View {
         withAnimation(.snappy) { planner.toggle(id) }
     }
 
+    /// A project section's dot, in the project's own colour
+    /// (`SamplePlanner.projectAccent`); a routine's section and No project
+    /// wear none.
     private func color(for section: ListSection) -> Color? {
         guard section.kind == .project else { return nil }
-        return ProjectPalette.color(for: section.title, in: planner.projects)
+        return planner.projectAccent(for: section.title).color
     }
 }
 
@@ -114,26 +117,34 @@ private struct SectionHeader: View {
             }
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        // A press fills behind the label and never fades it: a project's dot
+        // may be lime (O15), and `.plain` dims its label on every press.
+        .buttonStyle(RowPressStyle())
         .accessibilityLabel(Text("\(section.title), \(countText)"))
         .accessibilityValue(Text(collapsed ? "Collapsed" : "Expanded"))
     }
 }
 
-/// All, Tasks, Habits, then one chip per project on the day.
+/// All, Tasks, Habits, then one chip per project on the day. Given `rows`
+/// (Week's seven days of rows), it counts and lists those instead: every
+/// occurrence counts, so a daily habit counts seven (design W16).
 struct FilterChips: View {
     @Binding var filter: ListFilter
+    /// The rows the chips count; nil counts the selected day's.
+    var rows: [SampleItem]? = nil
     @Environment(SamplePlanner.self) private var planner
 
     var body: some View {
+        let counted = rows ?? planner.dayItems
         ScrollView(.horizontal) {
             HStack(spacing: 8) {
-                chip("All", .all, color: nil)
-                chip("Tasks", .tasks, color: nil)
-                chip("Habits", .habits, color: nil)
-                ForEach(planner.dayProjects, id: \.self) { project in
+                chip("All", .all, color: nil, in: counted)
+                chip("Tasks", .tasks, color: nil, in: counted)
+                chip("Habits", .habits, color: nil, in: counted)
+                ForEach(planner.chipProjects(in: counted), id: \.self) { project in
                     chip(project, .project(project),
-                         color: ProjectPalette.color(for: project, in: planner.projects), showCount: false)
+                         color: planner.projectAccent(for: project).color, in: counted,
+                         showCount: false)
                 }
             }
             .padding(.horizontal, 16)
@@ -142,7 +153,8 @@ struct FilterChips: View {
         .scrollIndicators(.hidden)
     }
 
-    private func chip(_ title: String, _ value: ListFilter, color: Color?, showCount: Bool = true) -> some View {
+    private func chip(_ title: String, _ value: ListFilter, color: Color?, in counted: [SampleItem],
+                      showCount: Bool = true) -> some View {
         let selected = filter == value
         return Button {
             withAnimation(.snappy) { filter = value }
@@ -153,7 +165,7 @@ struct FilterChips: View {
                 }
                 Text(title)
                 if showCount {
-                    Text("\(planner.count(value))")
+                    Text("\(planner.count(value, in: counted))")
                         .monospacedDigit()
                 }
             }
@@ -163,7 +175,9 @@ struct FilterChips: View {
             .foregroundStyle(selected ? Color(.systemBackground) : Color.primary)
             .background(Capsule().fill(selected ? Color.primary : Color(.secondarySystemFill)))
         }
-        .buttonStyle(.plain)
+        // Scales, never fades, as the item sheet's chips do: a project's dot
+        // may be lime (O15).
+        .buttonStyle(PressScaleStyle())
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

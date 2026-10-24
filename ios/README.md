@@ -12,10 +12,14 @@ account and everything in it.
 which needs no account and whose changes last until the app quits.
 
 Today shows one day in three layouts: List (filter chips, then sections per
-routine and per project), Buckets (Morning, Afternoon, Evening, Anytime) and
-Schedule (the hour grid, with the braindump sheet over it). The capsule top
-right switches them: tap for the next, swipe along it to step, long-press for
-the menu. Tap the title to pick another day. The capture bar above the tab bar
+routine and per project, each project's dot in its own colour, as on the
+web), Buckets (Morning, Afternoon, Evening, Anytime) and Schedule (the hour
+grid in the web's block look, the day's untimed rows in an Anytime band above
+it, and the braindump sheet over it). List and Buckets
+can show the day's whole week instead, seven days from your Week starts on
+setting. The capsule top right switches them: tap for the next, swipe along it
+to step, long-press for the menu, whose Show section picks Day or Week. Tap
+the title to pick another day. The capture bar above the tab bar
 adds thoughts to the braindump; its count opens the braindump over Schedule.
 
 Organize, the third tab, lists your routines, seasons, goals (with Goals
@@ -32,7 +36,8 @@ the notes to edit them in place. Tap the priority, date, time, times per day,
 repeat, reminder, project, routine or season chip to change it, and Add
 property (a plus once there are chips) to add one. The streak chip opens this
 week and Reset streak. Add a subtask from the Subtasks section, one at a time
-or by pasting a list. A tap on a row's circle still just ticks it.
+or by pasting a list. A tap on a row's circle, or a task block's square,
+still just ticks it.
 
 - `Dsul/` is the app. `DsulTests/` tests it in the simulator.
   - `App/`: the app, `AppGate` (sign-in screen, sample or your planner),
@@ -57,9 +62,10 @@ or by pasting a list. A tap on a row's circle still just ticks it.
   app: which items show on a day, the braindump, routine grouping, what a
   tick means, the item sheet's verbs (when each is offered, what it writes)
   and the words its chips say, the sign-in requests, which reminder
-  notifications the phone will arm and in what words, and how a container
-  looks and is described on Organize (its colour, glyph, state and counts,
-  a goal's progress). It has no UI, so
+  notifications the phone will arm and in what words, a project's colour on
+  Today, a Schedule block's words and where the web's overlap pass puts
+  it, and how a container looks and is described on Organize (its
+  colour, glyph, state and counts, a goal's progress). It has no UI, so
   `swift test` runs it on Linux as well as macOS.
 - `project.yml` describes the Xcode project. XcodeGen generates
   `Dsul.xcodeproj` from it; the generated project is never committed.
@@ -370,6 +376,8 @@ sample's habits are Meds and Stretch 10 min (daily, already done today),
 Journal (daily, not done today), Plan tomorrow (weekdays) and Water the
 plants (Sundays and Wednesdays), and its tasks are all one-offs but Pay
 rent, last in the braindump, which repeats monthly on the 1st and has no day.
+Four of the one-offs sit on the days around today, for Week (see Checking
+Week).
 Its routines are Morning routine (Meds, Stretch 10 min and Journal) and Wind
 down, which is empty, and its one season, Autumn, holds Journal. Draft Q4
 roadmap has two subtasks (Pull the September numbers, done, and Write the
@@ -733,7 +741,8 @@ a delete, a reset or a chip.
      has, the Trash's included, through the agent API:
      `PATCH /api/agent/tasks/:id`, with your OpenClaw API key as the Bearer
      token and the body `{"project":"Fitness"}`. Pull to refresh and tap its
-     chip, "Fitness", with a gray dot: nothing is checked, and No project
+     chip, "Fitness", with a coral dot (the name's own colour, as the web
+     draws it; gray before O15): nothing is checked, and No project
      and each of your projects can be picked. Then send one of your
      projects' names in lowercase the same way (`{"project":"work"}` for
      Work): pull to refresh, and the menu checks that project.
@@ -999,8 +1008,10 @@ a delete, a reset or a chip.
       comes up over the nested sheet.
     - With Increase Contrast on, the picked keys' blue is darker.
     - In the project menu, and in Add property's Project ▸, each project's
-      dot shows in its colour, not gray (an image drawn as is). If it is
-      gray, the rows drop the dot, and this line says so.
+      dot is drawn as is, in its own colour (the sample's are in Checking
+      Organize, check 82; Health's is Slate, a blue gray), not the label
+      colour on every row (a template image). If every row's dot is the
+      label colour, the rows drop the dot, and this line says so.
     - Picking the checked project runs its action (a Toggle's setter runs on
       every tap): on Standup, filed "work" with no link, the menu checks
       Work; pick Work and the chip reads "Work". On Draft Q4 roadmap,
@@ -1066,7 +1077,10 @@ Off, Dates), and Resume on Paused for routines and seasons; O8b a goal's
 Status (Active, Achieved, Set aside), a routine's usual time, a season's
 Runs, a goal's window and the notes (a goal's why); O9 the ⋯ menu's
 Rename… and Icon and color… on every page; O10 its Delete…; O11 the list's
-+ and its name sheet.
++ and its name sheet; O12 a routine's Edit mode, its swipe Remove and "Add
+from your items…"; O13 a season's "Add a routine…" and its swipe Take out;
+O15 Today's project dots, and the item sheet's, in each project's own
+colour.
 
 1. (O1) Sample: Organize shows Routines, Seasons, Goals and Projects, in that
    order. Morning routine has a honey sunrise tile, Wind down a plum moon,
@@ -1375,8 +1389,9 @@ Rename… and Icon and color… on every page; O10 its Delete…; O11 the list's
     just stop being filed under Home. …". Nothing is sent from the sample.
 57. (O10) Delete Home: on Today's List, Call the dentist, Cook dinner and
     the rest move to No project at once. Their sheet's project chip still
-    reads "Home", with a gray dot, as any name no project holds does (the
-    agent API check under the item sheet). Signed in, do the same, then
+    reads "Home", its dot still teal: from O15 a name no project holds wears
+    its name's own colour, as on the web (the agent API check under the item
+    sheet), and Home's teal came from its name. Signed in, do the same, then
     reload the web: the items still name the deleted project, exactly as
     after a delete on the web and a reload (a known web limit), and the
     web's Trash lists the project.
@@ -1438,6 +1453,304 @@ Rename… and Icon and color… on every page; O10 its Delete…; O11 the list's
     name sheet, Delete… and the dialog are never lime (Delete is the
     system's red), the sheet's hint and the clash sentence wrap, and the
     field stays above the keyboard at the sheet's medium height.
+67. (O12) Sample: Morning routine's bar has Edit left of ⋯. Tap Edit: Today
+    and Other days give way to one Items list, every row with a grip, and
+    the bar reads Done. Drag a step two rows down: it lands there and the
+    list keeps the new order. Done puts Today and Other days back, with the
+    order it was dragged into. Wind down, which holds nothing, has no Edit
+    button, and neither does a routine of one step: there is nothing to put
+    in order. Swipe Remove on Morning's steps until one is left: the Edit
+    button goes. With VoiceOver, Remove in Edit mode down to one step: the
+    page leaves Edit mode by itself.
+68. (O12) Sample: "Add from your items…" sits under the list, at rest and in
+    Edit mode both. Tap it: the sheet pools the items the routine doesn't
+    hold, each with its cadence. Type a few letters: the list narrows; type
+    something no item has: "Nothing matches “zzz”.". Clear the field and the
+    whole pool is back. Pick a row: it leaves the list and the sheet stays
+    up, so a second pick needs no reopening. Done closes it, and both items
+    are in the routine. Keep picking until the pool is empty: the sheet reads
+    "Everything is already in here." and the routine holds them all. A
+    subtask is never in the pool. On Wind down the row sits under "Nothing
+    is in it yet.": the first pick takes the sentence away and the sheet
+    stays up.
+69. (O12) Sample: swipe a step on Today or Other days from the right:
+    Remove, and only Remove. It is the system's red, never Delete, and a
+    half swipe doesn't fire it. Remove a step: it leaves the routine and the
+    item is still on Today (or in the braindump), because nothing was
+    deleted.
+70. (O12) VoiceOver on a step in Edit mode: the actions are Move up, Move
+    down and Remove. The first row has no Move up and the last no Move down.
+    Move up on the second row makes it first; Move up again does nothing new
+    (there is no action to take). The row reads its title, then its cadence
+    and, where it has one, why it isn't on today.
+71. (O12) Signed in: open Morning routine on a web tab first. Then reorder
+    two steps on the phone, and on that web tab, without refreshing it, add
+    an item to the routine. Pull to refresh on the phone: the phone's order
+    holds and the web's item is last (the stale tab writes only its own add,
+    O6). Reorder on the web and pull: the phone follows.
+72. (O12) Signed in, with flight mode on: drag a step. It moves, then the
+    refetch fails, the order goes back to what it was, and the banner says
+    so. Swipe Remove with flight mode on: the step comes back the same way.
+73. (O12) Signed in: open Morning routine on the phone and on the web, and
+    take its second step out of the routine on the web. On the phone, without
+    refreshing, drag that removed step, or drop another step directly under
+    it (its anchor). The write is refused and the banner reads "It changed on
+    another device. Showing the latest.", with the routine as the web left
+    it. Any other drop lands.
+74. (O13) Sample: Autumn's Routines section ends with "Add a routine…". Tap
+    it: the live routines Autumn doesn't hold, each with its tile and name.
+    Pick Wind down: it joins Autumn's Routines with no question, since it
+    holds nothing to hide.
+75. (O13) Sample: switch Autumn off (Status, Off), then add Morning
+    routine. The confirm reads "This will hide 1 item for now": Journal,
+    which the routine kept on Today while Autumn was off (Meds and Stretch
+    are done today, and a done item is never hidden, so they don't count).
+    It says what hands over to Autumn and that the item stays hidden until
+    Autumn is switched on, and offers "Add it anyway" against Cancel. Cancel
+    changes nothing. "Add it anyway" attaches it: Journal leaves Today, and
+    Meds and Stretch stay, done.
+76. (O13) Sample: swipe a routine in that section: Take out. It asks
+    nothing, the routine leaves the season, and the items it was holding off
+    are on Today again.
+77. (O13) Sample: a season holding every live routine draws "Add a routine…"
+    greyed, with "Every routine is already here" under it, and the row does
+    not open.
+78. (O13) Signed in: attach a routine on the phone, then take it out on the
+    web and attach it to another season. Pull to refresh: the phone shows
+    the web's seasons. Then, on a season page the phone has not refreshed,
+    attach (or Take out) a routine the web has deleted meanwhile: the banner
+    reads "It changed on another device. Showing the latest." Attach from a
+    stale page whose season the web deleted: the banner reads "That change
+    didn't save. Checking with the server…" (the route's 404), and the page
+    pops once the refetch lands.
+79. (O13) Signed in: attach a routine to a season on the phone. On a web tab
+    opened before that, rename the season: the phone's hold survives a pull
+    to refresh (the stale tab writes only its own change, O7). Separately,
+    edit the season on the web, attach a routine on the phone, then ⌘Z that
+    earlier edit on the web: the hold survives that too.
+80. (O12, O13) Turn Organize off on the web and pull: no Edit button on a
+    routine, no "Add from your items…", no swipe Remove, no "Add a
+    routine…" and no Take out, on every page. Before the first fetch lands,
+    the same. From a server older than this PR (no `"moveMember"` or
+    `"holdRoutine"` in `containerWrites`): no Edit button, no "Add a
+    routine…" and no Take out, while "Add from your items…" and swipe Remove
+    stay, since they are the item write such a server already takes
+    (`collect`). Against a server with `moveMember` but no `collect` in
+    `writes` (older than the item sheet's routine toggles), Edit reorders
+    and offers neither Remove nor the add row.
+81. (O12, O13) Dark mode and the largest Dynamic Type: Edit, Done, the add
+    rows, the picker and the confirm are never lime (Remove and Take out are
+    the system's red), the confirm's sentence and "Every routine is already
+    here" wrap, and the picker's search field stays above the keyboard at
+    the sheet's medium height.
+82. (O15) Sample: on Today's List, each project section's dot is the colour
+    the web's grid draws for that project: Home teal, Writing coral, dsul
+    moss and Health slate, each the colour of its tile on Organize, and Work
+    a muted blue (the web's own colour for a project named Work with none
+    picked), where Work's tile on Organize is plum, as on the web. The
+    project filter chips wear the same dots. The routines' sections and No
+    project have none, as before.
+83. (O15) Sample: open Writing on Organize, then ⋯, Icon and color…, pick
+    Teal and Done. Back on Today, Writing's section dot and its filter chip
+    are teal at once, the same teal as its tile. Open Morning pages: the
+    project chip's dot is teal, and in the chip's menu Writing's row is teal
+    too (Home's is the same teal, which its name gives it). On Lunch walk,
+    which has no project, Add property ▸ Project ▸ shows Writing teal. Give
+    Writing Auto again: coral comes back in all those places.
+84. (O15) Signed in: on the web, colour one of your projects Teal (the Teal
+    swatch in its colour picker) and file a task due today under it. Pull
+    to refresh on the phone: on Today's List the project's section dot and
+    its chip are teal, the same teal as its tile on Organize. Open the task:
+    its project chip's dot and the project's row in the chip's menu are both
+    teal, and in dark mode both are the tile's dark-mode teal. Then Week ×
+    List (hold the capsule, Show, Week): the project's caption is teal on
+    every day it has a row, and so is its chip above the days.
+85. (O15) Signed in: colour that project Lime on the web and pull. Its dot
+    on its Today section, its chip, its Week caption, the sheet's project
+    chip and its menu row are lime at full strength, in light and dark mode,
+    at rest and while a section header or a chip is pressed (a header fills
+    behind and a chip shrinks; neither fades). No word anywhere is lime.
+
+## Checking Week
+
+Week draws List or Buckets as the seven days of the selected day's week,
+starting on your Week starts on setting (Sunday on the sample). The hosted
+tests pin its words and the sample's week; these checks are for how it reads
+and feels. On the sample, today is the day the app opened, and four one-off
+tasks with no project sit around it: Pick up the dry cleaning three days back
+(4:30 PM), Bike service two days back (2 PM), Coffee with Priya tomorrow
+(10 AM) and Post the birthday card the day after (Anytime). Which of them
+fall in this week depends on today's weekday (from a Thursday all four do);
+the others are in Last week or Next week. Nothing new is on the day before
+today.
+
+1. Hold the capsule, then Show, Week, on List. Seven day sections, from
+   your Week starts on setting, each headed by its weekday and date. Today's
+   heading has a lime dot by the weekday; the weekday and the date stay in
+   ink. Each day shows its routines (with done/total), then its projects
+   (with their dot, in each project's own colour from O15: Checking
+   Organize, check 84), then its loose rows under No project, in small captions
+   that don't fold, as Day groups them. A day with nothing on it says
+   "Nothing planned." The chips count the whole week's rows: on the sample a
+   daily habit counts seven. They stay above the days as the week scrolls,
+   and Week opening on a later day never hides them. Pick a project chip and
+   a day with none of its rows says "Nothing matches this filter".
+2. The title reads This week over the week's dates and the layout, such as
+   "Oct 19 – 25 · List" (the dash and its spacing are iOS's own). Tap the
+   title and pick a day in another week: the title reads Next week, Last
+   week or "Week of Oct 26" (with the year when the week starts in another
+   year), and the list moves to the day you picked. Today shows only off
+   this week, and brings you back.
+3. Tick tomorrow's Meds (on the week's last day, pick tomorrow from the
+   title first): only tomorrow's row ticks, and today's stays as it was.
+   Tick it again to clear it. Open tomorrow's Journal, which isn't done (a
+   done row's sheet offers no Skip): the sheet says "For" and tomorrow's
+   date above the bar, and Skip skips tomorrow alone (back on the week,
+   tomorrow's Journal is a Skipped strip and today's isn't). "Now ·" shows
+   only on today's running row.
+4. Tap a day's heading: Today shows that day in Day, on the same layout.
+5. Buckets in Week: each day is its heading over one card of its parts of
+   the day (Morning, Afternoon, Evening, Anytime), the empty ones left out,
+   and "Nothing planned." on a day with nothing. Rows tick and open on their
+   own day, as on List.
+6. On Schedule, the capsule's Show section offers Day only, and the title
+   and the grid are the day's. Step back to List: the week is still there.
+7. VoiceOver: the capsule reads "Layout, List, week", and its actions offer
+   Show day (Show week while it shows Day, never on Schedule). The title
+   reads "This week, October 19 to 25, List". A day's heading reads as a
+   heading, "Thursday, October 1" with ", today" on today, and a double tap
+   opens that day.
+8. The largest accessibility text size (Settings, Accessibility, Display &
+   Text Size, Larger Text): rows wrap, a heading's date drops under its
+   weekday rather than clipping, and nothing clips. On Buckets, pick Dec 31,
+   2026 from the title: the subtitle spans two years ("Dec 27, 2026 – Jan 2,
+   2027 · Buckets" from a Sunday start), and neither it nor the Today button
+   beside it runs under the capsule or the avatar. In dark mode the lime dot
+   and a done tick keep their full strength, pressed or not, "Now" is ink
+   with a lime dot, never lime text, and the Today button's word is ink.
+
+## Checking Move to Braindump
+
+Move to Braindump (Week and blocks PR 3) sits in an item's ⋯ for a dated,
+open, one-off task: it takes the task off every day and puts it back in the
+braindump, keeping everything else. The hosted tests pin which items get it,
+where it sits and what it sends; these checks are for how it feels. Signed
+in, it shows only once the planner has read your goals (a goal's milestone
+never gets it), so a server older than that offers it nowhere.
+
+1. On the sample, open Draft Q4 roadmap (9 AM today) and tap ⋯: Move to
+   Braindump sits after Pause until…, with a tray symbol, then the divider
+   and Delete. Tap it: the sheet stays up, the date and time chips go (Add
+   property offers Date again), and the bar's Reschedule reads Schedule.
+   Close the sheet: the roadmap is off the day and the grid, and it is the
+   first row in the braindump, reading 120m, its length kept. Open it
+   again: its notes, High, Work and its two subtasks are kept too.
+2. These have no Move to Braindump in ⋯: Meds (a habit), Groceries once
+   ticked done, Run a 10K (a goal's milestone) and Weekly run review (a
+   repeating task, the goal's check-in), both from Organize, Goals, Run a
+   half marathon, Call the bank and any row opened from the braindump,
+   Write the three bets (a subtask), and, signed in, a task parked in a
+   project's block and a task with a date but no part of day, which the
+   braindump already lists. Paused, the roadmap's ⋯ holds Delete alone
+   until you resume it.
+3. Signed in, turn on Airplane Mode and Move to Braindump a dated task: it
+   leaves the day at once, then the banner says "Couldn't reach dsul, so
+   that change was undone." and the task is back on its day. Turn Airplane
+   Mode off.
+4. Signed in, Move to Braindump a dated task, then open dsul on the web:
+   the task is in the braindump with no date or part of day, and its old
+   day doesn't list it. Make another task a goal's milestone on the web and
+   pull to refresh on the phone: its ⋯ no longer offers the verb.
+5. VoiceOver: the ⋯ entry reads "Move to Braindump". Nothing is announced
+   after it; the sheet's chips say where the task now is.
+
+## Checking the Schedule's look
+
+Schedule draws each block as the web's day grid does (Week and blocks PR 4):
+a paper pane beside a thin rail in its project's colour, a bead at the start,
+the time mono. The hosted tests pin the words and the geometry; these checks
+are for how it looks and feels. On the sample (Try with sample data), switch
+Today to Schedule and scroll from 7 AM to 10 PM.
+
+1. Light and dark: each block is a pane with a hairline and a soft shadow,
+   beside a 2pt rail that runs its true length and a bead at its start. Draft
+   Q4 roadmap and Standup (filed "work") wear Work's colour, Review PRs
+   dsul's, Gym Health's; Lunch walk and Read, which have no project, wear a
+   lime rail and bead at full strength.
+2. Standup (15 minutes) shows its title and "15m" on one line, Morning pages
+   "30m"; Draft Q4 roadmap (2 hours) adds "9:00–11:00" under its title,
+   12-hour as Settings says. Standup's pane is taller than its quarter hour
+   (34pt, so its line reads), and its rail is still a quarter hour long.
+3. Tick Standup's square: it fills lime at full strength with a dark tick,
+   the title strikes through, the plate thins and its shadow goes, and the
+   rail and bead turn grey; nothing fades, pressed or not. Tick it again to
+   clear it. A tap just above or below Standup's pane never ticks it: the
+   square's target is 44pt wide but no taller than the pane. A tap on the
+   middle of the pane opens Standup's sheet (the square's target reaches over
+   the title's first letters, so a tap there ticks). Habits' blocks have no
+   square. On Draft Q4 roadmap the title and its range sit in the middle of
+   the pane, and the square sits on the title's line.
+4. Signed in, change the time format to 24-hour in the web's Settings, then
+   leave the app and come back (a fresh fetch): the gutter reads "07:00",
+   "08:00", a 2-hour block's range "09:00–11:00", and the now reading is
+   24-hour too ("14:05").
+5. Today: a lime diamond on the lane and a short lime stub off it mark now,
+   never a line across a pane, and the time reads in ink in the gutter beside
+   it; the hour mark it would cover steps aside. Pick tomorrow from the
+   title: no diamond, no stub, no reading.
+6. The largest accessibility text size (Settings, Accessibility, Display &
+   Text Size, Larger Text): the gutter widens and then stops, titles stay on
+   one line and truncate, and nothing runs into the gutter or out of its
+   pane. With VoiceOver a block reads "Draft Q4 roadmap, 9 to 11 AM, Work",
+   then "done", "skipped" or "now" when it is, and its actions offer the
+   tick ("Mark done") on a task; a double tap opens it.
+
+## Checking the Anytime band
+
+Above the hours, a band lists the day's untimed rows (Week and blocks PR 5):
+untimed habits, then untimed tasks not in a project block, as on the web.
+
+1. The band's header reads "Anytime · 7" on the sample's Thursday (the count
+   moves with the weekday: Plan tomorrow is weekdays only, Water the plants
+   Sundays and Wednesdays). Three rows show; the rest scroll inside the
+   band, whose scroll bar flashes once when it appears. At the accessibility
+   text sizes one row shows and the rest scroll, so the hours keep their
+   room.
+2. Tick a habit in the band: it ticks on the day shown, as on List (pick
+   tomorrow from the title and tick Journal there: today's Journal is as it
+   was). Tap a row: its sheet opens.
+3. Tap the header: the rows fold away and the chevron turns. Switch to List
+   and back, or quit and reopen the app: still folded. Tap it again: back.
+4. Signed in, on a day with nothing untimed, the header reads "Anytime"
+   alone, with no chevron, and the hours start where they do under a folded
+   band.
+5. Open the braindump (the count at the right of the capture bar): the band
+   folds to its header, so the hours get its room, and its header does
+   nothing while the sheet is up. Close the sheet: the rows are back as you
+   left them (still folded if you had folded them).
+6. VoiceOver: the header reads "Anytime, 7 items", a heading and a button,
+   "Expanded" or "Collapsed", and a double tap folds or unfolds it.
+
+## Checking overlapping blocks
+
+Blocks that share their time sit side by side or inset, as the web's
+overlap pass lays them out (Week and blocks PR 6). The sample's day has no
+overlaps, so make them from the braindump (Trying the drag, above), on a
+fresh sample each time.
+
+1. Drag "Call the bank" and "Email Sam back" (15 minutes each) onto 4 PM:
+   they tile, half the width each, each with its own rail and bead; on a
+   tile this narrow the title keeps the width and the length is left off.
+2. Drag "Renew passport" (30 minutes) onto 9:30: it sits inset inside Draft
+   Q4 roadmap (9 to 11), over it, and Draft's title still reads above it.
+3. Drag "Fix the bike light" (1 hour) onto 6 PM: it crosses Gym (5:30 to
+   6:30), and the two take a column each, side by side.
+4. Drag "Book a haircut" onto 8 PM and "Look into a standing desk" onto
+   8:15 PM (15 minutes each): back to back, their panes (34pt, taller than a
+   quarter hour) would overlap, so they sit side by side, and neither hides
+   the other's title.
+5. Load 40 blocks (avatar menu, Drag spike): the grid scrolls without a
+   stutter, and a drag's ghost keeps up with the finger.
 
 ## Rules
 

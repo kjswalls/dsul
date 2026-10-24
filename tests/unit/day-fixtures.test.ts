@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { addDays, format, startOfWeek } from 'date-fns';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
 import path from 'path';
 import {
@@ -13,7 +14,9 @@ import {
 } from '@/lib/active';
 import type { AwayPeriod } from '@/lib/away';
 import { deriveDayItems, flattenDayRows, BUCKET_ORDER, type DayItems } from '@/lib/day-items';
-import { deriveTimedEntries } from '@/components/views/day-schedule';
+import { deriveTimedEntries, deriveUntimedRows, formatClock, formatHourLabel } from '@/components/views/day-schedule';
+import { formatDuration } from '@/components/primitives/pills';
+import { timeFormatPattern } from '@/lib/use-time-format';
 import { braindumpMembers } from '@/lib/braindump-members';
 import { groupRows } from '@/lib/grouping';
 import { isRowDone, isRowSkipped, toggleRowDone, type ItemToggleActions } from '@/lib/item-toggle';
@@ -34,7 +37,14 @@ import {
   isSkippable,
   type ItemTypeConfig,
 } from '@/lib/item-registry';
-import { canMoveToNextDay, canReschedule, formatTargetDay, nextDayLabel, nextDayTarget } from '@/lib/row-moves';
+import {
+  canMoveToNextDay,
+  canReschedule,
+  canSendToBraindump,
+  formatTargetDay,
+  nextDayLabel,
+  nextDayTarget,
+} from '@/lib/row-moves';
 import { reminderNeedsDate } from '@/lib/bulk-edit';
 import { cadenceLabel } from '@/lib/cadence';
 import { membershipSummary } from '@/lib/item-bands';
@@ -56,7 +66,7 @@ import { isCompletedOnDate } from '@/lib/recurrence';
 import { projectItems } from '@/lib/planner-store';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { EXT_STREAKS } from '@/lib/extension-registry';
-import type { OccurrenceState } from '@/lib/container-schedule';
+import { addDaysStr, weekdayOf, weekStartOf, type OccurrenceState, type WeekStartDay } from '@/lib/container-schedule';
 import type { HabitItem, Item, Project, Routine, Season, Task } from '@/lib/planner-types';
 
 /**
@@ -66,7 +76,9 @@ import type { HabitItem, Item, Project, Routine, Season, Task } from '@/lib/plan
  * the phone's Today screen ports: suppression (lib/active.ts), the task/habit
  * split (lib/planner-store.ts `projectItems`, imported from the store itself,
  * so a change there moves these fixtures), `deriveDayItems` (lib/day-items.ts),
- * `deriveTimedEntries` (components/views/day-schedule.tsx), braindump
+ * `deriveTimedEntries` and `deriveUntimedRows` (components/views/day-schedule.tsx),
+ * a week's seven days read through the same pipeline (week.json: the days
+ * from lib/container-schedule.ts `weekStartOf` and `addDaysStr`), braindump
  * membership (lib/braindump-members.ts), routine grouping (lib/grouping.ts),
  * the tick rules (lib/item-toggle.ts), and what the item sheet asks: the verb
  * gates and labels (lib/item-verbs.ts), the carry (lib/row-moves.ts), the
@@ -74,7 +86,11 @@ import type { HabitItem, Item, Project, Routine, Season, Task } from '@/lib/plan
  * (lib/active.ts `resolvePauseWrite`), the registry capabilities and the chip
  * copy; and, for the phone's local reminders, the rest of
  * lib/reminders/due.ts (due.json) and lib/reminders/copy.ts with the copy
- * contract's pattern (copy.json). Every case is built here, run through the
+ * contract's pattern (copy.json); and what a schedule block and its gutter
+ * print (schedule-copy.json: day-schedule.tsx `formatClock` and
+ * `formatHourLabel`, components/primitives/pills.tsx `formatDuration`). The
+ * overlap pass is in tests/unit/overlap-fixtures.test.ts (overlap.json).
+ * Every case is built here, run through the
  * real TS, and written with its answer to tests/fixtures/day/*.json.
  * DsulCore's *FixtureTests.swift (ios/DsulCore/Tests/DsulCoreTests/) read the
  * same files and assert the Swift port answers identically. The sheet's optimistic writes, which need the real
@@ -461,6 +477,8 @@ type DayWorld = {
   projects: Project[];
   routines: Routine[];
   seasons: Season[];
+  /** The trips (vacation mode); only week.json's world has any, and the key is left out elsewhere. */
+  away?: AwayPeriod[];
 };
 type DayScenarioInput = {
   name: string;
@@ -480,7 +498,13 @@ type DayExpected = {
 };
 type DayScenario = DayScenarioInput & { expected: DayExpected };
 type TimedEntryOut = { id: string; startMin: number; duration: number };
-type TimedScenario = DayScenarioInput & { expected: TimedEntryOut[] };
+/**
+ * `expected` is `deriveTimedEntries`; `untimed` is `deriveUntimedRows`, the
+ * ids of the day's rows with no time and no project block (the Anytime strip a
+ * Schedule day draws), in its order: habits, then tasks, each through
+ * BUCKET_ORDER (Anytime first) in the day's own order.
+ */
+type TimedScenario = DayScenarioInput & { expected: TimedEntryOut[]; untimed: string[] };
 
 function runDay(
   input: DayScenarioInput,
@@ -490,6 +514,7 @@ function runDay(
     userTimezone: w.timeZone,
     routines: w.routines,
     seasons: w.seasons,
+    ...(w.away ? { away: w.away } : {}),
   });
   const { tasks, habits } = projectItems(w.items);
   // What hooks/use-day-items.ts passes with the phone's defaults: no canvas
@@ -669,15 +694,214 @@ function buildDayItems(): { worlds: Record<string, DayWorld>; scenarios: DayScen
 function buildTimed(): { worlds: Record<string, DayWorld>; scenarios: TimedScenario[] } {
   return {
     worlds: DAY_WORLDS,
-    scenarios: DAY_SCENARIOS.map((input) => ({
-      ...input,
-      expected: deriveTimedEntries(runDay(input, DAY_WORLDS[input.world]).day).map((e) => ({
-        id: e.item.id,
-        startMin: e.startMin,
-        duration: e.duration,
-      })),
-    })),
+    scenarios: DAY_SCENARIOS.map((input) => {
+      const { day } = runDay(input, DAY_WORLDS[input.world]);
+      return {
+        ...input,
+        expected: timedIds(day),
+        untimed: deriveUntimedRows(day).map((r) => r.item.id),
+      };
+    }),
   };
+}
+
+const timedIds = (day: DayItems): TimedEntryOut[] =>
+  deriveTimedEntries(day).map((e) => ({ id: e.item.id, startMin: e.startMin, duration: e.duration }));
+
+// ── week.json ────────────────────────────────────────────────────────────────
+
+/**
+ * A week is seven calls of the day pipeline, never a derivation of its own:
+ * every web week view asks `deriveDayItems` once per date
+ * (hooks/use-day-items.ts `useDayItemsForDates`), with suppression resolved at
+ * each column's own date. So the file holds each DATE once, with what the day
+ * pipeline answers on it, and each WEEK as the seven dates a week start and an
+ * anchor pick (lib/container-schedule.ts `weekStartOf`, then `addDaysStr` by
+ * 0 to 6, the one string-space form of the web's five `startOfWeek + i`
+ * copies, held to week-list.tsx's in the test below). Nothing in a day's
+ * answer depends on the week start, which is why a date is written once
+ * however many weeks hold it.
+ */
+type WeekDayExpected = {
+  inactive: string[];
+  tasksByBucket: Buckets;
+  habitsByBucket: Buckets;
+  recurringProjects: string[];
+  flat: string[];
+  timed: TimedEntryOut[];
+  untimed: string[];
+  /** Rows of `flat` that `isRowDone` / `isRowSkipped` answer true for, at this date. */
+  done: string[];
+  skipped: string[];
+};
+type WeekDate = DayScenarioInput & { expected: WeekDayExpected };
+type WeekCase = {
+  name: string;
+  world: string;
+  /** The day the week is asked about (the phone's selected day). */
+  anchor: string;
+  weekStartDay: WeekStartDay;
+  /** The seven days, first to last. */
+  days: string[];
+};
+type WeekFixture = { worlds: Record<string, DayWorld>; dates: WeekDate[]; weeks: WeekCase[] };
+
+const WEEK_WORLD = 'busy week';
+const WEEK_STARTS: WeekStartDay[] = ['sunday', 'monday', 'saturday'];
+
+/**
+ * One busy autumn in Los Angeles, built for the weeks below: a daily habit, a
+ * timed weekdays habit, custom days, a weekly timed task, a monthly task on
+ * the 31st, one-offs across the week of the 19th, a pause ending Wednesday the
+ * 21st, a season starting Thursday the 22nd, a weekend trip on the 24th and
+ * 25th, and a Gym block on Monday, Wednesday and Friday. A pause that starts
+ * at 23:30 on Nov 1 after the clocks go back (07:30Z on the 2nd, which a fixed
+ * −07:00 reads as the 2nd) pins the zone through the DST change, and one-offs
+ * sit across the month end, the DST week and the year end.
+ */
+function busyWeekWorld(): DayWorld {
+  const items: Item[] = [
+    habit(1101, 'Meds, daily, kept on the trip', {
+      timeBucket: 'morning',
+      completedDates: ['2026-10-19', '2026-10-20', '2026-10-24'],
+      skippedDates: ['2026-10-22'],
+    }),
+    habit(1102, 'Stretch, weekdays at 07:30', {
+      timeBucket: 'morning',
+      startTime: '07:30',
+      duration: 15,
+      repeatFrequency: 'weekdays',
+      completedDates: ['2026-10-21'],
+    }),
+    habit(1103, 'Run, Tue Thu Sat', { timeBucket: 'evening', repeatFrequency: 'custom', repeatDays: [2, 4, 6] }),
+    habit(1104, 'Journal, paused until Wednesday', {
+      timeBucket: 'anytime',
+      pausedAt: '2026-10-14T19:00:00Z',
+      pausedUntil: '2026-10-21',
+    }),
+    habit(1105, 'Drills, in a season from Thursday', { timeBucket: 'afternoon' }),
+    habit(1106, 'Walk, paused from 23:30 on Nov 1', {
+      timeBucket: 'evening',
+      pausedAt: '2026-11-02T07:30:00Z',
+    }),
+    habit(1107, 'Water, 3 a day', {
+      timeBucket: 'afternoon',
+      timesPerDay: 3,
+      dailyCounts: { '2026-10-21': 3, '2026-10-22': 1 },
+      completedDates: ['2026-10-21'],
+    }),
+    task(1201, 'Team sync, Tuesdays at 10:00', {
+      startDate: '2026-09-01',
+      timeBucket: 'morning',
+      startTime: '10:00',
+      duration: 30,
+      repeatFrequency: 'custom',
+      repeatDays: [2],
+      completedDates: ['2026-10-20'],
+    }),
+    task(1202, 'Pay the card, monthly on the 31st', {
+      startDate: '2026-08-31',
+      timeBucket: 'evening',
+      repeatFrequency: 'monthly',
+      repeatMonthDay: 31,
+      skippedDates: ['2026-10-31'],
+    }),
+    task(1203, 'Dentist, Mon at 14:00', { startDate: '2026-10-19', timeBucket: 'afternoon', startTime: '14:00', duration: 60 }),
+    task(1204, 'Groceries, Wed', { startDate: '2026-10-21', timeBucket: 'anytime', order: 2 }),
+    task(1205, 'Call home, Fri, done', { startDate: '2026-10-23', timeBucket: 'evening', status: 'completed' }),
+    task(1206, 'Laundry, Sun the 18th', { startDate: '2026-10-18', timeBucket: 'morning' }),
+    task(1207, 'Draft the roadmap, Thu at 09:00', {
+      startDate: '2026-10-22',
+      timeBucket: 'morning',
+      startTime: '09:00',
+      duration: 120,
+    }),
+    task(1208, 'Pack, Sat on the trip', { startDate: '2026-10-24', timeBucket: 'morning' }),
+    task(1209, 'no bucket is dropped, Tue', { startDate: '2026-10-20' }),
+    task(1210, 'Rent, Oct 1', { startDate: '2026-10-01', timeBucket: 'morning' }),
+    task(1211, 'Clocks back, Nov 1 at 09:00', { startDate: '2026-11-01', timeBucket: 'morning', startTime: '09:00' }),
+    task(1212, 'Vote, Nov 3', { startDate: '2026-11-03', timeBucket: 'anytime' }),
+    task(1213, 'Party, Dec 31 at 20:00', { startDate: '2026-12-31', timeBucket: 'evening', startTime: '20:00' }),
+    task(1214, 'Plan the year, Jan 1', { startDate: '2027-01-01', timeBucket: 'anytime', order: 1 }),
+    task(1215, 'Leg day, in the Gym block on Wed', {
+      startDate: '2026-10-21',
+      timeBucket: 'evening',
+      inProjectBlock: true,
+      project: 'Gym',
+    }),
+    task(1216, 'Warm up, daily, in the Gym block', {
+      startDate: '2026-09-01',
+      timeBucket: 'evening',
+      repeatFrequency: 'daily',
+      inProjectBlock: true,
+      project: 'Gym',
+    }),
+  ];
+  const projects: Project[] = [
+    project('p-gym', 'Gym', {
+      repeatFrequency: 'custom',
+      repeatDays: [1, 3, 5],
+      startTime: '18:00',
+      timeBucket: 'evening',
+      duration: 60,
+    }),
+  ];
+  const routines: Routine[] = [routine('r-morning', 'Morning', [uid(1101), uid(1102)])];
+  const seasons: Season[] = [season('s-training', 'Training', { startsOn: '2026-10-22', itemIds: [uid(1105)] })];
+  const away: AwayPeriod[] = [
+    trip('t-weekend', '2026-10-24', '2026-10-26', { keep: { itemIds: [uid(1101)], routineIds: [], projectIds: [] } }),
+  ];
+  return { timeZone: LA, items, projects, routines, seasons, away };
+}
+
+/** The anchors each week start is asked about; the start's own day is resolved per start. */
+const WEEK_ANCHORS: { name: string; anchor: (start: WeekStartDay) => string }[] = [
+  { name: 'mid-week', anchor: () => '2026-10-21' },
+  { name: 'on the week start', anchor: (start) => weekStartOf('2026-10-21', start) },
+  { name: 'on the last day', anchor: (start) => addDaysStr(weekStartOf('2026-10-21', start), 6) },
+  { name: 'across a month end', anchor: () => '2026-09-30' },
+  { name: 'across the DST change', anchor: () => '2026-11-01' },
+  { name: 'across a year end', anchor: () => '2026-12-31' },
+];
+
+function buildWeek(): WeekFixture {
+  const worlds = { [WEEK_WORLD]: busyWeekWorld() };
+  const weeks: WeekCase[] = WEEK_STARTS.flatMap((weekStartDay) =>
+    WEEK_ANCHORS.map(({ name, anchor }) => {
+      const at = anchor(weekStartDay);
+      const first = weekStartOf(at, weekStartDay);
+      return {
+        name: `${name}, ${weekStartDay}`,
+        world: WEEK_WORLD,
+        anchor: at,
+        weekStartDay,
+        days: Array.from({ length: 7 }, (_, i) => addDaysStr(first, i)),
+      };
+    })
+  );
+  const dates = [...new Set(weeks.flatMap((w) => w.days))].sort().map((date): WeekDate => {
+    const input: DayScenarioInput = { name: date, world: WEEK_WORLD, date, showCompletedTasks: true };
+    const { day, inactive } = runDay(input, worlds[WEEK_WORLD]);
+    // flattenDayRows types its rows loosely; the tick rules take the narrowed union.
+    const rows = flattenDayRows(day) as Parameters<typeof isRowDone>[0][];
+    const ofRows = (pick: (row: (typeof rows)[number], date: string) => boolean) =>
+      rows.filter((r) => pick(r, date)).map((r) => r.item.id);
+    return {
+      ...input,
+      expected: {
+        inactive: sortedIds(inactive),
+        tasksByBucket: bucketIds(day.tasksByBucket),
+        habitsByBucket: bucketIds(day.habitsByBucket),
+        recurringProjects: day.recurringProjects.map((p) => p.id),
+        flat: rows.map((r) => r.item.id),
+        timed: timedIds(day),
+        untimed: deriveUntimedRows(day).map((r) => r.item.id),
+        done: ofRows(isRowDone),
+        skipped: ofRows(isRowSkipped),
+      },
+    };
+  });
+  return { worlds, dates, weeks };
 }
 
 // ── braindump.json ───────────────────────────────────────────────────────────
@@ -899,6 +1123,7 @@ function buildToggle(): { cases: ToggleCase[] } {
  * The verbs the phone's item sheet offers, in ITEM_VERBS (declaration) order.
  * `delete` is always eligible, so it alone is exempt from the both-answers
  * check below. `resetStreak` is offered from the streak chip, not the bar.
+ * `braindump` (Move to Braindump, week-and-blocks PR 3) sits in the sheet's ⋯.
  */
 const SHEET_VERBS = [
   'tick',
@@ -908,6 +1133,7 @@ const SHEET_VERBS = [
   'resume',
   'nextDay',
   'reschedule',
+  'braindump',
   'resetStreak',
   'delete',
 ] as const;
@@ -928,6 +1154,12 @@ type VerbsCase = {
    * Reset streak asks. The phone reads it from the payload's settings.
    */
   streaksEnabled: boolean;
+  /**
+   * VerbContext.milestoneIds, sorted: the items that are some live goal's
+   * milestone, which Move to Braindump refuses. The phone builds it from the
+   * payload's goals (lib/goals.ts milestoneItemIds).
+   */
+  milestoneIds: string[];
   verbs: Record<Exclude<SheetVerb, 'nextDay'>, VerbAnswer> & {
     nextDay: VerbAnswer & { detail: string; target: string };
   };
@@ -957,9 +1189,11 @@ function buildVerbs(): { cases: VerbsCase[] } {
       timeZone?: string;
       occurrence?: OccurrenceState | 'absent' | 'unknown';
       streaksEnabled?: boolean;
+      milestoneIds?: string[];
     } = {}
   ): VerbsCase => {
     const streaksEnabled = opts.streaksEnabled ?? true;
+    const milestoneIds = [...(opts.milestoneIds ?? [])].sort();
     const dateStr = opts.dateStr ?? T;
     const todayStr = opts.todayStr ?? T;
     const timeZone = opts.timeZone ?? NY;
@@ -970,7 +1204,7 @@ function buildVerbs(): { cases: VerbsCase[] } {
       date: new Date(`${dateStr}T12:00:00Z`),
       todayStr,
       tz: timeZone,
-      milestoneIds: new Set(),
+      milestoneIds: new Set(milestoneIds),
       occurrence,
     };
     const answer = (id: SheetVerb): VerbAnswer => ({
@@ -987,6 +1221,7 @@ function buildVerbs(): { cases: VerbsCase[] } {
         timeZone,
         occurrence: occurrence ?? null,
         streaksEnabled,
+        milestoneIds,
         verbs: {
           tick: answer('tick'),
           skip: answer('skip'),
@@ -995,6 +1230,7 @@ function buildVerbs(): { cases: VerbsCase[] } {
           resume: answer('resume'),
           nextDay: { ...answer('nextDay'), detail: ITEM_VERBS.nextDay.detail!(item, ctx)!, target: nextDayOf(item, ctx) },
           reschedule: answer('reschedule'),
+          braindump: answer('braindump'),
           resetStreak: answer('resetStreak'),
           delete: answer('delete'),
         },
@@ -1072,10 +1308,18 @@ function buildVerbs(): { cases: VerbsCase[] } {
       make('one-off ignores an absent occurrence', oneOff(), { occurrence: 'absent' }),
       make('subtask', subtask()),
       make('subtask, completed', subtask({ status: 'completed' })),
+      // Move to Braindump: never a milestone of a live goal; a dated row with
+      // no part of day is already listed there, which the phone's surfaces
+      // check apart from the gate (as the web's row and mobile sheet do).
+      make('one-off that is a milestone', oneOff(), { milestoneIds: [uid(620)] }),
+      make('one-off, another item is a milestone', oneOff(), { milestoneIds: [uid(621)] }),
+      make('one-off, dated with no part of day', oneOff({ timeBucket: undefined, isScheduled: false })),
+      make('one-off, a timed block', oneOff({ timeBucket: 'afternoon', startTime: '14:00', duration: 45 })),
       // Custom types ride the task rules.
       make('custom one-off', errand()),
       make('custom one-off, completed', errand({ status: 'completed' })),
       make('custom one-off, undated', errand({ startDate: undefined, timeBucket: undefined, isScheduled: false })),
+      make('custom one-off that is a milestone', errand(), { milestoneIds: [uid(630)] }),
       make('custom recurring, due', weekdayErrand()),
       make('custom recurring, done', weekdayErrand({ completedDates: [T] })),
       make('custom recurring, skipped', weekdayErrand({ skippedDates: [T] })),
@@ -1090,12 +1334,15 @@ type TargetCase = { name: string; rowDateStr: string; todayStr: string; expected
 type CarryLabelCase = { name: string; target: string; todayStr: string; expected: string };
 type DayCopyCase = { name: string; dateStr: string; expected: string };
 type MoveCase = { name: string; item: Item; kind: 'task' | 'habit'; dateStr: string; expected: boolean };
+/** canSendToBraindump's case: a move case with the milestone ids it is asked against, sorted. */
+type BraindumpMoveCase = MoveCase & { milestoneIds: string[] };
 type RowMovesFixture = {
   nextDayTarget: TargetCase[];
   nextDayLabel: CarryLabelCase[];
   formatTargetDay: DayCopyCase[];
   canMoveToNextDay: MoveCase[];
   canReschedule: MoveCase[];
+  canSendToBraindump: BraindumpMoveCase[];
 };
 
 function buildRowMoves(): RowMovesFixture {
@@ -1167,12 +1414,33 @@ function buildRowMoves(): RowMovesFixture {
   // in taking a recurring task (its picked day becomes the series start).
   const moves = moveInputs.map(([name, item, kind]) => ({ name, item, kind, dateStr: T, expected: canMoveToNextDay(item, kind, T) }));
   const reschedules = moveInputs.map(([name, item, kind]) => ({ name, item, kind, dateStr: T, expected: canReschedule(item, kind, T) }));
+  // Move to Braindump's gate: the same rows with no milestones, then the rule
+  // only it has (a live goal's milestone keeps its date) and a dated row with
+  // no part of day, which the gate allows (the surfaces hide it, since the
+  // braindump already lists it).
+  const braindumpInputs: [string, Item, 'task' | 'habit', string[]][] = [
+    ...moveInputs.map(([name, item, kind]): [string, Item, 'task' | 'habit', string[]] => [name, item, kind, []]),
+    ['a milestone', oneOff(), 'task', [uid(701)]],
+    ['a custom milestone', errand(), 'task', [uid(702)]],
+    ['another item is a milestone', oneOff(), 'task', [uid(799)]],
+    ['a milestone that is done', oneOff({ status: 'completed' }), 'task', [uid(701)]],
+    ['dated with no part of day', oneOff({ timeBucket: undefined, isScheduled: false }), 'task', []],
+  ];
+  const braindumps = braindumpInputs.map(([name, item, kind, milestoneIds]) => ({
+    name,
+    item,
+    kind,
+    dateStr: T,
+    milestoneIds: [...milestoneIds].sort(),
+    expected: canSendToBraindump(item, kind, T, new Set(milestoneIds)),
+  }));
   return {
     nextDayTarget: targets,
     nextDayLabel: labels,
     formatTargetDay: days,
     canMoveToNextDay: moves,
     canReschedule: reschedules,
+    canSendToBraindump: braindumps,
   };
 }
 
@@ -1930,12 +2198,76 @@ function buildCopy(): CopyFixture {
   };
 }
 
+// ── The Schedule's words (schedule-copy.json) ────────────────────────────────
+
+/**
+ * What a schedule block and the hour gutter print: the clock
+ * (components/views/day-schedule.tsx `formatClock`; a block's range is two of
+ * them with `meridiem` false, joined by an en dash, and the now reading is one
+ * with it), the gutter's hour mark (`formatHourLabel`) and the duration
+ * (components/primitives/pills.tsx `formatDuration`). Each case carries the
+ * stored setting, '12h' or '24h', and goes through lib/use-time-format.ts
+ * `timeFormatPattern`, the rule the web's `useTimeFormat` answers with.
+ * Minutes are whole: the phone's grid never holds a fraction.
+ */
+type ScheduleClockCase = { name: string; minutes: number; timeFormat: '12h' | '24h'; meridiem: boolean; expected: string };
+type ScheduleHourCase = { name: string; hour: number; timeFormat: '12h' | '24h'; expected: string };
+type ScheduleDurationCase = { name: string; minutes: number; expected: string };
+type ScheduleCopyFixture = {
+  formatClock: ScheduleClockCase[];
+  formatHourLabel: ScheduleHourCase[];
+  formatDuration: ScheduleDurationCase[];
+};
+
+const TIME_FORMATS = ['12h', '24h'] as const;
+
+function buildScheduleCopy(): ScheduleCopyFixture {
+  // Midnight, the hour either side of noon, the last minute, and past the
+  // day's end both ways: an end time of start + duration wraps (23:00 for two
+  // hours ends at 1:00), and the wrap is the TS's own, never the phone's.
+  const clockMinutes = [
+    0, 1, 59, 60, 405, 540, 599, 600, 615, 690, 719, 720, 721, 750, 779, 780, 1020, 1305, 1439, 1440, 1455,
+    1500, 2880, -1, -15, -60,
+  ];
+  const formatClockCases = clockMinutes.flatMap((minutes) =>
+    TIME_FORMATS.flatMap((timeFormat) =>
+      [true, false].map((meridiem) => ({
+        name: `${minutes}, ${timeFormat}${meridiem ? '' : ', no meridiem'}`,
+        minutes,
+        timeFormat,
+        meridiem,
+        expected: formatClock(minutes, timeFormatPattern(timeFormat), meridiem),
+      }))
+    )
+  );
+  const formatHourLabelCases = Array.from({ length: 24 }, (_, hour) =>
+    TIME_FORMATS.map((timeFormat) => ({
+      name: `${hour}, ${timeFormat}`,
+      hour,
+      timeFormat,
+      expected: formatHourLabel(hour, timeFormatPattern(timeFormat)),
+    }))
+  ).flat();
+  // Every quarter hour a block can last, and the lengths around it the web can
+  // store (a 5-minute block, a day and more).
+  const durations = [
+    ...[0, 1, 5, 10, 59, 61, 1439, 1500, 2880],
+    ...Array.from({ length: 96 }, (_, i) => (i + 1) * 15),
+  ].sort((a, b) => a - b);
+  return {
+    formatClock: formatClockCases,
+    formatHourLabel: formatHourLabelCases,
+    formatDuration: durations.map((minutes) => ({ name: `${minutes}`, minutes, expected: formatDuration(minutes) })),
+  };
+}
+
 // ── Writing and checking ─────────────────────────────────────────────────────
 
 const FIXTURES: Record<string, () => unknown> = {
   active: buildActive,
   'day-items': buildDayItems,
   timed: buildTimed,
+  week: buildWeek,
   braindump: buildBraindump,
   'routine-groups': buildRoutineGroups,
   toggle: buildToggle,
@@ -1948,6 +2280,7 @@ const FIXTURES: Record<string, () => unknown> = {
   chips: buildChips,
   due: buildDue,
   copy: buildCopy,
+  'schedule-copy': buildScheduleCopy,
 };
 
 const serialize = (f: unknown) => JSON.stringify(f, null, 2) + '\n';
@@ -2015,6 +2348,72 @@ describe('day fixtures shared with DsulCore', () => {
     }
   });
 
+  it('the week cases are seven days from the week start, and the world reaches every rule', () => {
+    const week = generated.week as WeekFixture;
+    const byDate = new Map(week.dates.map((d) => [d.date, d.expected]));
+    const startDay = { sunday: 0, monday: 1, saturday: 6 } as const;
+    for (const w of week.weeks) {
+      expect(w.days, w.name).toHaveLength(7);
+      expect(weekdayOf(w.days[0]), w.name).toBe(startDay[w.weekStartDay]);
+      w.days.forEach((d, i) => expect(d, `${w.name}: day ${i}`).toBe(addDaysStr(w.days[0], i)));
+      expect(w.days, w.name).toContain(w.anchor);
+      for (const d of w.days) expect(byDate.has(d), `${w.name}: ${d} has no answer`).toBe(true);
+      // The web's own week, as components/views/week-list.tsx builds it (and
+      // its week-buckets.tsx and week-schedule.tsx copies): date-fns
+      // `startOfWeek` from the selected day, then `addDays(start, i)`. If the
+      // web's week drifts from `weekStartOf`, this fails before the phone's does.
+      const [yy, mm, dd] = w.anchor.split('-').map(Number);
+      const webStart = startOfWeek(new Date(yy, mm - 1, dd, 12), { weekStartsOn: startDay[w.weekStartDay] });
+      const webDays = Array.from({ length: 7 }, (_, i) => format(addDays(webStart, i), 'yyyy-MM-dd'));
+      expect(w.days, `${w.name}: the web's week`).toEqual(webDays);
+    }
+    // Every date written is read by some week, and each week start meets each anchor.
+    expect(new Set(week.weeks.flatMap((w) => w.days))).toEqual(new Set(byDate.keys()));
+    expect(new Set(week.weeks.map((w) => w.weekStartDay))).toEqual(new Set(WEEK_STARTS));
+    // The anchor on the week start is the week's first day, never a week late.
+    for (const w of week.weeks.filter((x) => x.name.startsWith('on the week start'))) expect(w.days[0]).toBe(w.anchor);
+    for (const w of week.weeks.filter((x) => x.name.startsWith('on the last day'))) expect(w.days[6]).toBe(w.anchor);
+
+    const world = week.worlds[WEEK_WORLD];
+    const id = (title: string) => world.items.find((i) => i.title.startsWith(title))!.id;
+    const at = (date: string) => byDate.get(date)!;
+    // The pause ends Wednesday; the season starts Thursday.
+    expect(at('2026-10-20').inactive).toContain(id('Journal'));
+    expect(at('2026-10-21').inactive).not.toContain(id('Journal'));
+    expect(at('2026-10-21').inactive).toContain(id('Drills'));
+    expect(at('2026-10-22').flat).toContain(id('Drills'));
+    // The trip holds the weekend, but not what it keeps.
+    for (const d of ['2026-10-24', '2026-10-25']) {
+      expect(at(d).inactive, d).toContain(id('Water'));
+      expect(at(d).flat, d).toEqual([id('Meds')]);
+    }
+    // The clocks go back at 02:00 on Nov 1: 07:30Z on the 2nd is 23:30 on the
+    // 1st in Los Angeles, and still the 2nd at a fixed −07:00.
+    const walk = world.items.find((i) => i.id === id('Walk'))!;
+    expect(isPausedOn(walk, '2026-11-01', LA)).toBe(true);
+    expect(isPausedOn(walk, '2026-11-01', 'Etc/GMT+7')).toBe(false);
+    expect(at('2026-10-31').inactive).not.toContain(id('Walk'));
+    expect(at('2026-11-01').inactive).toContain(id('Walk'));
+    // The monthly task on the 31st clamps to the 30th in September.
+    for (const d of ['2026-09-30', '2026-10-31', '2026-12-31']) expect(at(d).flat, d).toContain(id('Pay the card'));
+    for (const [d, e] of byDate) {
+      // The Gym block lands Monday, Wednesday and Friday only.
+      expect(e.recurringProjects.includes('p-gym'), d).toBe([1, 3, 5].includes(weekdayOf(d)));
+      // A task in a block is on the grid when its block is, and never untimed.
+      const warmUp = id('Warm up');
+      expect(e.untimed, d).not.toContain(warmUp);
+      if (e.flat.includes(warmUp)) expect(e.timed.some((t) => t.id === warmUp), d).toBe(e.recurringProjects.includes('p-gym'));
+      // Every timed entry and untimed row is one of the day's rows.
+      for (const r of [...e.untimed, ...e.timed.map((t) => t.id)]) expect(e.flat, d).toContain(r);
+    }
+    // Done and skipped are read at each row's own date.
+    expect(at('2026-10-20').done).toContain(id('Team sync'));
+    expect(at('2026-10-27').done).not.toContain(id('Team sync'));
+    expect(at('2026-10-22').skipped).toEqual([id('Meds')]);
+    expect(at('2026-10-21').skipped).toEqual([]);
+    expect(week.dates.some((d) => d.expected.untimed.length > 0 && d.expected.timed.length > 0)).toBe(true);
+  });
+
   it('the item sheet cases exercise both answers of every gate', () => {
     const both = new Set([true, false]);
     const verbs = (generated.verbs as { cases: VerbsCase[] }).cases;
@@ -2038,12 +2437,40 @@ describe('day fixtures shared with DsulCore', () => {
     }
     expect(new Set(verbs.map((c) => c.verbs.nextDay.label))).toEqual(new Set(['Move to today', 'Move to tomorrow', 'Move to next day']));
     expect(new Set(verbs.map((c) => c.verbs.reschedule.label))).toEqual(new Set(['Reschedule', 'Schedule']));
+    expect(new Set(verbs.map((c) => c.verbs.braindump.label))).toEqual(new Set(['Move to Braindump']));
+    // A milestone keeps its date: the carry is offered, Move to Braindump is not.
+    const milestones = verbs.filter((c) => c.milestoneIds.includes(c.item.id));
+    expect(milestones.length).toBeGreaterThan(0);
+    for (const c of milestones) {
+      expect(c.verbs.braindump.eligible, c.name).toBe(false);
+      expect(c.verbs.nextDay.eligible, c.name).toBe(true);
+    }
+    // Move to Braindump comes after Reschedule and before Delete, the web's
+    // declaration order, which the phone's ⋯ keeps.
+    for (const c of verbs.filter((x) => x.eligible.includes('braindump'))) {
+      const at = c.eligible.indexOf('braindump');
+      if (c.eligible.includes('reschedule')) expect(c.eligible.indexOf('reschedule'), c.name).toBeLessThan(at);
+      expect(c.eligible.indexOf('delete'), c.name).toBeGreaterThan(at);
+    }
 
     const moves = generated['row-moves'] as RowMovesFixture;
     expect(new Set(moves.canMoveToNextDay.map((c) => c.expected))).toEqual(both);
     expect(new Set(moves.canReschedule.map((c) => c.expected))).toEqual(both);
     // At least one row where the two gates part: a recurring task.
     expect(moves.canReschedule.some((c, i) => c.expected !== moves.canMoveToNextDay[i].expected)).toBe(true);
+    expect(new Set(moves.canSendToBraindump.map((c) => c.expected))).toEqual(both);
+    // Its first rows are the carry's, asked with no milestones; they part only
+    // where the registry's two capabilities would, which no shipped type does.
+    moves.canMoveToNextDay.forEach((c, i) => {
+      const b = moves.canSendToBraindump[i];
+      expect(b.name).toBe(c.name);
+      expect(b.milestoneIds).toEqual([]);
+      expect(b.expected, c.name).toBe(c.expected);
+    });
+    // And a milestone is where it parts from the carry.
+    const milestone = moves.canSendToBraindump.find((c) => c.name === 'a milestone')!;
+    expect(milestone.expected).toBe(false);
+    expect(canMoveToNextDay(milestone.item, 'task', milestone.dateStr)).toBe(true);
     expect(new Set(moves.nextDayLabel.map((c) => c.expected))).toEqual(new Set(['Move to today', 'Move to tomorrow', 'Move to next day']));
 
     const occurs = (generated.occurs as { cases: OccursCase[] }).cases;
@@ -2103,5 +2530,27 @@ describe('day fixtures shared with DsulCore', () => {
       copy.eodCopy.body,
     ];
     for (const line of lines) expect(line, line).not.toMatch(NEVER_SCOLDS);
+  });
+
+  it('the schedule copy cases reach both formats, the wrap and every hour', () => {
+    const sc = generated['schedule-copy'] as ScheduleCopyFixture;
+    const clock = (minutes: number, timeFormat: '12h' | '24h', meridiem: boolean) =>
+      sc.formatClock.find((c) => c.minutes === minutes && c.timeFormat === timeFormat && c.meridiem === meridiem)
+        ?.expected;
+    // The block's range and the now reading, as the web prints them.
+    expect(clock(600, '12h', false)).toBe('10:00');
+    expect(clock(720, '12h', false)).toBe('12:00');
+    expect(clock(780, '12h', true)).toBe('1:00 pm');
+    expect(clock(0, '12h', true)).toBe('12:00 am');
+    expect(clock(540, '24h', true)).toBe('09:00');
+    // Past midnight either way wraps into the day.
+    expect(clock(1440, '24h', true)).toBe(clock(0, '24h', true));
+    expect(clock(1500, '12h', false)).toBe('1:00');
+    expect(clock(-15, '24h', true)).toBe('23:45');
+    expect(sc.formatHourLabel.map((c) => c.hour)).toEqual(Array.from({ length: 48 }, (_, i) => Math.floor(i / 2)));
+    expect(sc.formatHourLabel.find((c) => c.hour === 9 && c.timeFormat === '12h')?.expected).toBe('9 am');
+    expect(sc.formatHourLabel.find((c) => c.hour === 7 && c.timeFormat === '24h')?.expected).toBe('07:00');
+    const dur = (m: number) => sc.formatDuration.find((c) => c.minutes === m)?.expected;
+    expect([dur(30), dur(60), dur(90), dur(1440)]).toEqual(['30m', '1h', '1h 30m', '24h']);
   });
 });

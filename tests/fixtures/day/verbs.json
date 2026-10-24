@@ -18,6 +18,7 @@
       "timeZone": "America/New_York",
       "occurrence": "due",
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -48,6 +49,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": false,
@@ -85,6 +90,7 @@
       "timeZone": "America/New_York",
       "occurrence": "done",
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -115,6 +121,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": true,
@@ -150,6 +160,7 @@
       "timeZone": "America/New_York",
       "occurrence": "due",
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -180,6 +191,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": true,
@@ -216,6 +231,7 @@
       "timeZone": "America/New_York",
       "occurrence": "due",
       "streaksEnabled": false,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -246,6 +262,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": false,
@@ -283,6 +303,7 @@
       "timeZone": "America/New_York",
       "occurrence": "skipped",
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": false,
@@ -313,6 +334,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": false,
@@ -351,6 +376,7 @@
       "timeZone": "America/New_York",
       "occurrence": "done",
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": false,
@@ -381,6 +407,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": false,
@@ -416,6 +446,7 @@
       "timeZone": "America/New_York",
       "occurrence": "due",
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -446,6 +477,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": false,
@@ -484,6 +519,7 @@
       "timeZone": "America/New_York",
       "occurrence": "due",
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -514,6 +550,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": false,
@@ -554,6 +594,7 @@
       "timeZone": "America/New_York",
       "occurrence": "done",
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -584,6 +625,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": false,
@@ -618,6 +663,7 @@
       "timeZone": "America/New_York",
       "occurrence": "absent",
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": false,
@@ -648,6 +694,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": false,
@@ -681,6 +731,7 @@
       "timeZone": "America/New_York",
       "occurrence": "open",
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -711,6 +762,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": false,
@@ -747,6 +802,7 @@
       "timeZone": "America/New_York",
       "occurrence": "done",
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -777,6 +833,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": false,
@@ -811,6 +871,7 @@
       "timeZone": "America/New_York",
       "occurrence": "due",
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -841,6 +902,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": false,
@@ -876,6 +941,7 @@
       "timeZone": "America/New_York",
       "occurrence": null,
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -906,6 +972,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": false,
@@ -942,6 +1012,7 @@
       "timeZone": "America/New_York",
       "occurrence": "due",
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -972,6 +1043,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": false,
@@ -1009,6 +1084,7 @@
       "timeZone": "America/New_York",
       "occurrence": "due",
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -1039,6 +1115,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": false,
@@ -1076,6 +1156,7 @@
       "timeZone": "America/New_York",
       "occurrence": "due",
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -1106,6 +1187,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": false,
@@ -1142,6 +1227,7 @@
       "timeZone": "America/New_York",
       "occurrence": "due",
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -1172,6 +1258,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": false,
@@ -1208,6 +1298,7 @@
       "timeZone": "UTC",
       "occurrence": "due",
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -1238,6 +1329,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": false,
@@ -1273,6 +1368,7 @@
       "timeZone": "America/New_York",
       "occurrence": null,
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -1303,6 +1399,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": false,
@@ -1339,6 +1439,7 @@
       "timeZone": "America/New_York",
       "occurrence": null,
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -1369,6 +1470,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": false,
@@ -1402,6 +1507,7 @@
       "timeZone": "America/New_York",
       "occurrence": null,
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -1432,6 +1538,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": false,
@@ -1466,6 +1576,7 @@
       "timeZone": "America/New_York",
       "occurrence": "due",
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -1496,6 +1607,10 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": false,
@@ -1535,6 +1650,7 @@
       "timeZone": "America/New_York",
       "occurrence": "done",
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -1565,6 +1681,10 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": false,
@@ -1603,6 +1723,7 @@
       "timeZone": "America/New_York",
       "occurrence": "skipped",
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": false,
@@ -1633,6 +1754,10 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": false,
@@ -1668,6 +1793,7 @@
       "timeZone": "America/New_York",
       "occurrence": "open",
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -1698,6 +1824,10 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": false,
@@ -1733,6 +1863,7 @@
       "timeZone": "America/New_York",
       "occurrence": "absent",
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": false,
@@ -1763,6 +1894,10 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": false,
@@ -1801,6 +1936,7 @@
       "timeZone": "America/New_York",
       "occurrence": "absent",
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": false,
@@ -1831,6 +1967,10 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": false,
@@ -1864,6 +2004,7 @@
       "timeZone": "America/New_York",
       "occurrence": "absent",
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": false,
@@ -1894,6 +2035,10 @@
         "reschedule": {
           "eligible": true,
           "label": "Schedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": false,
@@ -1928,6 +2073,7 @@
       "timeZone": "America/New_York",
       "occurrence": "due",
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": false,
@@ -1958,6 +2104,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Reschedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": false,
@@ -1993,6 +2143,7 @@
       "timeZone": "America/New_York",
       "occurrence": "due",
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -2023,6 +2174,10 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": false,
@@ -2060,6 +2215,7 @@
       "timeZone": "America/New_York",
       "occurrence": "due",
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -2090,6 +2246,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Reschedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": false,
@@ -2124,6 +2284,7 @@
       "timeZone": "America/New_York",
       "occurrence": null,
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -2155,6 +2316,10 @@
           "eligible": true,
           "label": "Reschedule"
         },
+        "braindump": {
+          "eligible": true,
+          "label": "Move to Braindump"
+        },
         "resetStreak": {
           "eligible": false,
           "label": "Reset streak"
@@ -2169,6 +2334,7 @@
         "pause",
         "nextDay",
         "reschedule",
+        "braindump",
         "delete"
       ]
     },
@@ -2189,6 +2355,7 @@
       "timeZone": "America/New_York",
       "occurrence": null,
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -2219,6 +2386,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Reschedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": false,
@@ -2252,6 +2423,7 @@
       "timeZone": "America/New_York",
       "occurrence": null,
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": false,
@@ -2282,6 +2454,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Reschedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": false,
@@ -2314,6 +2490,7 @@
       "timeZone": "America/New_York",
       "occurrence": null,
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -2345,6 +2522,10 @@
           "eligible": true,
           "label": "Reschedule"
         },
+        "braindump": {
+          "eligible": true,
+          "label": "Move to Braindump"
+        },
         "resetStreak": {
           "eligible": false,
           "label": "Reset streak"
@@ -2359,6 +2540,7 @@
         "pause",
         "nextDay",
         "reschedule",
+        "braindump",
         "delete"
       ]
     },
@@ -2379,6 +2561,7 @@
       "timeZone": "America/New_York",
       "occurrence": null,
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -2410,6 +2593,10 @@
           "eligible": true,
           "label": "Reschedule"
         },
+        "braindump": {
+          "eligible": true,
+          "label": "Move to Braindump"
+        },
         "resetStreak": {
           "eligible": false,
           "label": "Reset streak"
@@ -2424,6 +2611,7 @@
         "pause",
         "nextDay",
         "reschedule",
+        "braindump",
         "delete"
       ]
     },
@@ -2444,6 +2632,7 @@
       "timeZone": "America/New_York",
       "occurrence": null,
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -2475,6 +2664,10 @@
           "eligible": true,
           "label": "Reschedule"
         },
+        "braindump": {
+          "eligible": true,
+          "label": "Move to Braindump"
+        },
         "resetStreak": {
           "eligible": false,
           "label": "Reset streak"
@@ -2489,6 +2682,7 @@
         "pause",
         "nextDay",
         "reschedule",
+        "braindump",
         "delete"
       ]
     },
@@ -2507,6 +2701,7 @@
       "timeZone": "America/New_York",
       "occurrence": null,
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -2537,6 +2732,10 @@
         "reschedule": {
           "eligible": true,
           "label": "Schedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": false,
@@ -2572,6 +2771,7 @@
       "timeZone": "America/New_York",
       "occurrence": null,
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -2602,6 +2802,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Reschedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": false,
@@ -2636,6 +2840,7 @@
       "timeZone": "America/New_York",
       "occurrence": null,
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -2667,6 +2872,10 @@
           "eligible": true,
           "label": "Reschedule"
         },
+        "braindump": {
+          "eligible": true,
+          "label": "Move to Braindump"
+        },
         "resetStreak": {
           "eligible": false,
           "label": "Reset streak"
@@ -2681,6 +2890,7 @@
         "resume",
         "nextDay",
         "reschedule",
+        "braindump",
         "delete"
       ]
     },
@@ -2702,6 +2912,7 @@
       "timeZone": "America/New_York",
       "occurrence": null,
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -2733,6 +2944,10 @@
           "eligible": true,
           "label": "Reschedule"
         },
+        "braindump": {
+          "eligible": true,
+          "label": "Move to Braindump"
+        },
         "resetStreak": {
           "eligible": false,
           "label": "Reset streak"
@@ -2747,6 +2962,7 @@
         "pause",
         "nextDay",
         "reschedule",
+        "braindump",
         "delete"
       ]
     },
@@ -2767,6 +2983,7 @@
       "timeZone": "America/New_York",
       "occurrence": "absent",
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -2798,6 +3015,10 @@
           "eligible": true,
           "label": "Reschedule"
         },
+        "braindump": {
+          "eligible": true,
+          "label": "Move to Braindump"
+        },
         "resetStreak": {
           "eligible": false,
           "label": "Reset streak"
@@ -2812,6 +3033,7 @@
         "pause",
         "nextDay",
         "reschedule",
+        "braindump",
         "delete"
       ]
     },
@@ -2833,6 +3055,7 @@
       "timeZone": "America/New_York",
       "occurrence": null,
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -2864,6 +3087,10 @@
           "eligible": true,
           "label": "Reschedule"
         },
+        "braindump": {
+          "eligible": true,
+          "label": "Move to Braindump"
+        },
         "resetStreak": {
           "eligible": false,
           "label": "Reset streak"
@@ -2877,6 +3104,7 @@
         "tick",
         "nextDay",
         "reschedule",
+        "braindump",
         "delete"
       ]
     },
@@ -2898,6 +3126,7 @@
       "timeZone": "America/New_York",
       "occurrence": null,
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -2929,6 +3158,10 @@
           "eligible": false,
           "label": "Reschedule"
         },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
+        },
         "resetStreak": {
           "eligible": false,
           "label": "Reset streak"
@@ -2944,23 +3177,25 @@
       ]
     },
     {
-      "name": "custom one-off",
+      "name": "one-off that is a milestone",
       "item": {
-        "type": "custom",
-        "customType": "errand",
-        "id": "00000000-0000-4000-8000-000000000276",
-        "title": "post office",
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000026c",
+        "title": "buy milk",
         "status": "pending",
         "isScheduled": true,
         "order": 0,
         "startDate": "2026-10-02",
-        "timeBucket": "afternoon"
+        "timeBucket": "morning"
       },
       "dateStr": "2026-10-02",
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": null,
       "streaksEnabled": true,
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000026c"
+      ],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -2992,6 +3227,10 @@
           "eligible": true,
           "label": "Reschedule"
         },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
+        },
         "resetStreak": {
           "eligible": false,
           "label": "Reset streak"
@@ -3006,6 +3245,294 @@
         "pause",
         "nextDay",
         "reschedule",
+        "delete"
+      ]
+    },
+    {
+      "name": "one-off, another item is a milestone",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000026c",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02",
+        "timeBucket": "morning"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": null,
+      "streaksEnabled": true,
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000026d"
+      ],
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Mark done"
+        },
+        "skip": {
+          "eligible": false,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": true,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": true,
+          "label": "Reschedule"
+        },
+        "braindump": {
+          "eligible": true,
+          "label": "Move to Braindump"
+        },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
+        }
+      },
+      "eligible": [
+        "tick",
+        "pause",
+        "nextDay",
+        "reschedule",
+        "braindump",
+        "delete"
+      ]
+    },
+    {
+      "name": "one-off, dated with no part of day",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000026c",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "startDate": "2026-10-02"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": null,
+      "streaksEnabled": true,
+      "milestoneIds": [],
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Mark done"
+        },
+        "skip": {
+          "eligible": false,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": true,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": true,
+          "label": "Reschedule"
+        },
+        "braindump": {
+          "eligible": true,
+          "label": "Move to Braindump"
+        },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
+        }
+      },
+      "eligible": [
+        "tick",
+        "pause",
+        "nextDay",
+        "reschedule",
+        "braindump",
+        "delete"
+      ]
+    },
+    {
+      "name": "one-off, a timed block",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000026c",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02",
+        "timeBucket": "afternoon",
+        "startTime": "14:00",
+        "duration": 45
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": null,
+      "streaksEnabled": true,
+      "milestoneIds": [],
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Mark done"
+        },
+        "skip": {
+          "eligible": false,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": true,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": true,
+          "label": "Reschedule"
+        },
+        "braindump": {
+          "eligible": true,
+          "label": "Move to Braindump"
+        },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
+        }
+      },
+      "eligible": [
+        "tick",
+        "pause",
+        "nextDay",
+        "reschedule",
+        "braindump",
+        "delete"
+      ]
+    },
+    {
+      "name": "custom one-off",
+      "item": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-000000000276",
+        "title": "post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02",
+        "timeBucket": "afternoon"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": null,
+      "streaksEnabled": true,
+      "milestoneIds": [],
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Mark done"
+        },
+        "skip": {
+          "eligible": false,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": true,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": true,
+          "label": "Reschedule"
+        },
+        "braindump": {
+          "eligible": true,
+          "label": "Move to Braindump"
+        },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
+        }
+      },
+      "eligible": [
+        "tick",
+        "pause",
+        "nextDay",
+        "reschedule",
+        "braindump",
         "delete"
       ]
     },
@@ -3027,6 +3554,7 @@
       "timeZone": "America/New_York",
       "occurrence": null,
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -3057,6 +3585,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Reschedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": false,
@@ -3089,6 +3621,7 @@
       "timeZone": "America/New_York",
       "occurrence": null,
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -3120,6 +3653,10 @@
           "eligible": true,
           "label": "Schedule"
         },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
+        },
         "resetStreak": {
           "eligible": false,
           "label": "Reset streak"
@@ -3132,6 +3669,79 @@
       "eligible": [
         "tick",
         "pause",
+        "reschedule",
+        "delete"
+      ]
+    },
+    {
+      "name": "custom one-off that is a milestone",
+      "item": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-000000000276",
+        "title": "post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02",
+        "timeBucket": "afternoon"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": null,
+      "streaksEnabled": true,
+      "milestoneIds": [
+        "00000000-0000-4000-8000-000000000276"
+      ],
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Mark done"
+        },
+        "skip": {
+          "eligible": false,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": true,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": true,
+          "label": "Reschedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
+        },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
+        }
+      },
+      "eligible": [
+        "tick",
+        "pause",
+        "nextDay",
         "reschedule",
         "delete"
       ]
@@ -3155,6 +3765,7 @@
       "timeZone": "America/New_York",
       "occurrence": "due",
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -3185,6 +3796,10 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": false,
@@ -3225,6 +3840,7 @@
       "timeZone": "America/New_York",
       "occurrence": "done",
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": true,
@@ -3255,6 +3871,10 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": false,
@@ -3294,6 +3914,7 @@
       "timeZone": "America/New_York",
       "occurrence": "skipped",
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": false,
@@ -3324,6 +3945,10 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": false,
@@ -3360,6 +3985,7 @@
       "timeZone": "America/New_York",
       "occurrence": "absent",
       "streaksEnabled": true,
+      "milestoneIds": [],
       "verbs": {
         "tick": {
           "eligible": false,
@@ -3390,6 +4016,10 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "braindump": {
+          "eligible": false,
+          "label": "Move to Braindump"
         },
         "resetStreak": {
           "eligible": false,

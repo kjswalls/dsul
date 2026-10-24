@@ -941,6 +941,21 @@ export async function fetchItemById(userId: string, id: string, client?: DbClien
   return data ? itemsFromRows([data as ItemRow])[0] : null;
 }
 
+/**
+ * One `items` row as a live change carries it (lib/planner-live.ts), mapped as a
+ * load maps it, or null when it is not a row this build can read. The change
+ * comes from the table itself, not the windowed read view, so a recurring
+ * item's dates can run longer than the store's.
+ */
+export function itemFromChangeRow(row: unknown): Item | null {
+  if (!row || typeof row !== 'object' || typeof (row as ItemRow).id !== 'string') return null;
+  try {
+    return itemFromRow(row as ItemRow);
+  } catch {
+    return null;
+  }
+}
+
 /** Shared by fetchItems and loadPlannerData, so both paths map rows alike. */
 function itemsFromRows(rows: ItemRow[]): Item[] {
   return rows.map(itemFromRow);
@@ -2381,6 +2396,142 @@ export async function removeContainerMember(
     .delete()
     .eq(owner, containerId)
     .eq('item_id', itemId)
+    .eq('user_id', userId);
+  if (error) throw error;
+}
+
+/** One routine_items row's place, as the iPhone's reorder reads it. Null is a member with no place. */
+export interface RoutineMemberPlace {
+  itemId: string;
+  sortOrder: number | null;
+}
+
+/**
+ * A routine's members with their places, in the order every read draws them
+ * (fetchRoutines: sort_order nulls last, then item_id): the list the iPhone's
+ * reorder moves one item in (lib/app-containers.ts moveMember). Trashed
+ * items are included, as their join rows are: their place is kept.
+ */
+export async function fetchRoutineMemberPlaces(
+  userId: string,
+  routineId: string,
+  client?: DbClient,
+): Promise<RoutineMemberPlace[]> {
+  const supabase = client ?? createClient();
+  const { data, error } = await supabase
+    .from('routine_items')
+    .select('item_id, sort_order')
+    .eq('routine_id', routineId)
+    .eq('user_id', userId)
+    .order('sort_order', { ascending: true, nullsFirst: false })
+    .order('item_id', { ascending: true });
+  if (error) throw error;
+  return ((data ?? []) as { item_id: string; sort_order: number | null }[]).map((r) => ({
+    itemId: r.item_id,
+    sortOrder: r.sort_order ?? null,
+  }));
+}
+
+/**
+ * Write a routine's new order (`next`, the ids of `stored` rearranged) as
+ * places: each member's place becomes its index in `next`. Only a row whose
+ * stored place is not already its index is written, one filtered UPDATE each
+ * (routine, item and user), in `next`'s order, and the answer is how many.
+ *
+ * NEVER AN UPSERT. An upsert inserts a row it does not find, so a member a
+ * web tab took out between the read and this write would come back. An
+ * UPDATE of a row deleted meanwhile touches nothing, and it stays gone. A
+ * member a web tab added meanwhile is not in `next` and is never written: it
+ * keeps the place its add gave it, one past the highest place that add read
+ * (or none, where any member had none). That is last, unless the add read
+ * while these writes were under way: then it can tie with the last place
+ * written here and sort among the tied by id until the next move. Nothing is
+ * lost either way.
+ *
+ * First place first, and not from the end (which would close that tie):
+ * written in this order, every row not yet reached still holds a place at or
+ * above the index it is going to, so a partial failure leaves the new order's
+ * head followed by the rest in their old order, and a resend lands the move
+ * the phone asked for. Written from the end, in a routine whose places have
+ * gaps (a remove leaves one), the low numbers would land on the tail first
+ * and sort it above a head still on its high places, and the resend would
+ * move the step within that scrambled order (app-containers.test.ts, "after a
+ * partial failure").
+ *
+ * So a second send of the same move computes the same order and writes
+ * nothing, and one after a partial failure writes only what is still out of
+ * place. Every member it writes takes a number, so a routine left with a mix
+ * of numbered and unplaced members (addContainerMember's null rule) is
+ * numbered whole once a move lands. A row `stored` does not hold is skipped:
+ * `next` names only what was read.
+ */
+export async function setRoutineMemberOrder(
+  userId: string,
+  routineId: string,
+  stored: readonly RoutineMemberPlace[],
+  next: readonly string[],
+  client?: DbClient,
+): Promise<number> {
+  const supabase = client ?? createClient();
+  const places = new Map(stored.map((r) => [r.itemId, r.sortOrder]));
+  let written = 0;
+  for (let index = 0; index < next.length; index += 1) {
+    const itemId = next[index];
+    if (!places.has(itemId) || places.get(itemId) === index) continue;
+    const { error } = await supabase
+      .from('routine_items')
+      .update({ sort_order: index })
+      .eq('routine_id', routineId)
+      .eq('item_id', itemId)
+      .eq('user_id', userId);
+    if (error) throw error;
+    written += 1;
+  }
+  return written;
+}
+
+/**
+ * Put one routine in one season: one season_routines row, keyed (season_id,
+ * routine_id), never the season's whole list, so a web tab's hold in between
+ * is kept (as updateSeason's `known.routineIds` keeps the phone's). The
+ * iPhone's season page, "Add a routine…" (lib/app-containers.ts holdRoutine).
+ * Answers false when the season already held it (23505 on the key), which
+ * writes nothing. Any other error is thrown; a 23503 (the season or the
+ * routine purged meanwhile) reaches the route as one.
+ */
+export async function addSeasonRoutine(
+  userId: string,
+  seasonId: string,
+  routineId: string,
+  client?: DbClient,
+): Promise<boolean> {
+  const supabase = client ?? createClient();
+  const { error } = await supabase
+    .from('season_routines')
+    .insert({ season_id: seasonId, routine_id: routineId, user_id: userId });
+  if (error) {
+    if (error.code === '23505') return false;
+    throw error;
+  }
+  return true;
+}
+
+/**
+ * Take one routine out of one season: that row alone, filtered by the season,
+ * the routine and the user. Nothing to take out is no error.
+ */
+export async function removeSeasonRoutine(
+  userId: string,
+  seasonId: string,
+  routineId: string,
+  client?: DbClient,
+): Promise<void> {
+  const supabase = client ?? createClient();
+  const { error } = await supabase
+    .from('season_routines')
+    .delete()
+    .eq('season_id', seasonId)
+    .eq('routine_id', routineId)
     .eq('user_id', userId);
   if (error) throw error;
 }

@@ -557,6 +557,11 @@ tasks and the streak count for habits — one column, two units, scannable as ne
   `dateAddressable=false` for habits or week drops become single-date moves.
 - Sidebar drop relies on `unscheduleTask` no-oping for habit ids
   (`handle-drag-end.ts:79-81`) — make the no-op explicit via `braindumpEligible`.
+- A task on the canvas dropped on `hour:`, `weekhour:` or `sidebar` asks the shared block
+  drop rule (`planBlockDrop`, lib/block-moves.ts, shared with the iPhone; Week and blocks
+  PR 11), keyed on `dateAnchored` and whether it repeats: a series moved to a new time keeps
+  its `startDate` (the series anchor), and the braindump takes back only what Move to
+  Braindump's `canSendToBraindump` takes. Habits drop as before. See lib/dnd/CONTRACT.md.
 - StreakFlame at streak 0 is the only visual habit marker in rows.
 - Recurring tasks NEVER mutate scalar `status` (migration 016 semantics; per-date
   `completed_dates` is truth); habit `status` is a denormalized "last toggle" snapshot.

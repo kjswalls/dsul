@@ -23,11 +23,14 @@ import {
   deleteProject,
   deleteRoutine,
   deleteSeason,
+  addSeasonRoutine,
+  fetchRoutineMemberPlaces,
   findLiveProjectByName,
   goalFromRow,
   itemDbType,
   listDeleted,
   projectFromRow,
+  removeSeasonRoutine,
   renameContainerMembers,
   restoreGoal,
   restoreItem,
@@ -36,6 +39,7 @@ import {
   restoreSeason,
   routineFromRow,
   seasonFromRow,
+  setRoutineMemberOrder,
   updateGoal,
   updateProject,
   updateRoutine,
@@ -52,6 +56,7 @@ import { resolveGoalStateWrite } from './goals';
 import { ACCENT_RAMP } from './accent-colors';
 import { OUTER_LIMITS, cleanNotes } from './item-edit';
 import { toDateStr } from './recurrence';
+import { moveMemberAfter } from './organize';
 import type { Goal, Item, Project, Routine, Season } from './planner-types';
 
 /**
@@ -70,16 +75,21 @@ import type { Goal, Item, Project, Routine, Season } from './planner-types';
  * with a name and a glyph and nothing in it; a field write one field of one
  * container (a routine's pause, usual time or note; a season's state, dates or
  * note; a goal's state, window or why; a project's note; and the name, glyph
- * and colour of any of the four); and a delete one container, to the bin.
+ * and colour of any of the four); a delete one container, to the bin; a
+ * routine's `moveMember` one step placed after another; and a season's
+ * `holdRoutine` one routine put in it or taken out.
  * Each does what the web's own store action does for the same gesture
  * (planner-store.ts restoreFromTrash, addRoutine, addSeason, addGoal,
  * addProject, setRoutinePaused, setSeasonState, setGoalState, updateRoutine,
  * updateSeason, updateGoal, updateProject, removeRoutine, removeSeason,
- * removeGoal, removeProject), through the same lib/db.ts calls. Nothing here
- * takes a membership list: a container is made empty, comes back with the
- * join rows its soft delete left in place, and a field write never names a
- * member, so a phone write can never put back a list a web tab changed. The
- * one write that reaches items is a project rename's, which re-files its
+ * removeGoal, removeProject), through the same lib/db.ts calls, or for the
+ * two membership intents through one-row writes beside the web's
+ * (setRoutineMemberOrder, addSeasonRoutine, removeSeasonRoutine). Nothing
+ * here takes a membership list: a container is made empty, comes back with
+ * the join rows its soft delete left in place, a field write never names a
+ * member, a move names one item and the one it goes after, and a hold names
+ * one routine, so a phone write can never put back a list a web tab changed.
+ * The one write that reaches items is a project rename's, which re-files its
  * members' name column by project_id, as the web's does; a project's delete
  * stamps the project alone, and its members keep their name and id, as the
  * web's own delete leaves them on the row.
@@ -380,6 +390,13 @@ const NotesIntent = z.object({ action: z.literal('notes'), notes: Note }).strict
 // web's ⋯ → Delete sends it. It carries nothing: what goes with it, and what
 // comes back on a restore, is the bin's business (deleteContainer).
 const DeleteIntent = z.object({ action: z.literal('delete') }).strict();
+// A routine's steps (O12): one member placed right after another, or first
+// with a null `afterId`, never the list sent whole (moveMember). The union's
+// refine refuses an item placed after itself.
+const MoveMemberIntent = z.object({ action: z.literal('moveMember'), itemId: Id, afterId: Id.nullable() }).strict();
+// A season's routines (O13): one routine put in (`hold: true`) or taken out,
+// one season_routines row (holdRoutine).
+const HoldRoutineIntent = z.object({ action: z.literal('holdRoutine'), routineId: Id, hold: z.boolean() }).strict();
 
 /**
  * A routine's field intents, one strict member each, kept apart from the
@@ -406,6 +423,7 @@ const RoutineWriteActions = z.discriminatedUnion('action', [
   RenameIntent,
   IconIntent,
   ColorIntent,
+  MoveMemberIntent,
   DeleteIntent,
 ]);
 
@@ -423,6 +441,7 @@ const SeasonWriteActions = z.discriminatedUnion('action', [
   RenameIntent,
   IconIntent,
   ColorIntent,
+  HoldRoutineIntent,
   DeleteIntent,
 ]);
 
@@ -472,6 +491,11 @@ export const RoutineWriteSchema = RoutineWriteActions.superRefine((body, ctx) =>
   // is today), so it is refused rather than half-done, as the item pause is.
   if (body.action === 'pause' && body.pausedUntil !== undefined && !body.paused) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['pausedUntil'], message: 'only with paused: true' });
+  }
+  // A step placed after itself names no place. The ids are compared
+  // lowercased (Id's transform), so no spelling of one id gets past.
+  if (body.action === 'moveMember' && body.afterId === body.itemId) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['afterId'], message: 'must not be itemId' });
   }
 });
 export const SeasonWriteSchema = SeasonWriteActions.superRefine((body, ctx) => {
@@ -529,9 +553,10 @@ const actionsOf = <A extends string>(union: { options: readonly { shape: { actio
 const withCreate = <A extends string>(actions: A[]): (A | 'create')[] => [...actions, 'create'];
 
 /**
- * What this server takes, per kind: the field intents and the delete, in
- * declaration order, then `create` (POST /api/app/containers/:kind), which
- * every kind takes. The planner payload's `containerWrites`. Read off the
+ * What this server takes, per kind: the field intents, a routine's
+ * `moveMember` and a season's `holdRoutine` (the membership intents), and the
+ * delete, in declaration order, then `create` (POST
+ * /api/app/containers/:kind), which every kind takes. The planner payload's `containerWrites`. Read off the
  * unions, so a field write cannot be taken and unlisted. The phone hides every
  * control whose action is not listed (the + menu's row for a kind without
  * `create`, the ⋯ menu's Delete… without `delete`), so a build that reaches
@@ -569,8 +594,14 @@ export const CONTAINER_WRITE_SCHEMAS: Record<OrganizeKind, z.ZodType<ContainerWr
 
 /** The delete, which every kind takes and which writes no field (deleteContainer). */
 type DeleteWrite = z.infer<typeof DeleteIntent>;
-/** A kind's field intents: everything it takes but the delete. */
-type FieldWrite<W> = Exclude<W, DeleteWrite>;
+/** A routine's step move (O12): a membership write, no field (moveMember). */
+type MoveMemberWrite = z.infer<typeof MoveMemberIntent>;
+/** A season's routine hold (O13): a membership write, no field (holdRoutine). */
+type HoldRoutineWrite = z.infer<typeof HoldRoutineIntent>;
+/** A kind's field intents: everything it takes but the delete and the two membership writes. */
+type FieldWrite<W> = Exclude<W, DeleteWrite | MoveMemberWrite | HoldRoutineWrite>;
+/** A kind's intents that read the live row first: all but the delete, which reads the bin too. */
+type LiveWrite<W> = Exclude<W, DeleteWrite>;
 
 /** One field intent on one container, as the pure rule below takes it. */
 export type ContainerIntentTarget =
@@ -716,10 +747,10 @@ export function containerIntentPatch(
   }
 }
 
-/** One parsed field intent with the kind it was parsed for. */
+/** One parsed intent, but a delete, with the kind it was parsed for. */
 type ContainerWrite =
-  | { kind: 'routine'; intent: FieldWrite<RoutineWrite> }
-  | { kind: 'season'; intent: FieldWrite<SeasonWrite> }
+  | { kind: 'routine'; intent: LiveWrite<RoutineWrite> }
+  | { kind: 'season'; intent: LiveWrite<SeasonWrite> }
   | { kind: 'goal'; intent: FieldWrite<GoalWrite> }
   | { kind: 'project'; intent: FieldWrite<ProjectWrite> };
 
@@ -727,8 +758,10 @@ type ContainerWrite =
 const NO_ZONE = 'UTC';
 
 /**
- * One field of one container, or its delete, from the phone: the web's own
- * store action for the same gesture, through the same lib/db.ts call.
+ * One field of one container, its delete, a routine's step move or a
+ * season's routine hold, from the phone: the web's own store action for the
+ * same gesture, through the same lib/db.ts call (or, for the two membership
+ * intents, a one-row write beside it).
  *
  * In order:
  *   - auth (401);
@@ -742,6 +775,9 @@ const NO_ZONE = 'UTC';
  *     not on deleted_at, updateProject on the id alone, and a zero-row update
  *     answers 200, so without it a write to a trashed container would land in
  *     the bin and say so;
+ *   - a `moveMember` or a `holdRoutine` goes its own way from here
+ *     (moveMember, holdRoutine; 409 `member_gone`, `anchor_gone`,
+ *     `container_gone`);
  *   - containerIntentPatch on the row; a refusal is 409 with its code, an
  *     empty patch 200 with no write;
  *   - the update, then 200 `{ok: true}`.
@@ -841,6 +877,7 @@ async function runContainerWrite(client: Client, userId: string, id: string, wri
   const now = new Date();
   switch (write.kind) {
     case 'routine': {
+      if (write.intent.action === 'moveMember') return await moveMember(client, userId, id, write.intent);
       const container = routineFromRow(data as RoutineRow, []);
       const intent = write.intent;
       const timeZone = intent.action === 'pause' ? await pauseZone(client, userId, intent.timeZone) : NO_ZONE;
@@ -850,6 +887,7 @@ async function runContainerWrite(client: Client, userId: string, id: string, wri
       return ok();
     }
     case 'season': {
+      if (write.intent.action === 'holdRoutine') return await holdRoutine(client, userId, id, write.intent);
       const container = seasonFromRow(data as SeasonRow, [], []);
       const result = containerIntentPatch({ kind: 'season', container, intent: write.intent }, { now, timeZone: NO_ZONE });
       if ('refused' in result) return refused(result.refused, result.status);
@@ -873,6 +911,81 @@ async function runContainerWrite(client: Client, userId: string, id: string, wri
       return ok();
     }
   }
+}
+
+/**
+ * `moveMember` (O12): one of a routine's steps placed right after another, or
+ * first, as the routine page's drag and its Move up and Move down send it.
+ * The routine was read live already (404 otherwise).
+ *
+ *   1. Its members with their places, in the order every read draws them
+ *      (fetchRoutineMemberPlaces: sort_order nulls last, then item_id).
+ *   2. An `itemId` no longer among them is 409 `member_gone`; an `afterId`
+ *      that is not is 409 `anchor_gone`. Either way another device changed
+ *      the routine since the phone drew it, and nothing is written.
+ *   3. The new order is lib/organize.ts moveMemberAfter, the phone's own step.
+ *   4. setRoutineMemberOrder writes `sort_order = index` to each row whose
+ *      place is not already that, one filtered UPDATE each, never an upsert.
+ *
+ * So a second send of one move writes nothing, and one after a partial
+ * failure writes only what is still out of place. A web tab's add between
+ * the read and the writes keeps its row, one past the highest place it read
+ * (last, or tied with the last place written when it read mid-way); a web
+ * tab's remove stays removed (an UPDATE of a missing row touches nothing).
+ * And a stale tab's later add or remove keeps the order written here
+ * (reconcileMembership's `known`, O6). No webhook and no item_events, as the
+ * web's order writes have none.
+ */
+async function moveMember(client: Client, userId: string, routineId: string, intent: MoveMemberWrite): Promise<Response> {
+  const stored = await fetchRoutineMemberPlaces(userId, routineId, client);
+  const ids = stored.map((r) => r.itemId);
+  if (!ids.includes(intent.itemId)) return refused('member_gone', 409);
+  if (intent.afterId !== null && !ids.includes(intent.afterId)) return refused('anchor_gone', 409);
+  await setRoutineMemberOrder(userId, routineId, stored, moveMemberAfter(ids, intent.itemId, intent.afterId), client);
+  return ok();
+}
+
+/**
+ * `holdRoutine` (O13): one routine put in a season (`hold: true`) or taken
+ * out, as the season page's "Add a routine…" and Take out send it: one
+ * season_routines row (addSeasonRoutine, removeSeasonRoutine), never the
+ * season's list. The season was read live already (404 otherwise).
+ *
+ *   - The routine is read LIVE, by id and user: none (never the caller's, in
+ *     the Trash, purged) is 409 `container_gone`, as `collect` answers for a
+ *     container that is gone, and nothing is written. A hold on a trashed
+ *     routine would change what its restore brings back with nothing showing
+ *     it.
+ *   - A hold already there (23505) and a take-out of one that is not are 200
+ *     with nothing written, so a second send lands once.
+ *   - A 23503 (the season or the routine purged between the reads and the
+ *     insert) is 409 `container_gone` too.
+ *
+ * The server never asks whether the hold would hide anything: the phone asks
+ * lib/organize.ts wouldHideAttaching first and shows the web's confirm, as
+ * the web's pane does before its own write. Taking a routine out gives the
+ * laptop's overdue sweep no release grace for what it brings back (the web
+ * records that grace in its own localStorage, lib/sweep-grace.ts, accepted
+ * there as device-local). No webhook and no item_events.
+ */
+async function holdRoutine(client: Client, userId: string, seasonId: string, intent: HoldRoutineWrite): Promise<Response> {
+  const { data, error } = await client
+    .from(CONTAINER_TABLES.routine)
+    .select('id')
+    .eq('id', intent.routineId)
+    .eq('user_id', userId)
+    .is('deleted_at', null)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return refused('container_gone', 409);
+  try {
+    if (intent.hold) await addSeasonRoutine(userId, seasonId, intent.routineId, client);
+    else await removeSeasonRoutine(userId, seasonId, intent.routineId, client);
+  } catch (err) {
+    if (errorCode(err) === '23503') return refused('container_gone', 409);
+    throw err;
+  }
+  return ok();
 }
 
 /**

@@ -44,7 +44,8 @@
     "repeat",
     "project",
     "collect",
-    "snooze"
+    "snooze",
+    "unschedule"
   ],
   "trashWrites": [
     "list",
@@ -58,6 +59,7 @@
       "rename",
       "icon",
       "color",
+      "moveMember",
       "delete",
       "create"
     ],
@@ -68,6 +70,7 @@
       "rename",
       "icon",
       "color",
+      "holdRoutine",
       "delete",
       "create"
     ],

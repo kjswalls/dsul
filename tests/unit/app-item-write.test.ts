@@ -67,6 +67,14 @@ import path from 'path';
  * `container_gone`. No item row, no event. It replays from the fixture too,
  * whose `member` lists are the store's.
  *
+ * `unschedule` is Move to Braindump, the store's unscheduleTask:
+ * UNSCHEDULE_TASK_PATCH's four columns and its event, behind lib/row-moves.ts
+ * canSendToBraindump asked of the row on its own day and a live goal's
+ * milestones (goal_items, then goals not in the Trash), each refusal a 409
+ * `not_unschedulable`; 200 with no write for a row already in the braindump's
+ * shape, so a retry lands once. tests/fixtures/day/verb-writes.json's
+ * `unschedule` cases, the store's own writes, replay through it.
+ *
  * And nothing here reaches the OpenClaw webhook, which the browser never does.
  */
 
@@ -169,6 +177,7 @@ const token = () =>
 import { POST } from '@/app/api/app/items/[id]/route';
 import { postItemWrite } from '@/lib/app-api';
 import { updatesToRow } from '@/lib/db';
+import { UNSCHEDULE_TASK_PATCH } from '@/lib/item-edit';
 import { itemTypeName } from '@/lib/item-registry';
 import type { Item } from '@/lib/planner-types';
 
@@ -330,6 +339,7 @@ describe('reading the row first', () => {
     ['repeat', { action: 'repeat', frequency: 'daily' }],
     ['project', { action: 'project', projectId: PROJECT }],
     ['collect', { action: 'collect', kind: 'routine', containerId: ROUTINE, member: true }],
+    ['unschedule', { action: 'unschedule' }],
   ])('404s another user’s id for %s, invisible under RLS, and writes nothing', async (_, body) => {
     // Load-bearing: set_item_completion, set_item_skip and updateItem filter
     // on id and type only, so without this read a foreign (or deleted) id
@@ -378,6 +388,8 @@ describe('reading the row first', () => {
     ['addSubtask', { action: 'addSubtask', id: '22222222-2222-4222-8222-222222222222', title: 'Eggs' }, BASE_COLUMNS],
     // isCollectible asks the type and the parent too.
     ['collect', { action: 'collect', kind: 'routine', containerId: ROUTINE, member: true }, BASE_COLUMNS],
+    // "Already in the braindump" asks all four; start_date and time_bucket are in every read.
+    ['unschedule', { action: 'unschedule' }, `${BASE_COLUMNS}, start_time, is_scheduled`],
   ])('reads for %s only the column it decides on', async (_, body, columns) => {
     // A tick never reads the notes, which can run to 200,000 characters.
     row = {
@@ -1054,6 +1066,275 @@ describe('move', () => {
     expect(await res.json()).toEqual({ error: 'not_movable' });
     expect(writes('items', 'update')).toEqual([]);
   });
+});
+
+describe('unschedule', () => {
+  /** A dated one-off block at 14:00: what Move to Braindump is offered on. Its NULL frequency is one-shot. */
+  const BLOCK = { ...ONE_OFF, start_time: '14:00', is_scheduled: true };
+  /** The braindump's shape: not scheduled, and no date, time or part of day. */
+  const LISTED = { ...BLOCK, start_date: null, time_bucket: null, start_time: null, is_scheduled: false };
+  /** UNSCHEDULE_TASK_PATCH as the row update lib/db.ts sends. */
+  const UNSCHEDULED = { start_date: null, time_bucket: null, start_time: null, is_scheduled: false };
+  const GOAL = '7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d';
+  /** What the read of live goals answers, once goal_items named one. */
+  let goalsResult: Result;
+  const goalReads = () => queries.filter((q) => q.table === 'goal_items' || q.table === 'goals');
+
+  beforeEach(() => {
+    row = BLOCK;
+    goalsResult = { data: [], error: null };
+    const base = respond;
+    respond = (q) => (q.table === 'goals' ? goalsResult : base(q));
+  });
+
+  it('writes unscheduleTask’s four columns and its event, the row the web’s Move to Braindump leaves', async () => {
+    const res = await write({ action: 'unschedule' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    // The store's own patch through the store's own mapper. No order, length,
+    // project or block flag: the row shows in the braindump at its stored place.
+    expect(writes('items', 'update')).toEqual([UNSCHEDULED]);
+    expect(writes('items', 'update')).toEqual([updatesToRow('task', { ...UNSCHEDULE_TASK_PATCH })]);
+    const update = queries.find((q) => q.table === 'items' && op(q) === 'update')!;
+    expect(update.calls).toEqual(expect.arrayContaining([['eq', ['id', ITEM]], ['eq', ['type', 'task']]]));
+    expect(rpc).not.toHaveBeenCalled();
+    expect(h.after).not.toHaveBeenCalled();
+    await settle();
+    expect(writes('item_events', 'insert')).toEqual([
+      {
+        item_id: ITEM,
+        item_type: 'task',
+        action: 'update',
+        payload: { isScheduled: false, timeBucket: null, startTime: null, startDate: null },
+      },
+    ]);
+  });
+
+  it('moves a custom type by its stored slug', async () => {
+    row = { ...BLOCK, type: 'book' };
+    expect((await write({ action: 'unschedule' })).status).toBe(200);
+    const update = queries.find((q) => q.table === 'items' && op(q) === 'update')!;
+    expect(update.calls).toContainEqual(['eq', ['type', 'book']]);
+    expect(writes('items', 'update')).toEqual([UNSCHEDULED]);
+  });
+
+  it.each([
+    // The braindump already lists it, so the phone's surfaces hide the verb; the web's verb takes it.
+    ['a dated one-off with no part of day loses its date', { ...BLOCK, time_bucket: null, start_time: null, is_scheduled: false }],
+    ['an overdue one-off', { ...BLOCK, start_date: '2026-09-28' }],
+    ['a one-off in a part of day with no time', { ...BLOCK, start_time: null }],
+    ['a paused one-off, which the web’s verb lets go too', PAUSED],
+    ['a one-off with repeat none', { ...BLOCK, repeat_frequency: 'none' }],
+  ])('takes %s', async (_, r) => {
+    row = r;
+    expect((await write({ action: 'unschedule' })).status).toBe(200);
+    expect(writes('items', 'update')).toEqual([UNSCHEDULED]);
+  });
+
+  describe('a row already in the braindump’s shape (a retry of a write that landed)', () => {
+    it('answers 200 and writes nothing, no event, no goal read', async () => {
+      row = LISTED;
+      const res = await write({ action: 'unschedule' });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ ok: true });
+      await settle();
+      expect(writes('items', 'update')).toEqual([]);
+      expect(writes('item_events', 'insert')).toEqual([]);
+      expect(goalReads()).toEqual([]);
+    });
+
+    it('reads a NULL is_scheduled as not scheduled, as itemFromRow reads it', async () => {
+      row = { ...LISTED, is_scheduled: null };
+      expect((await write({ action: 'unschedule' })).status).toBe(200);
+      expect(writes('items', 'update')).toEqual([]);
+    });
+
+    it('sent twice, writes once', async () => {
+      expect((await write({ action: 'unschedule' })).status).toBe(200);
+      // The row as the first write left it, which the retry reads.
+      row = { ...BLOCK, ...UNSCHEDULED };
+      expect((await write({ action: 'unschedule' })).status).toBe(200);
+      expect(writes('items', 'update')).toEqual([UNSCHEDULED]);
+    });
+
+    it.each([
+      ['a task marked scheduled with nothing else', { ...LISTED, is_scheduled: true }],
+      ['a task with a time and nothing else', { ...LISTED, start_time: '09:00' }],
+      ['an undated task in a part of day', { ...LISTED, time_bucket: 'morning' }],
+    ])('is not %s, which has no day and is refused', async (_, r) => {
+      row = r;
+      const res = await write({ action: 'unschedule' });
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({ error: 'not_unschedulable' });
+      expect(writes('items', 'update')).toEqual([]);
+    });
+  });
+
+  it.each([
+    ['a habit', HABIT],
+    // The type gate comes first: a habit with no bucket is not "already there".
+    ['a habit with no part of day', { ...HABIT, time_bucket: null, start_time: null, is_scheduled: null }],
+    ['a habit with a NULL frequency', { ...HABIT, repeat_frequency: null }],
+    ['a subtask', { ...BLOCK, parent_item_id: PARENT }],
+    ['a subtask in the braindump’s shape', { ...LISTED, parent_item_id: PARENT }],
+    ['a recurring task', { ...RECURRING_TASK, start_time: null, is_scheduled: true }],
+    ['a recurring custom type', { ...RECURRING_TASK, type: 'book', start_time: null, is_scheduled: true }],
+    ['a task inside its project block', { ...BLOCK, in_project_block: true }],
+    ['a completed task', { ...BLOCK, status: 'completed' }],
+    ['a cancelled task', { ...BLOCK, status: 'cancelled' }],
+  ])('409s %s and writes nothing, asking no goal', async (_, r) => {
+    row = r;
+    const res = await write({ action: 'unschedule' });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'not_unschedulable' });
+    await settle();
+    expect(writes('items', 'update')).toEqual([]);
+    expect(writes('item_events', 'insert')).toEqual([]);
+    // Refused before the milestone read, which runs only for a row every other check let through.
+    expect(goalReads()).toEqual([]);
+  });
+
+  describe('a milestone keeps its date', () => {
+    it('asks goal_items for its milestone roles, as the user, and reads no goal when it holds none', async () => {
+      expect((await write({ action: 'unschedule' })).status).toBe(200);
+      const reads = goalReads();
+      expect(reads.map((q) => q.table)).toEqual(['goal_items']);
+      expect(called(reads[0], 'select')).toEqual([['goal_id']]);
+      expect(reads[0].calls).toEqual(
+        expect.arrayContaining([
+          ['eq', ['user_id', USER]],
+          ['eq', ['item_id', ITEM]],
+          ['eq', ['role', 'milestone']],
+        ]),
+      );
+    });
+
+    it('409s a milestone of a live goal and writes nothing', async () => {
+      goalItemsResult = { data: [{ goal_id: GOAL }], error: null };
+      goalsResult = { data: [{ id: GOAL }], error: null };
+      const res = await write({ action: 'unschedule' });
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({ error: 'not_unschedulable' });
+      expect(writes('items', 'update')).toEqual([]);
+      // Live means not in the Trash, the web's fetchGoals predicate; a goal's state is not asked,
+      // so an abandoned or achieved goal's milestone keeps its date too.
+      const live = queries.filter((q) => q.table === 'goals');
+      expect(live).toHaveLength(1);
+      expect(live[0].calls).toEqual(
+        expect.arrayContaining([
+          ['eq', ['user_id', USER]],
+          ['in', ['id', [GOAL]]],
+          ['is', ['deleted_at', null]],
+        ]),
+      );
+      expect(live[0].calls.some(([, args]) => args[0] === 'state')).toBe(false);
+    });
+
+    it('200s a milestone of a goal in the Trash, which the web lets go', async () => {
+      goalItemsResult = { data: [{ goal_id: GOAL }], error: null };
+      goalsResult = { data: [], error: null };
+      expect((await write({ action: 'unschedule' })).status).toBe(200);
+      expect(writes('items', 'update')).toEqual([UNSCHEDULED]);
+    });
+
+    it('200s a member or a check-in of a live goal, which the read never names', async () => {
+      // The read asks for milestone roles only; another role answers no row.
+      goalItemsResult = { data: [], error: null };
+      goalsResult = { data: [{ id: GOAL }], error: null };
+      expect((await write({ action: 'unschedule' })).status).toBe(200);
+      expect(queries.filter((q) => q.table === 'goals')).toEqual([]);
+    });
+
+    it.each([['42P01'], ['PGRST205']])(
+      'reads no milestone without the goals tables (%s), as the web’s store reads a missing 036',
+      async (code) => {
+        goalItemsResult = { data: null, error: { code, message: 'relation "goal_items" does not exist' } };
+        expect((await write({ action: 'unschedule' })).status).toBe(200);
+        expect(writes('items', 'update')).toEqual([UNSCHEDULED]);
+      },
+    );
+
+    it('500s any other failed read, and writes nothing', async () => {
+      const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      goalItemsResult = { data: null, error: { code: '57014', message: 'canceling statement due to statement timeout' } };
+      const res = await write({ action: 'unschedule' });
+      expect(res.status).toBe(500);
+      expect(await res.json()).toEqual({ error: 'failed' });
+      expect(writes('items', 'update')).toEqual([]);
+      spy.mockRestore();
+    });
+
+    it('500s a failed read of the goals, and writes nothing', async () => {
+      const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      goalItemsResult = { data: [{ goal_id: GOAL }], error: null };
+      goalsResult = { data: null, error: { code: '57014', message: 'timeout' } };
+      expect((await write({ action: 'unschedule' })).status).toBe(500);
+      expect(writes('items', 'update')).toEqual([]);
+      spy.mockRestore();
+    });
+  });
+
+  it('500s a failed write without the database’s words', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    updateResult = { data: null, error: { code: '23514', message: 'violates check constraint "items_status_check"' } };
+    const res = await write({ action: 'unschedule' });
+    expect(res.status).toBe(500);
+    expect(await res.text()).not.toContain('items_status_check');
+    spy.mockRestore();
+  });
+});
+
+describe('Move to Braindump, the store’s own writes replayed through the route (verb-writes.json)', () => {
+  type UnscheduleCase = {
+    name: string;
+    item: Item;
+    gate: boolean;
+    expected: { item: Item; calls: { fn: string; id: string; type: string; updates?: Record<string, unknown> }[] };
+  };
+  const CASES = (
+    JSON.parse(readFileSync(path.resolve(__dirname, '../fixtures/day/verb-writes.json'), 'utf8')) as {
+      unschedule: UnscheduleCase[];
+    }
+  ).unschedule;
+
+  it('has cases to replay', () => {
+    expect(CASES.length).toBeGreaterThan(0);
+  });
+
+  for (const c of CASES) {
+    it(c.name, async () => {
+      row = rowFor(c.item);
+      const res = await write({ action: 'unschedule' }, c.item.id);
+      await settle();
+      if (!c.gate) {
+        // The store's own refusal (a habit), which the route refuses too.
+        expect(res.status).toBe(409);
+        expect(writes('items', 'update')).toEqual([]);
+        return;
+      }
+      expect(res.status).toBe(200);
+      const i = c.item as unknown as Record<string, unknown>;
+      if (!i.isScheduled && !i.startDate && !i.startTime && !i.timeBucket) {
+        // Already there: the store writes the same four columns again and ends where it began;
+        // the route, finding them so, writes nothing.
+        expect(c.expected.item).toEqual(c.item);
+        expect(writes('items', 'update')).toEqual([]);
+        expect(writes('item_events', 'insert')).toEqual([]);
+        return;
+      }
+      const type = itemTypeName(c.item);
+      expect(c.expected.calls).toHaveLength(1);
+      const [call] = c.expected.calls;
+      expect(call.type).toBe(type);
+      const update = queries.filter((q) => q.table === 'items' && op(q) === 'update');
+      expect(update).toHaveLength(1);
+      expect(called(update[0], 'update')[0][0]).toEqual(updatesToRow(type, call.updates!));
+      expect(update[0].calls).toEqual(expect.arrayContaining([['eq', ['id', c.item.id]], ['eq', ['type', type]]]));
+      expect(writes('item_events', 'insert')).toEqual([
+        { item_id: c.item.id, item_type: type, action: 'update', payload: call.updates },
+      ]);
+    });
+  }
 });
 
 describe('pause', () => {
@@ -2715,6 +2996,8 @@ describe('validation', () => {
     ['member as a string', { action: 'collect', kind: 'routine', containerId: ROUTINE, member: 'yes' }],
     ['a collect with no member', { action: 'collect', kind: 'routine', containerId: ROUTINE }],
     ['a collect with a list in it', { action: 'collect', kind: 'routine', containerId: ROUTINE, member: true, itemIds: [ITEM] }],
+    ['an unschedule with a date in it', { action: 'unschedule', date: DATE }],
+    ['an unschedule with a list in it', { action: 'unschedule', ids: [ITEM] }],
   ])('400s %s before touching the row', async (_, body) => {
     const res = await write(body);
     expect(res.status).toBe(400);
@@ -2785,6 +3068,7 @@ describe('webhooks', () => {
         { action: 'project', projectId: PROJECT },
       ],
       [ONE_OFF, { action: 'collect', kind: 'routine', containerId: ROUTINE, member: true }],
+      [{ ...ONE_OFF, start_time: '14:00', is_scheduled: true }, { action: 'unschedule' }],
     ] as const) {
       row = r;
       // A new subtask is a created row: 201, as a capture is.
@@ -2886,6 +3170,7 @@ describe('item events for recipes', () => {
     ['move', ONE_OFF, { action: 'move', date: TOMORROW }],
     ['schedule', ONE_OFF, { action: 'schedule', date: DATE, startTime: '09:15' }],
     ['title', ONE_OFF, { action: 'title', title: 'Renamed' }],
+    ['unschedule', { ...ONE_OFF, start_time: null, is_scheduled: true }, { action: 'unschedule' }],
   ])('%s raises nothing, as on the web', async (_, r, body) => {
     row = { ...r, title: 'Call the bank' };
     expect((await write(body)).status).toBe(200);

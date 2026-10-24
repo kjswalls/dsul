@@ -38,6 +38,7 @@ import {
   applyComplete,
   applyMove,
   applySkip,
+  applyUnschedule,
   completedOn,
   nextTaskOrder,
   writeContextFor,
@@ -86,12 +87,13 @@ import type { AwayPeriod } from './away';
  *
  * WRITES ARE INTENTS, NEVER ARRAYS. Each thing the phone does (capture; tick,
  * skip or unskip a day; drop a braindump row on an hour; carry an item to
- * another day; pause or resume one; retitle it, rewrite its notes or delete
- * it; add a subtask under it, reset its streak; set its priority, a habit's
- * times a day, its reminder, its part of day, time and length, or how it
- * repeats; file it under a project, or add it to a routine or a season, or
- * take it out) is one verb here that does what the web's own store action does
- * for the same gesture, through the same lib/db.ts calls.
+ * another day, or send it back to the braindump; pause or resume one; retitle
+ * it, rewrite its notes or delete it; add a subtask under it, reset its
+ * streak; set its priority, a habit's times a day, its reminder, its part of
+ * day, time and length, or how it repeats; file it under a project, or add it
+ * to a routine or a season, or take it out) is one verb here that does what
+ * the web's own store action does for the same gesture, through the same
+ * lib/db.ts calls.
  * Nothing accepts an absolute completedDates, skippedDates or dailyCounts: the
  * phone reads a 400-day window, and an array written back from a window
  * deletes what the window did not show. Nor is there a generic
@@ -276,6 +278,9 @@ const ItemWriteActions = z.discriminatedUnion('action', [
       timeZone: z.string().max(100).optional(),
     })
     .strict(),
+  // Move to Braindump (week-and-blocks PR 3): off every day, back to the
+  // braindump. No keys: the row says everything, and a key beside it is a 400.
+  z.object({ action: z.literal('unschedule') }).strict(),
 ]);
 
 export const ItemWriteSchema = ItemWriteActions.superRefine((body, ctx) => {
@@ -337,7 +342,7 @@ export interface AppPlannerPayload {
   settings: {
     timezone: string | null;
     showCompletedTasks: boolean;
-    /** The day the week starts on (week_start_day): the streak chip's week, Reschedule's "Next week". */
+    /** The day the week starts on (week_start_day): the streak chip's week, Reschedule's "Next week", Week's seven days. */
     weekStartDay: WeekStartDay;
     /** How a clock time reads (time_format): the chips' times and the reminder. */
     timeFormat: TimeFormat;
@@ -421,8 +426,10 @@ export interface AppPlannerPayload {
    */
   trashWrites: TrashWrite[];
   /**
-   * The field intents and the delete POST /api/app/containers/:kind/:id
-   * takes, per kind, then `create` when POST /api/app/containers/:kind takes
+   * The field intents, the membership intents (a routine's `moveMember`, a
+   * season's `holdRoutine`) and the delete POST
+   * /api/app/containers/:kind/:id takes, per kind, then `create` when POST
+   * /api/app/containers/:kind takes
    * that kind (lib/app-containers.ts CONTAINER_WRITES, read off each kind's
    * union and the create schemas): `{ routine, season, goal, project }`, each
    * a list of actions, empty for a kind with none yet. The phone hides every
@@ -816,6 +823,9 @@ const EDIT_COLUMNS: Partial<Record<ItemWriteAction, string>> = {
   repeat: 'repeat_days, repeat_month_day',
   // in_project_block is in every read.
   project: 'project, project_id, previous_start_time, previous_start_date',
+  // start_date and time_bucket are in every read; "already in the braindump"
+  // needs the other two, and an unread is_scheduled would read as false.
+  unschedule: 'start_time, is_scheduled',
 };
 
 type ItemWrite = z.infer<typeof ItemWriteSchema>;
@@ -868,6 +878,8 @@ function reportStake(userId: string, itemId: string, dateStr: string, completed:
  *   collect      join or leave one routine or season: one membership row
  *                (addContainerMember / removeContainerMember)
  *   snooze       a notification's Snooze (/api/reminders/act's snooze), held to its day
+ *   unschedule   Move to Braindump (unscheduleTask), behind lib/row-moves.ts canSendToBraindump
+ *                and a live goal's milestones (lib/item-intents.ts applyUnschedule)
  *
  * The row is read first, under RLS, and a missing one is a 404. That read is
  * load-bearing, not politeness: set_item_completion, set_item_skip,
@@ -997,6 +1009,8 @@ async function dispatchItemWrite(ctx: WriteContext, body: ItemWrite, opts: AppWr
         return await collect(ctx, body);
       case 'snooze':
         return await snooze(ctx, body);
+      case 'unschedule':
+        return await unschedule(ctx);
     }
   } catch (err) {
     return dbErrorResponse(err, 'app/items/:id');
@@ -1176,6 +1190,16 @@ async function skip(
 /** `move`: Tomorrow and Reschedule (lib/item-intents.ts applyMove). */
 async function move(ctx: WriteContext, body: IntentBody<'move'>): Promise<Response> {
   return answer(await applyMove(ctx, body));
+}
+
+/**
+ * `unschedule`: Move to Braindump (lib/item-intents.ts applyUnschedule). A
+ * refusal is 409 `not_unschedulable`; a row already in the braindump's shape
+ * is 200 with no write, so a retry that lands twice writes once. Not on the
+ * agent door (AGENT_ITEM_ACTIONS), and no webhook, as the web fires none.
+ */
+async function unschedule(ctx: WriteContext): Promise<Response> {
+  return answer(await applyUnschedule(ctx));
 }
 
 /**

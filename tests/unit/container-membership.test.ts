@@ -18,6 +18,13 @@ import { describe, it, expect, vi } from 'vitest';
  * reorder, the undo of a removal, no `known`). O7 gave a season's routineIds
  * the same `known` as its items.
  *
+ * O12 and O13 add the iPhone's other two one-row writes: a routine's order,
+ * one filtered UPDATE per member out of place (setRoutineMemberOrder, behind
+ * `moveMember`), and a season's routine holds (addSeasonRoutine,
+ * removeSeasonRoutine, behind `holdRoutine`). Their outcomes against a table
+ * in flux are pinned through the route in app-containers.test.ts; here, the
+ * calls they make.
+ *
  * The client is a recorder, not a fake database: each query keeps its table
  * and every builder call in order, and answers what the test says, so a call
  * added, dropped or reordered shows here.
@@ -26,7 +33,16 @@ import { describe, it, expect, vi } from 'vitest';
 vi.mock('@/lib/supabase', () => ({ createClient: () => ({}) }));
 vi.mock('@/lib/openclaw-registry', () => ({ notifyPlugins: vi.fn() }));
 
-import { addContainerMember, removeContainerMember, updateRoutine, updateSeason } from '@/lib/db';
+import {
+  addContainerMember,
+  addSeasonRoutine,
+  fetchRoutineMemberPlaces,
+  removeContainerMember,
+  removeSeasonRoutine,
+  setRoutineMemberOrder,
+  updateRoutine,
+  updateSeason,
+} from '@/lib/db';
 
 const USER = 'user-1';
 
@@ -637,5 +653,118 @@ describe('removeContainerMember: that row alone', () => {
     await expect(removeContainerMember(USER, 'routine', 'r1', 'x', client)).rejects.toMatchObject({
       code: '23503',
     });
+  });
+});
+
+describe('fetchRoutineMemberPlaces: the order every read draws', () => {
+  it('one select of the places, sort_order nulls last, then item_id', async () => {
+    const { client, queries } = recorder(() => ({
+      data: [
+        { item_id: 'a', sort_order: 0 },
+        { item_id: 'b', sort_order: null },
+      ],
+    }));
+    expect(await fetchRoutineMemberPlaces(USER, 'r1', client)).toEqual([
+      { itemId: 'a', sortOrder: 0 },
+      { itemId: 'b', sortOrder: null },
+    ]);
+    expect(queries).toEqual([
+      {
+        table: 'routine_items',
+        steps: [
+          ['select', 'item_id, sort_order'],
+          ['eq', 'routine_id', 'r1'],
+          ['eq', 'user_id', USER],
+          ['order', 'sort_order', { ascending: true, nullsFirst: false }],
+          ['order', 'item_id', { ascending: true }],
+        ],
+      },
+    ]);
+  });
+
+  it('an error is thrown', async () => {
+    const { client } = recorder(() => ({ error: { code: '42501' } }));
+    await expect(fetchRoutineMemberPlaces(USER, 'r1', client)).rejects.toMatchObject({ code: '42501' });
+  });
+});
+
+describe('setRoutineMemberOrder: one filtered UPDATE per member out of place, never an upsert', () => {
+  const placeUpdate = (item_id: string, sort_order: number): Query => ({
+    table: 'routine_items',
+    steps: [['update', { sort_order }], ['eq', 'routine_id', 'r1'], ['eq', 'item_id', item_id], ['eq', 'user_id', USER]],
+  });
+  const stored = (rows: [string, number | null][]) => rows.map(([itemId, sortOrder]) => ({ itemId, sortOrder }));
+
+  it('writes each member whose place is not its index in the new order, in that order', async () => {
+    const { client, queries } = recorder();
+    const n = await setRoutineMemberOrder(USER, 'r1', stored([['a', 0], ['b', 1], ['c', 2], ['d', 3]]), ['a', 'd', 'b', 'c'], client);
+    expect(n).toBe(3);
+    expect(queries).toEqual([placeUpdate('d', 1), placeUpdate('b', 2), placeUpdate('c', 3)]);
+    expect(queries.flatMap((q) => q.steps.map((st) => st[0]))).not.toContain('upsert');
+    expect(queries.flatMap((q) => q.steps.map((st) => st[0]))).not.toContain('insert');
+  });
+
+  it('numbers places with gaps, and members with none', async () => {
+    const { client, queries } = recorder();
+    await setRoutineMemberOrder(USER, 'r1', stored([['a', 5], ['b', 6], ['c', null]]), ['b', 'a', 'c'], client);
+    expect(queries).toEqual([placeUpdate('b', 0), placeUpdate('a', 1), placeUpdate('c', 2)]);
+  });
+
+  it('writes nothing when every place is already its index: a retry', async () => {
+    const { client, queries } = recorder();
+    expect(await setRoutineMemberOrder(USER, 'r1', stored([['a', 0], ['b', 1]]), ['a', 'b'], client)).toBe(0);
+    expect(queries).toEqual([]);
+  });
+
+  it('never writes an id it did not read', async () => {
+    const { client, queries } = recorder();
+    await setRoutineMemberOrder(USER, 'r1', stored([['a', 1], ['b', 0]]), ['a', 'x', 'b'], client);
+    expect(queries).toEqual([placeUpdate('a', 0), placeUpdate('b', 2)]);
+  });
+
+  it('stops at the first error and throws it, leaving the rest unwritten', async () => {
+    let n = 0;
+    const { client, queries } = recorder(() => (++n === 2 ? { error: { code: 'XX000' } } : undefined));
+    await expect(
+      setRoutineMemberOrder(USER, 'r1', stored([['a', 0], ['b', 1], ['c', 2]]), ['c', 'b', 'a'], client),
+    ).rejects.toMatchObject({ code: 'XX000' });
+    expect(queries).toEqual([placeUpdate('c', 0), placeUpdate('a', 2)]);
+  });
+});
+
+describe('addSeasonRoutine and removeSeasonRoutine: one season_routines row', () => {
+  const holdRow = { season_id: 'p1', routine_id: 'r1', user_id: USER };
+
+  it('a hold is one insert, never an upsert', async () => {
+    const { client, queries } = recorder();
+    expect(await addSeasonRoutine(USER, 'p1', 'r1', client)).toBe(true);
+    expect(queries).toEqual([{ table: 'season_routines', steps: [['insert', holdRow]] }]);
+  });
+
+  it('a 23505 is a hold already there: false, nothing else written', async () => {
+    const { client, queries } = recorder(() => ({ error: { code: '23505' } }));
+    expect(await addSeasonRoutine(USER, 'p1', 'r1', client)).toBe(false);
+    expect(queries).toHaveLength(1);
+  });
+
+  it('any other error is thrown, a 23503 among them', async () => {
+    const { client } = recorder(() => ({ error: { code: '23503' } }));
+    await expect(addSeasonRoutine(USER, 'p1', 'r1', client)).rejects.toMatchObject({ code: '23503' });
+  });
+
+  it('a take-out is one delete, filtered by the season, the routine and the user', async () => {
+    const { client, queries } = recorder();
+    await removeSeasonRoutine(USER, 'p1', 'r1', client);
+    expect(queries).toEqual([
+      {
+        table: 'season_routines',
+        steps: [['delete'], ['eq', 'season_id', 'p1'], ['eq', 'routine_id', 'r1'], ['eq', 'user_id', USER]],
+      },
+    ]);
+  });
+
+  it('a take-out’s error is thrown', async () => {
+    const { client } = recorder(() => ({ error: { code: '42501' } }));
+    await expect(removeSeasonRoutine(USER, 'p1', 'r1', client)).rejects.toMatchObject({ code: '42501' });
   });
 });

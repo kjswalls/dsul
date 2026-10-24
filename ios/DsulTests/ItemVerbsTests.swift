@@ -207,6 +207,153 @@ import Testing
         #expect(body?["date"] as? String == "2026-10-05")
     }
 
+    // MARK: Move to Braindump (Week and blocks PR 3)
+
+    /// Offered only once the goals are read: a payload with no `goals` leaves
+    /// the milestones unknown, and then the verb is offered nowhere and the
+    /// step sends nothing. With them read (none here), Groceries is offered
+    /// it after Reschedule, and the sheet puts it behind ⋯, before Delete.
+    @Test func moveToBraindumpWaitsForTheGoals() async throws {
+        let unread = FakeServer()
+        await unread.on(plannerRoute, .status(200, PlannerJSON.payload()))
+        let waiting = await loaded(unread)
+        #expect(waiting.milestoneIds == nil)
+        let shown = try #require(waiting.item(PlannerJSON.groceries))
+        #expect(!waiting.offeredVerbs(for: shown, day: .selected).contains(.braindump))
+        waiting.unschedule(PlannerJSON.groceries, on: waiting.today)
+        #expect(waiting.item(PlannerJSON.groceries) == shown)
+        #expect(waiting.sync?.pending == 0)
+        let sent = await postCount(unread)
+        #expect(sent == 0)
+
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(goals: [])))
+        let planner = await loaded(server)
+        #expect(planner.milestoneIds == Set<UUID>())
+        let groceries = try #require(planner.item(PlannerJSON.groceries))
+        let ctx = planner.verbContext(for: groceries, day: .selected)
+        let offered = planner.offeredVerbs(for: groceries, day: .selected)
+        #expect(offered == [.tick, .pause, .nextDay, .reschedule, .braindump, .delete])
+        #expect(verbLabel(.braindump, groceries, ctx) == "Move to Braindump")
+        #expect(verbDetail(.braindump, groceries, ctx) == nil)
+        let verbs = ItemSheetModel.verbs(groceries, ctx, offered: offered)
+        #expect(verbs.bar == [.tick, .nextDay, .reschedule])
+        #expect(verbs.menu == [.pause, .pauseUntil, .braindump, .delete])
+    }
+
+    /// A goal's milestone keeps its date, which is the goal's target, so it
+    /// is never offered, whatever the goal's state: reached or set aside, it
+    /// is still that goal's milestone, as the web reads it. Another goal's
+    /// milestone leaves Groceries free.
+    @Test func aMilestoneIsNeverSentToTheBraindump() async throws {
+        for state in ["active", "achieved", "abandoned"] {
+            let server = FakeServer()
+            let launch = PlannerJSON.goalJSON(PlannerJSON.launch, "Launch", milestones: [PlannerJSON.groceries],
+                                              state: state)
+            await server.on(plannerRoute, .status(200, PlannerJSON.payload(goals: [launch])))
+            let planner = await loaded(server)
+            #expect(planner.milestoneIds == Set([PlannerJSON.groceries]), "\(state)")
+            let groceries = try #require(planner.item(PlannerJSON.groceries))
+            let ctx = planner.verbContext(for: groceries, day: .selected)
+            #expect(!verbEligible(.braindump, groceries, ctx), "\(state)")
+            #expect(!planner.offeredVerbs(for: groceries, day: .selected).contains(.braindump), "\(state)")
+            planner.unschedule(PlannerJSON.groceries, on: planner.today)
+            #expect(planner.item(PlannerJSON.groceries) == groceries, "\(state)")
+            #expect(planner.sync?.pending == 0, "\(state)")
+        }
+
+        let server = FakeServer()
+        let other = PlannerJSON.goalJSON(PlannerJSON.launch, "Launch", milestones: [PlannerJSON.bank])
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(goals: [other])))
+        let planner = await loaded(server)
+        #expect(planner.milestoneIds == Set([PlannerJSON.bank]))
+        let groceries = try #require(planner.item(PlannerJSON.groceries))
+        #expect(planner.offeredVerbs(for: groceries, day: .selected).contains(.braindump))
+    }
+
+    /// The web's gate takes only an open, dated, one-off task, and the step
+    /// asks it again: a series (Water the plants), a habit (Water), a task
+    /// parked in a project's block (Review PRs), an undated task (Call the
+    /// bank) and Groceries ticked done change nothing and send nothing.
+    @Test func moveToBraindumpTakesOnlyAnOpenDatedOneOff() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(
+            groceriesDone: true, extra: [PlannerJSON.plantsJSON, PlannerJSON.parkedJSON], goals: [])))
+        let planner = await loaded(server)
+        let before = planner.items
+
+        let refused = [PlannerJSON.plants, PlannerJSON.water, PlannerJSON.parked, PlannerJSON.bank,
+                       PlannerJSON.groceries]
+        for id in refused {
+            let item = try #require(planner.item(id))
+            #expect(!planner.offeredVerbs(for: item, day: .selected).contains(.braindump), "\(item.title)")
+            planner.unschedule(id, on: planner.today)
+        }
+        #expect(planner.items == before)
+        #expect(planner.sync?.pending == 0)
+        await drain(planner)
+        let posts = await postCount(server)
+        #expect(posts == 0)
+    }
+
+    /// The surfaces' own rule (design B24): a row the braindump already lists
+    /// is never offered it, though the web's gate would take it. Renew
+    /// passport is dated today with no part of day and not scheduled, so the
+    /// braindump lists it and no day does. Nor is a dated subtask, which the
+    /// server refuses: it shows only in its parent's sheet.
+    @Test func aBraindumpRowAndASubtaskAreNeverOffered() async throws {
+        let passport = UUID(uuidString: "0d000000-0000-4000-8000-0000000000b0")!
+        let coolBag = UUID(uuidString: "0d000000-0000-4000-8000-0000000000b1")!
+        let passportJSON = "{\"id\":\"\(lowerID(passport))\",\"type\":\"task\",\"title\":\"Renew passport\","
+            + "\"status\":\"pending\",\"startDate\":\"\(PlannerJSON.today)\",\"isScheduled\":false,\"order\":9,"
+            + "\"completedDates\":[],\"skippedDates\":[],\"dailyCounts\":{}}"
+        let coolBagJSON = "{\"id\":\"\(lowerID(coolBag))\",\"type\":\"task\",\"title\":\"Pack the cool bag\","
+            + "\"status\":\"pending\",\"startDate\":\"\(PlannerJSON.today)\",\"timeBucket\":\"morning\","
+            + "\"isScheduled\":true,\"order\":10,\"parentItemId\":\"\(lowerID(PlannerJSON.groceries))\","
+            + "\"completedDates\":[],\"skippedDates\":[],\"dailyCounts\":{}}"
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(extra: [passportJSON, coolBagJSON],
+                                                                       goals: [])))
+        let planner = await loaded(server)
+        let before = planner.items
+
+        let renew = try #require(planner.item(passport))
+        #expect(planner.braindump.contains { $0.id == passport })
+        #expect(verbEligible(.braindump, renew, planner.verbContext(for: renew, day: .selected)))
+        #expect(!planner.offeredVerbs(for: renew, day: .selected).contains(.braindump))
+        let bag = try #require(planner.item(coolBag))
+        #expect(bag.isSubtask)
+        #expect(verbEligible(.braindump, bag, planner.verbContext(for: bag, day: .selected)))
+        #expect(!planner.offeredVerbs(for: bag, day: .selected).contains(.braindump))
+
+        planner.unschedule(passport, on: planner.today)
+        planner.unschedule(coolBag, on: planner.today)
+        #expect(planner.items == before)
+        #expect(planner.sync?.pending == 0)
+        await drain(planner)
+        let posts = await postCount(server)
+        #expect(posts == 0)
+    }
+
+    /// A server older than `unschedule` (its `writes` without it) offers no
+    /// Move to Braindump, and the step sends nothing.
+    @Test func aServerWithoutUnscheduleOffersNoMoveToBraindump() async throws {
+        let server = FakeServer()
+        let older = PlannerJSON.allWrites.filter { $0 != "unschedule" }
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(writes: older, goals: [])))
+        let planner = await loaded(server)
+        #expect(!planner.canWrite("unschedule"))
+        let groceries = try #require(planner.item(PlannerJSON.groceries))
+        #expect(planner.offeredVerbs(for: groceries, day: .selected)
+            == [.tick, .pause, .nextDay, .reschedule, .delete])
+
+        planner.unschedule(PlannerJSON.groceries, on: planner.today)
+        #expect(planner.item(PlannerJSON.groceries) == groceries)
+        #expect(planner.sync?.pending == 0)
+        let posts = await postCount(server)
+        #expect(posts == 0)
+    }
+
     // MARK: Pause and resume
 
     /// The stored zone is given, so today and the stamp don't depend on the

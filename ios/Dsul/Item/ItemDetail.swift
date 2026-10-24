@@ -34,9 +34,11 @@ import SwiftUI
 ///   subtask", which swaps in a field (`SubtaskField`).
 ///
 /// The verbs sit in a bar under the scroll (`VerbBar`), the rest of the
-/// pause family (and a series' Reschedule) behind ⋯ in the toolbar, then
-/// Delete, last. Which verbs, and in which slots, is ItemSheetModel's, asked
-/// of what the planner offers (`offeredVerbs`), so the sheet never shows a
+/// pause family (and a series' Reschedule) behind ⋯ in the toolbar, then,
+/// from Week and blocks PR 3, Move to Braindump for a dated one-off task the
+/// braindump doesn't list yet, then Delete, last. Which verbs, and in which
+/// slots, is ItemSheetModel's, asked of what the planner offers
+/// (`offeredVerbs`), so the sheet never shows a
 /// verb the web's gates or the server refuse. Each one acts on the day the
 /// sheet was opened with, read when it is tapped (`SamplePlanner.actingDay`),
 /// and the planner asks its gate again before it writes.
@@ -264,7 +266,8 @@ struct ItemDetail: View {
         }
     }
 
-    /// ⋯: the verbs the bar doesn't hold, then, after a divider, Delete.
+    /// ⋯: the verbs the bar doesn't hold (Move to Braindump last among
+    /// them), then, after a divider, Delete.
     private func moreMenu(_ item: SampleItem, _ ctx: VerbContext, verbs: SheetVerbs,
                           typeCaps: ItemCaps) -> some View {
         Menu {
@@ -460,7 +463,7 @@ struct ItemDetail: View {
                                     projects: projects,
                                     routines: routines,
                                     seasons: seasons,
-                                    projectColor: { ProjectPalette.color(for: $0, in: planner.projects) },
+                                    projectColor: { planner.projectAccent(for: $0).color },
                                     onPriority: { pick(.priority($0), settling: .priority) },
                                     onDate: { setDate($0) },
                                     onTime: { editor = .time(item.id) },
@@ -519,7 +522,7 @@ struct ItemDetail: View {
             } else if chip.kind == .project {
                 ProjectChipMenu(chip: chip, item: item, choices: projects,
                                 offersNone: ItemSheetModel.offersNoProject(planner.caps(for: item)),
-                                color: { ProjectPalette.color(for: $0, in: planner.projects) },
+                                color: { planner.projectAccent(for: $0).color },
                                 onPick: { pick(ItemSheetModel.projectEdit($0), settling: .project) })
                     .accessibilityFocused($chipVoiceOver, equals: .chip(.project))
             } else if let kind = ItemSheetModel.containerKind(chip.kind) {
@@ -547,10 +550,10 @@ struct ItemDetail: View {
     }
 
     /// Part 1's chip: no chevron, no trait, no hint; a project's wears its
-    /// colour dot.
+    /// colour dot (`SamplePlanner.projectAccent`, as its menu's rows do).
     private func readOnlyChip(_ chip: SheetChip) -> some View {
         ChipView(chip: chip,
-                 dot: chip.kind == .project ? ProjectPalette.color(for: chip.text, in: planner.projects) : nil)
+                 dot: chip.kind == .project ? planner.projectAccent(for: chip.text).color : nil)
             .chipSlot()
     }
 
@@ -1010,6 +1013,11 @@ struct ItemDetail: View {
             withAnimation(.snappy) { planner.move(id, to: target) }
         case .reschedule:
             editor = .reschedule(id)
+        case .braindump:
+            // Off every day at once; the sheet stays up on the item, which is
+            // now a braindump row (its date and time chips go, and the bar's
+            // Reschedule reads Schedule).
+            withAnimation(.snappy) { planner.unschedule(id, on: acting) }
         case .delete:
             askDelete(id)
         }

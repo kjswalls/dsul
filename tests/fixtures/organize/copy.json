@@ -78,7 +78,9 @@
         "icon": "icon:Briefcase",
         "hint": "Projects file your tasks, and can carry a repeating block on the grid."
       }
-    }
+    },
+    "attachConfirmLabel": "Add it anyway",
+    "changedElsewhere": "It changed on another device. Showing the latest."
   },
   "heldWorld": {
     "items": [
@@ -1550,6 +1552,30 @@
       "code": "name_taken",
       "sentName": null,
       "expected": null
+    },
+    {
+      "name": "a step moved whose item has left the routine",
+      "code": "member_gone",
+      "sentName": null,
+      "expected": "It changed on another device. Showing the latest."
+    },
+    {
+      "name": "a step moved after one that has left the routine",
+      "code": "anchor_gone",
+      "sentName": null,
+      "expected": "It changed on another device. Showing the latest."
+    },
+    {
+      "name": "a routine held or taken out that is gone",
+      "code": "container_gone",
+      "sentName": null,
+      "expected": "It changed on another device. Showing the latest."
+    },
+    {
+      "name": "a membership refusal, whatever name was sent",
+      "code": "member_gone",
+      "sentName": "House",
+      "expected": "It changed on another device. Showing the latest."
     }
   ],
   "deleteTitle": [
@@ -1745,6 +1771,153 @@
         "destination": "Work"
       },
       "expected": "Its 2 items stay exactly as they are. They just stop being filed under Home. The project stays in the Trash for 30 days."
+    }
+  ],
+  "attachConfirm": [
+    {
+      "name": "one item, a season switched off",
+      "routineName": "Evening",
+      "season": {
+        "id": "s-shelf",
+        "name": "Shelf",
+        "state": "paused",
+        "itemIds": [],
+        "routineIds": []
+      },
+      "hides": 1,
+      "today": "2026-10-23",
+      "expected": {
+        "title": "This will hide 1 item for now",
+        "description": "“Evening” looks after itself today. Putting it in Shelf hands that over. Shelf is off, so its 1 item stays hidden until you switch it on. Nothing is deleted, and taking it back out restores it."
+      }
+    },
+    {
+      "name": "a season that starts later: the day they come back",
+      "routineName": "Morning",
+      "season": {
+        "id": "s-winter",
+        "name": "Winter",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-11-01",
+        "endsOn": "2027-02-28"
+      },
+      "hides": 3,
+      "today": "2026-10-23",
+      "expected": {
+        "title": "This will hide 3 items for now",
+        "description": "“Morning” looks after itself today. Putting it in Winter hands that over. Winter is off, so its 3 items come back on Nov 1. Nothing is deleted, and taking it back out restores them."
+      }
+    },
+    {
+      "name": "one item coming back on a day, said in the singular",
+      "routineName": "Evening",
+      "season": {
+        "id": "s-ski",
+        "name": "Ski",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-11-01"
+      },
+      "hides": 1,
+      "today": "2026-10-23",
+      "expected": {
+        "title": "This will hide 1 item for now",
+        "description": "“Evening” looks after itself today. Putting it in Ski hands that over. Ski is off, so its 1 item comes back on Nov 1. Nothing is deleted, and taking it back out restores it."
+      }
+    },
+    {
+      "name": "a season whose run has ended: hidden until it is switched on",
+      "routineName": "Morning",
+      "season": {
+        "id": "s-summer",
+        "name": "Summer",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-06-01",
+        "endsOn": "2026-10-01"
+      },
+      "hides": 2,
+      "today": "2026-10-23",
+      "expected": {
+        "title": "This will hide 2 items for now",
+        "description": "“Morning” looks after itself today. Putting it in Summer hands that over. Summer is off, so its 2 items stay hidden until you switch it on. Nothing is deleted, and taking it back out restores them."
+      }
+    },
+    {
+      "name": "a season switched off with a start ahead: no day, since the switch wins",
+      "routineName": "Morning",
+      "season": {
+        "id": "s-term",
+        "name": "Term",
+        "state": "paused",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-11-01"
+      },
+      "hides": 2,
+      "today": "2026-10-23",
+      "expected": {
+        "title": "This will hide 2 items for now",
+        "description": "“Morning” looks after itself today. Putting it in Term hands that over. Term is off, so its 2 items stay hidden until you switch it on. Nothing is deleted, and taking it back out restores them."
+      }
+    },
+    {
+      "name": "a backwards range still names its start, as the web’s confirm does",
+      "routineName": "Evening",
+      "season": {
+        "id": "s-backwards",
+        "name": "Backwards",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-12-01",
+        "endsOn": "2026-11-01"
+      },
+      "hides": 1,
+      "today": "2026-10-23",
+      "expected": {
+        "title": "This will hide 1 item for now",
+        "description": "“Evening” looks after itself today. Putting it in Backwards hands that over. Backwards is off, so its 1 item comes back on Dec 1. Nothing is deleted, and taking it back out restores it."
+      }
+    },
+    {
+      "name": "a start stamped with a time: its day",
+      "routineName": "Evening",
+      "season": {
+        "id": "s-legacy",
+        "name": "Legacy",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-11-01T00:00:00Z"
+      },
+      "hides": 2,
+      "today": "2026-10-23",
+      "expected": {
+        "title": "This will hide 2 items for now",
+        "description": "“Evening” looks after itself today. Putting it in Legacy hands that over. Legacy is off, so its 2 items come back on Nov 1. Nothing is deleted, and taking it back out restores them."
+      }
+    },
+    {
+      "name": "names with quotes and an emoji, said as they are",
+      "routineName": "Mum’s “quiet” hour ☕",
+      "season": {
+        "id": "s-push",
+        "name": "Q4 “push”",
+        "state": "paused",
+        "itemIds": [],
+        "routineIds": []
+      },
+      "hides": 4,
+      "today": "2026-10-23",
+      "expected": {
+        "title": "This will hide 4 items for now",
+        "description": "“Mum’s “quiet” hour ☕” looks after itself today. Putting it in Q4 “push” hands that over. Q4 “push” is off, so its 4 items stay hidden until you switch it on. Nothing is deleted, and taking it back out restores them."
+      }
     }
   ]
 }

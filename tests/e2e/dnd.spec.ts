@@ -147,6 +147,54 @@ test.describe('Drag and drop flows', { tag: '@exclusive-dnd' }, () => {
     }
   });
 
+  test('dragging a repeating task to the braindump leaves it where it is', async ({ page }) => {
+    // The sidebar row of lib/dnd/CONTRACT.md: a task on the canvas goes back
+    // only where Move to Braindump would take it (lib/block-moves.ts, the rule
+    // the iPhone shares). A series' start date is its anchor, so it stays on
+    // its day, and nothing is written.
+    const today = getTodayStr();
+    const taskId = await createTestTask(page, {
+      title: testTitle('dnd_series_stays'),
+      repeatFrequency: 'daily',
+      startDate: today,
+      isScheduled: true,
+      timeBucket: 'morning',
+    });
+
+    try {
+      await reloadApp(page);
+      await expect(itemCard(page, taskId)).toHaveAttribute('data-bucket', 'morning');
+
+      await dragTo(page, itemCard(page, taskId), page.locator('[data-dnd-id="sidebar"]'), {
+        scrollHint: page.getByTestId('braindump'),
+      });
+
+      // The drag has ended (the zone no longer reports hover), so a write the
+      // drop made would already be on screen.
+      await expect(page.locator('[data-dnd-id="sidebar"]')).toHaveAttribute('data-dnd-over', 'false');
+      await expect(bucket(page, 'morning').locator(`[data-item-id="${taskId}"]`)).toHaveCount(1);
+      await expect(
+        page.getByTestId('braindump').locator(`[data-item-id="${taskId}"]`)
+      ).toHaveCount(0);
+
+      // And nothing reaches the server: the row reads the same a few times
+      // over, then after a reload.
+      for (let i = 0; i < 3; i++) {
+        await page.waitForTimeout(300);
+        const stored = await fetchTestTask(page, taskId);
+        expect(stored?.isScheduled).toBe(true);
+        expect(stored?.startDate).toBe(today);
+      }
+      await reloadApp(page);
+      await expect(itemCard(page, taskId)).toHaveAttribute('data-bucket', 'morning');
+      const persisted = await fetchTestTask(page, taskId);
+      expect(persisted?.timeBucket).toBe('morning');
+      expect(persisted?.startDate).toBe(today);
+    } finally {
+      await cleanupTestData(page, [taskId]);
+    }
+  });
+
   test('dragging a braindump task into a bucket schedules it there', async ({ page }) => {
     const taskId = await createTestTask(page, {
       title: testTitle('dnd_schedule'),
