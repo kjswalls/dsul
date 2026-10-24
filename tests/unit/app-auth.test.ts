@@ -283,6 +283,7 @@ describe('every /api/app route is behind it', () => {
       itemWrite({ action: 'collect', kind: 'routine', containerId: ROUTINE, member: true }),
     ],
     ['POST /api/app/items/:id snooze', itemWrite({ action: 'snooze', date: '2026-10-02' })],
+    ['POST /api/app/items/:id unschedule', itemWrite({ action: 'unschedule' })],
     [
       'POST /api/app/timezone',
       (headers) =>

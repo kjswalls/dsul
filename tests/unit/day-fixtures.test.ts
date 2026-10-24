@@ -35,7 +35,14 @@ import {
   isSkippable,
   type ItemTypeConfig,
 } from '@/lib/item-registry';
-import { canMoveToNextDay, canReschedule, formatTargetDay, nextDayLabel, nextDayTarget } from '@/lib/row-moves';
+import {
+  canMoveToNextDay,
+  canReschedule,
+  canSendToBraindump,
+  formatTargetDay,
+  nextDayLabel,
+  nextDayTarget,
+} from '@/lib/row-moves';
 import { reminderNeedsDate } from '@/lib/bulk-edit';
 import { cadenceLabel } from '@/lib/cadence';
 import { membershipSummary } from '@/lib/item-bands';
@@ -1110,6 +1117,7 @@ function buildToggle(): { cases: ToggleCase[] } {
  * The verbs the phone's item sheet offers, in ITEM_VERBS (declaration) order.
  * `delete` is always eligible, so it alone is exempt from the both-answers
  * check below. `resetStreak` is offered from the streak chip, not the bar.
+ * `braindump` (Move to Braindump, week-and-blocks PR 3) sits in the sheet's ⋯.
  */
 const SHEET_VERBS = [
   'tick',
@@ -1119,6 +1127,7 @@ const SHEET_VERBS = [
   'resume',
   'nextDay',
   'reschedule',
+  'braindump',
   'resetStreak',
   'delete',
 ] as const;
@@ -1139,6 +1148,12 @@ type VerbsCase = {
    * Reset streak asks. The phone reads it from the payload's settings.
    */
   streaksEnabled: boolean;
+  /**
+   * VerbContext.milestoneIds, sorted: the items that are some live goal's
+   * milestone, which Move to Braindump refuses. The phone builds it from the
+   * payload's goals (lib/goals.ts milestoneItemIds).
+   */
+  milestoneIds: string[];
   verbs: Record<Exclude<SheetVerb, 'nextDay'>, VerbAnswer> & {
     nextDay: VerbAnswer & { detail: string; target: string };
   };
@@ -1168,9 +1183,11 @@ function buildVerbs(): { cases: VerbsCase[] } {
       timeZone?: string;
       occurrence?: OccurrenceState | 'absent' | 'unknown';
       streaksEnabled?: boolean;
+      milestoneIds?: string[];
     } = {}
   ): VerbsCase => {
     const streaksEnabled = opts.streaksEnabled ?? true;
+    const milestoneIds = [...(opts.milestoneIds ?? [])].sort();
     const dateStr = opts.dateStr ?? T;
     const todayStr = opts.todayStr ?? T;
     const timeZone = opts.timeZone ?? NY;
@@ -1181,7 +1198,7 @@ function buildVerbs(): { cases: VerbsCase[] } {
       date: new Date(`${dateStr}T12:00:00Z`),
       todayStr,
       tz: timeZone,
-      milestoneIds: new Set(),
+      milestoneIds: new Set(milestoneIds),
       occurrence,
     };
     const answer = (id: SheetVerb): VerbAnswer => ({
@@ -1198,6 +1215,7 @@ function buildVerbs(): { cases: VerbsCase[] } {
         timeZone,
         occurrence: occurrence ?? null,
         streaksEnabled,
+        milestoneIds,
         verbs: {
           tick: answer('tick'),
           skip: answer('skip'),
@@ -1206,6 +1224,7 @@ function buildVerbs(): { cases: VerbsCase[] } {
           resume: answer('resume'),
           nextDay: { ...answer('nextDay'), detail: ITEM_VERBS.nextDay.detail!(item, ctx)!, target: nextDayOf(item, ctx) },
           reschedule: answer('reschedule'),
+          braindump: answer('braindump'),
           resetStreak: answer('resetStreak'),
           delete: answer('delete'),
         },
@@ -1283,10 +1302,18 @@ function buildVerbs(): { cases: VerbsCase[] } {
       make('one-off ignores an absent occurrence', oneOff(), { occurrence: 'absent' }),
       make('subtask', subtask()),
       make('subtask, completed', subtask({ status: 'completed' })),
+      // Move to Braindump: never a milestone of a live goal; a dated row with
+      // no part of day is already listed there, which the phone's surfaces
+      // check apart from the gate (as the web's row and mobile sheet do).
+      make('one-off that is a milestone', oneOff(), { milestoneIds: [uid(620)] }),
+      make('one-off, another item is a milestone', oneOff(), { milestoneIds: [uid(621)] }),
+      make('one-off, dated with no part of day', oneOff({ timeBucket: undefined, isScheduled: false })),
+      make('one-off, a timed block', oneOff({ timeBucket: 'afternoon', startTime: '14:00', duration: 45 })),
       // Custom types ride the task rules.
       make('custom one-off', errand()),
       make('custom one-off, completed', errand({ status: 'completed' })),
       make('custom one-off, undated', errand({ startDate: undefined, timeBucket: undefined, isScheduled: false })),
+      make('custom one-off that is a milestone', errand(), { milestoneIds: [uid(630)] }),
       make('custom recurring, due', weekdayErrand()),
       make('custom recurring, done', weekdayErrand({ completedDates: [T] })),
       make('custom recurring, skipped', weekdayErrand({ skippedDates: [T] })),
@@ -1301,12 +1328,15 @@ type TargetCase = { name: string; rowDateStr: string; todayStr: string; expected
 type CarryLabelCase = { name: string; target: string; todayStr: string; expected: string };
 type DayCopyCase = { name: string; dateStr: string; expected: string };
 type MoveCase = { name: string; item: Item; kind: 'task' | 'habit'; dateStr: string; expected: boolean };
+/** canSendToBraindump's case: a move case with the milestone ids it is asked against, sorted. */
+type BraindumpMoveCase = MoveCase & { milestoneIds: string[] };
 type RowMovesFixture = {
   nextDayTarget: TargetCase[];
   nextDayLabel: CarryLabelCase[];
   formatTargetDay: DayCopyCase[];
   canMoveToNextDay: MoveCase[];
   canReschedule: MoveCase[];
+  canSendToBraindump: BraindumpMoveCase[];
 };
 
 function buildRowMoves(): RowMovesFixture {
@@ -1378,12 +1408,33 @@ function buildRowMoves(): RowMovesFixture {
   // in taking a recurring task (its picked day becomes the series start).
   const moves = moveInputs.map(([name, item, kind]) => ({ name, item, kind, dateStr: T, expected: canMoveToNextDay(item, kind, T) }));
   const reschedules = moveInputs.map(([name, item, kind]) => ({ name, item, kind, dateStr: T, expected: canReschedule(item, kind, T) }));
+  // Move to Braindump's gate: the same rows with no milestones, then the rule
+  // only it has (a live goal's milestone keeps its date) and a dated row with
+  // no part of day, which the gate allows (the surfaces hide it, since the
+  // braindump already lists it).
+  const braindumpInputs: [string, Item, 'task' | 'habit', string[]][] = [
+    ...moveInputs.map(([name, item, kind]): [string, Item, 'task' | 'habit', string[]] => [name, item, kind, []]),
+    ['a milestone', oneOff(), 'task', [uid(701)]],
+    ['a custom milestone', errand(), 'task', [uid(702)]],
+    ['another item is a milestone', oneOff(), 'task', [uid(799)]],
+    ['a milestone that is done', oneOff({ status: 'completed' }), 'task', [uid(701)]],
+    ['dated with no part of day', oneOff({ timeBucket: undefined, isScheduled: false }), 'task', []],
+  ];
+  const braindumps = braindumpInputs.map(([name, item, kind, milestoneIds]) => ({
+    name,
+    item,
+    kind,
+    dateStr: T,
+    milestoneIds: [...milestoneIds].sort(),
+    expected: canSendToBraindump(item, kind, T, new Set(milestoneIds)),
+  }));
   return {
     nextDayTarget: targets,
     nextDayLabel: labels,
     formatTargetDay: days,
     canMoveToNextDay: moves,
     canReschedule: reschedules,
+    canSendToBraindump: braindumps,
   };
 }
 
@@ -2316,12 +2367,40 @@ describe('day fixtures shared with DsulCore', () => {
     }
     expect(new Set(verbs.map((c) => c.verbs.nextDay.label))).toEqual(new Set(['Move to today', 'Move to tomorrow', 'Move to next day']));
     expect(new Set(verbs.map((c) => c.verbs.reschedule.label))).toEqual(new Set(['Reschedule', 'Schedule']));
+    expect(new Set(verbs.map((c) => c.verbs.braindump.label))).toEqual(new Set(['Move to Braindump']));
+    // A milestone keeps its date: the carry is offered, Move to Braindump is not.
+    const milestones = verbs.filter((c) => c.milestoneIds.includes(c.item.id));
+    expect(milestones.length).toBeGreaterThan(0);
+    for (const c of milestones) {
+      expect(c.verbs.braindump.eligible, c.name).toBe(false);
+      expect(c.verbs.nextDay.eligible, c.name).toBe(true);
+    }
+    // Move to Braindump comes after Reschedule and before Delete, the web's
+    // declaration order, which the phone's ⋯ keeps.
+    for (const c of verbs.filter((x) => x.eligible.includes('braindump'))) {
+      const at = c.eligible.indexOf('braindump');
+      if (c.eligible.includes('reschedule')) expect(c.eligible.indexOf('reschedule'), c.name).toBeLessThan(at);
+      expect(c.eligible.indexOf('delete'), c.name).toBeGreaterThan(at);
+    }
 
     const moves = generated['row-moves'] as RowMovesFixture;
     expect(new Set(moves.canMoveToNextDay.map((c) => c.expected))).toEqual(both);
     expect(new Set(moves.canReschedule.map((c) => c.expected))).toEqual(both);
     // At least one row where the two gates part: a recurring task.
     expect(moves.canReschedule.some((c, i) => c.expected !== moves.canMoveToNextDay[i].expected)).toBe(true);
+    expect(new Set(moves.canSendToBraindump.map((c) => c.expected))).toEqual(both);
+    // Its first rows are the carry's, asked with no milestones; they part only
+    // where the registry's two capabilities would, which no shipped type does.
+    moves.canMoveToNextDay.forEach((c, i) => {
+      const b = moves.canSendToBraindump[i];
+      expect(b.name).toBe(c.name);
+      expect(b.milestoneIds).toEqual([]);
+      expect(b.expected, c.name).toBe(c.expected);
+    });
+    // And a milestone is where it parts from the carry.
+    const milestone = moves.canSendToBraindump.find((c) => c.name === 'a milestone')!;
+    expect(milestone.expected).toBe(false);
+    expect(canMoveToNextDay(milestone.item, 'task', milestone.dateStr)).toBe(true);
     expect(new Set(moves.nextDayLabel.map((c) => c.expected))).toEqual(new Set(['Move to today', 'Move to tomorrow', 'Move to next day']));
 
     const occurs = (generated.occurs as { cases: OccursCase[] }).cases;

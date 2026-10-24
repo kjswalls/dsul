@@ -305,4 +305,21 @@ private func load() throws -> GoalsFixture {
             #expect(lastDoneOn(c.item) == c.expected, "\(c.name)")
         }
     }
+
+    /// lib/goals.ts `milestoneItemIds`: every goal's milestones, whatever its
+    /// state (an ended or set aside goal's milestone keeps its target date),
+    /// and never a check-in or a supporting item.
+    @Test func milestoneItemIdsTakeEveryGoalsMilestones() {
+        let a = UUID(uuidString: "00000000-0000-4000-8000-0000000000a1")!
+        let b = UUID(uuidString: "00000000-0000-4000-8000-0000000000b2")!
+        let c = UUID(uuidString: "00000000-0000-4000-8000-0000000000c3")!
+        let d = UUID(uuidString: "00000000-0000-4000-8000-0000000000d4")!
+        let goals = [
+            Goal(id: "g1", name: "Run a 10k", state: "active", memberIds: [d], milestoneIds: [a], checkinIds: [c]),
+            Goal(id: "g2", name: "Learn to sew", state: "abandoned", milestoneIds: [b]),
+            Goal(id: "g3", name: "Paint the hall", state: "achieved", milestoneIds: [a]),
+        ]
+        #expect(milestoneItemIds(goals) == [a, b])
+        #expect(milestoneItemIds([]).isEmpty)
+    }
 }

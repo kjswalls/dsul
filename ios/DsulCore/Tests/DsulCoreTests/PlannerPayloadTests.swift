@@ -62,8 +62,11 @@ private struct RawItems: Decodable, Sendable {
         #expect(p.settings.timeFormat == .twentyFourHour)
         #expect(p.writes == [
             "complete", "schedule", "skip", "move", "pause", "title", "notes", "delete", "addSubtask", "resetStreak",
-            "priority", "timesPerDay", "reminder", "time", "repeat", "project", "collect", "snooze",
+            "priority", "timesPerDay", "reminder", "time", "repeat", "project", "collect", "snooze", "unschedule",
         ])
+        // Move to Braindump's body names the action the route lists last
+        // (Week and blocks PR 3), so `canWrite` finds it.
+        #expect(p.writes?.last == ItemWriteBody.unschedule.action)
         // The Trash's two routes (lib/app-containers.ts TRASH_WRITES, O14).
         #expect(p.trashWrites == ["list", "restore"])
         #expect(TrashRoutes.offered(p.trashWrites))
@@ -329,6 +332,24 @@ private struct RawItems: Decodable, Sendable {
         #expect(cooked.memberIds.isEmpty && cooked.milestoneIds.isEmpty && cooked.checkinIds.isEmpty)
         #expect(progressLabel(cooked, goalProgress(cooked, items: p.items)) == "No milestones yet")
         #expect(sortGoalsForDisplay(goals).map(\.id) == goals.map(\.id))
+
+        // Move to Braindump's milestone set is every goal's milestones, the
+        // achieved goal's included (it has none here). With it, a dated
+        // one-off that is no milestone is offered the verb; with no set
+        // (a payload without goals) nothing is.
+        let milestones = milestoneItemIds(goals)
+        #expect(milestones == Set(spanish.milestoneIds))
+        let bank = try #require(p.items.first { $0.title == "Call the bank" })
+        let ctx = VerbContext(
+            dateStr: "2026-10-02", todayStr: "2026-10-02", timeZone: p.settings.timezone ?? "UTC", milestoneIds: milestones
+        )
+        #expect(verbEligible(.braindump, bank, ctx))
+        var unknown = ctx
+        unknown.milestoneIds = nil
+        #expect(!verbEligible(.braindump, bank, unknown))
+        var asMilestone = ctx
+        asMilestone.milestoneIds = milestones.union([bank.id])
+        #expect(!verbEligible(.braindump, bank, asMilestone))
     }
 }
 

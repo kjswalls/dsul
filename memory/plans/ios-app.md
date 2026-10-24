@@ -1943,6 +1943,51 @@ functions:
   taken (open question 2 of the 2f brief): a web write that failed is no
   longer healed by that tab's next write to the same container, so the tab
   shows the member the database lacks until it reloads.
+- **Move to Braindump** (Week and blocks PR 3, design §5.7, §6.2, §7;
+  builders' notes in `week/pr3/`): a dated, open, one-off task's ⋯ offers
+  it, after Reschedule and before Delete, as the web's row menu and mobile
+  sheet offer `unscheduleTask`. The write is `{"action":"unschedule"}` alone
+  (strict); the server asks its copy of the web's gate and writes the store's
+  `UNSCHEDULE_TASK_PATCH` (not scheduled, no start date, part of day or
+  time), 409 `not_unschedulable` for a row the gate refuses and 200 with
+  nothing written for one already in the braindump's shape, so a retry
+  lands. No webhook, and one `item_events` row, as the browser writes it
+  (lib/db.ts `updateItem`); the retry that writes nothing writes no event.
+  - The phone's gate (`SamplePlanner.offers(.braindump)`) is three asks and
+    `canWrite("unschedule")`: the web's (DsulCore `verbEligible`, through
+    `canSendToBraindump`: task-like, a braindump-eligible type, dated, not
+    recurring, not in a project block, open on its own date, no goal's
+    milestone), the server's (no subtask), and the surfaces' own (design
+    B24: `isTaskScheduled`, so a row the braindump already lists, such as a
+    dated task with no part of day, never gets it).
+  - The milestones are `SamplePlanner.milestoneIds`, DsulCore
+    `milestoneItemIds` over the payload's `goals`, whatever the Goals switch
+    and a goal's state say, as the web reads the store's raw goals. Nil while
+    goals are unread (before the first fetch, or a server that sends none),
+    and then the verb is offered nowhere. The sample knows its goals.
+  - The step, `SamplePlanner.unschedule(_:on:)`, asks the gate again off the
+    item as it is now, applies DsulCore `unscheduling` (the same four
+    columns; length, order, project, priority, notes, subtasks and any pause
+    kept, so it shows in the braindump at its stored place) and queues
+    `PlannerSync.Write.unschedule(id:)`, which names the item alone, proves
+    nothing and replays through `unscheduling` (dateless). The sheet stays
+    up on the item, now a braindump row. Its symbol is
+    `tray.and.arrow.down`; its words are the port's `verbLabel`.
+  - Where it departs from the design: the design says main's payload has no
+    goals, but it has carried them since O1, so the verb shows signed in
+    from this PR, with no payload change. Paused today, ⋯ is Delete alone,
+    so Move to Braindump waits for Resume like every other verb, though the
+    web's gate has no pause test. No VoiceOver announcement follows it ("Moved to
+    the braindump" is PR 8's, for its drops). A goal the lossy goal list
+    drops takes its milestones with it, so the phone may offer the verb on
+    one; the server refuses it, the banner shows and the refetch puts the
+    row back.
+  - Files: ios/Dsul/Data/PlannerSync.swift, APIClient.swift;
+    ios/Dsul/Model/SamplePlanner.swift; ios/Dsul/Item/ItemSheetModel.swift
+    (`SheetVerb.braindump`), ItemDetail.swift; DsulCore RowMoves.swift,
+    ItemVerbs.swift, VerbWrites.swift, ItemWriteBody.swift, Goals.swift,
+    DayItems.swift; hosted tests in PlannerSyncTests, ItemVerbsTests,
+    ItemSheetTests, SamplePlannerTests and ItemEditTests.
 
 ## Port order
 recurrence → `isPausedOn` / `isOpenLoopOn` → `isItemActiveOn` →
@@ -1995,8 +2040,9 @@ since O1 make possible, and any word that a repeat took a goal role away (the
 web then lists the item as a plain member, with no notice), the Beeminder row,
 the Streaks, Organize and Goals switches, which the phone honours but can't
 turn on or off, the thread and Ask, Focus), universal links (the email link
-uses the custom scheme), unschedule, resize and moving existing blocks from
-the phone, the overdue tray, sinking completed rows, filters and
+uses the custom scheme), resize and moving existing blocks from the phone
+(and a block's own Move to Braindump, from its menu or a drop; the sheet's ⋯
+has it), the overdue tray, sinking completed rows, filters and
 `showPausedOnGrid` (the phone uses the defaults), Focus as a Live Activity,
 and a local-stack password grant for development. App Store review will also
 want consent before sending data to a model. Notifications shipped

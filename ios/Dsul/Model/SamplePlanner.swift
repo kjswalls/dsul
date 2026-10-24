@@ -100,8 +100,9 @@ struct PlannerBanner: Identifiable, Equatable, Sendable {
 /// `deleteTask` / `deleteHabit` (the time as the dialog's `commitEdit` saves
 /// it; the date is Reschedule's `move`; the project as the bulk Move to
 /// project files it), Add a subtask the store's `addTask`, Reset streak its
-/// `resetHabitStreak` (DsulCore ItemEdit.swift) and the routine and season
-/// toggles its `setItemsCollected` (DsulCore Membership.swift), so the phone
+/// `resetHabitStreak` (DsulCore ItemEdit.swift), the routine and season
+/// toggles its `setItemsCollected` (DsulCore Membership.swift) and Move to
+/// Braindump its `unscheduleTask` (DsulCore VerbWrites.swift), so the phone
 /// and the web agree on the same data. Every change here is optimistic and
 /// immediate; when signed in, `sync` then sends it to the server
 /// (PlannerSync). A verb or an edit re-reads its item and asks its gate again
@@ -126,7 +127,8 @@ final class SamplePlanner {
     /// read them (`PlannerPayload.goals`), which hides the section rather
     /// than saying there are none. Decoded whatever `settings.goalsEnabled`
     /// says: the switch is a display gate, as on the web. A goal gates
-    /// nothing on a day, so no rule here reads them.
+    /// nothing on a day; the one rule here that reads them is Move to
+    /// Braindump's, which never takes a milestone (`milestoneIds`).
     private(set) var goals: [Goal]? = nil
     /// The user's trips (`PlannerPayload.awayPeriods`, vacation mode): asked
     /// first by every "is this live" question here, as on the web, so a trip
@@ -540,15 +542,28 @@ final class SamplePlanner {
     /// What the web's verbs are handed for `item` on `day`: the day, today,
     /// the zone, the item's state there (DsulCore `occurrenceOn`: absent when
     /// a recurring item doesn't fall on the day, else done, skipped, due from
-    /// today on, or open before it; nil for a one-off), and whether Streaks is
-    /// on (`settings.streaksEnabled`, the web's `streaksEnabled()`).
+    /// today on, or open before it; nil for a one-off), whether Streaks is
+    /// on (`settings.streaksEnabled`, the web's `streaksEnabled()`), and the
+    /// goals' milestones (`milestoneIds`, nil while goals are unread).
     func verbContext(for item: SampleItem, on day: DayString) -> VerbContext {
         let zone = timeZoneID
         let dateStr = day.description
         let todayStr = today.description
         return VerbContext(dateStr: dateStr, todayStr: todayStr, timeZone: zone,
                            occurrence: occurrenceOn(item, on: dateStr, today: todayStr, timeZone: zone),
-                           streaksEnabled: settings.streaksEnabled)
+                           streaksEnabled: settings.streaksEnabled, milestoneIds: milestoneIds)
+    }
+
+    /// (Week and blocks PR 3) The items that are some goal's milestone
+    /// (DsulCore `milestoneItemIds` over `goals`, as the web's verbs read
+    /// them off the store's raw goals, whatever the Goals switch says), which
+    /// Move to Braindump never takes: a milestone's date is its target. Nil
+    /// while goals are unread (before the first fetch, and from a server that
+    /// couldn't read them or is older than the field), and then the verb is
+    /// offered nowhere, rather than on a milestone the server would refuse.
+    /// The sample's goals are its own, so it always knows.
+    var milestoneIds: Set<UUID>? {
+        return goals.map(milestoneItemIds)
     }
 
     /// The item writes a server older than `PlannerPayload.writes` takes.
@@ -601,19 +616,27 @@ final class SamplePlanner {
         case .skip, .unskip: return "skip"
         case .pause, .resume: return "pause"
         case .nextDay, .reschedule: return "move"
+        case .braindump: return "unschedule"
         case .resetStreak: return "resetStreak"
         case .delete: return "delete"
         }
     }
 
-    /// May the sheet offer `verb` on `item` in `ctx`? Three answers, all yes:
+    /// May the sheet offer `verb` on `item` in `ctx`? Four answers, all yes
+    /// (the third asked of Move to Braindump alone):
     /// - the web's gate (DsulCore `verbEligible`, lib/item-verbs.ts);
     /// - the server's own gate where it asks more (lib/app-api.ts): it never
-    ///   skips or carries a subtask, which has no day of its own, pauses or
-    ///   resumes only what `isPausable` allows, and resets a streak only on a
-    ///   type that keeps one (`streakCounter`, its `no_streak`), where the
-    ///   web's gate asks only `isHabit`. Delete it takes on anything, a subtask
-    ///   included;
+    ///   skips, carries or unschedules a subtask, which has no day of its own,
+    ///   pauses or resumes only what `isPausable` allows, and resets a streak
+    ///   only on a type that keeps one (`streakCounter`, its `no_streak`),
+    ///   where the web's gate asks only `isHabit`. Delete it takes on
+    ///   anything, a subtask included;
+    /// - for Move to Braindump, the surfaces' own rule (design B24): never on
+    ///   a row the braindump already lists, neither scheduled nor in a part of
+    ///   day (DsulCore `isTaskScheduled`, lib/braindump-members.ts's test),
+    ///   as the web's row and mobile sheet ask before they offer it. The gate
+    ///   itself (`verbEligible`) also needs the milestones known
+    ///   (`ctx.milestoneIds`);
     /// - the server takes the write (`canWrite`).
     func offers(_ verb: VerbID, _ item: SampleItem, _ ctx: VerbContext) -> Bool {
         guard canWrite(verb), verbEligible(verb, item, ctx) else { return false }
@@ -622,6 +645,7 @@ final class SamplePlanner {
         case .skip, .unskip: return isSkippable(item) && !item.isSubtask
         case .nextDay, .reschedule: return !item.isSubtask
         case .pause, .resume: return isPausable(item)
+        case .braindump: return !item.isSubtask && isTaskScheduled(item)
         case .resetStreak: return caps(for: item).streakCounter
         case .delete: return true
         }
@@ -629,9 +653,9 @@ final class SamplePlanner {
 
     /// Every verb the sheet may offer `item` on its day, in the web's
     /// declaration order (tick, skip, unskip, pause, resume, nextDay,
-    /// reschedule, resetStreak, delete). Which ones the bar shows, and in what
-    /// slots, is the view's; Reset streak is the streak chip's, never the
-    /// bar's or ⋯'s.
+    /// reschedule, braindump, resetStreak, delete). Which ones the bar shows,
+    /// and in what slots, is the view's; Reset streak is the streak chip's,
+    /// never the bar's or ⋯'s, and Move to Braindump is ⋯'s.
     func offeredVerbs(for item: SampleItem, day: SheetDay) -> [VerbID] {
         let ctx = verbContext(for: item, day: day)
         return VerbID.allCases.filter { offers($0, item, ctx) }
@@ -689,6 +713,30 @@ final class SamplePlanner {
         guard after != before else { return }
         items[i] = after
         sync?.enqueue(.move(id: id, date: date), snapshot: before)
+    }
+
+    /// Move to Braindump (⋯, Week and blocks PR 3): takes a dated one-off
+    /// task off every day and back to the braindump, as the store's
+    /// `unscheduleTask` does (DsulCore `unscheduling`): not scheduled, and no
+    /// start date, part of day or time; its length, order, project, priority,
+    /// notes and any pause kept. No `order` is written, so it shows in the
+    /// braindump at its stored place. Behind `offers(.braindump)`, asked
+    /// again here off the item as it is now: the web's gate (task-like, the
+    /// type `braindumpEligible`, dated, not recurring, not in a project
+    /// block, open, not a milestone, which needs the goals read), the server's
+    /// (no subtask), not already a braindump row, and the server taking
+    /// `unschedule`. The gate reads the row's own start date, so `day` (the
+    /// sheet's) changes nothing today; it is the day the verb was drawn for.
+    /// The write is the action alone; the server writes the same four
+    /// columns.
+    func unschedule(_ id: UUID, on day: DayString) {
+        guard let i = items.firstIndex(where: { $0.id == id }) else { return }
+        let before = items[i]
+        guard offers(.braindump, before, verbContext(for: before, on: day)) else { return }
+        let after = unscheduling(before)
+        guard after != before else { return }
+        items[i] = after
+        sync?.enqueue(.unschedule(id: id), snapshot: before)
     }
 
     /// Pause, or Pause until `until` (the exclusive resume day, yyyy-MM-dd; nil

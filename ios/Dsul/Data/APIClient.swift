@@ -69,7 +69,8 @@ enum APIError: Error, Equatable, Sendable {
 /// Supabase access token as the bearer: capture, and the item writes (tick,
 /// braindump row to an hour, skip, move, pause, and the item sheet's title,
 /// notes, priority, times a day, reminder, time, repeat and project, Delete,
-/// Add a subtask, Reset streak and its routine and season toggles). And
+/// Add a subtask, Reset streak and its routine and season toggles, and from
+/// Week and blocks PR 3 Move to Braindump). And
 /// Delete account's two calls, on the account routes (lib/account-types.ts):
 /// what the sheet says, and the deletion. And the Trash's two (from O14,
 /// lib/app-containers.ts): the bin, and a restore, which PlannerSync sends
@@ -177,6 +178,20 @@ final class APIClient {
     /// nothing written.
     func resetStreak(id: UUID) async throws {
         _ = try await send("POST", Self.itemPath(id), body: try Self.encode(ItemWriteBody.resetStreak))
+    }
+
+    /// POST /api/app/items/:id `unschedule` (Week and blocks PR 3): Move to
+    /// Braindump, as DsulCore's `ItemWriteBody.unschedule` sends it,
+    /// `{"action":"unschedule"}` and nothing beside it (the route is
+    /// `.strict()`). The server writes the store's `UNSCHEDULE_TASK_PATCH`
+    /// behind its own copy of the web's gate, and answers 409
+    /// `not_unschedulable` for a row the gate refuses (a habit, a series, a
+    /// subtask, a task in a project block, a finished one, an undated one, a
+    /// milestone of a live goal); a row already in the braindump's shape is
+    /// answered 200 with nothing written, so a retry lands. An older server
+    /// answers 400 `invalid`; the sheet hides the verb until `writes` lists it.
+    func unschedule(id: UUID) async throws {
+        _ = try await send("POST", Self.itemPath(id), body: try Self.encode(ItemWriteBody.unschedule))
     }
 
     /// POST /api/app/items/:id `collect`: one membership row, the item added

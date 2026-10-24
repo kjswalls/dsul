@@ -207,6 +207,33 @@ private func run(_ world: DayWorld, date: DayString, showCompletedTasks: Bool) -
         }
     }
 
+    /// `isTaskScheduled` is the members' own task test, on one row: a task it
+    /// calls scheduled is never listed, and one it doesn't is listed unless it
+    /// was let go or is paused today. So the phone offers Move to Braindump
+    /// exactly where the braindump does not already hold the row.
+    @Test func aScheduledTaskIsNeverABraindumpMember() throws {
+        var both = (scheduled: false, unscheduled: false)
+        for c in try loadFixture("braindump", as: BraindumpFixture.self).cases {
+            let date = try #require(DayString(c.today), "\(c.name): bad today \(c.today)")
+            let suppressed = inactiveItemIdsOn(
+                items: c.items, date: date, timeZone: c.timeZone, routines: c.routines, seasons: c.seasons
+            )
+            let listed = Set(c.expected)
+            for task in project(c.items).tasks {
+                let member = listed.contains(task.id.uuidString.lowercased())
+                if isTaskScheduled(task) {
+                    both.scheduled = true
+                    #expect(!member, "\(c.name): \(task.title) is scheduled and listed")
+                } else {
+                    both.unscheduled = true
+                    let held = task.status == "cancelled" || suppressed.contains(task.id)
+                    #expect(member == !held, "\(c.name): \(task.title)")
+                }
+            }
+        }
+        #expect(both.scheduled && both.unscheduled, "the fixture has tasks both ways")
+    }
+
     @Test func routineGroupsMatchTheWeb() throws {
         for c in try loadFixture("routine-groups", as: GroupsFixture.self).cases {
             let got = routineGroups(c.items, routines: c.routines)

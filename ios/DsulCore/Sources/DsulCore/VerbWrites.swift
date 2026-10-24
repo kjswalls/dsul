@@ -1,23 +1,26 @@
 import Foundation
 
-// The optimistic step of the item sheet's three writes: the item as the web's
-// store holds it right after the verb, before the server answers. Ports of
-// lib/planner-store.ts:
+// The optimistic step of the item sheet's four verb writes: the item as the
+// web's store holds it right after the verb, before the server answers. Ports
+// of lib/planner-store.ts:
 // - `skipping`: `setItemSkipped`, which sends a habit through
 //   `toggleHabitStatus('skipped' | 'pending')` and moves a task-like item's
 //   `skippedDates` alone;
 // - `moving`: `moveTaskToDate`;
 // - `pausing`: `setItemPaused`, as the patch `resolvePauseWrite` (Active.swift)
-//   resolves, which is the rule the server applies to the same request.
+//   resolves, which is the rule the server applies to the same request;
+// - `unscheduling` (Week and blocks PR 3): `unscheduleTask`, Move to
+//   Braindump, which writes lib/item-edit.ts `UNSCHEDULE_TASK_PATCH`.
 // Keep in step: a change there without the same change here is drift, and the
 // phone shows a state the server never wrote until the next fetch replaces it.
 // Checked against the web by VerbWritesFixtureTests
 // (tests/fixtures/day/verb-writes.json), which drives the real store.
 //
 // Each refuses what the store refuses, leaving the item as it was: `skipping`
-// an item that isn't `isSkippable`, `moving` a habit. What the phone SENDS is
-// the intent (POST /api/app/items/:id `skip`, `move`, `pause`), never these
-// arrays: the server owns the completion RPC and the streak.
+// an item that isn't `isSkippable`, `moving` or `unscheduling` a habit. What
+// the phone SENDS is the intent (POST /api/app/items/:id `skip`, `move`,
+// `pause`, `unschedule`), never these arrays: the server owns the completion
+// RPC and the streak.
 
 /// The item after skipping (`skipped: true`) or unskipping its occurrence on
 /// `date` (yyyy-MM-dd).
@@ -85,5 +88,21 @@ public func pausing(_ item: Item, patch: PauseWindowPatch) -> Item {
     var next = item
     if let pausedAt = patch.pausedAt { next.pausedAt = pausedAt.value }
     if let pausedUntil = patch.pausedUntil { next.pausedUntil = pausedUntil.value }
+    return next
+}
+
+/// The item after Move to Braindump: not scheduled, and no start date, part of
+/// day or time, the four columns `UNSCHEDULE_TASK_PATCH` writes. Its length,
+/// order, project, priority, notes and any pause stay as they were, and no
+/// `order` is written, so it shows in the braindump at its stored place. A
+/// habit is unchanged: `unscheduleTask` finds task-like items only. The gate
+/// (`canSendToBraindump`) is the caller's, as the store's verb asks none.
+public func unscheduling(_ item: Item) -> Item {
+    guard !item.isHabit else { return item }
+    var next = item
+    next.isScheduled = false
+    next.startDate = nil
+    next.timeBucket = nil
+    next.startTime = nil
     return next
 }

@@ -1,8 +1,9 @@
 import Foundation
 
 // The JSON body of POST /api/app/items/:id for the item sheet's edits, its
-// Delete, Add a subtask and Reset streak, and from 2f-b its routine and season
-// toggles, as lib/app-api.ts `ItemWriteActions` takes them:
+// Delete, Add a subtask and Reset streak, from 2f-b its routine and season
+// toggles, and from Week and blocks PR 3 its Move to Braindump, as
+// lib/app-api.ts `ItemWriteActions` takes them:
 // - `{"action":"title","title":…}`;
 // - `{"action":"notes","notes":…}`, where clearing sends `"notes":null`, never
 //   a missing key: the route's schema is `.nullable()`, not `.optional()`, so
@@ -38,7 +39,11 @@ import Foundation
 //   or season (`"kind"`, `"routine"` or `"season"`), by its id, lowercase, and
 //   whether the item is to be in it (a JSON boolean). One membership row,
 //   never a list: the route adds or removes that row alone (lib/db.ts
-//   `addContainerMember`, `removeContainerMember`).
+//   `addContainerMember`, `removeContainerMember`);
+// - `{"action":"unschedule"}`, Move to Braindump, nothing beside it: the
+//   server writes the store's `UNSCHEDULE_TASK_PATCH` behind its own copy of
+//   `canSendToBraindump`, and answers 409 `not_unschedulable` for a row the
+//   web's gate refuses (a subtask too).
 // Every action is `.strict()` there, so a key the route doesn't name is a 400,
 // and `encode(to:)` is written out by hand rather than synthesized, so it
 // writes exactly these keys. Checked against the web by ItemWriteBodyTests,
@@ -65,6 +70,9 @@ public enum ItemWriteBody: Encodable, Sendable, Hashable {
     /// "containerId":…,"kind":…,"member":…}`, the id lowercased. It changes no
     /// field of the item, so it is no `ItemEdit`.
     case collect(kind: ContainerKind, containerId: String, member: Bool)
+    /// (Week and blocks PR 3) Move to Braindump: `{"action":"unschedule"}`,
+    /// off every day. It names no field, so it is no `ItemEdit`.
+    case unschedule
 
     /// The route's `action`, which is also the name `writes` lists.
     public var action: String {
@@ -74,6 +82,7 @@ public enum ItemWriteBody: Encodable, Sendable, Hashable {
         case .addSubtask: "addSubtask"
         case .resetStreak: "resetStreak"
         case .collect: "collect"
+        case .unschedule: "unschedule"
         }
     }
 
@@ -162,7 +171,7 @@ public enum ItemWriteBody: Encodable, Sendable, Hashable {
             try c.encode(kind.rawValue, forKey: .kind)
             try c.encode(containerId.lowercased(), forKey: .containerId)
             try c.encode(member, forKey: .member)
-        case .delete, .resetStreak:
+        case .delete, .resetStreak, .unschedule:
             break
         }
     }
