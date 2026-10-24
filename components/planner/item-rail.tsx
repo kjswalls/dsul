@@ -10,7 +10,7 @@ import {
   Repeat,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ItemTick, springItemCheck } from "@/components/primitives/item-check";
+import { ItemTick, animateItemCheck } from "@/components/primitives/item-check";
 
 /**
  * The item's details folded to one strip while its conversation has the panel
@@ -107,8 +107,9 @@ export function ItemRail({
  * places it). A sibling of the fold, never inside it: the fold clips, and the
  * lime mark keeps its own element (CLAUDE.md), so it fades in on its own and
  * nothing it lives in can dim or cut it. The same box a row draws
- * (task-row.tsx): lime when done, a lime fill rising for a counted habit's
- * partial day. What a press means is the caller's (lib/item-verbs.ts `tick`).
+ * (task-row.tsx): graphite with a lime tick when done, a graphite fill rising
+ * for a counted habit's partial day. What a press means is the caller's
+ * (lib/item-verbs.ts `tick`).
  */
 export function RailDoneCheck({
   done,
@@ -134,7 +135,7 @@ export function RailDoneCheck({
       aria-label={label}
       aria-pressed={done}
       onClick={(e) => {
-        if (!done) springItemCheck(e.currentTarget);
+        if (!done) animateItemCheck(e.currentTarget);
         onToggle();
       }}
       className={cn(
@@ -142,17 +143,17 @@ export function RailDoneCheck({
         "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
         "motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200",
         done
-          ? "inset-ring-primary bg-primary"
+          ? "inset-ring-check-fill bg-check-fill"
           : filling
-            ? "inset-ring-primary/60 bg-surface-3 hover:inset-ring-primary"
-            : "inset-ring-muted-foreground/45 bg-surface-3 hover:inset-ring-primary",
+            ? "inset-ring-muted-foreground/60 bg-surface-3 hover:inset-ring-muted-foreground"
+            : "inset-ring-muted-foreground/45 bg-surface-3 hover:inset-ring-muted-foreground",
         className,
       )}
     >
       {filling && (
         <span
           aria-hidden
-          className="absolute inset-x-0 bottom-0 bg-primary transition-[height] duration-150"
+          className="absolute inset-x-0 bottom-0 bg-check-fill transition-[height] duration-150"
           style={{ height: `${Math.round(partial * 100)}%` }}
         />
       )}

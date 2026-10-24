@@ -34,7 +34,7 @@ import { EDIT_COPY } from '@/lib/item-edit';
 import { toast } from 'sonner';
 import type { Item, TaskItem } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
-import { ItemTick, springItemCheck } from '@/components/primitives/item-check';
+import { ItemTick, animateItemCheck } from '@/components/primitives/item-check';
 
 /**
  * The item detail sections — what the dialog never had room for. One component
@@ -186,7 +186,7 @@ function SubtasksSection({ item, offerSetup }: { item: Item; offerSetup: boolean
           <button
             type="button"
             onClick={(e) => {
-              if (child.status !== 'completed') springItemCheck(e.currentTarget);
+              if (child.status !== 'completed') animateItemCheck(e.currentTarget);
               toggleTaskStatus(child.id);
             }}
             aria-label={child.status === 'completed' ? 'Mark not done' : 'Mark done'}
@@ -194,8 +194,8 @@ function SubtasksSection({ item, offerSetup }: { item: Item; offerSetup: boolean
               'relative flex size-4 shrink-0 items-center justify-center rounded-[5px] inset-ring transition-[background-color,box-shadow]',
               'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
               child.status === 'completed'
-                ? 'inset-ring-primary bg-primary'
-                : 'inset-ring-muted-foreground/45 hover:inset-ring-primary'
+                ? 'inset-ring-check-fill bg-check-fill'
+                : 'inset-ring-muted-foreground/45 hover:inset-ring-muted-foreground'
             )}
           >
             {child.status === 'completed' && <ItemTick />}

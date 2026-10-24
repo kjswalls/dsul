@@ -10,7 +10,7 @@ import { milestoneItemIds } from '@/lib/goals';
 import { useContainerSchedule } from '@/components/planner/schedule/schedule-views';
 import { useVerbs } from '@/components/planner/organize/member-row-actions';
 import { cn } from '@/lib/utils';
-import { ItemTick, springItemCheck } from '@/components/primitives/item-check';
+import { ItemTick, animateItemCheck } from '@/components/primitives/item-check';
 import { todayInOrder, type OccurrenceState } from '@/lib/container-schedule';
 import {
   ROUTINE_TODAY_FINISHED,
@@ -153,7 +153,7 @@ function TodayRowView({
         type="button"
         disabled={!v.tick}
         onClick={(e) => {
-          if (state !== 'done') springItemCheck(e.currentTarget);
+          if (state !== 'done') animateItemCheck(e.currentTarget);
           v.tick?.run();
         }}
         aria-label={v.tick?.label ?? item.title}
@@ -161,8 +161,8 @@ function TodayRowView({
         className={cn(
           'relative flex h-4 w-4 shrink-0 items-center justify-center rounded-[5px] inset-ring transition-[background-color,box-shadow] disabled:cursor-default',
           state === 'done'
-            ? 'inset-ring-primary bg-primary'
-            : 'inset-ring-muted-foreground/45 bg-surface-3 hover:inset-ring-primary'
+            ? 'inset-ring-check-fill bg-check-fill'
+            : 'inset-ring-muted-foreground/45 bg-surface-3 hover:inset-ring-muted-foreground'
         )}
       >
         {state === 'done' && <ItemTick />}

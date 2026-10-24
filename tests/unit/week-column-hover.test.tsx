@@ -107,8 +107,8 @@ const task = (over: Partial<Task>): Task =>
  * Everything lime an ordinary column can hold, all of it filed on PLAIN_STR:
  *   - a project-LESS timed task, whose block rail and start bead are
  *     `var(--primary)` (day-schedule's `accent` fallback);
- *   - a completed untimed task, whose checkbox is `border-primary bg-primary`
- *     with a `text-primary-foreground` tick inside it.
+ *   - a completed untimed task, whose checkbox is graphite with a `text-primary`
+ *     tick (an <svg>, components/primitives/item-check.tsx) inside it.
  * Neither needs a setting turned on beyond showCompletedTasks, which is on by
  * default.
  */
@@ -166,8 +166,10 @@ const columns = (root: ParentNode) =>
 const ACCENT =
   /(?:^|[\s:[(])(?:bg|text|border|ring|fill|stroke|shadow|from|via|to)-primary\b|var\(--primary\)|var\(--accent-\d|text-success-text|--blk-mk/;
 
-const paintsAccent = (el: HTMLElement) =>
-  ACCENT.test(el.className || '') || ACCENT.test(el.getAttribute('style') ?? '');
+// getAttribute, not className: an <svg>'s className is an SVGAnimatedString,
+// and the item tick is an <svg>.
+const paintsAccent = (el: Element) =>
+  ACCENT.test(el.getAttribute('class') ?? '') || ACCENT.test(el.getAttribute('style') ?? '');
 
 /**
  * The opacity this element applies to itself AND to everything under it.
